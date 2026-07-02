@@ -1,0 +1,1759 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.sustentra.example/gap-ticket/v1.0.0.json",
+  "title": "Sustentra Gap Ticket",
+  "description": "Reusable product-level schema for structured gap candidates and auditor-reviewed gap tickets. The schema links evidence classification, workbook locations, deterministic formula/rule findings, emission-factor/GWP selections, regulatory basis, remediation, and human review without treating system output as a final assurance conclusion.",
+  "type": "object",
+  "additionalProperties": false,
+  "x-sustentra": {
+    "schema_name": "sustentra_gap_ticket_schema",
+    "schema_version": "1.0.0",
+    "generated_at": "2026-06-16",
+    "compatible_libraries": {
+      "evidence_type_library": {
+        "library_name": "sustentra_j2_issa5000_evidence_type_library",
+        "tested_version": "0.1.0"
+      },
+      "formula_library": {
+        "library_name": "sustentra_formula_library",
+        "tested_version": "0.3.1"
+      },
+      "emission_factor_library": {
+        "library_name": "sustentra_emission_factor_library",
+        "tested_version": "1.0.0"
+      }
+    },
+    "design_contracts": [
+      "Evidence-type classification and acceptance recommendations come from the evidence type library.",
+      "Gap tickets consume structured upstream formula/rule findings; they do not re-perform upstream tests.",
+      "Formula, trigger, evidence, factor, GWP, workbook, and source references remain traceable.",
+      "External regulatory basis, assurance basis, and internal product logic are stored separately.",
+      "System-generated tickets are recommendations until an auditor confirms, dismisses, or requests clarification.",
+      "The schema supports workbook-only, evidence-only, combined, and configuration/system findings."
+    ]
+  },
+  "required": [
+    "gap_ticket_id",
+    "ticket_version",
+    "engagement_id",
+    "title",
+    "ticket_type",
+    "status",
+    "detection_origin",
+    "primary_assertion",
+    "affected_location",
+    "issue",
+    "library_references",
+    "traceability",
+    "basis",
+    "decision_authority",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "gap_ticket_id": {
+      "type": "string",
+      "pattern": "^GT-[A-Za-z0-9][A-Za-z0-9._-]{2,79}$",
+      "description": "Stable product identifier, for example GT-DEMO-0003."
+    },
+    "ticket_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Optimistic-locking and audit-history version."
+    },
+    "engagement_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "company_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reporting_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional reporting-period or disclosure record identifier."
+    },
+    "scenario_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional demo/test scenario identifier; normally null in production."
+    },
+    "synthetic_demo_data": {
+      "type": "boolean",
+      "default": false
+    },
+    "title": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 240
+    },
+    "ticket_type": {
+      "type": "string",
+      "enum": [
+        "regulatory_nonconformance_candidate",
+        "assurance_gap_candidate",
+        "evidence_validity_gap",
+        "calculation_or_reconciliation_gap",
+        "methodology_gap",
+        "clarification_request",
+        "internal_data_quality_issue"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "candidate",
+        "pending_auditor_review",
+        "auditor_confirmed_open",
+        "pending_client_clarification",
+        "remediation_in_progress",
+        "resolved",
+        "dismissed",
+        "superseded"
+      ]
+    },
+    "detection_origin": {
+      "type": "string",
+      "enum": [
+        "system_detected",
+        "auditor_created",
+        "system_detected_auditor_enriched"
+      ]
+    },
+    "finding_type": {
+      "type": "string",
+      "enum": [
+        "missing_record_or_source",
+        "quantity_or_value_mismatch",
+        "unit_or_conversion_error",
+        "emission_factor_mismatch",
+        "gwp_basis_mismatch",
+        "aggregation_error",
+        "methodology_or_regulatory_basis_error",
+        "cutoff_or_allocation_error",
+        "classification_or_routing_error",
+        "traceability_failure",
+        "unsupported_estimate_or_substitution",
+        "sampling_chain_failure",
+        "occurrence_or_existence_failure",
+        "other"
+      ],
+      "default": "other"
+    },
+    "primary_assertion": {
+      "$ref": "#/$defs/assertionId"
+    },
+    "secondary_assertions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/assertionId"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "affected_location": {
+      "type": "string",
+      "enum": [
+        "evidence_only",
+        "workbook_only",
+        "workbook_and_evidence",
+        "calculation_or_methodology",
+        "engagement_or_configuration",
+        "mixed"
+      ]
+    },
+    "affected_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "facility_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "source_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "source_category_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "account_numbers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "meter_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "period_start": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "period_end": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "reporting_year": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1900,
+          "maximum": 2200
+        }
+      }
+    },
+    "issue": {
+      "$ref": "#/$defs/issue"
+    },
+    "library_references": {
+      "$ref": "#/$defs/libraryReferences"
+    },
+    "upstream_rule_results": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ruleResult"
+      },
+      "default": []
+    },
+    "ticket_generation_rule_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^G-\\d{3}$",
+      "description": "G-001 through G-007 when the formula library converts upstream findings into a ticket."
+    },
+    "trigger_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9_]*$"
+      },
+      "uniqueItems": true,
+      "default": []
+    },
+    "linked_evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidenceReference"
+      },
+      "default": []
+    },
+    "linked_workbook_locations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/workbookReference"
+      },
+      "default": []
+    },
+    "traceability": {
+      "$ref": "#/$defs/traceability"
+    },
+    "calculation_impact": {
+      "$ref": "#/$defs/calculationImpact"
+    },
+    "methodology_trace": {
+      "$ref": "#/$defs/methodologyTrace"
+    },
+    "basis": {
+      "$ref": "#/$defs/basis"
+    },
+    "materiality": {
+      "$ref": "#/$defs/materiality"
+    },
+    "severity": {
+      "$ref": "#/$defs/severity"
+    },
+    "remediation": {
+      "$ref": "#/$defs/remediation"
+    },
+    "auditor_review": {
+      "$ref": "#/$defs/auditorReview"
+    },
+    "decision_authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "system_output_is_recommendation",
+        "final_decision_role"
+      ],
+      "properties": {
+        "system_output_is_recommendation": {
+          "const": true
+        },
+        "final_decision_role": {
+          "const": "auditor"
+        }
+      }
+    },
+    "deduplication": {
+      "$ref": "#/$defs/deduplication"
+    },
+    "audit_trail": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/auditEvent"
+      },
+      "default": []
+    },
+    "created_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolved_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  },
+  "$defs": {
+    "assertionId": {
+      "type": "string",
+      "enum": [
+        "occurrence_existence",
+        "responsibility",
+        "completeness",
+        "accuracy_valuation",
+        "cutoff",
+        "presentation_classification_understandability",
+        "consistency"
+      ]
+    },
+    "acceptanceStatus": {
+      "type": "string",
+      "enum": [
+        "accepted_for_extraction",
+        "accepted_supporting_evidence_only",
+        "flagged_for_auditor_review",
+        "rejected_excluded",
+        "pending_clarification"
+      ]
+    },
+    "evidenceRole": {
+      "type": "string",
+      "enum": [
+        "primary_activity_evidence",
+        "supporting_evidence",
+        "boundary_evidence",
+        "source_completeness_evidence",
+        "methodology_evidence",
+        "calculation_support",
+        "reconciliation_evidence",
+        "comparative_trend_evidence",
+        "external_evidence",
+        "value_chain_evidence",
+        "claim_evidence",
+        "representation_remediation_evidence",
+        "target_estimate_support"
+      ]
+    },
+    "formulaId": {
+      "type": "string",
+      "pattern": "^(N|X|F|R|M|Q|V|G)-\\d{3}$"
+    },
+    "libraryIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "library_name",
+        "version"
+      ],
+      "properties": {
+        "library_name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "content_hash": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Optional SHA-256 or other immutable content hash."
+        }
+      }
+    },
+    "libraryReferences": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_type_library",
+        "formula_library"
+      ],
+      "properties": {
+        "evidence_type_library": {
+          "$ref": "#/$defs/libraryIdentity"
+        },
+        "formula_library": {
+          "$ref": "#/$defs/libraryIdentity"
+        },
+        "emission_factor_library": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/libraryIdentity"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "engagement_config_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_registry_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observed_condition",
+        "expected_condition",
+        "why_triggered",
+        "root_cause_key"
+      ],
+      "properties": {
+        "observed_condition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "expected_condition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "why_triggered": {
+          "type": "string",
+          "minLength": 1
+        },
+        "root_cause_key": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.:-]*$"
+        },
+        "detection_method": {
+          "type": "string",
+          "enum": [
+            "deterministic_rule",
+            "deterministic_calculation",
+            "structured_reconciliation",
+            "document_set_completeness",
+            "regulatory_reference_comparison",
+            "auditor_observation",
+            "hybrid"
+          ]
+        },
+        "system_confidence": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "client_reported_basis_or_rationale": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "ruleResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "formula_id",
+        "rule_or_check_id",
+        "outcome",
+        "observed",
+        "expected"
+      ],
+      "properties": {
+        "formula_id": {
+          "$ref": "#/$defs/formulaId"
+        },
+        "rule_or_check_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z][a-zA-Z0-9_.:-]*$"
+        },
+        "trigger_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail",
+            "warning",
+            "not_applicable",
+            "not_evaluable"
+          ]
+        },
+        "observed": {},
+        "expected": {},
+        "input_snapshot": {
+          "type": "object",
+          "additionalProperties": true,
+          "default": {}
+        },
+        "output_snapshot": {
+          "type": "object",
+          "additionalProperties": true,
+          "default": {}
+        },
+        "message": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "executed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        }
+      }
+    },
+    "sourceLocator": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "page_number": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "source_snippet": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "bounding_box": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "left",
+            "top",
+            "width",
+            "height"
+          ],
+          "properties": {
+            "left": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "top": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "width": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "height": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        },
+        "extraction_field_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "evidenceReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evidence_id"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "document_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "file_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence_type_id": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^J2-\\d{3}$"
+        },
+        "evidence_role_snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/evidenceRole"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "acceptance_status_snapshot": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/acceptanceStatus"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "relationship_to_gap": {
+          "type": "string",
+          "enum": [
+            "trigger_evidence",
+            "contradictory_evidence",
+            "missing_expected_evidence",
+            "supporting_evidence",
+            "calculation_input_evidence",
+            "methodology_evidence",
+            "remediation_evidence"
+          ]
+        },
+        "source_locations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/sourceLocator"
+          },
+          "default": []
+        }
+      }
+    },
+    "workbookReference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workbook_id",
+        "sheet_name",
+        "cell_or_range",
+        "relationship_to_gap"
+      ],
+      "properties": {
+        "workbook_id": {
+          "type": "string"
+        },
+        "file_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sheet_name": {
+          "type": "string"
+        },
+        "cell_or_range": {
+          "type": "string",
+          "description": "A1-style cell or range, for example D12 or A3:H3."
+        },
+        "row_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "column_label": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "displayed_value": {},
+        "formula": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "relationship_to_gap": {
+          "type": "string",
+          "enum": [
+            "reported_value",
+            "calculation_formula",
+            "methodology_statement",
+            "equipment_or_source_declaration",
+            "aggregation_structure",
+            "omission_location",
+            "remediation_location",
+            "other"
+          ]
+        }
+      }
+    },
+    "traceability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "traceability_status"
+      ],
+      "properties": {
+        "traceability_status": {
+          "type": "string",
+          "enum": [
+            "complete",
+            "partial",
+            "missing",
+            "not_applicable"
+          ]
+        },
+        "extraction_field_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "normalized_activity_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "calculation_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "reconciliation_result_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "source_registry_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "missing_trace_links": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        }
+      }
+    },
+    "valueWithUnit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "value"
+      ],
+      "properties": {
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "calculationImpact": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "reported_value": {
+          "$ref": "#/$defs/valueWithUnit"
+        },
+        "recalculated_value": {
+          "$ref": "#/$defs/valueWithUnit"
+        },
+        "absolute_difference": {
+          "$ref": "#/$defs/valueWithUnit"
+        },
+        "percent_difference": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "affected_emissions_metric": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "calculation_reperformable": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "impact_explanation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "methodologyTrace": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "selected_formula_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/formulaId"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "emission_factor_references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "factor_id"
+            ],
+            "properties": {
+              "factor_id": {
+                "type": "string"
+              },
+              "factor_value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "factor_unit": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "fuel_or_gas": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "selection_status": {
+                "type": "string",
+                "enum": [
+                  "expected",
+                  "observed",
+                  "mismatched",
+                  "not_available"
+                ]
+              }
+            }
+          },
+          "default": []
+        },
+        "gwp_references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "gwp_set_id"
+            ],
+            "properties": {
+              "gwp_set_id": {
+                "type": "string"
+              },
+              "gas": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "gwp_value": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "time_horizon_years": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "selection_status": {
+                "type": "string",
+                "enum": [
+                  "expected",
+                  "observed",
+                  "mismatched",
+                  "not_available"
+                ]
+              }
+            }
+          },
+          "default": []
+        },
+        "method_or_tier_observed": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "method_or_tier_expected": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "citation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "citation",
+        "relationship",
+        "requirement_summary"
+      ],
+      "properties": {
+        "authority": {
+          "type": "string"
+        },
+        "citation": {
+          "type": "string"
+        },
+        "relationship": {
+          "type": "string",
+          "enum": [
+            "governing_requirement",
+            "incorporated_method",
+            "state_override",
+            "definition",
+            "recordkeeping",
+            "missing_data_method",
+            "materiality",
+            "client_cited_conflicting_basis",
+            "supporting_reference"
+          ]
+        },
+        "requirement_summary": {
+          "type": "string"
+        },
+        "applicability_explanation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        }
+      }
+    },
+    "basis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "regulatory_citations",
+        "assurance_basis",
+        "internal_basis"
+      ],
+      "properties": {
+        "regulatory_citations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/citation"
+          },
+          "default": []
+        },
+        "assurance_basis": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "internal_basis": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "regulatory_assessment": {
+          "type": "string",
+          "enum": [
+            "candidate_violation",
+            "auditor_confirmed_violation",
+            "no_violation_internal_issue_only",
+            "not_yet_determined"
+          ],
+          "default": "not_yet_determined"
+        }
+      }
+    },
+    "materiality": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "assessment_status": {
+          "type": "string",
+          "enum": [
+            "not_assessed",
+            "below_threshold",
+            "above_threshold",
+            "qualitatively_material",
+            "not_quantifiable"
+          ]
+        },
+        "threshold_value": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "threshold_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "quantitative_impact": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "qualitative_factors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "rationale": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "severity": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "system_suggested": {
+          "type": "string",
+          "enum": [
+            "not_assessed",
+            "informational",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "auditor_assigned": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "informational",
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ]
+        },
+        "rationale": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "remediation": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "recommended_action": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "required_additional_evidence": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "suggested_client_question": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "owner_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "target_date": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date"
+        },
+        "resolution_summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "auditorReview": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            null,
+            "confirm",
+            "dismiss",
+            "request_clarification",
+            "defer",
+            "supersede"
+          ]
+        },
+        "reviewer_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reviewed_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "comment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "client_facing_text_approved": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      }
+    },
+    "deduplication": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "root_cause_key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fingerprint": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "Stable hash of engagement, source/period, root cause, and trigger set."
+        },
+        "related_ticket_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true,
+          "default": []
+        },
+        "supersedes_ticket_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "auditEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_type",
+        "timestamp"
+      ],
+      "properties": {
+        "event_type": {
+          "type": "string",
+          "enum": [
+            "created",
+            "system_updated",
+            "auditor_reviewed",
+            "status_changed",
+            "severity_changed",
+            "comment_added",
+            "evidence_linked",
+            "remediation_added",
+            "resolved",
+            "dismissed",
+            "superseded"
+          ]
+        },
+        "actor_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timestamp": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "changes": {
+          "type": "object",
+          "additionalProperties": true,
+          "default": {}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "affected_location": {
+            "const": "evidence_only"
+          }
+        },
+        "required": [
+          "affected_location"
+        ]
+      },
+      "then": {
+        "required": [
+          "linked_evidence"
+        ],
+        "properties": {
+          "linked_evidence": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "affected_location": {
+            "const": "workbook_only"
+          }
+        },
+        "required": [
+          "affected_location"
+        ]
+      },
+      "then": {
+        "required": [
+          "linked_workbook_locations"
+        ],
+        "properties": {
+          "linked_workbook_locations": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "affected_location": {
+            "const": "workbook_and_evidence"
+          }
+        },
+        "required": [
+          "affected_location"
+        ]
+      },
+      "then": {
+        "required": [
+          "linked_evidence",
+          "linked_workbook_locations"
+        ],
+        "properties": {
+          "linked_evidence": {
+            "minItems": 1
+          },
+          "linked_workbook_locations": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "detection_origin": {
+            "enum": [
+              "system_detected",
+              "system_detected_auditor_enriched"
+            ]
+          }
+        },
+        "required": [
+          "detection_origin"
+        ]
+      },
+      "then": {
+        "required": [
+          "upstream_rule_results",
+          "trigger_ids"
+        ],
+        "properties": {
+          "upstream_rule_results": {
+            "minItems": 1
+          },
+          "trigger_ids": {
+            "minItems": 1
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": [
+              "auditor_confirmed_open",
+              "resolved",
+              "dismissed",
+              "superseded"
+            ]
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "auditor_review"
+        ],
+        "properties": {
+          "auditor_review": {
+            "type": "object",
+            "required": [
+              "decision",
+              "reviewer_id",
+              "reviewed_at"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "finding_type": {
+            "enum": [
+              "quantity_or_value_mismatch",
+              "unit_or_conversion_error",
+              "emission_factor_mismatch",
+              "gwp_basis_mismatch"
+            ]
+          }
+        },
+        "required": [
+          "finding_type"
+        ]
+      },
+      "then": {
+        "required": [
+          "calculation_impact"
+        ]
+      }
+    }
+  ],
+  "examples": [
+    {
+      "gap_ticket_id": "GT-DEMO-0003",
+      "ticket_version": 1,
+      "engagement_id": "DEMO-ENGAGEMENT-2023",
+      "company_id": "DEMO-COMPANY",
+      "reporting_id": "RY-2023",
+      "scenario_id": "GAP_3_OCTOBER_VOLUME",
+      "synthetic_demo_data": true,
+      "title": "October natural gas volume does not reconcile to source bill",
+      "ticket_type": "calculation_or_reconciliation_gap",
+      "status": "candidate",
+      "detection_origin": "system_detected",
+      "finding_type": "quantity_or_value_mismatch",
+      "primary_assertion": "accuracy_valuation",
+      "secondary_assertions": [],
+      "affected_location": "workbook_and_evidence",
+      "affected_scope": {
+        "facility_ids": [
+          "DEMO-FACILITY"
+        ],
+        "source_ids": [
+          "NFG-BWV-239871"
+        ],
+        "source_category_ids": [
+          "scope_1_stationary_combustion"
+        ],
+        "account_numbers": [
+          "ACC-2023-BWV-001"
+        ],
+        "meter_ids": [
+          "NFG-BWV-239871"
+        ],
+        "period_start": "2023-10-01",
+        "period_end": "2023-10-31",
+        "reporting_year": 2023
+      },
+      "issue": {
+        "observed_condition": "The workbook records October natural gas usage at ten times the source-bill quantity.",
+        "expected_condition": "The workbook quantity should equal the traceable quantity on the October utility bill.",
+        "why_triggered": "Structured reconciliation returned a non-zero quantity difference and identified the October workbook cell as the origin.",
+        "root_cause_key": "natural_gas.october.transcription_mismatch",
+        "detection_method": "structured_reconciliation",
+        "system_confidence": 1.0,
+        "client_reported_basis_or_rationale": null
+      },
+      "library_references": {
+        "evidence_type_library": {
+          "library_name": "sustentra_j2_issa5000_evidence_type_library",
+          "version": "0.1.0",
+          "content_hash": null
+        },
+        "formula_library": {
+          "library_name": "sustentra_formula_library",
+          "version": "0.3.1",
+          "content_hash": null
+        },
+        "emission_factor_library": {
+          "library_name": "sustentra_emission_factor_library",
+          "version": "1.0.0",
+          "content_hash": null
+        },
+        "engagement_config_version": "demo-draft",
+        "source_registry_version": "demo-draft"
+      },
+      "upstream_rule_results": [
+        {
+          "formula_id": "R-001",
+          "rule_or_check_id": "reported_vs_recalculated_absolute_difference",
+          "trigger_id": "workbook_vs_source_quantity_mismatch",
+          "outcome": "fail",
+          "observed": 281000,
+          "expected": 28100,
+          "input_snapshot": {
+            "workbook_quantity_mmbtu": 281000,
+            "source_bill_quantity_mmbtu": 28100
+          },
+          "output_snapshot": {
+            "absolute_difference_mmbtu": 252900
+          },
+          "message": "Workbook and evidence quantities do not reconcile.",
+          "executed_at": "2026-06-16T12:00:00Z"
+        }
+      ],
+      "ticket_generation_rule_id": "G-002",
+      "trigger_ids": [
+        "workbook_vs_source_quantity_mismatch"
+      ],
+      "linked_evidence": [
+        {
+          "evidence_id": "EV-NG-2023-010",
+          "document_id": "EV-NG-2023-010",
+          "file_name": "EV-NG-2023-010.pdf",
+          "evidence_type_id": "J2-001",
+          "evidence_role_snapshot": "primary_activity_evidence",
+          "acceptance_status_snapshot": "accepted_for_extraction",
+          "relationship_to_gap": "contradictory_evidence",
+          "source_locations": [
+            {
+              "page_number": 1,
+              "source_snippet": "Usage 28,100 MMBtu",
+              "bounding_box": null,
+              "extraction_field_id": "EF-EV-NG-2023-010-USAGE"
+            }
+          ]
+        }
+      ],
+      "linked_workbook_locations": [
+        {
+          "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+          "file_name": "AB_Baldwinsville_Scope1_Workbook.xlsx",
+          "sheet_name": "Natural Gas",
+          "cell_or_range": "D12",
+          "row_label": "October",
+          "column_label": "Usage (MMBtu)",
+          "displayed_value": 281000,
+          "formula": null,
+          "relationship_to_gap": "reported_value"
+        }
+      ],
+      "traceability": {
+        "traceability_status": "complete",
+        "extraction_field_ids": [
+          "EF-EV-NG-2023-010-USAGE"
+        ],
+        "normalized_activity_ids": [
+          "NA-NG-2023-10"
+        ],
+        "calculation_ids": [],
+        "reconciliation_result_ids": [
+          "REC-NG-2023-10"
+        ],
+        "source_registry_ids": [
+          "NFG-BWV-239871"
+        ],
+        "missing_trace_links": []
+      },
+      "calculation_impact": {
+        "reported_value": {
+          "value": 281000,
+          "unit": "MMBtu"
+        },
+        "recalculated_value": {
+          "value": 28100,
+          "unit": "MMBtu"
+        },
+        "absolute_difference": {
+          "value": 252900,
+          "unit": "MMBtu"
+        },
+        "percent_difference": 900.0,
+        "affected_emissions_metric": "Scope 1 stationary-combustion activity",
+        "calculation_reperformable": true,
+        "impact_explanation": "The erroneous activity quantity propagates to the emissions calculation."
+      },
+      "methodology_trace": {
+        "selected_formula_ids": [
+          "R-001",
+          "G-002"
+        ],
+        "emission_factor_references": [],
+        "gwp_references": [],
+        "method_or_tier_observed": null,
+        "method_or_tier_expected": null
+      },
+      "basis": {
+        "regulatory_citations": [
+          {
+            "authority": "NY Part 253",
+            "citation": "§253-2.7(h)",
+            "relationship": "governing_requirement",
+            "requirement_summary": "Individual fuel volumes must be reported and traceable to supporting records.",
+            "applicability_explanation": "The October source bill and workbook report different fuel volumes.",
+            "source_url": null
+          }
+        ],
+        "assurance_basis": [
+          "Accuracy and valuation",
+          "Evidence traceability and recalculation"
+        ],
+        "internal_basis": [
+          "Formula library R-001 reconciliation",
+          "Formula library G-002 ticket conversion"
+        ],
+        "regulatory_assessment": "candidate_violation"
+      },
+      "materiality": {
+        "assessment_status": "not_assessed",
+        "threshold_value": null,
+        "threshold_unit": null,
+        "quantitative_impact": null,
+        "qualitative_factors": [],
+        "rationale": null
+      },
+      "severity": {
+        "system_suggested": "high",
+        "auditor_assigned": null,
+        "rationale": "Large quantity discrepancy with direct emissions impact."
+      },
+      "remediation": {
+        "recommended_action": "Correct the October workbook input and reperform affected calculations.",
+        "required_additional_evidence": [],
+        "suggested_client_question": "Please confirm the correct October natural gas volume and provide the source used for the workbook entry.",
+        "owner_id": null,
+        "target_date": null,
+        "resolution_summary": null
+      },
+      "auditor_review": null,
+      "decision_authority": {
+        "system_output_is_recommendation": true,
+        "final_decision_role": "auditor"
+      },
+      "deduplication": {
+        "root_cause_key": "natural_gas.october.transcription_mismatch",
+        "fingerprint": null,
+        "related_ticket_ids": [],
+        "supersedes_ticket_id": null
+      },
+      "audit_trail": [
+        {
+          "event_type": "created",
+          "actor_id": "system",
+          "timestamp": "2026-06-16T12:00:00Z",
+          "note": "Created from failed reconciliation result.",
+          "changes": {}
+        }
+      ],
+      "created_by": "system",
+      "created_at": "2026-06-16T12:00:00Z",
+      "updated_at": "2026-06-16T12:00:00Z",
+      "resolved_at": null
+    }
+  ]
+}

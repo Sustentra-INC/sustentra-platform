@@ -1,0 +1,10 @@
+{
+  "reported_scope_1_mtco2e": 14925.1183,
+  "recalculated_scope_1_mtco2e": 1492.51183,
+  "absolute_difference_mtco2e": 13432.60647,
+  "variance_percent": 900.0,
+  "materiality_threshold_percent": 5,
+  "reconciliation_status": "Flagged",
+  "calculation_records_considered": 1,
+  "coverage_note": "Summary reflects records with validated computed outputs in the current demo."
+}

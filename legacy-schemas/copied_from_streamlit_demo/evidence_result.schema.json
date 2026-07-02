@@ -1,0 +1,15 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Evidence Result",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["evidence_id"],
+  "properties": {
+    "evidence_id": {"type": "string"},
+    "file_name": {"type": ["string", "null"]},
+    "evidence_type_id": {"type": ["string", "null"]},
+    "status": {"type": ["string", "null"]},
+    "extracted_fields": {"type": "object"},
+    "linked_gap_ticket_ids": {"type": "array"}
+  }
+}

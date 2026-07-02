@@ -1,0 +1,12 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Analysis Request",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["run_id"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "demo_mode": {"type": "boolean"},
+    "library_versions": {"type": "object"}
+  }
+}

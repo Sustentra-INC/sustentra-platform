@@ -1,0 +1,15 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Run Manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["run_id", "created_at"],
+  "properties": {
+    "run_id": {"type": "string"},
+    "created_at": {"type": "string"},
+    "input_files": {"type": "array"},
+    "library_versions": {"type": "object"},
+    "output_files": {"type": "object"},
+    "status": {"type": "string"}
+  }
+}

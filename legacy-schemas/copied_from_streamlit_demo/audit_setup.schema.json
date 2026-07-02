@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Audit Setup",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "company_and_facility_profile",
+    "reporting_boundary",
+    "regulation_and_verification",
+    "materiality_and_thresholds",
+    "engagement_details",
+    "methodology_defaults"
+  ],
+  "properties": {
+    "company_and_facility_profile": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "company_name": {
+          "type": "string"
+        },
+        "facility_name": {
+          "type": "string"
+        },
+        "facility_address": {
+          "type": "string"
+        },
+        "company_facility_identifier": {
+          "type": "string"
+        },
+        "duns_number": {
+          "type": "string"
+        },
+        "industry": {
+          "type": "string"
+        },
+        "facility_type": {
+          "type": "string"
+        },
+        "reporting_period": {
+          "type": "string"
+        }
+      }
+    },
+    "reporting_boundary": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "scope_1",
+        "scope_2",
+        "scope_3",
+        "boundary_type",
+        "consolidation_approach"
+      ],
+      "properties": {
+        "scope_1": {
+          "type": "boolean"
+        },
+        "scope_2": {
+          "type": "boolean"
+        },
+        "scope_3": {
+          "type": "boolean"
+        },
+        "boundary_type": {
+          "type": "string",
+          "enum": [
+            "Facility",
+            "Portfolio"
+          ]
+        },
+        "consolidation_approach": {
+          "type": "string",
+          "enum": [
+            "Operational control",
+            "Financial control",
+            "Equity share"
+          ]
+        }
+      }
+    },
+    "regulation_and_verification": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "primary_regulation",
+        "additional_frameworks",
+        "verification_standard",
+        "assurance_level"
+      ],
+      "properties": {
+        "primary_regulation": {
+          "type": "string",
+          "enum": [
+            "NY Part 253",
+            "EPA Part 98",
+            "GHG Protocol"
+          ]
+        },
+        "additional_frameworks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "NY Part 253",
+              "EPA Part 98",
+              "GHG Protocol"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "verification_standard": {
+          "type": "string",
+          "enum": [
+            "ISSA 5000",
+            "ISO 14064-3"
+          ]
+        },
+        "assurance_level": {
+          "type": "string",
+          "enum": [
+            "Limited assurance",
+            "Reasonable assurance"
+          ]
+        },
+        "source_categories": {
+          "type": "string"
+        }
+      }
+    },
+    "materiality_and_thresholds": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "material_misstatement_percentage",
+        "materiality_absolute"
+      ],
+      "properties": {
+        "reporting_threshold": {
+          "type": "string"
+        },
+        "material_misstatement_percentage": {
+          "type": "string"
+        },
+        "materiality_absolute": {
+          "type": "string"
+        },
+        "key_source_categories": {
+          "type": "string"
+        },
+        "missing_data_threshold": {
+          "type": "string"
+        }
+      }
+    },
+    "engagement_details": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "engagement_name": {
+          "type": "string"
+        },
+        "reporting_period": {
+          "type": "string"
+        },
+        "auditor_reviewer": {
+          "type": "string"
+        },
+        "scope_description": {
+          "type": "string"
+        },
+        "verification_objective": {
+          "type": "string"
+        }
+      }
+    },
+    "methodology_defaults": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "method_tier_by_fuel_type": {
+          "type": "string"
+        },
+        "emission_factor_source": {
+          "type": "string"
+        },
+        "gwp_basis": {
+          "type": "string"
+        },
+        "unit_normalization_defaults": {
+          "type": "string"
+        },
+        "biogenic_fossil_treatment": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,1237 @@
+{
+  "library_name": "sustentra_j2_issa5000_evidence_type_library",
+  "version": "0.1.0",
+  "generated_at": "2026-05-21",
+  "source_document": {
+    "title": "ISSA 5000-First Evidence Intake & Classification",
+    "file_name": "ISSA5000_First_J2_Evidence_Intake_and_Classification-Nora 0520.docx.pdf",
+    "basis": "Nora 0520 J2 evidence intake/classification table"
+  },
+  "purpose": "Evidence-type-specific library for Journey 2 evidence intake and classification. It supports first-pass triage before extraction, testing, calculation, or assurance conclusion.",
+  "product_boundary": {
+    "primary_standard_basis": "ISSA 5000",
+    "regulatory_overlays": [
+      "ISO 14064",
+      "NY Part 253",
+      "40 CFR Part 98.37"
+    ],
+    "boundary_notes": [
+      "This library classifies information intended to be used as evidence; it does not make final assurance conclusions.",
+      "Product outputs are recommendations and structured gap triggers; final decisions remain with the auditor.",
+      "OCR confidence/readability is not mandatory for J2, but source references can be stored when available.",
+      "Regulatory overlays can add criteria-specific requirements without replacing the ISSA 5000 evidence framework."
+    ]
+  },
+  "allowed_acceptance_statuses": [
+    {
+      "status": "accepted_for_extraction",
+      "label": "Accepted for extraction",
+      "meaning": "Evidence is relevant, within scope, attributable to entity/facility/period, and contains fields needed for extraction.",
+      "product_action": "Send to extraction pipeline; link evidence to disclosure/source/category; preserve ISSA assertion tags."
+    },
+    {
+      "status": "accepted_supporting_evidence_only",
+      "label": "Accepted as supporting evidence only",
+      "meaning": "Evidence is useful for boundary, method, source completeness, criteria, reconciliation, or narrative support, but is not direct activity data.",
+      "product_action": "Store and link as supporting evidence; do not generate normalized activity data unless later approved."
+    },
+    {
+      "status": "flagged_for_auditor_review",
+      "label": "Flagged for auditor review",
+      "meaning": "Evidence may be relevant but has ambiguity, missing critical context, conflicting identifiers, unclear role, or possible misclassification.",
+      "product_action": "Open J2 gap ticket; request auditor classification or client clarification."
+    },
+    {
+      "status": "rejected_excluded",
+      "label": "Rejected / excluded",
+      "meaning": "Evidence is out of scope, wrong entity/facility/period, duplicate, non-applicable, or does not support the assurance scope.",
+      "product_action": "Exclude from extraction/calculation; retain documented rejection rationale."
+    },
+    {
+      "status": "pending_clarification",
+      "label": "Pending clarification",
+      "meaning": "System cannot recommend accept/reject because a necessary classification fact is absent or inconsistent.",
+      "product_action": "Create client/auditor clarification request; keep document inactive until resolved."
+    }
+  ],
+  "assertion_library": [
+    {
+      "assertion_id": "occurrence_existence",
+      "assertion_name": "Occurrence and existence",
+      "product_translation": "Event/activity/source/process existence",
+      "common_gap_category": "Evidence supports a claim/event that cannot be shown to exist or occur."
+    },
+    {
+      "assertion_id": "responsibility",
+      "assertion_name": "Responsibility",
+      "product_translation": "Entity/facility/boundary responsibility",
+      "common_gap_category": "Evidence belongs to another entity, facility, or third party without boundary rationale."
+    },
+    {
+      "assertion_id": "completeness",
+      "assertion_name": "Completeness",
+      "product_translation": "Completeness of evidence set / source coverage",
+      "common_gap_category": "Months, facilities, sources, or required data classes are missing."
+    },
+    {
+      "assertion_id": "accuracy_valuation",
+      "assertion_name": "Accuracy and valuation",
+      "product_translation": "Measurement sufficiency and method readiness",
+      "common_gap_category": "Quantity, unit, factor, or method cannot support reliable measurement/calculation."
+    },
+    {
+      "assertion_id": "cutoff",
+      "assertion_name": "Cutoff",
+      "product_translation": "Period matching",
+      "common_gap_category": "Date belongs to wrong period or crosses periods without allocation support."
+    },
+    {
+      "assertion_id": "presentation_classification_understandability",
+      "assertion_name": "Presentation, classification and understandability",
+      "product_translation": "Evidence classification and role mapping",
+      "common_gap_category": "Evidence is routed to the wrong scope/category/role or aggregation level."
+    },
+    {
+      "assertion_id": "consistency",
+      "assertion_name": "Consistency",
+      "product_translation": "Prior-period comparability",
+      "common_gap_category": "Current evidence or classification conflicts with prior period without explanation."
+    }
+  ],
+  "evidence_roles": [
+    "primary_activity_evidence",
+    "supporting_evidence",
+    "boundary_evidence",
+    "source_completeness_evidence",
+    "methodology_evidence",
+    "calculation_support",
+    "reconciliation_evidence",
+    "comparative_trend_evidence",
+    "external_evidence",
+    "value_chain_evidence",
+    "claim_evidence",
+    "representation_remediation_evidence",
+    "target_estimate_support"
+  ],
+  "evidence_types": [
+    {
+      "evidence_type_id": "J2-001",
+      "evidence_type_name": "Natural gas utility bill",
+      "default_data_type": "raw_quantitative_activity_data",
+      "expected_assertions": [
+        "responsibility",
+        "cutoff",
+        "accuracy_valuation"
+      ],
+      "expected_evidence_role": "primary_activity_evidence",
+      "default_regulatory_category": "scope_1_stationary_combustion",
+      "minimum_j2_acceptance_fields": [
+        "service_address",
+        "account_number_or_meter_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit",
+        "fuel_or_service_type",
+        "facility_mapping"
+      ],
+      "j2_acceptance_criterion": "Service address/account/meter, billing period, usage quantity, unit, fuel/service type, and facility mapping are present.",
+      "auditor_registerable_triggers": [
+        "address_or_account_does_not_match_facility",
+        "billing_period_outside_scope",
+        "billing_period_crosses_year_without_allocation_support",
+        "usage_quantity_missing",
+        "usage_unit_missing_or_ambiguous"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept",
+          "condition": "entity/facility/period/quantity/unit are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "any of entity, facility, period, quantity, or unit is ambiguous"
+        },
+        {
+          "rule": "reject_or_reclassify",
+          "condition": "document is not in the engagement scope or is not direct combustion evidence"
+        }
+      ],
+      "common_gap_triggers": [
+        "address_or_account_does_not_match_facility",
+        "billing_period_outside_scope",
+        "billing_period_crosses_year_without_allocation_support",
+        "usage_quantity_missing",
+        "usage_unit_missing_or_ambiguous"
+      ],
+      "recommended_product_fields": [
+        "evidence_type",
+        "data_type",
+        "facility_final",
+        "source_final",
+        "related_assertion",
+        "acceptance_status",
+        "acceptance_reason",
+        "auditor_note"
+      ],
+      "downstream_activity_allowed_by_default": true,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-002",
+      "evidence_type_name": "Electricity bill",
+      "default_data_type": "raw_quantitative_activity_data_or_imported_energy_evidence",
+      "expected_assertions": [
+        "presentation_classification_understandability",
+        "cutoff",
+        "accuracy_valuation"
+      ],
+      "expected_evidence_role": "supporting_evidence",
+      "default_regulatory_category": "scope_2_imported_energy_or_supporting_energy_evidence",
+      "minimum_j2_acceptance_fields": [
+        "service_address",
+        "meter_number_or_account_number",
+        "service_period_start",
+        "service_period_end",
+        "electricity_quantity",
+        "electricity_unit",
+        "facility_mapping",
+        "scope_or_energy_category_mapping"
+      ],
+      "j2_acceptance_criterion": "Evidence is classified as imported energy / Scope 2 or supporting energy evidence, not direct combustion unless engagement criteria state otherwise.",
+      "auditor_registerable_triggers": [
+        "electricity_bill_routed_into_scope_1_fuel_combustion",
+        "service_period_missing",
+        "kwh_missing",
+        "facility_or_meter_unclear"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_supporting_or_scope_2",
+          "condition": "facility/period/kWh/unit are clear and document supports imported energy"
+        },
+        {
+          "rule": "reject_from_scope_1_calculation",
+          "condition": "document is electricity/imported energy and is being used as direct Scope 1 fuel combustion"
+        },
+        {
+          "rule": "flag",
+          "condition": "facility, meter, service period, or kWh is unclear"
+        }
+      ],
+      "common_gap_triggers": [
+        "electricity_bill_routed_into_scope_1_fuel_combustion",
+        "service_period_missing",
+        "kwh_missing",
+        "facility_or_meter_unclear"
+      ],
+      "recommended_product_fields": [
+        "scope_category_final",
+        "evidence_role_final",
+        "acceptance_status",
+        "regulatory_category_final"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": [
+        "May be relevant to the wider ESG workspace, but should not feed Scope 1 stationary combustion calculations by default."
+      ]
+    },
+    {
+      "evidence_type_id": "J2-003",
+      "evidence_type_name": "Fuel delivery ticket: propane, LPG, heating oil, diesel",
+      "default_data_type": "raw_quantitative_activity_data",
+      "expected_assertions": [
+        "responsibility",
+        "accuracy_valuation",
+        "cutoff"
+      ],
+      "expected_evidence_role": "primary_activity_evidence",
+      "default_regulatory_category": "scope_1_stationary_or_mobile_combustion",
+      "minimum_j2_acceptance_fields": [
+        "delivery_address",
+        "delivery_date",
+        "fuel_type",
+        "quantity",
+        "quantity_unit",
+        "supplier",
+        "tank_or_equipment_or_source_served",
+        "facility_mapping"
+      ],
+      "j2_acceptance_criterion": "Delivery address, delivery date, fuel type, quantity, unit, supplier, and tank/equipment/source served are identified.",
+      "auditor_registerable_triggers": [
+        "delivery_location_unclear",
+        "fuel_could_serve_multiple_sources",
+        "fuel_type_missing",
+        "quantity_or_unit_missing",
+        "invoice_date_used_instead_of_delivery_or_activity_date"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept",
+          "condition": "source and period are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "multi-source allocation or ownership/control is unclear"
+        },
+        {
+          "rule": "reject",
+          "condition": "delivery is for an unrelated facility"
+        }
+      ],
+      "common_gap_triggers": [
+        "delivery_location_unclear",
+        "fuel_could_serve_multiple_sources",
+        "fuel_type_missing",
+        "quantity_or_unit_missing",
+        "invoice_date_used_instead_of_delivery_or_activity_date"
+      ],
+      "recommended_product_fields": [
+        "delivery_date",
+        "delivery_address",
+        "fuel_type",
+        "quantity_unit",
+        "source_final",
+        "evidence_role"
+      ],
+      "downstream_activity_allowed_by_default": true,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-004",
+      "evidence_type_name": "Fleet fuel-card ticket",
+      "default_data_type": "raw_quantitative_activity_data_or_mobile_source_data",
+      "expected_assertions": [
+        "responsibility",
+        "presentation_classification_understandability",
+        "cutoff"
+      ],
+      "expected_evidence_role": "primary_activity_evidence",
+      "default_regulatory_category": "scope_1_mobile_combustion",
+      "minimum_j2_acceptance_fields": [
+        "vehicle_id_or_asset_id",
+        "ownership_or_control_status",
+        "transaction_date",
+        "fuel_type",
+        "fuel_volume",
+        "fuel_unit",
+        "vehicle_or_facility_assignment"
+      ],
+      "j2_acceptance_criterion": "Vehicle/asset belongs to entity or is within reporting boundary; transaction date, fuel type, volume/unit, and vehicle/facility assignment are present.",
+      "auditor_registerable_triggers": [
+        "third_party_or_personal_vehicle_included",
+        "vehicle_id_missing",
+        "offsite_transaction_not_assigned",
+        "outsourced_logistics_treated_as_direct_emissions"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "flag_by_default",
+          "condition": "ownership/control is not evident"
+        },
+        {
+          "rule": "accept",
+          "condition": "vehicle/boundary match is clear and fuel fields are complete"
+        },
+        {
+          "rule": "reclassify_to_value_chain",
+          "condition": "vehicle/logistics activity is not direct or controlled by the entity"
+        }
+      ],
+      "common_gap_triggers": [
+        "third_party_or_personal_vehicle_included",
+        "vehicle_id_missing",
+        "offsite_transaction_not_assigned",
+        "outsourced_logistics_treated_as_direct_emissions"
+      ],
+      "recommended_product_fields": [
+        "vehicle_id",
+        "ownership_control",
+        "source_final",
+        "evidence_role",
+        "acceptance_reason"
+      ],
+      "downstream_activity_allowed_by_default": true,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-005",
+      "evidence_type_name": "Generator runtime log",
+      "default_data_type": "raw_quantitative_activity_or_operational_support",
+      "expected_assertions": [
+        "occurrence_existence",
+        "accuracy_valuation",
+        "cutoff"
+      ],
+      "expected_evidence_role": "supporting_evidence",
+      "default_regulatory_category": "scope_1_stationary_combustion_support",
+      "minimum_j2_acceptance_fields": [
+        "generator_id",
+        "facility_mapping",
+        "source_mapping",
+        "runtime_period_start",
+        "runtime_period_end",
+        "runtime_hours",
+        "fuel_type_or_linked_fuel_usage_evidence"
+      ],
+      "j2_acceptance_criterion": "Generator ID, facility/source mapping, runtime period, runtime hours, fuel type or linked fuel usage evidence are present.",
+      "auditor_registerable_triggers": [
+        "runtime_log_without_source_mapping",
+        "runtime_log_without_linked_fuel_invoice",
+        "maintenance_or_test_use_unclear",
+        "period_incomplete"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_source_or_activity_evidence",
+          "condition": "source and time are clear"
+        },
+        {
+          "rule": "supporting_only",
+          "condition": "log provides operational context without fuel quantity"
+        },
+        {
+          "rule": "flag",
+          "condition": "source link or linked fuel evidence is missing"
+        }
+      ],
+      "common_gap_triggers": [
+        "runtime_log_without_source_mapping",
+        "runtime_log_without_linked_fuel_invoice",
+        "maintenance_or_test_use_unclear",
+        "period_incomplete"
+      ],
+      "recommended_product_fields": [
+        "generator_id",
+        "source_final",
+        "period_start_end",
+        "linked_evidence_id"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": [
+        "May become activity evidence only if fuel use is quantified or valid runtime-based estimation method is available."
+      ]
+    },
+    {
+      "evidence_type_id": "J2-006",
+      "evidence_type_name": "Refrigerant service record",
+      "default_data_type": "raw_quantitative_activity_data_or_fugitive_emissions_evidence",
+      "expected_assertions": [
+        "accuracy_valuation",
+        "responsibility",
+        "cutoff"
+      ],
+      "expected_evidence_role": "primary_activity_evidence",
+      "default_regulatory_category": "scope_1_fugitive_refrigerants",
+      "minimum_j2_acceptance_fields": [
+        "equipment_id",
+        "facility_mapping",
+        "service_date",
+        "refrigerant_type",
+        "amount_added_or_recovered_or_removed",
+        "amount_unit"
+      ],
+      "j2_acceptance_criterion": "Equipment ID, facility, service date, refrigerant type, amount added/recovered/removed, and unit are present.",
+      "auditor_registerable_triggers": [
+        "refrigerant_type_missing",
+        "amount_added_vs_recovered_not_distinguished",
+        "equipment_or_facility_not_mapped",
+        "amount_unit_missing"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept",
+          "condition": "type, amount, unit, equipment, and date are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "any missing field prevents GWP lookup or activity classification"
+        },
+        {
+          "rule": "supporting_only",
+          "condition": "record is maintenance narrative without amount"
+        }
+      ],
+      "common_gap_triggers": [
+        "refrigerant_type_missing",
+        "amount_added_vs_recovered_not_distinguished",
+        "equipment_or_facility_not_mapped",
+        "amount_unit_missing"
+      ],
+      "recommended_product_fields": [
+        "refrigerant_type",
+        "amount",
+        "unit",
+        "equipment_id",
+        "service_date",
+        "acceptance_status"
+      ],
+      "downstream_activity_allowed_by_default": true,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-007",
+      "evidence_type_name": "Facility register / boundary evidence",
+      "default_data_type": "boundary_and_responsibility_evidence",
+      "expected_assertions": [
+        "responsibility",
+        "completeness",
+        "consistency"
+      ],
+      "expected_evidence_role": "boundary_evidence",
+      "default_regulatory_category": "boundary_and_facility_mapping",
+      "minimum_j2_acceptance_fields": [
+        "entity_name",
+        "facility_or_site_name",
+        "site_type",
+        "address",
+        "ownership_status",
+        "control_status",
+        "inclusion_or_exclusion_status",
+        "effective_dates",
+        "source_evidence_reference"
+      ],
+      "j2_acceptance_criterion": "Entity, facility/site name, site type, address, ownership/control, inclusion/exclusion status, effective dates and source evidence are present.",
+      "auditor_registerable_triggers": [
+        "facility_inclusion_unclear",
+        "facility_exclusion_reason_absent",
+        "boundary_changed_from_prior_year_without_support"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_boundary_evidence",
+          "condition": "facility/boundary fields are identifiable"
+        },
+        {
+          "rule": "flag",
+          "condition": "inclusion/exclusion or effective dates are incomplete"
+        },
+        {
+          "rule": "do_not_use_for_activity_extraction",
+          "condition": "document is boundary mapping only"
+        }
+      ],
+      "common_gap_triggers": [
+        "facility_inclusion_unclear",
+        "facility_exclusion_reason_absent",
+        "boundary_changed_from_prior_year_without_support"
+      ],
+      "recommended_product_fields": [
+        "facility_id",
+        "reporting_boundary_status",
+        "exclusion_reason",
+        "effective_dates",
+        "evidence_role"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-008",
+      "evidence_type_name": "Equipment list / asset register / air permit",
+      "default_data_type": "source_completeness_or_existence_evidence",
+      "expected_assertions": [
+        "occurrence_existence",
+        "completeness",
+        "responsibility"
+      ],
+      "expected_evidence_role": "source_completeness_evidence",
+      "default_regulatory_category": "source_completeness_support",
+      "minimum_j2_acceptance_fields": [
+        "equipment_or_source_id",
+        "source_type",
+        "fuel_or_source_category",
+        "active_status",
+        "facility_mapping",
+        "ownership_or_control_status"
+      ],
+      "j2_acceptance_criterion": "Equipment/source ID, source type, fuel/source category, active status, facility and ownership/control are present.",
+      "auditor_registerable_triggers": [
+        "equipment_list_shows_source_with_no_activity_evidence",
+        "active_or_inactive_status_unclear",
+        "source_not_mapped_to_facility"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_supporting_source_completeness_evidence",
+          "condition": "source existence and mapping are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "omitted source may affect completeness"
+        },
+        {
+          "rule": "do_not_treat_as_activity_data_by_default",
+          "condition": "document contains asset existence rather than usage"
+        }
+      ],
+      "common_gap_triggers": [
+        "equipment_list_shows_source_with_no_activity_evidence",
+        "active_or_inactive_status_unclear",
+        "source_not_mapped_to_facility"
+      ],
+      "recommended_product_fields": [
+        "source_id_final",
+        "active_status",
+        "equipment_type",
+        "ownership_control",
+        "evidence_role"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-009",
+      "evidence_type_name": "Meter log / CEMS / operational log",
+      "default_data_type": "measurement_record_or_raw_quantitative_activity_data",
+      "expected_assertions": [
+        "accuracy_valuation",
+        "cutoff",
+        "completeness"
+      ],
+      "expected_evidence_role": "primary_activity_evidence",
+      "default_regulatory_category": "measurement_record_supporting_scope_1_or_other_disclosure",
+      "minimum_j2_acceptance_fields": [
+        "meter_or_source_id",
+        "source_mapping",
+        "period_start",
+        "period_end",
+        "measurement_values",
+        "measurement_unit",
+        "data_frequency"
+      ],
+      "j2_acceptance_criterion": "Meter/source ID, source mapping, period, measurement values, unit and data frequency are present.",
+      "auditor_registerable_triggers": [
+        "meter_not_mapped_to_source",
+        "period_incomplete",
+        "values_summarized_without_source_context",
+        "data_gaps_not_explained"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept",
+          "condition": "mapping, period, values, unit, and frequency are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "operational data cannot be tied to disclosure/source"
+        },
+        {
+          "rule": "supporting_only",
+          "condition": "log is only a high-level summary"
+        }
+      ],
+      "common_gap_triggers": [
+        "meter_not_mapped_to_source",
+        "period_incomplete",
+        "values_summarized_without_source_context",
+        "data_gaps_not_explained"
+      ],
+      "recommended_product_fields": [
+        "meter_id",
+        "source_final",
+        "frequency",
+        "period_start_end",
+        "data_quality_type"
+      ],
+      "downstream_activity_allowed_by_default": true,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-010",
+      "evidence_type_name": "Emission factor reference sheet",
+      "default_data_type": "methodology_evidence",
+      "expected_assertions": [
+        "accuracy_valuation",
+        "presentation_classification_understandability",
+        "consistency"
+      ],
+      "expected_evidence_role": "methodology_evidence",
+      "default_regulatory_category": "methodology_or_factor_support",
+      "minimum_j2_acceptance_fields": [
+        "factor_source",
+        "effective_year",
+        "applicable_fuel_or_gas_or_source",
+        "factor_value",
+        "factor_unit",
+        "method_basis",
+        "version"
+      ],
+      "j2_acceptance_criterion": "Factor source, effective year, applicable fuel/gas/source, factor unit, method basis, and version are identified.",
+      "auditor_registerable_triggers": [
+        "factor_source_or_version_missing",
+        "factor_does_not_match_fuel_or_unit",
+        "outdated_factor_used_without_rationale"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_methodology_evidence",
+          "condition": "factor applicability and version are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "factor applicability, source, unit, or version cannot be determined"
+        },
+        {
+          "rule": "do_not_treat_as_activity_evidence",
+          "condition": "document provides method/factor, not activity quantity"
+        }
+      ],
+      "common_gap_triggers": [
+        "factor_source_or_version_missing",
+        "factor_does_not_match_fuel_or_unit",
+        "outdated_factor_used_without_rationale"
+      ],
+      "recommended_product_fields": [
+        "factor_source",
+        "factor_unit",
+        "effective_year",
+        "applicable_method",
+        "evidence_role"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-011",
+      "evidence_type_name": "Calculation workbook / internal ESG spreadsheet",
+      "default_data_type": "derived_kpi_or_calculation_support",
+      "expected_assertions": [
+        "accuracy_valuation",
+        "presentation_classification_understandability",
+        "consistency"
+      ],
+      "expected_evidence_role": "calculation_support",
+      "default_regulatory_category": "calculation_or_reconciliation_support",
+      "minimum_j2_acceptance_fields": [
+        "reporting_period",
+        "facility_or_source_categories",
+        "input_tabs",
+        "formulas",
+        "factor_sources",
+        "gwp_or_criteria_basis",
+        "workbook_version",
+        "preparer_or_reviewer_if_applicable"
+      ],
+      "j2_acceptance_criterion": "Workbook identifies reporting period, facility/source categories, input tabs, formulas, factor sources, GWP/criteria basis, version and preparer/reviewer where applicable.",
+      "auditor_registerable_triggers": [
+        "totals_without_source_evidence",
+        "overwritten_formulas_or_manual_inputs",
+        "factor_or_gwp_basis_missing",
+        "workbook_version_unclear"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_calculation_support",
+          "condition": "period, categories, formulas, factors, and version are identifiable"
+        },
+        {
+          "rule": "flag",
+          "condition": "unsupported totals, manual inputs, missing factor/GWP basis, or version ambiguity exist"
+        },
+        {
+          "rule": "do_not_accept_as_primary_evidence",
+          "condition": "raw source data is not embedded and traceable"
+        }
+      ],
+      "common_gap_triggers": [
+        "totals_without_source_evidence",
+        "overwritten_formulas_or_manual_inputs",
+        "factor_or_gwp_basis_missing",
+        "workbook_version_unclear"
+      ],
+      "recommended_product_fields": [
+        "workbook_version",
+        "formula_visible",
+        "evidence_role",
+        "linked_source_evidence",
+        "auditor_review_status"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-012",
+      "evidence_type_name": "Wastewater / anaerobic digestion record",
+      "default_data_type": "raw_quantitative_activity_data_or_process_evidence",
+      "expected_assertions": [
+        "occurrence_existence",
+        "accuracy_valuation",
+        "responsibility"
+      ],
+      "expected_evidence_role": "primary_activity_evidence",
+      "default_regulatory_category": "scope_1_process_or_wastewater_emissions",
+      "minimum_j2_acceptance_fields": [
+        "onsite_treatment_or_source_status",
+        "period",
+        "volume",
+        "volume_unit",
+        "treatment_type",
+        "cod_bod_or_other_relevant_parameters_if_applicable",
+        "facility_mapping",
+        "source_mapping"
+      ],
+      "j2_acceptance_criterion": "Onsite treatment/source exists and period, volume, treatment type, COD/BOD or other relevant parameters are present when applicable.",
+      "auditor_registerable_triggers": [
+        "municipal_or_third_party_treatment_treated_as_entity_scope_1",
+        "treatment_type_unclear",
+        "volume_or_organic_load_data_missing"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept",
+          "condition": "onsite boundary and key parameters are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "treatment boundary or required parameters are missing"
+        },
+        {
+          "rule": "reclassify",
+          "condition": "treatment is third-party or outside entity boundary"
+        }
+      ],
+      "common_gap_triggers": [
+        "municipal_or_third_party_treatment_treated_as_entity_scope_1",
+        "treatment_type_unclear",
+        "volume_or_organic_load_data_missing"
+      ],
+      "recommended_product_fields": [
+        "treatment_type",
+        "volume",
+        "period",
+        "facility_final",
+        "source_final",
+        "evidence_role"
+      ],
+      "downstream_activity_allowed_by_default": true,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-013",
+      "evidence_type_name": "Production log / ERP output report",
+      "default_data_type": "quantitative_production_or_denominator_data",
+      "expected_assertions": [
+        "completeness",
+        "accuracy_valuation",
+        "cutoff"
+      ],
+      "expected_evidence_role": "supporting_evidence",
+      "default_regulatory_category": "intensity_denominator_or_operational_metric_support",
+      "minimum_j2_acceptance_fields": [
+        "facility",
+        "product_type",
+        "production_quantity",
+        "production_unit",
+        "reporting_period",
+        "disclosure_or_metric_alignment"
+      ],
+      "j2_acceptance_criterion": "Facility, product type, production quantity, unit, and reporting period are present and align with disclosure/metric.",
+      "auditor_registerable_triggers": [
+        "production_unit_inconsistent",
+        "product_lines_or_facilities_aggregated_without_allocation",
+        "period_incomplete"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_product_or_intensity_evidence",
+          "condition": "facility, product, quantity, unit, and period are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "unit, period, facility, or allocation ambiguity exists"
+        },
+        {
+          "rule": "do_not_treat_as_direct_emissions_activity_evidence",
+          "condition": "document provides denominator/production data"
+        }
+      ],
+      "common_gap_triggers": [
+        "production_unit_inconsistent",
+        "product_lines_or_facilities_aggregated_without_allocation",
+        "period_incomplete"
+      ],
+      "recommended_product_fields": [
+        "product_type",
+        "production_quantity",
+        "unit",
+        "period_start_end",
+        "evidence_role"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-014",
+      "evidence_type_name": "Prior-year sustainability / GHG report",
+      "default_data_type": "comparative_information_or_benchmark_evidence",
+      "expected_assertions": [
+        "consistency",
+        "presentation_classification_understandability"
+      ],
+      "expected_evidence_role": "comparative_trend_evidence",
+      "default_regulatory_category": "comparative_or_trend_support",
+      "minimum_j2_acceptance_fields": [
+        "comparative_period",
+        "prior_period_boundary",
+        "prior_criteria",
+        "prior_methodology",
+        "source_categories",
+        "assurance_status"
+      ],
+      "j2_acceptance_criterion": "Prior-period boundary, criteria, methodology, source categories and assurance status are identifiable.",
+      "auditor_registerable_triggers": [
+        "prior_year_report_used_as_current_year_activity_evidence",
+        "method_or_boundary_change_not_disclosed",
+        "comparative_figure_not_restated"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_comparative_or_trend_evidence",
+          "condition": "prior boundary, criteria, methodology, categories, and assurance status are identifiable"
+        },
+        {
+          "rule": "flag",
+          "condition": "current evidence or classification conflicts with prior period without explanation"
+        },
+        {
+          "rule": "reject_as_primary_current_year_activity_data",
+          "condition": "document is being used as current-year raw activity evidence"
+        }
+      ],
+      "common_gap_triggers": [
+        "prior_year_report_used_as_current_year_activity_evidence",
+        "method_or_boundary_change_not_disclosed",
+        "comparative_figure_not_restated"
+      ],
+      "recommended_product_fields": [
+        "comparative_period",
+        "prior_criteria",
+        "prior_method",
+        "assurance_status",
+        "evidence_role"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-015",
+      "evidence_type_name": "Third-party supplier / logistics invoice",
+      "default_data_type": "external_or_value_chain_information",
+      "expected_assertions": [
+        "responsibility",
+        "presentation_classification_understandability",
+        "accuracy_valuation"
+      ],
+      "expected_evidence_role": "value_chain_evidence",
+      "default_regulatory_category": "external_or_value_chain_support",
+      "minimum_j2_acceptance_fields": [
+        "relationship_to_entity",
+        "activity_type",
+        "period",
+        "direct_or_value_chain_classification",
+        "external_source_identification"
+      ],
+      "j2_acceptance_criterion": "Relationship to entity, activity type, period, and whether activity is direct or value-chain are identifiable.",
+      "auditor_registerable_triggers": [
+        "supplier_or_logistics_activity_treated_as_entity_owned_direct_activity_without_boundary_evidence",
+        "external_source_reliability_not_addressed",
+        "relationship_to_entity_unclear"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_value_chain_or_supporting_evidence",
+          "condition": "relationship, activity, period, and value-chain/direct classification are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "document is routed into direct emissions or external reliability cannot be assessed"
+        },
+        {
+          "rule": "pending_clarification",
+          "condition": "relationship to entity is unclear"
+        }
+      ],
+      "common_gap_triggers": [
+        "supplier_or_logistics_activity_treated_as_entity_owned_direct_activity_without_boundary_evidence",
+        "external_source_reliability_not_addressed",
+        "relationship_to_entity_unclear"
+      ],
+      "recommended_product_fields": [
+        "external_source_flag",
+        "relationship_type",
+        "ownership_control",
+        "scope_category_final",
+        "acceptance_reason"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-016",
+      "evidence_type_name": "Lab result / benchmark / external dataset",
+      "default_data_type": "external_information_intended_as_evidence",
+      "expected_assertions": [
+        "accuracy_valuation",
+        "occurrence_existence"
+      ],
+      "expected_evidence_role": "external_evidence",
+      "default_regulatory_category": "external_reference_or_benchmark_support",
+      "minimum_j2_acceptance_fields": [
+        "external_source_name",
+        "sample_or_benchmark_id",
+        "period_or_version",
+        "method_basis",
+        "applicability_to_entity_or_disclosure"
+      ],
+      "j2_acceptance_criterion": "External source, sample/benchmark ID, period/version, method basis and applicability to the entity/disclosure are identifiable.",
+      "auditor_registerable_triggers": [
+        "lab_result_sample_id_does_not_match_entity_or_source",
+        "benchmark_version_unknown",
+        "dataset_used_outside_scope"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_external_evidence",
+          "condition": "source and applicability are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "relevance or reliability questions exist"
+        },
+        {
+          "rule": "request_confirmation",
+          "condition": "applicability to entity/disclosure is uncertain"
+        }
+      ],
+      "common_gap_triggers": [
+        "lab_result_sample_id_does_not_match_entity_or_source",
+        "benchmark_version_unknown",
+        "dataset_used_outside_scope"
+      ],
+      "recommended_product_fields": [
+        "external_source_name",
+        "sample_id",
+        "version",
+        "applicability_note",
+        "evidence_role"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-017",
+      "evidence_type_name": "Policy, governance, board minutes, process narrative",
+      "default_data_type": "qualitative_sustainability_information",
+      "expected_assertions": [
+        "occurrence_existence",
+        "responsibility",
+        "presentation_classification_understandability"
+      ],
+      "expected_evidence_role": "supporting_evidence",
+      "default_regulatory_category": "qualitative_disclosure_support",
+      "minimum_j2_acceptance_fields": [
+        "policy_or_process_or_event_identifier",
+        "entity_responsibility",
+        "approval_or_effective_date",
+        "responsible_party_if_available",
+        "disclosure_mapping"
+      ],
+      "j2_acceptance_criterion": "Document shows the policy/process/event exists, pertains to the entity, and supports the disclosure being assured.",
+      "auditor_registerable_triggers": [
+        "policy_claim_has_no_approval_or_effective_date",
+        "narrative_does_not_belong_to_entity",
+        "favorable_claim_unsupported_by_evidence",
+        "evidence_source_unclear"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_qualitative_supporting_evidence",
+          "condition": "policy/process/event existence, entity responsibility, and disclosure support are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "claim is unsupported or responsibility is unclear"
+        },
+        {
+          "rule": "pending_clarification",
+          "condition": "evidence source is unclear"
+        }
+      ],
+      "common_gap_triggers": [
+        "policy_claim_has_no_approval_or_effective_date",
+        "narrative_does_not_belong_to_entity",
+        "favorable_claim_unsupported_by_evidence",
+        "evidence_source_unclear"
+      ],
+      "recommended_product_fields": [
+        "policy_id",
+        "approval_date",
+        "responsible_party",
+        "disclosure_id",
+        "evidence_role"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-018",
+      "evidence_type_name": "Forward-looking target / estimate / scenario model",
+      "default_data_type": "forward_looking_information_or_estimate_support",
+      "expected_assertions": [
+        "accuracy_valuation",
+        "consistency",
+        "presentation_classification_understandability"
+      ],
+      "expected_evidence_role": "target_estimate_support",
+      "default_regulatory_category": "target_or_estimate_support",
+      "minimum_j2_acceptance_fields": [
+        "model_version",
+        "methods",
+        "assumptions",
+        "source_data_reference",
+        "linkage_to_strategy_or_criteria",
+        "prior_period_change_explanation_if_applicable",
+        "forward_looking_flag"
+      ],
+      "j2_acceptance_criterion": "Methods, assumptions, source data and linkage to strategy/criteria are identifiable; changes from prior period are explainable.",
+      "auditor_registerable_triggers": [
+        "target_or_pathway_unsupported_by_assumptions_or_source_data",
+        "model_version_missing",
+        "forward_looking_claim_presented_as_historical_fact"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_target_or_estimate_support",
+          "condition": "methods, assumptions, source data, model version, and linkage to strategy/criteria are identifiable"
+        },
+        {
+          "rule": "flag",
+          "condition": "assumptions, method, source data, or model version gaps exist"
+        },
+        {
+          "rule": "do_not_treat_as_evidence_that_future_outcome_will_be_achieved",
+          "condition": "document supports a forward-looking claim"
+        }
+      ],
+      "common_gap_triggers": [
+        "target_or_pathway_unsupported_by_assumptions_or_source_data",
+        "model_version_missing",
+        "forward_looking_claim_presented_as_historical_fact"
+      ],
+      "recommended_product_fields": [
+        "model_version",
+        "assumption_set",
+        "source_data_reference",
+        "forward_looking_flag"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-019",
+      "evidence_type_name": "REC / offset / carbon credit / reduction claim document",
+      "default_data_type": "claim_or_instrument_evidence",
+      "expected_assertions": [
+        "presentation_classification_understandability",
+        "responsibility",
+        "accuracy_valuation"
+      ],
+      "expected_evidence_role": "claim_evidence",
+      "default_regulatory_category": "claim_or_market_instrument_support",
+      "minimum_j2_acceptance_fields": [
+        "claim_type",
+        "instrument_or_project_id",
+        "period",
+        "entity_match",
+        "retirement_or_cancellation_or_ownership_evidence"
+      ],
+      "j2_acceptance_criterion": "Claim type, instrument/project ID, period, entity match, retirement/cancellation or ownership evidence are identifiable.",
+      "auditor_registerable_triggers": [
+        "rec_or_offset_used_to_reduce_scope_1_activity",
+        "retirement_or_cancellation_proof_missing",
+        "claim_period_or_entity_mismatch"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_claim_or_supporting_evidence",
+          "condition": "claim type, instrument/project ID, period, entity match, and retirement/ownership support are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "classification is improper or retirement/ownership support is missing"
+        },
+        {
+          "rule": "reject_as_direct_activity_data",
+          "condition": "document is being used as direct emissions activity data"
+        }
+      ],
+      "common_gap_triggers": [
+        "rec_or_offset_used_to_reduce_scope_1_activity",
+        "retirement_or_cancellation_proof_missing",
+        "claim_period_or_entity_mismatch"
+      ],
+      "recommended_product_fields": [
+        "claim_type",
+        "instrument_id",
+        "retirement_status",
+        "period",
+        "evidence_role"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    },
+    {
+      "evidence_type_id": "J2-020",
+      "evidence_type_name": "Management representation / remediation response",
+      "default_data_type": "representation_or_remediation_evidence",
+      "expected_assertions": [
+        "responsibility",
+        "completeness",
+        "presentation_classification_understandability"
+      ],
+      "expected_evidence_role": "representation_remediation_evidence",
+      "default_regulatory_category": "gap_closure_or_representation_support",
+      "minimum_j2_acceptance_fields": [
+        "responsible_party",
+        "representation_scope",
+        "representation_date",
+        "related_gap_or_disclosure",
+        "linked_supporting_evidence"
+      ],
+      "j2_acceptance_criterion": "Responsible party, representation scope, date, related gap/disclosure, and supporting evidence links are clear.",
+      "auditor_registerable_triggers": [
+        "representation_used_instead_of_underlying_evidence_where_evidence_should_be_available",
+        "response_does_not_address_ticket",
+        "representation_inconsistent_with_source_evidence"
+      ],
+      "default_decision_rules": [
+        {
+          "rule": "accept_as_supporting_representation",
+          "condition": "responsible party, representation scope, date, related gap/disclosure, and support links are clear"
+        },
+        {
+          "rule": "flag",
+          "condition": "representation is unsupported or inconsistent with source evidence"
+        },
+        {
+          "rule": "link_to_gap_closure_workflow",
+          "condition": "representation/remediation response is tied to an open gap"
+        }
+      ],
+      "common_gap_triggers": [
+        "representation_used_instead_of_underlying_evidence_where_evidence_should_be_available",
+        "response_does_not_address_ticket",
+        "representation_inconsistent_with_source_evidence"
+      ],
+      "recommended_product_fields": [
+        "related_gap_id",
+        "representation_date",
+        "responsible_party",
+        "linked_evidence_ids"
+      ],
+      "downstream_activity_allowed_by_default": false,
+      "notes": []
+    }
+  ]
+}

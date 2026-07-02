@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/gap_ticket.schema.json",
+  "title": "GapTicketPlaceholder",
+  "description": "TODO: Align this schema with approved evidence outputs after Pilot 1. Legacy references remain in legacy-schemas/copied_from_streamlit_demo/ and reference-data/config/libraries/gap_ticket_schema.json.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "gap_ticket_id",
+    "status",
+    "todo_alignment_note"
+  ],
+  "properties": {
+    "gap_ticket_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "todo_alignment_note": {
+      "type": "string"
+    }
+  }
+}

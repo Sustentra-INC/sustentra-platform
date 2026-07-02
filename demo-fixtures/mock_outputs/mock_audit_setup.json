@@ -1,0 +1,51 @@
+{
+  "company_and_facility_profile": {
+    "company_name": "Anheuser-Busch InBev (prepared demo profile)",
+    "facility_name": "Anheuser-Busch Baldwinsville Brewery",
+    "facility_address": "4797 River Road, Baldwinsville, NY 13027",
+    "company_facility_identifier": "AB-BWV",
+    "duns_number": "00-123-4567",
+    "client_contact_name": "Dana Whitfield",
+    "client_contact_email": "dana.whitfield@ab-baldwinsville.example.com",
+    "industry": "Beverage manufacturing",
+    "facility_type": "Brewery",
+    "reporting_period": "2023-01-01 to 2023-12-31"
+  },
+  "reporting_boundary": {
+    "scope_1": true,
+    "scope_2": false,
+    "scope_3": false,
+    "boundary_type": "Facility",
+    "consolidation_approach": "Operational control"
+  },
+  "regulation_and_verification": {
+    "primary_regulation": "NY Part 253",
+    "additional_frameworks": [
+      "EPA Part 98"
+    ],
+    "verification_standard": "ISSA 5000",
+    "assurance_level": "Limited assurance",
+    "source_categories": "Scope 1 stationary combustion"
+  },
+  "materiality_and_thresholds": {
+    "reporting_threshold": "1,000 tCO2e (organizational reporting threshold)",
+    "material_misstatement_percentage": "5%",
+    "materiality_absolute": "750 tCO2e",
+    "key_source_categories": "Natural gas combustion; biomass combustion; emergency generation",
+    "missing_data_threshold": "Escalate if monthly source evidence is missing"
+  },
+  "engagement_details": {
+    "engagement_name": "AB Baldwinsville 2023 Scope 1 audit demo",
+    "reporting_period": "2023-01-01 to 2023-12-31",
+    "auditor_reviewer": "Sustentra prepared-demo reviewer",
+    "scope_description": "Prepared workflow demonstration for auditor-facing review steps.",
+    "verification_objective": "Evaluate evidence traceability, validation outcomes, and reconciliation gaps."
+  },
+  "methodology_defaults": {
+    "method_tier_by_fuel_type": "Natural gas: Tier 1 billing MMBtu; Biomass: method requires validated support.",
+    "emission_factor_source": "EPA GHG Emission Factors Hub 2025 (stationary combustion)",
+    "gwp_basis": "IPCC AR6 100-year combustion defaults",
+    "unit_normalization_defaults": "Normalize activity to MMBtu where applicable.",
+    "biogenic_fossil_treatment": "Report biogenic and fossil treatment separately when required."
+  }
+}

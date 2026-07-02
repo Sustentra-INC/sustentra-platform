@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/approved_evidence.schema.json",
+  "title": "ApprovedEvidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_id",
+    "engagement_id",
+    "document_id",
+    "evidence_type",
+    "review_status",
+    "fields"
+  ],
+  "properties": {
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "engagement_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "review_status": {
+      "type": "string",
+      "enum": [
+        "in_review",
+        "partially_approved",
+        "approved"
+      ]
+    },
+    "fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "field_name",
+          "extracted_value",
+          "approved_value",
+          "unit",
+          "decision",
+          "source_reference"
+        ],
+        "properties": {
+          "field_name": {
+            "type": "string"
+          },
+          "extracted_value": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          },
+          "approved_value": {
+            "type": [
+              "string",
+              "number",
+              "boolean",
+              "null"
+            ]
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "accepted",
+              "edited",
+              "rejected",
+              "clarification_requested"
+            ]
+          },
+          "source_reference": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}

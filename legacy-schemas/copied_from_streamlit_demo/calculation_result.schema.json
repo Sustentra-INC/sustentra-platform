@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Calculation Result",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "calculation_id",
+    "source_or_fuel"
+  ],
+  "properties": {
+    "calculation_id": {
+      "type": "string"
+    },
+    "source_or_fuel": {
+      "type": "string"
+    },
+    "linked_evidence_ids": {
+      "type": "array"
+    },
+    "workbook_location": {
+      "type": ["object", "null"]
+    },
+    "activity_quantity": {
+      "type": ["number", "integer", "null"]
+    },
+    "activity_unit": {
+      "type": ["string", "null"]
+    },
+    "normalization_note": {
+      "type": ["string", "null"]
+    },
+    "factor_id": {
+      "type": ["string", "null"]
+    },
+    "factor_source": {
+      "type": ["string", "null"]
+    },
+    "formula_ids": {
+      "type": "array"
+    },
+    "co2_kg": {
+      "type": ["number", "integer", "null"]
+    },
+    "ch4_kg": {
+      "type": ["number", "integer", "null"]
+    },
+    "n2o_kg": {
+      "type": ["number", "integer", "null"]
+    },
+    "biogenic_co2_kg": {
+      "type": ["number", "integer", "null"]
+    },
+    "gwp_basis": {
+      "type": ["string", "null"]
+    },
+    "recalculated_co2e_mt": {
+      "type": ["number", "integer", "null"]
+    },
+    "workbook_co2e_mt": {
+      "type": ["number", "integer", "null"]
+    },
+    "difference_mt": {
+      "type": ["number", "integer", "null"]
+    },
+    "variance_percent": {
+      "type": ["number", "integer", "null"]
+    },
+    "materiality_result": {
+      "type": ["string", "null"]
+    },
+    "status": {
+      "type": ["string", "null"]
+    },
+    "calculation_status": {
+      "type": ["string", "null"]
+    },
+    "reason": {
+      "type": ["string", "null"]
+    }
+  }
+}

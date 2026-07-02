@@ -1,0 +1,32 @@
+﻿{
+    "manifest_name":  "sustentra_demo_library_manifest",
+    "version":  "0.2.0",
+    "purpose":  "Canonical runtime library pointers for the Streamlit demo.",
+    "libraries":  {
+                      "evidence_type_library":  {
+                                                    "canonical_path":  "config/libraries/evidence_type_library.json",
+                                                    "source_path":  "evidence_type_library.json",
+                                                    "status":  "valid"
+                                                },
+                      "formula_library":  {
+                                              "canonical_path":  "config/libraries/formula_library.json",
+                                              "source_path":  "sustentra_formula_library_v0_3_1_review_integrated.json",
+                                              "status":  "valid"
+                                          },
+                      "emission_factor_library":  {
+                                                      "canonical_path":  "config/libraries/emission_factor_library.json",
+                                                      "source_path":  "",
+                                                      "status":  "valid"
+                                                  },
+                      "gap_ticket_schema":  {
+                                                "canonical_path":  "config/libraries/gap_ticket_schema.json",
+                                                "source_path":  "",
+                                                "status":  "valid"
+                                            }
+                  },
+    "notes":  [
+                  "Runtime code should read canonical libraries from config/libraries/.",
+                  "Root-level JSON files are preserved as original working copies.",
+                  "The emission factor library must contain actual factor values, not only a template."
+              ]
+}

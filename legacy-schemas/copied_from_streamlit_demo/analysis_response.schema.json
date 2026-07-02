@@ -1,0 +1,81 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Analysis Response",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["run_id", "status"],
+  "properties": {
+    "run_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "generated_at": {
+      "type": ["string", "null"]
+    },
+    "scenario_id": {
+      "type": ["string", "null"]
+    },
+    "scenario_status": {
+      "type": ["string", "null"]
+    },
+    "selected_demo_scenario": {
+      "type": ["string", "null"]
+    },
+    "mode": {
+      "type": ["string", "null"]
+    },
+    "synthetic_demo_data": {
+      "type": ["boolean", "null"]
+    },
+    "engagement": {
+      "type": "object"
+    },
+    "library_references": {
+      "type": "object"
+    },
+    "summary": {
+      "type": "object"
+    },
+    "audit_setup": {
+      "$ref": "audit_setup.schema.json"
+    },
+    "uploaded_demo_files": {
+      "type": "object"
+    },
+    "evidence_results": {
+      "type": "array"
+    },
+    "validation_results": {
+      "type": "array",
+      "items": {
+        "$ref": "validation_result.schema.json"
+      }
+    },
+    "calculation_results": {
+      "type": "array",
+      "items": {
+        "$ref": "calculation_result.schema.json"
+      }
+    },
+    "reconciliation_summary": {
+      "$ref": "reconciliation_summary.schema.json"
+    },
+    "workbook_results": {
+      "type": "array"
+    },
+    "gap_tickets": {
+      "type": "array"
+    },
+    "chat_suggestions": {
+      "type": "array"
+    },
+    "warnings": {
+      "type": "array"
+    },
+    "errors": {
+      "type": "array"
+    }
+  }
+}

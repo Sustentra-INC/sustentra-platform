@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Validation Result",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "validation_id",
+    "record_label",
+    "checks",
+    "overall_status"
+  ],
+  "properties": {
+    "validation_id": {
+      "type": "string"
+    },
+    "evidence_id": {
+      "type": ["string", "null"]
+    },
+    "record_label": {
+      "type": "string"
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "check_id",
+          "label",
+          "status"
+        ],
+        "properties": {
+          "check_id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "observed": {},
+          "expected": {},
+          "explanation": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "overall_status": {
+      "type": "string"
+    },
+    "next_check": {
+      "type": ["string", "null"]
+    }
+  }
+}

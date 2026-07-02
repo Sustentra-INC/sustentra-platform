@@ -1,0 +1,146 @@
+{
+  "run_id": "mock-ab-baldwinsville-2023-clean-path",
+  "status": "not_available",
+  "generated_at": "2026-06-19T12:00:00Z",
+  "mode": "mock_api_response",
+  "synthetic_demo_data": true,
+  "scenario_id": "clean_path",
+  "selected_demo_scenario": "clean_path",
+  "scenario_status": "not_available",
+  "engagement": {
+    "engagement_id": "DEMO-AB-BALDWINSVILLE-2023",
+    "company_id": "AB-INBEV-DEMO",
+    "facility_id": "AB-BWV",
+    "facility_name": "Anheuser-Busch Baldwinsville Brewery",
+    "facility_address": "4797 River Road, Baldwinsville, NY 13027",
+    "reporting_year": 2023,
+    "jurisdiction": "NY_PART_253",
+    "scope": "Scope 1 stationary combustion"
+  },
+  "library_references": {
+    "evidence_type_library": {
+      "library_name": "sustentra_j2_issa5000_evidence_type_library",
+      "version": "0.1.0",
+      "content_hash": null
+    },
+    "formula_library": {
+      "library_name": "sustentra_formula_library",
+      "version": "0.3.1",
+      "content_hash": null
+    },
+    "emission_factor_library": {
+      "library_name": "sustentra_emission_factor_library",
+      "version": "1.0.0",
+      "content_hash": null
+    },
+    "engagement_config_version": "demo-mock-0.1.0",
+    "source_registry_version": "demo-mock-0.1.0"
+  },
+  "summary": {
+    "status": "not_available",
+    "total_evidence": 18,
+    "total_findings": 0,
+    "note": "Clean-path fixture is not available in the current prepared dataset."
+  },
+  "audit_setup": {
+    "company_and_facility_profile": {
+      "company_name": "Anheuser-Busch InBev (prepared demo profile)",
+      "facility_name": "Anheuser-Busch Baldwinsville Brewery",
+      "facility_address": "4797 River Road, Baldwinsville, NY 13027",
+      "company_facility_identifier": "AB-BWV",
+      "duns_number": "00-123-4567",
+      "industry": "Beverage manufacturing",
+      "facility_type": "Brewery",
+      "reporting_period": "2023-01-01 to 2023-12-31"
+    },
+    "reporting_boundary": {
+      "scope_1": true,
+      "scope_2": false,
+      "scope_3": false,
+      "boundary_type": "Facility",
+      "consolidation_approach": "Operational control"
+    },
+    "regulation_and_verification": {
+      "primary_regulation": "NY Part 253",
+      "additional_frameworks": [
+        "EPA Part 98"
+      ],
+      "verification_standard": "ISSA 5000",
+      "assurance_level": "Limited assurance",
+      "source_categories": "Scope 1 stationary combustion"
+    },
+    "materiality_and_thresholds": {
+      "reporting_threshold": "1,000 tCO2e (organizational reporting threshold)",
+      "material_misstatement_percentage": "5%",
+      "materiality_absolute": "750 tCO2e",
+      "key_source_categories": "Natural gas combustion; biomass combustion; emergency generation",
+      "missing_data_threshold": "Escalate if monthly source evidence is missing"
+    },
+    "engagement_details": {
+      "engagement_name": "AB Baldwinsville 2023 Scope 1 audit demo",
+      "reporting_period": "2023-01-01 to 2023-12-31",
+      "auditor_reviewer": "Sustentra prepared-demo reviewer",
+      "scope_description": "Prepared workflow demonstration for auditor-facing review steps.",
+      "verification_objective": "Evaluate evidence traceability, validation outcomes, and reconciliation gaps."
+    },
+    "methodology_defaults": {
+      "method_tier_by_fuel_type": "Natural gas: Tier 1 billing MMBtu; Biomass: method requires validated support.",
+      "emission_factor_source": "EPA GHG Emission Factors Hub 2025 (stationary combustion)",
+      "gwp_basis": "IPCC AR6 100-year combustion defaults",
+      "unit_normalization_defaults": "Normalize activity to MMBtu where applicable.",
+      "biogenic_fossil_treatment": "Report biogenic and fossil treatment separately when required."
+    }
+  },
+  "uploaded_demo_files": {
+    "workbook": {},
+    "evidence_files": [],
+    "note": "Prepared clean-path scenario is currently unavailable."
+  },
+  "evidence_results": [],
+  "validation_results": [],
+  "calculation_results": [
+    {
+      "calculation_id": "CALC-CLEAN-PATH-NOT-AVAILABLE",
+      "source_or_fuel": "Clean path scenario",
+      "calculation_status": "not_computed_in_current_demo",
+      "reason": "Required validated input is unavailable.",
+      "status": "not_available"
+    }
+  ],
+  "reconciliation_summary": {
+    "reconciliation_status": "Not available",
+    "coverage_note": "Clean-path prepared fixture is not available in current demo data."
+  },
+  "workbook_results": [],
+  "gap_tickets": [],
+  "chat_suggestions": [
+    {
+      "question": "Can we accept a biomass-derived CO2 classification based only on an invoice line item and a marketing certificate?",
+      "mock_answer": "No. Invoice labels and marketing certificates are not sufficient on their own to support biogenic classification. The file should include supplier specifications, method documentation, and traceable support for biogenic treatment decisions. Basis: 6 NYCRR 253-4.2 and 6 NYCRR 253-8.2"
+    },
+    {
+      "question": "Is total fuel quantity alone enough for Part 253 reporting, or do we need supplier account information?",
+      "mock_answer": "Total fuel quantity alone is not enough. Supporting records should identify the supplier account, delivery period, and fuel attributes so the reported activity can be traced and reproduced during review. Basis: 6 NYCRR 253-8.2"
+    },
+    {
+      "question": "If a facility reports 9,650 MT CO2e from boilers but excludes a 620 MT hydrogen fuel cell, is it below the 10,000 MT reporting threshold?",
+      "mock_answer": "No. The combined total is 10,270 MT CO2e, which is above a 10,000 MT threshold. Excluding a material combustion source would understate totals and should be corrected before filing. Basis: 6 NYCRR 253-3.1"
+    },
+    {
+      "question": "Do we need a separate scope 1 line for pilot fuel used in flare operation, or can it stay embedded in total fuel gas?",
+      "mock_answer": "Pilot fuel used for flare operation should be separately identifiable when it affects source-level completeness or verification traceability. If retained in a combined fuel line, the workbook must still provide a reconcilable breakout and supporting method note. Basis: 6 NYCRR 253-4.1 and 6 NYCRR 253-8.2"
+    },
+    {
+      "question": "Can we carry over a prior-year fuel meter value as opening inventory without documenting meter reset and calibration evidence?",
+      "mock_answer": "No. Carryover values require documented continuity controls, including reset condition and calibration support. Without that support, the opening value should be treated as an estimate and clearly flagged. Basis: 6 NYCRR 253-8.2"
+    },
+    {
+      "question": "If district steam purchases are billed in MMBtu but internal logs convert to tonnes steam, which value is acceptable for Part 253 reporting support?",
+      "mock_answer": "Use the billed MMBtu record as the primary support unless the conversion process is formally controlled, documented, and reproducible. If tonnes steam is retained, include the conversion basis and monthly reconciliation to billed quantities. Basis: 6 NYCRR 253-8.2"
+    }
+  ],
+  "warnings": [
+    "Clean data path scenario is not available in the current prepared dataset."
+  ],
+  "errors": []
+}

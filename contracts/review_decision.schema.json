@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/review_decision.schema.json",
+  "title": "ReviewDecision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "review_decision_id",
+    "candidate_id",
+    "evidence_id",
+    "field_name",
+    "decision",
+    "approved_value",
+    "approved_unit",
+    "reviewer_note",
+    "reviewed_by",
+    "reviewed_at"
+  ],
+  "properties": {
+    "review_decision_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "candidate_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "field_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "edited",
+        "rejected",
+        "clarification_requested"
+      ]
+    },
+    "approved_value": {
+      "type": [
+        "string",
+        "number",
+        "boolean",
+        "null"
+      ]
+    },
+    "approved_unit": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reviewer_note": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reviewed_by": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

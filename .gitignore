@@ -1,0 +1,30 @@
+# Local reference demo and scratch planning
+demo_package/
+plan.md
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.env
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local generated files
+backups/
+data/outputs/
+tmp/
+.DS_Store
+
+# Cloud/local credentials
+.aws/

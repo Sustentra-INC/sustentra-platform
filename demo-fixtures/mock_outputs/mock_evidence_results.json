@@ -1,0 +1,548 @@
+[
+  {
+    "evidence_id": "EV-PACK-INDEX-2023-000",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Evidence Pack Index and OCR Routing Map",
+    "evidence_type_id": null,
+    "evidence_type_name": "Evidence pack index / routing map",
+    "evidence_role": "supporting_evidence",
+    "status": "accepted_supporting_evidence_only",
+    "ui_status": "pass",
+    "facility_id": "AB-BWV",
+    "source_id": null,
+    "period_start": "2023-01-01",
+    "period_end": "2023-12-31",
+    "extracted_fields": {
+      "facility_name": "Anheuser-Busch Baldwinsville Brewery",
+      "reporting_year": 2023,
+      "document_count_listed": 43
+    },
+    "source_references": [
+      {
+        "page_number": 1,
+        "source_snippet": "Evidence Pack Index and OCR Routing Map; evidence IDs should be preserved for downstream processing."
+      }
+    ],
+    "linked_gap_ticket_ids": [
+      "GT-DEMO-GAP-008"
+    ]
+  },
+  {
+    "evidence_id": "EV-INV-2023-001",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Combustion Equipment Inventory",
+    "evidence_type_id": "J2-008",
+    "evidence_type_name": "Equipment list / asset register / air permit",
+    "evidence_role": "source_completeness_evidence",
+    "status": "flagged_for_auditor_review",
+    "ui_status": "flagged",
+    "facility_id": "AB-BWV",
+    "source_id": "facility",
+    "period_start": "2023-01-01",
+    "period_end": "2023-12-31",
+    "extracted_fields": {
+      "facility_name": "Anheuser-Busch Baldwinsville Brewery",
+      "service_address": "4797 River Road, Baldwinsville, NY 13027",
+      "sources": [
+        "BLR-001",
+        "BLR-002",
+        "BLR-003",
+        "DRY-001",
+        "GEN-001",
+        "BIO-001",
+        "RFO-001"
+      ],
+      "pilot_light_note": "Pilot light emissions excluded per 40 CFR \u00a798.30(d)"
+    },
+    "source_references": [
+      {
+        "page_number": 3,
+        "source_snippet": "Footnote: Pilot light emissions excluded per 40 CFR \u00a798.30(d) - reporting not required for pilot lights."
+      }
+    ],
+    "linked_gap_ticket_ids": [
+      "GT-DEMO-GAP-002",
+      "GT-DEMO-GAP-004"
+    ]
+  },
+  {
+    "evidence_id": "EV-NG-2023-001",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "accepted_for_extraction",
+    "ui_status": "pass",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-01-01",
+    "period_end": "2023-01-31",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 32400,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "January"
+    },
+    "source_references": [
+      {
+        "page_number": 4,
+        "source_snippet": "January natural gas statement; service period 2023-01-01 to 2023-01-31; usage 32,400 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": []
+  },
+  {
+    "evidence_id": "EV-NG-2023-002",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "accepted_for_extraction",
+    "ui_status": "pass",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-02-01",
+    "period_end": "2023-02-28",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 31000,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "February"
+    },
+    "source_references": [
+      {
+        "page_number": 5,
+        "source_snippet": "February natural gas statement; service period 2023-02-01 to 2023-02-28; usage 31,000 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": []
+  },
+  {
+    "evidence_id": "EV-NG-2023-003",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "accepted_for_extraction",
+    "ui_status": "pass",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-03-01",
+    "period_end": "2023-03-31",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 29500,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "March"
+    },
+    "source_references": [
+      {
+        "page_number": 6,
+        "source_snippet": "March natural gas statement; service period 2023-03-01 to 2023-03-31; usage 29,500 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": []
+  },
+  {
+    "evidence_id": "EV-NG-2023-004",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "accepted_for_extraction",
+    "ui_status": "pass",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-04-01",
+    "period_end": "2023-04-30",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 25300,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "April"
+    },
+    "source_references": [
+      {
+        "page_number": 7,
+        "source_snippet": "April natural gas statement; service period 2023-04-01 to 2023-04-30; usage 25,300 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": []
+  },
+  {
+    "evidence_id": "EV-NG-2023-005",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "accepted_for_extraction",
+    "ui_status": "pass",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-05-01",
+    "period_end": "2023-05-31",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 21100,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "May"
+    },
+    "source_references": [
+      {
+        "page_number": 8,
+        "source_snippet": "May natural gas statement; service period 2023-05-01 to 2023-05-31; usage 21,100 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": []
+  },
+  {
+    "evidence_id": "EV-NG-2023-006",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "accepted_for_extraction",
+    "ui_status": "pass",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-06-01",
+    "period_end": "2023-06-30",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 18300,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "June"
+    },
+    "source_references": [
+      {
+        "page_number": 9,
+        "source_snippet": "June natural gas statement; service period 2023-06-01 to 2023-06-30; usage 18,300 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": []
+  },
+  {
+    "evidence_id": "EV-NG-2023-007",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "accepted_for_extraction",
+    "ui_status": "pass",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-07-01",
+    "period_end": "2023-07-31",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 16900,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "July"
+    },
+    "source_references": [
+      {
+        "page_number": 10,
+        "source_snippet": "July natural gas statement; service period 2023-07-01 to 2023-07-31; usage 16,900 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": []
+  },
+  {
+    "evidence_id": "EV-NG-2023-008",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "accepted_for_extraction",
+    "ui_status": "pass",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-08-01",
+    "period_end": "2023-08-31",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 18300,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "August"
+    },
+    "source_references": [
+      {
+        "page_number": 11,
+        "source_snippet": "August natural gas statement; service period 2023-08-01 to 2023-08-31; usage 18,300 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": []
+  },
+  {
+    "evidence_id": "EV-NG-2023-009",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "accepted_for_extraction",
+    "ui_status": "pass",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-09-01",
+    "period_end": "2023-09-30",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 19700,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "September"
+    },
+    "source_references": [
+      {
+        "page_number": 12,
+        "source_snippet": "September natural gas statement; service period 2023-09-01 to 2023-09-30; usage 19,700 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": []
+  },
+  {
+    "evidence_id": "EV-NG-2023-010",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "accepted_for_extraction",
+    "ui_status": "flagged",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-10-01",
+    "period_end": "2023-10-31",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 28100,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "October"
+    },
+    "source_references": [
+      {
+        "page_number": 13,
+        "source_snippet": "October natural gas statement; service period 2023-10-01 to 2023-10-31; usage 28,100 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": [
+      "GT-DEMO-GAP-003"
+    ]
+  },
+  {
+    "evidence_id": "EV-NG-2023-011",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "accepted_for_extraction",
+    "ui_status": "pass",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-11-01",
+    "period_end": "2023-11-30",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 31000,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "November"
+    },
+    "source_references": [
+      {
+        "page_number": 14,
+        "source_snippet": "November natural gas statement; service period 2023-11-01 to 2023-11-30; usage 31,000 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": []
+  },
+  {
+    "evidence_id": "EV-NG-2023-012",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Natural Gas Utility Bill",
+    "evidence_type_id": "J2-001",
+    "evidence_type_name": "Natural gas utility bill",
+    "evidence_role": "primary_activity_evidence",
+    "status": "flagged_for_auditor_review",
+    "ui_status": "need_review",
+    "facility_id": "AB-BWV",
+    "source_id": "NFG-BWV-239871",
+    "period_start": "2023-12-16",
+    "period_end": "2024-01-15",
+    "extracted_fields": {
+      "account_number": "ACC-2023-BWV-001",
+      "meter_id": "NFG-BWV-239871",
+      "usage_quantity": 32800,
+      "usage_unit": "MMBtu",
+      "fuel_or_service_type": "Natural Gas",
+      "billing_month_label": "December"
+    },
+    "source_references": [
+      {
+        "page_number": 15,
+        "source_snippet": "December natural gas statement; service period 2023-12-16 to 2024-01-15; usage 32,800 MMBtu."
+      }
+    ],
+    "linked_gap_ticket_ids": [
+      "GT-DEMO-GAP-007",
+      "GT-DEMO-GAP-009"
+    ]
+  },
+  {
+    "evidence_id": "EV-BLR003-2023-008",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "BLR-003 Boiler Fuel Record",
+    "evidence_type_id": "J2-009",
+    "evidence_type_name": "Meter log / CEMS / operational log",
+    "evidence_role": "primary_activity_evidence",
+    "status": "flagged_for_auditor_review",
+    "ui_status": "flagged",
+    "facility_id": "AB-BWV",
+    "source_id": "BLR-003",
+    "period_start": "2023-08-01",
+    "period_end": "2023-08-31",
+    "extracted_fields": {
+      "fuel_type": "Solid Biomass Residue",
+      "quantity": 460,
+      "quantity_unit": "short tons",
+      "month": "August"
+    },
+    "source_references": [
+      {
+        "page_number": 2,
+        "source_snippet": "BLR-003 August fuel type: Solid Biomass Residue; quantity 460 short tons."
+      }
+    ],
+    "linked_gap_ticket_ids": [
+      "GT-DEMO-GAP-005"
+    ]
+  },
+  {
+    "evidence_id": "EV-BLR003-2023-009",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "BLR-003 Boiler Fuel Record",
+    "evidence_type_id": "J2-009",
+    "evidence_type_name": "Meter log / CEMS / operational log",
+    "evidence_role": "primary_activity_evidence",
+    "status": "flagged_for_auditor_review",
+    "ui_status": "flagged",
+    "facility_id": "AB-BWV",
+    "source_id": "BLR-003",
+    "period_start": "2023-09-01",
+    "period_end": "2023-09-30",
+    "extracted_fields": {
+      "fuel_type": "Solid Biomass Residue",
+      "quantity": 490,
+      "quantity_unit": "short tons",
+      "month": "September"
+    },
+    "source_references": [
+      {
+        "page_number": 2,
+        "source_snippet": "BLR-003 September fuel type: Solid Biomass Residue; quantity 490 short tons."
+      }
+    ],
+    "linked_gap_ticket_ids": [
+      "GT-DEMO-GAP-005",
+      "GT-DEMO-GAP-006"
+    ]
+  },
+  {
+    "evidence_id": "EV-LAB-2023-001",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Biomass Fuel Lab Analysis Report",
+    "evidence_type_id": "J2-010",
+    "evidence_type_name": "Emission factor reference sheet",
+    "evidence_role": "methodology_evidence",
+    "status": "flagged_for_auditor_review",
+    "ui_status": "need_review",
+    "facility_id": "AB-BWV",
+    "source_id": "BLR-003",
+    "period_start": "2023-09-30",
+    "period_end": "2023-09-30",
+    "extracted_fields": {
+      "sample_date": "2023-09-30",
+      "fuel_description": "Solid biomass residue",
+      "available_support": "single lab report only",
+      "missing_support": [
+        "weekly sample logs",
+        "monthly composite preparation record",
+        "sampling protocol"
+      ]
+    },
+    "source_references": [
+      {
+        "page_number": 2,
+        "source_snippet": "Biomass Fuel Lab Analysis Report; sample date September 30, 2023; sample date, fuel description, carbon content, HHV."
+      }
+    ],
+    "linked_gap_ticket_ids": [
+      "GT-DEMO-GAP-006"
+    ]
+  },
+  {
+    "evidence_id": "EV-AGG-2023-001",
+    "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "document_type": "Combustion Source Aggregation Worksheet",
+    "evidence_type_id": "J2-011",
+    "evidence_type_name": "Calculation workbook/internal ESG spreadsheet",
+    "evidence_role": "calculation_support",
+    "status": "flagged_for_auditor_review",
+    "ui_status": "flagged",
+    "facility_id": "AB-BWV",
+    "source_id": "BLR-001, BLR-002, GEN-001",
+    "period_start": "2023-01-01",
+    "period_end": "2023-12-31",
+    "extracted_fields": {
+      "group_label": "Natural Gas Boilers + Diesel Generator",
+      "unit_ids": [
+        "BLR-001",
+        "BLR-002",
+        "GEN-001"
+      ],
+      "unit_type_mix": [
+        "Boiler",
+        "RICE emergency generator"
+      ]
+    },
+    "source_references": [
+      {
+        "page_number": 2,
+        "source_snippet": "This worksheet groups BLR-001, BLR-002, and GEN-001 for the 2023 annual roll-up."
+      }
+    ],
+    "linked_gap_ticket_ids": [
+      "GT-DEMO-GAP-004"
+    ]
+  }
+]

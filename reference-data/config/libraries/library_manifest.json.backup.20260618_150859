@@ -1,0 +1,32 @@
+﻿{
+    "manifest_name":  "sustentra_demo_library_manifest",
+    "version":  "0.1.0",
+    "purpose":  "Canonical runtime library pointers for the Streamlit demo.",
+    "libraries":  {
+                      "evidence_type_library":  {
+                                                    "canonical_path":  "config/libraries/evidence_type_library.json",
+                                                    "source_path":  "evidence_type_library.json",
+                                                    "status":  "copied"
+                                                },
+                      "formula_library":  {
+                                              "canonical_path":  "config/libraries/formula_library.json",
+                                              "source_path":  "sustentra_formula_library_v0_3_1_review_integrated.json",
+                                              "status":  "skipped_existing"
+                                          },
+                      "emission_factor_library":  {
+                                                      "canonical_path":  "config/libraries/emission_factor_library.json",
+                                                      "source_path":  "sustentra_emission_factor_library_template_v0_1.json",
+                                                      "status":  "copied"
+                                                  },
+                      "gap_ticket_schema":  {
+                                                "canonical_path":  "config/libraries/gap_ticket_schema.json",
+                                                "source_path":  "",
+                                                "status":  "missing"
+                                            }
+                  },
+    "notes":  [
+                  "Root-level JSON files are preserved as original working copies.",
+                  "Runtime code should later read from config/libraries/ after path standardization.",
+                  "No existing files were moved or deleted."
+              ]
+}

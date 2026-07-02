@@ -1,0 +1,14 @@
+﻿{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Chat Response",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["answer"],
+  "properties": {
+    "answer": {"type": "string"},
+    "supporting_evidence_ids": {"type": "array"},
+    "supporting_gap_ticket_ids": {"type": "array"},
+    "citations": {"type": "array"},
+    "limitations": {"type": ["string", "null"]}
+  }
+}

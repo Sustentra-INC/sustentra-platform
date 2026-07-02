@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Reconciliation Summary",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "reported_scope_1_mtco2e": {
+      "type": ["number", "integer", "null"]
+    },
+    "recalculated_scope_1_mtco2e": {
+      "type": ["number", "integer", "null"]
+    },
+    "absolute_difference_mtco2e": {
+      "type": ["number", "integer", "null"]
+    },
+    "variance_percent": {
+      "type": ["number", "integer", "null"]
+    },
+    "materiality_threshold_percent": {
+      "type": ["number", "integer", "null"]
+    },
+    "reconciliation_status": {
+      "type": ["string", "null"]
+    },
+    "coverage_note": {
+      "type": ["string", "null"]
+    }
+  }
+}

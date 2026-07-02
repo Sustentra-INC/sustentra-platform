@@ -1,0 +1,186 @@
+{
+  "manifest_version": "0.1.0",
+  "generated_for": "prepared_demo_workflow",
+  "assets": [
+    {
+      "evidence_id": "EV-PACK-INDEX-2023-000",
+      "display_name": "Evidence Pack Index and OCR Routing Map",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 1,
+      "section_identifier": "EV-PACK-INDEX-2023-000",
+      "preview_type": "docx_section",
+      "source_snippet": "Evidence Pack Index and OCR Routing Map; evidence IDs should be preserved for downstream processing."
+    },
+    {
+      "evidence_id": "EV-INV-2023-001",
+      "display_name": "Combustion Equipment Inventory",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 3,
+      "section_identifier": "EV-INV-2023-001",
+      "preview_type": "docx_section",
+      "source_snippet": "Footnote: Pilot light emissions excluded per 40 CFR \u00a798.30(d) - reporting not required for pilot lights."
+    },
+    {
+      "evidence_id": "EV-NG-2023-001",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 4,
+      "section_identifier": "EV-NG-2023-001",
+      "preview_type": "docx_section",
+      "source_snippet": "January natural gas statement; service period 2023-01-01 to 2023-01-31; usage 32,400 MMBtu."
+    },
+    {
+      "evidence_id": "EV-NG-2023-002",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 5,
+      "section_identifier": "EV-NG-2023-002",
+      "preview_type": "docx_section",
+      "source_snippet": "February natural gas statement; service period 2023-02-01 to 2023-02-28; usage 31,000 MMBtu."
+    },
+    {
+      "evidence_id": "EV-NG-2023-003",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 6,
+      "section_identifier": "EV-NG-2023-003",
+      "preview_type": "docx_section",
+      "source_snippet": "March natural gas statement; service period 2023-03-01 to 2023-03-31; usage 29,500 MMBtu."
+    },
+    {
+      "evidence_id": "EV-NG-2023-004",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 7,
+      "section_identifier": "EV-NG-2023-004",
+      "preview_type": "docx_section",
+      "source_snippet": "April natural gas statement; service period 2023-04-01 to 2023-04-30; usage 25,300 MMBtu."
+    },
+    {
+      "evidence_id": "EV-NG-2023-005",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 8,
+      "section_identifier": "EV-NG-2023-005",
+      "preview_type": "docx_section",
+      "source_snippet": "May natural gas statement; service period 2023-05-01 to 2023-05-31; usage 21,100 MMBtu."
+    },
+    {
+      "evidence_id": "EV-NG-2023-006",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 9,
+      "section_identifier": "EV-NG-2023-006",
+      "preview_type": "docx_section",
+      "source_snippet": "June natural gas statement; service period 2023-06-01 to 2023-06-30; usage 18,300 MMBtu."
+    },
+    {
+      "evidence_id": "EV-NG-2023-007",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 10,
+      "section_identifier": "EV-NG-2023-007",
+      "preview_type": "docx_section",
+      "source_snippet": "July natural gas statement; service period 2023-07-01 to 2023-07-31; usage 16,900 MMBtu."
+    },
+    {
+      "evidence_id": "EV-NG-2023-008",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 11,
+      "section_identifier": "EV-NG-2023-008",
+      "preview_type": "docx_section",
+      "source_snippet": "August natural gas statement; service period 2023-08-01 to 2023-08-31; usage 18,300 MMBtu."
+    },
+    {
+      "evidence_id": "EV-NG-2023-009",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 12,
+      "section_identifier": "EV-NG-2023-009",
+      "preview_type": "docx_section",
+      "source_snippet": "September natural gas statement; service period 2023-09-01 to 2023-09-30; usage 19,700 MMBtu."
+    },
+    {
+      "evidence_id": "EV-NG-2023-010",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 13,
+      "section_identifier": "EV-NG-2023-010",
+      "preview_type": "docx_section",
+      "source_snippet": "October natural gas statement; service period 2023-10-01 to 2023-10-31; usage 28,100 MMBtu."
+    },
+    {
+      "evidence_id": "EV-NG-2023-011",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 14,
+      "section_identifier": "EV-NG-2023-011",
+      "preview_type": "docx_section",
+      "source_snippet": "November natural gas statement; service period 2023-11-01 to 2023-11-30; usage 31,000 MMBtu."
+    },
+    {
+      "evidence_id": "EV-NG-2023-012",
+      "display_name": "Natural Gas Utility Bill",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 15,
+      "section_identifier": "EV-NG-2023-012",
+      "preview_type": "docx_section",
+      "source_snippet": "December natural gas statement; service period 2023-12-16 to 2024-01-15; usage 32,800 MMBtu."
+    },
+    {
+      "evidence_id": "EV-BLR003-2023-008",
+      "display_name": "BLR-003 Boiler Fuel Record",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 2,
+      "section_identifier": "EV-BLR003-2023-008",
+      "preview_type": "docx_section",
+      "source_snippet": "BLR-003 August fuel type: Solid Biomass Residue; quantity 460 short tons."
+    },
+    {
+      "evidence_id": "EV-BLR003-2023-009",
+      "display_name": "BLR-003 Boiler Fuel Record",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 2,
+      "section_identifier": "EV-BLR003-2023-009",
+      "preview_type": "docx_section",
+      "source_snippet": "BLR-003 September fuel type: Solid Biomass Residue; quantity 490 short tons."
+    },
+    {
+      "evidence_id": "EV-LAB-2023-001",
+      "display_name": "Biomass Fuel Lab Analysis Report",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 2,
+      "section_identifier": "EV-LAB-2023-001",
+      "preview_type": "docx_section",
+      "source_snippet": "Biomass Fuel Lab Analysis Report; sample date September 30, 2023; sample date, fuel description, carbon content, HHV."
+    },
+    {
+      "evidence_id": "EV-AGG-2023-001",
+      "display_name": "Combustion Source Aggregation Worksheet",
+      "asset_path": null,
+      "source_document_path": "data/demo/inputs/evidence/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+      "page_number": 2,
+      "section_identifier": "EV-AGG-2023-001",
+      "preview_type": "docx_section",
+      "source_snippet": "This worksheet groups BLR-001, BLR-002, and GEN-001 for the 2023 annual roll-up."
+    }
+  ]
+}

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Evidence Assets Manifest",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "assets"
+  ],
+  "properties": {
+    "manifest_version": {
+      "type": ["string", "null"]
+    },
+    "generated_for": {
+      "type": ["string", "null"]
+    },
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "evidence_id",
+          "display_name",
+          "preview_type"
+        ],
+        "properties": {
+          "evidence_id": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "asset_path": {
+            "type": ["string", "null"]
+          },
+          "source_document_path": {
+            "type": ["string", "null"]
+          },
+          "page_number": {
+            "type": ["integer", "null"]
+          },
+          "section_identifier": {
+            "type": ["string", "null"]
+          },
+          "preview_type": {
+            "type": "string",
+            "enum": [
+              "pdf",
+              "image",
+              "docx_section",
+              "xlsx_range",
+              "source_snippet"
+            ]
+          },
+          "source_snippet": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    }
+  }
+}

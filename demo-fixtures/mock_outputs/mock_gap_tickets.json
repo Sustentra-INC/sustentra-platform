@@ -1,0 +1,2233 @@
+[
+  {
+    "gap_ticket_id": "GT-DEMO-GAP-002",
+    "ticket_version": 1,
+    "engagement_id": "DEMO-AB-BALDWINSVILLE-2023",
+    "company_id": "AB-INBEV-DEMO",
+    "reporting_id": "RY-2023",
+    "scenario_id": "MOCK_ALL_GAPS_2_TO_10",
+    "synthetic_demo_data": true,
+    "title": "Pilot light emissions omitted under federal exemption despite NY Part 253 override",
+    "ticket_type": "regulatory_nonconformance_candidate",
+    "status": "candidate",
+    "detection_origin": "system_detected",
+    "finding_type": "missing_record_or_source",
+    "primary_assertion": "completeness",
+    "secondary_assertions": [],
+    "affected_location": "workbook_and_evidence",
+    "affected_scope": {
+      "facility_ids": [
+        "AB-BWV"
+      ],
+      "source_ids": [
+        "BLR-001",
+        "BLR-002",
+        "BLR-003",
+        "DRY-001"
+      ],
+      "source_category_ids": [
+        "scope_1_stationary_combustion"
+      ],
+      "account_numbers": [
+        "ACC-2023-BWV-001"
+      ],
+      "meter_ids": [
+        "NFG-BWV-239871"
+      ],
+      "period_start": "2023-01-01",
+      "period_end": "2023-12-31",
+      "reporting_year": 2023
+    },
+    "issue": {
+      "observed_condition": "The equipment inventory and workbook omit pilot light sources and cite 40 CFR §98.30(d) as the basis for excluding pilot light emissions.",
+      "expected_condition": "For NY Part 253 reporting, pilot light emissions should be included or supported through engineering estimate/common-fuel-source aggregation.",
+      "why_triggered": "The system found a federal pilot-light exemption citation in the equipment inventory and no pilot-light source rows, engineering estimate, or common-fuel-source aggregation support.",
+      "root_cause_key": "pilot_lights.omitted_due_to_federal_exemption",
+      "detection_method": "regulatory_reference_comparison",
+      "system_confidence": 0.92,
+      "client_reported_basis_or_rationale": "Pilot light emissions excluded per 40 CFR §98.30(d)."
+    },
+    "library_references": {
+      "evidence_type_library": {
+        "library_name": "sustentra_j2_issa5000_evidence_type_library",
+        "version": "0.1.0",
+        "content_hash": null
+      },
+      "formula_library": {
+        "library_name": "sustentra_formula_library",
+        "version": "0.3.1",
+        "content_hash": null
+      },
+      "emission_factor_library": {
+        "library_name": "sustentra_emission_factor_library",
+        "version": "1.0.0",
+        "content_hash": null
+      },
+      "engagement_config_version": "demo-mock-0.1.0",
+      "source_registry_version": "demo-mock-0.1.0"
+    },
+    "upstream_rule_results": [
+      {
+        "formula_id": "V-009",
+        "rule_or_check_id": "source_completeness_validation",
+        "trigger_id": "pilot_light_omitted_due_to_federal_exemption",
+        "outcome": "fail",
+        "observed": {
+          "pilot_light_rows_found": 0,
+          "workbook_citation": "40 CFR §98.30(d)"
+        },
+        "expected": {
+          "pilot_lights_included_or_estimated": true
+        },
+        "input_snapshot": {
+          "source_registry_expected_sources": [
+            "pilot_lights_for_boilers_and_process_heaters"
+          ]
+        },
+        "output_snapshot": {
+          "missing_source_count": 4
+        },
+        "message": "Pilot light omission conflicts with NY Part 253 pilot-light inclusion requirement.",
+        "executed_at": "2026-06-19T12:00:00Z"
+      }
+    ],
+    "ticket_generation_rule_id": "G-001",
+    "trigger_ids": [
+      "pilot_light_omitted_due_to_federal_exemption"
+    ],
+    "linked_evidence": [
+      {
+        "evidence_id": "EV-INV-2023-001",
+        "document_id": "EV-INV-2023-001",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-008",
+        "evidence_role_snapshot": "source_completeness_evidence",
+        "acceptance_status_snapshot": "flagged_for_auditor_review",
+        "relationship_to_gap": "trigger_evidence",
+        "source_locations": [
+          {
+            "page_number": 3,
+            "source_snippet": "Footnote: Pilot light emissions excluded per 40 CFR §98.30(d) - reporting not required for pilot lights.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-INV-PILOT-FOOTNOTE"
+          }
+        ]
+      },
+      {
+        "evidence_id": "EV-PACK-INDEX-2023-000",
+        "document_id": "EV-PACK-INDEX-2023-000",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": null,
+        "evidence_role_snapshot": "supporting_evidence",
+        "acceptance_status_snapshot": "accepted_supporting_evidence_only",
+        "relationship_to_gap": "supporting_evidence",
+        "source_locations": [
+          {
+            "page_number": 1,
+            "source_snippet": "Evidence Pack Index and OCR Routing Map lists equipment inventory and utility evidence IDs for downstream traceability.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-PACK-INDEX"
+          }
+        ]
+      }
+    ],
+    "linked_workbook_locations": [
+      {
+        "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+        "file_name": "AB_Baldwinsville_Scope1_Workbook.xlsx",
+        "sheet_name": "Equipment Inventory",
+        "cell_or_range": "H3:H6",
+        "row_label": "BLR-001 to DRY-001",
+        "column_label": "Notes",
+        "displayed_value": "Pilot lights excluded per 40 CFR §98.30(d) — not required to report GHG emissions from pilot lights.",
+        "formula": null,
+        "relationship_to_gap": "methodology_statement"
+      },
+      {
+        "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+        "file_name": "AB_Baldwinsville_Scope1_Workbook.xlsx",
+        "sheet_name": "Emissions Summary",
+        "cell_or_range": "A2:H8",
+        "row_label": null,
+        "column_label": null,
+        "displayed_value": "No separate pilot light row appears in the Scope 1 emissions roll-up.",
+        "formula": null,
+        "relationship_to_gap": "omission_location"
+      }
+    ],
+    "traceability": {
+      "traceability_status": "partial",
+      "extraction_field_ids": [],
+      "normalized_activity_ids": [],
+      "calculation_ids": [],
+      "reconciliation_result_ids": [],
+      "source_registry_ids": [
+        "BLR-001",
+        "BLR-002",
+        "BLR-003",
+        "DRY-001"
+      ],
+      "missing_trace_links": []
+    },
+    "calculation_impact": null,
+    "methodology_trace": null,
+    "basis": {
+      "regulatory_citations": [
+        {
+          "authority": "NY Part 253",
+          "citation": "§253-2.7(j)",
+          "relationship": "governing_requirement",
+          "requirement_summary": "Pilot light emissions must be included in the emissions data report.",
+          "applicability_explanation": "The workbook cites the federal exemption, but this demo scenario is for NY Part 253 reporting.",
+          "source_url": null
+        },
+        {
+          "authority": "40 CFR Part 98",
+          "citation": "§98.30(d)",
+          "relationship": "client_cited_conflicting_basis",
+          "requirement_summary": "Federal reporting exempts pilot light emissions.",
+          "applicability_explanation": "The company cites this federal basis as the reason for omission.",
+          "source_url": null
+        }
+      ],
+      "assurance_basis": [
+        "Completeness of source coverage",
+        "Evidence sufficiency for omitted sources"
+      ],
+      "internal_basis": [
+        "Formula library G-001 completeness ticket conversion",
+        "Source registry / equipment inventory comparison"
+      ],
+      "regulatory_assessment": "candidate_violation"
+    },
+    "materiality": {
+      "assessment_status": "qualitatively_material",
+      "threshold_value": null,
+      "threshold_unit": null,
+      "quantitative_impact": null,
+      "qualitative_factors": [
+        "State-specific override requires regulatory knowledge",
+        "Omitted source class affects source completeness"
+      ],
+      "rationale": "The omission may be small quantitatively but is central to source coverage and jurisdiction-specific compliance."
+    },
+    "severity": {
+      "system_suggested": "high",
+      "auditor_assigned": null,
+      "rationale": null
+    },
+    "remediation": {
+      "recommended_action": "Add pilot light sources or engineering/common-fuel aggregation support and recalculate affected Scope 1 emissions.",
+      "required_additional_evidence": [
+        "Pilot light fuel-use estimate or common-fuel-source aggregation note",
+        "Updated equipment inventory including pilot light treatment"
+      ],
+      "suggested_client_question": "Please provide the method used to include pilot light emissions under NY Part 253 §253-2.7(j), or explain why no pilot lights exist for the listed boilers/process heaters.",
+      "owner_id": null,
+      "target_date": null,
+      "resolution_summary": null
+    },
+    "auditor_review": null,
+    "decision_authority": {
+      "system_output_is_recommendation": true,
+      "final_decision_role": "auditor"
+    },
+    "deduplication": {
+      "root_cause_key": "pilot_lights.omitted_due_to_federal_exemption",
+      "fingerprint": null,
+      "related_ticket_ids": [],
+      "supersedes_ticket_id": null
+    },
+    "audit_trail": [
+      {
+        "event_type": "created",
+        "actor_id": "system",
+        "timestamp": "2026-06-19T12:00:00Z",
+        "note": "Created from mock backend analysis response for demo UI development.",
+        "changes": {}
+      }
+    ],
+    "created_by": "system",
+    "created_at": "2026-06-19T12:00:00Z",
+    "updated_at": "2026-06-19T12:00:00Z",
+    "resolved_at": null
+  },
+  {
+    "gap_ticket_id": "GT-DEMO-GAP-003",
+    "ticket_version": 1,
+    "engagement_id": "DEMO-AB-BALDWINSVILLE-2023",
+    "company_id": "AB-INBEV-DEMO",
+    "reporting_id": "RY-2023",
+    "scenario_id": "MOCK_ALL_GAPS_2_TO_10",
+    "synthetic_demo_data": true,
+    "title": "October natural gas volume is entered at 10x the source-bill quantity",
+    "ticket_type": "calculation_or_reconciliation_gap",
+    "status": "candidate",
+    "detection_origin": "system_detected",
+    "finding_type": "quantity_or_value_mismatch",
+    "primary_assertion": "accuracy_valuation",
+    "secondary_assertions": [],
+    "affected_location": "workbook_and_evidence",
+    "affected_scope": {
+      "facility_ids": [
+        "AB-BWV"
+      ],
+      "source_ids": [
+        "BLR-001",
+        "BLR-002"
+      ],
+      "source_category_ids": [
+        "scope_1_stationary_combustion"
+      ],
+      "account_numbers": [
+        "ACC-2023-BWV-001"
+      ],
+      "meter_ids": [
+        "NFG-BWV-239871"
+      ],
+      "period_start": "2023-10-01",
+      "period_end": "2023-10-31",
+      "reporting_year": 2023
+    },
+    "issue": {
+      "observed_condition": "The Natural Gas worksheet records October usage as 281,000 MMBtu, while the October utility bill shows 28,100 MMBtu.",
+      "expected_condition": "The workbook monthly usage should reconcile to the traceable billed quantity for the same service period.",
+      "why_triggered": "Workbook-to-evidence reconciliation identified a 252,900 MMBtu overstatement in October.",
+      "root_cause_key": "natural_gas.october.transcription_mismatch",
+      "detection_method": "structured_reconciliation",
+      "system_confidence": 1.0,
+      "client_reported_basis_or_rationale": null
+    },
+    "library_references": {
+      "evidence_type_library": {
+        "library_name": "sustentra_j2_issa5000_evidence_type_library",
+        "version": "0.1.0",
+        "content_hash": null
+      },
+      "formula_library": {
+        "library_name": "sustentra_formula_library",
+        "version": "0.3.1",
+        "content_hash": null
+      },
+      "emission_factor_library": {
+        "library_name": "sustentra_emission_factor_library",
+        "version": "1.0.0",
+        "content_hash": null
+      },
+      "engagement_config_version": "demo-mock-0.1.0",
+      "source_registry_version": "demo-mock-0.1.0"
+    },
+    "upstream_rule_results": [
+      {
+        "formula_id": "R-001",
+        "rule_or_check_id": "reported_vs_recalculated_absolute_difference",
+        "trigger_id": "workbook_vs_source_quantity_mismatch",
+        "outcome": "fail",
+        "observed": {
+          "workbook_quantity_mmbtu": 281000
+        },
+        "expected": {
+          "source_bill_quantity_mmbtu": 28100
+        },
+        "input_snapshot": {
+          "workbook_cell": "Natural Gas!D12",
+          "evidence_id": "EV-NG-2023-010"
+        },
+        "output_snapshot": {
+          "absolute_difference_mmbtu": 252900
+        },
+        "message": "Workbook and evidence quantities do not reconcile.",
+        "executed_at": "2026-06-19T12:00:00Z"
+      }
+    ],
+    "ticket_generation_rule_id": "G-002",
+    "trigger_ids": [
+      "workbook_vs_source_quantity_mismatch"
+    ],
+    "linked_evidence": [
+      {
+        "evidence_id": "EV-NG-2023-010",
+        "document_id": "EV-NG-2023-010",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-001",
+        "evidence_role_snapshot": "primary_activity_evidence",
+        "acceptance_status_snapshot": "accepted_for_extraction",
+        "relationship_to_gap": "contradictory_evidence",
+        "source_locations": [
+          {
+            "page_number": 13,
+            "source_snippet": "Usage 28,100 MMBtu for Oct 1, 2023 to Oct 31, 2023.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-NG-2023-010-USAGE"
+          }
+        ]
+      }
+    ],
+    "linked_workbook_locations": [
+      {
+        "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+        "file_name": "AB_Baldwinsville_Scope1_Workbook.xlsx",
+        "sheet_name": "Natural Gas",
+        "cell_or_range": "D12",
+        "row_label": "October",
+        "column_label": "Usage (MMBtu)",
+        "displayed_value": 281000,
+        "formula": null,
+        "relationship_to_gap": "reported_value"
+      }
+    ],
+    "traceability": {
+      "traceability_status": "partial",
+      "extraction_field_ids": [],
+      "normalized_activity_ids": [],
+      "calculation_ids": [],
+      "reconciliation_result_ids": [],
+      "source_registry_ids": [
+        "BLR-001",
+        "BLR-002"
+      ],
+      "missing_trace_links": []
+    },
+    "calculation_impact": {
+      "reported_value": {
+        "value": 281000,
+        "unit": "MMBtu"
+      },
+      "recalculated_value": {
+        "value": 28100,
+        "unit": "MMBtu"
+      },
+      "absolute_difference": {
+        "value": 252900,
+        "unit": "MMBtu"
+      },
+      "percent_difference": 900.0,
+      "affected_emissions_metric": "Scope 1 stationary-combustion activity",
+      "calculation_reperformable": true,
+      "impact_explanation": "The 10x activity error propagates into CO2, CH4, N2O, and CO2e calculations."
+    },
+    "methodology_trace": {
+      "selected_formula_ids": [
+        "R-001",
+        "R-002",
+        "G-002"
+      ],
+      "emission_factor_references": [],
+      "gwp_references": [],
+      "method_or_tier_observed": "Tier 1 billing MMBtu",
+      "method_or_tier_expected": "Tier 1 billing MMBtu"
+    },
+    "basis": {
+      "regulatory_citations": [
+        {
+          "authority": "NY Part 253",
+          "citation": "§253-2.7(h)",
+          "relationship": "governing_requirement",
+          "requirement_summary": "Individual fuel volumes should be reported and traceable to billing or meter evidence.",
+          "applicability_explanation": "The October volume differs between the utility bill and workbook.",
+          "source_url": null
+        }
+      ],
+      "assurance_basis": [
+        "Accuracy and valuation",
+        "Recalculation and reconciliation to source evidence"
+      ],
+      "internal_basis": [
+        "Formula library R-001 reported-versus-recalculated absolute difference",
+        "Formula library G-002 accuracy gap-ticket conversion"
+      ],
+      "regulatory_assessment": "candidate_violation"
+    },
+    "materiality": {
+      "assessment_status": "above_threshold",
+      "threshold_value": 5,
+      "threshold_unit": "percent difference",
+      "quantitative_impact": 900.0,
+      "qualitative_factors": [
+        "Large monthly activity overstatement"
+      ],
+      "rationale": "The activity mismatch is far above the demo materiality threshold."
+    },
+    "severity": {
+      "system_suggested": "critical",
+      "auditor_assigned": null,
+      "rationale": null
+    },
+    "remediation": {
+      "recommended_action": "Correct Natural Gas!D12 to the source-bill quantity and reperform affected monthly and annual totals.",
+      "required_additional_evidence": [],
+      "suggested_client_question": "Please confirm the correct October natural gas volume and provide the source used for the workbook entry.",
+      "owner_id": null,
+      "target_date": null,
+      "resolution_summary": null
+    },
+    "auditor_review": null,
+    "decision_authority": {
+      "system_output_is_recommendation": true,
+      "final_decision_role": "auditor"
+    },
+    "deduplication": {
+      "root_cause_key": "natural_gas.october.transcription_mismatch",
+      "fingerprint": null,
+      "related_ticket_ids": [],
+      "supersedes_ticket_id": null
+    },
+    "audit_trail": [
+      {
+        "event_type": "created",
+        "actor_id": "system",
+        "timestamp": "2026-06-19T12:00:00Z",
+        "note": "Created from mock backend analysis response for demo UI development.",
+        "changes": {}
+      }
+    ],
+    "created_by": "system",
+    "created_at": "2026-06-19T12:00:00Z",
+    "updated_at": "2026-06-19T12:00:00Z",
+    "resolved_at": null
+  },
+  {
+    "gap_ticket_id": "GT-DEMO-GAP-004",
+    "ticket_version": 1,
+    "engagement_id": "DEMO-AB-BALDWINSVILLE-2023",
+    "company_id": "AB-INBEV-DEMO",
+    "reporting_id": "RY-2023",
+    "scenario_id": "MOCK_ALL_GAPS_2_TO_10",
+    "synthetic_demo_data": true,
+    "title": "Boilers and diesel generator are aggregated across different source types",
+    "ticket_type": "calculation_or_reconciliation_gap",
+    "status": "candidate",
+    "detection_origin": "system_detected",
+    "finding_type": "aggregation_error",
+    "primary_assertion": "accuracy_valuation",
+    "secondary_assertions": [],
+    "affected_location": "workbook_and_evidence",
+    "affected_scope": {
+      "facility_ids": [
+        "AB-BWV"
+      ],
+      "source_ids": [
+        "BLR-001",
+        "BLR-002",
+        "GEN-001"
+      ],
+      "source_category_ids": [
+        "scope_1_stationary_combustion"
+      ],
+      "account_numbers": [
+        "ACC-2023-BWV-001"
+      ],
+      "meter_ids": [
+        "NFG-BWV-239871"
+      ],
+      "period_start": "2023-01-01",
+      "period_end": "2023-12-31",
+      "reporting_year": 2023
+    },
+    "issue": {
+      "observed_condition": "The Emissions Summary aggregates natural gas boilers and the diesel emergency generator into one combined CO2e line.",
+      "expected_condition": "Aggregation should preserve source type/unit type distinctions so each source category and calculation method can be verified.",
+      "why_triggered": "The aggregation row combines BLR-001/BLR-002 boiler sources with GEN-001 RICE generator data under one line item.",
+      "root_cause_key": "aggregation.boilers_and_generator_combined",
+      "detection_method": "deterministic_rule",
+      "system_confidence": 0.95,
+      "client_reported_basis_or_rationale": "Natural Gas Boilers + Diesel Generator grouped in the emissions summary."
+    },
+    "library_references": {
+      "evidence_type_library": {
+        "library_name": "sustentra_j2_issa5000_evidence_type_library",
+        "version": "0.1.0",
+        "content_hash": null
+      },
+      "formula_library": {
+        "library_name": "sustentra_formula_library",
+        "version": "0.3.1",
+        "content_hash": null
+      },
+      "emission_factor_library": {
+        "library_name": "sustentra_emission_factor_library",
+        "version": "1.0.0",
+        "content_hash": null
+      },
+      "engagement_config_version": "demo-mock-0.1.0",
+      "source_registry_version": "demo-mock-0.1.0"
+    },
+    "upstream_rule_results": [
+      {
+        "formula_id": "F-006",
+        "rule_or_check_id": "facility_source_fuel_gas_aggregation",
+        "trigger_id": "mixed_unit_types_in_aggregation",
+        "outcome": "fail",
+        "observed": {
+          "aggregated_unit_types": [
+            "boiler",
+            "RICE"
+          ],
+          "summary_row": "Natural Gas Boilers + Diesel Generator"
+        },
+        "expected": {
+          "aggregation_unit_types": [
+            "same_type_only"
+          ]
+        },
+        "input_snapshot": {
+          "workbook_range": "Emissions Summary!A3:G3",
+          "source_ids": [
+            "BLR-001",
+            "BLR-002",
+            "GEN-001"
+          ]
+        },
+        "output_snapshot": {
+          "mixed_unit_types": true
+        },
+        "message": "Different stationary combustion unit types are aggregated together.",
+        "executed_at": "2026-06-19T12:00:00Z"
+      }
+    ],
+    "ticket_generation_rule_id": "G-002",
+    "trigger_ids": [
+      "mixed_unit_types_in_aggregation"
+    ],
+    "linked_evidence": [
+      {
+        "evidence_id": "EV-INV-2023-001",
+        "document_id": "EV-INV-2023-001",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-008",
+        "evidence_role_snapshot": "source_completeness_evidence",
+        "acceptance_status_snapshot": "accepted_supporting_evidence_only",
+        "relationship_to_gap": "supporting_evidence",
+        "source_locations": [
+          {
+            "page_number": 3,
+            "source_snippet": "BLR-001/BLR-002 are Unit Type: Boiler; GEN-001 is Unit Type: Reciprocating Internal Combustion Engine (RICE).",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-INV-UNIT-TYPES"
+          }
+        ]
+      },
+      {
+        "evidence_id": "EV-AGG-2023-001",
+        "document_id": "EV-AGG-2023-001",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-011",
+        "evidence_role_snapshot": "calculation_support",
+        "acceptance_status_snapshot": "flagged_for_auditor_review",
+        "relationship_to_gap": "trigger_evidence",
+        "source_locations": [
+          {
+            "page_number": 2,
+            "source_snippet": "Aggregation worksheet groups BLR-001, BLR-002, and GEN-001 for 2023 annual roll-up.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-AGG-GROUP"
+          }
+        ]
+      }
+    ],
+    "linked_workbook_locations": [
+      {
+        "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+        "file_name": "AB_Baldwinsville_Scope1_Workbook.xlsx",
+        "sheet_name": "Emissions Summary",
+        "cell_or_range": "A3:G3",
+        "row_label": "Natural Gas Boilers + Diesel Generator",
+        "column_label": "Source / Unit Group",
+        "displayed_value": "Natural Gas Boilers + Diesel Generator",
+        "formula": null,
+        "relationship_to_gap": "aggregation_structure"
+      }
+    ],
+    "traceability": {
+      "traceability_status": "partial",
+      "extraction_field_ids": [],
+      "normalized_activity_ids": [],
+      "calculation_ids": [],
+      "reconciliation_result_ids": [],
+      "source_registry_ids": [
+        "BLR-001",
+        "BLR-002",
+        "GEN-001"
+      ],
+      "missing_trace_links": []
+    },
+    "calculation_impact": null,
+    "methodology_trace": null,
+    "basis": {
+      "regulatory_citations": [
+        {
+          "authority": "NY Part 253",
+          "citation": "§253-2.7(i)",
+          "relationship": "governing_requirement",
+          "requirement_summary": "Aggregation of stationary combustion units should preserve unit/source-type constraints.",
+          "applicability_explanation": "The summary combines boilers and a RICE emergency generator.",
+          "source_url": null
+        },
+        {
+          "authority": "40 CFR Part 98",
+          "citation": "§98.36(c)",
+          "relationship": "incorporated_method",
+          "requirement_summary": "Aggregation support should allow source-category-specific verification.",
+          "applicability_explanation": "Part 253 incorporates federal stationary combustion reporting logic with NY-specific requirements.",
+          "source_url": null
+        }
+      ],
+      "assurance_basis": [
+        "Accuracy and valuation",
+        "Calculation method traceability by source category"
+      ],
+      "internal_basis": [
+        "Formula library F-006 aggregation check",
+        "Source registry unit-type comparison"
+      ],
+      "regulatory_assessment": "candidate_violation"
+    },
+    "materiality": {
+      "assessment_status": "not_assessed",
+      "threshold_value": null,
+      "threshold_unit": null,
+      "quantitative_impact": null,
+      "qualitative_factors": [],
+      "rationale": null
+    },
+    "severity": {
+      "system_suggested": "high",
+      "auditor_assigned": null,
+      "rationale": null
+    },
+    "remediation": {
+      "recommended_action": "Split the Emissions Summary into separate boiler and generator lines, with separate calculation method and source trace.",
+      "required_additional_evidence": [
+        "Updated aggregation worksheet by unit type"
+      ],
+      "suggested_client_question": "Please provide a source-level roll-up that separates boiler units from the diesel emergency generator.",
+      "owner_id": null,
+      "target_date": null,
+      "resolution_summary": null
+    },
+    "auditor_review": null,
+    "decision_authority": {
+      "system_output_is_recommendation": true,
+      "final_decision_role": "auditor"
+    },
+    "deduplication": {
+      "root_cause_key": "aggregation.boilers_and_generator_combined",
+      "fingerprint": null,
+      "related_ticket_ids": [],
+      "supersedes_ticket_id": null
+    },
+    "audit_trail": [
+      {
+        "event_type": "created",
+        "actor_id": "system",
+        "timestamp": "2026-06-19T12:00:00Z",
+        "note": "Created from mock backend analysis response for demo UI development.",
+        "changes": {}
+      }
+    ],
+    "created_by": "system",
+    "created_at": "2026-06-19T12:00:00Z",
+    "updated_at": "2026-06-19T12:00:00Z",
+    "resolved_at": null
+  },
+  {
+    "gap_ticket_id": "GT-DEMO-GAP-005",
+    "ticket_version": 1,
+    "engagement_id": "DEMO-AB-BALDWINSVILLE-2023",
+    "company_id": "AB-INBEV-DEMO",
+    "reporting_id": "RY-2023",
+    "scenario_id": "MOCK_ALL_GAPS_2_TO_10",
+    "synthetic_demo_data": true,
+    "title": "Natural gas emission factor applied to solid biomass months",
+    "ticket_type": "calculation_or_reconciliation_gap",
+    "status": "candidate",
+    "detection_origin": "system_detected",
+    "finding_type": "emission_factor_mismatch",
+    "primary_assertion": "accuracy_valuation",
+    "secondary_assertions": [],
+    "affected_location": "workbook_and_evidence",
+    "affected_scope": {
+      "facility_ids": [
+        "AB-BWV"
+      ],
+      "source_ids": [
+        "BLR-003"
+      ],
+      "source_category_ids": [
+        "scope_1_stationary_combustion"
+      ],
+      "account_numbers": [
+        "ACC-2023-BWV-001"
+      ],
+      "meter_ids": [
+        "NFG-BWV-239871"
+      ],
+      "period_start": "2023-08-01",
+      "period_end": "2023-09-30",
+      "reporting_year": 2023
+    },
+    "issue": {
+      "observed_condition": "The Biomass Boiler worksheet identifies August and September fuel as Solid Biomass Residue but applies the natural gas CO2 factor 53.06 kg CO2/MMBtu.",
+      "expected_condition": "The emission factor and calculation method should match the actual fuel type and required biomass/biogenic treatment.",
+      "why_triggered": "Fuel type extracted from the workbook and BLR-003 records does not match the emission factor selected for the same rows.",
+      "root_cause_key": "biomass_blr003.natural_gas_factor_used",
+      "detection_method": "regulatory_reference_comparison",
+      "system_confidence": 0.98,
+      "client_reported_basis_or_rationale": "August and September rows retain the natural-gas factor despite biomass fuel type."
+    },
+    "library_references": {
+      "evidence_type_library": {
+        "library_name": "sustentra_j2_issa5000_evidence_type_library",
+        "version": "0.1.0",
+        "content_hash": null
+      },
+      "formula_library": {
+        "library_name": "sustentra_formula_library",
+        "version": "0.3.1",
+        "content_hash": null
+      },
+      "emission_factor_library": {
+        "library_name": "sustentra_emission_factor_library",
+        "version": "1.0.0",
+        "content_hash": null
+      },
+      "engagement_config_version": "demo-mock-0.1.0",
+      "source_registry_version": "demo-mock-0.1.0"
+    },
+    "upstream_rule_results": [
+      {
+        "formula_id": "V-002",
+        "rule_or_check_id": "fuel_type_to_emission_factor_match",
+        "trigger_id": "fuel_factor_mismatch",
+        "outcome": "fail",
+        "observed": {
+          "fuel_type": "Solid Biomass Residue",
+          "applied_factor_id": "EPA_HUB_2025_SC_NATURAL_GAS",
+          "applied_co2_kg_per_mmbtu": 53.06
+        },
+        "expected": {
+          "expected_factor_class": "biomass-derived fuel/site-specific biomass method"
+        },
+        "input_snapshot": {
+          "workbook_cells": [
+            "Biomass Boiler!B10:B11",
+            "Biomass Boiler!G10:G11"
+          ]
+        },
+        "output_snapshot": {
+          "mismatched_rows": [
+            "August",
+            "September"
+          ]
+        },
+        "message": "Fuel type does not match the applied emission factor.",
+        "executed_at": "2026-06-19T12:00:00Z"
+      }
+    ],
+    "ticket_generation_rule_id": "G-002",
+    "trigger_ids": [
+      "fuel_factor_mismatch",
+      "biogenic_fossil_mix_not_separated"
+    ],
+    "linked_evidence": [
+      {
+        "evidence_id": "EV-BLR003-2023-008",
+        "document_id": "EV-BLR003-2023-008",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-009",
+        "evidence_role_snapshot": "primary_activity_evidence",
+        "acceptance_status_snapshot": "accepted_for_extraction",
+        "relationship_to_gap": "trigger_evidence",
+        "source_locations": [
+          {
+            "page_number": 2,
+            "source_snippet": "BLR-003 August fuel type: Solid Biomass Residue.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-BLR003-2023-008-FUEL"
+          }
+        ]
+      },
+      {
+        "evidence_id": "EV-BLR003-2023-009",
+        "document_id": "EV-BLR003-2023-009",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-009",
+        "evidence_role_snapshot": "primary_activity_evidence",
+        "acceptance_status_snapshot": "accepted_for_extraction",
+        "relationship_to_gap": "trigger_evidence",
+        "source_locations": [
+          {
+            "page_number": 2,
+            "source_snippet": "BLR-003 September fuel type: Solid Biomass Residue.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-BLR003-2023-009-FUEL"
+          }
+        ]
+      }
+    ],
+    "linked_workbook_locations": [
+      {
+        "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+        "file_name": "AB_Baldwinsville_Scope1_Workbook.xlsx",
+        "sheet_name": "Biomass Boiler",
+        "cell_or_range": "B10:G11",
+        "row_label": "August-September",
+        "column_label": "Fuel Type / CO2 EF Applied",
+        "displayed_value": "Fuel Type = Solid Biomass Residue; CO2 EF Applied = 53.06 kg CO2/MMBtu",
+        "formula": null,
+        "relationship_to_gap": "calculation_formula"
+      }
+    ],
+    "traceability": {
+      "traceability_status": "partial",
+      "extraction_field_ids": [],
+      "normalized_activity_ids": [],
+      "calculation_ids": [],
+      "reconciliation_result_ids": [],
+      "source_registry_ids": [
+        "BLR-003"
+      ],
+      "missing_trace_links": []
+    },
+    "calculation_impact": {
+      "reported_value": {
+        "value": 53.06,
+        "unit": "kg CO2/MMBtu applied"
+      },
+      "recalculated_value": {
+        "value": null,
+        "unit": "biomass-specific factor/method required"
+      },
+      "absolute_difference": {
+        "value": null,
+        "unit": "metric tons CO2e"
+      },
+      "percent_difference": null,
+      "affected_emissions_metric": "BLR-003 August-September biomass combustion",
+      "calculation_reperformable": false,
+      "impact_explanation": "The calculation cannot be considered reperformable until the biomass method/factor and biogenic CO2 treatment are documented."
+    },
+    "methodology_trace": {
+      "selected_formula_ids": [
+        "V-002",
+        "F-019",
+        "G-002"
+      ],
+      "emission_factor_references": [
+        {
+          "factor_id": "EPA_HUB_2025_SC_NATURAL_GAS",
+          "factor_value": 53.06,
+          "factor_unit": "kg CO2/mmBtu",
+          "fuel_or_gas": "Natural Gas",
+          "selection_status": "observed"
+        },
+        {
+          "factor_id": "BIOMASS_METHOD_REQUIRED",
+          "factor_value": null,
+          "factor_unit": null,
+          "fuel_or_gas": "Solid Biomass Residue",
+          "selection_status": "expected"
+        }
+      ],
+      "gwp_references": [],
+      "method_or_tier_observed": "Natural gas Tier 1 factor retained",
+      "method_or_tier_expected": "Biomass/biogenic method review required"
+    },
+    "basis": {
+      "regulatory_citations": [
+        {
+          "authority": "NY Part 253",
+          "citation": "§253-2.7(a) and §253-2.7(e)",
+          "relationship": "governing_requirement",
+          "requirement_summary": "Biomass fuel combustion and biogenic CO2 treatment require appropriate method selection.",
+          "applicability_explanation": "August and September rows identify solid biomass but use natural gas factors.",
+          "source_url": null
+        },
+        {
+          "authority": "40 CFR Part 98",
+          "citation": "Subpart C factor tables",
+          "relationship": "incorporated_method",
+          "requirement_summary": "Fuel type must match the selected emission factor and method.",
+          "applicability_explanation": "Natural gas Table C factor should not be applied to solid biomass residue months.",
+          "source_url": null
+        }
+      ],
+      "assurance_basis": [
+        "Accuracy and valuation",
+        "Emission-factor selection traceability"
+      ],
+      "internal_basis": [
+        "Formula library V-002 fuel-factor match",
+        "Emission factor library stationary-combustion lookup"
+      ],
+      "regulatory_assessment": "candidate_violation"
+    },
+    "materiality": {
+      "assessment_status": "not_assessed",
+      "threshold_value": null,
+      "threshold_unit": null,
+      "quantitative_impact": null,
+      "qualitative_factors": [],
+      "rationale": null
+    },
+    "severity": {
+      "system_suggested": "critical",
+      "auditor_assigned": null,
+      "rationale": null
+    },
+    "remediation": {
+      "recommended_action": "Replace the natural-gas factor with the appropriate biomass calculation method and separately document fossil versus biogenic CO2 treatment.",
+      "required_additional_evidence": [
+        "Approved biomass factor/method reference",
+        "Biomass fuel analysis and carbon-content support"
+      ],
+      "suggested_client_question": "Please provide the approved calculation method and factor support used for BLR-003 solid biomass residue in August and September.",
+      "owner_id": null,
+      "target_date": null,
+      "resolution_summary": null
+    },
+    "auditor_review": null,
+    "decision_authority": {
+      "system_output_is_recommendation": true,
+      "final_decision_role": "auditor"
+    },
+    "deduplication": {
+      "root_cause_key": "biomass_blr003.natural_gas_factor_used",
+      "fingerprint": null,
+      "related_ticket_ids": [],
+      "supersedes_ticket_id": null
+    },
+    "audit_trail": [
+      {
+        "event_type": "created",
+        "actor_id": "system",
+        "timestamp": "2026-06-19T12:00:00Z",
+        "note": "Created from mock backend analysis response for demo UI development.",
+        "changes": {}
+      }
+    ],
+    "created_by": "system",
+    "created_at": "2026-06-19T12:00:00Z",
+    "updated_at": "2026-06-19T12:00:00Z",
+    "resolved_at": null
+  },
+  {
+    "gap_ticket_id": "GT-DEMO-GAP-006",
+    "ticket_version": 1,
+    "engagement_id": "DEMO-AB-BALDWINSVILLE-2023",
+    "company_id": "AB-INBEV-DEMO",
+    "reporting_id": "RY-2023",
+    "scenario_id": "MOCK_ALL_GAPS_2_TO_10",
+    "synthetic_demo_data": true,
+    "title": "Biomass monthly composite lacks weekly sampling support",
+    "ticket_type": "evidence_validity_gap",
+    "status": "candidate",
+    "detection_origin": "system_detected",
+    "finding_type": "sampling_chain_failure",
+    "primary_assertion": "occurrence_existence",
+    "secondary_assertions": [],
+    "affected_location": "evidence_only",
+    "affected_scope": {
+      "facility_ids": [
+        "AB-BWV"
+      ],
+      "source_ids": [
+        "BLR-003"
+      ],
+      "source_category_ids": [
+        "scope_1_stationary_combustion"
+      ],
+      "account_numbers": [
+        "ACC-2023-BWV-001"
+      ],
+      "meter_ids": [
+        "NFG-BWV-239871"
+      ],
+      "period_start": "2023-09-01",
+      "period_end": "2023-09-30",
+      "reporting_year": 2023
+    },
+    "issue": {
+      "observed_condition": "The evidence pack contains a single end-of-period biomass fuel lab report but no weekly sample logs, composite preparation record, or sampling protocol.",
+      "expected_condition": "Partially biogenic fuel fractions should be supported by a weekly sampling chain and documented monthly composite preparation.",
+      "why_triggered": "The system found a biomass fraction/lab result without the supporting sampling-chain documents expected for the period.",
+      "root_cause_key": "biomass_sampling.weekly_chain_missing",
+      "detection_method": "document_set_completeness",
+      "system_confidence": 0.9,
+      "client_reported_basis_or_rationale": "Single lab report used as support for biomass fraction."
+    },
+    "library_references": {
+      "evidence_type_library": {
+        "library_name": "sustentra_j2_issa5000_evidence_type_library",
+        "version": "0.1.0",
+        "content_hash": null
+      },
+      "formula_library": {
+        "library_name": "sustentra_formula_library",
+        "version": "0.3.1",
+        "content_hash": null
+      },
+      "emission_factor_library": {
+        "library_name": "sustentra_emission_factor_library",
+        "version": "1.0.0",
+        "content_hash": null
+      },
+      "engagement_config_version": "demo-mock-0.1.0",
+      "source_registry_version": "demo-mock-0.1.0"
+    },
+    "upstream_rule_results": [
+      {
+        "formula_id": "V-010",
+        "rule_or_check_id": "biomass_sampling_chain_validation",
+        "trigger_id": "weekly_biomass_samples_missing",
+        "outcome": "fail",
+        "observed": {
+          "lab_reports_found": 1,
+          "weekly_sample_logs_found": 0,
+          "composite_preparation_records_found": 0
+        },
+        "expected": {
+          "weekly_sample_logs_found": ">=4 per month when applicable",
+          "composite_preparation_records_found": ">=1"
+        },
+        "input_snapshot": {
+          "evidence_id": "EV-LAB-2023-001",
+          "source_id": "BLR-003"
+        },
+        "output_snapshot": {
+          "sampling_chain_status": "incomplete"
+        },
+        "message": "Biomass fraction lacks weekly sample chain and monthly composite support.",
+        "executed_at": "2026-06-19T12:00:00Z"
+      }
+    ],
+    "ticket_generation_rule_id": "G-003",
+    "trigger_ids": [
+      "weekly_biomass_samples_missing",
+      "monthly_composite_preparation_record_missing"
+    ],
+    "linked_evidence": [
+      {
+        "evidence_id": "EV-LAB-2023-001",
+        "document_id": "EV-LAB-2023-001",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-010",
+        "evidence_role_snapshot": "methodology_evidence",
+        "acceptance_status_snapshot": "flagged_for_auditor_review",
+        "relationship_to_gap": "trigger_evidence",
+        "source_locations": [
+          {
+            "page_number": 2,
+            "source_snippet": "Biomass Fuel Lab Analysis Report — sample date September 30, 2023; fuel description, carbon content, HHV.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-LAB-2023-001"
+          }
+        ]
+      },
+      {
+        "evidence_id": "EV-BLR003-2023-009",
+        "document_id": "EV-BLR003-2023-009",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-009",
+        "evidence_role_snapshot": "primary_activity_evidence",
+        "acceptance_status_snapshot": "accepted_for_extraction",
+        "relationship_to_gap": "supporting_evidence",
+        "source_locations": [
+          {
+            "page_number": 2,
+            "source_snippet": "BLR-003 September fuel record uses solid biomass residue.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-BLR003-2023-009-FUEL"
+          }
+        ]
+      }
+    ],
+    "linked_workbook_locations": [],
+    "traceability": {
+      "traceability_status": "partial",
+      "extraction_field_ids": [],
+      "normalized_activity_ids": [],
+      "calculation_ids": [],
+      "reconciliation_result_ids": [],
+      "source_registry_ids": [
+        "BLR-003"
+      ],
+      "missing_trace_links": []
+    },
+    "calculation_impact": null,
+    "methodology_trace": null,
+    "basis": {
+      "regulatory_citations": [
+        {
+          "authority": "NY Part 253",
+          "citation": "§253-2.7(e)",
+          "relationship": "governing_requirement",
+          "requirement_summary": "Partially biogenic fuels require support for biomass fraction determination, including sampling/composite documentation where applicable.",
+          "applicability_explanation": "The evidence pack includes only a single end-of-period lab result.",
+          "source_url": null
+        }
+      ],
+      "assurance_basis": [
+        "Occurrence and existence of underlying evidence",
+        "Evidence sufficiency"
+      ],
+      "internal_basis": [
+        "Formula library G-003 occurrence/existence ticket conversion",
+        "Expected evidence schedule for biomass sampling"
+      ],
+      "regulatory_assessment": "candidate_violation"
+    },
+    "materiality": {
+      "assessment_status": "not_quantifiable",
+      "threshold_value": null,
+      "threshold_unit": null,
+      "quantitative_impact": null,
+      "qualitative_factors": [
+        "Sampling-chain failure makes biomass fraction unverifiable"
+      ],
+      "rationale": "The issue is evidentiary rather than a directly quantified arithmetic difference."
+    },
+    "severity": {
+      "system_suggested": "high",
+      "auditor_assigned": null,
+      "rationale": null
+    },
+    "remediation": {
+      "recommended_action": "Provide weekly biomass sample logs, composite preparation record, and sampling protocol for the month(s) with biomass combustion.",
+      "required_additional_evidence": [
+        "Weekly biomass sample logs",
+        "Monthly composite preparation record",
+        "Sampling protocol/procedure"
+      ],
+      "suggested_client_question": "Please provide the weekly sample logs and composite preparation record supporting the biomass fraction used for BLR-003.",
+      "owner_id": null,
+      "target_date": null,
+      "resolution_summary": null
+    },
+    "auditor_review": null,
+    "decision_authority": {
+      "system_output_is_recommendation": true,
+      "final_decision_role": "auditor"
+    },
+    "deduplication": {
+      "root_cause_key": "biomass_sampling.weekly_chain_missing",
+      "fingerprint": null,
+      "related_ticket_ids": [],
+      "supersedes_ticket_id": null
+    },
+    "audit_trail": [
+      {
+        "event_type": "created",
+        "actor_id": "system",
+        "timestamp": "2026-06-19T12:00:00Z",
+        "note": "Created from mock backend analysis response for demo UI development.",
+        "changes": {}
+      }
+    ],
+    "created_by": "system",
+    "created_at": "2026-06-19T12:00:00Z",
+    "updated_at": "2026-06-19T12:00:00Z",
+    "resolved_at": null
+  },
+  {
+    "gap_ticket_id": "GT-DEMO-GAP-007",
+    "ticket_version": 1,
+    "engagement_id": "DEMO-AB-BALDWINSVILLE-2023",
+    "company_id": "AB-INBEV-DEMO",
+    "reporting_id": "RY-2023",
+    "scenario_id": "MOCK_ALL_GAPS_2_TO_10",
+    "synthetic_demo_data": true,
+    "title": "Missing December data filled without Part 253 §3.1 substitution method",
+    "ticket_type": "methodology_gap",
+    "status": "candidate",
+    "detection_origin": "system_detected",
+    "finding_type": "unsupported_estimate_or_substitution",
+    "primary_assertion": "occurrence_existence",
+    "secondary_assertions": [],
+    "affected_location": "workbook_and_evidence",
+    "affected_scope": {
+      "facility_ids": [
+        "AB-BWV"
+      ],
+      "source_ids": [
+        "BLR-001",
+        "BLR-002"
+      ],
+      "source_category_ids": [
+        "scope_1_stationary_combustion"
+      ],
+      "account_numbers": [
+        "ACC-2023-BWV-001"
+      ],
+      "meter_ids": [
+        "NFG-BWV-239871"
+      ],
+      "period_start": "2023-12-01",
+      "period_end": "2023-12-31",
+      "reporting_year": 2023
+    },
+    "issue": {
+      "observed_condition": "The Natural Gas worksheet uses an estimated December volume without documented Part 253 §3.1 substitution method support.",
+      "expected_condition": "Missing emissions data substitutions should follow and document the applicable §3.1 substitution method and rationale.",
+      "why_triggered": "The workbook indicates an estimated value while the expected missing-data method documentation is absent from the evidence set.",
+      "root_cause_key": "missing_data.december_average_without_part253_method",
+      "detection_method": "deterministic_rule",
+      "system_confidence": 0.86,
+      "client_reported_basis_or_rationale": "Estimated — bill not received; simple average used."
+    },
+    "library_references": {
+      "evidence_type_library": {
+        "library_name": "sustentra_j2_issa5000_evidence_type_library",
+        "version": "0.1.0",
+        "content_hash": null
+      },
+      "formula_library": {
+        "library_name": "sustentra_formula_library",
+        "version": "0.3.1",
+        "content_hash": null
+      },
+      "emission_factor_library": {
+        "library_name": "sustentra_emission_factor_library",
+        "version": "1.0.0",
+        "content_hash": null
+      },
+      "engagement_config_version": "demo-mock-0.1.0",
+      "source_registry_version": "demo-mock-0.1.0"
+    },
+    "upstream_rule_results": [
+      {
+        "formula_id": "N-006",
+        "rule_or_check_id": "actual_vs_estimated_data_classification",
+        "trigger_id": "substituted_without_support",
+        "outcome": "fail",
+        "observed": {
+          "data_quality_type": "estimated/substituted",
+          "substitution_method_reference": null
+        },
+        "expected": {
+          "substitution_method_reference": "NY Part 253 §3.1 method documentation"
+        },
+        "input_snapshot": {
+          "workbook_cell": "Natural Gas!D14"
+        },
+        "output_snapshot": {
+          "substitution_support_status": "missing"
+        },
+        "message": "Estimated value lacks documented substitution method.",
+        "executed_at": "2026-06-19T12:00:00Z"
+      }
+    ],
+    "ticket_generation_rule_id": "G-003",
+    "trigger_ids": [
+      "substituted_without_support",
+      "estimated_without_method"
+    ],
+    "linked_evidence": [
+      {
+        "evidence_id": "EV-NG-2023-012",
+        "document_id": "EV-NG-2023-012",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-001",
+        "evidence_role_snapshot": "primary_activity_evidence",
+        "acceptance_status_snapshot": "flagged_for_auditor_review",
+        "relationship_to_gap": "supporting_evidence",
+        "source_locations": [
+          {
+            "page_number": 15,
+            "source_snippet": "December natural gas utility bill record requires service-period and substitution review.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-NG-2023-012"
+          }
+        ]
+      },
+      {
+        "evidence_id": "EV-PACK-INDEX-2023-000",
+        "document_id": "EV-PACK-INDEX-2023-000",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": null,
+        "evidence_role_snapshot": "supporting_evidence",
+        "acceptance_status_snapshot": "accepted_supporting_evidence_only",
+        "relationship_to_gap": "missing_expected_evidence",
+        "source_locations": [
+          {
+            "page_number": 1,
+            "source_snippet": "Evidence index does not list a Part 253 §3.1 substitution worksheet or missing-data method support.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-PACK-SUBSTITUTION-MISSING"
+          }
+        ]
+      }
+    ],
+    "linked_workbook_locations": [
+      {
+        "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+        "file_name": "AB_Baldwinsville_Scope1_Workbook.xlsx",
+        "sheet_name": "Natural Gas",
+        "cell_or_range": "D14",
+        "row_label": "December",
+        "column_label": "Usage (MMBtu)",
+        "displayed_value": 31700,
+        "formula": "=AVERAGE(prior months) [mock expected formula]",
+        "relationship_to_gap": "reported_value"
+      }
+    ],
+    "traceability": {
+      "traceability_status": "partial",
+      "extraction_field_ids": [],
+      "normalized_activity_ids": [],
+      "calculation_ids": [],
+      "reconciliation_result_ids": [],
+      "source_registry_ids": [
+        "BLR-001",
+        "BLR-002"
+      ],
+      "missing_trace_links": []
+    },
+    "calculation_impact": null,
+    "methodology_trace": null,
+    "basis": {
+      "regulatory_citations": [
+        {
+          "authority": "NY Part 253",
+          "citation": "§253-3.1",
+          "relationship": "missing_data_method",
+          "requirement_summary": "Missing-data substitutions must follow prescribed methods and retain documentation.",
+          "applicability_explanation": "The workbook uses an estimated December value without method support.",
+          "source_url": null
+        },
+        {
+          "authority": "NY Part 253",
+          "citation": "§253-2.7(n)",
+          "relationship": "governing_requirement",
+          "requirement_summary": "Stationary combustion reporting must address missing data consistently with Part 253 missing-data procedures.",
+          "applicability_explanation": "The evidence set lacks substitution documentation.",
+          "source_url": null
+        }
+      ],
+      "assurance_basis": [
+        "Occurrence/existence of required supporting evidence",
+        "Evidence sufficiency for estimates"
+      ],
+      "internal_basis": [
+        "Formula library N-006 data-quality classification",
+        "Formula library G-003 occurrence/existence ticket conversion"
+      ],
+      "regulatory_assessment": "candidate_violation"
+    },
+    "materiality": {
+      "assessment_status": "not_quantifiable",
+      "threshold_value": 5,
+      "threshold_unit": "substituted emissions percent",
+      "quantitative_impact": null,
+      "qualitative_factors": [
+        "Unverified substituted value"
+      ],
+      "rationale": "Impact cannot be quantified until substitution basis and correct actual bill are confirmed."
+    },
+    "severity": {
+      "system_suggested": "medium",
+      "auditor_assigned": null,
+      "rationale": null
+    },
+    "remediation": {
+      "recommended_action": "Document the Part 253 §3.1 substitution method or replace the estimate with actual billing evidence and rerun calculations.",
+      "required_additional_evidence": [
+        "Missing-data substitution worksheet",
+        "December actual bill or method documentation"
+      ],
+      "suggested_client_question": "Please provide the Part 253 §3.1 substitution method and rationale used for the estimated December natural gas volume.",
+      "owner_id": null,
+      "target_date": null,
+      "resolution_summary": null
+    },
+    "auditor_review": null,
+    "decision_authority": {
+      "system_output_is_recommendation": true,
+      "final_decision_role": "auditor"
+    },
+    "deduplication": {
+      "root_cause_key": "missing_data.december_average_without_part253_method",
+      "fingerprint": null,
+      "related_ticket_ids": [],
+      "supersedes_ticket_id": null
+    },
+    "audit_trail": [
+      {
+        "event_type": "created",
+        "actor_id": "system",
+        "timestamp": "2026-06-19T12:00:00Z",
+        "note": "Created from mock backend analysis response for demo UI development.",
+        "changes": {}
+      }
+    ],
+    "created_by": "system",
+    "created_at": "2026-06-19T12:00:00Z",
+    "updated_at": "2026-06-19T12:00:00Z",
+    "resolved_at": null
+  },
+  {
+    "gap_ticket_id": "GT-DEMO-GAP-008",
+    "ticket_version": 1,
+    "engagement_id": "DEMO-AB-BALDWINSVILLE-2023",
+    "company_id": "AB-INBEV-DEMO",
+    "reporting_id": "RY-2023",
+    "scenario_id": "MOCK_ALL_GAPS_2_TO_10",
+    "synthetic_demo_data": true,
+    "title": "Billing evidence covers only partial year",
+    "ticket_type": "evidence_validity_gap",
+    "status": "candidate",
+    "detection_origin": "system_detected",
+    "finding_type": "missing_record_or_source",
+    "primary_assertion": "completeness",
+    "secondary_assertions": [],
+    "affected_location": "evidence_only",
+    "affected_scope": {
+      "facility_ids": [
+        "AB-BWV"
+      ],
+      "source_ids": [
+        "NFG-BWV-239871"
+      ],
+      "source_category_ids": [
+        "scope_1_stationary_combustion"
+      ],
+      "account_numbers": [
+        "ACC-2023-BWV-001"
+      ],
+      "meter_ids": [
+        "NFG-BWV-239871"
+      ],
+      "period_start": "2023-01-01",
+      "period_end": "2023-12-31",
+      "reporting_year": 2023
+    },
+    "issue": {
+      "observed_condition": "The demo evidence scenario provides only January through March natural gas billing support for a full-year calculation.",
+      "expected_condition": "Annual natural gas volumes should be traceable to billing statements or equivalent records covering the full reporting year without undocumented gaps.",
+      "why_triggered": "Calendar-year completeness logic found only three monthly billing periods in the selected evidence set.",
+      "root_cause_key": "natural_gas.partial_year_billing_evidence",
+      "detection_method": "document_set_completeness",
+      "system_confidence": 0.88,
+      "client_reported_basis_or_rationale": "Only available bills were provided at compilation time."
+    },
+    "library_references": {
+      "evidence_type_library": {
+        "library_name": "sustentra_j2_issa5000_evidence_type_library",
+        "version": "0.1.0",
+        "content_hash": null
+      },
+      "formula_library": {
+        "library_name": "sustentra_formula_library",
+        "version": "0.3.1",
+        "content_hash": null
+      },
+      "emission_factor_library": {
+        "library_name": "sustentra_emission_factor_library",
+        "version": "1.0.0",
+        "content_hash": null
+      },
+      "engagement_config_version": "demo-mock-0.1.0",
+      "source_registry_version": "demo-mock-0.1.0"
+    },
+    "upstream_rule_results": [
+      {
+        "formula_id": "Q-001",
+        "rule_or_check_id": "calendar_year_completeness_test",
+        "trigger_id": "missing_month",
+        "outcome": "fail",
+        "observed": {
+          "covered_months": [
+            "January",
+            "February",
+            "March"
+          ],
+          "covered_month_count": 3
+        },
+        "expected": {
+          "covered_month_count": 12
+        },
+        "input_snapshot": {
+          "expected_months": 12,
+          "actual_months": 3
+        },
+        "output_snapshot": {
+          "missing_months": [
+            "April",
+            "May",
+            "June",
+            "July",
+            "August",
+            "September",
+            "October",
+            "November",
+            "December"
+          ]
+        },
+        "message": "Only partial-year billing evidence is available.",
+        "executed_at": "2026-06-19T12:00:00Z"
+      }
+    ],
+    "ticket_generation_rule_id": "G-001",
+    "trigger_ids": [
+      "missing_month",
+      "incomplete_year"
+    ],
+    "linked_evidence": [
+      {
+        "evidence_id": "EV-NG-2023-001",
+        "document_id": "EV-NG-2023-001",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-001",
+        "evidence_role_snapshot": "primary_activity_evidence",
+        "acceptance_status_snapshot": "accepted_for_extraction",
+        "relationship_to_gap": "supporting_evidence",
+        "source_locations": [
+          {
+            "page_number": 4,
+            "source_snippet": "January utility bill available.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-NG-2023-001"
+          }
+        ]
+      },
+      {
+        "evidence_id": "EV-NG-2023-002",
+        "document_id": "EV-NG-2023-002",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-001",
+        "evidence_role_snapshot": "primary_activity_evidence",
+        "acceptance_status_snapshot": "accepted_for_extraction",
+        "relationship_to_gap": "supporting_evidence",
+        "source_locations": [
+          {
+            "page_number": 5,
+            "source_snippet": "February utility bill available.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-NG-2023-002"
+          }
+        ]
+      },
+      {
+        "evidence_id": "EV-NG-2023-003",
+        "document_id": "EV-NG-2023-003",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-001",
+        "evidence_role_snapshot": "primary_activity_evidence",
+        "acceptance_status_snapshot": "accepted_for_extraction",
+        "relationship_to_gap": "supporting_evidence",
+        "source_locations": [
+          {
+            "page_number": 6,
+            "source_snippet": "March utility bill available.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-NG-2023-003"
+          }
+        ]
+      }
+    ],
+    "linked_workbook_locations": [],
+    "traceability": {
+      "traceability_status": "partial",
+      "extraction_field_ids": [],
+      "normalized_activity_ids": [],
+      "calculation_ids": [],
+      "reconciliation_result_ids": [],
+      "source_registry_ids": [
+        "NFG-BWV-239871"
+      ],
+      "missing_trace_links": []
+    },
+    "calculation_impact": null,
+    "methodology_trace": null,
+    "basis": {
+      "regulatory_citations": [
+        {
+          "authority": "NY Part 253",
+          "citation": "§253-2.7(l)",
+          "relationship": "recordkeeping",
+          "requirement_summary": "Annual MMBtu reporting should be traceable to account-level billing or equivalent source records.",
+          "applicability_explanation": "The selected evidence scenario supports only three of twelve months.",
+          "source_url": null
+        }
+      ],
+      "assurance_basis": [
+        "Completeness of evidence set",
+        "Calendar-year coverage"
+      ],
+      "internal_basis": [
+        "Formula library Q-001 completeness test",
+        "Evidence type J2-001 monthly utility bill coverage"
+      ],
+      "regulatory_assessment": "candidate_violation"
+    },
+    "materiality": {
+      "assessment_status": "not_assessed",
+      "threshold_value": null,
+      "threshold_unit": null,
+      "quantitative_impact": null,
+      "qualitative_factors": [],
+      "rationale": null
+    },
+    "severity": {
+      "system_suggested": "medium",
+      "auditor_assigned": null,
+      "rationale": null
+    },
+    "remediation": {
+      "recommended_action": "Provide billing statements or meter records for all missing months or a complete annual supplier summary with account-level support.",
+      "required_additional_evidence": [
+        "April-December utility bills or annual supplier account summary"
+      ],
+      "suggested_client_question": "Please provide the remaining 2023 natural gas bills or an annual supplier statement that reconciles to the workbook total.",
+      "owner_id": null,
+      "target_date": null,
+      "resolution_summary": null
+    },
+    "auditor_review": null,
+    "decision_authority": {
+      "system_output_is_recommendation": true,
+      "final_decision_role": "auditor"
+    },
+    "deduplication": {
+      "root_cause_key": "natural_gas.partial_year_billing_evidence",
+      "fingerprint": null,
+      "related_ticket_ids": [],
+      "supersedes_ticket_id": null
+    },
+    "audit_trail": [
+      {
+        "event_type": "created",
+        "actor_id": "system",
+        "timestamp": "2026-06-19T12:00:00Z",
+        "note": "Created from mock backend analysis response for demo UI development.",
+        "changes": {}
+      }
+    ],
+    "created_by": "system",
+    "created_at": "2026-06-19T12:00:00Z",
+    "updated_at": "2026-06-19T12:00:00Z",
+    "resolved_at": null
+  },
+  {
+    "gap_ticket_id": "GT-DEMO-GAP-009",
+    "ticket_version": 1,
+    "engagement_id": "DEMO-AB-BALDWINSVILLE-2023",
+    "company_id": "AB-INBEV-DEMO",
+    "reporting_id": "RY-2023",
+    "scenario_id": "MOCK_ALL_GAPS_2_TO_10",
+    "synthetic_demo_data": true,
+    "title": "Cross-year natural gas bill allocated entirely to current reporting year",
+    "ticket_type": "regulatory_nonconformance_candidate",
+    "status": "candidate",
+    "detection_origin": "system_detected",
+    "finding_type": "cutoff_or_allocation_error",
+    "primary_assertion": "cutoff",
+    "secondary_assertions": [],
+    "affected_location": "workbook_and_evidence",
+    "affected_scope": {
+      "facility_ids": [
+        "AB-BWV"
+      ],
+      "source_ids": [
+        "BLR-001",
+        "BLR-002"
+      ],
+      "source_category_ids": [
+        "scope_1_stationary_combustion"
+      ],
+      "account_numbers": [
+        "ACC-2023-BWV-001"
+      ],
+      "meter_ids": [
+        "NFG-BWV-239871"
+      ],
+      "period_start": "2023-12-16",
+      "period_end": "2024-01-15",
+      "reporting_year": 2023
+    },
+    "issue": {
+      "observed_condition": "The December evidence bill covers Dec 16, 2023 to Jan 15, 2024, but the workbook treats the quantity as a December 1-31, 2023 record without allocation support.",
+      "expected_condition": "A cross-year service period should be prorated or otherwise allocated between reporting years with documented support.",
+      "why_triggered": "Period normalization detected a bill crossing the reporting-year boundary and no allocation method in the workbook or evidence set.",
+      "root_cause_key": "natural_gas.cross_year_bill_not_allocated",
+      "detection_method": "deterministic_rule",
+      "system_confidence": 0.96,
+      "client_reported_basis_or_rationale": "Full billed quantity entered in 2023 December workbook row."
+    },
+    "library_references": {
+      "evidence_type_library": {
+        "library_name": "sustentra_j2_issa5000_evidence_type_library",
+        "version": "0.1.0",
+        "content_hash": null
+      },
+      "formula_library": {
+        "library_name": "sustentra_formula_library",
+        "version": "0.3.1",
+        "content_hash": null
+      },
+      "emission_factor_library": {
+        "library_name": "sustentra_emission_factor_library",
+        "version": "1.0.0",
+        "content_hash": null
+      },
+      "engagement_config_version": "demo-mock-0.1.0",
+      "source_registry_version": "demo-mock-0.1.0"
+    },
+    "upstream_rule_results": [
+      {
+        "formula_id": "N-003",
+        "rule_or_check_id": "billing_activity_period_normalization",
+        "trigger_id": "period_crosses_year_without_allocation",
+        "outcome": "fail",
+        "observed": {
+          "service_period_start": "2023-12-16",
+          "service_period_end": "2024-01-15",
+          "allocation_method": null
+        },
+        "expected": {
+          "allocation_method": "documented allocation between 2023 and 2024"
+        },
+        "input_snapshot": {
+          "evidence_id": "EV-NG-2023-012",
+          "workbook_range": "Natural Gas!B14:D14"
+        },
+        "output_snapshot": {
+          "allocation_required_flag": true
+        },
+        "message": "Cross-year bill lacks allocation support.",
+        "executed_at": "2026-06-19T12:00:00Z"
+      }
+    ],
+    "ticket_generation_rule_id": "G-004",
+    "trigger_ids": [
+      "period_crosses_year_without_allocation",
+      "allocation_method_missing_when_required"
+    ],
+    "linked_evidence": [
+      {
+        "evidence_id": "EV-NG-2023-012",
+        "document_id": "EV-NG-2023-012",
+        "file_name": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+        "evidence_type_id": "J2-001",
+        "evidence_role_snapshot": "primary_activity_evidence",
+        "acceptance_status_snapshot": "flagged_for_auditor_review",
+        "relationship_to_gap": "trigger_evidence",
+        "source_locations": [
+          {
+            "page_number": 15,
+            "source_snippet": "Service Period Dec 16, 2023 to Jan 15, 2024; Usage 32,800 MMBtu.",
+            "bounding_box": null,
+            "extraction_field_id": "EF-EV-NG-2023-012-PERIOD"
+          }
+        ]
+      }
+    ],
+    "linked_workbook_locations": [
+      {
+        "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+        "file_name": "AB_Baldwinsville_Scope1_Workbook.xlsx",
+        "sheet_name": "Natural Gas",
+        "cell_or_range": "B14:D14",
+        "row_label": "December",
+        "column_label": "Bill Period / Usage",
+        "displayed_value": "2023-12-01 to 2023-12-31; 31,700 MMBtu",
+        "formula": null,
+        "relationship_to_gap": "reported_value"
+      }
+    ],
+    "traceability": {
+      "traceability_status": "partial",
+      "extraction_field_ids": [],
+      "normalized_activity_ids": [],
+      "calculation_ids": [],
+      "reconciliation_result_ids": [],
+      "source_registry_ids": [
+        "BLR-001",
+        "BLR-002"
+      ],
+      "missing_trace_links": []
+    },
+    "calculation_impact": {
+      "reported_value": {
+        "value": 31700,
+        "unit": "MMBtu entered in 2023 workbook"
+      },
+      "recalculated_value": {
+        "value": null,
+        "unit": "prorated 2023 MMBtu required"
+      },
+      "absolute_difference": {
+        "value": null,
+        "unit": "MMBtu"
+      },
+      "percent_difference": null,
+      "affected_emissions_metric": "December 2023 stationary-combustion activity",
+      "calculation_reperformable": false,
+      "impact_explanation": "The 2023 portion cannot be re-performed until the allocation method is documented."
+    },
+    "methodology_trace": null,
+    "basis": {
+      "regulatory_citations": [
+        {
+          "authority": "NY Part 253",
+          "citation": "§253-1.5(d)",
+          "relationship": "governing_requirement",
+          "requirement_summary": "Facility data should be reported for the appropriate annual reporting period.",
+          "applicability_explanation": "The source service period crosses the 2023/2024 boundary.",
+          "source_url": null
+        },
+        {
+          "authority": "40 CFR Part 98",
+          "citation": "§98.3 annual reporting period",
+          "relationship": "incorporated_method",
+          "requirement_summary": "Annual reporting should align activity data to the relevant reporting year.",
+          "applicability_explanation": "The workbook uses the bill as if it were a December-only record.",
+          "source_url": null
+        }
+      ],
+      "assurance_basis": [
+        "Cutoff",
+        "Period matching",
+        "Allocation traceability"
+      ],
+      "internal_basis": [
+        "Formula library N-003 period normalization",
+        "Formula library G-004 cutoff gap-ticket conversion"
+      ],
+      "regulatory_assessment": "candidate_violation"
+    },
+    "materiality": {
+      "assessment_status": "not_assessed",
+      "threshold_value": null,
+      "threshold_unit": null,
+      "quantitative_impact": null,
+      "qualitative_factors": [],
+      "rationale": null
+    },
+    "severity": {
+      "system_suggested": "high",
+      "auditor_assigned": null,
+      "rationale": null
+    },
+    "remediation": {
+      "recommended_action": "Apply a documented allocation method to split the Dec 16-Jan 15 bill between 2023 and 2024 and update the workbook period/quantity.",
+      "required_additional_evidence": [
+        "Cross-year allocation worksheet or supplier daily usage detail"
+      ],
+      "suggested_client_question": "Please explain how the Dec 16, 2023–Jan 15, 2024 natural gas bill was allocated between reporting years.",
+      "owner_id": null,
+      "target_date": null,
+      "resolution_summary": null
+    },
+    "auditor_review": null,
+    "decision_authority": {
+      "system_output_is_recommendation": true,
+      "final_decision_role": "auditor"
+    },
+    "deduplication": {
+      "root_cause_key": "natural_gas.cross_year_bill_not_allocated",
+      "fingerprint": null,
+      "related_ticket_ids": [],
+      "supersedes_ticket_id": null
+    },
+    "audit_trail": [
+      {
+        "event_type": "created",
+        "actor_id": "system",
+        "timestamp": "2026-06-19T12:00:00Z",
+        "note": "Created from mock backend analysis response for demo UI development.",
+        "changes": {}
+      }
+    ],
+    "created_by": "system",
+    "created_at": "2026-06-19T12:00:00Z",
+    "updated_at": "2026-06-19T12:00:00Z",
+    "resolved_at": null
+  },
+  {
+    "gap_ticket_id": "GT-DEMO-GAP-010",
+    "ticket_version": 1,
+    "engagement_id": "DEMO-AB-BALDWINSVILLE-2023",
+    "company_id": "AB-INBEV-DEMO",
+    "reporting_id": "RY-2023",
+    "scenario_id": "MOCK_ALL_GAPS_2_TO_10",
+    "synthetic_demo_data": true,
+    "title": "GWP-100 applied where NY Part 253 GWP-20 basis is required",
+    "ticket_type": "methodology_gap",
+    "status": "candidate",
+    "detection_origin": "system_detected",
+    "finding_type": "gwp_basis_mismatch",
+    "primary_assertion": "accuracy_valuation",
+    "secondary_assertions": [],
+    "affected_location": "calculation_or_methodology",
+    "affected_scope": {
+      "facility_ids": [
+        "AB-BWV"
+      ],
+      "source_ids": [
+        "BLR-001",
+        "BLR-002",
+        "BLR-003",
+        "DRY-001",
+        "GEN-001",
+        "BIO-001",
+        "RFO-001"
+      ],
+      "source_category_ids": [
+        "scope_1_stationary_combustion"
+      ],
+      "account_numbers": [
+        "ACC-2023-BWV-001"
+      ],
+      "meter_ids": [
+        "NFG-BWV-239871"
+      ],
+      "period_start": "2023-01-01",
+      "period_end": "2023-12-31",
+      "reporting_year": 2023
+    },
+    "issue": {
+      "observed_condition": "The workbook labels CO2e columns as GWP-100 basis and uses CH4/N2O values consistent with a federal/100-year approach.",
+      "expected_condition": "For this NY Part 253 demo workflow, CO2e should use the configured NY GWP20 basis rather than federal/IPCC 100-year GWP values.",
+      "why_triggered": "The workbook basis conflicts with the engagement-required GWP basis; the formula library requires explicit NY-vs-federal GWP branch handling.",
+      "root_cause_key": "gwp_basis.federal_gwp100_used_for_ny_part253",
+      "detection_method": "regulatory_reference_comparison",
+      "system_confidence": 0.99,
+      "client_reported_basis_or_rationale": "Workbook flags GWP-100 basis in Natural Gas and Emissions Summary sheets."
+    },
+    "library_references": {
+      "evidence_type_library": {
+        "library_name": "sustentra_j2_issa5000_evidence_type_library",
+        "version": "0.1.0",
+        "content_hash": null
+      },
+      "formula_library": {
+        "library_name": "sustentra_formula_library",
+        "version": "0.3.1",
+        "content_hash": null
+      },
+      "emission_factor_library": {
+        "library_name": "sustentra_emission_factor_library",
+        "version": "1.0.0",
+        "content_hash": null
+      },
+      "engagement_config_version": "demo-mock-0.1.0",
+      "source_registry_version": "demo-mock-0.1.0"
+    },
+    "upstream_rule_results": [
+      {
+        "formula_id": "Q-010",
+        "rule_or_check_id": "gwp_basis_consistency_check",
+        "trigger_id": "federal_gwp100_used_instead_of_ny_gwp20",
+        "outcome": "fail",
+        "observed": {
+          "observed_gwp_basis": "GWP-100",
+          "observed_ch4_gwp": 28,
+          "observed_n2o_gwp": 265
+        },
+        "expected": {
+          "required_gwp_basis": "NY_GWP20",
+          "expected_ch4_gwp": 84,
+          "expected_n2o_gwp": 264
+        },
+        "input_snapshot": {
+          "workbook_cells": [
+            "Natural Gas!L2",
+            "Emissions Summary!G2"
+          ]
+        },
+        "output_snapshot": {
+          "gwp_basis_status": "mismatched"
+        },
+        "message": "GWP basis conflicts with NY Part 253 demo configuration.",
+        "executed_at": "2026-06-19T12:00:00Z"
+      }
+    ],
+    "ticket_generation_rule_id": "G-002",
+    "trigger_ids": [
+      "federal_gwp100_used_instead_of_ny_gwp20",
+      "gwp_basis_mismatch"
+    ],
+    "linked_evidence": [],
+    "linked_workbook_locations": [
+      {
+        "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+        "file_name": "AB_Baldwinsville_Scope1_Workbook.xlsx",
+        "sheet_name": "Natural Gas",
+        "cell_or_range": "L2",
+        "row_label": null,
+        "column_label": "CO2e header",
+        "displayed_value": "CO2e (metric tons) ⚠ GWP-100 APPLIED (NY req. GWP-20)",
+        "formula": null,
+        "relationship_to_gap": "methodology_statement"
+      },
+      {
+        "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+        "file_name": "AB_Baldwinsville_Scope1_Workbook.xlsx",
+        "sheet_name": "Emissions Summary",
+        "cell_or_range": "G2",
+        "row_label": null,
+        "column_label": "CO2e header",
+        "displayed_value": "CO2e (metric tons) ⚠ GWP-100 BASIS (NY req. GWP-20)",
+        "formula": null,
+        "relationship_to_gap": "methodology_statement"
+      }
+    ],
+    "traceability": {
+      "traceability_status": "partial",
+      "extraction_field_ids": [],
+      "normalized_activity_ids": [],
+      "calculation_ids": [],
+      "reconciliation_result_ids": [],
+      "source_registry_ids": [
+        "BLR-001",
+        "BLR-002",
+        "BLR-003",
+        "DRY-001",
+        "GEN-001",
+        "BIO-001",
+        "RFO-001"
+      ],
+      "missing_trace_links": []
+    },
+    "calculation_impact": {
+      "reported_value": {
+        "value": 36240.2339821,
+        "unit": "metric tons CO2e on workbook GWP-100 basis"
+      },
+      "recalculated_value": {
+        "value": null,
+        "unit": "metric tons CO2e on NY GWP20 basis required"
+      },
+      "absolute_difference": {
+        "value": null,
+        "unit": "metric tons CO2e"
+      },
+      "percent_difference": null,
+      "affected_emissions_metric": "Total reported Scope 1 CO2e",
+      "calculation_reperformable": false,
+      "impact_explanation": "The final CO2e result cannot be considered NY-basis until CH4 and N2O are converted with the required GWP20 values."
+    },
+    "methodology_trace": {
+      "selected_formula_ids": [
+        "F-005",
+        "Q-010",
+        "G-002"
+      ],
+      "emission_factor_references": [],
+      "gwp_references": [
+        {
+          "gwp_set_id": "FEDERAL_OR_IPCC_GWP100_OBSERVED",
+          "gas": "CH4",
+          "gwp_value": 28,
+          "time_horizon_years": 100,
+          "selection_status": "observed"
+        },
+        {
+          "gwp_set_id": "FEDERAL_OR_IPCC_GWP100_OBSERVED",
+          "gas": "N2O",
+          "gwp_value": 265,
+          "time_horizon_years": 100,
+          "selection_status": "observed"
+        },
+        {
+          "gwp_set_id": "NY_6_NYCRR_496_5_GWP20_REQUIRED",
+          "gas": "CH4",
+          "gwp_value": 84,
+          "time_horizon_years": 20,
+          "selection_status": "expected"
+        },
+        {
+          "gwp_set_id": "NY_6_NYCRR_496_5_GWP20_REQUIRED",
+          "gas": "N2O",
+          "gwp_value": 264,
+          "time_horizon_years": 20,
+          "selection_status": "expected"
+        }
+      ],
+      "method_or_tier_observed": "Federal/IPCC 100-year GWP basis",
+      "method_or_tier_expected": "NY Part 253 GWP20 basis"
+    },
+    "basis": {
+      "regulatory_citations": [
+        {
+          "authority": "6 NYCRR",
+          "citation": "§496.5",
+          "relationship": "state_override",
+          "requirement_summary": "NY workflow requires the configured GWP20 basis for CO2e conversion.",
+          "applicability_explanation": "The workbook uses a GWP-100 basis.",
+          "source_url": null
+        },
+        {
+          "authority": "NY Part 253",
+          "citation": "CO2e definition / Part 253 GWP cross-reference",
+          "relationship": "governing_requirement",
+          "requirement_summary": "CO2e conversion basis should follow NY-specific GWP treatment where applicable.",
+          "applicability_explanation": "The demo is scoped to NY Part 253 rather than a generic federal Part 98 workbook.",
+          "source_url": null
+        }
+      ],
+      "assurance_basis": [
+        "Accuracy and valuation",
+        "Methodology consistency"
+      ],
+      "internal_basis": [
+        "Formula library Q-010 GWP basis consistency check",
+        "Formula library F-005 CO2e conversion branch",
+        "Engagement config required_gwp_basis"
+      ],
+      "regulatory_assessment": "candidate_violation"
+    },
+    "materiality": {
+      "assessment_status": "qualitatively_material",
+      "threshold_value": null,
+      "threshold_unit": null,
+      "quantitative_impact": null,
+      "qualitative_factors": [
+        "Affects all CH4/N2O CO2e calculations",
+        "State-specific basis differs from federal default"
+      ],
+      "rationale": "GWP basis mismatch is a methodology-level error even before final numeric impact is recomputed."
+    },
+    "severity": {
+      "system_suggested": "critical",
+      "auditor_assigned": null,
+      "rationale": null
+    },
+    "remediation": {
+      "recommended_action": "Recalculate CO2e using the approved NY GWP20 set and disclose the GWP basis explicitly.",
+      "required_additional_evidence": [
+        "Approved NY GWP20 reference/version",
+        "Updated workbook formulas or calculation export"
+      ],
+      "suggested_client_question": "Please confirm the GWP basis used in the workbook and provide the NY GWP20 values/version applied for Part 253 reporting.",
+      "owner_id": null,
+      "target_date": null,
+      "resolution_summary": null
+    },
+    "auditor_review": null,
+    "decision_authority": {
+      "system_output_is_recommendation": true,
+      "final_decision_role": "auditor"
+    },
+    "deduplication": {
+      "root_cause_key": "gwp_basis.federal_gwp100_used_for_ny_part253",
+      "fingerprint": null,
+      "related_ticket_ids": [],
+      "supersedes_ticket_id": null
+    },
+    "audit_trail": [
+      {
+        "event_type": "created",
+        "actor_id": "system",
+        "timestamp": "2026-06-19T12:00:00Z",
+        "note": "Created from mock backend analysis response for demo UI development.",
+        "changes": {}
+      }
+    ],
+    "created_by": "system",
+    "created_at": "2026-06-19T12:00:00Z",
+    "updated_at": "2026-06-19T12:00:00Z",
+    "resolved_at": null
+  }
+]

@@ -1,0 +1,2863 @@
+{
+  "library_name": "sustentra_emission_factor_library",
+  "version": "1.0.0",
+  "generated_at": "2026-06-14",
+  "purpose": "Single-file static emission factor and GWP reference for Scope 1 stationary-combustion factor lookup and CO2e conversion.",
+  "scope": {
+    "inventory_scope": "Scope 1",
+    "source_category": "stationary_combustion",
+    "included_gases": [
+      "CO2",
+      "CH4",
+      "N2O"
+    ],
+    "factor_source_scope": "combustion emissions only",
+    "upstream_or_lifecycle_emissions_included": false,
+    "library_content": [
+      "stationary_combustion_emission_factors",
+      "default_higher_heating_values",
+      "ipcc_ar6_100_year_gwp_values",
+      "factor_selection_and_validation_metadata"
+    ]
+  },
+  "shared_query_contract": {
+    "single_file_required": true,
+    "tracks": [
+      {
+        "track_id": "stationary_combustion_emission_factor_lookup",
+        "query_path": "$.stationary_combustion_factors",
+        "primary_lookup_fields": [
+          "lookup_key",
+          "fuel_name",
+          "epa_table_category",
+          "fuel_form"
+        ]
+      },
+      {
+        "track_id": "co2e_gwp_lookup",
+        "query_path": "$.gwp_sets",
+        "default_gwp_set_id": "IPCC_AR6_100_YEAR_COMBUSTION"
+      }
+    ]
+  },
+  "sources": [
+    {
+      "source_id": "EPA_GHG_EF_HUB_2025_TABLE_1",
+      "title": "Emission Factors for Greenhouse Gas Inventories",
+      "publisher": "U.S. Environmental Protection Agency",
+      "table": "Table 1 Stationary Combustion",
+      "last_modified": "2025-01-15",
+      "factor_basis_notes": [
+        "Factors are per unit of heat content using higher heating values (HHV).",
+        "Supplier-provided heat content is preferred when available; otherwise the published default heat content may be used.",
+        "CO2 factors assume 100 percent oxidation of fuel carbon to CO2.",
+        "The factors represent combustion emissions only and exclude upstream emissions."
+      ],
+      "underlying_references_stated_by_source": [
+        "40 CFR Part 98 Table C-1",
+        "40 CFR Part 98 Table C-2",
+        "40 CFR Part 98 Table AA-1"
+      ]
+    },
+    {
+      "source_id": "IPCC_AR6_GWP_100Y_AUG_2024",
+      "title": "IPCC Global Warming Potential Values",
+      "publisher": "Greenhouse Gas Protocol",
+      "version": "2.0",
+      "date": "2024-08-07",
+      "assessment_report": "IPCC Sixth Assessment Report (AR6)",
+      "time_horizon_years": 100
+    }
+  ],
+  "gwp_sets": [
+    {
+      "gwp_set_id": "IPCC_AR6_100_YEAR_COMBUSTION",
+      "assessment_report": "AR6",
+      "time_horizon_years": 100,
+      "default_for_this_library": true,
+      "values": [
+        {
+          "gwp_key": "CO2",
+          "gas_name": "Carbon dioxide",
+          "chemical_formula": "CO2",
+          "gwp": 1,
+          "combustion_default": true
+        },
+        {
+          "gwp_key": "CH4_NON_FOSSIL",
+          "gas_name": "Methane - non-fossil",
+          "chemical_formula": "CH4",
+          "gwp": 27.0,
+          "combustion_default": true,
+          "applicability_note": "Use for stationary and mobile combustion, including combustion of fossil fuels, because combustion CO2 is already estimated separately and use of the higher fossil-methane GWP would double count the methane oxidation-to-CO2 effect."
+        },
+        {
+          "gwp_key": "N2O",
+          "gas_name": "Nitrous oxide",
+          "chemical_formula": "N2O",
+          "gwp": 273,
+          "combustion_default": true
+        },
+        {
+          "gwp_key": "CH4_FOSSIL",
+          "gas_name": "Methane - fossil",
+          "chemical_formula": "CH4",
+          "gwp": 29.8,
+          "combustion_default": false,
+          "applicability_note": "Reserved for fossil-fuel fugitive sources and industrial processes where methane carbon is of fossil origin; not the default for combustion."
+        }
+      ]
+    }
+  ],
+  "calculation_templates": [
+    {
+      "template_id": "ENERGY_BASIS_STATIONARY_COMBUSTION",
+      "required_inputs": [
+        "activity_mmbtu",
+        "co2_kg_per_mmbtu",
+        "ch4_g_per_mmbtu",
+        "n2o_g_per_mmbtu"
+      ],
+      "steps": [
+        "co2_kg = activity_mmbtu * co2_kg_per_mmbtu",
+        "ch4_kg = activity_mmbtu * ch4_g_per_mmbtu / 1000",
+        "n2o_kg = activity_mmbtu * n2o_g_per_mmbtu / 1000",
+        "co2e_kg = co2_kg * GWP(CO2) + ch4_kg * GWP(CH4_NON_FOSSIL) + n2o_kg * GWP(N2O)",
+        "co2e_metric_tons = co2e_kg / 1000"
+      ]
+    },
+    {
+      "template_id": "NATIVE_UNIT_STATIONARY_COMBUSTION",
+      "required_inputs": [
+        "activity_quantity",
+        "published_native_unit_factors"
+      ],
+      "steps": [
+        "co2_kg = activity_quantity * native_co2_factor",
+        "ch4_kg = activity_quantity * native_ch4_factor / 1000",
+        "n2o_kg = activity_quantity * native_n2o_factor / 1000",
+        "co2e_kg = co2_kg * GWP(CO2) + ch4_kg * GWP(CH4_NON_FOSSIL) + n2o_kg * GWP(N2O)",
+        "co2e_metric_tons = co2e_kg / 1000"
+      ]
+    }
+  ],
+  "selection_and_validation_rules": [
+    {
+      "rule_id": "SC_RULE_001",
+      "rule": "Use supplier-specific HHV when available; otherwise use the published default HHV."
+    },
+    {
+      "rule_id": "SC_RULE_002",
+      "rule": "Use CH4_NON_FOSSIL GWP for stationary-combustion CH4."
+    },
+    {
+      "rule_id": "SC_RULE_003",
+      "rule": "Do not use EPA Hub Table 11 AR5 GWPs in this file; CO2e conversion uses the AR6 100-year GWP set included here."
+    },
+    {
+      "rule_id": "SC_RULE_004",
+      "rule": "For Kraft pulping liquor records without a published default HHV/native-unit factor, require activity already expressed in mmBtu or a documented supplier-specific heat-content conversion."
+    },
+    {
+      "rule_id": "SC_RULE_005",
+      "rule": "Biomass-category CO2 presentation/accounting must be handled by the applicable inventory methodology; this file preserves EPA combustion factors but does not decide separate biogenic-CO2 presentation."
+    }
+  ],
+  "scope_limitations": [
+    "This is a static emission-factor-and-GWP reference, not a complete implementation of every 40 CFR Part 98 tier, monitoring, QA/QC, missing-data, or CEMS branch.",
+    "The uploaded AR6 source provides 100-year GWP values. This file must not be represented as a NY-specific GWP20 library.",
+    "EPA stationary-combustion factors exclude upstream and lifecycle emissions.",
+    "Published native-unit factors are retained as printed and may reflect source rounding."
+  ],
+  "record_count": 63,
+  "stationary_combustion_factors": [
+    {
+      "factor_id": "EPA_HUB_2025_SC_ANTHRACITE",
+      "lookup_key": "anthracite",
+      "fuel_name": "Anthracite",
+      "epa_table_category": "Coal and Coke",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 25.09,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 103.69,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 11,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 1.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 2602,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 276,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 40,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_BITUMINOUS",
+      "lookup_key": "bituminous",
+      "fuel_name": "Bituminous",
+      "epa_table_category": "Coal and Coke",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 24.93,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 93.28,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 11,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 1.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 2325,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 274,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 40,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_SUB_BITUMINOUS",
+      "lookup_key": "sub_bituminous",
+      "fuel_name": "Sub-bituminous",
+      "epa_table_category": "Coal and Coke",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 17.25,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 97.17,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 11,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 1.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 1676,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 190,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 28,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_LIGNITE",
+      "lookup_key": "lignite",
+      "fuel_name": "Lignite",
+      "epa_table_category": "Coal and Coke",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 14.21,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 97.72,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 11,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 1.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 1389,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 156,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 23,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_MIXED_COMMERCIAL_SECTOR",
+      "lookup_key": "mixed_commercial_sector",
+      "fuel_name": "Mixed (Commercial Sector)",
+      "epa_table_category": "Coal and Coke",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 21.39,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 94.27,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 11,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 1.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 2016,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 235,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 34,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_MIXED_ELECTRIC_POWER_SECTOR",
+      "lookup_key": "mixed_electric_power_sector",
+      "fuel_name": "Mixed (Electric Power Sector)",
+      "epa_table_category": "Coal and Coke",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 19.73,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 95.52,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 11,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 1.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 1885,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 217,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 32,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_MIXED_INDUSTRIAL_COKING",
+      "lookup_key": "mixed_industrial_coking",
+      "fuel_name": "Mixed (Industrial Coking)",
+      "epa_table_category": "Coal and Coke",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 26.28,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 93.9,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 11,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 1.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 2468,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 289,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 42,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_MIXED_INDUSTRIAL_SECTOR",
+      "lookup_key": "mixed_industrial_sector",
+      "fuel_name": "Mixed (Industrial Sector)",
+      "epa_table_category": "Coal and Coke",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 22.35,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 94.67,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 11,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 1.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 2116,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 246,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 36,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_COAL_COKE",
+      "lookup_key": "coal_coke",
+      "fuel_name": "Coal Coke",
+      "epa_table_category": "Coal and Coke",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 24.8,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 113.67,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 11,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 1.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 2819,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 273,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 40,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_MUNICIPAL_SOLID_WASTE",
+      "lookup_key": "municipal_solid_waste",
+      "fuel_name": "Municipal Solid Waste",
+      "epa_table_category": "Other Fuels - Solid",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 9.95,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 90.7,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 32,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 4.2,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 902,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 318,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 42,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_PETROLEUM_COKE_SOLID",
+      "lookup_key": "petroleum_coke_solid",
+      "fuel_name": "Petroleum Coke (Solid)",
+      "epa_table_category": "Other Fuels - Solid",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 30.0,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 102.41,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 32,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 4.2,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 3072,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 960,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 126,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_PLASTICS",
+      "lookup_key": "plastics",
+      "fuel_name": "Plastics",
+      "epa_table_category": "Other Fuels - Solid",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 38.0,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 75.0,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 32,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 4.2,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 2850,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 1216,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 160,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_TIRES",
+      "lookup_key": "tires",
+      "fuel_name": "Tires",
+      "epa_table_category": "Other Fuels - Solid",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 28.0,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 85.97,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 32,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 4.2,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 2407,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 896,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 118,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_AGRICULTURAL_BYPRODUCTS",
+      "lookup_key": "agricultural_byproducts",
+      "fuel_name": "Agricultural Byproducts",
+      "epa_table_category": "Biomass Fuels - Solid",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": true,
+      "default_hhv": {
+        "value": 8.25,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 118.17,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 32,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 4.2,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 975,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 264,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 35,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_PEAT",
+      "lookup_key": "peat",
+      "fuel_name": "Peat",
+      "epa_table_category": "Biomass Fuels - Solid",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": true,
+      "default_hhv": {
+        "value": 8.0,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 111.84,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 32,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 4.2,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 895,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 256,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 34,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_SOLID_BYPRODUCTS",
+      "lookup_key": "solid_byproducts",
+      "fuel_name": "Solid Byproducts",
+      "epa_table_category": "Biomass Fuels - Solid",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": true,
+      "default_hhv": {
+        "value": 10.39,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 105.51,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 32,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 4.2,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 1096,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 332,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 44,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_WOOD_AND_WOOD_RESIDUALS",
+      "lookup_key": "wood_and_wood_residuals",
+      "fuel_name": "Wood and Wood Residuals",
+      "epa_table_category": "Biomass Fuels - Solid",
+      "fuel_form": "solid",
+      "biomass_category_in_source_table": true,
+      "default_hhv": {
+        "value": 17.48,
+        "unit": "mmBtu/short ton"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 93.8,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 7.2,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 3.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "short ton",
+        "co2": {
+          "value": 1640,
+          "unit": "kg CO2/short ton"
+        },
+        "ch4": {
+          "value": 126,
+          "unit": "g CH4/short ton"
+        },
+        "n2o": {
+          "value": 63,
+          "unit": "g N2O/short ton"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_NATURAL_GAS",
+      "lookup_key": "natural_gas",
+      "fuel_name": "Natural Gas",
+      "epa_table_category": "Natural Gas",
+      "fuel_form": "gaseous",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.001026,
+        "unit": "mmBtu/scf"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 53.06,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 1.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.1,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "scf",
+        "co2": {
+          "value": 0.05444,
+          "unit": "kg CO2/scf"
+        },
+        "ch4": {
+          "value": 0.00103,
+          "unit": "g CH4/scf"
+        },
+        "n2o": {
+          "value": 0.0001,
+          "unit": "g N2O/scf"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_BLAST_FURNACE_GAS",
+      "lookup_key": "blast_furnace_gas",
+      "fuel_name": "Blast Furnace Gas",
+      "epa_table_category": "Other Fuels - Gaseous",
+      "fuel_form": "gaseous",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 9.2e-05,
+        "unit": "mmBtu/scf"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 274.32,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 0.022,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.1,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "scf",
+        "co2": {
+          "value": 0.02524,
+          "unit": "kg CO2/scf"
+        },
+        "ch4": {
+          "value": 2e-06,
+          "unit": "g CH4/scf"
+        },
+        "n2o": {
+          "value": 9e-06,
+          "unit": "g N2O/scf"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_COKE_OVEN_GAS",
+      "lookup_key": "coke_oven_gas",
+      "fuel_name": "Coke Oven Gas",
+      "epa_table_category": "Other Fuels - Gaseous",
+      "fuel_form": "gaseous",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.000599,
+        "unit": "mmBtu/scf"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 46.85,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 0.48,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.1,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "scf",
+        "co2": {
+          "value": 0.02806,
+          "unit": "kg CO2/scf"
+        },
+        "ch4": {
+          "value": 0.000288,
+          "unit": "g CH4/scf"
+        },
+        "n2o": {
+          "value": 6e-05,
+          "unit": "g N2O/scf"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_FUEL_GAS",
+      "lookup_key": "fuel_gas",
+      "fuel_name": "Fuel Gas",
+      "epa_table_category": "Other Fuels - Gaseous",
+      "fuel_form": "gaseous",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.001388,
+        "unit": "mmBtu/scf"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 59.0,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "scf",
+        "co2": {
+          "value": 0.08189,
+          "unit": "kg CO2/scf"
+        },
+        "ch4": {
+          "value": 0.004164,
+          "unit": "g CH4/scf"
+        },
+        "n2o": {
+          "value": 0.000833,
+          "unit": "g N2O/scf"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_PROPANE_GAS",
+      "lookup_key": "propane_gas",
+      "fuel_name": "Propane Gas",
+      "epa_table_category": "Other Fuels - Gaseous",
+      "fuel_form": "gaseous",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.002516,
+        "unit": "mmBtu/scf"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 61.46,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "scf",
+        "co2": {
+          "value": 0.15463,
+          "unit": "kg CO2/scf"
+        },
+        "ch4": {
+          "value": 0.007548,
+          "unit": "g CH4/scf"
+        },
+        "n2o": {
+          "value": 0.00151,
+          "unit": "g N2O/scf"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_LANDFILL_GAS",
+      "lookup_key": "landfill_gas",
+      "fuel_name": "Landfill Gas",
+      "epa_table_category": "Biomass Fuels - Gaseous",
+      "fuel_form": "gaseous",
+      "biomass_category_in_source_table": true,
+      "default_hhv": {
+        "value": 0.000485,
+        "unit": "mmBtu/scf"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 52.07,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.2,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.63,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "scf",
+        "co2": {
+          "value": 0.025254,
+          "unit": "kg CO2/scf"
+        },
+        "ch4": {
+          "value": 0.001552,
+          "unit": "g CH4/scf"
+        },
+        "n2o": {
+          "value": 0.000306,
+          "unit": "g N2O/scf"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_OTHER_BIOMASS_GASES",
+      "lookup_key": "other_biomass_gases",
+      "fuel_name": "Other Biomass Gases",
+      "epa_table_category": "Biomass Fuels - Gaseous",
+      "fuel_form": "gaseous",
+      "biomass_category_in_source_table": true,
+      "default_hhv": {
+        "value": 0.000655,
+        "unit": "mmBtu/scf"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 52.07,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.2,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.63,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "scf",
+        "co2": {
+          "value": 0.034106,
+          "unit": "kg CO2/scf"
+        },
+        "ch4": {
+          "value": 0.002096,
+          "unit": "g CH4/scf"
+        },
+        "n2o": {
+          "value": 0.000413,
+          "unit": "g N2O/scf"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_ASPHALT_AND_ROAD_OIL",
+      "lookup_key": "asphalt_and_road_oil",
+      "fuel_name": "Asphalt and Road Oil",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.158,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 75.36,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 11.91,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.47,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.09,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_AVIATION_GASOLINE",
+      "lookup_key": "aviation_gasoline",
+      "fuel_name": "Aviation Gasoline",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.12,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 69.25,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 8.31,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.36,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.07,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_BUTANE",
+      "lookup_key": "butane",
+      "fuel_name": "Butane",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.103,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 64.77,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 6.67,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.31,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.06,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_BUTYLENE",
+      "lookup_key": "butylene",
+      "fuel_name": "Butylene",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.105,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 68.72,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 7.22,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.32,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.06,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_CRUDE_OIL",
+      "lookup_key": "crude_oil",
+      "fuel_name": "Crude Oil",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.138,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 74.54,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 10.29,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.41,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_DISTILLATE_FUEL_OIL_NO_1",
+      "lookup_key": "distillate_fuel_oil_no_1",
+      "fuel_name": "Distillate Fuel Oil No. 1",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.139,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 73.25,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 10.18,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.42,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_DISTILLATE_FUEL_OIL_NO_2",
+      "lookup_key": "distillate_fuel_oil_no_2",
+      "fuel_name": "Distillate Fuel Oil No. 2",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.138,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 73.96,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 10.21,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.41,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_DISTILLATE_FUEL_OIL_NO_4",
+      "lookup_key": "distillate_fuel_oil_no_4",
+      "fuel_name": "Distillate Fuel Oil No. 4",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.146,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 75.04,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 10.96,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.44,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.09,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_ETHANE",
+      "lookup_key": "ethane",
+      "fuel_name": "Ethane",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.068,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 59.6,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 4.05,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.2,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.04,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_ETHYLENE",
+      "lookup_key": "ethylene",
+      "fuel_name": "Ethylene",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.058,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 65.96,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 3.83,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.17,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.03,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_HEAVY_GAS_OILS",
+      "lookup_key": "heavy_gas_oils",
+      "fuel_name": "Heavy Gas Oils",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.148,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 74.92,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 11.09,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.44,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.09,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_ISOBUTANE",
+      "lookup_key": "isobutane",
+      "fuel_name": "Isobutane",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.099,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 64.94,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 6.43,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.3,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.06,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_ISOBUTYLENE",
+      "lookup_key": "isobutylene",
+      "fuel_name": "Isobutylene",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.103,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 68.86,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 7.09,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.31,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.06,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_KEROSENE",
+      "lookup_key": "kerosene",
+      "fuel_name": "Kerosene",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.135,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 75.2,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 10.15,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.41,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_KEROSENE_TYPE_JET_FUEL",
+      "lookup_key": "kerosene_type_jet_fuel",
+      "fuel_name": "Kerosene-Type Jet Fuel",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.135,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 72.22,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 9.75,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.41,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_LIQUEFIED_PETROLEUM_GASES_LPG",
+      "lookup_key": "liquefied_petroleum_gases_lpg",
+      "fuel_name": "Liquefied Petroleum Gases (LPG)",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.092,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 61.71,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 5.68,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.28,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.06,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_LUBRICANTS",
+      "lookup_key": "lubricants",
+      "fuel_name": "Lubricants",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.144,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 74.27,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 10.69,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.43,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.09,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_MOTOR_GASOLINE",
+      "lookup_key": "motor_gasoline",
+      "fuel_name": "Motor Gasoline",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.125,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 70.22,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 8.78,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.38,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_NAPHTHA_401_DEG_F",
+      "lookup_key": "naphtha_401_deg_f",
+      "fuel_name": "Naphtha (<401 deg F)",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.125,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 68.02,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 8.5,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.38,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_NATURAL_GASOLINE",
+      "lookup_key": "natural_gasoline",
+      "fuel_name": "Natural Gasoline",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.11,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 66.88,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 7.36,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.33,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.07,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_OTHER_OIL_401_DEG_F",
+      "lookup_key": "other_oil_401_deg_f",
+      "fuel_name": "Other Oil (>401 deg F)",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.139,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 76.22,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 10.59,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.42,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_PENTANES_PLUS",
+      "lookup_key": "pentanes_plus",
+      "fuel_name": "Pentanes Plus",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.11,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 70.02,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 7.7,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.33,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.07,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_PETROCHEMICAL_FEEDSTOCKS",
+      "lookup_key": "petrochemical_feedstocks",
+      "fuel_name": "Petrochemical Feedstocks",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.125,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 71.02,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 8.88,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.38,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_PROPANE",
+      "lookup_key": "propane",
+      "fuel_name": "Propane",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.091,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 62.87,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 5.72,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.27,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.05,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_PROPYLENE",
+      "lookup_key": "propylene",
+      "fuel_name": "Propylene",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.091,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 67.77,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 6.17,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.27,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.05,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_RESIDUAL_FUEL_OIL_NO_5",
+      "lookup_key": "residual_fuel_oil_no_5",
+      "fuel_name": "Residual Fuel Oil No. 5",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.14,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 72.93,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 10.21,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.42,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_RESIDUAL_FUEL_OIL_NO_6",
+      "lookup_key": "residual_fuel_oil_no_6",
+      "fuel_name": "Residual Fuel Oil No. 6",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.15,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 75.1,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 11.27,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.45,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.09,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_SPECIAL_NAPHTHA",
+      "lookup_key": "special_naphtha",
+      "fuel_name": "Special Naphtha",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.125,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 72.34,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 9.04,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.38,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_UNFINISHED_OILS",
+      "lookup_key": "unfinished_oils",
+      "fuel_name": "Unfinished Oils",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.139,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 74.54,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 10.36,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.42,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_USED_OIL",
+      "lookup_key": "used_oil",
+      "fuel_name": "Used Oil",
+      "epa_table_category": "Petroleum Products",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": false,
+      "default_hhv": {
+        "value": 0.138,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 74.0,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 3.0,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.6,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 10.21,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.41,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.08,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_BIODIESEL_100",
+      "lookup_key": "biodiesel_100",
+      "fuel_name": "Biodiesel (100%)",
+      "epa_table_category": "Biomass Fuels - Liquid",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": true,
+      "default_hhv": {
+        "value": 0.128,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 73.84,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 1.1,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.11,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 9.45,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.14,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.01,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_ETHANOL_100",
+      "lookup_key": "ethanol_100",
+      "fuel_name": "Ethanol (100%)",
+      "epa_table_category": "Biomass Fuels - Liquid",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": true,
+      "default_hhv": {
+        "value": 0.084,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 68.44,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 1.1,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.11,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 5.75,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.09,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.01,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_RENDERED_ANIMAL_FAT",
+      "lookup_key": "rendered_animal_fat",
+      "fuel_name": "Rendered Animal Fat",
+      "epa_table_category": "Biomass Fuels - Liquid",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": true,
+      "default_hhv": {
+        "value": 0.125,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 71.06,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 1.1,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.11,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 8.88,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.14,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.01,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_VEGETABLE_OIL",
+      "lookup_key": "vegetable_oil",
+      "fuel_name": "Vegetable Oil",
+      "epa_table_category": "Biomass Fuels - Liquid",
+      "fuel_form": "liquid",
+      "biomass_category_in_source_table": true,
+      "default_hhv": {
+        "value": 0.12,
+        "unit": "mmBtu/gallon"
+      },
+      "energy_basis_factors": {
+        "co2": {
+          "value": 81.55,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 1.1,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.11,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": {
+        "activity_unit": "gallon",
+        "co2": {
+          "value": 9.79,
+          "unit": "kg CO2/gallon"
+        },
+        "ch4": {
+          "value": 0.13,
+          "unit": "g CH4/gallon"
+        },
+        "n2o": {
+          "value": 0.01,
+          "unit": "g N2O/gallon"
+        }
+      },
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_NORTH_AMERICAN_SOFTWOOD",
+      "lookup_key": "north_american_softwood",
+      "fuel_name": "North American Softwood",
+      "epa_table_category": "Biomass Fuels - Kraft Pulping Liquor, by Wood Furnish",
+      "fuel_form": "liquid_or_process_liquor",
+      "biomass_category_in_source_table": true,
+      "default_hhv": null,
+      "energy_basis_factors": {
+        "co2": {
+          "value": 94.4,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 1.9,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.42,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": null,
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_NORTH_AMERICAN_HARDWOOD",
+      "lookup_key": "north_american_hardwood",
+      "fuel_name": "North American Hardwood",
+      "epa_table_category": "Biomass Fuels - Kraft Pulping Liquor, by Wood Furnish",
+      "fuel_form": "liquid_or_process_liquor",
+      "biomass_category_in_source_table": true,
+      "default_hhv": null,
+      "energy_basis_factors": {
+        "co2": {
+          "value": 93.7,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 1.9,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.42,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": null,
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_BAGASSE",
+      "lookup_key": "bagasse",
+      "fuel_name": "Bagasse",
+      "epa_table_category": "Biomass Fuels - Kraft Pulping Liquor, by Wood Furnish",
+      "fuel_form": "liquid_or_process_liquor",
+      "biomass_category_in_source_table": true,
+      "default_hhv": null,
+      "energy_basis_factors": {
+        "co2": {
+          "value": 95.5,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 1.9,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.42,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": null,
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_BAMBOO",
+      "lookup_key": "bamboo",
+      "fuel_name": "Bamboo",
+      "epa_table_category": "Biomass Fuels - Kraft Pulping Liquor, by Wood Furnish",
+      "fuel_form": "liquid_or_process_liquor",
+      "biomass_category_in_source_table": true,
+      "default_hhv": null,
+      "energy_basis_factors": {
+        "co2": {
+          "value": 93.7,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 1.9,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.42,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": null,
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    },
+    {
+      "factor_id": "EPA_HUB_2025_SC_STRAW",
+      "lookup_key": "straw",
+      "fuel_name": "Straw",
+      "epa_table_category": "Biomass Fuels - Kraft Pulping Liquor, by Wood Furnish",
+      "fuel_form": "liquid_or_process_liquor",
+      "biomass_category_in_source_table": true,
+      "default_hhv": null,
+      "energy_basis_factors": {
+        "co2": {
+          "value": 95.1,
+          "unit": "kg CO2/mmBtu"
+        },
+        "ch4": {
+          "value": 1.9,
+          "unit": "g CH4/mmBtu"
+        },
+        "n2o": {
+          "value": 0.42,
+          "unit": "g N2O/mmBtu"
+        }
+      },
+      "published_native_unit_factors": null,
+      "factor_scope": "stationary_combustion_only",
+      "upstream_emissions_included": false,
+      "source_table": "EPA GHG Emission Factors Hub 2025, Table 1 Stationary Combustion"
+    }
+  ],
+  "library_type": "emission_factor_library"
+}

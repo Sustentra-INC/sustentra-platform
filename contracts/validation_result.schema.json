@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/validation_result.schema.json",
+  "title": "ValidationResultPlaceholder",
+  "description": "TODO: Align this schema with approved evidence outputs after Pilot 1. Legacy reference remains in legacy-schemas/copied_from_streamlit_demo/validation_result.schema.json.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "validation_result_id",
+    "status",
+    "todo_alignment_note"
+  ],
+  "properties": {
+    "validation_result_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string"
+    },
+    "todo_alignment_note": {
+      "type": "string"
+    }
+  }
+}

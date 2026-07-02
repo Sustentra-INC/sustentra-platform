@@ -1,0 +1,107 @@
+[
+  {
+    "calculation_id": "CALC-NG-2023-010",
+    "source_or_fuel": "Natural gas - October bill",
+    "linked_evidence_ids": [
+      "EV-NG-2023-010"
+    ],
+    "workbook_location": {
+      "sheet_name": "Natural Gas",
+      "cell_or_range": "D12",
+      "reported_activity_mmbtu": 281000.0,
+      "formula": null
+    },
+    "activity_quantity": 28100.0,
+    "activity_unit": "MMBtu",
+    "normalization_note": "Quantity already in MMBtu from prepared bill extraction.",
+    "factor_id": "EPA_HUB_2025_SC_NATURAL_GAS",
+    "factor_source": "sustentra_emission_factor_library v1.0.0",
+    "formula_ids": [
+      "R-001",
+      "R-002"
+    ],
+    "co2_kg": 1490986.0,
+    "ch4_kg": 28.1,
+    "n2o_kg": 2.81,
+    "biogenic_co2_kg": 0.0,
+    "gwp_basis": "IPCC_AR6_100_YEAR_COMBUSTION",
+    "recalculated_co2e_mt": 1492.51183,
+    "workbook_co2e_mt": 14925.1183,
+    "difference_mt": 13432.60647,
+    "variance_percent": 900.0,
+    "materiality_result": "Above threshold",
+    "status": "flagged",
+    "calculation_status": "computed"
+  },
+  {
+    "calculation_id": "CALC-BLR003-2023-009",
+    "source_or_fuel": "BLR-003 biomass activity",
+    "linked_evidence_ids": [
+      "EV-BLR003-2023-008",
+      "EV-BLR003-2023-009",
+      "EV-LAB-2023-001"
+    ],
+    "workbook_location": {
+      "sheet_name": "Biomass Boiler",
+      "cell_or_range": "B10:G11",
+      "reported_activity_mmbtu": null,
+      "formula": null
+    },
+    "activity_quantity": 490,
+    "activity_unit": "short tons",
+    "normalization_note": "Requires validated heat-content conversion for finalized MMBtu normalization.",
+    "factor_id": "BIOMASS_METHOD_REQUIRED",
+    "factor_source": "Needs confirmation",
+    "formula_ids": [
+      "V-002"
+    ],
+    "co2_kg": null,
+    "ch4_kg": null,
+    "n2o_kg": null,
+    "biogenic_co2_kg": null,
+    "gwp_basis": "Needs confirmation",
+    "recalculated_co2e_mt": null,
+    "workbook_co2e_mt": null,
+    "difference_mt": null,
+    "variance_percent": null,
+    "materiality_result": "Needs confirmation",
+    "status": "flagged",
+    "calculation_status": "not_computed_in_current_demo",
+    "reason": "Required validated biomass method input is unavailable."
+  },
+  {
+    "calculation_id": "CALC-NG-2023-012",
+    "source_or_fuel": "Natural gas - December cross-year period",
+    "linked_evidence_ids": [
+      "EV-NG-2023-012"
+    ],
+    "workbook_location": {
+      "sheet_name": "Natural Gas",
+      "cell_or_range": "D14",
+      "reported_activity_mmbtu": 31700,
+      "formula": null
+    },
+    "activity_quantity": 32800,
+    "activity_unit": "MMBtu",
+    "normalization_note": "Cross-year allocation required before finalized calculation.",
+    "factor_id": "EPA_HUB_2025_SC_NATURAL_GAS",
+    "factor_source": "sustentra_emission_factor_library v1.0.0",
+    "formula_ids": [
+      "R-001",
+      "F-007"
+    ],
+    "co2_kg": null,
+    "ch4_kg": null,
+    "n2o_kg": null,
+    "biogenic_co2_kg": 0.0,
+    "gwp_basis": "IPCC_AR6_100_YEAR_COMBUSTION",
+    "recalculated_co2e_mt": null,
+    "workbook_co2e_mt": null,
+    "difference_mt": null,
+    "variance_percent": null,
+    "materiality_result": "Needs confirmation",
+    "status": "flagged",
+    "calculation_status": "not_computed_in_current_demo",
+    "reason": "Required validated period-allocation input is unavailable."
+  }
+]

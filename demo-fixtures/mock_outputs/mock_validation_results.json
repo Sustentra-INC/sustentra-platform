@@ -1,0 +1,106 @@
+[
+  {
+    "validation_id": "VAL-NG-2023-010",
+    "evidence_id": "EV-NG-2023-010",
+    "record_label": "October natural gas bill",
+    "checks": [
+      {
+        "check_id": "facility_match",
+        "label": "Facility match",
+        "status": "pass",
+        "observed": "Baldwinsville facility",
+        "expected": "Baldwinsville facility",
+        "explanation": "Service address matches the selected facility."
+      },
+      {
+        "check_id": "fuel_identified",
+        "label": "Fuel identified",
+        "status": "pass",
+        "observed": "Natural gas",
+        "expected": "Natural gas",
+        "explanation": "Document fuel description matches natural gas source expectations."
+      },
+      {
+        "check_id": "reporting_period_check",
+        "label": "Reporting-period check",
+        "status": "pass",
+        "observed": "October 1-31, 2023",
+        "expected": "2023-01-01 to 2023-12-31",
+        "explanation": "Service period is within the selected 2023 reporting period."
+      },
+      {
+        "check_id": "workbook_reconciliation",
+        "label": "Workbook reconciliation",
+        "status": "fail",
+        "linked_gap_ticket_id": "GT-DEMO-GAP-003",
+        "observed": "Workbook: 281,000 MMBtu",
+        "expected": "Source bill: 28,100 MMBtu",
+        "explanation": "Workbook quantity is ten times the linked source-bill quantity."
+      }
+    ],
+    "overall_status": "flagged",
+    "next_check": "Emission-factor alignment"
+  },
+  {
+    "validation_id": "VAL-BLR003-2023-009",
+    "evidence_id": "EV-BLR003-2023-009",
+    "record_label": "BLR-003 September biomass record",
+    "checks": [
+      {
+        "check_id": "fuel_identified",
+        "label": "Fuel identified",
+        "status": "pass",
+        "observed": "Solid Biomass Residue",
+        "expected": "Solid Biomass Residue",
+        "explanation": "Fuel type extraction is consistent across evidence fields."
+      },
+      {
+        "check_id": "factor_alignment",
+        "label": "Factor alignment",
+        "status": "fail",
+        "linked_gap_ticket_id": "GT-DEMO-GAP-005",
+        "observed": "Natural gas factor EPA_HUB_2025_SC_NATURAL_GAS",
+        "expected": "Biomass-aligned factor and treatment support",
+        "explanation": "Biomass activity is associated with a natural-gas factor."
+      }
+    ],
+    "overall_status": "fail",
+    "next_check": "Biogenic and fossil treatment review"
+  },
+  {
+    "validation_id": "VAL-LAB-2023-001",
+    "evidence_id": "EV-LAB-2023-001",
+    "record_label": "Biomass sampling support",
+    "checks": [
+      {
+        "check_id": "sampling_chain",
+        "label": "Sampling-chain support",
+        "status": "fail",
+        "linked_gap_ticket_id": "GT-DEMO-GAP-006",
+        "observed": "Single lab report",
+        "expected": "Weekly logs and composite preparation support",
+        "explanation": "Biomass monthly composite support is incomplete."
+      }
+    ],
+    "overall_status": "flagged",
+    "next_check": "Client evidence request routing"
+  },
+  {
+    "validation_id": "VAL-NG-2023-012",
+    "evidence_id": "EV-NG-2023-012",
+    "record_label": "December cross-year bill",
+    "checks": [
+      {
+        "check_id": "period_cutoff",
+        "label": "Reporting-period check",
+        "status": "flag",
+        "linked_gap_ticket_id": "GT-DEMO-GAP-009",
+        "observed": "Service period extends into 2024",
+        "expected": "Year-specific allocation between 2023 and 2024",
+        "explanation": "Cross-year billing evidence needs allocation support."
+      }
+    ],
+    "overall_status": "flagged",
+    "next_check": "Cutoff and allocation support"
+  }
+]

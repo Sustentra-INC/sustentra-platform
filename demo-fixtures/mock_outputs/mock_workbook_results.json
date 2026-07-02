@@ -1,0 +1,93 @@
+[
+  {
+    "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+    "sheet_name": "Cover",
+    "cell_or_range": "B10:C11",
+    "observation_type": "engagement_context",
+    "displayed_value": "Regulatory Basis = NY Part 253; Calculation Standard = 40 CFR Part 98 Subpart C",
+    "related_gap_ticket_ids": []
+  },
+  {
+    "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+    "sheet_name": "Equipment Inventory",
+    "cell_or_range": "H3:H6",
+    "observation_type": "methodology_note",
+    "displayed_value": "Pilot lights excluded per 40 CFR \u00a798.30(d)",
+    "related_gap_ticket_ids": [
+      "GT-DEMO-GAP-002"
+    ]
+  },
+  {
+    "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+    "sheet_name": "Natural Gas",
+    "cell_or_range": "D12",
+    "observation_type": "reported_value",
+    "displayed_value": 281000,
+    "unit": "MMBtu",
+    "related_gap_ticket_ids": [
+      "GT-DEMO-GAP-003"
+    ]
+  },
+  {
+    "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+    "sheet_name": "Emissions Summary",
+    "cell_or_range": "A3:G3",
+    "observation_type": "aggregation_structure",
+    "displayed_value": "Natural Gas Boilers + Diesel Generator",
+    "related_gap_ticket_ids": [
+      "GT-DEMO-GAP-004"
+    ]
+  },
+  {
+    "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+    "sheet_name": "Biomass Boiler",
+    "cell_or_range": "B10:G11",
+    "observation_type": "factor_application",
+    "displayed_value": "Solid Biomass Residue rows use CO2 EF Applied = 53.06 kg CO2/MMBtu",
+    "related_gap_ticket_ids": [
+      "GT-DEMO-GAP-005"
+    ]
+  },
+  {
+    "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+    "sheet_name": "Natural Gas",
+    "cell_or_range": "D14",
+    "observation_type": "estimated_or_substituted_value",
+    "displayed_value": 31700,
+    "unit": "MMBtu",
+    "related_gap_ticket_ids": [
+      "GT-DEMO-GAP-007",
+      "GT-DEMO-GAP-009"
+    ]
+  },
+  {
+    "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+    "sheet_name": "Natural Gas",
+    "cell_or_range": "B14:C14",
+    "observation_type": "period_cutoff",
+    "displayed_value": "2023-12-01 to 2023-12-31",
+    "related_gap_ticket_ids": [
+      "GT-DEMO-GAP-009"
+    ]
+  },
+  {
+    "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+    "sheet_name": "Natural Gas",
+    "cell_or_range": "L2",
+    "observation_type": "gwp_basis",
+    "displayed_value": "CO2e (metric tons) \u26a0 GWP-100 APPLIED (NY req. GWP-20)",
+    "related_gap_ticket_ids": [
+      "GT-DEMO-GAP-010"
+    ]
+  },
+  {
+    "workbook_id": "AB_Baldwinsville_Scope1_Workbook",
+    "sheet_name": "Emissions Summary",
+    "cell_or_range": "G2",
+    "observation_type": "gwp_basis",
+    "displayed_value": "CO2e (metric tons) \u26a0 GWP-100 BASIS (NY req. GWP-20)",
+    "related_gap_ticket_ids": [
+      "GT-DEMO-GAP-010"
+    ]
+  }
+]

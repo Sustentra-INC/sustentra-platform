@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/document.schema.json",
+  "title": "Document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "document_id",
+    "engagement_id",
+    "file_name",
+    "mime_type",
+    "storage_uri",
+    "document_role",
+    "document_type",
+    "uploaded_by",
+    "uploaded_at",
+    "processing_status"
+  ],
+  "properties": {
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "engagement_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "file_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mime_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "storage_uri": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_role": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_type": {
+      "type": "string",
+      "minLength": 1
+    },
+    "uploaded_by": {
+      "type": "string",
+      "minLength": 1
+    },
+    "uploaded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "processing_status": {
+      "type": "string",
+      "enum": [
+        "not_started",
+        "queued",
+        "in_progress",
+        "completed",
+        "failed"
+      ]
+    }
+  }
+}
