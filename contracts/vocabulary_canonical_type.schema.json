@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/vocabulary_canonical_type.schema.json",
+  "title": "Vocabulary Canonical Type",
+  "description": "One row from Vocabulary_Library_v1.0.xlsx sheet Canonical_Types. This is reference data for document identification only; it does not define extraction anchors, regulatory requirements, or verification rules.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "canonical_type_id",
+    "canonical_name",
+    "definition",
+    "data_category",
+    "population_status",
+    "source_version",
+    "last_reviewed"
+  ],
+  "properties": {
+    "canonical_type_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^CT-[A-Z0-9]+(?:-[A-Z0-9]+)*$",
+      "description": "Stable canonical document type identifier. This is the primary key that downstream classification outputs should use."
+    },
+    "canonical_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable name for this canonical document type."
+    },
+    "definition": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Business definition of the canonical document type."
+    },
+    "data_category": {
+      "type": "string",
+      "minLength": 1,
+      "description": "High-level evidence/data category controlled by the Vocabulary Library workbook. Examples may include activity_data, calculation_workbook, emission_factor, supporting_evidence, methodology_document, attestation, or other."
+    },
+    "ghg_scope": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "GHG scope or applicability label when relevant. Null when not scope-specific."
+    },
+    "content_inventory_coarse": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Coarse inventory/content class used by classification and engagement setup."
+    },
+    "common_aliases": {
+      "description": "Optional aliases. Current workbook values may be pipe-delimited strings; future loaders may normalize to arrays.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "source_basis": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Basis/source for including this canonical type, if provided in the workbook."
+    },
+    "population_status": {
+      "type": "string",
+      "enum": [
+        "populated",
+        "provisional",
+        "deprecated",
+        "archived"
+      ],
+      "description": "Reference-data lifecycle status."
+    },
+    "source_version": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Version of the source vocabulary/library row."
+    },
+    "last_reviewed": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "description": "Last review date in YYYY-MM-DD format."
+    }
+  },
+  "examples": [
+    {
+      "canonical_type_id": "CT-S1-NATURAL-GAS-UTILITY-BILL",
+      "canonical_name": "Natural gas utility bill",
+      "definition": "Utility bill or statement evidencing natural gas activity data for a facility or account.",
+      "data_category": "activity_data",
+      "ghg_scope": "Scope 1",
+      "content_inventory_coarse": "stationary_combustion",
+      "common_aliases": "gas bill|utility bill|fuel invoice",
+      "source_basis": "Vocabulary_Library_v1.0",
+      "population_status": "provisional",
+      "source_version": "v1.0",
+      "last_reviewed": "2026-06-01"
+    }
+  ]
+}

@@ -11,24 +11,26 @@ class CreateDocumentRequest(BaseModel):
     mime_type: str
     storage_uri: str
     document_role: str
-    document_type: str
+    document_type: str | None = None
     uploaded_by: str
 
 
 @router.post("/engagements/{engagement_id}/documents")
 def create_document(engagement_id: str, payload: CreateDocumentRequest) -> dict[str, str]:
-    return {
+    response = {
         "document_id": "doc_demo_001",
         "engagement_id": engagement_id,
         "file_name": payload.file_name,
         "mime_type": payload.mime_type,
         "storage_uri": payload.storage_uri,
         "document_role": payload.document_role,
-        "document_type": payload.document_type,
         "uploaded_by": payload.uploaded_by,
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
         "processing_status": "queued"
     }
+    if payload.document_type is not None:
+        response["document_type"] = payload.document_type
+    return response
 
 
 @router.get("/engagements/{engagement_id}/documents")

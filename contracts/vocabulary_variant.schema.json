@@ -1,0 +1,177 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/vocabulary_variant.schema.json",
+  "title": "Vocabulary Variant",
+  "description": "One row from Vocabulary_Library_v1.0.xlsx sheet Variants. Variants contain matching signals that map real-world files to a canonical_type_id.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "variant_id",
+    "canonical_type_id",
+    "variant_archetype",
+    "filename_patterns",
+    "layout_features",
+    "header_terms",
+    "key_phrases",
+    "multi_type",
+    "confidence_threshold_default",
+    "calibration_status",
+    "population_status"
+  ],
+  "properties": {
+    "variant_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^VR-[A-Z0-9]+(?:-[A-Z0-9]+)*$",
+      "description": "Stable identifier for a matching variant/archetype."
+    },
+    "canonical_type_id": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^CT-[A-Z0-9]+(?:-[A-Z0-9]+)*$",
+      "description": "Foreign key to Vocabulary Canonical Type."
+    },
+    "variant_archetype": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable variant/archetype description."
+    },
+    "issuer_origin": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Issuer, vendor, utility, regulator, registry, or other origin category when known."
+    },
+    "jurisdiction_region": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Jurisdiction or region signal when relevant."
+    },
+    "filename_patterns": {
+      "description": "Filename matching signals. Current workbook values may be pipe-delimited strings; future loaders may normalize to arrays.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      ]
+    },
+    "layout_features": {
+      "description": "Layout and visual signals used by a classifier.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      ]
+    },
+    "header_terms": {
+      "description": "Header/title terms that indicate this variant.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      ]
+    },
+    "key_phrases": {
+      "description": "Characteristic phrases or labels that indicate this variant.",
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        }
+      ]
+    },
+    "multi_type": {
+      "type": "boolean",
+      "description": "True when a single file may contain multiple canonical document types."
+    },
+    "confidence_threshold_default": {
+      "description": "Default match threshold. Allows numeric values and provisional workbook strings such as '0.80 (provisional)'.",
+      "oneOf": [
+        {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-1](?:\\.\\d+)?(?:\\s*\\([^)]*\\))?$"
+        }
+      ]
+    },
+    "calibration_status": {
+      "type": "string",
+      "enum": [
+        "provisional",
+        "calibrated",
+        "needs_review",
+        "deprecated"
+      ],
+      "description": "Whether the matching signals/threshold have been calibrated against real documents."
+    },
+    "source_exemplar": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional exemplar file/source reference used to populate this variant."
+    },
+    "population_status": {
+      "type": "string",
+      "enum": [
+        "populated",
+        "provisional",
+        "deprecated",
+        "archived"
+      ],
+      "description": "Reference-data lifecycle status."
+    }
+  },
+  "examples": [
+    {
+      "variant_id": "VR-S1-NATURAL-GAS-UTILITY-BILL-UTILITY-INVOICE",
+      "canonical_type_id": "CT-S1-NATURAL-GAS-UTILITY-BILL",
+      "variant_archetype": "Retail natural gas utility invoice",
+      "issuer_origin": "utility",
+      "jurisdiction_region": "US",
+      "filename_patterns": "gas|utility|invoice|bill",
+      "layout_features": "account summary|billing period|usage table",
+      "header_terms": "Natural Gas|Gas Usage|Billing Period",
+      "key_phrases": "therms|MMBtu|meter number|service address",
+      "multi_type": false,
+      "confidence_threshold_default": "0.80 (provisional)",
+      "calibration_status": "provisional",
+      "source_exemplar": null,
+      "population_status": "provisional"
+    }
+  ]
+}

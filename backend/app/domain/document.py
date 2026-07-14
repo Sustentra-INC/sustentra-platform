@@ -10,7 +10,7 @@ class Document(BaseModel):
     mime_type: str
     storage_uri: str
     document_role: str
-    document_type: str
+    document_type: str | None = None
     uploaded_by: str
     uploaded_at: str
     processing_status: str

@@ -1,0 +1,335 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/document_classification_result.schema.json",
+  "title": "Document Classification Result",
+  "description": "Runtime output from S1 document classification. This is the authoritative place for predicted canonical_type_id(s), separate from uploaded Document metadata.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "classification_result_id",
+    "document_id",
+    "engagement_id",
+    "status",
+    "primary_canonical_type_id",
+    "candidate_matches",
+    "review_required",
+    "created_at"
+  ],
+  "properties": {
+    "classification_result_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "engagement_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "processing_run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "classified",
+        "low_confidence",
+        "multi_type_candidate",
+        "unclassified",
+        "failed"
+      ],
+      "description": "Classifier status. Low-confidence and multi-type candidates should route to human review."
+    },
+    "primary_canonical_type_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^CT-[A-Z0-9]+(?:-[A-Z0-9]+)*$",
+      "description": "Best canonical type match, or null if unclassified/failed."
+    },
+    "primary_variant_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^VR-[A-Z0-9]+(?:-[A-Z0-9]+)*$",
+      "description": "Best matching variant, if applicable."
+    },
+    "confidence": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "threshold": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "candidate_matches": {
+      "type": "array",
+      "description": "All candidate canonical type matches considered by the classifier.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "canonical_type_id",
+          "confidence",
+          "matched_signals"
+        ],
+        "properties": {
+          "canonical_type_id": {
+            "type": "string",
+            "pattern": "^CT-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+          },
+          "variant_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^VR-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "threshold": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "matched_signals": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "filename_patterns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "layout_features": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "header_terms": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "key_phrases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "default": []
+              },
+              "llm_proposal": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional model-proposed classification label before vocabulary resolution."
+              },
+              "manual_override": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Optional human-provided override signal."
+              }
+            }
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "review_required": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      },
+      "default": []
+    },
+    "matched_signals": {
+      "description": "Summary of matched signals for the primary result.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "filename_patterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "layout_features": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "header_terms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "key_phrases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "llm_proposal": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "manual_override": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "review_required": {
+      "type": "boolean"
+    },
+    "classifier_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "review_decision": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "accepted",
+        "corrected",
+        "rejected",
+        "pending",
+        null
+      ]
+    },
+    "reviewed_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "reviewed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "examples": [
+    {
+      "classification_result_id": "CLS-0001",
+      "document_id": "DOC-0001",
+      "engagement_id": "ENG-0001",
+      "processing_run_id": "RUN-0001",
+      "status": "classified",
+      "primary_canonical_type_id": "CT-S1-NATURAL-GAS-UTILITY-BILL",
+      "primary_variant_id": "VR-S1-NATURAL-GAS-UTILITY-BILL-UTILITY-INVOICE",
+      "confidence": 0.91,
+      "threshold": 0.8,
+      "candidate_matches": [
+        {
+          "canonical_type_id": "CT-S1-NATURAL-GAS-UTILITY-BILL",
+          "variant_id": "VR-S1-NATURAL-GAS-UTILITY-BILL-UTILITY-INVOICE",
+          "confidence": 0.91,
+          "threshold": 0.8,
+          "matched_signals": {
+            "filename_patterns": [
+              "gas",
+              "bill"
+            ],
+            "header_terms": [
+              "Natural Gas"
+            ],
+            "key_phrases": [
+              "MMBtu"
+            ],
+            "layout_features": [
+              "usage table"
+            ],
+            "llm_proposal": null,
+            "manual_override": null
+          },
+          "reason": "Matched utility bill filename/header/usage signals.",
+          "review_required": false
+        }
+      ],
+      "matched_signals": {
+        "filename_patterns": [
+          "gas",
+          "bill"
+        ],
+        "layout_features": [
+          "usage table"
+        ],
+        "header_terms": [
+          "Natural Gas"
+        ],
+        "key_phrases": [
+          "MMBtu"
+        ],
+        "llm_proposal": null,
+        "manual_override": null
+      },
+      "review_required": false,
+      "classifier_version": "classification-v0",
+      "notes": null,
+      "review_decision": "pending",
+      "reviewed_by": null,
+      "reviewed_at": null,
+      "created_at": "2026-06-28T00:00:00Z"
+    }
+  ]
+}

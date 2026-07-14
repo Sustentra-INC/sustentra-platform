@@ -28,3 +28,8 @@ tmp/
 
 # Cloud/local credentials
 .aws/
+
+# Keep versioned assets tracked
+# backend/tests/
+# contracts/
+# docs/

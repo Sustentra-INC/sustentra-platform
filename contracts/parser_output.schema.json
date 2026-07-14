@@ -1,0 +1,609 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/parser_output.schema.json",
+  "title": "Parser Output",
+  "description": "Normalized, tool-agnostic output from OCR/PDF/Excel/image parsers before field extraction.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "parser_output_id",
+    "document_id",
+    "processing_run_id",
+    "parser_name",
+    "parser_version",
+    "status",
+    "created_at",
+    "pages",
+    "tables",
+    "key_value_pairs",
+    "text_blocks",
+    "source_references",
+    "warnings"
+  ],
+  "properties": {
+    "parser_output_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "processing_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "parser_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Parser or adapter name, such as textract, pdfplumber, pymupdf, openpyxl, image_ocr."
+    },
+    "parser_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "parsed",
+        "partial",
+        "empty",
+        "failed"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "page_number",
+          "text"
+        ],
+        "properties": {
+          "page_number": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "width": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "height": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "pixel",
+              "point",
+              "inch",
+              "unknown",
+              null
+            ]
+          }
+        }
+      },
+      "default": []
+    },
+    "text_blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "block_id",
+          "text"
+        ],
+        "properties": {
+          "block_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "page_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "text": {
+            "type": "string"
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "bounding_box": {
+            "description": "Optional normalized bounding box for document source traceability. Coordinates should be normalized 0-1 when available.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "left",
+                  "top",
+                  "width",
+                  "height"
+                ],
+                "properties": {
+                  "left": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "top": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "width": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "normalized",
+                      "pixel",
+                      "point"
+                    ],
+                    "default": "normalized"
+                  },
+                  "page_width": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "page_height": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0
+                  }
+                }
+              }
+            ]
+          },
+          "source_reference_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "default": []
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "table_id",
+          "rows"
+        ],
+        "properties": {
+          "table_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "page_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "sheet_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "type": [
+                  "string",
+                  "number",
+                  "integer",
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "default": []
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "bounding_box": {
+            "description": "Optional normalized bounding box for document source traceability. Coordinates should be normalized 0-1 when available.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "left",
+                  "top",
+                  "width",
+                  "height"
+                ],
+                "properties": {
+                  "left": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "top": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "width": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "normalized",
+                      "pixel",
+                      "point"
+                    ],
+                    "default": "normalized"
+                  },
+                  "page_width": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "page_height": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0
+                  }
+                }
+              }
+            ]
+          },
+          "source_reference_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "default": []
+    },
+    "key_value_pairs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "pair_id",
+          "key",
+          "value"
+        ],
+        "properties": {
+          "pair_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "page_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "sheet_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "value": {
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "key_source_reference_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value_source_reference_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "default": []
+    },
+    "source_references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_reference_id",
+          "document_id"
+        ],
+        "properties": {
+          "source_reference_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "document_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "page_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "sheet_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cell_or_range": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text_snippet": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bounding_box": {
+            "description": "Optional normalized bounding box for document source traceability. Coordinates should be normalized 0-1 when available.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "left",
+                  "top",
+                  "width",
+                  "height"
+                ],
+                "properties": {
+                  "left": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "top": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "width": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "normalized",
+                      "pixel",
+                      "point"
+                    ],
+                    "default": "normalized"
+                  },
+                  "page_width": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "page_height": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0
+                  }
+                }
+              }
+            ]
+          },
+          "parser_block_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true,
+            "default": []
+          },
+          "source_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional source type such as page_text, table_cell, key_value_pair, excel_cell, image_region.",
+            "enum": [
+              "page_text",
+              "table_cell",
+              "key_value_pair",
+              "excel_cell",
+              "image_region",
+              "manual",
+              null
+            ]
+          }
+        }
+      },
+      "default": []
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "info",
+              "warning",
+              "error"
+            ],
+            "default": "warning"
+          }
+        }
+      },
+      "default": []
+    },
+    "raw_artifact_uri": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional object-storage URI for raw parser/OCR output."
+    }
+  },
+  "examples": [
+    {
+      "parser_output_id": "PO-0001",
+      "document_id": "DOC-0001",
+      "processing_run_id": "RUN-0001",
+      "parser_name": "textract",
+      "parser_version": "v0",
+      "status": "parsed",
+      "created_at": "2026-06-28T00:00:00Z",
+      "pages": [
+        {
+          "page_number": 1,
+          "text": "Natural Gas Bill Total Usage 28,100 MMBtu",
+          "width": null,
+          "height": null,
+          "unit": "unknown"
+        }
+      ],
+      "text_blocks": [
+        {
+          "block_id": "blk-1",
+          "page_number": 1,
+          "text": "Total Usage 28,100 MMBtu",
+          "confidence": 0.97,
+          "bounding_box": null,
+          "source_reference_id": "SRC-0001"
+        }
+      ],
+      "tables": [],
+      "key_value_pairs": [],
+      "source_references": [
+        {
+          "source_reference_id": "SRC-0001",
+          "document_id": "DOC-0001",
+          "page_number": 1,
+          "sheet_name": null,
+          "cell_or_range": null,
+          "text_snippet": "Total Usage 28,100 MMBtu",
+          "bounding_box": null,
+          "parser_block_ids": [
+            "blk-1"
+          ],
+          "source_kind": "page_text"
+        }
+      ],
+      "warnings": [],
+      "raw_artifact_uri": null
+    }
+  ]
+}

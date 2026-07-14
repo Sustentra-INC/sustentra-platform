@@ -1,0 +1,379 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/gap_record_v0.schema.json",
+  "title": "Gap Record V0",
+  "description": "Stage-specific failure/issue record produced by S1 or later pipeline stages. This is not the final S3 gap ticket; it records what failed, where, and why.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "gap_record_id",
+    "engagement_id",
+    "stage",
+    "status",
+    "issue_type",
+    "summary",
+    "created_at",
+    "source"
+  ],
+  "properties": {
+    "gap_record_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "engagement_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "processing_run_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "evidence_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "field_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "canonical_type_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^CT-[A-Z0-9]+(?:-[A-Z0-9]+)*$"
+    },
+    "stage": {
+      "type": "string",
+      "enum": [
+        "S1_DOCUMENT_REGISTRATION",
+        "S1_PARSING",
+        "S1_CLASSIFICATION",
+        "S1_EXTRACTION",
+        "S1_REVIEW",
+        "COMPLETENESS_GATE",
+        "S2A_REGULATION_BENCHMARKING",
+        "S2B_METHODOLOGY_BENCHMARKING",
+        "S3_GAP_ANALYSIS",
+        "RAG_READ_LAYER"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "open",
+        "in_review",
+        "resolved",
+        "dismissed",
+        "superseded"
+      ]
+    },
+    "issue_type": {
+      "type": "string",
+      "enum": [
+        "missing_document",
+        "unclassifiable_document",
+        "low_confidence_classification",
+        "parser_failed",
+        "empty_parser_output",
+        "field_not_found",
+        "ambiguous_value",
+        "suspicious_value",
+        "source_reference_missing",
+        "unit_missing",
+        "unit_invalid",
+        "review_required",
+        "review_rejected",
+        "approved_value_missing",
+        "completeness_failed",
+        "regulatory_requirement_failed",
+        "methodology_failed",
+        "system_error"
+      ]
+    },
+    "severity": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "informational",
+        "low",
+        "medium",
+        "high",
+        "critical",
+        null
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "details": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "expected": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "object",
+        "array",
+        "null"
+      ],
+      "description": "Expected value/condition when available."
+    },
+    "observed": {
+      "type": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "object",
+        "array",
+        "null"
+      ],
+      "description": "Observed value/condition when available."
+    },
+    "source_references": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "source_reference_id",
+          "document_id"
+        ],
+        "properties": {
+          "source_reference_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "document_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "page_number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "sheet_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "cell_or_range": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text_snippet": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "bounding_box": {
+            "description": "Optional normalized bounding box for document source traceability. Coordinates should be normalized 0-1 when available.",
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "left",
+                  "top",
+                  "width",
+                  "height"
+                ],
+                "properties": {
+                  "left": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "top": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "width": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "unit": {
+                    "type": "string",
+                    "enum": [
+                      "normalized",
+                      "pixel",
+                      "point"
+                    ],
+                    "default": "normalized"
+                  },
+                  "page_width": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "page_height": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "minimum": 0
+                  }
+                }
+              }
+            ]
+          },
+          "parser_block_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "uniqueItems": true,
+            "default": []
+          },
+          "source_kind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional source type such as page_text, table_cell, key_value_pair, excel_cell, image_region.",
+            "enum": [
+              "page_text",
+              "table_cell",
+              "key_value_pair",
+              "excel_cell",
+              "image_region",
+              "manual",
+              null
+            ]
+          }
+        }
+      },
+      "default": []
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "system_component"
+      ],
+      "properties": {
+        "system_component": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Subsystem or checker that emitted this gap record."
+        },
+        "rule_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checker_version": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "related_contract": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional schema/object contract associated with the failure, such as extraction_candidate or parser_output."
+    },
+    "downstream_blocking": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "Whether this issue blocks downstream processing."
+    },
+    "recommended_action": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "resolved_by": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "resolved_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    }
+  },
+  "examples": [
+    {
+      "gap_record_id": "GR-S1-0001",
+      "engagement_id": "ENG-0001",
+      "document_id": "DOC-0001",
+      "processing_run_id": "RUN-0001",
+      "evidence_id": "EV-0001",
+      "field_id": "activity_quantity",
+      "canonical_type_id": "CT-S1-NATURAL-GAS-UTILITY-BILL",
+      "stage": "S1_EXTRACTION",
+      "status": "open",
+      "issue_type": "field_not_found",
+      "severity": "medium",
+      "summary": "Activity quantity could not be extracted from the classified natural gas bill.",
+      "details": "The parser output did not contain a confident usage quantity near expected anchors.",
+      "expected": "A positive quantity with a recognized unit such as MMBtu or therms.",
+      "observed": null,
+      "source_references": [],
+      "source": {
+        "system_component": "extraction_service",
+        "rule_id": "EC-S1-NG-BILL-ACTIVITY-QUANTITY",
+        "checker_version": "v0.1"
+      },
+      "related_contract": "extraction_candidate",
+      "downstream_blocking": true,
+      "recommended_action": "Route to human review or request supporting document clarification.",
+      "created_at": "2026-06-28T00:00:00Z",
+      "resolved_by": null,
+      "resolved_at": null
+    }
+  ]
+}

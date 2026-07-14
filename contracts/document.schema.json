@@ -11,7 +11,6 @@
     "mime_type",
     "storage_uri",
     "document_role",
-    "document_type",
     "uploaded_by",
     "uploaded_at",
     "processing_status"
@@ -43,7 +42,8 @@
     },
     "document_type": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "Optional user-supplied or legacy provisional document type. The authoritative classifier output is stored in document_classification_result."
     },
     "uploaded_by": {
       "type": "string",

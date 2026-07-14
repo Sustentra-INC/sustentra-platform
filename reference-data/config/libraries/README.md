@@ -20,3 +20,7 @@ For the demo, Streamlit and backend adapter code should read canonical copies fr
 
 Root-level JSON files are preserved as original working copies and should not be deleted until all code paths are standardized.
 
+reference-data/config/libraries = legacy/demo/reference JSON libraries
+reference-data/vocab-library = active document-identification vocabulary source
+reference-data/methodology = Subsystem 2 methodology schema source files
+reference-data/*.json = preserved root JSON assets from prior demo

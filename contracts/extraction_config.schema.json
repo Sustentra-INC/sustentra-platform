@@ -1,0 +1,337 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/extraction_config.schema.json",
+  "title": "Extraction Configuration",
+  "description": "Configuration that tells the extraction layer how to extract a field from a document classified as a canonical_type_id. This is separate from the Vocabulary Library and regulatory verification rules.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "extraction_config_id",
+    "field_id",
+    "field_label",
+    "canonical_type_id",
+    "value_type",
+    "required_status",
+    "source_reference_required",
+    "extraction_methods",
+    "normalization",
+    "population_status",
+    "version"
+  ],
+  "properties": {
+    "extraction_config_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "field_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable field identifier for extraction, usually aligned later to a regulatory or product field ID."
+    },
+    "field_label": {
+      "type": "string",
+      "minLength": 1
+    },
+    "description": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "canonical_type_id": {
+      "type": "string",
+      "pattern": "^CT-[A-Z0-9]+(?:-[A-Z0-9]+)*$",
+      "description": "Document canonical type this extraction configuration applies to."
+    },
+    "value_type": {
+      "type": "string",
+      "enum": [
+        "string",
+        "number",
+        "integer",
+        "boolean",
+        "date",
+        "date_range",
+        "currency",
+        "quantity",
+        "percentage",
+        "object",
+        "array"
+      ]
+    },
+    "required_status": {
+      "type": "string",
+      "enum": [
+        "core",
+        "conditional",
+        "optional",
+        "derived"
+      ],
+      "description": "Whether this field is required for the applicable extraction context. Regulatory requiredness is defined separately."
+    },
+    "expected_units": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "source_reference_required": {
+      "type": "boolean"
+    },
+    "anchor_labels": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "value_patterns": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "unit_patterns": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "table_hints": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "sheet_hints": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "validation_hints": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "extraction_methods": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "anchor_text",
+          "regex",
+          "table_lookup",
+          "key_value_pair",
+          "excel_cell",
+          "llm_structured",
+          "manual_entry"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "normalization": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Normalization instructions for raw extracted values.",
+      "properties": {
+        "target_unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "date_format": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "number_format": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "allowed_values": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "null"
+            ]
+          },
+          "default": []
+        },
+        "unit_conversion_allowed": {
+          "type": "boolean",
+          "default": false
+        },
+        "trim_whitespace": {
+          "type": "boolean",
+          "default": true
+        },
+        "remove_thousands_separators": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    },
+    "regulatory_field_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Optional future link to a regulatory schema field. Not required for PR1."
+    },
+    "notes": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "population_status": {
+      "type": "string",
+      "enum": [
+        "populated",
+        "provisional",
+        "deprecated",
+        "archived"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "last_reviewed": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+    }
+  },
+  "examples": [
+    {
+      "extraction_config_id": "EC-S1-NG-BILL-ACTIVITY-QUANTITY",
+      "field_id": "activity_quantity",
+      "field_label": "Activity quantity",
+      "description": "Natural gas quantity used during the bill service period.",
+      "canonical_type_id": "CT-S1-NATURAL-GAS-UTILITY-BILL",
+      "value_type": "quantity",
+      "required_status": "core",
+      "expected_units": [
+        "MMBtu",
+        "therm",
+        "ccf"
+      ],
+      "source_reference_required": true,
+      "anchor_labels": "Total Usage|Gas Used|Usage",
+      "value_patterns": "\\d[\\d,]*(?:\\.\\d+)?",
+      "unit_patterns": "MMBtu|therms|ccf",
+      "table_hints": "usage table|billing summary",
+      "sheet_hints": null,
+      "validation_hints": "Must be positive and tied to the bill service period.",
+      "extraction_methods": [
+        "anchor_text",
+        "key_value_pair",
+        "llm_structured"
+      ],
+      "normalization": {
+        "target_unit": "MMBtu",
+        "date_format": null,
+        "number_format": "decimal",
+        "allowed_values": [],
+        "unit_conversion_allowed": true,
+        "trim_whitespace": true,
+        "remove_thousands_separators": true
+      },
+      "regulatory_field_id": null,
+      "notes": null,
+      "population_status": "provisional",
+      "version": "v0.1",
+      "last_reviewed": null
+    }
+  ]
+}
