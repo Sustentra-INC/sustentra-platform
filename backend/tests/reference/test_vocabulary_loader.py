@@ -246,11 +246,12 @@ def test_load_default_vocabulary_library_if_reference_workbook_exists() -> None:
     except Exception as exc:  # pragma: no cover - environment dependent
         pytest.skip(f"No default vocabulary workbook available: {exc}")
 
-    try:
-        library = load_default_vocabulary_library(repo_root=repo_root)
-    except VocabularyDataError as exc:  # pragma: no cover - environment dependent
-        pytest.skip(f"Default workbook is present but contains invalid row data: {exc}")
+    library = load_default_vocabulary_library(repo_root=repo_root)
 
     assert workbook_path.exists()
-    assert len(library.canonical_types) >= 1
-    assert len(library.variants) >= 1
+    assert len(library.canonical_types) > 0
+    assert len(library.variants) > 0
+    assert len(library.canonical_by_id) == len(library.canonical_types)
+    assert len(library.variant_by_id) == len(library.variants)
+    for variant in library.variants:
+        assert 0 <= variant.confidence_threshold_default <= 1
