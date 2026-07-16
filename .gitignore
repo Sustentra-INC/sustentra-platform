@@ -26,6 +26,9 @@ data/outputs/
 tmp/
 .DS_Store
 
+# Local parser smoke-test samples and outputs
+local-samples/
+
 # Cloud/local credentials
 .aws/
 
