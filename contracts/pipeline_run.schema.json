@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/pipeline_run.schema.json",
+  "title": "PipelineRun",
+  "description": "Summary record for local backend orchestration runs (PR9).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "pipeline_run_id",
+    "engagement_id",
+    "evidence_id",
+    "document_id",
+    "processing_run_id",
+    "status",
+    "stage_statuses",
+    "input_file_name",
+    "canonical_type_id",
+    "canonical_type_source",
+    "classification_status",
+    "parser_status",
+    "target_count",
+    "candidate_count",
+    "found_candidate_count",
+    "missing_candidate_count",
+    "low_confidence_candidate_count",
+    "warnings",
+    "errors",
+    "created_at",
+    "completed_at",
+    "artifacts"
+  ],
+  "properties": {
+    "pipeline_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "engagement_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "document_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "processing_run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "partial",
+        "failed"
+      ]
+    },
+    "stage_statuses": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "parse",
+        "classify",
+        "target_plan",
+        "candidate_generation"
+      ],
+      "properties": {
+        "parse": {
+          "type": "string",
+          "enum": [
+            "not_started",
+            "completed",
+            "skipped",
+            "partial",
+            "failed"
+          ]
+        },
+        "classify": {
+          "type": "string",
+          "enum": [
+            "not_started",
+            "completed",
+            "skipped",
+            "partial",
+            "failed"
+          ]
+        },
+        "target_plan": {
+          "type": "string",
+          "enum": [
+            "not_started",
+            "completed",
+            "skipped",
+            "partial",
+            "failed"
+          ]
+        },
+        "candidate_generation": {
+          "type": "string",
+          "enum": [
+            "not_started",
+            "completed",
+            "skipped",
+            "partial",
+            "failed"
+          ]
+        }
+      }
+    },
+    "input_file_name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "canonical_type_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "canonical_type_source": {
+      "type": "string",
+      "enum": [
+        "classifier",
+        "override",
+        "none"
+      ]
+    },
+    "classification_status": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "parser_status": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "target_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "found_candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "missing_candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "low_confidence_candidate_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parser_output_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "candidate_output_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "approved_evidence_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}

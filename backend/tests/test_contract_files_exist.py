@@ -4,6 +4,7 @@ from pathlib import Path
 REQUIRED_CONTRACT_FILES = [
     "document.schema.json",
     "processing_run.schema.json",
+    "pipeline_run.schema.json",
     "source_reference.schema.json",
     "extraction_candidate.schema.json",
     "review_decision.schema.json",
