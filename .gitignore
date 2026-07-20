@@ -29,6 +29,9 @@ tmp/
 # Local parser smoke-test samples and outputs
 local-samples/
 
+# Local runtime data (review decisions, etc.)
+local-data/
+
 # Cloud/local credentials
 .aws/
 
