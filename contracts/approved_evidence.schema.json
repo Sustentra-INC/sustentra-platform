@@ -2,17 +2,27 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://sustentra.local/contracts/approved_evidence.schema.json",
   "title": "ApprovedEvidence",
+  "description": "Projection aggregate built from latest human review decisions (PR8).",
   "type": "object",
   "additionalProperties": false,
   "required": [
+    "approved_evidence_id",
     "evidence_id",
     "engagement_id",
     "document_id",
     "evidence_type",
     "review_status",
-    "fields"
+    "field_count",
+    "approved_field_count",
+    "fields",
+    "created_at",
+    "source_review_decision_ids"
   ],
   "properties": {
+    "approved_evidence_id": {
+      "type": "string",
+      "minLength": 1
+    },
     "evidence_id": {
       "type": "string",
       "minLength": 1
@@ -34,8 +44,17 @@
       "enum": [
         "in_review",
         "partially_approved",
-        "approved"
+        "approved",
+        "no_approved_fields"
       ]
+    },
+    "field_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "approved_field_count": {
+      "type": "integer",
+      "minimum": 0
     },
     "fields": {
       "type": "array",
@@ -44,15 +63,27 @@
         "additionalProperties": false,
         "required": [
           "field_name",
+          "display_label",
           "extracted_value",
           "approved_value",
-          "unit",
+          "approved_unit",
           "decision",
-          "source_reference"
+          "source_reference",
+          "review_decision_id",
+          "candidate_id",
+          "reviewer_id",
+          "reviewed_at",
+          "confidence",
+          "validation_flags"
         ],
         "properties": {
           "field_name": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
+          },
+          "display_label": {
+            "type": "string",
+            "minLength": 1
           },
           "extracted_value": {
             "type": [
@@ -70,7 +101,7 @@
               "null"
             ]
           },
-          "unit": {
+          "approved_unit": {
             "type": [
               "string",
               "null"
@@ -80,15 +111,52 @@
             "type": "string",
             "enum": [
               "accepted",
-              "edited",
-              "rejected",
-              "clarification_requested"
+              "edited"
             ]
           },
           "source_reference": {
             "type": "object"
+          },
+          "review_decision_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "candidate_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reviewer_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "validation_flags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
+      }
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source_review_decision_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
       }
     }
   }
