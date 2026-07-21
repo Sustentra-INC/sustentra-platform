@@ -38,3 +38,7 @@ Validation, calculation, and gap analysis remain deferred or demo-only until pow
 - Wire backend routers to real storage and parser adapters.
 - Connect frontend review workflow to backend pilot endpoints.
 - Align downstream validation/calculation/gap schemas with approved evidence outputs.
+
+## Backend Runtime Docs
+
+- Upload + local storage backend (PR10): `docs/upload_local_storage_backend.md`

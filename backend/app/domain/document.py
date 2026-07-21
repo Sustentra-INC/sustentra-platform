@@ -6,6 +6,7 @@ class Document(BaseModel):
 
     document_id: str
     engagement_id: str
+    evidence_id: str | None = None
     file_name: str
     mime_type: str
     storage_uri: str
