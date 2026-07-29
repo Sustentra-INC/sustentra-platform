@@ -1,0 +1,77 @@
+{
+  "document_id": "EV-MOBFUEL-002",
+  "document_type": "fleet_fuel_delivery_detail",
+  "canonical_type_id": "CT-S1-MOBFUEL",
+  "parser_output_file": "../parser_outputs/EV-MOBFUEL-002.parser_output.json",
+  "qa_pairs": [
+    {
+      "qa_id": "EV-MOBFUEL-002-Q001",
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "field_id": "activity_quantity",
+      "question": "What diesel quantity was delivered on ticket D2-23-0412?",
+      "answer": {
+        "value": 900,
+        "unit": "gallons",
+        "raw_value": "900",
+        "period_start": null,
+        "period_end": null,
+        "record_id": "D2-23-0412"
+      },
+      "source_expectation": {
+        "source_text_contains": "D2-23-0412",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": true
+      },
+      "expected_validation_flags": [],
+      "notes": "Multi-record row binding test. Current v0 may not bind row IDs to quantities reliably."
+    },
+    {
+      "qa_id": "EV-MOBFUEL-002-Q002",
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "field_id": "activity_quantity",
+      "question": "What diesel quantity was delivered on ticket D2-23-1187?",
+      "answer": {
+        "value": 850,
+        "unit": "gallons",
+        "raw_value": "850",
+        "period_start": null,
+        "period_end": null,
+        "record_id": "D2-23-1187"
+      },
+      "source_expectation": {
+        "source_text_contains": "D2-23-1187",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": true
+      },
+      "expected_validation_flags": [],
+      "notes": "Multi-record row binding test. Current v0 may not bind row IDs to quantities reliably."
+    }
+  ],
+  "source_materials": {
+    "evidence_pack": "/Users/qinghuanyang/Downloads/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "answer_workbook": "/Users/qinghuanyang/Downloads/AB_Baldwinsville_Scope1_Workbook.xlsx",
+    "source_note": "Evidence pack table 96; workbook Propane & Diesel diesel delivery detail."
+  }
+}

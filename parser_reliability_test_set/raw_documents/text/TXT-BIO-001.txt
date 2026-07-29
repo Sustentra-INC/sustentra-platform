@@ -1,0 +1,12 @@
+Document ID: EV-BIO-2023-001
+BIO-001 Monthly Biogas Meter Log - January
+Facility Name: Anheuser-Busch Baldwinsville Brewery
+Unit ID: BIO-001
+System: Onsite Wastewater Biogas Combustor
+Reporting Month: January
+Meter Tag: BIO-FM-001
+Fuel Type: Biogas (non-pipeline)
+
+Meter Read Start (scf) | Meter Read End (scf) | Volume Consumed (scf)
+1,000,000 | 1,082,000 | 82,000
+Operator Review: Initialed J. Collins

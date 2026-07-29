@@ -1,0 +1,157 @@
+{
+  "DocumentMetadata": {
+    "Pages": 1
+  },
+  "AnalyzeDocumentModelVersion": "1.0",
+  "Blocks": [
+    {
+      "BlockType": "LINE",
+      "Id": "line-0001",
+      "Text": "Document ID: EV-DIESEL-2023-001",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.03
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0002",
+      "Text": "Diesel Annual Purchase Record",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.06
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0003",
+      "Text": "Facility Name: Anheuser-Busch Baldwinsville Brewery",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.09
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0004",
+      "Text": "Unit ID: GEN-001",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.12
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0005",
+      "Text": "Equipment: Diesel Emergency Generator #1",
+      "Confidence": 94.5,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.15
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0006",
+      "Text": "Fuel Type: Diesel (No. 2 Distillate)",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.18
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0007",
+      "Text": "Reporting Period: 2023 Annual",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.21
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0008",
+      "Text": "Annual Quantity: 2,800 gallons",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.24
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0009",
+      "Text": "Delivery Tickets: D-230118 700 gal; D-230427 650 gal; D-230802 750 gal; D-231115 700 gal",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.27
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0010",
+      "Text": "Ticket table: 4 rows; annual total 2,800 gallons",
+      "Confidence": 94.5,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.3
+        }
+      }
+    }
+  ],
+  "ResponseMetadata": {
+    "HTTPStatusCode": 200,
+    "RequestId": "offline-ocr-diesel-002"
+  },
+  "_fixture_metadata": {
+    "source_fixture": "OCR-DIESEL-002",
+    "source_raw_file": "raw_documents/ocr_png/OCR-DIESEL-002.png",
+    "provenance": "Deterministic Textract-compatible regression fixture generated from evidence-pack content; not produced by a live AWS call."
+  }
+}

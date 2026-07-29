@@ -1,0 +1,185 @@
+{
+  "DocumentMetadata": {
+    "Pages": 1
+  },
+  "AnalyzeDocumentModelVersion": "1.0",
+  "Blocks": [
+    {
+      "BlockType": "LINE",
+      "Id": "line-0001",
+      "Text": "Document ID: EV-RFO-2023-001",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.03
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0002",
+      "Text": "Residual Fuel Oil Boiler Standby / No Fuel Use Statement",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.06
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0003",
+      "Text": "Facility Name: Anheuser-Busch Baldwinsville Brewery",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.09
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0004",
+      "Text": "Unit ID: RFO-001",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.12
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0005",
+      "Text": "Reporting Period: January 1, 2023 through December 31, 2023",
+      "Confidence": 94.5,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.15
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0006",
+      "Text": "Status: Standby / backup only",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.18
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0007",
+      "Text": "Residual fuel oil deliveries: 0",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.21
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0008",
+      "Text": "Residual fuel oil combustion activity: 0",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.24
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0009",
+      "Text": "Certification date: January 8, 2024",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.27
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0010",
+      "Text": "Permit 7-3136-00012/00001",
+      "Confidence": 94.5,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.3
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0011",
+      "Text": "Unit capacity 60 MMBtu/hr",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.32999999999999996
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0012",
+      "Text": "Inspection score 100",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.36
+        }
+      }
+    }
+  ],
+  "ResponseMetadata": {
+    "HTTPStatusCode": 200,
+    "RequestId": "offline-ocr-rfo-002"
+  },
+  "_fixture_metadata": {
+    "source_fixture": "OCR-RFO-002",
+    "source_raw_file": "raw_documents/ocr_jpg/OCR-RFO-002.jpg",
+    "provenance": "Deterministic Textract-compatible regression fixture generated from evidence-pack content; not produced by a live AWS call."
+  }
+}

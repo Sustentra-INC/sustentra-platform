@@ -1,0 +1,30 @@
+{
+  "document_id": "TEXTRACT-JSON-001",
+  "document_style": "natural_gas_utility_bill",
+  "parser_modes": [
+    "offline_textract_json"
+  ],
+  "raw_files": {
+    "offline_textract_json": "raw_documents/textract_json/TEXTRACT-JSON-001.json"
+  },
+  "complexity_level": "moderate",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Document ID: EV-NG-2023-010",
+      "National Fuel Gas Company - Natural Gas Statement",
+      "Customer: Anheuser-Busch Baldwinsville Brewery",
+      "Service Address: 4797 River Road, Baldwinsville, NY 13027"
+    ],
+    "table_expectations": [],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "ocr_line"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Textract-compatible saved JSON for deterministic normalizer tests. It is structurally representative but was not captured from a live AWS API call."
+}

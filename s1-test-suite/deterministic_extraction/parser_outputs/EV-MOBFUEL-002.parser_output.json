@@ -1,0 +1,87 @@
+{
+  "parser_output_id": "PO-hand-authored-EV-MOBFUEL-002-RUN-QA",
+  "document_id": "EV-MOBFUEL-002",
+  "processing_run_id": "RUN-QA",
+  "parser_name": "hand_authored_parser_output",
+  "parser_version": "qa-fixture-v1",
+  "status": "parsed",
+  "created_at": "2026-07-23T00:00:00+00:00",
+  "canonical_type_id": "CT-S1-MOBFUEL",
+  "document_type": "fleet_fuel_delivery_detail",
+  "pages": [
+    {
+      "page_number": 1,
+      "text": "Document ID: EV-DIESEL-2023-001\nDelivery Date | Ticket No. | Gallons Delivered | Tank / Equipment | Use Category\n03/14/2023 | D2-23-0412 | 900 | GEN-001 day tank / bulk tank | Emergency standby\n07/21/2023 | D2-23-1187 | 850 | GEN-001 day tank / bulk tank | Emergency standby\n11/08/2023 | D2-23-1964 | 1,050 | GEN-001 day tank / bulk tank | Emergency standby"
+    }
+  ],
+  "text_blocks": [
+    {
+      "block_id": "EV-MOBFUEL-002-b1",
+      "page_number": 1,
+      "text": "Document ID: EV-DIESEL-2023-001\nDelivery Date | Ticket No. | Gallons Delivered | Tank / Equipment | Use Category\n03/14/2023 | D2-23-0412 | 900 | GEN-001 day tank / bulk tank | Emergency standby\n07/21/2023 | D2-23-1187 | 850 | GEN-001 day tank / bulk tank | Emergency standby\n11/08/2023 | D2-23-1964 | 1,050 | GEN-001 day tank / bulk tank | Emergency standby",
+      "confidence": null,
+      "bounding_box": null,
+      "source_reference_id": "SRC-EV-MOBFUEL-002-page-1"
+    }
+  ],
+  "tables": [
+    {
+      "table_id": "EV-DIESEL-2023-001-delivery-detail",
+      "page_number": 1,
+      "sheet_name": null,
+      "rows": [
+        [
+          "Delivery Date",
+          "Ticket No.",
+          "Gallons Delivered",
+          "Tank / Equipment",
+          "Use Category"
+        ],
+        [
+          "03/14/2023",
+          "D2-23-0412",
+          "900",
+          "GEN-001 day tank / bulk tank",
+          "Emergency standby"
+        ],
+        [
+          "07/21/2023",
+          "D2-23-1187",
+          "850",
+          "GEN-001 day tank / bulk tank",
+          "Emergency standby"
+        ],
+        [
+          "11/08/2023",
+          "D2-23-1964",
+          "1,050",
+          "GEN-001 day tank / bulk tank",
+          "Emergency standby"
+        ]
+      ],
+      "confidence": 0.99,
+      "bounding_box": null,
+      "source_reference_id": null
+    }
+  ],
+  "key_value_pairs": [],
+  "source_references": [
+    {
+      "source_reference_id": "SRC-EV-MOBFUEL-002-page-1",
+      "document_id": "EV-MOBFUEL-002",
+      "page_number": 1,
+      "sheet_name": null,
+      "cell_or_range": null,
+      "text_snippet": "Document ID: EV-DIESEL-2023-001\nDelivery Date | Ticket No. | Gallons Delivered | Tank / Equipment | Use Category\n03/14/2023 | D2-23-0412 | 900 | GEN-001 day tank / bulk tank | Emergency standby\n07/21/2023 | D2-23-1187 | 850 | GEN-001 day ta",
+      "bounding_box": null,
+      "parser_block_ids": [],
+      "source_kind": "page_text"
+    }
+  ],
+  "warnings": [],
+  "raw_artifact_uri": null,
+  "fixture_source": {
+    "evidence_pack": "/Users/qinghuanyang/Downloads/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "answer_workbook": "/Users/qinghuanyang/Downloads/AB_Baldwinsville_Scope1_Workbook.xlsx"
+  }
+}

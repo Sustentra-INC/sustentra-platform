@@ -1,0 +1,21 @@
+{
+  "document_id": "EV-NG-2023-001",
+  "gold_source": "workbook:Natural Gas",
+  "document_type": "Natural Gas Utility Bill",
+  "expected_fields": {
+    "facility_name": "Anheuser-Busch Baldwinsville Brewery",
+    "service_address": "4797 River Road, Baldwinsville, NY 13027",
+    "account_number": "ACC-2023-BWV-001",
+    "billing_period_start": "2023-01-01",
+    "billing_period_end": "2023-01-31",
+    "usage_quantity": 32400,
+    "usage_unit": "MMBtu"
+  },
+  "comparison_policy": {
+    "strings": "trim and collapse whitespace; case-insensitive unless field is an identifier",
+    "numbers": "numeric equality after comma/currency removal",
+    "dates": "ISO YYYY-MM-DD",
+    "units": "case-insensitive canonical unit comparison",
+    "missing_fields": "count as false negative only when the field is present in expected_fields/expected_records"
+  }
+}

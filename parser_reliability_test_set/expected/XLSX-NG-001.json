@@ -1,0 +1,50 @@
+{
+  "document_id": "XLSX-NG-001",
+  "document_style": "natural_gas_utility_bill",
+  "parser_modes": [
+    "excel"
+  ],
+  "raw_files": {
+    "excel": "raw_documents/excel/XLSX-NG-001.xlsx"
+  },
+  "complexity_level": "moderate",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Month",
+      "Start"
+    ],
+    "table_expectations": [
+      {
+        "name": "Monthly Usage",
+        "required": true,
+        "headers": [
+          "Month",
+          "Start",
+          "End",
+          "Usage",
+          "Unit"
+        ],
+        "required_rows": [
+          [
+            "December",
+            "Dec 16, 2023",
+            "Jan 15, 2024",
+            "32800",
+            "MMBtu"
+          ]
+        ]
+      }
+    ],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "sheet_cell",
+      "table_cell"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Native XLSX generated with artifact_tool. Special cases include formulas, merged cells, hidden row/column, blank rows, and multi-sheet layouts."
+}

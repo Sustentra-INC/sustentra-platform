@@ -1,0 +1,42 @@
+{
+  "cases": [
+    {
+      "case_id": "NG-OCT-SUSPICIOUS-SPIKE",
+      "document_id": "EV-NG-2023-010",
+      "expected_extraction": {
+        "usage_quantity": 281000,
+        "usage_unit": "MMBtu"
+      },
+      "expected_capability": "Extract exactly; anomaly detection is proposal-level and may be xfail.",
+      "reason": "October usage is roughly an order of magnitude above adjacent months."
+    },
+    {
+      "case_id": "NG-DEC-PERIOD-CONFLICT",
+      "document_id": "EV-NG-2023-012",
+      "source_document_period": "Dec 16, 2023 to Jan 15, 2024",
+      "workbook_gold_period": {
+        "start": "2023-12-01",
+        "end": "2023-12-31"
+      },
+      "expected_capability": "Extraction should report source values; reconciliation/wrong-period detection should be tracked separately as xfail until implemented."
+    },
+    {
+      "case_id": "RFO-SOURCE-WORKBOOK-CONFLICT",
+      "document_id": "EV-RFO-2023-001",
+      "source_statement": "No residual fuel oil deliveries or combustion activity",
+      "workbook_summary_heat_input_mmbtu": 3423,
+      "expected_capability": "Conflict resolution is proposal-level; do not silently choose one value."
+    },
+    {
+      "case_id": "OCR-NOT-IMPLEMENTED",
+      "documents": [
+        "EV-INV-2023-001",
+        "EV-NG-2023-001",
+        "EV-BIO-2023-003",
+        "EV-BLR003-2023-001",
+        "EV-PROP-2023-001"
+      ],
+      "expected_capability": "Rendered PNGs are supplied as OCR fixtures. Mark tests xfail while image OCR adapter remains a stub."
+    }
+  ]
+}

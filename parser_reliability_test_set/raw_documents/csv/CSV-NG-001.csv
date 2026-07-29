@@ -1,0 +1,5 @@
+Month,Period Start,Period End,Usage,Unit
+January,"Jan 1, 2023","Jan 31, 2023",32400,MMBtu
+February,"Feb 1, 2023","Feb 28, 2023",31000,MMBtu
+March,"Mar 1, 2023","Mar 31, 2023",29500,MMBtu
+April,"Apr 1, 2023","Apr 30, 2023",25300,MMBtu

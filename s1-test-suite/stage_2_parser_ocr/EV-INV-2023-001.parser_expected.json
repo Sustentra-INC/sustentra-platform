@@ -1,0 +1,46 @@
+{
+  "document_id": "EV-INV-2023-001",
+  "input_docx": "../../raw_documents/docx/EV-INV-2023-001.docx",
+  "ocr_png_directory": "../../raw_documents/ocr_png/EV-INV-2023-001",
+  "comparison_policy": {
+    "text_match": "normalized substring; collapse whitespace; case-insensitive",
+    "table_match": "header and required row/cell containment; do not require exact parser block ordering",
+    "numeric_match": "allow commas in raw OCR output"
+  },
+  "expected_text_contains": [
+    "Combustion Equipment Inventory",
+    "Anheuser-Busch Baldwinsville Brewery",
+    "Reporting Year",
+    "December 31, 2023"
+  ],
+  "expected_table": {
+    "headers": [
+      "Unit ID",
+      "Description",
+      "Fuel Type",
+      "Max Rated Capacity (MMBtu/hr)",
+      "Notes"
+    ],
+    "minimum_data_rows": 7,
+    "required_rows": [
+      [
+        "BLR-001",
+        "Natural Gas Steam Boiler #1",
+        "Natural Gas (pipeline)",
+        "25"
+      ],
+      [
+        "DRY-001",
+        "Propane Malt/Grain Dryer",
+        "Propane (LPG)",
+        "300"
+      ],
+      [
+        "RFO-001",
+        "Residual Fuel Oil Boiler (Backup)",
+        "Residual Fuel Oil No. 6",
+        "60"
+      ]
+    ]
+  }
+}

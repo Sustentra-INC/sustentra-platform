@@ -1,0 +1,53 @@
+{
+  "document_id": "EV-NG-2023-001",
+  "input_docx": "../../raw_documents/docx/EV-NG-2023-001.docx",
+  "ocr_png_directory": "../../raw_documents/ocr_png/EV-NG-2023-001",
+  "comparison_policy": {
+    "text_match": "normalized substring; collapse whitespace; case-insensitive",
+    "table_match": "header and required row/cell containment; do not require exact parser block ordering",
+    "numeric_match": "allow commas in raw OCR output"
+  },
+  "expected_text_contains": [
+    "National Fuel Gas Company",
+    "ACC-2023-BWV-001",
+    "Jan 1, 2023 to Jan 31, 2023",
+    "32,400 MMBtu"
+  ],
+  "expected_tables": [
+    {
+      "name": "Meter and Usage Detail",
+      "headers": [
+        "Meter ID",
+        "Previous Read",
+        "Current Read",
+        "Billing Days",
+        "Usage",
+        "Unit"
+      ],
+      "required_rows": [
+        [
+          "NFG-BWV-239871",
+          "1,027,540",
+          "1,059,940",
+          "31",
+          "32,400",
+          "MMBtu"
+        ]
+      ]
+    },
+    {
+      "name": "Current Charges",
+      "headers": [
+        "Charge Description",
+        "Quantity",
+        "Rate",
+        "Amount"
+      ],
+      "required_cells": [
+        "Natural gas commodity",
+        "32,400 MMBtu",
+        "$199,260.00"
+      ]
+    }
+  ]
+}

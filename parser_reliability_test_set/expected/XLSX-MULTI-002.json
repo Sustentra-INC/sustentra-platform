@@ -1,0 +1,48 @@
+{
+  "document_id": "XLSX-MULTI-002",
+  "document_style": "blr003_monthly_fuel_record",
+  "parser_modes": [
+    "excel"
+  ],
+  "raw_files": {
+    "excel": "raw_documents/excel/XLSX-MULTI-002.xlsx"
+  },
+  "complexity_level": "hard",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Month",
+      "Fuel"
+    ],
+    "table_expectations": [
+      {
+        "name": "Natural Gas",
+        "required": true,
+        "headers": [
+          "Month",
+          "Fuel",
+          "Quantity",
+          "Unit"
+        ],
+        "required_rows": [
+          [
+            "December",
+            "Natural Gas",
+            "12000",
+            "Mcf"
+          ]
+        ]
+      }
+    ],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "sheet_cell",
+      "table_cell"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Native XLSX generated with artifact_tool. Special cases include formulas, merged cells, hidden row/column, blank rows, and multi-sheet layouts."
+}

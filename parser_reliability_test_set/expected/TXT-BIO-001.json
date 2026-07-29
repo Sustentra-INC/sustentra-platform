@@ -1,0 +1,31 @@
+{
+  "document_id": "TXT-BIO-001",
+  "document_style": "biogas_meter_log",
+  "parser_modes": [
+    "text"
+  ],
+  "raw_files": {
+    "text": "raw_documents/text/TXT-BIO-001.txt"
+  },
+  "complexity_level": "simple",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Document ID: EV-BIO-2023-001",
+      "BIO-001 Monthly Biogas Meter Log - January",
+      "Facility Name: Anheuser-Busch Baldwinsville Brewery",
+      "Unit ID: BIO-001",
+      "System: Onsite Wastewater Biogas Combustor"
+    ],
+    "table_expectations": [],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "document_text"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Derived from the generated evidence pack; numeric answers checked against the workbook where applicable."
+}

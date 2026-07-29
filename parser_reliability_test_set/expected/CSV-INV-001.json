@@ -1,0 +1,49 @@
+{
+  "document_id": "CSV-INV-001",
+  "document_style": "equipment_inventory",
+  "parser_modes": [
+    "csv_text"
+  ],
+  "raw_files": {
+    "csv_text": "raw_documents/csv/CSV-INV-001.csv"
+  },
+  "complexity_level": "moderate",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Unit ID",
+      "BLR-001"
+    ],
+    "table_expectations": [
+      {
+        "name": "CSV content",
+        "required": true,
+        "headers": [
+          "Unit ID",
+          "Description",
+          "Fuel Type",
+          "Max Rated Capacity (MMBtu/hr)",
+          "Unit Type"
+        ],
+        "required_rows": [
+          [
+            "BLR-001",
+            "Natural Gas Steam Boiler #1",
+            "Natural Gas (pipeline)",
+            "25",
+            "Boiler"
+          ]
+        ]
+      }
+    ],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "document_text"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": ""
+}

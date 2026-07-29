@@ -1,0 +1,157 @@
+{
+  "DocumentMetadata": {
+    "Pages": 1
+  },
+  "AnalyzeDocumentModelVersion": "1.0",
+  "Blocks": [
+    {
+      "BlockType": "LINE",
+      "Id": "line-0001",
+      "Text": "Document ID: EV-PROP-2023-001",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.03
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0002",
+      "Text": "Propane Annual Purchase Record",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.06
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0003",
+      "Text": "Facility Name: Anheuser-Busch Baldwinsville Brewery",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.09
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0004",
+      "Text": "Unit ID: DRY-001",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.12
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0005",
+      "Text": "Fuel Type: Propane (LPG)",
+      "Confidence": 94.5,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.15
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0006",
+      "Text": "Reporting Period: 2023 Annual",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.18
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0007",
+      "Text": "Annual Quantity: 106,600 gallons",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.21
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0008",
+      "Text": "Delivery Summary: Q1 25,200; Q2 26,400; Q3 27,100; Q4 27,900 gallons",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.24
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0009",
+      "Text": "Supplier Account: PROP-BWV-88421",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.27
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0010",
+      "Text": "Q1 25,200 | Q2 26,400 | Q3 27,100 | Q4 27,900",
+      "Confidence": 94.5,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.3
+        }
+      }
+    }
+  ],
+  "ResponseMetadata": {
+    "HTTPStatusCode": 200,
+    "RequestId": "offline-ocr-prop-002"
+  },
+  "_fixture_metadata": {
+    "source_fixture": "OCR-PROP-002",
+    "source_raw_file": "raw_documents/ocr_png/OCR-PROP-002.png",
+    "provenance": "Deterministic Textract-compatible regression fixture generated from evidence-pack content; not produced by a live AWS call."
+  }
+}

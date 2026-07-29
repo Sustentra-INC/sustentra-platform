@@ -1,0 +1,9 @@
+Document ID: EV-PROP-2023-001
+Propane Annual Purchase Record
+Facility Name: Anheuser-Busch Baldwinsville Brewery
+Unit ID: DRY-001
+Fuel Type: Propane (LPG)
+Reporting Period: 2023 Annual
+Annual Quantity: 106,600 gallons
+Delivery Summary: Q1 25,200; Q2 26,400; Q3 27,100; Q4 27,900 gallons
+Supplier Account: PROP-BWV-88421

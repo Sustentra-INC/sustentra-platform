@@ -1,0 +1,143 @@
+{
+  "DocumentMetadata": {
+    "Pages": 1
+  },
+  "AnalyzeDocumentModelVersion": "1.0",
+  "Blocks": [
+    {
+      "BlockType": "LINE",
+      "Id": "line-0001",
+      "Text": "Document ID: EV-INV-2023-001",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.03
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0002",
+      "Text": "DENSE EQUIPMENT TABLE",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.06
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0003",
+      "Text": "BLR-001 | Natural Gas Steam Boiler #1 | Natural Gas (pipeline) | 25 | Boiler",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.09
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0004",
+      "Text": "BLR-002 | Natural Gas Steam Boiler #2 | Natural Gas (pipeline) | 20 | Boiler",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.12
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0005",
+      "Text": "BLR-003 | Steam Boiler #3 - Multi-Fuel | Natural Gas / Solid Biomass Residue | 18 | Boiler",
+      "Confidence": 94.5,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.15
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0006",
+      "Text": "DRY-001 | Propane Malt/Grain Dryer | Propane (LPG) | 300 | Process Heater",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.18
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0007",
+      "Text": "GEN-001 | Diesel Emergency Generator #1 | Diesel (No. 2 Distillate) | 2.5 | RICE",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.21
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0008",
+      "Text": "BIO-001 | Onsite Wastewater Biogas Combustor | Biogas (non-pipeline) | 15 | Other",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.24
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0009",
+      "Text": "RFO-001 | Residual Fuel Oil Boiler (Backup) | Residual Fuel Oil No. 6 | 60 | Boiler",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.27
+        }
+      }
+    }
+  ],
+  "ResponseMetadata": {
+    "HTTPStatusCode": 200,
+    "RequestId": "offline-ocr-inv-002"
+  },
+  "_fixture_metadata": {
+    "source_fixture": "OCR-INV-002",
+    "source_raw_file": "raw_documents/ocr_pdf/OCR-INV-002.pdf",
+    "provenance": "Deterministic Textract-compatible regression fixture generated from evidence-pack content; not produced by a live AWS call."
+  }
+}
