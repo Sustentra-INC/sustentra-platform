@@ -1,0 +1,574 @@
+{
+  "cases": [
+    {
+      "case_id": "NG-01-usage",
+      "raw_examples": [
+        "32,400",
+        "32,400 MMBtu"
+      ],
+      "expected_value": 32400,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-01-start",
+      "raw_examples": [
+        "2023-01-01"
+      ],
+      "expected_value": "2023-01-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-01-end",
+      "raw_examples": [
+        "2023-01-31"
+      ],
+      "expected_value": "2023-01-31",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-02-usage",
+      "raw_examples": [
+        "31,000",
+        "31,000 MMBtu"
+      ],
+      "expected_value": 31000,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-02-start",
+      "raw_examples": [
+        "2023-02-01"
+      ],
+      "expected_value": "2023-02-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-02-end",
+      "raw_examples": [
+        "2023-02-28"
+      ],
+      "expected_value": "2023-02-28",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-03-usage",
+      "raw_examples": [
+        "29,500",
+        "29,500 MMBtu"
+      ],
+      "expected_value": 29500,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-03-start",
+      "raw_examples": [
+        "2023-03-01"
+      ],
+      "expected_value": "2023-03-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-03-end",
+      "raw_examples": [
+        "2023-03-31"
+      ],
+      "expected_value": "2023-03-31",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-04-usage",
+      "raw_examples": [
+        "25,300",
+        "25,300 MMBtu"
+      ],
+      "expected_value": 25300,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-04-start",
+      "raw_examples": [
+        "2023-04-01"
+      ],
+      "expected_value": "2023-04-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-04-end",
+      "raw_examples": [
+        "2023-04-30"
+      ],
+      "expected_value": "2023-04-30",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-05-usage",
+      "raw_examples": [
+        "21,100",
+        "21,100 MMBtu"
+      ],
+      "expected_value": 21100,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-05-start",
+      "raw_examples": [
+        "2023-05-01"
+      ],
+      "expected_value": "2023-05-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-05-end",
+      "raw_examples": [
+        "2023-05-31"
+      ],
+      "expected_value": "2023-05-31",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-06-usage",
+      "raw_examples": [
+        "18,300",
+        "18,300 MMBtu"
+      ],
+      "expected_value": 18300,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-06-start",
+      "raw_examples": [
+        "2023-06-01"
+      ],
+      "expected_value": "2023-06-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-06-end",
+      "raw_examples": [
+        "2023-06-30"
+      ],
+      "expected_value": "2023-06-30",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-07-usage",
+      "raw_examples": [
+        "16,900",
+        "16,900 MMBtu"
+      ],
+      "expected_value": 16900,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-07-start",
+      "raw_examples": [
+        "2023-07-01"
+      ],
+      "expected_value": "2023-07-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-07-end",
+      "raw_examples": [
+        "2023-07-31"
+      ],
+      "expected_value": "2023-07-31",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-08-usage",
+      "raw_examples": [
+        "18,300",
+        "18,300 MMBtu"
+      ],
+      "expected_value": 18300,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-08-start",
+      "raw_examples": [
+        "2023-08-01"
+      ],
+      "expected_value": "2023-08-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-08-end",
+      "raw_examples": [
+        "2023-08-31"
+      ],
+      "expected_value": "2023-08-31",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-09-usage",
+      "raw_examples": [
+        "19,700",
+        "19,700 MMBtu"
+      ],
+      "expected_value": 19700,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-09-start",
+      "raw_examples": [
+        "2023-09-01"
+      ],
+      "expected_value": "2023-09-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-09-end",
+      "raw_examples": [
+        "2023-09-30"
+      ],
+      "expected_value": "2023-09-30",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-10-usage",
+      "raw_examples": [
+        "281,000",
+        "281,000 MMBtu"
+      ],
+      "expected_value": 281000,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-10-start",
+      "raw_examples": [
+        "2023-10-01"
+      ],
+      "expected_value": "2023-10-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-10-end",
+      "raw_examples": [
+        "2023-10-31"
+      ],
+      "expected_value": "2023-10-31",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-11-usage",
+      "raw_examples": [
+        "31,000",
+        "31,000 MMBtu"
+      ],
+      "expected_value": 31000,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-11-start",
+      "raw_examples": [
+        "2023-11-01"
+      ],
+      "expected_value": "2023-11-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-11-end",
+      "raw_examples": [
+        "2023-11-30"
+      ],
+      "expected_value": "2023-11-30",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-12-usage",
+      "raw_examples": [
+        "31,700",
+        "31,700 MMBtu"
+      ],
+      "expected_value": 31700,
+      "expected_unit": "MMBtu",
+      "data_type": "number"
+    },
+    {
+      "case_id": "NG-12-start",
+      "raw_examples": [
+        "2023-12-01"
+      ],
+      "expected_value": "2023-12-01",
+      "data_type": "date"
+    },
+    {
+      "case_id": "NG-12-end",
+      "raw_examples": [
+        "2023-12-31"
+      ],
+      "expected_value": "2023-12-31",
+      "data_type": "date"
+    },
+    {
+      "case_id": "BIO-01-consumed",
+      "raw_examples": [
+        "82,000",
+        "82,000 scf"
+      ],
+      "expected_value": 82000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BIO-02-consumed",
+      "raw_examples": [
+        "75,000",
+        "75,000 scf"
+      ],
+      "expected_value": 75000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BIO-03-consumed",
+      "raw_examples": [
+        "83,000",
+        "83,000 scf"
+      ],
+      "expected_value": 83000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BIO-04-consumed",
+      "raw_examples": [
+        "80,000",
+        "80,000 scf"
+      ],
+      "expected_value": 80000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BIO-05-consumed",
+      "raw_examples": [
+        "80,000",
+        "80,000 scf"
+      ],
+      "expected_value": 80000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BIO-06-consumed",
+      "raw_examples": [
+        "83,000",
+        "83,000 scf"
+      ],
+      "expected_value": 83000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BIO-07-consumed",
+      "raw_examples": [
+        "85,000",
+        "85,000 scf"
+      ],
+      "expected_value": 85000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BIO-08-consumed",
+      "raw_examples": [
+        "87,000",
+        "87,000 scf"
+      ],
+      "expected_value": 87000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BIO-09-consumed",
+      "raw_examples": [
+        "85,000",
+        "85,000 scf"
+      ],
+      "expected_value": 85000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BIO-10-consumed",
+      "raw_examples": [
+        "85,000",
+        "85,000 scf"
+      ],
+      "expected_value": 85000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BIO-11-consumed",
+      "raw_examples": [
+        "83,000",
+        "83,000 scf"
+      ],
+      "expected_value": 83000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BIO-12-consumed",
+      "raw_examples": [
+        "82,000",
+        "82,000 scf"
+      ],
+      "expected_value": 82000,
+      "expected_unit": "scf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-01-qty",
+      "raw_examples": [
+        "12,000",
+        "12,000 Mcf"
+      ],
+      "expected_value": 12000,
+      "expected_unit": "Mcf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-02-qty",
+      "raw_examples": [
+        "11,500",
+        "11,500 Mcf"
+      ],
+      "expected_value": 11500,
+      "expected_unit": "Mcf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-03-qty",
+      "raw_examples": [
+        "11,000",
+        "11,000 Mcf"
+      ],
+      "expected_value": 11000,
+      "expected_unit": "Mcf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-04-qty",
+      "raw_examples": [
+        "9,400",
+        "9,400 Mcf"
+      ],
+      "expected_value": 9400,
+      "expected_unit": "Mcf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-05-qty",
+      "raw_examples": [
+        "7,800",
+        "7,800 Mcf"
+      ],
+      "expected_value": 7800,
+      "expected_unit": "Mcf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-06-qty",
+      "raw_examples": [
+        "6,800",
+        "6,800 Mcf"
+      ],
+      "expected_value": 6800,
+      "expected_unit": "Mcf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-07-qty",
+      "raw_examples": [
+        "6,300",
+        "6,300 Mcf"
+      ],
+      "expected_value": 6300,
+      "expected_unit": "Mcf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-08-qty",
+      "raw_examples": [
+        "460",
+        "460 short tons"
+      ],
+      "expected_value": 460,
+      "expected_unit": "short tons",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-09-qty",
+      "raw_examples": [
+        "490",
+        "490 short tons"
+      ],
+      "expected_value": 490,
+      "expected_unit": "short tons",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-10-qty",
+      "raw_examples": [
+        "10,500",
+        "10,500 Mcf"
+      ],
+      "expected_value": 10500,
+      "expected_unit": "Mcf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-11-qty",
+      "raw_examples": [
+        "11,500",
+        "11,500 Mcf"
+      ],
+      "expected_value": 11500,
+      "expected_unit": "Mcf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "BLR-12-qty",
+      "raw_examples": [
+        "12,000",
+        "12,000 Mcf"
+      ],
+      "expected_value": 12000,
+      "expected_unit": "Mcf",
+      "data_type": "number"
+    },
+    {
+      "case_id": "PROP-annual",
+      "raw_examples": [
+        "106,600 gallons"
+      ],
+      "expected_value": 106600,
+      "expected_unit": "gallons",
+      "data_type": "number"
+    },
+    {
+      "case_id": "DIESEL-annual",
+      "raw_examples": [
+        "2,800 gallons"
+      ],
+      "expected_value": 2800,
+      "expected_unit": "gallons",
+      "data_type": "number"
+    }
+  ]
+}

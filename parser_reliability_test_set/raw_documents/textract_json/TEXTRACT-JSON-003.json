@@ -1,0 +1,157 @@
+{
+  "DocumentMetadata": {
+    "Pages": 1
+  },
+  "AnalyzeDocumentModelVersion": "1.0",
+  "Blocks": [
+    {
+      "BlockType": "LINE",
+      "Id": "line-0001",
+      "Text": "Document ID: EV-BLR003-2023-009",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.03
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0002",
+      "Text": "BLR-003 Monthly Fuel Consumption Record - September",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.06
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0003",
+      "Text": "Facility Name: Anheuser-Busch Baldwinsville Brewery",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.09
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0004",
+      "Text": "Unit ID: BLR-003",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.12
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0005",
+      "Text": "Equipment: Steam Boiler #3 - Multi-Fuel",
+      "Confidence": 94.5,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.15
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0006",
+      "Text": "Reporting Month: September",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.18
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0007",
+      "Text": "Fuel Type: Solid Biomass Residue",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.21
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0008",
+      "Text": "Quantity / Unit: 490 short tons",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.24
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0009",
+      "Text": "Date Posted | Fuel Type | Quantity | Unit | Operations Note",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.27
+        }
+      }
+    },
+    {
+      "BlockType": "LINE",
+      "Id": "line-0010",
+      "Text": "Sep 28, 2023 | Solid Biomass Residue | 490 | short tons | Plant fuel-use allocation log",
+      "Confidence": 94.5,
+      "Geometry": {
+        "BoundingBox": {
+          "Width": 0.8,
+          "Height": 0.02,
+          "Left": 0.08,
+          "Top": 0.3
+        }
+      }
+    }
+  ],
+  "ResponseMetadata": {
+    "HTTPStatusCode": 200,
+    "RequestId": "offline-ocr-blr-002"
+  },
+  "_fixture_metadata": {
+    "source_fixture": "OCR-BLR-002",
+    "source_raw_file": "raw_documents/ocr_png/OCR-BLR-002.png",
+    "provenance": "Deterministic Textract-compatible regression fixture generated from evidence-pack content; not produced by a live AWS call."
+  }
+}

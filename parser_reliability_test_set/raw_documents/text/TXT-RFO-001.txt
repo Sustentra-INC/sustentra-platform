@@ -1,0 +1,9 @@
+Document ID: EV-RFO-2023-001
+Residual Fuel Oil Boiler Standby / No Fuel Use Statement
+Facility Name: Anheuser-Busch Baldwinsville Brewery
+Unit ID: RFO-001
+Reporting Period: January 1, 2023 through December 31, 2023
+Status: Standby / backup only
+Residual fuel oil deliveries: 0
+Residual fuel oil combustion activity: 0
+Certification date: January 8, 2024

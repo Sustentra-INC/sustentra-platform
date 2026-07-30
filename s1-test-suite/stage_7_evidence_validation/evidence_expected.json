@@ -1,0 +1,743 @@
+{
+  "documents": [
+    {
+      "document_id": "EV-INV-2023-001",
+      "expected_fields": [
+        "unit_id",
+        "unit_description",
+        "fuel_type",
+        "max_rated_capacity_mmbtu_hr"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-INV-2023-001",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-001",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-001",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-002",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-002",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-003",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-003",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-004",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-004",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-005",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-005",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-006",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-006",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-007",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-007",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-008",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-008",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-009",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-009",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-010",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-010",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-011",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-011",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-NG-2023-012",
+      "expected_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-NG-2023-012",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-001",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-001",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-002",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-002",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-003",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-003",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-004",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-004",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-005",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-005",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-006",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-006",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-007",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-007",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-008",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-008",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-009",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-009",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-010",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-010",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-011",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-011",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BIO-2023-012",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BIO-2023-012",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-001",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-001",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-002",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-002",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-003",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-003",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-004",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-004",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-005",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-005",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-006",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-006",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-007",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-007",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-008",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-008",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-009",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-009",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-010",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-010",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-011",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-011",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-BLR003-2023-012",
+      "expected_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-BLR003-2023-012",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-LAB-2023-001",
+      "expected_fields": [
+        "unit_id",
+        "sample_date"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-LAB-2023-001",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-PROP-2023-001",
+      "expected_fields": [
+        "unit_id",
+        "fuel_type",
+        "annual_quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-PROP-2023-001",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-DIESEL-2023-001",
+      "expected_fields": [
+        "unit_id",
+        "fuel_type",
+        "annual_quantity",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-DIESEL-2023-001",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-AGG-2023-001",
+      "expected_fields": [
+        "unit_ids"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-AGG-2023-001",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    },
+    {
+      "document_id": "EV-RFO-2023-001",
+      "expected_fields": [
+        "unit_id",
+        "standby_status",
+        "reported_fuel_use",
+        "unit"
+      ],
+      "source_reference_requirements": {
+        "document_id_must_equal": "EV-RFO-2023-001",
+        "source_text_required": true,
+        "source_text_must_contain_raw_value_when_value_is_explicit": true,
+        "page_or_block_location_required": true,
+        "source_reference_must_not_point_to_another_document": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "documents_split": 43,
+  "evidence_documents": 42,
+  "gold_label_documents": 42,
+  "detailed_parser_ocr_documents": [
+    "EV-INV-2023-001",
+    "EV-NG-2023-001",
+    "EV-BIO-2023-003",
+    "EV-BLR003-2023-001",
+    "EV-PROP-2023-001"
+  ],
+  "note": "The pack index itself is split but excluded from extraction gold evaluation."
+}

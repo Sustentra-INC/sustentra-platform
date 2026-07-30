@@ -1,0 +1,32 @@
+{
+  "document_id": "OCR-PROP-001",
+  "document_style": "propane_annual_fuel_record",
+  "parser_modes": [
+    "aws_textract_pdf"
+  ],
+  "raw_files": {
+    "aws_textract_pdf": "raw_documents/ocr_pdf/OCR-PROP-001.pdf"
+  },
+  "complexity_level": "moderate",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Document ID: EV-PROP-2023-001",
+      "Propane Annual Purchase Record",
+      "Facility Name: Anheuser-Busch Baldwinsville Brewery",
+      "Unit ID: DRY-001"
+    ],
+    "table_expectations": [],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "ocr_line",
+      "ocr_word",
+      "table_cell"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Raster-only scanned fixture derived from evidence-pack content. Intended for AWS Textract OCR/table/key-value routing."
+}

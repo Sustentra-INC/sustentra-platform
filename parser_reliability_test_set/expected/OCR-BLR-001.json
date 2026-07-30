@@ -1,0 +1,32 @@
+{
+  "document_id": "OCR-BLR-001",
+  "document_style": "blr003_monthly_fuel_record",
+  "parser_modes": [
+    "aws_textract_pdf"
+  ],
+  "raw_files": {
+    "aws_textract_pdf": "raw_documents/ocr_pdf/OCR-BLR-001.pdf"
+  },
+  "complexity_level": "moderate",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Document ID: EV-BLR003-2023-002",
+      "BLR-003 Monthly Fuel Consumption Record - February",
+      "Facility Name: Anheuser-Busch Baldwinsville Brewery",
+      "Unit ID: BLR-003"
+    ],
+    "table_expectations": [],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "ocr_line",
+      "ocr_word",
+      "table_cell"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Raster-only scanned fixture derived from evidence-pack content. Intended for AWS Textract OCR/table/key-value routing."
+}

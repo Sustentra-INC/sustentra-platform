@@ -1,0 +1,19 @@
+{
+  "document_id": "EV-BLR003-2023-006",
+  "gold_source": "workbook:Biomass Boiler",
+  "document_type": "Boiler Fuel Record",
+  "expected_fields": {
+    "unit_id": "BLR-003",
+    "month": "June",
+    "fuel_type": "Natural Gas",
+    "quantity": 6800,
+    "unit": "Mcf"
+  },
+  "comparison_policy": {
+    "strings": "trim and collapse whitespace; case-insensitive unless field is an identifier",
+    "numbers": "numeric equality after comma/currency removal",
+    "dates": "ISO YYYY-MM-DD",
+    "units": "case-insensitive canonical unit comparison",
+    "missing_fields": "count as false negative only when the field is present in expected_fields/expected_records"
+  }
+}

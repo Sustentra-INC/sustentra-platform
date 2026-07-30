@@ -1,0 +1,21 @@
+Document ID: EV-RFO-2023-001
+
+RFO-001 Standby / No Fuel Use Statement
+
+Annual standby status confirmation for backup residual fuel oil combustion equipment.
+
+Facility Name	Anheuser-Busch Baldwinsville Brewery	Service Address	4797 River Road, Baldwinsville, NY 13027
+Operator	Anheuser-Busch LLC	Reporting Year	January 1, 2023 through December 31, 2023
+Unit ID	RFO-001	Equipment Description	Residual Fuel Oil Boiler (Backup)
+Fuel Type	Residual Fuel Oil No. 6	Operating Status	Standby backup equipment
+Statement Date	January 8, 2024	Prepared By	Plant Utilities Department
+
+Operations Statement: RFO-001 was maintained as backup equipment during the 2023 reporting year. Plant utilities records show no residual fuel oil deliveries, no residual fuel oil consumption, and no combustion activity for RFO-001 from January 1, 2023 through December 31, 2023.
+
+Record Basis: Confirmation based on onsite fuel storage inspection logs, purchase records review, and boiler operations logs for the 2023 reporting year.
+
+Fuel Deliveries Recorded	Fuel Consumption Recorded	Combustion Hours Recorded	Annual Emissions Activity
+0 gallons	0 gallons	0 hours	No activity
+
+Name / Title	Signature	Date
+Prepared by: M. Rivera, Environmental Compliance Coordinator	M. Rivera	01/08/2024

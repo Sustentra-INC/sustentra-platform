@@ -2,8 +2,9 @@
 
 Runs the PR4 parser runtime against local sample documents and writes one
 ``parser_output`` JSON per input file plus a completeness report. This exercises
-the parser layer only; it performs no field extraction, no ``extraction_candidate``
-generation, and no external calls (AWS, OpenAI, OCR, or network).
+the parser layer only; it performs no field extraction and no
+``extraction_candidate`` generation. With the default ``TEXTRACT_ENABLED=false``,
+it performs no external calls; enabling Textract routes PDFs/images to AWS.
 
 Usage::
 

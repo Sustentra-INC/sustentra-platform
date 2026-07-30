@@ -1,0 +1,30 @@
+[
+  {
+    "document_id": "EV-NG-2023-001",
+    "text_created": true,
+    "pdf_conversion_tool_available": true
+  },
+  {
+    "document_id": "EV-INV-2023-001",
+    "text_created": true,
+    "pdf_conversion_tool_available": true
+  },
+  {
+    "document_id": "EV-BIO-2023-003",
+    "text_created": true,
+    "pdf_conversion_tool_available": true
+  },
+  {
+    "document_id": "EV-RFO-2023-001",
+    "text_created": true,
+    "pdf_conversion_tool_available": true
+  },
+  {
+    "document_id": "EV-BLR003-2023-001",
+    "text_created": true,
+    "pdf_conversion_tool_available": true
+  },
+  {
+    "important_note": "All PDF/TXT/CSV fixtures are derived from the DOCX evidence pack. They test parser routing and downstream extraction behavior, but are not equivalent to original client-native files."
+  }
+]

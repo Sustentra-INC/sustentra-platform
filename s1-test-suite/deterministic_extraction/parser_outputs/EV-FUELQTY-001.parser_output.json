@@ -1,0 +1,166 @@
+{
+  "parser_output_id": "PO-hand-authored-EV-FUELQTY-001-RUN-QA",
+  "document_id": "EV-FUELQTY-001",
+  "processing_run_id": "RUN-QA",
+  "parser_name": "hand_authored_parser_output",
+  "parser_version": "qa-fixture-v1",
+  "status": "parsed",
+  "created_at": "2026-07-23T00:00:00+00:00",
+  "canonical_type_id": "CT-S1-FUELQTY",
+  "document_type": "natural_gas_bill",
+  "pages": [
+    {
+      "page_number": 1,
+      "text": "Document ID: EV-NG-2023-001\nNational Fuel Gas Company - Natural Gas Statement\nCustomer: Anheuser-Busch Baldwinsville Brewery\nService Address: 4797 River Road, Baldwinsville, NY 13027\nAccount Number: ACC-2023-BWV-001\nBill Number: NFG-23-BWV-0001\nService Period: Jan 1, 2023 to Jan 31, 2023\nFrom: 01/01/2023\nTo: 01/31/2023\nMeter Serial Number: NFG-BWV-239871\nFuel Type: Natural Gas\nUsage Unit: MMBtu\nTotal Usage: 32,400 MMBtu\nSupplier: National Fuel Gas Company"
+    }
+  ],
+  "text_blocks": [
+    {
+      "block_id": "EV-FUELQTY-001-b1",
+      "page_number": 1,
+      "text": "Document ID: EV-NG-2023-001\nNational Fuel Gas Company - Natural Gas Statement\nCustomer: Anheuser-Busch Baldwinsville Brewery\nService Address: 4797 River Road, Baldwinsville, NY 13027\nAccount Number: ACC-2023-BWV-001\nBill Number: NFG-23-BWV-0001\nService Period: Jan 1, 2023 to Jan 31, 2023\nFrom: 01/01/2023\nTo: 01/31/2023\nMeter Serial Number: NFG-BWV-239871\nFuel Type: Natural Gas\nUsage Unit: MMBtu\nTotal Usage: 32,400 MMBtu\nSupplier: National Fuel Gas Company",
+      "confidence": null,
+      "bounding_box": null,
+      "source_reference_id": "SRC-EV-FUELQTY-001-page-1"
+    }
+  ],
+  "tables": [
+    {
+      "table_id": "EV-NG-2023-001-meter-usage",
+      "page_number": 1,
+      "sheet_name": null,
+      "rows": [
+        [
+          "Meter ID",
+          "Previous Read",
+          "Current Read",
+          "Billing Days",
+          "Usage",
+          "Unit"
+        ],
+        [
+          "NFG-BWV-239871",
+          "1,027,540",
+          "1,059,940",
+          "31",
+          "32,400",
+          "MMBtu"
+        ]
+      ],
+      "confidence": 0.99,
+      "bounding_box": null,
+      "source_reference_id": null
+    }
+  ],
+  "key_value_pairs": [
+    {
+      "pair_id": "kv-fuelqty-001-facility",
+      "page_number": 1,
+      "sheet_name": null,
+      "key": "Facility Name",
+      "value": "Anheuser-Busch Baldwinsville Brewery",
+      "confidence": 0.99,
+      "key_source_reference_id": null,
+      "value_source_reference_id": null
+    },
+    {
+      "pair_id": "kv-fuelqty-001-address",
+      "page_number": 1,
+      "sheet_name": null,
+      "key": "Service Address",
+      "value": "4797 River Road, Baldwinsville, NY 13027",
+      "confidence": 0.99,
+      "key_source_reference_id": null,
+      "value_source_reference_id": null
+    },
+    {
+      "pair_id": "kv-fuelqty-001-fuel",
+      "page_number": 1,
+      "sheet_name": null,
+      "key": "Fuel Type",
+      "value": "Natural Gas",
+      "confidence": 0.99,
+      "key_source_reference_id": null,
+      "value_source_reference_id": null
+    },
+    {
+      "pair_id": "kv-fuelqty-001-qty",
+      "page_number": 1,
+      "sheet_name": null,
+      "key": "Total Usage",
+      "value": "32,400 MMBtu",
+      "confidence": 0.99,
+      "key_source_reference_id": null,
+      "value_source_reference_id": null
+    },
+    {
+      "pair_id": "kv-fuelqty-001-unit",
+      "page_number": 1,
+      "sheet_name": null,
+      "key": "Unit",
+      "value": "MMBtu",
+      "confidence": 0.99,
+      "key_source_reference_id": null,
+      "value_source_reference_id": null
+    },
+    {
+      "pair_id": "kv-fuelqty-001-from",
+      "page_number": 1,
+      "sheet_name": null,
+      "key": "From",
+      "value": "01/01/2023",
+      "confidence": 0.99,
+      "key_source_reference_id": null,
+      "value_source_reference_id": null
+    },
+    {
+      "pair_id": "kv-fuelqty-001-to",
+      "page_number": 1,
+      "sheet_name": null,
+      "key": "To",
+      "value": "01/31/2023",
+      "confidence": 0.99,
+      "key_source_reference_id": null,
+      "value_source_reference_id": null
+    },
+    {
+      "pair_id": "kv-fuelqty-001-supplier",
+      "page_number": 1,
+      "sheet_name": null,
+      "key": "Supplier",
+      "value": "National Fuel Gas Company",
+      "confidence": 0.99,
+      "key_source_reference_id": null,
+      "value_source_reference_id": null
+    },
+    {
+      "pair_id": "kv-fuelqty-001-account",
+      "page_number": 1,
+      "sheet_name": null,
+      "key": "Account Number",
+      "value": "ACC-2023-BWV-001",
+      "confidence": 0.99,
+      "key_source_reference_id": null,
+      "value_source_reference_id": null
+    }
+  ],
+  "source_references": [
+    {
+      "source_reference_id": "SRC-EV-FUELQTY-001-page-1",
+      "document_id": "EV-FUELQTY-001",
+      "page_number": 1,
+      "sheet_name": null,
+      "cell_or_range": null,
+      "text_snippet": "Document ID: EV-NG-2023-001\nNational Fuel Gas Company - Natural Gas Statement\nCustomer: Anheuser-Busch Baldwinsville Brewery\nService Address: 4797 River Road, Baldwinsville, NY 13027\nAccount Number: ACC-2023-BWV-001\nBill Number: NFG-23-BWV-",
+      "bounding_box": null,
+      "parser_block_ids": [],
+      "source_kind": "page_text"
+    }
+  ],
+  "warnings": [],
+  "raw_artifact_uri": null,
+  "fixture_source": {
+    "evidence_pack": "/Users/qinghuanyang/Downloads/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "answer_workbook": "/Users/qinghuanyang/Downloads/AB_Baldwinsville_Scope1_Workbook.xlsx"
+  }
+}

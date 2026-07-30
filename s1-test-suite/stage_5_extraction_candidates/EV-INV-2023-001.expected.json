@@ -1,0 +1,56 @@
+{
+  "document_id": "EV-INV-2023-001",
+  "gold_source": "workbook:Equipment Inventory",
+  "document_type": "Equipment Inventory",
+  "expected_records": [
+    {
+      "unit_id": "BLR-001",
+      "unit_description": "Natural Gas Steam Boiler #1",
+      "fuel_type": "Natural Gas (pipeline)",
+      "max_rated_capacity_mmbtu_hr": 25
+    },
+    {
+      "unit_id": "BLR-002",
+      "unit_description": "Natural Gas Steam Boiler #2",
+      "fuel_type": "Natural Gas (pipeline)",
+      "max_rated_capacity_mmbtu_hr": 20
+    },
+    {
+      "unit_id": "BLR-003",
+      "unit_description": "Steam Boiler #3 \u2014 Multi-Fuel",
+      "fuel_type": "Natural Gas / Solid Biomass Residue",
+      "max_rated_capacity_mmbtu_hr": 18
+    },
+    {
+      "unit_id": "DRY-001",
+      "unit_description": "Propane Malt/Grain Dryer",
+      "fuel_type": "Propane (LPG)",
+      "max_rated_capacity_mmbtu_hr": 300
+    },
+    {
+      "unit_id": "GEN-001",
+      "unit_description": "Diesel Emergency Generator #1",
+      "fuel_type": "Diesel (No. 2 Distillate)",
+      "max_rated_capacity_mmbtu_hr": 2.5
+    },
+    {
+      "unit_id": "BIO-001",
+      "unit_description": "Onsite Wastewater Biogas Combustor",
+      "fuel_type": "Biogas (non-pipeline)",
+      "max_rated_capacity_mmbtu_hr": 15
+    },
+    {
+      "unit_id": "RFO-001",
+      "unit_description": "Residual Fuel Oil Boiler (Backup)",
+      "fuel_type": "Residual Fuel Oil No. 6",
+      "max_rated_capacity_mmbtu_hr": 60
+    }
+  ],
+  "comparison_policy": {
+    "strings": "trim and collapse whitespace; case-insensitive unless field is an identifier",
+    "numbers": "numeric equality after comma/currency removal",
+    "dates": "ISO YYYY-MM-DD",
+    "units": "case-insensitive canonical unit comparison",
+    "missing_fields": "count as false negative only when the field is present in expected_fields/expected_records"
+  }
+}

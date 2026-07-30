@@ -1,0 +1,23 @@
+{
+  "fixture_count": 60,
+  "parser_counts": {
+    "text": 8,
+    "csv_text": 6,
+    "excel": 10,
+    "local_pdf": 10,
+    "aws_textract": 20,
+    "offline_textract_json": 6
+  },
+  "extension_counts": {
+    ".csv": 6,
+    ".pdf": 20,
+    ".jpg": 5,
+    ".png": 5,
+    ".json": 6,
+    ".txt": 4,
+    ".md": 4,
+    ".xlsx": 10
+  },
+  "missing_files": [],
+  "missing_sidecars": []
+}

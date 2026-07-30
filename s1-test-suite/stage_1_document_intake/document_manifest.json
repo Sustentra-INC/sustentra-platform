@@ -1,0 +1,632 @@
+{
+  "source_pack": "Evidence_Pack_Generated_Review_Pack_Nora.docx",
+  "documents": [
+    {
+      "document_id": "EV-INV-2023-001",
+      "filename": "EV-INV-2023-001.docx",
+      "document_type": "Equipment Inventory",
+      "related_source": "Facility",
+      "period_as_stated_in_index": "Annual",
+      "primary_fields_from_index": [
+        "Combustion unit master list",
+        "unit type",
+        "fuel type",
+        "max rated capacity"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-INV-2023-001.expected.json",
+      "gold_source": "workbook:Equipment Inventory"
+    },
+    {
+      "document_id": "EV-NG-2023-001",
+      "filename": "EV-NG-2023-001.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "Jan 1, 2023 to Jan 31, 2023",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-001.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-NG-2023-002",
+      "filename": "EV-NG-2023-002.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "Feb 1, 2023 to Feb 28, 2023",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-002.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-NG-2023-003",
+      "filename": "EV-NG-2023-003.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "Mar 1, 2023 to Mar 31, 2023",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-003.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-NG-2023-004",
+      "filename": "EV-NG-2023-004.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "Apr 1, 2023 to Apr 30, 2023",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-004.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-NG-2023-005",
+      "filename": "EV-NG-2023-005.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "May 1, 2023 to May 31, 2023",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-005.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-NG-2023-006",
+      "filename": "EV-NG-2023-006.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "Jun 1, 2023 to Jun 30, 2023",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-006.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-NG-2023-007",
+      "filename": "EV-NG-2023-007.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "Jul 1, 2023 to Jul 31, 2023",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-007.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-NG-2023-008",
+      "filename": "EV-NG-2023-008.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "Aug 1, 2023 to Aug 31, 2023",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-008.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-NG-2023-009",
+      "filename": "EV-NG-2023-009.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "Sep 1, 2023 to Sep 30, 2023",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-009.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-NG-2023-010",
+      "filename": "EV-NG-2023-010.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "Oct 1, 2023 to Oct 31, 2023",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-010.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-NG-2023-011",
+      "filename": "EV-NG-2023-011.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "Nov 1, 2023 to Nov 30, 2023",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-011.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-NG-2023-012",
+      "filename": "EV-NG-2023-012.docx",
+      "document_type": "Natural Gas Utility Bill",
+      "related_source": "Natural Gas Utility Meter",
+      "period_as_stated_in_index": "Dec 16, 2023 to Jan 15, 2024",
+      "primary_fields_from_index": [
+        "facility",
+        "service address",
+        "account",
+        "billing period",
+        "usage MMBtu"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-NG-2023-012.expected.json",
+      "gold_source": "workbook:Natural Gas"
+    },
+    {
+      "document_id": "EV-BIO-2023-001",
+      "filename": "EV-BIO-2023-001.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "January",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-001.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BIO-2023-002",
+      "filename": "EV-BIO-2023-002.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "February",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-002.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BIO-2023-003",
+      "filename": "EV-BIO-2023-003.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "March",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-003.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BIO-2023-004",
+      "filename": "EV-BIO-2023-004.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "April",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-004.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BIO-2023-005",
+      "filename": "EV-BIO-2023-005.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "May",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-005.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BIO-2023-006",
+      "filename": "EV-BIO-2023-006.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "June",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-006.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BIO-2023-007",
+      "filename": "EV-BIO-2023-007.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "July",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-007.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BIO-2023-008",
+      "filename": "EV-BIO-2023-008.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "August",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-008.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BIO-2023-009",
+      "filename": "EV-BIO-2023-009.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "September",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-009.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BIO-2023-010",
+      "filename": "EV-BIO-2023-010.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "October",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-010.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BIO-2023-011",
+      "filename": "EV-BIO-2023-011.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "November",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-011.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BIO-2023-012",
+      "filename": "EV-BIO-2023-012.docx",
+      "document_type": "BIO-001 Biogas Meter Log",
+      "related_source": "BIO-001",
+      "period_as_stated_in_index": "December",
+      "primary_fields_from_index": [
+        "meter start scf",
+        "meter end scf",
+        "consumed scf"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BIO-2023-012.expected.json",
+      "gold_source": "workbook:Biogas"
+    },
+    {
+      "document_id": "EV-BLR003-2023-001",
+      "filename": "EV-BLR003-2023-001.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "January",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-001.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-BLR003-2023-002",
+      "filename": "EV-BLR003-2023-002.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "February",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-002.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-BLR003-2023-003",
+      "filename": "EV-BLR003-2023-003.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "March",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-003.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-BLR003-2023-004",
+      "filename": "EV-BLR003-2023-004.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "April",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-004.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-BLR003-2023-005",
+      "filename": "EV-BLR003-2023-005.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "May",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-005.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-BLR003-2023-006",
+      "filename": "EV-BLR003-2023-006.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "June",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-006.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-BLR003-2023-007",
+      "filename": "EV-BLR003-2023-007.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "July",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-007.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-BLR003-2023-008",
+      "filename": "EV-BLR003-2023-008.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "August",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-008.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-BLR003-2023-009",
+      "filename": "EV-BLR003-2023-009.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "September",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-009.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-BLR003-2023-010",
+      "filename": "EV-BLR003-2023-010.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "October",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-010.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-BLR003-2023-011",
+      "filename": "EV-BLR003-2023-011.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "November",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-011.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-BLR003-2023-012",
+      "filename": "EV-BLR003-2023-012.docx",
+      "document_type": "BLR-003 Boiler Fuel Record",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "December",
+      "primary_fields_from_index": [
+        "fuel type",
+        "quantity",
+        "unit",
+        "operator log details"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-BLR003-2023-012.expected.json",
+      "gold_source": "workbook:Biomass Boiler"
+    },
+    {
+      "document_id": "EV-LAB-2023-001",
+      "filename": "EV-LAB-2023-001.docx",
+      "document_type": "Biomass Fuel Lab Analysis Report",
+      "related_source": "BLR-003",
+      "period_as_stated_in_index": "September 30, 2023",
+      "primary_fields_from_index": [
+        "sample date",
+        "fuel description",
+        "carbon content",
+        "HHV"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-LAB-2023-001.expected.json",
+      "gold_source": "evidence_pack_document"
+    },
+    {
+      "document_id": "EV-PROP-2023-001",
+      "filename": "EV-PROP-2023-001.docx",
+      "document_type": "Propane Annual Purchase Record",
+      "related_source": "DRY-001",
+      "period_as_stated_in_index": "2023 Annual",
+      "primary_fields_from_index": [
+        "fuel type",
+        "gallons purchased",
+        "delivery summary"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-PROP-2023-001.expected.json",
+      "gold_source": "workbook:Propane & Diesel"
+    },
+    {
+      "document_id": "EV-DIESEL-2023-001",
+      "filename": "EV-DIESEL-2023-001.docx",
+      "document_type": "Diesel Annual Purchase Record",
+      "related_source": "GEN-001",
+      "period_as_stated_in_index": "2023 Annual",
+      "primary_fields_from_index": [
+        "fuel type",
+        "gallons purchased",
+        "emergency generator designation"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-DIESEL-2023-001.expected.json",
+      "gold_source": "workbook:Propane & Diesel"
+    },
+    {
+      "document_id": "EV-AGG-2023-001",
+      "filename": "EV-AGG-2023-001.docx",
+      "document_type": "Combustion Source Aggregation Worksheet",
+      "related_source": "BLR-001, BLR-002, GEN-001",
+      "period_as_stated_in_index": "2023 Annual",
+      "primary_fields_from_index": [
+        "group label",
+        "unit IDs",
+        "unit descriptions",
+        "fuel types"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-AGG-2023-001.expected.json",
+      "gold_source": "evidence_pack_document"
+    },
+    {
+      "document_id": "EV-RFO-2023-001",
+      "filename": "EV-RFO-2023-001.docx",
+      "document_type": "Residual Fuel Oil Boiler Standby / No Fuel Use Statement",
+      "related_source": "RFO-001",
+      "period_as_stated_in_index": "2023 Annual",
+      "primary_fields_from_index": [
+        "unit ID",
+        "standby status",
+        "no residual fuel oil deliveries or combustion activity"
+      ],
+      "gold_label_file": "../stage_5_extraction_candidates/EV-RFO-2023-001.expected.json",
+      "gold_source": "evidence_pack_document"
+    }
+  ]
+}

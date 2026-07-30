@@ -1,0 +1,28 @@
+{
+  "document_id": "PDF-INV-001",
+  "document_style": "equipment_inventory",
+  "parser_modes": [
+    "local_pdf"
+  ],
+  "raw_files": {
+    "local_pdf": "raw_documents/pdf/PDF-INV-001.pdf"
+  },
+  "complexity_level": "hard",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "BLR-003",
+      "Solid Biomass Residue"
+    ],
+    "table_expectations": [],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "page_text"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Embedded/selectable-text PDF. The Shell fixture is the original uploaded raw invoice; other PDFs are rendered from evidence-pack records."
+}

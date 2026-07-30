@@ -1,0 +1,47 @@
+{
+  "document_id": "CSV-BLR-001",
+  "document_style": "blr003_monthly_fuel_record",
+  "parser_modes": [
+    "csv_text"
+  ],
+  "raw_files": {
+    "csv_text": "raw_documents/csv/CSV-BLR-001.csv"
+  },
+  "complexity_level": "hard",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Month",
+      "January"
+    ],
+    "table_expectations": [
+      {
+        "name": "CSV content",
+        "required": true,
+        "headers": [
+          "Month",
+          "Fuel Type",
+          "Quantity",
+          "Unit"
+        ],
+        "required_rows": [
+          [
+            "January",
+            "Natural Gas",
+            "12000",
+            "Mcf"
+          ]
+        ]
+      }
+    ],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "document_text"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": ""
+}

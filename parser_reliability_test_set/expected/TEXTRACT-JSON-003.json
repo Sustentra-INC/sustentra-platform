@@ -1,0 +1,30 @@
+{
+  "document_id": "TEXTRACT-JSON-003",
+  "document_style": "blr003_monthly_fuel_record",
+  "parser_modes": [
+    "offline_textract_json"
+  ],
+  "raw_files": {
+    "offline_textract_json": "raw_documents/textract_json/TEXTRACT-JSON-003.json"
+  },
+  "complexity_level": "moderate",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Document ID: EV-BLR003-2023-009",
+      "BLR-003 Monthly Fuel Consumption Record - September",
+      "Facility Name: Anheuser-Busch Baldwinsville Brewery",
+      "Unit ID: BLR-003"
+    ],
+    "table_expectations": [],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "ocr_line"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Textract-compatible saved JSON for deterministic normalizer tests. It is structurally representative but was not captured from a live AWS API call."
+}

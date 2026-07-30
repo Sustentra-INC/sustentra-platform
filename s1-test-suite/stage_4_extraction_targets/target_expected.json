@@ -1,0 +1,533 @@
+{
+  "documents": [
+    {
+      "document_id": "EV-INV-2023-001",
+      "expected_target_fields": [
+        "unit_id",
+        "unit_description",
+        "fuel_type",
+        "max_rated_capacity_mmbtu_hr"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-001",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-002",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-003",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-004",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-005",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-006",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-007",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-008",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-009",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-010",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-011",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-NG-2023-012",
+      "expected_target_fields": [
+        "facility_name",
+        "service_address",
+        "account_number",
+        "billing_period_start",
+        "billing_period_end",
+        "usage_quantity",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-001",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-002",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-003",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-004",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-005",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-006",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-007",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-008",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-009",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-010",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-011",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BIO-2023-012",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "meter_read_start_scf",
+        "meter_read_end_scf",
+        "volume_consumed_scf",
+        "usage_unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-001",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-002",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-003",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-004",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-005",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-006",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-007",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-008",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-009",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-010",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-011",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-BLR003-2023-012",
+      "expected_target_fields": [
+        "unit_id",
+        "month",
+        "fuel_type",
+        "quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-LAB-2023-001",
+      "expected_target_fields": [
+        "unit_id",
+        "sample_date"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-PROP-2023-001",
+      "expected_target_fields": [
+        "unit_id",
+        "fuel_type",
+        "annual_quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-DIESEL-2023-001",
+      "expected_target_fields": [
+        "unit_id",
+        "fuel_type",
+        "annual_quantity",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-AGG-2023-001",
+      "expected_target_fields": [
+        "unit_ids"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    },
+    {
+      "document_id": "EV-RFO-2023-001",
+      "expected_target_fields": [
+        "unit_id",
+        "standby_status",
+        "reported_fuel_use",
+        "unit"
+      ],
+      "required_status_policy": "Use extraction config required_status as source of truth; this fixture checks target presence, not whether every target is mandatory.",
+      "canonical_type_id": null
+    }
+  ]
+}

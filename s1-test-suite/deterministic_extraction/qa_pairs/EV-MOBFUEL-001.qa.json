@@ -1,0 +1,109 @@
+{
+  "document_id": "EV-MOBFUEL-001",
+  "document_type": "fuel_delivery_receipt",
+  "canonical_type_id": "CT-S1-MOBFUEL",
+  "parser_output_file": "../parser_outputs/EV-MOBFUEL-001.parser_output.json",
+  "qa_pairs": [
+    {
+      "qa_id": "EV-MOBFUEL-001-Q001",
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "field_id": "fuel_type",
+      "question": "What mobile fuel type is reported for GEN-001?",
+      "answer": {
+        "value": "Diesel (No. 2 Distillate)",
+        "unit": null,
+        "raw_value": "Diesel (No. 2 Distillate)",
+        "period_start": null,
+        "period_end": null,
+        "record_id": "GEN-001"
+      },
+      "source_expectation": {
+        "source_text_contains": "Product: Diesel (No. 2 Distillate)",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": true
+      },
+      "expected_validation_flags": [],
+      "notes": ""
+    },
+    {
+      "qa_id": "EV-MOBFUEL-001-Q002",
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "field_id": "activity_quantity",
+      "question": "What annual diesel quantity is reported for GEN-001?",
+      "answer": {
+        "value": 2800,
+        "unit": "gallons",
+        "raw_value": "2,800 gallons",
+        "period_start": null,
+        "period_end": null,
+        "record_id": "GEN-001"
+      },
+      "source_expectation": {
+        "source_text_contains": "Quantity: 2,800 gallons",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": true
+      },
+      "expected_validation_flags": [],
+      "notes": ""
+    },
+    {
+      "qa_id": "EV-MOBFUEL-001-Q003",
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "field_id": "activity_unit",
+      "question": "What unit is used for the annual diesel quantity?",
+      "answer": {
+        "value": "gallons",
+        "unit": "gallons",
+        "raw_value": "gallons",
+        "period_start": null,
+        "period_end": null,
+        "record_id": "GEN-001"
+      },
+      "source_expectation": {
+        "source_text_contains": "Unit: gallons",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": true
+      },
+      "expected_validation_flags": [],
+      "notes": ""
+    }
+  ],
+  "source_materials": {
+    "evidence_pack": "/Users/qinghuanyang/Downloads/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "answer_workbook": "/Users/qinghuanyang/Downloads/AB_Baldwinsville_Scope1_Workbook.xlsx",
+    "source_note": "Evidence pack table 95; workbook Propane & Diesel diesel row."
+  }
+}

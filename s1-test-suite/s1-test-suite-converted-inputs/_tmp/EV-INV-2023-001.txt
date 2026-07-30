@@ -1,0 +1,26 @@
+Document ID: EV-INV-2023-001
+
+Combustion Equipment Inventory
+
+Annual equipment list for facility stationary combustion sources.
+
+Facility Name	Anheuser-Busch Baldwinsville Brewery	Service Address	4797 River Road, Baldwinsville, NY 13027
+Operator	Anheuser-Busch LLC	Reporting Year	January 1, 2023 through December 31, 2023
+Prepared By	Plant Utilities Department	Inventory Date	December 31, 2023
+
+Unit ID	Description	Fuel Type	Max Rated Capacity (MMBtu/hr)	Notes
+BLR-001	Natural Gas Steam Boiler #1	Natural Gas (pipeline)	25	Unit Type: Boiler. Primary production boiler.
+BLR-002	Natural Gas Steam Boiler #2	Natural Gas (pipeline)	20	Unit Type: Boiler. Secondary production boiler.
+BLR-003	Steam Boiler #3 - Multi-Fuel	Natural Gas / Solid Biomass Residue	18	Unit Type: Boiler. Switches to solid biomass residue Aug-Sep.
+DRY-001	Propane Malt/Grain Dryer	Propane (LPG)	300	Unit Type: Process Heater. Batch kiln dryer - max rated nameplate capacity.
+GEN-001	Diesel Emergency Generator #1	Diesel (No. 2 Distillate)	2.5	Unit Type: Reciprocating Internal Combustion Engine (RICE). Emergency use only.
+BIO-001	Onsite Wastewater Biogas Combustor	Biogas (non-pipeline)	15	Unit Type: Other. Anaerobic digestion - onsite wastewater.
+RFO-001	Residual Fuel Oil Boiler (Backup)	Residual Fuel Oil No. 6	60	Unit Type: Boiler. Backup/seasonal use.
+
+Footnote: Pilot light emissions excluded per 40 CFR §98.30(d) - reporting not required for pilot lights.
+
+Authorization
+
+Name / Title	Signature	Date
+Prepared by: M. Rivera, Environmental Compliance Coordinator	M. Rivera	01/08/2024
+
