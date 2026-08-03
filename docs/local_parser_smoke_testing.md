@@ -33,7 +33,9 @@ works without flags. The script:
 - writes one `<safe_stem>.parser_output.json` per input file;
 - writes `parser_smoke_report.md` and `parser_smoke_summary.json`.
 
-It makes no AWS, OpenAI, network, or OCR calls and never modifies the inputs.
+With the default `.env` (`TEXTRACT_ENABLED=false`), it makes no AWS, OpenAI,
+network, or OCR calls and never modifies the inputs. If `TEXTRACT_ENABLED=true`,
+PDF and image inputs are routed to live AWS Textract.
 
 ## What the report means
 

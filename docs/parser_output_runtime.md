@@ -12,7 +12,8 @@ local document file → parser adapter → parser_output-shaped dict
 
 It is deliberately narrow: PR4 does **not** perform field extraction, generate
 `extraction_candidate` records, persist review decisions, run RAG, or evaluate
-S2 methodology. It makes no external network, AWS, or OpenAI calls.
+S2 methodology. By default it makes no external network, AWS, or OpenAI calls.
+When `TEXTRACT_ENABLED=true`, PDFs and images are routed to live AWS Textract.
 
 ## What `parser_output` represents
 
@@ -36,22 +37,34 @@ includes:
 
 | Input | Adapter | `parser_name` | Notes |
 |-------|---------|---------------|-------|
-| `.txt`, `.md`, `.markdown`, `.csv` | `TextParser` | `text_parser` | UTF-8 text; one page, one block per non-empty line |
+| `.txt`, `.md`, `.markdown` | `TextParser` | `text_parser` | UTF-8 text; one page, one block per non-empty line |
+| `.csv` | `CsvParser` | `csv_parser` | UTF-8 CSV; one page, row text blocks, and one structured table |
 | `.xlsx`, `.xlsm` | `ExcelParser` | `openpyxl` | Non-empty cells become blocks + source references; each sheet becomes a table |
-| `.pdf` | `PdfParser` | `pymupdf` / `pdfplumber` | Embedded text only; graceful fallback if no dependency or unreadable file |
-| image types | `ImageParser` | `image_ocr` | Explicit stub: `failed` + `ocr_not_implemented` warning |
+| `.pdf` | `PdfParser` | `pymupdf` / `pdfplumber` | Default path: embedded text only; graceful fallback if no dependency or unreadable file |
+| image types | `ImageParser` | `image_ocr` | Default path: explicit stub, `failed` + `ocr_not_implemented` warning |
+| `.pdf` and image types with `TEXTRACT_ENABLED=true` | `AwsTextractParser` | `aws_textract` | Calls AWS Textract `AnalyzeDocument`, then normalizes the response through `TextractParser` |
 | saved Textract JSON | `TextractParser` | `textract` | Normalizes existing JSON only; **never** calls AWS |
 
 Routing is handled by `ParserService.parse_document(...)` using file extension
-first, then an optional `mime_type` hint. Textract normalization is invoked
-explicitly via `ParserService.parse_textract_json(...)`.
+first, then an optional `mime_type` hint. If `TEXTRACT_ENABLED` is truthy
+(`1`, `true`, `yes`, or `on`), PDF and image inputs are routed to live
+Textract. Offline Textract JSON normalization is still invoked explicitly via
+`ParserService.parse_textract_json(...)`.
+
+Live Textract uses these environment variables:
+
+- `TEXTRACT_ENABLED` — opt-in switch for routing PDFs/images to AWS.
+- `TEXTRACT_REGION` — AWS region for the Textract client. Falls back to
+  `AWS_REGION`.
+- `TEXTRACT_FEATURE_TYPES` — comma-separated Textract features, defaulting to
+  `FORMS,TABLES`.
 
 ## What is intentionally not implemented
 
 - Field/ESG value extraction and `extraction_candidate` generation
 - LLM/OpenAI calls
-- Live AWS Textract calls (only offline JSON normalization)
 - Image OCR (explicit stub only)
+- Asynchronous Textract/S3-output jobs for large documents
 - Review decisions, approved evidence, completeness gate, gap analysis
 - Frontend, RAG, and S2 methodology logic
 - Persistence and file-upload API wiring
