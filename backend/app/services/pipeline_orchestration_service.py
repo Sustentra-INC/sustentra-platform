@@ -7,6 +7,9 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from backend.app.domain.pipeline import PipelineRun, PipelineStageStatuses
+from backend.app.repositories.extraction_result_repository import (
+    JsonlExtractionResultRepository,
+)
 from backend.app.repositories.pipeline_repository import JsonlPipelineRunRepository
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
 from backend.app.services.classification_service import ClassificationService
@@ -29,6 +32,7 @@ class PipelineOrchestrationService:
         review_service: Any | None = None,
         approved_evidence_service: Any | None = None,
         pipeline_repository: Any | None = None,
+        extraction_result_repository: Any | None = None,
         clock: Callable[[], str] | None = None,
         id_factory: Callable[[str, str], str] | None = None,
     ) -> None:
@@ -45,6 +49,9 @@ class PipelineOrchestrationService:
             approved_evidence_service or ApprovedEvidenceService()
         )
         self._pipeline_repository = pipeline_repository or JsonlPipelineRunRepository()
+        self._extraction_result_repository = (
+            extraction_result_repository or JsonlExtractionResultRepository()
+        )
 
         self._clock = clock or (lambda: datetime.now(timezone.utc).isoformat())
         self._id_factory = id_factory or self._default_id_factory
@@ -133,7 +140,13 @@ class PipelineOrchestrationService:
                     created_at=created_at,
                     completed_at=self._clock(),
                 )
-                saved_run = self._persist_if_needed(run, persist_run)
+                saved_run = self._persist_run_if_needed(run, persist_run)
+                self._persist_extraction_result_if_needed(
+                    extraction_result=extraction_result,
+                    pipeline_run=saved_run,
+                    canonical_type_id=canonical_type_id,
+                    persist_run=persist_run,
+                )
                 return {
                     "pipeline_run": saved_run,
                     "parser_output": parser_output,
@@ -208,7 +221,13 @@ class PipelineOrchestrationService:
                     created_at=created_at,
                     completed_at=self._clock(),
                 )
-                saved_run = self._persist_if_needed(run, persist_run)
+                saved_run = self._persist_run_if_needed(run, persist_run)
+                self._persist_extraction_result_if_needed(
+                    extraction_result=extraction_result,
+                    pipeline_run=saved_run,
+                    canonical_type_id=canonical_type_id,
+                    persist_run=persist_run,
+                )
                 return {
                     "pipeline_run": saved_run,
                     "parser_output": parser_output,
@@ -259,7 +278,13 @@ class PipelineOrchestrationService:
                 created_at=created_at,
                 completed_at=self._clock(),
             )
-            saved_run = self._persist_if_needed(run, persist_run)
+            saved_run = self._persist_run_if_needed(run, persist_run)
+            self._persist_extraction_result_if_needed(
+                extraction_result=extraction_result,
+                pipeline_run=saved_run,
+                canonical_type_id=canonical_type_id,
+                persist_run=persist_run,
+            )
             return {
                 "pipeline_run": saved_run,
                 "parser_output": parser_output,
@@ -298,7 +323,13 @@ class PipelineOrchestrationService:
                 created_at=created_at,
                 completed_at=self._clock(),
             )
-            saved_run = self._persist_if_needed(run, persist_run)
+            saved_run = self._persist_run_if_needed(run, persist_run)
+            self._persist_extraction_result_if_needed(
+                extraction_result=extraction_result,
+                pipeline_run=saved_run,
+                canonical_type_id=canonical_type_id,
+                persist_run=persist_run,
+            )
             return {
                 "pipeline_run": saved_run,
                 "parser_output": parser_output,
@@ -312,6 +343,12 @@ class PipelineOrchestrationService:
 
     def get_latest_run_by_evidence(self, evidence_id: str) -> dict | None:
         return self._pipeline_repository.get_latest_by_evidence(evidence_id)
+
+    def get_latest_extraction_result_by_document(self, document_id: str) -> dict | None:
+        return self._extraction_result_repository.get_latest_by_document(document_id)
+
+    def get_latest_extraction_result_by_evidence(self, evidence_id: str) -> dict | None:
+        return self._extraction_result_repository.get_latest_by_evidence(evidence_id)
 
     def get_evidence_status(self, evidence_id: str) -> dict:
         latest_pipeline_run = self._pipeline_repository.get_latest_by_evidence(evidence_id)
@@ -358,10 +395,36 @@ class PipelineOrchestrationService:
     def _get_target_service(self):
         return self._target_service
 
-    def _persist_if_needed(self, run: dict, persist_run: bool) -> dict:
+    def _persist_run_if_needed(self, run: dict, persist_run: bool) -> dict:
         if not persist_run:
             return copy.deepcopy(run)
         return self._pipeline_repository.save(run)
+
+    def _persist_extraction_result_if_needed(
+        self,
+        *,
+        extraction_result: dict,
+        pipeline_run: dict,
+        canonical_type_id: str | None,
+        persist_run: bool,
+    ) -> dict | None:
+        if not persist_run:
+            return None
+
+        items = extraction_result.get("items") or []
+        if not isinstance(items, list):
+            items = []
+
+        record = copy.deepcopy(extraction_result)
+        record["pipeline_run_id"] = pipeline_run["pipeline_run_id"]
+        record["engagement_id"] = pipeline_run["engagement_id"]
+        record["evidence_id"] = pipeline_run["evidence_id"]
+        record["document_id"] = pipeline_run["document_id"]
+        record["canonical_type_id"] = canonical_type_id
+        record["candidate_count"] = int(record.get("candidate_count") or len(items))
+        record["items"] = items
+        record["created_at"] = pipeline_run.get("completed_at") or pipeline_run.get("created_at")
+        return self._extraction_result_repository.save(record)
 
     def _build_pipeline_run(
         self,

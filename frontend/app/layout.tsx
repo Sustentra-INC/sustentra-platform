@@ -1,7 +1,6 @@
 ﻿import type { ReactNode } from "react";
-
-import { AppSidebar } from "../components/layout/AppSidebar";
-import { PageHeader } from "../components/layout/PageHeader";
+import "../features/s1/styles/sustentra-tokens.css";
+import "../features/s1/styles/s1-workpaper.css";
 
 interface RootLayoutProps {
   children: ReactNode;
@@ -10,19 +9,7 @@ interface RootLayoutProps {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, fontFamily: "Segoe UI, Arial, sans-serif" }}>
-        <div style={{ display: "flex", minHeight: "100vh" }}>
-          <AppSidebar />
-          <main style={{ flex: 1, padding: 20 }}>
-            <PageHeader
-              title="Sustentra Evidence Extraction"
-              subtitle="Production skeleton: Next.js frontend + FastAPI backend"
-            />
-            {children}
-          </main>
-        </div>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
-

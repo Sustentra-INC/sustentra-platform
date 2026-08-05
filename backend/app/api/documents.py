@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from backend.app.services.document_upload_service import DocumentUploadService
@@ -110,6 +111,28 @@ def get_document(document_id: str) -> dict:
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
     return document
+
+
+@router.get("/documents/{document_id}/download")
+def download_document(document_id: str) -> FileResponse:
+    document = _upload_service.get_document(document_id)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+
+    storage_uri = document.get("storage_uri")
+    try:
+        local_path = _storage_service.resolve_storage_uri(str(storage_uri))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if not local_path.exists() or not local_path.is_file():
+        raise HTTPException(status_code=404, detail="Stored document file not found.")
+
+    return FileResponse(
+        path=local_path,
+        media_type=document.get("mime_type") or "application/octet-stream",
+        filename=document.get("file_name") or local_path.name,
+    )
 
 
 @router.get("/evidence/{evidence_id}/documents")

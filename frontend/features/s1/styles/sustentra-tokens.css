@@ -1,0 +1,199 @@
+/* ==========================================================================
+   Sustentra front-end design tokens — v0.1
+   Owner: Claire Qiu. Date: 27 July 2026.
+
+   These are the only values. Do not introduce a hex code, a font size, or a
+   spacing value that is not in this file. If something you are building has no
+   token, that is a design gap — raise it, do not invent one.
+
+   The naming is deliberate. Tokens are named for what they MEAN in an
+   assurance engagement, not for how they look. There is no "--amber" or
+   "--warning" here, because the moment a colour has a generic name it starts
+   carrying four unrelated meanings at once. Ask "what is this state?" and the
+   token name will tell you the answer.
+   ========================================================================== */
+
+:root {
+
+  /* --- Base surfaces and ink ---------------------------------------------
+     Warm neutral. This is a workpaper, and it is read for hours at a time.
+     ---------------------------------------------------------------------- */
+
+  --sf-page:        #FBFAF6;   /* application background */
+  --sf-card:        #FFFFFF;   /* cards, tables, panels */
+  --sf-sunken:      #F7F5EF;   /* nested / recessed areas, expanded rows */
+  --sf-inset:       #EFEDE4;   /* code, verbatim statute text, quoted blocks */
+
+  --ink:            #23231F;   /* primary text */
+  --ink-2:          #57564F;   /* secondary text, values in tables */
+  --ink-3:          #8A897F;   /* labels, metadata, column headers */
+
+  --line:           #E0DDD3;   /* default hairline */
+  --line-strong:    #C9C5B8;   /* emphasised border, hover, focus ring base */
+
+
+  /* --- Engagement state --------------------------------------------------
+     Six roles. Every status indicator in the product resolves to exactly one
+     of these. They are mutually exclusive by construction.
+     ---------------------------------------------------------------------- */
+
+  /* Prevents conclusion. The engagement cannot be signed while this exists. */
+  --state-blocking-fg:   #A32D2D;
+  --state-blocking-bg:   #FBEAEA;
+  --state-blocking-line: #E8C4C4;
+
+  /* Needs action, does not prevent conclusion. */
+  --state-open-fg:       #8A5108;
+  --state-open-bg:       #FAEFDC;
+  --state-open-line:     #EBD5AC;
+
+  /* Done — judgment recorded, request closed, field verified. */
+  --state-resolved-fg:   #3B6D11;
+  --state-resolved-bg:   #EDF4E2;
+  --state-resolved-line: #CFE0B4;
+
+  /* In progress — the system or a human is partway through. Neutral, not good
+     or bad. Use for processing states and "under review". */
+  --state-active-fg:     #185FA5;
+  --state-active-bg:     #E8F1FB;
+  --state-active-line:   #C3DAF2;
+
+  /* Checked, and cannot be verified from any client document. This is an
+     honest scope boundary, NOT a failure. It must never share a treatment with
+     --state-blocking. Applies to `limit`-type rules and to any assertion the
+     system does not evaluate. */
+  --state-unverifiable-fg:   #4B4796;
+  --state-unverifiable-bg:   #EEEDF8;
+  --state-unverifiable-line: #D2CFEC;
+
+  /* Not applicable under an unmet condition. Deliberately colourless: this is
+     an absence of obligation, not a state with weight. Render as muted text on
+     a dashed hairline, never as a filled chip. */
+  --state-na-fg:         #8A897F;
+  --state-na-bg:         transparent;
+  --state-na-line:       #D6D3C8;   /* use dashed */
+
+
+  /* --- Modifiers ---------------------------------------------------------
+     Layer over a state, never replace one.
+     ---------------------------------------------------------------------- */
+
+  /* Result is not final until the register is complete (CX-14). Apply as a
+     dashed outline on the existing chip; do not recolour it. */
+  --mod-provisional-line: var(--ink-3);
+
+  /* Waiting on someone else. Pair with the owner label, do not encode owner
+     in colour. */
+  --mod-awaiting-fg:     var(--ink-3);
+
+
+  /* --- Evidence role -----------------------------------------------------
+     Main evidence is extractable and system-verifiable; supportive evidence
+     enters the workpaper but is never extracted. The distinction is
+     structural, so it is carried by layout and label — not by colour.
+     ---------------------------------------------------------------------- */
+
+  --role-main-marker:       var(--line-strong);   /* left rule on main rows */
+  --role-supportive-marker: var(--ink-3);         /* dashed left rule */
+
+
+  /* --- Typography --------------------------------------------------------
+     Four sizes. Two weights. No exceptions.
+     ---------------------------------------------------------------------- */
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
+               Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --text-lg:   16px;   /* screen titles */
+  --text-md:   14px;   /* body, primary table content */
+  --text-sm:   12px;   /* secondary content, table metadata */
+  --text-xs:   11px;   /* column headers, identifiers, timestamps */
+
+  --weight-regular: 400;
+  --weight-medium:  500;
+
+  --leading-tight: 1.35;   /* table rows, chips */
+  --leading-body:  1.6;    /* prose, explanations, statute text */
+
+  /* Field_IDs, rule IDs, Node_IDs and timestamps are always mono at --text-xs
+     in --ink-3. They are identifiers, not content. */
+
+
+  /* --- Numeric display ---------------------------------------------------
+     Every magnitude carries its basis. Three values, and the distinction is
+     typographic rather than chromatic because magnitude appears inside cells
+     that already carry a state colour.
+     ---------------------------------------------------------------------- */
+
+  --num-font-variant: tabular-nums;   /* all quantities, always */
+
+  /* measured        → --ink, regular weight, no marker
+     estimated       → --ink, regular weight, followed by an "est." chip in
+                       --state-open-*  (the basis is an open question until the
+                       estimation rule is chosen)
+     not quantifiable→ --ink-3, italic, the literal words "not quantifiable" —
+                       never a dash, never zero, never blank */
+
+
+  /* --- Spacing -----------------------------------------------------------
+     4px base. Dense by design: a reviewer scans hundreds of rows.
+     ---------------------------------------------------------------------- */
+
+  --sp-1:   4px;
+  --sp-2:   8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  24px;
+  --sp-6:  32px;
+  --sp-7:  48px;
+
+  --row-height-compact: 36px;   /* evidence tables, coverage matrix */
+  --row-height-default: 44px;   /* register rows, queue rows */
+
+
+  /* --- Shape -------------------------------------------------------------- */
+
+  --radius-chip:  6px;
+  --radius-card: 10px;
+  --radius-input: 6px;
+
+  --border-hairline: 1px solid var(--line);
+  --border-strong:   1px solid var(--line-strong);
+  --border-dashed:   1px dashed var(--line-strong);
+
+  /* No shadows. No gradients. This is a document, not an interface. */
+
+
+  /* --- Focus and interaction ---------------------------------------------- */
+
+  --focus-ring: 2px solid var(--state-active-fg);
+  --focus-offset: 2px;
+}
+
+
+/* ==========================================================================
+   Rules that travel with the tokens
+   ==========================================================================
+
+   1. NEVER COLOUR ALONE. Every state carries a text label as well as a
+      colour. Reviewers print workpapers, and a printed red chip and a printed
+      amber chip are the same grey.
+
+   2. ONE STATE PER INDICATOR. A chip expresses one of the six engagement
+      states. If a row needs to express processing AND review AND impact, that
+      is three indicators, not one blended label. The four-dimension state
+      model is the contract between this UI and the backend; collapsing it
+      here breaks it everywhere.
+
+   3. --state-unverifiable IS NOT A FAILURE. If it renders in a red family
+      anywhere, reviewers learn to dismiss red, and every real finding loses
+      its force.
+
+   4. NOT APPLICABLE IS NOT MISSING. --state-na has no fill for a reason.
+      A conditional row whose condition is unmet is an absence of obligation.
+      Rendering it as a filled chip invites someone to go chase it.
+
+   5. NO NEW VALUES. If you need a colour, size, or spacing that is not here,
+      the design has a gap. Raise it. An invented value becomes permanent.
+   ========================================================================== */
