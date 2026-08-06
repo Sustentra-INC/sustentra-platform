@@ -36,6 +36,21 @@ SUSTENTRA_S3_SECURE=true
 If Supabase gives a pooled database URL, use the pooled host/port and keep the
 `postgresql+psycopg2://` prefix for SQLAlchemy.
 
+For Render, prefer the Supabase pooler connection string instead of the direct
+`db.PROJECT_REF.supabase.co:5432` host. Some Supabase direct database hosts
+resolve to IPv6, and Render free services may fail with `Network is
+unreachable`. In Supabase, open **Project Settings -> Database -> Connection
+string** and copy the **Transaction pooler** or **Session pooler** URI. Convert
+the prefix for SQLAlchemy:
+
+```bash
+# Supabase gives:
+postgresql://postgres.PROJECT_REF:PASSWORD@POOLER_HOST:6543/postgres
+
+# Render should receive:
+postgresql+psycopg2://postgres.PROJECT_REF:PASSWORD@POOLER_HOST:6543/postgres
+```
+
 ## 2. Render Backend
 
 Create a Render Blueprint from this repository. Render reads
