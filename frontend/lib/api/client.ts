@@ -14,7 +14,15 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status}`);
+    let detail = `API request failed: ${response.status}`;
+    try {
+      const body = (await response.json()) as { detail?: unknown };
+      if (typeof body.detail === "string") detail = body.detail;
+      else if (Array.isArray(body.detail)) detail = body.detail.join(", ");
+    } catch {
+      // Keep the status-only fallback when the body is not JSON.
+    }
+    throw new Error(detail);
   }
 
   return response.json() as Promise<T>;

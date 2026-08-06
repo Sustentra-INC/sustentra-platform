@@ -15,6 +15,7 @@ from backend.app.services.approved_evidence_service import ApprovedEvidenceServi
 from backend.app.services.classification_service import ClassificationService
 from backend.app.services.extraction_service import ExtractionService
 from backend.app.services.extraction_target_service import ExtractionTargetService
+from backend.app.services.llm_extraction_service import LlmExtractionService
 from backend.app.services.parser_service import ParserService
 from backend.app.services.review_decision_service import ReviewDecisionService
 
@@ -29,6 +30,7 @@ class PipelineOrchestrationService:
         classification_service: Any | None = None,
         target_service: Any | None = None,
         extraction_service: Any | None = None,
+        llm_extraction_service: Any | None = None,
         review_service: Any | None = None,
         approved_evidence_service: Any | None = None,
         pipeline_repository: Any | None = None,
@@ -43,6 +45,7 @@ class PipelineOrchestrationService:
         self._extraction_service = extraction_service or ExtractionService(
             target_service=self._target_service
         )
+        self._llm_extraction_service = llm_extraction_service or LlmExtractionService()
 
         self._review_service = review_service or ReviewDecisionService()
         self._approved_evidence_service = (
@@ -164,6 +167,11 @@ class PipelineOrchestrationService:
                     "parser_output": parser_output,
                 }
             )
+            classification_result = self._apply_s1_fallback_classification(
+                classification_result=classification_result,
+                parser_output=parser_output,
+                file_name=resolved_file_name,
+            )
             classification_status = str(classification_result.get("status") or "") or None
             stage_statuses.classify = self._classification_stage_status(classification_status)
 
@@ -252,6 +260,17 @@ class PipelineOrchestrationService:
                         "evidence_id": resolved_evidence_id,
                     }
                 )
+                llm_candidates = self._run_llm_extraction(
+                    parser_output=parser_output,
+                    extraction_targets=extraction_targets,
+                    evidence_id=resolved_evidence_id,
+                    warnings=warnings,
+                )
+                if llm_candidates:
+                    extraction_result = self._merge_llm_candidates(
+                        extraction_result=extraction_result,
+                        llm_candidates=llm_candidates,
+                    )
                 stage_statuses.candidate_generation = "completed"
                 overall_status = "completed"
             else:
@@ -394,6 +413,126 @@ class PipelineOrchestrationService:
 
     def _get_target_service(self):
         return self._target_service
+
+    def _run_llm_extraction(
+        self,
+        *,
+        parser_output: dict,
+        extraction_targets: list[dict],
+        evidence_id: str,
+        warnings: list[str],
+    ) -> list[dict]:
+        service = self._llm_extraction_service
+        try:
+            if not service.is_enabled():
+                return []
+            return service.extract_candidates(
+                parser_output=parser_output,
+                extraction_targets=extraction_targets,
+                evidence_id=evidence_id,
+            )
+        except Exception as exc:
+            warnings.append(f"LLM structured extraction was skipped after failure: {type(exc).__name__}.")
+            return []
+
+    @staticmethod
+    def _merge_llm_candidates(*, extraction_result: dict, llm_candidates: list[dict]) -> dict:
+        merged = copy.deepcopy(extraction_result)
+        existing_items = merged.get("items") or []
+        if not isinstance(existing_items, list):
+            existing_items = []
+
+        llm_by_field = {
+            str(candidate.get("field_name") or ""): candidate
+            for candidate in llm_candidates
+            if candidate.get("field_name")
+        }
+        next_items: list[dict] = []
+        seen_fields: set[str] = set()
+        for item in existing_items:
+            field_name = str(item.get("field_name") or "")
+            seen_fields.add(field_name)
+            llm_item = llm_by_field.get(field_name)
+            if llm_item and PipelineOrchestrationService._should_prefer_llm_candidate(item):
+                next_items.append(llm_item)
+            else:
+                next_items.append(item)
+
+        for field_name, llm_item in llm_by_field.items():
+            if field_name not in seen_fields:
+                next_items.append(llm_item)
+
+        merged["items"] = next_items
+        merged["candidate_count"] = len(next_items)
+        return merged
+
+    @staticmethod
+    def _should_prefer_llm_candidate(candidate: dict) -> bool:
+        flags = set(candidate.get("validation_flags") or [])
+        value = candidate.get("normalized_value")
+        if value is None or value == "":
+            return True
+        if "field_not_found" in flags or "unsupported_extraction_method" in flags:
+            return True
+        raw = str(candidate.get("raw_value") or "")
+        return len(raw) > 220
+
+    @staticmethod
+    def _apply_s1_fallback_classification(
+        *,
+        classification_result: dict,
+        parser_output: dict,
+        file_name: str,
+    ) -> dict:
+        status = classification_result.get("status")
+        if status in CLASSIFIER_TARGET_STATUSES:
+            return classification_result
+
+        text_parts = [file_name]
+        for collection_name in ("pages", "text_blocks", "tables", "key_value_pairs"):
+            collection = parser_output.get(collection_name) or []
+            if not isinstance(collection, list):
+                continue
+            for item in collection:
+                text_parts.append(str(item))
+        search_text = " ".join(text_parts).lower()
+
+        fallback_type: str | None = None
+        if any(term in search_text for term in ("diesel", "gasoline", "gallon", "fuel ticket")):
+            fallback_type = "CT-S1-MOBFUEL"
+        elif any(term in search_text for term in ("shell", "natural gas", "therm", "utility bill", "fuel")):
+            fallback_type = "CT-S1-FUELQTY"
+
+        if fallback_type is None:
+            return classification_result
+
+        updated = copy.deepcopy(classification_result)
+        updated.update(
+            {
+                "status": "classified",
+                "primary_canonical_type_id": fallback_type,
+                "primary_variant_id": "S1-FALLBACK-FUEL",
+                "confidence": None,
+                "threshold": None,
+                "review_required": True,
+                "notes": (
+                    "Fallback S1 classifier selected a fuel evidence type from "
+                    "filename/text terms after the vocabulary classifier did not meet threshold."
+                ),
+            }
+        )
+        updated["candidate_matches"] = [
+            {
+                "canonical_type_id": fallback_type,
+                "variant_id": "S1-FALLBACK-FUEL",
+                "confidence": None,
+                "threshold": None,
+                "matched_signals": {"fallback_terms": ["fuel evidence"]},
+                "reason": "Fallback S1 fuel evidence match.",
+                "review_required": True,
+            }
+        ]
+        return updated
 
     def _persist_run_if_needed(self, run: dict, persist_run: bool) -> dict:
         if not persist_run:

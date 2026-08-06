@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .bootstrap import configure_runtime_from_env
 from .api import (
     assistant,
     documents,
@@ -15,6 +16,7 @@ from .api import (
 )
 
 app = FastAPI(title="Sustentra Evidence Extraction API", version="0.1.0")
+runtime_settings = configure_runtime_from_env()
 
 _default_origins = "http://localhost:3000,http://127.0.0.1:3000"
 _cors_origins = [

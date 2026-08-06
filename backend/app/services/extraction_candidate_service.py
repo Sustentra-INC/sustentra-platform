@@ -179,18 +179,43 @@ class ExtractionCandidateService:
                 validation_flags=flags,
             )
 
+        hit: _MethodHit | None = None
+        if field_id == "activity_unit":
+            hit = self._extract_unit_from_table_header(
+                parser_output=parser_output,
+                target=target,
+                document_id=document_id,
+            )
+
         ordered = sorted(
             supported,
             key=lambda method: -self._method_priority(method, target),
         )
-        hit: _MethodHit | None = None
-        for method in ordered:
-            candidate_hit = self._dispatch(method, parser_output, target, document_id)
-            if candidate_hit is not None and self._has_value(candidate_hit.raw_value):
-                hit = candidate_hit
-                break
+        if hit is None:
+            for method in ordered:
+                candidate_hit = self._dispatch(method, parser_output, target, document_id)
+                if candidate_hit is not None and self._has_value(candidate_hit.raw_value):
+                    hit = candidate_hit
+                    break
 
         if hit is None:
+            flags: list[str] = []
+            if required_status in {"core", "conditional"}:
+                flags.append("field_not_found")
+            return self._build_candidate(
+                evidence_id=evidence_id,
+                document_id=document_id,
+                field_id=field_id,
+                display_label=display_label,
+                raw_value=None,
+                normalized_value=None,
+                unit=None,
+                confidence=_MISSING_CONFIDENCE,
+                source_reference=self._missing_source_reference(document_id, field_id),
+                validation_flags=flags,
+            )
+
+        if self._should_reject_hit(hit, target):
             flags: list[str] = []
             if required_status in {"core", "conditional"}:
                 flags.append("field_not_found")
@@ -315,12 +340,15 @@ class ExtractionCandidateService:
                 continue
             text = str(block.get("text") or "")
             for line in self._split_search_lines(text):
+                if not self._line_is_relevant_for_regex(line, target):
+                    continue
                 for pattern in patterns:
                     for match in pattern.finditer(line):
                         if self._is_likely_bad_quantity_match(match.group(0), line, target):
                             continue
-                        source_reference = self._source_reference_for_block(
-                            parser_output, block, document_id
+                        source_reference = self._source_reference_with_snippet(
+                            self._source_reference_for_block(parser_output, block, document_id),
+                            line,
                         )
                         return _MethodHit(
                             method="regex",
@@ -339,6 +367,8 @@ class ExtractionCandidateService:
             if not isinstance(page, dict):
                 continue
             for line in self._split_search_lines(str(page.get("text") or "")):
+                if not self._line_is_relevant_for_regex(line, target):
+                    continue
                 for pattern in patterns:
                     for match in pattern.finditer(line):
                         if self._is_likely_bad_quantity_match(match.group(0), line, target):
@@ -348,7 +378,10 @@ class ExtractionCandidateService:
                             raw_value=match.group(0),
                             method_confidence=_METHOD_BASE_CONFIDENCE["regex"],
                             parser_confidence=None,
-                            source_reference=self._inline_from_page(page, document_id),
+                            source_reference=self._source_reference_with_snippet(
+                                self._inline_from_page(page, document_id),
+                                line,
+                            ),
                             context={
                                 "page_number": page.get("page_number"),
                                 "sheet_name": None,
@@ -379,31 +412,47 @@ class ExtractionCandidateService:
             if not isinstance(block, dict):
                 continue
             text = str(block.get("text") or "")
-            result = self._value_after_anchor(text, anchors, patterns, target)
-            if result:
-                value, matched_anchor = result
-                source_reference = self._source_reference_for_block(
-                    parser_output, block, document_id
+            lines = self._split_search_lines(text)
+            for line_index, line in enumerate(lines):
+                result = self._value_after_anchor(
+                    line,
+                    anchors,
+                    patterns,
+                    target,
+                    next_lines=lines[line_index + 1 : line_index + 4],
                 )
-                return _MethodHit(
-                    method="anchor_text",
-                    raw_value=value,
-                    method_confidence=_METHOD_BASE_CONFIDENCE["anchor_text"],
-                    parser_confidence=self._as_confidence(block.get("confidence")),
-                    source_reference=source_reference,
-                    context={
-                        "page_number": block.get("page_number"),
-                        "sheet_name": None,
-                        "surrounding_text": text,
-                        "matched_anchor": matched_anchor,
-                    },
-                )
+                if result:
+                    value, matched_anchor = result
+                    source_reference = self._source_reference_with_snippet(
+                        self._source_reference_for_block(parser_output, block, document_id),
+                        line,
+                    )
+                    return _MethodHit(
+                        method="anchor_text",
+                        raw_value=value,
+                        method_confidence=_METHOD_BASE_CONFIDENCE["anchor_text"],
+                        parser_confidence=self._as_confidence(block.get("confidence")),
+                        source_reference=source_reference,
+                        context={
+                            "page_number": block.get("page_number"),
+                            "sheet_name": None,
+                            "surrounding_text": line,
+                            "matched_anchor": matched_anchor,
+                        },
+                    )
 
         for page in parser_output.get("pages", []) or []:
             if not isinstance(page, dict):
                 continue
-            for line in str(page.get("text") or "").splitlines():
-                result = self._value_after_anchor(line, anchors, patterns, target)
+            lines = self._split_search_lines(str(page.get("text") or ""))
+            for line_index, line in enumerate(lines):
+                result = self._value_after_anchor(
+                    line,
+                    anchors,
+                    patterns,
+                    target,
+                    next_lines=lines[line_index + 1 : line_index + 4],
+                )
                 if result:
                     value, matched_anchor = result
                     return _MethodHit(
@@ -411,7 +460,10 @@ class ExtractionCandidateService:
                         raw_value=value,
                         method_confidence=_METHOD_BASE_CONFIDENCE["anchor_text"],
                         parser_confidence=None,
-                        source_reference=self._inline_from_page(page, document_id),
+                        source_reference=self._source_reference_with_snippet(
+                            self._inline_from_page(page, document_id),
+                            line,
+                        ),
                         context={
                             "page_number": page.get("page_number"),
                             "sheet_name": None,
@@ -432,6 +484,22 @@ class ExtractionCandidateService:
             )
             if record_hit is not None:
                 return record_hit
+            header_hit = self._extract_first_quantity_from_table_column(
+                parser_output=parser_output,
+                target=target,
+                document_id=document_id,
+            )
+            if header_hit is not None:
+                return header_hit
+
+        if str(target.get("field_id") or "") == "activity_unit":
+            unit_hit = self._extract_unit_from_table_header(
+                parser_output=parser_output,
+                target=target,
+                document_id=document_id,
+            )
+            if unit_hit is not None:
+                return unit_hit
 
         anchors = self._lower_anchors(target)
         if not anchors:
@@ -468,6 +536,93 @@ class ExtractionCandidateService:
                             "table_id": table.get("table_id"),
                         },
                     )
+        return None
+
+    def _extract_first_quantity_from_table_column(
+        self,
+        *,
+        parser_output: dict,
+        target: dict,
+        document_id: str,
+    ) -> _MethodHit | None:
+        for table in parser_output.get("tables", []) or []:
+            if not isinstance(table, dict):
+                continue
+            rows = [row for row in (table.get("rows") or []) if isinstance(row, (list, tuple))]
+            if not rows:
+                continue
+            header_index = self._header_row_index(rows)
+            if header_index is None:
+                continue
+            header_row = rows[header_index]
+            quantity_indexes = self._quantity_column_indexes(header_row)
+            if not quantity_indexes:
+                continue
+            header_text = self._row_to_text(header_row)
+            inferred_unit = self._detect_unit_candidate(header_text, target)
+            for row in rows[header_index + 1 :]:
+                row_text = self._row_to_text(row)
+                quantity_value = self._extract_quantity_from_row(
+                    row=row,
+                    quantity_indexes=quantity_indexes,
+                    surrounding_text=f"{header_text} {row_text}",
+                    target=target,
+                )
+                if quantity_value is None:
+                    continue
+                source_reference = self._source_reference_for_table(parser_output, table, document_id)
+                source_reference["text_snippet"] = self._snippet(row_text)
+                return _MethodHit(
+                    method="table_lookup",
+                    raw_value=quantity_value,
+                    method_confidence=_METHOD_BASE_CONFIDENCE["table_lookup"],
+                    parser_confidence=self._as_confidence(table.get("confidence")),
+                    source_reference=source_reference,
+                    context={
+                        "page_number": table.get("page_number"),
+                        "sheet_name": table.get("sheet_name"),
+                        "row_text": row_text,
+                        "header_text": header_text,
+                        "inferred_unit": inferred_unit,
+                    },
+                )
+        return None
+
+    def _extract_unit_from_table_header(
+        self,
+        *,
+        parser_output: dict,
+        target: dict,
+        document_id: str,
+    ) -> _MethodHit | None:
+        for table in parser_output.get("tables", []) or []:
+            if not isinstance(table, dict):
+                continue
+            rows = [row for row in (table.get("rows") or []) if isinstance(row, (list, tuple))]
+            if not rows:
+                continue
+            header_index = self._header_row_index(rows)
+            if header_index is None:
+                continue
+            header_text = self._row_to_text(rows[header_index])
+            unit = self._detect_unit_candidate(header_text, target)
+            if unit is None:
+                continue
+            source_reference = self._source_reference_for_table(parser_output, table, document_id)
+            source_reference["text_snippet"] = self._snippet(header_text)
+            return _MethodHit(
+                method="table_lookup",
+                raw_value=unit,
+                method_confidence=_METHOD_BASE_CONFIDENCE["table_lookup"],
+                parser_confidence=self._as_confidence(table.get("confidence")),
+                source_reference=source_reference,
+                context={
+                    "page_number": table.get("page_number"),
+                    "sheet_name": table.get("sheet_name"),
+                    "header_text": header_text,
+                    "inferred_unit": unit,
+                },
+            )
         return None
 
     def _extract_excel_cell(
@@ -706,6 +861,11 @@ class ExtractionCandidateService:
             "parser_block_ids": [],
         }
 
+    def _source_reference_with_snippet(self, source_reference: dict, text: Any) -> dict:
+        updated = copy.deepcopy(source_reference)
+        updated["text_snippet"] = self._snippet(text)
+        return updated
+
     @staticmethod
     def _missing_source_reference(document_id: str, field_id: str) -> dict:
         return {
@@ -854,6 +1014,7 @@ class ExtractionCandidateService:
         anchors: Sequence[str],
         patterns: Sequence[re.Pattern[str]],
         target: dict,
+        next_lines: Sequence[str] = (),
     ) -> tuple[str, str] | None:
         anchor_span = self._first_anchor_span(text, anchors)
         if anchor_span is None:
@@ -874,10 +1035,121 @@ class ExtractionCandidateService:
 
         cleaned = remainder.strip()
         if not cleaned:
+            cleaned = self._next_value_line(next_lines) or ""
+        if not cleaned:
             return None
+        cleaned = self._truncate_label_value(cleaned)
         if self._is_likely_bad_quantity_match(cleaned, text, target):
             return None
         return cleaned, matched_anchor
+
+    def _next_value_line(self, lines: Sequence[str]) -> str | None:
+        for line in lines:
+            candidate = str(line or "").strip()
+            if not candidate:
+                continue
+            if self._looks_like_label_only(candidate):
+                continue
+            return candidate
+        return None
+
+    @staticmethod
+    def _looks_like_label_only(text: str) -> bool:
+        stripped = text.strip()
+        if not stripped:
+            return True
+        if len(stripped.split()) <= 4 and stripped.endswith(":"):
+            return True
+        if len(stripped.split()) <= 5 and stripped.isupper() and not re.search(r"\d", stripped):
+            return True
+        known_labels = {
+            "page",
+            "invoice date",
+            "invoice period",
+            "product name",
+            "site address",
+            "charge type",
+            "read dates",
+            "meter id",
+            "register",
+            "type",
+            "units used",
+            "quantity",
+            "price",
+            "vat",
+            "total",
+        }
+        return stripped.lower() in known_labels
+
+    @staticmethod
+    def _truncate_label_value(text: str) -> str:
+        lines = [line.strip() for line in str(text).splitlines() if line.strip()]
+        if lines:
+            return lines[0]
+        return str(text).strip()
+
+    def _line_is_relevant_for_regex(self, line: str, target: dict) -> bool:
+        field_id = str(target.get("field_id") or "")
+        low = str(line or "").lower()
+        if field_id == "account_number":
+            return "account" in low or "acct" in low
+        if field_id == "activity_quantity":
+            return any(keyword in low for keyword in _QUANTITY_ANCHOR_KEYWORDS) or bool(
+                self._detect_unit_candidate(line, target)
+            )
+        return True
+
+    def _should_reject_hit(self, hit: _MethodHit, target: dict) -> bool:
+        field_id = str(target.get("field_id") or "")
+        raw_text = str(hit.raw_value or "").strip()
+        low = raw_text.lower()
+
+        if not raw_text:
+            return True
+
+        if field_id == "account_number":
+            return not re.search(r"\d", raw_text) or ":" in raw_text
+
+        if field_id in {"service_period_start", "service_period_end"}:
+            return self._parse_date(raw_text) is None
+
+        if field_id == "activity_unit":
+            return self._detect_unit_candidate(raw_text, target) is None
+
+        if field_id == "activity_quantity":
+            if not target.get("expected_units") and not target.get("unit_patterns"):
+                return False
+            context = hit.context or {}
+            context_text = " ".join(
+                str(context.get(key) or "")
+                for key in ("surrounding_text", "row_text", "header_text", "pair_value")
+            )
+            return self._detect_unit_candidate(f"{raw_text} {context_text}", target) is None
+
+        if field_id == "fuel_type":
+            if low in {"mix", "fuel mix", "commodity", "service type", "product", "grade"}:
+                return True
+            return not any(
+                term in low
+                for term in (
+                    "natural gas",
+                    "diesel",
+                    "gasoline",
+                    "propane",
+                    "fuel oil",
+                    "electricity",
+                    "kwh",
+                    "therm",
+                )
+            )
+
+        if field_id == "facility_name":
+            return low in {"address", "site", "location", "premises", "page"}
+
+        if field_id == "supplier_name":
+            return low.startswith("number") or bool(re.fullmatch(r"\d[\d\s-]+", low))
+
+        return False
 
     @staticmethod
     def _split_search_lines(text: str) -> list[str]:

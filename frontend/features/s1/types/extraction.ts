@@ -3,7 +3,7 @@ import type { FieldState, ReviewStatus, ValueProperty } from "./states";
 export interface SourceLocationPage {
   kind: "page";
   page: number;
-  region: { x: number; y: number; w: number; h: number };
+  region: { x: number; y: number; w: number; h: number } | null;
 }
 
 export interface SourceLocationCells {

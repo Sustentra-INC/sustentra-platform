@@ -52,8 +52,13 @@ candidate::<evidence_id>::<document_id>::<field_id>
 | `table_lookup` | `parser_output.tables` (adjacent cell to anchor) | 0.75 |
 | `excel_cell` | Excel `source_references` (right-neighbor cell) | 0.70 |
 
-`llm_structured` and `manual_entry` are **not** implemented. A target whose only
-methods are unsupported returns a missing candidate flagged
+`llm_structured` is implemented as an optional pipeline pass after deterministic
+candidate generation. Set `SUSTENTRA_LLM_EXTRACTION_ENABLED=true` and provide
+`OPENAI_API_KEY` to run it. Deterministic extraction remains the fallback, and
+LLM candidates replace missing or obviously overlong deterministic candidates.
+
+`manual_entry` is **not** implemented in candidate generation. A target whose
+only methods are unsupported returns a missing candidate flagged
 `unsupported_extraction_method` (confidence 0.10).
 
 ## Normalization limitations

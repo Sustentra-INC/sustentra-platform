@@ -5,6 +5,7 @@ import {
   type BackendExtractionCandidateLike,
 } from "../adapters/fieldAdapter";
 import type { EvidenceItem, ExtractedField } from "../types";
+import { HALT_REASONS } from "../constants/copy";
 
 export interface PipelineRunSummary {
   evidence_id: string;
@@ -14,6 +15,7 @@ export interface PipelineRunSummary {
   candidate_count: number;
   found_candidate_count: number;
   status: string;
+  warnings?: string[];
   errors?: string[];
 }
 
@@ -153,4 +155,11 @@ async function apiMaybe<T>(path: string): Promise<T | null> {
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`API request failed: ${response.status}`);
   return response.json() as Promise<T>;
+}
+
+export function userFacingApiError(error: unknown): string {
+  if (!(error instanceof Error)) return "Backend request failed.";
+  if (error.message.includes(HALT_REASONS.unsupportedFormat)) return HALT_REASONS.unsupportedFormat;
+  if (error.message.includes(HALT_REASONS.unreadable)) return HALT_REASONS.unreadable;
+  return error.message;
 }

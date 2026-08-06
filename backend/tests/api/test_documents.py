@@ -112,6 +112,28 @@ def test_upload_endpoint_requires_uploaded_by(client_context):
     assert response.status_code == 422
 
 
+def test_upload_endpoint_rejects_unsupported_file_type_with_exact_copy(client_context):
+    client = client_context["client"]
+    response = client.post(
+        "/v1/engagements/ENG-1/documents/upload",
+        files={"file": ("sample.exe", b"bytes", "application/octet-stream")},
+        data={"document_role": "source_evidence", "uploaded_by": "dev@example.com"},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "File format not supported."
+
+
+def test_upload_endpoint_rejects_empty_file_with_exact_copy(client_context):
+    client = client_context["client"]
+    response = client.post(
+        "/v1/engagements/ENG-1/documents/upload",
+        files={"file": ("empty.pdf", b"", "application/pdf")},
+        data={"document_role": "source_evidence", "uploaded_by": "dev@example.com"},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "File could not be read."
+
+
 def test_get_document_returns_uploaded_document(client_context):
     client = client_context["client"]
     created = client.post(
@@ -123,6 +145,35 @@ def test_get_document_returns_uploaded_document(client_context):
     fetched = client.get(f"/v1/documents/{created['document_id']}")
     assert fetched.status_code == 200
     assert fetched.json()["document_id"] == created["document_id"]
+
+
+def test_download_endpoint_uses_attachment_disposition(client_context):
+    client = client_context["client"]
+    created = client.post(
+        "/v1/engagements/ENG-1/documents/upload",
+        files={"file": ("sample.pdf", b"%PDF-1.4", "application/pdf")},
+        data={"document_role": "source_evidence", "uploaded_by": "dev@example.com"},
+    ).json()
+
+    response = client.get(f"/v1/documents/{created['document_id']}/download")
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("attachment")
+
+
+def test_preview_endpoint_uses_inline_disposition(client_context):
+    client = client_context["client"]
+    created = client.post(
+        "/v1/engagements/ENG-1/documents/upload",
+        files={"file": ("sample.pdf", b"%PDF-1.4", "application/pdf")},
+        data={"document_role": "source_evidence", "uploaded_by": "dev@example.com"},
+    ).json()
+
+    response = client.get(f"/v1/documents/{created['document_id']}/preview")
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"] == "inline"
+    assert response.headers["content-type"].startswith("application/pdf")
 
 
 def test_get_documents_by_engagement_returns_uploaded_document(client_context):

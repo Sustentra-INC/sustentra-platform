@@ -1,0 +1,13 @@
+.git
+.next
+frontend/.next
+frontend/node_modules
+node_modules
+local-data
+__pycache__
+*.pyc
+.pytest_cache
+.venv
+.env
+.env.local
+npm-debug.log*

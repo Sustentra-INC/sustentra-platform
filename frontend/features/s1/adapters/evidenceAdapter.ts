@@ -19,13 +19,21 @@ export function mapBackendDocumentToEvidenceItem(
     candidate_count?: number | null;
     found_candidate_count?: number | null;
     status?: string | null;
+    warnings?: string[] | null;
     errors?: string[] | null;
   } | null
 ): EvidenceItem {
   const hasType = Boolean(summary?.canonical_type_id);
+  const summaryWarnings = summary?.warnings ?? [];
+  const noExtractionTargets =
+    summary?.status === "partial" &&
+    Number(summary?.candidate_count ?? 0) === 0 &&
+    Number(summary?.target_count ?? 0) === 0;
   const processingState =
     document.processing_status === "failed"
       ? "blocked"
+      : noExtractionTargets
+        ? "blocked"
       : document.processing_status === "completed"
         ? "extracted"
         : document.processing_status === "not_started"
@@ -36,14 +44,16 @@ export function mapBackendDocumentToEvidenceItem(
     documentId: document.document_id,
     filename: document.file_name,
     downloadUrl: apiUrl(`/v1/documents/${document.document_id}/download`),
-    format: document.file_name.endsWith(".xlsx") ? "xlsx" : "pdf",
+    format: resolveFormat(document.file_name, document.mime_type),
     uploadedBy: { id: document.uploaded_by, name: document.uploaded_by, actorType: "preparer" },
     uploadedAt: document.uploaded_at,
     evidenceClass: "main",
     processingState,
     haltReason:
-      document.processing_status === "failed"
-        ? summary?.errors?.[0] ?? "Processing failed. Retry available."
+      document.processing_status === "failed" || noExtractionTargets
+        ? summary?.errors?.[0] ??
+          summaryWarnings[0] ??
+          "No extraction template exists for this document type."
         : null,
     detectedType: summary?.canonical_type_id ?? null,
     typeReviewBand: hasType ? "auto_accepted" : null,
@@ -62,4 +72,17 @@ export function mapBackendDocumentToEvidenceItem(
     reviewArea: null,
     note: null,
   };
+}
+
+export function inlineDocumentUrl(documentId: string): string {
+  return apiUrl(`/v1/documents/${documentId}/preview`);
+}
+
+function resolveFormat(filename: string, mimeType?: string | null): EvidenceItem["format"] {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) return "xlsx";
+  if (lower.endsWith(".csv") || mimeType === "text/csv") return "csv";
+  if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image";
+  if (lower.endsWith(".pdf") || mimeType === "application/pdf") return "pdf";
+  return "other";
 }

@@ -36,6 +36,8 @@ interface EvidenceWorkspaceProps {
   isUploading?: boolean;
   processingDocumentIds?: string[];
   backendError?: string | null;
+  workspaceWritesEnabled?: boolean;
+  showSessionAuditIntents?: boolean;
 }
 
 export interface Filters {
@@ -84,6 +86,8 @@ export function EvidenceWorkspace({
   isUploading = false,
   processingDocumentIds = [],
   backendError,
+  workspaceWritesEnabled = true,
+  showSessionAuditIntents = true,
 }: EvidenceWorkspaceProps) {
   const [items, setItems] = useState(evidence);
   const { filters, groupBy, selectedIds } = workspaceState;
@@ -311,7 +315,11 @@ export function EvidenceWorkspace({
               onClear={clearFilters}
             />
             {selectedIds.length > 0 ? (
-              <BulkActionBar count={selectedIds.length} onAcceptType={bulkAcceptType} />
+              <BulkActionBar
+                count={selectedIds.length}
+                disabled={!workspaceWritesEnabled}
+                onAcceptType={bulkAcceptType}
+              />
             ) : null}
             <ContainerStateSurface
               state="populated"
@@ -337,6 +345,7 @@ export function EvidenceWorkspace({
                 editingTypeId={editingTypeId}
                 periodDraft={periodDraft}
                 engagement={engagement}
+                workspaceWritesEnabled={workspaceWritesEnabled}
                 onStartFacility={setEditingFacilityId}
                 onAssignFacility={assignFacility}
                 onStartPeriod={(documentId) => {
@@ -357,7 +366,7 @@ export function EvidenceWorkspace({
             </ContainerStateSurface>
             <SupportiveEvidenceCards items={supportive} />
             <CompletenessPanel />
-            <AuditIntentList intents={auditIntents} />
+            {showSessionAuditIntents ? <AuditIntentList intents={auditIntents} /> : null}
           </>
         )}
       </section>
@@ -445,7 +454,16 @@ function UploadArea({
   isUploading: boolean;
 }) {
   return (
-    <div className="s1-band s1-upload">
+    <div
+      className="s1-band s1-upload"
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        if (event.dataTransfer.files.length > 0) {
+          onUploadFiles?.(event.dataTransfer.files);
+        }
+      }}
+    >
       <div>
         <h3>Upload evidence</h3>
         <div className="s1-muted">Drop files here or choose files</div>
@@ -584,14 +602,28 @@ function EvidenceToolbar({
   );
 }
 
-function BulkActionBar({ count, onAcceptType }: { count: number; onAcceptType: () => void }) {
+function BulkActionBar({
+  count,
+  disabled,
+  onAcceptType,
+}: {
+  count: number;
+  disabled: boolean;
+  onAcceptType: () => void;
+}) {
   return (
     <div className="s1-bulk">
       <strong>{count} selected</strong>
-      <button className="s1-button" type="button" onClick={onAcceptType}>
+      <button
+        className="s1-button"
+        type="button"
+        disabled={disabled}
+        title={disabled ? "Audit persistence required before saving bulk type decisions." : undefined}
+        onClick={onAcceptType}
+      >
         Accept detected type
       </button>
-      <button className="s1-button" type="button">
+      <button className="s1-button" type="button" disabled={disabled}>
         Re-extract
       </button>
     </div>
@@ -615,6 +647,7 @@ function EvidenceTable({
   editingTypeId,
   periodDraft,
   engagement,
+  workspaceWritesEnabled,
   onStartFacility,
   onAssignFacility,
   onStartPeriod,
@@ -641,6 +674,7 @@ function EvidenceTable({
   editingTypeId: string | null;
   periodDraft: { start: string; end: string };
   engagement: EngagementConfig;
+  workspaceWritesEnabled: boolean;
   onStartFacility: (documentId: string) => void;
   onAssignFacility: (documentId: string, facilityId: string) => void;
   onStartPeriod: (documentId: string) => void;
@@ -752,6 +786,7 @@ function EvidenceTable({
                     <TypeCell
                       item={item}
                       editing={editingTypeId === item.documentId}
+                      disabled={!workspaceWritesEnabled}
                       onAcceptType={onAcceptType}
                       onStartType={onStartType}
                       onChangeType={onChangeType}
@@ -762,6 +797,7 @@ function EvidenceTable({
                       item={item}
                       editing={editingFacilityId === item.documentId}
                       facilities={engagement.facilities}
+                      disabled={!workspaceWritesEnabled}
                       onStart={onStartFacility}
                       onAssign={onAssignFacility}
                     />
@@ -771,6 +807,7 @@ function EvidenceTable({
                       item={item}
                       editing={editingPeriodId === item.documentId}
                       draft={periodDraft}
+                      disabled={!workspaceWritesEnabled}
                       onStart={onStartPeriod}
                       onDraft={onPeriodDraft}
                       onAssign={onAssignPeriod}
@@ -807,12 +844,14 @@ function EvidenceTable({
 function TypeCell({
   item,
   editing,
+  disabled,
   onAcceptType,
   onStartType,
   onChangeType,
 }: {
   item: EvidenceItem;
   editing: boolean;
+  disabled: boolean;
   onAcceptType: (documentId: string) => void;
   onStartType: (documentId: string) => void;
   onChangeType: (documentId: string, type: string) => void;
@@ -843,10 +882,22 @@ function TypeCell({
         </div>
       ) : null}
       <div className="s1-actions">
-        <button className="s1-linklike" type="button" onClick={() => onAcceptType(item.documentId)}>
+        <button
+          className="s1-linklike"
+          type="button"
+          disabled={disabled}
+          title={disabled ? "Audit persistence required before saving type decisions." : undefined}
+          onClick={() => onAcceptType(item.documentId)}
+        >
           Accept
         </button>
-        <button className="s1-linklike" type="button" onClick={() => onStartType(item.documentId)}>
+        <button
+          className="s1-linklike"
+          type="button"
+          disabled={disabled}
+          title={disabled ? "Audit persistence required before saving type changes." : undefined}
+          onClick={() => onStartType(item.documentId)}
+        >
           Change
         </button>
       </div>
@@ -858,12 +909,14 @@ function FacilityCell({
   item,
   editing,
   facilities,
+  disabled,
   onStart,
   onAssign,
 }: {
   item: EvidenceItem;
   editing: boolean;
   facilities: EngagementConfig["facilities"];
+  disabled: boolean;
   onStart: (documentId: string) => void;
   onAssign: (documentId: string, facilityId: string) => void;
 }) {
@@ -895,7 +948,13 @@ function FacilityCell({
     <div>
       <StateIndicator dimension="facilityResolution" value="unresolved" label="Unresolved" />
       <div>
-        <button className="s1-linklike" type="button" onClick={() => onStart(item.documentId)}>
+        <button
+          className="s1-linklike"
+          type="button"
+          disabled={disabled}
+          title={disabled ? "Audit persistence required before saving facility assignments." : undefined}
+          onClick={() => onStart(item.documentId)}
+        >
           Assign facility
         </button>
       </div>
@@ -907,6 +966,7 @@ function PeriodCell({
   item,
   editing,
   draft,
+  disabled,
   onStart,
   onDraft,
   onAssign,
@@ -914,6 +974,7 @@ function PeriodCell({
   item: EvidenceItem;
   editing: boolean;
   draft: { start: string; end: string };
+  disabled: boolean;
   onStart: (documentId: string) => void;
   onDraft: (draft: { start: string; end: string }) => void;
   onAssign: (documentId: string) => void;
@@ -945,7 +1006,13 @@ function PeriodCell({
     <div>
       <StateIndicator dimension="periodResolution" value="unresolved" label="Unresolved" />
       <div>
-        <button className="s1-linklike" type="button" onClick={() => onStart(item.documentId)}>
+        <button
+          className="s1-linklike"
+          type="button"
+          disabled={disabled}
+          title={disabled ? "Audit persistence required before saving period assignments." : undefined}
+          onClick={() => onStart(item.documentId)}
+        >
           Assign period
         </button>
       </div>

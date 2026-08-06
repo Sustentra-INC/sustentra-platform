@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
 import { EXACT_COPY } from "../constants/copy";
+import { inlineDocumentUrl } from "../adapters/evidenceAdapter";
 import { useKeyboardNavigation } from "../hooks/useKeyboardNavigation";
 import type { AuditIntent } from "../utils/auditIntent";
 import { createAuditIntent, createCorrectionAuditIntents } from "../utils/auditIntent";
@@ -21,6 +22,7 @@ interface ExtractionReviewProps {
     reviewedValue?: string | null;
     reviewerNote?: string | null;
   }) => Promise<void>;
+  showSessionAuditIntents?: boolean;
   onBack: () => void;
 }
 
@@ -31,6 +33,7 @@ export function ExtractionReview({
   auditIntents,
   onAuditIntent,
   onPersistReview,
+  showSessionAuditIntents = true,
   onBack,
 }: ExtractionReviewProps) {
   const [fieldItems, setFieldItems] = useState(fields);
@@ -46,11 +49,19 @@ export function ExtractionReview({
     setFieldItems(fields);
   }, [fields]);
 
+  useEffect(() => {
+    const docFields = fieldItems.filter(
+      (field) => field.valueOrigin === "extracted" && field.documentId === selectedDocumentId
+    );
+    const first = docFields.find((field) => field.reviewStatus === "unreviewed") ?? docFields[0];
+    setSelectedFieldKey(first?.fieldKey);
+  }, [fieldItems, selectedDocumentId]);
+
   const queue = useMemo(() => {
     return documents
       .map((document) => {
         const docFields = reviewableFields.filter((field) => field.documentId === document.documentId);
-        if (docFields.length === 0) return null;
+        if (docFields.length === 0 && document.documentId !== selectedDocumentId) return null;
         return {
           documentId: document.documentId,
           filename: document.filename,
@@ -64,13 +75,14 @@ export function ExtractionReview({
         };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
-  }, [documents, reviewableFields]);
+  }, [documents, reviewableFields, selectedDocumentId]);
 
   const selectedField =
     selectedDocumentFields.find((field) => field.fieldKey === selectedFieldKey) ??
     selectedDocumentFields[0] ??
     reviewableFields[0];
   const selectedDocument = documents.find((document) => document.documentId === selectedDocumentId) ?? documents[0];
+  const selectedDocumentHasNoFields = selectedDocumentFields.length === 0;
   const selectedFieldIndex = Math.max(
     selectedDocumentFields.findIndex((field) => field.fieldKey === selectedField?.fieldKey),
     0
@@ -210,145 +222,336 @@ export function ExtractionReview({
           </button>
         ))}
       </aside>
-      <main className="s1-fields">
+      <main className="s1-document-viewer">
         <div className="s1-pane-header">
           <h2>{selectedDocument?.filename}</h2>
+          {selectedField?.location ? (
+            <div className="s1-muted">
+              {selectedField.location.kind === "page"
+                ? `Selected field source: page ${selectedField.location.page}`
+                : `Selected field source: ${selectedField.location.sheet} ${selectedField.location.range}`}
+            </div>
+          ) : (
+            <div className="s1-muted">{EXACT_COPY.sourceLocationMissing}</div>
+          )}
         </div>
-        {selectedDocumentFields.map((field) => (
-          <article
-            className="s1-field-row"
-            key={field.fieldKey}
-            aria-current={selectedField?.fieldKey === field.fieldKey}
-            tabIndex={0}
-            onClick={() => selectField(field.fieldKey)}
-            onKeyDown={handleFieldKeys}
-          >
-            <div>
-              <h3>{field.fieldLabel}</h3>
-              <div className="s1-mono s1-muted">{field.fieldKey} · placeholder</div>
-              <div className="s1-chip-stack">
-                <StateIndicator
-                  dimension="field"
-                  value={field.fieldState}
-                  label={field.fieldState === "populated" ? "populated" : "missing — requestable"}
-                />
-                {field.valueProperties.map((property) => (
-                  <StateIndicator
-                    key={property}
-                    dimension="valueProperty"
-                    value={property}
-                    label={valuePropertyLabel(property)}
-                  />
-                ))}
-                <StateIndicator dimension="review" value={field.reviewStatus} label={reviewLabel(field.reviewStatus)} />
-              </div>
-            </div>
-            <div>
-              <div>
-                <strong>{field.correctedValue ?? field.value ?? EXACT_COPY.valueAbsent}</strong>
-                {field.unit ? <span className="s1-muted"> {field.unit}</span> : null}
-              </div>
-              {field.snippet ? <div className="s1-snippet">{field.snippet}</div> : <div className="s1-muted">No snippet</div>}
-              {editingFieldKey === field.fieldKey ? (
-                <div className="s1-actions">
-                  <input
-                    className="s1-inline-input"
-                    value={draftValue}
-                    onChange={(event) => setDraftValue(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Escape") setEditingFieldKey(null);
-                    }}
-                  />
-                  <button className="s1-button" type="button" onClick={() => void saveDraft(field)}>
-                    Save
-                  </button>
-                  <button className="s1-button" type="button" onClick={() => setEditingFieldKey(null)}>
-                    Cancel
-                  </button>
-                </div>
-              ) : null}
-            </div>
-            <div className="s1-actions">
-              {field.value !== null ? (
-                <>
-                  <button className="s1-button" type="button" onClick={() => void acceptValue(field)}>
-                    Accept
-                  </button>
-                  <button
-                    className="s1-button"
-                    type="button"
-                    onClick={() => {
-                      setEditingFieldKey(field.fieldKey);
-                      setDraftValue(field.correctedValue ?? field.value ?? "");
-                    }}
-                  >
-                    Correct
-                  </button>
-                </>
-              ) : (
-                <button
-                  className="s1-button"
-                  type="button"
-                  onClick={() => {
-                    setEditingFieldKey(field.fieldKey);
-                    setDraftValue("");
-                  }}
-                >
-                  Enter value
-                </button>
-              )}
-            </div>
-          </article>
-        ))}
+        {selectedDocumentHasNoFields ? (
+          <NoFieldsExtracted document={selectedDocument} />
+        ) : null}
+        <DocumentPreview document={selectedDocument} field={selectedField} />
       </main>
-      <SourcePane document={selectedDocument} field={selectedField} auditIntents={auditIntents} />
+      <CorrectionRail
+        document={selectedDocument}
+        fields={selectedDocumentFields}
+        selectedField={selectedField}
+        editingFieldKey={editingFieldKey}
+        draftValue={draftValue}
+        onDraftValue={setDraftValue}
+        onSelectField={selectField}
+        onFieldKeys={handleFieldKeys}
+        onAcceptValue={acceptValue}
+        onSaveDraft={saveDraft}
+        onEditField={(field) => {
+          setEditingFieldKey(field.fieldKey);
+          setDraftValue(field.correctedValue ?? field.value ?? "");
+        }}
+        onCancelEdit={() => setEditingFieldKey(null)}
+        auditIntents={showSessionAuditIntents ? auditIntents : []}
+      />
     </section>
   );
 }
 
-function SourcePane({
+function NoFieldsExtracted({ document }: { document?: EvidenceItem }) {
+  return (
+    <section className="s1-panel">
+      <h3>No extracted fields</h3>
+      <p>
+        {document?.haltReason ??
+          "No reviewable extracted fields are available for this document yet."}
+      </p>
+      <p className="s1-muted">
+        The original document remains available. Processing can be retried from the Evidence Workspace.
+      </p>
+    </section>
+  );
+}
+
+function DocumentPreview({ document, field }: { document?: EvidenceItem; field?: ExtractedField }) {
+  if (!document?.downloadUrl) {
+    return (
+      <section className="s1-document-empty">
+        <h3>Original document unavailable</h3>
+        <p>The uploaded file is not available from storage.</p>
+      </section>
+    );
+  }
+
+  if (document.format === "csv") {
+    return <CsvDocumentPreview document={document} />;
+  }
+
+  if (document.format === "pdf" || document.format === "image" || document.format === "other") {
+    const pageSuffix =
+      document.format === "pdf" && field?.location?.kind === "page"
+        ? `#page=${field.location.page}`
+        : "";
+    const previewUrl = `${inlineDocumentUrl(document.documentId)}${pageSuffix}`;
+    return (
+      <iframe
+        className="s1-document-frame"
+        title={`Original document: ${document.filename}`}
+        src={previewUrl}
+      />
+    );
+  }
+
+  return (
+    <section className="s1-document-empty">
+      <h3>Original workbook</h3>
+      <p>Preview is not available for this workbook format in the browser.</p>
+      <button
+        className="s1-button"
+        type="button"
+        onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
+      >
+        Download original
+      </button>
+    </section>
+  );
+}
+
+function CsvDocumentPreview({ document }: { document: EvidenceItem }) {
+  const [state, setState] = useState<{
+    status: "loading" | "ready" | "failed";
+    text: string;
+    error: string | null;
+  }>({ status: "loading", text: "", error: null });
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ status: "loading", text: "", error: null });
+    fetch(inlineDocumentUrl(document.documentId), {
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`Preview request failed: ${response.status}`);
+        return response.text();
+      })
+      .then((text) => setState({ status: "ready", text, error: null }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        setState({
+          status: "failed",
+          text: "",
+          error: error instanceof Error ? error.message : "CSV preview could not be loaded.",
+        });
+      });
+    return () => controller.abort();
+  }, [document.documentId]);
+
+  if (state.status === "loading") {
+    return (
+      <section className="s1-document-empty">
+        <h3>Loading original file</h3>
+      </section>
+    );
+  }
+
+  if (state.status === "failed") {
+    return (
+      <section className="s1-document-empty">
+        <h3>CSV preview unavailable</h3>
+        <p>{state.error}</p>
+        <button
+          className="s1-button"
+          type="button"
+          onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
+        >
+          Download original
+        </button>
+      </section>
+    );
+  }
+
+  const rows = parseCsvPreview(state.text);
+  const [header, ...body] = rows;
+  return (
+    <section className="s1-csv-preview" aria-label={`Original CSV: ${document.filename}`}>
+      {header ? (
+        <table className="s1-csv-table">
+          <thead>
+            <tr>
+              {header.map((cell, index) => (
+                <th key={`${cell}-${index}`}>{cell}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {body.map((row, rowIndex) => (
+              <tr key={`row-${rowIndex}`}>
+                {header.map((_, cellIndex) => (
+                  <td key={`cell-${rowIndex}-${cellIndex}`}>{row[cellIndex] ?? ""}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      ) : (
+        <pre className="s1-csv-raw">{state.text}</pre>
+      )}
+    </section>
+  );
+}
+
+function parseCsvPreview(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === "\"" && inQuotes && next === "\"") {
+      cell += "\"";
+      index += 1;
+      continue;
+    }
+    if (char === "\"") {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (char === "," && !inQuotes) {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(cell);
+      if (row.some((value) => value.trim())) rows.push(row.map((value) => value.trim()));
+      row = [];
+      cell = "";
+      continue;
+    }
+    cell += char;
+  }
+
+  row.push(cell);
+  if (row.some((value) => value.trim())) rows.push(row.map((value) => value.trim()));
+  return rows.slice(0, 200);
+}
+
+function CorrectionRail({
   document,
-  field,
+  fields,
+  selectedField,
+  editingFieldKey,
+  draftValue,
+  onDraftValue,
+  onSelectField,
+  onFieldKeys,
+  onAcceptValue,
+  onSaveDraft,
+  onEditField,
+  onCancelEdit,
   auditIntents,
 }: {
   document?: EvidenceItem;
-  field?: ExtractedField;
+  fields: ExtractedField[];
+  selectedField?: ExtractedField;
+  editingFieldKey: string | null;
+  draftValue: string;
+  onDraftValue: (value: string) => void;
+  onSelectField: (fieldKey: string) => void;
+  onFieldKeys: (event: KeyboardEvent) => void;
+  onAcceptValue: (field: ExtractedField) => Promise<void>;
+  onSaveDraft: (field: ExtractedField) => Promise<void>;
+  onEditField: (field: ExtractedField) => void;
+  onCancelEdit: () => void;
   auditIntents: AuditIntent[];
 }) {
-  const fieldIntents = auditIntents.filter((intent) => intent.fieldKey && intent.fieldKey === field?.fieldKey);
+  const fieldIntents = auditIntents.filter((intent) => intent.fieldKey && intent.fieldKey === selectedField?.fieldKey);
   return (
-    <aside className="s1-source">
+    <aside className="s1-correction-rail">
       <div className="s1-pane-header">
-        <h2>Source</h2>
+        <h2>Fields</h2>
         <div className="s1-muted">{document?.filename}</div>
       </div>
-      <div className="s1-source-body">
-        {field?.location ? (
-          <p>
-            {field.location.kind === "page"
-              ? `Page ${field.location.page}`
-              : `${field.location.sheet} ${field.location.range}`}
-          </p>
-        ) : (
-          <StateIndicator dimension="check" value="not_applicable" label={EXACT_COPY.sourceLocationMissing} />
-        )}
-        <h3>Snippet context</h3>
-        <div className="s1-source-context">
-          {field?.snippetContext ?? "No snippet context"}
-        </div>
-        <p>
-          <button
-            className="s1-button"
-            type="button"
-            onClick={() => {
-              if (document?.downloadUrl) window.open(document.downloadUrl, "_blank", "noopener,noreferrer");
-            }}
-            disabled={!document?.downloadUrl}
-          >
-            Download original
-          </button>
-        </p>
-      </div>
+      {fields.map((field) => (
+        <article
+          className="s1-field-row"
+          key={field.fieldKey}
+          aria-current={selectedField?.fieldKey === field.fieldKey}
+          tabIndex={0}
+          onClick={() => onSelectField(field.fieldKey)}
+          onKeyDown={onFieldKeys}
+        >
+          <h3>{field.fieldLabel}</h3>
+          <div className="s1-mono s1-muted">{field.fieldKey}</div>
+          <div className="s1-chip-stack">
+            <StateIndicator
+              dimension="field"
+              value={field.fieldState}
+              label={field.fieldState === "populated" ? "populated" : "missing — requestable"}
+            />
+            {field.valueProperties.map((property) => (
+              <StateIndicator key={property} dimension="valueProperty" value={property} label={valuePropertyLabel(property)} />
+            ))}
+            <StateIndicator dimension="review" value={field.reviewStatus} label={reviewLabel(field.reviewStatus)} />
+          </div>
+          <div className="s1-field-value">
+            <strong>{field.correctedValue ?? field.value ?? EXACT_COPY.valueAbsent}</strong>
+            {field.unit ? <span className="s1-muted"> {field.unit}</span> : null}
+          </div>
+          {field.location ? (
+            <div className="s1-muted">
+              {field.location.kind === "page"
+                ? `Page ${field.location.page}`
+                : `${field.location.sheet} ${field.location.range}`}
+            </div>
+          ) : (
+            <StateIndicator dimension="check" value="not_applicable" label={EXACT_COPY.sourceLocationMissing} />
+          )}
+          {field.snippet ? <div className="s1-snippet">{field.snippet}</div> : <div className="s1-muted">No snippet</div>}
+          {editingFieldKey === field.fieldKey ? (
+            <div className="s1-actions">
+              <input
+                className="s1-inline-input"
+                value={draftValue}
+                onChange={(event) => onDraftValue(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") onCancelEdit();
+                }}
+              />
+              <button className="s1-button" type="button" onClick={() => void onSaveDraft(field)}>
+                Save
+              </button>
+              <button className="s1-button" type="button" onClick={onCancelEdit}>
+                Cancel
+              </button>
+            </div>
+          ) : null}
+          <div className="s1-actions">
+            {field.value !== null ? (
+              <>
+                <button className="s1-button" type="button" onClick={() => void onAcceptValue(field)}>
+                  Accept
+                </button>
+                <button className="s1-button" type="button" onClick={() => onEditField(field)}>
+                  Correct
+                </button>
+              </>
+            ) : (
+              <button className="s1-button" type="button" onClick={() => onEditField(field)}>
+                Enter value
+              </button>
+            )}
+          </div>
+        </article>
+      ))}
       {fieldIntents.length > 0 ? (
         <div className="s1-source-body">
           <h3>Field history</h3>

@@ -7,6 +7,7 @@ import {
   processDocument,
   submitFieldReview,
   uploadDocument,
+  userFacingApiError,
 } from "../api/s1Backend";
 import { ExtractionReview } from "../components/ExtractionReview";
 import {
@@ -84,7 +85,7 @@ export function S1WorkpaperApp() {
       }
       await refreshBackendWorkspace("populated");
     } catch (error) {
-      setBackendError(error instanceof Error ? error.message : "Upload or processing failed.");
+      setBackendError(userFacingApiError(error));
       setProcessingDocumentIds([]);
       await refreshBackendWorkspace();
     } finally {
@@ -100,7 +101,7 @@ export function S1WorkpaperApp() {
       await processDocument(documentId);
       await refreshBackendWorkspace("populated");
     } catch (error) {
-      setBackendError(error instanceof Error ? error.message : "Processing failed.");
+      setBackendError(userFacingApiError(error));
       await refreshBackendWorkspace();
     } finally {
       setProcessingDocumentIds((current) => current.filter((id) => id !== documentId));
@@ -127,6 +128,8 @@ export function S1WorkpaperApp() {
             isUploading={isUploading}
             processingDocumentIds={processingDocumentIds}
             backendError={backendError}
+            workspaceWritesEnabled={dataMode !== "backend"}
+            showSessionAuditIntents={dataMode !== "backend"}
           />
         ) : (
           <ExtractionReview
@@ -136,6 +139,7 @@ export function S1WorkpaperApp() {
             auditIntents={auditIntents}
             onAuditIntent={addAuditIntent}
             onPersistReview={dataMode === "backend" ? submitFieldReview : undefined}
+            showSessionAuditIntents={dataMode !== "backend"}
             onBack={() => setActiveView({ name: "evidence" })}
           />
         )}

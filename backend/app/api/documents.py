@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
 from backend.app.services.document_upload_service import DocumentUploadService
@@ -9,6 +9,26 @@ from backend.app.services.local_storage_service import LocalStorageService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
 
 router = APIRouter(prefix="/v1", tags=["documents"])
+
+SUPPORTED_UPLOAD_EXTENSIONS = {
+    ".bmp",
+    ".csv",
+    ".gif",
+    ".jpeg",
+    ".jpg",
+    ".md",
+    ".markdown",
+    ".pdf",
+    ".png",
+    ".tif",
+    ".tiff",
+    ".txt",
+    ".webp",
+    ".xlsm",
+    ".xlsx",
+}
+UNSUPPORTED_FILE_COPY = "File format not supported."
+UNREADABLE_FILE_COPY = "File could not be read."
 
 _upload_service = DocumentUploadService()
 _pipeline_service = PipelineOrchestrationService()
@@ -80,8 +100,13 @@ async def upload_document(
 ) -> dict:
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file name is required.")
+    suffix = "." + file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if suffix not in SUPPORTED_UPLOAD_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=UNSUPPORTED_FILE_COPY)
     try:
         content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail=UNREADABLE_FILE_COPY)
         mime_type = file.content_type or "application/octet-stream"
         return _upload_service.upload_document(
             engagement_id=engagement_id,
@@ -93,6 +118,8 @@ async def upload_document(
             evidence_id=evidence_id,
             document_type=document_type,
         )
+    except HTTPException:
+        raise
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -113,8 +140,7 @@ def get_document(document_id: str) -> dict:
     return document
 
 
-@router.get("/documents/{document_id}/download")
-def download_document(document_id: str) -> FileResponse:
+def _stored_document_path(document_id: str) -> tuple[dict, Path]:
     document = _upload_service.get_document(document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found.")
@@ -128,10 +154,38 @@ def download_document(document_id: str) -> FileResponse:
     if not local_path.exists() or not local_path.is_file():
         raise HTTPException(status_code=404, detail="Stored document file not found.")
 
+    return document, local_path
+
+
+@router.get("/documents/{document_id}/download")
+def download_document(document_id: str) -> FileResponse:
+    document, local_path = _stored_document_path(document_id)
+
     return FileResponse(
         path=local_path,
         media_type=document.get("mime_type") or "application/octet-stream",
         filename=document.get("file_name") or local_path.name,
+        content_disposition_type="attachment",
+    )
+
+
+@router.get("/documents/{document_id}/preview")
+def preview_document(document_id: str) -> StreamingResponse:
+    document, local_path = _stored_document_path(document_id)
+    media_type = document.get("mime_type") or "application/octet-stream"
+
+    def iter_file():
+        with local_path.open("rb") as handle:
+            while chunk := handle.read(1024 * 1024):
+                yield chunk
+
+    return StreamingResponse(
+        iter_file(),
+        media_type=media_type,
+        headers={
+            "Content-Disposition": "inline",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

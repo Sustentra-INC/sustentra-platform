@@ -27,7 +27,16 @@ export function ContainerStateSurface({
     return (
       <section className="s1-content">
         <div className="s1-band s1-upload">
-          <div>
+          <div
+            className="s1-drop-zone"
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (event.dataTransfer.files.length > 0) {
+                onUploadFiles?.(event.dataTransfer.files);
+              }
+            }}
+          >
             <h2>{EXACT_COPY.noEvidenceYet}</h2>
             <p className="s1-muted">Expected evidence</p>
             <ul>

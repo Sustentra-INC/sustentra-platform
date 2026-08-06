@@ -46,6 +46,18 @@ class FakeExtractionService:
         return copy.deepcopy(self._result)
 
 
+class FakeLlmExtractionService:
+    def __init__(self, candidates: list[dict], enabled: bool = True) -> None:
+        self._candidates = candidates
+        self._enabled = enabled
+
+    def is_enabled(self) -> bool:
+        return self._enabled
+
+    def extract_candidates(self, *, parser_output: dict, extraction_targets: list[dict], evidence_id: str) -> list[dict]:
+        return copy.deepcopy(self._candidates)
+
+
 
 def _review_decision(evidence_id: str = "EV-1", document_id: str = "DOC-1") -> dict:
     return {
@@ -81,6 +93,7 @@ def _build_service(
     classification_service=None,
     target_service=None,
     extraction_service=None,
+    llm_extraction_service=None,
     pipeline_repository=None,
     review_service=None,
     approved_evidence_service=None,
@@ -96,6 +109,7 @@ def _build_service(
         classification_service=classification_service,
         target_service=target_service,
         extraction_service=extraction_service,
+        llm_extraction_service=llm_extraction_service or FakeLlmExtractionService([], enabled=False),
         pipeline_repository=pipeline_repository or InMemoryPipelineRunRepository(),
         review_service=review_service,
         approved_evidence_service=approved_evidence_service,
@@ -200,6 +214,82 @@ def test_candidate_metrics_are_computed(tmp_path):
     assert run["missing_candidate_count"] >= 0
     assert run["low_confidence_candidate_count"] >= 0
     assert run["found_candidate_count"] + run["missing_candidate_count"] == run["candidate_count"]
+
+
+def test_llm_structured_candidates_replace_missing_or_overlong_deterministic_values(tmp_path):
+    parser_output = {
+        "document_id": "DOC-1",
+        "processing_run_id": "PROC-1",
+        "status": "parsed",
+        "pages": [{"page_number": 1, "text": "Account number 123456. Total usage 28100 MMBtu."}],
+        "text_blocks": [],
+    }
+    targets = [
+        {
+            "field_id": "account_number",
+            "field_label": "Account number",
+            "required_status": "core",
+            "extraction_methods": ["llm_structured"],
+        }
+    ]
+    deterministic = {
+        "evidence_id": "EV-1",
+        "document_id": "DOC-1",
+        "candidate_count": 1,
+        "items": [
+            {
+                "candidate_id": "candidate::EV-1::DOC-1::account_number",
+                "evidence_id": "EV-1",
+                "document_id": "DOC-1",
+                "field_name": "account_number",
+                "display_label": "Account number",
+                "raw_value": None,
+                "normalized_value": None,
+                "unit": None,
+                "confidence": 0.2,
+                "source_reference": {"document_id": "DOC-1", "text_snippet": None},
+                "validation_flags": ["field_not_found"],
+            }
+        ],
+    }
+    llm_candidate = {
+        "candidate_id": "candidate::EV-1::DOC-1::account_number",
+        "evidence_id": "EV-1",
+        "document_id": "DOC-1",
+        "field_name": "account_number",
+        "display_label": "Account number",
+        "raw_value": "123456",
+        "normalized_value": "123456",
+        "unit": None,
+        "confidence": 0.72,
+        "source_reference": {
+            "document_id": "DOC-1",
+            "page_number": 1,
+            "text_snippet": "Account number 123456",
+            "source_kind": "llm_structured",
+        },
+        "validation_flags": ["llm_structured"],
+    }
+
+    service = _build_service(
+        parser_service=FakeParserService(parser_output),
+        classification_service=FakeClassificationService(
+            {"status": "classified", "primary_canonical_type_id": "CT-S1-FUELQTY"}
+        ),
+        target_service=FakeTargetService(targets),
+        extraction_service=FakeExtractionService(deterministic),
+        llm_extraction_service=FakeLlmExtractionService([llm_candidate]),
+    )
+
+    result = service.process_local_document(
+        local_file_path=_write_temp_text_file(tmp_path),
+        engagement_id="ENG-1",
+        persist_run=False,
+    )
+
+    item = result["extraction_result"]["items"][0]
+    assert item["normalized_value"] == "123456"
+    assert item["validation_flags"] == ["llm_structured"]
 
 
 
@@ -452,3 +542,34 @@ def test_service_does_not_mutate_stage_object_outputs(tmp_path):
     assert parser_output == parser_snapshot
     assert targets == target_snapshot
     assert extraction_result == extraction_snapshot
+
+
+def test_s1_fallback_classifies_obvious_mobile_fuel_evidence():
+    result = PipelineOrchestrationService._apply_s1_fallback_classification(
+        classification_result={
+            "status": "unclassified",
+            "primary_canonical_type_id": None,
+            "candidate_matches": [],
+        },
+        parser_output={"text_blocks": [{"text": "Diesel gallons delivered 42"}]},
+        file_name="CSV-DIESEL-001.csv",
+    )
+
+    assert result["status"] == "classified"
+    assert result["primary_canonical_type_id"] == "CT-S1-MOBFUEL"
+    assert result["review_required"] is True
+
+
+def test_s1_fallback_classifies_obvious_stationary_fuel_evidence():
+    result = PipelineOrchestrationService._apply_s1_fallback_classification(
+        classification_result={
+            "status": "low_confidence",
+            "primary_canonical_type_id": None,
+            "candidate_matches": [],
+        },
+        parser_output={"text_blocks": [{"text": "Shell utility bill therm usage"}]},
+        file_name="Shell_001885681_1.pdf",
+    )
+
+    assert result["status"] == "classified"
+    assert result["primary_canonical_type_id"] == "CT-S1-FUELQTY"

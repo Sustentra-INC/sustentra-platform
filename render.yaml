@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: sustentra-s1-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: SUSTENTRA_PERSISTENCE_BACKEND
+        value: postgres
+      - key: SUSTENTRA_STORAGE_BACKEND
+        value: minio
+      - key: SUSTENTRA_S3_BUCKET
+        value: sustentra-documents
+      - key: SUSTENTRA_S3_REGION
+        value: us-east-1
+      - key: SUSTENTRA_S3_SECURE
+        value: "true"
+      - key: SUSTENTRA_LLM_EXTRACTION_ENABLED
+        value: "true"
+      - key: OPENAI_EXTRACTION_MODEL
+        value: gpt-4.1-mini
+      - key: DATABASE_URL
+        sync: false
+      - key: SUSTENTRA_S3_ENDPOINT_URL
+        sync: false
+      - key: SUSTENTRA_S3_ACCESS_KEY_ID
+        sync: false
+      - key: SUSTENTRA_S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SUSTENTRA_CORS_ORIGINS
+        sync: false
