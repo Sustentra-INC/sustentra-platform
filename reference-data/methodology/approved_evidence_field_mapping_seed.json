@@ -1,0 +1,54 @@
+{
+  "version": "2026-08-07-pr4-seed",
+  "description": "Small provisional seed for mapping approved S1 evidence fields to methodology Field_IDs. This is intentionally incomplete and exists to exercise the PR4 loader/service contract.",
+  "mappings": [
+    {
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "approved_field_name": "fuel_type",
+      "methodology_field_id": "S1-STC-010",
+      "data_schema_field": "fuel_type",
+      "mapping_status": "provisional",
+      "notes": "Maps reviewed stationary fuel type to the stationary combustion fuel activity row."
+    },
+    {
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "approved_field_name": "activity_quantity",
+      "methodology_field_id": "S1-STC-010",
+      "data_schema_field": "quantity_combusted",
+      "mapping_status": "provisional",
+      "notes": "Maps reviewed stationary fuel quantity to the stationary combustion quantity field."
+    },
+    {
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "approved_field_name": "activity_unit",
+      "methodology_field_id": "S1-STC-010",
+      "data_schema_field": "quantity_unit",
+      "mapping_status": "needs_domain_review",
+      "notes": "Likely maps the approved activity unit to the stationary quantity unit; ESG should confirm unit semantics."
+    },
+    {
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "approved_field_name": "fuel_type",
+      "methodology_field_id": "S1-MOB-010",
+      "data_schema_field": "fuel_type",
+      "mapping_status": "provisional",
+      "notes": "Maps reviewed mobile fuel type to the mobile combustion fuel activity row."
+    },
+    {
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "approved_field_name": "activity_quantity",
+      "methodology_field_id": "S1-MOB-010",
+      "data_schema_field": "quantity_combusted",
+      "mapping_status": "provisional",
+      "notes": "Maps reviewed mobile fuel quantity to the mobile combustion quantity field."
+    },
+    {
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "approved_field_name": "activity_unit",
+      "methodology_field_id": "S1-MOB-010",
+      "data_schema_field": "quantity_unit",
+      "mapping_status": "needs_domain_review",
+      "notes": "Likely maps the approved mobile activity unit to the mobile quantity unit; ESG should confirm unit semantics."
+    }
+  ]
+}
