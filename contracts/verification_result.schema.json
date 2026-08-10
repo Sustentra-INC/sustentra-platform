@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/verification_result.schema.json",
+  "title": "VerificationResult",
+  "type": "object",
+  "required": [
+    "engagement_id",
+    "status_counts",
+    "results"
+  ],
+  "properties": {
+    "engagement_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "rule_id",
+          "status"
+        ],
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rule_type": {
+            "type": ["string", "null"]
+          },
+          "assertion": {
+            "type": ["string", "null"]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "not_applicable",
+              "provisional",
+              "unsupported",
+              "cannot_verify"
+            ]
+          },
+          "applies_to": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "methodology_value_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    }
+  }
+}

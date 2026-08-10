@@ -12,7 +12,8 @@ REQUIRED_CONTRACT_FILES = [
     "completeness_result.schema.json",
     "validation_result.schema.json",
     "calculation_result.schema.json",
-    "gap_ticket.schema.json"
+    "gap_ticket.schema.json",
+    "verification_result.schema.json"
 ]
 
 
