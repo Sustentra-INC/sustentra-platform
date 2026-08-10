@@ -133,6 +133,22 @@ def test_mixed_units_are_unsupported_for_sum() -> None:
     assert result["status"] == "unsupported_derivation"
 
 
+def test_self_referential_derivation_fails_safely() -> None:
+    service = _service(
+        [
+            _schema("S1-CYCLE-010", "S1", derived_from=("S1-CYCLE-010",)),
+        ]
+    )
+
+    result = service.derive_field(
+        "S1-CYCLE-010",
+        [_value("mv-cycle", "S1-CYCLE-010", 10, "MMBtu")],
+    )
+
+    assert result["status"] == "unsupported_derivation"
+    assert "circular" in (result["reason"] or "")
+
+
 def test_unknown_field_fails() -> None:
     with pytest.raises(ValueError, match="Unknown"):
         _service([_schema("S1-A-010", "S1")]).derive_field("S1-NOPE-010", [])

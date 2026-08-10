@@ -79,6 +79,16 @@ class DerivationService:
                 source_methodology_value_ids=(),
                 reason="row has no Derived_From dependencies",
             )
+        if row.field_id in dependency_field_ids:
+            return DerivedValueResult(
+                field_id=row.field_id,
+                status="unsupported_derivation",
+                derived_value=None,
+                derived_unit=None,
+                dependency_field_ids=dependency_field_ids,
+                source_methodology_value_ids=(),
+                reason="circular/self Derived_From dependency is unsupported",
+            )
         dependency_rows = [self._registry.get_row(field_id) for field_id in dependency_field_ids]
         if any(dependency is None for dependency in dependency_rows):
             return DerivedValueResult(

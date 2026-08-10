@@ -27,6 +27,32 @@ def test_complete_when_required_extracted_value_exists() -> None:
     assert row["methodology_value_ids"] == ["mv-001"]
 
 
+def test_null_or_blank_value_does_not_count_complete() -> None:
+    result = _tracker().evaluate(
+        engagement_id="ENG-1",
+        methodology_values=[
+            _value("mv-null", "S1-STC-010", approved_value=None),
+            _value("mv-blank", "S1-MOB-010", approved_value=" "),
+        ],
+    )
+
+    assert _by_field(result, "S1-STC-010")["status"] == "missing_required"
+    assert _by_field(result, "S1-MOB-010")["status"] == "missing_required"
+
+
+def test_zero_and_false_values_count_complete() -> None:
+    result = _tracker().evaluate(
+        engagement_id="ENG-1",
+        methodology_values=[
+            _value("mv-zero", "S1-STC-010", approved_value=0),
+            _value("mv-false", "S1-MOB-010", approved_value=False),
+        ],
+    )
+
+    assert _by_field(result, "S1-STC-010")["status"] == "complete"
+    assert _by_field(result, "S1-MOB-010")["status"] == "complete"
+
+
 def test_missing_required_for_requestable_extracted_row_without_value() -> None:
     result = _tracker().evaluate(engagement_id="ENG-1", methodology_values=[])
 
@@ -117,7 +143,11 @@ def _by_field(result: dict, field_id: str) -> dict:
     return next(row for row in result["results"] if row["field_id"] == field_id)
 
 
-def _value(methodology_value_id: str, field_id: str) -> dict:
+def _value(
+    methodology_value_id: str,
+    field_id: str,
+    approved_value: object = 28100,
+) -> dict:
     return {
         "methodology_value_id": methodology_value_id,
         "engagement_id": "ENG-1",
@@ -127,7 +157,7 @@ def _value(methodology_value_id: str, field_id: str) -> dict:
         "data_schema_field": "quantity_combusted",
         "grain": "fuel_record",
         "record_key": "record-1",
-        "approved_value": 28100,
+        "approved_value": approved_value,
         "approved_unit": "MMBtu",
         "source_reference": {},
         "approved_evidence_id": "approved-001",

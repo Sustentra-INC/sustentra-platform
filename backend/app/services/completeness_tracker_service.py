@@ -141,7 +141,7 @@ class CompletenessTrackerService:
         for value in methodology_values:
             field_id = value.get("methodology_field_id")
             value_id = value.get("methodology_value_id")
-            if field_id and value_id:
+            if field_id and value_id and _has_populated_value(value.get("approved_value")):
                 indexed[str(field_id)].append(value)
         return indexed
 
@@ -165,3 +165,11 @@ def _row_result(
         methodology_value_ids=methodology_value_ids,
         reason=reason,
     )
+
+
+def _has_populated_value(value: object) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    return True
