@@ -3,15 +3,21 @@
   "$id": "https://sustentra.local/contracts/gap_record_v0.schema.json",
   "title": "S2GapRecordV0",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "gap_record_id",
     "engagement_id",
     "field_id",
     "stage",
     "substage",
+    "status",
     "gap_type",
+    "issue_type",
     "root_cause_code",
+    "summary",
     "severity",
+    "source",
+    "downstream_blocking",
     "created_at"
   ],
   "properties": {
@@ -25,10 +31,15 @@
       "type": "string",
       "enum": ["completeness", "derivation", "verification", "recompute"]
     },
+    "status": {"type": "string"},
     "gap_type": {"type": "string"},
+    "issue_type": {"type": "string"},
     "root_cause_code": {"type": "string"},
     "assertion": {"type": ["string", "null"]},
+    "summary": {"type": "string"},
     "severity": {"type": "string"},
+    "source": {"type": "object"},
+    "downstream_blocking": {"type": "boolean"},
     "source_reference": {"type": ["object", "null"]},
     "rule_id": {"type": ["string", "null"]},
     "created_at": {"type": "string"}

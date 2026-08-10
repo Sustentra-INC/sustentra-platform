@@ -5,6 +5,7 @@ from .api import (
     documents,
     engagements,
     evidence,
+    methodology,
     pipeline,
     processing_runs,
     reviews,
@@ -23,5 +24,6 @@ app.include_router(documents.router)
 app.include_router(processing_runs.router)
 app.include_router(pipeline.router)
 app.include_router(evidence.router)
+app.include_router(methodology.router)
 app.include_router(reviews.router)
 app.include_router(assistant.router)

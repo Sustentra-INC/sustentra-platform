@@ -146,11 +146,24 @@ class S2GapRecordService:
             "field_id": field_id,
             "stage": "S2",
             "substage": substage,
+            "status": "open",
             "gap_type": gap_type,
+            "issue_type": gap_type,
             "root_cause_code": root_cause_code,
             "assertion": assertion,
+            "summary": _summary(substage, field_id, gap_type),
             "severity": severity,
+            "source": {
+                "stage": "S2",
+                "substage": substage,
+                "rule_id": rule_id,
+            },
+            "downstream_blocking": severity == "high",
             "source_reference": source_reference,
             "rule_id": rule_id,
             "created_at": created_at,
         }
+
+
+def _summary(substage: str, field_id: str, gap_type: str) -> str:
+    return f"S2 {substage} gap for {field_id}: {gap_type}"
