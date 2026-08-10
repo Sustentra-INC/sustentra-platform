@@ -9,6 +9,7 @@ REQUIRED_CONTRACT_FILES = [
     "extraction_candidate.schema.json",
     "review_decision.schema.json",
     "approved_evidence.schema.json",
+    "completeness_result.schema.json",
     "validation_result.schema.json",
     "calculation_result.schema.json",
     "gap_ticket.schema.json"
