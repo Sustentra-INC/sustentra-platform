@@ -18,7 +18,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -50,6 +50,11 @@ class EscalationSettings(BaseModel):
     source: str | None = None
     human_class_policy: str = "always"
     human_class_policy_note: str | None = None
+    digest_interval_minutes: int = 60
+    digest_note: str | None = None
+    review_url_template: str = "http://localhost:3000/intake/review/{escalation_id}"
+    urgent_triggers: list[str] = Field(default_factory=list)
+    urgent_triggers_note: str | None = None
 
 
 class EmailSettings(BaseModel):
@@ -57,6 +62,9 @@ class EmailSettings(BaseModel):
     from_address: str
     outbox_path: str
     note: str | None = None
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_use_tls: bool = True
 
 
 class ApiSettings(BaseModel):

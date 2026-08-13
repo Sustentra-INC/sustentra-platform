@@ -40,11 +40,14 @@ class EscalationService:
         state_repository: DatapointStateRepository,
         state_machine: StateMachine,
         clock: Callable[[], datetime] = _utcnow,
+        notifications: Any = None,
     ) -> None:
         self._escalations = escalation_repository
         self._states = state_repository
         self._machine = state_machine
         self._clock = clock
+        # Phase D2. Optional so the escalation layer works without email wired up.
+        self._notifications = notifications
 
     def open(
         self,
@@ -100,6 +103,13 @@ class EscalationService:
             escalation_id=escalation.escalation_id,
             reason=f"escalated: {trigger}",
         )
+
+        if self._notifications is not None:
+            # Urgent ones go out now; the rest wait for the next digest.
+            self._notifications.notify_new(record)
+            refreshed = self._escalations.get(escalation.escalation_id)
+            if refreshed is not None:
+                record = refreshed
         return record
 
     def resolve(
@@ -147,7 +157,10 @@ class EscalationService:
                 ],
             }
         )
-        return self._escalations.save(updated)
+        saved = self._escalations.save(updated)
+        if self._notifications is not None:
+            self._notifications.notify_resolved(saved)
+        return saved
 
     def list_open(self, org_id: str | None = None) -> list[dict[str, Any]]:
         return self._escalations.list_open(org_id)

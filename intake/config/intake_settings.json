@@ -15,17 +15,31 @@
     "reminder_hours": 12,
     "source": "intake/SPEC.md section 11",
     "human_class_policy": "always",
-    "human_class_policy_note": "SPEC section 3 trigger (a): any HUMAN-class data point escalates for confirmation. 'always' implements that literally and is the default. 'exclude_screened_out' skips the confirmation when the client screened the source out entirely ('no, we have none'), which is the bulk of the volume. 'never' leaves only the explicit condition triggers. A dial rather than a code change, because it governs how much review work each client generates."
+    "human_class_policy_note": "SPEC section 3 trigger (a): any HUMAN-class data point escalates for confirmation. 'always' implements that literally and is the default. 'exclude_screened_out' skips the confirmation when the client screened the source out entirely ('no, we have none'), which is the bulk of the volume. 'never' leaves only the explicit condition triggers. A dial rather than a code change, because it governs how much review work each client generates.",
+    "digest_interval_minutes": 60,
+    "digest_note": "Escalations are batched into one digest per client rather than one email each. A two-site client generates a dozen or more confirmations, and an email per confirmation would bury the ones that matter.",
+    "review_url_template": "http://localhost:3000/intake/review/{escalation_id}",
+    "urgent_triggers": [
+      "contradiction",
+      "failed_clarification",
+      "user_requested_help"
+    ],
+    "urgent_triggers_note": "These are emailed immediately instead of waiting for the digest: they mean a client is stuck or something conflicts."
   },
   "api": {
-    "cors_allowed_origins": ["http://localhost:3000"],
+    "cors_allowed_origins": [
+      "http://localhost:3000"
+    ],
     "note": "Browsers block the intake screens from calling the API cross-origin unless the API says which origins are allowed. Applied by intake/backend/app.py only; running backend.app.main:app directly is unaffected. Set INTAKE_CORS_ALLOWED_ORIGINS (comma-separated) per environment - never '*', which would let any site call the API with a user's session."
   },
   "email": {
     "adapter": "outbox",
     "from_address": "no-reply@sustentra.com",
     "outbox_path": "local-data/intake/outbox.jsonl",
-    "note": "The 'outbox' adapter writes messages to a local gitignored file and sends nothing. A real provider is a separate adapter behind the same port; no provider is configured in v1."
+    "note": "The 'outbox' adapter writes messages to a local gitignored file and sends nothing. A real provider is a separate adapter behind the same port; no provider is configured in v1.",
+    "smtp_host": "",
+    "smtp_port": 587,
+    "smtp_use_tls": true
   },
   "roles": {
     "client_owner": {
@@ -56,7 +70,8 @@
     "seed_profiles": "local-data/intake/seed_profiles.jsonl",
     "datapoint_states": "local-data/intake/datapoint_states.jsonl",
     "audit_log": "local-data/intake/audit_log.jsonl",
-    "escalations": "local-data/intake/escalations.jsonl"
+    "escalations": "local-data/intake/escalations.jsonl",
+    "notifications": "local-data/intake/notifications.jsonl"
   },
   "industries": [
     {
@@ -76,10 +91,22 @@
       "provisional": false,
       "source": "intake/profile_schema_mapping.md 1.5",
       "options": [
-        { "value": "soundstage_complex", "label": "Soundstage complex" },
-        { "value": "backlot", "label": "Backlot" },
-        { "value": "office", "label": "Office" },
-        { "value": "workshop", "label": "Workshop" }
+        {
+          "value": "soundstage_complex",
+          "label": "Soundstage complex"
+        },
+        {
+          "value": "backlot",
+          "label": "Backlot"
+        },
+        {
+          "value": "office",
+          "label": "Office"
+        },
+        {
+          "value": "workshop",
+          "label": "Workshop"
+        }
       ]
     },
     "general": {
@@ -123,6 +150,10 @@
     "INTAKE_ESCALATION_SECONDARY": "escalation.secondary_email",
     "INTAKE_SLA_HOURS": "escalation.sla_hours",
     "INTAKE_REMINDER_HOURS": "escalation.reminder_hours",
-    "INTAKE_DATA_DIR": "storage.*"
+    "INTAKE_DATA_DIR": "storage.*",
+    "INTAKE_DIGEST_INTERVAL_MINUTES": "escalation.digest_interval_minutes",
+    "INTAKE_REVIEW_URL_TEMPLATE": "escalation.review_url_template",
+    "INTAKE_SMTP_HOST": "email.smtp_host",
+    "INTAKE_SMTP_PORT": "email.smtp_port"
   }
 }

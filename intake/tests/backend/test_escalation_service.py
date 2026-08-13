@@ -1,4 +1,4 @@
-"""Escalation records (Phase C1). No emails are sent from here - that is Phase D."""
+"""Escalation records (Phase C1). Email hooks arrive in Phase D2."""
 
 from __future__ import annotations
 
@@ -182,11 +182,32 @@ def test_resolution_is_audited(harness, seeded) -> None:
     assert ("escalated", "resolved") in statuses
 
 
-def test_no_email_is_sent_in_phase_c(harness, seeded) -> None:
-    """Emails and the reviewer queue are Phase D."""
+def test_escalations_work_with_no_email_wired_up(harness, seeded) -> None:
+    """Notifications are a Phase D2 collaborator, and an optional one.
+
+    Phase D2 hooked email onto open/resolve. This checks the seam still holds:
+    an escalation service built without a notifier records and resolves exactly
+    the same, and sends nothing.
+    """
+    from intake.backend.services.escalation_service import EscalationService
+
+    bare = EscalationService(
+        escalation_repository=harness.escalations,
+        state_repository=harness.states,
+        state_machine=harness.state_machine,
+        clock=harness.clock,
+    )
     before = len(harness.mailbox.sent)
-    record = _open(harness, seeded["org_id"], seeded["site_id"])
-    harness.escalation_service.resolve(
+    record = bare.open(
+        org_id=seeded["org_id"],
+        datapoint_id=DATAPOINT,
+        scope_ref=seeded["site_id"],
+        trigger="user_requested_help",
+        question_label="On-site wastewater treatment?",
+        actor_id="usr_1",
+    )
+    resolved = bare.resolve(
         record["escalation_id"], value={"present": False}, actor_id="rev_1"
     )
+    assert resolved["status"] == "resolved"
     assert len(harness.mailbox.sent) == before

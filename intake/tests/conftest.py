@@ -43,6 +43,8 @@ from intake.backend.services.answer_parser import AnswerParser  # noqa: E402
 from intake.backend.services.applicability_service import ApplicabilityService  # noqa: E402
 from intake.backend.services.contradiction_service import ContradictionService  # noqa: E402
 from intake.backend.services.explainer_service import ExplainerService  # noqa: E402
+from intake.backend.services.notification_service import NotificationService  # noqa: E402
+from intake.backend.services.review_service import ReviewService  # noqa: E402
 from intake.backend.services.question_content import load_question_content  # noqa: E402
 from intake.backend.services.auth_service import AuthService  # noqa: E402
 from intake.backend.services.coverage_service import CoverageService  # noqa: E402
@@ -115,10 +117,30 @@ class Harness:
         self.escalations = InMemoryEscalationRepository()
         self.state_machine = StateMachine(self.states, self.audit, clock=self.clock)
         self.applicability = ApplicabilityService()
+        # Phase D2: notifications and the reviewer queue. Wired in here so tests
+        # exercise the same escalation -> email path the runtime uses.
+        self.notification_service = NotificationService(
+            escalation_repository=self.escalations,
+            org_repository=self.orgs,
+            site_repository=self.sites,
+            email_service=self.email_service,
+            settings=self.settings,
+            clock=self.clock,
+        )
         self.escalation_service = EscalationService(
             escalation_repository=self.escalations,
             state_repository=self.states,
             state_machine=self.state_machine,
+            clock=self.clock,
+            notifications=self.notification_service,
+        )
+        self.review_service = ReviewService(
+            escalation_repository=self.escalations,
+            state_repository=self.states,
+            org_repository=self.orgs,
+            site_repository=self.sites,
+            audit_repository=self.audit,
+            settings=self.settings,
             clock=self.clock,
         )
         self.profile_state_service = ProfileStateService(
@@ -176,6 +198,8 @@ class Harness:
             settings=self.settings,
             answer_parser=self.answer_parser,
             explainer_service=self.explainer_service,
+            notification_service=self.notification_service,
+            review_service=self.review_service,
         )
 
     # -- convenience --------------------------------------------------------
@@ -210,6 +234,19 @@ class Harness:
 
     def profile_of(self, org_id: str) -> dict:
         return self.orgs.get(org_id) or {}
+
+    def reviewer_token(
+        self, org_id: str, email: str = "reviewer@sustentra.com"
+    ) -> str:
+        """A signed-in Sustentra reviewer.
+
+        The reviewer is attached to an org because a user belongs to exactly one
+        org in v1, but the role - not the org - is what the queue checks.
+        """
+        self.org_service.add_user(
+            org_id=org_id, name="Rae Reviewer", email=email, role="sustentra_reviewer"
+        )
+        return self.sign_in(email)
 
     def sign_in(self, email: str = "owner@example.com") -> str:
         """Run the full magic-link flow and return a session token."""

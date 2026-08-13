@@ -42,7 +42,7 @@ interface RequestOptions {
   auth?: boolean;
 }
 
-async function intakeRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function intakeRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, auth = true } = options;
   const headers: Record<string, string> = { "Content-Type": "application/json" };
 

@@ -74,3 +74,11 @@ class Escalation(BaseModel):
     created_at: str
     updated_at: str
     resolved_at: str | None = None
+    notified_at: str | None = Field(
+        default=None,
+        description="When the team was emailed about this. Unset means it is waiting for the next digest.",
+    )
+    reminded_at: str | None = Field(
+        default=None,
+        description="When the reminder went out. Set once, so re-running the job sends nothing.",
+    )

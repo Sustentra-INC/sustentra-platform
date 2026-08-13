@@ -120,6 +120,15 @@ def build_sender(settings: IntakeSettings | None = None) -> EmailSender:
         return OutboxEmailSender(Path(settings.email.outbox_path))
     if adapter == "memory":
         return InMemoryEmailSender()
+    if adapter == "smtp":
+        # Imported here so the SMTP module is only loaded when it is chosen.
+        from intake.backend.adapters.smtp_email import SmtpEmailSender
+
+        return SmtpEmailSender(
+            host=settings.email.smtp_host,
+            port=settings.email.smtp_port,
+            use_tls=settings.email.smtp_use_tls,
+        )
     raise ValueError(
         f"unknown email adapter {adapter!r}. No real email provider is configured in v1; "
         "add an adapter implementing EmailSender and register it here."

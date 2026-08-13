@@ -6,7 +6,11 @@
     "magic_link": {
       "subject": "Your Sustentra sign-in link",
       "body": "Hi {name},\n\nHere is your sign-in link for Sustentra:\n\n{verify_url}\n\nThe link works once and expires in {ttl_minutes} minutes. If it expires, just request another one.\n\nIf you did not request this, you can ignore this email.\n\n- The Sustentra team\n",
-      "required_context": ["name", "verify_url", "ttl_minutes"]
+      "required_context": [
+        "name",
+        "verify_url",
+        "ttl_minutes"
+      ]
     },
     "seed_form_received": {
       "subject": "We have your company details",
@@ -17,6 +21,53 @@
         "reporting_period_start",
         "reporting_period_end",
         "site_count"
+      ]
+    },
+    "escalation_digest": {
+      "subject": "{count} question(s) waiting: {legal_name}",
+      "body": "{count} question(s) from {legal_name} need someone from the team.\n\n{items}\nOpen the queue: {queue_url}\n\nThe client has been told they will have an answer within {sla_hours} hours.\n",
+      "required_context": [
+        "count",
+        "legal_name",
+        "items",
+        "queue_url",
+        "sla_hours"
+      ]
+    },
+    "escalation_urgent": {
+      "subject": "Needs a look: {legal_name} - {question}",
+      "body": "{legal_name} is stuck on a question, or their answer conflicts with something they told us earlier.\n\nQuestion: {question}\nSite: {site}\nWhy it came to us: {reason}\nWhat they tried: {attempts}\n\nResolve it here: {review_url}\n\nThey have been told they will have an answer within {sla_hours} hours.\n",
+      "required_context": [
+        "legal_name",
+        "question",
+        "site",
+        "reason",
+        "attempts",
+        "review_url",
+        "sla_hours"
+      ]
+    },
+    "escalation_reminder": {
+      "subject": "Still waiting after {hours_open}h: {legal_name}",
+      "body": "{count} question(s) from {legal_name} have been waiting {hours_open} hours. The client was promised an answer within {sla_hours}.\n\n{items}\nOpen the queue: {queue_url}\n",
+      "required_context": [
+        "count",
+        "legal_name",
+        "hours_open",
+        "sla_hours",
+        "items",
+        "queue_url"
+      ]
+    },
+    "escalation_resolved": {
+      "subject": "Answered: {question}",
+      "body": "Hi {name},\n\nYou asked us about this one:\n\n  {question}\n\nHere is the answer: {resolution}\n\nWe have recorded it against {legal_name}, so there is nothing for you to do. If it does not look right, just reply to this email.\n\nPick up where you left off: {interview_url}\n\n- The Sustentra team\n",
+      "required_context": [
+        "name",
+        "question",
+        "resolution",
+        "legal_name",
+        "interview_url"
       ]
     }
   }

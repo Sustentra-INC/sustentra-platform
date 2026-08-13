@@ -34,6 +34,8 @@ from intake.backend.services.answer_parser import AnswerParser
 from intake.backend.services.applicability_service import ApplicabilityService
 from intake.backend.services.contradiction_service import ContradictionService
 from intake.backend.services.explainer_service import ExplainerService
+from intake.backend.services.notification_service import NotificationService
+from intake.backend.services.review_service import ReviewService
 from intake.backend.services.question_content import load_question_content
 from intake.backend.services.auth_service import AuthError, AuthService
 from intake.backend.services.coverage_service import CoverageService
@@ -60,6 +62,8 @@ class IntakeContext:
     settings: object
     answer_parser: AnswerParser | None = None
     explainer_service: ExplainerService | None = None
+    notification_service: NotificationService | None = None
+    review_service: ReviewService | None = None
 
 
 def build_default_context() -> IntakeContext:
@@ -76,13 +80,33 @@ def build_default_context() -> IntakeContext:
     audit = JsonlAuditLogRepository()
     escalation_records = JsonlEscalationRepository()
 
+    settings = load_settings()
     machine = StateMachine(states, audit)
-    escalation_service = EscalationService(escalation_records, states, machine)
+
+    # Phase D2: notifications. The email adapter defaults to the local outbox,
+    # so nothing here can reach a real person until it is configured.
+    notification_service = NotificationService(
+        escalation_repository=escalation_records,
+        org_repository=orgs,
+        site_repository=sites,
+        email_service=email_service,
+        settings=settings,
+    )
+    escalation_service = EscalationService(
+        escalation_records, states, machine, notifications=notification_service
+    )
+    review_service = ReviewService(
+        escalation_repository=escalation_records,
+        state_repository=states,
+        org_repository=orgs,
+        site_repository=sites,
+        audit_repository=audit,
+        settings=settings,
+    )
     profile_state_service = ProfileStateService(machine, states, orgs, sites, submissions)
 
     # Phase D. The LLM adapter defaults to 'disabled', so nothing here makes a
     # paid call unless it is explicitly switched on.
-    settings = load_settings()
     applicability = ApplicabilityService()
     content = load_question_content()
     llm_client = build_llm_client()
@@ -137,6 +161,8 @@ def build_default_context() -> IntakeContext:
         settings=settings,
         answer_parser=answer_parser,
         explainer_service=explainer_service,
+        notification_service=notification_service,
+        review_service=review_service,
     )
 
 

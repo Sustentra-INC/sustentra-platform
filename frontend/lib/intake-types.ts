@@ -194,3 +194,61 @@ export interface ParseResponse {
   coverage: Coverage;
   next: InterviewQuestion | null;
 }
+
+/** One row in the reviewer queue (Phase D2). */
+export interface QueueItem {
+  escalation_id: string;
+  org_id: string;
+  client: string;
+  site: string | null;
+  datapoint_id: string;
+  question: string;
+  trigger: string;
+  why: string | null;
+  created_at: string;
+  hours_open: number;
+  past_sla: boolean;
+  notified: boolean;
+  reminded: boolean;
+}
+
+export interface ReviewQueue {
+  count: number;
+  sla_hours: number;
+  items: QueueItem[];
+}
+
+export interface EscalationHistoryEntry {
+  at: string;
+  actor: string;
+  field: string | null;
+  from: unknown;
+  to: unknown;
+}
+
+export interface EscalationAuditEntry {
+  at: string;
+  actor_id: string;
+  action: string;
+  note: string | null;
+}
+
+/** Everything a reviewer needs to answer one question (Phase D2). */
+export interface EscalationDetail extends QueueItem {
+  status: string;
+  explainer: string | null;
+  answer_fields: SeedFormField[];
+  answer_shape: "yes_no" | "single_select" | "composite" | null;
+  attempts: Array<Record<string, unknown>>;
+  seed_context: Record<string, unknown>;
+  current_value: Record<string, unknown> | null;
+  resolution_value: Record<string, unknown> | null;
+  resolution_note: string | null;
+  audit_trail: EscalationAuditEntry[];
+  history: EscalationHistoryEntry[];
+}
+
+export interface ResolveResult {
+  escalation: Record<string, unknown>;
+  queue_count: number;
+}

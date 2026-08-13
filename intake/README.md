@@ -15,7 +15,8 @@ Everything here is new code. No existing file in the repo is modified.
 | B | Stage 0 auth + org/site models + seed form API & UI | done |
 | C1 | State machine, applicability, seed back-fill, escalation records | done |
 | C2 | Interview engine, coverage meter, interview screen | done |
-| D | LLM parse/rephrase + escalation queue + emails | not started |
+| D1 | AI reading of typed answers, with playback and guardrails | done |
+| D2 | Escalation queue screen, digest/reminder emails, SMTP adapter | done |
 | E | Evidence requests + profile page + audit log | not started |
 | F | Instrumentation of the two success metrics | not started |
 
@@ -45,6 +46,9 @@ python intake/scripts/validate_profile_schema.py
 
 # watch the whole Phase B flow run, with nothing written and no email sent
 python intake/scripts/intake_smoke.py
+
+# see what the escalation digests and reminders would say, sending nothing
+python intake/scripts/send_escalation_notices.py --dry-run
 
 # watch the Phase C1 state layer: instantiation, back-fill, a screening "no",
 # applicability, and an escalation opened then resolved
@@ -93,6 +97,14 @@ That serves everything the S1 API served, plus `/v1/intake/*`. Running
 | `POST /v1/intake/interview/not-sure` | Explainer, escalate, keep going. |
 | `GET  /v1/intake/interview/coverage` | Progress meter. |
 | `GET  /v1/intake/interview/states` | Every recorded state (feeds Phase E). |
+| `POST /v1/intake/interview/parse` | Read a typed answer with the model. Proposal only; never written unconfirmed. |
+| `GET  /v1/intake/review/queue` | Everything waiting on the team, oldest first. **Reviewers only.** |
+| `GET  /v1/intake/review/escalations/{id}` | One question, with the client's attempts and the data point's history. |
+| `POST /v1/intake/review/escalations/{id}/resolve` | Write the team's answer into the client's profile and email them. |
+
+The three review routes require the `sustentra_reviewer` role and are the one
+place org scoping is deliberately crossed: a reviewer sees every client's open
+questions, which is the point of the queue. The check is explicit on each route.
 
 Sites are read-only over the API on purpose: every site write goes through the
 seed-form endpoint so it passes the same validation, provisional-value recording
@@ -108,8 +120,42 @@ cd frontend && npm install && npm run dev
 - `/intake/login/verify` — consume the link
 - `/intake/seed` — the seed form (prefills from existing answers)
 - `/intake/interview` — the guided interview, with the coverage meter
+- `/intake/review` — the team's queue of escalated questions (reviewers only)
+- `/intake/review/{escalation_id}` — answer one, with the context to do it
 
 New pages only; no existing page, component or config is touched.
+
+## Escalation emails
+
+Three things happen when a client cannot answer a question (SPEC §3):
+
+| When | Who gets it | How |
+|---|---|---|
+| A client is **stuck** — a contradiction, two failed attempts, or they asked for help | vivian@ and claire@ | Immediately, from the app |
+| Any other escalation (mostly boundary answers a person must confirm) | vivian@ and claire@ | Batched into **one digest per client** |
+| Still open past `reminder_hours` (12) | vivian@ and claire@ | One reminder, once |
+| Answered by the team | the client's responsible party | Immediately, from the app |
+
+The batching is a deliberate departure from "one email per escalation", approved
+by the founder: every boundary answer is human-confirmed by design, so a two-site
+client generates a dozen or more. An email apiece would bury the ones that matter.
+Which triggers count as urgent is `escalation.urgent_triggers` in the settings —
+a config change, not a code change.
+
+Digests and reminders are sent by a command you run on a schedule:
+
+```sh
+python intake/scripts/send_escalation_notices.py --dry-run   # show, send nothing
+python intake/scripts/send_escalation_notices.py             # digests and reminders
+```
+
+```
+*/30 * * * * cd /path/to/sustentra-platform && python intake/scripts/send_escalation_notices.py
+```
+
+It is safe to run twice: each escalation is stamped when it is digested and again
+when it is reminded about, and both jobs skip anything already stamped. Nothing
+reaches a real person until an email adapter is configured — see below.
 
 ## Configuration
 
@@ -125,6 +171,7 @@ Two settings are environment-only because they are secrets or per-deployment:
 | `INTAKE_ADMIN_API_KEY` | Required to create orgs. Unset means the endpoint refuses (fails closed). |
 | `INTAKE_DATA_DIR` | Redirects all JSONL storage to one directory. |
 | `INTAKE_CORS_ALLOWED_ORIGINS` | Comma-separated origins allowed to call the API from a browser. Defaults to `http://localhost:3000`. Never set this to `*`. |
+| `INTAKE_SMTP_USERNAME` / `INTAKE_SMTP_PASSWORD` | SMTP credentials. Environment only — never in a config file. |
 
 The screens run on a different origin from the API, so the browser will refuse
 every request unless that origin is listed. The policy is applied by
@@ -168,8 +215,11 @@ Pilot-grade, and worth stating plainly:
   client exposure.
 - JSONL storage is append-only and single-process. Concurrent writers need a
   real database — that swap only touches the repository layer.
-- No real email provider is configured. The default `outbox` adapter writes
-  messages to a local file and sends nothing.
+- **No email leaves the machine by default.** The `outbox` adapter writes
+  messages to a local file and sends nothing. An `smtp` adapter exists and is
+  tested, but switching it on takes three deliberate steps: set
+  `email.adapter` to `smtp`, set `INTAKE_SMTP_HOST`, and supply credentials in
+  the environment. It refuses to start without a host rather than failing quietly.
 - The intake screens render inside the existing internal sidebar shell; giving
   them their own full-page shell would mean restructuring the existing root
   layout.
