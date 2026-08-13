@@ -1,6 +1,10 @@
 import {
+  AnswerResult,
   FieldError,
   IntakeUser,
+  InterviewStep,
+  NotSureResult,
+  SeedFormAnswers,
   SeedFormError,
   SeedFormSchema,
   SeedFormSubmitResult
@@ -116,6 +120,39 @@ export function submitSeedForm(payload: {
   sites: Array<Record<string, unknown>>;
 }): Promise<SeedFormSubmitResult> {
   return intakeRequest<SeedFormSubmitResult>("/v1/intake/seed-form", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export function getSeedFormAnswers(): Promise<SeedFormAnswers> {
+  return intakeRequest<SeedFormAnswers>("/v1/intake/seed-form/answers");
+}
+
+export function startInterview(): Promise<InterviewStep & { summary: unknown }> {
+  return intakeRequest("/v1/intake/interview/start", { method: "POST" });
+}
+
+export function getNextQuestion(): Promise<InterviewStep> {
+  return intakeRequest<InterviewStep>("/v1/intake/interview/next");
+}
+
+export function submitAnswer(payload: {
+  datapoint_id: string;
+  scope_ref: string | null;
+  answer: Record<string, unknown>;
+}): Promise<AnswerResult> {
+  return intakeRequest<AnswerResult>("/v1/intake/interview/answer", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export function sayNotSure(payload: {
+  datapoint_id: string;
+  scope_ref: string | null;
+}): Promise<NotSureResult> {
+  return intakeRequest<NotSureResult>("/v1/intake/interview/not-sure", {
     method: "POST",
     body: payload
   });

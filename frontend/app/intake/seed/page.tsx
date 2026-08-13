@@ -17,7 +17,12 @@ import {
   NOTICE_FLAG,
   SITE_BLOCK
 } from "../../../components/intake/styles";
-import { getCurrentUser, getSeedFormSchema, submitSeedForm } from "../../../lib/api/intake";
+import {
+  getCurrentUser,
+  getSeedFormAnswers,
+  getSeedFormSchema,
+  submitSeedForm
+} from "../../../lib/api/intake";
 import {
   FieldError,
   FormValues,
@@ -69,9 +74,18 @@ export default function SeedFormPage() {
         const companyFields = loaded.steps.find((s) => s.step_id === "company")?.fields ?? [];
         const siteFields = loaded.steps.find((s) => s.step_id === "sites")?.fields ?? [];
 
+        // Prefill from what is already saved. Sites keep their site_id, which is
+        // what makes a second visit update them instead of creating duplicates.
+        const existing = await getSeedFormAnswers().catch(() => null);
+        if (cancelled) return;
+
         setSchema(loaded);
-        setCompany(blankValues(companyFields));
-        setSites([blankValues(siteFields)]);
+        setCompany({ ...blankValues(companyFields), ...(existing?.company ?? {}) });
+        setSites(
+          existing && existing.sites.length > 0
+            ? existing.sites.map((site) => ({ ...blankValues(siteFields), ...site }))
+            : [blankValues(siteFields)]
+        );
         setPhase("ready");
       } catch (caught) {
         if (cancelled) return;

@@ -14,7 +14,7 @@ Everything here is new code. No existing file in the repo is modified.
 | A | Schema seed: mapping → config, with validation | done |
 | B | Stage 0 auth + org/site models + seed form API & UI | done |
 | C1 | State machine, applicability, seed back-fill, escalation records | done |
-| C2 | Interview engine, coverage meter, interview screen | not started |
+| C2 | Interview engine, coverage meter, interview screen | done |
 | D | LLM parse/rephrase + escalation queue + emails | not started |
 | E | Evidence requests + profile page + audit log | not started |
 | F | Instrumentation of the two success metrics | not started |
@@ -50,6 +50,9 @@ python intake/scripts/intake_smoke.py
 # applicability, and an escalation opened then resolved
 python intake/scripts/interview_state_smoke.py
 
+# play a whole guided interview for a two-site studio, start to finish
+python intake/scripts/interview_smoke.py
+
 # ...or exercise the real JSONL repositories and outbox
 python intake/scripts/intake_smoke.py --data-dir local-data/intake-smoke
 
@@ -82,7 +85,14 @@ That serves everything the S1 API served, plus `/v1/intake/*`. Running
 | `GET  /v1/intake/sites/{site_id}` | One site, scoped to the caller's org. |
 | `GET  /v1/intake/seed-form/schema` | Form definition with option lists resolved. |
 | `POST /v1/intake/seed-form` | Submit the form. Creates/updates org and sites. |
+| `GET  /v1/intake/seed-form/answers` | Existing answers, so the form prefills instead of duplicating sites. |
 | `GET  /v1/intake/seed-form/submissions/latest` | Most recent submission. |
+| `POST /v1/intake/interview/start` | Instantiate states, back-fill the seed form, return the first question. |
+| `GET  /v1/intake/interview/next` | The next question, with options and explainer. |
+| `POST /v1/intake/interview/answer` | Record an answer and advance. |
+| `POST /v1/intake/interview/not-sure` | Explainer, escalate, keep going. |
+| `GET  /v1/intake/interview/coverage` | Progress meter. |
+| `GET  /v1/intake/interview/states` | Every recorded state (feeds Phase E). |
 
 Sites are read-only over the API on purpose: every site write goes through the
 seed-form endpoint so it passes the same validation, provisional-value recording
@@ -96,7 +106,8 @@ cd frontend && npm install && npm run dev
 
 - `/intake/login` — request a sign-in link
 - `/intake/login/verify` — consume the link
-- `/intake/seed` — the seed form
+- `/intake/seed` — the seed form (prefills from existing answers)
+- `/intake/interview` — the guided interview, with the coverage meter
 
 New pages only; no existing page, component or config is touched.
 
@@ -139,8 +150,14 @@ never reaches the repository.
   establishes this today, so `BND-2.2` stays hidden behind a profile flag that
   defaults to false (the mapping's stated common case). Recorded as an
   `unresolved` condition in `config/applicability.json` rather than assumed.
-- **Question wording.** Labels and help text are working copy; final
-  plain-language copy follows the Vocabulary Library review (SPEC §10).
+- **Question wording.** Labels, questions and explainers are working copy;
+  final plain-language copy follows the Vocabulary Library review (SPEC §10).
+  The answer *shapes* are not placeholder - they define what is collected.
+- **Nine answer lists with no source in the repo** (refrigerant gases,
+  fire-suppression agents, industrial gases, vehicle types, instrument types,
+  and others). These are free text flagged `provisional` for Todd rather than
+  invented dropdowns. The screening questions themselves are yes/no, so the
+  interview works regardless.
 
 ## Known limits
 

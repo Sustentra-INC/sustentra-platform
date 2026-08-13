@@ -19,10 +19,16 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from intake.backend.api import auth, orgs, seed_form, sites
+from intake.backend.api import auth, interview, orgs, seed_form, sites
 from intake.backend.config import load_settings
 
-INTAKE_ROUTERS = (auth.router, orgs.router, sites.router, seed_form.router)
+INTAKE_ROUTERS = (
+    auth.router,
+    orgs.router,
+    sites.router,
+    seed_form.router,
+    interview.router,
+)
 
 # The intake screens run on a different port from the API, so the browser will
 # not call it at all without these. Headers are listed explicitly rather than

@@ -123,6 +123,55 @@ class SeedFormService:
         """The most recent seed-form submission for an org, if any."""
         return self._submissions.latest_for_org(org_id)
 
+    def current_answers(self, org_id: str) -> dict[str, Any]:
+        """Existing answers shaped for the form, so it can be prefilled.
+
+        Each site carries its ``site_id``, which is what makes a second
+        submission update the existing sites instead of creating duplicates.
+        """
+        org = self._orgs.get(org_id)
+        if org is None:
+            return {"company": {}, "sites": []}
+
+        responsible = org.get("responsible_party") or {}
+        company = {
+            "legal_name": org.get("legal_name"),
+            "reporting_year": org.get("reporting_year"),
+            "responsible_party_name": responsible.get("name"),
+            "responsible_party_role": responsible.get("role"),
+            "responsible_party_email": responsible.get("email"),
+            "industry": org.get("industry"),
+            "reporting_period_start": org.get("reporting_period_start"),
+            "reporting_period_end": org.get("reporting_period_end"),
+            "fiscal_year_basis": org.get("fiscal_year_basis"),
+        }
+
+        sites = []
+        for site in self._sites.list_by_org(org_id):
+            address = site.get("address") or {}
+            sites.append(
+                {
+                    "site_id": site["site_id"],
+                    "site_name": site.get("site_name"),
+                    "address_line": address.get("address_line"),
+                    "city": address.get("city"),
+                    "state_region": address.get("state_region"),
+                    "postal_code": address.get("postal_code"),
+                    "country_region": address.get("country_region"),
+                    "operational_status": site.get("operational_status"),
+                    "site_type": site.get("site_type"),
+                    "ownership": site.get("ownership"),
+                    "lease_type": site.get("lease_type"),
+                    "ownership_note": site.get("ownership_note"),
+                }
+            )
+
+        return {
+            "profile_status": org.get("profile_status"),
+            "company": {key: value for key, value in company.items() if value is not None},
+            "sites": sites,
+        }
+
     def submit(
         self, org_id: str, submitted_by: str, payload: dict[str, Any]
     ) -> dict[str, Any]:

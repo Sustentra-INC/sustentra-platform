@@ -282,3 +282,44 @@ def test_no_datapoint_states_are_written_in_phase_b(harness) -> None:
     result = _submit(harness)
     assert "datapoint_states" not in result
     assert not any("datapoint_state" in key for key in result["submission"])
+
+
+# -- prefill (fixes the duplicate-sites gap) --------------------------------
+
+
+def test_current_answers_are_empty_before_submission(harness) -> None:
+    org = harness.create_org()["org"]
+    answers = harness.seed_form_service.current_answers(org["org_id"])
+    assert answers["sites"] == []
+    assert answers["profile_status"] == "awaiting_seed_form"
+
+
+def test_current_answers_prefill_the_form(harness) -> None:
+    result = _submit(harness)
+    answers = harness.seed_form_service.current_answers(result["org"]["org_id"])
+    assert answers["company"]["legal_name"] == "Northlight Studios Ltd"
+    assert answers["company"]["responsible_party_email"] == "ada@northlight.example"
+    assert answers["sites"][0]["site_name"] == "Stage 4 Complex"
+    assert answers["sites"][0]["address_line"] == "12 Harbour Road"
+
+
+def test_prefilled_sites_carry_their_id_so_resubmission_updates(harness) -> None:
+    """The site_id is what stops a second submission duplicating every site."""
+    result = _submit(harness)
+    org_id = result["org"]["org_id"]
+    answers = harness.seed_form_service.current_answers(org_id)
+    assert answers["sites"][0]["site_id"]
+
+    harness.seed_form_service.submit(
+        org_id=org_id,
+        submitted_by="usr_test",
+        payload={"company": answers["company"], "sites": answers["sites"]},
+    )
+    assert len(harness.sites.list_by_org(org_id)) == 1
+
+
+def test_current_answers_for_an_unknown_org_are_empty(harness) -> None:
+    assert harness.seed_form_service.current_answers("org_missing") == {
+        "company": {},
+        "sites": [],
+    }

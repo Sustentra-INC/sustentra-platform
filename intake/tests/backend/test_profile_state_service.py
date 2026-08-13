@@ -175,12 +175,12 @@ def test_a_new_site_gets_its_states_on_re_initialise(harness) -> None:
 
 
 def test_resubmitting_without_site_ids_creates_new_sites(harness) -> None:
-    """Documents a known Phase B gap rather than leaving it to be discovered.
+    """A submission with no site ids means "these are new sites", by design.
 
-    The seed form loads blank, so a client who revisits it and submits again
-    duplicates their sites. The fix is to prefill the form from existing
-    answers, which belongs with the interview work; this test pins the current
-    behaviour so the change is deliberate when it happens.
+    This was a real gap while the form loaded blank: revisiting it duplicated
+    every site. Phase C2 fixed that at source - the form now prefills from
+    ``current_answers``, which carries each ``site_id`` back. The service
+    behaviour below is deliberate and still correct, so it is pinned here.
     """
     from intake.tests.conftest import company_payload, site_payload
 

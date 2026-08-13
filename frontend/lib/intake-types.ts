@@ -24,7 +24,10 @@ export type FieldInput =
   | "select"
   | "textarea"
   | "derived"
-  | "overlay_dependent";
+  | "overlay_dependent"
+  // Interview-only shapes.
+  | "yes_no"
+  | "list";
 
 export interface PopulatesTarget {
   target_type: "methodology_field" | "intake_field" | "legacy_field";
@@ -49,7 +52,12 @@ export interface SeedFormField {
   vocabulary_open?: boolean;
   visible_when?: { field_id: string; equals: string };
   derived_from?: string;
-  populates: PopulatesTarget[];
+  populates?: PopulatesTarget[] | PopulatesTarget;
+  /** Interview fields only. */
+  item_label?: string;
+  default_value?: string | number | boolean;
+  reveal_when?: { field: string; equals: string | boolean };
+  creates_scope?: string;
 }
 
 export interface SeedFormStep {
@@ -104,4 +112,62 @@ export interface SeedFormSubmitResult {
     seed_profile_id: string;
     provisional_values: Array<{ field_id: string; value: string; requires_signoff: string }>;
   };
+}
+
+/** A question served by the interview engine (Phase C2). */
+export interface InterviewQuestion {
+  datapoint_id: string;
+  state_id: string;
+  scope_ref: string | null;
+  scope_label: string | null;
+  section: string;
+  grain: string;
+  escalation_class: "AUTO" | "HUMAN" | "SYSTEM";
+  question: string;
+  explainer: string;
+  answer_shape: "yes_no" | "single_select" | "composite";
+  fields: SeedFormField[];
+  status: string;
+  value: Record<string, unknown> | null;
+  not_sure_allowed: boolean;
+}
+
+export interface CoverageSection {
+  section_id: string;
+  label: string;
+  order: number;
+  total: number;
+  complete: number;
+}
+
+export interface Coverage {
+  complete: number;
+  total: number;
+  escalated: number;
+  remaining: number;
+  is_complete: boolean;
+  label: string;
+  note: string;
+  sections: CoverageSection[];
+}
+
+export interface InterviewStep {
+  next: InterviewQuestion | null;
+  coverage: Coverage;
+}
+
+export interface AnswerResult extends InterviewStep {
+  status: string;
+  escalated: boolean;
+}
+
+export interface NotSureResult extends InterviewStep {
+  explainer: string;
+  message: string;
+}
+
+export interface SeedFormAnswers {
+  profile_status?: string;
+  company: FormValues;
+  sites: FormValues[];
 }

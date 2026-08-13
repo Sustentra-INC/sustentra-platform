@@ -286,3 +286,135 @@ def test_cors_origins_are_configurable_and_never_wildcard() -> None:
     origins = load_settings().api.cors_allowed_origins
     assert origins, "at least one origin must be allowed or the screens cannot call the API"
     assert "*" not in origins, "a wildcard would let any site call the API with a user's session"
+
+
+# -- interview (Phase C2) ---------------------------------------------------
+
+
+def _start(client):
+    token, org = _sign_in(client)
+    client.post(
+        "/v1/intake/seed-form",
+        headers=_auth(token),
+        json={"company": company_payload(), "sites": [site_payload()]},
+    )
+    started = client.post("/v1/intake/interview/start", headers=_auth(token))
+    return token, org, started
+
+
+def test_interview_requires_sign_in(client) -> None:
+    assert client.post("/v1/intake/interview/start").status_code == 401
+    assert client.get("/v1/intake/interview/next").status_code == 401
+
+
+def test_starting_the_interview_returns_a_question_and_coverage(client) -> None:
+    _, _, started = _start(client)
+    assert started.status_code == 200
+    body = started.json()
+    assert body["next"]["question"]
+    assert body["next"]["explainer"]
+    assert body["coverage"]["total"] > 0
+    assert body["coverage"]["complete"] == 0
+    assert body["summary"]["backfilled"]
+
+
+def test_answering_advances_to_the_next_question(client) -> None:
+    token, _, started = _start(client)
+    first = started.json()["next"]
+    response = client.post(
+        "/v1/intake/interview/answer",
+        headers=_auth(token),
+        json={
+            "datapoint_id": first["datapoint_id"],
+            "scope_ref": first["scope_ref"],
+            "answer": {"consolidation_approach": "operational_control"},
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["coverage"]["complete"] == 1
+    assert body["next"]["datapoint_id"] != first["datapoint_id"]
+
+
+def test_an_invalid_answer_returns_field_errors(client) -> None:
+    """party_role is a closed workbook vocabulary, so a made-up value is refused."""
+    token, org, _ = _start(client)
+    site_id = client.harness.sites.list_by_org(org["org_id"])[0]["site_id"]
+    response = client.post(
+        "/v1/intake/interview/answer",
+        headers=_auth(token),
+        json={
+            "datapoint_id": "BND-2.3",
+            "scope_ref": site_id,
+            "answer": {
+                "party_role": "chief_vibes_officer",
+                "operational_control_over_asset_flag": True,
+            },
+        },
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"]["errors"][0]["field"] == "party_role"
+
+
+def test_an_open_vocabulary_accepts_a_value_outside_the_list(client) -> None:
+    """consolidation_approach is annotated OPEN in the workbook, and ISO 14064-1
+    permits other documented approaches, so intake must not force the named three."""
+    token, _, started = _start(client)
+    first = started.json()["next"]
+    assert first["datapoint_id"] == "BND-2.1"
+    response = client.post(
+        "/v1/intake/interview/answer",
+        headers=_auth(token),
+        json={
+            "datapoint_id": first["datapoint_id"],
+            "scope_ref": first["scope_ref"],
+            "answer": {"consolidation_approach": "documented_alternative_approach"},
+        },
+    )
+    assert response.status_code == 200
+
+
+def test_not_sure_returns_the_explainer_and_keeps_going(client) -> None:
+    token, _, started = _start(client)
+    first = started.json()["next"]
+    response = client.post(
+        "/v1/intake/interview/not-sure",
+        headers=_auth(token),
+        json={"datapoint_id": first["datapoint_id"], "scope_ref": first["scope_ref"]},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["explainer"]
+    assert "24 hours" in body["message"]
+    assert body["next"]["datapoint_id"] != first["datapoint_id"]
+
+
+def test_coverage_and_states_endpoints(client) -> None:
+    token, _, _ = _start(client)
+    coverage = client.get("/v1/intake/interview/coverage", headers=_auth(token))
+    assert coverage.status_code == 200
+    assert coverage.json()["label"].endswith("complete")
+
+    states = client.get("/v1/intake/interview/states", headers=_auth(token))
+    assert states.status_code == 200
+    assert any(state["datapoint_id"].startswith("SEED-") for state in states.json())
+
+
+def test_a_reviewer_cannot_answer_the_interview(client) -> None:
+    token, org = _sign_in(client)
+    client.post(
+        "/v1/intake/seed-form",
+        headers=_auth(token),
+        json={"company": company_payload(), "sites": [site_payload()]},
+    )
+    client.post("/v1/intake/interview/start", headers=_auth(token))
+    client.harness.org_service.add_user(
+        org_id=org["org_id"], name="Rev", email="rev@sustentra.com", role="sustentra_reviewer"
+    )
+    reviewer = client.harness.sign_in("rev@sustentra.com")
+    response = client.post(
+        "/v1/intake/interview/answer",
+        headers=_auth(reviewer),
+        json={"datapoint_id": "BND-2.1", "scope_ref": None, "answer": {}},
+    )
+    assert response.status_code == 403

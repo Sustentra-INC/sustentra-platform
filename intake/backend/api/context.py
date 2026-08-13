@@ -22,10 +22,22 @@ from intake.backend.repositories.seed_profile_repository import JsonlSeedProfile
 from intake.backend.repositories.session_repository import JsonlSessionRepository
 from intake.backend.repositories.site_repository import JsonlSiteRepository
 from intake.backend.repositories.user_repository import JsonlUserRepository
+from intake.backend.repositories.audit_log_repository import JsonlAuditLogRepository
+from intake.backend.repositories.datapoint_state_repository import (
+    DatapointStateRepository,
+    JsonlDatapointStateRepository,
+)
+from intake.backend.repositories.escalation_repository import JsonlEscalationRepository
+from intake.backend.services.applicability_service import ApplicabilityService
 from intake.backend.services.auth_service import AuthError, AuthService
+from intake.backend.services.coverage_service import CoverageService
 from intake.backend.services.email_service import EmailService
+from intake.backend.services.escalation_service import EscalationService
+from intake.backend.services.interview_engine import InterviewEngine
 from intake.backend.services.org_service import OrgService
+from intake.backend.services.profile_state_service import ProfileStateService
 from intake.backend.services.seed_form_service import SeedFormService
+from intake.backend.services.state_machine import StateMachine
 
 
 @dataclass
@@ -34,6 +46,11 @@ class IntakeContext:
     org_service: OrgService
     seed_form_service: SeedFormService
     email_service: EmailService
+    profile_state_service: ProfileStateService
+    interview_engine: InterviewEngine
+    coverage_service: CoverageService
+    escalation_service: EscalationService
+    state_repository: DatapointStateRepository
 
 
 def build_default_context() -> IntakeContext:
@@ -45,6 +62,23 @@ def build_default_context() -> IntakeContext:
     sessions = JsonlSessionRepository()
     submissions = JsonlSeedProfileRepository()
     email_service = EmailService()
+
+    states = JsonlDatapointStateRepository()
+    audit = JsonlAuditLogRepository()
+    escalation_records = JsonlEscalationRepository()
+
+    machine = StateMachine(states, audit)
+    escalation_service = EscalationService(escalation_records, states, machine)
+    profile_state_service = ProfileStateService(machine, states, orgs, sites, submissions)
+    interview_engine = InterviewEngine(
+        state_repository=states,
+        org_repository=orgs,
+        site_repository=sites,
+        state_machine=machine,
+        applicability=ApplicabilityService(),
+        escalations=escalation_service,
+        profile_states=profile_state_service,
+    )
 
     return IntakeContext(
         auth_service=AuthService(
@@ -65,6 +99,11 @@ def build_default_context() -> IntakeContext:
             email_service=email_service,
         ),
         email_service=email_service,
+        profile_state_service=profile_state_service,
+        interview_engine=interview_engine,
+        coverage_service=CoverageService(interview_engine),
+        escalation_service=escalation_service,
+        state_repository=states,
     )
 
 

@@ -29,6 +29,12 @@ def get_schema(
     return context.seed_form_service.get_form(overlay_id)
 
 
+@router.get("/answers")
+def current_answers(user: AuthenticatedUser = Depends(require_user)) -> dict:
+    """Existing answers, so the form prefills instead of duplicating sites."""
+    return get_context().seed_form_service.current_answers(user.org_id)
+
+
 @router.post("")
 def submit(
     payload: SeedFormSubmission, user: AuthenticatedUser = Depends(require_user)

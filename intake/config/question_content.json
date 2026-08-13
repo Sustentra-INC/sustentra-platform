@@ -1,0 +1,554 @@
+{
+  "content_name": "sustentra_intake_question_content",
+  "content_version": "1.0.0",
+  "copy_status": "placeholder",
+  "copy_note": "Question wording and explainers are working copy. Final plain-language copy and the film vocabulary overlay are authored after the Vocabulary Library review (intake/SPEC.md section 10). The answer SHAPES below are not placeholder - they define what the engine collects.",
+  "description": "Per-question content for the Stage 2 guided interview: what is asked, the canned 'What does this mean?' explainer, and the answer fields. Buttons and dropdowns wherever possible; free text only where a value genuinely has no controlled vocabulary yet, and every such field is flagged provisional rather than given invented options.",
+  "conventions": {
+    "answer_shape": "yes_no = a screening question whose answer sets the 'present' field. single_select / composite = a question whose answer is one or more fields.",
+    "reveal_when": "A field is shown only when the named field already has the given value.",
+    "populates": "Where a field's value ultimately lands. Must match what the data point declares in intake/config/profile_schema.json.",
+    "not_sure": "Every question offers 'Not sure'. It is never a failure state: it shows the explainer, then escalates to the Sustentra team, and the interview continues."
+  },
+  "questions": {
+    "BND-2.1": {
+      "question": "Which parts of the business count as yours for this report?",
+      "explainer": "If your company runs everything it operates, choose operational control - that is the usual answer for a single company. The other options matter when you own shares in businesses you do not run day to day.",
+      "answer_shape": "single_select",
+      "fields": [
+        {
+          "field_id": "consolidation_approach",
+          "label": "Which of these fits best?",
+          "input": "select",
+          "required": true,
+          "options_ref": "vocabulary:consolidation_approach",
+          "default_value": "operational_control",
+          "provisional": true,
+          "requires_signoff": "Todd",
+          "provisional_reason": "Operational control is a proposed SME default, not an approved methodology decision.",
+          "populates": { "field_id": "ORG-010", "schema_field": "consolidation_approach" }
+        },
+        {
+          "field_id": "control_determination_basis",
+          "label": "How do you know? (optional)",
+          "help": "For example: we are the only legal entity, or we hold the operating licence.",
+          "input": "textarea",
+          "required": false,
+          "populates": { "field_id": "ORG-025", "schema_field": "control_determination_basis" }
+        }
+      ]
+    },
+    "BND-2.2": {
+      "question": "Which other companies or operations belong in this report?",
+      "explainer": "List any subsidiaries, joint ventures or franchises that are part of the same group. If your company is a single legal entity, you will not see this question.",
+      "answer_shape": "composite",
+      "fields": [
+        {
+          "field_id": "operations",
+          "label": "Operations to include",
+          "input": "list",
+          "required": true,
+          "item_label": "Operation name",
+          "populates": { "field_id": "ORG-020", "schema_field": "operation_name" }
+        },
+        {
+          "field_id": "entity_relationship",
+          "label": "How is it related?",
+          "input": "select",
+          "required": false,
+          "options_ref": "vocabulary:entity_relationship",
+          "populates": { "field_id": "ORG-020", "schema_field": "entity_relationship" }
+        }
+      ]
+    },
+    "BND-2.3": {
+      "question": "For this site, who actually controls the space and the equipment?",
+      "explainer": "This decides whose carbon footprint the site belongs in. If you rent the building but run everything inside it, the energy is usually yours. If someone else holds the meter and runs the space, it is usually theirs. We will confirm this with you.",
+      "answer_shape": "composite",
+      "fields": [
+        {
+          "field_id": "party_role",
+          "label": "Your role at this site",
+          "input": "select",
+          "required": true,
+          "options_ref": "vocabulary:party_role",
+          "populates": { "field_id": "ORG-040", "schema_field": "party_role" }
+        },
+        {
+          "field_id": "operational_control_over_asset_flag",
+          "label": "Does your company decide how this site is run day to day?",
+          "help": "Things like setting the temperature, choosing the energy supplier, and maintaining the equipment.",
+          "input": "yes_no",
+          "required": true,
+          "populates": {
+            "field_id": "ORG-050",
+            "schema_field": "operational_control_over_asset_flag"
+          }
+        },
+        {
+          "field_id": "asset_role_determination_basis",
+          "label": "Anything we should know about the arrangement? (optional)",
+          "input": "textarea",
+          "required": false,
+          "populates": {
+            "field_id": "ORG-055",
+            "schema_field": "asset_role_determination_basis"
+          }
+        }
+      ]
+    },
+    "BND-2.4": {
+      "question": "Is this your first carbon inventory?",
+      "explainer": "Your base year is the year you compare future years against. If this is your first inventory, this year becomes your base year. If you have measured before, we need to line up with what you did previously.",
+      "answer_shape": "composite",
+      "fields": [
+        {
+          "field_id": "prior_inventories",
+          "label": "Have you prepared a carbon inventory before?",
+          "input": "yes_no",
+          "required": true
+        },
+        {
+          "field_id": "base_year",
+          "label": "Base year",
+          "help": "Defaults to this reporting year for a first inventory.",
+          "input": "number",
+          "required": false,
+          "provisional": true,
+          "requires_signoff": "Todd",
+          "provisional_reason": "First-reporting-year-as-base-year is a proposed SME default awaiting sign-off.",
+          "populates": { "field_id": "BAS-010", "schema_field": "base_year" }
+        },
+        {
+          "field_id": "base_year_selection_rationale",
+          "label": "Why that year? (optional)",
+          "input": "textarea",
+          "required": false,
+          "reveal_when": { "field": "prior_inventories", "equals": true },
+          "populates": { "field_id": "BAS-010", "schema_field": "base_year_selection_rationale" }
+        }
+      ]
+    },
+    "BND-2.5": {
+      "question": "Did the business change shape during the year?",
+      "explainer": "We mean buying or selling part of the business, merging, or moving premises. These change what belongs in the report part-way through the year, so we handle them by hand.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "change_type",
+          "label": "What kind of change?",
+          "input": "select",
+          "required": true,
+          "options_ref": "vocabulary:change_type",
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "CHG-010", "schema_field": "change_type" }
+        },
+        {
+          "field_id": "effective_date",
+          "label": "When did it take effect?",
+          "input": "date",
+          "required": true,
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "CHG-010", "schema_field": "effective_date" }
+        }
+      ]
+    },
+    "BND-2.7": {
+      "question": "This report covers the emissions you cause directly and the energy you buy. Can we record why the rest is left out?",
+      "explainer": "Standards ask you to say why other indirect emissions - things like business travel or your suppliers - are not counted. We have written a standard explanation; you just need to confirm it fits.",
+      "answer_shape": "composite",
+      "fields": [
+        {
+          "field_id": "exclusion_rationale",
+          "label": "Our standard explanation",
+          "input": "textarea",
+          "required": true,
+          "provisional": true,
+          "requires_signoff": "Todd",
+          "provisional_reason": "The SME significance-criteria template is not yet approved.",
+          "default_value": "Indirect categories other than imported energy were screened and excluded from this inventory on the basis that they are not significant to the reporting entity's operations for the reporting period. The determination process and its basis are documented and available for verification.",
+          "populates": { "field_id": "EXC-010", "schema_field": "exclusion_rationale" }
+        },
+        {
+          "field_id": "exclusion_materiality_basis",
+          "label": "Anything specific to your business to add? (optional)",
+          "input": "textarea",
+          "required": false,
+          "populates": { "field_id": "EXC-010", "schema_field": "exclusion_materiality_basis" }
+        }
+      ]
+    },
+    "S1STC-3.1": {
+      "question": "Is there anything at this site that burns fuel?",
+      "explainer": "We mean equipment that burns something to make heat: gas boilers, gas kitchens, furnaces, workshop heaters. Anything that runs purely on electricity does not count here - we cover electricity separately.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "equipment",
+          "label": "What is there? Add one line each.",
+          "help": "Names are enough - we read the details off your bills later.",
+          "input": "list",
+          "required": true,
+          "item_label": "Equipment",
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S1-STC-100", "schema_field": "equipment_id" }
+        }
+      ]
+    },
+    "S1STC-3.2": {
+      "question": "Are there backup or emergency generators at this site?",
+      "explainer": "Standby generators that run on diesel or petrol, including ones you hire in. They usually run rarely, but they still count.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "generators",
+          "label": "Add one line per generator",
+          "input": "list",
+          "required": true,
+          "item_label": "Generator",
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S1-STC-100", "schema_field": "equipment_id" }
+        },
+        {
+          "field_id": "separately_metered",
+          "label": "Is the fuel for them recorded separately?",
+          "help": "If not, we estimate from run hours instead.",
+          "input": "yes_no",
+          "required": true,
+          "reveal_when": { "field": "present", "equals": true }
+        },
+        {
+          "field_id": "operating_hours",
+          "label": "Roughly how many hours did they run this year? (optional)",
+          "input": "number",
+          "required": false,
+          "reveal_when": { "field": "separately_metered", "equals": false },
+          "populates": { "field_id": "S1-STC-220", "schema_field": "operating_hours" }
+        }
+      ]
+    },
+    "S1STC-3.3": {
+      "question": "Is any of that fuel biodiesel, renewable diesel, or a blend?",
+      "explainer": "Blended and renewable fuels are reported differently from ordinary diesel, so it matters that we know. If you are not sure, the delivery paperwork usually says.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "blend_source",
+          "label": "Which fuels, and what blend if you know it?",
+          "input": "text",
+          "required": false,
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S1-MOB-310", "schema_field": "blend_source" }
+        }
+      ]
+    },
+    "S1MOB-4.1": {
+      "question": "Does the company own or lease any vehicles or motorised equipment?",
+      "explainer": "Anything with an engine that your company owns or leases: cars, vans, trucks, forklifts, carts, shuttles. Vehicles belonging to visiting productions or contractors are not yours.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "fleet_groups",
+          "label": "Group them however makes sense to you",
+          "help": "For example 'shuttle vans', 'forklifts'. One line per group.",
+          "input": "list",
+          "required": true,
+          "item_label": "Vehicle group",
+          "reveal_when": { "field": "present", "equals": true },
+          "creates_scope": "vehicle_group",
+          "populates": { "field_id": "S1-MOB-400", "schema_field": "fleet_group" }
+        },
+        {
+          "field_id": "vehicle_type",
+          "label": "What sort of vehicles are they? (optional)",
+          "input": "text",
+          "required": false,
+          "provisional": true,
+          "requires_signoff": "Todd",
+          "provisional_reason": "No controlled vocabulary for vehicle_type exists in the repo; free text rather than invented options.",
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S1-MOB-400", "schema_field": "vehicle_type" }
+        }
+      ]
+    },
+    "S1MOB-4.2": {
+      "question": "Do visiting productions or tenants bring their own vehicles on site?",
+      "explainer": "Their vehicles belong in their own carbon report, not yours. We record the answer so the boundary is documented either way.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "exclusion_justification",
+          "label": "Anything worth noting? (optional)",
+          "input": "textarea",
+          "required": false,
+          "populates": { "field_id": "ORG-050", "schema_field": "exclusion_justification" }
+        }
+      ]
+    },
+    "S1MOB-4.3": {
+      "question": "For this group of vehicles, what records do you have?",
+      "explainer": "Fuel-card statements are the most accurate. If you only have mileage, we can work from distance and typical fuel use instead - it is a recognised method, just less precise.",
+      "answer_shape": "single_select",
+      "fields": [
+        {
+          "field_id": "selected_co2_calculation_method",
+          "label": "What do you have?",
+          "input": "select",
+          "required": true,
+          "options": [
+            { "value": "fuel_based", "label": "Fuel-card or fuel purchase records" },
+            { "value": "distance_based_onroad", "label": "Only mileage or distance records" },
+            { "value": "fuel_based_nonroad", "label": "Fuel records for non-road equipment" }
+          ],
+          "populates": {
+            "field_id": "S1-MOB-460",
+            "schema_field": "selected_co2_calculation_method"
+          }
+        },
+        {
+          "field_id": "distance_traveled",
+          "label": "Roughly how far did this group travel this year? (optional)",
+          "input": "number",
+          "required": false,
+          "reveal_when": {
+            "field": "selected_co2_calculation_method",
+            "equals": "distance_based_onroad"
+          },
+          "populates": { "field_id": "S1-MOB-120", "schema_field": "distance_traveled" }
+        }
+      ]
+    },
+    "S1FUG-5.1": {
+      "question": "Does your company look after any air conditioning or refrigeration here?",
+      "explainer": "Air conditioning, chillers, cold rooms and fridges contain gases that leak slowly over time, which counts as emissions. We only mean equipment your company maintains - not a landlord's.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "equipment_count",
+          "label": "Roughly how many units?",
+          "input": "number",
+          "required": true,
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S1-FUG-010", "schema_field": "equipment_count" }
+        },
+        {
+          "field_id": "gas_type",
+          "label": "Do you know the refrigerant type? (optional)",
+          "help": "Often printed on a label on the unit, like R-410A.",
+          "input": "text",
+          "required": false,
+          "provisional": true,
+          "requires_signoff": "Todd",
+          "provisional_reason": "No refrigerant gas vocabulary exists in the repo; free text rather than invented options.",
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S1-FUG-010", "schema_field": "gas_type" }
+        },
+        {
+          "field_id": "has_service_records",
+          "label": "Do you get service invoices for this equipment?",
+          "help": "If you do, we can use the actual gas top-ups, which is more accurate.",
+          "input": "yes_no",
+          "required": true,
+          "reveal_when": { "field": "present", "equals": true }
+        }
+      ]
+    },
+    "S1FUG-5.2": {
+      "question": "Are there fire suppression systems here that use gas rather than water?",
+      "explainer": "Water sprinklers do not count. We mean systems that release a gas instead - often labelled clean agent, FM-200, or CO2 flooding. If it is a sprinkler, answer no.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "equipment_count",
+          "label": "How many systems or cylinders?",
+          "input": "number",
+          "required": true,
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S1-FUG-050", "schema_field": "equipment_count" }
+        },
+        {
+          "field_id": "gas_type",
+          "label": "Which agent, if you know? (optional)",
+          "input": "text",
+          "required": false,
+          "provisional": true,
+          "requires_signoff": "Todd",
+          "provisional_reason": "No fire-suppression agent vocabulary exists in the repo; free text rather than invented options.",
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S1-FUG-050", "schema_field": "gas_type" }
+        }
+      ]
+    },
+    "S1FUG-5.3": {
+      "question": "Do you buy industrial gases for use at this site?",
+      "explainer": "Things like CO2 cylinders, welding gas, or gases used for special effects. If they are released rather than consumed, they count as emissions.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "gas_types",
+          "label": "Which gases? One per line.",
+          "input": "list",
+          "required": true,
+          "item_label": "Gas",
+          "provisional": true,
+          "requires_signoff": "Todd",
+          "provisional_reason": "No industrial gas vocabulary exists in the repo; free text rather than invented options.",
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S1-FUG-080", "schema_field": "gas_type" }
+        },
+        {
+          "field_id": "use_purpose",
+          "label": "What are they used for? (optional)",
+          "input": "text",
+          "required": false,
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S1-FUG-080", "schema_field": "use_purpose" }
+        }
+      ]
+    },
+    "S1FUG-5.4": {
+      "question": "Is there on-site wastewater treatment or any industrial process here?",
+      "explainer": "Most sites answer no. We mean treating your own wastewater on site, or a manufacturing process that gives off gases as part of a chemical reaction. If you answer yes, one of our team will pick this up with you.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "description",
+          "label": "Tell us briefly what it is",
+          "input": "textarea",
+          "required": true,
+          "reveal_when": { "field": "present", "equals": true }
+        }
+      ]
+    },
+    "S2-6.1": {
+      "question": "Who supplies electricity to this site?",
+      "explainer": "We need the supplier and the account or meter number so we can match up your bills. We never ask you to type in how much electricity you used - we read that from the bills.",
+      "answer_shape": "composite",
+      "fields": [
+        {
+          "field_id": "supplier_name",
+          "label": "Electricity supplier",
+          "input": "text",
+          "required": true,
+          "populates": { "field_id": "S2-MTR-020", "schema_field": "supplier_name" }
+        },
+        {
+          "field_id": "utility_account_id",
+          "label": "Account or meter number",
+          "input": "text",
+          "required": true,
+          "populates": { "field_id": "S2-MTR-020", "schema_field": "utility_account_id" }
+        },
+        {
+          "field_id": "meter_count",
+          "label": "How many meters does this site have?",
+          "input": "number",
+          "required": true
+        }
+      ]
+    },
+    "S2-6.2": {
+      "question": "Do you share this building or its meters with anyone else?",
+      "explainer": "If your electricity bill covers space other people use, we need to work out your share fairly. We will confirm how before using it.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "allocation_basis",
+          "label": "How should your share be worked out?",
+          "input": "select",
+          "required": true,
+          "options_ref": "vocabulary:allocation_basis",
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S2-CON-055", "schema_field": "allocation_basis" }
+        },
+        {
+          "field_id": "reporter_floor_area",
+          "label": "Your floor area (optional)",
+          "input": "number",
+          "required": false,
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S2-CON-055", "schema_field": "reporter_floor_area" }
+        },
+        {
+          "field_id": "total_building_area",
+          "label": "Total building area (optional)",
+          "input": "number",
+          "required": false,
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S2-CON-055", "schema_field": "total_building_area" }
+        }
+      ]
+    },
+    "S2-6.3": {
+      "question": "Do you buy steam, hot water, or chilled water for this site?",
+      "explainer": "Some buildings buy heating or cooling from a shared plant rather than making it themselves. If you only buy electricity and gas, answer no.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "energy_carrier",
+          "label": "Which one?",
+          "input": "select",
+          "required": true,
+          "options": [
+            { "value": "steam", "label": "Steam" },
+            { "value": "heat", "label": "Hot water or heat" },
+            { "value": "cooling", "label": "Chilled water or cooling" }
+          ],
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S2-MTR-030", "schema_field": "energy_carrier" }
+        }
+      ]
+    },
+    "S2-6.4": {
+      "question": "Do you generate any power on site, for example solar panels?",
+      "explainer": "Power you generate and use yourself is treated differently from power you buy. If you sell any of it - or sell the green certificates that come with it - that changes things again, so we ask separately.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "distribution_scenario",
+          "label": "How is it set up?",
+          "input": "select",
+          "required": true,
+          "options_ref": "vocabulary:distribution_scenario",
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S2-MTR-045", "schema_field": "distribution_scenario" }
+        },
+        {
+          "field_id": "sells_energy_or_attributes",
+          "label": "Do you sell any of that power, or its green certificates?",
+          "input": "yes_no",
+          "required": true,
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "OPB-020", "schema_field": "sold_own_generated_energy_flag" }
+        }
+      ]
+    },
+    "S2-6.5": {
+      "question": "Have you bought renewable energy certificates or a green power product?",
+      "explainer": "Things like RECs, GOs, or a green tariff from your supplier. They let us report a second, market-based figure alongside the standard one. They do not cancel out emissions from fuel you burn.",
+      "answer_shape": "yes_no",
+      "fields": [
+        {
+          "field_id": "instrument_type",
+          "label": "What kind?",
+          "input": "text",
+          "required": true,
+          "provisional": true,
+          "requires_signoff": "Todd",
+          "provisional_reason": "No instrument_type vocabulary exists in the repo; free text rather than invented options.",
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S2-INS-020", "schema_field": "instrument_type" }
+        },
+        {
+          "field_id": "market_hierarchy_tier",
+          "label": "Which best describes it? (optional)",
+          "input": "select",
+          "required": false,
+          "options_ref": "vocabulary:market_hierarchy_tier",
+          "reveal_when": { "field": "present", "equals": true },
+          "populates": { "field_id": "S2-EFS-110", "schema_field": "market_hierarchy_tier" }
+        }
+      ]
+    }
+  }
+}

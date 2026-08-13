@@ -40,6 +40,8 @@ from intake.backend.repositories.escalation_repository import (  # noqa: E402
 )
 from intake.backend.services.applicability_service import ApplicabilityService  # noqa: E402
 from intake.backend.services.auth_service import AuthService  # noqa: E402
+from intake.backend.services.coverage_service import CoverageService  # noqa: E402
+from intake.backend.services.interview_engine import InterviewEngine  # noqa: E402
 from intake.backend.services.email_service import EmailService, InMemoryEmailSender  # noqa: E402
 from intake.backend.services.escalation_service import EscalationService  # noqa: E402
 from intake.backend.services.org_service import OrgService  # noqa: E402
@@ -121,11 +123,30 @@ class Harness:
             clock=self.clock,
         )
 
+        # Phase C2: the interview engine and coverage meter.
+        self.interview_engine = InterviewEngine(
+            state_repository=self.states,
+            org_repository=self.orgs,
+            site_repository=self.sites,
+            state_machine=self.state_machine,
+            applicability=self.applicability,
+            escalations=self.escalation_service,
+            profile_states=self.profile_state_service,
+            settings=self.settings,
+            clock=self.clock,
+        )
+        self.coverage_service = CoverageService(self.interview_engine)
+
         self.context = IntakeContext(
             auth_service=self.auth_service,
             org_service=self.org_service,
             seed_form_service=self.seed_form_service,
             email_service=self.email_service,
+            profile_state_service=self.profile_state_service,
+            interview_engine=self.interview_engine,
+            coverage_service=self.coverage_service,
+            escalation_service=self.escalation_service,
+            state_repository=self.states,
         )
 
     # -- convenience --------------------------------------------------------
