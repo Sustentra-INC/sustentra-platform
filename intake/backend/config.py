@@ -28,8 +28,12 @@ PROFILE_SCHEMA_PATH = REPO_ROOT / "intake/config/profile_schema.json"
 VOCABULARIES_PATH = REPO_ROOT / "intake/config/controlled_vocabularies.json"
 LLM_CONFIG_PATH = REPO_ROOT / "intake/config/llm.json"
 CONTRADICTIONS_PATH = REPO_ROOT / "intake/config/contradictions.json"
+EVIDENCE_CADENCE_PATH = REPO_ROOT / "intake/config/evidence_cadence.json"
 EMISSION_FACTOR_LIBRARY_PATH = (
     REPO_ROOT / "reference-data/config/libraries/emission_factor_library.json"
+)
+EVIDENCE_TYPE_LIBRARY_PATH = (
+    REPO_ROOT / "reference-data/config/libraries/evidence_type_library.json"
 )
 
 DATA_DIR_ENV = "INTAKE_DATA_DIR"
@@ -202,6 +206,35 @@ def load_emission_factor_library() -> dict[str, Any]:
     return _read_json(EMISSION_FACTOR_LIBRARY_PATH)
 
 
+@lru_cache(maxsize=1)
+def load_evidence_cadence() -> dict[str, Any]:
+    """How often each J2 evidence type is expected (Phase E).
+
+    Cadence is the one thing neither the evidence-type library nor the mapping
+    states, except for electricity. Everything else here is flagged provisional.
+    """
+    return _read_json(EVIDENCE_CADENCE_PATH)
+
+
+@lru_cache(maxsize=1)
+def load_evidence_type_library() -> dict[str, Any]:
+    """Read-only access to the J2 evidence types (J2-001 ... J2-020).
+
+    Names and acceptance criteria are read from here rather than restated in
+    intake config, so there is one definition of what a document type is.
+    """
+    return _read_json(EVIDENCE_TYPE_LIBRARY_PATH)
+
+
+@lru_cache(maxsize=1)
+def evidence_type_names() -> dict[str, str]:
+    """``{"J2-002": "Electricity bill", ...}`` straight from the library."""
+    return {
+        entry["evidence_type_id"]: entry["evidence_type_name"]
+        for entry in load_evidence_type_library().get("evidence_types", [])
+    }
+
+
 def default_gwp_set() -> dict[str, Any]:
     """The library's default GWP set, or the only one if none is marked default."""
     sets = load_emission_factor_library().get("gwp_sets") or []
@@ -237,3 +270,6 @@ def reset_caches() -> None:
     load_emission_factor_library.cache_clear()
     load_llm_config.cache_clear()
     load_contradiction_rules.cache_clear()
+    load_evidence_cadence.cache_clear()
+    load_evidence_type_library.cache_clear()
+    evidence_type_names.cache_clear()

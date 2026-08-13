@@ -64,6 +64,8 @@ class SeedFormService:
         email_service: Any | None = None,
         settings: IntakeSettings | None = None,
         clock: Callable[[], datetime] = _utcnow,
+        profile_audit: Any | None = None,
+        profile_states: Any | None = None,
     ) -> None:
         self._orgs = org_repository
         self._sites = site_repository
@@ -71,6 +73,12 @@ class SeedFormService:
         self._email = email_service
         self._settings = settings or load_settings()
         self._clock = clock
+        # Phase E. Optional so the seed form still works with no audit wired up,
+        # but the runtime always wires it: resubmitting must leave a trace.
+        self._profile_audit = profile_audit
+        # Phase E. Also optional: used only to re-run the seed back-fill when a
+        # client edits facts after the interview has already started.
+        self._profile_states = profile_states
 
     # -- form definition ----------------------------------------------------
 
@@ -360,6 +368,13 @@ class SeedFormService:
             }
         )
         self._orgs.save(updated_org)
+        if self._profile_audit is not None:
+            self._profile_audit.record_org_change(
+                before=org,
+                after=updated_org,
+                actor_id=submitted_by,
+                reason="seed form submitted",
+            )
 
         deferred = load_seed_form()["steps"][1]["deferred_fields"]
         site_ids: list[str] = []
@@ -396,6 +411,13 @@ class SeedFormService:
                 deferred_boundary_fields=deferred,
             )
             self._sites.save(record)
+            if self._profile_audit is not None:
+                self._profile_audit.record_site_change(
+                    before=existing,
+                    after=record.model_dump(),
+                    actor_id=submitted_by,
+                    reason="seed form submitted",
+                )
             site_ids.append(site_id)
 
             provisional.append(
@@ -431,6 +453,7 @@ class SeedFormService:
             provisional_values=provisional,
         )
         self._submissions.save(submission)
+        self._refresh_seed_answers(updated_org["org_id"], submitted_by)
 
         if self._email is not None:
             self._email.send_template(
@@ -450,6 +473,22 @@ class SeedFormService:
             "sites": [self._sites.get(site_id) for site_id in site_ids],
             "submission": submission.model_dump(),
         }
+
+    def _refresh_seed_answers(self, org_id: str, actor_id: str) -> None:
+        """Push edited facts back into the answers derived from them (Phase E).
+
+        The seed form's answers are back-filled into datapoint states when the
+        interview starts. Editing a fact afterwards used to change the company
+        record and leave the derived answer behind, so the profile page could
+        show one reporting period in the company block and a different one in
+        the seed-form answers - two truths on the page an auditor reads.
+
+        Only runs once the interview has begun; before that there is nothing to
+        refresh, and creating states early would start the interview by surprise.
+        """
+        if self._profile_states is None or not self._profile_states.has_states(org_id):
+            return
+        self._profile_states.initialise(org_id, actor_id=actor_id)
 
     def _provisional_reason(self, field_id: str) -> str:
         fields = self._settings.provisional_vocabularies.get("fields", {})

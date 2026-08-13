@@ -71,7 +71,8 @@
     "datapoint_states": "local-data/intake/datapoint_states.jsonl",
     "audit_log": "local-data/intake/audit_log.jsonl",
     "escalations": "local-data/intake/escalations.jsonl",
-    "notifications": "local-data/intake/notifications.jsonl"
+    "notifications": "local-data/intake/notifications.jsonl",
+    "evidence_requests": "local-data/intake/evidence_requests.jsonl"
   },
   "industries": [
     {

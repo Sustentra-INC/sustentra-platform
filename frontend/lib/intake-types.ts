@@ -252,3 +252,133 @@ export interface ResolveResult {
   escalation: Record<string, unknown>;
   queue_count: number;
 }
+
+/** The profile page: the client's living record (Phase E). */
+export interface ProfileCompany {
+  legal_name: string | null;
+  reporting_year: number | null;
+  reporting_period_start: string | null;
+  reporting_period_end: string | null;
+  fiscal_year_basis: string | null;
+  industry: string | null;
+  industry_overlay_id: string | null;
+  responsible_party: { name: string; role: string; email: string } | null;
+  profile_status: string | null;
+  provisional_fields: string[];
+  updated_at: string | null;
+}
+
+export interface ProfileSite {
+  site_id: string;
+  site_name: string | null;
+  address: Record<string, string> | null;
+  site_type: string | null;
+  operational_status: string | null;
+  ownership: string | null;
+  lease_type: string | null;
+  ownership_note: string | null;
+  period_in_scope_start: string | null;
+  period_in_scope_end: string | null;
+  provisional_fields: string[];
+  deferred_boundary_fields: Array<Record<string, unknown>>;
+  updated_at: string | null;
+}
+
+export interface ProfileDatapoint {
+  datapoint_id: string;
+  label: string | null;
+  question: string | null;
+  section: string;
+  class: "AUTO" | "HUMAN" | "SYSTEM";
+  grain: string;
+  scope_ref: string | null;
+  scope_label: string | null;
+  status: string;
+  status_label: string;
+  complete_for_client: boolean;
+  value: Record<string, unknown> | null;
+  answered_by: string | null;
+  answered_by_label: string | null;
+  actor_id: string | null;
+  value_basis: string | null;
+  note: string | null;
+  uncertainty_tier: string | null;
+  ai_assisted: boolean;
+  provisional_fields: string[];
+  evidence_triggered: string[];
+  escalation_id: string | null;
+  with_team_since: string | null;
+  updated_at: string | null;
+}
+
+export interface ProfileSection {
+  section_id: string;
+  label: string;
+  order: number;
+  complete: number;
+  total: number;
+  datapoints: ProfileDatapoint[];
+}
+
+export interface ProfileExclusion {
+  datapoint_id: string;
+  scope_label: string | null;
+  status: string;
+  value: Record<string, unknown>;
+  confirmed_by: string | null;
+  actor_id: string | null;
+  methodology_field: string;
+  updated_at: string | null;
+}
+
+export interface ProfileProvisionalValue {
+  scope: string;
+  scope_label: string | null;
+  field_id: string;
+  requires_signoff: string;
+}
+
+export interface Profile {
+  org_id: string;
+  generated_at: string;
+  company: ProfileCompany;
+  sites: ProfileSite[];
+  coverage: Coverage;
+  sections: ProfileSection[];
+  boundary_decisions: ProfileDatapoint[];
+  completeness_records: ProfileDatapoint[];
+  exclusions: ProfileExclusion[];
+  uncertainty: Array<{
+    datapoint_id: string;
+    label: string | null;
+    scope_label: string | null;
+    value_basis: string | null;
+    uncertainty_tier: string | null;
+  }>;
+  with_the_team: ProfileDatapoint[];
+  provisional_values: ProfileProvisionalValue[];
+}
+
+export interface ProfileHistoryEntry {
+  at: string;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  datapoint_id: string | null;
+  label: string | null;
+  scope_ref: string | null;
+  scope_label: string | null;
+  field: string | null;
+  old_value: unknown;
+  new_value: unknown;
+  actor_id: string;
+  actor_role: string | null;
+  reason: string | null;
+}
+
+export interface ProfileHistory {
+  org_id: string;
+  count: number;
+  returned: number;
+  entries: ProfileHistoryEntry[];
+}

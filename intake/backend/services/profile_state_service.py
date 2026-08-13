@@ -86,6 +86,14 @@ class ProfileStateService:
 
     # -- entry point --------------------------------------------------------
 
+    def has_states(self, org_id: str) -> bool:
+        """Has the interview been started for this org?
+
+        Phase E uses this to decide whether editing a seed-form fact should push
+        the change back into the answers derived from it.
+        """
+        return bool(self._states.list_by_org(org_id))
+
     def initialise(self, org_id: str, actor_id: str = SYSTEM_ACTOR) -> dict[str, Any]:
         """Create every state this org should have. Safe to call repeatedly."""
         org = self._orgs.get(org_id)

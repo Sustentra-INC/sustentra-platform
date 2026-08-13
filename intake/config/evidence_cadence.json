@@ -1,0 +1,101 @@
+{
+  "config_name": "sustentra_intake_evidence_cadence",
+  "config_version": "0.1.0",
+  "status": "partly_provisional",
+  "description": "How often each J2 evidence type is expected, per site or other scope. The evidence types themselves and which questions trigger them are NOT defined here - they come from reference-data/config/libraries/evidence_type_library.json and the evidence_triggered lists in intake/config/profile_schema.json. This file adds only the one thing neither of those states: cadence.",
+  "sourcing_note": "intake/profile_schema_mapping.md states a cadence exactly once - section 6.1, 'J2-002 x12 months per meter'. That is the only entry here marked non-provisional. Every other cadence is an assumption about how a client's records are kept, not a methodology fact, so it ships as 'as_available' flagged provisional for Todd rather than invented. A provisional cadence still produces a correct request; it just does not claim to know how many documents to expect.",
+  "cadences": {
+    "monthly": {
+      "label": "one per month",
+      "periods_per_year": 12,
+      "period_length": "month"
+    },
+    "annual": {
+      "label": "one for the reporting year",
+      "periods_per_year": 1,
+      "period_length": "reporting_period"
+    },
+    "as_available": {
+      "label": "as many as exist for the reporting year",
+      "periods_per_year": null,
+      "period_length": "reporting_period",
+      "note": "One open request covering the whole period. The expected count is unknown, so the completeness spec reports it as unknown rather than guessing a number."
+    }
+  },
+  "default_cadence": "as_available",
+  "evidence_types": {
+    "J2-001": {
+      "cadence": "as_available",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "Gas utility bills are usually monthly, but nothing in the mapping or the workbooks says so. Assuming monthly would make the completeness gate fail every client billed quarterly."
+    },
+    "J2-002": {
+      "cadence": "monthly",
+      "per_unit_field": "meter_count",
+      "per_unit_label": "meter",
+      "provisional": false,
+      "source": "intake/profile_schema_mapping.md section 6.1: 'J2-002 x12 months per meter'"
+    },
+    "J2-003": {
+      "cadence": "as_available",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "Fuel deliveries happen when a tank runs low, not on a calendar. There is no defensible expected count."
+    },
+    "J2-004": {
+      "cadence": "as_available",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "Fuel-card statements are typically monthly per card, but the card count is not collected today and the mapping is silent."
+    },
+    "J2-005": {
+      "cadence": "as_available",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "Generator runtime logs are kept per generator in whatever form the site keeps them."
+    },
+    "J2-006": {
+      "cadence": "as_available",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "Refrigerant service records exist only when a unit was serviced. Expecting a fixed number would flag well-maintained sites as incomplete."
+    },
+    "J2-007": {
+      "cadence": "annual",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "A facility register or lease describes the reporting period as a whole; one per scope is the natural unit, but the mapping does not say so."
+    },
+    "J2-008": {
+      "cadence": "annual",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "An equipment list or air permit is a point-in-time document covering the period."
+    },
+    "J2-009": {
+      "cadence": "as_available",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "Meter and submeter logs vary by site; some are continuous exports, some monthly reads."
+    },
+    "J2-012": {
+      "cadence": "as_available",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "Wastewater records only exist where there is on-site treatment, which is itself a human-reviewed case."
+    },
+    "J2-014": {
+      "cadence": "annual",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "One prior-year report per prior year; the number of prior years is not collected today."
+    },
+    "J2-019": {
+      "cadence": "as_available",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "Certificates and contracts are issued per purchase, not per period."
+    }
+  }
+}

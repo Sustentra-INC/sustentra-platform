@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/intake/contracts/evidence_request.schema.json",
+  "title": "IntakeEvidenceRequest",
+  "description": "One document we expect from a client: an evidence type, for a scope (usually a site), for a period. intake/SPEC.md section 5 lists evidence_requests as J2 type x site x period x status. Compiled from the client's own answers - a request exists only because they told us the source exists - and never invented. The id is derived from its identity rather than random, so recompiling after further answers updates the same record instead of duplicating it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "evidence_request_id",
+    "org_id",
+    "evidence_type_id",
+    "evidence_type_name",
+    "grain",
+    "scope_ref",
+    "scope_label",
+    "period_start",
+    "period_end",
+    "period_label",
+    "unit_index",
+    "unit_label",
+    "cadence",
+    "cadence_provisional",
+    "expected_count_known",
+    "status",
+    "requested_by",
+    "safe_to_parse",
+    "blocked_by",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "evidence_request_id": { "type": "string", "pattern": "^evr_[a-f0-9]{12}$" },
+    "org_id": { "type": "string", "pattern": "^org_[a-f0-9]{12}$" },
+    "evidence_type_id": { "type": "string", "pattern": "^J2-\\d{3}$" },
+    "evidence_type_name": {
+      "description": "Read from reference-data/config/libraries/evidence_type_library.json, never restated here.",
+      "type": "string",
+      "minLength": 1
+    },
+    "grain": {
+      "type": "string",
+      "enum": [
+        "org",
+        "site",
+        "entity",
+        "vehicle_group",
+        "meter",
+        "source_category",
+        "category",
+        "datapoint"
+      ]
+    },
+    "scope_ref": { "type": ["string", "null"] },
+    "scope_label": { "type": "string", "minLength": 1 },
+    "period_start": { "type": "string" },
+    "period_end": { "type": "string" },
+    "period_label": { "type": "string", "minLength": 1 },
+    "unit_index": {
+      "description": "Which one of a repeated unit this is - meter 1, meter 2. 1 when the evidence type is not per-unit.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "unit_label": { "type": "string", "minLength": 1 },
+    "cadence": { "type": "string", "enum": ["monthly", "annual", "as_available"] },
+    "cadence_provisional": {
+      "description": "True when the cadence is an assumption awaiting Todd's sign-off rather than a sourced methodology fact.",
+      "type": "boolean"
+    },
+    "expected_count_known": {
+      "description": "False for as_available types: we know the document is needed, not how many there will be. The completeness gate must not treat unknown as zero.",
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["expected", "received", "accepted", "waived", "superseded"]
+    },
+    "requested_by": {
+      "description": "The answers that caused this request to exist.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["datapoint_id", "scope_ref", "class"],
+        "properties": {
+          "datapoint_id": { "type": "string" },
+          "scope_ref": { "type": ["string", "null"] },
+          "class": { "type": "string", "enum": ["AUTO", "HUMAN", "SYSTEM"] }
+        }
+      }
+    },
+    "safe_to_parse": {
+      "description": "intake/SPEC.md section 5 (Stage 5): S1 may process this now. False while any dependency is escalated or any boundary decision covering this scope is still unconfirmed.",
+      "type": "boolean"
+    },
+    "blocked_by": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["datapoint_id", "scope_ref", "reason"],
+        "properties": {
+          "datapoint_id": { "type": "string" },
+          "scope_ref": { "type": ["string", "null"] },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" }
+  },
+  "allOf": [
+    {
+      "description": "A request that is not safe to parse must say what is holding it up.",
+      "if": {
+        "properties": { "safe_to_parse": { "const": false } },
+        "required": ["safe_to_parse"]
+      },
+      "then": { "properties": { "blocked_by": { "minItems": 1 } } }
+    }
+  ]
+}

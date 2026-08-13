@@ -252,3 +252,69 @@ def test_contract_requires_a_resolved_escalation_to_name_its_resolver() -> None:
                 "resolved_at": None,
             },
         )
+
+
+# -- Phase E: evidence requests ---------------------------------------------
+
+
+def test_the_evidence_request_contract_is_valid_json_schema() -> None:
+    schema = _schema("evidence_request")
+    jsonschema.validators.validator_for(schema).check_schema(schema)
+
+
+def test_compiled_evidence_requests_match_the_contract(harness) -> None:
+    seeded = harness.seeded_org(sites=1)
+    site_id = harness.sites.list_by_org(seeded["org_id"])[0]["site_id"]
+    state = harness.state(seeded["org_id"], "S2-6.1", site_id)
+    state = harness.state_machine.mark_asked(state, actor_id="usr_1")
+    harness.state_machine.record_answer(
+        state, value={"supplier_name": "Meridian", "meter_count": 2}, actor_id="usr_1"
+    )
+
+    records = harness.evidence_request_service.compile(seeded["org_id"])
+    assert records
+    for record in records:
+        _validate("evidence_request", record)
+
+
+def test_contract_rejects_a_blocked_request_with_no_reason() -> None:
+    """An unexplained block is unactionable: someone has to know what to unblock."""
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(
+            "evidence_request",
+            {
+                "evidence_request_id": "evr_0123456789ab",
+                "org_id": "org_0123456789ab",
+                "evidence_type_id": "J2-002",
+                "evidence_type_name": "Electricity bill",
+                "grain": "site",
+                "scope_ref": "ste_0123456789ab",
+                "scope_label": "Stage 1",
+                "period_start": "2025-01-01",
+                "period_end": "2025-01-31",
+                "period_label": "January 2025",
+                "unit_index": 1,
+                "unit_label": "meter 1",
+                "cadence": "monthly",
+                "cadence_provisional": False,
+                "expected_count_known": True,
+                "status": "expected",
+                "requested_by": [
+                    {"datapoint_id": "S2-6.1", "scope_ref": None, "class": "AUTO"}
+                ],
+                "safe_to_parse": False,
+                "blocked_by": [],
+                "created_at": "2026-08-13T09:00:00+00:00",
+                "updated_at": "2026-08-13T09:00:00+00:00",
+            },
+        )
+
+
+def test_audit_entries_for_company_facts_match_the_contract(harness) -> None:
+    """Phase E added three actions to the audit vocabulary."""
+    seeded = harness.seeded_org(sites=1)
+    entries = harness.audit.list_by_org(seeded["org_id"])
+    assert any(entry["action"] == "org_fact_changed" for entry in entries)
+    assert any(entry["action"] == "site_created" for entry in entries)
+    for entry in entries:
+        _validate("audit_log", entry)

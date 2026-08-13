@@ -31,7 +31,10 @@
         "status_changed",
         "value_changed",
         "escalation_opened",
-        "escalation_resolved"
+        "escalation_resolved",
+        "org_fact_changed",
+        "site_created",
+        "site_fact_changed"
       ]
     },
     "entity_type": { "type": "string", "minLength": 1 },

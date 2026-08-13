@@ -151,7 +151,13 @@ def test_initialise_is_idempotent(harness) -> None:
     assert len(harness.audit.list_by_org(org_id)) == audit_before
 
 
-def test_a_new_site_gets_its_states_on_re_initialise(harness) -> None:
+def test_a_new_site_gets_its_states_as_soon_as_it_is_added(harness) -> None:
+    """Phase E: adding a site through the seed form instantiates it immediately.
+
+    Before Phase E this waited for the next explicit initialise, which meant a
+    newly added site was invisible to the profile page until the client happened
+    to reload the interview.
+    """
     from intake.tests.conftest import company_payload, site_payload
 
     seeded = harness.seeded_org(sites=1)
@@ -169,9 +175,17 @@ def test_a_new_site_gets_its_states_on_re_initialise(harness) -> None:
             ],
         },
     )
-    summary = harness.profile_state_service.initialise(org_id)
-    assert summary["sites"] == 2
-    assert any("S2-6.1" in entry for entry in summary["instantiated"])
+    site_ids = {site["site_id"] for site in harness.sites.list_by_org(org_id)}
+    assert len(site_ids) == 2
+    scoped = {
+        state["scope_ref"]
+        for state in harness.states.list_by_org(org_id)
+        if state["datapoint_id"] == "S2-6.1"
+    }
+    assert scoped == site_ids
+
+    # And a later initialise finds nothing left to do.
+    assert harness.profile_state_service.initialise(org_id)["instantiated"] == []
 
 
 def test_resubmitting_without_site_ids_creates_new_sites(harness) -> None:

@@ -38,12 +38,20 @@ from intake.backend.repositories.datapoint_state_repository import (  # noqa: E4
 from intake.backend.repositories.escalation_repository import (  # noqa: E402
     InMemoryEscalationRepository,
 )
+from intake.backend.repositories.evidence_request_repository import (  # noqa: E402
+    InMemoryEvidenceRequestRepository,
+)
 from intake.backend.adapters.llm import ScriptedLLMClient  # noqa: E402
 from intake.backend.services.answer_parser import AnswerParser  # noqa: E402
 from intake.backend.services.applicability_service import ApplicabilityService  # noqa: E402
 from intake.backend.services.contradiction_service import ContradictionService  # noqa: E402
 from intake.backend.services.explainer_service import ExplainerService  # noqa: E402
+from intake.backend.services.evidence_request_service import (  # noqa: E402
+    EvidenceRequestService,
+)
 from intake.backend.services.notification_service import NotificationService  # noqa: E402
+from intake.backend.services.profile_audit_service import ProfileAuditService  # noqa: E402
+from intake.backend.services.profile_service import ProfileService  # noqa: E402
 from intake.backend.services.review_service import ReviewService  # noqa: E402
 from intake.backend.services.question_content import load_question_content  # noqa: E402
 from intake.backend.services.auth_service import AuthService  # noqa: E402
@@ -103,6 +111,13 @@ class Harness:
             settings=self.settings,
             clock=self.clock,
         )
+        # Phase C1: state machine, applicability, escalations.
+        self.states = InMemoryDatapointStateRepository()
+        self.audit = InMemoryAuditLogRepository()
+        self.escalations = InMemoryEscalationRepository()
+        self.evidence_requests = InMemoryEvidenceRequestRepository()
+        # Phase E: company and site facts are audited too, not just answers.
+        self.profile_audit = ProfileAuditService(self.audit, clock=self.clock)
         self.seed_form_service = SeedFormService(
             org_repository=self.orgs,
             site_repository=self.sites,
@@ -110,11 +125,9 @@ class Harness:
             email_service=self.email_service,
             settings=self.settings,
             clock=self.clock,
+            profile_audit=self.profile_audit,
         )
-        # Phase C1: state machine, applicability, escalations.
-        self.states = InMemoryDatapointStateRepository()
-        self.audit = InMemoryAuditLogRepository()
-        self.escalations = InMemoryEscalationRepository()
+        # profile_states is attached after ProfileStateService is built below.
         self.state_machine = StateMachine(self.states, self.audit, clock=self.clock)
         self.applicability = ApplicabilityService()
         # Phase D2: notifications and the reviewer queue. Wired in here so tests
@@ -151,6 +164,9 @@ class Harness:
             seed_profile_repository=self.submissions,
             clock=self.clock,
         )
+        # Editing a fact after the interview starts must update the answers
+        # derived from it, so the profile page never shows two truths.
+        self.seed_form_service._profile_states = self.profile_state_service
 
         # Phase D: a scripted model, so tests never make a real call.
         self.llm = ScriptedLLMClient()
@@ -185,6 +201,27 @@ class Harness:
         )
         self.coverage_service = CoverageService(self.interview_engine)
 
+        # Phase E: the profile page and the expected-document list.
+        self.profile_service = ProfileService(
+            org_repository=self.orgs,
+            site_repository=self.sites,
+            state_repository=self.states,
+            escalation_repository=self.escalations,
+            audit_repository=self.audit,
+            coverage_service=self.coverage_service,
+            settings=self.settings,
+            clock=self.clock,
+        )
+        self.evidence_request_service = EvidenceRequestService(
+            evidence_request_repository=self.evidence_requests,
+            state_repository=self.states,
+            org_repository=self.orgs,
+            site_repository=self.sites,
+            escalation_repository=self.escalations,
+            settings=self.settings,
+            clock=self.clock,
+        )
+
         self.context = IntakeContext(
             auth_service=self.auth_service,
             org_service=self.org_service,
@@ -200,6 +237,8 @@ class Harness:
             explainer_service=self.explainer_service,
             notification_service=self.notification_service,
             review_service=self.review_service,
+            profile_service=self.profile_service,
+            evidence_request_service=self.evidence_request_service,
         )
 
     # -- convenience --------------------------------------------------------

@@ -28,13 +28,19 @@ from intake.backend.repositories.datapoint_state_repository import (
     JsonlDatapointStateRepository,
 )
 from intake.backend.repositories.escalation_repository import JsonlEscalationRepository
+from intake.backend.repositories.evidence_request_repository import (
+    JsonlEvidenceRequestRepository,
+)
 from intake.backend.adapters.llm import build_llm_client
 from intake.backend.config import load_settings
 from intake.backend.services.answer_parser import AnswerParser
 from intake.backend.services.applicability_service import ApplicabilityService
 from intake.backend.services.contradiction_service import ContradictionService
 from intake.backend.services.explainer_service import ExplainerService
+from intake.backend.services.evidence_request_service import EvidenceRequestService
 from intake.backend.services.notification_service import NotificationService
+from intake.backend.services.profile_audit_service import ProfileAuditService
+from intake.backend.services.profile_service import ProfileService
 from intake.backend.services.review_service import ReviewService
 from intake.backend.services.question_content import load_question_content
 from intake.backend.services.auth_service import AuthError, AuthService
@@ -64,6 +70,8 @@ class IntakeContext:
     explainer_service: ExplainerService | None = None
     notification_service: NotificationService | None = None
     review_service: ReviewService | None = None
+    profile_service: ProfileService | None = None
+    evidence_request_service: EvidenceRequestService | None = None
 
 
 def build_default_context() -> IntakeContext:
@@ -79,6 +87,8 @@ def build_default_context() -> IntakeContext:
     states = JsonlDatapointStateRepository()
     audit = JsonlAuditLogRepository()
     escalation_records = JsonlEscalationRepository()
+    evidence_requests = JsonlEvidenceRequestRepository()
+    profile_audit = ProfileAuditService(audit)
 
     settings = load_settings()
     machine = StateMachine(states, audit)
@@ -122,6 +132,16 @@ def build_default_context() -> IntakeContext:
         question_content=content,
     )
 
+    # Phase E: the profile page and the expected-document list.
+    evidence_request_service = EvidenceRequestService(
+        evidence_request_repository=evidence_requests,
+        state_repository=states,
+        org_repository=orgs,
+        site_repository=sites,
+        escalation_repository=escalation_records,
+        settings=settings,
+    )
+
     interview_engine = InterviewEngine(
         state_repository=states,
         org_repository=orgs,
@@ -132,6 +152,16 @@ def build_default_context() -> IntakeContext:
         profile_states=profile_state_service,
         contradictions=contradictions,
         explainers=explainer_service,
+    )
+    coverage_service = CoverageService(interview_engine)
+    profile_service = ProfileService(
+        org_repository=orgs,
+        site_repository=sites,
+        state_repository=states,
+        escalation_repository=escalation_records,
+        audit_repository=audit,
+        coverage_service=coverage_service,
+        settings=settings,
     )
 
     return IntakeContext(
@@ -151,11 +181,13 @@ def build_default_context() -> IntakeContext:
             site_repository=sites,
             seed_profile_repository=submissions,
             email_service=email_service,
+            profile_audit=profile_audit,
+            profile_states=profile_state_service,
         ),
         email_service=email_service,
         profile_state_service=profile_state_service,
         interview_engine=interview_engine,
-        coverage_service=CoverageService(interview_engine),
+        coverage_service=coverage_service,
         escalation_service=escalation_service,
         state_repository=states,
         settings=settings,
@@ -163,6 +195,8 @@ def build_default_context() -> IntakeContext:
         explainer_service=explainer_service,
         notification_service=notification_service,
         review_service=review_service,
+        profile_service=profile_service,
+        evidence_request_service=evidence_request_service,
     )
 
 

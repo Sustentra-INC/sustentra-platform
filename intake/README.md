@@ -17,7 +17,7 @@ Everything here is new code. No existing file in the repo is modified.
 | C2 | Interview engine, coverage meter, interview screen | done |
 | D1 | AI reading of typed answers, with playback and guardrails | done |
 | D2 | Escalation queue screen, digest/reminder emails, SMTP adapter | done |
-| E | Evidence requests + profile page + audit log | not started |
+| E | Profile page + audit log + expected-document list | done |
 | F | Instrumentation of the two success metrics | not started |
 
 ## Layout
@@ -101,6 +101,10 @@ That serves everything the S1 API served, plus `/v1/intake/*`. Running
 | `GET  /v1/intake/review/queue` | Everything waiting on the team, oldest first. **Reviewers only.** |
 | `GET  /v1/intake/review/escalations/{id}` | One question, with the client's attempts and the data point's history. |
 | `POST /v1/intake/review/escalations/{id}/resolve` | Write the team's answer into the client's profile and email them. |
+| `GET  /v1/intake/profile` | The living record: company, sites, every answer with who gave it. |
+| `GET  /v1/intake/profile/history` | Every recorded change, oldest first. |
+| `GET  /v1/intake/evidence-requests` | Documents expected from this client, with the Stage 5 safe-to-parse flag. |
+| `GET  /v1/intake/evidence-requests/completeness-spec` | Expected counts per site, for S1's completeness gate. |
 
 The three review routes require the `sustentra_reviewer` role and are the one
 place org scoping is deliberately crossed: a reviewer sees every client's open
@@ -122,8 +126,36 @@ cd frontend && npm install && npm run dev
 - `/intake/interview` — the guided interview, with the coverage meter
 - `/intake/review` — the team's queue of escalated questions (reviewers only)
 - `/intake/review/{escalation_id}` — answer one, with the context to do it
+- `/intake/profile` — the client's living record and its edit history
 
 New pages only; no existing page, component or config is touched.
+
+## Expected documents (Phase E)
+
+The intake knows what documents a client should send; S1 knows what to do with
+them when they arrive. Phase E builds the first half only — **there is no upload
+endpoint and no file handling anywhere in `intake/`**, and S1 is untouched.
+
+Each answer that establishes a source produces requests of *evidence type x
+scope x period*, using the J2 evidence types already attached to every data point
+in `config/profile_schema.json`. Saying "no, we have no generators" produces a
+completeness record and no request at all.
+
+Two rules the compiler will not break:
+
+- **It never invents an expected count.** `config/evidence_cadence.json` sources
+  exactly one cadence from the mapping — electricity, twelve months per meter
+  (§6.1) — and ships every other type as `as_available`, flagged provisional for
+  Todd. In the completeness spec those report `expected_documents: null`, never
+  `0`, so a gate cannot mistake unknown for nothing-expected.
+- **It says what S1 may safely start on.** Per SPEC Stage 5, a request is
+  `safe_to_parse` only when nothing it rests on is still open — and a boundary
+  decision covering its site must be human-confirmed first. A blocked request
+  always carries the reason.
+
+Requests are recompiled on every read. IDs are derived from identity rather than
+generated, so recompiling updates the same record, keeps any status already set,
+and writes nothing when nothing changed.
 
 ## Escalation emails
 
@@ -190,6 +222,13 @@ never reaches the repository.
   `reference-data/` or `legacy-schemas/`, so they are free text flagged
   `provisional` and recorded against Todd for sign-off. Same for general-overlay
   site types, which the mapping defines for the film overlay only.
+- **How often a document should arrive.** Only electricity has a cadence in the
+  mapping. The other eleven evidence types in use ship as `as_available` flagged
+  for Todd, because how often a client's fuel is delivered is a fact about their
+  operations, not a methodology rule.
+- **The uncertainty roll-up.** The profile page reports the metered / invoiced /
+  estimated basis per answer, which is the input ISO 14064-1 8.3 asks for. It does
+  not roll those up into a category rating: that rule is PRV-8.2, HUMAN class.
 - **Datapoint states.** Phase C1 owns the state machine and back-fills
   `datapoint_states` from the seed submissions. Only
   `services/state_machine.py` may change a status, and every change is audited.

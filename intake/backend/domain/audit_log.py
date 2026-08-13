@@ -18,6 +18,12 @@ AuditAction = Literal[
     "value_changed",
     "escalation_opened",
     "escalation_resolved",
+    # Phase E: changes to the facts themselves, not just the answers. A moved
+    # reporting period or a site switched from owned to leased changes what the
+    # answers mean, so it belongs in the same history.
+    "org_fact_changed",
+    "site_created",
+    "site_fact_changed",
 ]
 
 
