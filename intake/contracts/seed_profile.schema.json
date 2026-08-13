@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/intake/contracts/seed_profile.schema.json",
+  "title": "IntakeSeedProfileSubmission",
+  "description": "One immutable submission of the seed form. Records who submitted what, when, against which config versions, and which answers used a vocabulary still awaiting expert sign-off. Phase C's state machine back-fills datapoint_states from these records; this contract intentionally carries no datapoint state.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "seed_profile_id",
+    "org_id",
+    "submitted_by",
+    "submitted_at",
+    "form_version",
+    "profile_schema_version",
+    "answers",
+    "site_ids",
+    "datapoint_ids",
+    "provisional_values"
+  ],
+  "properties": {
+    "seed_profile_id": { "type": "string", "pattern": "^sfp_[a-f0-9]{12}$" },
+    "org_id": { "type": "string", "pattern": "^org_[a-f0-9]{12}$" },
+    "submitted_by": { "type": "string", "minLength": 1 },
+    "submitted_at": { "type": "string" },
+    "form_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "profile_schema_version": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "answers": {
+      "description": "The raw submitted payload, kept verbatim as the audit record.",
+      "type": "object",
+      "required": ["company", "sites"],
+      "properties": {
+        "company": { "type": "object" },
+        "sites": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "site_ids": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^ste_[a-f0-9]{12}$" }
+    },
+    "datapoint_ids": {
+      "description": "Seed-form datapoints covered by this submission (SEED-1.1 to SEED-1.7).",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^SEED-\\d+\\.\\d+$" },
+      "uniqueItems": true
+    },
+    "provisional_values": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field_id", "datapoint_id", "value", "requires_signoff", "reason"],
+        "properties": {
+          "field_id": { "type": "string" },
+          "datapoint_id": { "type": "string", "pattern": "^SEED-\\d+\\.\\d+$" },
+          "value": { "type": ["string", "number", "boolean", "null"] },
+          "requires_signoff": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

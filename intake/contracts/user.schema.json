@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/intake/contracts/user.schema.json",
+  "title": "IntakeUser",
+  "description": "A person who can sign in. Belongs to exactly one org in v1 (SPEC section 8). Roles come from SPEC section 3. No password or credential material is stored on this record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["user_id", "org_id", "email", "name", "role", "status", "created_at", "last_login_at"],
+  "properties": {
+    "user_id": { "type": "string", "pattern": "^usr_[a-f0-9]{12}$" },
+    "org_id": { "type": "string", "pattern": "^org_[a-f0-9]{12}$" },
+    "email": {
+      "description": "Normalised to lower case on write.",
+      "type": "string",
+      "minLength": 3
+    },
+    "name": { "type": "string", "minLength": 1 },
+    "role": {
+      "type": "string",
+      "enum": ["client_owner", "client_member", "sustentra_reviewer"]
+    },
+    "status": { "type": "string", "enum": ["active", "disabled"] },
+    "created_at": { "type": "string" },
+    "last_login_at": { "type": ["string", "null"] }
+  }
+}

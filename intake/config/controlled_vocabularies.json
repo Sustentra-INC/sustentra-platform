@@ -1,0 +1,584 @@
+{
+  "config_name": "sustentra_intake_controlled_vocabularies",
+  "config_version": "1.0.0",
+  "description": "Controlled vocabularies extracted from the S2 methodology workbooks. Source of truth for intake dropdown options (CLAUDE.md rule 3). Vocabularies marked 'open': true are indicative per the workbook and must not be enforced as closed sets.",
+  "generated_by": "intake/scripts/extract_controlled_vocabularies.py",
+  "not_parsed": [
+    {
+      "workbook": "reference-data/methodology/S2_Scope1_Data_Schema_v.1.xlsx",
+      "sheet": "4_Vocab",
+      "reason": "Wide paired (heading, meaning) layout rather than a vocabulary list; no intake seed-form field draws from it."
+    }
+  ],
+  "counts": {
+    "vocabularies": 34
+  },
+  "vocabularies": {
+    "Anchor_Type": {
+      "vocabulary": "Anchor_Type",
+      "field_ids": [],
+      "values": [
+        "normative",
+        "evidence-derived"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "Calculation_Role": {
+      "vocabulary": "Calculation_Role",
+      "field_ids": [],
+      "values": [
+        "parameter",
+        "boundary",
+        "activity_data",
+        "fuel_property",
+        "emission_factor",
+        "gwp_basis",
+        "evidence_input",
+        "computed_intermediate",
+        "computed_output"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "Calculation_Role (Controlled_Vocabularies)": {
+      "vocabulary": "Calculation_Role",
+      "field_ids": [],
+      "values": [
+        "identifier",
+        "activity_data",
+        "emission_factor",
+        "computed_intermediate",
+        "computed_output",
+        "evidence_input",
+        "boundary"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_Scope2_Data_Schema_v.1.xlsx",
+        "sheet": "Controlled_Vocabularies"
+      }
+    },
+    "Grain": {
+      "vocabulary": "Grain",
+      "field_ids": [],
+      "values": [
+        "delivery_point",
+        "instrument",
+        "instrument_x_delivery_point",
+        "emission_factor_x_gas",
+        "reporting_entity"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_Scope2_Data_Schema_v.1.xlsx",
+        "sheet": "Controlled_Vocabularies"
+      }
+    },
+    "Requirement_Level": {
+      "vocabulary": "Requirement_Level",
+      "field_ids": [],
+      "values": [
+        "Core",
+        "Conditional",
+        "Recommended",
+        "Optional"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "Requirement_Level (Controlled_Vocabularies)": {
+      "vocabulary": "Requirement_Level",
+      "field_ids": [],
+      "values": [
+        "Core",
+        "Core-derived",
+        "Recommended",
+        "Optional",
+        "FLAG-conditional"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_Scope2_Data_Schema_v.1.xlsx",
+        "sheet": "Controlled_Vocabularies"
+      }
+    },
+    "Scope_Applicability": {
+      "vocabulary": "Scope_Applicability",
+      "field_ids": [],
+      "values": [
+        "General",
+        "Scope 1",
+        "Scope 2"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "Value_Origin": {
+      "vocabulary": "Value_Origin",
+      "field_ids": [],
+      "values": [
+        "extracted",
+        "computed",
+        "verifier_determined",
+        "assigned"
+      ],
+      "open": false,
+      "note": "Tracker MUST NOT request a client document for computed or verifier_determined",
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "Value_Origin (Controlled_Vocabularies)": {
+      "vocabulary": "Value_Origin",
+      "field_ids": [],
+      "values": [
+        "extracted",
+        "computed",
+        "verifier_determined",
+        "assigned"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_Scope2_Data_Schema_v.1.xlsx",
+        "sheet": "Controlled_Vocabularies"
+      }
+    },
+    "allocation_basis": {
+      "vocabulary": "allocation_basis",
+      "field_ids": [
+        "AGG-010"
+      ],
+      "values": [
+        "ownership_pct",
+        "floor_area",
+        "headcount",
+        "sub_meter",
+        "production_volume"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "assurance_strength_flag": {
+      "vocabulary": "assurance_strength_flag",
+      "field_ids": [],
+      "values": [
+        "sufficient",
+        "insufficient_for_reasonable",
+        "unverifiable"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "biogenic_origin": {
+      "vocabulary": "biogenic_origin",
+      "field_ids": [
+        "BIO-010"
+      ],
+      "values": [
+        "scope1_combustion",
+        "scope2_purchased_energy",
+        "scope2_contractual_instrument"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "change_type": {
+      "vocabulary": "change_type",
+      "field_ids": [
+        "CHG-010"
+      ],
+      "values": [
+        "acquisition",
+        "divestment",
+        "merger",
+        "outsourcing",
+        "insourcing"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "consolidation_approach": {
+      "vocabulary": "consolidation_approach",
+      "field_ids": [
+        "ORG-010"
+      ],
+      "values": [
+        "equity_share",
+        "financial_control",
+        "operational_control"
+      ],
+      "open": true,
+      "note": "OPEN — regulatory overlay narrows",
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "determination_basis": {
+      "vocabulary": "determination_basis",
+      "field_ids": [],
+      "values": [
+        "documented",
+        "imp_asserted",
+        "management_representation",
+        "inferred_proxy"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "distribution_scenario": {
+      "vocabulary": "distribution_scenario",
+      "field_ids": [],
+      "values": [
+        "owned_operated_onsite",
+        "direct_line_transfer",
+        "grid",
+        "mixed_onsite_and_grid"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_Scope2_Data_Schema_v.1.xlsx",
+        "sheet": "Controlled_Vocabularies"
+      }
+    },
+    "ef_aggregation_basis": {
+      "vocabulary": "ef_aggregation_basis",
+      "field_ids": [],
+      "values": [
+        "per_gas",
+        "co2e_preaggregated"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_Scope2_Data_Schema_v.1.xlsx",
+        "sheet": "Controlled_Vocabularies"
+      }
+    },
+    "ef_hierarchy_tier_location": {
+      "vocabulary": "ef_hierarchy_tier_location",
+      "field_ids": [],
+      "values": [
+        "1_regional_subnational",
+        "2_national_production"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_Scope2_Data_Schema_v.1.xlsx",
+        "sheet": "Controlled_Vocabularies"
+      }
+    },
+    "ef_source": {
+      "vocabulary": "ef_source",
+      "field_ids": [
+        "MTH-020"
+      ],
+      "values": [],
+      "open": true,
+      "note": "OPEN — EPA vs GHGP conformance is an interpretive call",
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "elected_method": {
+      "vocabulary": "elected_method",
+      "field_ids": [
+        "RUP-050"
+      ],
+      "values": [
+        "location_based",
+        "market_based"
+      ],
+      "open": false,
+      "note": "populated only when election = single_total_disclosed",
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "energy_carrier": {
+      "vocabulary": "energy_carrier",
+      "field_ids": [],
+      "values": [
+        "electricity / steam / heat / cooling"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_Scope2_Data_Schema_v.1.xlsx",
+        "sheet": "Controlled_Vocabularies"
+      }
+    },
+    "entity_relationship": {
+      "vocabulary": "entity_relationship",
+      "field_ids": [
+        "ORG-020"
+      ],
+      "values": [
+        "subsidiary",
+        "JV",
+        "associate",
+        "fixed_asset_investment",
+        "franchise"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "gases_included": {
+      "vocabulary": "gases_included",
+      "field_ids": [
+        "GAS-010"
+      ],
+      "values": [
+        "CO2",
+        "CH4",
+        "N2O",
+        "HFCs",
+        "PFCs",
+        "SF6"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "gwp_ar_edition": {
+      "vocabulary": "gwp_ar_edition",
+      "field_ids": [
+        "GAS-030"
+      ],
+      "values": [
+        "AR4",
+        "AR5",
+        "AR6"
+      ],
+      "open": true,
+      "note": "OPEN — CARB reg may pin; Part 253 = GWP-20",
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "gwp_time_horizon": {
+      "vocabulary": "gwp_time_horizon",
+      "field_ids": [
+        "GAS-030"
+      ],
+      "values": [
+        "100-year (GHGP default)",
+        "20-year"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "inventory_total_method_election": {
+      "vocabulary": "inventory_total_method_election",
+      "field_ids": [
+        "RUP-050"
+      ],
+      "values": [
+        "dual_totals",
+        "single_total_disclosed"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "lease_type": {
+      "vocabulary": "lease_type",
+      "field_ids": [
+        "ORG-050"
+      ],
+      "values": [
+        "finance_capital",
+        "operating"
+      ],
+      "open": false,
+      "note": "determination per current lease-accounting std, not FAS 13",
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "market_hierarchy_tier": {
+      "vocabulary": "market_hierarchy_tier",
+      "field_ids": [],
+      "values": [
+        "1_energy_attribute_certificates",
+        "2_contracts_for_electricity",
+        "3_supplier_specific_rate",
+        "4_residual_mix",
+        "5_other_grid_average"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_Scope2_Data_Schema_v.1.xlsx",
+        "sheet": "Controlled_Vocabularies"
+      }
+    },
+    "party_role": {
+      "vocabulary": "party_role",
+      "field_ids": [
+        "ORG-040"
+      ],
+      "values": [
+        "lessee",
+        "lessor",
+        "owner_occupier",
+        "neither"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "period_allocation_method": {
+      "vocabulary": "period_allocation_method",
+      "field_ids": [
+        "PER-020"
+      ],
+      "values": [
+        "time_proportional",
+        "usage_based",
+        "meter_read_based",
+        "not_allocated"
+      ],
+      "open": true,
+      "note": "OPEN — GHGP prescribes no method",
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "scope2_method": {
+      "vocabulary": "scope2_method",
+      "field_ids": [
+        "RUP-010",
+        "RUP-020",
+        "RUP-030"
+      ],
+      "values": [
+        "location_based",
+        "market_based",
+        "not_applicable"
+      ],
+      "open": false,
+      "note": "not_applicable = Scope 1 rows",
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "scope2_population": {
+      "vocabulary": "scope2_population",
+      "field_ids": [],
+      "values": [
+        "calc_both_methods",
+        "calc_market_only",
+        "disclosure_only"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_Scope2_Data_Schema_v.1.xlsx",
+        "sheet": "Controlled_Vocabularies"
+      }
+    },
+    "scope_classification": {
+      "vocabulary": "scope_classification",
+      "field_ids": [
+        "OPB-010"
+      ],
+      "values": [
+        "1",
+        "2",
+        "3",
+        "excluded",
+        "reported_not_scoped"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    },
+    "verification_route": {
+      "vocabulary": "verification_route",
+      "field_ids": [],
+      "values": [
+        "document_verification",
+        "corroboration",
+        "inquiry_analytical",
+        "unverifiable_flag"
+      ],
+      "open": false,
+      "note": null,
+      "source": {
+        "workbook": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+        "sheet": "2_Vocab"
+      }
+    }
+  }
+}

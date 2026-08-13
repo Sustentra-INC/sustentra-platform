@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/intake/contracts/magic_link_token.schema.json",
+  "title": "IntakeMagicLinkToken",
+  "description": "A single-use, expiring sign-in token. The raw token is never persisted: token_hash is its SHA-256 hex digest, and the raw value exists only in the email that was sent. A record with consumed_at set has been spent and cannot be reused.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["token_id", "email", "token_hash", "created_at", "expires_at", "consumed_at"],
+  "properties": {
+    "token_id": { "type": "string", "pattern": "^mlt_[a-f0-9]{32}$" },
+    "email": { "type": "string", "minLength": 3 },
+    "token_hash": {
+      "description": "SHA-256 hex digest of the raw token. Never the token itself.",
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "created_at": { "type": "string" },
+    "expires_at": { "type": "string" },
+    "consumed_at": { "type": ["string", "null"] }
+  }
+}

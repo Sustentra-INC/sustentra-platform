@@ -1,0 +1,23 @@
+{
+  "templates_name": "sustentra_intake_email_templates",
+  "templates_version": "1.0.0",
+  "description": "Email copy as config, not literals in code. Placeholders in {braces} are filled by the sending service; a template rendering with an unknown placeholder fails loudly rather than sending half-written copy.",
+  "templates": {
+    "magic_link": {
+      "subject": "Your Sustentra sign-in link",
+      "body": "Hi {name},\n\nHere is your sign-in link for Sustentra:\n\n{verify_url}\n\nThe link works once and expires in {ttl_minutes} minutes. If it expires, just request another one.\n\nIf you did not request this, you can ignore this email.\n\n- The Sustentra team\n",
+      "required_context": ["name", "verify_url", "ttl_minutes"]
+    },
+    "seed_form_received": {
+      "subject": "We have your company details",
+      "body": "Hi {name},\n\nThanks - we have recorded the details for {legal_name}, covering {reporting_period_start} to {reporting_period_end}, across {site_count} site(s).\n\nNext you will be guided through a short set of questions about each site. You can stop and come back at any time.\n\nIf anything above looks wrong, reply to this email and we will fix it.\n\n- The Sustentra team\n",
+      "required_context": [
+        "name",
+        "legal_name",
+        "reporting_period_start",
+        "reporting_period_end",
+        "site_count"
+      ]
+    }
+  }
+}

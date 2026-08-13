@@ -1,0 +1,118 @@
+{
+  "settings_name": "sustentra_intake_settings",
+  "settings_version": "1.0.0",
+  "description": "Runtime configuration for the intake workstream. Config over code (CLAUDE.md): emails, SLAs, token lifetimes and vocabulary choices live here, never as literals in code. Every value may be overridden by the environment variable named in env_overrides.",
+  "auth": {
+    "magic_link_ttl_minutes": 15,
+    "session_ttl_hours": 72,
+    "token_bytes": 32,
+    "verify_url_template": "http://localhost:3000/intake/login/verify?token={token}"
+  },
+  "escalation": {
+    "primary_email": "vivian@sustentra.com",
+    "secondary_email": "claire@sustentra.com",
+    "sla_hours": 24,
+    "reminder_hours": 12,
+    "source": "intake/SPEC.md section 11"
+  },
+  "email": {
+    "adapter": "outbox",
+    "from_address": "no-reply@sustentra.com",
+    "outbox_path": "local-data/intake/outbox.jsonl",
+    "note": "The 'outbox' adapter writes messages to a local gitignored file and sends nothing. A real provider is a separate adapter behind the same port; no provider is configured in v1."
+  },
+  "roles": {
+    "client_owner": {
+      "label": "Client owner",
+      "internal": false,
+      "can_submit_seed_form": true,
+      "can_manage_users": true
+    },
+    "client_member": {
+      "label": "Client member",
+      "internal": false,
+      "can_submit_seed_form": true,
+      "can_manage_users": false
+    },
+    "sustentra_reviewer": {
+      "label": "Sustentra reviewer",
+      "internal": true,
+      "can_submit_seed_form": false,
+      "can_manage_users": true
+    }
+  },
+  "storage": {
+    "orgs": "local-data/intake/orgs.jsonl",
+    "users": "local-data/intake/users.jsonl",
+    "sites": "local-data/intake/sites.jsonl",
+    "magic_link_tokens": "local-data/intake/magic_link_tokens.jsonl",
+    "sessions": "local-data/intake/sessions.jsonl",
+    "seed_profiles": "local-data/intake/seed_profiles.jsonl"
+  },
+  "industries": [
+    {
+      "value": "film_production_facility",
+      "label": "Film production facility",
+      "overlay_id": "film"
+    },
+    {
+      "value": "general",
+      "label": "General",
+      "overlay_id": "general"
+    }
+  ],
+  "site_types": {
+    "film": {
+      "input": "select",
+      "provisional": false,
+      "source": "intake/profile_schema_mapping.md 1.5",
+      "options": [
+        { "value": "soundstage_complex", "label": "Soundstage complex" },
+        { "value": "backlot", "label": "Backlot" },
+        { "value": "office", "label": "Office" },
+        { "value": "workshop", "label": "Workshop" }
+      ]
+    },
+    "general": {
+      "input": "text",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "reason": "The mapping defines site-type values for the film overlay only. General-overlay values are free text pending sign-off rather than invented.",
+      "options": []
+    }
+  },
+  "provisional_vocabularies": {
+    "note": "Founder-approved Phase B decision: these two fields have no controlled vocabulary anywhere in reference-data or legacy-schemas, so they ship as free text flagged provisional rather than with invented values (CLAUDE.md rule 3).",
+    "fields": {
+      "operational_status": {
+        "field_id": "FAC-010",
+        "schema_field": "operational_status",
+        "input": "text",
+        "provisional": true,
+        "requires_signoff": "Todd",
+        "reason": "No controlled vocabulary for operational_status exists in the methodology workbooks or the legacy audit_setup schema."
+      },
+      "fiscal_year_basis": {
+        "field_id": "PER-010",
+        "schema_field": "fiscal_year_basis",
+        "input": "text",
+        "provisional": true,
+        "requires_signoff": "Todd",
+        "reason": "No controlled vocabulary for fiscal_year_basis exists in the methodology workbooks or the legacy audit_setup schema."
+      }
+    }
+  },
+  "env_overrides": {
+    "INTAKE_MAGIC_LINK_TTL_MINUTES": "auth.magic_link_ttl_minutes",
+    "INTAKE_SESSION_TTL_HOURS": "auth.session_ttl_hours",
+    "INTAKE_VERIFY_URL_TEMPLATE": "auth.verify_url_template",
+    "INTAKE_EMAIL_ADAPTER": "email.adapter",
+    "INTAKE_EMAIL_FROM": "email.from_address",
+    "INTAKE_EMAIL_OUTBOX_PATH": "email.outbox_path",
+    "INTAKE_ESCALATION_PRIMARY": "escalation.primary_email",
+    "INTAKE_ESCALATION_SECONDARY": "escalation.secondary_email",
+    "INTAKE_SLA_HOURS": "escalation.sla_hours",
+    "INTAKE_REMINDER_HOURS": "escalation.reminder_hours",
+    "INTAKE_DATA_DIR": "storage.*"
+  }
+}

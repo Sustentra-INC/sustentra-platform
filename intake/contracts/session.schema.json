@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/intake/contracts/session.schema.json",
+  "title": "IntakeSession",
+  "description": "An authenticated session created by consuming a magic-link token. Only the SHA-256 hash of the session token is stored. A record with revoked_at set, or whose expires_at has passed, authenticates nobody.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_id",
+    "session_token_hash",
+    "user_id",
+    "org_id",
+    "created_at",
+    "expires_at",
+    "revoked_at"
+  ],
+  "properties": {
+    "session_id": { "type": "string", "pattern": "^ses_[a-f0-9]{32}$" },
+    "session_token_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "user_id": { "type": "string", "pattern": "^usr_[a-f0-9]{12}$" },
+    "org_id": { "type": "string", "pattern": "^org_[a-f0-9]{12}$" },
+    "created_at": { "type": "string" },
+    "expires_at": { "type": "string" },
+    "revoked_at": { "type": ["string", "null"] }
+  }
+}

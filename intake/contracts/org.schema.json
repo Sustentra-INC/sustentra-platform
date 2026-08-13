@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/intake/contracts/org.schema.json",
+  "title": "IntakeOrg",
+  "description": "One client company. Created before the client signs in, so the seed-form fields are null until the seed form is submitted and profile_status becomes seed_form_complete.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "org_id",
+    "legal_name",
+    "reporting_year",
+    "industry",
+    "industry_overlay_id",
+    "reporting_period_start",
+    "reporting_period_end",
+    "fiscal_year_basis",
+    "responsible_party",
+    "profile_status",
+    "created_at",
+    "created_by",
+    "updated_at",
+    "provisional_fields"
+  ],
+  "properties": {
+    "org_id": { "type": "string", "pattern": "^org_[a-f0-9]{12}$" },
+    "legal_name": { "type": "string", "minLength": 1 },
+    "reporting_year": { "type": ["integer", "null"], "minimum": 1990, "maximum": 2100 },
+    "industry": { "type": ["string", "null"] },
+    "industry_overlay_id": { "type": ["string", "null"] },
+    "reporting_period_start": { "type": ["string", "null"], "format": "date" },
+    "reporting_period_end": { "type": ["string", "null"], "format": "date" },
+    "fiscal_year_basis": {
+      "description": "Free text pending expert sign-off; no controlled vocabulary exists for PER-010.fiscal_year_basis.",
+      "type": ["string", "null"]
+    },
+    "responsible_party": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "role", "email"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "role": { "type": "string", "minLength": 1 },
+            "email": { "type": "string", "minLength": 3 }
+          }
+        }
+      ]
+    },
+    "profile_status": {
+      "type": "string",
+      "enum": ["awaiting_seed_form", "seed_form_complete"]
+    },
+    "created_at": { "type": "string" },
+    "created_by": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "provisional_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    }
+  }
+}

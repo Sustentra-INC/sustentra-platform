@@ -1,0 +1,427 @@
+{
+  "form_name": "sustentra_intake_seed_form",
+  "form_version": "1.0.0",
+  "description": "Stage 1 seed form (structured, no chat). Defines the concrete inputs behind seed-form datapoints SEED-1.1 to SEED-1.7 in intake/config/profile_schema.json. Every input names the methodology, legacy or intake field it feeds; the intake defines no new emissions data points.",
+  "copy_status": "placeholder",
+  "copy_note": "Labels and help text are working copy. Final plain-language wording and the film vocabulary overlay are authored after the Vocabulary Library review (intake/SPEC.md section 10).",
+  "derived_from": {
+    "profile_schema": "intake/config/profile_schema.json",
+    "mapping_section": "1",
+    "spec_stage": 1
+  },
+  "steps": [
+    {
+      "step_id": "company",
+      "order": 1,
+      "label": "Your company",
+      "description": "Who is reporting, and for what period.",
+      "repeatable": false,
+      "datapoint_ids": ["SEED-1.1", "SEED-1.2", "SEED-1.4", "SEED-1.6"],
+      "fields": [
+        {
+          "field_id": "legal_name",
+          "datapoint_id": "SEED-1.1",
+          "label": "Company legal name",
+          "help": "The full legal name of the entity the inventory is being prepared for.",
+          "input": "text",
+          "required": true,
+          "provisional": false,
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "INV-010",
+              "schema_field": "legal_reporting_entity_id"
+            }
+          ]
+        },
+        {
+          "field_id": "reporting_year",
+          "datapoint_id": "SEED-1.1",
+          "label": "Reporting year",
+          "help": "The calendar year this inventory covers.",
+          "input": "number",
+          "required": true,
+          "provisional": false,
+          "min": 1990,
+          "max": 2100,
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "INV-010",
+              "schema_field": "reporting_year"
+            }
+          ]
+        },
+        {
+          "field_id": "responsible_party_name",
+          "datapoint_id": "SEED-1.2",
+          "label": "Person accountable for this inventory - name",
+          "help": "ISO 14064-1 reports must name the responsible party. This person is also the client-side contact for any questions.",
+          "input": "text",
+          "required": true,
+          "provisional": false,
+          "populates": [
+            {
+              "target_type": "intake_field",
+              "field_path": "profile.responsible_party",
+              "intake_field": "name"
+            }
+          ]
+        },
+        {
+          "field_id": "responsible_party_role",
+          "datapoint_id": "SEED-1.2",
+          "label": "Their role",
+          "help": "For example: Facilities Director, Head of Operations.",
+          "input": "text",
+          "required": true,
+          "provisional": false,
+          "populates": [
+            {
+              "target_type": "intake_field",
+              "field_path": "profile.responsible_party",
+              "intake_field": "role"
+            }
+          ]
+        },
+        {
+          "field_id": "responsible_party_email",
+          "datapoint_id": "SEED-1.2",
+          "label": "Their email",
+          "help": "Used for questions about this inventory.",
+          "input": "email",
+          "required": true,
+          "provisional": false,
+          "populates": [
+            {
+              "target_type": "intake_field",
+              "field_path": "profile.responsible_party",
+              "intake_field": "email"
+            }
+          ]
+        },
+        {
+          "field_id": "industry",
+          "datapoint_id": "SEED-1.4",
+          "label": "Industry",
+          "help": "Selects the vocabulary and examples used throughout the rest of onboarding.",
+          "input": "select",
+          "required": true,
+          "provisional": false,
+          "options_ref": "settings:industries",
+          "populates": [
+            {
+              "target_type": "legacy_field",
+              "field_path": "company_and_facility_profile.industry",
+              "source_schema": "legacy-schemas/copied_from_streamlit_demo/audit_setup.schema.json"
+            },
+            {
+              "target_type": "intake_field",
+              "field_path": "profile.industry_overlay",
+              "intake_field": "overlay_id"
+            }
+          ]
+        },
+        {
+          "field_id": "reporting_period_start",
+          "datapoint_id": "SEED-1.6",
+          "label": "Reporting period start",
+          "help": "The first day of the period this inventory covers.",
+          "input": "date",
+          "required": true,
+          "provisional": false,
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "PER-010",
+              "schema_field": "reporting_period_start"
+            }
+          ]
+        },
+        {
+          "field_id": "reporting_period_end",
+          "datapoint_id": "SEED-1.6",
+          "label": "Reporting period end",
+          "help": "The last day of the period this inventory covers.",
+          "input": "date",
+          "required": true,
+          "provisional": false,
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "PER-010",
+              "schema_field": "reporting_period_end"
+            }
+          ]
+        },
+        {
+          "field_id": "fiscal_year_basis",
+          "datapoint_id": "SEED-1.6",
+          "label": "Fiscal year basis",
+          "help": "How your reporting period relates to your financial year, for example 'calendar year' or 'fiscal year ending 30 June'.",
+          "input": "text",
+          "required": false,
+          "provisional": true,
+          "requires_signoff": "Todd",
+          "provisional_reason": "No controlled vocabulary for fiscal_year_basis exists in the methodology workbooks or legacy schemas; free text pending sign-off rather than invented values.",
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "PER-010",
+              "schema_field": "fiscal_year_basis"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "step_id": "sites",
+      "order": 2,
+      "label": "Your sites",
+      "description": "Every location the company operates. Each site gets its own set of questions later in onboarding.",
+      "repeatable": true,
+      "min_items": 1,
+      "datapoint_ids": ["SEED-1.3", "SEED-1.5", "SEED-1.7"],
+      "deferred_fields": [
+        {
+          "field_id": "ORG-050",
+          "schema_field": "operational_control_over_asset_flag",
+          "deferred_to_datapoint": "BND-2.3",
+          "reason": "Whether the company has operational control over a leased asset is a boundary judgment (HUMAN class). The seed form captures the raw own/lease fact only; control is determined in the boundary block."
+        },
+        {
+          "field_id": "ORG-040",
+          "schema_field": "party_role",
+          "deferred_to_datapoint": "BND-2.3",
+          "reason": "Lessee/lessor/owner-occupier determination is part of the same boundary judgment and is not inferred from the seed form."
+        }
+      ],
+      "fields": [
+        {
+          "field_id": "site_name",
+          "datapoint_id": "SEED-1.3",
+          "label": "Site name",
+          "help": "What you call this location internally.",
+          "input": "text",
+          "required": true,
+          "provisional": false,
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "FAC-010",
+              "schema_field": "facility_name"
+            }
+          ]
+        },
+        {
+          "field_id": "address_line",
+          "datapoint_id": "SEED-1.3",
+          "label": "Street address",
+          "help": "The full street address. This is used to work out the electricity grid region automatically - you are never asked for it.",
+          "input": "text",
+          "required": true,
+          "provisional": false,
+          "composes": "location",
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "FAC-010",
+              "schema_field": "location"
+            }
+          ]
+        },
+        {
+          "field_id": "city",
+          "datapoint_id": "SEED-1.3",
+          "label": "City",
+          "input": "text",
+          "required": true,
+          "provisional": false,
+          "composes": "location",
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "FAC-010",
+              "schema_field": "location"
+            }
+          ]
+        },
+        {
+          "field_id": "state_region",
+          "datapoint_id": "SEED-1.3",
+          "label": "State or region",
+          "input": "text",
+          "required": true,
+          "provisional": false,
+          "composes": "location",
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "FAC-010",
+              "schema_field": "location"
+            }
+          ]
+        },
+        {
+          "field_id": "postal_code",
+          "datapoint_id": "SEED-1.3",
+          "label": "Postal code",
+          "input": "text",
+          "required": true,
+          "provisional": false,
+          "composes": "location",
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "FAC-010",
+              "schema_field": "location"
+            }
+          ]
+        },
+        {
+          "field_id": "country_region",
+          "datapoint_id": "SEED-1.3",
+          "label": "Country",
+          "input": "text",
+          "required": true,
+          "provisional": false,
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "FAC-010",
+              "schema_field": "country_region"
+            }
+          ]
+        },
+        {
+          "field_id": "operational_status",
+          "datapoint_id": "SEED-1.3",
+          "label": "Site status",
+          "help": "Whether this site was operating during the reporting period, for example 'operating all year' or 'closed in March'.",
+          "input": "text",
+          "required": true,
+          "provisional": true,
+          "requires_signoff": "Todd",
+          "provisional_reason": "No controlled vocabulary for operational_status exists in the methodology workbooks or legacy schemas; free text pending sign-off rather than invented values.",
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "FAC-010",
+              "schema_field": "operational_status"
+            }
+          ]
+        },
+        {
+          "field_id": "period_in_scope_start",
+          "datapoint_id": "SEED-1.3",
+          "label": "Period in scope - start",
+          "input": "derived",
+          "required": false,
+          "provisional": false,
+          "derived_from": "reporting_period_start",
+          "help": "Defaults to the company reporting period; not asked.",
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "FAC-010",
+              "schema_field": "period_in_scope_start"
+            }
+          ]
+        },
+        {
+          "field_id": "period_in_scope_end",
+          "datapoint_id": "SEED-1.3",
+          "label": "Period in scope - end",
+          "input": "derived",
+          "required": false,
+          "provisional": false,
+          "derived_from": "reporting_period_end",
+          "help": "Defaults to the company reporting period; not asked.",
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "FAC-010",
+              "schema_field": "period_in_scope_end"
+            }
+          ]
+        },
+        {
+          "field_id": "site_type",
+          "datapoint_id": "SEED-1.5",
+          "label": "Site type",
+          "help": "Determines which screening questions this site is asked later.",
+          "input": "overlay_dependent",
+          "required": true,
+          "provisional": false,
+          "options_ref": "settings:site_types",
+          "populates": [
+            {
+              "target_type": "legacy_field",
+              "field_path": "company_and_facility_profile.facility_type",
+              "source_schema": "legacy-schemas/copied_from_streamlit_demo/audit_setup.schema.json"
+            },
+            {
+              "target_type": "intake_field",
+              "field_path": "profile.sites[].site_type",
+              "intake_field": "site_type"
+            }
+          ]
+        },
+        {
+          "field_id": "ownership",
+          "datapoint_id": "SEED-1.7",
+          "label": "Do you own or lease this site?",
+          "help": "Just the plain fact for now. What it means for your carbon boundary is worked out with you later.",
+          "input": "select",
+          "required": true,
+          "provisional": false,
+          "options": [
+            { "value": "owned", "label": "We own it" },
+            { "value": "leased", "label": "We lease or rent it" }
+          ],
+          "populates": [
+            {
+              "target_type": "intake_field",
+              "field_path": "profile.sites[].ownership",
+              "intake_field": "ownership"
+            }
+          ]
+        },
+        {
+          "field_id": "lease_type",
+          "datapoint_id": "SEED-1.7",
+          "label": "Lease type",
+          "help": "Determined by your current lease-accounting standard.",
+          "input": "select",
+          "required": false,
+          "provisional": false,
+          "options_ref": "vocabulary:lease_type",
+          "visible_when": { "field_id": "ownership", "equals": "leased" },
+          "populates": [
+            {
+              "target_type": "methodology_field",
+              "field_id": "ORG-050",
+              "schema_field": "lease_type"
+            }
+          ]
+        },
+        {
+          "field_id": "ownership_note",
+          "datapoint_id": "SEED-1.7",
+          "label": "Anything unusual about this arrangement?",
+          "help": "Optional. For example: shared space, sublet areas, equipment owned by someone else.",
+          "input": "textarea",
+          "required": false,
+          "provisional": false,
+          "populates": [
+            {
+              "target_type": "intake_field",
+              "field_path": "profile.sites[].ownership_note",
+              "intake_field": "ownership_note"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

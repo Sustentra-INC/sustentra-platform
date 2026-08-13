@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/intake/contracts/site.schema.json",
+  "title": "IntakeSite",
+  "description": "One location belonging to an org. Holds the raw facts from seed-form datapoints SEED-1.3, SEED-1.5 and SEED-1.7 only. Boundary judgments are not recorded here: the methodology fields they would populate are listed in deferred_boundary_fields and resolved at BND-2.3.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "site_id",
+    "org_id",
+    "site_name",
+    "address",
+    "operational_status",
+    "period_in_scope_start",
+    "period_in_scope_end",
+    "site_type",
+    "ownership",
+    "lease_type",
+    "ownership_note",
+    "created_at",
+    "updated_at",
+    "provisional_fields",
+    "deferred_boundary_fields"
+  ],
+  "properties": {
+    "site_id": { "type": "string", "pattern": "^ste_[a-f0-9]{12}$" },
+    "org_id": { "type": "string", "pattern": "^org_[a-f0-9]{12}$" },
+    "site_name": { "type": "string", "minLength": 1 },
+    "address": {
+      "description": "Feeds FAC-010.location and Scope 2 grid-region matching (S2-MTR-070), which is derived and never asked.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["address_line", "city", "state_region", "postal_code", "country_region"],
+      "properties": {
+        "address_line": { "type": "string", "minLength": 1 },
+        "city": { "type": "string", "minLength": 1 },
+        "state_region": { "type": "string", "minLength": 1 },
+        "postal_code": { "type": "string", "minLength": 1 },
+        "country_region": { "type": "string", "minLength": 1 }
+      }
+    },
+    "operational_status": {
+      "description": "Free text pending expert sign-off; no controlled vocabulary exists for FAC-010.operational_status.",
+      "type": "string",
+      "minLength": 1
+    },
+    "period_in_scope_start": { "type": "string" },
+    "period_in_scope_end": { "type": "string" },
+    "site_type": { "type": "string", "minLength": 1 },
+    "ownership": {
+      "description": "Raw fact only. Control determination is a boundary judgment made at BND-2.3.",
+      "type": "string",
+      "enum": ["owned", "leased"]
+    },
+    "lease_type": {
+      "description": "ORG-050.lease_type. Values restricted to the workbook vocabulary when supplied; null is valid because 'not sure' is never a failure state.",
+      "type": ["string", "null"],
+      "enum": ["finance_capital", "operating", null]
+    },
+    "ownership_note": { "type": ["string", "null"] },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "provisional_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "deferred_boundary_fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field_id", "schema_field", "deferred_to_datapoint", "reason"],
+        "properties": {
+          "field_id": { "type": "string" },
+          "schema_field": { "type": "string" },
+          "deferred_to_datapoint": { "type": "string" },
+          "reason": { "type": "string" }
+        }
+      }
+    }
+  }
+}

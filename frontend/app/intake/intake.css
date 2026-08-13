@@ -1,0 +1,263 @@
+/*
+ * Styles for the client-facing intake screens.
+ *
+ * Scoped under .intake so nothing here can affect the existing internal pages.
+ * Written as plain CSS rather than Tailwind utilities: the repo has Tailwind
+ * configured but not wired (no PostCSS config, no stylesheet), and the resolved
+ * version is Tailwind v4, which needs the separate @tailwindcss/postcss package
+ * added to frontend/package.json - an existing file. Raised for approval rather
+ * than changed unilaterally.
+ */
+
+.intake {
+  --ink: #16241f;
+  --ink-soft: #5a6b64;
+  --line: #d8e0dc;
+  --surface: #ffffff;
+  --surface-soft: #f4f7f5;
+  --accent: #1f6f52;
+  --accent-soft: #e6f1eb;
+  --danger: #a3311f;
+  --danger-soft: #fbecea;
+  --flag: #8a6116;
+  --flag-soft: #fdf3df;
+  --radius: 10px;
+
+  color: var(--ink);
+  font-size: 16px;
+  line-height: 1.55;
+  max-width: 760px;
+}
+
+.intake h1 {
+  font-size: 1.7rem;
+  margin: 0 0 0.35rem;
+  letter-spacing: -0.01em;
+}
+
+.intake h2 {
+  font-size: 1.2rem;
+  margin: 0 0 0.25rem;
+}
+
+.intake .lede {
+  color: var(--ink-soft);
+  margin: 0 0 1.75rem;
+}
+
+.intake-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-bottom: 1.25rem;
+}
+
+.intake-card > header {
+  margin-bottom: 1.25rem;
+}
+
+.intake-card > header p {
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.intake-field {
+  margin-bottom: 1.15rem;
+}
+
+.intake-field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.intake-field .help {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+  margin: 0 0 0.4rem;
+}
+
+.intake-field input,
+.intake-field select,
+.intake-field textarea {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+}
+
+.intake-field input:focus,
+.intake-field select:focus,
+.intake-field textarea:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
+}
+
+.intake-field textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.intake-field.has-error input,
+.intake-field.has-error select,
+.intake-field.has-error textarea {
+  border-color: var(--danger);
+}
+
+.intake-field .field-error {
+  color: var(--danger);
+  font-size: 0.875rem;
+  margin: 0.35rem 0 0;
+}
+
+.optional-tag {
+  color: var(--ink-soft);
+  font-weight: 400;
+  font-size: 0.85rem;
+}
+
+.provisional-tag {
+  display: inline-block;
+  background: var(--flag-soft);
+  color: var(--flag);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.1rem 0.5rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
+.intake-button {
+  background: var(--accent);
+  color: #fff;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.65rem 1.2rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.intake-button:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.intake-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.intake-button.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+.intake-button.link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  padding: 0;
+  text-decoration: underline;
+}
+
+.intake-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 1.5rem;
+}
+
+.intake-notice {
+  border-radius: var(--radius);
+  padding: 0.9rem 1.1rem;
+  margin-bottom: 1.25rem;
+  border: 1px solid transparent;
+}
+
+.intake-notice.info {
+  background: var(--accent-soft);
+  border-color: #c4ddd0;
+}
+
+.intake-notice.error {
+  background: var(--danger-soft);
+  border-color: #edc7c0;
+  color: var(--danger);
+}
+
+.intake-notice.flag {
+  background: var(--flag-soft);
+  border-color: #ecd9a8;
+  color: var(--flag);
+}
+
+.intake-notice p {
+  margin: 0;
+}
+
+.site-block {
+  background: var(--surface-soft);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.site-block > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 1rem;
+}
+
+.site-block h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 1rem;
+}
+
+.field-grid .full {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 640px) {
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.intake-summary dt {
+  font-weight: 600;
+  margin-top: 0.6rem;
+}
+
+.intake-summary dd {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+.intake-steps {
+  display: flex;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+}
+
+.intake-steps li[aria-current="step"] {
+  color: var(--accent);
+  font-weight: 600;
+}
