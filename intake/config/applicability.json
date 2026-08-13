@@ -1,0 +1,104 @@
+{
+  "config_name": "sustentra_intake_applicability",
+  "config_version": "1.0.0",
+  "description": "Executable form of the applicability conditions named in intake/config/profile_schema.json. Phase A named them and left expression null; this file supplies the predicate. Evaluation is deterministic application code (intake/backend/services/applicability_service.py) - never an LLM, per intake/SPEC.md section 6.",
+  "operators": {
+    "always": "Always true.",
+    "all": "Every child predicate is true.",
+    "any": "At least one child predicate is true.",
+    "not": "The child predicate is false.",
+    "profile": "Compares a field on the org profile, e.g. industry_overlay_id.",
+    "answer": "Compares a field of another datapoint's recorded answer. scope selects which instance: 'same_site' matches the site being evaluated, 'org_wide' matches any instance in the org.",
+    "self_answer": "Compares a field of this datapoint's own recorded answer. Used by rules that fire on the answer just given."
+  },
+  "conditions": {
+    "always": {
+      "description": "Always applicable within its grain.",
+      "predicate": { "always": true }
+    },
+    "industry_is_film": {
+      "description": "The client's industry overlay is the film production overlay (SEED-1.4).",
+      "predicate": { "profile": { "field": "industry_overlay_id", "equals": "film" } }
+    },
+    "more_than_one_legal_entity": {
+      "description": "The org comprises more than one legal entity. Skipped entirely for single-entity SMEs.",
+      "predicate": { "profile": { "field": "multi_entity", "equals": true } },
+      "unresolved": {
+        "reason": "No intake question currently establishes whether the client has more than one legal entity, so this reads a profile flag that defaults to false (the mapping's stated common case: single-entity SMEs). Raised with the founder; a screening question may be needed.",
+        "default_when_absent": false
+      }
+    },
+    "prior_inventories_exist": {
+      "description": "The client has prepared a GHG inventory before, so base year is a real choice rather than the SME default.",
+      "predicate": {
+        "answer": {
+          "datapoint_id": "BND-2.4",
+          "field": "prior_inventories",
+          "equals": true,
+          "scope": "org_wide"
+        }
+      }
+    },
+    "stationary_or_mobile_fuel_present": {
+      "description": "Fuel is burned somewhere - stationary equipment, a generator, or a vehicle fleet - so blend composition matters.",
+      "predicate": {
+        "any": [
+          {
+            "answer": {
+              "datapoint_id": "S1STC-3.1",
+              "field": "present",
+              "equals": true,
+              "scope": "same_site"
+            }
+          },
+          {
+            "answer": {
+              "datapoint_id": "S1STC-3.2",
+              "field": "present",
+              "equals": true,
+              "scope": "same_site"
+            }
+          },
+          {
+            "answer": {
+              "datapoint_id": "S1MOB-4.1",
+              "field": "present",
+              "equals": true,
+              "scope": "org_wide"
+            }
+          }
+        ]
+      }
+    },
+    "screening_answer_negative": {
+      "description": "A screening question was answered 'no'; the completeness rule records 'screened, not present' rather than an exclusion.",
+      "predicate": { "self_answer": { "field": "present", "equals": false } }
+    },
+    "mobile_fleet_present": {
+      "description": "The client owns or leases vehicles or motorised equipment (S1MOB-4.1 positive).",
+      "predicate": {
+        "answer": {
+          "datapoint_id": "S1MOB-4.1",
+          "field": "present",
+          "equals": true,
+          "scope": "org_wide"
+        }
+      }
+    },
+    "selling_energy_or_attributes": {
+      "description": "The client sells self-generated power or its environmental attributes, creating double-counting risk (OPB-040).",
+      "predicate": {
+        "answer": {
+          "datapoint_id": "S2-6.4",
+          "field": "sells_energy_or_attributes",
+          "equals": true,
+          "scope": "same_site"
+        }
+      }
+    },
+    "answer_is_yes": {
+      "description": "The client answered 'yes' to this data point's own screening question.",
+      "predicate": { "self_answer": { "field": "present", "equals": true } }
+    }
+  }
+}

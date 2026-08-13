@@ -13,7 +13,8 @@ Everything here is new code. No existing file in the repo is modified.
 |---|---|---|
 | A | Schema seed: mapping → config, with validation | done |
 | B | Stage 0 auth + org/site models + seed form API & UI | done |
-| C | State machine + deterministic interview engine | not started |
+| C1 | State machine, applicability, seed back-fill, escalation records | done |
+| C2 | Interview engine, coverage meter, interview screen | not started |
 | D | LLM parse/rephrase + escalation queue + emails | not started |
 | E | Evidence requests + profile page + audit log | not started |
 | F | Instrumentation of the two success metrics | not started |
@@ -44,6 +45,10 @@ python intake/scripts/validate_profile_schema.py
 
 # watch the whole Phase B flow run, with nothing written and no email sent
 python intake/scripts/intake_smoke.py
+
+# watch the Phase C1 state layer: instantiation, back-fill, a screening "no",
+# applicability, and an escalation opened then resolved
+python intake/scripts/interview_state_smoke.py
 
 # ...or exercise the real JSONL repositories and outbox
 python intake/scripts/intake_smoke.py --data-dir local-data/intake-smoke
@@ -127,8 +132,13 @@ never reaches the repository.
   `reference-data/` or `legacy-schemas/`, so they are free text flagged
   `provisional` and recorded against Todd for sign-off. Same for general-overlay
   site types, which the mapping defines for the film overlay only.
-- **Datapoint states.** Phase C owns the state machine and back-fills
-  `datapoint_states` from these submissions.
+- **Datapoint states.** Phase C1 owns the state machine and back-fills
+  `datapoint_states` from the seed submissions. Only
+  `services/state_machine.py` may change a status, and every change is audited.
+- **Whether a client has more than one legal entity.** No intake question
+  establishes this today, so `BND-2.2` stays hidden behind a profile flag that
+  defaults to false (the mapping's stated common case). Recorded as an
+  `unresolved` condition in `config/applicability.json` rather than assumed.
 - **Question wording.** Labels and help text are working copy; final
   plain-language copy follows the Vocabulary Library review (SPEC §10).
 

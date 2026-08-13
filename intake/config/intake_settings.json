@@ -51,7 +51,10 @@
     "sites": "local-data/intake/sites.jsonl",
     "magic_link_tokens": "local-data/intake/magic_link_tokens.jsonl",
     "sessions": "local-data/intake/sessions.jsonl",
-    "seed_profiles": "local-data/intake/seed_profiles.jsonl"
+    "seed_profiles": "local-data/intake/seed_profiles.jsonl",
+    "datapoint_states": "local-data/intake/datapoint_states.jsonl",
+    "audit_log": "local-data/intake/audit_log.jsonl",
+    "escalations": "local-data/intake/escalations.jsonl"
   },
   "industries": [
     {

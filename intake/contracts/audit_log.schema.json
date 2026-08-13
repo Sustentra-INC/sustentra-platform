@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/intake/contracts/audit_log.schema.json",
+  "title": "IntakeAuditLogEntry",
+  "description": "One immutable record of a change: who, when, old value, new value. intake/SPEC.md section 6 - for a verification company the edit history is itself evidence. Entries are appended and never edited or deleted.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "audit_id",
+    "org_id",
+    "action",
+    "entity_type",
+    "entity_id",
+    "datapoint_id",
+    "scope_ref",
+    "field",
+    "old_value",
+    "new_value",
+    "actor_id",
+    "actor_role",
+    "reason",
+    "at"
+  ],
+  "properties": {
+    "audit_id": { "type": "string", "pattern": "^aud_[a-f0-9]{12}$" },
+    "org_id": { "type": "string", "pattern": "^org_[a-f0-9]{12}$" },
+    "action": {
+      "type": "string",
+      "enum": [
+        "state_created",
+        "status_changed",
+        "value_changed",
+        "escalation_opened",
+        "escalation_resolved"
+      ]
+    },
+    "entity_type": { "type": "string", "minLength": 1 },
+    "entity_id": { "type": "string", "minLength": 1 },
+    "datapoint_id": { "type": ["string", "null"] },
+    "scope_ref": { "type": ["string", "null"] },
+    "field": { "type": ["string", "null"] },
+    "old_value": {},
+    "new_value": {},
+    "actor_id": { "type": "string", "minLength": 1 },
+    "actor_role": { "type": ["string", "null"] },
+    "reason": { "type": ["string", "null"] },
+    "at": { "type": "string" }
+  }
+}

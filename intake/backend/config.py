@@ -26,6 +26,9 @@ SETTINGS_PATH = REPO_ROOT / "intake/config/intake_settings.json"
 SEED_FORM_PATH = REPO_ROOT / "intake/config/seed_form.json"
 PROFILE_SCHEMA_PATH = REPO_ROOT / "intake/config/profile_schema.json"
 VOCABULARIES_PATH = REPO_ROOT / "intake/config/controlled_vocabularies.json"
+EMISSION_FACTOR_LIBRARY_PATH = (
+    REPO_ROOT / "reference-data/config/libraries/emission_factor_library.json"
+)
 
 DATA_DIR_ENV = "INTAKE_DATA_DIR"
 
@@ -165,6 +168,24 @@ def load_controlled_vocabularies() -> dict[str, Any]:
     return _read_json(VOCABULARIES_PATH)
 
 
+@lru_cache(maxsize=1)
+def load_emission_factor_library() -> dict[str, Any]:
+    """Read-only access to the S2 emission factor library.
+
+    Used for values the platform assigns rather than asks for - notably the GWP
+    set behind BND-2.6, which comes from the library instead of being invented.
+    """
+    return _read_json(EMISSION_FACTOR_LIBRARY_PATH)
+
+
+def default_gwp_set() -> dict[str, Any]:
+    """The library's default GWP set, or the only one if none is marked default."""
+    sets = load_emission_factor_library().get("gwp_sets") or []
+    if not sets:
+        raise RuntimeError(f"{EMISSION_FACTOR_LIBRARY_PATH}: no gwp_sets found")
+    return next((item for item in sets if item.get("default_for_this_library")), sets[0])
+
+
 def vocabulary_values(name: str) -> list[str]:
     """Permitted values for a controlled vocabulary extracted from the workbooks."""
     vocabularies = load_controlled_vocabularies()["vocabularies"]
@@ -189,3 +210,4 @@ def reset_caches() -> None:
     load_seed_form.cache_clear()
     load_profile_schema.cache_clear()
     load_controlled_vocabularies.cache_clear()
+    load_emission_factor_library.cache_clear()

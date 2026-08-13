@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/intake/contracts/datapoint_state.schema.json",
+  "title": "IntakeDatapointState",
+  "description": "The status of one data point for one client, at one grain instance. One record per (org_id, datapoint_id, scope_ref). Status vocabulary and transitions come from intake/SPEC.md section 4; only intake/backend/services/state_machine.py may change status. 'not_present' is a completeness record ('screened, not here'), NOT an exclusion - exclusions use the EXC-010 pattern and require a sustentra_reviewer.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "state_id",
+    "org_id",
+    "datapoint_id",
+    "grain",
+    "scope_ref",
+    "status",
+    "value",
+    "provenance",
+    "uncertainty_tier",
+    "escalation_id",
+    "provisional_fields",
+    "created_at",
+    "updated_at",
+    "updated_by"
+  ],
+  "properties": {
+    "state_id": { "type": "string", "pattern": "^dps_[a-f0-9]{12}$" },
+    "org_id": { "type": "string", "pattern": "^org_[a-f0-9]{12}$" },
+    "datapoint_id": {
+      "type": "string",
+      "pattern": "^(SEED|BND|S1STC|S1MOB|S1FUG|S2|MRT|PRV)-\\d+\\.\\d+$"
+    },
+    "grain": {
+      "type": "string",
+      "enum": [
+        "org",
+        "site",
+        "entity",
+        "vehicle_group",
+        "meter",
+        "source_category",
+        "category",
+        "datapoint"
+      ]
+    },
+    "scope_ref": {
+      "description": "The grain instance: a site id, a vehicle-group id, or null for org-grain questions.",
+      "type": ["string", "null"]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "unasked",
+        "asked",
+        "answered",
+        "unknown",
+        "not_present",
+        "pending_documents",
+        "escalated",
+        "resolved"
+      ]
+    },
+    "value": { "type": ["object", "null"] },
+    "provenance": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["answered_by"],
+          "properties": {
+            "answered_by": {
+              "type": "string",
+              "enum": ["user", "document", "team", "system"]
+            },
+            "actor_id": { "type": ["string", "null"] },
+            "value_basis": {
+              "description": "Feeds the ISO 14064-1 section 8.3 uncertainty roll-up (PRV-8.2).",
+              "type": ["string", "null"],
+              "enum": ["metered", "invoiced", "estimated", "asserted", "derived", null]
+            },
+            "source_document_id": { "type": ["string", "null"] },
+            "period_covered_start": { "type": ["string", "null"] },
+            "period_covered_end": { "type": ["string", "null"] },
+            "note": { "type": ["string", "null"] }
+          }
+        }
+      ]
+    },
+    "uncertainty_tier": { "type": ["string", "null"] },
+    "escalation_id": { "type": ["string", "null"], "pattern": "^esc_[a-f0-9]{12}$" },
+    "provisional_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "updated_by": { "type": "string", "minLength": 1 }
+  }
+}

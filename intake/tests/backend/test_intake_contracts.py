@@ -140,3 +140,115 @@ def test_contract_rejects_a_raw_token_in_place_of_a_hash() -> None:
                 "consumed_at": None,
             },
         )
+
+
+# -- Phase C1 records -------------------------------------------------------
+
+
+@pytest.fixture
+def with_states(harness):
+    """A fully initialised org with an escalation opened and resolved."""
+    seeded = harness.seeded_org(sites=2)
+    org_id = seeded["org_id"]
+    site_id = harness.sites.list_by_org(org_id)[0]["site_id"]
+    record = harness.escalation_service.open(
+        org_id=org_id,
+        datapoint_id="S1FUG-5.4",
+        scope_ref=site_id,
+        trigger="user_requested_help",
+        question_label="On-site wastewater treatment?",
+        actor_id="usr_1",
+    )
+    harness.escalation_service.resolve(
+        record["escalation_id"], value={"present": False}, actor_id="rev_1", resolution_note="ok"
+    )
+    # A second, still-open escalation so both statuses are covered.
+    harness.escalation_service.open(
+        org_id=org_id,
+        datapoint_id="S1FUG-5.4",
+        scope_ref=harness.sites.list_by_org(org_id)[1]["site_id"],
+        trigger="condition_met",
+        question_label="On-site wastewater treatment?",
+        actor_id="usr_1",
+    )
+    return harness
+
+
+@pytest.mark.parametrize("name", ["datapoint_state", "audit_log", "escalation"])
+def test_phase_c_contracts_are_valid_json_schema(name: str) -> None:
+    schema = _schema(name)
+    jsonschema.validators.validator_for(schema).check_schema(schema)
+
+
+def test_datapoint_state_records_match_the_contract(with_states) -> None:
+    records = with_states.states.list_records()
+    assert records
+    for record in records:
+        _validate("datapoint_state", record)
+
+
+def test_audit_log_records_match_the_contract(with_states) -> None:
+    records = with_states.audit.list_records()
+    assert records
+    for record in records:
+        _validate("audit_log", record)
+
+
+def test_escalation_records_match_the_contract(with_states) -> None:
+    records = with_states.escalations.list_records()
+    assert records
+    for record in records:
+        _validate("escalation", record)
+
+
+def test_contract_rejects_an_invented_status() -> None:
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(
+            "datapoint_state",
+            {
+                "state_id": "dps_0123456789ab",
+                "org_id": "org_0123456789ab",
+                "datapoint_id": "S1STC-3.1",
+                "grain": "site",
+                "scope_ref": "ste_0123456789ab",
+                "status": "sort_of_answered",
+                "value": None,
+                "provenance": None,
+                "uncertainty_tier": None,
+                "escalation_id": None,
+                "provisional_fields": [],
+                "created_at": "2026-08-13T09:00:00+00:00",
+                "updated_at": "2026-08-13T09:00:00+00:00",
+                "updated_by": "usr_1",
+            },
+        )
+
+
+def test_contract_requires_a_resolved_escalation_to_name_its_resolver() -> None:
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(
+            "escalation",
+            {
+                "escalation_id": "esc_0123456789ab",
+                "ticket_version": 2,
+                "org_id": "org_0123456789ab",
+                "datapoint_id": "S1FUG-5.4",
+                "scope_ref": None,
+                "title": "x",
+                "ticket_type": "clarification_request",
+                "status": "resolved",
+                "detection_origin": "system_detected",
+                "trigger": "condition_met",
+                "question_label": "x",
+                "answer_attempts": [],
+                "seed_context": {},
+                "resolution_value": None,
+                "resolved_by": None,
+                "resolution_note": None,
+                "audit_trail": [],
+                "created_by": "usr_1",
+                "created_at": "2026-08-13T09:00:00+00:00",
+                "updated_at": "2026-08-13T09:00:00+00:00",
+                "resolved_at": None,
+            },
+        )

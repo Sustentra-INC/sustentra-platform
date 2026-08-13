@@ -29,10 +29,23 @@ from intake.backend.repositories.seed_profile_repository import (  # noqa: E402
 from intake.backend.repositories.session_repository import InMemorySessionRepository  # noqa: E402
 from intake.backend.repositories.site_repository import InMemorySiteRepository  # noqa: E402
 from intake.backend.repositories.user_repository import InMemoryUserRepository  # noqa: E402
+from intake.backend.repositories.audit_log_repository import (  # noqa: E402
+    InMemoryAuditLogRepository,
+)
+from intake.backend.repositories.datapoint_state_repository import (  # noqa: E402
+    InMemoryDatapointStateRepository,
+)
+from intake.backend.repositories.escalation_repository import (  # noqa: E402
+    InMemoryEscalationRepository,
+)
+from intake.backend.services.applicability_service import ApplicabilityService  # noqa: E402
 from intake.backend.services.auth_service import AuthService  # noqa: E402
 from intake.backend.services.email_service import EmailService, InMemoryEmailSender  # noqa: E402
+from intake.backend.services.escalation_service import EscalationService  # noqa: E402
 from intake.backend.services.org_service import OrgService  # noqa: E402
+from intake.backend.services.profile_state_service import ProfileStateService  # noqa: E402
 from intake.backend.services.seed_form_service import SeedFormService  # noqa: E402
+from intake.backend.services.state_machine import StateMachine  # noqa: E402
 
 
 class MutableClock:
@@ -87,6 +100,27 @@ class Harness:
             settings=self.settings,
             clock=self.clock,
         )
+        # Phase C1: state machine, applicability, escalations.
+        self.states = InMemoryDatapointStateRepository()
+        self.audit = InMemoryAuditLogRepository()
+        self.escalations = InMemoryEscalationRepository()
+        self.state_machine = StateMachine(self.states, self.audit, clock=self.clock)
+        self.applicability = ApplicabilityService()
+        self.escalation_service = EscalationService(
+            escalation_repository=self.escalations,
+            state_repository=self.states,
+            state_machine=self.state_machine,
+            clock=self.clock,
+        )
+        self.profile_state_service = ProfileStateService(
+            state_machine=self.state_machine,
+            state_repository=self.states,
+            org_repository=self.orgs,
+            site_repository=self.sites,
+            seed_profile_repository=self.submissions,
+            clock=self.clock,
+        )
+
         self.context = IntakeContext(
             auth_service=self.auth_service,
             org_service=self.org_service,
@@ -103,6 +137,29 @@ class Harness:
             owner_email=email,
             created_by="internal@sustentra.com",
         )
+
+    def seeded_org(self, sites: int = 1) -> dict:
+        """Create an org, submit the seed form, and initialise its states."""
+        created = self.create_org()
+        org_id = created["org"]["org_id"]
+        site_payloads = [
+            site_payload(site_name=f"Stage {index + 1}") for index in range(sites)
+        ]
+        self.seed_form_service.submit(
+            org_id=org_id,
+            submitted_by=created["owner"]["user_id"],
+            payload={"company": company_payload(), "sites": site_payloads},
+        )
+        summary = self.profile_state_service.initialise(org_id)
+        return {"org_id": org_id, "summary": summary, "owner": created["owner"]}
+
+    def state(self, org_id: str, datapoint_id: str, scope_ref: str | None = None) -> dict:
+        found = self.states.find(org_id, datapoint_id, scope_ref)
+        assert found is not None, f"no state for {datapoint_id} scope={scope_ref}"
+        return found
+
+    def profile_of(self, org_id: str) -> dict:
+        return self.orgs.get(org_id) or {}
 
     def sign_in(self, email: str = "owner@example.com") -> str:
         """Run the full magic-link flow and return a session token."""

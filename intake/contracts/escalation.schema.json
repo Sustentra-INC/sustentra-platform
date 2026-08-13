@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/intake/contracts/escalation.schema.json",
+  "title": "IntakeEscalation",
+  "description": "A question the client could not answer, routed to the Sustentra team. intake/SPEC.md section 5 asks for the gap_ticket_schema shape 'where sensible': this reuses that schema's clarification_request ticket type, its pending_auditor_review and resolved status names, detection_origin, ticket_version, audit_trail and the timestamp trio. It deliberately does not reuse assertions, materiality, calculation impact or workbook locations, which describe findings against a prepared inventory rather than an unanswered intake question.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "escalation_id",
+    "ticket_version",
+    "org_id",
+    "datapoint_id",
+    "scope_ref",
+    "title",
+    "ticket_type",
+    "status",
+    "detection_origin",
+    "trigger",
+    "question_label",
+    "answer_attempts",
+    "seed_context",
+    "resolution_value",
+    "resolved_by",
+    "resolution_note",
+    "audit_trail",
+    "created_by",
+    "created_at",
+    "updated_at",
+    "resolved_at"
+  ],
+  "properties": {
+    "escalation_id": { "type": "string", "pattern": "^esc_[a-f0-9]{12}$" },
+    "ticket_version": { "type": "integer", "minimum": 1 },
+    "org_id": { "type": "string", "pattern": "^org_[a-f0-9]{12}$" },
+    "datapoint_id": {
+      "type": "string",
+      "pattern": "^(SEED|BND|S1STC|S1MOB|S1FUG|S2|MRT|PRV)-\\d+\\.\\d+$"
+    },
+    "scope_ref": { "type": ["string", "null"] },
+    "title": { "type": "string", "minLength": 1 },
+    "ticket_type": { "const": "clarification_request" },
+    "status": {
+      "type": "string",
+      "enum": ["pending_auditor_review", "resolved", "superseded"]
+    },
+    "detection_origin": {
+      "type": "string",
+      "enum": ["system_detected", "user_requested"]
+    },
+    "trigger": {
+      "description": "The SPEC section 3 trigger that opened this escalation.",
+      "type": "string",
+      "enum": [
+        "human_class_datapoint",
+        "failed_clarification",
+        "user_requested_help",
+        "contradiction",
+        "condition_met"
+      ]
+    },
+    "question_label": { "type": "string", "minLength": 1 },
+    "answer_attempts": { "type": "array", "items": { "type": "object" } },
+    "seed_context": {
+      "description": "Company and site facts the reviewer needs to answer without digging.",
+      "type": "object"
+    },
+    "resolution_value": { "type": ["object", "null"] },
+    "resolved_by": { "type": ["string", "null"] },
+    "resolution_note": { "type": ["string", "null"] },
+    "audit_trail": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["at", "actor_id", "action"],
+        "properties": {
+          "at": { "type": "string" },
+          "actor_id": { "type": "string" },
+          "action": { "type": "string" },
+          "note": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "created_by": { "type": "string", "minLength": 1 },
+    "created_at": { "type": "string" },
+    "updated_at": { "type": "string" },
+    "resolved_at": { "type": ["string", "null"] }
+  },
+  "allOf": [
+    {
+      "description": "A resolved escalation must say who resolved it, when, and with what answer.",
+      "if": { "properties": { "status": { "const": "resolved" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "resolution_value": { "type": "object" },
+          "resolved_by": { "type": "string" },
+          "resolved_at": { "type": "string" }
+        }
+      }
+    }
+  ]
+}
