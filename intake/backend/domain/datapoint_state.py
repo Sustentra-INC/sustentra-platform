@@ -82,6 +82,17 @@ class DatapointState(BaseModel):
     uncertainty_tier: str | None = None
     escalation_id: str | None = None
     provisional_fields: list[str] = Field(default_factory=list)
+    clarification_attempts: int = Field(
+        default=0,
+        description=(
+            "How many times we have asked the client to clarify a free-text answer. "
+            "Two failed attempts escalate to a human (SPEC section 3, trigger b)."
+        ),
+    )
+    ai_assisted: bool = Field(
+        default=False,
+        description="True when a language model proposed this value and the client confirmed it.",
+    )
     created_at: str
     updated_at: str
     updated_by: str

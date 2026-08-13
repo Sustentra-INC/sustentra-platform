@@ -418,3 +418,95 @@ def test_a_reviewer_cannot_answer_the_interview(client) -> None:
         json={"datapoint_id": "BND-2.1", "scope_ref": None, "answer": {}},
     )
     assert response.status_code == 403
+
+
+# -- free-text parsing (Phase D1) -------------------------------------------
+
+
+def test_parse_requires_sign_in(client) -> None:
+    assert client.post("/v1/intake/interview/parse", json={
+        "datapoint_id": "S1FUG-5.1", "text": "twelve units"
+    }).status_code == 401
+
+
+def test_parse_proposes_a_reading_without_writing_it(client) -> None:
+    token, org, _ = _start(client)
+    site_id = client.harness.sites.list_by_org(org["org_id"])[0]["site_id"]
+    client.harness.llm.queue(
+        "parse_answer",
+        {
+            "fields": {"present": True, "equipment_count": 12, "gas_type": "R-410A"},
+            "confidence": 0.93,
+            "summary": "Twelve air conditioning units using R-410A.",
+            "unresolved": [],
+            "clarifying_question": None,
+        },
+    )
+    response = client.post(
+        "/v1/intake/interview/parse",
+        headers=_auth(token),
+        json={
+            "datapoint_id": "S1FUG-5.1",
+            "scope_ref": site_id,
+            "text": "about a dozen aircon units, the R-410A ones",
+        },
+    )
+    assert response.status_code == 200
+    outcome = response.json()["outcome"]
+    assert outcome["status"] == "proposed"
+    assert outcome["summary"].startswith("Twelve air conditioning")
+    assert client.harness.state(org["org_id"], "S1FUG-5.1", site_id)["status"] == "unasked"
+
+
+def test_a_low_confidence_parse_asks_for_clarification(client) -> None:
+    token, org, _ = _start(client)
+    site_id = client.harness.sites.list_by_org(org["org_id"])[0]["site_id"]
+    client.harness.llm.queue(
+        "parse_answer",
+        {
+            "fields": {},
+            "confidence": 0.2,
+            "summary": "",
+            "unresolved": ["gas_type"],
+            "clarifying_question": "Do you look after those units yourselves?",
+        },
+    )
+    response = client.post(
+        "/v1/intake/interview/parse",
+        headers=_auth(token),
+        json={"datapoint_id": "S1FUG-5.1", "scope_ref": site_id, "text": "some cooling bits"},
+    )
+    outcome = response.json()["outcome"]
+    assert outcome["status"] == "clarify"
+    assert outcome["clarifying_question"].startswith("Do you look after")
+
+
+def test_parse_is_unavailable_when_no_model_is_configured(client) -> None:
+    """Fails clearly rather than pretending to work."""
+    from intake.backend.api.context import configure_context
+
+    context = client.harness.context
+    configure_context(
+        type(context)(**{**context.__dict__, "answer_parser": None})
+    )
+    token, _ = _sign_in(client)
+    response = client.post(
+        "/v1/intake/interview/parse",
+        headers=_auth(token),
+        json={"datapoint_id": "S1FUG-5.1", "text": "twelve"},
+    )
+    assert response.status_code == 503
+
+
+def test_a_reviewer_cannot_use_the_parser(client) -> None:
+    token, org, _ = _start(client)
+    client.harness.org_service.add_user(
+        org_id=org["org_id"], name="Rev", email="rev@sustentra.com", role="sustentra_reviewer"
+    )
+    reviewer = client.harness.sign_in("rev@sustentra.com")
+    response = client.post(
+        "/v1/intake/interview/parse",
+        headers=_auth(reviewer),
+        json={"datapoint_id": "S1FUG-5.1", "text": "twelve"},
+    )
+    assert response.status_code == 403

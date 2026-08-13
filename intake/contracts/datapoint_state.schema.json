@@ -17,6 +17,8 @@
     "uncertainty_tier",
     "escalation_id",
     "provisional_fields",
+    "clarification_attempts",
+    "ai_assisted",
     "created_at",
     "updated_at",
     "updated_by"
@@ -91,6 +93,15 @@
       "type": "array",
       "items": { "type": "string" },
       "uniqueItems": true
+    },
+    "clarification_attempts": {
+      "description": "Failed attempts to parse a free-text answer. Two escalate to a human (SPEC section 3, trigger b).",
+      "type": "integer",
+      "minimum": 0
+    },
+    "ai_assisted": {
+      "description": "True when a language model proposed this value and the client confirmed it. The model never writes a value directly.",
+      "type": "boolean"
     },
     "created_at": { "type": "string" },
     "updated_at": { "type": "string" },

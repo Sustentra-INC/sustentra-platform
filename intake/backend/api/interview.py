@@ -16,11 +16,20 @@ class AnswerRequest(BaseModel):
     datapoint_id: str
     scope_ref: str | None = None
     answer: dict = Field(default_factory=dict)
+    ai_assisted: bool = False
 
 
 class NotSureRequest(BaseModel):
     datapoint_id: str
     scope_ref: str | None = None
+
+
+class ParseRequest(BaseModel):
+    """A free-text answer for the model to read."""
+
+    datapoint_id: str
+    scope_ref: str | None = None
+    text: str
 
 
 def _require_client(user: AuthenticatedUser) -> None:
@@ -62,6 +71,7 @@ def answer(
             scope_ref=payload.scope_ref,
             answer=payload.answer,
             actor_id=user.user_id,
+            ai_assisted=payload.ai_assisted,
         )
     except AnswerValidationError as exc:
         raise HTTPException(status_code=400, detail={"errors": exc.errors}) from exc
@@ -96,6 +106,46 @@ def not_sure(
         "message": result["message"],
         "coverage": context.coverage_service.coverage(user.org_id),
         "next": context.interview_engine.next_question(user.org_id),
+    }
+
+
+@router.post("/parse")
+def parse_free_text(
+    payload: ParseRequest, user: AuthenticatedUser = Depends(require_user)
+) -> dict:
+    """Read a typed answer and propose structured fields for the client to confirm.
+
+    Nothing is written here. A confident reading comes back as a proposal the
+    client confirms through /answer; anything else becomes one clarifying
+    question, and a second failure goes to a human.
+    """
+    _require_client(user)
+    context = get_context()
+    if context.answer_parser is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Free-text answers are not available; no language model is configured.",
+        )
+    try:
+        outcome = context.answer_parser.parse(
+            org_id=user.org_id,
+            datapoint_id=payload.datapoint_id,
+            scope_ref=payload.scope_ref,
+            text=payload.text,
+            actor_id=user.user_id,
+            settings=context.settings,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return {
+        "outcome": outcome.model_dump(),
+        "coverage": context.coverage_service.coverage(user.org_id),
+        "next": (
+            context.interview_engine.next_question(user.org_id)
+            if outcome.status == "escalated"
+            else None
+        ),
     }
 
 

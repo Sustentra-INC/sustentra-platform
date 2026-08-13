@@ -1,0 +1,38 @@
+{
+  "config_name": "sustentra_intake_llm",
+  "config_version": "1.0.0",
+  "description": "LLM configuration for Stage 2 only (intake/SPEC.md section 6). The model, thresholds and per-turn call budget are config, never constants in code. Question selection, applicability, coverage maths and status transitions are deterministic and never involve a model.",
+  "provider": "openai",
+  "model": "gpt-4o-mini",
+  "model_note": "Set INTAKE_LLM_MODEL to override per environment. The provider sits behind a port (intake/backend/adapters/llm.py); swapping it is one new adapter, not a rewrite.",
+  "adapter": "disabled",
+  "adapter_note": "'disabled' is the default so no build, test or smoke run can make a paid call by accident. Set INTAKE_LLM_ADAPTER=openai (with OPENAI_API_KEY set) to enable it.",
+  "max_calls_per_turn": 2,
+  "max_calls_note": "SPEC section 6: at most two calls per turn - one to parse the answer, one to rephrase an explainer if the canned one failed.",
+  "timeout_seconds": 20,
+  "temperature": 0,
+  "confidence": {
+    "accept_threshold": 0.75,
+    "threshold_note": "At or above this, the parse is played back to the client for confirmation. Below it, we ask one clarifying question; a second low-confidence attempt escalates to a human. Mirrors the data-driven threshold approach already used by backend/app/services/classification_service.py.",
+    "max_clarification_attempts": 2
+  },
+  "prompts": {
+    "parse_answer": "intake/prompts/parse_answer.md",
+    "rephrase_explainer": "intake/prompts/rephrase_explainer.md"
+  },
+  "safety": {
+    "model_never_writes_state": true,
+    "model_never_selects_questions": true,
+    "log_every_call": true,
+    "notes": [
+      "The model proposes a parse; the application writes the state after the client confirms it.",
+      "A parse is never accepted silently - the client always sees what was understood first.",
+      "Free-text values whose vocabulary is still provisional are passed through as written, not normalised into invented options."
+    ]
+  },
+  "env_overrides": {
+    "INTAKE_LLM_ADAPTER": "adapter",
+    "INTAKE_LLM_MODEL": "model",
+    "INTAKE_LLM_TIMEOUT_SECONDS": "timeout_seconds"
+  }
+}

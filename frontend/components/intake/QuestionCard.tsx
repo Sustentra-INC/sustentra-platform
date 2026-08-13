@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { FreeTextAnswer } from "./FreeTextAnswer";
 import { InterviewField } from "./InterviewField";
 import { BUTTON, BUTTON_LINK, CARD, MUTED, NOTICE_INFO } from "./styles";
 import type { FieldError, InterviewQuestion, SeedFormField } from "../../lib/intake-types";
@@ -10,8 +11,9 @@ interface QuestionCardProps {
   question: InterviewQuestion;
   errors: FieldError[];
   busy: boolean;
-  onAnswer: (answer: Record<string, unknown>) => void;
+  onAnswer: (answer: Record<string, unknown>, aiAssisted?: boolean) => void;
   onNotSure: () => void;
+  onHandedOver: (message: string) => void;
 }
 
 function initialValues(question: InterviewQuestion): Record<string, unknown> {
@@ -32,7 +34,8 @@ export function QuestionCard({
   errors,
   busy,
   onAnswer,
-  onNotSure
+  onNotSure,
+  onHandedOver
 }: QuestionCardProps) {
   const [values, setValues] = useState<Record<string, unknown>>(() => initialValues(question));
   const [showExplainer, setShowExplainer] = useState(false);
@@ -136,6 +139,17 @@ export function QuestionCard({
             ))
           : null}
       </div>
+
+      {question.fields.some((field) => field.input !== "derived") ? (
+        <div className="mt-5">
+          <FreeTextAnswer
+            question={question}
+            disabled={busy}
+            onConfirm={(fields) => onAnswer({ ...values, ...fields }, true)}
+            onHandedOver={onHandedOver}
+          />
+        </div>
+      ) : null}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {showFollowUps ? (

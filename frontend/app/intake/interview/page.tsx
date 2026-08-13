@@ -13,7 +13,12 @@ import {
   NOTICE_FLAG,
   NOTICE_INFO
 } from "../../../components/intake/styles";
-import { sayNotSure, startInterview, submitAnswer } from "../../../lib/api/intake";
+import {
+  getNextQuestion,
+  sayNotSure,
+  startInterview,
+  submitAnswer
+} from "../../../lib/api/intake";
 import {
   Coverage,
   FieldError,
@@ -58,7 +63,7 @@ export default function InterviewPage() {
     };
   }, []);
 
-  async function onAnswer(answer: Record<string, unknown>) {
+  async function onAnswer(answer: Record<string, unknown>, aiAssisted = false) {
     if (!question) return;
     setBusy(true);
     setErrors([]);
@@ -68,7 +73,8 @@ export default function InterviewPage() {
       const result = await submitAnswer({
         datapoint_id: question.datapoint_id,
         scope_ref: question.scope_ref,
-        answer
+        answer,
+        ai_assisted: aiAssisted
       });
       setHandoff(
         result.escalated
@@ -101,7 +107,9 @@ export default function InterviewPage() {
         datapoint_id: question.datapoint_id,
         scope_ref: question.scope_ref
       });
-      setHandoff(result.message);
+      // The rephrase is shown alongside the hand-over, so they still get a
+      // clearer explanation even though the question is now with our team.
+      setHandoff([result.another_way, result.message].filter(Boolean).join(" "));
       setCoverage(result.coverage);
       setQuestion(result.next);
       if (!result.next) setPhase("done");
@@ -195,6 +203,13 @@ export default function InterviewPage() {
           busy={busy}
           onAnswer={onAnswer}
           onNotSure={onNotSure}
+          onHandedOver={async (text) => {
+            setHandoff(text);
+            const step = await getNextQuestion();
+            setCoverage(step.coverage);
+            setQuestion(step.next);
+            if (!step.next) setPhase("done");
+          }}
         />
       ) : null}
     </section>

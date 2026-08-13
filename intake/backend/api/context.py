@@ -28,7 +28,13 @@ from intake.backend.repositories.datapoint_state_repository import (
     JsonlDatapointStateRepository,
 )
 from intake.backend.repositories.escalation_repository import JsonlEscalationRepository
+from intake.backend.adapters.llm import build_llm_client
+from intake.backend.config import load_settings
+from intake.backend.services.answer_parser import AnswerParser
 from intake.backend.services.applicability_service import ApplicabilityService
+from intake.backend.services.contradiction_service import ContradictionService
+from intake.backend.services.explainer_service import ExplainerService
+from intake.backend.services.question_content import load_question_content
 from intake.backend.services.auth_service import AuthError, AuthService
 from intake.backend.services.coverage_service import CoverageService
 from intake.backend.services.email_service import EmailService
@@ -51,6 +57,9 @@ class IntakeContext:
     coverage_service: CoverageService
     escalation_service: EscalationService
     state_repository: DatapointStateRepository
+    settings: object
+    answer_parser: AnswerParser | None = None
+    explainer_service: ExplainerService | None = None
 
 
 def build_default_context() -> IntakeContext:
@@ -70,14 +79,35 @@ def build_default_context() -> IntakeContext:
     machine = StateMachine(states, audit)
     escalation_service = EscalationService(escalation_records, states, machine)
     profile_state_service = ProfileStateService(machine, states, orgs, sites, submissions)
+
+    # Phase D. The LLM adapter defaults to 'disabled', so nothing here makes a
+    # paid call unless it is explicitly switched on.
+    settings = load_settings()
+    applicability = ApplicabilityService()
+    content = load_question_content()
+    llm_client = build_llm_client()
+    contradictions = ContradictionService(applicability)
+    explainer_service = ExplainerService(llm_client, orgs, sites, content)
+    answer_parser = AnswerParser(
+        llm_client=llm_client,
+        state_repository=states,
+        org_repository=orgs,
+        site_repository=sites,
+        state_machine=machine,
+        escalations=escalation_service,
+        question_content=content,
+    )
+
     interview_engine = InterviewEngine(
         state_repository=states,
         org_repository=orgs,
         site_repository=sites,
         state_machine=machine,
-        applicability=ApplicabilityService(),
+        applicability=applicability,
         escalations=escalation_service,
         profile_states=profile_state_service,
+        contradictions=contradictions,
+        explainers=explainer_service,
     )
 
     return IntakeContext(
@@ -104,6 +134,9 @@ def build_default_context() -> IntakeContext:
         coverage_service=CoverageService(interview_engine),
         escalation_service=escalation_service,
         state_repository=states,
+        settings=settings,
+        answer_parser=answer_parser,
+        explainer_service=explainer_service,
     )
 
 

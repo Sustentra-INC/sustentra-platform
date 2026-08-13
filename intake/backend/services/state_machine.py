@@ -215,11 +215,52 @@ class StateMachine:
             actor_role=actor_role,
         )
 
-    def record_not_present(
-        self, state: dict[str, Any], actor_id: str, source_category: str | None = None
+    def record_clarification_attempt(
+        self, state: dict[str, Any], actor_id: str, attempts: int
     ) -> dict[str, Any]:
-        """Record a screening 'no' as a completeness statement, never an exclusion."""
-        value = {"present": False, "screened_source_category": source_category}
+        """Count a failed attempt to read a free-text answer.
+
+        Status is untouched: the question is still open with the client until
+        the attempts run out, at which point the caller escalates it.
+        """
+        updated = dict(state)
+        updated["clarification_attempts"] = attempts
+        updated["updated_at"] = self._clock().isoformat()
+        updated["updated_by"] = actor_id
+        record = self._states.save(updated)
+        self._log(
+            org_id=state["org_id"],
+            action="value_changed",
+            entity_id=state["state_id"],
+            datapoint_id=state["datapoint_id"],
+            scope_ref=state.get("scope_ref"),
+            old=state.get("clarification_attempts", 0),
+            new=attempts,
+            actor_id=actor_id,
+            field="clarification_attempts",
+            reason="free-text answer could not be read confidently",
+        )
+        return record
+
+    def record_not_present(
+        self,
+        state: dict[str, Any],
+        actor_id: str,
+        source_category: str | None = None,
+        also_supplied: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Record a screening 'no' as a completeness statement, never an exclusion.
+
+        ``also_supplied`` carries anything else the client sent with that "no".
+        It is kept rather than dropped: silently discarding what someone typed
+        loses information, and an answer that contradicts the "no" is exactly
+        what the contradiction rules exist to catch.
+        """
+        value = {
+            "present": False,
+            "screened_source_category": source_category,
+            **(also_supplied or {}),
+        }
         return self.transition(
             state,
             "not_present",

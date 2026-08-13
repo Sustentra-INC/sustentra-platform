@@ -4,6 +4,7 @@ import {
   IntakeUser,
   InterviewStep,
   NotSureResult,
+  ParseResponse,
   SeedFormAnswers,
   SeedFormError,
   SeedFormSchema,
@@ -141,6 +142,7 @@ export function submitAnswer(payload: {
   datapoint_id: string;
   scope_ref: string | null;
   answer: Record<string, unknown>;
+  ai_assisted?: boolean;
 }): Promise<AnswerResult> {
   return intakeRequest<AnswerResult>("/v1/intake/interview/answer", {
     method: "POST",
@@ -153,6 +155,17 @@ export function sayNotSure(payload: {
   scope_ref: string | null;
 }): Promise<NotSureResult> {
   return intakeRequest<NotSureResult>("/v1/intake/interview/not-sure", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export function parseFreeText(payload: {
+  datapoint_id: string;
+  scope_ref: string | null;
+  text: string;
+}): Promise<ParseResponse> {
+  return intakeRequest<ParseResponse>("/v1/intake/interview/parse", {
     method: "POST",
     body: payload
   });

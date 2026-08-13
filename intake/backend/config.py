@@ -26,6 +26,8 @@ SETTINGS_PATH = REPO_ROOT / "intake/config/intake_settings.json"
 SEED_FORM_PATH = REPO_ROOT / "intake/config/seed_form.json"
 PROFILE_SCHEMA_PATH = REPO_ROOT / "intake/config/profile_schema.json"
 VOCABULARIES_PATH = REPO_ROOT / "intake/config/controlled_vocabularies.json"
+LLM_CONFIG_PATH = REPO_ROOT / "intake/config/llm.json"
+CONTRADICTIONS_PATH = REPO_ROOT / "intake/config/contradictions.json"
 EMISSION_FACTOR_LIBRARY_PATH = (
     REPO_ROOT / "reference-data/config/libraries/emission_factor_library.json"
 )
@@ -46,6 +48,8 @@ class EscalationSettings(BaseModel):
     sla_hours: int
     reminder_hours: int
     source: str | None = None
+    human_class_policy: str = "always"
+    human_class_policy_note: str | None = None
 
 
 class EmailSettings(BaseModel):
@@ -169,6 +173,18 @@ def load_controlled_vocabularies() -> dict[str, Any]:
 
 
 @lru_cache(maxsize=1)
+def load_llm_config() -> dict[str, Any]:
+    """LLM settings for Stage 2. Defaults to the disabled adapter."""
+    return _apply_env_overrides(_read_json(LLM_CONFIG_PATH))
+
+
+@lru_cache(maxsize=1)
+def load_contradiction_rules() -> dict[str, Any]:
+    """Deterministic checks for answers that conflict with what we already know."""
+    return _read_json(CONTRADICTIONS_PATH)
+
+
+@lru_cache(maxsize=1)
 def load_emission_factor_library() -> dict[str, Any]:
     """Read-only access to the S2 emission factor library.
 
@@ -211,3 +227,5 @@ def reset_caches() -> None:
     load_profile_schema.cache_clear()
     load_controlled_vocabularies.cache_clear()
     load_emission_factor_library.cache_clear()
+    load_llm_config.cache_clear()
+    load_contradiction_rules.cache_clear()

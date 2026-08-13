@@ -1,0 +1,95 @@
+{
+  "config_name": "sustentra_intake_contradictions",
+  "config_version": "1.0.0",
+  "description": "Checks for an answer that conflicts with something the client already told us (intake/SPEC.md section 3, trigger d). Each rule is a predicate in the same language as intake/config/applicability.json and is evaluated by the same deterministic code - a contradiction is never judged by a language model. When a rule is true, the answer is escalated with the message below so a person can sort it out with the client.",
+  "starting_set_note": "Four rules to begin with, chosen because each has a clear, checkable definition. The set is expected to grow as real clients surface conflicts; this file is where they go.",
+  "rules": {
+    "fleet_route_without_fleet": {
+      "datapoint_id": "S1MOB-4.3",
+      "description": "Fuel-record route chosen for a fleet the client said they do not have.",
+      "client_message": "You told us how fuel is recorded for a group of vehicles, but earlier you said the company has no vehicles. We will check which is right.",
+      "predicate": {
+        "all": [
+          { "self_answer": { "field": "selected_co2_calculation_method", "is_set": true } },
+          {
+            "answer": {
+              "datapoint_id": "S1MOB-4.1",
+              "field": "present",
+              "equals": false,
+              "scope": "org_wide"
+            }
+          }
+        ]
+      }
+    },
+    "allocation_without_shared_metering": {
+      "datapoint_id": "S2-6.2",
+      "description": "A way of splitting the bill was given for a site with no shared metering.",
+      "client_message": "You gave us a way to split the electricity bill, but also said this site is not shared. We will check which is right.",
+      "predicate": {
+        "all": [
+          { "self_answer": { "field": "allocation_basis", "is_set": true } },
+          { "self_answer": { "field": "present", "equals": false } }
+        ]
+      }
+    },
+    "blend_without_any_fuel": {
+      "datapoint_id": "S1STC-3.3",
+      "description": "A biodiesel or blended fuel was reported at a site with no fuel-burning equipment, no generator, and no fleet.",
+      "client_message": "You mentioned a blended fuel, but we have not recorded anything at this site that burns fuel. We will check what it is used for.",
+      "predicate": {
+        "all": [
+          { "self_answer": { "field": "present", "equals": true } },
+          {
+            "not": {
+              "any": [
+                {
+                  "answer": {
+                    "datapoint_id": "S1STC-3.1",
+                    "field": "present",
+                    "equals": true,
+                    "scope": "same_site"
+                  }
+                },
+                {
+                  "answer": {
+                    "datapoint_id": "S1STC-3.2",
+                    "field": "present",
+                    "equals": true,
+                    "scope": "same_site"
+                  }
+                },
+                {
+                  "answer": {
+                    "datapoint_id": "S1MOB-4.1",
+                    "field": "present",
+                    "equals": true,
+                    "scope": "org_wide"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "lessee_role_on_owned_site": {
+      "datapoint_id": "BND-2.3",
+      "description": "The client described themselves as a tenant at a site the seed form recorded as owned.",
+      "client_message": "You described your company as the tenant here, but the site was recorded as owned. Getting this right matters for what counts as yours, so we will confirm it with you.",
+      "predicate": {
+        "all": [
+          { "self_answer": { "field": "party_role", "equals": "lessee" } },
+          {
+            "answer": {
+              "datapoint_id": "SEED-1.7",
+              "field": "ownership",
+              "equals": "owned",
+              "scope": "same_site"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

@@ -163,6 +163,8 @@ export interface AnswerResult extends InterviewStep {
 
 export interface NotSureResult extends InterviewStep {
   explainer: string;
+  /** A second explanation, when a model was available to write one. */
+  another_way: string | null;
   message: string;
 }
 
@@ -170,4 +172,25 @@ export interface SeedFormAnswers {
   profile_status?: string;
   company: FormValues;
   sites: FormValues[];
+}
+
+/** The model's reading of a typed answer (Phase D1). Never written until confirmed. */
+export interface ParseOutcome {
+  status: "proposed" | "clarify" | "escalated";
+  datapoint_id: string;
+  scope_ref: string | null;
+  proposal: Record<string, unknown>;
+  summary: string | null;
+  confidence: number | null;
+  clarifying_question: string | null;
+  unresolved: unknown[];
+  dropped_fields: string[];
+  message: string | null;
+  attempts: number;
+}
+
+export interface ParseResponse {
+  outcome: ParseOutcome;
+  coverage: Coverage;
+  next: InterviewQuestion | null;
 }

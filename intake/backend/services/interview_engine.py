@@ -69,6 +69,8 @@ class InterviewEngine:
         profile_states: ProfileStateService,
         settings: IntakeSettings | None = None,
         clock: Callable[[], datetime] = _utcnow,
+        contradictions: Any = None,
+        explainers: Any = None,
     ) -> None:
         self._states = state_repository
         self._orgs = org_repository
@@ -77,6 +79,9 @@ class InterviewEngine:
         self._applicability = applicability
         self._escalations = escalations
         self._profile_states = profile_states
+        # Phase D: optional so the engine still runs without the AI layer.
+        self._contradictions = contradictions
+        self._explainers = explainers
         self._settings = settings or load_settings()
         self._clock = clock
         self._schema = load_profile_schema()
@@ -191,9 +196,19 @@ class InterviewEngine:
     # -- answering ----------------------------------------------------------
 
     def submit_answer(
-        self, org_id: str, datapoint_id: str, scope_ref: str | None, answer: dict, actor_id: str
+        self,
+        org_id: str,
+        datapoint_id: str,
+        scope_ref: str | None,
+        answer: dict,
+        actor_id: str,
+        ai_assisted: bool = False,
     ) -> dict[str, Any]:
-        """Validate and record an answer, then advance the interview."""
+        """Validate and record an answer, then advance the interview.
+
+        ``ai_assisted`` marks a value the client confirmed after a model read
+        their free text. The model never reaches this path on its own.
+        """
         state = self._states.find(org_id, datapoint_id, scope_ref)
         if state is None:
             raise AnswerValidationError(
@@ -217,12 +232,22 @@ class InterviewEngine:
             datapoint = self._datapoints[datapoint_id]
             block = datapoint["populates"][0].get("field_id") if datapoint["populates"] else None
             updated = self._machine.record_not_present(
-                state, actor_id=actor_id, source_category=block
+                state,
+                actor_id=actor_id,
+                source_category=block,
+                also_supplied={
+                    key: value for key, value in cleaned.items() if key != "present"
+                },
             )
         else:
             updated = self._machine.record_answer(
                 state, value=cleaned, actor_id=actor_id, answered_by="user", value_basis="asserted"
             )
+
+        if ai_assisted:
+            updated = dict(updated)
+            updated["ai_assisted"] = True
+            self._states.save(updated)
 
         created_scopes = self._create_child_scopes(org_id, content, cleaned, actor_id)
         escalation = self._apply_escalation_triggers(org_id, updated, content, actor_id)
@@ -238,12 +263,24 @@ class InterviewEngine:
     def not_sure(
         self, org_id: str, datapoint_id: str, scope_ref: str | None, actor_id: str
     ) -> dict[str, Any]:
-        """Show the explainer and escalate. Never a failure state."""
+        """Canned explainer, one rephrase, then escalate (SPEC section 3).
+
+        The rephrase is still shown even though the question is being escalated:
+        the client usually wants to understand what they were asked, and the
+        escalation guarantees they get a real answer either way. If no model is
+        available the rephrase is simply skipped.
+        """
         content = self._content.get(datapoint_id)
         if content is None:
             raise AnswerValidationError(
                 [{"field": "datapoint_id", "message": f"{datapoint_id} is not asked."}]
             )
+
+        rephrased = None
+        if self._explainers is not None:
+            outcome = self._explainers.rephrase(org_id, datapoint_id, scope_ref)
+            if outcome.available:
+                rephrased = outcome.explainer
 
         escalation = self._escalations.open(
             org_id=org_id,
@@ -257,6 +294,7 @@ class InterviewEngine:
         )
         return {
             "explainer": content["explainer"],
+            "another_way": rephrased,
             "message": NOT_SURE_MESSAGE,
             "escalation": escalation,
         }
@@ -278,14 +316,15 @@ class InterviewEngine:
             resolved = resolve_options(field, self._settings)
             field_id = resolved["field_id"]
 
-            if not self._is_revealed(resolved, answer, cleaned):
-                continue
-
+            revealed = self._is_revealed(resolved, answer, cleaned)
             raw = answer.get(field_id)
+
             if raw in (None, "", []):
-                if resolved.get("required"):
+                if revealed and resolved.get("required"):
                     errors.append({"field": field_id, "message": "This field is required."})
                 continue
+            # A value sent for a field that should not have been shown is still
+            # validated and kept, so nothing the client typed is silently lost.
 
             value, problem = self._coerce(resolved, raw)
             if problem:
@@ -368,6 +407,12 @@ class InterviewEngine:
     def _apply_escalation_triggers(
         self, org_id: str, state: dict[str, Any], content: dict[str, Any], actor_id: str
     ) -> dict[str, Any] | None:
+        """Every reason SPEC section 3 says an answer goes to a human.
+
+        Checked in order of specificity: a declared condition first, then a
+        conflict with something already known, then the blanket rule that
+        boundary-class answers are human-confirmed.
+        """
         datapoint = self._datapoints[state["datapoint_id"]]
         profile = self._orgs.get(org_id) or {}
         states = self._states.list_by_org(org_id)
@@ -395,7 +440,68 @@ class InterviewEngine:
                     "trigger_reason": trigger["reason"],
                 },
             )
+
+        conflict = (
+            self._contradictions.check(state, profile, states)
+            if self._contradictions is not None
+            else None
+        )
+        if conflict is not None:
+            return self._escalate(
+                org_id, state, content, actor_id,
+                trigger="contradiction",
+                reason=conflict["description"],
+                client_message=conflict["client_message"],
+            )
+
+        if self._human_class_applies(datapoint, state):
+            return self._escalate(
+                org_id, state, content, actor_id,
+                trigger="human_class_datapoint",
+                reason=(
+                    "Boundary and allocation answers are confirmed by a person before "
+                    "anything downstream depends on them (SPEC section 3, trigger a)."
+                ),
+            )
         return None
+
+    def _human_class_applies(self, datapoint: dict[str, Any], state: dict[str, Any]) -> bool:
+        """Whether this HUMAN-class answer needs confirming, per the configured policy."""
+        if datapoint["class"] != "HUMAN":
+            return False
+        policy = self._settings.escalation.human_class_policy
+        if policy == "never":
+            return False
+        if policy == "exclude_screened_out":
+            return state["status"] != "not_present"
+        return True  # "always" - the literal reading of SPEC section 3
+
+    def _escalate(
+        self,
+        org_id: str,
+        state: dict[str, Any],
+        content: dict[str, Any],
+        actor_id: str,
+        trigger: str,
+        reason: str,
+        client_message: str | None = None,
+    ) -> dict[str, Any]:
+        record = self._escalations.open(
+            org_id=org_id,
+            datapoint_id=state["datapoint_id"],
+            scope_ref=state.get("scope_ref"),
+            trigger=trigger,
+            question_label=content["question"],
+            actor_id=actor_id,
+            answer_attempts=[{"answer": state.get("value")}],
+            seed_context={
+                **self._seed_context(org_id, state.get("scope_ref")),
+                "trigger_reason": reason,
+            },
+        )
+        if client_message:
+            record = {**record, "client_message": client_message}
+        return record
 
     def _seed_context(self, org_id: str, scope_ref: str | None) -> dict[str, Any]:
         org = self._orgs.get(org_id) or {}

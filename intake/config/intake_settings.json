@@ -13,7 +13,9 @@
     "secondary_email": "claire@sustentra.com",
     "sla_hours": 24,
     "reminder_hours": 12,
-    "source": "intake/SPEC.md section 11"
+    "source": "intake/SPEC.md section 11",
+    "human_class_policy": "always",
+    "human_class_policy_note": "SPEC section 3 trigger (a): any HUMAN-class data point escalates for confirmation. 'always' implements that literally and is the default. 'exclude_screened_out' skips the confirmation when the client screened the source out entirely ('no, we have none'), which is the bulk of the volume. 'never' leaves only the explicit condition triggers. A dial rather than a code change, because it governs how much review work each client generates."
   },
   "api": {
     "cors_allowed_origins": ["http://localhost:3000"],

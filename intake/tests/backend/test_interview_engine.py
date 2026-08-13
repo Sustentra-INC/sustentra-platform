@@ -280,9 +280,51 @@ def test_a_yes_to_process_sources_escalates_automatically(harness, interview) ->
     assert result["escalation"]["trigger"] == "condition_met"
 
 
-def test_a_no_to_process_sources_does_not_escalate(harness, interview) -> None:
+def test_a_no_to_a_human_class_question_still_escalates(harness, interview) -> None:
+    """Phase D: SPEC section 3(a) confirms every HUMAN-class answer, including 'no'.
+
+    Before Phase D only a 'yes' escalated here. The default policy is now the
+    literal reading of the spec; see the dial below.
+    """
+    result = _answer(harness, interview["org_id"], "S1FUG-5.4", interview["sites"][0], present=False)
+    assert result["escalated"] is True
+    assert result["escalation"]["trigger"] == "human_class_datapoint"
+
+
+def test_the_human_class_policy_can_exclude_screened_out_answers(harness, interview) -> None:
+    """The dial that decides how much review work each client generates."""
+    harness.settings.escalation.human_class_policy = "exclude_screened_out"
     result = _answer(harness, interview["org_id"], "S1FUG-5.4", interview["sites"][0], present=False)
     assert result["escalated"] is False
+
+
+def test_an_auto_class_question_never_escalates_on_its_class(harness, interview) -> None:
+    result = _answer(
+        harness, interview["org_id"], "S1FUG-5.2", interview["sites"][0], present=False
+    )
+    assert result["escalated"] is False
+
+
+def test_an_answered_then_escalated_question_still_counts_for_the_client(
+    harness, interview
+) -> None:
+    """They answered; the confirmation is our work, not theirs."""
+    org_id = interview["org_id"]
+    before = harness.coverage_service.coverage(org_id)["complete"]
+    result = _answer(harness, org_id, "S1FUG-5.4", interview["sites"][0], present=False)
+    after = harness.coverage_service.coverage(org_id)
+
+    assert result["escalated"] is True
+    assert after["complete"] == before + 1
+    assert after["escalated"] >= 1
+
+
+def test_a_not_sure_escalation_does_not_count_as_complete(harness, interview) -> None:
+    """No answer was given, so there is genuinely still something outstanding."""
+    org_id = interview["org_id"]
+    before = harness.coverage_service.coverage(org_id)["complete"]
+    harness.interview_engine.not_sure(org_id, "S1FUG-5.4", interview["sites"][0], actor_id="usr_1")
+    assert harness.coverage_service.coverage(org_id)["complete"] == before
 
 
 def test_selling_power_escalates(harness, interview) -> None:

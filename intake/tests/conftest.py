@@ -38,7 +38,12 @@ from intake.backend.repositories.datapoint_state_repository import (  # noqa: E4
 from intake.backend.repositories.escalation_repository import (  # noqa: E402
     InMemoryEscalationRepository,
 )
+from intake.backend.adapters.llm import ScriptedLLMClient  # noqa: E402
+from intake.backend.services.answer_parser import AnswerParser  # noqa: E402
 from intake.backend.services.applicability_service import ApplicabilityService  # noqa: E402
+from intake.backend.services.contradiction_service import ContradictionService  # noqa: E402
+from intake.backend.services.explainer_service import ExplainerService  # noqa: E402
+from intake.backend.services.question_content import load_question_content  # noqa: E402
 from intake.backend.services.auth_service import AuthService  # noqa: E402
 from intake.backend.services.coverage_service import CoverageService  # noqa: E402
 from intake.backend.services.interview_engine import InterviewEngine  # noqa: E402
@@ -69,7 +74,9 @@ class Harness:
 
     def __init__(self) -> None:
         self.clock = MutableClock()
-        self.settings = load_settings()
+        # A private copy: load_settings() is cached, so a test that changes a
+        # setting would otherwise leak into every test that ran after it.
+        self.settings = load_settings().model_copy(deep=True)
         self.orgs = InMemoryOrgRepository()
         self.users = InMemoryUserRepository()
         self.sites = InMemorySiteRepository()
@@ -123,6 +130,23 @@ class Harness:
             clock=self.clock,
         )
 
+        # Phase D: a scripted model, so tests never make a real call.
+        self.llm = ScriptedLLMClient()
+        self.question_content = load_question_content()
+        self.contradictions = ContradictionService(self.applicability)
+        self.explainer_service = ExplainerService(
+            self.llm, self.orgs, self.sites, self.question_content
+        )
+        self.answer_parser = AnswerParser(
+            llm_client=self.llm,
+            state_repository=self.states,
+            org_repository=self.orgs,
+            site_repository=self.sites,
+            state_machine=self.state_machine,
+            escalations=self.escalation_service,
+            question_content=self.question_content,
+        )
+
         # Phase C2: the interview engine and coverage meter.
         self.interview_engine = InterviewEngine(
             state_repository=self.states,
@@ -134,6 +158,8 @@ class Harness:
             profile_states=self.profile_state_service,
             settings=self.settings,
             clock=self.clock,
+            contradictions=self.contradictions,
+            explainers=self.explainer_service,
         )
         self.coverage_service = CoverageService(self.interview_engine)
 
@@ -147,6 +173,9 @@ class Harness:
             coverage_service=self.coverage_service,
             escalation_service=self.escalation_service,
             state_repository=self.states,
+            settings=self.settings,
+            answer_parser=self.answer_parser,
+            explainer_service=self.explainer_service,
         )
 
     # -- convenience --------------------------------------------------------
