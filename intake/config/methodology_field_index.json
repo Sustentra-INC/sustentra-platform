@@ -1,0 +1,3170 @@
+{
+  "index_name": "sustentra_intake_methodology_field_index",
+  "index_version": "1.0.0",
+  "description": "Generated allow-list of methodology field IDs, their data schema field names, controlled calculation-method values, and J2 evidence type IDs. Used by intake/scripts/validate_profile_schema.py to prove the intake profile schema seed invents no data fields (CLAUDE.md rule 3).",
+  "generated_by": "intake/scripts/extract_methodology_field_index.py",
+  "sources": [
+    {
+      "path": "reference-data/methodology/S2_General_Methodology_Schema_v.1.xlsx",
+      "sheet": "1_Schema",
+      "source": "general",
+      "field_count": 51
+    },
+    {
+      "path": "reference-data/methodology/S2_Scope1_Data_Schema_v.1.xlsx",
+      "sheet": "1_Schema",
+      "source": "scope1",
+      "field_count": 139
+    },
+    {
+      "path": "reference-data/methodology/S2_Scope2_Data_Schema_v.1.xlsx",
+      "sheet": "S2_Schema",
+      "source": "scope2",
+      "field_count": 89
+    }
+  ],
+  "evidence_type_library": {
+    "path": "reference-data/config/libraries/evidence_type_library.json",
+    "library_name": "sustentra_j2_issa5000_evidence_type_library",
+    "version": "0.1.0"
+  },
+  "counts": {
+    "methodology_fields": 279,
+    "calculation_methods": 17,
+    "evidence_types": 20
+  },
+  "calculation_methods": [
+    "activity_estimation",
+    "cems",
+    "distance_based_onroad",
+    "fuel_based",
+    "fuel_based_carbon_content",
+    "fuel_based_default",
+    "fuel_based_hhv",
+    "fuel_based_nonroad",
+    "fuel_inventory_adjustment",
+    "location_based",
+    "market_based",
+    "material_balance",
+    "method_agnostic",
+    "normalization",
+    "purchased_gas",
+    "screening",
+    "simplified_material_balance"
+  ],
+  "evidence_type_ids": [
+    "J2-001",
+    "J2-002",
+    "J2-003",
+    "J2-004",
+    "J2-005",
+    "J2-006",
+    "J2-007",
+    "J2-008",
+    "J2-009",
+    "J2-010",
+    "J2-011",
+    "J2-012",
+    "J2-013",
+    "J2-014",
+    "J2-015",
+    "J2-016",
+    "J2-017",
+    "J2-018",
+    "J2-019",
+    "J2-020"
+  ],
+  "methodology_fields": {
+    "AGG-010": {
+      "field_id": "AGG-010",
+      "source": "general",
+      "block": "AGG",
+      "grain": "source_x_operation",
+      "schema_fields": [
+        "allocation_basis",
+        "allocation_source",
+        "allocated_fraction",
+        "allocation_rationale"
+      ]
+    },
+    "BAS-005": {
+      "field_id": "BAS-005",
+      "source": "general",
+      "block": "BAS",
+      "grain": "inventory",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "BAS-010": {
+      "field_id": "BAS-010",
+      "source": "general",
+      "block": "BAS",
+      "grain": "inventory",
+      "schema_fields": [
+        "base_year",
+        "base_year_selection_rationale",
+        "base_year_type"
+      ]
+    },
+    "BAS-020": {
+      "field_id": "BAS-020",
+      "source": "general",
+      "block": "BAS",
+      "grain": "inventory",
+      "schema_fields": [
+        "base_year_emissions"
+      ]
+    },
+    "BAS-025": {
+      "field_id": "BAS-025",
+      "source": "general",
+      "block": "BAS",
+      "grain": "inventory",
+      "schema_fields": [
+        "base_year_determination_basis",
+        "base_year_verification_route",
+        "base_year_assurance_strength_flag"
+      ]
+    },
+    "BAS-030": {
+      "field_id": "BAS-030",
+      "source": "general",
+      "block": "BAS",
+      "grain": "inventory",
+      "schema_fields": [
+        "recalculation_policy",
+        "significance_threshold",
+        "recalculation_trigger",
+        "recalculation_performed_flag",
+        "recalculation_rationale"
+      ]
+    },
+    "BIO-010": {
+      "field_id": "BIO-010",
+      "source": "general",
+      "block": "BIO",
+      "grain": "emission_source",
+      "schema_fields": [
+        "biogenic_co2_quantity",
+        "biogenic_fraction",
+        "biogenic_fraction_basis",
+        "biogenic_origin"
+      ]
+    },
+    "BIO-020": {
+      "field_id": "BIO-020",
+      "source": "general",
+      "block": "BIO",
+      "grain": "inventory",
+      "schema_fields": [
+        "biogenic_reported_separately_flag"
+      ]
+    },
+    "BIO-030": {
+      "field_id": "BIO-030",
+      "source": "general",
+      "block": "BIO",
+      "grain": "inventory",
+      "schema_fields": [
+        "grid_factor_biogenic_treatment_documented"
+      ]
+    },
+    "CHG-005": {
+      "field_id": "CHG-005",
+      "source": "general",
+      "block": "CHG",
+      "grain": "change_event",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "CHG-010": {
+      "field_id": "CHG-010",
+      "source": "general",
+      "block": "CHG",
+      "grain": "change_event",
+      "schema_fields": [
+        "change_id",
+        "change_type",
+        "effective_date",
+        "affected_operation_id",
+        "boundary_effect",
+        "recalc_effect",
+        "classification_before",
+        "classification_after"
+      ]
+    },
+    "EXC-005": {
+      "field_id": "EXC-005",
+      "source": "general",
+      "block": "EXC",
+      "grain": "excluded_source",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "EXC-010": {
+      "field_id": "EXC-010",
+      "source": "general",
+      "block": "EXC",
+      "grain": "excluded_source",
+      "schema_fields": [
+        "excluded_source_id",
+        "exclusion_rationale",
+        "exclusion_materiality_basis"
+      ]
+    },
+    "EXC-015": {
+      "field_id": "EXC-015",
+      "source": "general",
+      "block": "EXC",
+      "grain": "excluded_source",
+      "schema_fields": [
+        "exclusion_determination_basis",
+        "exclusion_verification_route",
+        "exclusion_assurance_strength_flag"
+      ]
+    },
+    "FAC-005": {
+      "field_id": "FAC-005",
+      "source": "general",
+      "block": "FAC",
+      "grain": "facility",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "FAC-010": {
+      "field_id": "FAC-010",
+      "source": "general",
+      "block": "FAC",
+      "grain": "facility",
+      "schema_fields": [
+        "facility_id",
+        "facility_name",
+        "location",
+        "country_region",
+        "operational_status",
+        "period_in_scope_start",
+        "period_in_scope_end"
+      ]
+    },
+    "GAS-010": {
+      "field_id": "GAS-010",
+      "source": "general",
+      "block": "GAS",
+      "grain": "inventory",
+      "schema_fields": [
+        "gases_included"
+      ]
+    },
+    "GAS-020": {
+      "field_id": "GAS-020",
+      "source": "general",
+      "block": "GAS",
+      "grain": "inventory",
+      "schema_fields": [
+        "non_kyoto_gases_reported"
+      ]
+    },
+    "GAS-030": {
+      "field_id": "GAS-030",
+      "source": "general",
+      "block": "GAS",
+      "grain": "inventory",
+      "schema_fields": [
+        "gwp_ar_edition",
+        "gwp_time_horizon",
+        "gwp_source"
+      ]
+    },
+    "INV-005": {
+      "field_id": "INV-005",
+      "source": "general",
+      "block": "INV",
+      "grain": "inventory",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "INV-010": {
+      "field_id": "INV-010",
+      "source": "general",
+      "block": "INV",
+      "grain": "inventory",
+      "schema_fields": [
+        "inventory_id",
+        "legal_reporting_entity_id",
+        "emissions_consolidated_group_id",
+        "reporting_year",
+        "reporting_year_basis",
+        "consolidation_approach_ref"
+      ]
+    },
+    "MTH-010": {
+      "field_id": "MTH-010",
+      "source": "general",
+      "block": "MTH",
+      "grain": "source_category",
+      "schema_fields": [
+        "source_category_ref",
+        "methodology_used",
+        "calculation_tool_reference",
+        "tool_version"
+      ]
+    },
+    "MTH-020": {
+      "field_id": "MTH-020",
+      "source": "general",
+      "block": "MTH",
+      "grain": "source_category",
+      "schema_fields": [
+        "ef_source",
+        "ef_source_version",
+        "ef_publisher"
+      ]
+    },
+    "MTH-025": {
+      "field_id": "MTH-025",
+      "source": "general",
+      "block": "MTH",
+      "grain": "source_category",
+      "schema_fields": [
+        "ef_source_determination_basis",
+        "ef_source_verification_route",
+        "ef_source_assurance_strength_flag"
+      ]
+    },
+    "OPB-010": {
+      "field_id": "OPB-010",
+      "source": "general",
+      "block": "OPB",
+      "grain": "emission_source",
+      "schema_fields": [
+        "scope_classification"
+      ]
+    },
+    "OPB-015": {
+      "field_id": "OPB-015",
+      "source": "general",
+      "block": "OPB",
+      "grain": "emission_source",
+      "schema_fields": [
+        "classification_verification_route",
+        "classification_assurance_strength_flag"
+      ]
+    },
+    "OPB-020": {
+      "field_id": "OPB-020",
+      "source": "general",
+      "block": "OPB",
+      "grain": "emission_source",
+      "schema_fields": [
+        "sold_own_generated_energy_flag"
+      ]
+    },
+    "OPB-030": {
+      "field_id": "OPB-030",
+      "source": "general",
+      "block": "OPB",
+      "grain": "emission_source",
+      "schema_fields": [
+        "electricity_purchased_for_resale_flag"
+      ]
+    },
+    "OPB-040": {
+      "field_id": "OPB-040",
+      "source": "general",
+      "block": "OPB",
+      "grain": "emission_source",
+      "schema_fields": [
+        "double_counting_check"
+      ]
+    },
+    "ORG-005": {
+      "field_id": "ORG-005",
+      "source": "general",
+      "block": "ORG",
+      "grain": "operation",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "ORG-010": {
+      "field_id": "ORG-010",
+      "source": "general",
+      "block": "ORG",
+      "grain": "inventory",
+      "schema_fields": [
+        "consolidation_approach"
+      ]
+    },
+    "ORG-020": {
+      "field_id": "ORG-020",
+      "source": "general",
+      "block": "ORG",
+      "grain": "operation",
+      "schema_fields": [
+        "operation_id",
+        "operation_name",
+        "equity_share_pct",
+        "financial_control_flag",
+        "operational_control_flag",
+        "entity_relationship"
+      ]
+    },
+    "ORG-025": {
+      "field_id": "ORG-025",
+      "source": "general",
+      "block": "ORG",
+      "grain": "operation",
+      "schema_fields": [
+        "control_determination_basis",
+        "control_verification_route",
+        "control_assurance_strength_flag"
+      ]
+    },
+    "ORG-026": {
+      "field_id": "ORG-026",
+      "source": "general",
+      "block": "ORG",
+      "grain": "operation",
+      "schema_fields": [
+        "equity_determination_basis",
+        "equity_verification_route",
+        "equity_assurance_strength_flag"
+      ]
+    },
+    "ORG-030": {
+      "field_id": "ORG-030",
+      "source": "general",
+      "block": "ORG",
+      "grain": "operation",
+      "schema_fields": [
+        "inclusion_percentage"
+      ]
+    },
+    "ORG-040": {
+      "field_id": "ORG-040",
+      "source": "general",
+      "block": "ORG",
+      "grain": "leased_asset",
+      "schema_fields": [
+        "party_role"
+      ]
+    },
+    "ORG-050": {
+      "field_id": "ORG-050",
+      "source": "general",
+      "block": "ORG",
+      "grain": "leased_asset",
+      "schema_fields": [
+        "lease_type",
+        "operational_control_over_asset_flag",
+        "exclusion_justification"
+      ]
+    },
+    "ORG-055": {
+      "field_id": "ORG-055",
+      "source": "general",
+      "block": "ORG",
+      "grain": "leased_asset",
+      "schema_fields": [
+        "asset_role_determination_basis",
+        "asset_verification_route",
+        "asset_assurance_strength_flag"
+      ]
+    },
+    "ORG-057": {
+      "field_id": "ORG-057",
+      "source": "general",
+      "block": "ORG",
+      "grain": "leased_asset",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "PER-010": {
+      "field_id": "PER-010",
+      "source": "general",
+      "block": "PER",
+      "grain": "inventory",
+      "schema_fields": [
+        "reporting_period_start",
+        "reporting_period_end",
+        "fiscal_year_basis"
+      ]
+    },
+    "PER-020": {
+      "field_id": "PER-020",
+      "source": "general",
+      "block": "PER",
+      "grain": "source_document",
+      "schema_fields": [
+        "period_allocation_method",
+        "source_period_start",
+        "source_period_end",
+        "allocated_quantity"
+      ]
+    },
+    "PER-025": {
+      "field_id": "PER-025",
+      "source": "general",
+      "block": "PER",
+      "grain": "source_document",
+      "schema_fields": [
+        "allocation_determination_basis",
+        "allocation_verification_route",
+        "allocation_assurance_strength_flag"
+      ]
+    },
+    "RPT-010": {
+      "field_id": "RPT-010",
+      "source": "general",
+      "block": "RPT",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "organizational_boundary_disclosure",
+        "operational_boundary_disclosure",
+        "reporting_period_disclosure"
+      ]
+    },
+    "RPT-020": {
+      "field_id": "RPT-020",
+      "source": "general",
+      "block": "RPT",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "scope_separation",
+        "biogenic_co2_separate",
+        "methodology_description",
+        "calculation_tool_reference"
+      ]
+    },
+    "RPT-030": {
+      "field_id": "RPT-030",
+      "source": "general",
+      "block": "RPT",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "base_year_disclosure",
+        "recalculation_context_disclosure",
+        "exclusions_disclosure",
+        "inventory_quality_policy"
+      ]
+    },
+    "RUP-005": {
+      "field_id": "RUP-005",
+      "source": "general",
+      "block": "RUP",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "RUP-010": {
+      "field_id": "RUP-010",
+      "source": "general",
+      "block": "RUP",
+      "grain": "facility_x_scope_x_method",
+      "schema_fields": [
+        "facility_emissions_by_gas",
+        "facility_emissions_co2e",
+        "scope2_method"
+      ]
+    },
+    "RUP-020": {
+      "field_id": "RUP-020",
+      "source": "general",
+      "block": "RUP",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "business_unit_emissions",
+        "corporate_total_by_scope",
+        "corporate_total_by_gas",
+        "corporate_total_co2e",
+        "scope2_method"
+      ]
+    },
+    "RUP-030": {
+      "field_id": "RUP-030",
+      "source": "general",
+      "block": "RUP",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "gross_emissions_excluding_trades"
+      ]
+    },
+    "RUP-040": {
+      "field_id": "RUP-040",
+      "source": "general",
+      "block": "RUP",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "offsets_purchased",
+        "offsets_sold_transferred",
+        "sequestration_reported"
+      ]
+    },
+    "RUP-050": {
+      "field_id": "RUP-050",
+      "source": "general",
+      "block": "RUP",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "inventory_total_method_election",
+        "elected_method",
+        "election_disclosure"
+      ]
+    },
+    "S1-FUG-010": {
+      "field_id": "S1-FUG-010",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment_group_x_reporting_period",
+      "schema_fields": [
+        "equipment_type",
+        "equipment_count",
+        "gas_type",
+        "total_charge_capacity",
+        "capacity_unit",
+        "new_equipment_charge",
+        "time_in_service_years",
+        "disposed_equipment_capacity"
+      ]
+    },
+    "S1-FUG-020": {
+      "field_id": "S1-FUG-020",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "assembly_loss_factor",
+        "annual_leak_rate",
+        "disposal_remaining_pct",
+        "recovery_efficiency",
+        "ef_source",
+        "ef_vintage"
+      ]
+    },
+    "S1-FUG-030": {
+      "field_id": "S1-FUG-030",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment_group_x_reporting_period",
+      "schema_fields": [
+        "installation_emissions_gas",
+        "operating_emissions_gas",
+        "disposal_emissions_gas"
+      ]
+    },
+    "S1-FUG-040": {
+      "field_id": "S1-FUG-040",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment_group_x_reporting_period",
+      "schema_fields": [
+        "total_emissions_gas",
+        "emissions_co2e",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-FUG-050": {
+      "field_id": "S1-FUG-050",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment_group_x_reporting_period",
+      "schema_fields": [
+        "equipment_type",
+        "fixed_or_portable",
+        "gas_type",
+        "equipment_count",
+        "total_capacity",
+        "capacity_unit"
+      ]
+    },
+    "S1-FUG-060": {
+      "field_id": "S1-FUG-060",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "fixed_system_emission_factor",
+        "portable_system_emission_factor",
+        "ef_source",
+        "ef_unit"
+      ]
+    },
+    "S1-FUG-070": {
+      "field_id": "S1-FUG-070",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment_group_x_reporting_period",
+      "schema_fields": [
+        "emissions_gas",
+        "emissions_co2e",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-FUG-080": {
+      "field_id": "S1-FUG-080",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "gas_purchase",
+      "schema_fields": [
+        "gas_type",
+        "amount_purchased",
+        "quantity_unit",
+        "use_purpose"
+      ]
+    },
+    "S1-FUG-090": {
+      "field_id": "S1-FUG-090",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "gas_property_record",
+      "schema_fields": [
+        "gas_density",
+        "density_unit",
+        "density_source"
+      ]
+    },
+    "S1-FUG-100": {
+      "field_id": "S1-FUG-100",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment",
+      "schema_fields": [
+        "equipment_id",
+        "inventory_id",
+        "facility_id"
+      ]
+    },
+    "S1-FUG-110": {
+      "field_id": "S1-FUG-110",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "service_event",
+      "schema_fields": [
+        "gas_type",
+        "event_date",
+        "amount_added",
+        "amount_removed",
+        "amount_recovered",
+        "amount_disposed",
+        "quantity_unit",
+        "service_provider"
+      ]
+    },
+    "S1-FUG-120": {
+      "field_id": "S1-FUG-120",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "gas_purchase",
+      "schema_fields": [
+        "gas_type",
+        "purchase_date",
+        "amount_purchased",
+        "quantity_unit",
+        "use_purpose"
+      ]
+    },
+    "S1-FUG-130": {
+      "field_id": "S1-FUG-130",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment",
+      "schema_fields": [
+        "equipment_id",
+        "inventory_id",
+        "facility_id"
+      ]
+    },
+    "S1-FUG-140": {
+      "field_id": "S1-FUG-140",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "service_event",
+      "schema_fields": [
+        "event_date",
+        "sf6_added",
+        "sf6_removed",
+        "sf6_recovered",
+        "quantity_unit"
+      ]
+    },
+    "S1-FUG-150": {
+      "field_id": "S1-FUG-150",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "component_inspection",
+      "schema_fields": [
+        "gas_stream",
+        "inspection_date",
+        "leak_detection_method",
+        "measured_leak_rate",
+        "repair_date",
+        "repair_status"
+      ]
+    },
+    "S1-FUG-160": {
+      "field_id": "S1-FUG-160",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "calculation_record",
+      "schema_fields": [
+        "estimate_flag"
+      ]
+    },
+    "S1-FUG-170": {
+      "field_id": "S1-FUG-170",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "calculation_record",
+      "schema_fields": [
+        "method_variant"
+      ]
+    },
+    "S1-FUG-180": {
+      "field_id": "S1-FUG-180",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment",
+      "schema_fields": [
+        "equipment_id",
+        "inventory_id",
+        "facility_id"
+      ]
+    },
+    "S1-FUG-190": {
+      "field_id": "S1-FUG-190",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment",
+      "schema_fields": [
+        "equipment_type",
+        "location",
+        "gas_stream",
+        "operating_status"
+      ]
+    },
+    "S1-FUG-200": {
+      "field_id": "S1-FUG-200",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "gas_purchase",
+      "schema_fields": [
+        "converted_mass"
+      ]
+    },
+    "S1-FUG-210": {
+      "field_id": "S1-FUG-210",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "gas_purchase",
+      "schema_fields": [
+        "bulk_purchase_quantity",
+        "expected_years_usage"
+      ]
+    },
+    "S1-FUG-220": {
+      "field_id": "S1-FUG-220",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "gas_purchase_x_reporting_period",
+      "schema_fields": [
+        "period_allocation_ref"
+      ]
+    },
+    "S1-FUG-230": {
+      "field_id": "S1-FUG-230",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "gas_purchase_x_reporting_period",
+      "schema_fields": [
+        "emissions_gas",
+        "emissions_co2e",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-FUG-240": {
+      "field_id": "S1-FUG-240",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "inventory_beginning",
+        "inventory_ending",
+        "purchases_acquisitions",
+        "sales_disbursements",
+        "equipment_capacity_beginning",
+        "equipment_capacity_ending",
+        "quantity_unit",
+        "gas_type"
+      ]
+    },
+    "S1-FUG-250": {
+      "field_id": "S1-FUG-250",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "inventory_change",
+        "capacity_change"
+      ]
+    },
+    "S1-FUG-260": {
+      "field_id": "S1-FUG-260",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "emissions_gas",
+        "emissions_co2e",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-FUG-270": {
+      "field_id": "S1-FUG-270",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "new_equipment_capacity",
+        "retrofit_to_gas_capacity",
+        "retiring_equipment_capacity",
+        "retrofit_away_capacity"
+      ]
+    },
+    "S1-FUG-280": {
+      "field_id": "S1-FUG-280",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "estimated_capacity_change"
+      ]
+    },
+    "S1-FUG-290": {
+      "field_id": "S1-FUG-290",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "new_equipment_charge_purchased",
+        "new_equipment_capacity",
+        "service_refrigerant_purchased",
+        "retiring_equipment_capacity",
+        "recovered_from_retiring_equipment",
+        "quantity_unit",
+        "gas_type"
+      ]
+    },
+    "S1-FUG-300": {
+      "field_id": "S1-FUG-300",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "installation_emissions_gas",
+        "operating_emissions_gas",
+        "disposal_emissions_gas"
+      ]
+    },
+    "S1-FUG-310": {
+      "field_id": "S1-FUG-310",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "total_emissions_gas",
+        "emissions_co2e",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-FUG-320": {
+      "field_id": "S1-FUG-320",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "selected_inventory_change",
+        "selected_purchases_acquisitions",
+        "selected_sales_disbursements",
+        "selected_capacity_change",
+        "capacity_change_basis"
+      ]
+    },
+    "S1-FUG-400": {
+      "field_id": "S1-FUG-400",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment",
+      "schema_fields": [
+        "equipment_type",
+        "location",
+        "gas_type",
+        "nameplate_capacity",
+        "capacity_unit",
+        "installation_date",
+        "retirement_date",
+        "operating_status"
+      ]
+    },
+    "S1-FUG-410": {
+      "field_id": "S1-FUG-410",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "service_event",
+      "schema_fields": [
+        "service_event_id",
+        "equipment_id",
+        "source_document_id",
+        "inventory_id",
+        "reporting_period_ref"
+      ]
+    },
+    "S1-FUG-420": {
+      "field_id": "S1-FUG-420",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "gas_purchase",
+      "schema_fields": [
+        "transaction_id",
+        "facility_id",
+        "source_document_id",
+        "inventory_id",
+        "reporting_period_ref"
+      ]
+    },
+    "S1-FUG-430": {
+      "field_id": "S1-FUG-430",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment",
+      "schema_fields": [
+        "equipment_type",
+        "location",
+        "sf6_nameplate_capacity",
+        "capacity_unit",
+        "operating_status"
+      ]
+    },
+    "S1-FUG-440": {
+      "field_id": "S1-FUG-440",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "service_event",
+      "schema_fields": [
+        "event_id",
+        "equipment_id",
+        "source_document_id",
+        "inventory_id",
+        "reporting_period_ref"
+      ]
+    },
+    "S1-FUG-450": {
+      "field_id": "S1-FUG-450",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "component_inspection",
+      "schema_fields": [
+        "component_id",
+        "equipment_id",
+        "source_document_id",
+        "inventory_id",
+        "reporting_period_ref"
+      ]
+    },
+    "S1-FUG-460": {
+      "field_id": "S1-FUG-460",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "calculation_record",
+      "schema_fields": [
+        "calculation_record_id",
+        "source_document_id",
+        "inventory_id",
+        "source_id",
+        "source_grain",
+        "reporting_period_ref"
+      ]
+    },
+    "S1-FUG-470": {
+      "field_id": "S1-FUG-470",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "selected_capacity_input_field_id"
+      ]
+    },
+    "S1-FUG-480": {
+      "field_id": "S1-FUG-480",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment_group_x_reporting_period",
+      "schema_fields": [
+        "selected_calculation_method",
+        "selected_method_basis",
+        "selected_screening_source_type"
+      ]
+    },
+    "S1-FUG-490": {
+      "field_id": "S1-FUG-490",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "gas_purchase_x_reporting_period",
+      "schema_fields": [
+        "selected_calculation_method",
+        "selected_method_basis"
+      ]
+    },
+    "S1-FUG-500": {
+      "field_id": "S1-FUG-500",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "selected_calculation_method",
+        "selected_method_basis"
+      ]
+    },
+    "S1-FUG-510": {
+      "field_id": "S1-FUG-510",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "equipment_group_x_reporting_period",
+      "schema_fields": [
+        "equipment_group_id",
+        "inventory_id",
+        "facility_id",
+        "reporting_period_ref"
+      ]
+    },
+    "S1-FUG-520": {
+      "field_id": "S1-FUG-520",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "system_x_reporting_period",
+      "schema_fields": [
+        "system_id",
+        "inventory_id",
+        "facility_id",
+        "reporting_period_ref"
+      ]
+    },
+    "S1-FUG-530": {
+      "field_id": "S1-FUG-530",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "gas_purchase",
+      "schema_fields": [
+        "quantity_unit_type"
+      ]
+    },
+    "S1-FUG-540": {
+      "field_id": "S1-FUG-540",
+      "source": "scope1",
+      "block": "FUG",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "emission_factor_set_id",
+        "mth_020_ref"
+      ]
+    },
+    "S1-MOB-010": {
+      "field_id": "S1-MOB-010",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "fuel_record",
+      "schema_fields": [
+        "fuel_type",
+        "quantity_combusted",
+        "quantity_unit"
+      ]
+    },
+    "S1-MOB-020": {
+      "field_id": "S1-MOB-020",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "fuel_property_record",
+      "schema_fields": [
+        "hhv_value",
+        "hhv_unit",
+        "hhv_source",
+        "sampling_frequency"
+      ]
+    },
+    "S1-MOB-030": {
+      "field_id": "S1-MOB-030",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "emission_factor_co2",
+        "ef_source",
+        "ef_vintage",
+        "ef_unit"
+      ]
+    },
+    "S1-MOB-040": {
+      "field_id": "S1-MOB-040",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2",
+        "gas_emissions_unit"
+      ]
+    },
+    "S1-MOB-050": {
+      "field_id": "S1-MOB-050",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "activity_record",
+      "schema_fields": [
+        "distance_traveled",
+        "distance_unit"
+      ]
+    },
+    "S1-MOB-060": {
+      "field_id": "S1-MOB-060",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "emission_factor_ch4",
+        "emission_factor_n2o",
+        "ef_source",
+        "ef_vintage",
+        "ef_unit",
+        "factor_vehicle_type",
+        "factor_model_year"
+      ]
+    },
+    "S1-MOB-070": {
+      "field_id": "S1-MOB-070",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "emissions_ch4",
+        "emissions_n2o",
+        "emissions_co2e_nonco2",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-MOB-080": {
+      "field_id": "S1-MOB-080",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "emission_factor_ch4",
+        "emission_factor_n2o",
+        "ef_source",
+        "ef_vintage",
+        "ef_unit",
+        "factor_equipment_type",
+        "factor_fuel_type"
+      ]
+    },
+    "S1-MOB-090": {
+      "field_id": "S1-MOB-090",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "emissions_ch4",
+        "emissions_n2o",
+        "emissions_co2e_nonco2",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-MOB-100": {
+      "field_id": "S1-MOB-100",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset",
+      "schema_fields": [
+        "vehicle_or_equipment_id",
+        "inventory_id",
+        "facility_id"
+      ]
+    },
+    "S1-MOB-110": {
+      "field_id": "S1-MOB-110",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "fuel_transaction",
+      "schema_fields": [
+        "transaction_date",
+        "fuel_type",
+        "quantity",
+        "quantity_unit",
+        "merchant_or_supplier",
+        "fueling_location"
+      ]
+    },
+    "S1-MOB-120": {
+      "field_id": "S1-MOB-120",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "activity_record",
+      "schema_fields": [
+        "odometer_start",
+        "odometer_end",
+        "distance_traveled",
+        "distance_unit",
+        "operating_hours",
+        "activity_period_start",
+        "activity_period_end"
+      ]
+    },
+    "S1-MOB-130": {
+      "field_id": "S1-MOB-130",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "calculation_record",
+      "schema_fields": [
+        "estimate_flag",
+        "estimate_basis",
+        "estimation_direction",
+        "idling_included_flag"
+      ]
+    },
+    "S1-MOB-140": {
+      "field_id": "S1-MOB-140",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "calculation_record",
+      "schema_fields": [
+        "co2_method_variant",
+        "nonco2_method_variant"
+      ]
+    },
+    "S1-MOB-200": {
+      "field_id": "S1-MOB-200",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "quantity_purchased",
+        "inventory_opening",
+        "inventory_closing",
+        "quantity_spilled",
+        "quantity_fugitive_loss",
+        "quantity_unit"
+      ]
+    },
+    "S1-MOB-210": {
+      "field_id": "S1-MOB-210",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "adjusted_quantity_combusted"
+      ]
+    },
+    "S1-MOB-220": {
+      "field_id": "S1-MOB-220",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "emission_factor_co2",
+        "ef_source",
+        "ef_vintage",
+        "ef_unit"
+      ]
+    },
+    "S1-MOB-230": {
+      "field_id": "S1-MOB-230",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2",
+        "gas_emissions_unit"
+      ]
+    },
+    "S1-MOB-240": {
+      "field_id": "S1-MOB-240",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "fuel_property_record",
+      "schema_fields": [
+        "carbon_content_value",
+        "carbon_content_unit",
+        "carbon_content_source",
+        "sampling_frequency"
+      ]
+    },
+    "S1-MOB-250": {
+      "field_id": "S1-MOB-250",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2",
+        "gas_emissions_unit"
+      ]
+    },
+    "S1-MOB-260": {
+      "field_id": "S1-MOB-260",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "fuel_property_record",
+      "schema_fields": [
+        "fuel_economy_value",
+        "fuel_economy_unit",
+        "fuel_economy_source"
+      ]
+    },
+    "S1-MOB-270": {
+      "field_id": "S1-MOB-270",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "activity_record",
+      "schema_fields": [
+        "estimated_fuel_quantity",
+        "estimated_distance"
+      ]
+    },
+    "S1-MOB-280": {
+      "field_id": "S1-MOB-280",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "activity_record",
+      "schema_fields": [
+        "operating_hours",
+        "horsepower_hours",
+        "ton_miles",
+        "fuel_consumption_rate",
+        "rate_unit"
+      ]
+    },
+    "S1-MOB-290": {
+      "field_id": "S1-MOB-290",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "estimated_quantity_combusted"
+      ]
+    },
+    "S1-MOB-300": {
+      "field_id": "S1-MOB-300",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "activity_record",
+      "schema_fields": [
+        "idling_duration",
+        "idling_duration_unit",
+        "idling_fuel_rate",
+        "idling_fuel_quantity"
+      ]
+    },
+    "S1-MOB-310": {
+      "field_id": "S1-MOB-310",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "fuel_property_record",
+      "schema_fields": [
+        "biofuel_blend_pct",
+        "fossil_fraction",
+        "biogenic_fraction",
+        "blend_source"
+      ]
+    },
+    "S1-MOB-320": {
+      "field_id": "S1-MOB-320",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "fossil_fuel_quantity",
+        "biogenic_fuel_quantity"
+      ]
+    },
+    "S1-MOB-330": {
+      "field_id": "S1-MOB-330",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "selected_quantity_combusted",
+        "selected_quantity_unit",
+        "selected_quantity_basis",
+        "idling_adjustment_applied_flag"
+      ]
+    },
+    "S1-MOB-340": {
+      "field_id": "S1-MOB-340",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "activity_record",
+      "schema_fields": [
+        "selected_distance",
+        "selected_distance_unit",
+        "selected_distance_basis"
+      ]
+    },
+    "S1-MOB-350": {
+      "field_id": "S1-MOB-350",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2_fossil",
+        "emissions_co2_biogenic",
+        "gas_emissions_unit"
+      ]
+    },
+    "S1-MOB-360": {
+      "field_id": "S1-MOB-360",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2_fossil",
+        "emissions_co2_biogenic",
+        "gas_emissions_unit"
+      ]
+    },
+    "S1-MOB-370": {
+      "field_id": "S1-MOB-370",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2_fossil",
+        "emissions_co2_biogenic",
+        "gas_emissions_unit"
+      ]
+    },
+    "S1-MOB-400": {
+      "field_id": "S1-MOB-400",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset",
+      "schema_fields": [
+        "vehicle_type",
+        "model_year",
+        "fuel_type",
+        "location",
+        "operating_status",
+        "fleet_group",
+        "mobile_source_class"
+      ]
+    },
+    "S1-MOB-410": {
+      "field_id": "S1-MOB-410",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "fuel_transaction",
+      "schema_fields": [
+        "transaction_id",
+        "vehicle_or_equipment_id",
+        "source_document_id",
+        "inventory_id",
+        "reporting_period_ref"
+      ]
+    },
+    "S1-MOB-420": {
+      "field_id": "S1-MOB-420",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "activity_record",
+      "schema_fields": [
+        "activity_record_id",
+        "vehicle_or_equipment_id",
+        "source_document_id",
+        "inventory_id",
+        "reporting_period_ref"
+      ]
+    },
+    "S1-MOB-430": {
+      "field_id": "S1-MOB-430",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "calculation_record",
+      "schema_fields": [
+        "calculation_record_id",
+        "source_document_id",
+        "inventory_id",
+        "vehicle_or_equipment_id",
+        "reporting_period_ref",
+        "source_id",
+        "source_grain"
+      ]
+    },
+    "S1-MOB-440": {
+      "field_id": "S1-MOB-440",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "selected_input_field_id"
+      ]
+    },
+    "S1-MOB-450": {
+      "field_id": "S1-MOB-450",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "activity_record",
+      "schema_fields": [
+        "selected_input_field_id"
+      ]
+    },
+    "S1-MOB-460": {
+      "field_id": "S1-MOB-460",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "selected_co2_calculation_method",
+        "selected_co2_method_basis",
+        "selected_nonco2_calculation_method",
+        "selected_nonco2_method_basis"
+      ]
+    },
+    "S1-MOB-470": {
+      "field_id": "S1-MOB-470",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "mobile_asset_x_reporting_period",
+      "schema_fields": [
+        "selected_activity_quantity_route",
+        "selected_activity_route_basis",
+        "fuel_quantity_is_estimated"
+      ]
+    },
+    "S1-MOB-480": {
+      "field_id": "S1-MOB-480",
+      "source": "scope1",
+      "block": "MOB",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "emission_factor_set_id",
+        "mth_020_ref"
+      ]
+    },
+    "S1-OUT-010": {
+      "field_id": "S1-OUT-010",
+      "source": "scope1",
+      "block": "OUT",
+      "grain": "emission_source_x_gas",
+      "schema_fields": [
+        "output_record_id",
+        "inventory_id",
+        "facility_id",
+        "reporting_period_ref",
+        "source_id",
+        "method_variant_ref",
+        "source_block"
+      ]
+    },
+    "S1-OUT-020": {
+      "field_id": "S1-OUT-020",
+      "source": "scope1",
+      "block": "OUT",
+      "grain": "emission_source_x_gas",
+      "schema_fields": [
+        "gas",
+        "emissions_quantity",
+        "emissions_unit"
+      ]
+    },
+    "S1-OUT-030": {
+      "field_id": "S1-OUT-030",
+      "source": "scope1",
+      "block": "OUT",
+      "grain": "emission_source_x_gas",
+      "schema_fields": [
+        "biogenic_flag"
+      ]
+    },
+    "S1-PRC-010": {
+      "field_id": "S1-PRC-010",
+      "source": "scope1",
+      "block": "PRC",
+      "grain": "process_source",
+      "schema_fields": [
+        "process_source_id",
+        "facility_id",
+        "equipment_id",
+        "inventory_id"
+      ]
+    },
+    "S1-PRC-020": {
+      "field_id": "S1-PRC-020",
+      "source": "scope1",
+      "block": "PRC",
+      "grain": "process_source",
+      "schema_fields": [
+        "process_type",
+        "product_or_material",
+        "expected_gases",
+        "location",
+        "operating_status"
+      ]
+    },
+    "S1-STC-010": {
+      "field_id": "S1-STC-010",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "fuel_record",
+      "schema_fields": [
+        "fuel_type",
+        "quantity_combusted",
+        "quantity_unit"
+      ]
+    },
+    "S1-STC-020": {
+      "field_id": "S1-STC-020",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "fuel_property_record",
+      "schema_fields": [
+        "hhv_value",
+        "hhv_unit",
+        "hhv_source",
+        "sampling_frequency"
+      ]
+    },
+    "S1-STC-030": {
+      "field_id": "S1-STC-030",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "emission_factor_co2",
+        "emission_factor_ch4",
+        "emission_factor_n2o",
+        "ef_source",
+        "ef_vintage",
+        "ef_unit"
+      ]
+    },
+    "S1-STC-040": {
+      "field_id": "S1-STC-040",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2",
+        "emissions_ch4",
+        "emissions_n2o",
+        "emissions_co2e",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-STC-050": {
+      "field_id": "S1-STC-050",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_measurement_interval",
+      "schema_fields": [
+        "measurement_timestamp",
+        "co2_concentration",
+        "co2_concentration_unit",
+        "o2_concentration",
+        "o2_concentration_unit",
+        "flue_gas_flow_rate",
+        "flue_gas_flow_unit",
+        "operating_time",
+        "operating_time_unit"
+      ]
+    },
+    "S1-STC-060": {
+      "field_id": "S1-STC-060",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "annual_emissions_co2",
+        "gas_emissions_unit"
+      ]
+    },
+    "S1-STC-070": {
+      "field_id": "S1-STC-070",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "fuel_record",
+      "schema_fields": [
+        "cems_fuel_type",
+        "cems_fuel_quantity",
+        "cems_fuel_quantity_unit"
+      ]
+    },
+    "S1-STC-080": {
+      "field_id": "S1-STC-080",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "fuel_record",
+      "schema_fields": [
+        "quantity_purchased",
+        "inventory_opening",
+        "inventory_closing",
+        "quantity_feedstock",
+        "quantity_spilled",
+        "quantity_fugitive_loss",
+        "quantity_unit"
+      ]
+    },
+    "S1-STC-090": {
+      "field_id": "S1-STC-090",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "adjusted_quantity_combusted"
+      ]
+    },
+    "S1-STC-100": {
+      "field_id": "S1-STC-100",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment",
+      "schema_fields": [
+        "equipment_id",
+        "inventory_id",
+        "facility_id"
+      ]
+    },
+    "S1-STC-110": {
+      "field_id": "S1-STC-110",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "fuel_record",
+      "schema_fields": [
+        "fuel_type",
+        "transaction_or_read_date",
+        "quantity",
+        "quantity_unit"
+      ]
+    },
+    "S1-STC-120": {
+      "field_id": "S1-STC-120",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "instrument",
+      "schema_fields": [
+        "instrument_type",
+        "calibration_date",
+        "calibration_result",
+        "calibration_status"
+      ]
+    },
+    "S1-STC-130": {
+      "field_id": "S1-STC-130",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "calculation_record",
+      "schema_fields": [
+        "measurement_basis",
+        "estimate_flag",
+        "estimate_basis",
+        "adjustment_method",
+        "cems_coverage_gap_flag"
+      ]
+    },
+    "S1-STC-140": {
+      "field_id": "S1-STC-140",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "calculation_record",
+      "schema_fields": [
+        "method_variant"
+      ]
+    },
+    "S1-STC-200": {
+      "field_id": "S1-STC-200",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "emission_factor_co2",
+        "emission_factor_ch4",
+        "emission_factor_n2o",
+        "ef_source",
+        "ef_vintage",
+        "ef_unit"
+      ]
+    },
+    "S1-STC-210": {
+      "field_id": "S1-STC-210",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2",
+        "emissions_ch4",
+        "emissions_n2o",
+        "emissions_co2e",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-STC-220": {
+      "field_id": "S1-STC-220",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "operating_hours",
+        "hourly_fuel_consumption_rate",
+        "rate_unit"
+      ]
+    },
+    "S1-STC-230": {
+      "field_id": "S1-STC-230",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "estimated_quantity_combusted"
+      ]
+    },
+    "S1-STC-240": {
+      "field_id": "S1-STC-240",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "fuel_property_record",
+      "schema_fields": [
+        "carbon_content_value",
+        "carbon_content_unit",
+        "carbon_content_source",
+        "sampling_frequency"
+      ]
+    },
+    "S1-STC-250": {
+      "field_id": "S1-STC-250",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2",
+        "gas_emissions_unit"
+      ]
+    },
+    "S1-STC-260": {
+      "field_id": "S1-STC-260",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "emission_factor_ch4",
+        "emission_factor_n2o",
+        "ef_source",
+        "ef_vintage",
+        "ef_unit"
+      ]
+    },
+    "S1-STC-270": {
+      "field_id": "S1-STC-270",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "emissions_ch4",
+        "emissions_n2o",
+        "emissions_co2e_nonco2",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-STC-280": {
+      "field_id": "S1-STC-280",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "waste_gas_stream_x_component_x_reporting_period",
+      "schema_fields": [
+        "gas_component",
+        "mole_fraction",
+        "molecular_weight",
+        "carbon_fraction",
+        "molar_conversion_factor",
+        "gas_temperature",
+        "gas_pressure"
+      ]
+    },
+    "S1-STC-290": {
+      "field_id": "S1-STC-290",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "waste_gas_stream_x_reporting_period",
+      "schema_fields": [
+        "waste_gas_carbon_factor",
+        "factor_unit"
+      ]
+    },
+    "S1-STC-300": {
+      "field_id": "S1-STC-300",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "fuel_property_record",
+      "schema_fields": [
+        "fuel_biogenic_fraction",
+        "fuel_fossil_fraction"
+      ]
+    },
+    "S1-STC-310": {
+      "field_id": "S1-STC-310",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "selected_quantity_combusted",
+        "selected_quantity_unit",
+        "selected_quantity_basis"
+      ]
+    },
+    "S1-STC-320": {
+      "field_id": "S1-STC-320",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "fossil_fuel_quantity",
+        "biogenic_fuel_quantity"
+      ]
+    },
+    "S1-STC-330": {
+      "field_id": "S1-STC-330",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2_fossil",
+        "emissions_co2_biogenic",
+        "emissions_ch4",
+        "emissions_n2o",
+        "emissions_co2e_scope1",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-STC-340": {
+      "field_id": "S1-STC-340",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2_fossil",
+        "emissions_co2_biogenic",
+        "emissions_ch4",
+        "emissions_n2o",
+        "emissions_co2e_scope1",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-STC-350": {
+      "field_id": "S1-STC-350",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2_fossil",
+        "emissions_co2_biogenic",
+        "emissions_ch4",
+        "emissions_n2o",
+        "emissions_co2e_scope1",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-STC-360": {
+      "field_id": "S1-STC-360",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "waste_gas_stream_x_reporting_period",
+      "schema_fields": [
+        "emissions_co2",
+        "gas_emissions_unit"
+      ]
+    },
+    "S1-STC-370": {
+      "field_id": "S1-STC-370",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "waste_gas_stream_x_reporting_period",
+      "schema_fields": [
+        "emissions_ch4",
+        "emissions_n2o",
+        "emissions_co2e_nonco2",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-STC-400": {
+      "field_id": "S1-STC-400",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "instrument",
+      "schema_fields": [
+        "monitor_id",
+        "equipment_id",
+        "inventory_id"
+      ]
+    },
+    "S1-STC-410": {
+      "field_id": "S1-STC-410",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_measurement_interval",
+      "schema_fields": [
+        "hourly_emissions_co2",
+        "hourly_emissions_co2_unit"
+      ]
+    },
+    "S1-STC-420": {
+      "field_id": "S1-STC-420",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment",
+      "schema_fields": [
+        "equipment_type",
+        "source_name",
+        "fuel_type",
+        "rated_capacity",
+        "capacity_unit",
+        "location",
+        "operating_status"
+      ]
+    },
+    "S1-STC-430": {
+      "field_id": "S1-STC-430",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "fuel_record",
+      "schema_fields": [
+        "record_id",
+        "equipment_id",
+        "source_document_id",
+        "meter_or_tank_id",
+        "inventory_id",
+        "reporting_period_ref"
+      ]
+    },
+    "S1-STC-440": {
+      "field_id": "S1-STC-440",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "instrument",
+      "schema_fields": [
+        "instrument_id",
+        "equipment_id",
+        "certificate_id",
+        "inventory_id"
+      ]
+    },
+    "S1-STC-450": {
+      "field_id": "S1-STC-450",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "calculation_record",
+      "schema_fields": [
+        "calculation_record_id",
+        "source_document_id",
+        "inventory_id",
+        "equipment_id",
+        "reporting_period_ref",
+        "source_id",
+        "source_grain"
+      ]
+    },
+    "S1-STC-460": {
+      "field_id": "S1-STC-460",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "selected_input_field_id"
+      ]
+    },
+    "S1-STC-470": {
+      "field_id": "S1-STC-470",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_measurement_interval",
+      "schema_fields": [
+        "measurement_record_id",
+        "inventory_id",
+        "reporting_period_ref",
+        "monitor_id",
+        "equipment_id",
+        "source_document_id"
+      ]
+    },
+    "S1-STC-480": {
+      "field_id": "S1-STC-480",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "selected_calculation_method",
+        "selected_method_basis",
+        "selected_cems_nonco2_method",
+        "selected_carbon_content_route",
+        "selected_carbon_content_nonco2_method"
+      ]
+    },
+    "S1-STC-490": {
+      "field_id": "S1-STC-490",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "emissions_ch4",
+        "emissions_n2o",
+        "emissions_co2e_nonco2",
+        "gas_emissions_unit",
+        "co2e_unit"
+      ]
+    },
+    "S1-STC-500": {
+      "field_id": "S1-STC-500",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "equipment_x_reporting_period",
+      "schema_fields": [
+        "selected_activity_quantity_route",
+        "selected_activity_route_basis"
+      ]
+    },
+    "S1-STC-510": {
+      "field_id": "S1-STC-510",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "waste_gas_stream_x_reporting_period",
+      "schema_fields": [
+        "waste_gas_stream_id",
+        "equipment_id",
+        "inventory_id",
+        "facility_id",
+        "reporting_period_ref"
+      ]
+    },
+    "S1-STC-520": {
+      "field_id": "S1-STC-520",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "waste_gas_stream_x_reporting_period",
+      "schema_fields": [
+        "waste_gas_composition_available",
+        "composition_availability_basis"
+      ]
+    },
+    "S1-STC-530": {
+      "field_id": "S1-STC-530",
+      "source": "scope1",
+      "block": "STC",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "emission_factor_set_id",
+        "mth_020_ref"
+      ]
+    },
+    "S2-ALC-010": {
+      "field_id": "S2-ALC-010",
+      "source": "scope2",
+      "block": "ALC",
+      "grain": "instrument_x_delivery_point",
+      "schema_fields": [
+        "allocation_id",
+        "delivery_point_ref",
+        "instrument_ref"
+      ]
+    },
+    "S2-ALC-020": {
+      "field_id": "S2-ALC-020",
+      "source": "scope2",
+      "block": "ALC",
+      "grain": "instrument_x_delivery_point",
+      "schema_fields": [
+        "allocated_quantity",
+        "allocated_unit"
+      ]
+    },
+    "S2-ALC-030": {
+      "field_id": "S2-ALC-030",
+      "source": "scope2",
+      "block": "ALC",
+      "grain": "instrument_x_delivery_point",
+      "schema_fields": [
+        "applied_emission_rate",
+        "applied_rate_source"
+      ]
+    },
+    "S2-ALC-040": {
+      "field_id": "S2-ALC-040",
+      "source": "scope2",
+      "block": "ALC",
+      "grain": "instrument_x_delivery_point",
+      "schema_fields": [
+        "matching_basis"
+      ]
+    },
+    "S2-CON-005": {
+      "field_id": "S2-CON-005",
+      "source": "scope2",
+      "block": "CON",
+      "grain": "delivery_point_x_billing_period",
+      "schema_fields": [
+        "source_document_id",
+        "document_type",
+        "invoice_number"
+      ]
+    },
+    "S2-CON-010": {
+      "field_id": "S2-CON-010",
+      "source": "scope2",
+      "block": "CON",
+      "grain": "delivery_point_x_billing_period",
+      "schema_fields": [
+        "delivery_point_ref",
+        "billing_period_ref"
+      ]
+    },
+    "S2-CON-020": {
+      "field_id": "S2-CON-020",
+      "source": "scope2",
+      "block": "CON",
+      "grain": "delivery_point_x_billing_period",
+      "schema_fields": [
+        "consumption_quantity",
+        "consumption_unit"
+      ]
+    },
+    "S2-CON-025": {
+      "field_id": "S2-CON-025",
+      "source": "scope2",
+      "block": "CON",
+      "grain": "delivery_point_x_billing_period",
+      "schema_fields": [
+        "normalized_quantity",
+        "normalized_unit",
+        "unit_conversion_factor",
+        "conversion_factor_source"
+      ]
+    },
+    "S2-CON-030": {
+      "field_id": "S2-CON-030",
+      "source": "scope2",
+      "block": "CON",
+      "grain": "delivery_point_x_billing_period",
+      "schema_fields": [
+        "reporting_period_ref"
+      ]
+    },
+    "S2-CON-036": {
+      "field_id": "S2-CON-036",
+      "source": "scope2",
+      "block": "CON",
+      "grain": "delivery_point_x_billing_period",
+      "schema_fields": [
+        "proration_ref"
+      ]
+    },
+    "S2-CON-040": {
+      "field_id": "S2-CON-040",
+      "source": "scope2",
+      "block": "CON",
+      "grain": "delivery_point_x_billing_period",
+      "schema_fields": [
+        "consumption_basis"
+      ]
+    },
+    "S2-CON-050": {
+      "field_id": "S2-CON-050",
+      "source": "scope2",
+      "block": "CON",
+      "grain": "delivery_point_x_billing_period",
+      "schema_fields": [
+        "estimation_method"
+      ]
+    },
+    "S2-CON-055": {
+      "field_id": "S2-CON-055",
+      "source": "scope2",
+      "block": "CON",
+      "grain": "delivery_point_x_billing_period",
+      "schema_fields": [
+        "reporter_floor_area",
+        "total_building_area",
+        "occupancy_factor",
+        "allocation_basis"
+      ]
+    },
+    "S2-CON-060": {
+      "field_id": "S2-CON-060",
+      "source": "scope2",
+      "block": "CON",
+      "grain": "delivery_point_x_billing_period",
+      "schema_fields": [
+        "metering_gross_net_basis"
+      ]
+    },
+    "S2-CON-070": {
+      "field_id": "S2-CON-070",
+      "source": "scope2",
+      "block": "CON",
+      "grain": "delivery_point_x_billing_period",
+      "schema_fields": [
+        "scope2_population"
+      ]
+    },
+    "S2-EFR-005": {
+      "field_id": "S2-EFR-005",
+      "source": "scope2",
+      "block": "EFR",
+      "grain": "emission_factor_set_x_gas",
+      "schema_fields": [
+        "ef_set_ref"
+      ]
+    },
+    "S2-EFR-020": {
+      "field_id": "S2-EFR-020",
+      "source": "scope2",
+      "block": "EFR",
+      "grain": "emission_factor_set_x_gas",
+      "schema_fields": [
+        "ef_gas",
+        "ef_value",
+        "ef_unit"
+      ]
+    },
+    "S2-EFS-010": {
+      "field_id": "S2-EFS-010",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "ef_set_id"
+      ]
+    },
+    "S2-EFS-015": {
+      "field_id": "S2-EFS-015",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "ef_carrier"
+      ]
+    },
+    "S2-EFS-025": {
+      "field_id": "S2-EFS-025",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "ef_aggregation_basis",
+        "gwp_set_embedded"
+      ]
+    },
+    "S2-EFS-030": {
+      "field_id": "S2-EFS-030",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "ef_vintage_year"
+      ]
+    },
+    "S2-EFS-041": {
+      "field_id": "S2-EFS-041",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "ef_source_ref"
+      ]
+    },
+    "S2-EFS-050": {
+      "field_id": "S2-EFS-050",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "ef_emission_basis"
+      ]
+    },
+    "S2-EFS-060": {
+      "field_id": "S2-EFS-060",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "ef_hierarchy_tier_location"
+      ]
+    },
+    "S2-EFS-070": {
+      "field_id": "S2-EFS-070",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "ef_grid_region",
+        "ef_geographic_match_basis"
+      ]
+    },
+    "S2-EFS-075": {
+      "field_id": "S2-EFS-075",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "ef_supply_system_ref"
+      ]
+    },
+    "S2-EFS-076": {
+      "field_id": "S2-EFS-076",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "thermal_fuel_ghg_intensity",
+        "thermal_generation_efficiency"
+      ]
+    },
+    "S2-EFS-077": {
+      "field_id": "S2-EFS-077",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "chiller_electricity_ef_ref",
+        "chiller_cop"
+      ]
+    },
+    "S2-EFS-080": {
+      "field_id": "S2-EFS-080",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "ef_net_import_export_reflected"
+      ]
+    },
+    "S2-EFS-110": {
+      "field_id": "S2-EFS-110",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "market_hierarchy_tier"
+      ]
+    },
+    "S2-EFS-120": {
+      "field_id": "S2-EFS-120",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "residual_mix_availability",
+        "residual_mix_absence_disclosed"
+      ]
+    },
+    "S2-EFS-130": {
+      "field_id": "S2-EFS-130",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "residual_mix_publisher",
+        "residual_mix_region"
+      ]
+    },
+    "S2-EFS-140": {
+      "field_id": "S2-EFS-140",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "residual_mix_substitute_used",
+        "substitute_ef_set_ref"
+      ]
+    },
+    "S2-EFS-150": {
+      "field_id": "S2-EFS-150",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "supplier_factor_delivered_basis",
+        "supplier_factor_offsets_excluded"
+      ]
+    },
+    "S2-EFS-160": {
+      "field_id": "S2-EFS-160",
+      "source": "scope2",
+      "block": "EFS",
+      "grain": "emission_factor_set",
+      "schema_fields": [
+        "supplier_factor_self_calculated"
+      ]
+    },
+    "S2-INS-005": {
+      "field_id": "S2-INS-005",
+      "source": "scope2",
+      "block": "INS",
+      "grain": "instrument",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "S2-INS-010": {
+      "field_id": "S2-INS-010",
+      "source": "scope2",
+      "block": "INS",
+      "grain": "instrument",
+      "schema_fields": [
+        "instrument_id",
+        "instrument_registry_ref"
+      ]
+    },
+    "S2-INS-020": {
+      "field_id": "S2-INS-020",
+      "source": "scope2",
+      "block": "INS",
+      "grain": "instrument",
+      "schema_fields": [
+        "instrument_type"
+      ]
+    },
+    "S2-INS-030": {
+      "field_id": "S2-INS-030",
+      "source": "scope2",
+      "block": "INS",
+      "grain": "instrument",
+      "schema_fields": [
+        "instrument_quantity",
+        "instrument_unit"
+      ]
+    },
+    "S2-INS-040": {
+      "field_id": "S2-INS-040",
+      "source": "scope2",
+      "block": "INS",
+      "grain": "instrument",
+      "schema_fields": [
+        "conveyed_emission_rate",
+        "conveyed_rate_unit"
+      ]
+    },
+    "S2-INS-050": {
+      "field_id": "S2-INS-050",
+      "source": "scope2",
+      "block": "INS",
+      "grain": "instrument",
+      "schema_fields": [
+        "instrument_vintage",
+        "generation_period"
+      ]
+    },
+    "S2-INS-060": {
+      "field_id": "S2-INS-060",
+      "source": "scope2",
+      "block": "INS",
+      "grain": "instrument",
+      "schema_fields": [
+        "sourcing_market"
+      ]
+    },
+    "S2-INS-070": {
+      "field_id": "S2-INS-070",
+      "source": "scope2",
+      "block": "INS",
+      "grain": "instrument",
+      "schema_fields": [
+        "retirement_status",
+        "retirement_date",
+        "retired_on_behalf_of"
+      ]
+    },
+    "S2-INS-080": {
+      "field_id": "S2-INS-080",
+      "source": "scope2",
+      "block": "INS",
+      "grain": "instrument",
+      "schema_fields": [
+        "exclusive_claim_attested"
+      ]
+    },
+    "S2-INS-090": {
+      "field_id": "S2-INS-090",
+      "source": "scope2",
+      "block": "INS",
+      "grain": "instrument",
+      "schema_fields": [
+        "generation_technology"
+      ]
+    },
+    "S2-LOC-005": {
+      "field_id": "S2-LOC-005",
+      "source": "scope2",
+      "block": "LOC",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "S2-LOC-010": {
+      "field_id": "S2-LOC-010",
+      "source": "scope2",
+      "block": "LOC",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "reporting_grain",
+        "facility_ref"
+      ]
+    },
+    "S2-LOC-020": {
+      "field_id": "S2-LOC-020",
+      "source": "scope2",
+      "block": "LOC",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "location_scope2_co2e_reported"
+      ]
+    },
+    "S2-LOC-030": {
+      "field_id": "S2-LOC-030",
+      "source": "scope2",
+      "block": "LOC",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "location_scope2_co2_reported",
+        "location_scope2_ch4_reported",
+        "location_scope2_n2o_reported"
+      ]
+    },
+    "S2-LOC-040": {
+      "field_id": "S2-LOC-040",
+      "source": "scope2",
+      "block": "LOC",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "location_ef_source_disclosed",
+        "location_ef_set_ref"
+      ]
+    },
+    "S2-MKT-005": {
+      "field_id": "S2-MKT-005",
+      "source": "scope2",
+      "block": "MKT",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "S2-MKT-010": {
+      "field_id": "S2-MKT-010",
+      "source": "scope2",
+      "block": "MKT",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "reporting_grain",
+        "facility_ref"
+      ]
+    },
+    "S2-MKT-020": {
+      "field_id": "S2-MKT-020",
+      "source": "scope2",
+      "block": "MKT",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "market_scope2_co2e_reported"
+      ]
+    },
+    "S2-MKT-030": {
+      "field_id": "S2-MKT-030",
+      "source": "scope2",
+      "block": "MKT",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "market_scope2_co2_reported",
+        "market_scope2_ch4_reported",
+        "market_scope2_n2o_reported"
+      ]
+    },
+    "S2-MKT-040": {
+      "field_id": "S2-MKT-040",
+      "source": "scope2",
+      "block": "MKT",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "market_method_applicable",
+        "applicability_basis"
+      ]
+    },
+    "S2-MKT-050": {
+      "field_id": "S2-MKT-050",
+      "source": "scope2",
+      "block": "MKT",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "market_ef_sources_disclosed"
+      ]
+    },
+    "S2-MKT-060": {
+      "field_id": "S2-MKT-060",
+      "source": "scope2",
+      "block": "MKT",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "non_co2_gases_unavailable_disclosed"
+      ]
+    },
+    "S2-MKT-070": {
+      "field_id": "S2-MKT-070",
+      "source": "scope2",
+      "block": "MKT",
+      "grain": "reporting_entity",
+      "schema_fields": [
+        "scope3_cat3_basis_method"
+      ]
+    },
+    "S2-MTR-005": {
+      "field_id": "S2-MTR-005",
+      "source": "scope2",
+      "block": "MTR",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "S2-MTR-010": {
+      "field_id": "S2-MTR-010",
+      "source": "scope2",
+      "block": "MTR",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "delivery_point_id"
+      ]
+    },
+    "S2-MTR-020": {
+      "field_id": "S2-MTR-020",
+      "source": "scope2",
+      "block": "MTR",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "meter_id",
+        "utility_account_id",
+        "supplier_name"
+      ]
+    },
+    "S2-MTR-030": {
+      "field_id": "S2-MTR-030",
+      "source": "scope2",
+      "block": "MTR",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "energy_carrier"
+      ]
+    },
+    "S2-MTR-040": {
+      "field_id": "S2-MTR-040",
+      "source": "scope2",
+      "block": "MTR",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "facility_ref",
+        "operational_control_determination_ref"
+      ]
+    },
+    "S2-MTR-045": {
+      "field_id": "S2-MTR-045",
+      "source": "scope2",
+      "block": "MTR",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "distribution_scenario"
+      ]
+    },
+    "S2-MTR-047": {
+      "field_id": "S2-MTR-047",
+      "source": "scope2",
+      "block": "MTR",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "selfgen_attributes_sold"
+      ]
+    },
+    "S2-MTR-050": {
+      "field_id": "S2-MTR-050",
+      "source": "scope2",
+      "block": "MTR",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "metering_scope"
+      ]
+    },
+    "S2-MTR-060": {
+      "field_id": "S2-MTR-060",
+      "source": "scope2",
+      "block": "MTR",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "inclusion_status",
+        "exclusion_ref",
+        "resale_exclusion_ref",
+        "double_counting_check_ref"
+      ]
+    },
+    "S2-MTR-070": {
+      "field_id": "S2-MTR-070",
+      "source": "scope2",
+      "block": "MTR",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "grid_region",
+        "balancing_authority"
+      ]
+    },
+    "S2-MTR-080": {
+      "field_id": "S2-MTR-080",
+      "source": "scope2",
+      "block": "MTR",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "service_period_start",
+        "service_period_end"
+      ]
+    },
+    "S2-QCR-005": {
+      "field_id": "S2-QCR-005",
+      "source": "scope2",
+      "block": "QCR",
+      "grain": "instrument",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "S2-QCR-010": {
+      "field_id": "S2-QCR-010",
+      "source": "scope2",
+      "block": "QCR",
+      "grain": "instrument",
+      "schema_fields": [
+        "instrument_ref"
+      ]
+    },
+    "S2-QCR-020": {
+      "field_id": "S2-QCR-020",
+      "source": "scope2",
+      "block": "QCR",
+      "grain": "instrument",
+      "schema_fields": [
+        "qc1_pass",
+        "qc1_determination_basis",
+        "qc1_verification_route",
+        "qc1_assurance_strength_flag"
+      ]
+    },
+    "S2-QCR-030": {
+      "field_id": "S2-QCR-030",
+      "source": "scope2",
+      "block": "QCR",
+      "grain": "instrument",
+      "schema_fields": [
+        "qc2_pass",
+        "qc2_determination_basis",
+        "qc2_verification_route",
+        "qc2_assurance_strength_flag"
+      ]
+    },
+    "S2-QCR-040": {
+      "field_id": "S2-QCR-040",
+      "source": "scope2",
+      "block": "QCR",
+      "grain": "instrument",
+      "schema_fields": [
+        "qc3_pass",
+        "qc3_determination_basis",
+        "qc3_verification_route",
+        "qc3_assurance_strength_flag"
+      ]
+    },
+    "S2-QCR-050": {
+      "field_id": "S2-QCR-050",
+      "source": "scope2",
+      "block": "QCR",
+      "grain": "instrument",
+      "schema_fields": [
+        "qc4_pass",
+        "qc4_determination_basis",
+        "qc4_verification_route",
+        "qc4_assurance_strength_flag"
+      ]
+    },
+    "S2-QCR-060": {
+      "field_id": "S2-QCR-060",
+      "source": "scope2",
+      "block": "QCR",
+      "grain": "instrument",
+      "schema_fields": [
+        "qc5_pass",
+        "qc5_determination_basis",
+        "qc5_verification_route",
+        "qc5_assurance_strength_flag"
+      ]
+    },
+    "S2-QCR-070": {
+      "field_id": "S2-QCR-070",
+      "source": "scope2",
+      "block": "QCR",
+      "grain": "instrument",
+      "schema_fields": [
+        "qc6_pass",
+        "qc6_determination_basis",
+        "qc6_verification_route",
+        "qc6_assurance_strength_flag"
+      ]
+    },
+    "S2-QCR-080": {
+      "field_id": "S2-QCR-080",
+      "source": "scope2",
+      "block": "QCR",
+      "grain": "instrument",
+      "schema_fields": [
+        "qc8_pass",
+        "qc8_residual_mix_availability",
+        "qc8_absence_disclosed",
+        "qc8_assurance_strength_flag"
+      ]
+    },
+    "S2-QCR-090": {
+      "field_id": "S2-QCR-090",
+      "source": "scope2",
+      "block": "QCR",
+      "grain": "instrument",
+      "schema_fields": [
+        "instrument_qualifies",
+        "disqualifying_criteria"
+      ]
+    },
+    "S2-QCR-100": {
+      "field_id": "S2-QCR-100",
+      "source": "scope2",
+      "block": "QCR",
+      "grain": "instrument",
+      "schema_fields": [
+        "assurance_reference"
+      ]
+    },
+    "S2-RMD-010": {
+      "field_id": "S2-RMD-010",
+      "source": "scope2",
+      "block": "RMD",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "delivery_point_ref",
+        "unmatched_quantity"
+      ]
+    },
+    "S2-RMD-020": {
+      "field_id": "S2-RMD-020",
+      "source": "scope2",
+      "block": "RMD",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "fallback_tier",
+        "fallback_ef_set_ref"
+      ]
+    },
+    "S2-SGN-005": {
+      "field_id": "S2-SGN-005",
+      "source": "scope2",
+      "block": "SGN",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "source_document_id",
+        "document_type"
+      ]
+    },
+    "S2-SGN-010": {
+      "field_id": "S2-SGN-010",
+      "source": "scope2",
+      "block": "SGN",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "delivery_point_ref"
+      ]
+    },
+    "S2-SGN-020": {
+      "field_id": "S2-SGN-020",
+      "source": "scope2",
+      "block": "SGN",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "selfgen_consumed_quantity"
+      ]
+    },
+    "S2-SGN-030": {
+      "field_id": "S2-SGN-030",
+      "source": "scope2",
+      "block": "SGN",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "attributes_sold_quantity",
+        "attribute_sale_ref"
+      ]
+    },
+    "S2-SGN-040": {
+      "field_id": "S2-SGN-040",
+      "source": "scope2",
+      "block": "SGN",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "replacement_instrument_ref"
+      ]
+    },
+    "S2-SGN-050": {
+      "field_id": "S2-SGN-050",
+      "source": "scope2",
+      "block": "SGN",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "selfgen_applied_ef_set_ref",
+        "selfgen_applied_tier"
+      ]
+    },
+    "S2-SGN-060": {
+      "field_id": "S2-SGN-060",
+      "source": "scope2",
+      "block": "SGN",
+      "grain": "delivery_point",
+      "schema_fields": [
+        "waste_energy_received",
+        "waste_underlying_emissions_ref"
+      ]
+    }
+  }
+}

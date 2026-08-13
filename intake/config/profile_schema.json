@@ -1,0 +1,1585 @@
+{
+  "schema_name": "sustentra_intake_profile_schema",
+  "schema_version": "0.1.0",
+  "status": "seed",
+  "description": "Machine-readable seed of the intake profile schema: one entry per data point in intake/profile_schema_mapping.md (v0.2), sections 1-8. This file is configuration, not code - the interview engine, evidence-request compiler and profile page all read it. It defines NO new emissions data points: every entry either populates an existing methodology field, sets an intake-only state/content field, or triggers a J2 evidence request.",
+  "derived_from": {
+    "mapping": "intake/profile_schema_mapping.md",
+    "mapping_version": "0.2",
+    "spec": "intake/SPEC.md",
+    "spec_version": "1.0",
+    "repo_rules": "CLAUDE.md"
+  },
+  "validation": {
+    "contract": "intake/contracts/profile_schema.schema.json",
+    "field_index": "intake/config/methodology_field_index.json",
+    "validator": "intake/scripts/validate_profile_schema.py"
+  },
+  "design_contracts": [
+    "Every populates entry of target_type 'methodology_field' must resolve to a field_id present in intake/config/methodology_field_index.json, and each schema_field must be one of that field's real Data_Schema_Field(s).",
+    "Every evidence_triggered ID must be a J2 evidence type ID present in reference-data/config/libraries/evidence_type_library.json.",
+    "question_content_ref values are placeholders. Final plain-language wording, explainers and the film vocabulary overlay are authored after the Vocabulary Library review (SPEC section 10) and are not part of this seed.",
+    "Entries with provisional true encode a proposed default that is NOT yet methodologically approved. They must surface for expert review (Todd) and must never be silently applied as settled - CLAUDE.md rule 6.",
+    "class_source records whether the escalation class came from the mapping or was inferred by implementation and still needs confirmation.",
+    "applicability.condition_ref names a condition defined in applicability_conditions. Evaluation logic is deterministic application code built in Phase C; this seed only names the conditions.",
+    "A negative screening answer produces a 'screened, not present' completeness record (intake state), never an EXC-010 exclusion. EXC-010 is reserved for sources that exist and are excluded on materiality grounds."
+  ],
+  "open_items": {
+    "pending_expert_signoff": {
+      "owner": "Todd",
+      "source": "intake/SPEC.md section 10; intake/profile_schema_mapping.md self-check",
+      "datapoint_ids": [
+        "BND-2.1",
+        "BND-2.4",
+        "BND-2.6",
+        "BND-2.7",
+        "MRT-7.1",
+        "MRT-7.2",
+        "MRT-7.3",
+        "MRT-7.4",
+        "MRT-7.5"
+      ]
+    },
+    "pending_class_confirmation": {
+      "note": "The mapping does not assign an escalation class to these entries; the class below was inferred during Phase A and needs founder/expert confirmation.",
+      "datapoint_ids": ["S1FUG-5.5", "PRV-8.1", "PRV-8.2"]
+    },
+    "mapping_shorthand_resolved": [
+      {
+        "datapoint_id": "SEED-1.3",
+        "mapping_text": "FAC-010 (... period_in_scope)",
+        "resolution": "FAC-010 exposes period_in_scope_start and period_in_scope_end; both are encoded. Mapping wording is a shorthand, not a missing field.",
+        "needs_founder_note": true
+      },
+      {
+        "datapoint_id": "SEED-1.5",
+        "mapping_text": "Legacy audit_setup.facility_type",
+        "resolution": "Real legacy path is company_and_facility_profile.facility_type in legacy-schemas/copied_from_streamlit_demo/audit_setup.schema.json.",
+        "needs_founder_note": true
+      }
+    ],
+    "not_in_scope_v1": {
+      "note": "SPEC section 8 scope cuts. Recorded here so the exclusion is traceable rather than silently absent.",
+      "datapoint_ids": ["S1FUG-5.5"]
+    }
+  },
+  "sections": [
+    {
+      "section_id": "seed_form",
+      "order": 1,
+      "stage": 1,
+      "mapping_section": "1",
+      "label": "Seed form",
+      "delivery": "structured_form",
+      "description": "Stage 1 structured intake. No chat."
+    },
+    {
+      "section_id": "boundary",
+      "order": 2,
+      "stage": 2,
+      "mapping_section": "2",
+      "label": "Boundary",
+      "delivery": "guided_interview",
+      "description": "Boundary block. HUMAN class unless noted; human-confirmed before lock."
+    },
+    {
+      "section_id": "scope1_stationary",
+      "order": 3,
+      "stage": 2,
+      "mapping_section": "3",
+      "label": "Scope 1 - stationary combustion",
+      "delivery": "guided_interview",
+      "description": "Per-site screening for fuel-burning equipment."
+    },
+    {
+      "section_id": "scope1_mobile",
+      "order": 4,
+      "stage": 2,
+      "mapping_section": "4",
+      "label": "Scope 1 - mobile",
+      "delivery": "guided_interview",
+      "description": "Per-entity screening for vehicles and motorized equipment."
+    },
+    {
+      "section_id": "scope1_fugitive",
+      "order": 5,
+      "stage": 2,
+      "mapping_section": "5",
+      "label": "Scope 1 - fugitives and process",
+      "delivery": "guided_interview",
+      "description": "Per-site screening for refrigerants, fire suppression, industrial gases and process sources."
+    },
+    {
+      "section_id": "scope2",
+      "order": 6,
+      "stage": 2,
+      "mapping_section": "6",
+      "label": "Scope 2",
+      "delivery": "guided_interview",
+      "description": "Per-site imported energy: electricity, district energy, self-generation, instruments."
+    },
+    {
+      "section_id": "method_routing",
+      "order": 7,
+      "stage": 2,
+      "mapping_section": "7",
+      "label": "Method routing defaults",
+      "delivery": "system_assigned",
+      "description": "SME path cut. SYSTEM class, verifier-overridable, never asked of the client."
+    },
+    {
+      "section_id": "provenance",
+      "order": 8,
+      "stage": 2,
+      "mapping_section": "8",
+      "label": "Provenance and data quality",
+      "delivery": "system_assigned",
+      "description": "Applies to every data point above: source/provenance capture and category-level uncertainty."
+    }
+  ],
+  "applicability_conditions": {
+    "always": {
+      "description": "Always applicable within its grain.",
+      "expression": null
+    },
+    "industry_is_film": {
+      "description": "Client's industry overlay is the film production overlay (SEED-1.4).",
+      "expression": null
+    },
+    "more_than_one_legal_entity": {
+      "description": "The org comprises more than one legal entity. Skipped entirely for single-entity SMEs.",
+      "expression": null
+    },
+    "prior_inventories_exist": {
+      "description": "The client has previously prepared a GHG inventory, so base year is not simply the first reporting year.",
+      "expression": null
+    },
+    "stationary_or_mobile_fuel_present": {
+      "description": "A positive answer to stationary fuel use, generators, or a mobile fleet, so fuel blend composition matters.",
+      "expression": null
+    },
+    "screening_answer_negative": {
+      "description": "A screening question in sections 3-6 was answered 'no'; triggers a completeness record rather than an exclusion.",
+      "expression": null
+    },
+    "mobile_fleet_present": {
+      "description": "The client owns or leases vehicles or motorized equipment (S1MOB-4.1 positive).",
+      "expression": null
+    },
+    "selling_energy_or_attributes": {
+      "description": "The client sells self-generated power or its environmental attributes, creating double-counting risk.",
+      "expression": null
+    },
+    "answer_is_yes": {
+      "description": "The client answered 'yes' to the screening question on this data point.",
+      "expression": null
+    }
+  },
+  "datapoints": [
+    {
+      "datapoint_id": "SEED-1.1",
+      "mapping_ref": "1.1",
+      "section": "seed_form",
+      "kind": "question",
+      "grain": "org",
+      "label": "Company legal name + reporting year",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "INV-010",
+          "schema_fields": ["legal_reporting_entity_id", "reporting_year"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.seed_form.company_identity",
+      "reasoning": "Anchor keys for the whole inventory; every S1/S2 record joins back to INV-010.",
+      "notes": []
+    },
+    {
+      "datapoint_id": "SEED-1.2",
+      "mapping_ref": "1.2",
+      "section": "seed_form",
+      "kind": "question",
+      "grain": "org",
+      "label": "Responsible party: name, role, email of the person accountable for the inventory",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "intake_field",
+          "field_path": "profile.responsible_party",
+          "intake_fields": ["name", "role", "email"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.seed_form.responsible_party",
+      "reasoning": "ISO 14064-1 report content requires naming the responsible party. Doubles as the client-side escalation contact for the alert pipeline.",
+      "notes": [
+        "Added in mapping v0.2 (audit FAIL 6).",
+        "Surfaces in report content; no methodology field ID holds this today."
+      ]
+    },
+    {
+      "datapoint_id": "SEED-1.3",
+      "mapping_ref": "1.3",
+      "section": "seed_form",
+      "kind": "question",
+      "grain": "site",
+      "label": "Sites: name, full address, status",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "FAC-010",
+          "schema_fields": [
+            "facility_id",
+            "facility_name",
+            "location",
+            "country_region",
+            "operational_status",
+            "period_in_scope_start",
+            "period_in_scope_end"
+          ]
+        }
+      ],
+      "evidence_triggered": ["J2-007"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.seed_form.sites",
+      "reasoning": "Facility register is the grain everything else attaches to. Address feeds Scope 2 grid-region matching (S2-MTR-070 / S2-EFS-070) without asking the user - grid region is derived, never asked.",
+      "notes": [
+        "Mapping writes 'period_in_scope'; FAC-010 exposes period_in_scope_start and period_in_scope_end. Both encoded - see open_items.mapping_shorthand_resolved.",
+        "Grid region is derived from this address, never asked of the client."
+      ]
+    },
+    {
+      "datapoint_id": "SEED-1.4",
+      "mapping_ref": "1.4",
+      "section": "seed_form",
+      "kind": "question",
+      "grain": "org",
+      "label": "Industry",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "legacy_field",
+          "field_path": "company_and_facility_profile.industry",
+          "source_schema": "legacy-schemas/copied_from_streamlit_demo/audit_setup.schema.json"
+        },
+        {
+          "target_type": "intake_field",
+          "field_path": "profile.industry_overlay",
+          "intake_fields": ["overlay_id"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.seed_form.industry",
+      "reasoning": "Switches vocabulary/explainer overlay (film v1).",
+      "notes": [
+        "v1 dropdown per SPEC stage 1: 'Film production facility' and 'General' only."
+      ]
+    },
+    {
+      "datapoint_id": "SEED-1.5",
+      "mapping_ref": "1.5",
+      "section": "seed_form",
+      "kind": "question",
+      "grain": "site",
+      "label": "Site type (film overlay: soundstage complex / backlot / office / workshop)",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "legacy_field",
+          "field_path": "company_and_facility_profile.facility_type",
+          "source_schema": "legacy-schemas/copied_from_streamlit_demo/audit_setup.schema.json"
+        },
+        {
+          "target_type": "intake_field",
+          "field_path": "profile.sites[].site_type",
+          "intake_fields": ["site_type"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.seed_form.site_type",
+      "reasoning": "Drives which screening questions appear per site.",
+      "notes": [
+        "Descriptive attribute on FAC-010; the methodology schema has no dedicated site_type field ID, so the value is held intake-side and mirrored to the legacy field.",
+        "Mapping writes 'audit_setup.facility_type'; real legacy path is company_and_facility_profile.facility_type."
+      ]
+    },
+    {
+      "datapoint_id": "SEED-1.6",
+      "mapping_ref": "1.6",
+      "section": "seed_form",
+      "kind": "question",
+      "grain": "org",
+      "label": "Reporting period start/end, fiscal basis",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "PER-010",
+          "schema_fields": ["reporting_period_start", "reporting_period_end", "fiscal_year_basis"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.seed_form.reporting_period",
+      "reasoning": "Required key for all consumption/period allocation.",
+      "notes": []
+    },
+    {
+      "datapoint_id": "SEED-1.7",
+      "mapping_ref": "1.7",
+      "section": "seed_form",
+      "kind": "question",
+      "grain": "site",
+      "label": "Own vs lease per site",
+      "class": "HUMAN",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "ORG-050",
+          "schema_fields": [
+            "lease_type",
+            "operational_control_over_asset_flag",
+            "exclusion_justification"
+          ]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.seed_form.own_or_lease",
+      "reasoning": "Seed captures the raw fact; control determination is a boundary judgment.",
+      "notes": [
+        "Partial capture only. The control determination is completed in the boundary block (BND-2.3), which is where the HUMAN confirmation happens."
+      ]
+    },
+    {
+      "datapoint_id": "BND-2.1",
+      "mapping_ref": "2.1",
+      "section": "boundary",
+      "kind": "question",
+      "grain": "org",
+      "label": "Consolidation approach (plain language: 'which parts of the business count as yours')",
+      "class": "HUMAN",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "provisional_default": {
+        "value": "operational_control",
+        "rationale": "SME default proposal: single-entity SMEs converge on the same inventory under all three approaches. Human confirms.",
+        "status": "proposed_not_approved"
+      },
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "ORG-010",
+          "schema_fields": ["consolidation_approach"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "ORG-025",
+          "schema_fields": ["control_determination_basis", "control_verification_route"]
+        }
+      ],
+      "evidence_triggered": ["J2-007"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.boundary.consolidation_approach",
+      "reasoning": "Named options - operational control / financial control / equity share - exist in ORG-010 and the legacy audit_setup enum, and satisfy both GHG Protocol and ISO 14064-1. ISO additionally permits other documented, justified methods.",
+      "notes": [
+        "ISO 14064-1 permits other consolidation methods if the organization documents and justifies them (mapping v0.2, suggestion 1)."
+      ]
+    },
+    {
+      "datapoint_id": "BND-2.2",
+      "mapping_ref": "2.2",
+      "section": "boundary",
+      "kind": "question",
+      "grain": "org",
+      "label": "Operations/subsidiaries list (only if more than one legal entity)",
+      "class": "HUMAN",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "more_than_one_legal_entity" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "ORG-020",
+          "schema_fields": [
+            "operation_id",
+            "operation_name",
+            "equity_share_pct",
+            "financial_control_flag",
+            "operational_control_flag",
+            "entity_relationship"
+          ]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "ORG-030",
+          "schema_fields": ["inclusion_percentage"]
+        }
+      ],
+      "evidence_triggered": ["J2-007"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.boundary.operations_list",
+      "reasoning": "Skipped entirely for single-entity SMEs - the common case.",
+      "notes": []
+    },
+    {
+      "datapoint_id": "BND-2.3",
+      "mapping_ref": "2.3",
+      "section": "boundary",
+      "kind": "question",
+      "grain": "site",
+      "label": "Leased/rented spaces and equipment: who controls what",
+      "class": "HUMAN",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "ORG-050",
+          "schema_fields": [
+            "lease_type",
+            "operational_control_over_asset_flag",
+            "exclusion_justification"
+          ]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "ORG-055",
+          "schema_fields": [
+            "asset_role_determination_basis",
+            "asset_verification_route",
+            "asset_assurance_strength_flag"
+          ]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "ORG-040",
+          "schema_fields": ["party_role"]
+        }
+      ],
+      "evidence_triggered": ["J2-007"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.boundary.leased_spaces_and_equipment",
+      "reasoning": "The landlord/tenant crux. Determines whether a source is the client's Scope 1/2 or the tenant's. Never auto-parsed.",
+      "notes": [
+        "Film framing: which stages are under studio control vs production control; who holds each meter.",
+        "Lease agreements are also requested as supporting evidence alongside J2-007."
+      ]
+    },
+    {
+      "datapoint_id": "BND-2.4",
+      "mapping_ref": "2.4",
+      "section": "boundary",
+      "kind": "question",
+      "grain": "org",
+      "label": "Base year",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "provisional_default": {
+        "value": "first_reporting_year_is_base_year",
+        "rationale": "SME default: first reporting year = base year, with the standard recalculation policy template.",
+        "status": "proposed_not_approved"
+      },
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "BAS-010",
+          "schema_fields": ["base_year", "base_year_selection_rationale", "base_year_type"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "BAS-030",
+          "schema_fields": ["recalculation_policy", "significance_threshold", "recalculation_trigger"]
+        }
+      ],
+      "evidence_triggered": ["J2-014"],
+      "escalation_triggers": [
+        {
+          "condition_ref": "prior_inventories_exist",
+          "reason": "Prior inventories mean the base year is a real methodology choice, not a default. J2-014 is requested."
+        }
+      ],
+      "question_content_ref": "intake.questions.boundary.base_year",
+      "reasoning": "AUTO with condition: the SME default applies unless prior inventories exist, in which case this escalates.",
+      "notes": [
+        "J2-014 is requested only on the escalation path, not for every client."
+      ]
+    },
+    {
+      "datapoint_id": "BND-2.5",
+      "mapping_ref": "2.5",
+      "section": "boundary",
+      "kind": "question",
+      "grain": "org",
+      "label": "Mid-year acquisitions, divestitures or moves",
+      "class": "HUMAN",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "CHG-010",
+          "schema_fields": [
+            "change_id",
+            "change_type",
+            "effective_date",
+            "affected_operation_id",
+            "boundary_effect",
+            "recalc_effect"
+          ]
+        }
+      ],
+      "evidence_triggered": ["J2-007"],
+      "escalation_triggers": [
+        {
+          "condition_ref": "answer_is_yes",
+          "reason": "Rare for SMEs; a 'yes' is a boundary change that goes to a human."
+        }
+      ],
+      "question_content_ref": "intake.questions.boundary.mid_year_changes",
+      "reasoning": "Rare for SMEs; one yes/no screening question; 'yes' escalates.",
+      "notes": []
+    },
+    {
+      "datapoint_id": "BND-2.6",
+      "mapping_ref": "2.6",
+      "section": "boundary",
+      "kind": "system_assignment",
+      "grain": "org",
+      "label": "GWP set + gas universe",
+      "class": "SYSTEM",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "provisional_default": {
+        "value": null,
+        "rationale": "System assigns per program requirements; verifier can override. Defaults require expert sign-off before any value is set.",
+        "status": "awaiting_definition"
+      },
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "GAS-030",
+          "schema_fields": ["gwp_ar_edition", "gwp_time_horizon", "gwp_source"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "GAS-010",
+          "schema_fields": ["gases_included"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": null,
+      "reasoning": "Methodology decision, not a client fact. System assigns per program requirements; verifier can override. Needs Todd sign-off on defaults.",
+      "notes": [
+        "Never surfaced to the client as a question.",
+        "Mapping self-check also lists gas-universe alignment as a known integration caveat."
+      ]
+    },
+    {
+      "datapoint_id": "BND-2.7",
+      "mapping_ref": "2.7",
+      "section": "boundary",
+      "kind": "question",
+      "grain": "org",
+      "label": "Significance criteria + justification for excluding indirect categories 3-6 (ISO) / Scope 3 (GHG Protocol)",
+      "class": "HUMAN",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "provisional_default": {
+        "value": "templated_sme_significance_statement",
+        "rationale": "Templated default statement for SMEs, human-confirmed. Template content pending expert sign-off.",
+        "status": "proposed_not_approved"
+      },
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "EXC-010",
+          "schema_fields": [
+            "excluded_source_id",
+            "exclusion_rationale",
+            "exclusion_materiality_basis"
+          ]
+        },
+        {
+          "target_type": "intake_field",
+          "field_path": "profile.significance_criteria_statement",
+          "intake_fields": ["statement", "confirmed_by", "confirmed_at"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.boundary.significance_criteria",
+      "reasoning": "ISO 14064-1 requires a documented process for determining significant indirect emissions and justifying exclusions; a Scope-1-and-2-only inventory conforms only with this recorded.",
+      "notes": [
+        "Added in mapping v0.2 (audit FAIL 3).",
+        "Applied at indirect-category level (ISO categories 3-6), not at individual source level."
+      ]
+    },
+    {
+      "datapoint_id": "S1STC-3.1",
+      "mapping_ref": "3.1",
+      "section": "scope1_stationary",
+      "kind": "question",
+      "grain": "site",
+      "label": "Any equipment on site that burns fuel? (heating boilers, gas kitchens, workshops) - yes/no + list",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-STC-100",
+          "schema_fields": ["equipment_id", "inventory_id", "facility_id"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-STC-140",
+          "schema_fields": ["method_variant"]
+        }
+      ],
+      "evidence_triggered": ["J2-008", "J2-001", "J2-003"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope1_stationary.fuel_burning_equipment",
+      "reasoning": "'Yes' activates the STC block; per-fuel records land in S1-STC-110/010 from extracted documents, not typed answers.",
+      "notes": [
+        "Method claim S1-STC-140 is defaulted per section 7 (MRT-7.1).",
+        "J2-008 registers the equipment; J2-001/J2-003 follow per fuel type.",
+        "Consumption quantities are never typed by the client - they come from extracted documents into S1-STC-110/S1-STC-010."
+      ]
+    },
+    {
+      "datapoint_id": "S1STC-3.2",
+      "mapping_ref": "3.2",
+      "section": "scope1_stationary",
+      "kind": "question",
+      "grain": "site",
+      "label": "Any backup or emergency generators?",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-STC-100",
+          "schema_fields": ["equipment_id", "inventory_id", "facility_id"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-STC-220",
+          "schema_fields": ["operating_hours", "hourly_fuel_consumption_rate", "rate_unit"]
+        }
+      ],
+      "evidence_triggered": ["J2-005", "J2-003"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope1_stationary.emergency_generators",
+      "reasoning": "Schema provides the emergency-generator estimation path (S1-STC-220/230, EPA section 3.1 p.9).",
+      "notes": [
+        "Film overlay default expectation: yes for stages.",
+        "Activity-estimation route S1-STC-220 applies when generator fuel is not separately metered; estimated quantity lands in S1-STC-230."
+      ]
+    },
+    {
+      "datapoint_id": "S1STC-3.3",
+      "mapping_ref": "3.3",
+      "section": "scope1_stationary",
+      "kind": "question",
+      "grain": "site",
+      "label": "Is any of your fuel biodiesel, renewable diesel, or a blend?",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "stationary_or_mobile_fuel_present" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-STC-300",
+          "schema_fields": ["fuel_biogenic_fraction", "fuel_fossil_fraction"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-MOB-310",
+          "schema_fields": ["biofuel_blend_pct", "fossil_fraction", "biogenic_fraction", "blend_source"]
+        }
+      ],
+      "evidence_triggered": ["J2-003"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope1_stationary.biogenic_fuel_blend",
+      "reasoning": "ISO 14064-1 requires biogenic CO2 quantified separately; the workbook's biogenic routes exist but were never activated by a screening question. Renewable diesel in generators is increasingly common at studios.",
+      "notes": [
+        "Added in mapping v0.2 (audit FAIL 4).",
+        "Outputs route via S1-STC-330/340/350, which carry emissions_co2_biogenic separately from emissions_co2_fossil.",
+        "Applies to mobile fuels too, via S1-MOB-310."
+      ]
+    },
+    {
+      "datapoint_id": "S1STC-3.4",
+      "mapping_ref": "3.4",
+      "section": "scope1_stationary",
+      "kind": "completeness_rule",
+      "grain": "site",
+      "label": "Screening 'no' produces a 'screened, not present' completeness record",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "screening_answer_negative" },
+      "populates": [
+        {
+          "target_type": "intake_field",
+          "field_path": "datapoint_states.status",
+          "intake_fields": ["status", "screened_source_category", "screened_at", "screened_by"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": null,
+      "reasoning": "Non-existence is a completeness statement, not an exclusion. EXC-010 (exclusion_rationale, exclusion_materiality_basis) is reserved for sources that exist but are excluded with justification.",
+      "notes": [
+        "Revised in mapping v0.2 (audit FAIL 5).",
+        "Applies to all 'no' answers across sections 3-6, not only stationary combustion.",
+        "This rule must never write EXC-010. Genuine exclusions require sustentra_reviewer action per SPEC section 4."
+      ]
+    },
+    {
+      "datapoint_id": "S1MOB-4.1",
+      "mapping_ref": "4.1",
+      "section": "scope1_mobile",
+      "kind": "question",
+      "grain": "entity",
+      "label": "Vehicles or motorized equipment the company owns/leases? + fleet list",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-MOB-400",
+          "schema_fields": [
+            "vehicle_type",
+            "model_year",
+            "fuel_type",
+            "location",
+            "operating_status",
+            "fleet_group",
+            "mobile_source_class"
+          ]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-MOB-100",
+          "schema_fields": ["vehicle_or_equipment_id", "inventory_id", "facility_id"]
+        }
+      ],
+      "evidence_triggered": ["J2-008", "J2-004", "J2-003"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope1_mobile.fleet_screening",
+      "reasoning": "J2-004's own default rule is flag_by_default when ownership/control is unclear; intake asks ownership explicitly per vehicle group to pre-clear it.",
+      "notes": [
+        "Mapping class is 'AUTO with flag': the J2-004 flag_by_default rule is pre-cleared by asking ownership explicitly per vehicle group.",
+        "Film framing: carts, forklifts, shuttles, trucks."
+      ]
+    },
+    {
+      "datapoint_id": "S1MOB-4.2",
+      "mapping_ref": "4.2",
+      "section": "scope1_mobile",
+      "kind": "question",
+      "grain": "entity",
+      "label": "Do productions/tenants bring their own vehicles?",
+      "class": "HUMAN",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "industry_is_film" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "ORG-050",
+          "schema_fields": ["operational_control_over_asset_flag", "exclusion_justification"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope1_mobile.tenant_vehicles",
+      "reasoning": "Tenant vehicles are out of scope; recording why is boundary judgment.",
+      "notes": [
+        "Film-only question.",
+        "Recorded as tenant-side, out of client scope - a boundary record, not an emissions record."
+      ]
+    },
+    {
+      "datapoint_id": "S1MOB-4.3",
+      "mapping_ref": "4.3",
+      "section": "scope1_mobile",
+      "kind": "question",
+      "grain": "vehicle_group",
+      "label": "Fuel data availability: fuel-card records vs only mileage",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "mobile_fleet_present" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-MOB-460",
+          "schema_fields": [
+            "selected_co2_calculation_method",
+            "selected_co2_method_basis",
+            "selected_nonco2_calculation_method",
+            "selected_nonco2_method_basis"
+          ]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-MOB-470",
+          "schema_fields": [
+            "selected_activity_quantity_route",
+            "selected_activity_route_basis",
+            "fuel_quantity_is_estimated"
+          ]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-MOB-120",
+          "schema_fields": [
+            "odometer_start",
+            "odometer_end",
+            "distance_traveled",
+            "distance_unit",
+            "activity_period_start",
+            "activity_period_end"
+          ]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-MOB-260",
+          "schema_fields": ["fuel_economy_value", "fuel_economy_unit", "fuel_economy_source"]
+        }
+      ],
+      "evidence_triggered": ["J2-004", "J2-009"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope1_mobile.fuel_data_availability",
+      "reasoning": "Schema supports fuel-based and distance/fuel-economy routes; intake picks based on documents the client actually has.",
+      "notes": [
+        "Biodiesel/blend flag for mobile fuels is carried by S1STC-3.3 via S1-MOB-310.",
+        "Mileage-log evidence uses the J2-009 pattern."
+      ]
+    },
+    {
+      "datapoint_id": "S1FUG-5.1",
+      "mapping_ref": "5.1",
+      "section": "scope1_fugitive",
+      "kind": "question",
+      "grain": "site",
+      "label": "AC or refrigeration systems your company maintains? + equipment count/type",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-FUG-100",
+          "schema_fields": ["equipment_id", "inventory_id", "facility_id"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-FUG-010",
+          "schema_fields": [
+            "equipment_type",
+            "equipment_count",
+            "gas_type",
+            "total_charge_capacity",
+            "capacity_unit"
+          ]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-FUG-110",
+          "schema_fields": ["gas_type", "event_date", "amount_added", "amount_recovered", "service_provider"]
+        }
+      ],
+      "evidence_triggered": ["J2-006", "J2-008"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope1_fugitive.refrigeration_systems",
+      "reasoning": "Screening-factor route works from equipment data alone; material-balance route (S1-FUG-110) upgrades it when service records exist - intake asks 'do you have service invoices?' to pick.",
+      "notes": [
+        "The service-invoice availability sub-question selects between the material-balance and screening routes (see MRT-7.4)."
+      ]
+    },
+    {
+      "datapoint_id": "S1FUG-5.2",
+      "mapping_ref": "5.2",
+      "section": "scope1_fugitive",
+      "kind": "question",
+      "grain": "site",
+      "label": "Fire suppression systems using gas agents (not water sprinklers)?",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-FUG-050",
+          "schema_fields": [
+            "equipment_type",
+            "fixed_or_portable",
+            "gas_type",
+            "equipment_count",
+            "total_capacity",
+            "capacity_unit"
+          ]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-FUG-060",
+          "schema_fields": [
+            "fixed_system_emission_factor",
+            "portable_system_emission_factor",
+            "ef_source",
+            "ef_unit"
+          ]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-FUG-070",
+          "schema_fields": ["emissions_gas", "emissions_co2e", "gas_emissions_unit", "co2e_unit"]
+        }
+      ],
+      "evidence_triggered": ["J2-008"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope1_fugitive.fire_suppression",
+      "reasoning": "Plain-language wording must distinguish water sprinklers (no GHG) from clean-agent/CO2 systems.",
+      "notes": [
+        "Question content requirement: the wording must make the water-sprinkler distinction explicit, otherwise clients over-report."
+      ]
+    },
+    {
+      "datapoint_id": "S1FUG-5.3",
+      "mapping_ref": "5.3",
+      "section": "scope1_fugitive",
+      "kind": "question",
+      "grain": "site",
+      "label": "Purchase any industrial gases? (CO2, welding gas, special effects gases)",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-FUG-080",
+          "schema_fields": ["gas_type", "amount_purchased", "quantity_unit", "use_purpose"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-FUG-120",
+          "schema_fields": [
+            "gas_type",
+            "purchase_date",
+            "amount_purchased",
+            "quantity_unit",
+            "use_purpose"
+          ]
+        }
+      ],
+      "evidence_triggered": ["J2-003"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope1_fugitive.industrial_gases",
+      "reasoning": "Film-relevant: CO2/N2O for effects are Scope 1 when released.",
+      "notes": ["Purchase invoices follow the J2-003 pattern."]
+    },
+    {
+      "datapoint_id": "S1FUG-5.4",
+      "mapping_ref": "5.4",
+      "section": "scope1_fugitive",
+      "kind": "question",
+      "grain": "site",
+      "label": "On-site wastewater treatment or other industrial processes?",
+      "class": "HUMAN",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "intake_field",
+          "field_path": "profile.process_sources_screening",
+          "intake_fields": ["present", "description"]
+        }
+      ],
+      "evidence_triggered": ["J2-012"],
+      "escalation_triggers": [
+        {
+          "condition_ref": "answer_is_yes",
+          "reason": "The workbook flags process (PRC) calculations as unsupported for automation; a 'yes' always goes to a human."
+        }
+      ],
+      "question_content_ref": "intake.questions.scope1_fugitive.process_sources",
+      "reasoning": "Workbook flags process (PRC) calculations as unsupported for automation. Rare for SMEs; always goes to a human.",
+      "notes": [
+        "Screening only - intake records presence, it does not attempt any PRC calculation routing."
+      ]
+    },
+    {
+      "datapoint_id": "S1FUG-5.5",
+      "mapping_ref": "5.5",
+      "section": "scope1_fugitive",
+      "kind": "not_asked_v1",
+      "grain": "site",
+      "label": "SF6 electrical equipment",
+      "class": "SYSTEM",
+      "class_source": "inferred_pending_confirmation",
+      "v1_status": "not_asked",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": null,
+      "reasoning": "Workbook flags full SF6 electrical accounting as unsupported for automation; SME prevalence approximately zero. Verifier-side only.",
+      "notes": [
+        "NOT ASKED in v1 (mapping 5.5, SPEC section 8 scope cut). Recorded here so the omission is traceable rather than silently absent.",
+        "The mapping assigns no escalation class to this row; SYSTEM was inferred during Phase A and needs confirmation."
+      ]
+    },
+    {
+      "datapoint_id": "S2-6.1",
+      "mapping_ref": "6.1",
+      "section": "scope2",
+      "kind": "question",
+      "grain": "site",
+      "label": "Electricity accounts: supplier, account/meter numbers, how many meters",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-MTR-020",
+          "schema_fields": ["meter_id", "utility_account_id", "supplier_name"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-MTR-030",
+          "schema_fields": ["energy_carrier"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-MTR-040",
+          "schema_fields": ["facility_ref", "operational_control_determination_ref"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-MTR-080",
+          "schema_fields": ["service_period_start", "service_period_end"]
+        }
+      ],
+      "evidence_triggered": ["J2-002"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope2.electricity_accounts",
+      "reasoning": "Consumption quantities (S2-CON-020/025) come from extracted bills, never typed. Grid region (S2-MTR-070) derived from FAC-010 address.",
+      "notes": [
+        "Evidence expectation is J2-002 x 12 months per meter; the expected-completeness spec is compiled in Phase E from this.",
+        "Grid region S2-MTR-070 and EF geographic match S2-EFS-070 are derived from the site address, never asked."
+      ]
+    },
+    {
+      "datapoint_id": "S2-6.2",
+      "mapping_ref": "6.2",
+      "section": "scope2",
+      "kind": "question",
+      "grain": "site",
+      "label": "Shared building or shared meters with tenants/others? + floor areas",
+      "class": "HUMAN",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-CON-055",
+          "schema_fields": [
+            "reporter_floor_area",
+            "total_building_area",
+            "occupancy_factor",
+            "allocation_basis"
+          ]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-MTR-050",
+          "schema_fields": ["metering_scope"]
+        }
+      ],
+      "evidence_triggered": ["J2-009", "J2-007"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope2.shared_metering",
+      "reasoning": "Allocation basis is judgment; human confirms before S1 processes dependent documents.",
+      "notes": [
+        "Submeter reports use the J2-009 pattern; lease terms use J2-007."
+      ]
+    },
+    {
+      "datapoint_id": "S2-6.3",
+      "mapping_ref": "6.3",
+      "section": "scope2",
+      "kind": "question",
+      "grain": "site",
+      "label": "Purchased steam, hot water, or chilled water?",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-MTR-030",
+          "schema_fields": ["energy_carrier"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-EFS-076",
+          "schema_fields": ["thermal_fuel_ghg_intensity", "thermal_generation_efficiency"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-EFS-077",
+          "schema_fields": ["chiller_electricity_ef_ref", "chiller_cop"]
+        }
+      ],
+      "evidence_triggered": ["J2-002"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope2.district_energy",
+      "reasoning": "Asked per site as yes/no; never assumed.",
+      "notes": ["District energy bills follow the J2-002 pattern."]
+    },
+    {
+      "datapoint_id": "S2-6.4",
+      "mapping_ref": "6.4",
+      "section": "scope2",
+      "kind": "question",
+      "grain": "site",
+      "label": "On-site solar or other generation? Sell any power back?",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "OPB-020",
+          "schema_fields": ["sold_own_generated_energy_flag"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "OPB-030",
+          "schema_fields": ["electricity_purchased_for_resale_flag"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-MTR-045",
+          "schema_fields": ["distribution_scenario"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-MTR-047",
+          "schema_fields": ["selfgen_attributes_sold"]
+        }
+      ],
+      "evidence_triggered": ["J2-009"],
+      "escalation_triggers": [
+        {
+          "condition_ref": "selling_energy_or_attributes",
+          "reason": "Selling energy or attributes creates double-counting risk (OPB-040); that branch escalates to HUMAN."
+        }
+      ],
+      "question_content_ref": "intake.questions.scope2.self_generation",
+      "reasoning": "Mapping class is 'AUTO; HUMAN if selling'. Selling energy or attributes creates double-counting risk (OPB-040) - that branch escalates.",
+      "notes": [
+        "OPB-040 (double_counting_check) is the downstream check the escalation exists to protect.",
+        "Generation records follow the J2-009 pattern."
+      ]
+    },
+    {
+      "datapoint_id": "S2-6.5",
+      "mapping_ref": "6.5",
+      "section": "scope2",
+      "kind": "question",
+      "grain": "site",
+      "label": "Bought renewable energy certificates or a green power product?",
+      "class": "AUTO",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-INS-010",
+          "schema_fields": ["instrument_id", "instrument_registry_ref"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-INS-020",
+          "schema_fields": ["instrument_type"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-EFS-110",
+          "schema_fields": ["market_hierarchy_tier"]
+        }
+      ],
+      "evidence_triggered": ["J2-019"],
+      "escalation_triggers": [],
+      "question_content_ref": "intake.questions.scope2.energy_attribute_instruments",
+      "reasoning": "Instruments activate market-based reporting alongside location-based (GHG Protocol Scope 2 Guidance dual reporting, conditional on instrument markets - applies in the US). J2-019's rules guard the classic error (RECs netted against Scope 1).",
+      "notes": [
+        "Dual reporting: location-based is always produced; market-based is added when instruments exist."
+      ]
+    },
+    {
+      "datapoint_id": "MRT-7.1",
+      "mapping_ref": "7 (stationary)",
+      "section": "method_routing",
+      "kind": "method_route",
+      "grain": "source_category",
+      "label": "Stationary combustion method route default",
+      "class": "SYSTEM",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-STC-140",
+          "schema_fields": ["method_variant"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": null,
+      "method_route": {
+        "source": "stationary_combustion",
+        "default_route": "fuel_based_default",
+        "conditional_routes": [
+          {
+            "route": "fuel_based_hhv",
+            "condition": "bills are expressed in energy units"
+          }
+        ],
+        "routes_not_exposed": ["cems", "fuel_based_carbon_content", "fuel_inventory_adjustment"],
+        "routes_not_exposed_descriptive": ["complex waste gas"]
+      },
+      "reasoning": "SME path cut: expose only the simple routes. Verifier can override.",
+      "notes": [
+        "Route values are controlled Calculation_Method values from the methodology workbooks.",
+        "'complex waste gas' has no controlled Calculation_Method value; recorded descriptively."
+      ]
+    },
+    {
+      "datapoint_id": "MRT-7.2",
+      "mapping_ref": "7 (emergency generators)",
+      "section": "method_routing",
+      "kind": "method_route",
+      "grain": "source_category",
+      "label": "Emergency generator method route default",
+      "class": "SYSTEM",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-STC-220",
+          "schema_fields": ["operating_hours", "hourly_fuel_consumption_rate", "rate_unit"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": null,
+      "method_route": {
+        "source": "emergency_generators",
+        "default_route": "activity_estimation",
+        "conditional_routes": [
+          {
+            "route": "activity_estimation",
+            "condition": "generator fuel is not separately metered"
+          }
+        ],
+        "routes_not_exposed": [],
+        "routes_not_exposed_descriptive": []
+      },
+      "reasoning": "Activity estimation is the schema's provided path when generator fuel is unmetered.",
+      "notes": []
+    },
+    {
+      "datapoint_id": "MRT-7.3",
+      "mapping_ref": "7 (mobile)",
+      "section": "method_routing",
+      "kind": "method_route",
+      "grain": "source_category",
+      "label": "Mobile combustion method route default",
+      "class": "SYSTEM",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-MOB-460",
+          "schema_fields": ["selected_co2_calculation_method", "selected_nonco2_calculation_method"]
+        },
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-MOB-470",
+          "schema_fields": ["selected_activity_quantity_route", "selected_activity_route_basis"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": null,
+      "method_route": {
+        "source": "mobile_combustion",
+        "default_route": "fuel_based",
+        "conditional_routes": [
+          {
+            "route": "distance_based_onroad",
+            "condition": "only mileage is available; distance x fuel-economy fallback"
+          },
+          {
+            "route": "fuel_based_nonroad",
+            "condition": "non-road equipment with fuel records"
+          }
+        ],
+        "routes_not_exposed": ["fuel_based_carbon_content"],
+        "routes_not_exposed_descriptive": []
+      },
+      "reasoning": "Fuel-based from fuel cards; distance x fuel-economy fallback when only mileage exists.",
+      "notes": []
+    },
+    {
+      "datapoint_id": "MRT-7.4",
+      "mapping_ref": "7 (fugitive)",
+      "section": "method_routing",
+      "kind": "method_route",
+      "grain": "source_category",
+      "label": "Fugitive method route default",
+      "class": "SYSTEM",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S1-FUG-170",
+          "schema_fields": ["method_variant"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": null,
+      "method_route": {
+        "source": "fugitive",
+        "default_route": "material_balance",
+        "conditional_routes": [
+          {
+            "route": "screening",
+            "condition": "no service records available; screening factors fallback"
+          }
+        ],
+        "routes_not_exposed": [],
+        "routes_not_exposed_descriptive": ["SF6 electrical", "leak-detection measurement routes"]
+      },
+      "reasoning": "Material balance from service records; screening factors fallback.",
+      "notes": [
+        "The service-invoice availability sub-question on S1FUG-5.1 selects between these two routes."
+      ]
+    },
+    {
+      "datapoint_id": "MRT-7.5",
+      "mapping_ref": "7 (scope 2)",
+      "section": "method_routing",
+      "kind": "method_route",
+      "grain": "source_category",
+      "label": "Scope 2 method route default",
+      "class": "SYSTEM",
+      "class_source": "mapping",
+      "v1_status": "active",
+      "provisional": true,
+      "requires_signoff": "Todd",
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "methodology_field",
+          "field_id": "S2-CON-040",
+          "schema_fields": ["consumption_basis"]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": null,
+      "method_route": {
+        "source": "scope2",
+        "default_route": "location_based",
+        "conditional_routes": [
+          {
+            "route": "market_based",
+            "condition": "energy attribute instruments exist (S2-6.5 positive)"
+          }
+        ],
+        "routes_not_exposed": [],
+        "routes_not_exposed_descriptive": []
+      },
+      "reasoning": "Billed consumption; location-based always, market-based added when instruments exist.",
+      "notes": ["Location-based is never replaced by market-based; the two are reported together."]
+    },
+    {
+      "datapoint_id": "PRV-8.1",
+      "mapping_ref": "8 (provenance)",
+      "section": "provenance",
+      "kind": "provenance_layer",
+      "grain": "datapoint",
+      "label": "Source provenance: document type, period covered, metered vs invoiced vs estimated",
+      "class": "AUTO",
+      "class_source": "inferred_pending_confirmation",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "intake_field",
+          "field_path": "datapoint_states.provenance",
+          "intake_fields": [
+            "source_document_type",
+            "period_covered_start",
+            "period_covered_end",
+            "value_basis"
+          ]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": null,
+      "reasoning": "Per the inventory-management-plan concept in the EPA/GHG Protocol guidance already cited in the workbooks.",
+      "notes": [
+        "value_basis is the metered / invoiced / estimated distinction.",
+        "Film addition: lease/license agreements, submeter reports, generator rental invoices are recognised source document types.",
+        "The mapping assigns no escalation class to section 8; AUTO was inferred during Phase A and needs confirmation."
+      ]
+    },
+    {
+      "datapoint_id": "PRV-8.2",
+      "mapping_ref": "8 (uncertainty)",
+      "section": "provenance",
+      "kind": "provenance_layer",
+      "grain": "category",
+      "label": "Uncertainty assessment: category-level rating with qualitative justification",
+      "class": "HUMAN",
+      "class_source": "inferred_pending_confirmation",
+      "v1_status": "active",
+      "provisional": false,
+      "applicability": { "condition_ref": "always" },
+      "populates": [
+        {
+          "target_type": "intake_field",
+          "field_path": "profile.uncertainty_assessment",
+          "intake_fields": [
+            "category",
+            "uncertainty_tier",
+            "assessment_type",
+            "qualitative_justification"
+          ]
+        }
+      ],
+      "evidence_triggered": [],
+      "escalation_triggers": [],
+      "question_content_ref": null,
+      "reasoning": "ISO 14064-1 section 8.3 requires uncertainty assessed at category level, with qualitative assessment justified when quantitative isn't feasible/cost-effective. The metered/invoiced/estimated field supplies approximately 80% of the input; this adds the roll-up and justification fields.",
+      "notes": [
+        "Added in mapping v0.2 (audit FAIL 2).",
+        "Rolls up from PRV-8.1 value_basis across each data point in the category.",
+        "The mapping assigns no escalation class to section 8; HUMAN was inferred during Phase A because the qualitative justification is a methodology judgment. Needs confirmation."
+      ]
+    }
+  ]
+}

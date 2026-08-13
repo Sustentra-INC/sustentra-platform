@@ -1,0 +1,439 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/intake/contracts/profile_schema.schema.json",
+  "title": "IntakeProfileSchema",
+  "description": "Structural contract for intake/config/profile_schema.json, the intake profile schema seed. Defines the shape and controlled vocabularies of the seed; referential checks (that field IDs and J2 evidence IDs actually exist) are enforced separately by intake/scripts/validate_profile_schema.py against intake/config/methodology_field_index.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_name",
+    "schema_version",
+    "status",
+    "description",
+    "derived_from",
+    "validation",
+    "design_contracts",
+    "open_items",
+    "sections",
+    "applicability_conditions",
+    "datapoints"
+  ],
+  "properties": {
+    "schema_name": {
+      "type": "string",
+      "const": "sustentra_intake_profile_schema"
+    },
+    "schema_version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["seed", "draft", "approved"]
+    },
+    "description": { "type": "string", "minLength": 1 },
+    "derived_from": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mapping", "mapping_version", "spec", "spec_version", "repo_rules"],
+      "properties": {
+        "mapping": { "type": "string" },
+        "mapping_version": { "type": "string" },
+        "spec": { "type": "string" },
+        "spec_version": { "type": "string" },
+        "repo_rules": { "type": "string" }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["contract", "field_index", "validator"],
+      "properties": {
+        "contract": { "type": "string" },
+        "field_index": { "type": "string" },
+        "validator": { "type": "string" }
+      }
+    },
+    "design_contracts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "open_items": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pending_expert_signoff",
+        "pending_class_confirmation",
+        "mapping_shorthand_resolved",
+        "not_in_scope_v1"
+      ],
+      "properties": {
+        "pending_expert_signoff": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["owner", "source", "datapoint_ids"],
+          "properties": {
+            "owner": { "type": "string" },
+            "source": { "type": "string" },
+            "datapoint_ids": { "$ref": "#/$defs/datapoint_id_list" }
+          }
+        },
+        "pending_class_confirmation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["note", "datapoint_ids"],
+          "properties": {
+            "note": { "type": "string" },
+            "datapoint_ids": { "$ref": "#/$defs/datapoint_id_list" }
+          }
+        },
+        "mapping_shorthand_resolved": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["datapoint_id", "mapping_text", "resolution", "needs_founder_note"],
+            "properties": {
+              "datapoint_id": { "$ref": "#/$defs/datapoint_id" },
+              "mapping_text": { "type": "string" },
+              "resolution": { "type": "string" },
+              "needs_founder_note": { "type": "boolean" }
+            }
+          }
+        },
+        "not_in_scope_v1": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["note", "datapoint_ids"],
+          "properties": {
+            "note": { "type": "string" },
+            "datapoint_ids": { "$ref": "#/$defs/datapoint_id_list" }
+          }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "section_id",
+          "order",
+          "stage",
+          "mapping_section",
+          "label",
+          "delivery",
+          "description"
+        ],
+        "properties": {
+          "section_id": { "$ref": "#/$defs/section_id" },
+          "order": { "type": "integer", "minimum": 1 },
+          "stage": { "type": "integer", "minimum": 0 },
+          "mapping_section": { "type": "string" },
+          "label": { "type": "string", "minLength": 1 },
+          "delivery": {
+            "type": "string",
+            "enum": ["structured_form", "guided_interview", "system_assigned"]
+          },
+          "description": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "applicability_conditions": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["description", "expression"],
+        "properties": {
+          "description": { "type": "string", "minLength": 1 },
+          "expression": {
+            "description": "Deterministic evaluation logic is implemented in Phase C. Null in the Phase A seed: the condition is named here, not yet executable.",
+            "type": ["object", "string", "null"]
+          }
+        }
+      }
+    },
+    "datapoints": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/datapoint" }
+    }
+  },
+  "$defs": {
+    "datapoint_id": {
+      "type": "string",
+      "pattern": "^(SEED|BND|S1STC|S1MOB|S1FUG|S2|MRT|PRV)-\\d+\\.\\d+$"
+    },
+    "datapoint_id_list": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/datapoint_id" },
+      "uniqueItems": true
+    },
+    "section_id": {
+      "type": "string",
+      "enum": [
+        "seed_form",
+        "boundary",
+        "scope1_stationary",
+        "scope1_mobile",
+        "scope1_fugitive",
+        "scope2",
+        "method_routing",
+        "provenance"
+      ]
+    },
+    "escalation_class": {
+      "description": "AUTO = safe to parse, S1 may run immediately. HUMAN = boundary/allocation class, requires human confirmation before dependent S1 processing. SYSTEM = assigned by the platform, not asked.",
+      "type": "string",
+      "enum": ["AUTO", "HUMAN", "SYSTEM"]
+    },
+    "populates_entry": {
+      "type": "object",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["target_type", "field_id", "schema_fields"],
+          "properties": {
+            "target_type": { "const": "methodology_field" },
+            "field_id": {
+              "type": "string",
+              "pattern": "^(?:(?:S1|S2)-[A-Z]{3}-\\d{3}|[A-Z]{3}-\\d{3})$"
+            },
+            "schema_fields": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["target_type", "field_path", "intake_fields"],
+          "properties": {
+            "target_type": { "const": "intake_field" },
+            "field_path": { "type": "string", "minLength": 1 },
+            "intake_fields": {
+              "type": "array",
+              "minItems": 1,
+              "uniqueItems": true,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["target_type", "field_path", "source_schema"],
+          "properties": {
+            "target_type": { "const": "legacy_field" },
+            "field_path": { "type": "string", "minLength": 1 },
+            "source_schema": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "escalation_trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["condition_ref", "reason"],
+      "properties": {
+        "condition_ref": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "method_route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "default_route",
+        "conditional_routes",
+        "routes_not_exposed",
+        "routes_not_exposed_descriptive"
+      ],
+      "properties": {
+        "source": { "type": "string", "minLength": 1 },
+        "default_route": { "type": "string", "minLength": 1 },
+        "conditional_routes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["route", "condition"],
+            "properties": {
+              "route": { "type": "string", "minLength": 1 },
+              "condition": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "routes_not_exposed": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "routes_not_exposed_descriptive": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "provisional_default": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "rationale", "status"],
+      "properties": {
+        "value": { "type": ["string", "number", "boolean", "null"] },
+        "rationale": { "type": "string", "minLength": 1 },
+        "status": {
+          "type": "string",
+          "enum": ["proposed_not_approved", "awaiting_definition", "approved"]
+        }
+      }
+    },
+    "datapoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "datapoint_id",
+        "mapping_ref",
+        "section",
+        "kind",
+        "grain",
+        "label",
+        "class",
+        "class_source",
+        "v1_status",
+        "provisional",
+        "applicability",
+        "populates",
+        "evidence_triggered",
+        "escalation_triggers",
+        "question_content_ref",
+        "reasoning",
+        "notes"
+      ],
+      "properties": {
+        "datapoint_id": { "$ref": "#/$defs/datapoint_id" },
+        "mapping_ref": { "type": "string", "minLength": 1 },
+        "section": { "$ref": "#/$defs/section_id" },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "question",
+            "completeness_rule",
+            "system_assignment",
+            "method_route",
+            "provenance_layer",
+            "not_asked_v1"
+          ]
+        },
+        "grain": {
+          "type": "string",
+          "enum": [
+            "org",
+            "site",
+            "entity",
+            "vehicle_group",
+            "meter",
+            "source_category",
+            "category",
+            "datapoint"
+          ]
+        },
+        "label": { "type": "string", "minLength": 1 },
+        "class": { "$ref": "#/$defs/escalation_class" },
+        "class_source": {
+          "description": "Whether the escalation class is stated in the mapping or was inferred during implementation and still needs confirmation.",
+          "type": "string",
+          "enum": ["mapping", "inferred_pending_confirmation"]
+        },
+        "v1_status": {
+          "type": "string",
+          "enum": ["active", "not_asked"]
+        },
+        "provisional": {
+          "description": "True when the entry encodes a default that is not yet methodologically approved (CLAUDE.md rule 6).",
+          "type": "boolean"
+        },
+        "requires_signoff": { "type": "string", "minLength": 1 },
+        "provisional_default": { "$ref": "#/$defs/provisional_default" },
+        "applicability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["condition_ref"],
+          "properties": {
+            "condition_ref": { "type": "string", "minLength": 1 }
+          }
+        },
+        "populates": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/populates_entry" }
+        },
+        "evidence_triggered": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^J2-\\d{3}$" }
+        },
+        "escalation_triggers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/escalation_trigger" }
+        },
+        "question_content_ref": {
+          "description": "Placeholder reference to plain-language question content. Null for entries that are never asked. Final copy is authored after the Vocabulary Library review (SPEC section 10).",
+          "type": ["string", "null"]
+        },
+        "method_route": { "$ref": "#/$defs/method_route" },
+        "reasoning": { "type": "string", "minLength": 1 },
+        "notes": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "allOf": [
+        {
+          "description": "Entries flagged provisional must name a sign-off owner.",
+          "if": { "properties": { "provisional": { "const": true } }, "required": ["provisional"] },
+          "then": { "required": ["requires_signoff"] }
+        },
+        {
+          "description": "Method route entries must carry a method_route block.",
+          "if": { "properties": { "kind": { "const": "method_route" } }, "required": ["kind"] },
+          "then": { "required": ["method_route"] }
+        },
+        {
+          "description": "Entries that are never asked must not carry question content.",
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": ["method_route", "provenance_layer", "system_assignment", "not_asked_v1"]
+              }
+            },
+            "required": ["kind"]
+          },
+          "then": { "properties": { "question_content_ref": { "type": "null" } } }
+        },
+        {
+          "description": "Questions must carry a question content reference.",
+          "if": { "properties": { "kind": { "const": "question" } }, "required": ["kind"] },
+          "then": { "properties": { "question_content_ref": { "type": "string" } } }
+        },
+        {
+          "description": "Entries not asked in v1 must not populate methodology fields or trigger evidence.",
+          "if": { "properties": { "v1_status": { "const": "not_asked" } }, "required": ["v1_status"] },
+          "then": {
+            "properties": {
+              "populates": { "maxItems": 0 },
+              "evidence_triggered": { "maxItems": 0 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

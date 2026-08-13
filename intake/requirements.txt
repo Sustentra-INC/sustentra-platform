@@ -1,0 +1,10 @@
+# Python dependencies for the intake workstream tooling.
+#
+# Kept separate from backend/requirements.txt so the intake workstream adds
+# nothing to the existing backend environment (CLAUDE.md rule 1: never modify
+# existing files). openpyxl and pytest are already backend dependencies and are
+# repeated here only so intake tooling can be installed on its own.
+
+openpyxl      # read the S2 methodology workbooks (field index extraction)
+jsonschema    # validate the profile schema seed against its contract
+pytest        # intake/tests
