@@ -95,11 +95,12 @@ def test_every_legacy_target_resolves() -> None:
             assert node is not None
 
 
-def test_methodology_and_legacy_targets_agree_with_the_phase_a_schema() -> None:
-    """A form input may only populate methodology/legacy fields its datapoint declares.
+def test_every_form_target_is_declared_by_its_datapoint() -> None:
+    """A form input may only populate what its datapoint already declares.
 
-    This is the rule-3 critical path: it makes it impossible for the form to
-    quietly feed a methodology field the mapping never assigned to that question.
+    Covers all three target types. This is the rule-3 critical path: the form
+    cannot quietly feed a methodology field the mapping never assigned to that
+    question, and it cannot invent intake state either.
     """
     datapoints = _seed_datapoints()
     for field in _form_fields():
@@ -112,52 +113,37 @@ def test_methodology_and_legacy_targets_agree_with_the_phase_a_schema() -> None:
                     if entry.get("field_id") == target["field_id"]
                     and target["schema_field"] in entry.get("schema_fields", [])
                 ]
-            elif target["target_type"] == "legacy_field":
+            elif target["target_type"] == "intake_field":
+                match = [
+                    entry
+                    for entry in declared
+                    if entry.get("field_path") == target["field_path"]
+                    and target["intake_field"] in entry.get("intake_fields", [])
+                ]
+            else:
                 match = [
                     entry for entry in declared if entry.get("field_path") == target["field_path"]
                 ]
-            else:
-                continue
             assert match, (
                 f"{field['field_id']} populates {target} which "
                 f"{field['datapoint_id']} does not declare"
             )
 
 
-# Intake-only fields the seed form needs but which the Phase A schema does not
-# yet enumerate. Phase A's intake_fields lists were written per mapping row and
-# are not an exhaustive registry of intake state. Recorded here so the set cannot
-# grow unnoticed; raised with the founder as a proposed Phase A amendment rather
-# than edited into the committed schema (CLAUDE.md rule 1).
-UNDECLARED_INTAKE_TARGETS = {
-    ("SEED-1.7", "profile.sites[].ownership", "ownership"),
-    ("SEED-1.7", "profile.sites[].ownership_note", "ownership_note"),
-}
+def test_seed_1_7_records_the_raw_ownership_fact() -> None:
+    """Schema v0.1.1: the seed form has a declared home for owned/leased.
 
+    The boundary determination itself stays unset until BND-2.3.
+    """
+    declared = _seed_datapoints()["SEED-1.7"]["populates"]
+    intake_paths = {
+        entry["field_path"] for entry in declared if entry["target_type"] == "intake_field"
+    }
+    assert intake_paths == {"profile.sites[].ownership", "profile.sites[].ownership_note"}
 
-def test_undeclared_intake_targets_are_exactly_the_known_gap() -> None:
-    datapoints = _seed_datapoints()
-    undeclared = set()
-    for field in _form_fields():
-        declared = datapoints[field["datapoint_id"]]["populates"]
-        for target in field["populates"]:
-            if target["target_type"] != "intake_field":
-                continue
-            match = [
-                entry
-                for entry in declared
-                if entry.get("field_path") == target["field_path"]
-                and target["intake_field"] in entry.get("intake_fields", [])
-            ]
-            if not match:
-                undeclared.add(
-                    (field["datapoint_id"], target["field_path"], target["intake_field"])
-                )
-    assert undeclared == UNDECLARED_INTAKE_TARGETS, (
-        "the set of intake fields not declared in the Phase A schema changed; "
-        "either declare them in intake/config/profile_schema.json (ask first) or "
-        "update UNDECLARED_INTAKE_TARGETS deliberately"
-    )
+    methodology = [entry for entry in declared if entry["target_type"] == "methodology_field"]
+    assert methodology[0]["field_id"] == "ORG-050"
+    assert "operational_control_over_asset_flag" in methodology[0]["schema_fields"]
 
 
 def test_option_vocabularies_exist() -> None:

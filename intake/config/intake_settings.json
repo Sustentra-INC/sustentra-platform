@@ -15,6 +15,10 @@
     "reminder_hours": 12,
     "source": "intake/SPEC.md section 11"
   },
+  "api": {
+    "cors_allowed_origins": ["http://localhost:3000"],
+    "note": "Browsers block the intake screens from calling the API cross-origin unless the API says which origins are allowed. Applied by intake/backend/app.py only; running backend.app.main:app directly is unaffected. Set INTAKE_CORS_ALLOWED_ORIGINS (comma-separated) per environment - never '*', which would let any site call the API with a user's session."
+  },
   "email": {
     "adapter": "outbox",
     "from_address": "no-reply@sustentra.com",
@@ -106,6 +110,7 @@
     "INTAKE_MAGIC_LINK_TTL_MINUTES": "auth.magic_link_ttl_minutes",
     "INTAKE_SESSION_TTL_HOURS": "auth.session_ttl_hours",
     "INTAKE_VERIFY_URL_TEMPLATE": "auth.verify_url_template",
+    "INTAKE_CORS_ALLOWED_ORIGINS": "api.cors_allowed_origins",
     "INTAKE_EMAIL_ADAPTER": "email.adapter",
     "INTAKE_EMAIL_FROM": "email.from_address",
     "INTAKE_EMAIL_OUTBOX_PATH": "email.outbox_path",

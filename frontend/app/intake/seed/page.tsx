@@ -4,6 +4,19 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { IntakeField } from "../../../components/intake/IntakeField";
+import {
+  BUTTON,
+  BUTTON_LINK,
+  BUTTON_SECONDARY,
+  CARD,
+  FIELD_GRID,
+  HEADING,
+  LEDE,
+  MUTED,
+  NOTICE_ERROR,
+  NOTICE_FLAG,
+  SITE_BLOCK
+} from "../../../components/intake/styles";
 import { getCurrentUser, getSeedFormSchema, submitSeedForm } from "../../../lib/api/intake";
 import {
   FieldError,
@@ -78,11 +91,43 @@ export default function SeedFormPage() {
     };
   }, []);
 
+  // The industry chosen in step 1 selects the vocabulary overlay that step 2's
+  // site-type question depends on. The org has no industry yet the first time
+  // through, so the form starts on the general overlay and re-fetches once the
+  // client picks one - otherwise a film client would get a free-text site type
+  // instead of the mapped soundstage/backlot/office/workshop list.
+  const selectedOverlay = useMemo(() => {
+    const industryField = companyStep?.fields.find((field) => field.field_id === "industry");
+    return industryField?.options?.find((option) => option.value === company.industry)
+      ?.overlay_id;
+  }, [companyStep, company.industry]);
+
+  useEffect(() => {
+    if (!schema || !selectedOverlay || selectedOverlay === schema.overlay_id) return;
+
+    let cancelled = false;
+    getSeedFormSchema(selectedOverlay)
+      .then((next) => {
+        if (cancelled) return;
+        setSchema(next);
+        // A site type valid under one overlay may not exist under another.
+        setSites((current) => current.map((site) => ({ ...site, site_type: "" })));
+      })
+      .catch(() => {
+        // Keep the current schema; the server validates the submission regardless.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [schema, selectedOverlay]);
+
   const errorFor = useCallback(
     (fieldId: string, index?: number) =>
       errors.find(
         (error) =>
-          error.field === fieldId && (index === undefined ? error.index === undefined : error.index === index)
+          error.field === fieldId &&
+          (index === undefined ? error.index === undefined : error.index === index)
       )?.message,
     [errors]
   );
@@ -93,9 +138,7 @@ export default function SeedFormPage() {
 
   function updateSite(index: number, fieldId: string, value: string) {
     setSites((current) =>
-      current.map((site, position) =>
-        position === index ? { ...site, [fieldId]: value } : site
-      )
+      current.map((site, position) => (position === index ? { ...site, [fieldId]: value } : site))
     );
   }
 
@@ -132,8 +175,8 @@ export default function SeedFormPage() {
   if (phase === "loading") {
     return (
       <section>
-        <h1>Loading your form</h1>
-        <p className="lede">One moment.</p>
+        <h1 className={HEADING}>Loading your form</h1>
+        <p className={LEDE}>One moment.</p>
       </section>
     );
   }
@@ -141,9 +184,9 @@ export default function SeedFormPage() {
   if (phase === "unauthenticated") {
     return (
       <section>
-        <h1>Please sign in</h1>
-        <p className="lede">Your session has expired or you are not signed in yet.</p>
-        <Link href="/intake/login" className="intake-button">
+        <h1 className={HEADING}>Please sign in</h1>
+        <p className={LEDE}>Your session has expired or you are not signed in yet.</p>
+        <Link href="/intake/login" className={`${BUTTON} inline-block no-underline`}>
           Go to sign in
         </Link>
       </section>
@@ -153,8 +196,8 @@ export default function SeedFormPage() {
   if (phase === "error") {
     return (
       <section>
-        <h1>Something went wrong</h1>
-        <div className="intake-notice error" role="alert">
+        <h1 className={HEADING}>Something went wrong</h1>
+        <div className={NOTICE_ERROR} role="alert">
           <p>{message}</p>
         </div>
       </section>
@@ -165,19 +208,19 @@ export default function SeedFormPage() {
     const flagged = result.submission.provisional_values;
     return (
       <section>
-        <h1>Thank you - that is saved</h1>
-        <p className="lede">
+        <h1 className={HEADING}>Thank you - that is saved</h1>
+        <p className={LEDE}>
           We have recorded {result.org.legal_name}, covering {result.org.reporting_period_start}{" "}
           to {result.org.reporting_period_end}.
         </p>
 
-        <div className="intake-card">
-          <h2>Your sites</h2>
-          <dl className="intake-summary">
+        <div className={CARD}>
+          <h2 className="mb-3 text-lg font-semibold">Your sites</h2>
+          <dl>
             {result.sites.map((site) => (
-              <div key={site.site_id}>
-                <dt>{site.site_name}</dt>
-                <dd>
+              <div key={site.site_id} className="mt-2 first:mt-0">
+                <dt className="font-semibold">{site.site_name}</dt>
+                <dd className="text-ink-soft">
                   {site.site_type.replace(/_/g, " ")} &middot; {site.ownership}
                 </dd>
               </div>
@@ -186,7 +229,7 @@ export default function SeedFormPage() {
         </div>
 
         {flagged.length > 0 ? (
-          <div className="intake-notice flag">
+          <div className={NOTICE_FLAG}>
             <p>
               {flagged.length} answer{flagged.length === 1 ? "" : "s"} used a wording our team is
               still agreeing a standard list for. We have recorded them and someone will confirm -
@@ -204,100 +247,104 @@ export default function SeedFormPage() {
 
   return (
     <section>
-      <h1>About your company</h1>
-      <p className="lede">
+      <h1 className={HEADING}>About your company</h1>
+      <p className={LEDE}>
         This takes a few minutes. Nothing here needs carbon accounting knowledge - if you are
         unsure about anything, give your best answer and we will confirm it with you.
       </p>
 
       {message ? (
-        <div className="intake-notice error" role="alert">
+        <div className={NOTICE_ERROR} role="alert">
           <p>{message}</p>
         </div>
       ) : null}
 
       <form onSubmit={onSubmit} noValidate>
         {companyStep ? (
-          <div className="intake-card">
-            <header>
-              <h2>{companyStep.label}</h2>
-              <p>{companyStep.description}</p>
+          <div className={CARD}>
+            <header className="mb-5">
+              <h2 className="text-lg font-semibold">{companyStep.label}</h2>
+              <p className={MUTED}>{companyStep.description}</p>
             </header>
-            <div className="field-grid">
-              {companyStep.fields.filter((field) => isVisible(field, company)).map((field) => (
-                <div
-                  key={field.field_id}
-                  className={field.input === "textarea" ? "full" : undefined}
-                >
-                  <IntakeField
-                    field={field}
-                    value={company[field.field_id] ?? ""}
-                    error={errorFor(field.field_id)}
-                    onChange={updateCompany}
-                  />
-                </div>
-              ))}
+            <div className={FIELD_GRID}>
+              {companyStep.fields
+                .filter((field) => isVisible(field, company))
+                .map((field) => (
+                  <div
+                    key={field.field_id}
+                    className={field.input === "textarea" ? "sm:col-span-2" : undefined}
+                  >
+                    <IntakeField
+                      field={field}
+                      value={company[field.field_id] ?? ""}
+                      error={errorFor(field.field_id)}
+                      onChange={updateCompany}
+                    />
+                  </div>
+                ))}
             </div>
           </div>
         ) : null}
 
         {sitesStep ? (
-          <div className="intake-card">
-            <header>
-              <h2>{sitesStep.label}</h2>
-              <p>{sitesStep.description}</p>
+          <div className={CARD}>
+            <header className="mb-5">
+              <h2 className="text-lg font-semibold">{sitesStep.label}</h2>
+              <p className={MUTED}>{sitesStep.description}</p>
             </header>
 
             {errorFor("sites") ? (
-              <div className="intake-notice error" role="alert">
+              <div className={NOTICE_ERROR} role="alert">
                 <p>{errorFor("sites")}</p>
               </div>
             ) : null}
 
             {sites.map((site, index) => (
-              <div className="site-block" key={index}>
-                <header>
-                  <h3>Site {index + 1}</h3>
+              <div className={SITE_BLOCK} key={index}>
+                <header className="mb-4 flex items-baseline justify-between">
+                  <h3 className="font-semibold">Site {index + 1}</h3>
                   {sites.length > 1 ? (
                     <button
                       type="button"
-                      className="intake-button link"
+                      className={BUTTON_LINK}
                       onClick={() => removeSite(index)}
                     >
                       Remove
                     </button>
                   ) : null}
                 </header>
-                <div className="field-grid">
-                  {sitesStep.fields.filter((field) => isVisible(field, site)).map((field) => (
-                    <div
-                      key={field.field_id}
-                      className={field.input === "textarea" ? "full" : undefined}
-                    >
-                      <IntakeField
-                        field={field}
-                        value={site[field.field_id] ?? ""}
-                        error={errorFor(field.field_id, index)}
-                        onChange={(fieldId, value) => updateSite(index, fieldId, value)}
-                        idPrefix={`site-${index}-`}
-                      />
-                    </div>
-                  ))}
+                <div className={FIELD_GRID}>
+                  {sitesStep.fields
+                    .filter((field) => isVisible(field, site))
+                    .map((field) => (
+                      <div
+                        key={field.field_id}
+                        className={field.input === "textarea" ? "sm:col-span-2" : undefined}
+                      >
+                        <IntakeField
+                          field={field}
+                          value={site[field.field_id] ?? ""}
+                          error={errorFor(field.field_id, index)}
+                          onChange={(fieldId, value) => updateSite(index, fieldId, value)}
+                          idPrefix={`site-${index}-`}
+                        />
+                      </div>
+                    ))}
                 </div>
               </div>
             ))}
 
-            <button type="button" className="intake-button secondary" onClick={addSite}>
+            <button type="button" className={BUTTON_SECONDARY} onClick={addSite}>
               Add another site
             </button>
           </div>
         ) : null}
 
-        <div className="intake-actions">
-          <button type="submit" className="intake-button" disabled={submitting}>
+        <div className="mt-6 flex items-center gap-3">
+          <button type="submit" className={BUTTON} disabled={submitting}>
             {submitting ? "Saving..." : "Save and continue"}
           </button>
-          <span className="optional-tag">You can come back and change these later.</span>
+          <span className={MUTED}>You can come back and change these later.</span>
         </div>
       </form>
     </section>

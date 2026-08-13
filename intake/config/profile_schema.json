@@ -1,6 +1,6 @@
 {
   "schema_name": "sustentra_intake_profile_schema",
-  "schema_version": "0.1.0",
+  "schema_version": "0.1.1",
   "status": "seed",
   "description": "Machine-readable seed of the intake profile schema: one entry per data point in intake/profile_schema_mapping.md (v0.2), sections 1-8. This file is configuration, not code - the interview engine, evidence-request compiler and profile page all read it. It defines NO new emissions data points: every entry either populates an existing methodology field, sets an intake-only state/content field, or triggers a J2 evidence request.",
   "derived_from": {
@@ -376,6 +376,16 @@
             "operational_control_over_asset_flag",
             "exclusion_justification"
           ]
+        },
+        {
+          "target_type": "intake_field",
+          "field_path": "profile.sites[].ownership",
+          "intake_fields": ["ownership"]
+        },
+        {
+          "target_type": "intake_field",
+          "field_path": "profile.sites[].ownership_note",
+          "intake_fields": ["ownership_note"]
         }
       ],
       "evidence_triggered": [],
@@ -383,7 +393,8 @@
       "question_content_ref": "intake.questions.seed_form.own_or_lease",
       "reasoning": "Seed captures the raw fact; control determination is a boundary judgment.",
       "notes": [
-        "Partial capture only. The control determination is completed in the boundary block (BND-2.3), which is where the HUMAN confirmation happens."
+        "Partial capture only. The control determination is completed in the boundary block (BND-2.3), which is where the HUMAN confirmation happens.",
+        "The raw owned/leased answer and its free-text note are intake-only state; ORG-050's operational_control_over_asset_flag stays unset until BND-2.3 resolves it. Added in schema v0.1.1 (founder-approved) after Phase B surfaced that the seed form had nowhere to record the raw fact."
       ]
     },
     {

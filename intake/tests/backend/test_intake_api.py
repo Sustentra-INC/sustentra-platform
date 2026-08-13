@@ -250,3 +250,39 @@ def test_site_lookup_is_scoped_to_the_callers_org(client) -> None:
     site_id = client.harness.sites.list_records()[0]["site_id"]
     assert client.get(f"/v1/intake/sites/{site_id}", headers=_auth(other_token)).status_code == 200
     assert client.get("/v1/intake/sites/ste_nope", headers=_auth(token)).status_code == 404
+
+
+# -- CORS -------------------------------------------------------------------
+#
+# The screens run on a different port from the API, so without these headers the
+# browser refuses the request before it ever reaches the app. TestClient does not
+# enforce CORS, so this is asserted explicitly rather than assumed.
+
+
+def test_preflight_is_allowed_for_the_configured_origin(client) -> None:
+    response = client.options(
+        "/v1/intake/auth/me",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "GET",
+            "Access-Control-Request-Headers": "authorization"
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "authorization" in response.headers["access-control-allow-headers"].lower()
+
+
+def test_an_unlisted_origin_is_not_granted_access(client) -> None:
+    response = client.get(
+        "/v1/intake/health", headers={"Origin": "https://evil.example"}
+    )
+    assert "access-control-allow-origin" not in {k.lower() for k in response.headers}
+
+
+def test_cors_origins_are_configurable_and_never_wildcard() -> None:
+    from intake.backend.config import load_settings
+
+    origins = load_settings().api.cors_allowed_origins
+    assert origins, "at least one origin must be allowed or the screens cannot call the API"
+    assert "*" not in origins, "a wildcard would let any site call the API with a user's session"

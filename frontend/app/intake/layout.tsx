@@ -14,5 +14,7 @@ interface IntakeLayoutProps {
  * existing app/layout.tsx, which is out of bounds without approval.
  */
 export default function IntakeLayout({ children }: IntakeLayoutProps) {
-  return <div className="intake">{children}</div>;
+  return (
+    <div className="intake max-w-3xl text-base leading-relaxed text-ink">{children}</div>
+  );
 }

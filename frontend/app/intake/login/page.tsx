@@ -2,6 +2,15 @@
 
 import { FormEvent, useState } from "react";
 
+import {
+  BUTTON,
+  BUTTON_LINK,
+  CARD,
+  HEADING,
+  LEDE,
+  NOTICE_ERROR,
+  NOTICE_INFO
+} from "../../../components/intake/styles";
 import { requestMagicLink } from "../../../lib/api/intake";
 
 type Status = "idle" | "sending" | "sent" | "error";
@@ -27,19 +36,15 @@ export default function IntakeLoginPage() {
   if (status === "sent") {
     return (
       <section>
-        <h1>Check your email</h1>
-        <p className="lede">
+        <h1 className={HEADING}>Check your email</h1>
+        <p className={LEDE}>
           If <strong>{email}</strong> has an account, a sign-in link is on its way. The link
           works once and expires shortly.
         </p>
-        <div className="intake-notice info">
+        <div className={NOTICE_INFO}>
           <p>
             Nothing arrived? Check spam, then{" "}
-            <button
-              type="button"
-              className="intake-button link"
-              onClick={() => setStatus("idle")}
-            >
+            <button type="button" className={BUTTON_LINK} onClick={() => setStatus("idle")}>
               try again
             </button>
             .
@@ -51,21 +56,23 @@ export default function IntakeLoginPage() {
 
   return (
     <section>
-      <h1>Sign in to Sustentra</h1>
-      <p className="lede">
+      <h1 className={HEADING}>Sign in to Sustentra</h1>
+      <p className={LEDE}>
         Enter your work email and we will send you a sign-in link. There is no password to
         remember.
       </p>
 
       {error ? (
-        <div className="intake-notice error" role="alert">
+        <div className={NOTICE_ERROR} role="alert">
           <p>{error}</p>
         </div>
       ) : null}
 
-      <form onSubmit={onSubmit} className="intake-card" noValidate>
-        <div className="intake-field">
-          <label htmlFor="email">Work email</label>
+      <form onSubmit={onSubmit} className={CARD} noValidate>
+        <div className="mb-[1.15rem]">
+          <label htmlFor="email" className="mb-1 block font-semibold">
+            Work email
+          </label>
           <input
             id="email"
             name="email"
@@ -75,11 +82,12 @@ export default function IntakeLoginPage() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             placeholder="you@company.com"
+            className="w-full rounded-md border border-line bg-surface px-3 py-2.5 focus:border-brand focus:ring-2 focus:ring-brand/25 focus:outline-none"
           />
         </div>
         <button
           type="submit"
-          className="intake-button"
+          className={BUTTON}
           disabled={status === "sending" || email.trim().length === 0}
         >
           {status === "sending" ? "Sending..." : "Email me a sign-in link"}

@@ -12,6 +12,8 @@ export interface IntakeUser {
 export interface FieldOption {
   value: string;
   label: string;
+  /** Present on industry options: selects the vocabulary overlay for later questions. */
+  overlay_id?: string;
 }
 
 export type FieldInput =

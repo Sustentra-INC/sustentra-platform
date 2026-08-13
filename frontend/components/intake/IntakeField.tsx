@@ -10,6 +10,12 @@ interface IntakeFieldProps {
   idPrefix?: string;
 }
 
+const CONTROL =
+  "w-full rounded-md border border-line bg-surface px-3 py-2.5 " +
+  "focus:border-brand focus:ring-2 focus:ring-brand/25 focus:outline-none";
+
+const CONTROL_ERROR = "border-danger focus:border-danger focus:ring-danger/25";
+
 /**
  * Renders one seed-form input from its config definition.
  *
@@ -25,10 +31,13 @@ export function IntakeField({ field, value, error, onChange, idPrefix = "" }: In
   if (field.help) describedBy.push(`${id}-help`);
   if (error) describedBy.push(`${id}-error`);
 
+  const className = `${CONTROL}${error ? ` ${CONTROL_ERROR}` : ""}`;
+
   const shared = {
     id,
     name: id,
     value,
+    className,
     "aria-invalid": error ? true : undefined,
     "aria-describedby": describedBy.length ? describedBy.join(" ") : undefined,
     onChange: (
@@ -39,13 +48,15 @@ export function IntakeField({ field, value, error, onChange, idPrefix = "" }: In
   const isSelect = field.input === "select" && (field.options?.length ?? 0) > 0;
 
   return (
-    <div className={`intake-field${error ? " has-error" : ""}`}>
-      <label htmlFor={id}>
+    <div className="mb-[1.15rem]">
+      <label htmlFor={id} className="mb-1 block font-semibold">
         {field.label}
-        {!field.required ? <span className="optional-tag"> (optional)</span> : null}
+        {!field.required ? (
+          <span className="text-sm font-normal text-ink-soft"> (optional)</span>
+        ) : null}
         {field.provisional ? (
           <span
-            className="provisional-tag"
+            className="ml-1.5 inline-block rounded-full bg-flag-soft px-2 py-0.5 align-middle text-[0.72rem] font-semibold text-flag"
             title={field.provisional_reason ?? "Awaiting expert sign-off"}
           >
             awaiting sign-off
@@ -54,7 +65,7 @@ export function IntakeField({ field, value, error, onChange, idPrefix = "" }: In
       </label>
 
       {field.help ? (
-        <p className="help" id={`${id}-help`}>
+        <p id={`${id}-help`} className="mb-1.5 text-sm text-ink-soft">
           {field.help}
         </p>
       ) : null}
@@ -69,7 +80,7 @@ export function IntakeField({ field, value, error, onChange, idPrefix = "" }: In
           ))}
         </select>
       ) : field.input === "textarea" ? (
-        <textarea {...shared} />
+        <textarea {...shared} className={`${className} min-h-20 resize-y`} />
       ) : (
         <input
           {...shared}
@@ -86,7 +97,7 @@ export function IntakeField({ field, value, error, onChange, idPrefix = "" }: In
       )}
 
       {error ? (
-        <p className="field-error" id={`${id}-error`} role="alert">
+        <p id={`${id}-error`} role="alert" className="mt-1.5 text-sm text-danger">
           {error}
         </p>
       ) : null}

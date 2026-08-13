@@ -108,6 +108,11 @@ Two settings are environment-only because they are secrets or per-deployment:
 |---|---|
 | `INTAKE_ADMIN_API_KEY` | Required to create orgs. Unset means the endpoint refuses (fails closed). |
 | `INTAKE_DATA_DIR` | Redirects all JSONL storage to one directory. |
+| `INTAKE_CORS_ALLOWED_ORIGINS` | Comma-separated origins allowed to call the API from a browser. Defaults to `http://localhost:3000`. Never set this to `*`. |
+
+The screens run on a different origin from the API, so the browser will refuse
+every request unless that origin is listed. The policy is applied by
+`intake/backend/app.py`; running `backend.app.main:app` directly is unaffected.
 
 Storage defaults live under `local-data/`, which is gitignored — client data
 never reaches the repository.
@@ -141,3 +146,8 @@ Pilot-grade, and worth stating plainly:
 - The intake screens render inside the existing internal sidebar shell; giving
   them their own full-page shell would mean restructuring the existing root
   layout.
+- The screens use Tailwind v4, enabled by `frontend/postcss.config.mjs` and
+  `@tailwindcss/postcss`. Tailwind's global reset (Preflight) is deliberately
+  not imported, because the stylesheet loads inside that shared shell; a small
+  reset scoped to `.intake` stands in for it. Existing pages import no CSS and
+  are unaffected.

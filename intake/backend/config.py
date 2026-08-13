@@ -52,6 +52,11 @@ class EmailSettings(BaseModel):
     note: str | None = None
 
 
+class ApiSettings(BaseModel):
+    cors_allowed_origins: list[str]
+    note: str | None = None
+
+
 class IntakeSettings(BaseModel):
     """Typed view over intake/config/intake_settings.json."""
 
@@ -60,6 +65,7 @@ class IntakeSettings(BaseModel):
     auth: AuthSettings
     escalation: EscalationSettings
     email: EmailSettings
+    api: ApiSettings
     roles: dict[str, Any]
     storage: dict[str, str]
     industries: list[dict[str, Any]]
@@ -98,6 +104,9 @@ def _coerce(current: Any, raw: str) -> Any:
         return int(raw)
     if isinstance(current, float):
         return float(raw)
+    if isinstance(current, list):
+        # List settings are supplied as a comma-separated environment string.
+        return [item.strip() for item in raw.split(",") if item.strip()]
     return raw
 
 

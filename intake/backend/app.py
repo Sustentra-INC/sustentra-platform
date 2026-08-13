@@ -17,14 +17,32 @@ still works and simply has no intake routes.
 from __future__ import annotations
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from intake.backend.api import auth, orgs, seed_form, sites
+from intake.backend.config import load_settings
 
 INTAKE_ROUTERS = (auth.router, orgs.router, sites.router, seed_form.router)
 
+# The intake screens run on a different port from the API, so the browser will
+# not call it at all without these. Headers are listed explicitly rather than
+# using "*", and credentials are off because auth travels in the Authorization
+# header, not a cookie.
+CORS_HEADERS = ("Authorization", "Content-Type", "X-Intake-Admin-Key")
+CORS_METHODS = ("GET", "POST", "PUT", "OPTIONS")
+
 
 def register_intake(target: FastAPI) -> FastAPI:
-    """Add the intake routers and health probe to any FastAPI app."""
+    """Add the intake routers, CORS policy and health probe to any FastAPI app."""
+    origins = load_settings().api.cors_allowed_origins
+    target.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(origins),
+        allow_credentials=False,
+        allow_methods=list(CORS_METHODS),
+        allow_headers=list(CORS_HEADERS),
+    )
+
     for router in INTAKE_ROUTERS:
         target.include_router(router)
 

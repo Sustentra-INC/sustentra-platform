@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { BUTTON, HEADING, LEDE, NOTICE_ERROR } from "../../../../components/intake/styles";
 import { verifyMagicLink } from "../../../../lib/api/intake";
 import type { IntakeUser } from "../../../../lib/intake-types";
 
@@ -44,8 +45,8 @@ export default function IntakeVerifyPage() {
   if (status === "checking") {
     return (
       <section>
-        <h1>Signing you in</h1>
-        <p className="lede">One moment.</p>
+        <h1 className={HEADING}>Signing you in</h1>
+        <p className={LEDE}>One moment.</p>
       </section>
     );
   }
@@ -53,8 +54,8 @@ export default function IntakeVerifyPage() {
   if (status === "failed") {
     return (
       <section>
-        <h1>That link did not work</h1>
-        <div className="intake-notice error" role="alert">
+        <h1 className={HEADING}>That link did not work</h1>
+        <div className={NOTICE_ERROR} role="alert">
           <p>{error}</p>
         </div>
         <p>
@@ -67,9 +68,9 @@ export default function IntakeVerifyPage() {
 
   return (
     <section>
-      <h1>Welcome{user ? `, ${user.name}` : ""}</h1>
-      <p className="lede">You are signed in. Next, tell us about your company and sites.</p>
-      <Link href="/intake/seed" className="intake-button">
+      <h1 className={HEADING}>Welcome{user ? `, ${user.name}` : ""}</h1>
+      <p className={LEDE}>You are signed in. Next, tell us about your company and sites.</p>
+      <Link href="/intake/seed" className={`${BUTTON} inline-block no-underline`}>
         Start
       </Link>
     </section>
