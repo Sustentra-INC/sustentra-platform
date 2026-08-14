@@ -1,0 +1,21 @@
+{
+  "document_id": "EV-BIO-2023-003",
+  "input_docx": "../../raw_documents/docx/EV-BIO-2023-003.docx",
+  "ocr_png_directory": "../../raw_documents/ocr_png/EV-BIO-2023-003",
+  "comparison_policy": {
+    "text_match": "normalized substring; collapse whitespace; case-insensitive",
+    "table_match": "header and required row/cell containment; do not require exact parser block ordering",
+    "numeric_match": "allow commas in raw OCR output"
+  },
+  "expected_text_contains": [
+    "EV-BIO-2023-003",
+    "BIO-001",
+    "March"
+  ],
+  "expected_key_values": {
+    "meter_start": "1,157,000",
+    "meter_end": "1,240,000",
+    "consumed": "83,000",
+    "unit": "scf"
+  }
+}

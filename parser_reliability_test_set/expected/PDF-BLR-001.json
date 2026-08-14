@@ -1,0 +1,28 @@
+{
+  "document_id": "PDF-BLR-001",
+  "document_style": "blr003_monthly_fuel_record",
+  "parser_modes": [
+    "local_pdf"
+  ],
+  "raw_files": {
+    "local_pdf": "raw_documents/pdf/PDF-BLR-001.pdf"
+  },
+  "complexity_level": "moderate",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "490",
+      "short tons"
+    ],
+    "table_expectations": [],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "page_text"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Embedded/selectable-text PDF. The Shell fixture is the original uploaded raw invoice; other PDFs are rendered from evidence-pack records."
+}

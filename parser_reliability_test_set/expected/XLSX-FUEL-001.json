@@ -1,0 +1,48 @@
+{
+  "document_id": "XLSX-FUEL-001",
+  "document_style": "propane_diesel_annual_fuel_record",
+  "parser_modes": [
+    "excel"
+  ],
+  "raw_files": {
+    "excel": "raw_documents/excel/XLSX-FUEL-001.xlsx"
+  },
+  "complexity_level": "moderate",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Source",
+      "Fuel"
+    ],
+    "table_expectations": [
+      {
+        "name": "Annual Fuel",
+        "required": true,
+        "headers": [
+          "Source",
+          "Fuel",
+          "Annual Quantity",
+          "Unit"
+        ],
+        "required_rows": [
+          [
+            "GEN-001",
+            "Diesel (No. 2 Distillate)",
+            "2800",
+            "gallons"
+          ]
+        ]
+      }
+    ],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "sheet_cell",
+      "table_cell"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Native XLSX generated with artifact_tool. Special cases include formulas, merged cells, hidden row/column, blank rows, and multi-sheet layouts."
+}

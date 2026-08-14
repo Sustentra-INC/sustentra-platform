@@ -1,0 +1,47 @@
+{
+  "document_id": "CSV-DIESEL-001",
+  "document_style": "diesel_delivery_details",
+  "parser_modes": [
+    "csv_text"
+  ],
+  "raw_files": {
+    "csv_text": "raw_documents/csv/CSV-DIESEL-001.csv"
+  },
+  "complexity_level": "hard",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Ticket",
+      "D-230118"
+    ],
+    "table_expectations": [
+      {
+        "name": "CSV content",
+        "required": true,
+        "headers": [
+          "Ticket",
+          "Date",
+          "Gallons",
+          "Unit ID"
+        ],
+        "required_rows": [
+          [
+            "D-230118",
+            "2023-01-18",
+            "700",
+            "GEN-001"
+          ]
+        ]
+      }
+    ],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "document_text"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": ""
+}

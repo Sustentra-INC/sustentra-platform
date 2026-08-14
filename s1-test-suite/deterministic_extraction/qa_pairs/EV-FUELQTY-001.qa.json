@@ -1,0 +1,269 @@
+{
+  "document_id": "EV-FUELQTY-001",
+  "document_type": "natural_gas_bill",
+  "canonical_type_id": "CT-S1-FUELQTY",
+  "parser_output_file": "../parser_outputs/EV-FUELQTY-001.parser_output.json",
+  "qa_pairs": [
+    {
+      "qa_id": "EV-FUELQTY-001-Q001",
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "field_id": "facility_name",
+      "question": "What facility is associated with the January natural gas bill?",
+      "answer": {
+        "value": "Anheuser-Busch Baldwinsville Brewery",
+        "unit": null,
+        "raw_value": "Anheuser-Busch Baldwinsville Brewery",
+        "period_start": null,
+        "period_end": null,
+        "record_id": null
+      },
+      "source_expectation": {
+        "source_text_contains": "Facility Name: Anheuser-Busch Baldwinsville Brewery",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": true
+      },
+      "expected_validation_flags": [],
+      "notes": ""
+    },
+    {
+      "qa_id": "EV-FUELQTY-001-Q002",
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "field_id": "fuel_type",
+      "question": "What stationary fuel type is reported?",
+      "answer": {
+        "value": "Natural Gas",
+        "unit": null,
+        "raw_value": "Natural Gas",
+        "period_start": null,
+        "period_end": null,
+        "record_id": null
+      },
+      "source_expectation": {
+        "source_text_contains": "Fuel Type: Natural Gas",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": true
+      },
+      "expected_validation_flags": [],
+      "notes": ""
+    },
+    {
+      "qa_id": "EV-FUELQTY-001-Q003",
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "field_id": "activity_quantity",
+      "question": "What total natural gas usage is reported for January?",
+      "answer": {
+        "value": 32400,
+        "unit": "MMBtu",
+        "raw_value": "32,400 MMBtu",
+        "period_start": "2023-01-01",
+        "period_end": "2023-01-31",
+        "record_id": "NFG-BWV-239871"
+      },
+      "source_expectation": {
+        "source_text_contains": "Total Usage: 32,400 MMBtu",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": false
+      },
+      "expected_validation_flags": [],
+      "notes": ""
+    },
+    {
+      "qa_id": "EV-FUELQTY-001-Q004",
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "field_id": "activity_unit",
+      "question": "What unit is used for the January natural gas usage?",
+      "answer": {
+        "value": "MMBtu",
+        "unit": "MMBtu",
+        "raw_value": "MMBtu",
+        "period_start": null,
+        "period_end": null,
+        "record_id": null
+      },
+      "source_expectation": {
+        "source_text_contains": "Usage Unit: MMBtu",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": true
+      },
+      "expected_validation_flags": [],
+      "notes": ""
+    },
+    {
+      "qa_id": "EV-FUELQTY-001-Q005",
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "field_id": "service_period_start",
+      "question": "What is the service period start date for the January natural gas bill?",
+      "answer": {
+        "value": "2023-01-01",
+        "unit": null,
+        "raw_value": "01/01/2023",
+        "period_start": "2023-01-01",
+        "period_end": null,
+        "record_id": null
+      },
+      "source_expectation": {
+        "source_text_contains": "From: 01/01/2023",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": false
+      },
+      "expected_validation_flags": [],
+      "notes": ""
+    },
+    {
+      "qa_id": "EV-FUELQTY-001-Q006",
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "field_id": "service_period_end",
+      "question": "What is the service period end date for the January natural gas bill?",
+      "answer": {
+        "value": "2023-01-31",
+        "unit": null,
+        "raw_value": "01/31/2023",
+        "period_start": null,
+        "period_end": "2023-01-31",
+        "record_id": null
+      },
+      "source_expectation": {
+        "source_text_contains": "To: 01/31/2023",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": false
+      },
+      "expected_validation_flags": [],
+      "notes": ""
+    },
+    {
+      "qa_id": "EV-FUELQTY-001-Q007",
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "field_id": "supplier_name",
+      "question": "Which utility or supplier issued the January natural gas bill?",
+      "answer": {
+        "value": "National Fuel Gas Company",
+        "unit": null,
+        "raw_value": "National Fuel Gas Company",
+        "period_start": null,
+        "period_end": null,
+        "record_id": null
+      },
+      "source_expectation": {
+        "source_text_contains": "Supplier: National Fuel Gas Company",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": true
+      },
+      "expected_validation_flags": [],
+      "notes": ""
+    },
+    {
+      "qa_id": "EV-FUELQTY-001-Q008",
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "field_id": "account_number",
+      "question": "What account number appears on the January natural gas bill?",
+      "answer": {
+        "value": "ACC-2023-BWV-001",
+        "unit": null,
+        "raw_value": "ACC-2023-BWV-001",
+        "period_start": null,
+        "period_end": null,
+        "record_id": null
+      },
+      "source_expectation": {
+        "source_text_contains": "Account Number: ACC-2023-BWV-001",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": true
+      },
+      "expected_validation_flags": [],
+      "notes": ""
+    }
+  ],
+  "source_materials": {
+    "evidence_pack": "/Users/qinghuanyang/Downloads/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "answer_workbook": "/Users/qinghuanyang/Downloads/AB_Baldwinsville_Scope1_Workbook.xlsx",
+    "source_note": "Evidence pack tables 5-7; workbook Natural Gas January row."
+  }
+}

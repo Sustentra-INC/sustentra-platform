@@ -1,0 +1,5 @@
+Unit ID,Description,Fuel Type,Max Rated Capacity (MMBtu/hr)
+BLR-001,Natural Gas Steam Boiler #1,Natural Gas (pipeline),25
+BLR-002,Natural Gas Steam Boiler #2,Natural Gas (pipeline),20
+BLR-003,Steam Boiler #3 - Multi-Fuel,Natural Gas / Solid Biomass Residue,18
+DRY-001,Propane Malt/Grain Dryer,Propane (LPG),300

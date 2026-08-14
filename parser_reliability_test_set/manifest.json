@@ -1,0 +1,482 @@
+[
+  {
+    "document_id": "CSV-BIO-001",
+    "document_style": "biogas_meter_log",
+    "parser_mode": "csv_text",
+    "file_path": "raw_documents/csv/CSV-BIO-001.csv",
+    "complexity_level": "moderate",
+    "expected_file": "expected/CSV-BIO-001.json"
+  },
+  {
+    "document_id": "CSV-BLR-001",
+    "document_style": "blr003_monthly_fuel_record",
+    "parser_mode": "csv_text",
+    "file_path": "raw_documents/csv/CSV-BLR-001.csv",
+    "complexity_level": "hard",
+    "expected_file": "expected/CSV-BLR-001.json"
+  },
+  {
+    "document_id": "CSV-DIESEL-001",
+    "document_style": "diesel_delivery_details",
+    "parser_mode": "csv_text",
+    "file_path": "raw_documents/csv/CSV-DIESEL-001.csv",
+    "complexity_level": "hard",
+    "expected_file": "expected/CSV-DIESEL-001.json"
+  },
+  {
+    "document_id": "CSV-INV-001",
+    "document_style": "equipment_inventory",
+    "parser_mode": "csv_text",
+    "file_path": "raw_documents/csv/CSV-INV-001.csv",
+    "complexity_level": "moderate",
+    "expected_file": "expected/CSV-INV-001.json"
+  },
+  {
+    "document_id": "CSV-NG-001",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "csv_text",
+    "file_path": "raw_documents/csv/CSV-NG-001.csv",
+    "complexity_level": "moderate",
+    "expected_file": "expected/CSV-NG-001.json"
+  },
+  {
+    "document_id": "CSV-PROP-001",
+    "document_style": "propane_annual_fuel_record",
+    "parser_mode": "csv_text",
+    "file_path": "raw_documents/csv/CSV-PROP-001.csv",
+    "complexity_level": "moderate",
+    "expected_file": "expected/CSV-PROP-001.json"
+  },
+  {
+    "document_id": "OCR-BIO-001",
+    "document_style": "biogas_meter_log",
+    "parser_mode": "aws_textract_pdf",
+    "file_path": "raw_documents/ocr_pdf/OCR-BIO-001.pdf",
+    "complexity_level": "moderate",
+    "expected_file": "expected/OCR-BIO-001.json"
+  },
+  {
+    "document_id": "OCR-BIO-002",
+    "document_style": "biogas_meter_log",
+    "parser_mode": "aws_textract_image",
+    "file_path": "raw_documents/ocr_jpg/OCR-BIO-002.jpg",
+    "complexity_level": "stress",
+    "expected_file": "expected/OCR-BIO-002.json"
+  },
+  {
+    "document_id": "OCR-BLR-001",
+    "document_style": "blr003_monthly_fuel_record",
+    "parser_mode": "aws_textract_pdf",
+    "file_path": "raw_documents/ocr_pdf/OCR-BLR-001.pdf",
+    "complexity_level": "moderate",
+    "expected_file": "expected/OCR-BLR-001.json"
+  },
+  {
+    "document_id": "OCR-BLR-002",
+    "document_style": "blr003_monthly_fuel_record",
+    "parser_mode": "aws_textract_image",
+    "file_path": "raw_documents/ocr_png/OCR-BLR-002.png",
+    "complexity_level": "hard",
+    "expected_file": "expected/OCR-BLR-002.json"
+  },
+  {
+    "document_id": "OCR-BLR-003",
+    "document_style": "blr003_monthly_fuel_record",
+    "parser_mode": "aws_textract_pdf",
+    "file_path": "raw_documents/ocr_pdf/OCR-BLR-003.pdf",
+    "complexity_level": "stress",
+    "expected_file": "expected/OCR-BLR-003.json"
+  },
+  {
+    "document_id": "OCR-DIESEL-001",
+    "document_style": "diesel_delivery_details",
+    "parser_mode": "aws_textract_pdf",
+    "file_path": "raw_documents/ocr_pdf/OCR-DIESEL-001.pdf",
+    "complexity_level": "moderate",
+    "expected_file": "expected/OCR-DIESEL-001.json"
+  },
+  {
+    "document_id": "OCR-DIESEL-002",
+    "document_style": "diesel_delivery_details",
+    "parser_mode": "aws_textract_image",
+    "file_path": "raw_documents/ocr_png/OCR-DIESEL-002.png",
+    "complexity_level": "hard",
+    "expected_file": "expected/OCR-DIESEL-002.json"
+  },
+  {
+    "document_id": "OCR-DIESEL-003",
+    "document_style": "diesel_delivery_details",
+    "parser_mode": "aws_textract_pdf",
+    "file_path": "raw_documents/ocr_pdf/OCR-DIESEL-003.pdf",
+    "complexity_level": "stress",
+    "expected_file": "expected/OCR-DIESEL-003.json"
+  },
+  {
+    "document_id": "OCR-INV-001",
+    "document_style": "equipment_inventory",
+    "parser_mode": "aws_textract_image",
+    "file_path": "raw_documents/ocr_png/OCR-INV-001.png",
+    "complexity_level": "moderate",
+    "expected_file": "expected/OCR-INV-001.json"
+  },
+  {
+    "document_id": "OCR-INV-002",
+    "document_style": "equipment_inventory",
+    "parser_mode": "aws_textract_pdf",
+    "file_path": "raw_documents/ocr_pdf/OCR-INV-002.pdf",
+    "complexity_level": "hard",
+    "expected_file": "expected/OCR-INV-002.json"
+  },
+  {
+    "document_id": "OCR-INV-003",
+    "document_style": "equipment_inventory",
+    "parser_mode": "aws_textract_image",
+    "file_path": "raw_documents/ocr_jpg/OCR-INV-003.jpg",
+    "complexity_level": "stress",
+    "expected_file": "expected/OCR-INV-003.json"
+  },
+  {
+    "document_id": "OCR-NG-001",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "aws_textract_pdf",
+    "file_path": "raw_documents/ocr_pdf/OCR-NG-001.pdf",
+    "complexity_level": "simple",
+    "expected_file": "expected/OCR-NG-001.json"
+  },
+  {
+    "document_id": "OCR-NG-002",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "aws_textract_image",
+    "file_path": "raw_documents/ocr_png/OCR-NG-002.png",
+    "complexity_level": "moderate",
+    "expected_file": "expected/OCR-NG-002.json"
+  },
+  {
+    "document_id": "OCR-NG-003",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "aws_textract_pdf",
+    "file_path": "raw_documents/ocr_pdf/OCR-NG-003.pdf",
+    "complexity_level": "hard",
+    "expected_file": "expected/OCR-NG-003.json"
+  },
+  {
+    "document_id": "OCR-NG-004",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "aws_textract_image",
+    "file_path": "raw_documents/ocr_jpg/OCR-NG-004.jpg",
+    "complexity_level": "stress",
+    "expected_file": "expected/OCR-NG-004.json"
+  },
+  {
+    "document_id": "OCR-PROP-001",
+    "document_style": "propane_annual_fuel_record",
+    "parser_mode": "aws_textract_pdf",
+    "file_path": "raw_documents/ocr_pdf/OCR-PROP-001.pdf",
+    "complexity_level": "moderate",
+    "expected_file": "expected/OCR-PROP-001.json"
+  },
+  {
+    "document_id": "OCR-PROP-002",
+    "document_style": "propane_annual_fuel_record",
+    "parser_mode": "aws_textract_image",
+    "file_path": "raw_documents/ocr_png/OCR-PROP-002.png",
+    "complexity_level": "hard",
+    "expected_file": "expected/OCR-PROP-002.json"
+  },
+  {
+    "document_id": "OCR-PROP-003",
+    "document_style": "propane_annual_fuel_record",
+    "parser_mode": "aws_textract_image",
+    "file_path": "raw_documents/ocr_jpg/OCR-PROP-003.jpg",
+    "complexity_level": "stress",
+    "expected_file": "expected/OCR-PROP-003.json"
+  },
+  {
+    "document_id": "OCR-RFO-001",
+    "document_style": "no_activity_standby_statement",
+    "parser_mode": "aws_textract_pdf",
+    "file_path": "raw_documents/ocr_pdf/OCR-RFO-001.pdf",
+    "complexity_level": "moderate",
+    "expected_file": "expected/OCR-RFO-001.json"
+  },
+  {
+    "document_id": "OCR-RFO-002",
+    "document_style": "no_activity_standby_statement",
+    "parser_mode": "aws_textract_image",
+    "file_path": "raw_documents/ocr_jpg/OCR-RFO-002.jpg",
+    "complexity_level": "stress",
+    "expected_file": "expected/OCR-RFO-002.json"
+  },
+  {
+    "document_id": "PDF-BIO-001",
+    "document_style": "biogas_meter_log",
+    "parser_mode": "local_pdf",
+    "file_path": "raw_documents/pdf/PDF-BIO-001.pdf",
+    "complexity_level": "moderate",
+    "expected_file": "expected/PDF-BIO-001.json"
+  },
+  {
+    "document_id": "PDF-BLR-001",
+    "document_style": "blr003_monthly_fuel_record",
+    "parser_mode": "local_pdf",
+    "file_path": "raw_documents/pdf/PDF-BLR-001.pdf",
+    "complexity_level": "moderate",
+    "expected_file": "expected/PDF-BLR-001.json"
+  },
+  {
+    "document_id": "PDF-DIESEL-001",
+    "document_style": "diesel_delivery_details",
+    "parser_mode": "local_pdf",
+    "file_path": "raw_documents/pdf/PDF-DIESEL-001.pdf",
+    "complexity_level": "hard",
+    "expected_file": "expected/PDF-DIESEL-001.json"
+  },
+  {
+    "document_id": "PDF-INV-001",
+    "document_style": "equipment_inventory",
+    "parser_mode": "local_pdf",
+    "file_path": "raw_documents/pdf/PDF-INV-001.pdf",
+    "complexity_level": "hard",
+    "expected_file": "expected/PDF-INV-001.json"
+  },
+  {
+    "document_id": "PDF-NG-001",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "local_pdf",
+    "file_path": "raw_documents/pdf/PDF-NG-001.pdf",
+    "complexity_level": "moderate",
+    "expected_file": "expected/PDF-NG-001.json"
+  },
+  {
+    "document_id": "PDF-NG-003",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "local_pdf",
+    "file_path": "raw_documents/pdf/PDF-NG-003.pdf",
+    "complexity_level": "moderate",
+    "expected_file": "expected/PDF-NG-003.json"
+  },
+  {
+    "document_id": "PDF-NG-DISTRACTOR-001",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "local_pdf",
+    "file_path": "raw_documents/pdf/PDF-NG-DISTRACTOR-001.pdf",
+    "complexity_level": "stress",
+    "expected_file": "expected/PDF-NG-DISTRACTOR-001.json"
+  },
+  {
+    "document_id": "PDF-PROP-001",
+    "document_style": "propane_annual_fuel_record",
+    "parser_mode": "local_pdf",
+    "file_path": "raw_documents/pdf/PDF-PROP-001.pdf",
+    "complexity_level": "hard",
+    "expected_file": "expected/PDF-PROP-001.json"
+  },
+  {
+    "document_id": "PDF-RFO-001",
+    "document_style": "no_activity_standby_statement",
+    "parser_mode": "local_pdf",
+    "file_path": "raw_documents/pdf/PDF-RFO-001.pdf",
+    "complexity_level": "moderate",
+    "expected_file": "expected/PDF-RFO-001.json"
+  },
+  {
+    "document_id": "PDF-SHELL-001",
+    "document_style": "electricity_utility_bill",
+    "parser_mode": "local_pdf",
+    "file_path": "raw_documents/pdf/SHELL-001885681.pdf",
+    "complexity_level": "hard",
+    "expected_file": "expected/PDF-SHELL-001.json"
+  },
+  {
+    "document_id": "TEXTRACT-JSON-001",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "offline_textract_json",
+    "file_path": "raw_documents/textract_json/TEXTRACT-JSON-001.json",
+    "complexity_level": "moderate",
+    "expected_file": "expected/TEXTRACT-JSON-001.json"
+  },
+  {
+    "document_id": "TEXTRACT-JSON-002",
+    "document_style": "equipment_inventory",
+    "parser_mode": "offline_textract_json",
+    "file_path": "raw_documents/textract_json/TEXTRACT-JSON-002.json",
+    "complexity_level": "hard",
+    "expected_file": "expected/TEXTRACT-JSON-002.json"
+  },
+  {
+    "document_id": "TEXTRACT-JSON-003",
+    "document_style": "blr003_monthly_fuel_record",
+    "parser_mode": "offline_textract_json",
+    "file_path": "raw_documents/textract_json/TEXTRACT-JSON-003.json",
+    "complexity_level": "moderate",
+    "expected_file": "expected/TEXTRACT-JSON-003.json"
+  },
+  {
+    "document_id": "TEXTRACT-JSON-004",
+    "document_style": "propane_annual_fuel_record",
+    "parser_mode": "offline_textract_json",
+    "file_path": "raw_documents/textract_json/TEXTRACT-JSON-004.json",
+    "complexity_level": "moderate",
+    "expected_file": "expected/TEXTRACT-JSON-004.json"
+  },
+  {
+    "document_id": "TEXTRACT-JSON-005",
+    "document_style": "diesel_delivery_details",
+    "parser_mode": "offline_textract_json",
+    "file_path": "raw_documents/textract_json/TEXTRACT-JSON-005.json",
+    "complexity_level": "hard",
+    "expected_file": "expected/TEXTRACT-JSON-005.json"
+  },
+  {
+    "document_id": "TEXTRACT-JSON-006",
+    "document_style": "no_activity_standby_statement",
+    "parser_mode": "offline_textract_json",
+    "file_path": "raw_documents/textract_json/TEXTRACT-JSON-006.json",
+    "complexity_level": "moderate",
+    "expected_file": "expected/TEXTRACT-JSON-006.json"
+  },
+  {
+    "document_id": "TXT-BIO-001",
+    "document_style": "biogas_meter_log",
+    "parser_mode": "text",
+    "file_path": "raw_documents/text/TXT-BIO-001.txt",
+    "complexity_level": "simple",
+    "expected_file": "expected/TXT-BIO-001.json"
+  },
+  {
+    "document_id": "TXT-BLR-001",
+    "document_style": "blr003_monthly_fuel_record",
+    "parser_mode": "text",
+    "file_path": "raw_documents/text/TXT-BLR-001.md",
+    "complexity_level": "simple",
+    "expected_file": "expected/TXT-BLR-001.json"
+  },
+  {
+    "document_id": "TXT-DIESEL-001",
+    "document_style": "diesel_delivery_details",
+    "parser_mode": "text",
+    "file_path": "raw_documents/text/TXT-DIESEL-001.md",
+    "complexity_level": "moderate",
+    "expected_file": "expected/TXT-DIESEL-001.json"
+  },
+  {
+    "document_id": "TXT-NG-001",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "text",
+    "file_path": "raw_documents/text/TXT-NG-001.txt",
+    "complexity_level": "simple",
+    "expected_file": "expected/TXT-NG-001.json"
+  },
+  {
+    "document_id": "TXT-NG-002",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "text",
+    "file_path": "raw_documents/text/TXT-NG-002.md",
+    "complexity_level": "moderate",
+    "expected_file": "expected/TXT-NG-002.json"
+  },
+  {
+    "document_id": "TXT-NG-003",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "text",
+    "file_path": "raw_documents/text/TXT-NG-003.md",
+    "complexity_level": "hard",
+    "expected_file": "expected/TXT-NG-003.json"
+  },
+  {
+    "document_id": "TXT-PROP-001",
+    "document_style": "propane_annual_fuel_record",
+    "parser_mode": "text",
+    "file_path": "raw_documents/text/TXT-PROP-001.txt",
+    "complexity_level": "simple",
+    "expected_file": "expected/TXT-PROP-001.json"
+  },
+  {
+    "document_id": "TXT-RFO-001",
+    "document_style": "no_activity_standby_statement",
+    "parser_mode": "text",
+    "file_path": "raw_documents/text/TXT-RFO-001.txt",
+    "complexity_level": "simple",
+    "expected_file": "expected/TXT-RFO-001.json"
+  },
+  {
+    "document_id": "XLSX-FORMULA-001",
+    "document_style": "propane_annual_fuel_record",
+    "parser_mode": "excel",
+    "file_path": "raw_documents/excel/XLSX-FORMULA-001.xlsx",
+    "complexity_level": "hard",
+    "expected_file": "expected/XLSX-FORMULA-001.json"
+  },
+  {
+    "document_id": "XLSX-FUEL-001",
+    "document_style": "propane_diesel_annual_fuel_record",
+    "parser_mode": "excel",
+    "file_path": "raw_documents/excel/XLSX-FUEL-001.xlsx",
+    "complexity_level": "moderate",
+    "expected_file": "expected/XLSX-FUEL-001.json"
+  },
+  {
+    "document_id": "XLSX-HIDDEN-001",
+    "document_style": "diesel_delivery_details",
+    "parser_mode": "excel",
+    "file_path": "raw_documents/excel/XLSX-HIDDEN-001.xlsx",
+    "complexity_level": "stress",
+    "expected_file": "expected/XLSX-HIDDEN-001.json"
+  },
+  {
+    "document_id": "XLSX-INV-001",
+    "document_style": "equipment_inventory",
+    "parser_mode": "excel",
+    "file_path": "raw_documents/excel/XLSX-INV-001.xlsx",
+    "complexity_level": "moderate",
+    "expected_file": "expected/XLSX-INV-001.json"
+  },
+  {
+    "document_id": "XLSX-INV-002",
+    "document_style": "equipment_inventory",
+    "parser_mode": "excel",
+    "file_path": "raw_documents/excel/XLSX-INV-002.xlsx",
+    "complexity_level": "simple",
+    "expected_file": "expected/XLSX-INV-002.json"
+  },
+  {
+    "document_id": "XLSX-MERGED-001",
+    "document_style": "equipment_inventory",
+    "parser_mode": "excel",
+    "file_path": "raw_documents/excel/XLSX-MERGED-001.xlsx",
+    "complexity_level": "stress",
+    "expected_file": "expected/XLSX-MERGED-001.json"
+  },
+  {
+    "document_id": "XLSX-MULTI-001",
+    "document_style": "equipment_inventory",
+    "parser_mode": "excel",
+    "file_path": "raw_documents/excel/XLSX-MULTI-001.xlsx",
+    "complexity_level": "hard",
+    "expected_file": "expected/XLSX-MULTI-001.json"
+  },
+  {
+    "document_id": "XLSX-MULTI-002",
+    "document_style": "blr003_monthly_fuel_record",
+    "parser_mode": "excel",
+    "file_path": "raw_documents/excel/XLSX-MULTI-002.xlsx",
+    "complexity_level": "hard",
+    "expected_file": "expected/XLSX-MULTI-002.json"
+  },
+  {
+    "document_id": "XLSX-NG-001",
+    "document_style": "natural_gas_utility_bill",
+    "parser_mode": "excel",
+    "file_path": "raw_documents/excel/XLSX-NG-001.xlsx",
+    "complexity_level": "moderate",
+    "expected_file": "expected/XLSX-NG-001.json"
+  },
+  {
+    "document_id": "XLSX-NOTES-001",
+    "document_style": "biogas_meter_log",
+    "parser_mode": "excel",
+    "file_path": "raw_documents/excel/XLSX-NOTES-001.xlsx",
+    "complexity_level": "stress",
+    "expected_file": "expected/XLSX-NOTES-001.json"
+  }
+]

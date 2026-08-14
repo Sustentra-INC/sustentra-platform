@@ -1,0 +1,32 @@
+{
+  "document_id": "OCR-BIO-002",
+  "document_style": "biogas_meter_log",
+  "parser_modes": [
+    "aws_textract_image"
+  ],
+  "raw_files": {
+    "aws_textract_image": "raw_documents/ocr_jpg/OCR-BIO-002.jpg"
+  },
+  "complexity_level": "stress",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Document ID: EV-BIO-2023-008",
+      "BIO-001 Monthly Biogas Meter Log - August",
+      "Facility Name: Anheuser-Busch Baldwinsville Brewery",
+      "Unit ID: BIO-001"
+    ],
+    "table_expectations": [],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "ocr_line",
+      "ocr_word",
+      "table_cell"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Raster-only scanned fixture derived from evidence-pack content. Intended for AWS Textract OCR/table/key-value routing."
+}

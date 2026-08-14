@@ -1,0 +1,45 @@
+{
+  "document_id": "EV-FUELQTY-002",
+  "document_type": "natural_gas_bill_split_unit",
+  "canonical_type_id": "CT-S1-FUELQTY",
+  "parser_output_file": "../parser_outputs/EV-FUELQTY-002.parser_output.json",
+  "qa_pairs": [
+    {
+      "qa_id": "EV-FUELQTY-002-Q001",
+      "canonical_type_id": "CT-S1-FUELQTY",
+      "field_id": "activity_quantity",
+      "question": "What natural gas usage and unit are reported when value and unit appear in separate fields?",
+      "answer": {
+        "value": 32400,
+        "unit": "MMBtu",
+        "raw_value": "32,400",
+        "period_start": null,
+        "period_end": null,
+        "record_id": "NFG-BWV-239871"
+      },
+      "source_expectation": {
+        "source_text_contains": "Usage Unit: MMBtu",
+        "source_kind": [
+          "page_text"
+        ],
+        "page_number": 1,
+        "sheet_name": null,
+        "cell_or_range": null
+      },
+      "required": true,
+      "match_rules": {
+        "value_tolerance": 0,
+        "case_sensitive": false,
+        "allow_unit_aliases": true,
+        "allow_missing_period": true
+      },
+      "expected_validation_flags": [],
+      "notes": "Expected desired behavior: infer nearby Usage Unit. Current v0 likely returns unit null/unit_missing."
+    }
+  ],
+  "source_materials": {
+    "evidence_pack": "/Users/qinghuanyang/Downloads/Evidence_Pack_Generated_Review_Pack_Nora.docx",
+    "answer_workbook": "/Users/qinghuanyang/Downloads/AB_Baldwinsville_Scope1_Workbook.xlsx",
+    "source_note": "Evidence pack table 6 has Usage and Unit as separate cells."
+  }
+}

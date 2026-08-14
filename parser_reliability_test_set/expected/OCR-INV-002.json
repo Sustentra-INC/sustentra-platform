@@ -1,0 +1,32 @@
+{
+  "document_id": "OCR-INV-002",
+  "document_style": "equipment_inventory",
+  "parser_modes": [
+    "aws_textract_pdf"
+  ],
+  "raw_files": {
+    "aws_textract_pdf": "raw_documents/ocr_pdf/OCR-INV-002.pdf"
+  },
+  "complexity_level": "hard",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "Document ID: EV-INV-2023-001",
+      "DENSE EQUIPMENT TABLE",
+      "BLR-001 | Natural Gas Steam Boiler #1 | Natural Gas (pipeline) | 25 | Boiler",
+      "BLR-002 | Natural Gas Steam Boiler #2 | Natural Gas (pipeline) | 20 | Boiler"
+    ],
+    "table_expectations": [],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "ocr_line",
+      "ocr_word",
+      "table_cell"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Raster-only scanned fixture derived from evidence-pack content. Intended for AWS Textract OCR/table/key-value routing."
+}

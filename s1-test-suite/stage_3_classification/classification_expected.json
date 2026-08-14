@@ -1,0 +1,298 @@
+{
+  "documents": [
+    {
+      "document_id": "EV-INV-2023-001",
+      "expected_document_type": "Equipment Inventory",
+      "expected_classification_group": "equipment_inventory",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-001",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-002",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-003",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-004",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-005",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-006",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-007",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-008",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-009",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-010",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-011",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-NG-2023-012",
+      "expected_document_type": "Natural Gas Utility Bill",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-001",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-002",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-003",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-004",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-005",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-006",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-007",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-008",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-009",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-010",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-011",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BIO-2023-012",
+      "expected_document_type": "BIO-001 Biogas Meter Log",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-001",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-002",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-003",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-004",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-005",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-006",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-007",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-008",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-009",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-010",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-011",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-BLR003-2023-012",
+      "expected_document_type": "BLR-003 Boiler Fuel Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-LAB-2023-001",
+      "expected_document_type": "Biomass Fuel Lab Analysis Report",
+      "expected_classification_group": "fuel_quality_lab_report",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-PROP-2023-001",
+      "expected_document_type": "Propane Annual Purchase Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-DIESEL-2023-001",
+      "expected_document_type": "Diesel Annual Purchase Record",
+      "expected_classification_group": "fuel_quantity_document",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-AGG-2023-001",
+      "expected_document_type": "Combustion Source Aggregation Worksheet",
+      "expected_classification_group": "aggregation_worksheet",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    },
+    {
+      "document_id": "EV-RFO-2023-001",
+      "expected_document_type": "Residual Fuel Oil Boiler Standby / No Fuel Use Statement",
+      "expected_classification_group": "no_activity_statement",
+      "canonical_type_id": null,
+      "note": "Codex must map this expectation to the canonical_type_id currently defined in extraction_config_seed.json; do not invent an ID."
+    }
+  ]
+}

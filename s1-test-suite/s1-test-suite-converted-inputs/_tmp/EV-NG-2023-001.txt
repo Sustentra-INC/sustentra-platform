@@ -1,0 +1,29 @@
+Document ID: EV-NG-2023-001
+
+National Fuel Gas Company - Natural Gas Statement
+
+Billing Statement for Anheuser-Busch Baldwinsville Brewery
+
+Customer	Anheuser-Busch Baldwinsville Brewery	Service Address	4797 River Road, Baldwinsville, NY 13027
+Account Number	ACC-2023-BWV-001	Bill Number	NFG-23-BWV-0001
+Service Period	Jan 1, 2023 to Jan 31, 2023	Meter Serial Number	NFG-BWV-239871
+Rate / Tariff Class	Large Industrial Transport Service - LI-3	Usage Unit	MMBtu
+
+Meter and Usage Detail
+
+Meter ID	Previous Read	Current Read	Billing Days	Usage	Unit
+NFG-BWV-239871	1,027,540	1,059,940	31	32,400	MMBtu
+
+Current Charges
+
+Charge Description	Quantity	Rate	Amount
+Natural gas commodity	32,400 MMBtu	$6.1500/MMBtu	$199,260.00
+Transportation and delivery	32,400 MMBtu	$0.4200/MMBtu	$13,608.00
+Industrial service charge	1 account	$325.00	$325.00
+Taxes and local assessments	Calculated	3.10%	$6,598.91
+Total Current Charges			$219,791.91
+
+Payment due date: 02/20/2023. This statement reflects full billed volume for the service period shown above.
+
+Customer service: 1-800-555-0198 | Industrial Accounts Desk | Syracuse District
+

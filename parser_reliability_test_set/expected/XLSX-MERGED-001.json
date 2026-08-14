@@ -1,0 +1,47 @@
+{
+  "document_id": "XLSX-MERGED-001",
+  "document_style": "equipment_inventory",
+  "parser_modes": [
+    "excel"
+  ],
+  "raw_files": {
+    "excel": "raw_documents/excel/XLSX-MERGED-001.xlsx"
+  },
+  "complexity_level": "stress",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "COMBUSTION EQUIPMENT INVENTORY"
+    ],
+    "table_expectations": [
+      {
+        "name": "Merged Inventory",
+        "required": true,
+        "headers": [
+          "Unit ID",
+          "Description",
+          "Fuel Type",
+          "Capacity"
+        ],
+        "required_rows": [
+          [
+            "RFO-001",
+            "Residual Fuel Oil Boiler (Backup)",
+            "Residual Fuel Oil No. 6",
+            "60"
+          ]
+        ]
+      }
+    ],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "sheet_cell",
+      "table_cell"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Native XLSX generated with artifact_tool. Special cases include formulas, merged cells, hidden row/column, blank rows, and multi-sheet layouts."
+}

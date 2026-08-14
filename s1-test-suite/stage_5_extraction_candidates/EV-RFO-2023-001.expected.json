@@ -1,0 +1,20 @@
+{
+  "document_id": "EV-RFO-2023-001",
+  "gold_source": "evidence_pack_document",
+  "document_type": "Residual Fuel Oil Boiler Standby / No Fuel Use Statement",
+  "expected_fields": {
+    "unit_id": "RFO-001",
+    "standby_status": true,
+    "reported_fuel_use": 0,
+    "unit": null
+  },
+  "review_required": true,
+  "known_conflict": "Workbook Emissions Summary contains 3,423 MMBtu for RFO-001 while source statement indicates no fuel use.",
+  "comparison_policy": {
+    "strings": "trim and collapse whitespace; case-insensitive unless field is an identifier",
+    "numbers": "numeric equality after comma/currency removal",
+    "dates": "ISO YYYY-MM-DD",
+    "units": "case-insensitive canonical unit comparison",
+    "missing_fields": "count as false negative only when the field is present in expected_fields/expected_records"
+  }
+}

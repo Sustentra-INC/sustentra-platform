@@ -1,0 +1,8 @@
+Unit ID,Description,Fuel Type,Max Rated Capacity (MMBtu/hr),Unit Type
+BLR-001,Natural Gas Steam Boiler #1,Natural Gas (pipeline),25,Boiler
+BLR-002,Natural Gas Steam Boiler #2,Natural Gas (pipeline),20,Boiler
+BLR-003,Steam Boiler #3 - Multi-Fuel,Natural Gas / Solid Biomass Residue,18,Boiler
+DRY-001,Propane Malt/Grain Dryer,Propane (LPG),300,Process Heater
+GEN-001,Diesel Emergency Generator #1,Diesel (No. 2 Distillate),2.5,RICE
+BIO-001,Onsite Wastewater Biogas Combustor,Biogas (non-pipeline),15,Other
+RFO-001,Residual Fuel Oil Boiler (Backup),Residual Fuel Oil No. 6,60,Boiler

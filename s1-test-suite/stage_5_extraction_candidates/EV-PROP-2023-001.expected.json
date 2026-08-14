@@ -1,0 +1,18 @@
+{
+  "document_id": "EV-PROP-2023-001",
+  "gold_source": "workbook:Propane & Diesel",
+  "document_type": "Propane Annual Purchase Record",
+  "expected_fields": {
+    "unit_id": "DRY-001",
+    "fuel_type": "Propane (LPG)",
+    "annual_quantity": 106600,
+    "unit": "gallons"
+  },
+  "comparison_policy": {
+    "strings": "trim and collapse whitespace; case-insensitive unless field is an identifier",
+    "numbers": "numeric equality after comma/currency removal",
+    "dates": "ISO YYYY-MM-DD",
+    "units": "case-insensitive canonical unit comparison",
+    "missing_fields": "count as false negative only when the field is present in expected_fields/expected_records"
+  }
+}

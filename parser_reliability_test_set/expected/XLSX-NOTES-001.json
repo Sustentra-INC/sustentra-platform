@@ -1,0 +1,41 @@
+{
+  "document_id": "XLSX-NOTES-001",
+  "document_style": "biogas_meter_log",
+  "parser_modes": [
+    "excel"
+  ],
+  "raw_files": {
+    "excel": "raw_documents/excel/XLSX-NOTES-001.xlsx"
+  },
+  "complexity_level": "stress",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "BIO-001 MONTHLY METER LOG"
+    ],
+    "table_expectations": [
+      {
+        "name": "Biogas Log",
+        "required": true,
+        "headers": [
+          "Prepared for parser stress testing"
+        ],
+        "required_rows": [
+          [
+            "Note: values are monthly integrator totals"
+          ]
+        ]
+      }
+    ],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "sheet_cell",
+      "table_cell"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Native XLSX generated with artifact_tool. Special cases include formulas, merged cells, hidden row/column, blank rows, and multi-sheet layouts."
+}

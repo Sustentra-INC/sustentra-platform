@@ -1,0 +1,28 @@
+{
+  "document_id": "PDF-BIO-001",
+  "document_style": "biogas_meter_log",
+  "parser_modes": [
+    "local_pdf"
+  ],
+  "raw_files": {
+    "local_pdf": "raw_documents/pdf/PDF-BIO-001.pdf"
+  },
+  "complexity_level": "moderate",
+  "expected_status": "succeeded",
+  "expected_parser_output": {
+    "text_contains": [
+      "87,000",
+      "EV-BIO-2023-008"
+    ],
+    "table_expectations": [],
+    "key_value_expectations": []
+  },
+  "traceability_expectations": {
+    "requires_source_references": true,
+    "expected_source_kinds": [
+      "page_text"
+    ]
+  },
+  "expected_warning_codes": [],
+  "notes": "Embedded/selectable-text PDF. The Shell fixture is the original uploaded raw invoice; other PDFs are rendered from evidence-pack records."
+}
