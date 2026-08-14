@@ -1,14 +1,15 @@
-﻿export default function HomePage() {
-  return (
-    <section>
-      <h2>Pilot Focus</h2>
-      <p>
-        This skeleton prioritizes upload, extraction traceability, field review, and approved evidence.
-      </p>
-      <p>
-        Validation, calculation, and gap analysis remain placeholder routes until post-pilot implementation.
-      </p>
-    </section>
-  );
-}
+import { redirect } from "next/navigation";
 
+/**
+ * The front door.
+ *
+ * This used to be the internal skeleton's notes to itself - "this skeleton
+ * prioritizes upload, extraction traceability..." - which is what anyone
+ * opening the bare address would read, including a client you sent the link to.
+ *
+ * The client-facing product is the intake flow, so the root goes there. The
+ * internal pages are still at their own addresses, unchanged.
+ */
+export default function HomePage() {
+  redirect("/intake/login");
+}
