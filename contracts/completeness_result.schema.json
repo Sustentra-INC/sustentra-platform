@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sustentra.local/contracts/completeness_result.schema.json",
+  "title": "CompletenessResult",
+  "type": "object",
+  "required": [
+    "engagement_id",
+    "status_counts",
+    "results"
+  ],
+  "properties": {
+    "engagement_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status_counts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "field_id",
+          "status"
+        ],
+        "properties": {
+          "field_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "layer": {
+            "type": "string"
+          },
+          "value_origin": {
+            "type": ["string", "null"]
+          },
+          "requirement_level": {
+            "type": ["string", "null"]
+          },
+          "condition": {
+            "type": ["string", "null"]
+          },
+          "condition_status": {
+            "type": ["string", "null"],
+            "enum": [
+              "applicable",
+              "not_applicable",
+              "unknown",
+              "unsupported_condition",
+              null
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "complete",
+              "missing_required",
+              "not_applicable",
+              "provisional_condition_unknown",
+              "not_requestable_value_origin"
+            ]
+          },
+          "methodology_value_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "reason": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    }
+  }
+}

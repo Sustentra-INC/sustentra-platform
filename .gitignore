@@ -39,3 +39,7 @@ local-data/
 # backend/tests/
 # contracts/
 # docs/
+
+# Local S1/parser evaluation suites and generated artifacts
+s1-test-suite/
+parser_reliability_test_set/
