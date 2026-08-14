@@ -150,6 +150,42 @@
 
   --row-height-compact: 36px;   /* evidence tables, coverage matrix */
   --row-height-default: 44px;   /* register rows, queue rows */
+  --rail-width: 240px;
+  --app-min-width: 1280px;
+  --main-workspace-min-width: 1040px;
+  --nav-height: 48px;
+  --needs-you-height: 44px;
+  --table-header-height: 34px;
+  --upload-min-height: 72px;
+  --table-min-width: 1180px;
+  --viewport-full-height: 100vh;
+  --state-chip-min-height: 24px;
+  --state-chip-radius: 999px;
+  --state-chip-padding-block: 3px;
+  --tooltip-min-width: 180px;
+  --tooltip-max-width: 280px;
+  --icon-button-size: 32px;
+  --compact-button-padding-block: 2px;
+  --hidden-input-size: 1px;
+  --provisional-marker-padding-block: 1px;
+  --underline-offset: 2px;
+  --menu-min-width: 190px;
+  --empty-content-max-width: 720px;
+  --queue-width: 190px;
+  --source-pane-width: 300px;
+  --field-pane-min-width: 420px;
+  --source-pane-min-width: 320px;
+  --source-pane-max-width: 380px;
+  --csv-preview-min-width: 520px;
+  --glossary-table-max-width: 900px;
+  --field-value-max-height: 8rem;
+  --source-snippet-max-height: 7.5rem;
+  --selected-source-max-height: 8rem;
+  --source-notice-max-width: 280px;
+  --hairline-width: 1px;
+  --active-row-marker-width: 3px;
+  --nav-current-marker-width: 2px;
+  --shadow-subtle: none;
 
 
   /* --- Shape -------------------------------------------------------------- */

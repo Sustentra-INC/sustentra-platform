@@ -7,9 +7,16 @@ interface S1ChromeProps {
   engagement: EngagementConfig;
   children: ReactNode;
   currentTab?: "evidence" | "extraction";
+  onOpenGlossary?: () => void;
 }
 
-export function PersistentRail({ engagement }: { engagement: EngagementConfig }) {
+export function PersistentRail({
+  engagement,
+  onOpenGlossary,
+}: {
+  engagement: EngagementConfig;
+  onOpenGlossary?: () => void;
+}) {
   return (
     <aside className="s1-rail">
       <h1 className="s1-rail__brand">Sustentra</h1>
@@ -25,7 +32,7 @@ export function PersistentRail({ engagement }: { engagement: EngagementConfig })
       <RailItem label="Scope boundary" value={engagement.scopeBoundaryStatement} />
       <RailItem label="Aggregate uncorrected magnitude" value={EXACT_COPY.railMagnitude} />
       <div className="s1-rail__section">
-        <button className="s1-linklike" type="button">
+        <button className="s1-linklike" type="button" onClick={onOpenGlossary}>
           Glossary
         </button>
       </div>
@@ -61,10 +68,10 @@ export function PrimaryNav({ currentTab = "evidence" }: { currentTab?: "evidence
   );
 }
 
-export function S1Chrome({ engagement, children, currentTab }: S1ChromeProps) {
+export function S1Chrome({ engagement, children, currentTab, onOpenGlossary }: S1ChromeProps) {
   return (
     <div className="s1-screen">
-      <PersistentRail engagement={engagement} />
+      <PersistentRail engagement={engagement} onOpenGlossary={onOpenGlossary} />
       <section className="s1-main">
         <PrimaryNav currentTab={currentTab} />
         {children}

@@ -16,9 +16,9 @@ export type SourceLocation = SourceLocationPage | SourceLocationCells;
 
 export interface ExtractedField {
   documentId: string;
-  canonicalTypeId: string;
+  canonicalTypeId: string | null;
   fieldKey: string;
-  candidateSnapshot?: Record<string, unknown>;
+  reviewToken?: string;
   fieldLabel: string;
   value: string | null;
   unit: string | null;

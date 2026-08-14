@@ -1,6 +1,7 @@
 import { apiRequest, apiUrl } from "../../../lib/api/client";
 import { mapBackendDocumentToEvidenceItem, type BackendDocumentLike } from "../adapters/evidenceAdapter";
 import {
+  decodeReviewCandidateToken,
   mapBackendCandidateToExtractedField,
   type BackendExtractionCandidateLike,
 } from "../adapters/fieldAdapter";
@@ -55,8 +56,7 @@ export async function listWorkspaceEvidence(engagementId: string): Promise<{
       const reviews = await apiMaybe<BackendReviewDecision[]>(
         `/v1/documents/${encodeURIComponent(document.document_id)}/reviews`
       );
-      const canonicalTypeId =
-        extractionResult?.canonical_type_id ?? latestRun?.canonical_type_id ?? "unknown_document_type";
+      const canonicalTypeId = extractionResult?.canonical_type_id ?? latestRun?.canonical_type_id ?? null;
       const latestReviewByCandidate = new Map<string, BackendReviewDecision>();
       for (const review of reviews ?? []) {
         latestReviewByCandidate.set(review.candidate_id, review);
@@ -129,7 +129,7 @@ export async function submitFieldReview({
   reviewedValue?: string | null;
   reviewerNote?: string | null;
 }): Promise<void> {
-  const candidate = field.candidateSnapshot;
+  const candidate = field.reviewToken ? decodeReviewCandidateToken(field.reviewToken) : null;
   const evidenceId = typeof candidate?.evidence_id === "string" ? candidate.evidence_id : null;
   const fieldName = typeof candidate?.field_name === "string" ? candidate.field_name : null;
   if (!candidate || !evidenceId || !fieldName) return;

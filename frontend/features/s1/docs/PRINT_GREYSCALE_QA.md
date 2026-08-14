@@ -19,6 +19,11 @@ alone.
   and `Clear filter`.
 - Extraction Review prints field labels, provisional identifiers, snippets, and
   `page location not available` when source location is absent.
+- Glossary prints definition tables with readable term labels.
+- Withdrawn rows print with a visible `Withdrawn` state label and remain visible.
+- Row-level History and engagement Activity print with actor and timestamp text.
+- The session audit non-retention notice prints above Activity.
+- Preview fallback prints the failure text and original-download action.
 
 ## CSS Expectations
 
@@ -27,3 +32,4 @@ alone.
 - Not-applicable indicators use dashed borders.
 - Page background prints as white.
 - Workpaper text remains black or greyscale.
+- Machine and human history entries differ by border treatment, not colour alone.

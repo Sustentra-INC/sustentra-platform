@@ -4,6 +4,7 @@ import type {
   PeriodState,
   ProcessingState,
   TypeReviewBand,
+  EvidenceDisposition,
 } from "./states";
 
 export type EvidenceClass = "main" | "supportive";
@@ -34,6 +35,7 @@ export interface EvidenceItem {
   uploadedBy: Actor;
   uploadedAt: string;
   evidenceClass: EvidenceClass;
+  disposition: EvidenceDisposition;
   processingState: ProcessingState;
   haltReason: string | null;
   detectedType: string | null;
@@ -47,6 +49,7 @@ export interface EvidenceItem {
   periodStart: string | null;
   periodEnd: string | null;
   fieldsExpected: number;
+  fieldsExpectedDisplay: number | null;
   fieldsExtracted: number;
   documentProperties: DocumentProperty[];
   relationships: EvidenceRelationship[];

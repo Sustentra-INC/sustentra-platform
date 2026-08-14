@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 
 import { EXACT_COPY } from "../constants/copy";
 import { inlineDocumentUrl } from "../adapters/evidenceAdapter";
+import {
+  manualEntryFieldsForType,
+  type ManualEntryFieldDefinition,
+} from "../fixtures/extraction/manualEntryFields";
 import { useKeyboardNavigation } from "../hooks/useKeyboardNavigation";
-import type { AuditIntent } from "../utils/auditIntent";
+import type { SessionAuditEntry } from "../utils/auditIntent";
 import { createAuditIntent, createCorrectionAuditIntents } from "../utils/auditIntent";
 import type { EvidenceItem, ExtractedField } from "../types";
 import { StateIndicator } from "./StateIndicator";
@@ -14,8 +18,8 @@ interface ExtractionReviewProps {
   documents: EvidenceItem[];
   fields: ExtractedField[];
   initialDocumentId: string;
-  auditIntents: AuditIntent[];
-  onAuditIntent: (intent: AuditIntent) => void;
+  auditIntents: SessionAuditEntry[];
+  onAuditIntent: (intent: SessionAuditEntry) => void;
   onPersistReview?: (payload: {
     field: ExtractedField;
     decision: "accepted" | "edited";
@@ -23,6 +27,7 @@ interface ExtractionReviewProps {
     reviewerNote?: string | null;
   }) => Promise<void>;
   showSessionAuditIntents?: boolean;
+  mode?: "snippet" | "manual";
   onBack: () => void;
 }
 
@@ -34,34 +39,70 @@ export function ExtractionReview({
   onAuditIntent,
   onPersistReview,
   showSessionAuditIntents = true,
+  mode = "snippet",
   onBack,
 }: ExtractionReviewProps) {
   const [fieldItems, setFieldItems] = useState(fields);
+  const [manualFields, setManualFields] = useState<ExtractedField[]>([]);
   const reviewableFields = fieldItems.filter((field) => field.valueOrigin === "extracted");
   const [selectedDocumentId, setSelectedDocumentId] = useState(initialDocumentId);
-  const selectedDocumentFields = reviewableFields.filter((field) => field.documentId === selectedDocumentId);
-  const firstUnreviewed = selectedDocumentFields.find((field) => field.reviewStatus === "unreviewed");
+  const selectedDocument = documents.find((document) => document.documentId === selectedDocumentId) ?? documents[0];
+  const manualEntryType = manualEntryTypeForDocument(selectedDocument);
+  const manualDefinitions = useMemo(
+    () => manualEntryFieldsForType(manualEntryType),
+    [manualEntryType]
+  );
+  const selectedDocumentFields =
+    mode === "manual"
+      ? manualFields.filter((field) => field.documentId === selectedDocumentId)
+      : reviewableFields.filter((field) => field.documentId === selectedDocumentId);
+  const firstUnreviewed = firstDefaultField(selectedDocumentFields);
   const [selectedFieldKey, setSelectedFieldKey] = useState(firstUnreviewed?.fieldKey ?? selectedDocumentFields[0]?.fieldKey);
   const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
   const [draftValue, setDraftValue] = useState("");
+  const [workingFieldKeys, setWorkingFieldKeys] = useState<string[]>([]);
+  const draftInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setFieldItems(fields);
   }, [fields]);
 
   useEffect(() => {
-    const docFields = fieldItems.filter(
-      (field) => field.valueOrigin === "extracted" && field.documentId === selectedDocumentId
+    if (mode !== "manual" || !selectedDocument) return;
+    setManualFields(
+      manualDefinitions.map((definition) =>
+        manualFieldFromDefinition(selectedDocument.documentId, manualEntryType, definition)
+      )
     );
-    const first = docFields.find((field) => field.reviewStatus === "unreviewed") ?? docFields[0];
+  }, [manualDefinitions, manualEntryType, mode, selectedDocument]);
+
+  useEffect(() => {
+    const docFields =
+      mode === "manual"
+        ? manualFields.filter((field) => field.documentId === selectedDocumentId)
+        : fieldItems.filter(
+            (field) => field.valueOrigin === "extracted" && field.documentId === selectedDocumentId
+          );
+    const first = firstDefaultField(docFields) ?? docFields[0];
     setSelectedFieldKey(first?.fieldKey);
-  }, [fieldItems, selectedDocumentId]);
+  }, [fieldItems, manualFields, mode, selectedDocumentId]);
+
+  useEffect(() => {
+    if (editingFieldKey) {
+      draftInputRef.current?.focus();
+      draftInputRef.current?.select();
+    }
+  }, [editingFieldKey]);
 
   const queue = useMemo(() => {
     return documents
       .map((document) => {
-        const docFields = reviewableFields.filter((field) => field.documentId === document.documentId);
-        if (docFields.length === 0 && document.documentId !== selectedDocumentId) return null;
+        const docFields =
+          mode === "manual" && document.documentId === selectedDocumentId
+            ? selectedDocumentFields
+            : reviewableFields.filter((field) => field.documentId === document.documentId);
+        if (mode !== "manual" && docFields.length === 0 && document.documentId !== selectedDocumentId) return null;
+        if (mode === "manual" && document.documentId !== selectedDocumentId) return null;
         return {
           documentId: document.documentId,
           filename: document.filename,
@@ -72,16 +113,15 @@ export function ExtractionReview({
               : document.periodState.replaceAll("_", " "),
           reviewedCount: docFields.filter((field) => field.reviewStatus !== "unreviewed").length,
           fieldCount: docFields.length,
+          manual: mode === "manual",
         };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
-  }, [documents, reviewableFields, selectedDocumentId]);
+  }, [documents, mode, reviewableFields, selectedDocumentFields, selectedDocumentId]);
 
   const selectedField =
     selectedDocumentFields.find((field) => field.fieldKey === selectedFieldKey) ??
-    selectedDocumentFields[0] ??
-    reviewableFields[0];
-  const selectedDocument = documents.find((document) => document.documentId === selectedDocumentId) ?? documents[0];
+    selectedDocumentFields[0];
   const selectedDocumentHasNoFields = selectedDocumentFields.length === 0;
   const selectedFieldIndex = Math.max(
     selectedDocumentFields.findIndex((field) => field.fieldKey === selectedField?.fieldKey),
@@ -95,14 +135,23 @@ export function ExtractionReview({
       if (next) selectField(next.fieldKey);
     },
     onEnter: () => {
-      if (selectedField) void acceptValue(selectedField);
+      if (!selectedField) return;
+      if (mode === "manual") {
+        setEditingFieldKey(selectedField.fieldKey);
+        setDraftValue("");
+        return;
+      }
+      void acceptValue(selectedField);
     },
     onEscape: () => setEditingFieldKey(null),
   });
 
   function selectDocument(documentId: string) {
-    const docFields = reviewableFields.filter((field) => field.documentId === documentId);
-    const first = docFields.find((field) => field.reviewStatus === "unreviewed") ?? docFields[0];
+    const docFields =
+      mode === "manual"
+        ? manualFields.filter((field) => field.documentId === documentId)
+        : reviewableFields.filter((field) => field.documentId === documentId);
+    const first = firstDefaultField(docFields) ?? docFields[0];
     setSelectedDocumentId(documentId);
     setSelectedFieldKey(first?.fieldKey);
     setEditingFieldKey(null);
@@ -126,27 +175,36 @@ export function ExtractionReview({
   }
 
   async function acceptValue(field: ExtractedField) {
+    if (workingFieldKeys.includes(field.fieldKey)) return;
+    setWorkingFieldKeys((current) => [...new Set([...current, field.fieldKey])]);
     const updated = fieldItems.map((candidate) =>
       candidate.fieldKey === field.fieldKey ? { ...candidate, reviewStatus: "accepted" as const } : candidate
     );
-    await onPersistReview?.({ field, decision: "accepted" });
-    setFieldItems(updated);
-    onAuditIntent(
-      createAuditIntent({
-        action: "accept_value",
-        documentId: field.documentId,
-        fieldKey: field.fieldKey,
-        oldValue: field.value,
-        newValue: field.value,
-      })
-    );
-    advanceFrom(field.fieldKey, updated);
+    try {
+      await onPersistReview?.({ field, decision: "accepted" });
+      setFieldItems(updated);
+      onAuditIntent(
+        createAuditIntent({
+          action: "accept_value",
+          documentId: field.documentId,
+          fieldKey: field.fieldKey,
+          oldValue: field.value,
+          newValue: field.value,
+        })
+      );
+      advanceFrom(field.fieldKey, updated);
+    } finally {
+      setWorkingFieldKeys((current) => current.filter((key) => key !== field.fieldKey));
+    }
   }
 
   async function saveDraft(field: ExtractedField) {
     if (!draftValue.trim()) return;
+    if (workingFieldKeys.includes(field.fieldKey)) return;
+    setWorkingFieldKeys((current) => [...new Set([...current, field.fieldKey])]);
     if (field.value === null) {
-      const updated = fieldItems.map((candidate) =>
+      const sourceFields = mode === "manual" ? manualFields : fieldItems;
+      const updated = sourceFields.map((candidate) =>
         candidate.fieldKey === field.fieldKey
           ? {
               ...candidate,
@@ -156,19 +214,59 @@ export function ExtractionReview({
             }
           : candidate
       );
-      await onPersistReview?.({ field, decision: "edited", reviewedValue: draftValue, reviewerNote: "Entered by reviewer." });
-      setFieldItems(updated);
-      onAuditIntent(
-        createAuditIntent({
-          action: "enter_value",
-          documentId: field.documentId,
-          fieldKey: field.fieldKey,
-          oldValue: null,
-          newValue: draftValue,
-        })
+      try {
+        if (mode !== "manual") {
+          await onPersistReview?.({ field, decision: "edited", reviewedValue: draftValue, reviewerNote: "Entered by reviewer." });
+        }
+        if (mode === "manual") {
+          setManualFields(updated);
+        } else {
+          setFieldItems(updated);
+        }
+        onAuditIntent(
+          createAuditIntent({
+            action: "enter_value",
+            documentId: field.documentId,
+            fieldKey: field.fieldKey,
+            oldValue: null,
+            newValue: draftValue,
+          })
+        );
+        setEditingFieldKey(null);
+        advanceFrom(field.fieldKey, updated);
+      } finally {
+        setWorkingFieldKeys((current) => current.filter((key) => key !== field.fieldKey));
+      }
+      return;
+    }
+
+    if (mode === "manual") {
+      const updated = manualFields.map((candidate) =>
+        candidate.fieldKey === field.fieldKey
+          ? {
+              ...candidate,
+              value: draftValue,
+              correctedValue: draftValue,
+              reviewStatus: "keyed_by_reviewer" as const,
+            }
+          : candidate
       );
-      setEditingFieldKey(null);
-      advanceFrom(field.fieldKey, updated);
+      try {
+        setManualFields(updated);
+        onAuditIntent(
+          createAuditIntent({
+            action: "enter_value",
+            documentId: field.documentId,
+            fieldKey: field.fieldKey,
+            oldValue: field.correctedValue ?? field.value,
+            newValue: draftValue,
+          })
+        );
+        setEditingFieldKey(null);
+        advanceFrom(field.fieldKey, updated);
+      } finally {
+        setWorkingFieldKeys((current) => current.filter((key) => key !== field.fieldKey));
+      }
       return;
     }
 
@@ -178,22 +276,26 @@ export function ExtractionReview({
             ...candidate,
             correctedValue: draftValue,
             reviewStatus: "corrected" as const,
-          }
+        }
         : candidate
     );
-    await onPersistReview?.({ field, decision: "edited", reviewedValue: draftValue, reviewerNote: "Corrected by reviewer." });
-    setFieldItems(updated);
-    const intents = createCorrectionAuditIntents(
-      {
-        documentId: field.documentId,
-        fieldKey: field.fieldKey,
-        oldValue: field.value,
-      },
-      draftValue
-    );
-    intents.forEach(onAuditIntent);
-    setEditingFieldKey(null);
-    advanceFrom(field.fieldKey, updated);
+    try {
+      await onPersistReview?.({ field, decision: "edited", reviewedValue: draftValue, reviewerNote: "Corrected by reviewer." });
+      setFieldItems(updated);
+      const intents = createCorrectionAuditIntents(
+        {
+          documentId: field.documentId,
+          fieldKey: field.fieldKey,
+          oldValue: field.value,
+        },
+        draftValue
+      );
+      intents.forEach(onAuditIntent);
+      setEditingFieldKey(null);
+      advanceFrom(field.fieldKey, updated);
+    } finally {
+      setWorkingFieldKeys((current) => current.filter((key) => key !== field.fieldKey));
+    }
   }
 
   return (
@@ -204,6 +306,7 @@ export function ExtractionReview({
             Back to evidence
           </button>
           <h2>Queue</h2>
+          {mode === "manual" ? <div className="s1-muted">{EXACT_COPY.manualEntryHeader}</div> : null}
         </div>
         {queue.map((item) => (
           <button
@@ -217,29 +320,11 @@ export function ExtractionReview({
             <div className="s1-muted">{item.facility}</div>
             <div className="s1-muted">{item.period}</div>
             <div className="s1-mono">
-              {item.reviewedCount} of {item.fieldCount} reviewed
+              {item.manual ? "enter values manually" : `${item.reviewedCount} of ${item.fieldCount} reviewed`}
             </div>
           </button>
         ))}
       </aside>
-      <main className="s1-document-viewer">
-        <div className="s1-pane-header">
-          <h2>{selectedDocument?.filename}</h2>
-          {selectedField?.location ? (
-            <div className="s1-muted">
-              {selectedField.location.kind === "page"
-                ? `Selected field source: page ${selectedField.location.page}`
-                : `Selected field source: ${selectedField.location.sheet} ${selectedField.location.range}`}
-            </div>
-          ) : (
-            <div className="s1-muted">{EXACT_COPY.sourceLocationMissing}</div>
-          )}
-        </div>
-        {selectedDocumentHasNoFields ? (
-          <NoFieldsExtracted document={selectedDocument} />
-        ) : null}
-        <DocumentPreview document={selectedDocument} field={selectedField} />
-      </main>
       <CorrectionRail
         document={selectedDocument}
         fields={selectedDocumentFields}
@@ -251,20 +336,91 @@ export function ExtractionReview({
         onFieldKeys={handleFieldKeys}
         onAcceptValue={acceptValue}
         onSaveDraft={saveDraft}
+        mode={mode}
+        manualDefinitions={manualDefinitions}
         onEditField={(field) => {
           setEditingFieldKey(field.fieldKey);
           setDraftValue(field.correctedValue ?? field.value ?? "");
         }}
         onCancelEdit={() => setEditingFieldKey(null)}
+        draftInputRef={draftInputRef}
+        workingFieldKeys={workingFieldKeys}
         auditIntents={showSessionAuditIntents ? auditIntents : []}
       />
+      <main className="s1-document-viewer">
+        <div className="s1-pane-header">
+          <h2>{selectedDocument?.filename}</h2>
+          {mode === "manual" ? (
+            <div className="s1-muted">{EXACT_COPY.manualEntrySource}</div>
+          ) : selectedField?.location ? (
+            <div className="s1-muted">
+              {selectedField.location.kind === "page"
+                ? `Selected field source: page ${selectedField.location.page}`
+                : `Selected field source: ${selectedField.location.sheet} ${selectedField.location.range}`}
+            </div>
+          ) : (
+            <div className="s1-muted">{EXACT_COPY.sourceLocationMissing}</div>
+          )}
+        </div>
+        {mode === "manual" && selectedDocumentHasNoFields ? (
+          <ManualEntryEmptyState document={selectedDocument} />
+        ) : selectedDocumentHasNoFields ? (
+          <NoFieldsExtracted document={selectedDocument} />
+        ) : null}
+        {mode !== "manual" && selectedField && !selectedDocumentHasNoFields ? (
+          <SelectedSourceSummary field={selectedField} />
+        ) : null}
+        {mode === "manual" ? (
+          <ManualEntrySourcePane document={selectedDocument} />
+        ) : (
+          <DocumentPreview document={selectedDocument} field={selectedField} />
+        )}
+      </main>
     </section>
   );
 }
 
+function firstDefaultField(fields: ExtractedField[]) {
+  return (
+    fields.find((field) => field.reviewStatus === "unreviewed" && field.value !== null) ??
+    fields.find((field) => field.reviewStatus === "unreviewed")
+  );
+}
+
+function manualEntryTypeForDocument(document?: EvidenceItem) {
+  if (!document) return null;
+  if (document.detectedType) return document.detectedType;
+  if (document.filename === "utility_mar.pdf") return "Electric utility bill";
+  return null;
+}
+
+function manualFieldFromDefinition(
+  documentId: string,
+  canonicalTypeId: string | null,
+  definition: ManualEntryFieldDefinition
+): ExtractedField {
+  return {
+    documentId,
+    canonicalTypeId,
+    fieldKey: definition.fieldKey,
+    reviewToken: undefined,
+    fieldLabel: definition.fieldLabel,
+    value: null,
+    unit: null,
+    valueProperties: [],
+    fieldState: "missing_requestable",
+    snippet: null,
+    snippetContext: null,
+    location: null,
+    reviewStatus: "unreviewed",
+    correctedValue: null,
+    valueOrigin: "extracted",
+  };
+}
+
 function NoFieldsExtracted({ document }: { document?: EvidenceItem }) {
   return (
-    <section className="s1-panel">
+    <section className="s1-source-notice" aria-label="No extracted fields">
       <h3>No extracted fields</h3>
       <p>
         {document?.haltReason ??
@@ -277,7 +433,50 @@ function NoFieldsExtracted({ document }: { document?: EvidenceItem }) {
   );
 }
 
+function ManualEntryEmptyState({ document }: { document?: EvidenceItem }) {
+  return (
+    <section className="s1-panel">
+      <h3>{EXACT_COPY.manualEntryNoFieldList}</h3>
+      <p className="s1-mono">{document?.documentId}</p>
+      {document?.downloadUrl ? (
+        <button
+          className="s1-button"
+          type="button"
+          onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
+        >
+          Download original
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
+function ManualEntrySourcePane({ document }: { document?: EvidenceItem }) {
+  return (
+    <section className="s1-document-empty">
+      <h3>{document?.filename}</h3>
+      <p>{EXACT_COPY.manualEntrySource}</p>
+      {document?.haltReason ? <p className="s1-reason">{document.haltReason}</p> : null}
+      {document?.downloadUrl ? (
+        <button
+          className="s1-button"
+          type="button"
+          onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
+        >
+          Download original
+        </button>
+      ) : null}
+    </section>
+  );
+}
+
 function DocumentPreview({ document, field }: { document?: EvidenceItem; field?: ExtractedField }) {
+  const [previewFailed, setPreviewFailed] = useState(false);
+
+  useEffect(() => {
+    setPreviewFailed(false);
+  }, [document?.documentId, field?.fieldKey]);
+
   if (!document?.downloadUrl) {
     return (
       <section className="s1-document-empty">
@@ -297,12 +496,37 @@ function DocumentPreview({ document, field }: { document?: EvidenceItem; field?:
         ? `#page=${field.location.page}`
         : "";
     const previewUrl = `${inlineDocumentUrl(document.documentId)}${pageSuffix}`;
+    if (previewFailed) {
+      return (
+        <section className="s1-document-empty">
+          <h3>Preview unavailable</h3>
+          <p>The browser preview could not be loaded.</p>
+          <button
+            className="s1-button"
+            type="button"
+            onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
+          >
+            Download original
+          </button>
+        </section>
+      );
+    }
     return (
-      <iframe
-        className="s1-document-frame"
-        title={`Original document: ${document.filename}`}
-        src={previewUrl}
-      />
+      <div className="s1-document-preview-shell">
+        <iframe
+          className="s1-document-frame"
+          title={`Original document: ${document.filename}`}
+          src={previewUrl}
+          onError={() => setPreviewFailed(true)}
+        />
+        <button
+          className="s1-button s1-preview-download"
+          type="button"
+          onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
+        >
+          Download original
+        </button>
+      </div>
     );
   }
 
@@ -317,6 +541,28 @@ function DocumentPreview({ document, field }: { document?: EvidenceItem; field?:
       >
         Download original
       </button>
+    </section>
+  );
+}
+
+function SelectedSourceSummary({ field }: { field?: ExtractedField }) {
+  if (!field) return null;
+  return (
+    <section className="s1-selected-source" aria-label="Selected field source">
+      <h3>{field.fieldLabel}</h3>
+      {field.location ? (
+        <div className="s1-muted">
+          {field.location.kind === "page"
+            ? `Page ${field.location.page}`
+            : `${field.location.sheet} ${field.location.range}`}
+        </div>
+      ) : (
+        <div className="s1-muted">{EXACT_COPY.sourceLocationMissing}</div>
+      )}
+      {field.snippet ? <div className="s1-snippet">{field.snippet}</div> : null}
+      {field.snippetContext && field.snippetContext !== field.snippet ? (
+        <div className="s1-source-context">{field.snippetContext}</div>
+      ) : null}
     </section>
   );
 }
@@ -457,7 +703,11 @@ function CorrectionRail({
   onSaveDraft,
   onEditField,
   onCancelEdit,
+  draftInputRef,
+  workingFieldKeys,
   auditIntents,
+  mode,
+  manualDefinitions,
 }: {
   document?: EvidenceItem;
   fields: ExtractedField[];
@@ -471,94 +721,139 @@ function CorrectionRail({
   onSaveDraft: (field: ExtractedField) => Promise<void>;
   onEditField: (field: ExtractedField) => void;
   onCancelEdit: () => void;
-  auditIntents: AuditIntent[];
+  draftInputRef: RefObject<HTMLInputElement | null>;
+  workingFieldKeys: string[];
+  auditIntents: SessionAuditEntry[];
+  mode: "snippet" | "manual";
+  manualDefinitions: ManualEntryFieldDefinition[];
 }) {
   const fieldIntents = auditIntents.filter((intent) => intent.fieldKey && intent.fieldKey === selectedField?.fieldKey);
+  const requirementByField = useMemo(
+    () => new Map(manualDefinitions.map((definition) => [definition.fieldKey, definition.requirementLevel])),
+    [manualDefinitions]
+  );
   return (
     <aside className="s1-correction-rail">
       <div className="s1-pane-header">
         <h2>Fields</h2>
         <div className="s1-muted">{document?.filename}</div>
+        {mode === "manual" ? <div className="s1-muted">{EXACT_COPY.manualEntryFieldList}</div> : null}
       </div>
-      {fields.map((field) => (
-        <article
-          className="s1-field-row"
-          key={field.fieldKey}
-          aria-current={selectedField?.fieldKey === field.fieldKey}
-          tabIndex={0}
-          onClick={() => onSelectField(field.fieldKey)}
-          onKeyDown={onFieldKeys}
-        >
-          <h3>{field.fieldLabel}</h3>
-          <div className="s1-mono s1-muted">{field.fieldKey}</div>
-          <div className="s1-chip-stack">
-            <StateIndicator
-              dimension="field"
-              value={field.fieldState}
-              label={field.fieldState === "populated" ? "populated" : "missing — requestable"}
-            />
-            {field.valueProperties.map((property) => (
-              <StateIndicator key={property} dimension="valueProperty" value={property} label={valuePropertyLabel(property)} />
-            ))}
-            <StateIndicator dimension="review" value={field.reviewStatus} label={reviewLabel(field.reviewStatus)} />
-          </div>
-          <div className="s1-field-value">
-            <strong>{field.correctedValue ?? field.value ?? EXACT_COPY.valueAbsent}</strong>
-            {field.unit ? <span className="s1-muted"> {field.unit}</span> : null}
-          </div>
-          {field.location ? (
-            <div className="s1-muted">
-              {field.location.kind === "page"
-                ? `Page ${field.location.page}`
-                : `${field.location.sheet} ${field.location.range}`}
+      {fields.map((field) => {
+        const requirementLevel = requirementByField.get(field.fieldKey);
+        const isWorking = workingFieldKeys.includes(field.fieldKey);
+        return (
+          <article
+            className="s1-field-row"
+            key={field.fieldKey}
+            aria-current={selectedField?.fieldKey === field.fieldKey}
+            tabIndex={0}
+            onClick={() => onSelectField(field.fieldKey)}
+            onKeyDown={onFieldKeys}
+          >
+            <h3>{field.fieldLabel}</h3>
+            {mode === "manual" && requirementLevel ? (
+              <div className="s1-requirement-level">{requirementLevel}</div>
+            ) : null}
+            <div className="s1-provisional-id">
+              <span className="s1-provisional-id__marker">Provisional</span>
+              <span className="s1-mono s1-muted">{field.fieldKey}</span>
             </div>
-          ) : (
-            <StateIndicator dimension="check" value="not_applicable" label={EXACT_COPY.sourceLocationMissing} />
-          )}
-          {field.snippet ? <div className="s1-snippet">{field.snippet}</div> : <div className="s1-muted">No snippet</div>}
-          {editingFieldKey === field.fieldKey ? (
-            <div className="s1-actions">
-              <input
-                className="s1-inline-input"
-                value={draftValue}
-                onChange={(event) => onDraftValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") onCancelEdit();
-                }}
+            <div className="s1-chip-stack">
+              <StateIndicator
+                dimension="field"
+                value={field.fieldState}
+                label={field.fieldState === "populated" ? "populated" : "missing — requestable"}
               />
-              <button className="s1-button" type="button" onClick={() => void onSaveDraft(field)}>
-                Save
-              </button>
-              <button className="s1-button" type="button" onClick={onCancelEdit}>
-                Cancel
-              </button>
+              {field.valueProperties.map((property) => (
+                <StateIndicator key={property} dimension="valueProperty" value={property} label={valuePropertyLabel(property)} />
+              ))}
+              <StateIndicator dimension="review" value={field.reviewStatus} label={reviewLabel(field.reviewStatus)} />
             </div>
-          ) : null}
-          <div className="s1-actions">
-            {field.value !== null ? (
-              <>
-                <button className="s1-button" type="button" onClick={() => void onAcceptValue(field)}>
-                  Accept
-                </button>
-                <button className="s1-button" type="button" onClick={() => onEditField(field)}>
-                  Correct
-                </button>
-              </>
+            <div className="s1-field-value">
+              <strong>{field.correctedValue ?? field.value ?? EXACT_COPY.valueAbsent}</strong>
+              {field.unit ? <span className="s1-muted"> {field.unit}</span> : null}
+            </div>
+            {mode === "manual" ? null : field.location ? (
+              <div className="s1-muted">
+                {field.location.kind === "page"
+                  ? `Page ${field.location.page}`
+                  : `${field.location.sheet} ${field.location.range}`}
+              </div>
             ) : (
-              <button className="s1-button" type="button" onClick={() => onEditField(field)}>
-                Enter value
-              </button>
+              <StateIndicator dimension="check" value="not_applicable" label={EXACT_COPY.sourceLocationMissing} />
             )}
-          </div>
-        </article>
-      ))}
+            {mode === "manual" ? null : field.snippet ? (
+              <div className="s1-snippet">{field.snippet}</div>
+            ) : (
+              <div className="s1-muted">No snippet</div>
+            )}
+            {editingFieldKey === field.fieldKey ? (
+              <div className="s1-actions" onClick={(event) => event.stopPropagation()}>
+                <input
+                  ref={draftInputRef}
+                  className="s1-inline-input"
+                  value={draftValue}
+                  onChange={(event) => onDraftValue(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.stopPropagation();
+                      onCancelEdit();
+                    }
+                    if (event.key === "Enter") {
+                      event.stopPropagation();
+                      void onSaveDraft(field);
+                    }
+                  }}
+                />
+                <button className="s1-button" type="button" disabled={isWorking} onClick={() => void onSaveDraft(field)}>
+                  {isWorking ? "Working" : "Save"}
+                </button>
+                <button className="s1-button" type="button" onClick={onCancelEdit}>
+                  Cancel
+                </button>
+                {mode === "manual" ? <div className="s1-muted">{EXACT_COPY.manualEntryInput}</div> : null}
+              </div>
+            ) : null}
+            <div className="s1-actions" onClick={(event) => event.stopPropagation()}>
+              {mode === "manual" ? (
+                <button className="s1-button" type="button" disabled={isWorking} onClick={() => onEditField(field)}>
+                  {field.value === null ? "Key value" : "Correct"}
+                </button>
+              ) : field.value !== null ? (
+                <>
+                  <button className="s1-button" type="button" disabled={isWorking} onClick={() => void onAcceptValue(field)}>
+                    {isWorking ? "Working" : "Accept"}
+                  </button>
+                  <button className="s1-button" type="button" disabled={isWorking} onClick={() => onEditField(field)}>
+                    Correct
+                  </button>
+                </>
+              ) : (
+                <button className="s1-button" type="button" disabled={isWorking} onClick={() => onEditField(field)}>
+                  Enter value
+                </button>
+              )}
+            </div>
+          </article>
+        );
+      })}
       {fieldIntents.length > 0 ? (
         <div className="s1-source-body">
           <h3>Field history</h3>
-          {fieldIntents.map((intent, index) => (
-            <div className="s1-mono" key={`${intent.action}-${index}`}>
-              {intent.action}
-            </div>
+          {fieldIntents.map((intent) => (
+            <article
+              className={`s1-history-entry s1-history-entry--${intent.action.includes("machine") ? "system" : "reviewer"}`}
+              key={intent.entryId}
+            >
+              <strong>{intent.action.replaceAll("_", " ")}</strong>
+              <div className="s1-mono s1-muted">
+                {intent.actor.name} · {new Date(intent.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </div>
+              <div className="s1-muted">
+                {intent.oldValue ?? EXACT_COPY.valueAbsent} -&gt; {intent.newValue ?? EXACT_COPY.valueAbsent}
+              </div>
+            </article>
           ))}
         </div>
       ) : null}

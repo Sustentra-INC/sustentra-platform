@@ -1,15 +1,15 @@
 import type { ExtractedField } from "../../types";
 import { resolveFieldKey } from "../../utils/resolveFieldKey";
 
-function fieldKey(canonicalTypeId: string, backendFieldId: string): string {
-  return resolveFieldKey({ canonicalTypeId, backendFieldId });
+function fieldKey(documentId: string, backendFieldId: string): string {
+  return resolveFieldKey({ documentId, backendFieldId });
 }
 
 export const extractedFields: ExtractedField[] = [
   {
     documentId: "DOC-0001",
     canonicalTypeId: "CT-S2-ELECBILL",
-    fieldKey: fieldKey("CT-S2-ELECBILL", "account_number"),
+    fieldKey: fieldKey("DOC-0001", "account_number"),
     fieldLabel: "Account number",
     value: "8493-2219",
     unit: null,
@@ -17,7 +17,7 @@ export const extractedFields: ExtractedField[] = [
     fieldState: "populated",
     snippet: "Account number 8493-2219",
     snippetContext: "Service for Riverside Plant\nAccount number 8493-2219\nBilling period Jan 1 - Jan 31, 2025",
-    location: null,
+    location: { kind: "page", page: 1, region: null },
     reviewStatus: "accepted",
     correctedValue: null,
     valueOrigin: "extracted",
@@ -25,7 +25,7 @@ export const extractedFields: ExtractedField[] = [
   {
     documentId: "DOC-0001",
     canonicalTypeId: "CT-S2-ELECBILL",
-    fieldKey: fieldKey("CT-S2-ELECBILL", "consumption_kwh"),
+    fieldKey: fieldKey("DOC-0001", "consumption_kwh"),
     fieldLabel: "Electricity consumed",
     value: "142,880",
     unit: "kWh",
@@ -33,7 +33,7 @@ export const extractedFields: ExtractedField[] = [
     fieldState: "populated",
     snippet: "Total usage 142,880 kWh Estimated",
     snippetContext: "Meter read type: Estimated\nTotal usage 142,880 kWh Estimated\nDemand charges listed below",
-    location: null,
+    location: { kind: "page", page: 2, region: null },
     reviewStatus: "unreviewed",
     correctedValue: null,
     valueOrigin: "extracted",
@@ -41,7 +41,7 @@ export const extractedFields: ExtractedField[] = [
   {
     documentId: "DOC-0001",
     canonicalTypeId: "CT-S2-ELECBILL",
-    fieldKey: fieldKey("CT-S2-ELECBILL", "meter_number"),
+    fieldKey: fieldKey("DOC-0001", "meter_number"),
     fieldLabel: "Meter number",
     value: null,
     unit: null,
@@ -57,7 +57,7 @@ export const extractedFields: ExtractedField[] = [
   {
     documentId: "DOC-0004",
     canonicalTypeId: "CT-S2-ELECBILL",
-    fieldKey: fieldKey("CT-S2-ELECBILL", "consumption_kwh"),
+    fieldKey: fieldKey("DOC-0004", "consumption_kwh"),
     fieldLabel: "Electricity consumed",
     value: null,
     unit: "kWh",
@@ -73,7 +73,7 @@ export const extractedFields: ExtractedField[] = [
   {
     documentId: "DOC-0006",
     canonicalTypeId: "CT-CORP-INVENTORY",
-    fieldKey: fieldKey("CT-CORP-INVENTORY", "reporting_period"),
+    fieldKey: fieldKey("DOC-0006", "reporting_period"),
     fieldLabel: "Reporting period",
     value: "2025",
     unit: null,
@@ -89,7 +89,7 @@ export const extractedFields: ExtractedField[] = [
   {
     documentId: "DOC-0006",
     canonicalTypeId: "CT-CORP-INVENTORY",
-    fieldKey: fieldKey("CT-CORP-INVENTORY", "system_total"),
+    fieldKey: fieldKey("DOC-0006", "system_total"),
     fieldLabel: "System total",
     value: "calculated downstream",
     unit: null,

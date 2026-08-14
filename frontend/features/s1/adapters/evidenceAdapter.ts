@@ -1,5 +1,6 @@
 import type { EvidenceItem } from "../types";
 import { apiUrl } from "../../../lib/api/client";
+import { HALT_REASONS } from "../constants/copy";
 
 export interface BackendDocumentLike {
   document_id: string;
@@ -18,6 +19,9 @@ export function mapBackendDocumentToEvidenceItem(
     target_count?: number | null;
     candidate_count?: number | null;
     found_candidate_count?: number | null;
+    canonical_type_name?: string | null;
+    type_name?: string | null;
+    display_name?: string | null;
     status?: string | null;
     warnings?: string[] | null;
     errors?: string[] | null;
@@ -40,6 +44,8 @@ export function mapBackendDocumentToEvidenceItem(
           ? "not_ingested"
           : "ingested";
 
+  const fieldsExpected = Number(summary?.target_count ?? summary?.candidate_count ?? 0);
+
   return {
     documentId: document.document_id,
     filename: document.file_name,
@@ -48,14 +54,16 @@ export function mapBackendDocumentToEvidenceItem(
     uploadedBy: { id: document.uploaded_by, name: document.uploaded_by, actorType: "preparer" },
     uploadedAt: document.uploaded_at,
     evidenceClass: "main",
+    disposition: "active",
     processingState,
     haltReason:
       document.processing_status === "failed" || noExtractionTargets
-        ? summary?.errors?.[0] ??
-          summaryWarnings[0] ??
-          "No extraction template exists for this document type."
+        ? mapHaltReason({
+            noExtractionTargets,
+            details: [...(summary?.errors ?? []), ...summaryWarnings],
+          })
         : null,
-    detectedType: summary?.canonical_type_id ?? null,
+    detectedType: resolveCanonicalTypeDisplayName(summary),
     typeReviewBand: hasType ? "auto_accepted" : null,
     typeReviewReason: hasType ? null : null,
     facilityState: "unresolved",
@@ -65,13 +73,63 @@ export function mapBackendDocumentToEvidenceItem(
     periodState: "unresolved",
     periodStart: null,
     periodEnd: null,
-    fieldsExpected: Number(summary?.target_count ?? summary?.candidate_count ?? 0),
+    fieldsExpected,
+    fieldsExpectedDisplay: fieldsExpected === 0 ? null : fieldsExpected,
     fieldsExtracted: Number(summary?.found_candidate_count ?? 0),
     documentProperties: [],
     relationships: [],
     reviewArea: null,
     note: null,
   };
+}
+
+const CANONICAL_TYPE_DISPLAY_NAMES: Record<string, string> = {
+  "CT-S1-FUELQTY": "Stationary fuel consumption record",
+  "CT-S1-MOBFUEL": "Mobile fuel consumption record",
+};
+
+export function resolveCanonicalTypeDisplayName(
+  summary?: {
+    canonical_type_id?: string | null;
+    canonical_type_name?: string | null;
+    type_name?: string | null;
+    display_name?: string | null;
+  } | null
+): string | null {
+  const backendName = summary?.canonical_type_name ?? summary?.type_name ?? summary?.display_name;
+  if (backendName) return backendName;
+
+  const canonicalTypeId = summary?.canonical_type_id;
+  if (!canonicalTypeId) return null;
+  return CANONICAL_TYPE_DISPLAY_NAMES[canonicalTypeId] ?? "Unmapped document type";
+}
+
+export function mapHaltReason({
+  noExtractionTargets,
+  details,
+}: {
+  noExtractionTargets: boolean;
+  details: string[];
+}): string {
+  if (noExtractionTargets) return HALT_REASONS.noTemplate;
+
+  const detail = details.find(Boolean)?.toLowerCase() ?? "";
+  if (detail.includes("unsupported") || detail.includes("format")) {
+    return HALT_REASONS.unsupportedFormat;
+  }
+  if (detail.includes("unreadable") || detail.includes("could not be read")) {
+    return HALT_REASONS.unreadable;
+  }
+  if (detail.includes("ocr") || detail.includes("text could not be extracted")) {
+    return HALT_REASONS.ocrFailed;
+  }
+  if (detail.includes("multi-facility") || detail.includes("multiple facilit")) {
+    return HALT_REASONS.multiFacility;
+  }
+  if (detail) {
+    console.warn("Unmapped S1 halt reason from backend", detail);
+  }
+  return HALT_REASONS.pipeline;
 }
 
 export function inlineDocumentUrl(documentId: string): string {

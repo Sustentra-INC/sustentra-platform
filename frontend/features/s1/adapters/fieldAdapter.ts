@@ -1,4 +1,4 @@
-import type { ExtractedField } from "../types";
+import type { ExtractedField, ValueProperty } from "../types";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 
 export interface BackendExtractionCandidateLike {
@@ -7,8 +7,11 @@ export interface BackendExtractionCandidateLike {
   document_id: string;
   field_name: string;
   display_label: string;
+  raw_value?: string | number | boolean | null;
   normalized_value: string | number | boolean | null;
   unit: string | null;
+  confidence?: number | null;
+  validation_flags?: string[] | null;
   source_reference?: {
     text_snippet?: string | null;
     page_number?: number | null;
@@ -20,7 +23,7 @@ export interface BackendExtractionCandidateLike {
 
 export function mapBackendCandidateToExtractedField(
   candidate: BackendExtractionCandidateLike,
-  canonicalTypeId: string
+  canonicalTypeId: string | null
 ): ExtractedField {
   const value =
     candidate.normalized_value === null || candidate.normalized_value === undefined
@@ -31,14 +34,15 @@ export function mapBackendCandidateToExtractedField(
     documentId: candidate.document_id,
     canonicalTypeId,
     fieldKey: resolveFieldKey({
-      canonicalTypeId,
+      candidateId: candidate.candidate_id,
+      documentId: candidate.document_id,
       backendFieldId: candidate.field_name,
     }),
-    candidateSnapshot: { ...candidate },
+    reviewToken: encodeReviewCandidateToken(candidate),
     fieldLabel: candidate.display_label,
     value,
     unit: candidate.unit,
-    valueProperties: candidate.unit ? [] : value === null ? [] : ["unit_missing"],
+    valueProperties: mapValidationFlags(candidate.validation_flags),
     fieldState: value === null ? "missing_requestable" : "populated",
     snippet: candidate.source_reference?.text_snippet ?? null,
     snippetContext: candidate.source_reference?.text_snippet ?? null,
@@ -67,4 +71,38 @@ export function mapBackendCandidateToExtractedField(
     correctedValue: null,
     valueOrigin: "extracted",
   };
+}
+
+export function encodeReviewCandidateToken(candidate: BackendExtractionCandidateLike): string {
+  const payload = JSON.stringify({
+    candidate_id: candidate.candidate_id,
+    evidence_id: candidate.evidence_id,
+    document_id: candidate.document_id,
+    field_name: candidate.field_name,
+    display_label: candidate.display_label,
+    raw_value: candidate.raw_value ?? candidate.normalized_value,
+    normalized_value: candidate.normalized_value,
+    unit: candidate.unit,
+    confidence: candidate.confidence ?? null,
+    source_reference: candidate.source_reference ?? null,
+    validation_flags: candidate.validation_flags ?? [],
+  });
+  if (typeof btoa === "function") return btoa(payload);
+  return Buffer.from(payload, "utf8").toString("base64");
+}
+
+export function decodeReviewCandidateToken(token: string): BackendExtractionCandidateLike | null {
+  try {
+    const payload = typeof atob === "function" ? atob(token) : Buffer.from(token, "base64").toString("utf8");
+    return JSON.parse(payload) as BackendExtractionCandidateLike;
+  } catch {
+    return null;
+  }
+}
+
+function mapValidationFlags(flags?: string[] | null): ValueProperty[] {
+  const allowed: ValueProperty[] = ["estimated_read", "unit_missing", "unit_ambiguous", "format_mismatch"];
+  return (flags ?? []).filter((flag): flag is ValueProperty =>
+    allowed.includes(flag as ValueProperty)
+  );
 }

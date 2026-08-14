@@ -16,4 +16,14 @@ export const EXACT_COPY = {
   valueAbsent: "not found",
   dependencyBlocked:
     "In-scope field list is not available yet. Completeness will render here when the dependency is available.",
+  manualEntryHeader: "Opened for manual entry — no machine read this document.",
+  manualEntryFieldList:
+    "Every field is empty and enterable — extraction never ran on this document, so there is no machine reading to check. The field list is the one this document type is defined as carrying.",
+  manualEntrySource:
+    "No extracted span for any field on this document — extraction was blocked, so nothing was read. Values keyed here are marked human-keyed permanently.",
+  manualEntryInput:
+    "Keying the value is the review — you are the source, so there is nothing for a machine reading to be checked against. The field goes straight to reviewed and is marked human-keyed permanently.",
+  glossaryIntro:
+    "The words are the contract. These terms are not interchangeable, and this is the only place they are defined — no search, no articles, no categories, because a stale explanation is worse than none.",
+  manualEntryNoFieldList: "No field list is defined for this document type yet.",
 } as const;

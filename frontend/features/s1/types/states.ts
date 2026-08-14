@@ -15,7 +15,12 @@ export type FacilityState =
 
 export type PeriodState = "resolved" | "unresolved" | "spans_multiple";
 
-export type FieldState = "populated" | "missing_requestable";
+export type FieldState =
+  | "populated"
+  | "missing_requestable"
+  | "missing_not_requestable"
+  | "system_key"
+  | "not_applicable";
 
 export type ReviewStatus =
   | "unreviewed"
@@ -48,3 +53,5 @@ export type StateDimension =
   | "readiness"
   | "disposition"
   | "request";
+
+export type EvidenceDisposition = "active" | "withdrawn";

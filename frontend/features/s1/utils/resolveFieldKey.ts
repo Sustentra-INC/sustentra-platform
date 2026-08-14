@@ -1,11 +1,15 @@
 export interface ResolveFieldKeyInput {
-  canonicalTypeId: string;
+  candidateId?: string | null;
+  documentId?: string | null;
   backendFieldId: string;
 }
 
 export function resolveFieldKey({
-  canonicalTypeId,
+  candidateId,
+  documentId,
   backendFieldId,
 }: ResolveFieldKeyInput): string {
-  return `${canonicalTypeId}::${backendFieldId}`;
+  if (candidateId) return `candidate:${candidateId}`;
+  if (documentId) return `field:${documentId}::${backendFieldId}`;
+  return `field:${backendFieldId}`;
 }

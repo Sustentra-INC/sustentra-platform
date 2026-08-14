@@ -7,26 +7,40 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest"
+    "test": "vitest",
+    "e2e": "playwright test",
+    "e2e:s1:fixture": "S1_E2E_WEB_SERVER=1 playwright test --project=s1-fixture",
+    "e2e:s1:local": "S1_E2E_WEB_SERVER=0 S1_RUN_LOCAL_PIPELINE_E2E=1 playwright test --project=s1-local-backend",
+    "e2e:s1:cloud": "S1_E2E_WEB_SERVER=0 S1_RUN_CLOUD_E2E=1 playwright test --project=s1-cloud"
   },
   "dependencies": {
     "@tanstack/react-query": "latest",
     "lucide-react": "latest",
-    "next": "latest",
+    "next": "^16.3.1",
     "react": "latest",
     "react-dom": "latest",
     "zod": "latest"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "autoprefixer": "latest",
     "eslint": "latest",
     "eslint-config-next": "latest",
-    "postcss": "latest",
+    "postcss": "^8.5.26",
     "tailwindcss": "latest",
     "typescript": "latest",
     "vitest": "latest"
+  },
+  "overrides": {
+    "js-yaml": "4.3.1",
+    "minimatch@3.1.5": {
+      "brace-expansion": "1.1.18"
+    },
+    "minimatch@10.2.5": {
+      "brace-expansion": "5.0.9"
+    }
   }
 }

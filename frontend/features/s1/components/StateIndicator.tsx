@@ -14,11 +14,11 @@ export function StateIndicator({ dimension, value, label, explain }: StateIndica
 
   return (
     <span
-      className={`s1-state s1-state--${role satisfies StateRole | "unmapped"}`}
+      className={`s1-state s1-state--${role satisfies StateRole | "unmapped"} ${explain ? "s1-state--explained" : ""}`}
       tabIndex={explain ? 0 : undefined}
-      title={explain}
     >
       {displayLabel}
+      {explain ? <span className="s1-tooltip" role="tooltip">{explain}</span> : null}
     </span>
   );
 }

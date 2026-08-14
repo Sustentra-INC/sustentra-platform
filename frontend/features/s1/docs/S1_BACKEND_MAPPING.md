@@ -22,7 +22,7 @@ models. React components should consume the S1 view models, not backend DTOs.
 | `relationships` | dedupe/supersession/conflict service | missing | Render fixture shape; backend support not present. |
 | `documentProperties` | parser/classifier document properties | missing | Render fixture shape; backend support not present. |
 | `reviewArea` / `note` | supportive evidence metadata | missing | Needs evidence-class flag and supportive evidence metadata path. |
-| extraction field `fieldKey` | `resolveFieldKey(canonical_type_id, field_name)` | connected | `fieldKey` is opaque to components. |
+| extraction field `fieldKey` | extraction candidate ID, or document ID + backend field name fallback | connected | `fieldKey` is opaque to components and is not synthesized from canonical type, so re-typing a document does not change field identity. |
 | extraction field value/unit | extraction candidate `normalized_value` / `unit` | connected | Normalized in `adapters/fieldAdapter.ts`. |
 | source snippet | extraction candidate `source_reference.text_snippet` | partial | Snippet context is available only when backend provides enough context. |
 | source location | `SourceLocation` page/cell data | missing | S1 renders `page location not available`; never guesses page 1. |

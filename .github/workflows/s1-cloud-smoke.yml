@@ -1,0 +1,52 @@
+name: S1 Cloud Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      s1_cloud_url:
+        description: "Vercel frontend URL"
+        required: true
+        type: string
+      s1_cloud_api_url:
+        description: "Render backend API URL"
+        required: true
+        type: string
+      engagement_id:
+        description: "S1 engagement ID"
+        required: false
+        default: "ENG-S1-2025"
+        type: string
+
+jobs:
+  cloud-smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      S1_E2E_WEB_SERVER: "0"
+      S1_RUN_CLOUD_E2E: "1"
+      S1_CLOUD_URL: ${{ inputs.s1_cloud_url }}
+      S1_CLOUD_API_URL: ${{ inputs.s1_cloud_api_url }}
+      S1_E2E_ENGAGEMENT_ID: ${{ inputs.engagement_id }}
+      S1_FRONTEND_COMMIT_SHA: ${{ github.sha }}
+      S1_BACKEND_COMMIT_SHA: ${{ vars.S1_BACKEND_COMMIT_SHA || 'unknown' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Cloud smoke E2E
+        run: npm run e2e:s1:cloud

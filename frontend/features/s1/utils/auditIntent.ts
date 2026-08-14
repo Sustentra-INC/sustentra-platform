@@ -3,6 +3,8 @@ export type AuditIntentAction =
   | "change_type"
   | "assign_facility"
   | "assign_period"
+  | "withdraw_document"
+  | "reinstate_document"
   | "accept_value"
   | "correct_value_machine"
   | "correct_value_human"
@@ -17,14 +19,35 @@ export interface AuditIntent {
   newValue?: string | number | boolean | null;
 }
 
-export function createAuditIntent(intent: AuditIntent): AuditIntent {
-  return intent;
+export interface SessionAuditEntry extends AuditIntent {
+  entryId: string;
+  actor: {
+    id: string;
+    name: string;
+    actorType: "preparer" | "reviewer" | "client" | "system";
+  };
+  timestamp: string;
+  persistence: "intent_only" | "saved";
+}
+
+export function recordAuditEntry(intent: AuditIntent): SessionAuditEntry {
+  return {
+    ...intent,
+    entryId: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    actor: { id: "session-reviewer", name: "C. Yang", actorType: "reviewer" },
+    timestamp: new Date().toISOString(),
+    persistence: "intent_only",
+  };
+}
+
+export function createAuditIntent(intent: AuditIntent): SessionAuditEntry {
+  return recordAuditEntry(intent);
 }
 
 export function createBulkAuditIntents(
   items: Array<{ documentId: string; oldValue?: AuditIntent["oldValue"]; newValue?: AuditIntent["newValue"] }>,
   action: AuditIntentAction
-): AuditIntent[] {
+): SessionAuditEntry[] {
   return items.map((item) =>
     createAuditIntent({
       action,
@@ -38,7 +61,7 @@ export function createBulkAuditIntents(
 export function createCorrectionAuditIntents(
   base: Omit<AuditIntent, "action" | "newValue">,
   correctedValue: string | number | boolean | null
-): [AuditIntent, AuditIntent] {
+): [SessionAuditEntry, SessionAuditEntry] {
   return [
     createAuditIntent({ ...base, action: "correct_value_machine" }),
     createAuditIntent({

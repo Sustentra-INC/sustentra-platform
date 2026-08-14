@@ -6,13 +6,23 @@ import { describe, expect, it } from "vitest";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 
 describe("field resolver", () => {
-  it("renders backend identifiers as an opaque provisional key", () => {
+  it("uses backend candidate identity as the stable opaque provisional key", () => {
     expect(
       resolveFieldKey({
-        canonicalTypeId: "CT-S2-ELECBILL",
+        candidateId: "cand-123",
+        documentId: "DOC-0001",
         backendFieldId: "consumption_kwh",
       })
-    ).toBe("CT-S2-ELECBILL::consumption_kwh");
+    ).toBe("candidate:cand-123");
+  });
+
+  it("does not derive fallback keys from canonical document type", () => {
+    expect(
+      resolveFieldKey({
+        documentId: "DOC-0001",
+        backendFieldId: "consumption_kwh",
+      })
+    ).toBe("field:DOC-0001::consumption_kwh");
   });
 
   it("keeps raw field_id text out of active S1 implementation files", () => {

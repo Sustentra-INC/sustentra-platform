@@ -1,10 +1,11 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { EXACT_COPY } from "../constants/copy";
 import { useKeyboardNavigation } from "../hooks/useKeyboardNavigation";
-import type { AuditIntent } from "../utils/auditIntent";
+import { activeEvidenceItems, selectableEvidenceIds, workspaceNeeds } from "../utils/workspaceState";
+import type { SessionAuditEntry } from "../utils/auditIntent";
 import { createAuditIntent } from "../utils/auditIntent";
 import type {
   ContainerState,
@@ -24,13 +25,14 @@ interface EvidenceWorkspaceProps {
   engagement: EngagementConfig;
   evidence: EvidenceItem[];
   supportive: EvidenceItem[];
-  auditIntents: AuditIntent[];
+  auditIntents: SessionAuditEntry[];
   demoState: ContainerState;
   workspaceState: EvidenceWorkspaceState;
-  onAuditIntent: (intent: AuditIntent) => void;
+  onAuditIntent: (intent: SessionAuditEntry) => void;
   onDemoState: (state: ContainerState) => void;
   onWorkspaceState: (state: EvidenceWorkspaceState) => void;
   onOpenExtraction: (documentId: string, scrollTop: number) => void;
+  onOpenManualEntry: (documentId: string, scrollTop: number) => void;
   onUploadFiles?: (files: FileList) => void;
   onProcessDocument?: (documentId: string) => void;
   isUploading?: boolean;
@@ -70,6 +72,8 @@ export const defaultWorkspaceState: EvidenceWorkspaceState = {
   scrollTop: 0,
 };
 
+const BACKEND_DISABLED_REASON = "No save endpoint yet -- see revision section 3.";
+
 export function EvidenceWorkspace({
   engagement,
   evidence,
@@ -81,6 +85,7 @@ export function EvidenceWorkspace({
   onDemoState,
   onWorkspaceState,
   onOpenExtraction,
+  onOpenManualEntry,
   onUploadFiles,
   onProcessDocument,
   isUploading = false,
@@ -96,21 +101,17 @@ export function EvidenceWorkspace({
   const [periodDraft, setPeriodDraft] = useState({ start: "", end: "" });
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [activeDocumentId, setActiveDocumentId] = useState<string | null>(evidence[0]?.documentId ?? null);
+  const [uploadFailures, setUploadFailures] = useState<Array<{ filename: string; reason: string }>>([]);
+  const [workingActionIds, setWorkingActionIds] = useState<string[]>([]);
+  const [expandedHistoryIds, setExpandedHistoryIds] = useState<string[]>([]);
 
   useEffect(() => {
     setItems(evidence);
     setActiveDocumentId((current) => current ?? evidence[0]?.documentId ?? null);
   }, [evidence]);
 
-  const needs = useMemo(
-    () => ({
-      type: items.filter((item) => item.typeReviewBand && item.typeReviewBand !== "auto_accepted").length,
-      facility: items.filter((item) => item.facilityState === "unresolved").length,
-      period: items.filter((item) => item.periodState === "unresolved").length,
-      blocked: items.filter((item) => item.processingState === "blocked").length,
-    }),
-    [items]
-  );
+  const activeItems = useMemo(() => activeEvidenceItems(items), [items]);
+  const needs = useMemo(() => workspaceNeeds(items), [items]);
 
   const filteredItems = useMemo(() => {
     return items.filter((item) => {
@@ -157,6 +158,8 @@ export function EvidenceWorkspace({
   }
 
   function toggleRow(documentId: string) {
+    const item = items.find((candidate) => candidate.documentId === documentId);
+    if (item?.disposition === "withdrawn") return;
     onWorkspaceState(
       {
         ...workspaceState,
@@ -170,7 +173,7 @@ export function EvidenceWorkspace({
   function toggleFiltered() {
     onWorkspaceState({
       ...workspaceState,
-      selectedIds: allFilteredSelected ? [] : filteredItems.map((item) => item.documentId),
+      selectedIds: allFilteredSelected ? [] : selectableEvidenceIds(filteredItems),
     });
   }
 
@@ -198,6 +201,15 @@ export function EvidenceWorkspace({
         newValue: facility.name,
       })
     );
+  }
+
+  function runWriteAction(actionId: string, action: () => void) {
+    if (workingActionIds.includes(actionId)) return;
+    setWorkingActionIds((current) => [...current, actionId]);
+    window.setTimeout(() => {
+      action();
+      setWorkingActionIds((current) => current.filter((id) => id !== actionId));
+    }, 120);
   }
 
   function assignPeriod(documentId: string) {
@@ -230,7 +242,7 @@ export function EvidenceWorkspace({
     setItems((current) =>
       current.map((candidate) =>
         candidate.documentId === documentId
-          ? { ...candidate, typeReviewBand: "auto_accepted", typeReviewReason: null }
+          ? { ...candidate, typeReviewBand: null, typeReviewReason: null }
           : candidate
       )
     );
@@ -269,6 +281,46 @@ export function EvidenceWorkspace({
     );
   }
 
+  function withdrawDocument(documentId: string) {
+    const item = items.find((candidate) => candidate.documentId === documentId);
+    if (!item) return;
+    const ok = window.confirm(`Withdraw ${item.filename}?`);
+    if (!ok) return;
+    setItems((current) =>
+      current.map((candidate) =>
+        candidate.documentId === documentId ? { ...candidate, disposition: "withdrawn" } : candidate
+      )
+    );
+    onWorkspaceState({
+      ...workspaceState,
+      selectedIds: selectedIds.filter((id) => id !== documentId),
+    });
+    onAuditIntent(
+      createAuditIntent({
+        action: "withdraw_document",
+        documentId,
+        oldValue: "active",
+        newValue: "withdrawn",
+      })
+    );
+  }
+
+  function reinstateDocument(documentId: string) {
+    setItems((current) =>
+      current.map((candidate) =>
+        candidate.documentId === documentId ? { ...candidate, disposition: "active" } : candidate
+      )
+    );
+    onAuditIntent(
+      createAuditIntent({
+        action: "reinstate_document",
+        documentId,
+        oldValue: "withdrawn",
+        newValue: "active",
+      })
+    );
+  }
+
   function bulkAcceptType() {
     const targets = items.filter(
       (item) => selectedIds.includes(item.documentId) && item.typeReviewBand && item.detectedType
@@ -290,7 +342,7 @@ export function EvidenceWorkspace({
         <NeedsYouBar needs={needs} hasFilter={hasFilter} onFilter={updateFilter} />
       ) : null}
       <section className="s1-content">
-        <DemoControls state={demoState} onState={onDemoState} />
+        {showSessionAuditIntents ? <DemoControls state={demoState} onState={onDemoState} /> : null}
         {backendError ? <SystemDegradedBanner message={backendError} /> : null}
         {tableState !== "populated" ? (
           <ContainerStateSurface
@@ -302,7 +354,13 @@ export function EvidenceWorkspace({
           />
         ) : (
           <>
-            <UploadArea onUploadFiles={onUploadFiles} isUploading={isUploading} />
+            <UploadArea
+              onUploadFiles={onUploadFiles}
+              isUploading={isUploading}
+              uploadFailures={uploadFailures}
+              onUploadFailure={(failure) => setUploadFailures((current) => [failure, ...current].slice(0, 5))}
+              onUploadStart={() => setUploadFailures([])}
+            />
             <TypeReviewStrip
               items={items}
               onSetFilter={(band) => updateFilter("typeBand", band)}
@@ -338,6 +396,9 @@ export function EvidenceWorkspace({
               onOpenExtraction={(documentId) =>
                 onOpenExtraction(documentId, typeof window === "undefined" ? 0 : window.scrollY)
               }
+              onOpenManualEntry={(documentId) =>
+                onOpenManualEntry(documentId, typeof window === "undefined" ? 0 : window.scrollY)
+              }
               onProcessDocument={onProcessDocument}
               processingDocumentIds={processingDocumentIds}
                 editingFacilityId={editingFacilityId}
@@ -347,16 +408,36 @@ export function EvidenceWorkspace({
                 engagement={engagement}
                 workspaceWritesEnabled={workspaceWritesEnabled}
                 onStartFacility={setEditingFacilityId}
-                onAssignFacility={assignFacility}
+                workingActionIds={workingActionIds}
+                onAssignFacility={(documentId, facilityId) =>
+                  runWriteAction(`facility:${documentId}`, () => assignFacility(documentId, facilityId))
+                }
                 onStartPeriod={(documentId) => {
                   setEditingPeriodId(documentId);
                   setPeriodDraft({ start: "", end: "" });
                 }}
                 onPeriodDraft={setPeriodDraft}
-                onAssignPeriod={assignPeriod}
-              onAcceptType={acceptType}
+                onAssignPeriod={(documentId) => runWriteAction(`period:${documentId}`, () => assignPeriod(documentId))}
+              onAcceptType={(documentId) => runWriteAction(`type:${documentId}`, () => acceptType(documentId))}
               onStartType={setEditingTypeId}
-              onChangeType={changeType}
+              onChangeType={(documentId, nextType) =>
+                runWriteAction(`type:${documentId}`, () => changeType(documentId, nextType))
+              }
+              onWithdraw={(documentId) =>
+                runWriteAction(`withdraw:${documentId}`, () => withdrawDocument(documentId))
+              }
+              onReinstate={(documentId) =>
+                runWriteAction(`withdraw:${documentId}`, () => reinstateDocument(documentId))
+              }
+              expandedHistoryIds={expandedHistoryIds}
+              auditIntents={auditIntents}
+              onToggleHistory={(documentId) =>
+                setExpandedHistoryIds((current) =>
+                  current.includes(documentId)
+                    ? current.filter((id) => id !== documentId)
+                    : [...current, documentId]
+                )
+              }
               onCancelInlineEdit={() => {
                 setEditingFacilityId(null);
                 setEditingPeriodId(null);
@@ -366,7 +447,12 @@ export function EvidenceWorkspace({
             </ContainerStateSurface>
             <SupportiveEvidenceCards items={supportive} />
             <CompletenessPanel />
-            {showSessionAuditIntents ? <AuditIntentList intents={auditIntents} /> : null}
+            {showSessionAuditIntents ? (
+              <>
+                <NonRetentionNotice />
+                <ActivityRegion intents={auditIntents} />
+              </>
+            ) : null}
           </>
         )}
       </section>
@@ -412,7 +498,7 @@ function NeedsYouBar({
   hasFilter,
   onFilter,
 }: {
-  needs: { type: number; facility: number; period: number; blocked: number };
+  needs: { type: number; unacceptedTypes: number; facility: number; period: number; blocked: number };
   hasFilter: boolean;
   onFilter: <Key extends keyof Filters>(key: Key, value: Filters[Key]) => void;
 }) {
@@ -421,6 +507,9 @@ function NeedsYouBar({
       <strong>Needs you</strong>
       <button className="s1-needs__item" type="button" onClick={() => onFilter("typeBand", "needs_review")}>
         {needs.type} type review
+      </button>
+      <button className="s1-needs__item" type="button" onClick={() => onFilter("typeBand", "auto_accepted")}>
+        {needs.unacceptedTypes} unaccepted types
       </button>
       <button className="s1-needs__item" type="button" onClick={() => onFilter("facilityState", "unresolved")}>
         {needs.facility} facility
@@ -449,24 +538,65 @@ function SystemDegradedBanner({ message }: { message: string }) {
 function UploadArea({
   onUploadFiles,
   isUploading,
+  uploadFailures = [],
+  onUploadFailure,
+  onUploadStart,
 }: {
   onUploadFiles?: (files: FileList) => void;
   isUploading: boolean;
+  uploadFailures?: Array<{ filename: string; reason: string }>;
+  onUploadFailure?: (failure: { filename: string; reason: string }) => void;
+  onUploadStart?: () => void;
 }) {
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  function submitFiles(files: FileList) {
+    if (files.length === 0) return;
+    onUploadStart?.();
+    if (!onUploadFiles) {
+      Array.from(files).forEach((file) =>
+        onUploadFailure?.({ filename: file.name, reason: BACKEND_DISABLED_REASON })
+      );
+      return;
+    }
+    onUploadFiles(files);
+  }
+
   return (
     <div
-      className="s1-band s1-upload"
-      onDragOver={(event) => event.preventDefault()}
+      className={`s1-band s1-upload ${isDragOver ? "s1-upload--drag" : ""} ${isUploading ? "s1-upload--busy" : ""}`}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        setIsDragOver(true);
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setIsDragOver(true);
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        setIsDragOver(false);
+      }}
       onDrop={(event) => {
         event.preventDefault();
+        setIsDragOver(false);
         if (event.dataTransfer.files.length > 0) {
-          onUploadFiles?.(event.dataTransfer.files);
+          submitFiles(event.dataTransfer.files);
         }
       }}
     >
       <div>
         <h3>Upload evidence</h3>
         <div className="s1-muted">Drop files here or choose files</div>
+        {uploadFailures.length > 0 ? (
+          <div className="s1-upload__failures" role="status">
+            {uploadFailures.map((failure) => (
+              <div key={`${failure.filename}-${failure.reason}`}>
+                {failure.filename}: {failure.reason}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
       <label className="s1-button">
         {isUploading ? "Uploading" : "Choose files"}
@@ -476,7 +606,7 @@ function UploadArea({
           multiple
           onChange={(event) => {
             if (event.target.files && event.target.files.length > 0) {
-              onUploadFiles?.(event.target.files);
+              submitFiles(event.target.files);
               event.target.value = "";
             }
           }}
@@ -618,12 +748,12 @@ function BulkActionBar({
         className="s1-button"
         type="button"
         disabled={disabled}
-        title={disabled ? "Audit persistence required before saving bulk type decisions." : undefined}
+        title={disabled ? BACKEND_DISABLED_REASON : undefined}
         onClick={onAcceptType}
       >
         Accept detected type
       </button>
-      <button className="s1-button" type="button" disabled={disabled}>
+      <button className="s1-button" type="button" disabled={disabled} title={disabled ? BACKEND_DISABLED_REASON : undefined}>
         Re-extract
       </button>
     </div>
@@ -640,8 +770,10 @@ function EvidenceTable({
   onToggleRow,
   onActiveRow,
   onOpenExtraction,
+  onOpenManualEntry,
   onProcessDocument,
   processingDocumentIds,
+  workingActionIds,
   editingFacilityId,
   editingPeriodId,
   editingTypeId,
@@ -656,6 +788,11 @@ function EvidenceTable({
   onAcceptType,
   onStartType,
   onChangeType,
+  onWithdraw,
+  onReinstate,
+  expandedHistoryIds,
+  auditIntents,
+  onToggleHistory,
   onCancelInlineEdit,
 }: {
   groups: Array<{ label: string | null; items: EvidenceItem[] }>;
@@ -667,8 +804,11 @@ function EvidenceTable({
   onToggleRow: (documentId: string) => void;
   onActiveRow: (documentId: string) => void;
   onOpenExtraction: (documentId: string) => void;
+  onOpenManualEntry: (documentId: string) => void;
+  onProcess?: (documentId: string) => void;
   onProcessDocument?: (documentId: string) => void;
   processingDocumentIds: string[];
+  workingActionIds: string[];
   editingFacilityId: string | null;
   editingPeriodId: string | null;
   editingTypeId: string | null;
@@ -683,8 +823,14 @@ function EvidenceTable({
   onAcceptType: (documentId: string) => void;
   onStartType: (documentId: string) => void;
   onChangeType: (documentId: string, type: string) => void;
+  onWithdraw: (documentId: string) => void;
+  onReinstate: (documentId: string) => void;
+  expandedHistoryIds: string[];
+  auditIntents: SessionAuditEntry[];
+  onToggleHistory: (documentId: string) => void;
   onCancelInlineEdit: () => void;
 }) {
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const activeIndex = Math.max(
     flatItems.findIndex((item) => item.documentId === activeDocumentId),
     0
@@ -751,9 +897,13 @@ function EvidenceTable({
                 </tr>
               ) : null}
               {group.items.map((item) => (
+                <Fragment key={item.documentId}>
                 <tr
-                  key={item.documentId}
-                  className={selectedIds.includes(item.documentId) ? "s1-row-selected" : ""}
+                  className={[
+                    selectedIds.includes(item.documentId) ? "s1-row-selected" : "",
+                    activeDocumentId === item.documentId ? "s1-row-active" : "",
+                    item.disposition === "withdrawn" ? "s1-row-withdrawn" : "",
+                  ].filter(Boolean).join(" ")}
                   aria-current={activeDocumentId === item.documentId}
                   tabIndex={0}
                   onFocus={() => onActiveRow(item.documentId)}
@@ -781,12 +931,16 @@ function EvidenceTable({
                       {item.filename}
                     </button>
                     <div className="s1-mono s1-muted">{item.documentId}</div>
+                    {item.disposition === "withdrawn" ? (
+                      <StateIndicator dimension="disposition" value="withdrawn" label="Withdrawn" />
+                    ) : null}
                   </td>
                   <td>
                     <TypeCell
                       item={item}
                       editing={editingTypeId === item.documentId}
                       disabled={!workspaceWritesEnabled}
+                      isWorking={workingActionIds.includes(`type:${item.documentId}`)}
                       onAcceptType={onAcceptType}
                       onStartType={onStartType}
                       onChangeType={onChangeType}
@@ -798,6 +952,7 @@ function EvidenceTable({
                       editing={editingFacilityId === item.documentId}
                       facilities={engagement.facilities}
                       disabled={!workspaceWritesEnabled}
+                      isWorking={workingActionIds.includes(`facility:${item.documentId}`)}
                       onStart={onStartFacility}
                       onAssign={onAssignFacility}
                     />
@@ -808,13 +963,14 @@ function EvidenceTable({
                       editing={editingPeriodId === item.documentId}
                       draft={periodDraft}
                       disabled={!workspaceWritesEnabled}
+                      isWorking={workingActionIds.includes(`period:${item.documentId}`)}
                       onStart={onStartPeriod}
                       onDraft={onPeriodDraft}
                       onAssign={onAssignPeriod}
                     />
                   </td>
                   <td className="s1-mono">
-                    {item.fieldsExtracted} of {item.fieldsExpected}
+                    {item.fieldsExpectedDisplay === null ? "" : `${item.fieldsExtracted} of ${item.fieldsExpectedDisplay}`}
                   </td>
                   <td>
                     <ProcessingCell
@@ -827,11 +983,32 @@ function EvidenceTable({
                     <FlagCell item={item} />
                   </td>
                   <td>
-                    <button className="s1-button" type="button" aria-label={`Actions for ${item.filename}`}>
-                      ...
-                    </button>
+                    <RowActionMenu
+                      item={item}
+                      disabled={!workspaceWritesEnabled}
+                      isWorking={workingActionIds.includes(`type:${item.documentId}`)}
+                      isWithdrawWorking={workingActionIds.includes(`withdraw:${item.documentId}`)}
+                      isOpen={openMenuId === item.documentId}
+                      onOpenChange={(open) => setOpenMenuId(open ? item.documentId : null)}
+                      onAcceptType={onAcceptType}
+                      onStartType={onStartType}
+                      onOpenExtraction={onOpenExtraction}
+                      onOpenManualEntry={onOpenManualEntry}
+                      onProcess={onProcessDocument}
+                      onWithdraw={onWithdraw}
+                      onReinstate={onReinstate}
+                      onToggleHistory={onToggleHistory}
+                    />
                   </td>
                 </tr>
+                {expandedHistoryIds.includes(item.documentId) ? (
+                  <tr className="s1-history-row">
+                    <td colSpan={9}>
+                      <HistoryList intents={auditIntents.filter((intent) => intent.documentId === item.documentId)} />
+                    </td>
+                  </tr>
+                ) : null}
+                </Fragment>
               ))}
             </Fragment>
           ))}
@@ -845,6 +1022,7 @@ function TypeCell({
   item,
   editing,
   disabled,
+  isWorking,
   onAcceptType,
   onStartType,
   onChangeType,
@@ -852,6 +1030,7 @@ function TypeCell({
   item: EvidenceItem;
   editing: boolean;
   disabled: boolean;
+  isWorking: boolean;
   onAcceptType: (documentId: string) => void;
   onStartType: (documentId: string) => void;
   onChangeType: (documentId: string, type: string) => void;
@@ -865,16 +1044,17 @@ function TypeCell({
       <select className="s1-inline-input" defaultValue={item.detectedType} onChange={(event) => onChangeType(item.documentId, event.target.value)}>
         <option>Electric utility bill</option>
         <option>Corporate inventory workbook</option>
-        <option>Fuel record</option>
+        <option>Stationary fuel consumption record</option>
+        <option>Mobile fuel consumption record</option>
       </select>
     );
   }
 
   return (
-    <div>
-      <div>{item.detectedType}</div>
+    <div className="s1-type-cell">
+      <div className="s1-type-name">{item.detectedType}</div>
       {item.typeReviewBand === "auto_accepted" ? (
-        <div className="s1-muted">auto-accepted</div>
+        <div className="s1-type-band-text">auto-accepted</div>
       ) : item.typeReviewBand ? (
         <div className="s1-chip-stack">
           <StateIndicator dimension="readiness" value="non-blocking" label="open" explain={item.typeReviewReason ?? undefined} />
@@ -885,22 +1065,192 @@ function TypeCell({
         <button
           className="s1-linklike"
           type="button"
-          disabled={disabled}
-          title={disabled ? "Audit persistence required before saving type decisions." : undefined}
+          disabled={disabled || isWorking}
+          title={disabled ? BACKEND_DISABLED_REASON : undefined}
           onClick={() => onAcceptType(item.documentId)}
         >
-          Accept
+          {isWorking ? "Working" : "Accept"}
         </button>
         <button
           className="s1-linklike"
           type="button"
-          disabled={disabled}
-          title={disabled ? "Audit persistence required before saving type changes." : undefined}
+          disabled={disabled || isWorking}
+          title={disabled ? BACKEND_DISABLED_REASON : undefined}
           onClick={() => onStartType(item.documentId)}
         >
-          Change
+          {isWorking ? "Working" : "Change"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function RowActionMenu({
+  item,
+  disabled,
+  isWorking,
+  isWithdrawWorking,
+  isOpen,
+  onOpenChange,
+  onAcceptType,
+  onStartType,
+  onOpenExtraction,
+  onOpenManualEntry,
+  onProcess,
+  onWithdraw,
+  onReinstate,
+  onToggleHistory,
+}: {
+  item: EvidenceItem;
+  disabled: boolean;
+  isWorking: boolean;
+  isWithdrawWorking: boolean;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  onAcceptType: (documentId: string) => void;
+  onStartType: (documentId: string) => void;
+  onOpenExtraction: (documentId: string) => void;
+  onOpenManualEntry: (documentId: string) => void;
+  onProcess?: (documentId: string) => void;
+  onWithdraw: (documentId: string) => void;
+  onReinstate: (documentId: string) => void;
+  onToggleHistory: (documentId: string) => void;
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const itemsRef = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    itemsRef.current[0]?.focus();
+    function onPointerDown(event: PointerEvent) {
+      const target = event.target as Node;
+      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+      onOpenChange(false);
+      triggerRef.current?.focus();
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [isOpen, onOpenChange]);
+
+  function closeMenu() {
+    onOpenChange(false);
+    triggerRef.current?.focus();
+  }
+
+  function moveFocus(currentIndex: number, direction: 1 | -1) {
+    const candidates = itemsRef.current.filter(Boolean) as HTMLButtonElement[];
+    if (candidates.length === 0) return;
+    const next = (currentIndex + direction + candidates.length) % candidates.length;
+    candidates[next]?.focus();
+  }
+
+  const endpointTitle = disabled ? BACKEND_DISABLED_REASON : undefined;
+  const noDetectedType = !item.detectedType;
+  const isWithdrawn = item.disposition === "withdrawn";
+  const allDisabled = disabled && noDetectedType;
+
+  return (
+    <div className="s1-menu">
+      <button
+        ref={triggerRef}
+        className="s1-button s1-button--icon"
+        type="button"
+        aria-label={`Actions for ${item.filename}`}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        disabled={isWorking || isWithdrawWorking}
+        onClick={() => onOpenChange(!isOpen)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpenChange(true);
+          }
+        }}
+      >
+        {isWorking || isWithdrawWorking ? "Working" : "..."}
+      </button>
+      {isOpen ? (
+        <div className="s1-menu__panel" role="menu" ref={menuRef}>
+          {allDisabled ? <div className="s1-menu__empty">{BACKEND_DISABLED_REASON}</div> : null}
+          {[
+            {
+              label: "Accept detected type",
+              disabled: disabled || noDetectedType || isWorking || isWithdrawn,
+              title: noDetectedType ? "No detected type to accept." : endpointTitle,
+              action: () => onAcceptType(item.documentId),
+            },
+            {
+              label: "Change type",
+              disabled: disabled || isWorking || isWithdrawn,
+              title: endpointTitle,
+              action: () => onStartType(item.documentId),
+            },
+            {
+              label: "Open extraction review",
+              disabled: item.fieldsExtracted === 0,
+              title: item.fieldsExtracted === 0 ? "No extracted fields are available. Enter values manually instead." : undefined,
+              action: () => onOpenExtraction(item.documentId),
+            },
+            {
+              label: "Enter values manually",
+              disabled: false,
+              title: undefined,
+              action: () => onOpenManualEntry(item.documentId),
+            },
+            {
+              label: "Re-extract",
+              disabled: !onProcess || isWorking || isWithdrawn,
+              title: onProcess ? undefined : BACKEND_DISABLED_REASON,
+              action: () => onProcess?.(item.documentId),
+            },
+            {
+              label: "History",
+              disabled: false,
+              title: undefined,
+              action: () => onToggleHistory(item.documentId),
+            },
+            {
+              label: isWithdrawn ? "Reinstate document" : "Withdraw document",
+              disabled: disabled || isWithdrawWorking,
+              title: disabled ? endpointTitle : undefined,
+              action: () => (isWithdrawn ? onReinstate(item.documentId) : onWithdraw(item.documentId)),
+            },
+          ].map((action, index) => (
+            <button
+              key={action.label}
+              ref={(node) => {
+                itemsRef.current[index] = node;
+              }}
+              className="s1-menu__item"
+              type="button"
+              role="menuitem"
+              disabled={action.disabled}
+              title={action.title}
+              onClick={() => {
+                if (!action.disabled) action.action();
+                closeMenu();
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  moveFocus(index, 1);
+                }
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  moveFocus(index, -1);
+                }
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  closeMenu();
+                }
+              }}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -910,6 +1260,7 @@ function FacilityCell({
   editing,
   facilities,
   disabled,
+  isWorking,
   onStart,
   onAssign,
 }: {
@@ -917,6 +1268,7 @@ function FacilityCell({
   editing: boolean;
   facilities: EngagementConfig["facilities"];
   disabled: boolean;
+  isWorking: boolean;
   onStart: (documentId: string) => void;
   onAssign: (documentId: string, facilityId: string) => void;
 }) {
@@ -951,11 +1303,11 @@ function FacilityCell({
         <button
           className="s1-linklike"
           type="button"
-          disabled={disabled}
-          title={disabled ? "Audit persistence required before saving facility assignments." : undefined}
+          disabled={disabled || isWorking}
+          title={disabled ? BACKEND_DISABLED_REASON : undefined}
           onClick={() => onStart(item.documentId)}
         >
-          Assign facility
+          {isWorking ? "Working" : "Assign facility"}
         </button>
       </div>
     </div>
@@ -967,6 +1319,7 @@ function PeriodCell({
   editing,
   draft,
   disabled,
+  isWorking,
   onStart,
   onDraft,
   onAssign,
@@ -975,6 +1328,7 @@ function PeriodCell({
   editing: boolean;
   draft: { start: string; end: string };
   disabled: boolean;
+  isWorking: boolean;
   onStart: (documentId: string) => void;
   onDraft: (draft: { start: string; end: string }) => void;
   onAssign: (documentId: string) => void;
@@ -984,8 +1338,8 @@ function PeriodCell({
       <div className="s1-chip-stack">
         <input className="s1-inline-input" type="date" value={draft.start} onChange={(event) => onDraft({ ...draft, start: event.target.value })} />
         <input className="s1-inline-input" type="date" value={draft.end} onChange={(event) => onDraft({ ...draft, end: event.target.value })} />
-        <button className="s1-button" type="button" onClick={() => onAssign(item.documentId)}>
-          Save
+        <button className="s1-button" type="button" disabled={isWorking} onClick={() => onAssign(item.documentId)}>
+          {isWorking ? "Working" : "Save"}
         </button>
       </div>
     );
@@ -1009,11 +1363,11 @@ function PeriodCell({
         <button
           className="s1-linklike"
           type="button"
-          disabled={disabled}
-          title={disabled ? "Audit persistence required before saving period assignments." : undefined}
+          disabled={disabled || isWorking}
+          title={disabled ? BACKEND_DISABLED_REASON : undefined}
           onClick={() => onStart(item.documentId)}
         >
-          Assign period
+          {isWorking ? "Working" : "Assign period"}
         </button>
       </div>
     </div>
@@ -1088,15 +1442,17 @@ function FlagCell({ item }: { item: EvidenceItem }) {
 }
 
 function SupportiveEvidenceCards({ items }: { items: EvidenceItem[] }) {
+  if (items.length === 0) return null;
   return (
-    <section className="s1-cards" aria-label="Supportive evidence">
+    <section className="s1-supportive-evidence" aria-label="Supportive evidence">
+      <div className="s1-supportive-evidence__label">Supportive evidence</div>
       {items.map((item) => (
-        <article className="s1-card" key={item.documentId}>
+        <article className="s1-supportive-card" key={item.documentId}>
           <h3>{item.filename}</h3>
-          <p className="s1-muted">
-            {item.uploadedBy.name} · {new Date(item.uploadedAt).toLocaleDateString()}
-          </p>
-          <p>{item.reviewArea}</p>
+          <div className="s1-supportive-card__meta">
+            <span>{item.reviewArea}</span>
+            <span>{item.uploadedBy.name} · {new Date(item.uploadedAt).toLocaleDateString()}</span>
+          </div>
           <p>{item.note}</p>
         </article>
       ))}
@@ -1127,20 +1483,65 @@ function CompletenessPanel() {
   );
 }
 
-function AuditIntentList({ intents }: { intents: AuditIntent[] }) {
-  if (intents.length === 0) return null;
+function NonRetentionNotice() {
   return (
-    <section className="s1-panel">
-      <h3>Review record</h3>
-      <div className="s1-chip-stack">
-        {intents.slice(-6).map((intent, index) => (
-          <div key={`${intent.documentId}-${intent.action}-${index}`} className="s1-mono">
-            {intent.action} · {intent.documentId}
-          </div>
-        ))}
-      </div>
+    <section className="s1-panel s1-notice" role="status">
+      <strong>Audit entries in this session are not retained.</strong>
+      <span>This build cannot be used for a live engagement.</span>
     </section>
   );
+}
+
+function ActivityRegion({ intents }: { intents: SessionAuditEntry[] }) {
+  const newest = [...intents].reverse();
+  return (
+    <section className="s1-panel">
+      <details>
+        <summary>Activity · {intents.length}</summary>
+        {newest.length > 0 ? (
+          <HistoryList intents={newest} />
+        ) : (
+          <p className="s1-muted">No session activity yet.</p>
+        )}
+      </details>
+    </section>
+  );
+}
+
+function HistoryList({ intents }: { intents: SessionAuditEntry[] }) {
+  if (intents.length === 0) {
+    return <p className="s1-muted">No history for this row in this session.</p>;
+  }
+  return (
+    <div className="s1-history-list">
+      {intents.map((intent) => (
+        <article
+          className={`s1-history-entry s1-history-entry--${intent.actor.actorType}`}
+          key={intent.entryId}
+        >
+          <div>
+            <strong>{actionLabel(intent.action)}</strong>
+            <span className="s1-muted"> · {intent.documentId}</span>
+          </div>
+          <div className="s1-mono s1-muted">
+            {intent.actor.name} · {new Date(intent.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </div>
+          <div className="s1-muted">
+            {formatAuditValue(intent.oldValue)} -&gt; {formatAuditValue(intent.newValue)}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function actionLabel(action: SessionAuditEntry["action"]) {
+  return action.replaceAll("_", " ");
+}
+
+function formatAuditValue(value: SessionAuditEntry["oldValue"]) {
+  if (value === null || value === undefined) return "not found";
+  return String(value);
 }
 
 function groupItems(items: EvidenceItem[], groupBy: GroupBy) {

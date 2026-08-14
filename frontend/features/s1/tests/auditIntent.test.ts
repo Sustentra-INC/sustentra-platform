@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createBulkAuditIntents,
   createCorrectionAuditIntents,
+  createAuditIntent,
 } from "../utils/auditIntent";
 
 describe("audit intents", () => {
@@ -22,7 +23,7 @@ describe("audit intents", () => {
     const intents = createCorrectionAuditIntents(
       {
         documentId: "DOC-0001",
-        fieldKey: "CT-S2-ELECBILL::consumption_kwh",
+        fieldKey: "field:DOC-0001::consumption_kwh",
         oldValue: "142,880",
       },
       "143,000"
@@ -33,5 +34,19 @@ describe("audit intents", () => {
       "correct_value_human",
     ]);
     expect(intents[1].newValue).toBe("143,000");
+  });
+
+  it("records session audit entries through the audit boundary", () => {
+    const entry = createAuditIntent({
+      action: "withdraw_document",
+      documentId: "DOC-0001",
+      oldValue: "active",
+      newValue: "withdrawn",
+    });
+
+    expect(entry.entryId).toMatch(/^session-/);
+    expect(entry.actor.name).toBe("C. Yang");
+    expect(entry.persistence).toBe("intent_only");
+    expect(entry.timestamp).toBeTruthy();
   });
 });
