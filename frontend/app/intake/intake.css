@@ -2,10 +2,10 @@
  * Tailwind entry point for the client-facing intake screens.
  *
  * Preflight (Tailwind's global CSS reset) is deliberately NOT imported. This
- * stylesheet loads on /intake/* routes, which still render inside the existing
- * internal shell, and Preflight would restyle that shell's markup. Instead a
- * small reset below is scoped to .intake, which gives Tailwind's border, button
- * and form utilities the defaults they expect without touching anything else.
+ * stylesheet is global once imported, and Preflight would restyle the internal
+ * pages too. The small reset below is scoped to .intake instead, which gives
+ * Tailwind's border, button and form utilities the defaults they expect without
+ * touching anything else.
  */
 
 @layer theme, base, components, utilities;
@@ -16,15 +16,21 @@
 @theme {
   --color-ink: #16241f;
   --color-ink-soft: #5a6b64;
-  --color-line: #d8e0dc;
+  --color-line: #dfe6e2;
+  --color-line-soft: #edf1ef;
   --color-surface: #ffffff;
-  --color-surface-soft: #f4f7f5;
+  --color-surface-soft: #f5f8f6;
+  --color-page: #fbfcfb;
   --color-brand: #1f6f52;
+  --color-brand-deep: #16543e;
   --color-brand-soft: #e6f1eb;
   --color-danger: #a3311f;
   --color-danger-soft: #fbecea;
   --color-flag: #8a6116;
   --color-flag-soft: #fdf3df;
+
+  --font-display: var(--font-heading), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-body), system-ui, -apple-system, sans-serif;
 }
 
 @layer base {
@@ -48,7 +54,9 @@
 
   .intake p,
   .intake dl,
-  .intake dd {
+  .intake dd,
+  .intake ul,
+  .intake ol {
     margin: 0;
   }
 
@@ -73,5 +81,136 @@
 
   .intake a {
     color: var(--color-brand);
+  }
+
+  /* -- the client-facing shell ------------------------------------------- */
+
+  .intake-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 1.0625rem;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .intake-masthead {
+    padding: 1.75rem 1.5rem 0;
+  }
+
+  .intake-wordmark {
+    display: block;
+    margin: 0 auto;
+    max-width: 40rem;
+    font-family: var(--font-display);
+    font-size: 1.15rem;
+    letter-spacing: 0.01em;
+    color: var(--color-brand);
+  }
+
+  .intake-main {
+    flex: 1;
+    width: 100%;
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+  }
+
+  .intake-footnote {
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 2.5rem;
+    font-size: 0.875rem;
+    color: var(--color-ink-soft);
+  }
+
+  /* Headings carry the serif; nothing else does. */
+  .intake h1,
+  .intake h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+}
+
+@layer components {
+  /* -- motion ------------------------------------------------------------
+   * One question replacing another should read as a conversation moving on,
+   * not as a page reloading. Everything here is short enough to feel like
+   * response rather than decoration, and all of it is disabled outright for
+   * anyone who has asked their system for reduced motion.
+   */
+
+  @keyframes intake-enter {
+    from {
+      opacity: 0;
+      transform: translateY(0.5rem);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  @keyframes intake-lift {
+    from {
+      opacity: 0;
+      transform: translateY(0.75rem) scale(0.995);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  .intake-enter {
+    animation: intake-enter 220ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+
+  .intake-question {
+    animation: intake-lift 260ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+
+  /* Stagger the reveal of follow-up fields so a "Yes" unfolds rather than
+     dumping four inputs on screen at once. */
+  .intake-reveal > * {
+    animation: intake-enter 240ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+  }
+  .intake-reveal > *:nth-child(2) {
+    animation-delay: 45ms;
+  }
+  .intake-reveal > *:nth-child(3) {
+    animation-delay: 90ms;
+  }
+  .intake-reveal > *:nth-child(n + 4) {
+    animation-delay: 130ms;
+  }
+
+  .intake-pressable {
+    transition:
+      transform 120ms ease,
+      background-color 140ms ease,
+      border-color 140ms ease,
+      color 140ms ease;
+  }
+
+  .intake-pressable:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .intake-enter,
+    .intake-question,
+    .intake-reveal > * {
+      animation: none;
+    }
+
+    .intake-pressable,
+    .intake-pressable:active:not(:disabled) {
+      transition: none;
+      transform: none;
+    }
   }
 }

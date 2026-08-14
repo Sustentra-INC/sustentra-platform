@@ -3,35 +3,69 @@
  *
  * Kept in one place so the screens stay consistent and a restyle is a single
  * edit rather than a hunt through five files.
+ *
+ * Two rules this set follows deliberately:
+ *
+ * 1. **Not everything is a card.** Boxing every block flattens the page - the
+ *    eye has nowhere to land. Cards are for things a client acts on; everything
+ *    else is plain text separated by space and a rule.
+ * 2. **Space does the work.** The old set leaned on borders to separate
+ *    content. Whitespace separates it more calmly and reads less like a form
+ *    generator.
  */
 
-export const HEADING = "mb-1.5 text-2xl font-semibold tracking-tight";
+export const HEADING = "mb-2 text-[1.75rem] leading-tight font-normal text-ink";
 
-export const LEDE = "mb-7 text-ink-soft";
+export const LEDE = "mb-8 text-ink-soft";
 
-export const CARD = "mb-5 rounded-lg border border-line bg-surface p-6";
+/** For things a client acts on. Not for every block of text. */
+export const CARD = "mb-5 rounded-xl border border-line bg-surface p-7 shadow-[0_1px_2px_rgba(22,36,31,0.04)]";
 
-export const SITE_BLOCK = "mb-4 rounded-lg border border-line bg-surface-soft p-5";
+/** For read-only blocks: a rule and space, no box. */
+export const SECTION = "mb-9 border-t border-line-soft pt-6";
+
+export const SECTION_TITLE = "mb-1 font-display text-xl";
+
+export const SITE_BLOCK = "mb-4 rounded-lg bg-surface-soft p-5";
 
 export const BUTTON =
-  "rounded-md border border-brand bg-brand px-5 py-2.5 font-semibold text-white " +
-  "hover:brightness-110 disabled:opacity-55 disabled:hover:brightness-100 " +
-  "focus:ring-2 focus:ring-brand/40 focus:outline-none";
+  "intake-pressable rounded-lg border border-brand bg-brand px-6 py-3 font-semibold text-white " +
+  "hover:bg-brand-deep hover:border-brand-deep disabled:opacity-50 " +
+  "focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none";
 
 export const BUTTON_SECONDARY =
-  "rounded-md border border-brand bg-transparent px-5 py-2.5 font-semibold text-brand " +
-  "hover:bg-brand-soft focus:ring-2 focus:ring-brand/40 focus:outline-none";
+  "intake-pressable rounded-lg border border-line bg-surface px-6 py-3 font-semibold text-ink " +
+  "hover:border-brand hover:text-brand " +
+  "focus-visible:ring-2 focus-visible:ring-brand/40 focus-visible:outline-none";
 
-export const BUTTON_LINK = "text-brand underline hover:no-underline";
+export const BUTTON_LINK =
+  "text-brand underline underline-offset-2 hover:no-underline focus-visible:outline-none " +
+  "focus-visible:ring-2 focus-visible:ring-brand/40 rounded-sm";
 
-export const NOTICE_INFO = "mb-5 rounded-lg border border-brand/25 bg-brand-soft px-4 py-3";
+/** The big yes/no pair. Sized for confidence, not for a form. */
+export const CHOICE =
+  "intake-pressable min-w-28 rounded-lg border px-7 py-3.5 text-lg font-semibold";
+
+export const CHOICE_ON = "border-brand bg-brand text-white";
+
+export const CHOICE_OFF = "border-line bg-surface hover:border-brand hover:text-brand";
+
+export const NOTICE_INFO = "mb-6 rounded-lg bg-brand-soft px-5 py-4";
 
 export const NOTICE_ERROR =
-  "mb-5 rounded-lg border border-danger/25 bg-danger-soft px-4 py-3 text-danger";
+  "mb-6 rounded-lg border border-danger/20 bg-danger-soft px-5 py-4 text-danger";
 
-export const NOTICE_FLAG =
-  "mb-5 rounded-lg border border-flag/30 bg-flag-soft px-4 py-3 text-flag";
+export const NOTICE_FLAG = "mb-6 rounded-lg bg-flag-soft px-5 py-4 text-flag";
 
-export const FIELD_GRID = "grid grid-cols-1 gap-x-4 sm:grid-cols-2";
+/**
+ * One column, not two.
+ *
+ * A two-column grid inside a reading-width page left labels wrapping onto three
+ * lines and the eye zig-zagging. A single column is also the faster way through
+ * a form: one thing to answer at a time, no deciding where to look next.
+ */
+export const FIELD_GRID = "grid grid-cols-1";
 
 export const MUTED = "text-sm text-ink-soft";
+
+export const EYEBROW = "text-xs font-semibold tracking-[0.08em] text-brand uppercase";

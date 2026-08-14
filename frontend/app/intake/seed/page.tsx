@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 import { IntakeField } from "../../../components/intake/IntakeField";
+import { StageStepper } from "../../../components/intake/StageStepper";
 import {
   BUTTON,
   BUTTON_LINK,
@@ -15,6 +16,8 @@ import {
   MUTED,
   NOTICE_ERROR,
   NOTICE_FLAG,
+  SECTION,
+  SECTION_TITLE,
   SITE_BLOCK
 } from "../../../components/intake/styles";
 import {
@@ -221,15 +224,16 @@ export default function SeedFormPage() {
   if (phase === "done" && result) {
     const flagged = result.submission.provisional_values;
     return (
-      <section>
-        <h1 className={HEADING}>Thank you - that is saved</h1>
+      <section className="intake-enter">
+        <StageStepper current="questions" />
+        <h1 className={HEADING}>Saved</h1>
         <p className={LEDE}>
-          We have recorded {result.org.legal_name}, covering {result.org.reporting_period_start}{" "}
-          to {result.org.reporting_period_end}.
+          {result.org.legal_name}, covering {result.org.reporting_period_start} to{" "}
+          {result.org.reporting_period_end}.
         </p>
 
-        <div className={CARD}>
-          <h2 className="mb-3 text-lg font-semibold">Your sites</h2>
+        <div className={SECTION}>
+          <h2 className={SECTION_TITLE}>Your sites</h2>
           <dl>
             {result.sites.map((site) => (
               <div key={site.site_id} className="mt-2 first:mt-0">
@@ -252,7 +256,12 @@ export default function SeedFormPage() {
           </div>
         ) : null}
 
-        <p>Next, we will walk through each site with a short set of questions.</p>
+        <Link
+          href="/intake/interview"
+          className={`${BUTTON} mt-2 inline-block no-underline`}
+        >
+          Start the questions
+        </Link>
       </section>
     );
   }
@@ -261,10 +270,12 @@ export default function SeedFormPage() {
 
   return (
     <section>
+      <StageStepper current="details" />
+
       <h1 className={HEADING}>About your company</h1>
       <p className={LEDE}>
-        This takes a few minutes. Nothing here needs carbon accounting knowledge - if you are
-        unsure about anything, give your best answer and we will confirm it with you.
+        No carbon accounting knowledge needed. Best answers are fine — we confirm anything
+        that matters.
       </p>
 
       {message ? (
@@ -276,18 +287,15 @@ export default function SeedFormPage() {
       <form onSubmit={onSubmit} noValidate>
         {companyStep ? (
           <div className={CARD}>
-            <header className="mb-5">
-              <h2 className="text-lg font-semibold">{companyStep.label}</h2>
+            <header className="mb-6">
+              <h2 className={SECTION_TITLE}>{companyStep.label}</h2>
               <p className={MUTED}>{companyStep.description}</p>
             </header>
             <div className={FIELD_GRID}>
               {companyStep.fields
                 .filter((field) => isVisible(field, company))
                 .map((field) => (
-                  <div
-                    key={field.field_id}
-                    className={field.input === "textarea" ? "sm:col-span-2" : undefined}
-                  >
+                  <div key={field.field_id}>
                     <IntakeField
                       field={field}
                       value={company[field.field_id] ?? ""}
@@ -302,8 +310,8 @@ export default function SeedFormPage() {
 
         {sitesStep ? (
           <div className={CARD}>
-            <header className="mb-5">
-              <h2 className="text-lg font-semibold">{sitesStep.label}</h2>
+            <header className="mb-6">
+              <h2 className={SECTION_TITLE}>{sitesStep.label}</h2>
               <p className={MUTED}>{sitesStep.description}</p>
             </header>
 
@@ -331,10 +339,7 @@ export default function SeedFormPage() {
                   {sitesStep.fields
                     .filter((field) => isVisible(field, site))
                     .map((field) => (
-                      <div
-                        key={field.field_id}
-                        className={field.input === "textarea" ? "sm:col-span-2" : undefined}
-                      >
+                      <div key={field.field_id}>
                         <IntakeField
                           field={field}
                           value={site[field.field_id] ?? ""}
@@ -356,7 +361,7 @@ export default function SeedFormPage() {
 
         <div className="mt-6 flex items-center gap-3">
           <button type="submit" className={BUTTON} disabled={submitting}>
-            {submitting ? "Saving..." : "Save and continue"}
+            {submitting ? "Saving…" : "Save and continue"}
           </button>
           <span className={MUTED}>You can come back and change these later.</span>
         </div>

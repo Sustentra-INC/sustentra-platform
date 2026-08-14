@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { CoverageMeter } from "../../../components/intake/CoverageMeter";
 import { QuestionCard } from "../../../components/intake/QuestionCard";
+import { StageStepper } from "../../../components/intake/StageStepper";
 import {
   BUTTON,
+  BUTTON_LINK,
   HEADING,
   LEDE,
   NOTICE_ERROR,
@@ -28,6 +30,15 @@ import {
 
 type Phase = "loading" | "asking" | "done" | "unauthenticated" | "error";
 
+/**
+ * How long a save may take before we admit to it.
+ *
+ * Most saves come back in well under this, and flashing "Saving…" for 60ms
+ * reads as the app struggling. Past this the client deserves to know something
+ * is happening.
+ */
+const BUSY_VISIBLE_AFTER_MS = 300;
+
 export default function InterviewPage() {
   const [phase, setPhase] = useState<Phase>("loading");
   const [question, setQuestion] = useState<InterviewQuestion | null>(null);
@@ -36,6 +47,20 @@ export default function InterviewPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [handoff, setHandoff] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showBusy, setShowBusy] = useState(false);
+  const busyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function beginWork() {
+    setBusy(true);
+    busyTimer.current = setTimeout(() => setShowBusy(true), BUSY_VISIBLE_AFTER_MS);
+  }
+
+  function endWork() {
+    if (busyTimer.current) clearTimeout(busyTimer.current);
+    busyTimer.current = null;
+    setBusy(false);
+    setShowBusy(false);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -60,12 +85,13 @@ export default function InterviewPage() {
 
     return () => {
       cancelled = true;
+      if (busyTimer.current) clearTimeout(busyTimer.current);
     };
   }, []);
 
   async function onAnswer(answer: Record<string, unknown>, aiAssisted = false) {
     if (!question) return;
-    setBusy(true);
+    beginWork();
     setErrors([]);
     setMessage(null);
 
@@ -78,7 +104,7 @@ export default function InterviewPage() {
       });
       setHandoff(
         result.escalated
-          ? "That one needs a specialist - we have passed it to our team and will come back to you."
+          ? "That one needs a specialist. It is with our team now — nothing for you to do."
           : null
       );
       setCoverage(result.coverage);
@@ -87,18 +113,18 @@ export default function InterviewPage() {
     } catch (caught) {
       if (caught instanceof SeedFormError) {
         setErrors(caught.errors);
-        setMessage("Please check the highlighted answers.");
+        setMessage("Just one or two things to check below.");
       } else {
         setMessage(caught instanceof Error ? caught.message : "Could not save that answer.");
       }
     } finally {
-      setBusy(false);
+      endWork();
     }
   }
 
   async function onNotSure() {
     if (!question) return;
-    setBusy(true);
+    beginWork();
     setErrors([]);
     setMessage(null);
 
@@ -116,7 +142,7 @@ export default function InterviewPage() {
     } catch (caught) {
       setMessage(caught instanceof Error ? caught.message : "Could not do that just now.");
     } finally {
-      setBusy(false);
+      endWork();
     }
   }
 
@@ -131,9 +157,9 @@ export default function InterviewPage() {
 
   if (phase === "unauthenticated") {
     return (
-      <section>
+      <section className="intake-enter">
         <h1 className={HEADING}>Please sign in</h1>
-        <p className={LEDE}>Your session has expired or you are not signed in yet.</p>
+        <p className={LEDE}>Your session has expired.</p>
         <Link href="/intake/login" className={`${BUTTON} inline-block no-underline`}>
           Go to sign in
         </Link>
@@ -143,7 +169,7 @@ export default function InterviewPage() {
 
   if (phase === "error") {
     return (
-      <section>
+      <section className="intake-enter">
         <h1 className={HEADING}>Something went wrong</h1>
         <div className={NOTICE_ERROR} role="alert">
           <p>{message}</p>
@@ -154,37 +180,42 @@ export default function InterviewPage() {
 
   if (phase === "done") {
     return (
-      <section>
-        <h1 className={HEADING}>That is everything for now</h1>
+      <section className="intake-enter">
+        <StageStepper current="profile" />
+        <h1 className={HEADING}>That is everything</h1>
         <p className={LEDE}>
-          Thank you - you have answered everything we can ask at this stage.
+          Thank you — you have answered everything we can ask at this stage.
         </p>
-        {coverage ? <CoverageMeter coverage={coverage} /> : null}
+
         {coverage && coverage.escalated > 0 ? (
           <div className={NOTICE_FLAG}>
             <p>
-              {coverage.escalated} question{coverage.escalated === 1 ? " is" : "s are"} with our
-              team. We will email you as soon as they are answered - nothing is needed from you.
+              {coverage.escalated} question{coverage.escalated === 1 ? " is" : "s are"} with
+              our team. We will email you when they are answered.
             </p>
           </div>
         ) : null}
-        <p>Next, we will ask for the documents that back this up.</p>
+
+        <Link href="/intake/profile" className={`${BUTTON} inline-block no-underline`}>
+          See your profile
+        </Link>
       </section>
     );
   }
 
   return (
     <section>
+      <StageStepper current="questions" />
+
       <h1 className={HEADING}>A few questions about your operations</h1>
       <p className={LEDE}>
-        Short questions, mostly yes or no. If you are unsure about any of them, say so - we will
-        sort it out and keep you moving.
+        Mostly yes or no. If you are unsure about any of them, say so — we will sort it out.
       </p>
 
       {coverage ? <CoverageMeter coverage={coverage} /> : null}
 
       {handoff ? (
-        <div className={NOTICE_INFO}>
+        <div className={`${NOTICE_INFO} intake-enter`}>
           <p>{handoff}</p>
         </div>
       ) : null}
@@ -201,6 +232,7 @@ export default function InterviewPage() {
           question={question}
           errors={errors}
           busy={busy}
+          showBusy={showBusy}
           onAnswer={onAnswer}
           onNotSure={onNotSure}
           onHandedOver={async (text) => {

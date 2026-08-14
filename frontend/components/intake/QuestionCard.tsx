@@ -4,13 +4,25 @@ import { useEffect, useMemo, useState } from "react";
 
 import { FreeTextAnswer } from "./FreeTextAnswer";
 import { InterviewField } from "./InterviewField";
-import { BUTTON, BUTTON_LINK, CARD, MUTED, NOTICE_INFO } from "./styles";
+import {
+  BUTTON,
+  BUTTON_LINK,
+  CARD,
+  CHOICE,
+  CHOICE_OFF,
+  CHOICE_ON,
+  EYEBROW,
+  MUTED,
+  NOTICE_INFO
+} from "./styles";
 import type { FieldError, InterviewQuestion, SeedFormField } from "../../lib/intake-types";
 
 interface QuestionCardProps {
   question: InterviewQuestion;
   errors: FieldError[];
   busy: boolean;
+  /** Busy for long enough to be worth admitting to. See the interview page. */
+  showBusy?: boolean;
   onAnswer: (answer: Record<string, unknown>, aiAssisted?: boolean) => void;
   onNotSure: () => void;
   onHandedOver: (message: string) => void;
@@ -33,6 +45,7 @@ export function QuestionCard({
   question,
   errors,
   busy,
+  showBusy = false,
   onAnswer,
   onNotSure,
   onHandedOver
@@ -71,20 +84,22 @@ export function QuestionCard({
 
   const showFollowUps = !isScreening || present === true;
   const canSubmit = !isScreening || present !== undefined;
+  const hasFollowUps = showFollowUps && visibleFields.length > 0;
 
   return (
-    <div className={CARD}>
+    // Keyed by question in the parent, so this whole block re-mounts and the
+    // entry animation plays: one question giving way to the next, rather than
+    // text swapping in place.
+    <div className={`${CARD} intake-question`}>
       {question.scope_label ? (
-        <p className="mb-1 text-sm font-semibold tracking-wide text-brand uppercase">
-          {question.scope_label}
-        </p>
+        <p className={`mb-2 ${EYEBROW}`}>{question.scope_label}</p>
       ) : null}
 
-      <h2 className="mb-2 text-xl font-semibold">{question.question}</h2>
+      <h2 className="font-display text-2xl leading-snug">{question.question}</h2>
 
       <button
         type="button"
-        className={`${BUTTON_LINK} text-sm`}
+        className={`${BUTTON_LINK} mt-2 text-sm`}
         aria-expanded={showExplainer}
         onClick={() => setShowExplainer((open) => !open)}
       >
@@ -92,14 +107,14 @@ export function QuestionCard({
       </button>
 
       {showExplainer ? (
-        <div className={`${NOTICE_INFO} mt-3`}>
+        <div className={`${NOTICE_INFO} intake-enter mt-3 mb-0`}>
           <p>{question.explainer}</p>
         </div>
       ) : null}
 
-      <div className="mt-5">
+      <div className="mt-6">
         {isScreening ? (
-          <div className="mb-5 flex gap-2" role="group" aria-label="Yes or no">
+          <div className="flex gap-3" role="group" aria-label="Yes or no">
             {[
               { label: "Yes", answer: true },
               { label: "No", answer: false }
@@ -108,11 +123,10 @@ export function QuestionCard({
                 key={option.label}
                 type="button"
                 disabled={busy}
+                aria-pressed={present === option.answer}
                 onClick={() => answerScreening(option.answer)}
-                className={`rounded-md border px-6 py-2.5 font-semibold ${
-                  present === option.answer
-                    ? "border-brand bg-brand text-white"
-                    : "border-line bg-surface hover:border-brand"
+                className={`${CHOICE} ${
+                  present === option.answer ? CHOICE_ON : CHOICE_OFF
                 }`}
               >
                 {option.label}
@@ -122,13 +136,15 @@ export function QuestionCard({
         ) : null}
 
         {errorFor("present") ? (
-          <p role="alert" className="mb-4 text-sm text-danger">
+          <p role="alert" className="mt-3 text-sm text-danger">
             {errorFor("present")}
           </p>
         ) : null}
 
-        {showFollowUps
-          ? visibleFields.map((field) => (
+        {/* Follow-ups unfold in sequence rather than appearing all at once. */}
+        {hasFollowUps ? (
+          <div className={`intake-reveal ${isScreening ? "mt-7" : ""}`}>
+            {visibleFields.map((field) => (
               <InterviewField
                 key={field.field_id}
                 field={field}
@@ -136,8 +152,9 @@ export function QuestionCard({
                 error={errorFor(field.field_id)}
                 onChange={update}
               />
-            ))
-          : null}
+            ))}
+          </div>
+        ) : null}
       </div>
 
       {question.fields.some((field) => field.input !== "derived") ? (
@@ -151,7 +168,7 @@ export function QuestionCard({
         </div>
       ) : null}
 
-      <div className="mt-6 flex flex-wrap items-center gap-3">
+      <div className="mt-7 flex flex-wrap items-center gap-4">
         {showFollowUps ? (
           <button
             type="button"
@@ -159,20 +176,27 @@ export function QuestionCard({
             disabled={busy || !canSubmit}
             onClick={() => onAnswer(values)}
           >
-            {busy ? "Saving..." : "Save and continue"}
+            {showBusy ? "Saving…" : "Continue"}
           </button>
         ) : null}
 
         {question.not_sure_allowed ? (
-          <button type="button" className={BUTTON_LINK} disabled={busy} onClick={onNotSure}>
+          <button
+            type="button"
+            className={`${BUTTON_LINK} text-sm`}
+            disabled={busy}
+            onClick={onNotSure}
+          >
             I&apos;m not sure
           </button>
         ) : null}
       </div>
 
-      <p className={`mt-3 ${MUTED}`}>
-        Not sure is fine - we will find the answer for you and keep going.
-      </p>
+      {/* Said once, on the first screen, by the page - not repeated on every
+          card. Kept here only where it is genuinely the next thing to know. */}
+      {question.not_sure_allowed && !hasFollowUps ? (
+        <p className={`mt-3 ${MUTED}`}>Not sure is fine — we will find it out for you.</p>
+      ) : null}
     </div>
   );
 }

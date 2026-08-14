@@ -13,6 +13,7 @@ import {
   NOTICE_ERROR,
   NOTICE_FLAG,
   NOTICE_INFO,
+  SECTION_TITLE,
   SITE_BLOCK
 } from "../../../components/intake/styles";
 import { getProfile, getProfileHistory } from "../../../lib/api/intake-profile";
@@ -178,7 +179,7 @@ export default function ProfilePage() {
 
       {/* Company */}
       <div className={CARD}>
-        <h2 className="mb-3 text-lg font-semibold">Company</h2>
+        <h2 className={`${SECTION_TITLE} mb-3`}>Company</h2>
         <dl className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
           {[
             ["Reporting year", company.reporting_year],
@@ -207,7 +208,7 @@ export default function ProfilePage() {
 
       {/* Sites */}
       <div className={CARD}>
-        <h2 className="mb-3 text-lg font-semibold">
+        <h2 className={`${SECTION_TITLE} mb-3`}>
           Sites ({profile.sites.length})
         </h2>
         {profile.sites.map((site) => (
@@ -233,7 +234,7 @@ export default function ProfilePage() {
       {/* Boundary decisions get their own block: a verifier reads these first. */}
       {profile.boundary_decisions.length > 0 ? (
         <div className={CARD}>
-          <h2 className="mb-1 text-lg font-semibold">Boundary decisions</h2>
+          <h2 className={`${SECTION_TITLE} mb-1`}>Boundary decisions</h2>
           <p className={`${MUTED} mb-2`}>
             What counts as yours. Every one of these is confirmed by a person.
           </p>
@@ -249,16 +250,23 @@ export default function ProfilePage() {
       ) : null}
 
       {/* Every question, by section. Boundary has its own block above, so it is
-          not repeated here - the same six questions twice is noise, not detail. */}
+          not repeated here - the same six questions twice is noise, not detail.
+
+          Collapsed by default. Every answer belongs on this page, but forty of
+          them opened at once is a wall nobody reads; the counts above each one
+          are what a client actually scans for. Plain <details> so it works
+          without JavaScript and a screen reader announces the state. */}
       {profile.sections
         .filter((section) => section.section_id !== "boundary")
         .map((section) => (
-          <div key={section.section_id} className={CARD}>
-            <h2 className="mb-1 text-lg font-semibold">{section.label}</h2>
-            <p className={`${MUTED} mb-2`}>
-              {section.complete} of {section.total} complete
-            </p>
-            <ul className="list-none p-0">
+          <details key={section.section_id} className={`${CARD} py-5`}>
+            <summary className="flex cursor-pointer list-none items-baseline justify-between gap-4">
+              <span className="font-display text-lg">{section.label}</span>
+              <span className={MUTED}>
+                {section.complete} of {section.total}
+              </span>
+            </summary>
+            <ul className="mt-3 list-none p-0">
               {section.datapoints.map((entry) => (
                 <DatapointRow
                   key={`${entry.datapoint_id}:${entry.scope_ref ?? "org"}`}
@@ -266,12 +274,12 @@ export default function ProfilePage() {
                 />
               ))}
             </ul>
-          </div>
+          </details>
         ))}
 
       {/* These two are deliberately separate: absent is not the same as omitted. */}
       <div className={CARD}>
-        <h2 className="mb-1 text-lg font-semibold">Screened and not present</h2>
+        <h2 className={`${SECTION_TITLE} mb-1`}>Screened and not present</h2>
         <p className={`${MUTED} mb-2`}>
           Sources we checked for and confirmed you do not have. This is a completeness
           record, not an exclusion — it shows an auditor that the question was asked.
@@ -291,7 +299,7 @@ export default function ProfilePage() {
       </div>
 
       <div className={CARD}>
-        <h2 className="mb-1 text-lg font-semibold">Exclusions</h2>
+        <h2 className={`${SECTION_TITLE} mb-1`}>Exclusions</h2>
         <p className={`${MUTED} mb-2`}>
           Sources that exist but are left out, with the reason. Recorded against EXC-010.
         </p>
@@ -315,7 +323,7 @@ export default function ProfilePage() {
       {/* Uncertainty */}
       {profile.uncertainty.length > 0 ? (
         <div className={CARD}>
-          <h2 className="mb-1 text-lg font-semibold">How we know</h2>
+          <h2 className={`${SECTION_TITLE} mb-1`}>How we know</h2>
           <p className={`${MUTED} mb-2`}>
             Whether each figure is metered, invoiced or estimated. This feeds the
             uncertainty assessment an auditor expects.
@@ -349,7 +357,7 @@ export default function ProfilePage() {
 
       {/* History */}
       <div className={CARD}>
-        <h2 className="mb-1 text-lg font-semibold">History</h2>
+        <h2 className={`${SECTION_TITLE} mb-1`}>History</h2>
         <p className={`${MUTED} mb-2`}>
           Every change to this profile, oldest first. {history?.count ?? 0} recorded.
         </p>

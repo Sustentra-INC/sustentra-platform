@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { StageStepper } from "../../../../components/intake/StageStepper";
 import { BUTTON, HEADING, LEDE, NOTICE_ERROR } from "../../../../components/intake/styles";
 import { verifyMagicLink } from "../../../../lib/api/intake";
 import type { IntakeUser } from "../../../../lib/intake-types";
@@ -67,9 +68,10 @@ export default function IntakeVerifyPage() {
   }
 
   return (
-    <section>
+    <section className="intake-enter">
+      <StageStepper current="details" />
       <h1 className={HEADING}>Welcome{user ? `, ${user.name}` : ""}</h1>
-      <p className={LEDE}>You are signed in. Next, tell us about your company and sites.</p>
+      <p className={LEDE}>Next: your company and sites. It takes a few minutes.</p>
       <Link href="/intake/seed" className={`${BUTTON} inline-block no-underline`}>
         Start
       </Link>

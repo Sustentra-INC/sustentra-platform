@@ -35,7 +35,7 @@ export default function IntakeLoginPage() {
 
   if (status === "sent") {
     return (
-      <section>
+      <section className="intake-enter">
         <h1 className={HEADING}>Check your email</h1>
         <p className={LEDE}>
           If <strong>{email}</strong> has an account, a sign-in link is on its way. The link
@@ -57,10 +57,7 @@ export default function IntakeLoginPage() {
   return (
     <section>
       <h1 className={HEADING}>Sign in to Sustentra</h1>
-      <p className={LEDE}>
-        Enter your work email and we will send you a sign-in link. There is no password to
-        remember.
-      </p>
+      <p className={LEDE}>We will email you a link. No password to remember.</p>
 
       {error ? (
         <div className={NOTICE_ERROR} role="alert">
