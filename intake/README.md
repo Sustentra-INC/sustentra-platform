@@ -18,7 +18,7 @@ Everything here is new code. No existing file in the repo is modified.
 | D1 | AI reading of typed answers, with playback and guardrails | done |
 | D2 | Escalation queue screen, digest/reminder emails, SMTP adapter | done |
 | E | Profile page + audit log + expected-document list | done |
-| F | Instrumentation of the two success metrics | not started |
+| F | Instrumentation of the two success metrics | done |
 
 ## Layout
 
@@ -49,6 +49,9 @@ python intake/scripts/intake_smoke.py
 
 # see what the escalation digests and reminders would say, sending nothing
 python intake/scripts/send_escalation_notices.py --dry-run
+
+# the two success metrics
+python intake/scripts/metrics_report.py
 
 # watch the Phase C1 state layer: instantiation, back-fill, a screening "no",
 # applicability, and an escalation opened then resolved
@@ -105,8 +108,10 @@ That serves everything the S1 API served, plus `/v1/intake/*`. Running
 | `GET  /v1/intake/profile/history` | Every recorded change, oldest first. |
 | `GET  /v1/intake/evidence-requests` | Documents expected from this client, with the Stage 5 safe-to-parse flag. |
 | `GET  /v1/intake/evidence-requests/completeness-spec` | Expected counts per site, for S1's completeness gate. |
+| `GET  /v1/intake/metrics` | The two success metrics, with the sample size. **Reviewers only.** |
+| `GET  /v1/intake/metrics/orgs/{org_id}` | One client's onboarding journey. |
 
-The three review routes require the `sustentra_reviewer` role and are the one
+The review and metrics routes require the `sustentra_reviewer` role and are the one
 place org scoping is deliberately crossed: a reviewer sees every client's open
 questions, which is the point of the queue. The check is explicit on each route.
 
@@ -127,6 +132,7 @@ cd frontend && npm install && npm run dev
 - `/intake/review` — the team's queue of escalated questions (reviewers only)
 - `/intake/review/{escalation_id}` — answer one, with the context to do it
 - `/intake/profile` — the client's living record and its edit history
+- `/intake/review/metrics` — how onboarding is going (reviewers only)
 
 New pages only; no existing page, component or config is touched.
 
@@ -156,6 +162,42 @@ Two rules the compiler will not break:
 Requests are recompiled on every read. IDs are derived from identity rather than
 generated, so recompiling updates the same record, keeps any status already set,
 and writes nothing when nothing changed.
+
+## The two success metrics (Phase F)
+
+SPEC §2 asks for **% of profiles completed with zero escalations** and **median
+time-to-complete**, instrumented from day one.
+
+Nothing new is tracked to produce them. Every timestamp already exists — the
+audit log is an event stream by construction — so there is no analytics service,
+no tracking script, and nothing about a client leaves the machine.
+
+Two definitions the spec leaves open, both founder-decided:
+
+- **Started** is the client's first sign-in. Their clock starts when they first
+  see the product, not when we created their record internally.
+- **Complete** means their questions are actually *resolved* — nothing still
+  sitting with the team. A consequence worth stating: time-to-complete therefore
+  includes how fast **we** answer escalations, so it measures Sustentra too.
+
+And one honesty problem in the metric itself. Taken literally, "zero
+escalations" can never rise above zero: 10 of the 38 data points are HUMAN class
+and `human_class_policy` escalates every one for confirmation, so a client who
+sails through still generates a handful. **Both numbers are reported:**
+
+| Number | What it means |
+|---|---|
+| Completed **without getting stuck** | No contradiction, no failed attempt, no request for help. This is the one that measures onboarding. |
+| Completed with **no escalations at all** | SPEC §2 word for word. Counts routine confirmations, so expect it to read low. |
+
+Which triggers count as "stuck" is `metrics.stuck_triggers` in the settings — a
+config change, not a code change. Changing `human_class_policy` instead is a
+methodology decision for the founder and Todd, not one this code makes.
+
+Small samples are labelled rather than hidden: below `metrics.minimum_sample`
+completed profiles the figures are still shown, flagged as too few to read as a
+trend. Rates return null rather than 0% when there is nothing to divide by,
+because "no clients yet" and "no clients succeeded" are different facts.
 
 ## Escalation emails
 

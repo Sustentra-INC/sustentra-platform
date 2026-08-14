@@ -23,6 +23,7 @@ from intake.backend.api import (
     auth,
     evidence_requests,
     interview,
+    metrics,
     orgs,
     profile,
     review,
@@ -40,6 +41,7 @@ INTAKE_ROUTERS = (
     review.router,
     profile.router,
     evidence_requests.router,
+    metrics.router,
 )
 
 # The intake screens run on a different port from the API, so the browser will

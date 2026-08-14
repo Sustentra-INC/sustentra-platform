@@ -382,3 +382,40 @@ export interface ProfileHistory {
   returned: number;
   entries: ProfileHistoryEntry[];
 }
+
+/** One client's onboarding journey (Phase F). */
+export interface ClientJourney {
+  org_id: string;
+  legal_name: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  is_complete: boolean;
+  hours_to_complete: number | null;
+  datapoints_total: number;
+  datapoints_settled: number;
+  still_open: number;
+  escalations_total: number;
+  escalations_routine: number;
+  escalations_stuck: number;
+  escalations_open: number;
+  got_stuck: boolean;
+}
+
+/** The two success metrics from SPEC section 2 (Phase F). */
+export interface MetricsSummary {
+  generated_at: string;
+  clients_total: number;
+  clients_started: number;
+  clients_complete: number;
+  sample_size: number;
+  enough_data: boolean;
+  minimum_sample: number;
+  completion_rate: number | null;
+  zero_escalation_rate: number | null;
+  no_stuck_rate: number | null;
+  median_hours_to_complete: number | null;
+  fastest_hours: number | null;
+  slowest_hours: number | null;
+  caveats: string[];
+  clients: ClientJourney[];
+}

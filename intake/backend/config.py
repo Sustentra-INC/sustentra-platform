@@ -76,6 +76,20 @@ class ApiSettings(BaseModel):
     note: str | None = None
 
 
+class MetricsSettings(BaseModel):
+    """SPEC section 2's two success metrics (Phase F).
+
+    Triggers are split rather than counted together so both the literal metric
+    and the useful one can be reported - see the note in the config file.
+    """
+
+    stuck_triggers: list[str] = Field(default_factory=list)
+    routine_triggers: list[str] = Field(default_factory=list)
+    minimum_sample: int = 5
+    note: str | None = None
+    minimum_sample_note: str | None = None
+
+
 class IntakeSettings(BaseModel):
     """Typed view over intake/config/intake_settings.json."""
 
@@ -85,6 +99,7 @@ class IntakeSettings(BaseModel):
     escalation: EscalationSettings
     email: EmailSettings
     api: ApiSettings
+    metrics: MetricsSettings = Field(default_factory=MetricsSettings)
     roles: dict[str, Any]
     storage: dict[str, str]
     industries: list[dict[str, Any]]

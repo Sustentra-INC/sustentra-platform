@@ -156,5 +156,19 @@
     "INTAKE_REVIEW_URL_TEMPLATE": "escalation.review_url_template",
     "INTAKE_SMTP_HOST": "email.smtp_host",
     "INTAKE_SMTP_PORT": "email.smtp_port"
+  },
+  "metrics": {
+    "stuck_triggers": [
+      "contradiction",
+      "failed_clarification",
+      "user_requested_help"
+    ],
+    "routine_triggers": [
+      "human_class_datapoint",
+      "condition_met"
+    ],
+    "minimum_sample": 5,
+    "note": "SPEC section 2 asks for '% of profiles completed with zero escalations'. Taken literally that number can never rise above zero: 10 of 38 data points are HUMAN class and escalation.human_class_policy is 'always', so every client generates routine confirmations by design. The triggers are split here so both numbers can be reported - the literal one, and the one that measures what the metric is for, which is whether a client got stuck.",
+    "minimum_sample_note": "Below this many completed profiles a median is theatre. The figure is still reported, flagged as too small to read."
   }
 }

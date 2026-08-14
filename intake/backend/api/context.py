@@ -38,6 +38,7 @@ from intake.backend.services.applicability_service import ApplicabilityService
 from intake.backend.services.contradiction_service import ContradictionService
 from intake.backend.services.explainer_service import ExplainerService
 from intake.backend.services.evidence_request_service import EvidenceRequestService
+from intake.backend.services.metrics_service import MetricsService
 from intake.backend.services.notification_service import NotificationService
 from intake.backend.services.profile_audit_service import ProfileAuditService
 from intake.backend.services.profile_service import ProfileService
@@ -71,6 +72,7 @@ class IntakeContext:
     notification_service: NotificationService | None = None
     review_service: ReviewService | None = None
     profile_service: ProfileService | None = None
+    metrics_service: MetricsService | None = None
     evidence_request_service: EvidenceRequestService | None = None
 
 
@@ -154,6 +156,15 @@ def build_default_context() -> IntakeContext:
         explainers=explainer_service,
     )
     coverage_service = CoverageService(interview_engine)
+    metrics_service = MetricsService(
+        org_repository=orgs,
+        session_repository=sessions,
+        state_repository=states,
+        escalation_repository=escalation_records,
+        audit_repository=audit,
+        interview_engine=interview_engine,
+        settings=settings,
+    )
     profile_service = ProfileService(
         org_repository=orgs,
         site_repository=sites,
@@ -196,6 +207,7 @@ def build_default_context() -> IntakeContext:
         notification_service=notification_service,
         review_service=review_service,
         profile_service=profile_service,
+        metrics_service=metrics_service,
         evidence_request_service=evidence_request_service,
     )
 

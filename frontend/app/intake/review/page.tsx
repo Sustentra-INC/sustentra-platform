@@ -162,6 +162,12 @@ export default function ReviewQueuePage() {
         {queue.count} open. Digest and reminder emails are sent on a schedule, so nothing
         depends on this screen being open.
       </p>
+
+      <p className="mt-4">
+        <Link href="/intake/review/metrics" className={BUTTON_LINK}>
+          How onboarding is going
+        </Link>
+      </p>
     </section>
   );
 }

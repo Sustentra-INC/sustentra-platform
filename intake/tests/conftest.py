@@ -49,6 +49,7 @@ from intake.backend.services.explainer_service import ExplainerService  # noqa: 
 from intake.backend.services.evidence_request_service import (  # noqa: E402
     EvidenceRequestService,
 )
+from intake.backend.services.metrics_service import MetricsService  # noqa: E402
 from intake.backend.services.notification_service import NotificationService  # noqa: E402
 from intake.backend.services.profile_audit_service import ProfileAuditService  # noqa: E402
 from intake.backend.services.profile_service import ProfileService  # noqa: E402
@@ -201,6 +202,18 @@ class Harness:
         )
         self.coverage_service = CoverageService(self.interview_engine)
 
+        # Phase F: the two success metrics, read from records that already exist.
+        self.metrics_service = MetricsService(
+            org_repository=self.orgs,
+            session_repository=self.sessions,
+            state_repository=self.states,
+            escalation_repository=self.escalations,
+            audit_repository=self.audit,
+            interview_engine=self.interview_engine,
+            settings=self.settings,
+            clock=self.clock,
+        )
+
         # Phase E: the profile page and the expected-document list.
         self.profile_service = ProfileService(
             org_repository=self.orgs,
@@ -238,6 +251,7 @@ class Harness:
             notification_service=self.notification_service,
             review_service=self.review_service,
             profile_service=self.profile_service,
+            metrics_service=self.metrics_service,
             evidence_request_service=self.evidence_request_service,
         )
 
