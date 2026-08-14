@@ -96,16 +96,42 @@ class OrgService:
     def can_submit_seed_form(self, role: str) -> bool:
         return bool(self._settings.roles.get(role, {}).get("can_submit_seed_form"))
 
+    def is_internal_role(self, role: str) -> bool:
+        """Is this one of ours rather than a client's?
+
+        The distinction is already in the roles config. It matters from Phase D2
+        onwards, when ``sustentra_reviewer`` gained the power to read across
+        clients: without this, a client owner could grant that role to an email
+        they control and read every other client's profile.
+        """
+        return bool(self._settings.roles.get(role, {}).get("internal"))
+
     def get_org(self, org_id: str) -> dict[str, Any]:
         org = self._orgs.get(org_id)
         if org is None:
             raise OrgError(f"Unknown org {org_id}.")
         return org
 
-    def add_user(self, org_id: str, name: str, email: str, role: str) -> dict[str, Any]:
+    def add_user(
+        self,
+        org_id: str,
+        name: str,
+        email: str,
+        role: str,
+        actor_role: str | None = None,
+    ) -> dict[str, Any]:
         self.get_org(org_id)
         if role not in self._settings.role_names():
             raise OrgError(f"Unknown role {role!r}. Known roles: {self._settings.role_names()}")
+
+        # Only Sustentra staff may create Sustentra staff. A client owner can
+        # manage their own team; granting an internal role would hand them the
+        # cross-client review queue and every other client's profile.
+        #
+        # Fails closed: an unstated actor is refused rather than trusted, so a
+        # future caller that forgets to pass one cannot open this back up.
+        if self.is_internal_role(role) and not self.is_internal_role(actor_role or ""):
+            raise OrgError(f"Only Sustentra staff can grant the {role!r} role.")
 
         address = normalise_email(email)
         existing = self._users.get_by_email(address)

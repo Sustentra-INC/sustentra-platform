@@ -283,7 +283,12 @@ class Harness:
         org in v1, but the role - not the org - is what the queue checks.
         """
         self.org_service.add_user(
-            org_id=org_id, name="Rae Reviewer", email=email, role="sustentra_reviewer"
+            org_id=org_id,
+            name="Rae Reviewer",
+            email=email,
+            role="sustentra_reviewer",
+            # Internal provisioning: only staff may create staff.
+            actor_role="sustentra_reviewer",
         )
         return self.sign_in(email)
 

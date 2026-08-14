@@ -30,7 +30,7 @@
         },
         {
           "field_id": "control_determination_basis",
-          "label": "How do you know? (optional)",
+          "label": "How do you know?",
           "help": "For example: we are the only legal entity, or we hold the operating licence.",
           "input": "textarea",
           "required": false,
@@ -87,7 +87,7 @@
         },
         {
           "field_id": "asset_role_determination_basis",
-          "label": "Anything we should know about the arrangement? (optional)",
+          "label": "Anything we should know about the arrangement?",
           "input": "textarea",
           "required": false,
           "populates": {
@@ -121,7 +121,7 @@
         },
         {
           "field_id": "base_year_selection_rationale",
-          "label": "Why that year? (optional)",
+          "label": "Why that year?",
           "input": "textarea",
           "required": false,
           "reveal_when": { "field": "prior_inventories", "equals": true },
@@ -171,7 +171,7 @@
         },
         {
           "field_id": "exclusion_materiality_basis",
-          "label": "Anything specific to your business to add? (optional)",
+          "label": "Anything specific to your business to add?",
           "input": "textarea",
           "required": false,
           "populates": { "field_id": "EXC-010", "schema_field": "exclusion_materiality_basis" }
@@ -219,7 +219,7 @@
         },
         {
           "field_id": "operating_hours",
-          "label": "Roughly how many hours did they run this year? (optional)",
+          "label": "Roughly how many hours did they run this year?",
           "input": "number",
           "required": false,
           "reveal_when": { "field": "separately_metered", "equals": false },
@@ -260,7 +260,7 @@
         },
         {
           "field_id": "vehicle_type",
-          "label": "What sort of vehicles are they? (optional)",
+          "label": "What sort of vehicles are they?",
           "input": "text",
           "required": false,
           "provisional": true,
@@ -278,7 +278,7 @@
       "fields": [
         {
           "field_id": "exclusion_justification",
-          "label": "Anything worth noting? (optional)",
+          "label": "Anything worth noting?",
           "input": "textarea",
           "required": false,
           "populates": { "field_id": "ORG-050", "schema_field": "exclusion_justification" }
@@ -307,7 +307,7 @@
         },
         {
           "field_id": "distance_traveled",
-          "label": "Roughly how far did this group travel this year? (optional)",
+          "label": "Roughly how far did this group travel this year?",
           "input": "number",
           "required": false,
           "reveal_when": {
@@ -333,7 +333,7 @@
         },
         {
           "field_id": "gas_type",
-          "label": "Do you know the refrigerant type? (optional)",
+          "label": "Do you know the refrigerant type?",
           "help": "Often printed on a label on the unit, like R-410A.",
           "input": "text",
           "required": false,
@@ -368,7 +368,7 @@
         },
         {
           "field_id": "gas_type",
-          "label": "Which agent, if you know? (optional)",
+          "label": "Which agent, if you know?",
           "input": "text",
           "required": false,
           "provisional": true,
@@ -398,7 +398,7 @@
         },
         {
           "field_id": "use_purpose",
-          "label": "What are they used for? (optional)",
+          "label": "What are they used for?",
           "input": "text",
           "required": false,
           "reveal_when": { "field": "present", "equals": true },
@@ -463,7 +463,7 @@
         },
         {
           "field_id": "reporter_floor_area",
-          "label": "Your floor area (optional)",
+          "label": "Your floor area",
           "input": "number",
           "required": false,
           "reveal_when": { "field": "present", "equals": true },
@@ -471,7 +471,7 @@
         },
         {
           "field_id": "total_building_area",
-          "label": "Total building area (optional)",
+          "label": "Total building area",
           "input": "number",
           "required": false,
           "reveal_when": { "field": "present", "equals": true },
@@ -541,7 +541,7 @@
         },
         {
           "field_id": "market_hierarchy_tier",
-          "label": "Which best describes it? (optional)",
+          "label": "Which best describes it?",
           "input": "select",
           "required": false,
           "options_ref": "vocabulary:market_hierarchy_tier",

@@ -57,10 +57,20 @@ export function InterviewField({ field, value, error, onChange }: InterviewField
         <div className="grid gap-2">
           {items.map((item, index) => (
             <div key={index} className="flex gap-2">
+              {/* The first row carries the field id so the visible label is
+                  actually attached to something; later rows are numbered, so a
+                  screen reader announces "Equipment 2" rather than nothing. */}
               <input
+                id={index === 0 ? id : `${id}-${index + 1}`}
                 className={CONTROL}
                 value={item}
                 placeholder={field.item_label ?? "Add one"}
+                aria-label={
+                  index === 0
+                    ? undefined
+                    : `${field.item_label ?? field.label} ${index + 1}`
+                }
+                aria-describedby={index === 0 && describedBy ? describedBy : undefined}
                 onChange={(event) => {
                   const next = [...items];
                   next[index] = event.target.value;

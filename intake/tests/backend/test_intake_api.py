@@ -220,7 +220,11 @@ def test_invalid_submission_returns_field_errors(client) -> None:
 def test_reviewer_cannot_submit_the_seed_form(client) -> None:
     token, org = _sign_in(client)
     client.harness.org_service.add_user(
-        org_id=org["org_id"], name="Rev", email="rev@sustentra.com", role="sustentra_reviewer"
+        org_id=org["org_id"],
+        name="Rev",
+        email="rev@sustentra.com",
+        role="sustentra_reviewer",
+        actor_role="sustentra_reviewer",  # internal provisioning
     )
     reviewer_token = client.harness.sign_in("rev@sustentra.com")
     response = client.post(
@@ -409,7 +413,11 @@ def test_a_reviewer_cannot_answer_the_interview(client) -> None:
     )
     client.post("/v1/intake/interview/start", headers=_auth(token))
     client.harness.org_service.add_user(
-        org_id=org["org_id"], name="Rev", email="rev@sustentra.com", role="sustentra_reviewer"
+        org_id=org["org_id"],
+        name="Rev",
+        email="rev@sustentra.com",
+        role="sustentra_reviewer",
+        actor_role="sustentra_reviewer",  # internal provisioning
     )
     reviewer = client.harness.sign_in("rev@sustentra.com")
     response = client.post(
@@ -501,7 +509,11 @@ def test_parse_is_unavailable_when_no_model_is_configured(client) -> None:
 def test_a_reviewer_cannot_use_the_parser(client) -> None:
     token, org, _ = _start(client)
     client.harness.org_service.add_user(
-        org_id=org["org_id"], name="Rev", email="rev@sustentra.com", role="sustentra_reviewer"
+        org_id=org["org_id"],
+        name="Rev",
+        email="rev@sustentra.com",
+        role="sustentra_reviewer",
+        actor_role="sustentra_reviewer",  # internal provisioning
     )
     reviewer = client.harness.sign_in("rev@sustentra.com")
     response = client.post(
@@ -510,3 +522,26 @@ def test_a_reviewer_cannot_use_the_parser(client) -> None:
         json={"datapoint_id": "S1FUG-5.1", "text": "twelve"},
     )
     assert response.status_code == 403
+
+
+def test_a_client_cannot_grant_themselves_the_reviewer_role_over_the_api(client) -> None:
+    """The same escalation, closed at the HTTP boundary too."""
+    token, org = _sign_in(client)
+    response = client.post(
+        f"/v1/intake/orgs/{org['org_id']}/users",
+        headers=_auth(token),
+        json={"name": "Ada (alt)", "email": "ada.alt@example.com", "role": "sustentra_reviewer"},
+    )
+    assert response.status_code == 400
+    assert "Sustentra staff" in response.json()["detail"]
+
+
+def test_a_client_can_still_add_a_colleague_over_the_api(client) -> None:
+    token, org = _sign_in(client)
+    response = client.post(
+        f"/v1/intake/orgs/{org['org_id']}/users",
+        headers=_auth(token),
+        json={"name": "Sam", "email": "sam@example.com", "role": "client_member"},
+    )
+    assert response.status_code == 200
+    assert response.json()["role"] == "client_member"

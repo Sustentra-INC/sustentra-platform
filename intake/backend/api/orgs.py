@@ -94,7 +94,11 @@ def add_user(
         raise HTTPException(status_code=403, detail="Your role cannot manage users.")
     try:
         return service.add_user(
-            org_id=org_id, name=payload.name, email=payload.email, role=payload.role
+            org_id=org_id,
+            name=payload.name,
+            email=payload.email,
+            role=payload.role,
+            actor_role=user.role,
         )
     except OrgError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
