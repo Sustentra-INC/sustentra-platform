@@ -1,0 +1,14 @@
+# Everything the intake API needs to run in production. Nothing else.
+#
+# Deliberately not backend/requirements.txt: that installs the S1 document
+# pipeline (pandas, pymupdf, boto3, openai and the rest), none of which the
+# intake surface imports. A deployed intake pilot should not carry a parser it
+# never calls.
+#
+# Everything else the API uses is in the Python standard library - including
+# smtplib for email. The openai package is imported lazily and only when the
+# LLM adapter is switched on, which it is not by default.
+
+fastapi
+uvicorn[standard]
+pydantic

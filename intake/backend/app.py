@@ -77,8 +77,9 @@ def register_intake(target: FastAPI) -> FastAPI:
 def create_intake_app() -> FastAPI:
     """A standalone app serving only the intake surface.
 
-    Used by the intake tests so they do not depend on the S1 app's dependency
-    set (parsers, storage adapters, multipart uploads).
+    Used by the intake tests, and by a hosted intake pilot, so neither depends
+    on the S1 app's dependency set (parsers, storage adapters, multipart
+    uploads).
     """
     return register_intake(FastAPI(title="Sustentra Intake API", version="0.1.0"))
 
@@ -90,4 +91,24 @@ def create_app() -> FastAPI:
     return register_intake(s1_app)
 
 
-app = create_app()
+_app: FastAPI | None = None
+
+
+def __getattr__(name: str) -> FastAPI:
+    """Build the composed app only when something actually asks for it.
+
+    ``uvicorn intake.backend.app:app`` still works exactly as before. What
+    changed is that merely *importing* this module no longer builds the S1 app,
+    which used to import the whole S1 dependency set as a side effect.
+
+    That side effect made an intake-only deployment impossible: asking uvicorn
+    for ``create_intake_app`` still imported this module first, so the process
+    died at boot on a missing S1 dependency it was never going to use. Found by
+    running the API in a clean environment with only the intake requirements.
+    """
+    global _app
+    if name == "app":
+        if _app is None:
+            _app = create_app()
+        return _app
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

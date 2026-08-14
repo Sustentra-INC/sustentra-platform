@@ -119,6 +119,27 @@ Sites are read-only over the API on purpose: every site write goes through the
 seed-form endpoint so it passes the same validation, provisional-value recording
 and boundary-deferral logic.
 
+### Deploying it somewhere a person can test
+
+`intake/DEPLOY.md` is a step-by-step guide, written for someone non-technical:
+screens on Vercel, engine on Railway, about forty minutes.
+
+Two things it exists to prevent. Vercel cannot host the Python engine, so
+deploying only the frontend gives you screens that load and then fail on
+everything. And the default email adapter writes to a local file, so without
+switching it to SMTP nobody can sign in at all.
+
+`intake/Dockerfile` builds the intake surface alone - `create_intake_app`, not
+the composed app - so a pilot carries three Python packages
+(`intake/requirements-api.txt`) rather than the whole S1 document pipeline it
+never calls. Build it from the repository root:
+
+```sh
+docker build -f intake/Dockerfile -t sustentra-intake .
+```
+
+Every environment variable is listed and explained in `intake/.env.example`.
+
 ### The screens
 
 ```sh
