@@ -205,6 +205,16 @@
 
   --focus-ring: 2px solid var(--state-active-fg);
   --focus-offset: 2px;
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 1px;
+  --active-translate-y: 1px;
+  --disabled-opacity: 0.55;
+  --textarea-min-height: 88px;
+  --change-group-border-width: 3px;
+  --modal-width: 680px;
+  --scrim: rgba(0, 0, 0, 0.28);
+  --slide-over-width: 420px;
+  --z-modal: 50;
 }
 
 

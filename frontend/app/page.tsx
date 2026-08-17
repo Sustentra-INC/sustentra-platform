@@ -1,5 +1,5 @@
-﻿import { S1WorkpaperApp } from "../features/s1/pages/S1WorkpaperApp";
+﻿import { S2WorkpaperApp } from "../features/s2/pages/S2WorkpaperApp";
 
 export default function HomePage() {
-  return <S1WorkpaperApp />;
+  return <S2WorkpaperApp />;
 }
