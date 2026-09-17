@@ -24,6 +24,8 @@ export interface AskDraft {
   whatIsNeeded: string;
   raisedByName: string;
   raisedByLogin: string;
+  /** When this ask is a follow-up to a resolved one. */
+  linkedFromAskId?: string | null;
 }
 
 export interface RequestsStore {
@@ -33,8 +35,9 @@ export interface RequestsStore {
   saveAsk: (draft: AskDraft) => Ask;
   /** Edit the "what is needed" text while an ask is still not-yet-sent. */
   editAsk: (askId: string, whatIsNeeded: string) => void;
-  /** Bundle checked asks into one request and mark them sent. */
-  sendAsks: (askIds: string[]) => ClientRequest;
+  /** Bundle checked asks into one request and mark them sent. `lineNumbers`
+   *  lets collapsed asks (that one document satisfies) share a line number. */
+  sendAsks: (askIds: string[], lineNumbers?: Record<string, number>) => ClientRequest;
   resolveAsk: (askId: string, resolution?: { link?: string | null; note?: string | null }) => void;
   withdrawAsk: (askId: string, reason: string) => void;
 }
@@ -44,7 +47,18 @@ const newId = () => `ASK-${Date.now().toString(36)}-${(counter += 1)}`;
 
 export function useRequestsStore(initial: Ask[] = []): RequestsStore {
   const [asks, setAsks] = useState<Ask[]>(initial);
-  const [requests, setRequests] = useState<ClientRequest[]>([]);
+  // Reconstruct any requests the seeded asks already belong to, so the next
+  // "mark as sent" continues the numbering instead of colliding with them.
+  const [requests, setRequests] = useState<ClientRequest[]>(() => {
+    const numbers = Array.from(
+      new Set(initial.filter((a) => a.requestNumber != null).map((a) => a.requestNumber as number))
+    ).sort((a, b) => a - b);
+    return numbers.map((rn) => ({
+      requestNumber: rn,
+      sentAt: initial.find((a) => a.requestNumber === rn)?.raisedAt ?? new Date().toISOString(),
+      askIds: initial.filter((a) => a.requestNumber === rn).map((a) => a.id),
+    }));
+  });
 
   const saveAsk = useCallback((draft: AskDraft): Ask => {
     const now = new Date().toISOString();
@@ -68,6 +82,7 @@ export function useRequestsStore(initial: Ask[] = []): RequestsStore {
       state: "not_yet_sent",
       requestNumber: null,
       lineNumber: null,
+      linkedFromAskId: draft.linkedFromAskId ?? null,
       resolution: null,
       withdrawReason: null,
       history: [
@@ -86,7 +101,7 @@ export function useRequestsStore(initial: Ask[] = []): RequestsStore {
     );
   }, []);
 
-  const sendAsks = useCallback((askIds: string[]): ClientRequest => {
+  const sendAsks = useCallback((askIds: string[], lineNumbers?: Record<string, number>): ClientRequest => {
     const now = new Date().toISOString();
     let requestNumber = 0;
     setRequests((cur) => {
@@ -94,13 +109,13 @@ export function useRequestsStore(initial: Ask[] = []): RequestsStore {
       return [...cur, { requestNumber, sentAt: now, askIds }];
     });
     setAsks((cur) =>
-      cur.map((a, index) =>
+      cur.map((a) =>
         askIds.includes(a.id)
           ? {
               ...a,
               state: "requested",
               requestNumber: requestNumber || cur.length,
-              lineNumber: askIds.indexOf(a.id) + 1,
+              lineNumber: lineNumbers?.[a.id] ?? askIds.indexOf(a.id) + 1,
               history: [
                 ...a.history,
                 { kind: "sent", actorName: a.raisedByName, actorLogin: a.raisedByLogin, at: now, detail: `request ${requestNumber}` },

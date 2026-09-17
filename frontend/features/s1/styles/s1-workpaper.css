@@ -1263,3 +1263,34 @@ select:focus-visible,
 .s1-setup-list { display: flex; flex-direction: column; gap: var(--sp-2); }
 .s1-setup-row { display: flex; align-items: center; gap: var(--sp-3); }
 .s1-setup-row input:first-child { flex: 1; }
+
+/* ---- Evidence Requests (screen 4) ---- */
+.s1-req { display: flex; flex-direction: column; gap: var(--sp-4); }
+.s1-req-body { display: grid; grid-template-columns: 12rem minmax(0, 1fr); gap: var(--sp-4); }
+.s1-req-types { display: flex; flex-direction: column; gap: var(--sp-2); }
+.s1-req-typechip { text-align: left; font: inherit; font-size: var(--text-sm); cursor: pointer; color: var(--ink-2); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-chip); padding: var(--sp-2) var(--sp-3); }
+.s1-req-typechip.is-on { border-color: var(--state-active-fg); background: var(--state-active-bg); color: var(--ink); }
+.s1-req-main { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.s1-req-sendbtn { margin-left: var(--sp-2); }
+.s1-button--pri { background: var(--state-active-fg); border-color: var(--state-active-fg); color: var(--sf-card); }
+
+.s1-req-table td { vertical-align: top; }
+.s1-req-row--not_yet_sent td { background: var(--state-blocking-bg); }
+.s1-req-row--requested td { background: var(--state-open-bg); }
+.s1-req-row--resolved td { background: var(--state-resolved-bg); text-decoration: line-through; color: var(--ink-3); }
+.s1-req-row--withdrawn td { background: var(--sf-sunken); text-decoration: line-through; color: var(--ink-3); }
+.s1-req-row--resolved a, .s1-req-row--resolved button, .s1-req-row--resolved .s1-req-state,
+.s1-req-row--withdrawn a, .s1-req-row--withdrawn button, .s1-req-row--withdrawn .s1-req-state { text-decoration: none; }
+.s1-req-state { display: flex; flex-direction: column; gap: var(--sp-1); }
+.s1-req-state__label { font-size: var(--text-sm); }
+.s1-req-state__actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.s1-req-subrow td { background: var(--sf-sunken); }
+.s1-req-box { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); max-width: 32rem; }
+.s1-req-deferred ul { margin: var(--sp-1) 0 0; padding-left: var(--sp-4); }
+.s1-req-deferred li { font-size: var(--text-sm); }
+
+/* Request-by-email side panel */
+.s1-req-panel { position: fixed; top: 0; right: 0; height: 100vh; width: min(38rem, 96vw); background: var(--sf-card); border-left: var(--border-strong); padding: var(--sp-5); overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-3); z-index: var(--z-modal); }
+.s1-req-panel__head { display: flex; flex-direction: column; gap: var(--sp-1); }
+.s1-req-preview { display: flex; flex-direction: column; gap: var(--sp-1); }
+.s1-req-message { background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-3); font-family: var(--font-sans); font-size: var(--text-sm); line-height: var(--leading-body); white-space: pre-wrap; color: var(--ink); }

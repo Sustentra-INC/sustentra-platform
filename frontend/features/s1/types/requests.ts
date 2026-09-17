@@ -62,6 +62,8 @@ export interface Ask {
   /** Set when sent, as part of a request. An ask belongs to one request only. */
   requestNumber: number | null;
   lineNumber: number | null;
+  /** A problem that came back: this ask links to the old (resolved) one. */
+  linkedFromAskId?: string | null;
   resolution?: {
     at: string;
     by: string;

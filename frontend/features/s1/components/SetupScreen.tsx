@@ -21,8 +21,9 @@ const REGULATION_OPTIONS = [
     full: "California Senate Bill 253 — Climate Corporate Data Accountability Act (California, USA)",
   },
   {
+    // Official statute title unconfirmed — jurisdiction only until confirmed.
     short: "New York Part 253",
-    full: "New York Part 253 — Greenhouse gas reporting rule (New York, USA)",
+    full: "New York Part 253 (New York, USA)",
   },
 ];
 

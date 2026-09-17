@@ -13,6 +13,7 @@ import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey } from "../components/S1Chrome";
 import { UploadScreen } from "../components/UploadScreen";
 import { SetupScreen } from "../components/SetupScreen";
+import { EvidenceRequests } from "../components/EvidenceRequests";
 import { StateIndicator } from "../components/StateIndicator";
 import { EXACT_COPY } from "../constants/copy";
 import { engagementConfig } from "../fixtures/engagementConfig";
@@ -30,6 +31,7 @@ type ActiveView =
   | { name: "evidence" }
   | { name: "setup" }
   | { name: "upload" }
+  | { name: "requests" }
   | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string }
   | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
 
@@ -112,12 +114,38 @@ export function S1WorkpaperApp() {
   }
 
   const navCurrent: NavKey =
-    activeView.name === "setup" ? "setup" : activeView.name === "upload" ? "upload" : "evidence";
+    activeView.name === "setup"
+      ? "setup"
+      : activeView.name === "upload"
+        ? "upload"
+        : activeView.name === "requests"
+          ? "requests"
+          : "evidence";
   function onNavigate(key: NavKey) {
     if (key === "setup") setActiveView({ name: "setup" });
     else if (key === "upload") setActiveView({ name: "upload" });
+    else if (key === "requests") setActiveView({ name: "requests" });
     else if (key === "evidence") setActiveView({ name: "evidence" });
     // other destinations are not built yet (disabled in the nav)
+  }
+
+  // Follow-up: a problem that came back becomes a new ask linked to the old one.
+  function raiseFollowUp(fromAsk: (typeof requests.asks)[number]) {
+    requests.saveAsk({
+      origin: fromAsk.source.origin,
+      documentId: fromAsk.source.documentId ?? null,
+      fieldKey: fromAsk.source.fieldKey ?? null,
+      itemLabel: fromAsk.source.itemLabel,
+      facilityName: fromAsk.source.facilityName,
+      period: fromAsk.source.period,
+      arrival: fromAsk.source.arrival ?? null,
+      sourcePage: fromAsk.source.sourcePage ?? null,
+      type: fromAsk.type,
+      whatIsNeeded: fromAsk.whatIsNeeded,
+      raisedByName: fromAsk.raisedByName,
+      raisedByLogin: fromAsk.raisedByLogin,
+      linkedFromAskId: fromAsk.id,
+    });
   }
   const sessionUploadItems = sessionUploads
     .map((id) => evidenceItems.find((i) => i.documentId === id))
@@ -218,6 +246,18 @@ export function S1WorkpaperApp() {
             batch={sessionUploadItems}
             onOpenWorkspace={() => setActiveView({ name: "evidence" })}
           />
+        ) : activeView.name === "requests" ? (
+          <EvidenceRequests
+            engagement={engagement}
+            asks={requests.asks}
+            onSend={(ids, lineNumbers) => requests.sendAsks(ids, lineNumbers).requestNumber}
+            onResolve={requests.resolveAsk}
+            onWithdraw={requests.withdrawAsk}
+            onEdit={requests.editAsk}
+            onRaiseFollowUp={raiseFollowUp}
+            onOpenSource={(ask) => ask.source.documentId && openExtraction(ask.source.documentId)}
+            onOpenSetup={() => setActiveView({ name: "setup" })}
+          />
         ) : activeView.name === "evidence" ? (
           <EvidenceWorkspace
             engagement={engagement}
@@ -225,6 +265,7 @@ export function S1WorkpaperApp() {
             asks={requests.asks}
             onSaveAsk={requests.saveAsk}
             onResolveAsk={requests.resolveAsk}
+            onOpenRequests={() => setActiveView({ name: "requests" })}
             auditIntents={auditIntents}
             onAuditIntent={addAuditIntent}
             demoState={demoState}
