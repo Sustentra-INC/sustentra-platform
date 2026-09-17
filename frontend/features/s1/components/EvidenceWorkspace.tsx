@@ -136,8 +136,13 @@ export function EvidenceWorkspace({
     for (const item of active) {
       if (item.facilityState === "resolved" && item.facilityId) {
         map.set(item.facilityId, (map.get(item.facilityId) ?? 0) + 1);
-      } else if (item.facilityState === "multiple") multiple += 1;
-      else if (item.facilityState === "not_facility_scoped") none += 1;
+      } else if (item.facilityState === "multiple") {
+        multiple += 1;
+        // A multi-facility file also counts under each facility it covers.
+        for (const fid of item.facilityIds ?? []) {
+          if (map.has(fid)) map.set(fid, (map.get(fid) ?? 0) + 1);
+        }
+      } else if (item.facilityState === "not_facility_scoped") none += 1;
       else unknown += 1;
     }
     return { map, multiple, none, unknown };
@@ -158,13 +163,11 @@ export function EvidenceWorkspace({
         if (facilityFilter === "multiple" && item.facilityState !== "multiple") return false;
         if (facilityFilter === "none" && item.facilityState !== "not_facility_scoped") return false;
         if (facilityFilter === "unknown" && item.facilityState !== "unresolved") return false;
-        if (
-          facilityFilter !== "multiple" &&
-          facilityFilter !== "none" &&
-          facilityFilter !== "unknown" &&
-          item.facilityId !== facilityFilter
-        ) {
-          return false;
+        if (facilityFilter !== "multiple" && facilityFilter !== "none" && facilityFilter !== "unknown") {
+          // A file belongs to a facility if it resolves to it OR covers it
+          // (a multi-facility file appears under every facility it covers).
+          const covers = item.facilityId === facilityFilter || (item.facilityIds ?? []).includes(facilityFilter);
+          if (!covers) return false;
         }
       }
       if (headerFilter === "needs" && !needsYou(item)) return false;
@@ -1199,7 +1202,9 @@ function preselectType(item: EvidenceItem): RequestType {
   ) {
     return "replace_document";
   }
-  return "missing_data";
+  // On a clean extracted row nothing is missing; the verifier is asking about
+  // something she doubts.
+  return "clarify";
 }
 
 function facilityLabel(item: EvidenceItem): string {

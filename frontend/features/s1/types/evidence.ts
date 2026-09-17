@@ -53,6 +53,13 @@ export interface EvidenceItem {
   facilityId: string | null;
   facilityName: string | null;
   facilityCount: number | null;
+  /**
+   * Every facility this file covers, by id. Set for multi-facility files (a
+   * workbook covering three sites) so the file appears under each of those
+   * facilities in the filter and the Screen 3 navigator, not only under
+   * "Multiple facilities". Optional; the backend adapter does not set it yet.
+   */
+  facilityIds?: string[];
   periodState: PeriodState;
   periodStart: string | null;
   periodEnd: string | null;

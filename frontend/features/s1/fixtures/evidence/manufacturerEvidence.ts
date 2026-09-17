@@ -329,6 +329,7 @@ docs.push(
     detectedType: "Inventory workbook",
     facilityState: "multiple",
     facilityCount: 3,
+    facilityIds: [FAC.tualatin.facilityId, FAC.kent.facilityId, FAC.modesto.facilityId],
     periodState: "spans_multiple",
     periodStart: "2025-01-01",
     periodEnd: "2025-12-31",
