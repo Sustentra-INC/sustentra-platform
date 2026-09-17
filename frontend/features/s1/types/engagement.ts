@@ -48,4 +48,6 @@ export interface EngagementConfig {
   engagementTeam?: TeamMember[];
   /** The signed-in user's login, pre-selected as "raised by". */
   signedInLogin?: string;
+  /** The verifier's own email — the "from" address for Request-by-email. */
+  verifierEmail?: string;
 }

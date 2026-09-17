@@ -94,7 +94,18 @@ export function ExtractionReview({ engagement, values, initialDocumentId, initia
           ? {
               ...x,
               reviewState: "accepted",
-              record: [...x.record, { kind: "human", actor: "M. Osei", at: now, action: "accepted as read" }],
+              record: [
+                ...x.record,
+                {
+                  kind: "human",
+                  actor: "M. Osei",
+                  at: now,
+                  action: "accepted as read",
+                  // Carry the S1->S2 handoff id: Accept is what mints the
+                  // MethodologyValue keyed on this methodology field.
+                  reason: v.methodologyFieldId ? `mints methodology value ${v.methodologyFieldId}` : undefined,
+                },
+              ],
             }
           : x
       )

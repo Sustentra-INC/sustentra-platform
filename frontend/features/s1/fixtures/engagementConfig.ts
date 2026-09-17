@@ -39,4 +39,5 @@ export const engagementConfig: EngagementConfig = {
     { name: "L. Chen", login: "lchen" },
   ],
   signedInLogin: "mosei",
+  verifierEmail: "m.osei@verifier.example",
 };

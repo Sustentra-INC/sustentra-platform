@@ -24,10 +24,18 @@ const machine = (value: string, from = "from page"): ValueRecordEntry[] => [
   { kind: "machine", actor: "System", at: "2025-09-10T08:00:00Z", action: "read", reason: `${value} · ${from}` },
 ];
 
+/** Placeholder methodology field id, stable per (what-it-is + scope). */
+function mfPlaceholder(whatItIs: string, scope: ScopePlacement): string {
+  const slug = whatItIs.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const scopeTag = scope.startsWith("scope2") ? `-${scope}` : "";
+  return `MF-PLH-${slug}${scopeTag}`;
+}
+
 function rv(p: Partial<ReviewValue> & { documentId: string; filename: string; documentType: string; whatItIs: string; scope: ScopePlacement; value: string; unit: string }): ReviewValue {
   n += 1;
   return {
     id: p.id ?? `V-${String(n).padStart(4, "0")}`,
+    methodologyFieldId: p.methodologyFieldId ?? mfPlaceholder(p.whatItIs, p.scope),
     facilityId: p.facilityId ?? null,
     period: p.period ?? "2025",
     reviewState: p.reviewState ?? "to_review",

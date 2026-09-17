@@ -60,7 +60,7 @@ function RailItem({ label, value, mono = false }: { label: string; value: string
 }
 
 const DESTINATIONS: Array<{ key: NavKey; label: string; built: boolean }> = [
-  { key: "setup", label: "Setup", built: false },
+  { key: "setup", label: "Setup", built: true },
   { key: "upload", label: "Upload", built: true },
   { key: "evidence", label: "Evidence", built: true },
   { key: "requests", label: "Requests", built: false },

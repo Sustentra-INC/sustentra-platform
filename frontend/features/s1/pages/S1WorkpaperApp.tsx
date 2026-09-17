@@ -12,9 +12,12 @@ import { ExtractionReview } from "../components/ExtractionReview";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey } from "../components/S1Chrome";
 import { UploadScreen } from "../components/UploadScreen";
+import { SetupScreen } from "../components/SetupScreen";
 import { StateIndicator } from "../components/StateIndicator";
 import { EXACT_COPY } from "../constants/copy";
 import { engagementConfig } from "../fixtures/engagementConfig";
+import { inScopeFieldPlaceholders } from "../fixtures/scope/inScopeFields";
+import type { EngagementConfig, InScopeField } from "../types";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
 import { seedAsks } from "../fixtures/requests/seedAsks";
@@ -25,6 +28,7 @@ import type { SessionAuditEntry } from "../utils/auditIntent";
 
 type ActiveView =
   | { name: "evidence" }
+  | { name: "setup" }
   | { name: "upload" }
   | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string }
   | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
@@ -50,6 +54,9 @@ export function S1WorkpaperApp() {
   const [backendError, setBackendError] = useState<string | null>(null);
   const requests = useRequestsStore(dataMode === "backend" ? [] : seedAsks);
   const [sessionUploads, setSessionUploads] = useState<string[]>([]);
+  // Engagement config is editable on Setup; facilities here feed the Workspace.
+  const [engagement, setEngagement] = useState<EngagementConfig>(engagementConfig);
+  const [inScopeFields, setInScopeFields] = useState<InScopeField[]>(inScopeFieldPlaceholders);
 
   useEffect(() => {
     if (dataMode !== "backend") return;
@@ -59,7 +66,7 @@ export function S1WorkpaperApp() {
   async function refreshBackendWorkspace(nextContainerState?: ContainerState) {
     setBackendError(null);
     try {
-      const workspace = await listWorkspaceEvidence(engagementConfig.engagementId);
+      const workspace = await listWorkspaceEvidence(engagement.engagementId);
       setEvidenceItems(workspace.evidence);
       setDemoState(nextContainerState ?? (workspace.evidence.length === 0 ? "empty_nothing_yet" : "populated"));
     } catch (error) {
@@ -100,13 +107,15 @@ export function S1WorkpaperApp() {
       setEvidenceItems((cur) => cur.map((x) => (x.documentId === id ? { ...x, ...next } : x)));
     created.forEach((item, i) => {
       window.setTimeout(() => patch(item.documentId, { processingState: "ingested" }), 700 + i * 140);
-      window.setTimeout(() => patch(item.documentId, classifyGuess(item.filename, engagementConfig)), 1600 + i * 180);
+      window.setTimeout(() => patch(item.documentId, classifyGuess(item.filename, engagement)), 1600 + i * 180);
     });
   }
 
-  const navCurrent: NavKey = activeView.name === "upload" ? "upload" : "evidence";
+  const navCurrent: NavKey =
+    activeView.name === "setup" ? "setup" : activeView.name === "upload" ? "upload" : "evidence";
   function onNavigate(key: NavKey) {
-    if (key === "upload") setActiveView({ name: "upload" });
+    if (key === "setup") setActiveView({ name: "setup" });
+    else if (key === "upload") setActiveView({ name: "upload" });
     else if (key === "evidence") setActiveView({ name: "evidence" });
     // other destinations are not built yet (disabled in the nav)
   }
@@ -121,7 +130,7 @@ export function S1WorkpaperApp() {
     const failures: string[] = [];
     for (const file of Array.from(files)) {
       try {
-        const document = await uploadDocument(engagementConfig.engagementId, file);
+        const document = await uploadDocument(engagement.engagementId, file);
         setEvidenceItems((current) => [
           {
             documentId: document.document_id,
@@ -187,7 +196,7 @@ export function S1WorkpaperApp() {
   return (
     <main className="s1-app">
       <S1Chrome
-        engagement={engagementConfig}
+        engagement={engagement}
         current={navCurrent}
         onNavigate={onNavigate}
         onOpenGlossary={() =>
@@ -196,7 +205,14 @@ export function S1WorkpaperApp() {
           )
         }
       >
-        {activeView.name === "upload" ? (
+        {activeView.name === "setup" ? (
+          <SetupScreen
+            engagement={engagement}
+            onChange={setEngagement}
+            inScopeFields={inScopeFields}
+            onInScopeChange={setInScopeFields}
+          />
+        ) : activeView.name === "upload" ? (
           <UploadScreen
             onUploadFiles={uploadFiles}
             batch={sessionUploadItems}
@@ -204,7 +220,7 @@ export function S1WorkpaperApp() {
           />
         ) : activeView.name === "evidence" ? (
           <EvidenceWorkspace
-            engagement={engagementConfig}
+            engagement={engagement}
             evidence={evidenceItems}
             asks={requests.asks}
             onSaveAsk={requests.saveAsk}
@@ -220,7 +236,7 @@ export function S1WorkpaperApp() {
           />
         ) : activeView.name === "extraction" ? (
           <ExtractionReview
-            engagement={engagementConfig}
+            engagement={engagement}
             values={manufacturerValues}
             initialDocumentId={activeView.documentId}
             initialNodeKey={activeView.nodeKey}

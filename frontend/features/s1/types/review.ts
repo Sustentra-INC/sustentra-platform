@@ -43,6 +43,12 @@ export interface ReviewValue {
   scope: ScopePlacement;
   value: string;
   unit: string;
+  /**
+   * The methodology field this value maps to — the id the backend's
+   * MethodologyValue keys off. Accept carries it through so the S1->S2 handoff
+   * is not a retrofit. Placeholder until the real field list arrives.
+   */
+  methodologyFieldId?: string;
 
   // review
   reviewState: ValueReviewState;

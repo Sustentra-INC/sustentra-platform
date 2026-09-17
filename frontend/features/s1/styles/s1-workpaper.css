@@ -1246,3 +1246,20 @@ select:focus-visible,
 .s1-upload-batch__row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-1) 0; border-top: var(--border-hairline); }
 .s1-upload-batch__fn { font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .s1-upload-screen__hint { font-size: var(--text-sm); }
+
+/* ---- Setup (screen 0) ---- */
+.s1-setup { display: flex; flex-direction: column; gap: var(--sp-4); }
+.s1-setup-card { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+.s1-setup-card h2 { font-size: var(--text-md); font-weight: var(--weight-medium); margin: 0; }
+.s1-setup-card__head { display: flex; align-items: baseline; gap: var(--sp-3); justify-content: space-between; }
+.s1-setup-card p { margin: 0; }
+.s1-setup-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-3); }
+.s1-setup-field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); color: var(--ink-2); }
+.s1-setup-inline { display: flex; gap: var(--sp-2); }
+.s1-setup-field input, .s1-setup-field select, .s1-setup-row input {
+  font: inherit; font-size: var(--text-md); color: var(--ink);
+  background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-2);
+}
+.s1-setup-list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.s1-setup-row { display: flex; align-items: center; gap: var(--sp-3); }
+.s1-setup-row input:first-child { flex: 1; }
