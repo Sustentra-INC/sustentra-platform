@@ -2,1153 +2,897 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
-import { EXACT_COPY } from "../constants/copy";
-import { useKeyboardNavigation } from "../hooks/useKeyboardNavigation";
-import { activeEvidenceItems, selectableEvidenceIds, workspaceNeeds } from "../utils/workspaceState";
-import type { SessionAuditEntry } from "../utils/auditIntent";
-import { createAuditIntent } from "../utils/auditIntent";
+import { createAuditIntent, type AuditIntentAction, type SessionAuditEntry } from "../utils/auditIntent";
 import type {
+  Ask,
   ContainerState,
   EngagementConfig,
   EvidenceItem,
-  FacilityState,
-  PeriodState,
-  ProcessingState,
-  RelationshipKind,
+  NoteEntry,
+  RequestType,
 } from "../types";
-import { ContainerStateSurface } from "./ContainerStateSurface";
+import { REQUEST_TYPES } from "../types/requests";
 import { StateIndicator } from "./StateIndicator";
 
-export type GroupBy = "none" | "facility" | "period" | "type";
+/**
+ * Evidence Workspace (screen 2), built to the 09/16 revision. One table, one
+ * row per file, grouped by document type. Columns: Document · Facility ·
+ * Document type · Processing state · Issue · Add to requests · Notes · menu.
+ *
+ * Note on two spec contradictions handled here (flagged to the team):
+ *  - The revision lists both a "Needs you" column and an "Issue" column. We
+ *    implement Issue (the more specific, revision version) and keep the fuller
+ *    page-3 Menu. The "needs you" idea survives only as a header count-filter.
+ *  - Processing state's spec labels (uploading · extracting · partially
+ *    extracted · withdrawn) are a display mapping over the existing enum; we did
+ *    not migrate the core ProcessingState enum (it feeds the backend seam).
+ */
+
+/** Canonical type vocabulary (grouping order). "Type unresolved" sits first. */
+const TYPE_ORDER: string[] = [
+  "Type unresolved",
+  "Electricity bill",
+  "Natural gas bill",
+  "Other fuel invoice",
+  "Fleet fuel statement",
+  "Refrigerant service log or refrigerant purchase invoice",
+  "Meter reading or meter photo",
+  "Energy management system export",
+  "Inventory workbook",
+  "Facility list",
+  "Organizational boundary statement",
+  "Emission factor source list",
+  "Renewable energy certificate or retirement statement",
+  "Power purchase agreement or supplier contract",
+  "Supplier-specific factor documentation",
+  "Prior-year inventory or report",
+  // Not in the canonical vocabulary yet — real classes from customer calls.
+  // TODO(reconcile): fold these into the canonical vocabulary before it's final.
+  "Mileage or expense report",
+  "Supplier roster",
+];
+
+const SET_TYPE_OPTIONS = TYPE_ORDER.filter((type) => type !== "Type unresolved");
+
+export interface NewAskInput {
+  documentId: string;
+  itemLabel: string;
+  facilityName: string | null;
+  period: string | null;
+  arrival: string | null;
+  type: RequestType;
+  whatIsNeeded: string;
+  raisedByName: string;
+  raisedByLogin: string;
+}
 
 interface EvidenceWorkspaceProps {
   engagement: EngagementConfig;
   evidence: EvidenceItem[];
-  supportive: EvidenceItem[];
-  auditIntents: SessionAuditEntry[];
-  demoState: ContainerState;
-  workspaceState: EvidenceWorkspaceState;
-  onAuditIntent: (intent: SessionAuditEntry) => void;
-  onDemoState: (state: ContainerState) => void;
-  onWorkspaceState: (state: EvidenceWorkspaceState) => void;
-  onOpenExtraction: (documentId: string, scrollTop: number) => void;
-  onOpenManualEntry: (documentId: string, scrollTop: number) => void;
+  asks: Ask[];
+  onSaveAsk: (input: NewAskInput) => void;
+  onResolveAsk?: (askId: string) => void;
+  onOpenExtraction: (documentId: string) => void;
+  onOpenRequests?: () => void;
+  onOpenSetup?: () => void;
   onUploadFiles?: (files: FileList) => void;
-  onProcessDocument?: (documentId: string) => void;
   isUploading?: boolean;
-  processingDocumentIds?: string[];
+  writesEnabled?: boolean;
   backendError?: string | null;
-  workspaceWritesEnabled?: boolean;
-  showSessionAuditIntents?: boolean;
+  demoState?: ContainerState;
+  auditIntents?: SessionAuditEntry[];
+  onAuditIntent?: (intent: SessionAuditEntry) => void;
 }
 
-export interface Filters {
-  processingState: "all" | ProcessingState;
-  typeBand: "all" | "auto_accepted" | "needs_review" | "cannot_determine";
-  facilityState: "all" | FacilityState;
-  periodState: "all" | PeriodState;
-  flags: "all" | RelationshipKind;
-}
-
-export interface EvidenceWorkspaceState {
-  filters: Filters;
-  groupBy: GroupBy;
-  selectedIds: string[];
-  scrollTop: number;
-}
-
-export const defaultFilters: Filters = {
-  processingState: "all",
-  typeBand: "all",
-  facilityState: "all",
-  periodState: "all",
-  flags: "all",
-};
-
-export const defaultWorkspaceState: EvidenceWorkspaceState = {
-  filters: defaultFilters,
-  groupBy: "none",
-  selectedIds: [],
-  scrollTop: 0,
-};
-
-const BACKEND_DISABLED_REASON = "No save endpoint yet -- see revision section 3.";
+type FacilityFilter = string | "multiple" | "none" | "unknown" | null;
+type HeaderFilter = "needs" | "arrived" | "blocked" | null;
 
 export function EvidenceWorkspace({
   engagement,
   evidence,
-  supportive,
-  auditIntents,
-  demoState,
-  workspaceState,
-  onAuditIntent,
-  onDemoState,
-  onWorkspaceState,
+  asks,
+  onSaveAsk,
+  onResolveAsk,
   onOpenExtraction,
-  onOpenManualEntry,
+  onOpenRequests,
+  onOpenSetup,
   onUploadFiles,
-  onProcessDocument,
   isUploading = false,
-  processingDocumentIds = [],
+  writesEnabled = true,
   backendError,
-  workspaceWritesEnabled = true,
-  showSessionAuditIntents = true,
+  demoState,
+  auditIntents = [],
+  onAuditIntent,
 }: EvidenceWorkspaceProps) {
-  const [items, setItems] = useState(evidence);
-  const { filters, groupBy, selectedIds } = workspaceState;
-  const [editingFacilityId, setEditingFacilityId] = useState<string | null>(null);
-  const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
-  const [periodDraft, setPeriodDraft] = useState({ start: "", end: "" });
-  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
-  const [activeDocumentId, setActiveDocumentId] = useState<string | null>(evidence[0]?.documentId ?? null);
-  const [uploadFailures, setUploadFailures] = useState<Array<{ filename: string; reason: string }>>([]);
-  const [workingActionIds, setWorkingActionIds] = useState<string[]>([]);
-  const [expandedHistoryIds, setExpandedHistoryIds] = useState<string[]>([]);
+  const [items, setItems] = useState<EvidenceItem[]>(evidence);
+  const [facilityFilter, setFacilityFilter] = useState<FacilityFilter>(null);
+  const [headerFilter, setHeaderFilter] = useState<HeaderFilter>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
+  const [editing, setEditing] = useState<{ id: string; field: "type" | "facility" } | null>(null);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [noteDraft, setNoteDraft] = useState("");
+  const [modalDoc, setModalDoc] = useState<EvidenceItem | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
 
-  useEffect(() => {
-    setItems(evidence);
-    setActiveDocumentId((current) => current ?? evidence[0]?.documentId ?? null);
-  }, [evidence]);
+  useEffect(() => setItems(evidence), [evidence]);
 
-  const activeItems = useMemo(() => activeEvidenceItems(items), [items]);
-  const needs = useMemo(() => workspaceNeeds(items), [items]);
+  function flash(message: string) {
+    setToast(message);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+  }
 
-  const filteredItems = useMemo(() => {
+  const active = useMemo(() => items.filter((i) => i.disposition === "active"), [items]);
+
+  // --- counts (withdrawn rows are out of every count) ---
+  const facilityCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const f of engagement.facilities) map.set(f.facilityId, 0);
+    let multiple = 0;
+    let none = 0;
+    let unknown = 0;
+    for (const item of active) {
+      if (item.facilityState === "resolved" && item.facilityId) {
+        map.set(item.facilityId, (map.get(item.facilityId) ?? 0) + 1);
+      } else if (item.facilityState === "multiple") multiple += 1;
+      else if (item.facilityState === "not_facility_scoped") none += 1;
+      else unknown += 1;
+    }
+    return { map, multiple, none, unknown };
+  }, [active, engagement.facilities]);
+
+  const headerCounts = useMemo(
+    () => ({
+      needs: active.filter(needsYou).length,
+      arrived: active.filter((i) => i.arrivedSinceLastVisit).length,
+      blocked: active.filter((i) => i.processingState === "blocked").length,
+    }),
+    [active]
+  );
+
+  const filtered = useMemo(() => {
     return items.filter((item) => {
-      if (filters.processingState !== "all" && item.processingState !== filters.processingState) {
-        return false;
+      if (facilityFilter) {
+        if (facilityFilter === "multiple" && item.facilityState !== "multiple") return false;
+        if (facilityFilter === "none" && item.facilityState !== "not_facility_scoped") return false;
+        if (facilityFilter === "unknown" && item.facilityState !== "unresolved") return false;
+        if (
+          facilityFilter !== "multiple" &&
+          facilityFilter !== "none" &&
+          facilityFilter !== "unknown" &&
+          item.facilityId !== facilityFilter
+        ) {
+          return false;
+        }
       }
-      if (filters.typeBand !== "all" && item.typeReviewBand !== filters.typeBand) {
-        return false;
-      }
-      if (filters.facilityState !== "all" && item.facilityState !== filters.facilityState) {
-        return false;
-      }
-      if (filters.periodState !== "all" && item.periodState !== filters.periodState) {
-        return false;
-      }
-      if (
-        filters.flags !== "all" &&
-        !item.relationships.some((relationship) => relationship.kind === filters.flags)
-      ) {
-        return false;
-      }
+      if (headerFilter === "needs" && !needsYou(item)) return false;
+      if (headerFilter === "arrived" && !item.arrivedSinceLastVisit) return false;
+      if (headerFilter === "blocked" && item.processingState !== "blocked") return false;
       return true;
     });
-  }, [filters, items]);
+  }, [items, facilityFilter, headerFilter]);
 
-  const groupedItems = useMemo(() => groupItems(filteredItems, groupBy), [filteredItems, groupBy]);
-  const allFilteredSelected =
-    filteredItems.length > 0 && filteredItems.every((item) => selectedIds.includes(item.documentId));
+  const groups = useMemo(() => groupByType(filtered), [filtered]);
+  const hasFilter = facilityFilter !== null || headerFilter !== null;
+  const activeCount = active.length;
 
-  function updateFilter<Key extends keyof Filters>(key: Key, value: Filters[Key]) {
-    onWorkspaceState({
-      ...workspaceState,
-      filters: { ...filters, [key]: value },
-      selectedIds: [],
-    });
+  // --- writes (all real, recorded via audit intents) ---
+  function record(action: AuditIntentAction, documentId: string, oldValue: string | null, newValue: string | null) {
+    onAuditIntent?.(createAuditIntent({ action, documentId, oldValue, newValue }));
   }
 
-  function updateGroup(nextGroup: GroupBy) {
-    onWorkspaceState({ ...workspaceState, groupBy: nextGroup, selectedIds: [] });
-  }
-
-  function clearFilters() {
-    onWorkspaceState({ ...workspaceState, filters: defaultFilters, selectedIds: [] });
-  }
-
-  function toggleRow(documentId: string) {
-    const item = items.find((candidate) => candidate.documentId === documentId);
-    if (item?.disposition === "withdrawn") return;
-    onWorkspaceState(
-      {
-        ...workspaceState,
-        selectedIds: selectedIds.includes(documentId)
-          ? selectedIds.filter((id) => id !== documentId)
-          : [...selectedIds, documentId],
-      }
+  function setType(documentId: string, nextType: string) {
+    const prev = items.find((i) => i.documentId === documentId)?.detectedType ?? null;
+    setItems((cur) =>
+      cur.map((i) =>
+        i.documentId === documentId
+          ? { ...i, detectedType: nextType, typeReviewBand: null, typeReviewReason: null }
+          : i
+      )
     );
+    setEditing(null);
+    record("set_type", documentId, prev, nextType);
+    flash(`Type set to ${nextType}`);
   }
 
-  function toggleFiltered() {
-    onWorkspaceState({
-      ...workspaceState,
-      selectedIds: allFilteredSelected ? [] : selectableEvidenceIds(filteredItems),
-    });
-  }
-
-  function assignFacility(documentId: string, facilityId: string) {
-    const facility = engagement.facilities.find((option) => option.facilityId === facilityId);
+  function setFacility(documentId: string, facilityId: string) {
+    const facility = engagement.facilities.find((f) => f.facilityId === facilityId);
     if (!facility) return;
-    setItems((current) =>
-      current.map((item) =>
-        item.documentId === documentId
-          ? {
-              ...item,
-              facilityState: "resolved",
-              facilityId: facility.facilityId,
-              facilityName: facility.name,
-            }
-          : item
+    setItems((cur) =>
+      cur.map((i) =>
+        i.documentId === documentId
+          ? { ...i, facilityState: "resolved", facilityId: facility.facilityId, facilityName: facility.name }
+          : i
       )
     );
-    setEditingFacilityId(null);
-    onAuditIntent(
-      createAuditIntent({
-        action: "assign_facility",
-        documentId,
-        oldValue: null,
-        newValue: facility.name,
-      })
-    );
+    setEditing(null);
+    record("set_facility", documentId, null, facility.name);
+    flash(`Facility set to ${facility.name}`);
   }
 
-  function runWriteAction(actionId: string, action: () => void) {
-    if (workingActionIds.includes(actionId)) return;
-    setWorkingActionIds((current) => [...current, actionId]);
-    window.setTimeout(() => {
-      action();
-      setWorkingActionIds((current) => current.filter((id) => id !== actionId));
-    }, 120);
-  }
-
-  function assignPeriod(documentId: string) {
-    if (!periodDraft.start || !periodDraft.end) return;
-    setItems((current) =>
-      current.map((item) =>
-        item.documentId === documentId
-          ? {
-              ...item,
-              periodState: "resolved",
-              periodStart: periodDraft.start,
-              periodEnd: periodDraft.end,
-            }
-          : item
+  function addNote(documentId: string) {
+    const text = noteDraft.trim();
+    if (!text) return;
+    const entry: NoteEntry = {
+      id: `n-${documentId}-${Date.now()}`,
+      author: raisedByDefault(engagement).name,
+      at: new Date().toISOString(),
+      text,
+    };
+    setItems((cur) =>
+      cur.map((i) =>
+        i.documentId === documentId ? { ...i, note: text, notes: [...(i.notes ?? []), entry] } : i
       )
     );
-    setEditingPeriodId(null);
-    onAuditIntent(
-      createAuditIntent({
-        action: "assign_period",
-        documentId,
-        oldValue: null,
-        newValue: `${periodDraft.start} to ${periodDraft.end}`,
-      })
-    );
+    setNoteFor(null);
+    setNoteDraft("");
+    record("add_note", documentId, null, text);
+    flash("Note added");
   }
 
-  function acceptType(documentId: string) {
-    const item = items.find((candidate) => candidate.documentId === documentId);
-    setItems((current) =>
-      current.map((candidate) =>
-        candidate.documentId === documentId
-          ? { ...candidate, typeReviewBand: null, typeReviewReason: null }
-          : candidate
-      )
+  function markRelationship(documentId: string, kind: "duplicate" | "supersedes") {
+    const others = items.filter((i) => i.documentId !== documentId && i.disposition === "active");
+    const label = window.prompt(
+      `Mark this file as ${kind === "duplicate" ? "a duplicate of" : "superseding"} which file?\nType part of the file name.`,
+      ""
     );
-    onAuditIntent(
-      createAuditIntent({
-        action: "accept_detected_type",
-        documentId,
-        oldValue: item?.typeReviewBand ?? null,
-        newValue: item?.detectedType ?? null,
-      })
-    );
-  }
-
-  function changeType(documentId: string, nextType: string) {
-    const item = items.find((candidate) => candidate.documentId === documentId);
-    setItems((current) =>
-      current.map((candidate) =>
-        candidate.documentId === documentId
-          ? {
-              ...candidate,
-              detectedType: nextType,
-              typeReviewBand: "auto_accepted",
-              typeReviewReason: null,
-            }
-          : candidate
-      )
-    );
-    setEditingTypeId(null);
-    onAuditIntent(
-      createAuditIntent({
-        action: "change_type",
-        documentId,
-        oldValue: item?.detectedType ?? null,
-        newValue: nextType,
-      })
-    );
-  }
-
-  function withdrawDocument(documentId: string) {
-    const item = items.find((candidate) => candidate.documentId === documentId);
-    if (!item) return;
-    const ok = window.confirm(`Withdraw ${item.filename}?`);
-    if (!ok) return;
-    setItems((current) =>
-      current.map((candidate) =>
-        candidate.documentId === documentId ? { ...candidate, disposition: "withdrawn" } : candidate
-      )
-    );
-    onWorkspaceState({
-      ...workspaceState,
-      selectedIds: selectedIds.filter((id) => id !== documentId),
-    });
-    onAuditIntent(
-      createAuditIntent({
-        action: "withdraw_document",
-        documentId,
-        oldValue: "active",
-        newValue: "withdrawn",
-      })
-    );
-  }
-
-  function reinstateDocument(documentId: string) {
-    setItems((current) =>
-      current.map((candidate) =>
-        candidate.documentId === documentId ? { ...candidate, disposition: "active" } : candidate
-      )
-    );
-    onAuditIntent(
-      createAuditIntent({
-        action: "reinstate_document",
-        documentId,
-        oldValue: "withdrawn",
-        newValue: "active",
-      })
-    );
-  }
-
-  function bulkAcceptType() {
-    const targets = items.filter(
-      (item) => selectedIds.includes(item.documentId) && item.typeReviewBand && item.detectedType
-    );
-    if (targets.length === 0) return;
-    const ok = window.confirm(`Accept detected type for ${targets.length} documents?`);
-    if (!ok) return;
-    targets.forEach((item) => acceptType(item.documentId));
-    onWorkspaceState({ ...workspaceState, selectedIds: [] });
-  }
-
-  const hasFilter = Object.values(filters).some((value) => value !== "all");
-  const tableState =
-    demoState === "populated" && filteredItems.length === 0 ? "empty_filtered" : demoState;
-
-  return (
-    <>
-      {demoState !== "empty_nothing_yet" ? (
-        <NeedsYouBar needs={needs} hasFilter={hasFilter} onFilter={updateFilter} />
-      ) : null}
-      <section className="s1-content">
-        {showSessionAuditIntents ? <DemoControls state={demoState} onState={onDemoState} /> : null}
-        {backendError ? <SystemDegradedBanner message={backendError} /> : null}
-        {tableState !== "populated" ? (
-          <ContainerStateSurface
-            state={tableState}
-            totalDocuments={items.length}
-            onClearFilter={clearFilters}
-            onUploadFiles={onUploadFiles}
-            isUploading={isUploading}
-          />
-        ) : (
-          <>
-            <UploadArea
-              onUploadFiles={onUploadFiles}
-              isUploading={isUploading}
-              uploadFailures={uploadFailures}
-              onUploadFailure={(failure) => setUploadFailures((current) => [failure, ...current].slice(0, 5))}
-              onUploadStart={() => setUploadFailures([])}
-            />
-            <TypeReviewStrip
-              items={items}
-              onSetFilter={(band) => updateFilter("typeBand", band)}
-            />
-            <EvidenceToolbar
-              filters={filters}
-              groupBy={groupBy}
-              onFilter={updateFilter}
-              onGroup={updateGroup}
-              onClear={clearFilters}
-            />
-            {selectedIds.length > 0 ? (
-              <BulkActionBar
-                count={selectedIds.length}
-                disabled={!workspaceWritesEnabled}
-                onAcceptType={bulkAcceptType}
-              />
-            ) : null}
-            <ContainerStateSurface
-              state="populated"
-              totalDocuments={items.length}
-              onClearFilter={clearFilters}
-            >
-            <EvidenceTable
-              groups={groupedItems}
-              flatItems={filteredItems}
-              selectedIds={selectedIds}
-              activeDocumentId={activeDocumentId}
-              allFilteredSelected={allFilteredSelected}
-              onToggleFiltered={toggleFiltered}
-              onToggleRow={toggleRow}
-              onActiveRow={setActiveDocumentId}
-              onOpenExtraction={(documentId) =>
-                onOpenExtraction(documentId, typeof window === "undefined" ? 0 : window.scrollY)
-              }
-              onOpenManualEntry={(documentId) =>
-                onOpenManualEntry(documentId, typeof window === "undefined" ? 0 : window.scrollY)
-              }
-              onProcessDocument={onProcessDocument}
-              processingDocumentIds={processingDocumentIds}
-                editingFacilityId={editingFacilityId}
-                editingPeriodId={editingPeriodId}
-                editingTypeId={editingTypeId}
-                periodDraft={periodDraft}
-                engagement={engagement}
-                workspaceWritesEnabled={workspaceWritesEnabled}
-                onStartFacility={setEditingFacilityId}
-                workingActionIds={workingActionIds}
-                onAssignFacility={(documentId, facilityId) =>
-                  runWriteAction(`facility:${documentId}`, () => assignFacility(documentId, facilityId))
-                }
-                onStartPeriod={(documentId) => {
-                  setEditingPeriodId(documentId);
-                  setPeriodDraft({ start: "", end: "" });
-                }}
-                onPeriodDraft={setPeriodDraft}
-                onAssignPeriod={(documentId) => runWriteAction(`period:${documentId}`, () => assignPeriod(documentId))}
-              onAcceptType={(documentId) => runWriteAction(`type:${documentId}`, () => acceptType(documentId))}
-              onStartType={setEditingTypeId}
-              onChangeType={(documentId, nextType) =>
-                runWriteAction(`type:${documentId}`, () => changeType(documentId, nextType))
-              }
-              onWithdraw={(documentId) =>
-                runWriteAction(`withdraw:${documentId}`, () => withdrawDocument(documentId))
-              }
-              onReinstate={(documentId) =>
-                runWriteAction(`withdraw:${documentId}`, () => reinstateDocument(documentId))
-              }
-              expandedHistoryIds={expandedHistoryIds}
-              auditIntents={auditIntents}
-              onToggleHistory={(documentId) =>
-                setExpandedHistoryIds((current) =>
-                  current.includes(documentId)
-                    ? current.filter((id) => id !== documentId)
-                    : [...current, documentId]
-                )
-              }
-              onCancelInlineEdit={() => {
-                setEditingFacilityId(null);
-                setEditingPeriodId(null);
-                setEditingTypeId(null);
-              }}
-            />
-            </ContainerStateSurface>
-            <SupportiveEvidenceCards items={supportive} />
-            <CompletenessPanel />
-            {showSessionAuditIntents ? (
-              <>
-                <NonRetentionNotice />
-                <ActivityRegion intents={auditIntents} />
-              </>
-            ) : null}
-          </>
-        )}
-      </section>
-    </>
-  );
-}
-
-function DemoControls({
-  state,
-  onState,
-}: {
-  state: ContainerState;
-  onState: (state: ContainerState) => void;
-}) {
-  const options: Array<{ value: ContainerState; label: string }> = [
-    { value: "populated", label: "populated" },
-    { value: "empty_nothing_yet", label: "empty nothing yet" },
-    { value: "empty_filtered", label: "filtered empty" },
-    { value: "loading", label: "loading" },
-    { value: "error_degraded", label: "degraded" },
-    { value: "dependency_blocked", label: "dependency blocked" },
-  ];
-
-  return (
-    <div className="s1-demo-controls" aria-label="S1 demo controls">
-      <strong>S1 demo controls</strong>
-      <label>
-        State{" "}
-        <select value={state} onChange={(event) => onState(event.target.value as ContainerState)}>
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-    </div>
-  );
-}
-
-function NeedsYouBar({
-  needs,
-  hasFilter,
-  onFilter,
-}: {
-  needs: { type: number; unacceptedTypes: number; facility: number; period: number; blocked: number };
-  hasFilter: boolean;
-  onFilter: <Key extends keyof Filters>(key: Key, value: Filters[Key]) => void;
-}) {
-  return (
-    <div className="s1-needs">
-      <strong>Needs you</strong>
-      <button className="s1-needs__item" type="button" onClick={() => onFilter("typeBand", "needs_review")}>
-        {needs.type} type review
-      </button>
-      <button className="s1-needs__item" type="button" onClick={() => onFilter("typeBand", "auto_accepted")}>
-        {needs.unacceptedTypes} unaccepted types
-      </button>
-      <button className="s1-needs__item" type="button" onClick={() => onFilter("facilityState", "unresolved")}>
-        {needs.facility} facility
-      </button>
-      <button className="s1-needs__item" type="button" onClick={() => onFilter("periodState", "unresolved")}>
-        {needs.period} period
-      </button>
-      <button className="s1-needs__item" type="button" onClick={() => onFilter("processingState", "blocked")}>
-        {needs.blocked} blocked
-      </button>
-      {hasFilter ? <span className="s1-needs__note">{EXACT_COPY.filterActive}</span> : null}
-    </div>
-  );
-}
-
-function SystemDegradedBanner({ message }: { message: string }) {
-  return (
-    <div className="s1-system-banner" role="status">
-      <strong>Backend call failed</strong>
-      <span>{message}</span>
-      <span>Local filters and review navigation remain available.</span>
-    </div>
-  );
-}
-
-function UploadArea({
-  onUploadFiles,
-  isUploading,
-  uploadFailures = [],
-  onUploadFailure,
-  onUploadStart,
-}: {
-  onUploadFiles?: (files: FileList) => void;
-  isUploading: boolean;
-  uploadFailures?: Array<{ filename: string; reason: string }>;
-  onUploadFailure?: (failure: { filename: string; reason: string }) => void;
-  onUploadStart?: () => void;
-}) {
-  const [isDragOver, setIsDragOver] = useState(false);
-
-  function submitFiles(files: FileList) {
-    if (files.length === 0) return;
-    onUploadStart?.();
-    if (!onUploadFiles) {
-      Array.from(files).forEach((file) =>
-        onUploadFailure?.({ filename: file.name, reason: BACKEND_DISABLED_REASON })
-      );
+    if (!label) return;
+    const target = others.find((i) => i.filename.toLowerCase().includes(label.toLowerCase()));
+    if (!target) {
+      flash(`No file matched "${label}"`);
       return;
     }
-    onUploadFiles(files);
-  }
-
-  return (
-    <div
-      className={`s1-band s1-upload ${isDragOver ? "s1-upload--drag" : ""} ${isUploading ? "s1-upload--busy" : ""}`}
-      onDragEnter={(event) => {
-        event.preventDefault();
-        setIsDragOver(true);
-      }}
-      onDragOver={(event) => {
-        event.preventDefault();
-        setIsDragOver(true);
-      }}
-      onDragLeave={(event) => {
-        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-        setIsDragOver(false);
-      }}
-      onDrop={(event) => {
-        event.preventDefault();
-        setIsDragOver(false);
-        if (event.dataTransfer.files.length > 0) {
-          submitFiles(event.dataTransfer.files);
-        }
-      }}
-    >
-      <div>
-        <h3>Upload evidence</h3>
-        <div className="s1-muted">Drop files here or choose files</div>
-        {uploadFailures.length > 0 ? (
-          <div className="s1-upload__failures" role="status">
-            {uploadFailures.map((failure) => (
-              <div key={`${failure.filename}-${failure.reason}`}>
-                {failure.filename}: {failure.reason}
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
-      <label className="s1-button">
-        {isUploading ? "Uploading" : "Choose files"}
-        <input
-          className="s1-file-input"
-          type="file"
-          multiple
-          onChange={(event) => {
-            if (event.target.files && event.target.files.length > 0) {
-              submitFiles(event.target.files);
-              event.target.value = "";
-            }
-          }}
-        />
-      </label>
-    </div>
-  );
-}
-
-function TypeReviewStrip({
-  items,
-  onSetFilter,
-}: {
-  items: EvidenceItem[];
-  onSetFilter: (band: "needs_review" | "cannot_determine") => void;
-}) {
-  const needsReview = items.filter((item) => item.typeReviewBand === "needs_review").length;
-  const cannotDetermine = items.filter((item) => item.typeReviewBand === "cannot_determine").length;
-  if (needsReview + cannotDetermine === 0) return null;
-
-  return (
-    <div className="s1-band">
-      <strong>Type review</strong>{" "}
-      <button className="s1-needs__item" type="button" onClick={() => onSetFilter("needs_review")}>
-        {needsReview} needs review
-      </button>
-      <button className="s1-needs__item" type="button" onClick={() => onSetFilter("cannot_determine")}>
-        {cannotDetermine} cannot determine
-      </button>
-    </div>
-  );
-}
-
-function EvidenceToolbar({
-  filters,
-  groupBy,
-  onFilter,
-  onGroup,
-  onClear,
-}: {
-  filters: Filters;
-  groupBy: GroupBy;
-  onFilter: <Key extends keyof Filters>(key: Key, value: Filters[Key]) => void;
-  onGroup: (groupBy: GroupBy) => void;
-  onClear: () => void;
-}) {
-  return (
-    <div className="s1-toolbar">
-      <label>
-        Group by{" "}
-        <select value={groupBy} onChange={(event) => onGroup(event.target.value as GroupBy)}>
-          <option value="none">None</option>
-          <option value="facility">Facility</option>
-          <option value="period">Period</option>
-          <option value="type">Type</option>
-        </select>
-      </label>
-      <label>
-        Processing{" "}
-        <select
-          value={filters.processingState}
-          onChange={(event) => onFilter("processingState", event.target.value as Filters["processingState"])}
-        >
-          <option value="all">All</option>
-          <option value="not_ingested">Not ingested</option>
-          <option value="ingested">Ingested</option>
-          <option value="typed">Typed</option>
-          <option value="extracted">Extracted</option>
-          <option value="blocked">Blocked</option>
-        </select>
-      </label>
-      <label>
-        Band{" "}
-        <select
-          value={filters.typeBand}
-          onChange={(event) => onFilter("typeBand", event.target.value as Filters["typeBand"])}
-        >
-          <option value="all">All</option>
-          <option value="auto_accepted">auto-accepted</option>
-          <option value="needs_review">needs review</option>
-          <option value="cannot_determine">cannot determine</option>
-        </select>
-      </label>
-      <label>
-        Facility{" "}
-        <select
-          value={filters.facilityState}
-          onChange={(event) => onFilter("facilityState", event.target.value as Filters["facilityState"])}
-        >
-          <option value="all">All</option>
-          <option value="resolved">resolved</option>
-          <option value="unresolved">unresolved</option>
-          <option value="multiple">multiple</option>
-          <option value="not_facility_scoped">not facility-scoped</option>
-        </select>
-      </label>
-      <label>
-        Period{" "}
-        <select
-          value={filters.periodState}
-          onChange={(event) => onFilter("periodState", event.target.value as Filters["periodState"])}
-        >
-          <option value="all">All</option>
-          <option value="resolved">resolved</option>
-          <option value="unresolved">unresolved</option>
-          <option value="spans_multiple">spans multiple</option>
-        </select>
-      </label>
-      <label>
-        Flags{" "}
-        <select value={filters.flags} onChange={(event) => onFilter("flags", event.target.value as Filters["flags"])}>
-          <option value="all">All</option>
-          <option value="duplicate">Duplicate</option>
-          <option value="superseded_by">Superseded by</option>
-          <option value="supersedes">Supersedes</option>
-          <option value="conflicting_value">Conflicting value</option>
-        </select>
-      </label>
-      <button className="s1-button" type="button" onClick={onClear}>
-        Clear filter
-      </button>
-    </div>
-  );
-}
-
-function BulkActionBar({
-  count,
-  disabled,
-  onAcceptType,
-}: {
-  count: number;
-  disabled: boolean;
-  onAcceptType: () => void;
-}) {
-  return (
-    <div className="s1-bulk">
-      <strong>{count} selected</strong>
-      <button
-        className="s1-button"
-        type="button"
-        disabled={disabled}
-        title={disabled ? BACKEND_DISABLED_REASON : undefined}
-        onClick={onAcceptType}
-      >
-        Accept detected type
-      </button>
-      <button className="s1-button" type="button" disabled={disabled} title={disabled ? BACKEND_DISABLED_REASON : undefined}>
-        Re-extract
-      </button>
-    </div>
-  );
-}
-
-function EvidenceTable({
-  groups,
-  flatItems,
-  selectedIds,
-  activeDocumentId,
-  allFilteredSelected,
-  onToggleFiltered,
-  onToggleRow,
-  onActiveRow,
-  onOpenExtraction,
-  onOpenManualEntry,
-  onProcessDocument,
-  processingDocumentIds,
-  workingActionIds,
-  editingFacilityId,
-  editingPeriodId,
-  editingTypeId,
-  periodDraft,
-  engagement,
-  workspaceWritesEnabled,
-  onStartFacility,
-  onAssignFacility,
-  onStartPeriod,
-  onPeriodDraft,
-  onAssignPeriod,
-  onAcceptType,
-  onStartType,
-  onChangeType,
-  onWithdraw,
-  onReinstate,
-  expandedHistoryIds,
-  auditIntents,
-  onToggleHistory,
-  onCancelInlineEdit,
-}: {
-  groups: Array<{ label: string | null; items: EvidenceItem[] }>;
-  flatItems: EvidenceItem[];
-  selectedIds: string[];
-  activeDocumentId: string | null;
-  allFilteredSelected: boolean;
-  onToggleFiltered: () => void;
-  onToggleRow: (documentId: string) => void;
-  onActiveRow: (documentId: string) => void;
-  onOpenExtraction: (documentId: string) => void;
-  onOpenManualEntry: (documentId: string) => void;
-  onProcess?: (documentId: string) => void;
-  onProcessDocument?: (documentId: string) => void;
-  processingDocumentIds: string[];
-  workingActionIds: string[];
-  editingFacilityId: string | null;
-  editingPeriodId: string | null;
-  editingTypeId: string | null;
-  periodDraft: { start: string; end: string };
-  engagement: EngagementConfig;
-  workspaceWritesEnabled: boolean;
-  onStartFacility: (documentId: string) => void;
-  onAssignFacility: (documentId: string, facilityId: string) => void;
-  onStartPeriod: (documentId: string) => void;
-  onPeriodDraft: (draft: { start: string; end: string }) => void;
-  onAssignPeriod: (documentId: string) => void;
-  onAcceptType: (documentId: string) => void;
-  onStartType: (documentId: string) => void;
-  onChangeType: (documentId: string, type: string) => void;
-  onWithdraw: (documentId: string) => void;
-  onReinstate: (documentId: string) => void;
-  expandedHistoryIds: string[];
-  auditIntents: SessionAuditEntry[];
-  onToggleHistory: (documentId: string) => void;
-  onCancelInlineEdit: () => void;
-}) {
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const activeIndex = Math.max(
-    flatItems.findIndex((item) => item.documentId === activeDocumentId),
-    0
-  );
-  const activeItem = flatItems[activeIndex];
-  const handleRowKeys = useKeyboardNavigation({
-    currentIndex: activeIndex,
-    itemCount: flatItems.length,
-    onMove: (nextIndex) => {
-      const next = flatItems[nextIndex];
-      if (next) onActiveRow(next.documentId);
-    },
-    onEnter: () => {
-      if (activeItem) onOpenExtraction(activeItem.documentId);
-    },
-    onSpace: () => {
-      if (activeItem) onToggleRow(activeItem.documentId);
-    },
-    onEscape: onCancelInlineEdit,
-  });
-
-  return (
-    <div className="s1-table-wrap">
-      <table className="s1-table">
-        <colgroup>
-          <col style={{ width: 32 }} />
-          <col style={{ minWidth: 220 }} />
-          <col style={{ width: 160 }} />
-          <col style={{ width: 150 }} />
-          <col style={{ width: 120 }} />
-          <col style={{ width: 110 }} />
-          <col style={{ width: 180 }} />
-          <col style={{ width: 170 }} />
-          <col style={{ width: 32 }} />
-        </colgroup>
-        <thead>
-          <tr>
-            <th>
-              <input
-                type="checkbox"
-                checked={allFilteredSelected}
-                onChange={onToggleFiltered}
-                aria-label="Select filtered documents"
-              />
-            </th>
-            <th>Document</th>
-            <th>Detected type</th>
-            <th>Facility</th>
-            <th>Period</th>
-            <th>Fields found / expected for type</th>
-            <th>Processing state</th>
-            <th>Flags</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {groups.map((group, index) => (
-            <Fragment key={group.label ?? `ungrouped-${index}`}>
-              {group.label ? (
-                <tr key={`group-heading-${group.label}`}>
-                  <td colSpan={9} className="s1-muted">
-                    {group.label} ({group.items.length})
-                  </td>
-                </tr>
-              ) : null}
-              {group.items.map((item) => (
-                <Fragment key={item.documentId}>
-                <tr
-                  className={[
-                    selectedIds.includes(item.documentId) ? "s1-row-selected" : "",
-                    activeDocumentId === item.documentId ? "s1-row-active" : "",
-                    item.disposition === "withdrawn" ? "s1-row-withdrawn" : "",
-                  ].filter(Boolean).join(" ")}
-                  aria-current={activeDocumentId === item.documentId}
-                  tabIndex={0}
-                  onFocus={() => onActiveRow(item.documentId)}
-                  onKeyDown={(event) => {
-                    if (
-                      event.target instanceof HTMLElement &&
-                      ["INPUT", "SELECT", "BUTTON"].includes(event.target.tagName) &&
-                      event.key !== "Escape"
-                    ) {
-                      return;
-                    }
-                    handleRowKeys(event);
-                  }}
-                >
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(item.documentId)}
-                      onChange={() => onToggleRow(item.documentId)}
-                      aria-label={`Select ${item.filename}`}
-                    />
-                  </td>
-                  <td>
-                    <button className="s1-doc-link" type="button" onClick={() => onOpenExtraction(item.documentId)}>
-                      {item.filename}
-                    </button>
-                    <div className="s1-mono s1-muted">{item.documentId}</div>
-                    {item.disposition === "withdrawn" ? (
-                      <StateIndicator dimension="disposition" value="withdrawn" label="Withdrawn" />
-                    ) : null}
-                  </td>
-                  <td>
-                    <TypeCell
-                      item={item}
-                      editing={editingTypeId === item.documentId}
-                      disabled={!workspaceWritesEnabled}
-                      isWorking={workingActionIds.includes(`type:${item.documentId}`)}
-                      onAcceptType={onAcceptType}
-                      onStartType={onStartType}
-                      onChangeType={onChangeType}
-                    />
-                  </td>
-                  <td>
-                    <FacilityCell
-                      item={item}
-                      editing={editingFacilityId === item.documentId}
-                      facilities={engagement.facilities}
-                      disabled={!workspaceWritesEnabled}
-                      isWorking={workingActionIds.includes(`facility:${item.documentId}`)}
-                      onStart={onStartFacility}
-                      onAssign={onAssignFacility}
-                    />
-                  </td>
-                  <td>
-                    <PeriodCell
-                      item={item}
-                      editing={editingPeriodId === item.documentId}
-                      draft={periodDraft}
-                      disabled={!workspaceWritesEnabled}
-                      isWorking={workingActionIds.includes(`period:${item.documentId}`)}
-                      onStart={onStartPeriod}
-                      onDraft={onPeriodDraft}
-                      onAssign={onAssignPeriod}
-                    />
-                  </td>
-                  <td className="s1-mono">
-                    {item.fieldsExpectedDisplay === null ? "" : `${item.fieldsExtracted} of ${item.fieldsExpectedDisplay}`}
-                  </td>
-                  <td>
-                    <ProcessingCell
-                      item={item}
-                      isProcessing={processingDocumentIds.includes(item.documentId)}
-                      onProcess={onProcessDocument}
-                    />
-                  </td>
-                  <td>
-                    <FlagCell item={item} />
-                  </td>
-                  <td>
-                    <RowActionMenu
-                      item={item}
-                      disabled={!workspaceWritesEnabled}
-                      isWorking={workingActionIds.includes(`type:${item.documentId}`)}
-                      isWithdrawWorking={workingActionIds.includes(`withdraw:${item.documentId}`)}
-                      isOpen={openMenuId === item.documentId}
-                      onOpenChange={(open) => setOpenMenuId(open ? item.documentId : null)}
-                      onAcceptType={onAcceptType}
-                      onStartType={onStartType}
-                      onOpenExtraction={onOpenExtraction}
-                      onOpenManualEntry={onOpenManualEntry}
-                      onProcess={onProcessDocument}
-                      onWithdraw={onWithdraw}
-                      onReinstate={onReinstate}
-                      onToggleHistory={onToggleHistory}
-                    />
-                  </td>
-                </tr>
-                {expandedHistoryIds.includes(item.documentId) ? (
-                  <tr className="s1-history-row">
-                    <td colSpan={9}>
-                      <HistoryList intents={auditIntents.filter((intent) => intent.documentId === item.documentId)} />
-                    </td>
-                  </tr>
-                ) : null}
-                </Fragment>
-              ))}
-            </Fragment>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function TypeCell({
-  item,
-  editing,
-  disabled,
-  isWorking,
-  onAcceptType,
-  onStartType,
-  onChangeType,
-}: {
-  item: EvidenceItem;
-  editing: boolean;
-  disabled: boolean;
-  isWorking: boolean;
-  onAcceptType: (documentId: string) => void;
-  onStartType: (documentId: string) => void;
-  onChangeType: (documentId: string, type: string) => void;
-}) {
-  if (!item.detectedType) {
-    return <span className="s1-muted">not typed</span>;
-  }
-
-  if (editing) {
-    return (
-      <select className="s1-inline-input" defaultValue={item.detectedType} onChange={(event) => onChangeType(item.documentId, event.target.value)}>
-        <option>Electric utility bill</option>
-        <option>Corporate inventory workbook</option>
-        <option>Stationary fuel consumption record</option>
-        <option>Mobile fuel consumption record</option>
-      </select>
+    setItems((cur) =>
+      cur.map((i) =>
+        i.documentId === documentId
+          ? { ...i, relationships: [...i.relationships, { kind, otherDocumentId: target.documentId }] }
+          : i
+      )
     );
+    record(kind === "duplicate" ? "mark_duplicate" : "mark_supersedes", documentId, null, target.filename);
+    flash(`Marked ${kind === "duplicate" ? "duplicate of" : "supersedes"} ${target.filename}`);
   }
 
+  function answersRequest(documentId: string) {
+    const ask = latestAsk(asks, documentId);
+    if (!ask || ask.state !== "requested") {
+      flash("No open request on this file to resolve");
+      return;
+    }
+    onResolveAsk?.(ask.id);
+    record("answers_request", documentId, `request ${ask.requestNumber}`, "resolved");
+    flash(`Resolved request ${ask.requestNumber}`);
+  }
+
+  function withdraw(documentId: string) {
+    const item = items.find((i) => i.documentId === documentId);
+    if (!item) return;
+    if (!window.confirm(`Withdraw ${item.filename}? The row stays, greyed, and the action is logged.`)) return;
+    setItems((cur) => cur.map((i) => (i.documentId === documentId ? { ...i, disposition: "withdrawn" } : i)));
+    record("withdraw_document", documentId, "active", "withdrawn");
+    flash(`Withdrew ${item.filename}`);
+  }
+
+  function reinstate(documentId: string) {
+    setItems((cur) => cur.map((i) => (i.documentId === documentId ? { ...i, disposition: "active" } : i)));
+    record("reinstate_document", documentId, "withdrawn", "active");
+  }
+
+  function submitAsk(input: NewAskInput) {
+    onSaveAsk(input);
+    setModalDoc(null);
+    flash("Added to requests · not yet sent");
+  }
+
+  const showEmpty = activeCount === 0;
+  const showFilteredEmpty = !showEmpty && filtered.length === 0;
+
   return (
-    <div className="s1-type-cell">
-      <div className="s1-type-name">{item.detectedType}</div>
-      {item.typeReviewBand === "auto_accepted" ? (
-        <div className="s1-type-band-text">auto-accepted</div>
-      ) : item.typeReviewBand ? (
-        <div className="s1-chip-stack">
-          <StateIndicator dimension="readiness" value="non-blocking" label="open" explain={item.typeReviewReason ?? undefined} />
-          <span className="s1-reason">{item.typeReviewReason}</span>
+    <section className="s1-content s1-ws">
+      <WorkspaceHeader
+        engagement={engagement}
+        counts={headerCounts}
+        activeFilter={headerFilter}
+        onFilter={(f) => setHeaderFilter((cur) => (cur === f ? null : f))}
+        onOpenSetup={() => (onOpenSetup ? onOpenSetup() : flash("Setup is not built yet."))}
+      />
+
+      {backendError ? (
+        <div className="s1-system-banner" role="status">
+          <strong>Backend call failed</strong>
+          <span>{backendError}</span>
         </div>
       ) : null}
-      <div className="s1-actions">
-        <button
-          className="s1-linklike"
-          type="button"
-          disabled={disabled || isWorking}
-          title={disabled ? BACKEND_DISABLED_REASON : undefined}
-          onClick={() => onAcceptType(item.documentId)}
-        >
-          {isWorking ? "Working" : "Accept"}
+
+      {showEmpty ? (
+        <FirstDayEmpty onUploadFiles={onUploadFiles} isUploading={isUploading} />
+      ) : (
+        <>
+          <FacilityFilterStrip
+            engagement={engagement}
+            counts={facilityCounts}
+            active={facilityFilter}
+            onSelect={(f) => setFacilityFilter((cur) => (cur === f ? null : f))}
+          />
+
+          {showFilteredEmpty ? (
+            <div className="s1-ws-empty" role="status">
+              <p>No files match {describeFilter(facilityFilter, headerFilter, engagement)}.</p>
+              <button
+                className="s1-button"
+                type="button"
+                onClick={() => {
+                  setFacilityFilter(null);
+                  setHeaderFilter(null);
+                }}
+              >
+                Clear filter
+              </button>
+            </div>
+          ) : (
+            <div className="s1-table-wrap">
+              <table className="s1-table s1-ws-table">
+                <colgroup>
+                  <col style={{ minWidth: 210 }} />
+                  <col style={{ width: 150 }} />
+                  <col style={{ width: 170 }} />
+                  <col style={{ width: 150 }} />
+                  <col style={{ width: 190 }} />
+                  <col style={{ width: 150 }} />
+                  <col style={{ width: 160 }} />
+                  <col style={{ width: 40 }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th>Document</th>
+                    <th>Facility</th>
+                    <th>Document type</th>
+                    <th>Processing state</th>
+                    <th>Issue</th>
+                    <th>Add to requests</th>
+                    <th title="Notes are not evidence.">Notes</th>
+                    <th aria-label="Row menu"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groups.map((group) => (
+                    <Fragment key={group.type}>
+                      <tr className="s1-ws-group">
+                        <td colSpan={8}>
+                          {group.type} <span className="s1-muted">({group.items.length})</span>
+                        </td>
+                      </tr>
+                      {group.items.map((item) => (
+                        <Fragment key={item.documentId}>
+                          <WorkspaceRow
+                            item={item}
+                            items={items}
+                            asks={asks}
+                            engagement={engagement}
+                            writesEnabled={writesEnabled}
+                            editing={editing?.id === item.documentId ? editing.field : null}
+                            menuOpen={openMenuId === item.documentId}
+                            expanded={expandedIds.includes(item.documentId)}
+                            noteOpen={noteFor === item.documentId}
+                            noteDraft={noteDraft}
+                            onNoteDraft={setNoteDraft}
+                            onOpenExtraction={onOpenExtraction}
+                            onOpenRequests={() => (onOpenRequests ? onOpenRequests() : flash("Evidence requests is built next."))}
+                            onStartEdit={(field) => setEditing({ id: item.documentId, field })}
+                            onCancelEdit={() => setEditing(null)}
+                            onSetType={setType}
+                            onSetFacility={setFacility}
+                            onStartNote={() => {
+                              setNoteFor(item.documentId);
+                              setNoteDraft("");
+                            }}
+                            onSaveNote={() => addNote(item.documentId)}
+                            onCancelNote={() => setNoteFor(null)}
+                            onMenu={(open) => setOpenMenuId(open ? item.documentId : null)}
+                            onToggleExpand={() =>
+                              setExpandedIds((cur) =>
+                                cur.includes(item.documentId)
+                                  ? cur.filter((id) => id !== item.documentId)
+                                  : [...cur, item.documentId]
+                              )
+                            }
+                            onAddToRequests={() => setModalDoc(item)}
+                            onMarkDuplicate={() => markRelationship(item.documentId, "duplicate")}
+                            onMarkSupersedes={() => markRelationship(item.documentId, "supersedes")}
+                            onAnswersRequest={() => answersRequest(item.documentId)}
+                            onWithdraw={() => withdraw(item.documentId)}
+                            onReinstate={() => reinstate(item.documentId)}
+                          />
+                          {expandedIds.includes(item.documentId) ? (
+                            <tr className="s1-history-row">
+                              <td colSpan={8}>
+                                <RowRecord item={item} intents={auditIntents.filter((a) => a.documentId === item.documentId)} />
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      ))}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {modalDoc ? (
+        <AddToRequestsModal
+          item={modalDoc}
+          engagement={engagement}
+          onCancel={() => setModalDoc(null)}
+          onAdd={submitAsk}
+        />
+      ) : null}
+
+      {toast ? <div className="s1-ws-toast">{toast}</div> : null}
+    </section>
+  );
+}
+
+/* =============================== header =============================== */
+
+function WorkspaceHeader({
+  engagement,
+  counts,
+  activeFilter,
+  onFilter,
+  onOpenSetup,
+}: {
+  engagement: EngagementConfig;
+  counts: { needs: number; arrived: number; blocked: number };
+  activeFilter: HeaderFilter;
+  onFilter: (f: HeaderFilter) => void;
+  onOpenSetup: () => void;
+}) {
+  return (
+    <header className="s1-ws-header">
+      <div className="s1-ws-header__id">
+        <h1>{engagement.clientName}</h1>
+        <button className="s1-linklike" type="button" onClick={onOpenSetup}>
+          Setup
         </button>
-        <button
-          className="s1-linklike"
-          type="button"
-          disabled={disabled || isWorking}
-          title={disabled ? BACKEND_DISABLED_REASON : undefined}
-          onClick={() => onStartType(item.documentId)}
-        >
-          {isWorking ? "Working" : "Change"}
-        </button>
+        <span className="s1-muted">Since your last visit: {counts.arrived} new</span>
       </div>
+      <div className="s1-ws-header__counts">
+        <CountFilter label="Needs you" n={counts.needs} on={activeFilter === "needs"} onClick={() => onFilter("needs")} />
+        <CountFilter
+          label="Arrived since last visit"
+          n={counts.arrived}
+          on={activeFilter === "arrived"}
+          onClick={() => onFilter("arrived")}
+        />
+        <CountFilter label="Blocked" n={counts.blocked} on={activeFilter === "blocked"} onClick={() => onFilter("blocked")} />
+      </div>
+    </header>
+  );
+}
+
+function CountFilter({ label, n, on, onClick }: { label: string; n: number; on: boolean; onClick: () => void }) {
+  return (
+    <button className={`s1-ws-count${on ? " is-on" : ""}`} type="button" aria-pressed={on} onClick={onClick}>
+      <span className="s1-ws-count__n">{n}</span> {label}
+    </button>
+  );
+}
+
+function FacilityFilterStrip({
+  engagement,
+  counts,
+  active,
+  onSelect,
+}: {
+  engagement: EngagementConfig;
+  counts: { map: Map<string, number>; multiple: number; none: number; unknown: number };
+  active: FacilityFilter;
+  onSelect: (f: FacilityFilter) => void;
+}) {
+  return (
+    <div className="s1-ws-facilities" role="group" aria-label="Filter by facility">
+      {engagement.facilities.map((f) => (
+        <FacilityChip
+          key={f.facilityId}
+          label={f.name}
+          n={counts.map.get(f.facilityId) ?? 0}
+          on={active === f.facilityId}
+          onClick={() => onSelect(f.facilityId)}
+        />
+      ))}
+      <FacilityChip label="Multiple facilities" n={counts.multiple} on={active === "multiple"} onClick={() => onSelect("multiple")} />
+      <FacilityChip label="No facility" n={counts.none} on={active === "none"} onClick={() => onSelect("none")} />
+      <FacilityChip label="Not yet known" n={counts.unknown} on={active === "unknown"} onClick={() => onSelect("unknown")} />
     </div>
   );
 }
 
-function RowActionMenu({
+function FacilityChip({ label, n, on, onClick }: { label: string; n: number; on: boolean; onClick: () => void }) {
+  return (
+    <button className={`s1-ws-facchip${on ? " is-on" : ""}`} type="button" aria-pressed={on} onClick={onClick}>
+      {label} <span className="s1-muted">{n}</span>
+    </button>
+  );
+}
+
+/* =============================== row =============================== */
+
+function WorkspaceRow(props: {
+  item: EvidenceItem;
+  items: EvidenceItem[];
+  asks: Ask[];
+  engagement: EngagementConfig;
+  writesEnabled: boolean;
+  editing: "type" | "facility" | null;
+  menuOpen: boolean;
+  expanded: boolean;
+  noteOpen: boolean;
+  noteDraft: string;
+  onNoteDraft: (v: string) => void;
+  onOpenExtraction: (id: string) => void;
+  onOpenRequests: () => void;
+  onStartEdit: (field: "type" | "facility") => void;
+  onCancelEdit: () => void;
+  onSetType: (id: string, type: string) => void;
+  onSetFacility: (id: string, facilityId: string) => void;
+  onStartNote: () => void;
+  onSaveNote: () => void;
+  onCancelNote: () => void;
+  onMenu: (open: boolean) => void;
+  onToggleExpand: () => void;
+  onAddToRequests: () => void;
+  onMarkDuplicate: () => void;
+  onMarkSupersedes: () => void;
+  onAnswersRequest: () => void;
+  onWithdraw: () => void;
+  onReinstate: () => void;
+}) {
+  const { item, items, asks, engagement } = props;
+  const withdrawn = item.disposition === "withdrawn";
+  const proc = processingDisplay(item);
+  const issues = issueLines(item, items, engagement);
+  const ask = latestAsk(asks, item.documentId);
+  const askCount = asks.filter((a) => a.source.documentId === item.documentId).length;
+
+  return (
+    <tr className={withdrawn ? "s1-row-withdrawn" : ""}>
+      {/* Document */}
+      <td>
+        <button className="s1-doc-link" type="button" onClick={() => props.onOpenExtraction(item.documentId)}>
+          {item.filename}
+        </button>
+        <div className="s1-mono s1-muted">
+          {item.answeredRequestNumber != null
+            ? `Answered request ${item.answeredRequestNumber} · ${formatDate(item.uploadedAt)}`
+            : `Uploaded · ${formatDate(item.uploadedAt)}`}
+        </div>
+        {withdrawn ? <StateIndicator dimension="disposition" value="withdrawn" label="Withdrawn" /> : null}
+      </td>
+
+      {/* Facility */}
+      <td>
+        {props.editing === "facility" ? (
+          <select
+            className="s1-inline-input"
+            defaultValue=""
+            onChange={(e) => props.onSetFacility(item.documentId, e.target.value)}
+          >
+            <option value="" disabled>
+              Set facility
+            </option>
+            {engagement.facilities.map((f) => (
+              <option key={f.facilityId} value={f.facilityId}>
+                {f.name}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <FacilityCell item={item} onSet={() => props.onStartEdit("facility")} writesEnabled={props.writesEnabled} />
+        )}
+      </td>
+
+      {/* Document type */}
+      <td>
+        {props.editing === "type" ? (
+          <select
+            className="s1-inline-input"
+            defaultValue={item.detectedType ?? ""}
+            onChange={(e) => props.onSetType(item.documentId, e.target.value)}
+          >
+            <option value="" disabled>
+              Set type
+            </option>
+            {SET_TYPE_OPTIONS.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <TypeCell item={item} onSet={() => props.onStartEdit("type")} writesEnabled={props.writesEnabled} />
+        )}
+      </td>
+
+      {/* Processing state */}
+      <td>
+        <span className={`s1-state s1-state--${proc.role}`}>{proc.label}</span>
+        {proc.sub ? <div className="s1-reason">{proc.sub}</div> : null}
+      </td>
+
+      {/* Issue */}
+      <td>
+        {issues.length === 0 ? (
+          <span className="s1-muted">—</span>
+        ) : (
+          <div className="s1-ws-issues">
+            {issues.map((line) => (
+              <div key={line}>{line}</div>
+            ))}
+          </div>
+        )}
+      </td>
+
+      {/* Add to requests */}
+      <td>
+        <AddToRequestsCell
+          ask={ask}
+          count={askCount}
+          withdrawn={withdrawn}
+          onAdd={props.onAddToRequests}
+          onOpenRequests={props.onOpenRequests}
+        />
+      </td>
+
+      {/* Notes */}
+      <td>
+        <NotesCell
+          item={item}
+          open={props.noteOpen}
+          draft={props.noteDraft}
+          onDraft={props.onNoteDraft}
+          onStart={props.onStartNote}
+          onSave={props.onSaveNote}
+          onCancel={props.onCancelNote}
+        />
+      </td>
+
+      {/* Menu */}
+      <td>
+        <RowMenu
+          item={item}
+          isOpen={props.menuOpen}
+          onOpenChange={props.onMenu}
+          onOpen={() => props.onOpenExtraction(item.documentId)}
+          onSetType={() => props.onStartEdit("type")}
+          onSetFacility={() => props.onStartEdit("facility")}
+          onAddNote={props.onStartNote}
+          onMarkDuplicate={props.onMarkDuplicate}
+          onMarkSupersedes={props.onMarkSupersedes}
+          onAnswersRequest={props.onAnswersRequest}
+          onWithdraw={props.onWithdraw}
+          onReinstate={props.onReinstate}
+          onHistory={props.onToggleExpand}
+        />
+      </td>
+    </tr>
+  );
+}
+
+function FacilityCell({ item, onSet, writesEnabled }: { item: EvidenceItem; onSet: () => void; writesEnabled: boolean }) {
+  if (item.facilityState === "resolved") {
+    return (
+      <div>
+        <div>{item.facilityName}</div>
+        <div className="s1-muted s1-ws-src">from accepted value</div>
+      </div>
+    );
+  }
+  if (item.facilityState === "multiple") {
+    return (
+      <div>
+        <div>Multiple facilities</div>
+        <div className="s1-muted s1-ws-src">{item.facilityCount ?? 2} facilities</div>
+      </div>
+    );
+  }
+  if (item.facilityState === "not_facility_scoped") {
+    return (
+      <div>
+        <div>No facility</div>
+        <div className="s1-muted s1-ws-src">entity-level</div>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="s1-muted">Not yet known</div>
+      {writesEnabled ? (
+        <button className="s1-linklike" type="button" onClick={onSet}>
+          Set facility
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function TypeCell({ item, onSet, writesEnabled }: { item: EvidenceItem; onSet: () => void; writesEnabled: boolean }) {
+  const unconfirmed = item.detectedType == null || item.typeReviewBand === "needs_review" || item.typeReviewBand === "cannot_determine";
+  return (
+    <div>
+      <div>{item.detectedType ?? <span className="s1-muted">Type unresolved</span>}</div>
+      {unconfirmed ? <div className="s1-muted s1-ws-src">unconfirmed</div> : null}
+      {writesEnabled ? (
+        <button className="s1-linklike" type="button" onClick={onSet}>
+          Set type
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function AddToRequestsCell({
+  ask,
+  count,
+  withdrawn,
+  onAdd,
+  onOpenRequests,
+}: {
+  ask: Ask | null;
+  count: number;
+  withdrawn: boolean;
+  onAdd: () => void;
+  onOpenRequests: () => void;
+}) {
+  if (!ask) {
+    if (withdrawn) return <span className="s1-muted">—</span>;
+    return (
+      <button className="s1-linklike" type="button" onClick={onAdd}>
+        Add to requests
+      </button>
+    );
+  }
+  const label =
+    ask.state === "not_yet_sent"
+      ? "In requests · not yet sent"
+      : ask.state === "requested"
+        ? `Requested · request ${ask.requestNumber}`
+        : ask.state === "resolved"
+          ? "Resolved"
+          : "Withdrawn";
+  return (
+    <div>
+      <button className="s1-linklike" type="button" onClick={onOpenRequests}>
+        {label}
+      </button>
+      {count > 1 ? <div className="s1-muted s1-ws-src">{count} asks</div> : null}
+    </div>
+  );
+}
+
+function NotesCell({
   item,
-  disabled,
-  isWorking,
-  isWithdrawWorking,
-  isOpen,
-  onOpenChange,
-  onAcceptType,
-  onStartType,
-  onOpenExtraction,
-  onOpenManualEntry,
-  onProcess,
-  onWithdraw,
-  onReinstate,
-  onToggleHistory,
+  open,
+  draft,
+  onDraft,
+  onStart,
+  onSave,
+  onCancel,
 }: {
   item: EvidenceItem;
-  disabled: boolean;
-  isWorking: boolean;
-  isWithdrawWorking: boolean;
+  open: boolean;
+  draft: string;
+  onDraft: (v: string) => void;
+  onStart: () => void;
+  onSave: () => void;
+  onCancel: () => void;
+}) {
+  const notes = item.notes ?? [];
+  const latest = notes[notes.length - 1];
+  if (open) {
+    return (
+      <div className="s1-ws-note-edit">
+        <input
+          className="s1-inline-input"
+          value={draft}
+          autoFocus
+          placeholder="Add a note"
+          onChange={(e) => onDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSave();
+            if (e.key === "Escape") onCancel();
+          }}
+        />
+        <button className="s1-button s1-button--compact" type="button" onClick={onSave}>
+          Save
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="s1-ws-notes">
+      {latest ? (
+        <>
+          <div className="s1-ws-note-line">{latest.text}</div>
+          <div className="s1-mono s1-muted">
+            {latest.author} · {formatDate(latest.at)}
+          </div>
+        </>
+      ) : (
+        <span className="s1-muted">—</span>
+      )}
+      <button className="s1-linklike" type="button" aria-label="Add note" onClick={onStart}>
+        + note
+      </button>
+    </div>
+  );
+}
+
+function RowMenu({
+  item,
+  isOpen,
+  onOpenChange,
+  onOpen,
+  onSetType,
+  onSetFacility,
+  onAddNote,
+  onMarkDuplicate,
+  onMarkSupersedes,
+  onAnswersRequest,
+  onWithdraw,
+  onReinstate,
+  onHistory,
+}: {
+  item: EvidenceItem;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
-  onAcceptType: (documentId: string) => void;
-  onStartType: (documentId: string) => void;
-  onOpenExtraction: (documentId: string) => void;
-  onOpenManualEntry: (documentId: string) => void;
-  onProcess?: (documentId: string) => void;
-  onWithdraw: (documentId: string) => void;
-  onReinstate: (documentId: string) => void;
-  onToggleHistory: (documentId: string) => void;
+  onOpen: () => void;
+  onSetType: () => void;
+  onSetFacility: () => void;
+  onAddNote: () => void;
+  onMarkDuplicate: () => void;
+  onMarkSupersedes: () => void;
+  onAnswersRequest: () => void;
+  onWithdraw: () => void;
+  onReinstate: () => void;
+  onHistory: () => void;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const itemsRef = useRef<Array<HTMLButtonElement | null>>([]);
+  const withdrawn = item.disposition === "withdrawn";
 
   useEffect(() => {
     if (!isOpen) return;
-    itemsRef.current[0]?.focus();
-    function onPointerDown(event: PointerEvent) {
-      const target = event.target as Node;
-      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
+    function onDown(e: PointerEvent) {
+      const t = e.target as Node;
+      if (menuRef.current?.contains(t) || triggerRef.current?.contains(t)) return;
       onOpenChange(false);
-      triggerRef.current?.focus();
     }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
   }, [isOpen, onOpenChange]);
 
-  function closeMenu() {
-    onOpenChange(false);
-    triggerRef.current?.focus();
-  }
-
-  function moveFocus(currentIndex: number, direction: 1 | -1) {
-    const candidates = itemsRef.current.filter(Boolean) as HTMLButtonElement[];
-    if (candidates.length === 0) return;
-    const next = (currentIndex + direction + candidates.length) % candidates.length;
-    candidates[next]?.focus();
-  }
-
-  const endpointTitle = disabled ? BACKEND_DISABLED_REASON : undefined;
-  const noDetectedType = !item.detectedType;
-  const isWithdrawn = item.disposition === "withdrawn";
-  const allDisabled = disabled && noDetectedType;
+  const entries: Array<{ label: string; action: () => void; disabled?: boolean }> = withdrawn
+    ? [
+        { label: "Open", action: onOpen },
+        { label: "History", action: onHistory },
+        { label: "Reinstate document", action: onReinstate },
+      ]
+    : [
+        { label: "Open", action: onOpen },
+        { label: "Set type", action: onSetType },
+        { label: "Set facility", action: onSetFacility },
+        { label: "Add note", action: onAddNote },
+        { label: "Mark duplicate of…", action: onMarkDuplicate },
+        { label: "Mark supersedes…", action: onMarkSupersedes },
+        { label: "Answers request", action: onAnswersRequest },
+        { label: "History", action: onHistory },
+        { label: "Withdraw", action: onWithdraw },
+      ];
 
   return (
     <div className="s1-menu">
@@ -1156,97 +900,28 @@ function RowActionMenu({
         ref={triggerRef}
         className="s1-button s1-button--icon"
         type="button"
-        aria-label={`Actions for ${item.filename}`}
         aria-haspopup="menu"
         aria-expanded={isOpen}
-        disabled={isWorking || isWithdrawWorking}
+        aria-label={`Actions for ${item.filename}`}
         onClick={() => onOpenChange(!isOpen)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onOpenChange(true);
-          }
-        }}
       >
-        {isWorking || isWithdrawWorking ? "Working" : "..."}
+        ⋯
       </button>
       {isOpen ? (
         <div className="s1-menu__panel" role="menu" ref={menuRef}>
-          {allDisabled ? <div className="s1-menu__empty">{BACKEND_DISABLED_REASON}</div> : null}
-          {[
-            {
-              label: "Accept detected type",
-              disabled: disabled || noDetectedType || isWorking || isWithdrawn,
-              title: noDetectedType ? "No detected type to accept." : endpointTitle,
-              action: () => onAcceptType(item.documentId),
-            },
-            {
-              label: "Change type",
-              disabled: disabled || isWorking || isWithdrawn,
-              title: endpointTitle,
-              action: () => onStartType(item.documentId),
-            },
-            {
-              label: "Open extraction review",
-              disabled: item.fieldsExtracted === 0,
-              title: item.fieldsExtracted === 0 ? "No extracted fields are available. Enter values manually instead." : undefined,
-              action: () => onOpenExtraction(item.documentId),
-            },
-            {
-              label: "Enter values manually",
-              disabled: false,
-              title: undefined,
-              action: () => onOpenManualEntry(item.documentId),
-            },
-            {
-              label: "Re-extract",
-              disabled: !onProcess || isWorking || isWithdrawn,
-              title: onProcess ? undefined : BACKEND_DISABLED_REASON,
-              action: () => onProcess?.(item.documentId),
-            },
-            {
-              label: "History",
-              disabled: false,
-              title: undefined,
-              action: () => onToggleHistory(item.documentId),
-            },
-            {
-              label: isWithdrawn ? "Reinstate document" : "Withdraw document",
-              disabled: disabled || isWithdrawWorking,
-              title: disabled ? endpointTitle : undefined,
-              action: () => (isWithdrawn ? onReinstate(item.documentId) : onWithdraw(item.documentId)),
-            },
-          ].map((action, index) => (
+          {entries.map((entry) => (
             <button
-              key={action.label}
-              ref={(node) => {
-                itemsRef.current[index] = node;
-              }}
+              key={entry.label}
               className="s1-menu__item"
               type="button"
               role="menuitem"
-              disabled={action.disabled}
-              title={action.title}
+              disabled={entry.disabled}
               onClick={() => {
-                if (!action.disabled) action.action();
-                closeMenu();
-              }}
-              onKeyDown={(event) => {
-                if (event.key === "ArrowDown") {
-                  event.preventDefault();
-                  moveFocus(index, 1);
-                }
-                if (event.key === "ArrowUp") {
-                  event.preventDefault();
-                  moveFocus(index, -1);
-                }
-                if (event.key === "Escape") {
-                  event.preventDefault();
-                  closeMenu();
-                }
+                entry.action();
+                onOpenChange(false);
               }}
             >
-              {action.label}
+              {entry.label}
             </button>
           ))}
         </div>
@@ -1255,310 +930,315 @@ function RowActionMenu({
   );
 }
 
-function FacilityCell({
+/* ======================= Add to requests modal ======================= */
+
+function AddToRequestsModal({
   item,
-  editing,
-  facilities,
-  disabled,
-  isWorking,
-  onStart,
-  onAssign,
+  engagement,
+  onCancel,
+  onAdd,
 }: {
   item: EvidenceItem;
-  editing: boolean;
-  facilities: EngagementConfig["facilities"];
-  disabled: boolean;
-  isWorking: boolean;
-  onStart: (documentId: string) => void;
-  onAssign: (documentId: string, facilityId: string) => void;
+  engagement: EngagementConfig;
+  onCancel: () => void;
+  onAdd: (input: NewAskInput) => void;
 }) {
-  if (editing) {
-    return (
-      <select className="s1-inline-input" defaultValue="" onChange={(event) => onAssign(item.documentId, event.target.value)}>
-        <option value="" disabled>
-          Assign facility
-        </option>
-        {facilities.map((facility) => (
-          <option value={facility.facilityId} key={facility.facilityId}>
-            {facility.name}
-          </option>
-        ))}
-      </select>
-    );
-  }
-
-  if (item.facilityState === "resolved") {
-    return <span>{item.facilityName}</span>;
-  }
-  if (item.facilityState === "multiple") {
-    return <StateIndicator dimension="facilityResolution" value="multiple" label={`Multiple (${item.facilityCount ?? 2})`} />;
-  }
-  if (item.facilityState === "not_facility_scoped") {
-    return <StateIndicator dimension="facilityResolution" value="not_facility_scoped" label="Not facility-scoped" />;
-  }
-  return (
-    <div>
-      <StateIndicator dimension="facilityResolution" value="unresolved" label="Unresolved" />
-      <div>
-        <button
-          className="s1-linklike"
-          type="button"
-          disabled={disabled || isWorking}
-          title={disabled ? BACKEND_DISABLED_REASON : undefined}
-          onClick={() => onStart(item.documentId)}
-        >
-          {isWorking ? "Working" : "Assign facility"}
-        </button>
-      </div>
-    </div>
+  const defaultType = preselectType(item);
+  const [type, setType] = useState<RequestType>(defaultType);
+  const facility = facilityLabel(item);
+  const period = periodLabel(item);
+  const [whatIsNeeded, setWhatIsNeeded] = useState(
+    `${item.filename} · ${facility} · ${period}: `
   );
-}
+  const raiser = raisedByDefault(engagement);
+  const [raisedBy, setRaisedBy] = useState(raiser.login);
 
-function PeriodCell({
-  item,
-  editing,
-  draft,
-  disabled,
-  isWorking,
-  onStart,
-  onDraft,
-  onAssign,
-}: {
-  item: EvidenceItem;
-  editing: boolean;
-  draft: { start: string; end: string };
-  disabled: boolean;
-  isWorking: boolean;
-  onStart: (documentId: string) => void;
-  onDraft: (draft: { start: string; end: string }) => void;
-  onAssign: (documentId: string) => void;
-}) {
-  if (editing) {
-    return (
-      <div className="s1-chip-stack">
-        <input className="s1-inline-input" type="date" value={draft.start} onChange={(event) => onDraft({ ...draft, start: event.target.value })} />
-        <input className="s1-inline-input" type="date" value={draft.end} onChange={(event) => onDraft({ ...draft, end: event.target.value })} />
-        <button className="s1-button" type="button" disabled={isWorking} onClick={() => onAssign(item.documentId)}>
-          {isWorking ? "Working" : "Save"}
-        </button>
-      </div>
-    );
-  }
-  if (item.periodState === "resolved") {
-    return (
-      <span>
-        {item.periodStart}
-        <br />
-        {item.periodEnd}
-      </span>
-    );
-  }
-  if (item.periodState === "spans_multiple") {
-    return <StateIndicator dimension="periodResolution" value="spans_multiple" label="Spans multiple" />;
-  }
-  return (
-    <div>
-      <StateIndicator dimension="periodResolution" value="unresolved" label="Unresolved" />
-      <div>
-        <button
-          className="s1-linklike"
-          type="button"
-          disabled={disabled || isWorking}
-          title={disabled ? BACKEND_DISABLED_REASON : undefined}
-          onClick={() => onStart(item.documentId)}
-        >
-          {isWorking ? "Working" : "Assign period"}
-        </button>
-      </div>
-    </div>
-  );
-}
+  const team = engagement.engagementTeam ?? [raiser];
+  const arrival = item.answeredRequestNumber != null ? `Answered request ${item.answeredRequestNumber}` : "Uploaded";
 
-function ProcessingCell({
-  item,
-  isProcessing,
-  onProcess,
-}: {
-  item: EvidenceItem;
-  isProcessing: boolean;
-  onProcess?: (documentId: string) => void;
-}) {
-  const labelByState: Record<ProcessingState, string> = {
-    not_ingested: "Not ingested",
-    ingested: "Ingested",
-    typed: "Typed",
-    extracted: "Extracted",
-    blocked: "Blocked",
-  };
   return (
-    <div>
-      <StateIndicator dimension="processing" value={item.processingState} label={labelByState[item.processingState]} />
-      {item.processingState === "blocked" ? <div className="s1-reason">{item.haltReason}</div> : null}
-      {onProcess && item.processingState !== "extracted" ? (
-        <button
-          className="s1-button s1-button--compact"
-          type="button"
-          disabled={isProcessing}
-          onClick={() => onProcess(item.documentId)}
-        >
-          {isProcessing ? "Processing" : "Process"}
-        </button>
-      ) : null}
-    </div>
-  );
-}
-
-function FlagCell({ item }: { item: EvidenceItem }) {
-  const relationshipLabels = item.relationships.map((relationship) => {
-    const labels = {
-      duplicate: "duplicate",
-      superseded_by: "superseded by",
-      supersedes: "supersedes",
-      conflicting_value: "conflicting value",
-    };
-    return `${labels[relationship.kind]} ${relationship.otherDocumentId}`;
-  });
-  const propertyLabels = item.documentProperties.map((property) => {
-    const labels = {
-      poor_scan: "poor scan quality",
-      foreign_language: "foreign language",
-      password_protected: "password protected",
-    };
-    return labels[property];
-  });
-  if (relationshipLabels.length + propertyLabels.length === 0) {
-    return <span className="s1-muted">none</span>;
-  }
-  return (
-    <div className="s1-chip-stack">
-      {relationshipLabels.map((label) => (
-        <span key={label}>{label}</span>
-      ))}
-      {propertyLabels.map((label) => (
-        <em key={label}>{label}</em>
-      ))}
-    </div>
-  );
-}
-
-function SupportiveEvidenceCards({ items }: { items: EvidenceItem[] }) {
-  if (items.length === 0) return null;
-  return (
-    <section className="s1-supportive-evidence" aria-label="Supportive evidence">
-      <div className="s1-supportive-evidence__label">Supportive evidence</div>
-      {items.map((item) => (
-        <article className="s1-supportive-card" key={item.documentId}>
-          <h3>{item.filename}</h3>
-          <div className="s1-supportive-card__meta">
-            <span>{item.reviewArea}</span>
-            <span>{item.uploadedBy.name} · {new Date(item.uploadedAt).toLocaleDateString()}</span>
-          </div>
-          <p>{item.note}</p>
-        </article>
-      ))}
-    </section>
-  );
-}
-
-function CompletenessPanel() {
-  return (
-    <section className="s1-panel">
-      <h3>Completeness</h3>
-      <table className="s1-printable-table">
-        <thead>
-          <tr>
-            <th align="left">Category</th>
-            <th align="left">Populated</th>
-            <th align="left">not yet</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>In-scope field list</td>
-            <td colSpan={2}>{EXACT_COPY.dependencyBlocked}</td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
-  );
-}
-
-function NonRetentionNotice() {
-  return (
-    <section className="s1-panel s1-notice" role="status">
-      <strong>Audit entries in this session are not retained.</strong>
-      <span>This build cannot be used for a live engagement.</span>
-    </section>
-  );
-}
-
-function ActivityRegion({ intents }: { intents: SessionAuditEntry[] }) {
-  const newest = [...intents].reverse();
-  return (
-    <section className="s1-panel">
-      <details>
-        <summary>Activity · {intents.length}</summary>
-        {newest.length > 0 ? (
-          <HistoryList intents={newest} />
-        ) : (
-          <p className="s1-muted">No session activity yet.</p>
-        )}
-      </details>
-    </section>
-  );
-}
-
-function HistoryList({ intents }: { intents: SessionAuditEntry[] }) {
-  if (intents.length === 0) {
-    return <p className="s1-muted">No history for this row in this session.</p>;
-  }
-  return (
-    <div className="s1-history-list">
-      {intents.map((intent) => (
-        <article
-          className={`s1-history-entry s1-history-entry--${intent.actor.actorType}`}
-          key={intent.entryId}
-        >
-          <div>
-            <strong>{actionLabel(intent.action)}</strong>
-            <span className="s1-muted"> · {intent.documentId}</span>
-          </div>
-          <div className="s1-mono s1-muted">
-            {intent.actor.name} · {new Date(intent.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-          </div>
+    <div className="s1-modal-scrim" role="presentation" onClick={onCancel}>
+      <div className="s1-modal" role="dialog" aria-modal="true" aria-label="Add to requests" onClick={(e) => e.stopPropagation()}>
+        <div className="s1-modal__head">
+          <strong>Add to requests</strong>
           <div className="s1-muted">
-            {formatAuditValue(intent.oldValue)} -&gt; {formatAuditValue(intent.newValue)}
+            {item.filename} · {facility} · {arrival} · {formatDate(item.uploadedAt)}
           </div>
-        </article>
-      ))}
+        </div>
+
+        <label className="s1-modal__field">
+          <span>Request type</span>
+          <select value={type} onChange={(e) => setType(e.target.value as RequestType)}>
+            {REQUEST_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="s1-modal__field">
+          <span>What is needed</span>
+          <textarea rows={3} value={whatIsNeeded} onChange={(e) => setWhatIsNeeded(e.target.value)} />
+        </label>
+
+        <label className="s1-modal__field">
+          <span>Raised by</span>
+          <select value={raisedBy} onChange={(e) => setRaisedBy(e.target.value)}>
+            {team.map((m) => (
+              <option key={m.login} value={m.login}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <p className="s1-muted s1-modal__note">
+          Goes to Evidence requests as not yet sent; nothing is sent from here.
+        </p>
+
+        <div className="s1-modal__actions">
+          <button
+            className="s1-button"
+            type="button"
+            onClick={() => {
+              const chosen = team.find((m) => m.login === raisedBy) ?? raiser;
+              onAdd({
+                documentId: item.documentId,
+                itemLabel: item.filename,
+                facilityName: item.facilityName,
+                period,
+                arrival,
+                type,
+                whatIsNeeded,
+                raisedByName: chosen.name,
+                raisedByLogin: chosen.login,
+              });
+            }}
+          >
+            Add
+          </button>
+          <button className="s1-button" type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
-function actionLabel(action: SessionAuditEntry["action"]) {
-  return action.replaceAll("_", " ");
+/* =============================== states =============================== */
+
+function FirstDayEmpty({ onUploadFiles, isUploading }: { onUploadFiles?: (files: FileList) => void; isUploading: boolean }) {
+  const [drag, setDrag] = useState(false);
+  return (
+    <div
+      className={`s1-band s1-upload s1-ws-firstday ${drag ? "s1-upload--drag" : ""} ${isUploading ? "s1-upload--busy" : ""}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDrag(true);
+      }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDrag(false);
+        if (e.dataTransfer.files.length && onUploadFiles) onUploadFiles(e.dataTransfer.files);
+      }}
+    >
+      <div>
+        <h3>No documents yet</h3>
+        <div className="s1-muted">Drop the client&rsquo;s package here to start. Each file appears as a row as it uploads.</div>
+      </div>
+      <label className="s1-button">
+        {isUploading ? "Uploading" : "Choose files"}
+        <input
+          className="s1-file-input"
+          type="file"
+          multiple
+          onChange={(e) => {
+            if (e.target.files?.length && onUploadFiles) onUploadFiles(e.target.files);
+          }}
+        />
+      </label>
+    </div>
+  );
 }
 
-function formatAuditValue(value: SessionAuditEntry["oldValue"]) {
-  if (value === null || value === undefined) return "not found";
-  return String(value);
+function RowRecord({ item, intents }: { item: EvidenceItem; intents: SessionAuditEntry[] }) {
+  const notes = item.notes ?? [];
+  return (
+    <div className="s1-ws-record">
+      {notes.length > 0 ? (
+        <div className="s1-ws-record__notes">
+          <strong>Notes</strong>
+          {notes.map((n) => (
+            <div key={n.id}>
+              <span className="s1-mono s1-muted">
+                {n.author} · {formatDate(n.at)}
+              </span>{" "}
+              {n.text}
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="s1-ws-record__log">
+        <strong>Activity</strong>
+        {intents.length === 0 ? (
+          <div className="s1-muted">No recorded activity for this row in this session.</div>
+        ) : (
+          [...intents].reverse().map((a) => (
+            <div key={a.entryId}>
+              <span className="s1-mono s1-muted">
+                {a.actor.name} · {new Date(a.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </span>{" "}
+              {a.action.replaceAll("_", " ")}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
 }
 
-function groupItems(items: EvidenceItem[], groupBy: GroupBy) {
-  if (groupBy === "none") {
-    return [{ label: null, items }];
+/* =============================== helpers =============================== */
+
+function groupByType(items: EvidenceItem[]): Array<{ type: string; items: EvidenceItem[] }> {
+  const map = new Map<string, EvidenceItem[]>();
+  for (const item of items) {
+    const type = item.detectedType ?? "Type unresolved";
+    map.set(type, [...(map.get(type) ?? []), item]);
   }
-  const groups = new Map<string, EvidenceItem[]>();
-  items.forEach((item) => {
-    const label =
-      groupBy === "facility"
-        ? item.facilityName ?? item.facilityState.replaceAll("_", " ")
-        : groupBy === "period"
-          ? item.periodState === "resolved"
-            ? `${item.periodStart} to ${item.periodEnd}`
-            : item.periodState.replaceAll("_", " ")
-          : item.detectedType ?? "not typed";
-    groups.set(label, [...(groups.get(label) ?? []), item]);
-  });
-  return Array.from(groups.entries()).map(([label, groupItems]) => ({ label, items: groupItems }));
+  const order = (t: string) => {
+    const i = TYPE_ORDER.indexOf(t);
+    return i === -1 ? TYPE_ORDER.length : i;
+  };
+  return Array.from(map.entries())
+    .map(([type, group]) => ({ type, items: sortDocs(group) }))
+    .sort((a, b) => order(a.type) - order(b.type));
+}
+
+function sortDocs(items: EvidenceItem[]): EvidenceItem[] {
+  return [...items].sort((a, b) => (a.periodStart ?? "").localeCompare(b.periodStart ?? ""));
+}
+
+function needsYou(item: EvidenceItem): boolean {
+  if (item.disposition !== "active") return false;
+  if (item.processingState === "blocked") return true;
+  if (item.detectedType == null || item.typeReviewBand === "cannot_determine" || item.typeReviewBand === "needs_review")
+    return true;
+  if (item.facilityState === "unresolved") return true;
+  if (item.relationships.length > 0) return true;
+  if (item.processingState === "extracted" && item.fieldsExpectedDisplay != null && item.fieldsExtracted < item.fieldsExpectedDisplay)
+    return true;
+  return false;
+}
+
+function processingDisplay(item: EvidenceItem): { role: string; label: string; sub: string | null } {
+  if (item.disposition === "withdrawn") return { role: "na", label: "Withdrawn", sub: null };
+  if (item.processingState === "blocked") return { role: "blocking", label: "Blocked", sub: item.haltReason };
+  if (
+    item.processingState === "extracted" &&
+    item.fieldsExpectedDisplay != null &&
+    item.fieldsExtracted < item.fieldsExpectedDisplay
+  ) {
+    const missing = item.missingFields && item.missingFields.length > 0 ? item.missingFields.join(", ") : null;
+    return {
+      role: "open",
+      label: "Partially extracted",
+      sub: missing ? `Not found: ${missing}` : `${item.fieldsExtracted} of ${item.fieldsExpectedDisplay} fields`,
+    };
+  }
+  if (item.processingState === "extracted") return { role: "resolved", label: "Extracted", sub: null };
+  if (item.processingState === "typed" || item.processingState === "ingested")
+    return { role: "active", label: "Extracting", sub: null };
+  return { role: "active", label: "Uploading", sub: null };
+}
+
+function issueLines(item: EvidenceItem, all: EvidenceItem[], engagement: EngagementConfig): string[] {
+  if (item.disposition === "withdrawn") return [];
+  const lines: string[] = [];
+  if (item.processingState === "blocked" && item.haltReason) lines.push(item.haltReason);
+  if (
+    item.processingState === "extracted" &&
+    item.fieldsExpectedDisplay != null &&
+    item.fieldsExtracted < item.fieldsExpectedDisplay &&
+    item.missingFields &&
+    item.missingFields.length > 0
+  ) {
+    lines.push(`Not found: ${item.missingFields.join(", ")}`);
+  }
+  for (const rel of item.relationships) {
+    const other = all.find((d) => d.documentId === rel.otherDocumentId);
+    const name = other?.filename ?? rel.otherDocumentId;
+    if (rel.kind === "duplicate") lines.push(`Duplicate of ${name}`);
+    else if (rel.kind === "conflicting_value") lines.push(`Conflicts with ${name}`);
+    else if (rel.kind === "supersedes") lines.push(`Supersedes ${name}`);
+    else if (rel.kind === "superseded_by") lines.push(`Superseded by ${name}`);
+  }
+  if (periodOutsideYear(item, engagement)) lines.push("Period outside reporting year");
+  return lines;
+}
+
+function periodOutsideYear(item: EvidenceItem, engagement: EngagementConfig): boolean {
+  if (item.periodState !== "resolved" || !item.periodStart || !item.periodEnd) return false;
+  return item.periodEnd < engagement.reportingPeriod.start || item.periodStart > engagement.reportingPeriod.end;
+}
+
+function latestAsk(asks: Ask[], documentId: string): Ask | null {
+  const forDoc = asks.filter((a) => a.source.documentId === documentId);
+  return forDoc.length ? forDoc[forDoc.length - 1] : null;
+}
+
+function preselectType(item: EvidenceItem): RequestType {
+  if (
+    item.processingState === "blocked" ||
+    (item.processingState === "extracted" &&
+      item.fieldsExpectedDisplay != null &&
+      item.fieldsExtracted < item.fieldsExpectedDisplay) ||
+    item.periodStart != null && item.periodStart < "2025-01-01"
+  ) {
+    return "replace_document";
+  }
+  return "missing_data";
+}
+
+function facilityLabel(item: EvidenceItem): string {
+  if (item.facilityState === "resolved") return item.facilityName ?? "facility";
+  if (item.facilityState === "multiple") return "multiple facilities";
+  if (item.facilityState === "not_facility_scoped") return "entity-level";
+  return "not yet known";
+}
+
+function periodLabel(item: EvidenceItem): string {
+  if (item.periodState === "resolved" && item.periodStart && item.periodEnd) {
+    return `${item.periodStart} to ${item.periodEnd}`;
+  }
+  if (item.periodState === "spans_multiple") return "spans multiple periods";
+  return "period not yet known";
+}
+
+function raisedByDefault(engagement: EngagementConfig) {
+  const team = engagement.engagementTeam ?? [];
+  const signed = team.find((m) => m.login === engagement.signedInLogin);
+  return signed ?? team[0] ?? { name: "You", login: "you" };
+}
+
+function describeFilter(facility: FacilityFilter, header: HeaderFilter, engagement: EngagementConfig): string {
+  const parts: string[] = [];
+  if (facility) {
+    if (facility === "multiple") parts.push("Multiple facilities");
+    else if (facility === "none") parts.push("No facility");
+    else if (facility === "unknown") parts.push("Not yet known");
+    else parts.push(engagement.facilities.find((f) => f.facilityId === facility)?.name ?? "facility");
+  }
+  if (header === "needs") parts.push("Needs you");
+  if (header === "arrived") parts.push("Arrived since last visit");
+  if (header === "blocked") parts.push("Blocked");
+  return parts.join(" + ") || "this filter";
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }

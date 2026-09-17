@@ -10,17 +10,15 @@ import {
   userFacingApiError,
 } from "../api/s1Backend";
 import { ExtractionReview } from "../components/ExtractionReview";
-import {
-  defaultWorkspaceState,
-  EvidenceWorkspace,
-  type EvidenceWorkspaceState,
-} from "../components/EvidenceWorkspace";
+import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { S1Chrome } from "../components/S1Chrome";
 import { StateIndicator } from "../components/StateIndicator";
 import { EXACT_COPY } from "../constants/copy";
 import { engagementConfig } from "../fixtures/engagementConfig";
-import { sixDocumentEvidence, supportiveEvidence } from "../fixtures/evidence/sixDocuments";
+import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
+import { seedAsks } from "../fixtures/requests/seedAsks";
 import { extractedFields } from "../fixtures/extraction/fields";
+import { useRequestsStore } from "../requests/requestsStore";
 import type { ContainerState, EvidenceItem, ExtractedField, StateDimension } from "../types";
 import type { SessionAuditEntry } from "../utils/auditIntent";
 
@@ -34,21 +32,14 @@ export function S1WorkpaperApp() {
   const [activeView, setActiveView] = useState<ActiveView>({ name: "evidence" });
   const [auditIntents, setAuditIntents] = useState<SessionAuditEntry[]>([]);
   const [demoState, setDemoState] = useState<ContainerState>(dataMode === "backend" ? "loading" : "populated");
-  const [workspaceState, setWorkspaceState] =
-    useState<EvidenceWorkspaceState>(defaultWorkspaceState);
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>(
-    dataMode === "backend" ? [] : sixDocumentEvidence
+    dataMode === "backend" ? [] : manufacturerEvidence
   );
   const [fieldItems, setFieldItems] = useState<ExtractedField[]>(extractedFields);
   const [isUploading, setIsUploading] = useState(false);
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (activeView.name === "evidence") {
-      window.requestAnimationFrame(() => window.scrollTo(0, workspaceState.scrollTop));
-    }
-  }, [activeView.name, workspaceState.scrollTop]);
+  const requests = useRequestsStore(dataMode === "backend" ? [] : seedAsks);
 
   useEffect(() => {
     if (dataMode !== "backend") return;
@@ -72,14 +63,8 @@ export function S1WorkpaperApp() {
     setAuditIntents((current) => [...current, intent]);
   }
 
-  function openExtraction(documentId: string, scrollTop: number) {
-    setWorkspaceState((current) => ({ ...current, scrollTop }));
+  function openExtraction(documentId: string) {
     setActiveView({ name: "extraction", documentId, mode: "snippet" });
-  }
-
-  function openManualEntry(documentId: string, scrollTop: number) {
-    setWorkspaceState((current) => ({ ...current, scrollTop }));
-    setActiveView({ name: "extraction", documentId, mode: "manual" });
   }
 
   async function handleUploadFiles(files: FileList) {
@@ -167,22 +152,17 @@ export function S1WorkpaperApp() {
           <EvidenceWorkspace
             engagement={engagementConfig}
             evidence={evidenceItems}
-            supportive={supportiveEvidence}
+            asks={requests.asks}
+            onSaveAsk={requests.saveAsk}
+            onResolveAsk={requests.resolveAsk}
             auditIntents={auditIntents}
-            demoState={demoState}
-            workspaceState={workspaceState}
             onAuditIntent={addAuditIntent}
-            onDemoState={setDemoState}
-            onWorkspaceState={setWorkspaceState}
+            demoState={demoState}
             onOpenExtraction={openExtraction}
-            onOpenManualEntry={openManualEntry}
             onUploadFiles={handleUploadFiles}
-            onProcessDocument={handleProcessDocument}
             isUploading={isUploading}
-            processingDocumentIds={processingDocumentIds}
             backendError={backendError}
-            workspaceWritesEnabled={dataMode !== "backend"}
-            showSessionAuditIntents={dataMode !== "backend"}
+            writesEnabled={dataMode !== "backend"}
           />
         ) : activeView.name === "extraction" ? (
           <ExtractionReview

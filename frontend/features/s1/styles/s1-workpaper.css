@@ -1048,3 +1048,82 @@ select:focus-visible,
     background: var(--sf-card);
   }
 }
+
+/* ==========================================================================
+   Evidence Workspace — revised spec (09/16). Structural only; all values
+   resolve to existing tokens (no new palette).
+   ========================================================================== */
+.s1-ws { display: flex; flex-direction: column; gap: var(--sp-4); }
+
+.s1-ws-header {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--sp-4); flex-wrap: wrap;
+}
+.s1-ws-header__id { display: flex; align-items: baseline; gap: var(--sp-3); flex-wrap: wrap; }
+.s1-ws-header__id h1 { font-size: var(--text-lg); font-weight: var(--weight-medium); margin: 0; }
+.s1-ws-header__counts { display: flex; gap: var(--sp-2); }
+.s1-ws-count {
+  font: inherit; font-size: var(--text-sm); cursor: pointer;
+  background: var(--sf-card); color: var(--ink-2);
+  border: var(--border-hairline); border-radius: var(--radius-chip);
+  padding: var(--sp-1) var(--sp-3);
+}
+.s1-ws-count:hover { border-color: var(--line-strong); }
+.s1-ws-count.is-on { border-color: var(--state-active-fg); background: var(--state-active-bg); color: var(--ink); }
+.s1-ws-count__n { font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; }
+
+.s1-ws-facilities { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.s1-ws-facchip {
+  font: inherit; font-size: var(--text-sm); cursor: pointer;
+  background: var(--sf-card); color: var(--ink);
+  border: var(--border-hairline); border-radius: var(--radius-chip);
+  padding: var(--sp-1) var(--sp-3);
+}
+.s1-ws-facchip:hover { border-color: var(--line-strong); }
+.s1-ws-facchip.is-on { border-color: var(--state-active-fg); background: var(--state-active-bg); }
+
+.s1-ws-table td { vertical-align: top; }
+.s1-ws-group td {
+  background: var(--sf-sunken); color: var(--ink);
+  font-weight: var(--weight-medium); font-size: var(--text-sm);
+  border-top: var(--border-strong);
+}
+.s1-ws-src { font-size: var(--text-xs); }
+.s1-ws-issues { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); color: var(--state-blocking-fg); }
+.s1-ws-notes { display: flex; flex-direction: column; gap: var(--sp-1); }
+.s1-ws-note-line { font-size: var(--text-sm); }
+.s1-ws-note-edit { display: flex; gap: var(--sp-1); align-items: center; }
+
+.s1-ws-empty, .s1-ws-firstday { text-align: left; }
+.s1-ws-empty { padding: var(--sp-5); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); }
+.s1-ws-firstday h3 { margin: 0 0 var(--sp-1); }
+
+.s1-ws-record { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-2) 0; }
+.s1-ws-record strong { display: block; font-size: var(--text-sm); margin-bottom: var(--sp-1); }
+.s1-ws-record__notes, .s1-ws-record__log { font-size: var(--text-sm); display: flex; flex-direction: column; gap: var(--sp-1); }
+
+.s1-ws-toast {
+  position: fixed; left: 50%; bottom: var(--sp-5); transform: translateX(-50%);
+  background: var(--ink); color: var(--sf-card); font-size: var(--text-sm);
+  padding: var(--sp-2) var(--sp-4); border-radius: var(--radius-chip); z-index: calc(var(--z-modal) + 1);
+}
+
+/* Add to requests modal */
+.s1-modal-scrim {
+  position: fixed; inset: 0; background: var(--scrim); z-index: var(--z-modal);
+  display: flex; align-items: flex-start; justify-content: center; padding-top: 10vh;
+}
+.s1-modal {
+  width: min(var(--modal-width), 92vw); background: var(--sf-card);
+  border: var(--border-strong); border-radius: var(--radius-card);
+  padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-3);
+}
+.s1-modal__head { display: flex; flex-direction: column; gap: var(--sp-1); }
+.s1-modal__field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); }
+.s1-modal__field select, .s1-modal__field textarea {
+  font: inherit; font-size: var(--text-md); color: var(--ink);
+  background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input);
+  padding: var(--sp-2);
+}
+.s1-modal__note { font-size: var(--text-xs); margin: 0; }
+.s1-modal__actions { display: flex; gap: var(--sp-2); }
