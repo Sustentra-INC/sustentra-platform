@@ -1302,3 +1302,9 @@ select:focus-visible,
 .s1-cov-table td, .s1-vr-table td { vertical-align: top; }
 .s1-vr-table select { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); }
 .s1-vr-note { font-size: var(--text-sm); }
+
+/* ---- Output (7) stub ---- */
+.s1-output { display: flex; flex-direction: column; gap: var(--sp-4); }
+.s1-output-card { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-2); max-width: 44rem; }
+.s1-output-card h2 { font-size: var(--text-lg); font-weight: var(--weight-medium); margin: var(--sp-2) 0 0; }
+.s1-output-card p { margin: 0; line-height: var(--leading-body); }

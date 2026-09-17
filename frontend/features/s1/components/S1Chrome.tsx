@@ -66,7 +66,7 @@ const DESTINATIONS: Array<{ key: NavKey; label: string; built: boolean }> = [
   { key: "requests", label: "Requests", built: true },
   { key: "coverage", label: "Check coverage", built: true },
   { key: "results", label: "Verification results", built: true },
-  { key: "output", label: "Output", built: false },
+  { key: "output", label: "Output", built: true },
 ];
 
 export function PrimaryNav({

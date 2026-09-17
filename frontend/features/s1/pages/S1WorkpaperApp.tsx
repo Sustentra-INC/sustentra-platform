@@ -16,6 +16,7 @@ import { SetupScreen } from "../components/SetupScreen";
 import { EvidenceRequests } from "../components/EvidenceRequests";
 import { CheckCoverage } from "../components/CheckCoverage";
 import { VerificationResults } from "../components/VerificationResults";
+import { OutputScreen } from "../components/OutputScreen";
 import { coverageRules } from "../fixtures/verification/coverageRules";
 import { verificationRows } from "../fixtures/verification/verificationResults";
 import { useVerificationStore } from "../verification/verificationStore";
@@ -39,6 +40,7 @@ type ActiveView =
   | { name: "requests" }
   | { name: "coverage" }
   | { name: "results" }
+  | { name: "output" }
   | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string }
   | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
 
@@ -127,6 +129,7 @@ export function S1WorkpaperApp() {
     requests: "requests",
     coverage: "coverage",
     results: "results",
+    output: "output",
   };
   const navCurrent: NavKey = NAV_FOR_VIEW[activeView.name] ?? "evidence";
   function onNavigate(key: NavKey) {
@@ -135,8 +138,8 @@ export function S1WorkpaperApp() {
     else if (key === "requests") setActiveView({ name: "requests" });
     else if (key === "coverage") setActiveView({ name: "coverage" });
     else if (key === "results") setActiveView({ name: "results" });
+    else if (key === "output") setActiveView({ name: "output" });
     else if (key === "evidence") setActiveView({ name: "evidence" });
-    // "output" is not built yet (disabled in the nav)
   }
 
   // Follow-up: a problem that came back becomes a new ask linked to the old one.
@@ -272,6 +275,8 @@ export function S1WorkpaperApp() {
           <CheckCoverage rules={coverageRules} />
         ) : activeView.name === "results" ? (
           <VerificationResults rows={verificationRows} store={verification} />
+        ) : activeView.name === "output" ? (
+          <OutputScreen />
         ) : activeView.name === "evidence" ? (
           <EvidenceWorkspace
             engagement={engagement}
