@@ -20,6 +20,9 @@ import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsMod
 interface ExtractionReviewProps {
   engagement: EngagementConfig;
   values: ReviewValue[];
+  /** Lifts review state (accept/correct/request) to app state so a verifier's
+   *  judgment survives navigation. Same pattern as the requests/findings stores. */
+  onValuesChange: (updater: (cur: ReviewValue[]) => ReviewValue[]) => void;
   initialDocumentId?: string | null;
   /** Facility->type (or entity/not-yet-known) node the clicked row maps to, so
    *  a row whose exact document has no extracted value still deep-links to the
@@ -39,8 +42,10 @@ const SCOPE_LABEL: Record<ScopePlacement, string> = {
 
 const REVIEW_CAP = 60; // stressor render cap; the count still shows the true total
 
-export function ExtractionReview({ engagement, values, initialDocumentId, initialNodeKey, onSaveAsk, onBack }: ExtractionReviewProps) {
-  const [items, setItems] = useState<ReviewValue[]>(values);
+export function ExtractionReview({ engagement, values, onValuesChange, initialDocumentId, initialNodeKey, onSaveAsk, onBack }: ExtractionReviewProps) {
+  // Review data lives in app state (via onValuesChange); selection below is
+  // local, ephemeral UI. So accepts/corrections/requests survive navigation.
+  const items = values;
 
   const initial = useMemo(
     () => resolveInitial(items, initialDocumentId, initialNodeKey),
@@ -88,7 +93,7 @@ export function ExtractionReview({ engagement, values, initialDocumentId, initia
 
   function accept(v: ReviewValue) {
     const now = new Date().toISOString();
-    setItems((cur) =>
+    onValuesChange((cur) =>
       cur.map((x) =>
         x.id === v.id
           ? {
@@ -135,12 +140,11 @@ export function ExtractionReview({ engagement, values, initialDocumentId, initia
     }
   }
 
-  function onCorrect() {
-    // Revision: button present, record shape wired, edit surface deferred.
-    // TODO(product): build the inline editor (number · unit · field · facility ·
-    // period, with "not a value" last) once verifier feedback lands.
-    flash("Correct — edit surface pending product confirmation");
-  }
+  // Correct: per the revision, the control is present and the record shape is
+  // wired (corrected values keep the machine original visible), but the inline
+  // editor is deferred — the button renders disabled with a reason.
+  // TODO(product): build the inline editor (number · unit · field · facility ·
+  // period, with "not a value" last) once verifier feedback lands.
 
   function openAddToRequests(v: ReviewValue) {
     const facilityName = v.facilityId ? engagement.facilities.find((f) => f.facilityId === v.facilityId)?.name ?? null : null;
@@ -150,7 +154,8 @@ export function ExtractionReview({ engagement, values, initialDocumentId, initia
       origin: "review_value",
       documentId: v.documentId,
       fieldKey: v.id,
-      itemLabel: v.whatItIs,
+      // The value WITH its document name (spec) — this shows on Evidence requests.
+      itemLabel: `${v.whatItIs} — ${v.filename}`,
       facilityName,
       period: v.period,
       sourcePage: v.page,
@@ -165,7 +170,7 @@ export function ExtractionReview({ engagement, values, initialDocumentId, initia
     onSaveAsk(draft);
     if (modalTarget?.fieldKey) {
       const now = new Date().toISOString();
-      setItems((cur) =>
+      onValuesChange((cur) =>
         cur.map((x) =>
           x.id === modalTarget.fieldKey
             ? {
@@ -278,7 +283,6 @@ export function ExtractionReview({ engagement, values, initialDocumentId, initia
                       selected={selectedId === v.id}
                       onSelect={() => selectValue(v)}
                       onAccept={() => accept(v)}
-                      onCorrect={onCorrect}
                       onAddToRequests={() => openAddToRequests(v)}
                     />
                   ))}
@@ -322,14 +326,12 @@ function ValueCard({
   selected,
   onSelect,
   onAccept,
-  onCorrect,
   onAddToRequests,
 }: {
   v: ReviewValue;
   selected: boolean;
   onSelect: () => void;
   onAccept: () => void;
-  onCorrect: () => void;
   onAddToRequests: () => void;
 }) {
   const done = v.reviewState !== "to_review";
@@ -386,7 +388,7 @@ function ValueCard({
               <button className="s1-button" type="button" onClick={onAccept}>
                 Accept
               </button>
-              <button className="s1-button" type="button" onClick={onCorrect} title="Edit surface pending product confirmation">
+              <button className="s1-button" type="button" disabled title="Edit surface pending product confirmation">
                 Correct
               </button>
               <button className="s1-button" type="button" onClick={onAddToRequests}>

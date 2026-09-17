@@ -30,7 +30,7 @@ import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
 import { seedAsks } from "../fixtures/requests/seedAsks";
 import { makeUploadItem, classifyGuess } from "../fixtures/upload/simulateUpload";
 import { useRequestsStore } from "../requests/requestsStore";
-import type { ContainerState, EvidenceItem, StateDimension } from "../types";
+import type { ContainerState, EvidenceItem, ReviewValue, StateDimension } from "../types";
 import type { SessionAuditEntry } from "../utils/auditIntent";
 
 type ActiveView =
@@ -60,6 +60,9 @@ export function S1WorkpaperApp() {
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>(
     dataMode === "backend" ? [] : manufacturerEvidence
   );
+  // Extraction review data lifted to app state so accepts/corrections survive
+  // navigation (fixture mode; backend mode fetches its own).
+  const [reviewValues, setReviewValues] = useState<ReviewValue[]>(dataMode === "backend" ? [] : manufacturerValues);
   const [isUploading, setIsUploading] = useState(false);
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
@@ -284,6 +287,7 @@ export function S1WorkpaperApp() {
             asks={requests.asks}
             onSaveAsk={requests.saveAsk}
             onResolveAsk={requests.resolveAsk}
+            onEvidenceChange={setEvidenceItems}
             onOpenRequests={() => setActiveView({ name: "requests" })}
             auditIntents={auditIntents}
             onAuditIntent={addAuditIntent}
@@ -297,7 +301,8 @@ export function S1WorkpaperApp() {
         ) : activeView.name === "extraction" ? (
           <ExtractionReview
             engagement={engagement}
-            values={manufacturerValues}
+            values={reviewValues}
+            onValuesChange={setReviewValues}
             initialDocumentId={activeView.documentId}
             initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}

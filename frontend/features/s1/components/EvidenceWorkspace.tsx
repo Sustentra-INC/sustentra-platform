@@ -62,6 +62,9 @@ interface EvidenceWorkspaceProps {
   asks: Ask[];
   onSaveAsk: (draft: AskDraft) => void;
   onResolveAsk?: (askId: string) => void;
+  /** Lifts manual edits (set type/facility, note, withdraw, mark relationship)
+   *  to app state so they survive navigation. Same pattern as the other stores. */
+  onEvidenceChange: (updater: (cur: EvidenceItem[]) => EvidenceItem[]) => void;
   onOpenExtraction: (documentId: string) => void;
   onOpenRequests?: () => void;
   onOpenSetup?: () => void;
@@ -83,6 +86,7 @@ export function EvidenceWorkspace({
   asks,
   onSaveAsk,
   onResolveAsk,
+  onEvidenceChange,
   onOpenExtraction,
   onOpenRequests,
   onOpenSetup,
@@ -94,7 +98,9 @@ export function EvidenceWorkspace({
   auditIntents = [],
   onAuditIntent,
 }: EvidenceWorkspaceProps) {
-  const [items, setItems] = useState<EvidenceItem[]>(evidence);
+  // Evidence data lives in app state (via onEvidenceChange); filters/menus below
+  // are local, ephemeral UI. So manual edits survive navigation.
+  const items = evidence;
   const [facilityFilter, setFacilityFilter] = useState<FacilityFilter>(null);
   const [headerFilter, setHeaderFilter] = useState<HeaderFilter>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -105,8 +111,6 @@ export function EvidenceWorkspace({
   const [modalDoc, setModalDoc] = useState<EvidenceItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
-
-  useEffect(() => setItems(evidence), [evidence]);
 
   function flash(message: string) {
     setToast(message);
@@ -178,7 +182,7 @@ export function EvidenceWorkspace({
 
   function setType(documentId: string, nextType: string) {
     const prev = items.find((i) => i.documentId === documentId)?.detectedType ?? null;
-    setItems((cur) =>
+    onEvidenceChange((cur) =>
       cur.map((i) =>
         i.documentId === documentId
           ? { ...i, detectedType: nextType, typeReviewBand: null, typeReviewReason: null }
@@ -193,7 +197,7 @@ export function EvidenceWorkspace({
   function setFacility(documentId: string, facilityId: string) {
     const facility = engagement.facilities.find((f) => f.facilityId === facilityId);
     if (!facility) return;
-    setItems((cur) =>
+    onEvidenceChange((cur) =>
       cur.map((i) =>
         i.documentId === documentId
           ? { ...i, facilityState: "resolved", facilityId: facility.facilityId, facilityName: facility.name }
@@ -214,7 +218,7 @@ export function EvidenceWorkspace({
       at: new Date().toISOString(),
       text,
     };
-    setItems((cur) =>
+    onEvidenceChange((cur) =>
       cur.map((i) =>
         i.documentId === documentId ? { ...i, note: text, notes: [...(i.notes ?? []), entry] } : i
       )
@@ -237,7 +241,7 @@ export function EvidenceWorkspace({
       flash(`No file matched "${label}"`);
       return;
     }
-    setItems((cur) =>
+    onEvidenceChange((cur) =>
       cur.map((i) =>
         i.documentId === documentId
           ? { ...i, relationships: [...i.relationships, { kind, otherDocumentId: target.documentId }] }
@@ -263,13 +267,13 @@ export function EvidenceWorkspace({
     const item = items.find((i) => i.documentId === documentId);
     if (!item) return;
     if (!window.confirm(`Withdraw ${item.filename}? The row stays, greyed, and the action is logged.`)) return;
-    setItems((cur) => cur.map((i) => (i.documentId === documentId ? { ...i, disposition: "withdrawn" } : i)));
+    onEvidenceChange((cur) => cur.map((i) => (i.documentId === documentId ? { ...i, disposition: "withdrawn" } : i)));
     record("withdraw_document", documentId, "active", "withdrawn");
     flash(`Withdrew ${item.filename}`);
   }
 
   function reinstate(documentId: string) {
-    setItems((cur) => cur.map((i) => (i.documentId === documentId ? { ...i, disposition: "active" } : i)));
+    onEvidenceChange((cur) => cur.map((i) => (i.documentId === documentId ? { ...i, disposition: "active" } : i)));
     record("reinstate_document", documentId, "withdrawn", "active");
   }
 
