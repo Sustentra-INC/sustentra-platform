@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import {
   listWorkspaceEvidence,
   processDocument,
-  submitFieldReview,
   uploadDocument,
   userFacingApiError,
 } from "../api/s1Backend";
@@ -16,10 +15,10 @@ import { StateIndicator } from "../components/StateIndicator";
 import { EXACT_COPY } from "../constants/copy";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
+import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
 import { seedAsks } from "../fixtures/requests/seedAsks";
-import { extractedFields } from "../fixtures/extraction/fields";
 import { useRequestsStore } from "../requests/requestsStore";
-import type { ContainerState, EvidenceItem, ExtractedField, StateDimension } from "../types";
+import type { ContainerState, EvidenceItem, StateDimension } from "../types";
 import type { SessionAuditEntry } from "../utils/auditIntent";
 
 type ActiveView =
@@ -35,7 +34,6 @@ export function S1WorkpaperApp() {
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>(
     dataMode === "backend" ? [] : manufacturerEvidence
   );
-  const [fieldItems, setFieldItems] = useState<ExtractedField[]>(extractedFields);
   const [isUploading, setIsUploading] = useState(false);
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
@@ -51,7 +49,6 @@ export function S1WorkpaperApp() {
     try {
       const workspace = await listWorkspaceEvidence(engagementConfig.engagementId);
       setEvidenceItems(workspace.evidence);
-      setFieldItems(workspace.fields);
       setDemoState(nextContainerState ?? (workspace.evidence.length === 0 ? "empty_nothing_yet" : "populated"));
     } catch (error) {
       setBackendError(error instanceof Error ? error.message : "Could not reach the backend API.");
@@ -166,14 +163,10 @@ export function S1WorkpaperApp() {
           />
         ) : activeView.name === "extraction" ? (
           <ExtractionReview
-            documents={evidenceItems}
-            fields={fieldItems}
+            engagement={engagementConfig}
+            values={manufacturerValues}
             initialDocumentId={activeView.documentId}
-            mode={activeView.mode ?? "snippet"}
-            auditIntents={auditIntents}
-            onAuditIntent={addAuditIntent}
-            onPersistReview={dataMode === "backend" ? submitFieldReview : undefined}
-            showSessionAuditIntents={dataMode !== "backend"}
+            onSaveAsk={requests.saveAsk}
             onBack={() => setActiveView({ name: "evidence" })}
           />
         ) : (

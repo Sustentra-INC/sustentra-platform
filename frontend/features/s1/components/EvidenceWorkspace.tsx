@@ -11,8 +11,9 @@ import type {
   NoteEntry,
   RequestType,
 } from "../types";
-import { REQUEST_TYPES } from "../types/requests";
 import { StateIndicator } from "./StateIndicator";
+import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import type { AskDraft } from "../requests/requestsStore";
 
 /**
  * Evidence Workspace (screen 2), built to the 09/16 revision. One table, one
@@ -54,23 +55,11 @@ const TYPE_ORDER: string[] = [
 
 const SET_TYPE_OPTIONS = TYPE_ORDER.filter((type) => type !== "Type unresolved");
 
-export interface NewAskInput {
-  documentId: string;
-  itemLabel: string;
-  facilityName: string | null;
-  period: string | null;
-  arrival: string | null;
-  type: RequestType;
-  whatIsNeeded: string;
-  raisedByName: string;
-  raisedByLogin: string;
-}
-
 interface EvidenceWorkspaceProps {
   engagement: EngagementConfig;
   evidence: EvidenceItem[];
   asks: Ask[];
-  onSaveAsk: (input: NewAskInput) => void;
+  onSaveAsk: (draft: AskDraft) => void;
   onResolveAsk?: (askId: string) => void;
   onOpenExtraction: (documentId: string) => void;
   onOpenRequests?: () => void;
@@ -283,8 +272,8 @@ export function EvidenceWorkspace({
     record("reinstate_document", documentId, "withdrawn", "active");
   }
 
-  function submitAsk(input: NewAskInput) {
-    onSaveAsk(input);
+  function submitAsk(draft: AskDraft) {
+    onSaveAsk(draft);
     setModalDoc(null);
     flash("Added to requests · not yet sent");
   }
@@ -428,7 +417,7 @@ export function EvidenceWorkspace({
 
       {modalDoc ? (
         <AddToRequestsModal
-          item={modalDoc}
+          target={workspaceTarget(modalDoc)}
           engagement={engagement}
           onCancel={() => setModalDoc(null)}
           onAdd={submitAsk}
@@ -933,101 +922,23 @@ function RowMenu({
   );
 }
 
-/* ======================= Add to requests modal ======================= */
+/* ======================= Add to requests target ======================= */
 
-function AddToRequestsModal({
-  item,
-  engagement,
-  onCancel,
-  onAdd,
-}: {
-  item: EvidenceItem;
-  engagement: EngagementConfig;
-  onCancel: () => void;
-  onAdd: (input: NewAskInput) => void;
-}) {
-  const defaultType = preselectType(item);
-  const [type, setType] = useState<RequestType>(defaultType);
+function workspaceTarget(item: EvidenceItem): AddToRequestsTarget {
   const facility = facilityLabel(item);
   const period = periodLabel(item);
-  const [whatIsNeeded, setWhatIsNeeded] = useState(
-    `${item.filename} · ${facility} · ${period}: `
-  );
-  const raiser = raisedByDefault(engagement);
-  const [raisedBy, setRaisedBy] = useState(raiser.login);
-
-  const team = engagement.engagementTeam ?? [raiser];
   const arrival = item.answeredRequestNumber != null ? `Answered request ${item.answeredRequestNumber}` : "Uploaded";
-
-  return (
-    <div className="s1-modal-scrim" role="presentation" onClick={onCancel}>
-      <div className="s1-modal" role="dialog" aria-modal="true" aria-label="Add to requests" onClick={(e) => e.stopPropagation()}>
-        <div className="s1-modal__head">
-          <strong>Add to requests</strong>
-          <div className="s1-muted">
-            {item.filename} · {facility} · {arrival} · {formatDate(item.uploadedAt)}
-          </div>
-        </div>
-
-        <label className="s1-modal__field">
-          <span>Request type</span>
-          <select value={type} onChange={(e) => setType(e.target.value as RequestType)}>
-            {REQUEST_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="s1-modal__field">
-          <span>What is needed</span>
-          <textarea rows={3} value={whatIsNeeded} onChange={(e) => setWhatIsNeeded(e.target.value)} />
-        </label>
-
-        <label className="s1-modal__field">
-          <span>Raised by</span>
-          <select value={raisedBy} onChange={(e) => setRaisedBy(e.target.value)}>
-            {team.map((m) => (
-              <option key={m.login} value={m.login}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <p className="s1-muted s1-modal__note">
-          Goes to Evidence requests as not yet sent; nothing is sent from here.
-        </p>
-
-        <div className="s1-modal__actions">
-          <button
-            className="s1-button"
-            type="button"
-            onClick={() => {
-              const chosen = team.find((m) => m.login === raisedBy) ?? raiser;
-              onAdd({
-                documentId: item.documentId,
-                itemLabel: item.filename,
-                facilityName: item.facilityName,
-                period,
-                arrival,
-                type,
-                whatIsNeeded,
-                raisedByName: chosen.name,
-                raisedByLogin: chosen.login,
-              });
-            }}
-          >
-            Add
-          </button>
-          <button className="s1-button" type="button" onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return {
+    origin: "workspace_document",
+    documentId: item.documentId,
+    itemLabel: item.filename,
+    facilityName: item.facilityName,
+    period,
+    arrival,
+    headerLine: `${item.filename} · ${facility} · ${arrival} · ${formatDate(item.uploadedAt)}`,
+    defaultType: preselectType(item),
+    prefill: `${item.filename} · ${facility} · ${period}: `,
+  };
 }
 
 /* =============================== states =============================== */

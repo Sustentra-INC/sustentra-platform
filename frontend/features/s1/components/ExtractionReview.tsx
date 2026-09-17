@@ -1,882 +1,648 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type RefObject } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 
-import { EXACT_COPY } from "../constants/copy";
-import { inlineDocumentUrl } from "../adapters/evidenceAdapter";
-import {
-  manualEntryFieldsForType,
-  type ManualEntryFieldDefinition,
-} from "../fixtures/extraction/manualEntryFields";
-import { useKeyboardNavigation } from "../hooks/useKeyboardNavigation";
-import type { SessionAuditEntry } from "../utils/auditIntent";
-import { createAuditIntent, createCorrectionAuditIntents } from "../utils/auditIntent";
-import type { EvidenceItem, ExtractedField } from "../types";
-import { StateIndicator } from "./StateIndicator";
+import type { EngagementConfig } from "../types";
+import type { ReviewValue, ScopePlacement, ValueReviewState } from "../types/review";
+import type { AskDraft } from "../requests/requestsStore";
+import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+
+/**
+ * Extraction Review (screen 3), built to the 09/16 revision. Three panes:
+ * navigator (facility -> type, entity-level workbook sections, not-yet-known) ·
+ * values as cards · source at the page with the selected value highlighted.
+ *
+ * Correct: per the revision, the button is rendered and the record shape is
+ * wired (corrected values keep the machine original visible), but the inline
+ * edit surface is deferred pending verifier feedback — see onCorrect.
+ */
 
 interface ExtractionReviewProps {
-  documents: EvidenceItem[];
-  fields: ExtractedField[];
-  initialDocumentId: string;
-  auditIntents: SessionAuditEntry[];
-  onAuditIntent: (intent: SessionAuditEntry) => void;
-  onPersistReview?: (payload: {
-    field: ExtractedField;
-    decision: "accepted" | "edited";
-    reviewedValue?: string | null;
-    reviewerNote?: string | null;
-  }) => Promise<void>;
-  showSessionAuditIntents?: boolean;
-  mode?: "snippet" | "manual";
+  engagement: EngagementConfig;
+  values: ReviewValue[];
+  initialDocumentId?: string | null;
+  onSaveAsk: (draft: AskDraft) => void;
   onBack: () => void;
 }
 
-export function ExtractionReview({
-  documents,
-  fields,
-  initialDocumentId,
-  auditIntents,
-  onAuditIntent,
-  onPersistReview,
-  showSessionAuditIntents = true,
-  mode = "snippet",
-  onBack,
-}: ExtractionReviewProps) {
-  const [fieldItems, setFieldItems] = useState(fields);
-  const [manualFields, setManualFields] = useState<ExtractedField[]>([]);
-  const reviewableFields = fieldItems.filter((field) => field.valueOrigin === "extracted");
-  const [selectedDocumentId, setSelectedDocumentId] = useState(initialDocumentId);
-  const selectedDocument = documents.find((document) => document.documentId === selectedDocumentId) ?? documents[0];
-  const manualEntryType = manualEntryTypeForDocument(selectedDocument);
-  const manualDefinitions = useMemo(
-    () => manualEntryFieldsForType(manualEntryType),
-    [manualEntryType]
-  );
-  const selectedDocumentFields =
-    mode === "manual"
-      ? manualFields.filter((field) => field.documentId === selectedDocumentId)
-      : reviewableFields.filter((field) => field.documentId === selectedDocumentId);
-  const firstUnreviewed = firstDefaultField(selectedDocumentFields);
-  const [selectedFieldKey, setSelectedFieldKey] = useState(firstUnreviewed?.fieldKey ?? selectedDocumentFields[0]?.fieldKey);
-  const [editingFieldKey, setEditingFieldKey] = useState<string | null>(null);
-  const [draftValue, setDraftValue] = useState("");
-  const [workingFieldKeys, setWorkingFieldKeys] = useState<string[]>([]);
-  const draftInputRef = useRef<HTMLInputElement>(null);
+const SCOPE_LABEL: Record<ScopePlacement, string> = {
+  general: "General",
+  scope1: "Scope 1",
+  scope2_location: "Scope 2 · location-based",
+  scope2_market: "Scope 2 · market-based",
+  not_placed: "Not placed",
+};
 
-  useEffect(() => {
-    setFieldItems(fields);
-  }, [fields]);
+const REVIEW_CAP = 60; // stressor render cap; the count still shows the true total
 
-  useEffect(() => {
-    if (mode !== "manual" || !selectedDocument) return;
-    setManualFields(
-      manualDefinitions.map((definition) =>
-        manualFieldFromDefinition(selectedDocument.documentId, manualEntryType, definition)
+export function ExtractionReview({ engagement, values, initialDocumentId, onSaveAsk, onBack }: ExtractionReviewProps) {
+  const [items, setItems] = useState<ReviewValue[]>(values);
+
+  const initial = useMemo(() => {
+    const seed = initialDocumentId ? items.find((v) => v.documentId === initialDocumentId) : items[0];
+    return seed ?? items[0] ?? null;
+  }, [initialDocumentId, items]);
+
+  const [nodeKey, setNodeKey] = useState<string>(initial ? nodeKeyForValue(initial) : "");
+  const [selectedId, setSelectedId] = useState<string | null>(initial?.id ?? null);
+  const [filter, setFilter] = useState<ValueReviewState | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial ? [rootKeyOf(initial)] : []));
+  const [modalTarget, setModalTarget] = useState<AddToRequestsTarget | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimer = useRef<number | null>(null);
+
+  function flash(message: string) {
+    setToast(message);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+  }
+
+  const tree = useMemo(() => buildTree(items, engagement), [items, engagement]);
+  const nodeValues = useMemo(() => valuesForNode(items, nodeKey), [items, nodeKey]);
+  const filtered = filter ? nodeValues.filter((v) => v.reviewState === filter) : nodeValues;
+  const selected = items.find((v) => v.id === selectedId) ?? null;
+
+  const counts = useMemo(() => {
+    const c = { to_review: 0, accepted: 0, corrected: 0, requested: 0 };
+    nodeValues.forEach((v) => (c[v.reviewState] += 1));
+    return c;
+  }, [nodeValues]);
+
+  const flatNodeOrder = useMemo(() => flattenSelectableNodes(tree), [tree]);
+
+  function selectNode(key: string) {
+    setNodeKey(key);
+    setFilter(null);
+    const first = valuesForNode(items, key);
+    const firstToReview = first.find((v) => v.reviewState === "to_review") ?? first[0];
+    setSelectedId(firstToReview?.id ?? null);
+  }
+
+  function selectValue(v: ReviewValue) {
+    setSelectedId(v.id);
+  }
+
+  function accept(v: ReviewValue) {
+    const now = new Date().toISOString();
+    setItems((cur) =>
+      cur.map((x) =>
+        x.id === v.id
+          ? {
+              ...x,
+              reviewState: "accepted",
+              record: [...x.record, { kind: "human", actor: "M. Osei", at: now, action: "accepted as read" }],
+            }
+          : x
       )
     );
-  }, [manualDefinitions, manualEntryType, mode, selectedDocument]);
+    flash("Accepted — number, unit, field, facility and period confirmed");
+    advanceFrom(v);
+  }
 
-  useEffect(() => {
-    const docFields =
-      mode === "manual"
-        ? manualFields.filter((field) => field.documentId === selectedDocumentId)
-        : fieldItems.filter(
-            (field) => field.valueOrigin === "extracted" && field.documentId === selectedDocumentId
-          );
-    const first = firstDefaultField(docFields) ?? docFields[0];
-    setSelectedFieldKey(first?.fieldKey);
-  }, [fieldItems, manualFields, mode, selectedDocumentId]);
-
-  useEffect(() => {
-    if (editingFieldKey) {
-      draftInputRef.current?.focus();
-      draftInputRef.current?.select();
+  function advanceFrom(v: ReviewValue) {
+    // next to-review in the current node, else first to-review in the next node
+    const here = valuesForNode(items, nodeKey).filter((x) => x.id !== v.id || x.reviewState !== "to_review");
+    const next = here.find((x) => x.reviewState === "to_review");
+    if (next) {
+      setSelectedId(next.id);
+      return;
     }
-  }, [editingFieldKey]);
-
-  const queue = useMemo(() => {
-    return documents
-      .map((document) => {
-        const docFields =
-          mode === "manual" && document.documentId === selectedDocumentId
-            ? selectedDocumentFields
-            : reviewableFields.filter((field) => field.documentId === document.documentId);
-        if (mode !== "manual" && docFields.length === 0 && document.documentId !== selectedDocumentId) return null;
-        if (mode === "manual" && document.documentId !== selectedDocumentId) return null;
-        return {
-          documentId: document.documentId,
-          filename: document.filename,
-          facility: document.facilityName ?? document.facilityState.replaceAll("_", " "),
-          period:
-            document.periodState === "resolved"
-              ? `${document.periodStart} to ${document.periodEnd}`
-              : document.periodState.replaceAll("_", " "),
-          reviewedCount: docFields.filter((field) => field.reviewStatus !== "unreviewed").length,
-          fieldCount: docFields.length,
-          manual: mode === "manual",
-        };
-      })
-      .filter((item): item is NonNullable<typeof item> => item !== null);
-  }, [documents, mode, reviewableFields, selectedDocumentFields, selectedDocumentId]);
-
-  const selectedField =
-    selectedDocumentFields.find((field) => field.fieldKey === selectedFieldKey) ??
-    selectedDocumentFields[0];
-  const selectedDocumentHasNoFields = selectedDocumentFields.length === 0;
-  const selectedFieldIndex = Math.max(
-    selectedDocumentFields.findIndex((field) => field.fieldKey === selectedField?.fieldKey),
-    0
-  );
-  const handleFieldKeys = useKeyboardNavigation({
-    currentIndex: selectedFieldIndex,
-    itemCount: selectedDocumentFields.length,
-    onMove: (nextIndex) => {
-      const next = selectedDocumentFields[nextIndex];
-      if (next) selectField(next.fieldKey);
-    },
-    onEnter: () => {
-      if (!selectedField) return;
-      if (mode === "manual") {
-        setEditingFieldKey(selectedField.fieldKey);
-        setDraftValue("");
+    const idx = flatNodeOrder.indexOf(nodeKey);
+    for (let i = idx + 1; i < flatNodeOrder.length; i += 1) {
+      const nk = flatNodeOrder[i];
+      const first = valuesForNode(items, nk).find((x) => x.reviewState === "to_review");
+      if (first) {
+        setNodeKey(nk);
+        setSelectedId(first.id);
+        setExpanded((s) => new Set(s).add(rootKeyFromNode(nk)));
         return;
       }
-      void acceptValue(selectedField);
-    },
-    onEscape: () => setEditingFieldKey(null),
-  });
-
-  function selectDocument(documentId: string) {
-    const docFields =
-      mode === "manual"
-        ? manualFields.filter((field) => field.documentId === documentId)
-        : reviewableFields.filter((field) => field.documentId === documentId);
-    const first = firstDefaultField(docFields) ?? docFields[0];
-    setSelectedDocumentId(documentId);
-    setSelectedFieldKey(first?.fieldKey);
-    setEditingFieldKey(null);
-  }
-
-  function selectField(fieldKey: string) {
-    setSelectedFieldKey(fieldKey);
-    setEditingFieldKey(null);
-  }
-
-  function advanceFrom(fieldKey: string, updatedFields: ExtractedField[]) {
-    const currentIndex = selectedDocumentFields.findIndex((field) => field.fieldKey === fieldKey);
-    const next =
-      selectedDocumentFields
-        .slice(currentIndex + 1)
-        .find((field) => updatedFields.find((updated) => updated.fieldKey === field.fieldKey)?.reviewStatus === "unreviewed") ??
-      selectedDocumentFields.find((field) => updatedFields.find((updated) => updated.fieldKey === field.fieldKey)?.reviewStatus === "unreviewed");
-    if (next) {
-      setSelectedFieldKey(next.fieldKey);
     }
   }
 
-  async function acceptValue(field: ExtractedField) {
-    if (workingFieldKeys.includes(field.fieldKey)) return;
-    setWorkingFieldKeys((current) => [...new Set([...current, field.fieldKey])]);
-    const updated = fieldItems.map((candidate) =>
-      candidate.fieldKey === field.fieldKey ? { ...candidate, reviewStatus: "accepted" as const } : candidate
+  function onCorrect() {
+    // Revision: button present, record shape wired, edit surface deferred.
+    // TODO(product): build the inline editor (number · unit · field · facility ·
+    // period, with "not a value" last) once verifier feedback lands.
+    flash("Correct — edit surface pending product confirmation");
+  }
+
+  function openAddToRequests(v: ReviewValue) {
+    const facilityName = v.facilityId ? engagement.facilities.find((f) => f.facilityId === v.facilityId)?.name ?? null : null;
+    const scope = SCOPE_LABEL[v.scope];
+    const facLabel = facilityName ?? (v.entityLevel ? "entity-level" : "not yet known");
+    setModalTarget({
+      origin: "review_value",
+      documentId: v.documentId,
+      fieldKey: v.id,
+      itemLabel: v.whatItIs,
+      facilityName,
+      period: v.period,
+      sourcePage: v.page,
+      headerLine: `${v.filename} · page ${v.page} · ${v.whatItIs} · ${scope} · ${facLabel} · ${v.period}`,
+      defaultType: v.requestPreselect ?? "clarify",
+      // pre-fill order: document, value, scope, facility, period, then a colon
+      prefill: `${v.filename} · ${v.value} ${v.unit} · ${scope} · ${facLabel} · ${v.period}: `,
+    });
+  }
+
+  function submitAsk(draft: AskDraft) {
+    onSaveAsk(draft);
+    if (modalTarget?.fieldKey) {
+      const now = new Date().toISOString();
+      setItems((cur) =>
+        cur.map((x) =>
+          x.id === modalTarget.fieldKey
+            ? {
+                ...x,
+                reviewState: "requested",
+                record: [...x.record, { kind: "human", actor: "M. Osei", at: now, action: "requested from client" }],
+              }
+            : x
+        )
+      );
+    }
+    setModalTarget(null);
+    flash("Added to requests · not yet sent");
+  }
+
+  if (items.length === 0) {
+    return (
+      <section className="s1-content s1-xr">
+        <button className="s1-linklike" type="button" onClick={onBack}>
+          ‹ Back to evidence
+        </button>
+        <div className="s1-ws-empty">No values to review yet.</div>
+      </section>
     );
-    try {
-      await onPersistReview?.({ field, decision: "accepted" });
-      setFieldItems(updated);
-      onAuditIntent(
-        createAuditIntent({
-          action: "accept_value",
-          documentId: field.documentId,
-          fieldKey: field.fieldKey,
-          oldValue: field.value,
-          newValue: field.value,
-        })
-      );
-      advanceFrom(field.fieldKey, updated);
-    } finally {
-      setWorkingFieldKeys((current) => current.filter((key) => key !== field.fieldKey));
-    }
-  }
-
-  async function saveDraft(field: ExtractedField) {
-    if (!draftValue.trim()) return;
-    if (workingFieldKeys.includes(field.fieldKey)) return;
-    setWorkingFieldKeys((current) => [...new Set([...current, field.fieldKey])]);
-    if (field.value === null) {
-      const sourceFields = mode === "manual" ? manualFields : fieldItems;
-      const updated = sourceFields.map((candidate) =>
-        candidate.fieldKey === field.fieldKey
-          ? {
-              ...candidate,
-              value: draftValue,
-              correctedValue: draftValue,
-              reviewStatus: "keyed_by_reviewer" as const,
-            }
-          : candidate
-      );
-      try {
-        if (mode !== "manual") {
-          await onPersistReview?.({ field, decision: "edited", reviewedValue: draftValue, reviewerNote: "Entered by reviewer." });
-        }
-        if (mode === "manual") {
-          setManualFields(updated);
-        } else {
-          setFieldItems(updated);
-        }
-        onAuditIntent(
-          createAuditIntent({
-            action: "enter_value",
-            documentId: field.documentId,
-            fieldKey: field.fieldKey,
-            oldValue: null,
-            newValue: draftValue,
-          })
-        );
-        setEditingFieldKey(null);
-        advanceFrom(field.fieldKey, updated);
-      } finally {
-        setWorkingFieldKeys((current) => current.filter((key) => key !== field.fieldKey));
-      }
-      return;
-    }
-
-    if (mode === "manual") {
-      const updated = manualFields.map((candidate) =>
-        candidate.fieldKey === field.fieldKey
-          ? {
-              ...candidate,
-              value: draftValue,
-              correctedValue: draftValue,
-              reviewStatus: "keyed_by_reviewer" as const,
-            }
-          : candidate
-      );
-      try {
-        setManualFields(updated);
-        onAuditIntent(
-          createAuditIntent({
-            action: "enter_value",
-            documentId: field.documentId,
-            fieldKey: field.fieldKey,
-            oldValue: field.correctedValue ?? field.value,
-            newValue: draftValue,
-          })
-        );
-        setEditingFieldKey(null);
-        advanceFrom(field.fieldKey, updated);
-      } finally {
-        setWorkingFieldKeys((current) => current.filter((key) => key !== field.fieldKey));
-      }
-      return;
-    }
-
-    const updated = fieldItems.map((candidate) =>
-      candidate.fieldKey === field.fieldKey
-        ? {
-            ...candidate,
-            correctedValue: draftValue,
-            reviewStatus: "corrected" as const,
-        }
-        : candidate
-    );
-    try {
-      await onPersistReview?.({ field, decision: "edited", reviewedValue: draftValue, reviewerNote: "Corrected by reviewer." });
-      setFieldItems(updated);
-      const intents = createCorrectionAuditIntents(
-        {
-          documentId: field.documentId,
-          fieldKey: field.fieldKey,
-          oldValue: field.value,
-        },
-        draftValue
-      );
-      intents.forEach(onAuditIntent);
-      setEditingFieldKey(null);
-      advanceFrom(field.fieldKey, updated);
-    } finally {
-      setWorkingFieldKeys((current) => current.filter((key) => key !== field.fieldKey));
-    }
   }
 
   return (
-    <section className="s1-extraction">
-      <aside className="s1-queue">
-        <div className="s1-pane-header">
-          <button className="s1-linklike" type="button" onClick={onBack}>
-            Back to evidence
+    <section className="s1-content s1-xr">
+      <div className="s1-xr-grid">
+        {/* Navigator */}
+        <aside className="s1-xr-nav" aria-label="Navigator">
+          <button className="s1-linklike s1-xr-back" type="button" onClick={onBack}>
+            ‹ Back to evidence
           </button>
-          <h2>Queue</h2>
-          {mode === "manual" ? <div className="s1-muted">{EXACT_COPY.manualEntryHeader}</div> : null}
-        </div>
-        {queue.map((item) => (
-          <button
-            className="s1-queue-item"
-            type="button"
-            key={item.documentId}
-            aria-current={item.documentId === selectedDocumentId}
-            onClick={() => selectDocument(item.documentId)}
-          >
-            <strong>{item.filename}</strong>
-            <div className="s1-muted">{item.facility}</div>
-            <div className="s1-muted">{item.period}</div>
-            <div className="s1-mono">
-              {item.manual ? "enter values manually" : `${item.reviewedCount} of ${item.fieldCount} reviewed`}
+          {tree.map((root) => (
+            <div key={root.key} className="s1-xr-navgroup">
+              <button
+                className={`s1-xr-node s1-xr-node--root${root.toReview === 0 ? " is-dim" : ""}${nodeKey === root.key ? " is-on" : ""}`}
+                type="button"
+                onClick={() => {
+                  setExpanded((s) => {
+                    const next = new Set(s);
+                    if (next.has(root.key)) next.delete(root.key);
+                    else next.add(root.key);
+                    return next;
+                  });
+                  selectNode(root.key);
+                }}
+              >
+                <span className="s1-xr-caret">{expanded.has(root.key) ? "▾" : "▸"}</span>
+                <span className="s1-xr-node__label">{root.label}</span>
+                <span className="s1-xr-node__count">{root.toReview === 0 ? "✓" : root.toReview}</span>
+              </button>
+              {expanded.has(root.key)
+                ? root.children.map((child) => (
+                    <button
+                      key={child.key}
+                      className={`s1-xr-node s1-xr-node--child${child.toReview === 0 ? " is-dim" : ""}${nodeKey === child.key ? " is-on" : ""}`}
+                      type="button"
+                      onClick={() => selectNode(child.key)}
+                    >
+                      <span className="s1-xr-node__label">{child.label}</span>
+                      <span className="s1-xr-node__count">{child.toReview === 0 ? "✓" : child.toReview}</span>
+                    </button>
+                  ))
+                : null}
             </div>
-          </button>
-        ))}
-      </aside>
-      <CorrectionRail
-        document={selectedDocument}
-        fields={selectedDocumentFields}
-        selectedField={selectedField}
-        editingFieldKey={editingFieldKey}
-        draftValue={draftValue}
-        onDraftValue={setDraftValue}
-        onSelectField={selectField}
-        onFieldKeys={handleFieldKeys}
-        onAcceptValue={acceptValue}
-        onSaveDraft={saveDraft}
-        mode={mode}
-        manualDefinitions={manualDefinitions}
-        onEditField={(field) => {
-          setEditingFieldKey(field.fieldKey);
-          setDraftValue(field.correctedValue ?? field.value ?? "");
-        }}
-        onCancelEdit={() => setEditingFieldKey(null)}
-        draftInputRef={draftInputRef}
-        workingFieldKeys={workingFieldKeys}
-        auditIntents={showSessionAuditIntents ? auditIntents : []}
-      />
-      <main className="s1-document-viewer">
-        <div className="s1-pane-header">
-          <h2>{selectedDocument?.filename}</h2>
-          {mode === "manual" ? (
-            <div className="s1-muted">{EXACT_COPY.manualEntrySource}</div>
-          ) : selectedField?.location ? (
-            <div className="s1-muted">
-              {selectedField.location.kind === "page"
-                ? `Selected field source: page ${selectedField.location.page}`
-                : `Selected field source: ${selectedField.location.sheet} ${selectedField.location.range}`}
+          ))}
+        </aside>
+
+        {/* Values */}
+        <div className="s1-xr-values">
+          <div className="s1-xr-vhead">
+            <h2>{nodeHeaderLabel(nodeKey, engagement)}</h2>
+            <div className="s1-xr-filters">
+              {(["to_review", "accepted", "corrected", "requested"] as ValueReviewState[]).map((k) => (
+                <button
+                  key={k}
+                  className={`s1-xr-filter${filter === k ? " is-on" : ""}`}
+                  type="button"
+                  onClick={() => setFilter((cur) => (cur === k ? null : k))}
+                >
+                  <span className="s1-xr-filter__n">{counts[k]}</span> {reviewStateLabel(k)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="s1-ws-empty">
+              No values match {reviewStateLabel(filter ?? "to_review")}.
             </div>
           ) : (
-            <div className="s1-muted">{EXACT_COPY.sourceLocationMissing}</div>
+            groupValues(filtered).map((group) => {
+              const capped = group.values.slice(0, REVIEW_CAP);
+              const hidden = group.values.length - capped.length;
+              return (
+                <div key={group.key} className="s1-xr-group">
+                  <div className="s1-xr-doc">
+                    <span className="s1-xr-doc__fn">{group.filename}</span>
+                    <span className="s1-muted">{group.period}</span>
+                    {group.values.length > REVIEW_CAP ? (
+                      <span className="s1-muted"> · {group.values.length} values from one file</span>
+                    ) : null}
+                  </div>
+                  {capped.map((v) => (
+                    <ValueCard
+                      key={v.id}
+                      v={v}
+                      selected={selectedId === v.id}
+                      onSelect={() => selectValue(v)}
+                      onAccept={() => accept(v)}
+                      onCorrect={onCorrect}
+                      onAddToRequests={() => openAddToRequests(v)}
+                    />
+                  ))}
+                  {hidden > 0 ? (
+                    <div className="s1-xr-wall">
+                      <strong>One card per value does not survive this file.</strong> Showing {capped.length} of{" "}
+                      {group.values.length}; {hidden} more continue below, identical. Candidate treatment (product&rsquo;s call):
+                      a table mode for high-cardinality sources.
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })
           )}
         </div>
-        {mode === "manual" && selectedDocumentHasNoFields ? (
-          <ManualEntryEmptyState document={selectedDocument} />
-        ) : selectedDocumentHasNoFields ? (
-          <NoFieldsExtracted document={selectedDocument} />
-        ) : null}
-        {mode !== "manual" && selectedField && !selectedDocumentHasNoFields ? (
-          <SelectedSourceSummary field={selectedField} />
-        ) : null}
-        {mode === "manual" ? (
-          <ManualEntrySourcePane document={selectedDocument} />
-        ) : (
-          <DocumentPreview document={selectedDocument} field={selectedField} />
-        )}
-      </main>
-    </section>
-  );
-}
 
-function firstDefaultField(fields: ExtractedField[]) {
-  return (
-    fields.find((field) => field.reviewStatus === "unreviewed" && field.value !== null) ??
-    fields.find((field) => field.reviewStatus === "unreviewed")
-  );
-}
+        {/* Source */}
+        <aside className="s1-xr-source" aria-label="Source">
+          <SourcePane value={selected} />
+        </aside>
+      </div>
 
-function manualEntryTypeForDocument(document?: EvidenceItem) {
-  if (!document) return null;
-  if (document.detectedType) return document.detectedType;
-  if (document.filename === "utility_mar.pdf") return "Electric utility bill";
-  return null;
-}
-
-function manualFieldFromDefinition(
-  documentId: string,
-  canonicalTypeId: string | null,
-  definition: ManualEntryFieldDefinition
-): ExtractedField {
-  return {
-    documentId,
-    canonicalTypeId,
-    fieldKey: definition.fieldKey,
-    reviewToken: undefined,
-    fieldLabel: definition.fieldLabel,
-    value: null,
-    unit: null,
-    valueProperties: [],
-    fieldState: "missing_requestable",
-    snippet: null,
-    snippetContext: null,
-    location: null,
-    reviewStatus: "unreviewed",
-    correctedValue: null,
-    valueOrigin: "extracted",
-  };
-}
-
-function NoFieldsExtracted({ document }: { document?: EvidenceItem }) {
-  return (
-    <section className="s1-source-notice" aria-label="No extracted fields">
-      <h3>No extracted fields</h3>
-      <p>
-        {document?.haltReason ??
-          "No reviewable extracted fields are available for this document yet."}
-      </p>
-      <p className="s1-muted">
-        The original document remains available. Processing can be retried from the Evidence Workspace.
-      </p>
-    </section>
-  );
-}
-
-function ManualEntryEmptyState({ document }: { document?: EvidenceItem }) {
-  return (
-    <section className="s1-panel">
-      <h3>{EXACT_COPY.manualEntryNoFieldList}</h3>
-      <p className="s1-mono">{document?.documentId}</p>
-      {document?.downloadUrl ? (
-        <button
-          className="s1-button"
-          type="button"
-          onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
-        >
-          Download original
-        </button>
-      ) : null}
-    </section>
-  );
-}
-
-function ManualEntrySourcePane({ document }: { document?: EvidenceItem }) {
-  return (
-    <section className="s1-document-empty">
-      <h3>{document?.filename}</h3>
-      <p>{EXACT_COPY.manualEntrySource}</p>
-      {document?.haltReason ? <p className="s1-reason">{document.haltReason}</p> : null}
-      {document?.downloadUrl ? (
-        <button
-          className="s1-button"
-          type="button"
-          onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
-        >
-          Download original
-        </button>
-      ) : null}
-    </section>
-  );
-}
-
-function DocumentPreview({ document, field }: { document?: EvidenceItem; field?: ExtractedField }) {
-  const [previewFailed, setPreviewFailed] = useState(false);
-
-  useEffect(() => {
-    setPreviewFailed(false);
-  }, [document?.documentId, field?.fieldKey]);
-
-  if (!document?.downloadUrl) {
-    return (
-      <section className="s1-document-empty">
-        <h3>Original document unavailable</h3>
-        <p>The uploaded file is not available from storage.</p>
-      </section>
-    );
-  }
-
-  if (document.format === "csv") {
-    return <CsvDocumentPreview document={document} />;
-  }
-
-  if (document.format === "pdf" || document.format === "image" || document.format === "other") {
-    const pageSuffix =
-      document.format === "pdf" && field?.location?.kind === "page"
-        ? `#page=${field.location.page}`
-        : "";
-    const previewUrl = `${inlineDocumentUrl(document.documentId)}${pageSuffix}`;
-    if (previewFailed) {
-      return (
-        <section className="s1-document-empty">
-          <h3>Preview unavailable</h3>
-          <p>The browser preview could not be loaded.</p>
-          <button
-            className="s1-button"
-            type="button"
-            onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
-          >
-            Download original
-          </button>
-        </section>
-      );
-    }
-    return (
-      <div className="s1-document-preview-shell">
-        <iframe
-          className="s1-document-frame"
-          title={`Original document: ${document.filename}`}
-          src={previewUrl}
-          onError={() => setPreviewFailed(true)}
+      {modalTarget ? (
+        <AddToRequestsModal
+          target={modalTarget}
+          engagement={engagement}
+          onCancel={() => setModalTarget(null)}
+          onAdd={submitAsk}
         />
-        <button
-          className="s1-button s1-preview-download"
-          type="button"
-          onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
-        >
-          Download original
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <section className="s1-document-empty">
-      <h3>Original workbook</h3>
-      <p>Preview is not available for this workbook format in the browser.</p>
-      <button
-        className="s1-button"
-        type="button"
-        onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
-      >
-        Download original
-      </button>
-    </section>
-  );
-}
-
-function SelectedSourceSummary({ field }: { field?: ExtractedField }) {
-  if (!field) return null;
-  return (
-    <section className="s1-selected-source" aria-label="Selected field source">
-      <h3>{field.fieldLabel}</h3>
-      {field.location ? (
-        <div className="s1-muted">
-          {field.location.kind === "page"
-            ? `Page ${field.location.page}`
-            : `${field.location.sheet} ${field.location.range}`}
-        </div>
-      ) : (
-        <div className="s1-muted">{EXACT_COPY.sourceLocationMissing}</div>
-      )}
-      {field.snippet ? <div className="s1-snippet">{field.snippet}</div> : null}
-      {field.snippetContext && field.snippetContext !== field.snippet ? (
-        <div className="s1-source-context">{field.snippetContext}</div>
       ) : null}
+
+      {toast ? <div className="s1-ws-toast">{toast}</div> : null}
     </section>
   );
 }
 
-function CsvDocumentPreview({ document }: { document: EvidenceItem }) {
-  const [state, setState] = useState<{
-    status: "loading" | "ready" | "failed";
-    text: string;
-    error: string | null;
-  }>({ status: "loading", text: "", error: null });
+/* =============================== value card =============================== */
 
-  useEffect(() => {
-    const controller = new AbortController();
-    setState({ status: "loading", text: "", error: null });
-    fetch(inlineDocumentUrl(document.documentId), {
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error(`Preview request failed: ${response.status}`);
-        return response.text();
-      })
-      .then((text) => setState({ status: "ready", text, error: null }))
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        setState({
-          status: "failed",
-          text: "",
-          error: error instanceof Error ? error.message : "CSV preview could not be loaded.",
-        });
-      });
-    return () => controller.abort();
-  }, [document.documentId]);
-
-  if (state.status === "loading") {
-    return (
-      <section className="s1-document-empty">
-        <h3>Loading original file</h3>
-      </section>
-    );
-  }
-
-  if (state.status === "failed") {
-    return (
-      <section className="s1-document-empty">
-        <h3>CSV preview unavailable</h3>
-        <p>{state.error}</p>
-        <button
-          className="s1-button"
-          type="button"
-          onClick={() => window.open(document.downloadUrl, "_blank", "noopener,noreferrer")}
-        >
-          Download original
-        </button>
-      </section>
-    );
-  }
-
-  const rows = parseCsvPreview(state.text);
-  const [header, ...body] = rows;
-  return (
-    <section className="s1-csv-preview" aria-label={`Original CSV: ${document.filename}`}>
-      {header ? (
-        <table className="s1-csv-table">
-          <thead>
-            <tr>
-              {header.map((cell, index) => (
-                <th key={`${cell}-${index}`}>{cell}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {body.map((row, rowIndex) => (
-              <tr key={`row-${rowIndex}`}>
-                {header.map((_, cellIndex) => (
-                  <td key={`cell-${rowIndex}-${cellIndex}`}>{row[cellIndex] ?? ""}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <pre className="s1-csv-raw">{state.text}</pre>
-      )}
-    </section>
-  );
-}
-
-function parseCsvPreview(text: string): string[][] {
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let inQuotes = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-    const next = text[index + 1];
-    if (char === "\"" && inQuotes && next === "\"") {
-      cell += "\"";
-      index += 1;
-      continue;
-    }
-    if (char === "\"") {
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (char === "," && !inQuotes) {
-      row.push(cell);
-      cell = "";
-      continue;
-    }
-    if ((char === "\n" || char === "\r") && !inQuotes) {
-      if (char === "\r" && next === "\n") index += 1;
-      row.push(cell);
-      if (row.some((value) => value.trim())) rows.push(row.map((value) => value.trim()));
-      row = [];
-      cell = "";
-      continue;
-    }
-    cell += char;
-  }
-
-  row.push(cell);
-  if (row.some((value) => value.trim())) rows.push(row.map((value) => value.trim()));
-  return rows.slice(0, 200);
-}
-
-function CorrectionRail({
-  document,
-  fields,
-  selectedField,
-  editingFieldKey,
-  draftValue,
-  onDraftValue,
-  onSelectField,
-  onFieldKeys,
-  onAcceptValue,
-  onSaveDraft,
-  onEditField,
-  onCancelEdit,
-  draftInputRef,
-  workingFieldKeys,
-  auditIntents,
-  mode,
-  manualDefinitions,
+function ValueCard({
+  v,
+  selected,
+  onSelect,
+  onAccept,
+  onCorrect,
+  onAddToRequests,
 }: {
-  document?: EvidenceItem;
-  fields: ExtractedField[];
-  selectedField?: ExtractedField;
-  editingFieldKey: string | null;
-  draftValue: string;
-  onDraftValue: (value: string) => void;
-  onSelectField: (fieldKey: string) => void;
-  onFieldKeys: (event: KeyboardEvent) => void;
-  onAcceptValue: (field: ExtractedField) => Promise<void>;
-  onSaveDraft: (field: ExtractedField) => Promise<void>;
-  onEditField: (field: ExtractedField) => void;
-  onCancelEdit: () => void;
-  draftInputRef: RefObject<HTMLInputElement | null>;
-  workingFieldKeys: string[];
-  auditIntents: SessionAuditEntry[];
-  mode: "snippet" | "manual";
-  manualDefinitions: ManualEntryFieldDefinition[];
+  v: ReviewValue;
+  selected: boolean;
+  onSelect: () => void;
+  onAccept: () => void;
+  onCorrect: () => void;
+  onAddToRequests: () => void;
 }) {
-  const fieldIntents = auditIntents.filter((intent) => intent.fieldKey && intent.fieldKey === selectedField?.fieldKey);
-  const requirementByField = useMemo(
-    () => new Map(manualDefinitions.map((definition) => [definition.fieldKey, definition.requirementLevel])),
-    [manualDefinitions]
-  );
+  const done = v.reviewState !== "to_review";
   return (
-    <aside className="s1-correction-rail">
-      <div className="s1-pane-header">
-        <h2>Fields</h2>
-        <div className="s1-muted">{document?.filename}</div>
-        {mode === "manual" ? <div className="s1-muted">{EXACT_COPY.manualEntryFieldList}</div> : null}
+    <article
+      className={`s1-xr-card${selected ? " is-sel" : ""} s1-xr-card--${v.reviewState}`}
+      onClick={onSelect}
+      tabIndex={0}
+      aria-current={selected}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onSelect();
+      }}
+    >
+      <div className="s1-xr-gutter" aria-hidden>
+        {v.reviewState === "accepted" ? "✓" : v.reviewState === "corrected" ? "✎" : v.reviewState === "requested" ? "◷" : "·"}
       </div>
-      {fields.map((field) => {
-        const requirementLevel = requirementByField.get(field.fieldKey);
-        const isWorking = workingFieldKeys.includes(field.fieldKey);
-        return (
-          <article
-            className="s1-field-row"
-            key={field.fieldKey}
-            aria-current={selectedField?.fieldKey === field.fieldKey}
-            tabIndex={0}
-            onClick={() => onSelectField(field.fieldKey)}
-            onKeyDown={onFieldKeys}
-          >
-            <h3>{field.fieldLabel}</h3>
-            {mode === "manual" && requirementLevel ? (
-              <div className="s1-requirement-level">{requirementLevel}</div>
-            ) : null}
-            <div className="s1-provisional-id">
-              <span className="s1-provisional-id__marker">Provisional</span>
-              <span className="s1-mono s1-muted">{field.fieldKey}</span>
+      <div className="s1-xr-body">
+        <div className="s1-xr-l1">
+          <span>{v.documentType}</span>
+          <span className="s1-xr-dot">·</span>
+          <span className="s1-xr-what">{v.whatItIs}</span>
+          <span className="s1-xr-dot">·</span>
+          <span>{v.period}</span>
+        </div>
+        <div className="s1-xr-l2">
+          <span className={`s1-xr-scope s1-xr-scope--${v.scope}`}>{SCOPE_LABEL[v.scope]}</span>
+        </div>
+        <div className="s1-xr-l3">
+          <span className="s1-xr-val">{v.value}</span>
+          {v.unit ? <span className="s1-xr-unit">{v.unit}</span> : null}
+          {v.reviewState === "corrected" && v.originalValue ? (
+            <span className="s1-xr-was">was {v.originalValue}</span>
+          ) : null}
+        </div>
+
+        <div className="s1-xr-record">
+          {v.record.map((r, i) => (
+            <div key={i} className={`s1-xr-rec s1-xr-rec--${r.kind}`}>
+              {r.kind === "machine" ? <span className="s1-xr-rec__mk" aria-hidden /> : <span className="s1-xr-rec__who">MO</span>}
+              <span className="s1-xr-rec__act">{r.kind === "machine" ? "System read" : `${r.actor} · ${r.action}`}</span>
+              {r.reason ? <span className="s1-muted"> · {r.reason}</span> : null}
+              <span className="s1-mono s1-muted"> {formatTime(r.at)}</span>
             </div>
-            <div className="s1-chip-stack">
-              <StateIndicator
-                dimension="field"
-                value={field.fieldState}
-                label={field.fieldState === "populated" ? "populated" : "missing — requestable"}
-              />
-              {field.valueProperties.map((property) => (
-                <StateIndicator key={property} dimension="valueProperty" value={property} label={valuePropertyLabel(property)} />
-              ))}
-              <StateIndicator dimension="review" value={field.reviewStatus} label={reviewLabel(field.reviewStatus)} />
-            </div>
-            <div className="s1-field-value">
-              <strong>{field.correctedValue ?? field.value ?? EXACT_COPY.valueAbsent}</strong>
-              {field.unit ? <span className="s1-muted"> {field.unit}</span> : null}
-            </div>
-            {mode === "manual" ? null : field.location ? (
-              <div className="s1-muted">
-                {field.location.kind === "page"
-                  ? `Page ${field.location.page}`
-                  : `${field.location.sheet} ${field.location.range}`}
-              </div>
-            ) : (
-              <StateIndicator dimension="check" value="not_applicable" label={EXACT_COPY.sourceLocationMissing} />
-            )}
-            {mode === "manual" ? null : field.snippet ? (
-              <div className="s1-snippet">{field.snippet}</div>
-            ) : (
-              <div className="s1-muted">No snippet</div>
-            )}
-            {editingFieldKey === field.fieldKey ? (
-              <div className="s1-actions" onClick={(event) => event.stopPropagation()}>
-                <input
-                  ref={draftInputRef}
-                  className="s1-inline-input"
-                  value={draftValue}
-                  onChange={(event) => onDraftValue(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Escape") {
-                      event.stopPropagation();
-                      onCancelEdit();
-                    }
-                    if (event.key === "Enter") {
-                      event.stopPropagation();
-                      void onSaveDraft(field);
-                    }
-                  }}
-                />
-                <button className="s1-button" type="button" disabled={isWorking} onClick={() => void onSaveDraft(field)}>
-                  {isWorking ? "Working" : "Save"}
-                </button>
-                <button className="s1-button" type="button" onClick={onCancelEdit}>
-                  Cancel
-                </button>
-                {mode === "manual" ? <div className="s1-muted">{EXACT_COPY.manualEntryInput}</div> : null}
-              </div>
-            ) : null}
-            <div className="s1-actions" onClick={(event) => event.stopPropagation()}>
-              {mode === "manual" ? (
-                <button className="s1-button" type="button" disabled={isWorking} onClick={() => onEditField(field)}>
-                  {field.value === null ? "Key value" : "Correct"}
-                </button>
-              ) : field.value !== null ? (
-                <>
-                  <button className="s1-button" type="button" disabled={isWorking} onClick={() => void onAcceptValue(field)}>
-                    {isWorking ? "Working" : "Accept"}
-                  </button>
-                  <button className="s1-button" type="button" disabled={isWorking} onClick={() => onEditField(field)}>
-                    Correct
-                  </button>
-                </>
-              ) : (
-                <button className="s1-button" type="button" disabled={isWorking} onClick={() => onEditField(field)}>
-                  Enter value
-                </button>
-              )}
-            </div>
-          </article>
-        );
-      })}
-      {fieldIntents.length > 0 ? (
-        <div className="s1-source-body">
-          <h3>Field history</h3>
-          {fieldIntents.map((intent) => (
-            <article
-              className={`s1-history-entry s1-history-entry--${intent.action.includes("machine") ? "system" : "reviewer"}`}
-              key={intent.entryId}
-            >
-              <strong>{intent.action.replaceAll("_", " ")}</strong>
-              <div className="s1-mono s1-muted">
-                {intent.actor.name} · {new Date(intent.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-              </div>
-              <div className="s1-muted">
-                {intent.oldValue ?? EXACT_COPY.valueAbsent} -&gt; {intent.newValue ?? EXACT_COPY.valueAbsent}
-              </div>
-            </article>
           ))}
         </div>
-      ) : null}
-    </aside>
+
+        <div className="s1-xr-actions" onClick={(e) => e.stopPropagation()}>
+          {done ? (
+            <span className="s1-muted">{reviewStateLabel(v.reviewState)}</span>
+          ) : (
+            <>
+              <button className="s1-button" type="button" onClick={onAccept}>
+                Accept
+              </button>
+              <button className="s1-button" type="button" onClick={onCorrect} title="Edit surface pending product confirmation">
+                Correct
+              </button>
+              <button className="s1-button" type="button" onClick={onAddToRequests}>
+                Add to requests
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </article>
   );
 }
 
-function reviewLabel(status: ExtractedField["reviewStatus"]) {
-  const labels = {
-    unreviewed: "unreviewed",
-    accepted: "accepted",
-    corrected: "corrected",
-    keyed_by_reviewer: "human-keyed",
-  };
-  return labels[status];
+/* =============================== source pane =============================== */
+
+function SourcePane({ value }: { value: ReviewValue | null }) {
+  // Page state tracked here (hook must run every render); resets when the
+  // selected value changes, guarded so it fires once per change.
+  const [pageState, setPageState] = useState<{ id: string; page: number }>({
+    id: value?.id ?? "",
+    page: value?.page ?? 1,
+  });
+  if (value && pageState.id !== value.id) {
+    setPageState({ id: value.id, page: value.page });
+  }
+  if (!value) {
+    return (
+      <div className="s1-xr-src-empty">
+        <p className="s1-muted">Select a value to open its source.</p>
+      </div>
+    );
+  }
+  const page = pageState.id === value.id ? pageState.page : value.page;
+  const setPage = (nextPage: number) => setPageState({ id: value.id, page: nextPage });
+  return (
+    <div className="s1-xr-src">
+      <div className="s1-xr-src-head">
+        <div className="s1-xr-src-fn">{value.filename}</div>
+        <div className="s1-muted">
+          {value.span ? "Opened at the page, value highlighted." : "Highlight unavailable for this value."}
+        </div>
+        {value.sourceKind !== "text" ? (
+          <div className="s1-xr-pager">
+            <button className="s1-button s1-button--compact" type="button" onClick={() => setPage(Math.max(1, page - 1))} aria-label="Previous page">
+              ‹
+            </button>
+            <span className="s1-mono s1-muted">page {page} of {value.pageCount}</span>
+            <button
+              className="s1-button s1-button--compact"
+              type="button"
+              onClick={() => setPage(Math.min(value.pageCount, page + 1))}
+              aria-label="Next page"
+            >
+              ›
+            </button>
+          </div>
+        ) : null}
+      </div>
+      <div className="s1-xr-src-body">
+        {value.sourceKind === "spreadsheet" ? (
+          <SheetView value={value} />
+        ) : value.sourceKind === "text" ? (
+          <div className="s1-xr-passage">{value.snippet}</div>
+        ) : value.span && value.span.page === page ? (
+          <PageView value={value} />
+        ) : value.span ? (
+          <div className="s1-xr-page">
+            <div className="s1-muted s1-xr-page__note">The highlight is on page {value.span.page}.</div>
+          </div>
+        ) : (
+          <div className="s1-xr-fallback">
+            <strong>The extractor gave no span.</strong> The source is open at the page; the highlight could not be placed.
+            <div className="s1-xr-snip">{value.snippet ?? value.value}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
-function valuePropertyLabel(property: ExtractedField["valueProperties"][number]) {
-  const labels = {
-    estimated_read: "estimated meter read",
-    unit_missing: "unit missing",
-    unit_ambiguous: "unit ambiguous",
-    format_mismatch: "value outside expected format",
-  };
-  return labels[property];
+/** A synthetic document page with the highlight overlaid at the fixture span. */
+function PageView({ value }: { value: ReviewValue }) {
+  const span = value.span!;
+  return (
+    <div className="s1-xr-page">
+      <div className="s1-xr-paper">
+        <div className="s1-xr-paper__co">{value.documentType}</div>
+        <div className="s1-xr-paper__meta">{value.filename}</div>
+        <div className="s1-xr-paper__row"><span>Service</span><span>{value.period}</span></div>
+        <div className="s1-xr-paper__row"><span>{value.whatItIs}</span><span>{value.value} {value.unit}</span></div>
+        <div className="s1-xr-paper__row"><span>Prepared for</span><span>Cascade Provisions</span></div>
+        <div
+          className="s1-xr-highlight"
+          style={{ left: `${span.x * 100}%`, top: `${span.y * 100}%`, width: `${span.w * 100}%`, height: `${span.h * 100}%` }}
+          aria-hidden
+        />
+      </div>
+    </div>
+  );
+}
+
+function SheetView({ value }: { value: ReviewValue }) {
+  const cols = ["A", "B", "C", "D", "E"];
+  const rows = [1, 2, 3, 4, 5];
+  const targetCol = value.cell?.[0];
+  const targetRow = value.cell ? Number(value.cell.slice(1)) : null;
+  return (
+    <div className="s1-xr-sheet">
+      <div className="s1-muted s1-xr-sheet__head">
+        Sheet: {value.sheet} · cell {value.cell} outlined
+      </div>
+      <table className="s1-xr-sheet__table">
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r}>
+              {cols.map((c) => {
+                const isTarget = c === targetCol && (targetRow === r || (targetRow && targetRow > 5 && r === 5));
+                return (
+                  <td key={c} className={isTarget ? "is-target" : ""}>
+                    {isTarget ? `${value.value} ${value.unit}` : ""}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {value.cell && Number(value.cell.slice(1)) > 5 ? (
+        <div className="s1-muted s1-xr-sheet__note">Row {value.cell.slice(1)} shown at the last row for layout.</div>
+      ) : null}
+    </div>
+  );
+}
+
+/* =============================== tree helpers =============================== */
+
+interface TreeNode {
+  key: string;
+  label: string;
+  toReview: number;
+  children: Array<{ key: string; label: string; toReview: number }>;
+}
+
+function buildTree(items: ReviewValue[], engagement: EngagementConfig): TreeNode[] {
+  const nodes: TreeNode[] = [];
+  const toReview = (vs: ReviewValue[]) => vs.filter((v) => v.reviewState === "to_review").length;
+
+  // Entity-level first (spec: node at the top).
+  const entity = items.filter((v) => v.entityLevel);
+  if (entity.length) {
+    const children: TreeNode["children"] = [];
+    const sections: Array<["general" | "scope1" | "scope2", string]> = [
+      ["general", "General"],
+      ["scope1", "Scope 1"],
+      ["scope2", "Scope 2"],
+    ];
+    sections.forEach(([s, label]) => {
+      const vs = entity.filter((v) => v.section === s);
+      if (vs.length) children.push({ key: `E|S:${s}`, label, toReview: toReview(vs) });
+    });
+    const typed = entity.filter((v) => !v.section);
+    distinct(typed.map((v) => v.documentType)).forEach((t) => {
+      const vs = typed.filter((v) => v.documentType === t);
+      children.push({ key: `E|T:${t}`, label: t, toReview: toReview(vs) });
+    });
+    nodes.push({ key: "E", label: "Entity-level", toReview: toReview(entity), children });
+  }
+
+  // Facilities in Setup order.
+  engagement.facilities.forEach((f) => {
+    const vs = items.filter((v) => v.facilityId === f.facilityId && !v.entityLevel && !v.notYetKnown);
+    if (!vs.length) return;
+    const children = distinct(vs.map((v) => v.documentType)).map((t) => {
+      const tv = vs.filter((v) => v.documentType === t);
+      return { key: `F:${f.facilityId}|T:${t}`, label: t, toReview: toReview(tv) };
+    });
+    nodes.push({ key: `F:${f.facilityId}`, label: f.name, toReview: toReview(vs), children });
+  });
+
+  // Not yet known last.
+  const nyk = items.filter((v) => v.notYetKnown);
+  if (nyk.length) {
+    const children = distinct(nyk.map((v) => v.documentType)).map((t) => {
+      const tv = nyk.filter((v) => v.documentType === t);
+      return { key: `N|T:${t}`, label: t, toReview: toReview(tv) };
+    });
+    nodes.push({ key: "N", label: "Not yet known", toReview: toReview(nyk), children });
+  }
+
+  return nodes;
+}
+
+function flattenSelectableNodes(tree: TreeNode[]): string[] {
+  const out: string[] = [];
+  tree.forEach((root) => {
+    out.push(root.key);
+    root.children.forEach((c) => out.push(c.key));
+  });
+  return out;
+}
+
+function valuesForNode(items: ReviewValue[], key: string): ReviewValue[] {
+  if (!key) return [];
+  if (key === "E") return items.filter((v) => v.entityLevel);
+  if (key === "N") return items.filter((v) => v.notYetKnown);
+  if (key.startsWith("E|S:")) {
+    const s = key.slice(4);
+    return items.filter((v) => v.entityLevel && v.section === s);
+  }
+  if (key.startsWith("E|T:")) {
+    const t = key.slice(4);
+    return items.filter((v) => v.entityLevel && !v.section && v.documentType === t);
+  }
+  if (key.startsWith("N|T:")) {
+    const t = key.slice(4);
+    return items.filter((v) => v.notYetKnown && v.documentType === t);
+  }
+  if (key.includes("|T:")) {
+    const [fac, typePart] = key.split("|T:");
+    const fid = fac.slice(2);
+    return items.filter((v) => v.facilityId === fid && !v.entityLevel && !v.notYetKnown && v.documentType === typePart);
+  }
+  if (key.startsWith("F:")) {
+    const fid = key.slice(2);
+    return items.filter((v) => v.facilityId === fid && !v.entityLevel && !v.notYetKnown);
+  }
+  return [];
+}
+
+function nodeKeyForValue(v: ReviewValue): string {
+  if (v.entityLevel) return v.section ? `E|S:${v.section}` : `E|T:${v.documentType}`;
+  if (v.notYetKnown) return `N|T:${v.documentType}`;
+  return `F:${v.facilityId}|T:${v.documentType}`;
+}
+
+function rootKeyOf(v: ReviewValue): string {
+  if (v.entityLevel) return "E";
+  if (v.notYetKnown) return "N";
+  return `F:${v.facilityId}`;
+}
+
+function rootKeyFromNode(key: string): string {
+  if (key.startsWith("E")) return "E";
+  if (key.startsWith("N")) return "N";
+  return key.split("|")[0];
+}
+
+function nodeHeaderLabel(key: string, engagement: EngagementConfig): string {
+  if (key === "E" || key.startsWith("E|")) return "Entity-level";
+  if (key === "N" || key.startsWith("N|")) return "Not yet known";
+  const fid = key.slice(2).split("|")[0];
+  return engagement.facilities.find((f) => f.facilityId === fid)?.name ?? "Facility";
+}
+
+function groupValues(values: ReviewValue[]): Array<{ key: string; filename: string; period: string; values: ReviewValue[] }> {
+  const map = new Map<string, ReviewValue[]>();
+  values.forEach((v) => {
+    const key = `${v.filename}__${v.period}`;
+    map.set(key, [...(map.get(key) ?? []), v]);
+  });
+  return Array.from(map.entries()).map(([key, vs]) => ({ key, filename: vs[0].filename, period: vs[0].period, values: vs }));
+}
+
+function distinct(xs: string[]): string[] {
+  return Array.from(new Set(xs));
+}
+
+function reviewStateLabel(s: ValueReviewState): string {
+  return s === "to_review" ? "To review" : s === "accepted" ? "Accepted" : s === "corrected" ? "Corrected" : "Requested";
+}
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
