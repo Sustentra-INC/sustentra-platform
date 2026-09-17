@@ -3,10 +3,20 @@ import type { ReactNode } from "react";
 import { EXACT_COPY } from "../constants/copy";
 import type { EngagementConfig } from "../types";
 
+export type NavKey =
+  | "setup"
+  | "upload"
+  | "evidence"
+  | "requests"
+  | "coverage"
+  | "results"
+  | "output";
+
 interface S1ChromeProps {
   engagement: EngagementConfig;
   children: ReactNode;
-  currentTab?: "evidence" | "extraction";
+  current?: NavKey;
+  onNavigate?: (key: NavKey) => void;
   onOpenGlossary?: () => void;
 }
 
@@ -49,31 +59,52 @@ function RailItem({ label, value, mono = false }: { label: string; value: string
   );
 }
 
-export function PrimaryNav({ currentTab = "evidence" }: { currentTab?: "evidence" | "extraction" }) {
+const DESTINATIONS: Array<{ key: NavKey; label: string; built: boolean }> = [
+  { key: "setup", label: "Setup", built: false },
+  { key: "upload", label: "Upload", built: true },
+  { key: "evidence", label: "Evidence", built: true },
+  { key: "requests", label: "Requests", built: false },
+  { key: "coverage", label: "Check coverage", built: false },
+  { key: "results", label: "Verification results", built: false },
+  { key: "output", label: "Output", built: false },
+];
+
+export function PrimaryNav({
+  current = "evidence",
+  onNavigate,
+}: {
+  current?: NavKey;
+  onNavigate?: (key: NavKey) => void;
+}) {
   return (
     <nav className="s1-nav" aria-label="Primary">
-      <button className="s1-tab" aria-current={currentTab === "evidence" ? "page" : undefined}>
-        Evidence
-      </button>
-      <button className="s1-tab" disabled>
-        Register <span className="s1-next">— next release</span>
-      </button>
-      <button className="s1-tab" disabled>
-        Requests <span className="s1-next">— next release</span>
-      </button>
-      <button className="s1-tab" disabled>
-        Conclusion <span className="s1-next">— next release</span>
-      </button>
+      {DESTINATIONS.map((dest) =>
+        dest.built ? (
+          <button
+            key={dest.key}
+            className="s1-tab"
+            type="button"
+            aria-current={current === dest.key ? "page" : undefined}
+            onClick={() => onNavigate?.(dest.key)}
+          >
+            {dest.label}
+          </button>
+        ) : (
+          <button key={dest.key} className="s1-tab" type="button" disabled>
+            {dest.label} <span className="s1-next">— not built</span>
+          </button>
+        )
+      )}
     </nav>
   );
 }
 
-export function S1Chrome({ engagement, children, currentTab, onOpenGlossary }: S1ChromeProps) {
+export function S1Chrome({ engagement, children, current, onNavigate, onOpenGlossary }: S1ChromeProps) {
   return (
     <div className="s1-screen">
       <PersistentRail engagement={engagement} onOpenGlossary={onOpenGlossary} />
       <section className="s1-main">
-        <PrimaryNav currentTab={currentTab} />
+        <PrimaryNav current={current} onNavigate={onNavigate} />
         {children}
       </section>
     </div>

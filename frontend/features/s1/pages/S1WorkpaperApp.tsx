@@ -10,19 +10,22 @@ import {
 } from "../api/s1Backend";
 import { ExtractionReview } from "../components/ExtractionReview";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
-import { S1Chrome } from "../components/S1Chrome";
+import { S1Chrome, type NavKey } from "../components/S1Chrome";
+import { UploadScreen } from "../components/UploadScreen";
 import { StateIndicator } from "../components/StateIndicator";
 import { EXACT_COPY } from "../constants/copy";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
 import { seedAsks } from "../fixtures/requests/seedAsks";
+import { makeUploadItem, classifyGuess } from "../fixtures/upload/simulateUpload";
 import { useRequestsStore } from "../requests/requestsStore";
 import type { ContainerState, EvidenceItem, StateDimension } from "../types";
 import type { SessionAuditEntry } from "../utils/auditIntent";
 
 type ActiveView =
   | { name: "evidence" }
+  | { name: "upload" }
   | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string }
   | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
 
@@ -46,6 +49,7 @@ export function S1WorkpaperApp() {
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
   const requests = useRequestsStore(dataMode === "backend" ? [] : seedAsks);
+  const [sessionUploads, setSessionUploads] = useState<string[]>([]);
 
   useEffect(() => {
     if (dataMode !== "backend") return;
@@ -77,6 +81,38 @@ export function S1WorkpaperApp() {
       nodeKey: item ? nodeKeyForEvidence(item) : undefined,
     });
   }
+
+  function uploadFiles(files: FileList) {
+    if (dataMode === "backend") {
+      void handleUploadFiles(files);
+      return;
+    }
+    handleFixtureUpload(files);
+  }
+
+  // Fixture-mode upload: rows appear immediately, then progress as they process.
+  function handleFixtureUpload(files: FileList) {
+    const created = Array.from(files).map((file) => makeUploadItem(file));
+    if (created.length === 0) return;
+    setEvidenceItems((cur) => [...created, ...cur]);
+    setSessionUploads((cur) => [...created.map((c) => c.documentId), ...cur]);
+    const patch = (id: string, next: Partial<EvidenceItem>) =>
+      setEvidenceItems((cur) => cur.map((x) => (x.documentId === id ? { ...x, ...next } : x)));
+    created.forEach((item, i) => {
+      window.setTimeout(() => patch(item.documentId, { processingState: "ingested" }), 700 + i * 140);
+      window.setTimeout(() => patch(item.documentId, classifyGuess(item.filename, engagementConfig)), 1600 + i * 180);
+    });
+  }
+
+  const navCurrent: NavKey = activeView.name === "upload" ? "upload" : "evidence";
+  function onNavigate(key: NavKey) {
+    if (key === "upload") setActiveView({ name: "upload" });
+    else if (key === "evidence") setActiveView({ name: "evidence" });
+    // other destinations are not built yet (disabled in the nav)
+  }
+  const sessionUploadItems = sessionUploads
+    .map((id) => evidenceItems.find((i) => i.documentId === id))
+    .filter((i): i is EvidenceItem => Boolean(i));
 
   async function handleUploadFiles(files: FileList) {
     if (dataMode !== "backend") return;
@@ -152,14 +188,21 @@ export function S1WorkpaperApp() {
     <main className="s1-app">
       <S1Chrome
         engagement={engagementConfig}
-        currentTab={activeView.name === "evidence" || activeView.name === "glossary" ? "evidence" : "extraction"}
+        current={navCurrent}
+        onNavigate={onNavigate}
         onOpenGlossary={() =>
           setActiveView((current) =>
             current.name === "glossary" ? current : { name: "glossary", previous: current }
           )
         }
       >
-        {activeView.name === "evidence" ? (
+        {activeView.name === "upload" ? (
+          <UploadScreen
+            onUploadFiles={uploadFiles}
+            batch={sessionUploadItems}
+            onOpenWorkspace={() => setActiveView({ name: "evidence" })}
+          />
+        ) : activeView.name === "evidence" ? (
           <EvidenceWorkspace
             engagement={engagementConfig}
             evidence={evidenceItems}
@@ -170,7 +213,7 @@ export function S1WorkpaperApp() {
             onAuditIntent={addAuditIntent}
             demoState={demoState}
             onOpenExtraction={openExtraction}
-            onUploadFiles={handleUploadFiles}
+            onUploadFiles={uploadFiles}
             isUploading={isUploading}
             backendError={backendError}
             writesEnabled={dataMode !== "backend"}
