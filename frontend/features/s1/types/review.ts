@@ -50,6 +50,9 @@ export interface ReviewValue {
   originalValue?: string | null;
   record: ValueRecordEntry[];
   requestPreselect?: RequestType;
+  /** The document was withdrawn while open: cards grey, actions disabled. */
+  withdrawn?: boolean;
+  withdrawnReason?: string;
 
   // source
   sourceKind: SourceKind;

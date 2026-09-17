@@ -23,8 +23,16 @@ import type { SessionAuditEntry } from "../utils/auditIntent";
 
 type ActiveView =
   | { name: "evidence" }
-  | { name: "extraction"; documentId: string; mode?: "snippet" | "manual" }
+  | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string }
   | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
+
+/** Facility->type (or entity/not-yet-known) node a Workspace row maps into. */
+function nodeKeyForEvidence(item: EvidenceItem): string {
+  const type = item.detectedType ?? "Type unresolved";
+  if (item.facilityState === "resolved" && item.facilityId) return `F:${item.facilityId}|T:${type}`;
+  if (item.facilityState === "unresolved") return "N";
+  return "E"; // multiple / not_facility_scoped -> entity-level
+}
 
 export function S1WorkpaperApp() {
   const dataMode = process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture" ? "fixture" : "backend";
@@ -61,7 +69,13 @@ export function S1WorkpaperApp() {
   }
 
   function openExtraction(documentId: string) {
-    setActiveView({ name: "extraction", documentId, mode: "snippet" });
+    const item = evidenceItems.find((i) => i.documentId === documentId);
+    setActiveView({
+      name: "extraction",
+      documentId,
+      mode: "snippet",
+      nodeKey: item ? nodeKeyForEvidence(item) : undefined,
+    });
   }
 
   async function handleUploadFiles(files: FileList) {
@@ -166,6 +180,7 @@ export function S1WorkpaperApp() {
             engagement={engagementConfig}
             values={manufacturerValues}
             initialDocumentId={activeView.documentId}
+            initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}
             onBack={() => setActiveView({ name: "evidence" })}
           />

@@ -100,6 +100,7 @@ const slug = (name: string) => name.split(" ")[0].toLowerCase();
     const p = monthPeriod(i);
     docs.push(
       base({
+        documentId: `DOC-${slug(fac.name)}-elec-${MONTHS[i].toLowerCase()}`,
         filename: `${slug(fac.name)}_electric_${MONTHS[i].toLowerCase()}_2025.pdf`,
         detectedType: "Electricity bill",
         ...facilityFields(fac),
@@ -121,6 +122,7 @@ const slug = (name: string) => name.split(" ")[0].toLowerCase();
     const p = monthPeriod(i);
     docs.push(
       base({
+        documentId: `DOC-${slug(fac.name)}-gas-${MONTHS[i].toLowerCase()}`,
         filename: `${slug(fac.name)}_gas_${MONTHS[i].toLowerCase()}_2025.pdf`,
         detectedType: "Natural gas bill",
         ...facilityFields(fac),

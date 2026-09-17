@@ -145,6 +145,24 @@ function gas(fid: string, month: string, therms: number, extra?: Partial<ReviewV
   );
 });
 
+// a withdrawn document open in review — cards grey, actions disabled, reason.
+values.push(
+  rv({
+    documentId: "DOC-tualatin-elec-jul-dupe",
+    filename: "tualatin_electric_july_copy.pdf",
+    documentType: "Electricity bill",
+    facilityId: FAC.tualatin,
+    period: "Jul 2025",
+    whatItIs: "Electricity consumed",
+    scope: "scope2_location",
+    value: "418,200",
+    unit: "kWh",
+    withdrawn: true,
+    withdrawnReason: "Document withdrawn — duplicate of the July electricity bill.",
+    span: { page: 1, x: 0.58, y: 0.42, w: 0.3, h: 0.05 },
+  })
+);
+
 // one corrected value (machine original stays visible) — Tualatin April gas.
 gas(FAC.tualatin, "AprCorr", 34200, {
   documentId: "DOC-tualatin-gas-aprcorr",

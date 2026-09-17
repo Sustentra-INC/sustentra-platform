@@ -1233,3 +1233,5 @@ select:focus-visible,
 .s1-xr-sheet__table td { border: var(--border-hairline); height: var(--sp-6); font-size: var(--text-xs); padding: 0 var(--sp-2); font-variant-numeric: tabular-nums; }
 .s1-xr-sheet__table td.is-target { background: var(--state-open-bg); border: var(--nav-current-marker-width) solid var(--state-open-fg); }
 .s1-xr-sheet__note { font-size: var(--text-xs); margin-top: var(--sp-2); }
+.s1-xr-card--withdrawn { opacity: var(--disabled-opacity); }
+.s1-xr-card--withdrawn .s1-xr-gutter { color: var(--ink-3); background: var(--sf-sunken); }

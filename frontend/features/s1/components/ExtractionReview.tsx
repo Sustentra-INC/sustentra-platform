@@ -21,6 +21,10 @@ interface ExtractionReviewProps {
   engagement: EngagementConfig;
   values: ReviewValue[];
   initialDocumentId?: string | null;
+  /** Facility->type (or entity/not-yet-known) node the clicked row maps to, so
+   *  a row whose exact document has no extracted value still deep-links to the
+   *  right node rather than the first one. */
+  initialNodeKey?: string;
   onSaveAsk: (draft: AskDraft) => void;
   onBack: () => void;
 }
@@ -35,18 +39,18 @@ const SCOPE_LABEL: Record<ScopePlacement, string> = {
 
 const REVIEW_CAP = 60; // stressor render cap; the count still shows the true total
 
-export function ExtractionReview({ engagement, values, initialDocumentId, onSaveAsk, onBack }: ExtractionReviewProps) {
+export function ExtractionReview({ engagement, values, initialDocumentId, initialNodeKey, onSaveAsk, onBack }: ExtractionReviewProps) {
   const [items, setItems] = useState<ReviewValue[]>(values);
 
-  const initial = useMemo(() => {
-    const seed = initialDocumentId ? items.find((v) => v.documentId === initialDocumentId) : items[0];
-    return seed ?? items[0] ?? null;
-  }, [initialDocumentId, items]);
+  const initial = useMemo(
+    () => resolveInitial(items, initialDocumentId, initialNodeKey),
+    [items, initialDocumentId, initialNodeKey]
+  );
 
-  const [nodeKey, setNodeKey] = useState<string>(initial ? nodeKeyForValue(initial) : "");
-  const [selectedId, setSelectedId] = useState<string | null>(initial?.id ?? null);
+  const [nodeKey, setNodeKey] = useState<string>(initial.nodeKey);
+  const [selectedId, setSelectedId] = useState<string | null>(initial.valueId);
   const [filter, setFilter] = useState<ValueReviewState | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial ? [rootKeyOf(initial)] : []));
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.rootKey ? [initial.rootKey] : []));
   const [modalTarget, setModalTarget] = useState<AddToRequestsTarget | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -320,7 +324,7 @@ function ValueCard({
   const done = v.reviewState !== "to_review";
   return (
     <article
-      className={`s1-xr-card${selected ? " is-sel" : ""} s1-xr-card--${v.reviewState}`}
+      className={`s1-xr-card${selected ? " is-sel" : ""} s1-xr-card--${v.reviewState}${v.withdrawn ? " s1-xr-card--withdrawn" : ""}`}
       onClick={onSelect}
       tabIndex={0}
       aria-current={selected}
@@ -362,7 +366,9 @@ function ValueCard({
         </div>
 
         <div className="s1-xr-actions" onClick={(e) => e.stopPropagation()}>
-          {done ? (
+          {v.withdrawn ? (
+            <span className="s1-reason">{v.withdrawnReason ?? "Document withdrawn; actions disabled."}</span>
+          ) : done ? (
             <span className="s1-muted">{reviewStateLabel(v.reviewState)}</span>
           ) : (
             <>
@@ -609,6 +615,36 @@ function rootKeyOf(v: ReviewValue): string {
   if (v.entityLevel) return "E";
   if (v.notYetKnown) return "N";
   return `F:${v.facilityId}`;
+}
+
+/**
+ * Resolve the initial selection. Prefer the exact document's value; otherwise
+ * the node the clicked row maps to; otherwise that node's root; otherwise the
+ * first value. So every Workspace row deep-links to the right place.
+ */
+function resolveInitial(
+  items: ReviewValue[],
+  docId: string | null | undefined,
+  nodeKeyHint: string | undefined
+): { nodeKey: string; valueId: string | null; rootKey: string | null } {
+  if (!items.length) return { nodeKey: "", valueId: null, rootKey: null };
+  const byDoc = docId ? items.find((v) => v.documentId === docId) : undefined;
+  if (byDoc) return { nodeKey: nodeKeyForValue(byDoc), valueId: byDoc.id, rootKey: rootKeyOf(byDoc) };
+  if (nodeKeyHint) {
+    const atHint = valuesForNode(items, nodeKeyHint);
+    if (atHint.length) {
+      const f = atHint.find((v) => v.reviewState === "to_review") ?? atHint[0];
+      return { nodeKey: nodeKeyHint, valueId: f.id, rootKey: rootKeyFromNode(nodeKeyHint) };
+    }
+    const root = rootKeyFromNode(nodeKeyHint);
+    const atRoot = valuesForNode(items, root);
+    if (atRoot.length) {
+      const f = atRoot.find((v) => v.reviewState === "to_review") ?? atRoot[0];
+      return { nodeKey: root, valueId: f.id, rootKey: root };
+    }
+  }
+  const first = items[0];
+  return { nodeKey: nodeKeyForValue(first), valueId: first.id, rootKey: rootKeyOf(first) };
 }
 
 function rootKeyFromNode(key: string): string {
