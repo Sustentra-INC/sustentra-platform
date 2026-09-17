@@ -64,8 +64,8 @@ const DESTINATIONS: Array<{ key: NavKey; label: string; built: boolean }> = [
   { key: "upload", label: "Upload", built: true },
   { key: "evidence", label: "Evidence", built: true },
   { key: "requests", label: "Requests", built: true },
-  { key: "coverage", label: "Check coverage", built: false },
-  { key: "results", label: "Verification results", built: false },
+  { key: "coverage", label: "Check coverage", built: true },
+  { key: "results", label: "Verification results", built: true },
   { key: "output", label: "Output", built: false },
 ];
 

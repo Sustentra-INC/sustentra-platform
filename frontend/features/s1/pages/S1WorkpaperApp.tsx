@@ -14,6 +14,11 @@ import { S1Chrome, type NavKey } from "../components/S1Chrome";
 import { UploadScreen } from "../components/UploadScreen";
 import { SetupScreen } from "../components/SetupScreen";
 import { EvidenceRequests } from "../components/EvidenceRequests";
+import { CheckCoverage } from "../components/CheckCoverage";
+import { VerificationResults } from "../components/VerificationResults";
+import { coverageRules } from "../fixtures/verification/coverageRules";
+import { verificationRows } from "../fixtures/verification/verificationResults";
+import { useVerificationStore } from "../verification/verificationStore";
 import { StateIndicator } from "../components/StateIndicator";
 import { EXACT_COPY } from "../constants/copy";
 import { engagementConfig } from "../fixtures/engagementConfig";
@@ -32,6 +37,8 @@ type ActiveView =
   | { name: "setup" }
   | { name: "upload" }
   | { name: "requests" }
+  | { name: "coverage" }
+  | { name: "results" }
   | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string }
   | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
 
@@ -55,6 +62,7 @@ export function S1WorkpaperApp() {
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
   const requests = useRequestsStore(dataMode === "backend" ? [] : seedAsks);
+  const verification = useVerificationStore();
   const [sessionUploads, setSessionUploads] = useState<string[]>([]);
   // Engagement config is editable on Setup; facilities here feed the Workspace.
   const [engagement, setEngagement] = useState<EngagementConfig>(engagementConfig);
@@ -113,20 +121,22 @@ export function S1WorkpaperApp() {
     });
   }
 
-  const navCurrent: NavKey =
-    activeView.name === "setup"
-      ? "setup"
-      : activeView.name === "upload"
-        ? "upload"
-        : activeView.name === "requests"
-          ? "requests"
-          : "evidence";
+  const NAV_FOR_VIEW: Partial<Record<ActiveView["name"], NavKey>> = {
+    setup: "setup",
+    upload: "upload",
+    requests: "requests",
+    coverage: "coverage",
+    results: "results",
+  };
+  const navCurrent: NavKey = NAV_FOR_VIEW[activeView.name] ?? "evidence";
   function onNavigate(key: NavKey) {
     if (key === "setup") setActiveView({ name: "setup" });
     else if (key === "upload") setActiveView({ name: "upload" });
     else if (key === "requests") setActiveView({ name: "requests" });
+    else if (key === "coverage") setActiveView({ name: "coverage" });
+    else if (key === "results") setActiveView({ name: "results" });
     else if (key === "evidence") setActiveView({ name: "evidence" });
-    // other destinations are not built yet (disabled in the nav)
+    // "output" is not built yet (disabled in the nav)
   }
 
   // Follow-up: a problem that came back becomes a new ask linked to the old one.
@@ -258,6 +268,10 @@ export function S1WorkpaperApp() {
             onOpenSource={(ask) => ask.source.documentId && openExtraction(ask.source.documentId)}
             onOpenSetup={() => setActiveView({ name: "setup" })}
           />
+        ) : activeView.name === "coverage" ? (
+          <CheckCoverage rules={coverageRules} />
+        ) : activeView.name === "results" ? (
+          <VerificationResults rows={verificationRows} store={verification} />
         ) : activeView.name === "evidence" ? (
           <EvidenceWorkspace
             engagement={engagement}

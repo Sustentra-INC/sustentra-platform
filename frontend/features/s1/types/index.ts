@@ -5,4 +5,5 @@ export type * from "./extraction";
 export type * from "./requests";
 export type * from "./review";
 export type * from "./scope";
+export type * from "./verification";
 export type * from "./states";

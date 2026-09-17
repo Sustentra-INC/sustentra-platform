@@ -1294,3 +1294,11 @@ select:focus-visible,
 .s1-req-panel__head { display: flex; flex-direction: column; gap: var(--sp-1); }
 .s1-req-preview { display: flex; flex-direction: column; gap: var(--sp-1); }
 .s1-req-message { background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-3); font-family: var(--font-sans); font-size: var(--text-sm); line-height: var(--leading-body); white-space: pre-wrap; color: var(--ink); }
+
+/* ---- Check Coverage (5) & Verification results (6) ---- */
+.s1-cov, .s1-vr { display: flex; flex-direction: column; gap: var(--sp-4); }
+.s1-cov-banner { background: var(--state-open-bg); border: var(--border-hairline); border-color: var(--state-open-line); border-radius: var(--radius-card); padding: var(--sp-3) var(--sp-4); font-size: var(--text-sm); color: var(--ink-2); line-height: var(--leading-body); }
+.s1-cov-banner strong { color: var(--state-open-fg); }
+.s1-cov-table td, .s1-vr-table td { vertical-align: top; }
+.s1-vr-table select { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); }
+.s1-vr-note { font-size: var(--text-sm); }

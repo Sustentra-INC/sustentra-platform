@@ -13,6 +13,7 @@ import type {
 } from "../types";
 import { StateIndicator } from "./StateIndicator";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import { formatPeriod } from "../utils/formatPeriod";
 import type { AskDraft } from "../requests/requestsStore";
 
 /**
@@ -1126,9 +1127,7 @@ function facilityLabel(item: EvidenceItem): string {
 }
 
 function periodLabel(item: EvidenceItem): string {
-  if (item.periodState === "resolved" && item.periodStart && item.periodEnd) {
-    return `${item.periodStart} to ${item.periodEnd}`;
-  }
+  if (item.periodStart && item.periodEnd) return formatPeriod(item.periodStart, item.periodEnd);
   if (item.periodState === "spans_multiple") return "spans multiple periods";
   return "period not yet known";
 }
