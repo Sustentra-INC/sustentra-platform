@@ -1,0 +1,731 @@
+{
+  "__SYNTHETIC_FIXTURE__": "HAND-BUILT, NOT A REAL AWS TEXTRACT CAPTURE. Generated to exercise the value->block matcher. Real Textract output is messier: words split in odd places, glued units, OCR substitutions, numbers inside TABLE cells rather than LINE blocks, skewed geometry. This fixture is tidy by construction and has NOT been validated against a genuine bill. Jack is sourcing a sanitized real capture; do not confuse the two.",
+  "DocumentMetadata": {
+    "Pages": 1
+  },
+  "Blocks": [
+    {
+      "Id": "page1",
+      "BlockType": "PAGE",
+      "Page": 1,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.0,
+          "Top": 0.0,
+          "Width": 1.0,
+          "Height": 1.0
+        }
+      },
+      "Relationships": [
+        {
+          "Type": "CHILD",
+          "Ids": [
+            "l0",
+            "l1",
+            "l2",
+            "l3",
+            "l4",
+            "l5",
+            "l6",
+            "l7",
+            "l8"
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "w0_0",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "Pacific",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.08,
+          "Width": 0.077,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w0_1",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "Grid",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.188,
+          "Top": 0.08,
+          "Width": 0.044,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w0_2",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "Electric",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.243,
+          "Top": 0.08,
+          "Width": 0.088,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "l0",
+      "BlockType": "LINE",
+      "Page": 1,
+      "Text": "Pacific Grid Electric",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.08,
+          "Width": 0.231,
+          "Height": 0.028
+        }
+      },
+      "Relationships": [
+        {
+          "Type": "CHILD",
+          "Ids": [
+            "w0_0",
+            "w0_1",
+            "w0_2"
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "w1_0",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "Account",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.132,
+          "Width": 0.077,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w1_1",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "4471-302",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.188,
+          "Top": 0.132,
+          "Width": 0.088,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "l1",
+      "BlockType": "LINE",
+      "Page": 1,
+      "Text": "Account 4471-302",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.132,
+          "Width": 0.176,
+          "Height": 0.028
+        }
+      },
+      "Relationships": [
+        {
+          "Type": "CHILD",
+          "Ids": [
+            "w1_0",
+            "w1_1"
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "w2_0",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "Service",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.184,
+          "Width": 0.077,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w2_1",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "period",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.188,
+          "Top": 0.184,
+          "Width": 0.066,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w2_2",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "January",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.265,
+          "Top": 0.184,
+          "Width": 0.077,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w2_3",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "2025",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.353,
+          "Top": 0.184,
+          "Width": 0.044,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "l2",
+      "BlockType": "LINE",
+      "Page": 1,
+      "Text": "Service period January 2025",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.184,
+          "Width": 0.297,
+          "Height": 0.028
+        }
+      },
+      "Relationships": [
+        {
+          "Type": "CHILD",
+          "Ids": [
+            "w2_0",
+            "w2_1",
+            "w2_2",
+            "w2_3"
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "w3_0",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "Electricity",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.236,
+          "Width": 0.121,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w3_1",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "consumed",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.232,
+          "Top": 0.236,
+          "Width": 0.088,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w3_2",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "182,400",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.331,
+          "Top": 0.236,
+          "Width": 0.077,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w3_3",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "kWh",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.419,
+          "Top": 0.236,
+          "Width": 0.033,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "l3",
+      "BlockType": "LINE",
+      "Page": 1,
+      "Text": "Electricity consumed 182,400 kWh",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.236,
+          "Width": 0.352,
+          "Height": 0.028
+        }
+      },
+      "Relationships": [
+        {
+          "Type": "CHILD",
+          "Ids": [
+            "w3_0",
+            "w3_1",
+            "w3_2",
+            "w3_3"
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "w4_0",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "Previous",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.288,
+          "Width": 0.088,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w4_1",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "balance",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.199,
+          "Top": 0.288,
+          "Width": 0.077,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w4_2",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "182,400",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.287,
+          "Top": 0.288,
+          "Width": 0.077,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "l4",
+      "BlockType": "LINE",
+      "Page": 1,
+      "Text": "Previous balance 182,400",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.288,
+          "Width": 0.264,
+          "Height": 0.028
+        }
+      },
+      "Relationships": [
+        {
+          "Type": "CHILD",
+          "Ids": [
+            "w4_0",
+            "w4_1",
+            "w4_2"
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "w5_0",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "Peak",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.34,
+          "Width": 0.044,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w5_1",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "demand",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.155,
+          "Top": 0.34,
+          "Width": 0.066,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w5_2",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "1",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.232,
+          "Top": 0.34,
+          "Width": 0.011,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w5_3",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "240",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.254,
+          "Top": 0.34,
+          "Width": 0.033,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w5_4",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "kW",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.298,
+          "Top": 0.34,
+          "Width": 0.022,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "l5",
+      "BlockType": "LINE",
+      "Page": 1,
+      "Text": "Peak demand 1 240 kW",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.34,
+          "Width": 0.22,
+          "Height": 0.028
+        }
+      },
+      "Relationships": [
+        {
+          "Type": "CHILD",
+          "Ids": [
+            "w5_0",
+            "w5_1",
+            "w5_2",
+            "w5_3",
+            "w5_4"
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "w6_0",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "Emission",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.392,
+          "Width": 0.088,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w6_1",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "factor",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.199,
+          "Top": 0.392,
+          "Width": 0.066,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w6_2",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "0.223",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.276,
+          "Top": 0.392,
+          "Width": 0.055,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w6_3",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "kgCO2e/kWh",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.342,
+          "Top": 0.392,
+          "Width": 0.11,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "l6",
+      "BlockType": "LINE",
+      "Page": 1,
+      "Text": "Emission factor 0.223 kgCO2e/kWh",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.392,
+          "Width": 0.352,
+          "Height": 0.028
+        }
+      },
+      "Relationships": [
+        {
+          "Type": "CHILD",
+          "Ids": [
+            "w6_0",
+            "w6_1",
+            "w6_2",
+            "w6_3"
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "w7_0",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "Amount",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.444,
+          "Width": 0.066,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w7_1",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "due",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.177,
+          "Top": 0.444,
+          "Width": 0.033,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w7_2",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "$48,220.15",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.221,
+          "Top": 0.444,
+          "Width": 0.11,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "l7",
+      "BlockType": "LINE",
+      "Page": 1,
+      "Text": "Amount due $48,220.15",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.444,
+          "Width": 0.231,
+          "Height": 0.028
+        }
+      },
+      "Relationships": [
+        {
+          "Type": "CHILD",
+          "Ids": [
+            "w7_0",
+            "w7_1",
+            "w7_2"
+          ]
+        }
+      ]
+    },
+    {
+      "Id": "w8_0",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "Rate",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.496,
+          "Width": 0.044,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w8_1",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "schedule",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.155,
+          "Top": 0.496,
+          "Width": 0.088,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "w8_2",
+      "BlockType": "WORD",
+      "Page": 1,
+      "Text": "E-19",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.254,
+          "Top": 0.496,
+          "Width": 0.044,
+          "Height": 0.028
+        }
+      }
+    },
+    {
+      "Id": "l8",
+      "BlockType": "LINE",
+      "Page": 1,
+      "Text": "Rate schedule E-19",
+      "Confidence": 99.0,
+      "Geometry": {
+        "BoundingBox": {
+          "Left": 0.1,
+          "Top": 0.496,
+          "Width": 0.198,
+          "Height": 0.028
+        }
+      },
+      "Relationships": [
+        {
+          "Type": "CHILD",
+          "Ids": [
+            "w8_0",
+            "w8_1",
+            "w8_2"
+          ]
+        }
+      ]
+    }
+  ]
+}
