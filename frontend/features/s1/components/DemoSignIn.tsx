@@ -20,7 +20,10 @@ export function DemoSignIn({ onSignIn }: { onSignIn: () => void }) {
           onSignIn();
         }}
       >
-        <div className="s1-signin__brand">Sustentra</div>
+        <div className="s1-signin__brand">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="s1-signin__logo" src="/sustentra-logo.png" alt="Sustentra" />
+        </div>
         <h1 className="s1-signin__title">Sign in</h1>
         <p className="s1-signin__sub">Verification workspace</p>
 

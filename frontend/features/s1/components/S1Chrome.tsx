@@ -32,7 +32,10 @@ export function PersistentRail({
 }) {
   return (
     <aside className="s1-rail">
-      <h1 className="s1-rail__brand">Sustentra</h1>
+      <h1 className="s1-rail__brand">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="s1-rail__logo" src="/sustentra-logo.png" alt="Sustentra" />
+      </h1>
       <RailItem label="Client" value={engagement.clientName} />
       <RailItem label="Engagement ID" value={engagement.engagementId} mono />
       <RailItem

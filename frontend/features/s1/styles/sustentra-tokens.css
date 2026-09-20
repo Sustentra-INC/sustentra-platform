@@ -31,6 +31,10 @@
   --line:           #E0DDD3;   /* default hairline */
   --line-strong:    #C9C5B8;   /* emphasised border, hover, focus ring base */
 
+  /* Brand ink, sampled from the Sustentra wordmark. Used only for the brand's
+     own primary calls-to-action — never as an engagement-state colour. */
+  --brand-ink:      #282870;
+
 
   /* --- Engagement state --------------------------------------------------
      Six roles. Every status indicator in the product resolves to exactly one
@@ -101,9 +105,9 @@
      Four sizes. Two weights. No exceptions.
      ---------------------------------------------------------------------- */
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter,
-               Helvetica, Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: var(--font-ibm-plex-sans), -apple-system, BlinkMacSystemFont,
+               "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --text-lg:   16px;   /* screen titles */
   --text-md:   14px;   /* body, primary table content */

@@ -1407,8 +1407,10 @@ select:focus-visible,
 .s1-xr-src-body { padding: var(--sp-4); }
 .s1-xr-doc { padding: var(--sp-3) 0; }
 
-/* Buttons a touch bigger so they don't feel pinched */
+/* Buttons a touch bigger so they don't feel pinched — but icon buttons stay
+   square, or they overflow their table column */
 .s1-button { padding: var(--sp-2) var(--sp-4); border-radius: 0.5rem; }
+.s1-button--icon { width: var(--icon-button-size); height: var(--icon-button-size); padding: 0; }
 
 /* Cards / panels rounder and roomier */
 .s1-setup-card, .s1-cov-banner, .s1-analyze, .s1-sample, .s1-upload-batch, .s1-ws-empty { border-radius: 0.75rem; padding: var(--sp-5); }
@@ -1420,3 +1422,41 @@ select:focus-visible,
 .s1-xr-scope { white-space: nowrap; }
 .s1-xr-l1 { row-gap: 0; }
 .s1-xr-card.is-sel { box-shadow: 0 0 0 var(--nav-current-marker-width) var(--state-active-fg); }
+
+/* ==========================================================================
+   FIT TO WIDTH — no horizontal slider. The workpaper's dense min-widths were
+   built for a wide reviewer monitor; for the demo everything reads on one
+   laptop screen. Let the shell and every table flow to the viewport, and give
+   the Requests / Evidence tables fixed proportional columns so the content
+   spaces out and wraps instead of scrolling sideways.
+   ========================================================================== */
+.s1-app { min-width: 0; }
+.s1-screen { grid-template-columns: var(--rail-width) minmax(0, 1fr); }
+
+/* Tables fill their pane; long tokens (filenames, IDs) wrap rather than push */
+.s1-table { min-width: 0; table-layout: fixed; width: 100%; }
+.s1-table td, .s1-table th { overflow-wrap: anywhere; }
+.s1-table-wrap { overflow-x: clip; }
+
+/* Requests (screen 4): eight columns, evenly weighted, "What is needed" widest */
+.s1-req-table th:nth-child(1) { width: 3.5%; }   /* select   */
+.s1-req-table th:nth-child(2) { width: 15%; }    /* item     */
+.s1-req-table th:nth-child(3) { width: 9%; }     /* type     */
+.s1-req-table th:nth-child(4) { width: 13%; }    /* facility */
+.s1-req-table th:nth-child(5) { width: 25.5%; }  /* needed   */
+.s1-req-table th:nth-child(6) { width: 9%; }     /* from     */
+.s1-req-table th:nth-child(7) { width: 12%; }    /* by       */
+.s1-req-table th:nth-child(8) { width: 13%; }    /* state    */
+
+/* ==========================================================================
+   BRAND — the real Sustentra wordmark, and its indigo carried onto the
+   product's own primary actions (not onto any engagement-state colour).
+   ========================================================================== */
+.s1-rail__brand { margin-bottom: var(--sp-5); }
+.s1-rail__logo { height: 1.5rem; width: auto; display: block; }
+.s1-signin__brand { display: flex; }
+.s1-signin__logo { height: 1.9rem; width: auto; display: block; }
+
+.s1-button--pri { background: var(--brand-ink); border-color: var(--brand-ink); color: var(--sf-card); }
+.s1-button--pri:hover { filter: brightness(1.12); }
+.s1-signin__submit { background: var(--brand-ink); border-color: var(--brand-ink); }
