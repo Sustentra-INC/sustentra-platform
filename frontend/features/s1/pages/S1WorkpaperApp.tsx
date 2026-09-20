@@ -69,6 +69,9 @@ export function S1WorkpaperApp() {
   // does not wipe the walkthrough. Read a single time on mount.
   const [persisted] = useState<DemoSnapshot | null>(() => (dataMode === "fixture" ? loadDemoState() : null));
   const [signedIn, setSignedIn] = useState<boolean>(() => (dataMode === "fixture" ? loadSignedIn() : true));
+  // localStorage is read in initializers above; render nothing until mounted so
+  // the server and first client render match (no hydration mismatch).
+  const [mounted, setMounted] = useState(false);
   const [activeView, setActiveView] = useState<ActiveView>({ name: "setup" });
   const [auditIntents, setAuditIntents] = useState<SessionAuditEntry[]>([]);
   const [demoState, setDemoState] = useState<ContainerState>(dataMode === "backend" ? "loading" : "populated");
@@ -114,6 +117,8 @@ export function S1WorkpaperApp() {
     verification.examinations,
     verification.findings,
   ]);
+
+  useEffect(() => setMounted(true), []);
 
   function resetDemo() {
     clearDemoState();
@@ -320,6 +325,10 @@ export function S1WorkpaperApp() {
     } finally {
       setProcessingDocumentIds((current) => current.filter((id) => id !== documentId));
     }
+  }
+
+  if (!mounted) {
+    return <div className="s1-signin" aria-hidden />;
   }
 
   if (!signedIn) {
