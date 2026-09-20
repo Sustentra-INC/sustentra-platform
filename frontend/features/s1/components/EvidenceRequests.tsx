@@ -230,7 +230,7 @@ export function EvidenceRequests({
                         <td>{REQUEST_TYPES.find((t) => t.value === ask.type)?.label}</td>
                         <td>
                           {ask.source.facilityName ?? "Entity-level"}
-                          <div className="s1-muted s1-ws-src">{ask.source.period ?? "—"}</div>
+                          <div className="s1-muted s1-ws-src">{ask.source.period ?? "Not set"}</div>
                         </td>
                         <td>
                           {ask.state === "not_yet_sent" ? (

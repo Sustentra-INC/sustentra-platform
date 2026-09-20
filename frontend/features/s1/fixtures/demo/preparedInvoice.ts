@@ -136,7 +136,7 @@ export const preparedInvoiceValues: ReviewValue[] = [
 
 /** Short labels for the scripted "values appearing" ticker. */
 export const preparedInvoiceFoundOrder = [
-  "Electricity consumed — 182,400 kWh",
-  "Peak demand — 1,240 kW",
-  "Billing period — Feb 2025",
+  "Electricity consumed · 182,400 kWh",
+  "Peak demand · 1,240 kW",
+  "Billing period · Feb 2025",
 ];

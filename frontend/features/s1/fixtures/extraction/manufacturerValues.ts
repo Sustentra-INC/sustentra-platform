@@ -52,7 +52,7 @@ function rv(p: Partial<ReviewValue> & { documentId: string; filename: string; do
 const values: ReviewValue[] = [];
 const slug = (fid: string) => FAC_NAME[fid].split(" ")[0].toLowerCase();
 
-// electricity — Scope 2 always two values (location + market), with a span.
+// electricity · Scope 2 always two values (location + market), with a span.
 function electricity(fid: string, month: string, kwh: number) {
   const file = `${slug(fid)}_electric_${month.toLowerCase()}_2025.pdf`;
   const period = `${month} 2025`;
@@ -89,7 +89,7 @@ function electricity(fid: string, month: string, kwh: number) {
   );
 }
 
-// natural gas — Scope 1, with a span.
+// natural gas · Scope 1, with a span.
 function gas(fid: string, month: string, therms: number, extra?: Partial<ReviewValue>) {
   const file = `${slug(fid)}_gas_${month.toLowerCase()}_2025.pdf`;
   values.push(
@@ -116,7 +116,7 @@ function gas(fid: string, month: string, therms: number, extra?: Partial<ReviewV
   electricity(fid, "Apr", 428000 + i * 90000);
   gas(fid, "Jan", 28000 + i * 7000);
   gas(fid, "Apr", 29200 + i * 7000);
-  // refrigerant — Scope 1, no span (fallback state).
+  // refrigerant · Scope 1, no span (fallback state).
   values.push(
     rv({
       documentId: `DOC-${slug(fid)}-refrig`,
@@ -130,11 +130,11 @@ function gas(fid: string, month: string, therms: number, extra?: Partial<ReviewV
       unit: "kg",
       sourceKind: "pdf",
       span: null,
-      snippet: "Charge added: R-404A 12 kg — unit RTU-3",
+      snippet: "Charge added: R-404A 12 kg · unit RTU-3",
       requestPreselect: "clarify",
     })
   );
-  // meter — Scope 2 location, image, no span.
+  // meter · Scope 2 location, image, no span.
   values.push(
     rv({
       documentId: `DOC-${slug(fid)}-meter`,
@@ -148,12 +148,12 @@ function gas(fid: string, month: string, therms: number, extra?: Partial<ReviewV
       unit: "kWh",
       sourceKind: "image",
       span: null,
-      snippet: "Photo of dial meter — read entered by verifier",
+      snippet: "Photo of dial meter · read entered by verifier",
     })
   );
 });
 
-// a withdrawn document open in review — cards grey, actions disabled, reason.
+// a withdrawn document open in review · cards grey, actions disabled, reason.
 values.push(
   rv({
     documentId: "DOC-tualatin-elec-jul-dupe",
@@ -166,12 +166,12 @@ values.push(
     value: "418,200",
     unit: "kWh",
     withdrawn: true,
-    withdrawnReason: "Document withdrawn — duplicate of the July electricity bill.",
+    withdrawnReason: "Document withdrawn · duplicate of the July electricity bill.",
     span: { page: 1, x: 0.58, y: 0.42, w: 0.3, h: 0.05 },
   })
 );
 
-// one corrected value (machine original stays visible) — Tualatin April gas.
+// one corrected value (machine original stays visible) · Tualatin April gas.
 gas(FAC.tualatin, "AprCorr", 34200, {
   documentId: "DOC-tualatin-gas-aprcorr",
   filename: "tualatin_gas_apr_2025_corrected.pdf",
@@ -180,11 +180,11 @@ gas(FAC.tualatin, "AprCorr", 34200, {
   originalValue: "3,420",
   record: [
     { kind: "machine", actor: "System", at: "2025-09-10T08:00:00Z", action: "read", reason: "3,420 therms · from page" },
-    { kind: "human", actor: "M. Osei", at: "2025-09-15T10:24:00Z", action: "corrected value", reason: "OCR dropped a digit — 34,200 on the page" },
+    { kind: "human", actor: "M. Osei", at: "2025-09-15T10:24:00Z", action: "corrected value", reason: "OCR dropped a digit · 34,200 on the page" },
   ],
 });
 
-// one accepted value — Kent January electricity location-based.
+// one accepted value · Kent January electricity location-based.
 values.push(
   rv({
     documentId: "DOC-kent-elec-jan",
@@ -205,7 +205,7 @@ values.push(
   })
 );
 
-// one requested value — Modesto refrigerant recovered (illegible).
+// one requested value · Modesto refrigerant recovered (illegible).
 values.push(
   rv({
     documentId: "DOC-modesto-refrig",
@@ -215,13 +215,13 @@ values.push(
     period: "2025",
     whatItIs: "R-404A recovered on service",
     scope: "scope1",
-    value: "—",
+    value: "n/a",
     unit: "kg",
     reviewState: "requested",
     requestPreselect: "clarify",
     record: [
       { kind: "machine", actor: "System", at: "2025-09-10T08:00:00Z", action: "read", reason: "no value · illegible" },
-      { kind: "human", actor: "M. Osei", at: "2025-09-15T09:58:00Z", action: "requested from client", reason: "service log illegible — asked for the invoice" },
+      { kind: "human", actor: "M. Osei", at: "2025-09-15T09:58:00Z", action: "requested from client", reason: "service log illegible · asked for the invoice" },
     ],
     span: null,
     snippet: "Recovered to cylinder: (illegible)",
@@ -264,7 +264,7 @@ values.push(
 
 // not-yet-known: a value read from an unclassified file.
 values.push(
-  rv({ documentId: "DOC-UNCLASS-1", filename: "IMG_2231.jpg", documentType: "Type unresolved", notYetKnown: true, period: "unknown", whatItIs: "Number read from an unclassified image", scope: "not_placed", value: "1,204", unit: "(unit unread)", sourceKind: "image", span: null, snippet: "1,204 — type not set" })
+  rv({ documentId: "DOC-UNCLASS-1", filename: "IMG_2231.jpg", documentType: "Type unresolved", notYetKnown: true, period: "unknown", whatItIs: "Number read from an unclassified image", scope: "not_placed", value: "1,204", unit: "(unit unread)", sourceKind: "image", span: null, snippet: "1,204 · type not set" })
 );
 
 // ---- stressor 1: mileage report, 312 rows from one file (Scope 1) ----
@@ -276,7 +276,7 @@ for (let i = 1; i <= 312; i += 1) {
       documentType: "Mileage or expense report",
       facilityId: FAC.tualatin,
       period: "2025",
-      whatItIs: `Trip ${String(i).padStart(3, "0")} — mileage claimed`,
+      whatItIs: `Trip ${String(i).padStart(3, "0")} · mileage claimed`,
       scope: "scope1",
       value: `${18 + ((i * 7) % 140)}`,
       unit: "mi",
@@ -297,7 +297,7 @@ for (let i = 1; i <= 218; i += 1) {
       documentType: "Supplier roster",
       entityLevel: true,
       period: "FY2025",
-      whatItIs: `Supplier ${String(i).padStart(3, "0")} — annual spend`,
+      whatItIs: `Supplier ${String(i).padStart(3, "0")} · annual spend`,
       scope: "not_placed",
       value: `$${((12 + ((i * 13) % 900)) * 1000).toLocaleString()}`,
       unit: "",

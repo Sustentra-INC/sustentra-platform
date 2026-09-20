@@ -16,17 +16,17 @@ export const verificationRows: VerificationRow[] = [
     reportedValue: "Operational control",
     unit: "",
     recomputed: null,
-    recomputeReason: "narrative field — not recomputable",
+    recomputeReason: "narrative field · not recomputable",
     delta: null,
     checkOutcome: "could_not_check",
     checkReason: "Rule evaluation not implemented.",
   },
 
-  // Scope 1 — the recomputed path
+  // Scope 1 · the recomputed path
   {
     dataPointId: "DP-GAS-TUALATIN",
     methodologyFieldId: "MF-PLH-natural-gas-consumed",
-    label: "Stationary combustion — natural gas · Tualatin Plant",
+    label: "Stationary combustion · natural gas · Tualatin Plant",
     layer: "scope1",
     facilityName: "Tualatin Plant",
     reportedValue: "1,812",
@@ -39,7 +39,7 @@ export const verificationRows: VerificationRow[] = [
   {
     dataPointId: "DP-GAS-KENT",
     methodologyFieldId: "MF-PLH-natural-gas-consumed",
-    label: "Stationary combustion — natural gas · Kent Cannery",
+    label: "Stationary combustion · natural gas · Kent Cannery",
     layer: "scope1",
     facilityName: "Kent Cannery",
     reportedValue: "1,540",
@@ -52,7 +52,7 @@ export const verificationRows: VerificationRow[] = [
   {
     dataPointId: "DP-DIESEL-FLEET",
     methodologyFieldId: "MF-PLH-diesel-purchased-fleet",
-    label: "Mobile combustion — diesel · plant fleet",
+    label: "Mobile combustion · diesel · plant fleet",
     layer: "scope1",
     reportedValue: "260",
     unit: "tCO₂e",
@@ -65,7 +65,7 @@ export const verificationRows: VerificationRow[] = [
   {
     dataPointId: "DP-REFRIGERANT",
     methodologyFieldId: "MF-PLH-refrigerant-added",
-    label: "Fugitive — refrigerant R-404A",
+    label: "Fugitive · refrigerant R-404A",
     layer: "scope1",
     reportedValue: "48",
     unit: "tCO₂e",
@@ -76,7 +76,7 @@ export const verificationRows: VerificationRow[] = [
     checkReason: "No recompute path.",
   },
 
-  // Scope 2 — always two rows
+  // Scope 2 · always two rows
   {
     dataPointId: "DP-ELEC-LOC",
     methodologyFieldId: "MF-PLH-electricity-consumed-scope2_location",

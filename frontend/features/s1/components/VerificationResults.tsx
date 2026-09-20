@@ -159,10 +159,10 @@ function ResultsTab({
                             {row.recomputed} {row.unit}
                           </span>
                         ) : (
-                          <span className="s1-muted">not recomputed — {row.recomputeReason}</span>
+                          <span className="s1-muted">not recomputed · {row.recomputeReason}</span>
                         )}
                       </td>
-                      <td className="s1-mono">{row.delta ?? <span className="s1-muted">—</span>}</td>
+                      <td className="s1-mono">{row.delta ?? <span className="s1-muted">None</span>}</td>
                       <td>
                         <span className={`s1-state s1-state--${OUTCOME_ROLE[row.checkOutcome]}`}>
                           {OUTCOME_LABEL[row.checkOutcome]}
@@ -256,7 +256,7 @@ function FindingsTab({ store }: { store: VerificationStore }) {
                     <td>
                       <span className="s1-state s1-state--open">{f.status}</span>
                     </td>
-                    <td className="s1-muted">{f.withClientSince ?? "— (request-linked)"}</td>
+                    <td className="s1-muted">{f.withClientSince ?? "Request-linked"}</td>
                   </tr>
                 ))}
               </Fragment>
@@ -304,7 +304,7 @@ function RegisterFindingModal({
             className="s1-button"
             type="button"
             disabled={!sentence.trim() || !cause.trim()}
-            onClick={() => onRegister(sentence.trim(), cause.trim(), magnitude.trim() || "—")}
+            onClick={() => onRegister(sentence.trim(), cause.trim(), magnitude.trim() || "n/a")}
           >
             Register finding
           </button>

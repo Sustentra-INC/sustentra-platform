@@ -117,7 +117,7 @@ export function ExtractionReview({ engagement, values, onValuesChange, initialDo
           : x
       )
     );
-    flash("Accepted — number, unit, field, facility and period confirmed");
+    flash("Accepted · number, unit, field, facility and period confirmed");
     advanceFrom(v);
   }
 
@@ -157,7 +157,7 @@ export function ExtractionReview({ engagement, values, onValuesChange, initialDo
       documentId: v.documentId,
       fieldKey: v.id,
       // The value WITH its document name (spec) — this shows on Evidence requests.
-      itemLabel: `${v.whatItIs} — ${v.filename}`,
+      itemLabel: `${v.whatItIs} · ${v.filename}`,
       facilityName,
       period: v.period,
       sourcePage: v.page,

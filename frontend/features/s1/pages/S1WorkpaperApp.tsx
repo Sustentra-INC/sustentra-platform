@@ -502,7 +502,7 @@ function GlossaryPage({ onBack }: { onBack: () => void }) {
 const VOCABULARY_ROWS = [
   {
     term: "Document typing",
-    means: "Detecting what a file is — utility bill, contractual instrument, workbook",
+    means: "Detecting what a file is · utility bill, contractual instrument, workbook",
   },
   {
     term: "Classification",
@@ -512,7 +512,7 @@ const VOCABULARY_ROWS = [
   { term: "Finding", means: "The object carrying review state, failure cause, impact, disposition" },
   {
     term: "Request",
-    means: "Engagement-level client ask. Many-to-many with findings — one request bundles gaps across several review items",
+    means: "Engagement-level client ask. Many-to-many with findings · one request bundles gaps across several review items",
   },
   { term: "Main evidence", means: "Extractable, system-verifiable, links to specific Field_IDs" },
   {
@@ -570,8 +570,8 @@ const STATE_ENUMERATION_ROWS: Array<{
     attachesTo: "Schema field",
     values: [
       { value: "populated", label: "Populated" },
-      { value: "missing_requestable", label: "Missing — requestable" },
-      { value: "missing_not_requestable", label: "Missing — not requestable" },
+      { value: "missing_requestable", label: "Missing · requestable" },
+      { value: "missing_not_requestable", label: "Missing · not requestable" },
       { value: "system_key", label: "System key" },
       { value: "not_applicable", label: "Not applicable" },
     ],

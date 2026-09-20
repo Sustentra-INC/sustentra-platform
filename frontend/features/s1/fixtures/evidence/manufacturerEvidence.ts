@@ -2,7 +2,7 @@ import type { Actor } from "../../types/engagement";
 import type { EvidenceItem, EvidenceFormat } from "../../types/evidence";
 
 /**
- * Fixture evidence for Cascade Provisions Co. — a three-facility food
+ * Fixture evidence for Cascade Provisions Co. · a three-facility food
  * manufacturer, 2025 reporting year, ~150 files across the canonical type
  * vocabulary, built to carry the mess the interface must survive:
  *   - two duplicate electricity bills
@@ -338,13 +338,13 @@ docs.push(
     fieldsExpected: 18,
     fieldsExpectedDisplay: 18,
     fieldsExtracted: 18,
-    note: "Client's own calculation — reconcile against extracted bills.",
+    note: "Client's own calculation · reconcile against extracted bills.",
     notes: [
       {
         id: "n-wb-1",
         author: "M. Osei",
         at: "2025-09-12T15:20:00Z",
-        text: "Client's own calculation — reconcile against extracted bills.",
+        text: "Client's own calculation · reconcile against extracted bills.",
       },
     ],
   })
@@ -352,7 +352,7 @@ docs.push(
 
 // ============================ PLANTED MESS ============================
 
-// Two duplicate electricity bills (Tualatin, July) — duplicate of each other.
+// Two duplicate electricity bills (Tualatin, July) · duplicate of each other.
 docs.push(
   base({
     documentId: "DOC-DUPE-A",
@@ -424,7 +424,7 @@ docs.push(
     filename: "scan_0417.pdf",
     detectedType: "Electricity bill",
     processingState: "blocked",
-    haltReason: "Scan is unreadable — no extractable text on any page.",
+    haltReason: "Scan is unreadable · no extractable text on any page.",
     documentProperties: ["poor_scan"],
     ...facilityFields(FAC.modesto),
     periodState: "unresolved",
@@ -561,7 +561,7 @@ docs.push(
 
 // ============================ STRESSORS ============================
 
-// Mileage/expense report — 312 rows from one file.
+// Mileage/expense report · 312 rows from one file.
 docs.push(
   base({
     documentId: "DOC-MILEAGE",
@@ -576,14 +576,14 @@ docs.push(
     fieldsExpectedDisplay: 312,
     fieldsExtracted: 312,
     arrivedSinceLastVisit: true,
-    note: "312 trip rows — expect the value list to be unusable one-card-per-value.",
+    note: "312 trip rows · expect the value list to be unusable one-card-per-value.",
     notes: [
-      { id: "n-mile-1", author: "M. Osei", at: "2025-09-14T09:10:00Z", text: "312 trip rows — expect the value list to be unusable one-card-per-value." },
+      { id: "n-mile-1", author: "M. Osei", at: "2025-09-14T09:10:00Z", text: "312 trip rows · expect the value list to be unusable one-card-per-value." },
     ],
   })
 );
 
-// Supplier roster — 218 entries.
+// Supplier roster · 218 entries.
 docs.push(
   base({
     documentId: "DOC-ROSTER",

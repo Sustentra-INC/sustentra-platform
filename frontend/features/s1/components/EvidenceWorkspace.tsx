@@ -600,16 +600,17 @@ function WorkspaceRow(props: {
         {withdrawn ? <StateIndicator dimension="disposition" value="withdrawn" label="Withdrawn" /> : null}
       </td>
 
-      {/* Facility */}
+      {/* Facility — the picker sits inline; no click needed to reveal it */}
       <td>
-        {props.editing === "facility" ? (
+        {props.writesEnabled && (props.editing === "facility" || item.facilityState === "unresolved") ? (
           <select
-            className="s1-inline-input"
-            defaultValue=""
+            className="s1-inline-input s1-select"
+            defaultValue={item.facilityId ?? ""}
+            aria-label="Set facility"
             onChange={(e) => props.onSetFacility(item.documentId, e.target.value)}
           >
             <option value="" disabled>
-              Set facility
+              Choose facility
             </option>
             {engagement.facilities.map((f) => (
               <option key={f.facilityId} value={f.facilityId}>
@@ -622,23 +623,31 @@ function WorkspaceRow(props: {
         )}
       </td>
 
-      {/* Document type */}
+      {/* Document type — picker inline when unconfirmed */}
       <td>
-        {props.editing === "type" ? (
-          <select
-            className="s1-inline-input"
-            defaultValue={item.detectedType ?? ""}
-            onChange={(e) => props.onSetType(item.documentId, e.target.value)}
-          >
-            <option value="" disabled>
-              Set type
-            </option>
-            {SET_TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>
-                {t}
+        {props.writesEnabled &&
+        (props.editing === "type" ||
+          item.detectedType == null ||
+          item.typeReviewBand === "needs_review" ||
+          item.typeReviewBand === "cannot_determine") ? (
+          <div className="s1-ws-setcell">
+            <select
+              className="s1-inline-input s1-select"
+              defaultValue={item.detectedType ?? ""}
+              aria-label="Set document type"
+              onChange={(e) => props.onSetType(item.documentId, e.target.value)}
+            >
+              <option value="" disabled>
+                Choose type
               </option>
-            ))}
-          </select>
+              {SET_TYPE_OPTIONS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            {item.detectedType != null ? <div className="s1-muted s1-ws-src">not confirmed yet</div> : null}
+          </div>
         ) : (
           <TypeCell item={item} onSet={() => props.onStartEdit("type")} writesEnabled={props.writesEnabled} />
         )}
@@ -653,7 +662,7 @@ function WorkspaceRow(props: {
       {/* Issue */}
       <td>
         {issues.length === 0 ? (
-          <span className="s1-muted">—</span>
+          <span className="s1-muted">None</span>
         ) : (
           <div className="s1-ws-issues">
             {issues.map((line) => (
@@ -775,7 +784,7 @@ function AddToRequestsCell({
   onOpenRequests: () => void;
 }) {
   if (!ask) {
-    if (withdrawn) return <span className="s1-muted">—</span>;
+    if (withdrawn) return <span className="s1-muted">None</span>;
     return (
       <button className="s1-linklike" type="button" onClick={onAdd}>
         Add to requests

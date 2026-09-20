@@ -1629,4 +1629,50 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .s1-setup-grid { grid-template-columns: 1fr; }
   .s1-setup-inline { flex-wrap: wrap; }
   .s1-req-body { grid-template-columns: 1fr; }
+  .s1-cov-tile { min-width: 0; flex-basis: 45%; }
 }
+
+/* ==========================================================================
+   Clean dropdowns (Facility / Type / selects): custom chevron, accent focus.
+   ========================================================================== */
+.s1-select, select.s1-inline-input {
+  appearance: none; -webkit-appearance: none;
+  padding: var(--sp-2) var(--sp-5) var(--sp-2) var(--sp-3);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238A897F' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");
+  background-repeat: no-repeat; background-position: right var(--sp-2) center; background-size: 1rem 1rem;
+  cursor: pointer; width: 100%; max-width: 14rem;
+}
+.s1-select:hover { border-color: var(--accent-line); }
+.s1-ws-setcell { display: flex; flex-direction: column; gap: var(--sp-1); }
+
+/* ==========================================================================
+   Check coverage — professional line icons + status tiles (no emoji).
+   ========================================================================== */
+.s1-cov-header { align-items: center; gap: var(--sp-3); }
+.s1-cov-title-icon { width: 1.6rem; height: 1.6rem; color: var(--accent); flex: none; }
+
+.s1-cov-summary { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.s1-cov-tile {
+  display: flex; align-items: center; gap: var(--sp-3); flex: 1; min-width: 11rem;
+  padding: var(--sp-3) var(--sp-4); background: var(--sf-card);
+  border: var(--border-hairline); border-radius: var(--radius-card);
+}
+.s1-cov-tile__icon {
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  width: 2.1rem; height: 2.1rem; border-radius: var(--state-chip-radius);
+}
+.s1-cov-tile__icon svg { width: 1.15rem; height: 1.15rem; }
+.s1-cov-tile__n { font-size: 1.3rem; font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; line-height: 1.1; }
+.s1-cov-tile__label { font-size: var(--text-sm); color: var(--ink-2); }
+.s1-cov-tile--resolved .s1-cov-tile__icon { background: var(--state-resolved-bg); color: var(--state-resolved-fg); }
+.s1-cov-tile--open .s1-cov-tile__icon { background: var(--state-open-bg); color: var(--state-open-fg); }
+.s1-cov-tile--na .s1-cov-tile__icon { background: var(--sf-inset); color: var(--ink-3); }
+.s1-cov-tile--unverifiable .s1-cov-tile__icon { background: var(--state-unverifiable-bg); color: var(--state-unverifiable-fg); }
+
+.s1-cov-banner { display: flex; align-items: flex-start; gap: var(--sp-3); }
+.s1-cov-banner__icon { width: 1.2rem; height: 1.2rem; flex: none; color: var(--state-open-fg); margin-top: 0.1rem; }
+
+.s1-cov-table .s1-state { display: inline-flex; align-items: center; gap: 0.4em; }
+.s1-cov-table .s1-state svg { width: 0.95em; height: 0.95em; flex: none; }
+.s1-cov-grouphead { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.s1-cov-grouphead svg { width: 1em; height: 1em; flex: none; color: var(--ink-3); }

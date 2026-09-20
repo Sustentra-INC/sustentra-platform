@@ -9,7 +9,7 @@ export const seedAsks: Ask[] = [
     id: "ASK-SEED-1",
     type: "replace_document",
     whatIsNeeded:
-      "scan_0417.pdf · Modesto Bottling · Aug 2025: the scan is unreadable — please re-send a legible copy.",
+      "scan_0417.pdf · Modesto Bottling · Aug 2025: the scan is unreadable · please re-send a legible copy.",
     source: {
       origin: "workspace_document",
       documentId: "DOC-BLOCKED",
@@ -35,7 +35,7 @@ export const seedAsks: Ask[] = [
     id: "ASK-SEED-2",
     type: "replace_document",
     whatIsNeeded:
-      "kent_gas_sep_2025.pdf · Kent Cannery · Sep 2025: the service period end date was not found — please confirm it.",
+      "kent_gas_sep_2025.pdf · Kent Cannery · Sep 2025: the service period end date was not found · please confirm it.",
     source: {
       origin: "workspace_document",
       documentId: "DOC-PARTIAL",

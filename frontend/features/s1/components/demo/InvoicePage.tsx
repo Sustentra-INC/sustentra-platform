@@ -2,7 +2,7 @@
 
 /**
  * The prepared demo document, rendered as an inline SVG (offline, crisp,
- * scalable — no external image, no network). It is a realistic electricity
+ * scalable · no external image, no network). It is a realistic electricity
  * invoice for Cascade Provisions. `highlight` is a normalized {x,y,w,h} box
  * (0..1 of the page) drawn over the value; the coordinates are authored to land
  * exactly on the consumption figure.
@@ -33,7 +33,7 @@ export function InvoicePage({ highlight }: { highlight?: { x: number; y: number;
       {/* bill-to + account */}
       <text x="48" y="150" fill="#555" fontSize="12" letterSpacing="1">SERVICE ACCOUNT</text>
       <text x="48" y="176" fill="#1a1a1a" fontSize="16" fontWeight="700">Cascade Provisions Co.</text>
-      <text x="48" y="198" fill="#333" fontSize="13">Kent Cannery — 1400 Marine View Dr, Kent, WA</text>
+      <text x="48" y="198" fill="#333" fontSize="13">Kent Cannery · 1400 Marine View Dr, Kent, WA</text>
       <text x="48" y="218" fill="#333" fontSize="13">Account 4471-302 · Rate schedule E-19</text>
 
       <text x={W - 48} y="150" fill="#555" fontSize="12" letterSpacing="1" textAnchor="end">SERVICE PERIOD</text>
@@ -43,14 +43,14 @@ export function InvoicePage({ highlight }: { highlight?: { x: number; y: number;
       <line x1="48" y1="248" x2={W - 48} y2="248" stroke="#e0e0e0" strokeWidth="1" />
 
       {/* meter reads */}
-      <text x="48" y="288" fill="#555" fontSize="12" letterSpacing="1">METER READINGS — METER 88-2231</text>
+      <text x="48" y="288" fill="#555" fontSize="12" letterSpacing="1">METER READINGS · METER 88-2231</text>
       <MeterRow y={320} label="Previous read (01 Feb)" value="1,284,500 kWh" />
       <MeterRow y={352} label="Current read (28 Feb)" value="1,466,900 kWh" />
       <MeterRow y={384} label="Multiplier" value="1.0" />
 
       <line x1="48" y1="418" x2={W - 48} y2="418" stroke="#e0e0e0" strokeWidth="1" />
 
-      {/* usage summary — the highlight target */}
+      {/* usage summary · the highlight target */}
       <text x="48" y="458" fill="#555" fontSize="12" letterSpacing="1">USAGE THIS PERIOD</text>
       <text x="48" y="490" fill="#1a1a1a" fontSize="16">Electricity delivered</text>
       <text x={W - 48} y="490" fill="#111" fontSize="20" fontWeight="700" textAnchor="end">
@@ -81,7 +81,7 @@ export function InvoicePage({ highlight }: { highlight?: { x: number; y: number;
         Pacific Grid Electric · PO Box 4471, Seattle WA · billing@pacificgrid.example
       </text>
       <text x="48" y="1058" fill="#888" fontSize="11">
-        Emission factor (location-based): 0.223 kgCO2e/kWh — eGRID WECC subregion
+        Emission factor (location-based): 0.223 kgCO2e/kWh · eGRID WECC subregion
       </text>
 
       {/* highlight overlay */}

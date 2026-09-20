@@ -1,7 +1,7 @@
 import type { CoverageRule } from "../../types/verification";
 
 /**
- * Check Coverage rules (fixture). Status reflects INPUT READINESS only — the
+ * Check Coverage rules (fixture). Status reflects INPUT READINESS only · the
  * engine does not evaluate rule expressions yet, so no status claims a rule
  * "ran" or "passed". The screen states this in a banner.
  */
@@ -23,7 +23,7 @@ export const coverageRules: CoverageRule[] = [
   {
     ruleId: "COV-MOBILE-FUEL",
     assertion: "Mobile combustion fuel is present for the fleet",
-    appliesTo: ["Gasoline purchased — mobile combustion"],
+    appliesTo: ["Gasoline purchased · mobile combustion"],
     status: "inputs_missing",
     reason: "No mobile-combustion fuel records have been accepted.",
   },
@@ -32,7 +32,7 @@ export const coverageRules: CoverageRule[] = [
     assertion: "Refrigerant leakage is within service tolerance",
     appliesTo: ["Refrigerant added on service"],
     status: "not_applicable",
-    reason: "Condition not met — two facilities have no refrigerant systems in scope.",
+    reason: "Condition not met · two facilities have no refrigerant systems in scope.",
   },
   {
     ruleId: "COV-SCOPE3-CAT1",

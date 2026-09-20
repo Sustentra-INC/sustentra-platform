@@ -18,7 +18,7 @@ import type { InScopeField } from "../types/scope";
 const REGULATION_OPTIONS = [
   {
     short: "California Senate Bill 253",
-    full: "California Senate Bill 253 — Climate Corporate Data Accountability Act (California, USA)",
+    full: "California Senate Bill 253: Climate Corporate Data Accountability Act (California, USA)",
   },
   {
     // Official statute title unconfirmed — jurisdiction only until confirmed.
@@ -148,7 +148,7 @@ export function SetupScreen({
       {/* Client contact */}
       <div className="s1-setup-card">
         <h2>Client contact</h2>
-        <p className="s1-muted">One recipient for the whole engagement — Evidence Requests sends to this address.</p>
+        <p className="s1-muted">One recipient for the whole engagement. Evidence Requests sends to this address.</p>
         <div className="s1-setup-grid">
           <label className="s1-setup-field">
             <span>Name</span>
@@ -214,7 +214,7 @@ export function SetupScreen({
       <div className="s1-setup-card">
         <div className="s1-setup-card__head">
           <h2>In-scope data points</h2>
-          <span className="s1-state s1-state--open">Field list pending — placeholder rows</span>
+          <span className="s1-state s1-state--open">Field list pending · placeholder rows</span>
         </div>
         <p className="s1-muted">
           The in-scope list is what makes the rest of the product finite. These rows are placeholders until product
@@ -255,9 +255,9 @@ export function SetupScreen({
                   </td>
                   <td>{field.label}</td>
                   <td>{LAYER_LABEL[field.layer]}</td>
-                  <td>{field.requirementLevel ?? "—"}</td>
+                  <td>{field.requirementLevel ?? "None"}</td>
                   <td className="s1-mono s1-muted">{field.methodologyFieldId}</td>
-                  <td className="s1-muted">{field.completenessStatus ?? "— (pending)"}</td>
+                  <td className="s1-muted">{field.completenessStatus ?? "Pending"}</td>
                 </tr>
               ))}
             </tbody>
