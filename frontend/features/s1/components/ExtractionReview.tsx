@@ -1,9 +1,9 @@
 "use client";
 
-import { Fragment, useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
-import type { ReviewValue, ScopePlacement, ValueReviewState } from "../types/review";
+import type { ReviewSpan, ReviewValue, ScopePlacement, ValueReviewState } from "../types/review";
 import type { AskDraft } from "../requests/requestsStore";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 
@@ -30,6 +30,8 @@ interface ExtractionReviewProps {
   initialNodeKey?: string;
   onSaveAsk: (draft: AskDraft) => void;
   onBack: () => void;
+  /** Render the real source page for a document (else a facsimile is drawn). */
+  renderPage?: (documentId: string, span: ReviewSpan | null) => ReactNode | null;
 }
 
 const SCOPE_LABEL: Record<ScopePlacement, string> = {
@@ -42,7 +44,7 @@ const SCOPE_LABEL: Record<ScopePlacement, string> = {
 
 const REVIEW_CAP = 60; // stressor render cap; the count still shows the true total
 
-export function ExtractionReview({ engagement, values, onValuesChange, initialDocumentId, initialNodeKey, onSaveAsk, onBack }: ExtractionReviewProps) {
+export function ExtractionReview({ engagement, values, onValuesChange, initialDocumentId, initialNodeKey, onSaveAsk, onBack, renderPage }: ExtractionReviewProps) {
   // Review data lives in app state (via onValuesChange); selection below is
   // local, ephemeral UI. So accepts/corrections/requests survive navigation.
   const items = values;
@@ -301,7 +303,7 @@ export function ExtractionReview({ engagement, values, onValuesChange, initialDo
 
         {/* Source */}
         <aside className="s1-xr-source" aria-label="Source">
-          <SourcePane value={selected} />
+          <SourcePane value={selected} renderPage={renderPage} />
         </aside>
       </div>
 
@@ -404,7 +406,13 @@ function ValueCard({
 
 /* =============================== source pane =============================== */
 
-function SourcePane({ value }: { value: ReviewValue | null }) {
+function SourcePane({
+  value,
+  renderPage,
+}: {
+  value: ReviewValue | null;
+  renderPage?: (documentId: string, span: ReviewSpan | null) => ReactNode | null;
+}) {
   // Page state tracked here (hook must run every render); resets when the
   // selected value changes, guarded so it fires once per change.
   const [pageState, setPageState] = useState<{ id: string; page: number }>({
@@ -423,6 +431,7 @@ function SourcePane({ value }: { value: ReviewValue | null }) {
   }
   const page = pageState.id === value.id ? pageState.page : value.page;
   const setPage = (nextPage: number) => setPageState({ id: value.id, page: nextPage });
+  const realPage = renderPage ? renderPage(value.documentId, value.span ?? null) : null;
   return (
     <div className="s1-xr-src">
       <div className="s1-xr-src-head">
@@ -448,7 +457,9 @@ function SourcePane({ value }: { value: ReviewValue | null }) {
         ) : null}
       </div>
       <div className="s1-xr-src-body">
-        {value.sourceKind === "spreadsheet" ? (
+        {realPage ? (
+          <div className="s1-xr-page s1-xr-realpage">{realPage}</div>
+        ) : value.sourceKind === "spreadsheet" ? (
           <SheetView value={value} />
         ) : value.sourceKind === "text" ? (
           <div className="s1-xr-passage">{value.snippet}</div>

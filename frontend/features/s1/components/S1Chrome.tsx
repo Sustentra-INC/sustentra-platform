@@ -18,14 +18,17 @@ interface S1ChromeProps {
   current?: NavKey;
   onNavigate?: (key: NavKey) => void;
   onOpenGlossary?: () => void;
+  onReset?: () => void;
 }
 
 export function PersistentRail({
   engagement,
   onOpenGlossary,
+  onReset,
 }: {
   engagement: EngagementConfig;
   onOpenGlossary?: () => void;
+  onReset?: () => void;
 }) {
   return (
     <aside className="s1-rail">
@@ -46,6 +49,19 @@ export function PersistentRail({
           Glossary
         </button>
       </div>
+      {onReset ? (
+        <div className="s1-rail__reset">
+          <button
+            className="s1-linklike s1-rail__reset-btn"
+            type="button"
+            onClick={() => {
+              if (window.confirm("Reset the workspace to the start? This clears the current session.")) onReset();
+            }}
+          >
+            Reset workspace
+          </button>
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -99,10 +115,10 @@ export function PrimaryNav({
   );
 }
 
-export function S1Chrome({ engagement, children, current, onNavigate, onOpenGlossary }: S1ChromeProps) {
+export function S1Chrome({ engagement, children, current, onNavigate, onOpenGlossary, onReset }: S1ChromeProps) {
   return (
     <div className="s1-screen">
-      <PersistentRail engagement={engagement} onOpenGlossary={onOpenGlossary} />
+      <PersistentRail engagement={engagement} onOpenGlossary={onOpenGlossary} onReset={onReset} />
       <section className="s1-main">
         <PrimaryNav current={current} onNavigate={onNavigate} />
         {children}

@@ -20,9 +20,12 @@ export interface VerificationStore {
 
 let counter = 0;
 
-export function useVerificationStore(): VerificationStore {
-  const [examinations, setExaminations] = useState<Record<string, Examination>>({});
-  const [findings, setFindings] = useState<Finding[]>([]);
+export function useVerificationStore(
+  initialExaminations: Record<string, Examination> = {},
+  initialFindings: Finding[] = []
+): VerificationStore {
+  const [examinations, setExaminations] = useState<Record<string, Examination>>(initialExaminations);
+  const [findings, setFindings] = useState<Finding[]>(initialFindings);
 
   const patch = (dataPointId: string, next: Partial<Examination>) =>
     setExaminations((cur) => ({

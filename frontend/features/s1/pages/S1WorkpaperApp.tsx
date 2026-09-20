@@ -11,8 +11,17 @@ import {
 import { ExtractionReview } from "../components/ExtractionReview";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey } from "../components/S1Chrome";
-import { UploadScreen } from "../components/UploadScreen";
+import { UploadScreen, type SampleScript } from "../components/UploadScreen";
 import { SetupScreen } from "../components/SetupScreen";
+import { InvoicePage } from "../components/demo/InvoicePage";
+import {
+  preparedInvoiceEvidence,
+  preparedInvoiceValues,
+  preparedInvoiceClassified,
+  preparedInvoiceFoundOrder,
+  DEMO_INVOICE_ID,
+  DEMO_INVOICE_FILENAME,
+} from "../fixtures/demo/preparedInvoice";
 import { EvidenceRequests } from "../components/EvidenceRequests";
 import { CheckCoverage } from "../components/CheckCoverage";
 import { VerificationResults } from "../components/VerificationResults";
@@ -29,6 +38,8 @@ import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence"
 import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
 import { seedAsks } from "../fixtures/requests/seedAsks";
 import { makeUploadItem, classifyGuess } from "../fixtures/upload/simulateUpload";
+import { loadDemoState, saveDemoState, clearDemoState, loadSignedIn, saveSignedIn, type DemoSnapshot } from "../utils/demoPersistence";
+import { DemoSignIn } from "../components/DemoSignIn";
 import { useRequestsStore } from "../requests/requestsStore";
 import type { ContainerState, EvidenceItem, ReviewValue, StateDimension } from "../types";
 import type { SessionAuditEntry } from "../utils/auditIntent";
@@ -54,24 +65,98 @@ function nodeKeyForEvidence(item: EvidenceItem): string {
 
 export function S1WorkpaperApp() {
   const dataMode = process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture" ? "fixture" : "backend";
-  const [activeView, setActiveView] = useState<ActiveView>({ name: "evidence" });
+  // Demo-only: rehydrate the fixture state from localStorage once, so a refresh
+  // does not wipe the walkthrough. Read a single time on mount.
+  const [persisted] = useState<DemoSnapshot | null>(() => (dataMode === "fixture" ? loadDemoState() : null));
+  const [signedIn, setSignedIn] = useState<boolean>(() => (dataMode === "fixture" ? loadSignedIn() : true));
+  const [activeView, setActiveView] = useState<ActiveView>({ name: "setup" });
   const [auditIntents, setAuditIntents] = useState<SessionAuditEntry[]>([]);
   const [demoState, setDemoState] = useState<ContainerState>(dataMode === "backend" ? "loading" : "populated");
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>(
-    dataMode === "backend" ? [] : manufacturerEvidence
+    dataMode === "backend" ? [] : persisted?.evidenceItems ?? manufacturerEvidence
   );
   // Extraction review data lifted to app state so accepts/corrections survive
   // navigation (fixture mode; backend mode fetches its own).
-  const [reviewValues, setReviewValues] = useState<ReviewValue[]>(dataMode === "backend" ? [] : manufacturerValues);
+  const [reviewValues, setReviewValues] = useState<ReviewValue[]>(
+    dataMode === "backend" ? [] : persisted?.reviewValues ?? manufacturerValues
+  );
   const [isUploading, setIsUploading] = useState(false);
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
-  const requests = useRequestsStore(dataMode === "backend" ? [] : seedAsks);
-  const verification = useVerificationStore();
-  const [sessionUploads, setSessionUploads] = useState<string[]>([]);
+  const requests = useRequestsStore(dataMode === "backend" ? [] : persisted?.asks ?? seedAsks);
+  const verification = useVerificationStore(persisted?.examinations ?? {}, persisted?.findings ?? []);
+  const [sessionUploads, setSessionUploads] = useState<string[]>(persisted?.sessionUploads ?? []);
   // Engagement config is editable on Setup; facilities here feed the Workspace.
-  const [engagement, setEngagement] = useState<EngagementConfig>(engagementConfig);
-  const [inScopeFields, setInScopeFields] = useState<InScopeField[]>(inScopeFieldPlaceholders);
+  const [engagement, setEngagement] = useState<EngagementConfig>(persisted?.engagement ?? engagementConfig);
+  const [inScopeFields, setInScopeFields] = useState<InScopeField[]>(persisted?.inScopeFields ?? inScopeFieldPlaceholders);
+
+  // Demo-only: snapshot fixture state to localStorage so a refresh keeps it.
+  useEffect(() => {
+    if (dataMode !== "fixture") return;
+    saveDemoState({
+      engagement,
+      evidenceItems,
+      reviewValues,
+      inScopeFields,
+      sessionUploads,
+      asks: requests.asks,
+      examinations: verification.examinations,
+      findings: verification.findings,
+    });
+  }, [
+    dataMode,
+    engagement,
+    evidenceItems,
+    reviewValues,
+    inScopeFields,
+    sessionUploads,
+    requests.asks,
+    verification.examinations,
+    verification.findings,
+  ]);
+
+  function resetDemo() {
+    clearDemoState();
+    if (typeof window !== "undefined") window.location.reload();
+  }
+
+  // The scripted "upload one invoice" beat: add the prepared doc + values, play
+  // the analysis progress, then open Extraction Review with the highlight.
+  const [sampleScript, setSampleScript] = useState<SampleScript | null>(null);
+  const DEMO_NODE = "F:facility-kent|T:Electricity bill";
+
+  function runSampleUpload() {
+    if (evidenceItems.some((i) => i.documentId === DEMO_INVOICE_ID)) {
+      setActiveView({ name: "extraction", documentId: DEMO_INVOICE_ID, nodeKey: DEMO_NODE });
+      return;
+    }
+    const now = new Date().toISOString();
+    setEvidenceItems((cur) => [preparedInvoiceEvidence(now), ...cur]);
+    setReviewValues((cur) => [...preparedInvoiceValues, ...cur]);
+    setSessionUploads((cur) => [DEMO_INVOICE_ID, ...cur]);
+    setSampleScript({ filename: DEMO_INVOICE_FILENAME, stage: "uploading", found: [], progress: 0.1 });
+
+    const patchDoc = (patch: Partial<EvidenceItem>) =>
+      setEvidenceItems((cur) => cur.map((i) => (i.documentId === DEMO_INVOICE_ID ? { ...i, ...patch } : i)));
+    const step = (ms: number, fn: () => void) => window.setTimeout(fn, ms);
+
+    step(500, () => setSampleScript((s) => (s ? { ...s, stage: "analyzing", progress: 0.35 } : s)));
+    step(1300, () => {
+      patchDoc({ processingState: "ingested", detectedType: "Electricity bill" });
+      setSampleScript((s) => (s ? { ...s, stage: "classified", classified: "Electricity bill · Kent Cannery", progress: 0.55 } : s));
+    });
+    step(1800, () => setSampleScript((s) => (s ? { ...s, found: preparedInvoiceFoundOrder.slice(0, 1), progress: 0.7 } : s)));
+    step(2200, () => setSampleScript((s) => (s ? { ...s, found: preparedInvoiceFoundOrder.slice(0, 2), progress: 0.82 } : s)));
+    step(2600, () => setSampleScript((s) => (s ? { ...s, found: preparedInvoiceFoundOrder.slice(0, 3), progress: 0.92 } : s)));
+    step(3100, () => {
+      patchDoc(preparedInvoiceClassified);
+      setSampleScript((s) => (s ? { ...s, stage: "done", progress: 1 } : s));
+    });
+    step(3600, () => {
+      setSampleScript(null);
+      setActiveView({ name: "extraction", documentId: DEMO_INVOICE_ID, nodeKey: DEMO_NODE });
+    });
+  }
 
   useEffect(() => {
     if (dataMode !== "backend") return;
@@ -237,12 +322,24 @@ export function S1WorkpaperApp() {
     }
   }
 
+  if (!signedIn) {
+    return (
+      <DemoSignIn
+        onSignIn={() => {
+          saveSignedIn(true);
+          setSignedIn(true);
+        }}
+      />
+    );
+  }
+
   return (
     <main className="s1-app">
       <S1Chrome
         engagement={engagement}
         current={navCurrent}
         onNavigate={onNavigate}
+        onReset={dataMode === "fixture" ? resetDemo : undefined}
         onOpenGlossary={() =>
           setActiveView((current) =>
             current.name === "glossary" ? current : { name: "glossary", previous: current }
@@ -259,6 +356,13 @@ export function S1WorkpaperApp() {
         ) : activeView.name === "upload" ? (
           <UploadScreen
             onUploadFiles={uploadFiles}
+            onUploadSample={dataMode === "fixture" ? runSampleUpload : undefined}
+            sampleFilename={
+              dataMode === "fixture" && !evidenceItems.some((i) => i.documentId === DEMO_INVOICE_ID)
+                ? DEMO_INVOICE_FILENAME
+                : undefined
+            }
+            script={sampleScript}
             batch={sessionUploadItems}
             onOpenWorkspace={() => setActiveView({ name: "evidence" })}
           />
@@ -307,6 +411,11 @@ export function S1WorkpaperApp() {
             initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}
             onBack={() => setActiveView({ name: "evidence" })}
+            renderPage={(documentId, span) =>
+              documentId === DEMO_INVOICE_ID ? (
+                <InvoicePage highlight={span ? { x: span.x, y: span.y, w: span.w, h: span.h } : null} />
+              ) : null
+            }
           />
         ) : (
           <GlossaryPage onBack={() => setActiveView(activeView.previous)} />

@@ -1308,3 +1308,45 @@ select:focus-visible,
 .s1-output-card { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-2); max-width: 44rem; }
 .s1-output-card h2 { font-size: var(--text-lg); font-weight: var(--weight-medium); margin: var(--sp-2) 0 0; }
 .s1-output-card p { margin: 0; line-height: var(--leading-body); }
+
+/* ---- Demo sign-in gate ---- */
+.s1-signin { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--sf-page); padding: var(--sp-5); }
+.s1-signin__card { width: min(24rem, 92vw); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); padding: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-3); box-shadow: 0 var(--sp-1) var(--sp-4) rgba(0,0,0,0.05); }
+.s1-signin__brand { font-size: var(--text-lg); font-weight: var(--weight-medium); letter-spacing: -0.01em; }
+.s1-signin__title { font-size: var(--text-lg); font-weight: var(--weight-medium); margin: var(--sp-3) 0 0; }
+.s1-signin__sub { margin: 0 0 var(--sp-2); color: var(--ink-3); font-size: var(--text-sm); }
+.s1-signin__field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); color: var(--ink-2); }
+.s1-signin__field input { font: inherit; font-size: var(--text-md); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-2) var(--sp-3); }
+.s1-signin__submit { margin-top: var(--sp-2); font: inherit; font-size: var(--text-md); font-weight: var(--weight-medium); cursor: pointer; color: var(--sf-card); background: var(--state-active-fg); border: var(--hairline-width) solid var(--state-active-fg); border-radius: var(--radius-input); padding: var(--sp-2) var(--sp-3); }
+.s1-signin__submit:hover { filter: brightness(1.05); }
+.s1-signin__foot { display: flex; align-items: center; justify-content: space-between; font-size: var(--text-xs); color: var(--ink-3); margin-top: var(--sp-1); }
+
+/* ---- Rail reset ---- */
+.s1-rail__reset { margin-top: auto; padding-top: var(--sp-4); }
+.s1-rail__reset-btn { font-size: var(--text-xs); color: var(--ink-3); }
+.s1-rail__reset-btn:hover { color: var(--ink-2); }
+
+/* ---- Prepared invoice render + highlight ---- */
+.s1-invoice { width: 100%; height: auto; display: block; border: var(--border-hairline); border-radius: var(--radius-input); background: var(--sf-card); }
+.s1-invoice__hl { fill: rgba(250, 204, 21, 0.30); stroke: rgba(180, 120, 0, 0.85); stroke-width: 3; rx: 3; }
+.s1-xr-realpage { overflow: auto; }
+
+/* ---- Scripted analysis beat ---- */
+.s1-analyze { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+.s1-analyze__head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+.s1-analyze__fn { font-weight: var(--weight-medium); }
+.s1-analyze__stage { color: var(--ink-2); font-size: var(--text-sm); }
+.s1-analyze__bar { height: var(--sp-2); background: var(--sf-sunken); border-radius: var(--radius-chip); overflow: hidden; }
+.s1-analyze__bar-fill { height: 100%; background: var(--state-active-fg); border-radius: var(--radius-chip); width: 0; }
+.s1-analyze__classified { font-size: var(--text-sm); color: var(--ink-2); display: flex; align-items: center; gap: var(--sp-2); }
+.s1-analyze__found { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); }
+.s1-analyze__tick { color: var(--state-resolved-fg); font-family: var(--font-mono); }
+@media (prefers-reduced-motion: no-preference) {
+  .s1-analyze__bar-fill { transition: width 0.4s ease; }
+}
+
+/* ---- Sample invoice card ---- */
+.s1-sample { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); padding: var(--sp-4); display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); }
+.s1-sample__doc { display: flex; align-items: center; gap: var(--sp-3); }
+.s1-sample__icon { width: var(--sp-7); height: var(--sp-7); display: flex; align-items: center; justify-content: center; background: var(--state-blocking-bg); color: var(--state-blocking-fg); border-radius: var(--radius-input); font-size: var(--text-xs); font-weight: var(--weight-medium); }
+.s1-sample__fn { font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; }
