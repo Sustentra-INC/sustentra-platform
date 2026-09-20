@@ -81,9 +81,9 @@
      honest scope boundary, NOT a failure. It must never share a treatment with
      --state-blocking. Applies to `limit`-type rules and to any assertion the
      system does not evaluate. */
-  --state-unverifiable-fg:   #4B4796;
-  --state-unverifiable-bg:   #EEEDF8;
-  --state-unverifiable-line: #D2CFEC;
+  --state-unverifiable-fg:   #4E5D6C;
+  --state-unverifiable-bg:   #EDF1F4;
+  --state-unverifiable-line: #D0D8DF;
 
   /* Not applicable under an unmet condition. Deliberately colourless: this is
      an absence of obligation, not a state with weight. Render as muted text on

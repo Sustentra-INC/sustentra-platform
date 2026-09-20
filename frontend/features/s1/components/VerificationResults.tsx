@@ -77,7 +77,7 @@ export function VerificationResults({ rows, store }: { rows: VerificationRow[]; 
 
       <div className="s1-cov-banner" role="note">
         <strong>Recompute is partial and rule evaluation is not implemented.</strong> Only Scope 1 stationary combustion
-        is recomputed today; other rows say why they were not. Check outcomes reflect that — most read &ldquo;could not
+        is recomputed today; other rows say why they were not. Check outcomes reflect that: most read &ldquo;could not
         check&rdquo;. Examination state and next action are yours to set.
       </div>
 
