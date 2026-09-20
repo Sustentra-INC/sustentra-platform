@@ -332,13 +332,13 @@ export function EvidenceWorkspace({
             <div className="s1-table-wrap">
               <table className="s1-table s1-ws-table">
                 <colgroup>
-                  <col style={{ width: "24%" }} /> {/* Document */}
+                  <col style={{ width: "22%" }} /> {/* Document */}
                   <col style={{ width: "12%" }} /> {/* Facility */}
                   <col style={{ width: "14%" }} /> {/* Document type */}
                   <col style={{ width: "13%" }} /> {/* Processing state */}
-                  <col style={{ width: "15%" }} /> {/* Issue */}
+                  <col style={{ width: "14%" }} /> {/* Issue */}
                   <col style={{ width: "11%" }} /> {/* Add to requests */}
-                  <col style={{ width: "7%" }} /> {/* Notes */}
+                  <col style={{ width: "10%" }} /> {/* Notes */}
                   <col style={{ width: "4%" }} /> {/* Row menu */}
                 </colgroup>
                 <thead>
@@ -453,30 +453,59 @@ function WorkspaceHeader({
     <header className="s1-ws-header">
       <div className="s1-ws-header__id">
         <h1>{engagement.clientName}</h1>
-        <button className="s1-linklike" type="button" onClick={onOpenSetup}>
-          Setup
+        <button className="s1-ws-setup" type="button" onClick={onOpenSetup} title="Open engagement setup">
+          <GearIcon />
+          Edit setup
         </button>
         <span className="s1-muted">Since your last visit: {counts.arrived} new</span>
       </div>
       <div className="s1-ws-header__counts">
-        <CountFilter label="Needs you" n={counts.needs} on={activeFilter === "needs"} onClick={() => onFilter("needs")} />
+        <CountFilter label="Needs you" tone="accent" n={counts.needs} on={activeFilter === "needs"} onClick={() => onFilter("needs")} />
         <CountFilter
           label="Arrived since last visit"
+          tone="neutral"
           n={counts.arrived}
           on={activeFilter === "arrived"}
           onClick={() => onFilter("arrived")}
         />
-        <CountFilter label="Blocked" n={counts.blocked} on={activeFilter === "blocked"} onClick={() => onFilter("blocked")} />
+        <CountFilter label="Blocked" tone="blocking" n={counts.blocked} on={activeFilter === "blocked"} onClick={() => onFilter("blocked")} />
       </div>
     </header>
   );
 }
 
-function CountFilter({ label, n, on, onClick }: { label: string; n: number; on: boolean; onClick: () => void }) {
+function CountFilter({
+  label,
+  n,
+  on,
+  tone = "neutral",
+  onClick,
+}: {
+  label: string;
+  n: number;
+  on: boolean;
+  tone?: "accent" | "blocking" | "neutral";
+  onClick: () => void;
+}) {
   return (
-    <button className={`s1-ws-count${on ? " is-on" : ""}`} type="button" aria-pressed={on} onClick={onClick}>
-      <span className="s1-ws-count__n">{n}</span> {label}
+    <button
+      className={`s1-ws-count s1-ws-count--${tone}${on ? " is-on" : ""}`}
+      type="button"
+      aria-pressed={on}
+      onClick={onClick}
+    >
+      <span className="s1-ws-count__n">{n}</span>
+      <span className="s1-ws-count__label">{label}</span>
     </button>
+  );
+}
+
+function GearIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
   );
 }
 
@@ -818,14 +847,26 @@ function NotesCell({
           <div className="s1-mono s1-muted">
             {latest.author} · {formatDate(latest.at)}
           </div>
+          <button className="s1-add-note" type="button" aria-label="Add another note" onClick={onStart}>
+            <PlusIcon />
+            Note
+          </button>
         </>
       ) : (
-        <span className="s1-muted">—</span>
+        <button className="s1-add-note" type="button" aria-label="Add note" onClick={onStart}>
+          <PlusIcon />
+          Note
+        </button>
       )}
-      <button className="s1-linklike" type="button" aria-label="Add note" onClick={onStart}>
-        + note
-      </button>
     </div>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" />
+    </svg>
   );
 }
 

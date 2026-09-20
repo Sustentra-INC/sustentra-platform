@@ -31,9 +31,24 @@
   --line:           #E0DDD3;   /* default hairline */
   --line-strong:    #C9C5B8;   /* emphasised border, hover, focus ring base */
 
-  /* Brand ink, sampled from the Sustentra wordmark. Used only for the brand's
-     own primary calls-to-action — never as an engagement-state colour. */
+  /* Brand ink, sampled from the Sustentra wordmark. The deep anchor; the logo
+     and the deepest UI accents draw from it. */
   --brand-ink:      #282870;
+
+  /* --- Interactive accent — "baby blue", matched to the warm paper ----------
+     The one interactive colour: tabs, filters, links, primary buttons, focus.
+     Warm tan ground + soft blue accent is a deliberate complementary pairing,
+     not the generic corporate blue. Kept distinct from the engagement STATES
+     below, which stay semantic. ------------------------------------------- */
+  --accent-solid:   #3D83C7;   /* solid fills: primary buttons, active tab */
+  --accent:         #2C6FB3;   /* links, icons, active labels on paper */
+  --accent-strong:  #24588F;   /* hover / pressed on solids */
+  --accent-soft:    #EAF3FC;   /* tint: active chip / selected row */
+  --accent-softer:  #F4F8FD;   /* tint: row hover */
+  --accent-line:    #BFDBF4;   /* border on a tinted surface */
+
+  /* Motion — one strong ease-out for the whole product. */
+  --ease-out:       cubic-bezier(0.23, 1, 0.32, 1);
 
 
   /* --- Engagement state --------------------------------------------------
