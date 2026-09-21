@@ -1,6 +1,6 @@
 import type { EvidenceItem } from "../../types/evidence";
 import type { ReviewValue } from "../../types/review";
-import { INVOICE_HIGHLIGHT } from "../../components/demo/InvoicePage";
+import { INVOICE_MARKS } from "../../components/demo/InvoicePage";
 
 /**
  * The one prepared document for the demo: an electricity invoice for Cascade
@@ -35,8 +35,8 @@ export function preparedInvoiceEvidence(now: string): EvidenceItem {
     periodState: "unresolved",
     periodStart: null,
     periodEnd: null,
-    fieldsExpected: 3,
-    fieldsExpectedDisplay: 3,
+    fieldsExpected: 6,
+    fieldsExpectedDisplay: 6,
     fieldsExtracted: 0,
     documentProperties: [],
     relationships: [],
@@ -59,78 +59,98 @@ export const preparedInvoiceClassified: Partial<EvidenceItem> = {
   periodState: "resolved",
   periodStart: "2025-02-01",
   periodEnd: "2025-02-28",
-  fieldsExtracted: 3,
+  fieldsExtracted: 6,
 };
 
-const span = (extra?: Partial<{ x: number; y: number; w: number; h: number }>) => ({
-  page: 1,
-  ...INVOICE_HIGHLIGHT,
-  ...extra,
-});
+const span = (mark: { x: number; y: number; w: number; h: number }) => ({ page: 1, ...mark });
 
 function machine(value: string): ReviewValue["record"] {
   return [{ kind: "machine", actor: "System", at: "2025-03-08T09:00:00Z", action: "read", reason: `${value} · from the invoice` }];
 }
 
-/** The "found" values, in the order the scripted beat reveals them. */
+const base = {
+  documentId: DEMO_INVOICE_ID,
+  filename: DEMO_INVOICE_FILENAME,
+  documentType: "Electricity bill",
+  facilityId: "facility-kent",
+  period: "Feb 2025",
+  reviewState: "to_review" as const,
+  sourceKind: "pdf" as const,
+  page: 1,
+  pageCount: 1,
+};
+
+/**
+ * The extracted values, each mapped to a highlighted figure on the invoice, in
+ * the order the scripted beat reveals them. A compliance analyst reads more than
+ * the kWh: the period, both Scope-2 bases, peak demand, the emission factor and
+ * the derived emissions all get their own card and their own highlight.
+ */
 export const preparedInvoiceValues: ReviewValue[] = [
   {
+    ...base,
     id: "DV-elec-loc",
-    documentId: DEMO_INVOICE_ID,
-    filename: DEMO_INVOICE_FILENAME,
-    documentType: "Electricity bill",
-    facilityId: "facility-kent",
-    period: "Feb 2025",
     whatItIs: "Electricity consumed",
     scope: "scope2_location",
     value: "182,400",
     unit: "kWh",
     methodologyFieldId: "MF-PLH-electricity-consumed-scope2_location",
-    reviewState: "to_review",
     record: machine("182,400 kWh"),
-    sourceKind: "pdf",
-    page: 1,
-    pageCount: 1,
-    span: span(),
+    span: span(INVOICE_MARKS.consumption),
     requestPreselect: "clarify",
   },
   {
+    ...base,
     id: "DV-elec-mkt",
-    documentId: DEMO_INVOICE_ID,
-    filename: DEMO_INVOICE_FILENAME,
-    documentType: "Electricity bill",
-    facilityId: "facility-kent",
-    period: "Feb 2025",
     whatItIs: "Electricity consumed",
     scope: "scope2_market",
     value: "182,400",
     unit: "kWh",
     methodologyFieldId: "MF-PLH-electricity-consumed-scope2_market",
-    reviewState: "to_review",
     record: machine("182,400 kWh"),
-    sourceKind: "pdf",
-    page: 1,
-    pageCount: 1,
-    span: span(),
+    span: span(INVOICE_MARKS.consumption),
     requestPreselect: "clarify",
   },
   {
+    ...base,
     id: "DV-demand",
-    documentId: DEMO_INVOICE_ID,
-    filename: DEMO_INVOICE_FILENAME,
-    documentType: "Electricity bill",
-    facilityId: "facility-kent",
-    period: "Feb 2025",
     whatItIs: "Peak demand",
     scope: "not_placed",
     value: "1,240",
     unit: "kW",
-    reviewState: "to_review",
     record: machine("1,240 kW"),
-    sourceKind: "pdf",
-    page: 1,
-    pageCount: 1,
-    span: span({ y: 0.455, h: 0.024 }),
+    span: span(INVOICE_MARKS.demand),
+  },
+  {
+    ...base,
+    id: "DV-period",
+    whatItIs: "Billing period",
+    scope: "general",
+    value: "01 Feb – 28 Feb 2025",
+    unit: "",
+    record: machine("01 Feb – 28 Feb 2025"),
+    span: span(INVOICE_MARKS.period),
+  },
+  {
+    ...base,
+    id: "DV-factor",
+    whatItIs: "Emission factor (location-based)",
+    scope: "scope2_location",
+    value: "0.223",
+    unit: "kgCO2e/kWh",
+    record: machine("0.223 kgCO2e/kWh"),
+    span: span(INVOICE_MARKS.emissionFactor),
+    requestPreselect: "confirm_or_restate",
+  },
+  {
+    ...base,
+    id: "DV-emissions",
+    whatItIs: "Location-based emissions",
+    scope: "scope2_location",
+    value: "40.68",
+    unit: "tCO2e",
+    record: machine("40.68 tCO2e"),
+    span: span(INVOICE_MARKS.emissions),
   },
 ];
 
@@ -138,5 +158,6 @@ export const preparedInvoiceValues: ReviewValue[] = [
 export const preparedInvoiceFoundOrder = [
   "Electricity consumed · 182,400 kWh",
   "Peak demand · 1,240 kW",
-  "Billing period · Feb 2025",
+  "Emission factor · 0.223 kgCO2e/kWh",
+  "Location-based emissions · 40.68 tCO2e",
 ];

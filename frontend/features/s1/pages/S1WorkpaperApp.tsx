@@ -342,6 +342,29 @@ export function S1WorkpaperApp() {
     );
   }
 
+  // Extraction Review runs full-screen (outside the rail/nav chrome): the
+  // document and its matching values are the whole surface, not part of a page.
+  if (activeView.name === "extraction") {
+    return (
+      <main className="s1-app s1-app--fullscreen">
+        <ExtractionReview
+          engagement={engagement}
+          values={reviewValues}
+          onValuesChange={setReviewValues}
+          initialDocumentId={activeView.documentId}
+          initialNodeKey={activeView.nodeKey}
+          onSaveAsk={requests.saveAsk}
+          onBack={() => setActiveView({ name: "evidence" })}
+          renderPage={(documentId, span) =>
+            documentId === DEMO_INVOICE_ID ? (
+              <InvoicePage highlight={span ? { x: span.x, y: span.y, w: span.w, h: span.h } : null} />
+            ) : null
+          }
+        />
+      </main>
+    );
+  }
+
   return (
     <main className="s1-app">
       <S1Chrome

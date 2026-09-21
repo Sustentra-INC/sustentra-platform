@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-import { EXACT_COPY } from "../constants/copy";
 import type { EngagementConfig } from "../types";
 
 export type NavKey =
@@ -45,8 +44,6 @@ export function PersistentRail({
       <RailItem label="Regulation" value={engagement.regulation} />
       <RailItem label="Assurance level" value={engagement.assuranceLevel} />
       <RailItem label="Boundary approach" value={engagement.boundaryApproach} />
-      <RailItem label="Scope boundary" value={engagement.scopeBoundaryStatement} />
-      <RailItem label="Aggregate uncorrected magnitude" value={EXACT_COPY.railMagnitude} />
       <div className="s1-rail__section">
         <button className="s1-linklike" type="button" onClick={onOpenGlossary}>
           Glossary
@@ -55,17 +52,27 @@ export function PersistentRail({
       {onReset ? (
         <div className="s1-rail__reset">
           <button
-            className="s1-linklike s1-rail__reset-btn"
+            className="s1-rail__reset-btn"
             type="button"
             onClick={() => {
               if (window.confirm("Reset the workspace to the start? This clears the current session.")) onReset();
             }}
           >
+            <ResetIcon />
             Reset workspace
           </button>
         </div>
       ) : null}
     </aside>
+  );
+}
+
+function ResetIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
   );
 }
 

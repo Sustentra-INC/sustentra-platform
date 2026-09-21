@@ -381,7 +381,8 @@ function RequestsHeader({
         <button className={`s1-ws-count${stateFilter === "resolved" ? " is-on" : ""}`} type="button" onClick={() => onStateFilter(stateFilter === "resolved" ? null : "resolved")}>
           <span className="s1-ws-count__n">{counts.resolved}</span> Resolved
         </button>
-        <button className="s1-button s1-req-sendbtn" type="button" disabled={sendable === 0} onClick={onSend}>
+        <button className="s1-button s1-button--pri s1-req-sendbtn" type="button" disabled={sendable === 0} onClick={onSend}>
+          <EnvelopeIcon />
           Request by email{sendable ? ` (${sendable})` : ""}
         </button>
       </div>
@@ -614,7 +615,7 @@ function DeferredPanel() {
   ];
   return (
     <section className="s1-panel s1-req-deferred">
-      <strong>Deferred (per the spec) — not built</strong>
+      <strong>Deferred (per the spec) · not built</strong>
       <ul>
         {items.map((i) => (
           <li key={i} className="s1-muted">
@@ -722,4 +723,13 @@ function capitalize(s: string): string {
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}
+
+function EnvelopeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <path d="m3.5 7 8.5 6 8.5-6" />
+    </svg>
+  );
 }
