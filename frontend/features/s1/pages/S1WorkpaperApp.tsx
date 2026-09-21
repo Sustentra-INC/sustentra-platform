@@ -11,6 +11,7 @@ import {
 import { ExtractionReview } from "../components/ExtractionReview";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { S1Chrome, PrimaryNav, type NavKey } from "../components/S1Chrome";
+import { DashboardScreen } from "../components/DashboardScreen";
 import { UploadScreen, type SampleScript } from "../components/UploadScreen";
 import { SetupScreen } from "../components/SetupScreen";
 import { InvoicePage } from "../components/demo/InvoicePage";
@@ -45,6 +46,7 @@ import type { ContainerState, EvidenceItem, ReviewValue, StateDimension } from "
 import type { SessionAuditEntry } from "../utils/auditIntent";
 
 type ActiveView =
+  | { name: "dashboard" }
   | { name: "evidence" }
   | { name: "setup" }
   | { name: "upload" }
@@ -72,7 +74,7 @@ export function S1WorkpaperApp() {
   // localStorage is read in initializers above; render nothing until mounted so
   // the server and first client render match (no hydration mismatch).
   const [mounted, setMounted] = useState(false);
-  const [activeView, setActiveView] = useState<ActiveView>({ name: "setup" });
+  const [activeView, setActiveView] = useState<ActiveView>({ name: "dashboard" });
   const [auditIntents, setAuditIntents] = useState<SessionAuditEntry[]>([]);
   const [demoState, setDemoState] = useState<ContainerState>(dataMode === "backend" ? "loading" : "populated");
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>(
@@ -217,6 +219,7 @@ export function S1WorkpaperApp() {
   }
 
   const NAV_FOR_VIEW: Partial<Record<ActiveView["name"], NavKey>> = {
+    dashboard: "dashboard",
     setup: "setup",
     upload: "upload",
     requests: "requests",
@@ -226,7 +229,8 @@ export function S1WorkpaperApp() {
   };
   const navCurrent: NavKey = NAV_FOR_VIEW[activeView.name] ?? "evidence";
   function onNavigate(key: NavKey) {
-    if (key === "setup") setActiveView({ name: "setup" });
+    if (key === "dashboard") setActiveView({ name: "dashboard" });
+    else if (key === "setup") setActiveView({ name: "setup" });
     else if (key === "upload") setActiveView({ name: "upload" });
     else if (key === "requests") setActiveView({ name: "requests" });
     else if (key === "coverage") setActiveView({ name: "coverage" });
@@ -382,7 +386,9 @@ export function S1WorkpaperApp() {
           )
         }
       >
-        {activeView.name === "setup" ? (
+        {activeView.name === "dashboard" ? (
+          <DashboardScreen engagement={engagement} onNavigate={onNavigate} />
+        ) : activeView.name === "setup" ? (
           <SetupScreen
             engagement={engagement}
             onChange={setEngagement}

@@ -50,6 +50,15 @@
   /* Motion — one strong ease-out for the whole product. */
   --ease-out:       cubic-bezier(0.23, 1, 0.32, 1);
 
+  /* Categorical chart palette — distinct but on-brand (indigo, teal, amber,
+     baby blue, slate). Used only in dashboard visualizations. */
+  --chart-1:        #282870;   /* indigo */
+  --chart-2:        #2A9D8F;   /* teal */
+  --chart-3:        #E4A23B;   /* amber */
+  --chart-4:        #3D83C7;   /* baby blue */
+  --chart-5:        #4E5D6C;   /* slate */
+  --chart-grid:     #E6E3DA;
+
 
   /* --- Engagement state --------------------------------------------------
      Six roles. Every status indicator in the product resolves to exactly one

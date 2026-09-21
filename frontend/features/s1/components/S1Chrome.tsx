@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { EngagementConfig } from "../types";
 
 export type NavKey =
+  | "dashboard"
   | "setup"
   | "upload"
   | "evidence"
@@ -86,6 +87,7 @@ function RailItem({ label, value, mono = false }: { label: string; value: string
 }
 
 const DESTINATIONS: Array<{ key: NavKey; label: string; built: boolean }> = [
+  { key: "dashboard", label: "Dashboard", built: true },
   { key: "setup", label: "Setup", built: true },
   { key: "upload", label: "Upload", built: true },
   { key: "evidence", label: "Evidence", built: true },
@@ -104,25 +106,42 @@ export function PrimaryNav({
 }) {
   return (
     <nav className="s1-nav" aria-label="Primary">
-      {DESTINATIONS.map((dest) =>
-        dest.built ? (
-          <button
-            key={dest.key}
-            className="s1-tab"
-            type="button"
-            aria-current={current === dest.key ? "page" : undefined}
-            onClick={() => onNavigate?.(dest.key)}
-          >
-            {dest.label}
-          </button>
-        ) : (
-          <button key={dest.key} className="s1-tab" type="button" disabled>
-            {dest.label} <span className="s1-next">— not built</span>
-          </button>
-        )
-      )}
+      {DESTINATIONS.map((dest) => (
+        <button
+          key={dest.key}
+          className="s1-tab"
+          type="button"
+          aria-current={current === dest.key ? "page" : undefined}
+          onClick={() => onNavigate?.(dest.key)}
+        >
+          <span className="s1-tab__icon"><NavIcon nav={dest.key} /></span>
+          {dest.label}
+        </button>
+      ))}
     </nav>
   );
+}
+
+function NavIcon({ nav }: { nav: NavKey }) {
+  const p = { fill: "none", stroke: "currentColor", strokeWidth: 1.7, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  switch (nav) {
+    case "dashboard":
+      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1" /><rect x="14" y="3" width="7" height="5" rx="1" /><rect x="14" y="12" width="7" height="9" rx="1" /><rect x="3" y="16" width="7" height="5" rx="1" /></svg>;
+    case "setup":
+      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg>;
+    case "upload":
+      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M12 15V4m0 0 4 4m-4-4-4 4" /><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" /></svg>;
+    case "evidence":
+      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M4 4h6l2 2h8v12a2 2 0 0 1-2 2H4z" /><path d="M8 13h8M8 17h5" /></svg>;
+    case "requests":
+      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3.5 7 8.5 6 8.5-6" /></svg>;
+    case "coverage":
+      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M12 3.2 5 6v5.2c0 4.3 2.9 7.2 7 8.6 4.1-1.4 7-4.3 7-8.6V6z" /><path d="m9 12 2.1 2.1L15.2 10" /></svg>;
+    case "results":
+      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M4 20V4M4 20h16" /><path d="M8 16v-4M12 16V8M16 16v-6" /></svg>;
+    case "output":
+      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg>;
+  }
 }
 
 export function S1Chrome({ engagement, children, current, onNavigate, onOpenGlossary, onReset }: S1ChromeProps) {
