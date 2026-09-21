@@ -1924,3 +1924,19 @@ html { font-size: 82%; }
   .s1-dash-grid { grid-template-columns: 1fr; }
   .s1-donut { flex-direction: column; align-items: flex-start; }
 }
+
+/* ==========================================================================
+   Extraction inside the chrome — document centre, matching right, navigator
+   left. The rail and the step-header stay exactly where they are on every
+   other screen, so entering/leaving extraction never shifts the layout.
+   ========================================================================== */
+.s1-xr-grid {
+  grid-template-columns: 15rem minmax(0, 1fr) 26rem;
+  height: calc(100vh - 9rem); min-height: 34rem;
+  border: var(--border-hairline); border-radius: var(--radius-card); overflow: hidden;
+}
+
+/* Extraction stacks on a phone (must come after the grid rule above). */
+@media (max-width: 48rem) {
+  .s1-xr-grid { grid-template-columns: 1fr; height: auto; min-height: 0; overflow: visible; }
+}
