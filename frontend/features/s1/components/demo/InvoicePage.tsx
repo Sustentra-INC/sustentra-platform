@@ -36,7 +36,13 @@ function sameBox(a: Box, b: Box): boolean {
   return Math.abs(a.x - b.x) < 0.001 && Math.abs(a.y - b.y) < 0.001;
 }
 
-export function InvoicePage({ highlight }: { highlight?: Box | null }) {
+export function InvoicePage({
+  highlight,
+  onMarkClick,
+}: {
+  highlight?: Box | null;
+  onMarkClick?: (box: Box) => void;
+}) {
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="s1-invoice" role="img" aria-label="Electricity invoice">
       <rect x="0" y="0" width={W} height={H} fill="#ffffff" />
@@ -113,7 +119,7 @@ export function InvoicePage({ highlight }: { highlight?: Box | null }) {
         Factors from eGRID 2024; emissions shown are location-based per GHG Protocol Scope 2 guidance.
       </text>
 
-      {/* faint marks on every verifiable figure */}
+      {/* faint marks on every verifiable figure (click to select its value) */}
       {ALL_MARKS.map((m, i) =>
         highlight && sameBox(m, highlight) ? null : (
           <rect
@@ -123,7 +129,10 @@ export function InvoicePage({ highlight }: { highlight?: Box | null }) {
             width={m.w * W}
             height={m.h * H}
             className="s1-invoice__hl s1-invoice__hl--faint"
-          />
+            onClick={onMarkClick ? () => onMarkClick(m) : undefined}
+          >
+            <title>Select this value</title>
+          </rect>
         )
       )}
 
@@ -135,6 +144,7 @@ export function InvoicePage({ highlight }: { highlight?: Box | null }) {
           width={highlight.w * W}
           height={highlight.h * H}
           className="s1-invoice__hl"
+          onClick={onMarkClick ? () => onMarkClick(highlight) : undefined}
         />
       ) : null}
     </svg>

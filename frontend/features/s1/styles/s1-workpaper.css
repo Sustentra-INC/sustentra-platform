@@ -1681,11 +1681,17 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
    Full-screen Extraction Review — document centre stage, matching on the
    right, navigator on the left. Runs outside the rail/nav chrome.
    ========================================================================== */
-.s1-app--fullscreen { min-width: 0; min-height: 100vh; background: var(--sf-page); }
-.s1-app--fullscreen .s1-xr { padding: 0; gap: 0; height: 100vh; }
+.s1-app--fullscreen {
+  min-width: 0; height: 100vh; background: var(--sf-page);
+  display: flex; flex-direction: column;
+}
+/* Keep the process nav on top so extraction is part of the flow, not a dead end */
+.s1-app--fullscreen .s1-nav { flex: none; margin: var(--sp-3) var(--sp-4) 0; }
+.s1-app--fullscreen .s1-xr { flex: 1; min-height: 0; padding: 0; gap: 0; display: flex; }
 .s1-app--fullscreen .s1-xr-grid {
   grid-template-columns: 15rem minmax(0, 1fr) 30rem;
-  height: 100vh; min-height: 100vh; border: 0; border-radius: 0;
+  flex: 1; height: auto; min-height: 0; border: 0; border-radius: 0;
+  border-top: var(--border-hairline);
 }
 
 /* Reorder panes: navigator (1) · document (2) · matching (3) */
@@ -1731,4 +1737,88 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .s1-app--fullscreen .s1-xr-grid { grid-template-columns: 1fr; }
   .s1-xr-realpage { max-width: none; }
   .s1-xr-source { border-left: 0; border-right: 0; }
+}
+
+/* ==========================================================================
+   Global fixes: sign-in font, comfortable scale, no text overlap.
+   ========================================================================== */
+/* The sign-in gate renders outside .s1-app, so give the whole document the
+   product font (it was falling back to the browser serif). */
+body { font-family: var(--font-sans); color: var(--ink); background: var(--sf-page); }
+
+/* Comfortable density: render at ~the 80%-zoom look so nothing crowds at 100%. */
+html { font-size: 82%; }
+
+/* Long filenames/IDs break instead of spilling into the next column. */
+.s1-table td { overflow-wrap: anywhere; }
+
+/* Primary button keeps white text even when disabled (was greying out). */
+.s1-button--pri:disabled { color: var(--sf-card); opacity: 0.5; }
+
+/* Clickable document highlights map back to the value cards. */
+.s1-invoice__hl { cursor: pointer; }
+.s1-invoice__hl--faint:hover { fill: rgba(250, 204, 21, 0.28); }
+
+/* ==========================================================================
+   Output (screen 7) — the assurance deliverable, as a document.
+   ========================================================================== */
+.s1-out-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.s1-out-actions .s1-button { display: inline-flex; align-items: center; gap: var(--sp-2); }
+.s1-out-actions .s1-button svg { width: 1rem; height: 1rem; flex: none; }
+.s1-out-status { align-self: center; }
+
+.s1-out-doc {
+  width: 100%; max-width: 58rem; margin: 0 auto;
+  background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card);
+  box-shadow: 0 0.15rem 0.9rem rgba(40, 40, 112, 0.07);
+  padding: var(--sp-6) var(--sp-7); display: flex; flex-direction: column; gap: var(--sp-5);
+}
+.s1-out-doc__band {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-4);
+  padding-bottom: var(--sp-4); border-bottom: var(--active-row-marker-width) solid var(--brand-ink);
+}
+.s1-out-brand { font-size: var(--text-lg); font-weight: 700; letter-spacing: -0.01em; color: var(--brand-ink); }
+.s1-out-eyebrow { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); }
+
+.s1-out-titleblock h2 { font-size: 1.6rem; font-weight: 700; margin: 0 0 var(--sp-1); letter-spacing: -0.02em; }
+.s1-out-titleblock p { margin: 0; }
+
+.s1-out-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4); margin: 0; }
+.s1-out-meta__item dt { margin-bottom: var(--sp-1); }
+.s1-out-meta__item dd { margin: 0; color: var(--ink); font-size: var(--text-md); }
+
+.s1-out-section { display: flex; flex-direction: column; gap: var(--sp-3); }
+.s1-out-section h3 { font-size: var(--text-md); text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); margin: 0; }
+.s1-out-lead { margin: 0; font-size: 1.05rem; line-height: var(--leading-body); color: var(--ink); }
+
+.s1-out-tiles { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.s1-out-tile {
+  flex: 1; min-width: 10rem; padding: var(--sp-3) var(--sp-4);
+  background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-card);
+}
+.s1-out-tile--accent { background: var(--accent-soft); border-color: var(--accent-line); }
+.s1-out-tile__label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.s1-out-tile__value { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: var(--sp-1); line-height: 1.15; }
+.s1-out-tile--accent .s1-out-tile__value { color: var(--accent-strong); }
+.s1-out-tile__unit { font-size: var(--text-sm); font-weight: var(--weight-regular); color: var(--ink-2); }
+.s1-out-tile__sub { font-size: var(--text-xs); color: var(--ink-3); margin-top: var(--sp-1); }
+
+.s1-out-tablewrap { box-shadow: none; }
+.s1-out-num { text-align: right; font-variant-numeric: tabular-nums; }
+.s1-out-table th.s1-out-num { text-align: right; }
+.s1-out-table tfoot .s1-out-total td { font-weight: 700; background: var(--sf-sunken); border-top: var(--border-strong); }
+.s1-out-foot { margin: 0; font-size: var(--text-sm); line-height: var(--leading-body); }
+
+.s1-out-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-5); }
+.s1-out-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); font-size: var(--text-sm); line-height: var(--leading-body); }
+.s1-out-list li { display: flex; align-items: baseline; gap: var(--sp-2); flex-wrap: wrap; }
+
+.s1-out-signoff { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); padding-top: var(--sp-4); border-top: var(--border-hairline); }
+.s1-out-signoff__name { font-size: var(--text-md); font-weight: 700; }
+.s1-out-signoff__date { text-align: right; }
+
+@media (max-width: 48rem) {
+  .s1-out-doc { padding: var(--sp-5) var(--sp-4); }
+  .s1-out-meta { grid-template-columns: 1fr 1fr; }
+  .s1-out-split { grid-template-columns: 1fr; }
 }

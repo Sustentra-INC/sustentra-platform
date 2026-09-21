@@ -10,7 +10,7 @@ import {
 } from "../api/s1Backend";
 import { ExtractionReview } from "../components/ExtractionReview";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
-import { S1Chrome, type NavKey } from "../components/S1Chrome";
+import { S1Chrome, PrimaryNav, type NavKey } from "../components/S1Chrome";
 import { UploadScreen, type SampleScript } from "../components/UploadScreen";
 import { SetupScreen } from "../components/SetupScreen";
 import { InvoicePage } from "../components/demo/InvoicePage";
@@ -347,6 +347,7 @@ export function S1WorkpaperApp() {
   if (activeView.name === "extraction") {
     return (
       <main className="s1-app s1-app--fullscreen">
+        <PrimaryNav current="evidence" onNavigate={onNavigate} />
         <ExtractionReview
           engagement={engagement}
           values={reviewValues}
@@ -355,9 +356,12 @@ export function S1WorkpaperApp() {
           initialNodeKey={activeView.nodeKey}
           onSaveAsk={requests.saveAsk}
           onBack={() => setActiveView({ name: "evidence" })}
-          renderPage={(documentId, span) =>
+          renderPage={(documentId, span, onPickBox) =>
             documentId === DEMO_INVOICE_ID ? (
-              <InvoicePage highlight={span ? { x: span.x, y: span.y, w: span.w, h: span.h } : null} />
+              <InvoicePage
+                highlight={span ? { x: span.x, y: span.y, w: span.w, h: span.h } : null}
+                onMarkClick={onPickBox}
+              />
             ) : null
           }
         />
@@ -415,7 +419,7 @@ export function S1WorkpaperApp() {
         ) : activeView.name === "results" ? (
           <VerificationResults rows={verificationRows} store={verification} />
         ) : activeView.name === "output" ? (
-          <OutputScreen />
+          <OutputScreen engagement={engagement} />
         ) : activeView.name === "evidence" ? (
           <EvidenceWorkspace
             engagement={engagement}

@@ -30,8 +30,13 @@ interface ExtractionReviewProps {
   initialNodeKey?: string;
   onSaveAsk: (draft: AskDraft) => void;
   onBack: () => void;
-  /** Render the real source page for a document (else a facsimile is drawn). */
-  renderPage?: (documentId: string, span: ReviewSpan | null) => ReactNode | null;
+  /** Render the real source page for a document (else a facsimile is drawn).
+   *  `onPickBox` lets a clicked highlight on the page select its value card. */
+  renderPage?: (
+    documentId: string,
+    span: ReviewSpan | null,
+    onPickBox?: (box: { x: number; y: number; w: number; h: number }) => void
+  ) => ReactNode | null;
 }
 
 const SCOPE_LABEL: Record<ScopePlacement, string> = {
@@ -91,6 +96,21 @@ export function ExtractionReview({ engagement, values, onValuesChange, initialDo
 
   function selectValue(v: ReviewValue) {
     setSelectedId(v.id);
+  }
+
+  /** A highlight on the document was clicked: select the value it belongs to. */
+  function selectByBox(box: { x: number; y: number; w: number; h: number }) {
+    const match = items.find(
+      (v) => v.span && Math.abs(v.span.x - box.x) < 0.003 && Math.abs(v.span.y - box.y) < 0.003
+    );
+    if (!match) return;
+    const nk = nodeKeyForValue(match);
+    if (nk !== nodeKey) {
+      setNodeKey(nk);
+      setFilter(null);
+      setExpanded((s) => new Set(s).add(rootKeyOf(match)));
+    }
+    setSelectedId(match.id);
   }
 
   function accept(v: ReviewValue) {
@@ -303,7 +323,7 @@ export function ExtractionReview({ engagement, values, onValuesChange, initialDo
 
         {/* Source */}
         <aside className="s1-xr-source" aria-label="Source">
-          <SourcePane value={selected} renderPage={renderPage} />
+          <SourcePane value={selected} renderPage={renderPage} onPickBox={selectByBox} />
         </aside>
       </div>
 
@@ -409,9 +429,15 @@ function ValueCard({
 function SourcePane({
   value,
   renderPage,
+  onPickBox,
 }: {
   value: ReviewValue | null;
-  renderPage?: (documentId: string, span: ReviewSpan | null) => ReactNode | null;
+  renderPage?: (
+    documentId: string,
+    span: ReviewSpan | null,
+    onPickBox?: (box: { x: number; y: number; w: number; h: number }) => void
+  ) => ReactNode | null;
+  onPickBox?: (box: { x: number; y: number; w: number; h: number }) => void;
 }) {
   // Page state tracked here (hook must run every render); resets when the
   // selected value changes, guarded so it fires once per change.
@@ -431,7 +457,7 @@ function SourcePane({
   }
   const page = pageState.id === value.id ? pageState.page : value.page;
   const setPage = (nextPage: number) => setPageState({ id: value.id, page: nextPage });
-  const realPage = renderPage ? renderPage(value.documentId, value.span ?? null) : null;
+  const realPage = renderPage ? renderPage(value.documentId, value.span ?? null, onPickBox) : null;
   return (
     <div className="s1-xr-src">
       <div className="s1-xr-src-head">

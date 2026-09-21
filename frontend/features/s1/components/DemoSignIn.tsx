@@ -8,7 +8,7 @@ import { useState } from "react";
  * UI carries no demo markers or hedging, by design.
  */
 export function DemoSignIn({ onSignIn }: { onSignIn: () => void }) {
-  const [email, setEmail] = useState("m.osei@meridian-assurance.com");
+  const [email, setEmail] = useState("demo@sustentra.com");
   const [password, setPassword] = useState("verifier");
 
   return (
