@@ -23,65 +23,153 @@ interface S1ChromeProps {
   onReset?: () => void;
 }
 
-export function PersistentRail({
-  engagement,
-  onOpenGlossary,
-  onReset,
-  collapsed = false,
+const DESTINATIONS: Array<{ key: NavKey; label: string }> = [
+  { key: "dashboard", label: "Dashboard" },
+  { key: "setup", label: "Setup" },
+  { key: "upload", label: "Upload" },
+  { key: "evidence", label: "Evidence" },
+  { key: "requests", label: "Requests" },
+  { key: "coverage", label: "Check coverage" },
+  { key: "results", label: "Verification results" },
+  { key: "output", label: "Output" },
+];
+
+export function S1Chrome({ engagement, children, current, onNavigate, onOpenGlossary, onReset }: S1ChromeProps) {
+  const [navExpanded, setNavExpanded] = useState(true);
+  const [ctxExpanded, setCtxExpanded] = useState(false);
+  return (
+    <div className="s1-shell">
+      <Sidebar
+        current={current}
+        onNavigate={onNavigate}
+        expanded={navExpanded}
+        onToggle={() => setNavExpanded((v) => !v)}
+      />
+      <section className="s1-main">
+        <ContextBar
+          engagement={engagement}
+          expanded={ctxExpanded}
+          onToggle={() => setCtxExpanded((v) => !v)}
+          onOpenGlossary={onOpenGlossary}
+          onReset={onReset}
+        />
+        {children}
+      </section>
+    </div>
+  );
+}
+
+/* =============================== sidebar =============================== */
+
+function Sidebar({
+  current,
+  onNavigate,
+  expanded,
   onToggle,
 }: {
-  engagement: EngagementConfig;
-  onOpenGlossary?: () => void;
-  onReset?: () => void;
-  collapsed?: boolean;
-  onToggle?: () => void;
+  current?: NavKey;
+  onNavigate?: (key: NavKey) => void;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   return (
-    <aside className={`s1-rail${collapsed ? " s1-rail--collapsed" : ""}`}>
+    <aside className={`s1-side${expanded ? "" : " s1-side--min"}`}>
+      <div className="s1-side__top">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="s1-side__logo" src={expanded ? "/sustentra-logo.png" : "/sustentra-mark.png"} alt="Sustentra" />
+      </div>
+      <nav className="s1-side__nav" aria-label="Primary">
+        {DESTINATIONS.map((dest) => (
+          <button
+            key={dest.key}
+            className={`s1-side__item${current === dest.key ? " is-on" : ""}`}
+            type="button"
+            title={dest.label}
+            aria-current={current === dest.key ? "page" : undefined}
+            onClick={() => onNavigate?.(dest.key)}
+          >
+            <span className="s1-side__icon"><NavIcon nav={dest.key} /></span>
+            <span className="s1-side__label">{dest.label}</span>
+          </button>
+        ))}
+      </nav>
       <button
-        className="s1-rail__toggle"
+        className="s1-side__toggle"
         type="button"
         onClick={onToggle}
-        aria-label={collapsed ? "Expand engagement panel" : "Collapse engagement panel"}
-        title={collapsed ? "Expand" : "Collapse"}
+        aria-label={expanded ? "Minimize sidebar" : "Expand sidebar"}
+        title={expanded ? "Minimize" : "Expand"}
       >
-        <ChevronsIcon collapsed={collapsed} />
+        <span className="s1-side__icon"><ChevronsIcon collapsed={!expanded} /></span>
+        <span className="s1-side__label">Collapse</span>
       </button>
-      <h1 className="s1-rail__brand">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="s1-rail__logo" src="/sustentra-logo.png" alt="Sustentra" />
-      </h1>
-      <RailItem label="Client" value={engagement.clientName} />
-      <RailItem label="Engagement ID" value={engagement.engagementId} mono />
-      <RailItem
-        label="Reporting period"
-        value={`${engagement.reportingPeriod.start} to ${engagement.reportingPeriod.end}`}
-      />
-      <RailItem label="Regulation" value={engagement.regulation} />
-      <RailItem label="Assurance level" value={engagement.assuranceLevel} />
-      <RailItem label="Boundary approach" value={engagement.boundaryApproach} />
-      <div className="s1-rail__section">
-        <button className="s1-linklike" type="button" onClick={onOpenGlossary}>
-          Glossary
-        </button>
-      </div>
-      {onReset ? (
-        <div className="s1-rail__reset">
-          <button
-            className="s1-rail__reset-btn"
-            type="button"
-            onClick={() => {
-              if (window.confirm("Reset the workspace to the start? This clears the current session.")) onReset();
-            }}
-          >
-            <ResetIcon />
-            Reset workspace
-          </button>
-        </div>
-      ) : null}
     </aside>
   );
 }
+
+/* ===================== engagement context bar (relocated, collapsed) ===================== */
+
+function ContextBar({
+  engagement,
+  expanded,
+  onToggle,
+  onOpenGlossary,
+  onReset,
+}: {
+  engagement: EngagementConfig;
+  expanded: boolean;
+  onToggle: () => void;
+  onOpenGlossary?: () => void;
+  onReset?: () => void;
+}) {
+  return (
+    <div className={`s1-ctx${expanded ? " s1-ctx--open" : ""}`}>
+      <div className="s1-ctx__bar">
+        <button className="s1-ctx__summary" type="button" onClick={onToggle} aria-expanded={expanded}>
+          <span className="s1-ctx__client">{engagement.clientName}</span>
+          <span className="s1-ctx__id s1-mono">{engagement.engagementId}</span>
+          <span className="s1-ctx__caret" aria-hidden>{expanded ? "▴" : "▾"}</span>
+          <span className="s1-muted s1-ctx__hint">{expanded ? "Hide engagement" : "Engagement details"}</span>
+        </button>
+        <div className="s1-ctx__actions">
+          <button className="s1-linklike" type="button" onClick={onOpenGlossary}>
+            Glossary
+          </button>
+          {onReset ? (
+            <button
+              className="s1-ctx__reset"
+              type="button"
+              onClick={() => {
+                if (window.confirm("Reset the workspace to the start? This clears the current session.")) onReset();
+              }}
+            >
+              <ResetIcon /> Reset
+            </button>
+          ) : null}
+        </div>
+      </div>
+      {expanded ? (
+        <div className="s1-ctx__details">
+          <CtxItem label="Reporting period" value={`${engagement.reportingPeriod.start} to ${engagement.reportingPeriod.end}`} />
+          <CtxItem label="Regulation" value={engagement.regulation} />
+          <CtxItem label="Assurance level" value={engagement.assuranceLevel} />
+          <CtxItem label="Boundary approach" value={engagement.boundaryApproach} />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function CtxItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="s1-ctx__item">
+      <div className="s1-label">{label}</div>
+      <div className="s1-value">{value}</div>
+    </div>
+  );
+}
+
+/* =============================== icons =============================== */
 
 function ChevronsIcon({ collapsed }: { collapsed: boolean }) {
   return (
@@ -97,51 +185,6 @@ function ResetIcon() {
       <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
       <path d="M3 3v5h5" />
     </svg>
-  );
-}
-
-function RailItem({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
-  return (
-    <div className="s1-rail__section">
-      <div className="s1-label">{label}</div>
-      <div className={`s1-value ${mono ? "s1-mono" : ""}`}>{value}</div>
-    </div>
-  );
-}
-
-const DESTINATIONS: Array<{ key: NavKey; label: string; built: boolean }> = [
-  { key: "dashboard", label: "Dashboard", built: true },
-  { key: "setup", label: "Setup", built: true },
-  { key: "upload", label: "Upload", built: true },
-  { key: "evidence", label: "Evidence", built: true },
-  { key: "requests", label: "Requests", built: true },
-  { key: "coverage", label: "Check coverage", built: true },
-  { key: "results", label: "Verification results", built: true },
-  { key: "output", label: "Output", built: true },
-];
-
-export function PrimaryNav({
-  current = "evidence",
-  onNavigate,
-}: {
-  current?: NavKey;
-  onNavigate?: (key: NavKey) => void;
-}) {
-  return (
-    <nav className="s1-nav" aria-label="Primary">
-      {DESTINATIONS.map((dest) => (
-        <button
-          key={dest.key}
-          className="s1-tab"
-          type="button"
-          aria-current={current === dest.key ? "page" : undefined}
-          onClick={() => onNavigate?.(dest.key)}
-        >
-          <span className="s1-tab__icon"><NavIcon nav={dest.key} /></span>
-          {dest.label}
-        </button>
-      ))}
-    </nav>
   );
 }
 
@@ -165,23 +208,4 @@ function NavIcon({ nav }: { nav: NavKey }) {
     case "output":
       return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></svg>;
   }
-}
-
-export function S1Chrome({ engagement, children, current, onNavigate, onOpenGlossary, onReset }: S1ChromeProps) {
-  const [railCollapsed, setRailCollapsed] = useState(false);
-  return (
-    <div className={`s1-screen${railCollapsed ? " is-railcollapsed" : ""}`}>
-      <PersistentRail
-        engagement={engagement}
-        onOpenGlossary={onOpenGlossary}
-        onReset={onReset}
-        collapsed={railCollapsed}
-        onToggle={() => setRailCollapsed((v) => !v)}
-      />
-      <section className="s1-main">
-        <PrimaryNav current={current} onNavigate={onNavigate} />
-        {children}
-      </section>
-    </div>
-  );
 }
