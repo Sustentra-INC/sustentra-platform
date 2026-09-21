@@ -2127,3 +2127,58 @@ html { font-size: 82%; }
   .s1-ctx__hint { display: none; }
   .s1-ctx__summary { flex: 1; }
 }
+
+/* App touches the viewport edges — kill the default body margin, tighten the
+   sidebar's top so nothing sits empty before the logo. */
+html, body { margin: 0; padding: 0; }
+.s1-side__top { padding: var(--sp-3) var(--sp-4); }
+
+/* ==========================================================================
+   Sustentra assistant — floating agent, bottom-right on every screen.
+   ========================================================================== */
+.s1-ai-fab {
+  position: fixed; right: var(--sp-5); bottom: var(--sp-5); z-index: 80;
+  width: 3.2rem; height: 3.2rem; border-radius: 50%; border: 0; cursor: pointer;
+  background: var(--brand-ink); box-shadow: 0 0.4rem 1.2rem rgba(40, 40, 112, 0.35);
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: transform 0.16s var(--ease-out), box-shadow 0.16s var(--ease-out);
+}
+.s1-ai-fab:hover { transform: translateY(-2px); box-shadow: 0 0.6rem 1.5rem rgba(40, 40, 112, 0.42); }
+.s1-ai-fab:active { transform: scale(0.95); }
+.s1-ai-fab__mark { width: 1.7rem; height: 1.7rem; filter: brightness(0) invert(1); }
+
+.s1-ai {
+  position: fixed; right: var(--sp-5); bottom: calc(var(--sp-5) + 4rem); z-index: 80;
+  width: min(23rem, 92vw); height: min(30rem, 70vh);
+  background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card);
+  box-shadow: 0 1rem 3rem rgba(23, 23, 20, 0.24);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.s1-ai__head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4); background: var(--brand-ink); color: white; flex: none;
+}
+.s1-ai__brand { display: inline-flex; align-items: center; gap: var(--sp-2); font-weight: 700; font-size: var(--text-sm); }
+.s1-ai__mark { width: 1.1rem; height: 1.1rem; filter: brightness(0) invert(1); }
+.s1-ai__close { background: none; border: 0; color: rgba(255, 255, 255, 0.8); cursor: pointer; font-size: var(--text-md); padding: 0; line-height: 1; }
+.s1-ai__close:hover { color: white; }
+
+.s1-ai__body { flex: 1; overflow-y: auto; padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-2); }
+.s1-ai__msg { font-size: var(--text-sm); line-height: var(--leading-body); padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-card); max-width: 92%; white-space: pre-wrap; }
+.s1-ai__msg--assistant { background: var(--sf-sunken); color: var(--ink); align-self: flex-start; border-top-left-radius: var(--radius-input); }
+.s1-ai__msg--user { background: var(--accent-solid); color: white; align-self: flex-end; border-top-right-radius: var(--radius-input); }
+
+.s1-ai__sugs { display: flex; flex-wrap: wrap; gap: var(--sp-1); padding: 0 var(--sp-3) var(--sp-2); flex: none; }
+.s1-ai__sug { font: inherit; font-size: var(--text-xs); color: var(--accent-strong); background: var(--accent-soft); border: var(--hairline-width) solid var(--accent-line); border-radius: var(--state-chip-radius); padding: var(--sp-1) var(--sp-2); cursor: pointer; }
+.s1-ai__sug:hover { background: var(--accent-softer); }
+
+.s1-ai__input { display: flex; gap: var(--sp-2); padding: var(--sp-3); border-top: var(--border-hairline); flex: none; }
+.s1-ai__input input { flex: 1; min-width: 0; font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-2) var(--sp-3); }
+.s1-ai__input input:focus { outline: none; border-color: var(--accent); }
+.s1-ai__send { flex: none; width: 2.2rem; border: 0; border-radius: var(--radius-input); background: var(--brand-ink); color: white; cursor: pointer; font-size: var(--text-md); }
+.s1-ai__send:hover { filter: brightness(1.12); }
+
+@media (max-width: 48rem) {
+  .s1-ai { right: var(--sp-3); left: var(--sp-3); width: auto; bottom: calc(var(--sp-3) + 3.8rem); }
+  .s1-ai-fab { right: var(--sp-3); bottom: var(--sp-3); }
+}

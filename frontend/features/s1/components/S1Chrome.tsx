@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
+import { AssistantWidget } from "./AssistantWidget";
 
 export type NavKey =
   | "dashboard"
@@ -55,6 +56,7 @@ export function S1Chrome({ engagement, children, current, onNavigate, onOpenGlos
         />
         {children}
       </section>
+      <AssistantWidget page={current} />
     </div>
   );
 }
