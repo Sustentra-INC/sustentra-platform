@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
 
@@ -25,13 +27,26 @@ export function PersistentRail({
   engagement,
   onOpenGlossary,
   onReset,
+  collapsed = false,
+  onToggle,
 }: {
   engagement: EngagementConfig;
   onOpenGlossary?: () => void;
   onReset?: () => void;
+  collapsed?: boolean;
+  onToggle?: () => void;
 }) {
   return (
-    <aside className="s1-rail">
+    <aside className={`s1-rail${collapsed ? " s1-rail--collapsed" : ""}`}>
+      <button
+        className="s1-rail__toggle"
+        type="button"
+        onClick={onToggle}
+        aria-label={collapsed ? "Expand engagement panel" : "Collapse engagement panel"}
+        title={collapsed ? "Expand" : "Collapse"}
+      >
+        <ChevronsIcon collapsed={collapsed} />
+      </button>
       <h1 className="s1-rail__brand">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="s1-rail__logo" src="/sustentra-logo.png" alt="Sustentra" />
@@ -65,6 +80,14 @@ export function PersistentRail({
         </div>
       ) : null}
     </aside>
+  );
+}
+
+function ChevronsIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {collapsed ? <path d="m9 6 6 6-6 6M4 6l6 6-6 6" /> : <path d="m15 6-6 6 6 6M20 6l-6 6 6 6" />}
+    </svg>
   );
 }
 
@@ -145,9 +168,16 @@ function NavIcon({ nav }: { nav: NavKey }) {
 }
 
 export function S1Chrome({ engagement, children, current, onNavigate, onOpenGlossary, onReset }: S1ChromeProps) {
+  const [railCollapsed, setRailCollapsed] = useState(false);
   return (
-    <div className="s1-screen">
-      <PersistentRail engagement={engagement} onOpenGlossary={onOpenGlossary} onReset={onReset} />
+    <div className={`s1-screen${railCollapsed ? " is-railcollapsed" : ""}`}>
+      <PersistentRail
+        engagement={engagement}
+        onOpenGlossary={onOpenGlossary}
+        onReset={onReset}
+        collapsed={railCollapsed}
+        onToggle={() => setRailCollapsed((v) => !v)}
+      />
       <section className="s1-main">
         <PrimaryNav current={current} onNavigate={onNavigate} />
         {children}

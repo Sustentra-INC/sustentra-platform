@@ -103,6 +103,14 @@ export function EvidenceWorkspace({
   const items = evidence;
   const [facilityFilter, setFacilityFilter] = useState<FacilityFilter>(null);
   const [headerFilter, setHeaderFilter] = useState<HeaderFilter>(null);
+  const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
+  const toggleType = (t: string) =>
+    setCollapsedTypes((s) => {
+      const n = new Set(s);
+      if (n.has(t)) n.delete(t);
+      else n.add(t);
+      return n;
+    });
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [editing, setEditing] = useState<{ id: string; field: "type" | "facility" } | null>(null);
@@ -354,14 +362,24 @@ export function EvidenceWorkspace({
                   </tr>
                 </thead>
                 <tbody>
-                  {groups.map((group) => (
+                  {groups.map((group) => {
+                    const collapsed = collapsedTypes.has(group.type);
+                    return (
                     <Fragment key={group.type}>
-                      <tr className="s1-ws-group">
+                      <tr className="s1-ws-group s1-ws-group--btn">
                         <td colSpan={8}>
-                          {group.type} <span className="s1-muted">({group.items.length})</span>
+                          <button
+                            className="s1-ws-grouphead"
+                            type="button"
+                            aria-expanded={!collapsed}
+                            onClick={() => toggleType(group.type)}
+                          >
+                            <span className="s1-ws-grouphead__caret">{collapsed ? "▸" : "▾"}</span>
+                            {group.type} <span className="s1-muted">({group.items.length})</span>
+                          </button>
                         </td>
                       </tr>
-                      {group.items.map((item) => (
+                      {!collapsed && group.items.map((item) => (
                         <Fragment key={item.documentId}>
                           <WorkspaceRow
                             item={item}
@@ -412,7 +430,8 @@ export function EvidenceWorkspace({
                         </Fragment>
                       ))}
                     </Fragment>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

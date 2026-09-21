@@ -528,33 +528,65 @@ function PageView({ value }: { value: ReviewValue }) {
 }
 
 function SheetView({ value }: { value: ReviewValue }) {
+  // Show the sheet with column letters, row numbers, a header row of titles and
+  // surrounding rows, so the figure reads in context (not a bare number).
   const cols = ["A", "B", "C", "D", "E"];
-  const rows = [1, 2, 3, 4, 5];
-  const targetCol = value.cell?.[0];
-  const targetRow = value.cell ? Number(value.cell.slice(1)) : null;
+  const titles = ["Date", "Trip / item", value.whatItIs || "Value", "Rate", "Amount"];
+  const sample = [
+    ["01 Feb", "Trip 001", "128", "$0.67", "$85.76"],
+    ["03 Feb", "Trip 002", "54", "$0.67", "$36.18"],
+    ["08 Feb", "Trip 003", "212", "$0.67", "$142.04"],
+    ["12 Feb", "Trip 004", "77", "$0.67", "$51.59"],
+    ["15 Feb", "Trip 005", "96", "$0.67", "$64.32"],
+  ];
+  const targetCol = value.cell?.[0] ?? "C";
+  const rawRow = value.cell ? Number(value.cell.slice(1)) : 6;
+  const lastRow = 1 + sample.length; // header row 1 + data rows 2..
+  const targetRow = Math.min(rawRow, lastRow);
+
   return (
     <div className="s1-xr-sheet">
       <div className="s1-muted s1-xr-sheet__head">
-        Sheet: {value.sheet} · cell {value.cell} outlined
+        {value.filename}{value.sheet ? ` · sheet ‘${value.sheet}’` : ""} · cell {value.cell ?? "—"} outlined
       </div>
-      <table className="s1-xr-sheet__table">
-        <tbody>
-          {rows.map((r) => (
-            <tr key={r}>
-              {cols.map((c) => {
-                const isTarget = c === targetCol && (targetRow === r || (targetRow && targetRow > 5 && r === 5));
-                return (
-                  <td key={c} className={isTarget ? "is-target" : ""}>
-                    {isTarget ? `${value.value} ${value.unit}` : ""}
-                  </td>
-                );
-              })}
+      <div className="s1-xr-sheet__scroll">
+        <table className="s1-xr-sheet__table">
+          <thead>
+            <tr>
+              <th className="s1-xr-sheet__corner" />
+              {cols.map((c) => (
+                <th key={c} className="s1-xr-sheet__colhead">{c}</th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-      {value.cell && Number(value.cell.slice(1)) > 5 ? (
-        <div className="s1-muted s1-xr-sheet__note">Row {value.cell.slice(1)} shown at the last row for layout.</div>
+          </thead>
+          <tbody>
+            <tr className="s1-xr-sheet__titlerow">
+              <th className="s1-xr-sheet__rowhead">1</th>
+              {titles.map((t, i) => (
+                <td key={i} className="s1-xr-sheet__title">{t}</td>
+              ))}
+            </tr>
+            {sample.map((row, ri) => {
+              const rnum = ri + 2;
+              return (
+                <tr key={rnum}>
+                  <th className="s1-xr-sheet__rowhead">{rnum}</th>
+                  {row.map((cell, ci) => {
+                    const isTarget = cols[ci] === targetCol && rnum === targetRow;
+                    return (
+                      <td key={ci} className={isTarget ? "is-target" : ""}>
+                        {isTarget ? `${value.value} ${value.unit}` : cell}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {value.cell && rawRow > lastRow ? (
+        <div className="s1-muted s1-xr-sheet__note">Row {value.cell.slice(1)} shown near the header for context.</div>
       ) : null}
     </div>
   );

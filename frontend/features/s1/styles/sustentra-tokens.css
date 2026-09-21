@@ -50,6 +50,12 @@
   /* Motion — one strong ease-out for the whole product. */
   --ease-out:       cubic-bezier(0.23, 1, 0.32, 1);
 
+  /* Overlays — these were referenced but never defined, so modals had no
+     backdrop and no stacking. */
+  --scrim:          rgba(23, 23, 20, 0.42);
+  --z-modal:        100;
+  --modal-width:    34rem;
+
   /* Categorical chart palette — distinct but on-brand (indigo, teal, amber,
      baby blue, slate). Used only in dashboard visualizations. */
   --chart-1:        #282870;   /* indigo */

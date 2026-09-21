@@ -1940,3 +1940,98 @@ html { font-size: 82%; }
 @media (max-width: 48rem) {
   .s1-xr-grid { grid-template-columns: 1fr; height: auto; min-height: 0; overflow: visible; }
 }
+
+/* ==========================================================================
+   Vivian feedback: collapsible rail, un-cut table headers, real modal backdrop.
+   ========================================================================== */
+
+/* #2 Table headers wrap on whole words only (were breaking mid-word). */
+.s1-table th { overflow-wrap: normal; word-break: normal; }
+
+/* #4 Modal: real dimmed backdrop + lift (tokens were undefined; now set). */
+.s1-modal { box-shadow: 0 1rem 3rem rgba(23, 23, 20, 0.24); max-height: 86vh; overflow-y: auto; }
+
+/* #1 Collapsible engagement rail */
+.s1-rail { position: relative; }
+.s1-rail__toggle {
+  position: absolute; top: var(--sp-2); right: var(--sp-2); z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.6rem; height: 1.6rem; padding: 0; cursor: pointer;
+  background: var(--sf-card); color: var(--ink-3);
+  border: var(--border-hairline); border-radius: var(--radius-input);
+  transition: color 0.16s var(--ease-out), border-color 0.16s var(--ease-out), transform 0.16s var(--ease-out);
+}
+.s1-rail__toggle:hover { color: var(--accent-strong); border-color: var(--accent-line); }
+.s1-rail__toggle:active { transform: scale(0.94); }
+.s1-rail__toggle svg { width: 0.9rem; height: 0.9rem; }
+
+.s1-screen.is-railcollapsed { grid-template-columns: 2.75rem minmax(0, 1fr); }
+.s1-rail--collapsed { padding: var(--sp-2) 0; align-items: center; overflow: hidden; }
+.s1-rail--collapsed .s1-rail__toggle { position: static; margin: 0 auto; }
+.s1-rail--collapsed .s1-rail__brand,
+.s1-rail--collapsed .s1-rail__section,
+.s1-rail--collapsed .s1-rail__reset { display: none; }
+
+@media (max-width: 48rem) {
+  .s1-screen.is-railcollapsed { grid-template-columns: 1fr; }
+  .s1-rail__toggle { position: static; }
+}
+
+/* ==========================================================================
+   Verification: materiality summary + the "show working" audit trail (#6).
+   ========================================================================== */
+.s1-mat { display: flex; flex-direction: column; gap: var(--sp-3); }
+.s1-mat__tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-3); }
+.s1-mat__tile { padding: var(--sp-3) var(--sp-4); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); }
+.s1-mat__tile--over { border-color: var(--state-blocking-line); background: var(--state-blocking-bg); }
+.s1-mat__label { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.s1-mat__value { font-size: 1.4rem; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: var(--sp-1); line-height: 1.2; }
+.s1-mat__unit { font-size: var(--text-sm); font-weight: 400; color: var(--ink-2); }
+.s1-mat__sub { font-size: var(--text-xs); color: var(--ink-3); margin-top: var(--sp-1); }
+.s1-mat__note { font-size: var(--text-sm); color: var(--ink-2); line-height: var(--leading-body); margin: 0; }
+
+.s1-vr-rowactions { display: flex; flex-direction: column; gap: var(--sp-1); align-items: flex-start; }
+.s1-vr-working-btn { font: inherit; font-size: var(--text-xs); font-weight: 600; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0; text-align: left; white-space: nowrap; }
+.s1-vr-working-btn.is-on, .s1-vr-working-btn:hover { color: var(--accent-strong); text-decoration: underline; }
+
+.s1-vr-workingrow > td { background: var(--sf-sunken); padding: 0; }
+.s1-working { padding: var(--sp-4) var(--sp-5); }
+.s1-working__grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4) var(--sp-5); }
+.s1-working__block--wide { grid-column: 1 / -1; }
+.s1-working__block h4 { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); margin: 0 0 var(--sp-2); }
+.s1-working__formula { display: block; font-family: var(--font-mono); font-size: var(--text-sm); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-2) var(--sp-3); color: var(--ink); overflow-wrap: anywhere; }
+.s1-working__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.s1-working__list li { display: flex; flex-direction: column; gap: 0.1rem; font-size: var(--text-sm); }
+.s1-working__k { color: var(--ink-2); }
+.s1-working__v { font-weight: 600; color: var(--ink); }
+.s1-working__src { font-size: var(--text-xs); color: var(--accent); }
+.s1-working__result { margin: 0; font-size: var(--text-sm); line-height: var(--leading-body); }
+.s1-working__refs { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.s1-working__ref { font-size: var(--text-xs); color: var(--ink-2); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--state-chip-radius); padding: 0.1rem var(--sp-3); }
+.s1-working__note { margin: var(--sp-3) 0 0; font-size: var(--text-sm); color: var(--state-open-fg); line-height: var(--leading-body); }
+
+@media (max-width: 48rem) {
+  .s1-mat__tiles { grid-template-columns: 1fr 1fr; }
+  .s1-working__grid { grid-template-columns: 1fr; }
+}
+
+/* #3 Clickable, collapsible evidence-type groups per site */
+.s1-ws-group--btn td { padding: 0; }
+.s1-ws-grouphead {
+  display: flex; align-items: center; gap: var(--sp-2); width: 100%;
+  font: inherit; font-size: var(--text-xs); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--ink-2); cursor: pointer; background: none; border: 0; text-align: left;
+  padding: var(--sp-3) var(--sp-3);
+}
+.s1-ws-grouphead:hover { color: var(--accent-strong); }
+.s1-ws-grouphead__caret { color: var(--ink-3); font-size: 0.7em; width: 0.9rem; }
+
+/* #5 Spreadsheet source: column letters, row numbers, header titles for context */
+.s1-xr-sheet__scroll { overflow: auto; border: var(--border-hairline); border-radius: var(--radius-input); }
+.s1-xr-sheet__scroll .s1-xr-sheet__table { width: 100%; min-width: 22rem; }
+.s1-xr-sheet__table th { border: var(--border-hairline); font-size: var(--text-xs); padding: 0 var(--sp-2); height: var(--sp-6); }
+.s1-xr-sheet__colhead, .s1-xr-sheet__rowhead, .s1-xr-sheet__corner {
+  background: var(--sf-sunken); color: var(--ink-3); font-weight: 600; text-align: center;
+}
+.s1-xr-sheet__rowhead { width: 2rem; }
+.s1-xr-sheet__title { font-weight: 700; color: var(--ink-2); background: var(--sf-page); white-space: nowrap; }
