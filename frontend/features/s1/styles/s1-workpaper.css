@@ -244,9 +244,7 @@
 }
 
 .s1-toolbar {
-  position: sticky;
-  top: calc(var(--nav-height) + var(--needs-you-height));
-  z-index: 3;
+  position: static;
   display: flex;
   align-items: center;
   gap: var(--spacing-md);
@@ -1300,7 +1298,8 @@ select:focus-visible,
 .s1-cov-banner { background: var(--state-open-bg); border: var(--border-hairline); border-color: var(--state-open-line); border-radius: var(--radius-card); padding: var(--sp-3) var(--sp-4); font-size: var(--text-sm); color: var(--ink-2); line-height: var(--leading-body); }
 .s1-cov-banner strong { color: var(--state-open-fg); }
 .s1-cov-table td, .s1-vr-table td { vertical-align: top; }
-.s1-vr-table select { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); }
+.s1-vr-table select { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); width: 100%; max-width: 100%; box-sizing: border-box; }
+.s1-vr-table td { overflow: visible; }
 .s1-vr-note { font-size: var(--text-sm); }
 
 /* ---- Output (7) stub ---- */
@@ -1436,7 +1435,10 @@ select:focus-visible,
 /* Tables fill their pane; long tokens (filenames, IDs) wrap rather than push */
 .s1-table { min-width: 0; table-layout: fixed; width: 100%; }
 .s1-table td, .s1-table th { overflow-wrap: anywhere; }
-.s1-table-wrap { overflow-x: clip; }
+/* Fixed-layout tables fit the container, so no clip is needed at desktop widths.
+   Keeping overflow visible lets row menus / history popovers escape the wrap
+   instead of being cut off; narrow screens re-enable horizontal scroll below. */
+.s1-table-wrap { overflow: visible; }
 
 /* Requests (screen 4): eight columns, evenly weighted, "What is needed" widest */
 .s1-req-table th:nth-child(1) { width: 3.5%; }   /* select   */

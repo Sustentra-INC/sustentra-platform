@@ -60,27 +60,16 @@ export function CheckCoverage({ rules }: { rules: CoverageRule[] }) {
         ))}
       </div>
 
-      <div className="s1-cov-banner" role="note">
-        <InfoIcon className="s1-cov-banner__icon" />
-        <div>
-          <strong>Rule evaluation is not yet implemented.</strong> This shows <em>input readiness</em> only: whether a
-          rule&rsquo;s data points have accepted values, not whether the rule&rsquo;s assertion held. A rule with inputs
-          present has not been run.
-        </div>
-      </div>
-
       <div className="s1-table-wrap">
         <table className="s1-table s1-cov-table">
           <colgroup>
-            <col style={{ width: "14%" }} /> {/* Rule */}
-            <col style={{ width: "26%" }} /> {/* What it checks */}
-            <col style={{ width: "23%" }} /> {/* Data points */}
-            <col style={{ width: "15%" }} /> {/* Status */}
-            <col style={{ width: "22%" }} /> {/* Reason */}
+            <col style={{ width: "34%" }} /> {/* What it checks */}
+            <col style={{ width: "26%" }} /> {/* Data points */}
+            <col style={{ width: "16%" }} /> {/* Status */}
+            <col style={{ width: "24%" }} /> {/* Reason */}
           </colgroup>
           <thead>
             <tr>
-              <th>Rule</th>
               <th>What it checks</th>
               <th>Data points it applies to</th>
               <th>Status</th>
@@ -91,7 +80,7 @@ export function CheckCoverage({ rules }: { rules: CoverageRule[] }) {
             {groups.map((group) => (
               <Fragment key={group.status}>
                 <tr className="s1-ws-group">
-                  <td colSpan={5}>
+                  <td colSpan={4}>
                     <span className="s1-cov-grouphead">
                       <StatusIcon status={group.status} />
                       {STATUS_LABEL[group.status]} <span className="s1-muted">({group.rules.length})</span>
@@ -100,7 +89,6 @@ export function CheckCoverage({ rules }: { rules: CoverageRule[] }) {
                 </tr>
                 {group.rules.map((rule) => (
                   <tr key={rule.ruleId}>
-                    <td className="s1-mono s1-muted">{rule.ruleId}</td>
                     <td>{rule.assertion}</td>
                     <td>
                       {rule.appliesTo.map((d) => (
@@ -174,16 +162,6 @@ function ShieldIcon({ className }: { className?: string }) {
     <svg className={className} viewBox="0 0 24 24" {...SVG} aria-hidden="true">
       <path d="M12 3.2 5 6v5.2c0 4.3 2.9 7.2 7 8.6 4.1-1.4 7-4.3 7-8.6V6z" />
       <path d="m9 12 2.1 2.1L15.2 10" />
-    </svg>
-  );
-}
-
-function InfoIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" {...SVG} aria-hidden="true">
-      <circle cx="12" cy="12" r="9" />
-      <path d="M12 11v5" />
-      <path d="M12 8h.01" />
     </svg>
   );
 }

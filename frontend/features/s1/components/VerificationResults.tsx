@@ -75,12 +75,6 @@ export function VerificationResults({ rows, store }: { rows: VerificationRow[]; 
         </div>
       </header>
 
-      <div className="s1-cov-banner" role="note">
-        <strong>Recompute is partial and rule evaluation is not implemented.</strong> Only Scope 1 stationary combustion
-        is recomputed today; other rows say why they were not. Check outcomes reflect that: most read &ldquo;could not
-        check&rdquo;. Examination state and next action are yours to set.
-      </div>
-
       {tab === "results" ? (
         <ResultsTab rows={rows} store={store} onRegister={setFindingFor} />
       ) : (
@@ -132,6 +126,16 @@ function ResultsTab({
       <MaterialitySummary rows={rows} />
       <div className="s1-table-wrap">
         <table className="s1-table s1-vr-table">
+          <colgroup>
+            <col style={{ width: "15%" }} /> {/* Data point */}
+            <col style={{ width: "9%" }} /> {/* Reported */}
+            <col style={{ width: "14%" }} /> {/* Recomputed / expected */}
+            <col style={{ width: "7%" }} /> {/* Delta */}
+            <col style={{ width: "15%" }} /> {/* Check outcome */}
+            <col style={{ width: "17%" }} /> {/* Examination state */}
+            <col style={{ width: "13%" }} /> {/* Next action */}
+            <col style={{ width: "10%" }} /> {/* actions */}
+          </colgroup>
           <thead>
             <tr>
               <th>Data point</th>
