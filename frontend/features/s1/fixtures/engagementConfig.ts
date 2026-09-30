@@ -22,6 +22,9 @@ export const engagementConfig: EngagementConfig = {
   regulationJurisdiction:
     "California Senate Bill 253: Climate Corporate Data Accountability Act (California, USA)",
   methodology: "GHG Protocol Corporate Standard",
+  dataScope: "Scope 1 & 2",
+  assuranceStandard: "ISO 14064-3",
+  materialityThreshold: "5%",
   conclusionType: "GHG assurance",
   assuranceLevel: "Limited assurance",
   boundaryApproach: "Operational control",

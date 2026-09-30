@@ -30,9 +30,26 @@ import type { AskDraft } from "../requests/requestsStore";
  *    not migrate the core ProcessingState enum (it feeds the backend seam).
  */
 
-/** Canonical type vocabulary (grouping order). "Type unresolved" sits first. */
+/**
+ * Client-prepared inventory documents. These are what the client assembled for
+ * their own inventory — not primary source evidence — so they are grouped first
+ * and their category header band is coloured differently, letting the verifier
+ * tell the two families apart at a glance.
+ */
+const CLIENT_PREPARED_TYPES: readonly string[] = [
+  "Inventory workbook",
+  "Organizational boundary statement",
+  "Emission factor source list",
+  "Facility list",
+  "Prior-year inventory or report",
+];
+const CLIENT_PREPARED_SET = new Set(CLIENT_PREPARED_TYPES);
+
+/** Canonical type vocabulary (grouping order). "Type unresolved" sits first,
+ *  then the client-prepared inventory documents, then the source evidence. */
 const TYPE_ORDER: string[] = [
   "Type unresolved",
+  ...CLIENT_PREPARED_TYPES,
   "Electricity bill",
   "Natural gas bill",
   "Other fuel invoice",
@@ -40,14 +57,9 @@ const TYPE_ORDER: string[] = [
   "Refrigerant service log or refrigerant purchase invoice",
   "Meter reading or meter photo",
   "Energy management system export",
-  "Inventory workbook",
-  "Facility list",
-  "Organizational boundary statement",
-  "Emission factor source list",
   "Renewable energy certificate or retirement statement",
   "Power purchase agreement or supplier contract",
   "Supplier-specific factor documentation",
-  "Prior-year inventory or report",
   // Not in the canonical vocabulary yet — real classes from customer calls.
   // TODO(reconcile): fold these into the canonical vocabulary before it's final.
   "Mileage or expense report",
@@ -364,9 +376,10 @@ export function EvidenceWorkspace({
                 <tbody>
                   {groups.map((group) => {
                     const collapsed = collapsedTypes.has(group.type);
+                    const prepared = CLIENT_PREPARED_SET.has(group.type);
                     return (
                     <Fragment key={group.type}>
-                      <tr className="s1-ws-group s1-ws-group--btn">
+                      <tr className={`s1-ws-group s1-ws-group--btn${prepared ? " s1-ws-group--prepared" : ""}`}>
                         <td colSpan={8}>
                           <button
                             className="s1-ws-grouphead"
@@ -376,6 +389,7 @@ export function EvidenceWorkspace({
                           >
                             <span className="s1-ws-grouphead__caret">{collapsed ? "▸" : "▾"}</span>
                             {group.type} <span className="s1-muted">({group.items.length})</span>
+                            {prepared ? <span className="s1-ws-grouphead__tag">Client-prepared</span> : null}
                           </button>
                         </td>
                       </tr>
@@ -616,6 +630,17 @@ function WorkspaceRow(props: {
             ? `Answered request ${item.answeredRequestNumber} · ${formatDate(item.uploadedAt)}`
             : `Uploaded · ${formatDate(item.uploadedAt)}`}
         </div>
+        {item.processingState === "extracted" && !withdrawn ? (
+          <button
+            className="s1-ws-openextract"
+            type="button"
+            title="Open the extracted figures matched to the document"
+            onClick={() => props.onOpenExtraction(item.documentId)}
+          >
+            <ExtractIcon />
+            Open extraction
+          </button>
+        ) : null}
         {withdrawn ? <StateIndicator dimension="disposition" value="withdrawn" label="Withdrawn" /> : null}
       </td>
 
@@ -894,6 +919,17 @@ function PlusIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
       <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function ExtractIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5" />
+      <path d="M14 3v5h5" />
+      <circle cx="16.5" cy="15.5" r="3" />
+      <path d="m21 20-2.2-2.2" />
     </svg>
   );
 }

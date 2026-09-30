@@ -50,4 +50,12 @@ export interface EngagementConfig {
   signedInLogin?: string;
   /** The verifier's own email — the "from" address for Request-by-email. */
   verifierEmail?: string;
+
+  // --- Scope & assurance (Setup) additions, optional for back-compat. ---
+  /** Which scopes the engagement covers, e.g. "Scope 1 & 2" or "Scope 1, 2, and 3". */
+  dataScope?: string;
+  /** The assurance standard applied, e.g. "ISO 14064-3". */
+  assuranceStandard?: string;
+  /** The materiality threshold as a percentage of total, e.g. "5%". */
+  materialityThreshold?: string;
 }

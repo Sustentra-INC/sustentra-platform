@@ -27,7 +27,11 @@ const REGULATION_OPTIONS = [
   },
 ];
 
-const METHODOLOGY_OPTIONS = ["GHG Protocol Corporate Standard", "ISO 14064-1:2018"];
+const METHODOLOGY_OPTIONS = ["GHG Protocol Corporate Standard"];
+const DATA_SCOPE_OPTIONS = ["Scope 1 & 2", "Scope 1, 2, and 3"];
+const ASSURANCE_STANDARD_OPTIONS = ["ISO 14064-3"];
+const ASSURANCE_LEVEL_OPTIONS = ["Limited assurance", "Reasonable assurance"];
+const MATERIALITY_OPTIONS = ["5%", "10%"];
 
 const LAYER_LABEL: Record<InScopeField["layer"], string> = {
   general: "General",
@@ -118,6 +122,54 @@ export function SetupScreen({
               {METHODOLOGY_OPTIONS.map((m) => (
                 <option key={m} value={m}>
                   {m}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      </div>
+
+      {/* Scope & assurance */}
+      <div className="s1-setup-card">
+        <h2>Scope &amp; assurance</h2>
+        <p className="s1-muted">Defines the coverage and the standard the opinion is issued under. These drive the in-scope list and the deliverable.</p>
+        <div className="s1-setup-grid">
+          <label className="s1-setup-field">
+            <span>Data scope</span>
+            <select value={engagement.dataScope ?? DATA_SCOPE_OPTIONS[0]} onChange={(e) => set({ dataScope: e.target.value })}>
+              {DATA_SCOPE_OPTIONS.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="s1-setup-field">
+            <span>Assurance standard</span>
+            <select value={engagement.assuranceStandard ?? ASSURANCE_STANDARD_OPTIONS[0]} onChange={(e) => set({ assuranceStandard: e.target.value })}>
+              {ASSURANCE_STANDARD_OPTIONS.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="s1-setup-field">
+            <span>Assurance level</span>
+            <select value={engagement.assuranceLevel} onChange={(e) => set({ assuranceLevel: e.target.value })}>
+              {ASSURANCE_LEVEL_OPTIONS.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="s1-setup-field">
+            <span>Materiality threshold</span>
+            <select value={engagement.materialityThreshold ?? MATERIALITY_OPTIONS[0]} onChange={(e) => set({ materialityThreshold: e.target.value })}>
+              {MATERIALITY_OPTIONS.map((o) => (
+                <option key={o} value={o}>
+                  {o} of total
                 </option>
               ))}
             </select>
