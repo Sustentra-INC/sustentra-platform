@@ -83,6 +83,7 @@ docker pull --quiet "${API_IMAGE}:${NEW_TAG}" >/dev/null
 docker run --rm --read-only --tmpfs /tmp \
   --log-driver none \
   -e DATABASE_URL="$(get_param db_migration_url)" \
+  -e APP_DATABASE_URL="$(get_param db_app_url)" \
   -w /app/backend \
   "${API_IMAGE}:${NEW_TAG}" \
   sh -c 'if [ -f alembic.ini ]; then alembic upgrade head; else echo "no alembic.ini yet - skipping migrations"; fi'

@@ -43,7 +43,7 @@ variable "db_master_username" {
 variable "db_app_username" {
   description = "Least-privilege application user (created by migration DB-001)."
   type        = string
-  default     = "sustentra_app"
+  default     = "app_user"
 }
 
 variable "db_max_connections" {
