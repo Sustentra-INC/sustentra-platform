@@ -15,12 +15,6 @@ variable "route53_zone_id" {
   default     = ""
 }
 
-variable "ses_identity" {
-  description = "Verified SES identity (domain or email) the app may send from. Empty = no SES permission yet (set by MVP-4)."
-  type        = string
-  default     = ""
-}
-
 variable "app_instance_type" {
   description = "EC2 instance type for the app host."
   type        = string

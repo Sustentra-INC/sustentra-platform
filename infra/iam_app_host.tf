@@ -70,13 +70,19 @@ data "aws_iam_policy_document" "app_host" {
     resources = ["${aws_cloudwatch_log_group.app.arn}:*"]
   }
 
-  dynamic "statement" {
-    for_each = var.ses_identity == "" ? [] : [var.ses_identity]
+  # SES v2 SendEmail is authorized against both the identity and the configuration set.
+  statement {
+    sid     = "SendEmailFromVerifiedIdentity"
+    actions = ["ses:SendEmail", "ses:SendRawEmail"]
+    resources = [
+      aws_sesv2_email_identity.domain.arn,
+      aws_sesv2_configuration_set.main.arn,
+    ]
 
-    content {
-      sid       = "SendEmailFromVerifiedIdentity"
-      actions   = ["ses:SendEmail", "ses:SendRawEmail"]
-      resources = ["arn:aws:ses:${var.aws_region}:${var.aws_account_id}:identity/${statement.value}"]
+    condition {
+      test     = "StringEquals"
+      variable = "ses:FromAddress"
+      values   = [local.ses_from_address]
     }
   }
 }
