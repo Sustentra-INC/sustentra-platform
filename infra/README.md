@@ -138,3 +138,55 @@ $PG "$URL" -c "SHOW row_security;"                 # on
 
 From your laptop (outside the VPC), port 5432 must be unreachable:
 `Test-NetConnection <db_endpoint> -Port 5432` -> `TcpTestSucceeded : False`.
+
+## Email: Amazon SES (MVP-4)
+
+- Sending domain = `app_domain` (prod `app.sustentra.com`, staging `staging.sustentra.com`),
+  From address `no-reply@<domain>`. Using the subdomain keeps the Microsoft 365
+  email records on `sustentra.com` untouched.
+- Easy DKIM (2048-bit), custom MAIL FROM `bounce.<domain>` (SPF), DMARC `p=quarantine`.
+- Configuration set `sustentra-<env>-default` (TLS required, account suppression list)
+  sends BOUNCE and COMPLAINT events to SNS topic `sustentra-<env>-ses-events`, which
+  emails everyone in `alert_emails`.
+- CloudWatch alarms: bounce rate >= 2%, complaint rate >= 0.05% (AWS reviews at 5% / 0.1%).
+- The app host may send only as `no-reply@<domain>` through that configuration set.
+
+### After apply
+
+1. `terraform output ses_dns_records` -> add every record in Cloudflare
+   (3 DKIM CNAMEs, 1 MX + 1 TXT on `bounce.<domain>`, 1 TXT `_dmarc.<domain>`),
+   proxy status **DNS only**. SES shows the domain as *Verified* within ~1 hour.
+2. Confirm the "AWS Notification - Subscription Confirmation" email for each
+   address in `alert_emails`.
+3. Request production access (one per AWS account/region; takes up to 24h):
+   ```powershell
+   aws sesv2 put-account-details --region us-east-1 --profile sustentra `
+     --production-access-enabled --mail-type TRANSACTIONAL `
+     --website-url https://app.sustentra.com --contact-language EN `
+     --use-case-description "Transactional email for the Sustentra platform: sign-in one-time passcodes and account notifications to registered users only. No marketing. Bounces and complaints are handled via SNS and the SES suppression list." `
+     --additional-contact-email-addresses ops@sustentra.com
+   ```
+   (Needs `ses:PutAccountDetails`; otherwise an admin can submit the same in the
+   SES console -> Account dashboard -> Request production access.)
+
+### Sandbox fallback (until production access is approved)
+
+SES only delivers to verified addresses. Add developer inboxes to
+`ses_sandbox_recipients` in the env tfvars, apply, and click the verification
+link AWS emails to each one. Remove them once production access is granted.
+
+### Tests (from the app host via `aws ssm start-session`)
+
+```bash
+# Delivered; in the recipient's "Show original": SPF=PASS, DKIM=PASS, DMARC=PASS
+aws sesv2 send-email --region us-east-1 \
+  --from-email-address no-reply@app.sustentra.com \
+  --destination ToAddresses=you@example.com \
+  --content '{"Simple":{"Subject":{"Data":"SES test"},"Body":{"Text":{"Data":"Hello from Sustentra"}}}}'
+
+# Simulated bounce -> an SNS notification email arrives at alert_emails
+aws sesv2 send-email --region us-east-1 \
+  --from-email-address no-reply@app.sustentra.com \
+  --destination ToAddresses=bounce@simulator.amazonses.com \
+  --content '{"Simple":{"Subject":{"Data":"Bounce test"},"Body":{"Text":{"Data":"bounce"}}}}'
+```
