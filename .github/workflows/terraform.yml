@@ -2,8 +2,9 @@ name: terraform
 
 # - Pull requests: fmt + validate (no AWS access needed).
 # - Push to main: plan against prod using the terraform role via OIDC.
-# - Manual run (Actions tab -> terraform -> Run workflow): plan + apply,
-#   gated by the GitHub "production" environment.
+# - Manual run (Actions tab -> terraform -> Run workflow): choose prod or
+#   staging, plan, and optionally apply. Gated by the GitHub "production"
+#   or "staging" environment.
 
 on:
   pull_request:
@@ -17,6 +18,11 @@ on:
       - ".github/workflows/terraform.yml"
   workflow_dispatch:
     inputs:
+      environment:
+        description: "Environment to plan/apply"
+        type: choice
+        options: [prod, staging]
+        default: prod
       apply:
         description: "Run terraform apply after the plan"
         type: boolean
@@ -26,13 +32,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: terraform-prod
+  group: terraform-${{ inputs.environment || 'prod' }}
   cancel-in-progress: false
 
 env:
   TF_IN_AUTOMATION: "true"
   AWS_REGION: us-east-1
-  TERRAFORM_ROLE_ARN: arn:aws:iam::012751249540:role/sustentra-prod-terraform
+  TF_ENV: ${{ inputs.environment || 'prod' }}
+  TERRAFORM_ROLE_ARN: arn:aws:iam::012751249540:role/sustentra-${{ inputs.environment || 'prod' }}-terraform
   TF_VERSION: "1.16.4" # keep in sync with `terraform -version` on the laptop
 
 defaults:
@@ -60,7 +67,7 @@ jobs:
     if: github.event_name != 'pull_request'
     needs: validate
     runs-on: ubuntu-latest
-    environment: production
+    environment: ${{ inputs.environment == 'staging' && 'staging' || 'production' }}
     permissions:
       contents: read
       id-token: write # required for GitHub OIDC
@@ -73,8 +80,8 @@ jobs:
         with:
           role-to-assume: ${{ env.TERRAFORM_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - run: terraform init -input=false -backend-config=environments/prod.s3.tfbackend
-      - run: terraform plan -input=false -var-file=environments/prod.tfvars -out=tfplan
+      - run: terraform init -input=false -backend-config=environments/${{ env.TF_ENV }}.s3.tfbackend
+      - run: terraform plan -input=false -var-file=environments/${{ env.TF_ENV }}.tfvars -out=tfplan
       - name: Apply
         if: github.event_name == 'workflow_dispatch' && inputs.apply
         run: terraform apply -input=false tfplan

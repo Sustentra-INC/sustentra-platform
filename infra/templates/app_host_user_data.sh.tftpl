@@ -1,0 +1,46 @@
+#!/bin/bash
+# First-boot setup for the app host (Amazon Linux 2023).
+# Installs Docker + the Compose plugin and makes awslogs the default log driver.
+set -euxo pipefail
+
+dnf -y update
+dnf -y install docker
+
+# Docker Compose v2 plugin
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/download/${compose_version}/docker-compose-linux-x86_64" \
+  -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod 0755 /usr/local/lib/docker/cli-plugins/docker-compose
+
+# Every container logs to CloudWatch by default.
+mkdir -p /etc/docker
+cat > /etc/docker/daemon.json <<'JSON'
+{
+  "log-driver": "awslogs",
+  "log-opts": {
+    "awslogs-region": "${aws_region}",
+    "awslogs-group": "${log_group}",
+    "tag": "{{.Name}}"
+  },
+  "live-restore": true,
+  "no-new-privileges": true
+}
+JSON
+
+systemctl enable --now docker
+
+# App directory used by the deploy pipeline (MVP-5).
+install -d -m 0750 /opt/sustentra
+# Caddy runs as uid 1000 (non-root); it needs to own its data/config dirs.
+install -d -m 0700 -o 1000 -g 1000 /opt/sustentra/caddy/data /opt/sustentra/caddy/config
+
+cat > /opt/sustentra/.env <<'ENV'
+APP_DOMAIN=${app_domain}
+AWS_REGION=${aws_region}
+ECR_REGISTRY=${ecr_registry}
+API_IMAGE=${ecr_registry}/${name_prefix}-api
+WEB_IMAGE=${ecr_registry}/${name_prefix}-web
+API_TAG=latest
+WEB_TAG=latest
+ENV
+chmod 0640 /opt/sustentra/.env

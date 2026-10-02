@@ -1,0 +1,61 @@
+# Production stack on the EC2 app host (/opt/sustentra).
+# Values come from /opt/sustentra/.env (written by user_data, updated by the deploy pipeline).
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d
+
+x-hardening: &hardening
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  restart: unless-stopped
+
+services:
+  caddy:
+    <<: *hardening
+    image: caddy:2.8-alpine
+    user: "1000:1000"
+    # Allow a non-root process to bind 80/443 inside the container's own network namespace.
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: "80"
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?APP_DOMAIN must be set}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /opt/sustentra/caddy/data:/data
+      - /opt/sustentra/caddy/config:/config
+    tmpfs:
+      - /tmp
+    depends_on:
+      - web
+      - api
+
+  web:
+    <<: *hardening
+    image: ${WEB_IMAGE:?}:${WEB_TAG:-latest}
+    # The web image must define a non-root USER (MVP-5 Dockerfile).
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    expose:
+      - "3000"
+
+  api:
+    <<: *hardening
+    image: ${API_IMAGE:?}:${API_TAG:-latest}
+    # The api image must define a non-root USER (MVP-5 Dockerfile).
+    environment:
+      AWS_REGION: ${AWS_REGION}
+    tmpfs:
+      - /tmp
+    expose:
+      - "8000"

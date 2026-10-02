@@ -85,8 +85,30 @@ ECR repositories `sustentra-prod-api` and `sustentra-prod-web`: scan on push,
 untagged images expire after 1 day, only the last 10 images are kept, and a
 repository policy denies pushes from anyone except the deploy role.
 
-## Adding a staging environment later
+## Environments and domains
 
-Copy `environments/prod.*` to `environments/staging.*`, change `environment`
-and the state `key`, and set `create_github_oidc_provider = false` (the OIDC
-provider is account-wide and already exists).
+| Env | Domain | Config | State key | CI roles trust |
+|---|---|---|---|---|
+| prod | `app.sustentra.com` | `environments/prod.*` | `prod/terraform.tfstate` | GitHub env `production` + `main` |
+| staging | `staging.sustentra.com` | `environments/staging.*` | `staging/terraform.tfstate` | GitHub env `staging` + `main` |
+
+DNS for `sustentra.com` is on Cloudflare. After each environment's first apply,
+add an `A` record (`app` or `staging`) pointing to its `app_host_public_ip`,
+proxy status **DNS only** (grey cloud).
+
+### Creating staging (one-time, from a laptop)
+
+Staging's own `sustentra-staging-terraform` role does not exist until staging is
+applied once, so its first apply is manual (same permissions as the prod bootstrap,
+plus EC2/VPC/CloudWatch/SSM read+write):
+
+```powershell
+$env:AWS_PROFILE = "sustentra"
+cd infra
+terraform init -reconfigure -backend-config="environments/staging.s3.tfbackend"
+terraform apply -var-file="environments/staging.tfvars"
+terraform init -reconfigure -backend-config="environments/prod.s3.tfbackend"   # switch back
+```
+
+Then create the GitHub environment `staging`. After that, use
+Actions -> terraform -> Run workflow -> environment: staging.
