@@ -13,6 +13,12 @@ http://{$APP_DOMAIN} {
 }
 
 {$APP_DOMAIN} {
+	# JSON access log to stdout -> CloudWatch (Authorization/Cookie are redacted by Caddy).
+	log {
+		output stdout
+		format json
+	}
+
 	encode zstd gzip
 
 	request_body {
@@ -37,7 +43,10 @@ http://{$APP_DOMAIN} {
 
 	# /api/* -> FastAPI. The prefix is stripped because the backend serves /v1/... and /health.
 	handle_path /api/* {
-		reverse_proxy api:8000
+		reverse_proxy api:8000 {
+			# Same ID in the Caddy and API logs; the API echoes it back as X-Request-ID.
+			header_up X-Request-ID {http.request.uuid}
+		}
 	}
 
 	# Everything else -> Next.js

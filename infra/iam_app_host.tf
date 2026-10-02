@@ -67,7 +67,10 @@ data "aws_iam_policy_document" "app_host" {
   statement {
     sid       = "CloudWatchLogsWrite"
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams"]
-    resources = ["${aws_cloudwatch_log_group.app.arn}:*"]
+    resources = concat(
+      ["${aws_cloudwatch_log_group.app.arn}:*"],
+      [for g in aws_cloudwatch_log_group.service : "${g.arn}:*"],
+    )
   }
 
   # SES v2 SendEmail is authorized against both the identity and the configuration set.
