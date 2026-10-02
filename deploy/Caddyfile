@@ -1,0 +1,47 @@
+# Caddy reverse proxy for the Sustentra app.
+# APP_DOMAIN comes from the environment (docker-compose.prod.yml / .env).
+# Caddy obtains and renews the Let's Encrypt certificate automatically.
+
+{
+	# Admin API off: nothing needs it, and it removes a local attack surface.
+	admin off
+}
+
+# HTTP -> HTTPS with an explicit 301 (Caddy's built-in redirect uses 308).
+http://{$APP_DOMAIN} {
+	redir https://{host}{uri} 301
+}
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	request_body {
+		max_size 1MB
+	}
+
+	# Security headers.
+	# TODO: align with "Section 5" of the security spec once it is shared.
+	header {
+		# No includeSubDomains: the app is on the root domain and other sustentra.com
+		# subdomains (e.g. email autodiscover) must not be forced to HTTPS.
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		-Server
+		-X-Powered-By
+	}
+
+	# /api/* -> FastAPI. The prefix is stripped because the backend serves /v1/... and /health.
+	handle_path /api/* {
+		reverse_proxy api:8000
+	}
+
+	# Everything else -> Next.js
+	handle {
+		reverse_proxy web:3000
+	}
+}
