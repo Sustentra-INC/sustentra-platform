@@ -216,3 +216,33 @@ No AWS keys are stored in GitHub; every job uses OIDC.
 - Deploy a commit whose `/health` returns 500 -> `deploy` fails, log shows
   "rolling back to <previous sha>", the site keeps serving the previous version.
 - Start `deploy` -> it waits on "Waiting for review" until a reviewer approves.
+
+## Monitoring and alarms (MVP-6)
+
+- Log groups `/sustentra/<env>/{caddy,api,web}`, 30-day retention. Each container
+  logs to its own group (awslogs driver, `deploy/docker-compose.prod.yml`).
+- API logs are JSON (`backend/app/observability.py`): one line per request with
+  `request_id`, `method`, `path` (no query string), `status`, `duration_ms`,
+  `user_id`, `org_id`. Bodies, headers, passwords, OTP codes and tokens are never logged.
+  Caddy passes the same `X-Request-ID` to the API and returns it to the client.
+- SNS topic `sustentra-<env>-alerts` -> every address in `alert_emails` (confirm the email).
+- Alarms: EC2 `StatusCheckFailed`; RDS `FreeStorageSpace` < 2 GB, `CPUUtilization` > 80%
+  for 10 min, `DatabaseConnections` > 80% of `db_max_connections` (verify with `SHOW max_connections;`).
+- Uptime: Route 53 health check on `https://<app_domain>/api/health` from AWS checkers
+  outside the VPC (every 30s, 3 failures) -> alarm -> email, typically within ~3 minutes.
+
+### Tests
+
+```powershell
+# 1. Alarm email arrives
+aws cloudwatch set-alarm-state --profile sustentra --alarm-name sustentra-prod-rds-cpu-high `
+  --state-value ALARM --state-reason "test"
+
+# 2. Uptime alert within 5 minutes: on the server (SSM session)
+#    sudo docker compose -f /opt/sustentra/docker-compose.prod.yml --env-file /opt/sustentra/.env stop api
+#    ...wait for the email, then: ... start api
+
+# 3. Login request in the API logs with its request ID and no secrets
+aws logs filter-log-events --profile sustentra --log-group-name /sustentra/prod/api `
+  --filter-pattern '{ $.path = "/v1/auth/login" }' --max-items 5
+```

@@ -45,3 +45,9 @@ variable "db_app_username" {
   type        = string
   default     = "sustentra_app"
 }
+
+variable "db_max_connections" {
+  description = "max_connections of the RDS instance (check with SHOW max_connections;). db.t4g.micro is about 80. Used for the 80% connections alarm."
+  type        = number
+  default     = 80
+}

@@ -74,6 +74,7 @@ aws ecr get-login-password --region "$AWS_REGION" \
   | docker login --username AWS --password-stdin "$ECR_REGISTRY" >/dev/null
 
 write_app_env
+grep -q "^LOG_GROUP_PREFIX=" "$APP_DIR/.env" || echo "LOG_GROUP_PREFIX=/sustentra/${ENV_NAME}" >> "$APP_DIR/.env"
 # Writable data dir for the api container (uid 10001); hosts built before MVP-5 lack it.
 install -d -m 0750 -o 10001 -g 10001 "$APP_DIR/data"
 

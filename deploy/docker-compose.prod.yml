@@ -14,6 +14,12 @@ x-hardening: &hardening
 services:
   caddy:
     <<: *hardening
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: ${LOG_GROUP_PREFIX:-/sustentra/prod}/caddy
+        tag: "{{.Name}}"
     image: caddy:2.8-alpine
     user: "1000:1000"
     # Allow a non-root process to bind 80/443 inside the container's own network namespace.
@@ -37,6 +43,12 @@ services:
 
   web:
     <<: *hardening
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: ${LOG_GROUP_PREFIX:-/sustentra/prod}/web
+        tag: "{{.Name}}"
     image: ${WEB_IMAGE:?}:${WEB_TAG:-latest}
     # The web image must define a non-root USER (MVP-5 Dockerfile).
     environment:
@@ -51,6 +63,12 @@ services:
 
   api:
     <<: *hardening
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: ${LOG_GROUP_PREFIX:-/sustentra/prod}/api
+        tag: "{{.Name}}"
     image: ${API_IMAGE:?}:${API_TAG:-latest}
     # The api image must define a non-root USER (MVP-5 Dockerfile).
     environment:

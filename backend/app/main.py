@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from . import observability
+
 from .api import (
     assistant,
     audit,
@@ -17,6 +19,7 @@ from .api import (
 )
 
 app = FastAPI(title="Sustentra Evidence Extraction API", version="0.1.0")
+observability.install(app)
 
 app.add_middleware(
     CORSMiddleware,
