@@ -32,6 +32,17 @@ variable "aws_account_id" {
   default     = "012751249540"
 }
 
+variable "state_bucket_engineer_arns" {
+  description = <<-EOT
+    IAM principals (users/roles) of the engineers allowed to read/write Terraform
+    state, e.g. ["arn:aws:iam::012751249540:user/jerome"]. When non-empty, every
+    other principal is denied access to the state bucket - except the CI
+    terraform roles and the account root (break-glass).
+  EOT
+  type        = list(string)
+  default     = []
+}
+
 provider "aws" {
   region              = var.aws_region
   allowed_account_ids = [var.aws_account_id]
@@ -127,6 +138,40 @@ data "aws_iam_policy_document" "tfstate_tls_only" {
       test     = "Bool"
       variable = "aws:SecureTransport"
       values   = ["false"]
+    }
+  }
+
+  # State contains generated secrets (DB passwords, OTP secret): only the CI
+  # terraform roles, named engineers and the account root may touch it.
+  dynamic "statement" {
+    for_each = length(var.state_bucket_engineer_arns) > 0 ? [1] : []
+
+    content {
+      sid     = "DenyAllButTerraformAndEngineers"
+      effect  = "Deny"
+      actions = ["s3:*"]
+
+      principals {
+        type        = "*"
+        identifiers = ["*"]
+      }
+
+      resources = [
+        aws_s3_bucket.tfstate.arn,
+        "${aws_s3_bucket.tfstate.arn}/*",
+      ]
+
+      condition {
+        test     = "ArnNotLike"
+        variable = "aws:PrincipalArn"
+        values = concat(
+          [
+            "arn:aws:iam::${var.aws_account_id}:root",
+            "arn:aws:iam::${var.aws_account_id}:role/${var.project}-*-terraform",
+          ],
+          var.state_bucket_engineer_arns,
+        )
+      }
     }
   }
 }
