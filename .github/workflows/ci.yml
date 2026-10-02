@@ -19,6 +19,22 @@ concurrency:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sustentra_admin
+          POSTGRES_PASSWORD: ci-admin-password
+          POSTGRES_DB: sustentra
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U sustentra_admin -d sustentra"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://sustentra_admin:ci-admin-password@localhost:5432/sustentra
+      APP_DATABASE_URL: postgresql://app_user:ci-app-password@localhost:5432/sustentra
+      TEST_DATABASE_URL: postgresql://sustentra_admin:ci-admin-password@localhost:5432/sustentra
+      TEST_APP_DATABASE_URL: postgresql://app_user:ci-app-password@localhost:5432/sustentra
     steps:
       - uses: actions/checkout@v4
 
@@ -38,6 +54,14 @@ jobs:
 
       - name: mypy
         run: mypy -p backend.app
+
+      - name: Migrations upgrade -> downgrade -> upgrade
+        working-directory: backend
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+          alembic current
 
       - name: pytest + coverage gate (80%)
         run: pytest --cov --cov-report=term-missing --cov-fail-under=80
