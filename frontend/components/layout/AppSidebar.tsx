@@ -2,6 +2,8 @@
 
 const LINKS = [
   { href: "/", label: "Overview" },
+  { href: "/users", label: "Sustentra Users" },
+  { href: "/clients", label: "Clients" },
   { href: "/audit-setup", label: "Audit Setup" },
   { href: "/evidence-intake", label: "Evidence Intake" },
   { href: "/extraction-review", label: "Extraction Review" },
