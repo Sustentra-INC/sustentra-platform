@@ -1,0 +1,5 @@
+bucket       = "sustentra-tfstate-012751249540"
+key          = "prod/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true

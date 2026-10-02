@@ -1,0 +1,42 @@
+name: ecr-oidc-smoke-test
+
+# MVP-1 acceptance test: assume the deploy role via GitHub OIDC (no stored
+# AWS keys) and push a tiny test image to the api ECR repository.
+# Run manually: Actions tab -> ecr-oidc-smoke-test -> Run workflow.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  DEPLOY_ROLE_ARN: arn:aws:iam::012751249540:role/sustentra-prod-deploy
+  ECR_REPOSITORY: sustentra-prod-api
+
+jobs:
+  push-test-image:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Show assumed identity
+        run: aws sts get-caller-identity
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push test image
+        env:
+          IMAGE: ${{ steps.ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:oidc-smoke-${{ github.run_id }}
+        run: |
+          printf 'FROM public.ecr.aws/docker/library/busybox:stable\nLABEL purpose="oidc-smoke-test"\n' > Dockerfile
+          docker build -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "Pushed $IMAGE" >> "$GITHUB_STEP_SUMMARY"
