@@ -55,6 +55,12 @@ services:
     # The api image must define a non-root USER (MVP-5 Dockerfile).
     environment:
       AWS_REGION: ${AWS_REGION}
+    # Written by deploy.sh from Parameter Store (/<env>/*) on every deploy.
+    env_file:
+      - app.env
+    volumes:
+      # Only writable app path (JSONL stores / uploads until they move to RDS/S3).
+      - /opt/sustentra/data:/app/data
     tmpfs:
       - /tmp
     expose:

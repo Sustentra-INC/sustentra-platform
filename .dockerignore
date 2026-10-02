@@ -1,0 +1,23 @@
+# Build context for backend/Dockerfile is the repo root - keep it small.
+**/.git
+**/.venv
+**/venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/node_modules
+**/.next
+.env
+**/.env
+frontend/
+infra/
+deploy/
+docs/
+local-samples/
+parser_reliability_test_set/
+s1-test-suite/
+demo-fixtures/
+legacy-schemas/
+backend/tests/

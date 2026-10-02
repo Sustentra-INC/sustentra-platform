@@ -167,7 +167,7 @@ data "aws_iam_policy_document" "tfstate_tls_only" {
         values = concat(
           [
             "arn:aws:iam::${var.aws_account_id}:root",
-            "arn:aws:iam::${var.aws_account_id}:role/${var.project}-*-terraform",
+            "arn:aws:iam::${var.aws_account_id}:role/${var.project}-*-terraform*", # terraform + terraform-plan roles
           ],
           var.state_bucket_engineer_arns,
         )

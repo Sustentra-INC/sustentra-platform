@@ -1,0 +1,153 @@
+name: deploy
+
+# Merge to main -> build api + web images tagged with the commit SHA -> push to ECR
+# -> (manual approval on the "production" environment) -> deploy via SSM:
+#    RDS snapshot -> alembic upgrade head -> compose pull/up -> /health -> auto-rollback.
+#
+# Manual re-deploy of any already-built commit: Actions -> deploy -> Run workflow.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "contracts/**"
+      - "reference-data/**"
+      - "deploy/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag (commit SHA) to deploy; empty = this commit"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-1
+  ENV_NAME: prod
+  NAME_PREFIX: sustentra-prod
+  DEPLOY_ROLE_ARN: arn:aws:iam::012751249540:role/sustentra-prod-deploy
+  IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+
+jobs:
+  build:
+    if: github.event_name == 'push' || inputs.image_tag == ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          provenance: false
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.NAME_PREFIX }}-api:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Build and push web
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: true
+          provenance: false
+          build-args: NEXT_PUBLIC_BACKEND_API_URL=/api
+          tags: ${{ steps.ecr.outputs.registry }}/${{ env.NAME_PREFIX }}-web:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  deploy:
+    needs: build
+    if: always() && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    runs-on: ubuntu-latest
+    # Required reviewers on this GitHub environment = manual approval gate.
+    environment: production
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Find app host
+        id: host
+        run: |
+          id=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=${NAME_PREFIX}-app-host" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          test -n "$id" && test "$id" != "None"
+          echo "instance_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: RDS snapshot
+        run: |
+          snap="${NAME_PREFIX}-predeploy-${IMAGE_TAG:0:7}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          aws rds create-db-snapshot \
+            --db-instance-identifier "${NAME_PREFIX}-db" \
+            --db-snapshot-identifier "$snap" >/dev/null
+          aws rds wait db-snapshot-available --db-snapshot-identifier "$snap"
+          echo "Snapshot: $snap" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Deploy via SSM Run Command
+        id: ssm
+        run: |
+          b64() { base64 -w0 "$1"; }
+          script=$(cat <<EOF
+          set -euo pipefail
+          cd /opt/sustentra
+          echo '$(b64 deploy/docker-compose.prod.yml)' | base64 -d > docker-compose.prod.yml
+          echo '$(b64 deploy/Caddyfile)' | base64 -d > Caddyfile
+          echo '$(b64 deploy/deploy.sh)' | base64 -d > deploy.sh
+          chmod 0750 deploy.sh
+          ./deploy.sh ${ENV_NAME} ${IMAGE_TAG}
+          EOF
+          )
+          params=$(jq -n --arg s "$script" '{commands: [$s], executionTimeout: ["1500"]}')
+          cmd_id=$(aws ssm send-command \
+            --instance-ids "${{ steps.host.outputs.instance_id }}" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy ${IMAGE_TAG:0:7} run ${GITHUB_RUN_ID}" \
+            --parameters "$params" \
+            --query Command.CommandId --output text)
+          echo "command_id=$cmd_id" >> "$GITHUB_OUTPUT"
+
+          # Poll until the command finishes (the built-in waiter gives up after ~100s).
+          for _ in $(seq 1 150); do
+            status=$(aws ssm get-command-invocation --command-id "$cmd_id" \
+              --instance-id "${{ steps.host.outputs.instance_id }}" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in
+              Pending|InProgress|Delayed) sleep 10 ;;
+              *) break ;;
+            esac
+          done
+
+          aws ssm get-command-invocation --command-id "$cmd_id" \
+            --instance-id "${{ steps.host.outputs.instance_id }}" \
+            --query '[StandardOutputContent, StandardErrorContent]' --output text
+
+          echo "SSM status: $status"
+          echo "Deploy ${IMAGE_TAG:0:7}: **$status**" >> "$GITHUB_STEP_SUMMARY"
+          test "$status" = "Success"

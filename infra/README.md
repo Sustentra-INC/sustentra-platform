@@ -190,3 +190,29 @@ aws sesv2 send-email --region us-east-1 \
   --destination ToAddresses=bounce@simulator.amazonses.com \
   --content '{"Simple":{"Subject":{"Data":"Bounce test"},"Body":{"Text":{"Data":"bounce"}}}}'
 ```
+
+## CI/CD (MVP-5)
+
+| Workflow | Trigger | What it does | AWS role |
+|---|---|---|---|
+| `ci` | every PR + push to main | ruff, mypy, pytest (**80% coverage gate**), eslint, tsc, vitest, next build | none |
+| `terraform` | PR / push touching `infra/` | fmt + validate; PR: `terraform plan` posted as a PR comment; main: plan | `*-terraform-plan` (PR, read-only), `*-terraform` (main) |
+| `terraform-apply` | manual, from main | plan + apply for prod or staging, **approval required** | `*-terraform` |
+| `deploy` | push to main touching app code, or manual | build `api` + `web` images tagged with the commit SHA -> ECR -> **approval** -> RDS snapshot -> `alembic upgrade head` -> `compose pull && up -d` -> poll `/api/health` -> auto-rollback to the previous tag on failure | `*-deploy` |
+
+No AWS keys are stored in GitHub; every job uses OIDC.
+
+### One-time GitHub settings (repo admin)
+
+1. **Settings -> Environments -> `production`**: *Required reviewers* = you (+ a teammate).
+   This is the manual approval for both `deploy` and `terraform-apply`.
+2. **Settings -> Branches -> main -> Branch protection**: require a PR and the status
+   checks `backend`, `frontend`, `validate`, `plan-pr` - so a failed coverage gate blocks the merge.
+
+### Tests
+
+- Valid PR -> all checks green, plan comment appears.
+- Drop coverage below 80% (e.g. add an untested module) -> `backend` fails -> merge blocked.
+- Deploy a commit whose `/health` returns 500 -> `deploy` fails, log shows
+  "rolling back to <previous sha>", the site keeps serving the previous version.
+- Start `deploy` -> it waits on "Waiting for review" until a reviewer approves.

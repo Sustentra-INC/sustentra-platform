@@ -1,10 +1,9 @@
 name: terraform
 
-# - Pull requests: fmt + validate (no AWS access needed).
-# - Push to main: plan against prod using the terraform role via OIDC.
-# - Manual run (Actions tab -> terraform -> Run workflow): choose prod or
-#   staging, plan, and optionally apply. Gated by the GitHub "production"
-#   or "staging" environment.
+# - Pull requests: fmt + validate, then `terraform plan` (prod) with the read-only
+#   plan role, posted as a PR comment.
+# - Push to main: plan against prod with the terraform role.
+# Applies run only in the separate, manually approved "terraform-apply" workflow.
 
 on:
   pull_request:
@@ -16,31 +15,20 @@ on:
     paths:
       - "infra/**"
       - ".github/workflows/terraform.yml"
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: "Environment to plan/apply"
-        type: choice
-        options: [prod, staging]
-        default: prod
-      apply:
-        description: "Run terraform apply after the plan"
-        type: boolean
-        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: terraform-${{ inputs.environment || 'prod' }}
-  cancel-in-progress: false
+  group: terraform-plan-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   TF_IN_AUTOMATION: "true"
   AWS_REGION: us-east-1
-  TF_ENV: ${{ inputs.environment || 'prod' }}
-  TERRAFORM_ROLE_ARN: arn:aws:iam::012751249540:role/sustentra-${{ inputs.environment || 'prod' }}-terraform
   TF_VERSION: "1.16.4" # keep in sync with `terraform -version` on the laptop
+  PLAN_ROLE_ARN: arn:aws:iam::012751249540:role/sustentra-prod-terraform-plan
+  TERRAFORM_ROLE_ARN: arn:aws:iam::012751249540:role/sustentra-prod-terraform
 
 defaults:
   run:
@@ -63,14 +51,67 @@ jobs:
           terraform init -backend=false -input=false
           terraform validate
 
-  plan:
-    if: github.event_name != 'pull_request'
+  plan-pr:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     needs: validate
     runs-on: ubuntu-latest
-    environment: ${{ inputs.environment == 'staging' && 'staging' || 'production' }}
     permissions:
       contents: read
-      id-token: write # required for GitHub OIDC
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.PLAN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: terraform init -input=false -backend-config=environments/prod.s3.tfbackend
+      - name: terraform plan
+        id: plan
+        # -lock=false: the plan role is read-only and must not write the S3 lock file.
+        run: |
+          set +e
+          terraform plan -input=false -lock=false -no-color \
+            -var-file=environments/prod.tfvars -out=tfplan > plan.txt 2>&1
+          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
+          set -e
+          if [ -f tfplan ]; then terraform show -no-color tfplan > plan.txt; fi
+      - name: Comment plan on PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- terraform-plan-prod -->';
+            let body = fs.readFileSync('infra/plan.txt', 'utf8');
+            const max = 60000;
+            if (body.length > max) body = body.slice(0, max) + '\n... (truncated, see the workflow log)';
+            const ok = '${{ steps.plan.outputs.exitcode }}' === '0';
+            const summary = body.match(/Plan: .*|No changes\..*/)?.[0] ?? (ok ? 'Plan generated' : 'Plan FAILED');
+            const text = `${marker}\n### Terraform plan (prod): ${ok ? '✅' : '❌'} ${summary}\n<details><summary>Show plan</summary>\n\n\`\`\`\n${body}\n\`\`\`\n</details>`;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
+            const existing = comments.find(c => c.body?.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: text });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body: text });
+            }
+      - name: Fail if plan failed
+        if: steps.plan.outputs.exitcode != '0'
+        run: exit 1
+
+  plan-main:
+    if: github.event_name == 'push'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -80,8 +121,5 @@ jobs:
         with:
           role-to-assume: ${{ env.TERRAFORM_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
-      - run: terraform init -input=false -backend-config=environments/${{ env.TF_ENV }}.s3.tfbackend
-      - run: terraform plan -input=false -var-file=environments/${{ env.TF_ENV }}.tfvars -out=tfplan
-      - name: Apply
-        if: github.event_name == 'workflow_dispatch' && inputs.apply
-        run: terraform apply -input=false tfplan
+      - run: terraform init -input=false -backend-config=environments/prod.s3.tfbackend
+      - run: terraform plan -input=false -var-file=environments/prod.tfvars

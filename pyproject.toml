@@ -1,0 +1,34 @@
+# Tool configuration only (the backend is installed from backend/requirements.txt).
+
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = [".venv", "frontend", "legacy-schemas", "local-samples"]
+
+[tool.ruff.lint]
+# Start with ruff's defaults (pyflakes + core pycodestyle errors).
+# Tighten later, e.g. add "I" (import order), "B" (bugbear), "UP" (pyupgrade).
+select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+python_version = "3.12"
+# backend/ and backend/app/ are namespace packages (no __init__.py).
+namespace_packages = true
+explicit_package_bases = true
+ignore_missing_imports = true
+warn_unused_ignores = true
+# Lenient start; turn on strict options module by module.
+check_untyped_defs = false
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["backend/app"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true
