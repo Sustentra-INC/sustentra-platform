@@ -1,0 +1,6 @@
+.next
+node_modules
+.vercel
+*.tsbuildinfo
+package-lock.json
+features/s1
