@@ -41,8 +41,8 @@ http://{$APP_DOMAIN} {
 		-X-Powered-By
 	}
 
-	# /api/* -> FastAPI. The prefix is stripped because the backend serves /v1/... and /health.
-	handle_path /api/* {
+	# /api/* -> FastAPI, path unchanged (the API serves /api/v1/* and /api/health).
+	handle /api/* {
 		reverse_proxy api:8000 {
 			# Same ID in the Caddy and API logs; the API echoes it back as X-Request-ID.
 			header_up X-Request-ID {http.request.uuid}

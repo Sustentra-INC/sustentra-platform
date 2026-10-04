@@ -2,6 +2,7 @@ fastapi
 uvicorn[standard]
 pydantic
 pydantic-settings
+slowapi
 python-multipart
 sqlalchemy[asyncio]
 alembic
@@ -18,5 +19,3 @@ pymupdf
 pdfplumber
 pillow
 python-docx
-pytest
-pytest-asyncio
