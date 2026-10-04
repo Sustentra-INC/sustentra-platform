@@ -2,7 +2,7 @@
 
 AUTH-004: GET /me, POST /logout
 AUTH-005: POST /login, POST /login/verify, POST /login/resend
-AUTH-006 adds password reset.
+AUTH-006: POST /password-reset/request, POST /password-reset/confirm
 
 No `from __future__ import annotations` here: slowapi wraps the endpoints and
 FastAPI must be able to resolve the annotations on the wrapper.
@@ -14,11 +14,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.auth import CurrentUser, get_current_user
-from ...core.db import get_db_session
+from ...core.db import get_db_session, get_sessionmaker_dependency
 from ...core.rate_limit import auth_rate_limit
 from ...services import login as login_service
+from ...services import password_reset as reset_service
 from ...services.audit_log import write_audit_event
-from ...services.otp_delivery import OtpSender, get_otp_sender
+from ...services.otp_delivery import OtpSender, ResetSender, get_otp_sender, get_reset_sender
 from ...services.sessions import clear_session_cookie, delete_session, set_session_cookie
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -44,6 +45,20 @@ class ResendRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     challenge_id: str = Field(min_length=1, max_length=64)
+
+
+class PasswordResetRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=320)
+    org_slug: str | None = Field(default=None, max_length=63)
+
+
+class PasswordResetConfirm(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1, max_length=256)
+    password: str = Field(min_length=1, max_length=1024)
 
 
 def _meta(request: Request) -> login_service.RequestMeta:
@@ -103,6 +118,36 @@ async def login_resend(
     if outcome.otp_email and outcome.otp_code:
         background.add_task(send_otp, outcome.otp_email, outcome.otp_code)
     return _respond(outcome)
+
+
+# --- AUTH-006: password reset ----------------------------------------------------------
+
+@router.post("/password-reset/request")
+@auth_rate_limit
+async def password_reset_request(
+    request: Request,
+    payload: PasswordResetRequest,
+    background: BackgroundTasks,
+    sessionmaker=Depends(get_sessionmaker_dependency),  # noqa: B008
+    send_link: ResetSender = Depends(get_reset_sender),
+) -> JSONResponse:
+    # All work (lookup, token, email) happens in the background: the response is
+    # identical - and equally fast - whether or not the account exists.
+    background.add_task(
+        reset_service.request_reset, sessionmaker, payload.email, payload.org_slug, _meta(request), send_link
+    )
+    return JSONResponse({"message": reset_service.REQUEST_ACCEPTED_MESSAGE})
+
+
+@router.post("/password-reset/confirm")
+@auth_rate_limit
+async def password_reset_confirm(
+    request: Request,
+    payload: PasswordResetConfirm,
+    db: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    outcome = await reset_service.confirm_reset(db, payload.token, payload.password, _meta(request))
+    return JSONResponse(outcome.body, status_code=outcome.status)
 
 
 # --- AUTH-004: session ----------------------------------------------------------------
