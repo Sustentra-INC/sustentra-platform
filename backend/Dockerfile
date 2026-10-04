@@ -1,16 +1,37 @@
-# API image. Build from the repository root:
-#   docker build -f backend/Dockerfile -t sustentra-api .
-FROM python:3.12-slim AS base
+# API image (multi-stage). Build from the repository root:
+#   docker build -f backend/Dockerfile --build-arg GIT_SHA=$(git rev-parse HEAD) -t sustentra-api .
+#
+# Runtime stage = slim Python + a pre-built virtualenv with runtime dependencies only
+# (backend/requirements.txt; dev/test tools live in requirements-dev.txt).
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
+# ---- build: compile/install dependencies into an isolated venv ------------------
+FROM python:3.12-slim AS build
+
+ENV PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+COPY backend/requirements.txt /tmp/requirements.txt
+RUN pip install --no-compile -r /tmp/requirements.txt \
+    # Trim what the runtime never needs (test suites, caches) to keep the image small.
+    && find /opt/venv -depth \( -name "__pycache__" -o -name "tests" -o -name "test" \) -type d -exec rm -rf {} + \
+    && find /opt/venv -name "*.pyc" -delete
+
+# ---- runtime ---------------------------------------------------------------------
+FROM python:3.12-slim AS runtime
+
+ARG GIT_SHA=dev
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    GIT_SHA=${GIT_SHA}
 
 WORKDIR /app
 
-COPY backend/requirements.txt backend/requirements.txt
-RUN pip install -r backend/requirements.txt
+COPY --from=build /opt/venv /opt/venv
 
 # Application code + reference data it loads at runtime.
 COPY backend/ backend/

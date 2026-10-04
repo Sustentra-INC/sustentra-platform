@@ -60,6 +60,8 @@ jobs:
         with:
           context: .
           file: backend/Dockerfile
+          target: runtime
+          build-args: GIT_SHA=${{ env.IMAGE_TAG }}
           push: true
           provenance: false
           tags: ${{ steps.ecr.outputs.registry }}/${{ env.NAME_PREFIX }}-api:${{ env.IMAGE_TAG }}
