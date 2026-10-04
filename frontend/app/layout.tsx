@@ -1,7 +1,15 @@
-﻿import type { ReactNode } from "react";
+import type { ReactNode } from "react";
 
-import { AppShell } from "../components/layout/AppShell";
+import "../features/s1/styles/sustentra-tokens.css";
+import "../features/s1/styles/s1-workpaper.css";
 
+/**
+ * Root layout. The Sustentra product surface (the S1 workpaper) lives at `/` and
+ * brings its own in-app chrome (left sidebar + context bar) from `S1Chrome`, so
+ * the root layout stays minimal and just loads the design-system tokens and the
+ * workpaper styles. The Sustentra-internal admin pages (login / clients / users
+ * / account) add their own `AppShell` via the `(admin)` route group layout.
+ */
 interface RootLayoutProps {
   children: ReactNode;
 }
@@ -9,10 +17,7 @@ interface RootLayoutProps {
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, fontFamily: "Segoe UI, Arial, sans-serif" }}>
-        <AppShell>{children}</AppShell>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }
-

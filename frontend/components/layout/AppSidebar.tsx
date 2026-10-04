@@ -1,16 +1,12 @@
 ﻿import Link from "next/link";
 
+// Sustentra-internal admin nav. The audit product itself (evidence, extraction,
+// calculation, gaps, assistant) lives in the workpaper at "/" with its own
+// in-app navigation, so those former placeholder routes are not linked here.
 const LINKS = [
-  { href: "/", label: "Overview" },
+  { href: "/", label: "Workpaper" },
   { href: "/users", label: "Sustentra Users" },
-  { href: "/clients", label: "Clients" },
-  { href: "/audit-setup", label: "Audit Setup" },
-  { href: "/evidence-intake", label: "Evidence Intake" },
-  { href: "/extraction-review", label: "Extraction Review" },
-  { href: "/validation", label: "Validation" },
-  { href: "/calculation", label: "Calculation" },
-  { href: "/gap-analysis", label: "Gap Analysis" },
-  { href: "/assistant", label: "Assistant" }
+  { href: "/clients", label: "Clients" }
 ];
 
 export function AppSidebar() {
