@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -20,6 +23,7 @@ from .api import (
 )
 from .api import v1 as api_v1
 from .core.config import Settings, get_settings
+from .core.db import dispose_engine
 from .core.rate_limit import limiter
 from .core.security import JSONContentTypeMiddleware, OriginCheckMiddleware
 
@@ -41,6 +45,13 @@ LEGACY_ROUTERS = (
 )
 
 
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # The DB engine is created lazily on first use; close its pool on shutdown.
+    yield
+    await dispose_engine()
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
@@ -51,6 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/api/v1/docs" if docs else None,
         openapi_url="/api/v1/openapi.json" if docs else None,
         redoc_url=None,
+        lifespan=lifespan,
     )
 
     # Rate limiting (slowapi) - 429 with Retry-After.
