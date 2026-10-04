@@ -19,3 +19,4 @@ pymupdf
 pdfplumber
 pillow
 python-docx
+bcrypt
