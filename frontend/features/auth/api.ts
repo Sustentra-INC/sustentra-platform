@@ -75,4 +75,9 @@ export function acceptInvite(token: string, password: string): Promise<void> {
   });
 }
 
+/** End the session (clears the `__Host-session` cookie server-side). */
+export function logout(): Promise<void> {
+  return api<void>("/auth/logout", { method: "POST" });
+}
+
 export { ApiError };
