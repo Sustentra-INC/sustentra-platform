@@ -191,7 +191,7 @@ class ExtractionCandidateService:
                 break
 
         if hit is None:
-            flags: list[str] = []
+            flags = []
             if required_status in {"core", "conditional"}:
                 flags.append("field_not_found")
             return self._build_candidate(
