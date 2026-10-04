@@ -30,7 +30,7 @@ class _BaseMethodologyValueRepository:
     def save(self, record: MethodologyValue | dict) -> dict:  # pragma: no cover - abstract
         raise NotImplementedError
 
-    def save_many(self, records: list[MethodologyValue | dict]) -> list[dict]:
+    def save_many(self, records: Sequence[MethodologyValue | dict]) -> list[dict]:
         return [self.save(record) for record in records]
 
     def list_all(self) -> list[dict]:
