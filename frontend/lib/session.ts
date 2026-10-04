@@ -1,5 +1,7 @@
 const TOKEN_KEY = "sustentra_token";
-const ACTOR_KEY = "sustentra_actor";
+export const ACTOR_KEY = "sustentra_actor";
+/** Fired on this tab when the session changes (the `storage` event only fires in other tabs). */
+export const SESSION_CHANGE_EVENT = "sustentra:session-change";
 
 export interface Actor {
   actor_id: string;
@@ -30,9 +32,11 @@ export function getActor(): Actor | null {
 export function setSession(token: string, actor: Actor): void {
   window.localStorage.setItem(TOKEN_KEY, token);
   window.localStorage.setItem(ACTOR_KEY, JSON.stringify(actor));
+  window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
 }
 
 export function clearSession(): void {
   window.localStorage.removeItem(TOKEN_KEY);
   window.localStorage.removeItem(ACTOR_KEY);
+  window.dispatchEvent(new Event(SESSION_CHANGE_EVENT));
 }

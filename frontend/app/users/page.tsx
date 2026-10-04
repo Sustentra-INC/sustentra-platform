@@ -4,7 +4,8 @@ import { FormEvent, useEffect, useState } from "react";
 
 import { createSustentraUser, listSustentraUsers } from "../../lib/api/auth";
 import { ApiError } from "../../lib/api/client";
-import { getActor, type Actor } from "../../lib/session";
+import { type Actor } from "../../lib/session";
+import { useActor } from "../../lib/useActor";
 
 export default function UsersPage() {
   const [users, setUsers] = useState<Actor[]>([]);
@@ -14,7 +15,7 @@ export default function UsersPage() {
   const [role, setRole] = useState("operator");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [actor, setActor] = useState<Actor | null>(null);
+  const actor = useActor();
 
   async function refresh() {
     const rows = await listSustentraUsers();
@@ -22,10 +23,11 @@ export default function UsersPage() {
   }
 
   useEffect(() => {
-    setActor(getActor());
-    refresh().catch((exc) => {
-      setError(exc instanceof ApiError ? exc.detail : "Log in as a Sustentra user to manage users.");
-    });
+    listSustentraUsers()
+      .then(setUsers)
+      .catch((exc) => {
+        setError(exc instanceof ApiError ? exc.detail : "Log in as a Sustentra user to manage users.");
+      });
   }, []);
 
   async function handleCreate(event: FormEvent) {
