@@ -588,7 +588,7 @@ class IdentityService:
         record["status"] = "deleted"
         record["updated_at"] = self._stamp()
         record["updated_by"] = actor["actor_id"]
-        saved = self._repository.clients.save(record)
+        self._repository.clients.save(record)
         for client_user in self._repository.client_users.list_active("client_user_id"):
             if client_user.get("client_id") == client_id:
                 client_user["status"] = "deleted"
