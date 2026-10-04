@@ -2,8 +2,11 @@
 #
 #   web      http://localhost:3000        Next.js dev server
 #   api      http://localhost:8000        FastAPI (docs: http://localhost:8000/api/v1/docs)
-#   db       localhost:5432               Postgres 16 (migrations applied on api start)
+#   db       localhost:5433               Postgres 16 (migrations applied on api start)
 #   mailpit  http://localhost:8025        catches every email the API sends (SMTP :1025)
+#
+# Host ports can be changed if something else already uses them, e.g.
+#   $env:POSTGRES_HOST_PORT = "5434"; docker compose up
 #
 # Not for production - prod runs deploy/docker-compose.prod.yml on EC2.
 
@@ -15,7 +18,8 @@ services:
       POSTGRES_PASSWORD: local-admin-password
       POSTGRES_DB: sustentra
     ports:
-      - "5432:5432"
+      # Host 5433 (not 5432) so it doesn't clash with a Postgres already on this machine.
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -27,8 +31,8 @@ services:
   mailpit:
     image: axllent/mailpit:latest
     ports:
-      - "8025:8025" # web UI
-      - "1025:1025" # SMTP
+      - "${MAILPIT_UI_PORT:-8025}:8025" # web UI
+      - "${MAILPIT_SMTP_PORT:-1025}:1025" # SMTP
 
   api:
     build:
@@ -59,7 +63,7 @@ services:
       - ./contracts:/app/contracts:ro
       - ./reference-data:/app/reference-data:ro
     ports:
-      - "8000:8000"
+      - "${API_HOST_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
