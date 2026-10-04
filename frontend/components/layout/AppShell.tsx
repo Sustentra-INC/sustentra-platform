@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode } from "react";
 
 import { logout } from "../../lib/api/auth";
-import { clearSession, getActor } from "../../lib/session";
+import { clearSession } from "../../lib/session";
+import { useActor } from "../../lib/useActor";
 import { AppSidebar } from "./AppSidebar";
 import { PageHeader } from "./PageHeader";
 
@@ -16,13 +17,9 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [actorName, setActorName] = useState<string | null>(null);
+  const actor = useActor();
+  const actorName = actor ? `${actor.username} (${actor.actor_type})` : null;
   const isAuthPage = pathname.startsWith("/login");
-
-  useEffect(() => {
-    const actor = getActor();
-    setActorName(actor ? `${actor.username} (${actor.actor_type})` : null);
-  }, [pathname]);
 
   async function handleLogout() {
     try {
@@ -31,7 +28,6 @@ export function AppShell({ children }: AppShellProps) {
       // local session is cleared either way
     }
     clearSession();
-    setActorName(null);
     router.push("/login");
   }
 
