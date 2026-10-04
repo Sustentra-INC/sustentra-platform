@@ -1,35 +1,111 @@
 """/api/v1/auth/* - every endpoint here MUST use @auth_rate_limit and take `request`.
 
-AUTH-004: GET /me, POST /logout (this file).
-AUTH-005 fills in POST /login (+ /login/verify, /login/resend); AUTH-006 adds
-password reset. Until then /login answers 501.
+AUTH-004: GET /me, POST /logout
+AUTH-005: POST /login, POST /login/verify, POST /login/resend
+AUTH-006 adds password reset.
 
 No `from __future__ import annotations` here: slowapi wraps the endpoints and
 FastAPI must be able to resolve the annotations on the wrapper.
 """
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.auth import CurrentUser, get_current_user
 from ...core.db import get_db_session
 from ...core.rate_limit import auth_rate_limit
+from ...services import login as login_service
 from ...services.audit_log import write_audit_event
-from ...services.sessions import clear_session_cookie, delete_session
+from ...services.otp_delivery import OtpSender, get_otp_sender
+from ...services.sessions import clear_session_cookie, delete_session, set_session_cookie
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _not_implemented(ticket: str) -> JSONResponse:
-    return JSONResponse({"detail": f"Not implemented yet ({ticket})"}, status_code=501)
+class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
 
+    email: str = Field(min_length=3, max_length=320)
+    password: str = Field(min_length=1, max_length=1024)
+    # Omitted for provider admins.
+    org_slug: str | None = Field(default=None, max_length=63)
+
+
+class VerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    challenge_id: str = Field(min_length=1, max_length=64)
+    code: str = Field(min_length=1, max_length=16)
+
+
+class ResendRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    challenge_id: str = Field(min_length=1, max_length=64)
+
+
+def _meta(request: Request) -> login_service.RequestMeta:
+    return login_service.RequestMeta(
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        request_id=getattr(request.state, "request_id", None),
+    )
+
+
+def _respond(outcome: login_service.LoginOutcome) -> JSONResponse:
+    return JSONResponse(outcome.body, status_code=outcome.status, headers=outcome.headers or None)
+
+
+# --- AUTH-005: login ----------------------------------------------------------------
 
 @router.post("/login")
 @auth_rate_limit
-async def login(request: Request) -> JSONResponse:
-    return _not_implemented("AUTH-005")
+async def login(
+    request: Request,
+    payload: LoginRequest,
+    background: BackgroundTasks,
+    db: AsyncSession = Depends(get_db_session),
+    send_otp: OtpSender = Depends(get_otp_sender),
+) -> JSONResponse:
+    outcome = await login_service.start_login(db, payload.email, payload.password, payload.org_slug, _meta(request))
+    if outcome.otp_email and outcome.otp_code:
+        # Runs after the response is sent (and after the transaction commits).
+        background.add_task(send_otp, outcome.otp_email, outcome.otp_code)
+    return _respond(outcome)
 
+
+@router.post("/login/verify")
+@auth_rate_limit
+async def login_verify(
+    request: Request,
+    payload: VerifyRequest,
+    db: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    outcome = await login_service.verify_login(db, payload.challenge_id, payload.code, _meta(request))
+    response = _respond(outcome)
+    if outcome.session_token:
+        set_session_cookie(response, outcome.session_token)
+    return response
+
+
+@router.post("/login/resend")
+@auth_rate_limit
+async def login_resend(
+    request: Request,
+    payload: ResendRequest,
+    background: BackgroundTasks,
+    db: AsyncSession = Depends(get_db_session),
+    send_otp: OtpSender = Depends(get_otp_sender),
+) -> JSONResponse:
+    outcome = await login_service.resend_code(db, payload.challenge_id, _meta(request))
+    if outcome.otp_email and outcome.otp_code:
+        background.add_task(send_otp, outcome.otp_email, outcome.otp_code)
+    return _respond(outcome)
+
+
+# --- AUTH-004: session ----------------------------------------------------------------
 
 @router.get("/me")
 @auth_rate_limit
