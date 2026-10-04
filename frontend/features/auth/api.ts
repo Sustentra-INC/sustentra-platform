@@ -53,4 +53,26 @@ export function resetPassword(token: string, password: string): Promise<void> {
   });
 }
 
+export interface InviteDetails {
+  org_name: string;
+  org_slug: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+}
+
+/** Validate an invite token on page load. 400 if invalid/expired/used (generic). */
+export function validateInvite(token: string): Promise<InviteDetails> {
+  return api<InviteDetails>(`/auth/invite/validate?token=${encodeURIComponent(token)}`);
+}
+
+/** Accept an invite — sets the password and activates the user. Does NOT create a
+ *  session; the user then logs in normally. 400 if the token is invalid. */
+export function acceptInvite(token: string, password: string): Promise<void> {
+  return api<void>("/auth/invite/accept", {
+    method: "POST",
+    body: { token, password },
+  });
+}
+
 export { ApiError };
