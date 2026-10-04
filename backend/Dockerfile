@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # API image (multi-stage). Build from the repository root:
 #   docker build -f backend/Dockerfile --build-arg GIT_SHA=$(git rev-parse HEAD) -t sustentra-api .
 #
@@ -7,15 +8,20 @@
 # ---- build: compile/install dependencies into an isolated venv ------------------
 FROM python:3.12-slim AS build
 
-ENV PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+# Slow / flaky connections: wait longer per read and retry instead of failing the build.
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_DEFAULT_TIMEOUT=120 \
+    PIP_RETRIES=10 \
     PYTHONDONTWRITEBYTECODE=1
 
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY backend/requirements.txt /tmp/requirements.txt
-RUN pip install --no-compile -r /tmp/requirements.txt \
+# The cache mount keeps already-downloaded wheels between builds (including failed ones),
+# so a retry resumes instead of re-downloading everything. It is not part of the image.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-compile -r /tmp/requirements.txt \
     # Trim what the runtime never needs (test suites, caches) to keep the image small.
     && find /opt/venv -depth \( -name "__pycache__" -o -name "tests" -o -name "test" \) -type d -exec rm -rf {} + \
     && find /opt/venv -name "*.pyc" -delete
