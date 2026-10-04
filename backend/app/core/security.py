@@ -11,6 +11,7 @@ Both only apply under API_V1_PREFIX; the legacy /v1 routes are untouched.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Awaitable, Callable
 
 from fastapi import Request, Response
@@ -23,6 +24,9 @@ from .config import normalize_origin
 API_V1_PREFIX = "/api/v1"
 STATE_CHANGING_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 BODY_METHODS = frozenset({"POST", "PUT", "PATCH"})
+
+# The only endpoints allowed to take multipart/form-data (file uploads).
+MULTIPART_PATHS = (re.compile(r"^/api/v1/engagements/[^/]+/documents/upload$"),)
 
 CallNext = Callable[[Request], Awaitable[Response]]
 
@@ -57,7 +61,10 @@ class JSONContentTypeMiddleware(BaseHTTPMiddleware):
         if _applies(request, BODY_METHODS) and _has_body(request):
             content_type = request.headers.get("content-type", "")
             media_type = content_type.split(";", 1)[0].strip().lower()
-            if media_type != "application/json":
+            is_upload = media_type == "multipart/form-data" and any(
+                pattern.match(request.url.path) for pattern in MULTIPART_PATHS
+            )
+            if media_type != "application/json" and not is_upload:
                 return JSONResponse(
                     {"detail": "Content-Type must be application/json"}, status_code=415
                 )

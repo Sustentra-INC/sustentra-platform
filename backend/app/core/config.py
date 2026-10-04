@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     otp_hmac_secret: SecretStr | None = None
     ses_from_address: str | None = None
 
+    # Public URL of the web app, used in emailed links (password reset, invites).
+    public_base_url: str = "http://localhost:3000"
+
     # Local email goes to Mailpit; prod uses SES (EMAIL-001).
     smtp_host: str = "localhost"
     smtp_port: int = 1025

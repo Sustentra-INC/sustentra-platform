@@ -1,3 +1,6 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -20,15 +23,20 @@ from .api import (
 )
 from .api import v1 as api_v1
 from .core.config import Settings, get_settings
+from .core.db import dispose_engine
 from .core.rate_limit import limiter
 from .core.security import JSONContentTypeMiddleware, OriginCheckMiddleware
 
 APP_TITLE = "Sustentra Evidence Extraction API"
 
-LEGACY_ROUTERS = (
-    auth.router,
-    users.router,
-    clients.router,
+# Legacy JSONL identity routes (/v1/auth, /v1/users, /v1/clients): local/dev only,
+# replaced by /api/v1/auth (AUTH-004..006) - never exposed under /api.
+LEGACY_IDENTITY_ROUTERS = (auth.router, users.router, clients.router)
+
+# S1 workpaper routes the frontend seam calls (features/s1/api/s1Backend.ts).
+# Served at /v1/* (local, NEXT_PUBLIC_BACKEND_API_URL=http://localhost:8000) and at
+# /api/v1/* (prod via Caddy, NEXT_PUBLIC_BACKEND_API_URL=https://app.sustentra.com/api).
+S1_ROUTERS = (
     audit.router,
     engagements.router,
     documents.router,
@@ -39,6 +47,14 @@ LEGACY_ROUTERS = (
     reviews.router,
     assistant.router,
 )
+LEGACY_ROUTERS = LEGACY_IDENTITY_ROUTERS + S1_ROUTERS
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    # The DB engine is created lazily on first use; close its pool on shutdown.
+    yield
+    await dispose_engine()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -51,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url="/api/v1/docs" if docs else None,
         openapi_url="/api/v1/openapi.json" if docs else None,
         redoc_url=None,
+        lifespan=lifespan,
     )
 
     # Rate limiting (slowapi) - 429 with Retry-After.
@@ -80,6 +97,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_api_route("/api/health", health, methods=["GET"], include_in_schema=False)
 
     app.include_router(api_v1.router)
+
+    # TODO(AUTH-005 follow-up): once login works end to end, require a session on
+    # these and scope them to the user's org (integration doc: "tenant-scoped").
+    for router in S1_ROUTERS:
+        app.include_router(router, prefix="/api")
 
     # Legacy (pre-AUTH-001) routes at /v1/*, kept for local development and
     # existing tests until the new /api/v1 endpoints replace them.

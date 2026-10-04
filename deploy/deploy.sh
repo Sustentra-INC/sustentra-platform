@@ -40,6 +40,7 @@ write_app_env() {
   cat > "$APP_DIR/app.env" <<EOF
 ENVIRONMENT=${ENV_NAME}
 ALLOWED_ORIGINS=https://${APP_DOMAIN}
+PUBLIC_BASE_URL=https://${APP_DOMAIN}
 DATABASE_URL=$(get_param db_app_url)
 OTP_HMAC_SECRET=$(get_param otp_hmac_secret)
 SES_FROM_ADDRESS=no-reply@${APP_DOMAIN}
