@@ -116,6 +116,11 @@ async def dispose_engine() -> None:
     _sessionmaker = None
 
 
+def get_sessionmaker_dependency() -> async_sessionmaker[AsyncSession]:
+    """FastAPI dependency for background tasks that open their own session/transaction."""
+    return get_sessionmaker()
+
+
 async def get_db_session() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency: one session, one transaction per request."""
     async with get_sessionmaker()() as session:
