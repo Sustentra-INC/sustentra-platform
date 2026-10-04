@@ -65,6 +65,20 @@ function nodeKeyForEvidence(item: EvidenceItem): string {
   return "E"; // multiple / not_facility_scoped -> entity-level
 }
 
+/** A blank engagement — the starting point in backend mode. No templated data;
+ *  the user configures it in Setup (or it is created/loaded from the backend). */
+const EMPTY_ENGAGEMENT: EngagementConfig = {
+  clientName: "",
+  engagementId: "",
+  reportingPeriod: { start: "", end: "" },
+  facilities: [],
+  regulation: "",
+  conclusionType: "",
+  assuranceLevel: "",
+  boundaryApproach: "",
+  scopeBoundaryStatement: "",
+};
+
 export function S1WorkpaperApp() {
   const dataMode = process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture" ? "fixture" : "backend";
   // Demo-only: rehydrate the fixture state from localStorage once, so a refresh
@@ -92,8 +106,13 @@ export function S1WorkpaperApp() {
   const verification = useVerificationStore(persisted?.examinations ?? {}, persisted?.findings ?? []);
   const [sessionUploads, setSessionUploads] = useState<string[]>(persisted?.sessionUploads ?? []);
   // Engagement config is editable on Setup; facilities here feed the Workspace.
-  const [engagement, setEngagement] = useState<EngagementConfig>(persisted?.engagement ?? engagementConfig);
-  const [inScopeFields, setInScopeFields] = useState<InScopeField[]>(persisted?.inScopeFields ?? inScopeFieldPlaceholders);
+  // Backend mode starts blank (no templated data); fixture mode seeds the demo.
+  const [engagement, setEngagement] = useState<EngagementConfig>(
+    persisted?.engagement ?? (dataMode === "fixture" ? engagementConfig : EMPTY_ENGAGEMENT)
+  );
+  const [inScopeFields, setInScopeFields] = useState<InScopeField[]>(
+    persisted?.inScopeFields ?? (dataMode === "fixture" ? inScopeFieldPlaceholders : [])
+  );
 
   // Demo-only: snapshot fixture state to localStorage so a refresh keeps it.
   useEffect(() => {
@@ -171,6 +190,12 @@ export function S1WorkpaperApp() {
   }, [dataMode]);
 
   async function refreshBackendWorkspace(nextContainerState?: ContainerState) {
+    // No engagement configured yet → nothing to fetch; show the empty state.
+    if (!engagement.engagementId) {
+      setEvidenceItems([]);
+      setDemoState("empty_nothing_yet");
+      return;
+    }
     setBackendError(null);
     try {
       const workspace = await listWorkspaceEvidence(engagement.engagementId);
@@ -360,7 +385,14 @@ export function S1WorkpaperApp() {
         }
       >
         {activeView.name === "dashboard" ? (
-          <DashboardScreen engagement={engagement} onNavigate={onNavigate} />
+          <DashboardScreen
+            engagement={engagement}
+            metrics={{
+              documents: evidenceItems.length,
+              openRequests: requests.asks.filter((a) => a.state === "not_yet_sent" || a.state === "requested").length,
+            }}
+            onNavigate={onNavigate}
+          />
         ) : activeView.name === "setup" ? (
           <SetupScreen
             engagement={engagement}
@@ -394,9 +426,9 @@ export function S1WorkpaperApp() {
             onOpenSetup={() => setActiveView({ name: "setup" })}
           />
         ) : activeView.name === "coverage" ? (
-          <CheckCoverage rules={coverageRules} />
+          <CheckCoverage rules={dataMode === "backend" ? [] : coverageRules} />
         ) : activeView.name === "results" ? (
-          <VerificationResults rows={verificationRows} store={verification} />
+          <VerificationResults rows={dataMode === "backend" ? [] : verificationRows} store={verification} />
         ) : activeView.name === "output" ? (
           <OutputScreen engagement={engagement} />
         ) : activeView.name === "evidence" ? (

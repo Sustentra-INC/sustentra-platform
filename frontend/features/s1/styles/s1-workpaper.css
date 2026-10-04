@@ -1478,7 +1478,7 @@ select:focus-visible,
 }
 @media (hover: hover) and (pointer: fine) {
   .s1-button:hover:not(:disabled), .s1-ws-count:hover, .s1-ws-facchip:hover,
-  .s1-req-typechip:hover, .s1-add-note:hover, .s1-ws-setup:hover { transform: translateY(-1px); }
+  .s1-req-typechip:hover, .s1-add-note:hover, .s1-ws-setup:hover { transform: translateY(-0.0625rem); }
 }
 .s1-button:active:not(:disabled), .s1-tab:active:not(:disabled), .s1-ws-count:active,
 .s1-ws-facchip:active, .s1-req-typechip:active, .s1-add-note:active,
@@ -1847,6 +1847,14 @@ html { font-size: 82%; }
 
 .s1-dash { display: flex; flex-direction: column; gap: var(--sp-4); }
 .s1-dash-phasebadge { align-self: center; }
+.s1-dash-empty {
+  display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-4);
+  background: var(--accent-soft); border: var(--hairline-width) solid var(--accent-line);
+  border-radius: var(--radius-card); color: var(--ink-2); font-size: var(--text-sm);
+}
+.s1-dash-empty svg { width: 1.4rem; height: 1.4rem; flex: none; color: var(--accent-strong); }
+.s1-dash-empty__actions { margin-left: auto; flex: none; }
+.s1-dash-emptyline { font-size: var(--text-sm); padding: var(--sp-4) 0; text-align: center; margin: 0; }
 
 .s1-dash-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-4); }
 .s1-dash-kpi {
@@ -1854,7 +1862,7 @@ html { font-size: 82%; }
   padding: var(--sp-4); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card);
   transition: transform 0.16s var(--ease-out), border-color 0.16s var(--ease-out);
 }
-.s1-dash-kpi:hover { border-color: var(--accent-line); transform: translateY(-1px); }
+.s1-dash-kpi:hover { border-color: var(--accent-line); transform: translateY(-0.0625rem); }
 .s1-dash-kpi:active { transform: scale(0.98); }
 .s1-dash-kpi__icon {
   display: inline-flex; align-items: center; justify-content: center; flex: none;
@@ -2170,7 +2178,7 @@ html, body { margin: 0; padding: 0; }
   display: inline-flex; align-items: center; justify-content: center;
   transition: transform 0.16s var(--ease-out), box-shadow 0.16s var(--ease-out);
 }
-.s1-ai-fab:hover { transform: translateY(-2px); box-shadow: 0 0.6rem 1.5rem rgba(40, 40, 112, 0.42); }
+.s1-ai-fab:hover { transform: translateY(-0.125rem); box-shadow: 0 0.6rem 1.5rem rgba(40, 40, 112, 0.42); }
 .s1-ai-fab:active { transform: scale(0.95); }
 .s1-ai-fab__mark { width: 1.7rem; height: 1.7rem; filter: brightness(0) invert(1); }
 

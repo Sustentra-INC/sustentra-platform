@@ -26,9 +26,35 @@ Flip to `backend` + point the URL, and the screens that have endpoints light up 
 
 ## The seam (where FE talks to BE)
 
-- `frontend/features/s1/api/s1Backend.ts` — all backend calls.
+- `frontend/features/s1/api/s1Backend.ts` — all backend calls (the functions below).
 - `frontend/features/s1/adapters/evidenceAdapter.ts`, `fieldAdapter.ts` — map backend JSON → the view models the screens render. **These adapters are the contract** — they show exactly what fields the frontend expects back.
 - Detailed plan (storage, work items): `frontend/features/s1/docs/S1_BACKEND_INTEGRATION_PLAN.md`.
+
+## Function → endpoint → page map (what to implement against)
+
+Every call the frontend makes, the function that makes it, and which screen it powers. All in `features/s1/api/s1Backend.ts` unless noted.
+
+| Function (frontend) | Calls (backend) | Method | Powers |
+|---|---|---|---|
+| `listWorkspaceEvidence(engagementId)` | `/v1/engagements/{engagementId}/documents` then per-doc `/v1/pipeline/evidence/{evidenceId}/latest-run`, `/v1/documents/{documentId}/extraction-result/latest`, `/v1/documents/{documentId}/reviews` | GET | **Evidence workspace** (and seeds Extraction review) |
+| `uploadDocument(engagementId, file)` | `/v1/engagements/{engagementId}/documents/upload` (multipart) | POST | **Upload page** |
+| `processDocument(documentId)` | `/v1/documents/{documentId}/pipeline/process` | POST | **Upload / Evidence** (kick off extraction) |
+| `submitFieldReview({ evidenceId, fieldName, decision, reviewedValue, candidate })` | `/v1/evidence/{evidenceId}/fields/{fieldName}/review` | PUT | **Extraction review** (accept / correct / reject / needs-more) |
+| `downloadUrl(documentId)` | `/v1/documents/{documentId}/download` | GET (url) | **Extraction review** (original PDF) |
+| `inlineDocumentUrl(documentId)` *(adapter)* | `/v1/documents/{documentId}/preview` | GET (url) | **Extraction review** (inline preview) |
+| `userFacingApiError(error)` | — | — | error-message helper (no call) |
+
+**Adapters (the response contract):**
+- `mapBackendDocumentToEvidenceItem(document, latestRun)` — backend document + pipeline run → an evidence row.
+- `mapBackendCandidateToExtractedField(candidate, canonicalTypeId)` — an extraction candidate → a reviewable field (value, source snippet, confidence, bbox).
+- `encodeReviewCandidateToken` / `decodeReviewCandidateToken` — stable id for a candidate across the review round-trip.
+- `resolveCanonicalTypeDisplayName`, `mapHaltReason` — display helpers.
+
+The field names these functions read/write are the contract — match them and the screens light up with zero frontend changes.
+
+## Empty by default (no templated data)
+
+In `backend` mode the frontend starts **completely empty**: no engagement, no documents, no evidence, no coverage/verification rows, and a Dashboard that shows empty states until real data arrives. There is no Cascade Provisions / demo data in this build. The user creates the engagement in Setup and uploads real documents, which flow through the functions above. (The old demo data only loads if `NEXT_PUBLIC_S1_DATA_MODE=fixture`, which production does not set.)
 
 ## Ports that are READY to wire (endpoints the FE already calls — and that exist in the S1 backend)
 

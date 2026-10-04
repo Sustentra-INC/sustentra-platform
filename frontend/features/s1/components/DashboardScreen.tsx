@@ -5,48 +5,80 @@ import type { ReactNode } from "react";
 import type { EngagementConfig } from "../types";
 import type { NavKey } from "./S1Chrome";
 
+export interface DashboardMetrics {
+  documents: number;
+  openRequests: number;
+}
+
 /**
- * Dashboard (landing). A one-glance view of the engagement: key figures, the
- * verified-emissions and coverage visualizations, the verification phase tracker
- * and recent activity. Figures are an illustrative assembly of the workpaper.
+ * Dashboard (landing). A one-glance view of the engagement. Figures are derived
+ * from live workpaper state — no templated data. Before any engagement is set up
+ * or evidence is uploaded, it shows empty states and points the user to Setup /
+ * Upload. The emissions and coverage visualizations populate once the backend
+ * returns verification results and coverage (not available until then).
  */
 export function DashboardScreen({
   engagement,
+  metrics,
   onNavigate,
 }: {
   engagement: EngagementConfig;
+  metrics: DashboardMetrics;
   onNavigate?: (key: NavKey) => void;
 }) {
   const go = (k: NavKey) => () => onNavigate?.(k);
+  const hasEngagement = Boolean(engagement.clientName);
+  const hasEvidence = metrics.documents > 0;
 
   return (
     <section className="s1-content s1-dash">
       <header className="s1-ws-header">
         <div className="s1-ws-header__id">
-          <h1>{engagement.clientName}</h1>
+          <h1>{hasEngagement ? engagement.clientName : "New engagement"}</h1>
           <span className="s1-muted">
-            {engagement.regulation} · {engagement.reportingPeriod.start} to {engagement.reportingPeriod.end}
+            {hasEngagement && engagement.regulation
+              ? `${engagement.regulation}${engagement.reportingPeriod.start ? ` · ${engagement.reportingPeriod.start} to ${engagement.reportingPeriod.end}` : ""}`
+              : "Set up the engagement to begin"}
           </span>
         </div>
-        <span className="s1-state s1-state--active s1-dash-phasebadge">Execution · in progress</span>
+        <span className={`s1-state ${hasEvidence ? "s1-state--active" : "s1-state--na"} s1-dash-phasebadge`}>
+          {hasEvidence ? "Execution · in progress" : "Not started"}
+        </span>
       </header>
 
-      {/* KPIs */}
+      {!hasEngagement || !hasEvidence ? (
+        <div className="s1-dash-empty" role="note">
+          <ShieldIcon />
+          <div>
+            <strong>{hasEngagement ? "No evidence yet." : "Nothing here yet."}</strong>{" "}
+            {hasEngagement
+              ? "Upload documents to begin extraction — figures appear here as evidence is processed."
+              : "Configure the engagement in Setup, then upload documents to start extraction."}
+          </div>
+          <div className="s1-dash-empty__actions">
+            <button className="s1-button" type="button" onClick={go(hasEngagement ? "upload" : "setup")}>
+              {hasEngagement ? "Upload documents" : "Go to Setup"}
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* KPIs — derived from live state; "—" where the backend has not supplied a figure yet */}
       <div className="s1-dash-kpis">
-        <Kpi icon={<DocIcon />} label="Documents held" value="148" sub="across 3 facilities" onClick={go("evidence")} />
-        <Kpi icon={<CheckIcon />} label="Values reviewed" value="34 / 46" sub="74% accepted" tone="accent" onClick={go("evidence")} />
-        <Kpi icon={<MailIcon />} label="Open requests" value="3" sub="1 sent · 2 raised" tone="open" onClick={go("requests")} />
-        <Kpi icon={<ShieldIcon />} label="Coverage ready" value="58%" sub="34 of 59 checks" onClick={go("coverage")} />
+        <Kpi icon={<DocIcon />} label="Documents held" value={String(metrics.documents)} sub={metrics.documents === 1 ? "document" : "documents"} onClick={go("evidence")} />
+        <Kpi icon={<CheckIcon />} label="Values reviewed" value="—" sub="awaiting extraction" tone="accent" onClick={go("evidence")} />
+        <Kpi icon={<MailIcon />} label="Open requests" value={String(metrics.openRequests)} sub={metrics.openRequests === 0 ? "none open" : "awaiting client"} tone="open" onClick={go("requests")} />
+        <Kpi icon={<ShieldIcon />} label="Coverage ready" value="—" sub="awaiting coverage run" onClick={go("coverage")} />
       </div>
 
-      {/* Visualizations */}
+      {/* Visualizations — populate from backend verification/coverage; empty until then */}
       <div className="s1-dash-grid">
         <div className="s1-dash-card">
           <div className="s1-dash-card__head">
             <h2>Verified emissions by category</h2>
             <span className="s1-muted">tCO2e · reporting year</span>
           </div>
-          <EmissionsBars />
+          <EmptyViz label="Verified emissions appear here once verification results are computed." />
         </div>
 
         <div className="s1-dash-card">
@@ -56,7 +88,7 @@ export function DashboardScreen({
               Open
             </button>
           </div>
-          <CoverageDonut />
+          <EmptyViz label="Coverage appears here once the evidence is checked." />
         </div>
       </div>
 
@@ -66,18 +98,22 @@ export function DashboardScreen({
           <div className="s1-dash-card__head">
             <h2>Verification phases</h2>
           </div>
-          <PhaseTracker onNavigate={onNavigate} />
+          <PhaseTracker hasEngagement={hasEngagement} hasEvidence={hasEvidence} onNavigate={onNavigate} />
         </div>
 
         <div className="s1-dash-card">
           <div className="s1-dash-card__head">
             <h2>Recent activity</h2>
           </div>
-          <ActivityFeed onNavigate={onNavigate} />
+          <p className="s1-muted s1-dash-emptyline">No activity yet.</p>
         </div>
       </div>
     </section>
   );
+}
+
+function EmptyViz({ label }: { label: string }) {
+  return <p className="s1-muted s1-dash-emptyline">{label}</p>;
 }
 
 /* =============================== KPIs =============================== */
@@ -109,95 +145,6 @@ function Kpi({
   );
 }
 
-/* =========================== emissions bars =========================== */
-
-const EMISSIONS = [
-  { label: "Scope 1 stationary", value: 2140.3, varName: "--chart-1" },
-  { label: "Scope 1 mobile", value: 486.9, varName: "--chart-5" },
-  { label: "Scope 2 location", value: 3910.4, varName: "--chart-4" },
-  { label: "Scope 2 market", value: 4205.1, varName: "--chart-2" },
-];
-
-function EmissionsBars() {
-  const max = Math.max(...EMISSIONS.map((e) => e.value));
-  return (
-    <div className="s1-bars" role="img" aria-label="Verified emissions by category, tonnes CO2e">
-      {EMISSIONS.map((e) => (
-        <div className="s1-bars__col" key={e.label}>
-          <div className="s1-bars__track">
-            <div
-              className="s1-bars__fill"
-              style={{ height: `${(e.value / max) * 100}%`, background: `var(${e.varName})` }}
-            >
-              <span className="s1-bars__val">{e.value.toLocaleString()}</span>
-            </div>
-          </div>
-          <div className="s1-bars__label">{e.label}</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/* =========================== coverage donut =========================== */
-
-const COVERAGE = [
-  { label: "Inputs present", value: 34, varName: "--state-resolved-fg" },
-  { label: "Inputs missing", value: 12, varName: "--state-open-fg" },
-  { label: "Not applicable", value: 8, varName: "--state-na-fg" },
-  { label: "Out of scope", value: 5, varName: "--state-unverifiable-fg" },
-];
-
-function CoverageDonut() {
-  const total = COVERAGE.reduce((s, c) => s + c.value, 0);
-  const R = 54;
-  const C = 2 * Math.PI * R;
-  let offset = 0;
-  const segments = COVERAGE.map((c) => {
-    const len = (c.value / total) * C;
-    const seg = { ...c, dash: len, gap: C - len, off: offset };
-    offset -= len;
-    return seg;
-  });
-  return (
-    <div className="s1-donut">
-      <svg viewBox="0 0 140 140" className="s1-donut__svg" role="img" aria-label="Assurance coverage breakdown">
-        <circle cx="70" cy="70" r={R} fill="none" stroke="var(--sf-inset)" strokeWidth="16" />
-        {segments.map((s) => (
-          <circle
-            key={s.label}
-            cx="70"
-            cy="70"
-            r={R}
-            fill="none"
-            stroke={`var(${s.varName})`}
-            strokeWidth="16"
-            strokeDasharray={`${s.dash} ${s.gap}`}
-            strokeDashoffset={s.off}
-            transform="rotate(-90 70 70)"
-            strokeLinecap="butt"
-          />
-        ))}
-        <text x="70" y="68" textAnchor="middle" fontSize="26" fontWeight="700" className="s1-donut__num">
-          {total}
-        </text>
-        <text x="70" y="86" textAnchor="middle" fontSize="9" letterSpacing="1" className="s1-donut__cap">
-          CHECKS
-        </text>
-      </svg>
-      <ul className="s1-donut__legend">
-        {COVERAGE.map((c) => (
-          <li key={c.label}>
-            <span className="s1-donut__dot" style={{ background: `var(${c.varName})` }} />
-            <span className="s1-donut__lbl">{c.label}</span>
-            <span className="s1-donut__n">{c.value}</span>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 /* =========================== phase tracker =========================== */
 
 type Phase = {
@@ -208,57 +155,54 @@ type Phase = {
   steps: Array<{ label: string; state: "Completed" | "Active" | "Open" | "Pending"; nav?: NavKey }>;
 };
 
-const PHASES: Phase[] = [
-  {
-    key: "setup",
-    label: "Setup",
-    status: "completed",
-    icon: <GearIcon />,
-    steps: [{ label: "Engagement configured", state: "Completed", nav: "setup" }],
-  },
-  {
-    key: "intake",
-    label: "Evidence intake",
-    status: "completed",
-    icon: <InboxIcon />,
-    steps: [
-      { label: "Documents uploaded", state: "Completed", nav: "upload" },
-      { label: "Evidence workspace", state: "Completed", nav: "evidence" },
-    ],
-  },
-  {
-    key: "review",
-    label: "Review",
-    status: "active",
-    icon: <BoltIcon />,
-    steps: [
-      { label: "Extraction review", state: "Active", nav: "evidence" },
-      { label: "Evidence requests", state: "Open", nav: "requests" },
-    ],
-  },
-  {
-    key: "assessment",
-    label: "Assessment",
-    status: "pending",
-    icon: <ShieldIcon />,
-    steps: [
-      { label: "Check coverage", state: "Pending", nav: "coverage" },
-      { label: "Verification results", state: "Pending", nav: "results" },
-    ],
-  },
-  {
-    key: "opinion",
-    label: "Opinion",
-    status: "pending",
-    icon: <DocIcon />,
-    steps: [{ label: "Assurance statement", state: "Pending", nav: "output" }],
-  },
-];
+// Phase status is derived from live progress, not hardcoded. Before Setup it is
+// all "Not started"; Setup completes once an engagement exists; intake/review
+// becomes active once evidence is present.
+function buildPhases(hasEngagement: boolean, hasEvidence: boolean): Phase[] {
+  const setup: Phase["status"] = hasEngagement ? "completed" : "active";
+  const intake: Phase["status"] = hasEvidence ? "active" : "pending";
+  const stepState = (s: Phase["status"]): "Completed" | "Active" | "Pending" =>
+    s === "completed" ? "Completed" : s === "active" ? "Active" : "Pending";
+  return [
+    { key: "setup", label: "Setup", status: setup, icon: <GearIcon />, steps: [{ label: "Engagement configured", state: stepState(setup), nav: "setup" }] },
+    {
+      key: "intake",
+      label: "Evidence intake",
+      status: intake,
+      icon: <InboxIcon />,
+      steps: [
+        { label: "Documents uploaded", state: stepState(intake), nav: "upload" },
+        { label: "Evidence workspace", state: stepState(intake), nav: "evidence" },
+      ],
+    },
+    {
+      key: "review",
+      label: "Review",
+      status: "pending",
+      icon: <BoltIcon />,
+      steps: [
+        { label: "Extraction review", state: "Pending", nav: "evidence" },
+        { label: "Evidence requests", state: "Pending", nav: "requests" },
+      ],
+    },
+    {
+      key: "assessment",
+      label: "Assessment",
+      status: "pending",
+      icon: <ShieldIcon />,
+      steps: [
+        { label: "Check coverage", state: "Pending", nav: "coverage" },
+        { label: "Verification results", state: "Pending", nav: "results" },
+      ],
+    },
+    { key: "opinion", label: "Opinion", status: "pending", icon: <DocIcon />, steps: [{ label: "Assurance statement", state: "Pending", nav: "output" }] },
+  ];
+}
 
-function PhaseTracker({ onNavigate }: { onNavigate?: (k: NavKey) => void }) {
+function PhaseTracker({ hasEngagement, hasEvidence, onNavigate }: { hasEngagement: boolean; hasEvidence: boolean; onNavigate?: (k: NavKey) => void }) {
   return (
     <ol className="s1-phases">
-      {PHASES.map((p) => (
+      {buildPhases(hasEngagement, hasEvidence).map((p) => (
         <li key={p.key} className={`s1-phase s1-phase--${p.status}`}>
           <div className="s1-phase__head">
             <span className="s1-phase__icon">{p.icon}</span>
@@ -284,32 +228,6 @@ function PhaseTracker({ onNavigate }: { onNavigate?: (k: NavKey) => void }) {
         </li>
       ))}
     </ol>
-  );
-}
-
-/* =========================== activity feed =========================== */
-
-const ACTIVITY: Array<{ tone: string; text: string; when: string; nav?: NavKey }> = [
-  { tone: "resolved", text: "kent_electricity_feb_2025.pdf extracted · 6 values found", when: "just now", nav: "evidence" },
-  { tone: "active", text: "Kent Cannery electricity accepted as read", when: "2m ago", nav: "evidence" },
-  { tone: "open", text: "Request 1 sent to Cascade Provisions · 2 items", when: "1h ago", nav: "requests" },
-  { tone: "blocking", text: "scan_0417.pdf blocked · scan is unreadable", when: "3h ago", nav: "evidence" },
-  { tone: "resolved", text: "Modesto Bottling diesel correction posted", when: "yesterday", nav: "results" },
-];
-
-function ActivityFeed({ onNavigate }: { onNavigate?: (k: NavKey) => void }) {
-  return (
-    <ul className="s1-feed">
-      {ACTIVITY.map((a, i) => (
-        <li key={i} className="s1-feed__row">
-          <span className={`s1-feed__dot s1-feed__dot--${a.tone}`} aria-hidden />
-          <button className="s1-feed__text" type="button" onClick={() => a.nav && onNavigate?.(a.nav)}>
-            {a.text}
-          </button>
-          <span className="s1-feed__when">{a.when}</span>
-        </li>
-      ))}
-    </ul>
   );
 }
 
