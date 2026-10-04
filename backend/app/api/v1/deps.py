@@ -1,48 +1,37 @@
 """Shared FastAPI dependencies for the /api/v1 admin surface (ORG-001..003).
 
-Role guards are PLACEHOLDERS. The real implementation lands with AUTH-004, which
-adds the session cookie -> user resolution and the RLS tenant context. Until then
-every guard answers 501 so the routing, request validation, response models and
-middleware can be exercised end to end exactly like the AUTH-001 auth stubs.
+Role guards are now wired to the shipped AUTH-004 session/RBAC layer
+(``core.auth.require_role`` + ``get_current_user``): 401 without a valid session,
+403 for the wrong role, and — for an org_admin reaching into another org — 404.
+The service bodies are still ``NotImplementedError`` pending the DB work (and the
+``organizations`` ``status``/``max_users`` columns + ``users`` name split).
 
-No `from __future__ import annotations`: these are used as FastAPI dependencies
+No ``from __future__ import annotations``: these are used as FastAPI dependencies
 and FastAPI must be able to resolve the annotations at runtime.
 """
 
-from dataclasses import dataclass
+from fastapi import Depends, HTTPException
 
-from fastapi import HTTPException, Request
+from ...core.auth import CurrentUser, require_role
 
+# The authenticated caller, as resolved by AUTH-004.
+Principal = CurrentUser
 
-@dataclass(frozen=True)
-class Principal:
-    """The authenticated caller. Shape is indicative; AUTH-004 owns the real one."""
-
-    user_id: str
-    role: str
-    org_id: str | None = None
+# Provider-admin only. 401 unauthenticated, 403 for any other role.
+require_provider_admin = require_role("provider_admin")
 
 
-def _not_implemented(guard: str) -> HTTPException:
-    return HTTPException(status_code=501, detail=f"Not implemented yet (AUTH-004): {guard}")
+async def require_org_admin(
+    org_id: str,
+    principal: CurrentUser = Depends(require_role("org_admin", "provider_admin")),
+) -> CurrentUser:
+    """Allow a provider_admin (any org), or an org_admin acting on their OWN org.
 
-
-async def require_provider_admin(request: Request) -> Principal:
-    """Allow only provider_admin callers.
-
-    TODO(AUTH-004): resolve the session cookie -> user, verify role == 'provider_admin',
-    set app.is_provider for the request's DB session, and return the Principal.
-    403 for an authenticated non-provider caller; 401 when unauthenticated.
+    Cross-org access by a non-provider caller must look like the org does not
+    exist: return 404, never 403 (see ORG-002/ORG-003 acceptance notes). The RLS
+    tenant context is already set by ``get_current_user`` for the request's DB
+    session.
     """
-    raise _not_implemented("require_provider_admin")
-
-
-async def require_org_admin(request: Request, org_id: str) -> Principal:
-    """Allow a provider_admin, or an org_admin acting on their OWN org.
-
-    TODO(AUTH-004): resolve the session, verify role in ('provider_admin','org_admin'),
-    set the RLS tenant context (app.tenant_id / app.is_provider) and return the Principal.
-    Cross-org access by a non-provider caller must look like the org does not exist:
-    return 404, never 403 (see ORG-002/ORG-003 acceptance notes).
-    """
-    raise _not_implemented("require_org_admin")
+    if not principal.is_provider and str(principal.org_id) != str(org_id):
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return principal
