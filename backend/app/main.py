@@ -72,7 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Rate limiting (slowapi) - 429 with Retry-After.
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
 
     # Middleware: the LAST added runs FIRST. Order of execution:
     #   request logging (observability) -> CORS (local only) -> origin check -> JSON content type

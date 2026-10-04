@@ -34,7 +34,7 @@ class ApprovedEvidenceProjectionRequest(BaseModel):
 
 
 @router.get("/engagements/{engagement_id}/evidence")
-def list_evidence(engagement_id: str) -> dict[str, list[dict[str, str]]]:
+def list_evidence(engagement_id: str) -> dict[str, object]:
     return {
         "engagement_id": engagement_id,
         "items": [

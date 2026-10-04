@@ -17,12 +17,15 @@ ORIGIN = "https://app.sustentra.test"
 PROBE = "/api/v1/auth/_probe"
 
 
-def _with_probe(app: FastAPI) -> FastAPI:
-    @app.post(PROBE)
-    @auth_rate_limit
-    async def probe(request: Request) -> JSONResponse:
-        return JSONResponse({"ok": True})
+@auth_rate_limit
+async def _probe(request: Request) -> JSONResponse:
+    return JSONResponse({"ok": True})
 
+
+def _with_probe(app: FastAPI) -> FastAPI:
+    # Decorated ONCE at import: slowapi registers limits per function name, so
+    # re-decorating inside each test would stack one extra hit per test on the bucket.
+    app.add_api_route(PROBE, _probe, methods=["POST"])
     return app
 GOOD = {"Origin": ORIGIN, "Content-Type": "application/json"}
 

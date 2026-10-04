@@ -22,6 +22,9 @@ check_untyped_defs = false
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
+# backend/ has no __init__.py (namespace package): put the repo root on sys.path
+# so `from backend.app...` imports resolve in tests.
+pythonpath = ["."]
 addopts = "-q"
 
 [tool.coverage.run]

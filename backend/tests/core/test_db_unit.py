@@ -11,10 +11,9 @@ from backend.app.core.config import Settings
 
 
 def _settings(env: str, url: str | None) -> Settings:
-    values: dict[str, Any] = {"environment": env}
-    if url is not None:
-        values["database_url"] = url
-    return Settings(**values)
+    # Pass database_url explicitly (even None) so a DATABASE_URL env var, as in CI,
+    # can't fill it in.
+    return Settings(environment=env, database_url=url)  # type: ignore[call-arg]
 
 
 def test_async_url_conversion() -> None:

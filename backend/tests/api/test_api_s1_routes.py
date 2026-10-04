@@ -14,7 +14,9 @@ def _app():  # type: ignore[no-untyped-def]
 
 
 def _paths() -> set[str]:
-    return {getattr(route, "path", "") for route in _app().routes}
+    # FastAPI >= 0.14x keeps included routers nested (app.routes no longer lists their
+    # routes), so read the effective paths from the generated OpenAPI schema instead.
+    return set(_app().openapi()["paths"])
 
 
 def test_frontend_seam_routes_exist_under_api_v1_and_v1() -> None:
