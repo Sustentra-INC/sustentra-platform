@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 import {
   listWorkspaceEvidence,
@@ -87,7 +87,13 @@ export function S1WorkpaperApp() {
   const [signedIn, setSignedIn] = useState<boolean>(() => (dataMode === "fixture" ? loadSignedIn() : true));
   // localStorage is read in initializers above; render nothing until mounted so
   // the server and first client render match (no hydration mismatch).
-  const [mounted, setMounted] = useState(false);
+  // useSyncExternalStore returns false on the server / hydration pass and true
+  // on the client, without a setState-in-effect.
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
   const [activeView, setActiveView] = useState<ActiveView>({ name: "dashboard" });
   const [auditIntents, setAuditIntents] = useState<SessionAuditEntry[]>([]);
   const [demoState, setDemoState] = useState<ContainerState>(dataMode === "backend" ? "loading" : "populated");
@@ -139,7 +145,6 @@ export function S1WorkpaperApp() {
     verification.findings,
   ]);
 
-  useEffect(() => setMounted(true), []);
 
   function resetDemo() {
     clearDemoState();
