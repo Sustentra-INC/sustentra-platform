@@ -16,7 +16,8 @@ export class ApiError extends Error {
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
   const headers = new Headers(init?.headers);
-  if (!headers.has("Content-Type") && init?.body) {
+  // Do not force JSON on FormData bodies (multipart uploads set their own boundary).
+  if (!(init?.body instanceof FormData) && !headers.has("Content-Type") && init?.body) {
     headers.set("Content-Type", "application/json");
   }
   if (token && !headers.has("Authorization")) {
@@ -32,8 +33,9 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   if (!response.ok) {
     let detail = `API request failed: ${response.status}`;
     try {
-      const body = (await response.json()) as { detail?: string };
+      const body = (await response.json()) as { detail?: unknown };
       if (typeof body.detail === "string") detail = body.detail;
+      else if (Array.isArray(body.detail)) detail = body.detail.join(", ");
     } catch {
       // keep fallback
     }
@@ -45,4 +47,9 @@ export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T
   }
 
   return response.json() as Promise<T>;
+}
+
+/** Absolute URL for a backend path — used by the S1 feature's fetch/preview seams. */
+export function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
 }

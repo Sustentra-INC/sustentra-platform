@@ -3,12 +3,16 @@
 AUTH-004: GET /me, POST /logout
 AUTH-005: POST /login, POST /login/verify, POST /login/resend
 AUTH-006: POST /password-reset/request, POST /password-reset/confirm
+ORG-003:  GET /invite/validate, POST /invite/accept (public; still stubbed)
 
 No `from __future__ import annotations` here: slowapi wraps the endpoints and
 FastAPI must be able to resolve the annotations on the wrapper.
 """
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from datetime import datetime
+from uuid import UUID
+
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -71,6 +75,10 @@ def _meta(request: Request) -> login_service.RequestMeta:
 
 def _respond(outcome: login_service.LoginOutcome) -> JSONResponse:
     return JSONResponse(outcome.body, status_code=outcome.status, headers=outcome.headers or None)
+
+
+def _not_implemented(ticket: str) -> JSONResponse:
+    return JSONResponse({"detail": f"Not implemented yet ({ticket})"}, status_code=501)
 
 
 # --- AUTH-005: login ----------------------------------------------------------------
@@ -193,3 +201,45 @@ async def logout(
     response = JSONResponse({"status": "logged_out"})
     clear_session_cookie(response)
     return response
+
+
+# --- ORG-003: public invite validate / accept --------------------------------------
+# Still stubbed (501): needs invite_service (token validate/accept) + EMAIL-001. The
+# response_model values document the intended contract for the frontend (FE-003).
+
+
+class InviteValidateResponse(BaseModel):
+    email: str
+    first_name: str | None = None
+    last_name: str | None = None
+    org_name: str
+
+
+class AcceptInviteRequest(BaseModel):
+    token: str = Field(min_length=1)
+    # TODO(AUTH-003): enforce the shared password policy (length/complexity).
+    password: str = Field(min_length=8)
+
+
+class AcceptInviteResponse(BaseModel):
+    # NOTE: accept does NOT create a session; the user logs in via /auth/login afterwards.
+    user_id: UUID
+    org_id: UUID
+    email: str
+    accepted_at: datetime
+
+
+@router.get("/invite/validate", response_model=InviteValidateResponse)
+@auth_rate_limit
+async def validate_invite(request: Request, token: str = Query(min_length=1)) -> JSONResponse:
+    # TODO(ORG-003): return await invite_service.validate_token(token=token)
+    #                reject expired/consumed tokens; do not leak registration status.
+    return _not_implemented("ORG-003")
+
+
+@router.post("/invite/accept", response_model=AcceptInviteResponse)
+@auth_rate_limit
+async def accept_invite(request: Request, payload: AcceptInviteRequest) -> JSONResponse:
+    # TODO(ORG-003): return await invite_service.accept_invite(token=payload.token,
+    #                password=payload.password). Set password_hash + consumed_at in one tx.
+    return _not_implemented("ORG-003")

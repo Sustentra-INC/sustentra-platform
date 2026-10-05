@@ -1,14 +1,10 @@
-﻿export default function HomePage() {
-  return (
-    <section>
-      <h2>Pilot Focus</h2>
-      <p>
-        This skeleton prioritizes upload, extraction traceability, field review, and approved evidence.
-      </p>
-      <p>
-        Validation, calculation, and gap analysis remain placeholder routes until post-pilot implementation.
-      </p>
-    </section>
-  );
-}
+import { S1WorkpaperApp } from "../features/s1/pages/S1WorkpaperApp";
 
+/**
+ * The product home: the S1 evidence workpaper. Fixture vs. live data is chosen
+ * at runtime by `NEXT_PUBLIC_S1_DATA_MODE` (fixture | backend) inside
+ * `S1WorkpaperApp`; see docs/frontend_backend_integration.md.
+ */
+export default function HomePage() {
+  return <S1WorkpaperApp />;
+}
