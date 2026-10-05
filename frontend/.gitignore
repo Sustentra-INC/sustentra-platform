@@ -1,0 +1,5 @@
+
+# local env + vercel link (not committed)
+.env*.local
+.vercel
+*.tsbuildinfo
