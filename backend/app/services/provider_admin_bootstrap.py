@@ -17,12 +17,9 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
-
-from sqlalchemy import text
+from sqlalchemy import RowMapping, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.db import set_provider
@@ -87,7 +84,7 @@ def normalize_name(value: str, label: str) -> str:
 
 # --- db --------------------------------------------------------------------------
 
-async def find_provider_admin(db: AsyncSession, email: str) -> Mapping[str, Any] | None:
+async def find_provider_admin(db: AsyncSession, email: str) -> RowMapping | None:
     await set_provider(db)
     return (await db.execute(_SELECT_EXISTING, {"email": email})).mappings().first()
 
