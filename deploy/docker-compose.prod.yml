@@ -63,6 +63,9 @@ services:
       NODE_ENV: production
       PORT: "3000"
       HOSTNAME: 0.0.0.0
+      # Server-side auth guard (frontend/lib/auth-guard.ts) calls the API directly
+      # on the compose network; NEXT_PUBLIC_BACKEND_API_URL is the relative "/api".
+      BACKEND_INTERNAL_URL: http://api:8000
     tmpfs:
       - /tmp
       - /app/.next/cache
