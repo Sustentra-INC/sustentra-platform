@@ -100,7 +100,14 @@ if healthy; then
 fi
 
 log "HEALTH CHECK FAILED - rolling back to $PREV_TAG"
-"${COMPOSE[@]}" logs --tail 50 api web || true
+"${COMPOSE[@]}" ps -a || true
+"${COMPOSE[@]}" logs --tail 50 caddy api web || true
+# First deploy: there is no earlier release to go back to. Leave the new one running
+# so it can be inspected (docker compose logs caddy) instead of failing on a missing image.
+if [ "$PREV_TAG" = "$NEW_TAG" ] || ! docker pull --quiet "${API_IMAGE}:${PREV_TAG}" >/dev/null 2>&1; then
+  log "no previous release image ($PREV_TAG) - nothing to roll back to; $NEW_TAG left running"
+  exit 1
+fi
 release "$PREV_TAG"
 if healthy; then
   log "rollback to $PREV_TAG succeeded"

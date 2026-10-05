@@ -1,0 +1,212 @@
+/* Scoped styles for the MVP auth pages. Uses the global design tokens from
+   sustentra-tokens.css; CSS-Module-scoped so it never leaks into the workpaper. */
+
+.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--sf-page, #fbfaf6);
+}
+
+.card {
+  width: 100%;
+  max-width: 24rem;
+  background: var(--sf-card, #ffffff);
+  border: 0.0625rem solid var(--border-default, #e4e2da);
+  border-radius: var(--radius-card, 0.75rem);
+  box-shadow: 0 0.5rem 1.75rem rgba(40, 40, 112, 0.08);
+  padding: 2rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.logo {
+  height: 1.5rem;
+  width: auto;
+  align-self: flex-start;
+}
+
+.heading {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 650;
+  color: var(--ink, #1b1b17);
+  letter-spacing: -0.01em;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ink-3, #6b6b63);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-2, #3a3a33);
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink, #1b1b17);
+  background: var(--sf-page, #fbfaf6);
+  border: 0.0625rem solid var(--border-default, #d7d5cc);
+  border-radius: var(--radius-input, 0.5rem);
+  padding: 0.6rem 0.7rem;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent, #2c6fb3);
+  box-shadow: 0 0 0 0.1875rem var(--accent-line, #bfdbf4);
+}
+
+.inputWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.inputWrap .input {
+  padding-right: 3.5rem;
+}
+
+.reveal {
+  position: absolute;
+  right: 0.5rem;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent, #2c6fb3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0.25rem 0.4rem;
+}
+
+.otp {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 1.5rem;
+  letter-spacing: 0.5rem;
+  text-align: center;
+  color: var(--ink, #1b1b17);
+  background: var(--sf-page, #fbfaf6);
+  border: 0.0625rem solid var(--border-default, #d7d5cc);
+  border-radius: var(--radius-input, 0.5rem);
+  padding: 0.7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.otp:focus {
+  outline: none;
+  border-color: var(--accent, #2c6fb3);
+  box-shadow: 0 0 0 0.1875rem var(--accent-line, #bfdbf4);
+}
+
+.button {
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #ffffff;
+  background: var(--accent, #2c6fb3);
+  border: 0;
+  border-radius: var(--radius-input, 0.5rem);
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+}
+
+.button:hover {
+  background: var(--accent-strong, #255d97);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.error {
+  font-size: 0.85rem;
+  color: var(--state-blocking-fg, #a12d2d);
+  background: var(--state-blocking-bg, #fbeceb);
+  border: 0.0625rem solid var(--state-blocking-line, #f0cfcd);
+  border-radius: var(--radius-input, 0.5rem);
+  padding: 0.5rem 0.65rem;
+  margin: 0;
+}
+
+.notice {
+  font-size: 0.85rem;
+  color: var(--ink-2, #3a3a33);
+  margin: 0;
+}
+
+.hints {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.78rem;
+  color: var(--ink-3, #6b6b63);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.link {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent, #2c6fb3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.muted {
+  font-size: 0.82rem;
+  color: var(--ink-3, #6b6b63);
+}
+
+.footer {
+  display: flex;
+  justify-content: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  color: var(--ink-3, #6b6b63);
+}
