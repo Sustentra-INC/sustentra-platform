@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { listOrgs, type Org, type OrgStatus } from "./providerApi";
@@ -12,25 +12,37 @@ export function OrgsList() {
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<OrgStatus | "">("");
-  const [loading, setLoading] = useState(true);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const page = await listOrgs({ search, status });
-      setOrgs(page.items);
-    } catch {
-      setError("Could not load organizations.");
-    } finally {
-      setLoading(false);
-    }
-  }, [search, status]);
+  // Refetch whenever the filters (or reloadKey) change. State is only set once
+  // the request settles, so the effect never calls setState synchronously
+  // (react-hooks/set-state-in-effect); `loading` is derived from whether the
+  // latest request has finished.
+  const requestKey = JSON.stringify([search, status, reloadKey]);
+  const loading = loadedKey !== requestKey;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let active = true;
+    listOrgs({ search, status })
+      .then((res) => {
+        if (!active) return;
+        setOrgs(res.items);
+        setError(null);
+      })
+      .catch(() => {
+        if (active) setError("Could not load organizations.");
+      })
+      .finally(() => {
+        if (active) setLoadedKey(requestKey);
+      });
+    return () => {
+      active = false;
+    };
+    // requestKey captures every input of the request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey]);
 
   return (
     <div className={styles.page}>
@@ -48,7 +60,7 @@ export function OrgsList() {
         className={styles.toolbar}
         onSubmit={(e) => {
           e.preventDefault();
-          void load();
+          setReloadKey((k) => k + 1);
         }}
       >
         <input

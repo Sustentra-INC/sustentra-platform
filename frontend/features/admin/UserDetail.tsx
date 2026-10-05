@@ -38,9 +38,23 @@ export function UserDetail({ orgId, userId }: { orgId: string; slug: string; use
     }
   }
 
+  // Initial fetch: state is only set once the request settles (no synchronous
+  // setState in the effect). `load()` above is still used to refresh after actions.
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let active = true;
+    getOrgUser(orgId, userId)
+      .then((fetched) => {
+        if (active) setUser(fetched);
+      })
+      .catch(() => {
+        if (active) setError("Could not load this user.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [orgId, userId]);
 
   function runAction(action: () => Promise<void>, okMessage: string) {

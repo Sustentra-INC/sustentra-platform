@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { listAuditLog, type AuditEvent } from "./orgApi";
 import styles from "./admin.module.css";
@@ -18,25 +18,36 @@ const EVENT_TYPES = [
 export function AuditLog({ orgId }: { orgId: string }) {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [type, setType] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await listAuditLog(orgId, { type });
-      setEvents(res.items);
-    } catch {
-      setError("Could not load the audit log.");
-    } finally {
-      setLoading(false);
-    }
-  }, [orgId, type]);
+  // Refetch whenever the filters change. State is only set once
+  // the request settles, so the effect never calls setState synchronously
+  // (react-hooks/set-state-in-effect); `loading` is derived from whether the
+  // latest request has finished.
+  const requestKey = JSON.stringify([orgId, type]);
+  const loading = loadedKey !== requestKey;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let active = true;
+    listAuditLog(orgId, { type })
+      .then((res) => {
+        if (!active) return;
+        setEvents(res.items);
+        setError(null);
+      })
+      .catch(() => {
+        if (active) setError("Could not load the audit log.");
+      })
+      .finally(() => {
+        if (active) setLoadedKey(requestKey);
+      });
+    return () => {
+      active = false;
+    };
+    // requestKey captures every input of the request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey]);
 
   return (
     <div className={styles.page}>

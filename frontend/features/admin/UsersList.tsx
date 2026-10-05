@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { listOrgUsers, type OrgUser, type UserRole, type UserStatus } from "./orgApi";
@@ -13,26 +13,37 @@ export function UsersList({ orgId, slug }: { orgId: string; slug: string }) {
   const [seats, setSeats] = useState<{ used: number; max: number } | null>(null);
   const [status, setStatus] = useState<UserStatus | "">("");
   const [role, setRole] = useState<UserRole | "">("");
-  const [loading, setLoading] = useState(true);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await listOrgUsers(orgId, { status, role });
-      setUsers(res.items);
-      setSeats({ used: res.total, max: res.max_users });
-    } catch {
-      setError("Could not load users.");
-    } finally {
-      setLoading(false);
-    }
-  }, [orgId, status, role]);
+  // Refetch whenever the filters change. State is only set once
+  // the request settles, so the effect never calls setState synchronously
+  // (react-hooks/set-state-in-effect); `loading` is derived from whether the
+  // latest request has finished.
+  const requestKey = JSON.stringify([orgId, status, role]);
+  const loading = loadedKey !== requestKey;
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    let active = true;
+    listOrgUsers(orgId, { status, role })
+      .then((res) => {
+        if (!active) return;
+        setUsers(res.items);
+        setSeats({ used: res.total, max: res.max_users });
+        setError(null);
+      })
+      .catch(() => {
+        if (active) setError("Could not load users.");
+      })
+      .finally(() => {
+        if (active) setLoadedKey(requestKey);
+      });
+    return () => {
+      active = false;
+    };
+    // requestKey captures every input of the request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey]);
 
   return (
     <div className={styles.page}>

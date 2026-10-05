@@ -35,9 +35,26 @@ export function OrgDetail({ orgId }: { orgId: string }) {
     }
   }
 
+  // Initial fetch: state is only set once the request settles (no synchronous
+  // setState in the effect). `load()` above is still used to refresh after actions.
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    let active = true;
+    getOrg(orgId)
+      .then((fetched) => {
+        if (!active) return;
+        setOrg(fetched);
+        setName(fetched.name);
+        setMaxUsers(String(fetched.max_users));
+      })
+      .catch(() => {
+        if (active) setError("Could not load this organization.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [orgId]);
 
   async function onSave(event: FormEvent) {

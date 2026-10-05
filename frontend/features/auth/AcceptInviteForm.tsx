@@ -14,17 +14,17 @@ type State = { status: "loading" } | { status: "invalid" } | { status: "ready"; 
  *  details, and takes a new password to activate the account. */
 export function AcceptInviteForm({ onAccepted }: { onAccepted?: (path: string) => void }) {
   const token = useSearchParams().get("token");
-  const [state, setState] = useState<State>({ status: "loading" });
+  const [fetchedState, setState] = useState<State>({ status: "loading" });
+  // No token in the URL means the link is invalid; derive that instead of
+  // setting it inside the effect (react-hooks/set-state-in-effect).
+  const state: State = token ? fetchedState : { status: "invalid" };
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (!token) {
-      setState({ status: "invalid" });
-      return;
-    }
+    if (!token) return;
     let active = true;
     validateInvite(token)
       .then((invite) => active && setState({ status: "ready", invite }))
