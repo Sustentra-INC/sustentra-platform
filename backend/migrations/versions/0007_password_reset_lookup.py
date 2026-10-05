@@ -33,16 +33,25 @@ def upgrade() -> None:
             expires_at  timestamptz,
             consumed_at timestamptz
           )
-          LANGUAGE sql
-          STABLE
+          LANGUAGE plpgsql
           SECURITY DEFINER
           SET search_path = public, pg_temp
-          SET app.is_provider = 'true'
         AS $$
-          SELECT t.id, t.user_id, t.org_id, t.expires_at, t.consumed_at
-            FROM auth_tokens t
-           WHERE t.token_hash = p_token_hash
-             AND t.type = 'password_reset'
+        #variable_conflict use_column
+        DECLARE
+          prev_is_provider text := current_setting('app.is_provider', true);
+        BEGIN
+          -- RDS: only a superuser may attach a custom GUC (SET app.is_provider) to a
+          -- function definition, so switch it on with set_config() inside the body and
+          -- restore the caller's value before returning.
+          PERFORM set_config('app.is_provider', 'true', true);
+          RETURN QUERY
+            SELECT t.id, t.user_id, t.org_id, t.expires_at, t.consumed_at
+              FROM auth_tokens t
+             WHERE t.token_hash = p_token_hash
+               AND t.type = 'password_reset';
+          PERFORM set_config('app.is_provider', coalesce(prev_is_provider, ''), true);
+        END
         $$
         """
     )

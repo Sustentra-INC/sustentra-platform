@@ -121,16 +121,21 @@ def upgrade() -> None:
           LANGUAGE plpgsql
           SECURITY DEFINER
           SET search_path = public, pg_temp
-          SET app.is_provider = 'true'
         AS $$
         DECLARE
           removed integer := 0;
           n integer;
+          prev_is_provider text := current_setting('app.is_provider', true);
         BEGIN
+          -- RDS: only a superuser may attach a custom GUC (SET app.is_provider) to a
+          -- function definition, so switch it on with set_config() inside the body and
+          -- restore the caller's value before returning.
+          PERFORM set_config('app.is_provider', 'true', true);
           DELETE FROM sessions WHERE expires_at < now() - interval '1 day';
           GET DIAGNOSTICS n = ROW_COUNT; removed := removed + n;
           DELETE FROM auth_tokens WHERE expires_at < now() - interval '1 day';
           GET DIAGNOSTICS n = ROW_COUNT; removed := removed + n;
+          PERFORM set_config('app.is_provider', coalesce(prev_is_provider, ''), true);
           RETURN removed;
         END
         $$

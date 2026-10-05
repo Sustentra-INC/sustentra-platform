@@ -60,18 +60,27 @@ def upgrade() -> None:
             user_status  text,
             org_status   text
           )
-          LANGUAGE sql
-          STABLE
+          LANGUAGE plpgsql
           SECURITY DEFINER
           SET search_path = public, pg_temp
-          SET app.is_provider = 'true'
         AS $$
-          SELECT s.id, s.user_id, s.org_id, s.created_at, s.expires_at, s.last_seen_at, s.revoked_at,
-                 u.role, u.status, o.status
-            FROM sessions s
-            JOIN users u ON u.id = s.user_id
-            LEFT JOIN organizations o ON o.id = s.org_id
-           WHERE s.token_hash = p_token_hash
+        #variable_conflict use_column
+        DECLARE
+          prev_is_provider text := current_setting('app.is_provider', true);
+        BEGIN
+          -- RDS: only a superuser may attach a custom GUC (SET app.is_provider) to a
+          -- function definition, so switch it on with set_config() inside the body and
+          -- restore the caller's value before returning.
+          PERFORM set_config('app.is_provider', 'true', true);
+          RETURN QUERY
+            SELECT s.id, s.user_id, s.org_id, s.created_at, s.expires_at, s.last_seen_at, s.revoked_at,
+                   u.role, u.status, o.status
+              FROM sessions s
+              JOIN users u ON u.id = s.user_id
+              LEFT JOIN organizations o ON o.id = s.org_id
+             WHERE s.token_hash = p_token_hash;
+          PERFORM set_config('app.is_provider', coalesce(prev_is_provider, ''), true);
+        END
         $$
         """
     )
