@@ -223,6 +223,31 @@ aws sesv2 send-email --region us-east-1 \
   --content '{"Simple":{"Subject":{"Data":"Bounce test"},"Body":{"Text":{"Data":"bounce"}}}}'
 ```
 
+## First provider admin (ORG-000)
+
+There is no sign-up for provider admins: create the first one from the running `api`
+container. The command uses the API's own database connection (`app_user`, provider RLS
+scope), is idempotent on the email (a second run changes nothing and exits 0), and writes
+a `provider_admin_created` audit event. The password is never a command-line argument.
+
+```bash
+aws ssm start-session --target <instance-id>      # staging or prod app host
+
+sudo docker compose -f /opt/sustentra/docker-compose.prod.yml --env-file /opt/sustentra/.env \
+  exec api python -m backend.app.cli create-provider-admin \
+  --email ops@sustentra.com --first-name Ada --last-name Lovelace
+# Password: / Confirm password:   (hidden; >= 12 chars, not a common password, not the email)
+```
+
+No one at the keyboard who should know the password? Add `--reset-link`: the account is
+created without a password and the command prints a one-time
+`https://<domain>/provider-admin/reset-password?token=...` link (valid 1 hour) to hand
+over. If it expires, use *Forgot password* on `/provider-admin/login`.
+
+Then sign in at `https://<domain>/provider-admin/login` with password + email OTP.
+While SES is in the sandbox, the admin's email must be in `ses_sandbox_recipients`
+(see above) or the OTP is never delivered.
+
 ## CI/CD (MVP-5)
 
 | Workflow | Trigger | What it does | AWS role |
