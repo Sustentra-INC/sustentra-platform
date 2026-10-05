@@ -128,7 +128,7 @@ class PdfParser:
         """Return (page_texts, parser_name, load_error_warning_or_None)."""
 
         try:
-            import fitz  # type: ignore
+            import fitz
         except ImportError:
             fitz = None
 
@@ -151,9 +151,9 @@ class PdfParser:
                 )
 
         try:
-            import pdfplumber  # type: ignore
+            import pdfplumber
         except ImportError:
-            pdfplumber = None
+            pdfplumber = None  # type: ignore[assignment]
 
         if pdfplumber is not None:
             try:

@@ -1,14 +1,16 @@
 name: deploy
 
-# Merge to main -> build api + web images tagged with the commit SHA -> push to ECR
-# -> (manual approval on the "production" environment) -> deploy via SSM:
+# Push to staging -> deploys to staging.sustentra.com (GitHub env "staging").
+# Merge to main   -> deploys to app.sustentra.com     (GitHub env "production", approval).
+# Build api + web images tagged with the commit SHA -> push to that env's ECR -> deploy via SSM:
 #    RDS snapshot -> alembic upgrade head -> compose pull/up -> /health -> auto-rollback.
 #
-# Manual re-deploy of any already-built commit: Actions -> deploy -> Run workflow.
+# Manual re-deploy of any already-built commit: Actions -> deploy -> Run workflow
+# (pick the branch: staging -> staging, main -> prod).
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
     paths:
       - "backend/**"
       - "frontend/**"
@@ -28,14 +30,15 @@ permissions:
   id-token: write
 
 concurrency:
-  group: deploy-prod
+  group: deploy-${{ github.ref_name == 'staging' && 'staging' || 'prod' }}
   cancel-in-progress: false
 
 env:
   AWS_REGION: us-east-1
-  ENV_NAME: prod
-  NAME_PREFIX: sustentra-prod
-  DEPLOY_ROLE_ARN: arn:aws:iam::012751249540:role/sustentra-prod-deploy
+  # staging branch -> staging; anything else (main) -> prod
+  ENV_NAME: ${{ github.ref_name == 'staging' && 'staging' || 'prod' }}
+  NAME_PREFIX: ${{ github.ref_name == 'staging' && 'sustentra-staging' || 'sustentra-prod' }}
+  DEPLOY_ROLE_ARN: ${{ github.ref_name == 'staging' && 'arn:aws:iam::012751249540:role/sustentra-staging-deploy' || 'arn:aws:iam::012751249540:role/sustentra-prod-deploy' }}
   IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
 
 jobs:
@@ -83,8 +86,8 @@ jobs:
     needs: build
     if: always() && (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-latest
-    # Required reviewers on this GitHub environment = manual approval gate.
-    environment: production
+    # Required reviewers on the GitHub environment = manual approval gate (production).
+    environment: ${{ github.ref_name == 'staging' && 'staging' || 'production' }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -103,7 +106,9 @@ jobs:
           test -n "$id" && test "$id" != "None"
           echo "instance_id=$id" >> "$GITHUB_OUTPUT"
 
+      # Prod only: staging deploys often and the snapshots would pile up (and cost).
       - name: RDS snapshot
+        if: env.ENV_NAME == 'prod'
         run: |
           snap="${NAME_PREFIX}-predeploy-${IMAGE_TAG:0:7}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           aws rds create-db-snapshot \

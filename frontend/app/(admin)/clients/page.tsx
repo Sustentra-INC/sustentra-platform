@@ -14,7 +14,7 @@ import {
   type ClientUserRecord
 } from "../../../lib/api/clients";
 import { ApiError } from "../../../lib/api/client";
-import { getActor } from "../../../lib/session";
+import { useActor } from "../../../lib/useActor";
 
 export default function ClientsPage() {
   const [clients, setClients] = useState<ClientRecord[]>([]);
@@ -28,7 +28,7 @@ export default function ClientsPage() {
   const [userName, setUserName] = useState("");
   const [userEmail, setUserEmail] = useState("");
   const [userPassword, setUserPassword] = useState("");
-  const [actorType, setActorType] = useState<string | null>(null);
+  const actorType = useActor()?.actor_type ?? null;
   const canManage = actorType === "sustentra_user";
 
   async function refreshClients() {
@@ -45,10 +45,11 @@ export default function ClientsPage() {
   }
 
   useEffect(() => {
-    setActorType(getActor()?.actor_type ?? null);
-    refreshClients().catch((exc) => {
-      setError(exc instanceof ApiError ? exc.detail : "Log in to manage clients.");
-    });
+    listClients()
+      .then(setClients)
+      .catch((exc) => {
+        setError(exc instanceof ApiError ? exc.detail : "Log in to manage clients.");
+      });
   }, []);
 
   async function handleCreate(event: FormEvent) {
