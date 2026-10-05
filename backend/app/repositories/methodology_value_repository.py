@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 from pathlib import Path
+from collections.abc import Sequence
 from typing import Any
 
 from backend.app.domain.methodology_value import MethodologyValue
@@ -29,7 +30,7 @@ class _BaseMethodologyValueRepository:
     def save(self, record: MethodologyValue | dict) -> dict:  # pragma: no cover - abstract
         raise NotImplementedError
 
-    def save_many(self, records: list[MethodologyValue | dict]) -> list[dict]:
+    def save_many(self, records: Sequence[MethodologyValue | dict]) -> list[dict]:
         return [self.save(record) for record in records]
 
     def list_all(self) -> list[dict]:
@@ -77,7 +78,7 @@ class InMemoryMethodologyValueRepository(_BaseMethodologyValueRepository):
     def replace_for_approved_evidence(
         self,
         approved_evidence_id: str,
-        records: list[MethodologyValue | dict],
+        records: Sequence[MethodologyValue | dict],
     ) -> list[dict]:
         self._store = [
             record
@@ -117,7 +118,7 @@ class JsonlMethodologyValueRepository(_BaseMethodologyValueRepository):
     def replace_for_approved_evidence(
         self,
         approved_evidence_id: str,
-        records: list[MethodologyValue | dict],
+        records: Sequence[MethodologyValue | dict],
     ) -> list[dict]:
         remaining = [
             record

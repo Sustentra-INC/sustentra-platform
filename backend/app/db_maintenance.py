@@ -20,4 +20,4 @@ async def purge_expired_auth_rows(conn: _Executor) -> int:
     function is SECURITY DEFINER, so it purges across tenants even under RLS.
     """
     removed = await conn.fetchval("SELECT purge_expired_auth_rows()")
-    return int(removed or 0)
+    return removed if isinstance(removed, int) else 0

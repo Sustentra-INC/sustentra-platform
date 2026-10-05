@@ -40,7 +40,7 @@ class ClassificationService:
         processing_run_id = payload.get("processing_run_id")
         created_at = self._utc_now_iso()
 
-        base_result = {
+        base_result: dict[str, Any] = {
             "classification_result_id": self._new_classification_result_id(),
             "document_id": document_id,
             "engagement_id": engagement_id,
