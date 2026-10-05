@@ -106,7 +106,9 @@ jobs:
           test -n "$id" && test "$id" != "None"
           echo "instance_id=$id" >> "$GITHUB_OUTPUT"
 
+      # Prod only: staging deploys often and the snapshots would pile up (and cost).
       - name: RDS snapshot
+        if: env.ENV_NAME == 'prod'
         run: |
           snap="${NAME_PREFIX}-predeploy-${IMAGE_TAG:0:7}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           aws rds create-db-snapshot \

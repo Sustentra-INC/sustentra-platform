@@ -30,14 +30,17 @@ resource "aws_db_parameter_group" "postgres16" {
   family      = "postgres16"
   description = "Sustentra: SSL required, row-level security on"
 
+  # Values and apply_method match what RDS stores, so plans show no perpetual diff
+  # (RDS normalises row_security "on" -> "1"; rds.force_ssl is a static parameter).
   parameter {
-    name  = "rds.force_ssl"
-    value = "1"
+    name         = "rds.force_ssl"
+    value        = "1"
+    apply_method = "pending-reboot"
   }
 
   parameter {
     name  = "row_security"
-    value = "on"
+    value = "1" # = on
   }
 
   lifecycle {
