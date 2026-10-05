@@ -113,6 +113,38 @@ terraform init -reconfigure -backend-config="environments/prod.s3.tfbackend"   #
 Then create the GitHub environment `staging`. After that, use
 Actions -> terraform -> Run workflow -> environment: staging.
 
+### Branches and deploys
+
+| Branch | Deploys to | Approval | Pre-deploy RDS snapshot |
+|---|---|---|---|
+| `staging` | `staging.sustentra.com` | GitHub env `staging` (none by default) | no |
+| `main` | `app.sustentra.com` | GitHub env `production` (required reviewers) | yes |
+
+Flow: feature branch -> PR into `staging` -> test on staging -> PR `staging` -> `main`.
+`deploy.yml` picks the environment from the branch name; a manual *Run workflow*
+deploys the branch you select (anything other than `staging` = prod).
+Staging's CI roles trust the `staging` branch (`github_branch` in `staging.tfvars`).
+
+### Running Terraform from a laptop
+
+Always pass the matching backend **and** var file - without `-var-file` Terraform
+prompts for every variable and falls back to defaults (e.g. the wrong DB class):
+
+```powershell
+terraform init -reconfigure -backend-config="environments/prod.s3.tfbackend"
+terraform plan  -var-file="environments/prod.tfvars"
+```
+
+Never mix staging vars with prod state (or the reverse). A healthy plan for an
+existing environment shows `0 to destroy`.
+
+Notes:
+- Both environments use `db_instance_class = "db.t3.micro"`: `db.t4g.micro` had no
+  capacity in us-east-1 when they were created. Changing the class later needs
+  capacity in the DB's current AZ.
+- SES identities are account-wide: never list the same address in
+  `ses_sandbox_recipients` of both `prod.tfvars` and `staging.tfvars`.
+
 ## RDS and application secrets (MVP-3)
 
 - PostgreSQL 16 (`sustentra-<env>-db`), private subnets only, encrypted, 7-day
