@@ -9,6 +9,7 @@ alembic
 asyncpg
 psycopg2-binary
 boto3
+jinja2
 openai
 httpx
 tenacity

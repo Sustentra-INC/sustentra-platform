@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -22,6 +23,7 @@ from backend.app.core.config import Settings, get_settings
 from backend.app.core.rate_limit import limiter
 from backend.app.core.security_primitives import VIOLATION_TOO_SHORT, hash_password, hash_token
 from backend.app.main import create_app
+from backend.app.services import otp_delivery
 from backend.app.services import password_reset as reset_service
 from backend.app.services.otp_delivery import get_otp_sender, get_reset_sender
 from backend.app.services.password_reset import REQUEST_ACCEPTED_MESSAGE
@@ -117,6 +119,63 @@ def run(scenario: Scenario) -> Mailbox:
 
     asyncio.run(main())
     return mailbox
+
+
+RealSenderScenario = Callable[[Any, list[dict[str, str]]], Awaitable[None]]
+
+
+def run_with_real_sender(
+    scenario: RealSenderScenario,
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[dict[str, str]]:
+    """Run scenario with real sender adapters and mocked SMTP transport only."""
+
+    sent: list[dict[str, str]] = []
+
+    async def main() -> None:
+        engine = db.create_engine(APP_URL or "", pool_size=3, max_overflow=0)
+        sessionmaker = db.build_sessionmaker(engine)
+        app = create_app(Settings(environment="test", git_sha="t", ALLOWED_ORIGINS=ORIGIN))  # type: ignore[call-arg]
+
+        async def session_dep() -> AsyncIterator[AsyncSession]:
+            async with sessionmaker() as session, session.begin():
+                yield session
+
+        app.dependency_overrides[db.get_db_session] = session_dep
+        app.dependency_overrides[db.get_sessionmaker_dependency] = lambda: sessionmaker
+        monkeypatch.setattr(
+            otp_delivery,
+            "get_settings",
+            lambda: Settings(
+                environment="test",
+                git_sha="t",
+                ALLOWED_ORIGINS=ORIGIN,
+                ses_from_address="no-reply@sustentra.test",
+                smtp_host="mailpit",
+                smtp_port=1025,
+            ),
+        )
+        monkeypatch.setattr(
+            otp_delivery,
+            "_send_smtp",
+            lambda _settings, to, email: sent.append(
+                {
+                    "to": to,
+                    "subject": email.subject,
+                    "text": email.text_body,
+                    "html": email.html_body,
+                }
+            ),
+        )
+        try:
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+                await scenario(client, sent)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(main())
+    return sent
 
 
 async def request_reset(client: Any, email: str = "alice@acme.test", org_slug: str | None = "acme") -> Any:
@@ -243,3 +302,26 @@ def test_reset_revokes_all_sessions_and_clears_lock() -> None:
     assert user["failed_login_count"] == 0 and user["locked_until"] is None
     events = {r["event_type"] for r in asyncio.run(_admin("SELECT event_type FROM audit_logs"))}
     assert {"password_reset_requested", "password_reset"} <= events
+
+
+def test_password_reset_request_route_uses_real_sender_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def scenario(client: Any, sent: list[dict[str, str]]) -> None:
+        response = await request_reset(client)
+        assert response.status_code == 200
+        assert response.json() == {"message": REQUEST_ACCEPTED_MESSAGE}
+
+        assert len(sent) == 1
+        assert sent[0]["to"] == "alice@acme.test"
+        assert sent[0]["subject"] == otp_delivery.TEMPLATE_SPECS["password_reset"].subject
+        assert "https://app.sustentra.test/org/acme/reset-password?token=" in sent[0]["text"]
+        assert "did not request this password reset" in sent[0]["text"].lower()
+
+        match = re.search(r"https://\S+", sent[0]["text"])
+        assert match is not None
+        reset_url = match.group(0)
+        token = parse_qs(urlsplit(reset_url).query)["token"][0]
+
+        confirmed = await confirm(client, token)
+        assert confirmed.status_code == 200
+
+    run_with_real_sender(scenario, monkeypatch)

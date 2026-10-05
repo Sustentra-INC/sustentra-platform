@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
@@ -23,6 +24,7 @@ from backend.app.core.rate_limit import limiter
 from backend.app.core.security_primitives import hash_password
 from backend.app.main import create_app
 from backend.app.services import login as login_service
+from backend.app.services import otp_delivery
 from backend.app.services.otp_delivery import get_otp_sender
 from backend.app.services.sessions import SESSION_COOKIE
 
@@ -119,6 +121,62 @@ def run(scenario: Scenario) -> list[tuple[str, str]]:
     return sent
 
 
+RealSenderScenario = Callable[[Any, list[dict[str, str]]], Awaitable[None]]
+
+
+def run_with_real_sender(
+    scenario: RealSenderScenario,
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[dict[str, str]]:
+    """Run scenario with real auth sender adapters and mocked SMTP transport only."""
+
+    sent: list[dict[str, str]] = []
+
+    async def main() -> None:
+        engine = db.create_engine(APP_URL or "", pool_size=2, max_overflow=0)
+        app = create_app(Settings(environment="test", git_sha="t", ALLOWED_ORIGINS=ORIGIN))  # type: ignore[call-arg]
+        sessionmaker = db.build_sessionmaker(engine)
+
+        async def session_dep() -> AsyncIterator[AsyncSession]:
+            async with sessionmaker() as session, session.begin():
+                yield session
+
+        app.dependency_overrides[db.get_db_session] = session_dep
+        monkeypatch.setattr(
+            otp_delivery,
+            "get_settings",
+            lambda: Settings(
+                environment="test",
+                git_sha="t",
+                ALLOWED_ORIGINS=ORIGIN,
+                ses_from_address="no-reply@sustentra.test",
+                smtp_host="mailpit",
+                smtp_port=1025,
+            ),
+        )
+        monkeypatch.setattr(
+            otp_delivery,
+            "_send_smtp",
+            lambda _settings, to, email: sent.append(
+                {
+                    "to": to,
+                    "subject": email.subject,
+                    "text": email.text_body,
+                    "html": email.html_body,
+                }
+            ),
+        )
+        try:
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+                await scenario(client, sent)
+        finally:
+            await engine.dispose()
+
+    asyncio.run(main())
+    return sent
+
+
 async def login(client: Any, email: str = "alice@acme.test", password: str = PASSWORD,
                 org_slug: str | None = "acme") -> Any:
     body: dict[str, Any] = {"email": email, "password": password}
@@ -138,6 +196,12 @@ async def resend(client: Any, challenge_id: str) -> Any:
 
 def _wrong(code: str) -> str:
     return f"{(int(code) + 1) % 1_000_000:06d}"
+
+
+def _extract_otp(text_body: str) -> str:
+    match = re.search(r"\b(\d{6})\b", text_body)
+    assert match is not None
+    return match.group(1)
 
 
 # --- happy path ---------------------------------------------------------------------
@@ -332,3 +396,38 @@ def test_successful_login_purges_long_expired_rows() -> None:
 
     run(scenario)
     assert asyncio.run(_admin("SELECT 1 FROM sessions WHERE token_hash = 'stale'")) == []
+
+
+def test_login_and_resend_routes_use_real_sender_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = Clock(monkeypatch)
+
+    async def scenario(client: Any, sent: list[dict[str, str]]) -> None:
+        first = await login(client)
+        assert first.status_code == 200
+        assert len(sent) == 1
+        assert sent[-1]["to"] == "alice@acme.test"
+        assert sent[-1]["subject"] == otp_delivery.TEMPLATE_SPECS["login_otp"].subject
+        first_code = _extract_otp(sent[-1]["text"])
+
+        verified = await verify(client, first.json()["challenge_id"], first_code)
+        assert verified.status_code == 200
+
+        second = await login(client)
+        assert second.status_code == 200
+        assert len(sent) == 2
+        assert sent[-1]["to"] == "alice@acme.test"
+        assert sent[-1]["subject"] == otp_delivery.TEMPLATE_SPECS["login_otp"].subject
+        challenge_id = second.json()["challenge_id"]
+
+        clock.advance(timedelta(seconds=61))
+        resent = await resend(client, challenge_id)
+        assert resent.status_code == 202
+        assert len(sent) == 3
+        assert sent[-1]["to"] == "alice@acme.test"
+        assert sent[-1]["subject"] == otp_delivery.TEMPLATE_SPECS["login_otp"].subject
+        resent_code = _extract_otp(sent[-1]["text"])
+
+        resent_verified = await verify(client, challenge_id, resent_code)
+        assert resent_verified.status_code == 200
+
+    run_with_real_sender(scenario, monkeypatch)
