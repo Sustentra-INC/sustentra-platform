@@ -37,20 +37,49 @@ export function resendOtp(challengeId: string): Promise<void> {
   });
 }
 
-/** Always resolves, whether or not the email exists (neutral by design). */
+/** Always resolves, whether or not the email exists (neutral by design).
+ *  Matches the shipped backend (AUTH-006): POST /api/v1/auth/password-reset/request. */
 export function requestPasswordReset(realm: Realm, email: string): Promise<void> {
-  return api<void>("/auth/password/forgot", {
+  return api<void>("/auth/password-reset/request", {
     method: "POST",
     body: { email, ...realmBody(realm) },
   });
 }
 
-/** Set a new password with a reset token. 400 if the token is invalid/expired/used. */
+/** Set a new password with a reset token. 400 if the token is invalid/expired/used.
+ *  Matches the shipped backend (AUTH-006): POST /api/v1/auth/password-reset/confirm. */
 export function resetPassword(token: string, password: string): Promise<void> {
-  return api<void>("/auth/password/reset", {
+  return api<void>("/auth/password-reset/confirm", {
     method: "POST",
     body: { token, password },
   });
+}
+
+export interface InviteDetails {
+  org_name: string;
+  org_slug: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+}
+
+/** Validate an invite token on page load. 400 if invalid/expired/used (generic). */
+export function validateInvite(token: string): Promise<InviteDetails> {
+  return api<InviteDetails>(`/auth/invite/validate?token=${encodeURIComponent(token)}`);
+}
+
+/** Accept an invite — sets the password and activates the user. Does NOT create a
+ *  session; the user then logs in normally. 400 if the token is invalid. */
+export function acceptInvite(token: string, password: string): Promise<void> {
+  return api<void>("/auth/invite/accept", {
+    method: "POST",
+    body: { token, password },
+  });
+}
+
+/** End the session (clears the `__Host-session` cookie server-side). */
+export function logout(): Promise<void> {
+  return api<void>("/auth/logout", { method: "POST" });
 }
 
 export { ApiError };

@@ -1,0 +1,255 @@
+/* Scoped styles for the MVP admin surfaces (provider + org admin). Uses the
+   global design tokens; CSS-Module-scoped so it never leaks into the workpaper. */
+
+.page {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 650;
+  color: var(--ink, #1b1b17);
+}
+
+.subtitle {
+  margin: 0.15rem 0 0;
+  font-size: 0.85rem;
+  color: var(--ink-3, #6b6b63);
+}
+
+.toolbar {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.input,
+.select {
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--ink, #1b1b17);
+  background: var(--sf-card, #fff);
+  border: 0.0625rem solid var(--border-default, #d7d5cc);
+  border-radius: var(--radius-input, 0.5rem);
+  padding: 0.5rem 0.6rem;
+}
+
+.input:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--accent, #2c6fb3);
+  box-shadow: 0 0 0 0.1875rem var(--accent-line, #bfdbf4);
+}
+
+.grow {
+  flex: 1;
+  min-width: 10rem;
+}
+
+.button {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent, #2c6fb3);
+  border: 0;
+  border-radius: var(--radius-input, 0.5rem);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.button:hover {
+  background: var(--accent-strong, #255d97);
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.ghost {
+  color: var(--ink-2, #3a3a33);
+  background: var(--sf-card, #fff);
+  border: 0.0625rem solid var(--border-default, #d7d5cc);
+}
+
+.ghost:hover {
+  background: var(--sf-page, #f6f5ef);
+}
+
+.danger {
+  color: var(--state-blocking-fg, #a12d2d);
+  background: var(--sf-card, #fff);
+  border: 0.0625rem solid var(--state-blocking-line, #f0cfcd);
+}
+
+.danger:hover {
+  background: var(--state-blocking-bg, #fbeceb);
+}
+
+.tableWrap {
+  border: 0.0625rem solid var(--border-default, #e4e2da);
+  border-radius: var(--radius-card, 0.75rem);
+  overflow: hidden;
+  background: var(--sf-card, #fff);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.table th {
+  text-align: left;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-3, #6b6b63);
+  background: var(--sf-page, #f6f5ef);
+  padding: 0.6rem 0.8rem;
+  border-bottom: 0.0625rem solid var(--border-default, #e4e2da);
+}
+
+.table td {
+  padding: 0.7rem 0.8rem;
+  border-bottom: 0.0625rem solid var(--border-subtle, #eceadf);
+  color: var(--ink, #1b1b17);
+  vertical-align: middle;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.rowLink {
+  font-weight: 600;
+  color: var(--accent, #2c6fb3);
+  text-decoration: none;
+}
+
+.rowLink:hover {
+  text-decoration: underline;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+}
+
+.badgeActive {
+  color: var(--state-resolved-fg, #2f7d4f);
+  background: var(--state-resolved-bg, #e7f4ec);
+}
+
+.badgeSuspended {
+  color: var(--state-blocking-fg, #a12d2d);
+  background: var(--state-blocking-bg, #fbeceb);
+}
+
+.badgeInvited,
+.badgePending {
+  color: var(--state-open-fg, #8a5108);
+  background: var(--state-open-bg, #faefdc);
+}
+
+.card {
+  border: 0.0625rem solid var(--border-default, #e4e2da);
+  border-radius: var(--radius-card, 0.75rem);
+  background: var(--sf-card, #fff);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 34rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ink-2, #3a3a33);
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--ink-3, #6b6b63);
+}
+
+.error {
+  font-size: 0.85rem;
+  color: var(--state-blocking-fg, #a12d2d);
+  background: var(--state-blocking-bg, #fbeceb);
+  border: 0.0625rem solid var(--state-blocking-line, #f0cfcd);
+  border-radius: var(--radius-input, 0.5rem);
+  padding: 0.5rem 0.65rem;
+  margin: 0;
+}
+
+.muted {
+  color: var(--ink-3, #6b6b63);
+  font-size: 0.9rem;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(23, 23, 20, 0.42);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 100;
+}
+
+.dialog {
+  width: 100%;
+  max-width: 26rem;
+  background: var(--sf-card, #fff);
+  border-radius: var(--radius-card, 0.75rem);
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 1rem 2.5rem rgba(23, 23, 20, 0.25);
+}
+
+.dialogTitle {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 650;
+  color: var(--ink, #1b1b17);
+}
