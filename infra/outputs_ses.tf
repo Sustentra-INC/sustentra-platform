@@ -33,8 +33,8 @@ output "ses_dns_records" {
         value = "v=spf1 include:amazonses.com -all"
       },
       {
-        type  = "TXT"
-        name  = "_dmarc.${local.ses_domain}"
+        type = "TXT"
+        name = "_dmarc.${local.ses_domain}"
         # Relaxed alignment: SPF passes via bounce.<domain>, DKIM via <domain>.
         value = "v=DMARC1; p=${var.dmarc_policy}; pct=100"
       },

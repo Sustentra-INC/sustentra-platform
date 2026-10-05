@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
-from backend.app.domain.evidence import ApprovedEvidence, ApprovedEvidenceField
+from backend.app.domain.evidence import ApprovedEvidence, ApprovedEvidenceField, ApprovedEvidenceReviewStatus
 from backend.app.repositories.evidence_repository import (
     JsonlApprovedEvidenceRepository,
 )
@@ -246,6 +246,7 @@ class ApprovedEvidenceService:
         field_count = len(latest_decisions)
         approved_field_count = len(approved_fields)
 
+        review_status: ApprovedEvidenceReviewStatus
         if not latest_decisions:
             review_status = "in_review"
         elif approved_field_count == 0:

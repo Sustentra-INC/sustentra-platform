@@ -3,13 +3,30 @@
 from collections.abc import Iterator
 
 import pytest
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from backend.app.core.config import Settings, normalize_origin
-from backend.app.core.rate_limit import limiter
+from backend.app.core.rate_limit import auth_rate_limit, limiter
 from backend.app.main import APP_TITLE, create_app
 
 ORIGIN = "https://app.sustentra.test"
+# Test-only endpoint inside /api/v1/auth/* (shares the auth rate-limit bucket) so these
+# middleware tests don't need a database now that /login is real (AUTH-005).
+PROBE = "/api/v1/auth/_probe"
+
+
+@auth_rate_limit
+async def _probe(request: Request) -> JSONResponse:
+    return JSONResponse({"ok": True})
+
+
+def _with_probe(app: FastAPI) -> FastAPI:
+    # Decorated ONCE at import: slowapi registers limits per function name, so
+    # re-decorating inside each test would stack one extra hit per test on the bucket.
+    app.add_api_route(PROBE, _probe, methods=["POST"])
+    return app
 GOOD = {"Origin": ORIGIN, "Content-Type": "application/json"}
 
 
@@ -28,7 +45,7 @@ def reset_rate_limits() -> Iterator[None]:
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(create_app(_settings()))
+    return TestClient(_with_probe(create_app(_settings())))
 
 
 # --- /health -------------------------------------------------------------------
@@ -47,27 +64,27 @@ def test_app_title_unchanged(client: TestClient) -> None:
 # --- Origin / Referer check ----------------------------------------------------------
 
 def test_foreign_origin_is_rejected(client: TestClient) -> None:
-    response = client.post("/api/v1/auth/login", json={}, headers={"Origin": "https://evil.example"})
+    response = client.post(PROBE, json={}, headers={"Origin": "https://evil.example"})
     assert response.status_code == 403
     assert response.json() == {"detail": "Forbidden origin"}
 
 
 def test_missing_origin_and_referer_is_rejected(client: TestClient) -> None:
-    assert client.post("/api/v1/auth/login", json={}).status_code == 403
+    assert client.post(PROBE, json={}).status_code == 403
 
 
 def test_allowed_origin_passes(client: TestClient) -> None:
-    assert client.post("/api/v1/auth/login", json={}, headers=GOOD).status_code == 501
+    assert client.post(PROBE, json={}, headers=GOOD).status_code == 200
 
 
 def test_allowed_referer_passes_when_no_origin(client: TestClient) -> None:
     headers = {"Referer": f"{ORIGIN}/org/acme/login", "Content-Type": "application/json"}
-    assert client.post("/api/v1/auth/login", json={}, headers=headers).status_code == 501
+    assert client.post(PROBE, json={}, headers=headers).status_code == 200
 
 
 def test_foreign_referer_is_rejected(client: TestClient) -> None:
     headers = {"Referer": "https://evil.example/x", "Content-Type": "application/json"}
-    assert client.post("/api/v1/auth/login", json={}, headers=headers).status_code == 403
+    assert client.post(PROBE, json={}, headers=headers).status_code == 403
 
 
 def test_safe_methods_skip_origin_check(client: TestClient) -> None:
@@ -78,22 +95,22 @@ def test_safe_methods_skip_origin_check(client: TestClient) -> None:
 
 def test_form_body_is_rejected_with_415(client: TestClient) -> None:
     response = client.post(
-        "/api/v1/auth/login", data={"email": "a@b.c"}, headers={"Origin": ORIGIN}
+        PROBE, data={"email": "a@b.c"}, headers={"Origin": ORIGIN}
     )
     assert response.status_code == 415
 
 
 def test_json_body_is_accepted(client: TestClient) -> None:
-    response = client.post("/api/v1/auth/login", json={"email": "a@b.c"}, headers={"Origin": ORIGIN})
-    assert response.status_code == 501
+    response = client.post(PROBE, json={"email": "a@b.c"}, headers={"Origin": ORIGIN})
+    assert response.status_code == 200
 
 
 # --- rate limit ------------------------------------------------------------------
 
 def test_101st_auth_request_in_window_returns_429(client: TestClient) -> None:
     for _ in range(100):
-        assert client.post("/api/v1/auth/login", json={}, headers=GOOD).status_code == 501
-    response = client.post("/api/v1/auth/login", json={}, headers=GOOD)
+        assert client.post(PROBE, json={}, headers=GOOD).status_code == 200
+    response = client.post(PROBE, json={}, headers=GOOD)
     assert response.status_code == 429
     assert "Retry-After" in response.headers
 

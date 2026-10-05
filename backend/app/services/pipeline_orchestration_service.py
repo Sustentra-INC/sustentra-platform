@@ -3,10 +3,16 @@ from __future__ import annotations
 import copy
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 from uuid import uuid4
 
-from backend.app.domain.pipeline import PipelineRun, PipelineStageStatuses
+from backend.app.domain.pipeline import (
+    CanonicalTypeSource,
+    PipelineRun,
+    PipelineStageStatus,
+    PipelineStageStatuses,
+    PipelineStatus,
+)
 from backend.app.repositories.pipeline_repository import JsonlPipelineRunRepository
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
 from backend.app.services.classification_service import ClassificationService
@@ -336,7 +342,7 @@ class PipelineOrchestrationService:
         }
 
     @staticmethod
-    def _parser_stage_status(parser_status: str | None) -> str:
+    def _parser_stage_status(parser_status: str | None) -> PipelineStageStatus:
         if parser_status == "parsed":
             return "completed"
         if parser_status in {"partial", "empty"}:
@@ -346,7 +352,7 @@ class PipelineOrchestrationService:
         return "partial"
 
     @staticmethod
-    def _classification_stage_status(classification_status: str | None) -> str:
+    def _classification_stage_status(classification_status: str | None) -> PipelineStageStatus:
         if classification_status in {"classified", "multi_type_candidate", "low_confidence"}:
             return "completed"
         if classification_status in {"unclassified", None, ""}:
@@ -402,11 +408,11 @@ class PipelineOrchestrationService:
             evidence_id=evidence_id,
             document_id=document_id,
             processing_run_id=processing_run_id,
-            status=status,
+            status=cast(PipelineStatus, status),
             stage_statuses=PipelineStageStatuses(**stage_statuses.model_dump()),
             input_file_name=input_file_name,
             canonical_type_id=canonical_type_id,
-            canonical_type_source=canonical_type_source,
+            canonical_type_source=cast(CanonicalTypeSource, canonical_type_source),
             classification_status=classification_status,
             parser_status=parser_status,
             target_count=len(extraction_targets),
@@ -445,7 +451,7 @@ class PipelineOrchestrationService:
             return False
         confidence = candidate.get("confidence")
         try:
-            value = float(confidence)
+            value = float(confidence)  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return True
         return value < LOW_CONFIDENCE_THRESHOLD

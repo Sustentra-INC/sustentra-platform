@@ -162,18 +162,24 @@ export function AssistantWidget({ page }: { page?: NavKey }) {
   const [input, setInput] = useState("");
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  // Brief the current page whenever the panel opens.
-  useEffect(() => {
-    if (!open) return;
-    const brief = page ? PAGE_BRIEF[page] : undefined;
-    const intro: Msg = {
-      role: "assistant",
-      text: brief
-        ? `${brief.title}\n\n${brief.points.map((p) => `• ${p}`).join("\n")}\n\nAsk me anything about these numbers.`
-        : "Hi — I'm the Sustentra assistant. Ask me about the numbers, the methodology, or the workflow on any screen.",
-    };
-    setMessages([intro]);
-  }, [open, page]);
+  // Brief the current page whenever the panel opens (or the page changes while
+  // open). Adjusting state during render on a key change, instead of in an
+  // effect, avoids a cascading re-render (react-hooks/set-state-in-effect).
+  const briefKey = open ? `open|${page ?? ""}` : "closed";
+  const [shownBriefKey, setShownBriefKey] = useState(briefKey);
+  if (briefKey !== shownBriefKey) {
+    setShownBriefKey(briefKey);
+    if (open) {
+      const brief = page ? PAGE_BRIEF[page] : undefined;
+      const intro: Msg = {
+        role: "assistant",
+        text: brief
+          ? `${brief.title}\n\n${brief.points.map((p) => `• ${p}`).join("\n")}\n\nAsk me anything about these numbers.`
+          : "Hi — I'm the Sustentra assistant. Ask me about the numbers, the methodology, or the workflow on any screen.",
+      };
+      setMessages([intro]);
+    }
+  }
 
   useEffect(() => {
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight });
