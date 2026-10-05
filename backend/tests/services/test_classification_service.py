@@ -311,3 +311,12 @@ def test_classify_method_returns_dict(tmp_path: Path) -> None:
 
     assert hasattr(service, "classify")
     assert isinstance(result, dict)
+
+
+def test_glob_filename_patterns_match_the_file_name(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service._get_vocabulary_library()  # noqa: SLF001 - warm the cache
+    assert service._matched_filename_patterns(("*gas*bill*",), "Jan Gas-Bill 2024.pdf", "") == ["*gas*bill*"]  # noqa: SLF001
+    assert service._matched_filename_patterns(("*gas*bill*",), "scan_0012.pdf", "gas bill") == []  # noqa: SLF001
+    # plain (non-glob) terms keep substring semantics over the whole search text
+    assert service._matched_filename_patterns(("gas bill",), "x.pdf", "january gas bill") == ["gas bill"]  # noqa: SLF001

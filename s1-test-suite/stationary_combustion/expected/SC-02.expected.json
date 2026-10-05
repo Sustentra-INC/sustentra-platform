@@ -1,0 +1,35 @@
+{
+  "document_id": "SC-02",
+  "file": "SC-02_piedmont_ridge_multi_meter_ccf.pdf",
+  "description": "Natural gas bill, two meters with different read dates, usage in CCF; one record per meter; total row ignored.",
+  "expected_classification": "CT-S1-FUELQTY",
+  "expected_halt": null,
+  "document_fields": {
+    "facility_name": "Ridgeview Medical Office Park",
+    "service_address": "1800 Ridgeview Parkway, Greenville, SC 29607",
+    "supplier_name": "PIEDMONT RIDGE NATURAL GAS",
+    "account_number": "PRN-0098-221"
+  },
+  "records": [
+    {
+      "record_hint": "PR-A1173",
+      "activity_quantity": 1383,
+      "raw_quantity": "1,383",
+      "service_period_start": "2024-01-29",
+      "service_period_end": "2024-02-27",
+      "fuel_type": "natural_gas",
+      "activity_unit": "ccf",
+      "raw_unit": "ccf"
+    },
+    {
+      "record_hint": "PR-A1174",
+      "activity_quantity": 748,
+      "raw_quantity": "748",
+      "service_period_start": "2024-01-30",
+      "service_period_end": "2024-02-28",
+      "fuel_type": "natural_gas",
+      "activity_unit": "ccf",
+      "raw_unit": "ccf"
+    }
+  ]
+}

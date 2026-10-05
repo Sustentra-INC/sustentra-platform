@@ -80,6 +80,13 @@
       "items": {
         "type": "string"
       }
+    },
+    "record_key": {
+      "description": "Optional. Record this reference belongs to when one document yields several records (e.g. one per meter and service period); approved evidence and methodology values group by it.",
+      "type": [
+        "string",
+        "null"
+      ]
     }
   }
 }

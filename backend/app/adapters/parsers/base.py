@@ -77,6 +77,27 @@ def build_source_reference(
     }
 
 
+def to_reference_box(bounding_box: dict[str, Any] | None) -> dict[str, float] | None:
+    """Convert a parser_output box ``{left, top, width, height}`` to the
+    source_reference shape ``{x, y, width, height}`` (both normalized 0-1)."""
+
+    if not bounding_box:
+        return None
+    left = bounding_box.get("left", bounding_box.get("x"))
+    top = bounding_box.get("top", bounding_box.get("y"))
+    if left is None or top is None:
+        return None
+    try:
+        return {
+            "x": float(left),
+            "y": float(top),
+            "width": float(bounding_box["width"]),
+            "height": float(bounding_box["height"]),
+        }
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
 def build_text_block(
     block_id: str,
     text: str,

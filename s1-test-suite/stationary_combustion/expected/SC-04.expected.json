@@ -1,0 +1,25 @@
+{
+  "document_id": "SC-04",
+  "file": "SC-04_northfield_heating_oil_ticket.pdf",
+  "description": "Heating oil delivery ticket; quantity in gallons; delivery date is both period start and end.",
+  "expected_classification": "CT-S1-FUELQTY",
+  "expected_halt": null,
+  "document_fields": {
+    "facility_name": "St. Brendan Parish School",
+    "service_address": "45 Chapel Hill Rd, Northfield, MA 01360",
+    "supplier_name": "Northfield Fuel & Heating Oil Co.",
+    "account_number": "NF-1182"
+  },
+  "records": [
+    {
+      "record_hint": "T-1",
+      "fuel_type": "fuel_oil",
+      "activity_quantity": 742.6,
+      "activity_unit": "gal",
+      "raw_quantity": "742.6",
+      "raw_unit": "gal",
+      "service_period_start": "2023-12-14",
+      "service_period_end": "2023-12-14"
+    }
+  ]
+}

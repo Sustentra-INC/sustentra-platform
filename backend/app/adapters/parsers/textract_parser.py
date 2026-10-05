@@ -23,6 +23,7 @@ from backend.app.adapters.parsers.base import (
     build_text_block,
     build_warning,
     snippet,
+    to_reference_box,
 )
 
 PARSER_NAME = "textract"
@@ -83,12 +84,14 @@ class TextractParser:
             pages[page_number] = (pages[page_number] + "\n" + text).strip() if pages[page_number] else text
 
             source_reference_id = f"SRC-{self.parser_name}-{block_id}"
+            bounding_box = self._bounding_box(block)
             source_references.append(
                 build_source_reference(
                     source_reference_id,
                     document_id,
                     page_number=page_number,
                     text_snippet=snippet(text),
+                    bounding_box=to_reference_box(bounding_box),
                     parser_block_ids=[block_id],
                     source_kind="page_text",
                 )
@@ -99,6 +102,7 @@ class TextractParser:
                     text,
                     page_number=page_number,
                     confidence=self._normalize_confidence(block.get("Confidence")),
+                    bounding_box=bounding_box,
                     source_reference_id=source_reference_id,
                 )
             )
@@ -270,3 +274,18 @@ class TextractParser:
                 }
             )
         return tables
+
+    @staticmethod
+    def _bounding_box(block: dict) -> dict[str, float] | None:
+        """Textract ``Geometry.BoundingBox`` (already normalized 0-1) as a parser box."""
+
+        box = (block.get("Geometry") or {}).get("BoundingBox") or {}
+        try:
+            return {
+                "left": max(0.0, float(box["Left"])),
+                "top": max(0.0, float(box["Top"])),
+                "width": max(0.0, float(box["Width"])),
+                "height": max(0.0, float(box["Height"])),
+            }
+        except (KeyError, TypeError, ValueError):
+            return None

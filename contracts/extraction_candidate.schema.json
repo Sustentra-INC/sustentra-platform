@@ -73,6 +73,21 @@
       "items": {
         "type": "string"
       }
+    },
+    "record_key": {
+      "description": "Optional. Identifies the record this candidate belongs to when one document yields several records (e.g. one per meter and service period on a multi-meter bill). Null for single-record documents.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "record_index": {
+      "description": "Optional. 1-based position of the record within the document when it yields several records; null for single-record documents.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1
     }
   }
 }

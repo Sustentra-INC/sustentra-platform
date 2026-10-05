@@ -1,0 +1,25 @@
+{
+  "document_id": "SC-01",
+  "file": "SC-01_lakeshore_gas_single_meter_therms.pdf",
+  "description": "Natural gas bill, one meter, usage in therms (converted to MMBtu); labels and values in separate columns.",
+  "expected_classification": "CT-S1-FUELQTY",
+  "expected_halt": null,
+  "document_fields": {
+    "facility_name": "Harborview Cold Storage LLC",
+    "service_address": "210 Dock Street, Erie, PA 16507",
+    "supplier_name": "Lakeshore Gas Company",
+    "account_number": "4410-77812-03"
+  },
+  "records": [
+    {
+      "record_hint": "LG-5503318",
+      "fuel_type": "natural_gas",
+      "activity_quantity": 128.4,
+      "activity_unit": "MMBtu",
+      "raw_quantity": "1,284",
+      "raw_unit": "therm",
+      "service_period_start": "2024-01-03",
+      "service_period_end": "2024-02-01"
+    }
+  ]
+}

@@ -12,7 +12,7 @@ PipelineStageStatus = Literal[
     "partial",
     "failed",
 ]
-CanonicalTypeSource = Literal["classifier", "override", "none"]
+CanonicalTypeSource = Literal["classifier", "content_check", "override", "none"]
 
 
 class PipelineStageStatuses(BaseModel):
@@ -20,6 +20,13 @@ class PipelineStageStatuses(BaseModel):
     classify: PipelineStageStatus = "not_started"
     target_plan: PipelineStageStatus = "not_started"
     candidate_generation: PipelineStageStatus = "not_started"
+
+
+class HaltReason(BaseModel):
+    """Why the pipeline stopped before producing reviewable candidates."""
+
+    code: str  # unreadable_document | unsupported_document
+    message: str
 
 
 class PipelineRun(BaseModel):
@@ -42,6 +49,7 @@ class PipelineRun(BaseModel):
     low_confidence_candidate_count: int = Field(default=0, ge=0)
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+    halt_reason: HaltReason | None = None
     created_at: str
     completed_at: str | None = None
     artifacts: dict[str, str | None] = Field(default_factory=dict)
