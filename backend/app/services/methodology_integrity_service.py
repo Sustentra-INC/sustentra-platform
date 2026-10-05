@@ -60,6 +60,7 @@ class MethodologyIntegrityService:
         summary = self._summary(bundle, findings)
         error_count = sum(1 for finding in findings if finding.severity == "error")
         warning_count = sum(1 for finding in findings if finding.severity == "warning")
+        status: Literal["passed", "passed_with_warnings", "failed"]
         if error_count:
             status = "failed"
         elif warning_count:

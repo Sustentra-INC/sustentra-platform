@@ -232,10 +232,11 @@ export function EvidenceWorkspace({
   function addNote(documentId: string) {
     const text = noteDraft.trim();
     if (!text) return;
+    const now = new Date();
     const entry: NoteEntry = {
-      id: `n-${documentId}-${Date.now()}`,
+      id: `n-${documentId}-${now.getTime()}`,
       author: raisedByDefault(engagement).name,
-      at: new Date().toISOString(),
+      at: now.toISOString(),
       text,
     };
     onEvidenceChange((cur) =>

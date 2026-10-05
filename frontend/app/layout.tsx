@@ -1,3 +1,4 @@
+import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
 
 import "../features/s1/styles/sustentra-tokens.css";
@@ -10,6 +11,18 @@ import "../features/s1/styles/s1-workpaper.css";
  * workpaper styles. The Sustentra-internal admin pages (login / clients / users
  * / account) add their own `AppShell` via the `(admin)` route group layout.
  */
+// Favicon / app icons come from the Next.js file conventions in this folder:
+// favicon.ico, icon.png and apple-icon.png (generated from public/sustentra-mark.png).
+export const metadata: Metadata = {
+  title: { default: "Sustentra", template: "%s · Sustentra" },
+  description: "Sustentra: evidence-backed sustainability assurance workpapers.",
+  applicationName: "Sustentra",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2b2b77", // logo navy
+};
+
 interface RootLayoutProps {
   children: ReactNode;
 }

@@ -7,7 +7,7 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, staging]
 
 permissions:
   contents: read
@@ -35,6 +35,8 @@ jobs:
       APP_DATABASE_URL: postgresql://app_user:ci-app-password@localhost:5432/sustentra
       TEST_DATABASE_URL: postgresql://sustentra_admin:ci-admin-password@localhost:5432/sustentra
       TEST_APP_DATABASE_URL: postgresql://app_user:ci-app-password@localhost:5432/sustentra
+      # Test-only HMAC key for login OTP codes (prod reads /prod/otp_hmac_secret from SSM).
+      OTP_HMAC_SECRET: ci-only-otp-hmac-secret-not-used-anywhere-else
     steps:
       - uses: actions/checkout@v4
 

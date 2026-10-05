@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from typing import Any, Callable, cast
 from uuid import uuid4
 
 from backend.app.domain.identity import (
@@ -451,7 +451,7 @@ class IdentityService:
         if record.get("mfa_enabled"):
             secret = record.get("mfa_secret")
             recovery_ok = self._match_recovery_code(record, code)
-            totp_ok = bool(secret) and verify_totp(secret, code, at=self._totp_now())
+            totp_ok = isinstance(secret, str) and bool(secret) and verify_totp(secret, code, at=self._totp_now())
             if not totp_ok and not recovery_ok:
                 raise IdentityError("Invalid MFA code.", 401)
         record["mfa_enabled"] = False
@@ -588,7 +588,7 @@ class IdentityService:
         record["status"] = "deleted"
         record["updated_at"] = self._stamp()
         record["updated_by"] = actor["actor_id"]
-        saved = self._repository.clients.save(record)
+        self._repository.clients.save(record)
         for client_user in self._repository.client_users.list_active("client_user_id"):
             if client_user.get("client_id") == client_id:
                 client_user["status"] = "deleted"
@@ -653,9 +653,9 @@ class IdentityService:
         self.get_client(client_id, actor)
         if actor.get("actor_type") == "client_user":
             own = self._repository.client_users.get_by_id("client_user_id", actor["actor_id"])
-            return [public_record(own)] if own else []
+            return [cast(dict[str, Any], public_record(own))] if own else []
         return [
-            public_record(record)
+            cast(dict[str, Any], public_record(record))
             for record in self._repository.client_users.list_active("client_user_id")
             if record.get("client_id") == client_id
         ]
@@ -832,10 +832,12 @@ class IdentityService:
             if session["session_id"] in seen:
                 continue
             seen.add(session["session_id"])
-            latest = self._repository.sessions.find_latest(
-                lambda record, session_id=session["session_id"]: record.get("session_id") == session_id,
-                include_deleted=True,
-            )
+            session_id: str = session["session_id"]
+
+            def _same_session(record: dict[str, Any], session_id: str = session_id) -> bool:
+                return record.get("session_id") == session_id
+
+            latest = self._repository.sessions.find_latest(_same_session, include_deleted=True)
             if latest and not latest.get("revoked_at"):
                 latest["revoked_at"] = now
                 self._repository.sessions.save(latest)
