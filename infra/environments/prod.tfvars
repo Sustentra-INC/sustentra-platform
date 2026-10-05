@@ -9,7 +9,7 @@ route53_zone_id = "" # empty: DNS is managed in Cloudflare, not Route 53
 
 # MVP-4 - SES. Sends as no-reply@<app_domain>; DNS records come from
 # `terraform output ses_dns_records` and are added in Cloudflare by hand.
-alert_emails           = ["dev.sustentra@gmail.com"] # e.g. ["ops@sustentra.com"] - receives bounce/complaint/alarm emails
+alert_emails           = ["dev.sustentra@gmail.com"]  # e.g. ["ops@sustentra.com"] - receives bounce/complaint/alarm emails
 ses_sandbox_recipients = ["jhermogenes101@gmail.com"] # developer inboxes to verify while SES is in the sandbox
 
 # Live instance is db.t3.micro (db.t4g.micro had no capacity at creation)
