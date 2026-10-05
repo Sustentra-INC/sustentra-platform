@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from backend.app.services.extraction_candidate_service import ExtractionCandidateService
 from backend.app.services.extraction_target_service import ExtractionTargetService
+from backend.app.services.stationary_combustion_extractor import StationaryCombustionExtractor
 
 
 class ExtractionService:
@@ -11,9 +12,11 @@ class ExtractionService:
         self,
         target_service: ExtractionTargetService | None = None,
         candidate_service: ExtractionCandidateService | None = None,
+        stationary_extractor: StationaryCombustionExtractor | None = None,
     ) -> None:
         self._target_service = target_service
         self._candidate_service = candidate_service or ExtractionCandidateService()
+        self._stationary_extractor = stationary_extractor or StationaryCombustionExtractor()
 
     def extract(self, payload: dict) -> dict:
         """Generate extraction candidates from parser_output + targets (PR6).
@@ -33,6 +36,20 @@ class ExtractionService:
         parser_output = payload["parser_output"]
         extraction_targets = payload["extraction_targets"]
         evidence_id = str(payload.get("evidence_id") or "evidence-unknown")
+
+        if self._stationary_extractor.handles(extraction_targets):
+            # EXT-001: CT-S1-FUELQTY has a layout-aware extractor (records, units, halts).
+            outcome = self._stationary_extractor.extract(parser_output, extraction_targets, evidence_id)
+            result = {
+                "evidence_id": evidence_id,
+                "document_id": parser_output.get("document_id"),
+                "candidate_count": len(outcome.candidates),
+                "items": outcome.candidates,
+                "record_count": outcome.records,
+            }
+            if outcome.halt_reason is not None:
+                result["halt_reason"] = outcome.halt_reason
+            return result
 
         candidates = self._candidate_service.generate_candidates(
             parser_output=parser_output,

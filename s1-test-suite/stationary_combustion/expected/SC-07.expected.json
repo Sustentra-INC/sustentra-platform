@@ -1,0 +1,25 @@
+{
+  "document_id": "SC-07",
+  "file": "SC-07_cascade_valley_mcf_label_value.pdf",
+  "description": "Industrial gas bill with label: value lines only (no table), separate period start/end labels, usage in Mcf; the daily average must not be picked.",
+  "expected_classification": "CT-S1-FUELQTY",
+  "expected_halt": null,
+  "document_fields": {
+    "facility_name": "Riverbend Paper Mill",
+    "service_address": "3 Mill Race Road, Longview, WA 98632",
+    "supplier_name": "Cascade Valley Gas Utilities",
+    "account_number": "CVG 22-81003-7"
+  },
+  "records": [
+    {
+      "record_hint": null,
+      "fuel_type": "natural_gas",
+      "activity_quantity": 18442.7,
+      "activity_unit": "Mcf",
+      "raw_quantity": "18,442.7",
+      "raw_unit": "Mcf",
+      "service_period_start": "2024-06-01",
+      "service_period_end": "2024-06-30"
+    }
+  ]
+}

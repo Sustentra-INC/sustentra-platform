@@ -103,7 +103,7 @@
     "canonical_type_id": "CT-S1-FUELQTY",
     "value_type": "quantity",
     "required_status": "core",
-    "expected_units": ["MMBtu", "therm", "ccf", "gallon", "liter"],
+    "expected_units": ["MMBtu", "therm", "Dth", "kWh", "MWh", "GJ", "scf", "ccf", "Mcf", "MMcf", "m3", "gal", "L", "bbl", "lb", "kg", "short_ton", "metric_ton"],
     "source_reference_required": true,
     "anchor_labels": ["Total Usage", "Gas Used", "Usage", "Quantity", "Consumption"],
     "value_patterns": ["\\d[\\d,]*(?:\\.\\d+)?"],
@@ -122,7 +122,7 @@
       "remove_thousands_separators": true
     },
     "regulatory_field_id": null,
-    "notes": "Seed-only provisional configuration.",
+    "notes": "Seed-only provisional configuration. EXT-001: energy units normalize to MMBtu; gas volume, liquid volume and mass keep their canonical unit (HHV conversion is a calculation step, S1-STC-020). Units: backend/app/domain/fuel_units.py.",
     "population_status": "provisional",
     "version": "v0.1",
     "last_reviewed": null
@@ -135,7 +135,7 @@
     "canonical_type_id": "CT-S1-FUELQTY",
     "value_type": "string",
     "required_status": "core",
-    "expected_units": ["MMBtu", "therm", "ccf", "gallon", "liter"],
+    "expected_units": ["MMBtu", "therm", "Dth", "kWh", "MWh", "GJ", "scf", "ccf", "Mcf", "MMcf", "m3", "gal", "L", "bbl", "lb", "kg", "short_ton", "metric_ton"],
     "source_reference_required": true,
     "anchor_labels": ["Unit", "Units", "UOM"],
     "value_patterns": [],
@@ -148,13 +148,13 @@
       "target_unit": "MMBtu",
       "date_format": null,
       "number_format": null,
-      "allowed_values": ["MMBtu", "therm", "ccf", "gallon", "liter"],
+      "allowed_values": ["MMBtu", "therm", "Dth", "kWh", "MWh", "GJ", "scf", "ccf", "Mcf", "MMcf", "m3", "gal", "L", "bbl", "lb", "kg", "short_ton", "metric_ton"],
       "unit_conversion_allowed": false,
       "trim_whitespace": true,
       "remove_thousands_separators": false
     },
     "regulatory_field_id": null,
-    "notes": "Seed-only provisional configuration.",
+    "notes": "Seed-only provisional configuration. EXT-001: allowed values are the canonical units in backend/app/domain/fuel_units.py (to confirm against the Scope 1 schema).",
     "population_status": "provisional",
     "version": "v0.1",
     "last_reviewed": null

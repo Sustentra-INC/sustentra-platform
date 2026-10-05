@@ -391,3 +391,29 @@ def test_project_by_evidence_without_reviews_returns_in_review_aggregate():
     assert result["field_count"] == 0
     assert result["approved_field_count"] == 0
     assert result["fields"] == []
+
+
+def test_multi_record_documents_keep_one_decision_per_field_and_record():
+    """EXT-001: a two-meter bill must keep both meters' quantities once approved."""
+
+    def decision(review_id: str, record_key: str, value: int, reviewed_at: str) -> dict:
+        item = _review_decision(review_id, "activity_quantity", reviewed_value=value, reviewed_unit="ccf",
+                                reviewed_at=reviewed_at)
+        item["candidate_id"] += f"::{record_key}"
+        item["source_reference"]["record_key"] = record_key
+        return item
+
+    service = _make_service()
+    result = service.project_from_review_decisions(
+        [
+            decision("review-1", "r1:PR-A1173", 1383, "2026-01-01T00:00:00+00:00"),
+            decision("review-2", "r2:PR-A1174", 748, "2026-01-01T00:00:00+00:00"),
+            decision("review-3", "r1:PR-A1173", 1384, "2026-01-02T00:00:00+00:00"),  # re-review of meter 1
+        ],
+        engagement_id="ENG-1",
+        evidence_type="CT-S1-FUELQTY",
+    )
+
+    values = sorted(field["approved_value"] for field in result["fields"])
+    assert values == [748, 1384]
+    assert result["field_count"] == 2

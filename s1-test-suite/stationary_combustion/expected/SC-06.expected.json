@@ -1,0 +1,47 @@
+{
+  "document_id": "SC-06",
+  "file": "SC-06_summit_bulk_diesel_statement.pdf",
+  "description": "Monthly bulk diesel statement for standby generators; three deliveries become three records; the total row is not a record. Diesel can be stationary or mobile, and the classifier leans mobile here, so the pipeline must halt until a reviewer sets the type.",
+  "expected_classification": "CT-S1-FUELQTY",
+  "expected_halt": null,
+  "reviewer_override": "CT-S1-FUELQTY",
+  "expected_halt_without_override": "unsupported_document",
+  "document_fields": {
+    "facility_name": "Standby Generator Plant",
+    "service_address": "77 Weir Lane, Lodi, CA 95240",
+    "supplier_name": "Summit Bulk Fuels",
+    "account_number": "SBF-2290"
+  },
+  "records": [
+    {
+      "record_hint": "88120",
+      "activity_quantity": 1200.0,
+      "raw_quantity": "1,200.0",
+      "service_period_start": "2024-05-03",
+      "service_period_end": "2024-05-03",
+      "fuel_type": "diesel",
+      "activity_unit": "gal",
+      "raw_unit": "gal"
+    },
+    {
+      "record_hint": "88341",
+      "activity_quantity": 950.5,
+      "raw_quantity": "950.5",
+      "service_period_start": "2024-05-17",
+      "service_period_end": "2024-05-17",
+      "fuel_type": "diesel",
+      "activity_unit": "gal",
+      "raw_unit": "gal"
+    },
+    {
+      "record_hint": "88577",
+      "activity_quantity": 1104.2,
+      "raw_quantity": "1,104.2",
+      "service_period_start": "2024-05-29",
+      "service_period_end": "2024-05-29",
+      "fuel_type": "diesel",
+      "activity_unit": "gal",
+      "raw_unit": "gal"
+    }
+  ]
+}

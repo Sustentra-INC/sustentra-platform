@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import fnmatch
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -64,7 +66,9 @@ class ClassificationService:
         try:
             vocabulary_library = self._get_vocabulary_library()
             search_text = self._build_search_text(payload)
-            scored_candidates = self._score_candidates(vocabulary_library, search_text)
+            raw_file_name = payload.get("file_name")
+            file_name = raw_file_name if isinstance(raw_file_name, str) else ""
+            scored_candidates = self._score_candidates(vocabulary_library, search_text, file_name)
 
             if not scored_candidates:
                 base_result["status"] = "unclassified"
@@ -145,12 +149,17 @@ class ClassificationService:
 
         return self._vocabulary_library
 
-    def _score_candidates(self, vocabulary_library: VocabularyLibrary, search_text: str) -> list[dict[str, Any]]:
+    def _score_candidates(
+        self,
+        vocabulary_library: VocabularyLibrary,
+        search_text: str,
+        file_name: str = "",
+    ) -> list[dict[str, Any]]:
         candidates: list[dict[str, Any]] = []
 
         for variant in vocabulary_library.variants:
             matched_signals = {
-                "filename_patterns": self._matched_terms(variant.filename_patterns, search_text),
+                "filename_patterns": self._matched_filename_patterns(variant.filename_patterns, file_name, search_text),
                 "layout_features": self._matched_terms(variant.layout_features, search_text),
                 "header_terms": self._matched_terms(variant.header_terms, search_text),
                 "key_phrases": self._matched_terms(variant.key_phrases, search_text),
@@ -254,6 +263,26 @@ class ClassificationService:
                 continue
             if normalized_term in search_text:
                 matched.append(term)
+        return matched
+
+    def _matched_filename_patterns(self, patterns: tuple[str, ...], file_name: str, search_text: str) -> list[str]:
+        """Vocabulary filename patterns are globs (``*gas*bill*``); plain terms are substrings.
+
+        Globs are matched against the file name only, with spaces/dashes treated as
+        underscores so "Gas Bill - Jan.pdf" matches ``*gas*bill*``.
+        """
+
+        normalized_name = re.sub(r"[\s\-.]+", "_", file_name.strip().lower())
+        matched: list[str] = []
+        for pattern in patterns:
+            term = pattern.strip().lower()
+            if not term:
+                continue
+            if any(ch in term for ch in "*?["):
+                if normalized_name and fnmatch.fnmatchcase(normalized_name, re.sub(r"[\s\-]+", "_", term)):
+                    matched.append(pattern)
+            elif term in search_text:
+                matched.append(pattern)
         return matched
 
     def _compute_confidence(self, matched_signals: dict[str, list[str]]) -> float:

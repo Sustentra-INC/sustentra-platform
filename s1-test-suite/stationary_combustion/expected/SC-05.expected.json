@@ -1,0 +1,25 @@
+{
+  "document_id": "SC-05",
+  "file": "SC-05_boreal_propane_invoice_liters.pdf",
+  "description": "Propane invoice in litres with ISO dates and a non-fuel line item (tank rental) that must be ignored.",
+  "expected_classification": "CT-S1-FUELQTY",
+  "expected_halt": null,
+  "document_fields": {
+    "facility_name": "Cedar Lake Lodge",
+    "service_address": "12 Shoreline Road, Huntsville, ON P1H 2J4",
+    "supplier_name": "Boreal Propane Ltd.",
+    "account_number": "BP-60417"
+  },
+  "records": [
+    {
+      "record_hint": null,
+      "fuel_type": "propane",
+      "activity_quantity": 1915.3,
+      "activity_unit": "L",
+      "raw_quantity": "1,915.3",
+      "raw_unit": "L",
+      "service_period_start": "2024-01-19",
+      "service_period_end": "2024-01-19"
+    }
+  ]
+}

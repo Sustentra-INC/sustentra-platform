@@ -19,7 +19,12 @@ ALLOWED_CANDIDATE_KEYS = {
 }
 
 
-def _config(field_id, canonical_type_id="CT-S1-FUELQTY", methods=("anchor_text",)):
+# Generic-path tests use a neutral type: CT-S1-FUELQTY routes to the EXT-001 extractor
+# (covered in test_stationary_combustion_extractor.py and the golden set).
+GENERIC_TYPE = "CT-TEST-GENERIC"
+
+
+def _config(field_id, canonical_type_id=GENERIC_TYPE, methods=("anchor_text",)):
     return ExtractionConfig(
         extraction_config_id=f"EC-{field_id}",
         field_id=field_id,
@@ -66,11 +71,11 @@ def _parser_output():
 
 def _target(field_id="facility_name"):
     return {
-        "target_id": f"target::CT-S1-FUELQTY::{field_id}",
+        "target_id": f"target::{GENERIC_TYPE}::{field_id}",
         "extraction_config_id": f"EC-{field_id}",
         "field_id": field_id,
         "field_label": "Facility name",
-        "canonical_type_id": "CT-S1-FUELQTY",
+        "canonical_type_id": GENERIC_TYPE,
         "value_type": "string",
         "required_status": "core",
         "expected_units": (),
@@ -127,7 +132,7 @@ def test_missing_payload_keys_raises():
 def test_plan_targets_still_delegates():
     target_service = ExtractionTargetService(configs=[_config("facility_name")])
     service = ExtractionService(target_service=target_service)
-    result = {"status": "classified", "primary_canonical_type_id": "CT-S1-FUELQTY"}
+    result = {"status": "classified", "primary_canonical_type_id": GENERIC_TYPE}
 
     targets = service.plan_targets(result)
     assert [t["field_id"] for t in targets] == ["facility_name"]
@@ -136,7 +141,7 @@ def test_plan_targets_still_delegates():
 def test_extract_for_classification_result_end_to_end():
     target_service = ExtractionTargetService(configs=[_config("facility_name")])
     service = ExtractionService(target_service=target_service)
-    classification_result = {"status": "classified", "primary_canonical_type_id": "CT-S1-FUELQTY"}
+    classification_result = {"status": "classified", "primary_canonical_type_id": GENERIC_TYPE}
 
     result = service.extract_for_classification_result(
         parser_output=_parser_output(),

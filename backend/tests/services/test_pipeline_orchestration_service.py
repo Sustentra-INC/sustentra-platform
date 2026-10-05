@@ -452,3 +452,148 @@ def test_service_does_not_mutate_stage_object_outputs(tmp_path):
     assert parser_output == parser_snapshot
     assert targets == target_snapshot
     assert extraction_result == extraction_snapshot
+
+
+# --- EXT-001: halt reasons and the stationary-combustion content check -------------------
+def _parser_output(text: str, status: str = "parsed") -> dict:
+    return {
+        "parser_output_id": "PO-1",
+        "document_id": "DOC-1",
+        "processing_run_id": "RUN-1",
+        "parser_name": "text",
+        "parser_version": "v0",
+        "status": status,
+        "created_at": "2026-01-01T00:00:00+00:00",
+        "pages": [{"page_number": 1, "text": text}] if text else [],
+        "text_blocks": [{"block_id": "b1", "page_number": 1, "text": text, "confidence": None,
+                         "bounding_box": None, "source_reference_id": None}] if text else [],
+        "tables": [],
+        "key_value_pairs": [],
+        "source_references": [],
+        "warnings": [] if text else [{"code": "empty_page_text", "message": "Page 1 had no extractable text.",
+                                      "severity": "warning"}],
+        "raw_artifact_uri": None,
+    }
+
+
+def _low_confidence(matches: list[tuple[str, float]]) -> dict:
+    return {
+        "status": "low_confidence",
+        "primary_canonical_type_id": matches[0][0],
+        "primary_variant_id": "VR-1",
+        "confidence": matches[0][1],
+        "threshold": 0.8,
+        "candidate_matches": [
+            {"canonical_type_id": ct, "variant_id": f"VR-{i}", "confidence": c, "threshold": 0.8}
+            for i, (ct, c) in enumerate(matches)
+        ],
+    }
+
+
+GAS_BILL_TEXT = "Lakeside Gas Co.\nFuel Type: Natural Gas\nTotal Usage: 1,240 therms\nService Period: 01/01/2024 - 01/31/2024\n"
+
+
+def test_empty_parser_output_halts_as_unreadable(tmp_path):
+    path = _write_temp_text_file(tmp_path)
+    service = _build_service(parser_service=FakeParserService(_parser_output("", status="empty")))
+    run = service.process_local_document(local_file_path=path, engagement_id="ENG-1", persist_run=False)["pipeline_run"]
+    assert run["status"] == "partial"
+    assert run["halt_reason"]["code"] == "unreadable_document"
+    assert "Page 1 had no extractable text" in run["halt_reason"]["message"]
+    assert run["stage_statuses"]["classify"] == "skipped"
+
+
+def test_parser_failure_halts_as_unreadable(tmp_path):
+    path = _write_temp_text_file(tmp_path)
+    service = _build_service(parser_service=FakeParserService(_parser_output("", status="failed")))
+    run = service.process_local_document(local_file_path=path, engagement_id="ENG-1", persist_run=False)["pipeline_run"]
+    assert run["status"] == "failed"
+    assert run["halt_reason"]["code"] == "unreadable_document"
+
+
+def test_unrecognized_document_halts_as_unsupported_with_best_match(tmp_path):
+    path = _write_temp_text_file(tmp_path)
+    service = _build_service(
+        parser_service=FakeParserService(_parser_output("Lease agreement between landlord and tenant")),
+        classification_service=FakeClassificationService(_low_confidence([("CT-LEASE", 0.31)])),
+    )
+    run = service.process_local_document(local_file_path=path, engagement_id="ENG-1", persist_run=False)["pipeline_run"]
+    assert run["halt_reason"]["code"] == "unsupported_document"
+    assert "CT-LEASE" in run["halt_reason"]["message"] and "0.31" in run["halt_reason"]["message"]
+
+
+def test_low_confidence_fuel_bill_is_accepted_by_content_check(tmp_path):
+    from backend.app.services.extraction_target_service import ExtractionTargetService
+
+    path = _write_temp_text_file(tmp_path)
+    service = _build_service(
+        parser_service=FakeParserService(_parser_output(GAS_BILL_TEXT)),
+        classification_service=FakeClassificationService(
+            _low_confidence([("CT-S2-ELEC", 0.77), ("CT-S1-FUELQTY", 0.77), ("CT-S1-MOBFUEL", 0.4)])),
+        target_service=ExtractionTargetService(),
+    )
+    output = service.process_local_document(local_file_path=path, engagement_id="ENG-1", persist_run=False)
+    run = output["pipeline_run"]
+    assert run["canonical_type_id"] == "CT-S1-FUELQTY"
+    assert run["canonical_type_source"] == "content_check"
+    assert run["halt_reason"] is None
+    quantity = next(c for c in output["extraction_result"]["items"] if c["field_name"] == "activity_quantity")
+    assert quantity["normalized_value"] == 124 and quantity["unit"] == "MMBtu"
+
+
+@pytest.mark.parametrize(
+    "matches",
+    [
+        [("CT-S1-FUELQTY", 0.62), ("CT-S1-MOBFUEL", 0.62)],  # stationary vs mobile undecidable
+        [("CT-S1-FUELQTY", 0.35)],  # below the content-check floor
+        [("CT-S1-MOBFUEL", 0.77), ("CT-S1-FUELQTY", 0.7)],  # mobile leads
+    ],
+)
+def test_content_check_does_not_override_ambiguous_or_weak_matches(tmp_path, matches):
+    path = _write_temp_text_file(tmp_path)
+    service = _build_service(
+        parser_service=FakeParserService(_parser_output(GAS_BILL_TEXT)),
+        classification_service=FakeClassificationService(_low_confidence(matches)),
+    )
+    run = service.process_local_document(local_file_path=path, engagement_id="ENG-1", persist_run=False)["pipeline_run"]
+    assert run["canonical_type_id"] is None
+    assert run["halt_reason"]["code"] == "unsupported_document"
+
+
+def test_content_check_needs_fuel_content(tmp_path):
+    path = _write_temp_text_file(tmp_path)
+    service = _build_service(
+        parser_service=FakeParserService(_parser_output("City Water\nTotal Usage: 118 CCF\n")),
+        classification_service=FakeClassificationService(_low_confidence([("CT-S1-FUELQTY", 0.77)])),
+    )
+    run = service.process_local_document(local_file_path=path, engagement_id="ENG-1", persist_run=False)["pipeline_run"]
+    assert run["canonical_type_id"] is None
+
+
+def test_extraction_halt_is_recorded(tmp_path):
+    path = _write_temp_text_file(tmp_path)
+    halted = {"evidence_id": "EV", "document_id": "DOC-1", "candidate_count": 0, "items": [],
+              "halt_reason": {"code": "unsupported_document", "message": "No combusted fuel."}}
+    service = _build_service(
+        parser_service=FakeParserService(_parser_output("Water bill")),
+        target_service=FakeTargetService([{"field_id": "activity_quantity"}]),
+        extraction_service=FakeExtractionService(halted),
+    )
+    run = service.process_local_document(
+        local_file_path=path, engagement_id="ENG-1", canonical_type_id_override="CT-S1-FUELQTY", persist_run=False,
+    )["pipeline_run"]
+    assert run["status"] == "partial"
+    assert run["stage_statuses"]["candidate_generation"] == "skipped"
+    assert run["halt_reason"] == {"code": "unsupported_document", "message": "No combusted fuel."}
+
+
+def test_content_check_does_not_override_a_leading_non_fuel_type(tmp_path):
+    path = _write_temp_text_file(tmp_path)
+    service = _build_service(
+        parser_service=FakeParserService(_parser_output(GAS_BILL_TEXT)),
+        classification_service=FakeClassificationService(
+            _low_confidence([("CT-S2-ELEC", 0.77), ("CT-S1-FUELQTY", 0.65)])),
+    )
+    run = service.process_local_document(local_file_path=path, engagement_id="ENG-1", persist_run=False)["pipeline_run"]
+    assert run["canonical_type_id"] is None
+    assert run["halt_reason"]["code"] == "unsupported_document"

@@ -17,7 +17,9 @@ export interface BackendExtractionCandidateLike {
     page_number?: number | null;
     sheet_name?: string | null;
     cell_or_range?: string | null;
-    bounding_box?: { x?: number; y?: number; w?: number; h?: number } | null;
+    // Contract (source_reference.schema.json): normalized 0-1 {x, y, width, height}.
+    // `w`/`h` are accepted for older payloads.
+    bounding_box?: { x?: number; y?: number; width?: number; height?: number; w?: number; h?: number } | null;
   } | null;
 }
 
@@ -55,8 +57,8 @@ export function mapBackendCandidateToExtractedField(
               ? {
                   x: Number(candidate.source_reference.bounding_box.x ?? 0),
                   y: Number(candidate.source_reference.bounding_box.y ?? 0),
-                  w: Number(candidate.source_reference.bounding_box.w ?? 0),
-                  h: Number(candidate.source_reference.bounding_box.h ?? 0),
+                  w: Number(candidate.source_reference.bounding_box.width ?? candidate.source_reference.bounding_box.w ?? 0),
+                  h: Number(candidate.source_reference.bounding_box.height ?? candidate.source_reference.bounding_box.h ?? 0),
                 }
               : null,
           }

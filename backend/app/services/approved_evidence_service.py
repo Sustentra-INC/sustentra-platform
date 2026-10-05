@@ -183,20 +183,30 @@ class ApprovedEvidenceService:
                 "All review decisions in one projection must have the same document_id."
             )
 
+    @staticmethod
+    def _record_key(decision: dict) -> str | None:
+        """Record a decision belongs to on multi-record documents (EXT-001: one record per
+        meter and service period). None for single-record documents."""
+
+        for container in (decision.get("source_reference"), decision.get("candidate_snapshot")):
+            if isinstance(container, dict) and container.get("record_key"):
+                return str(container["record_key"])
+        return None
+
     def _latest_decision_per_field(self, decisions: list[dict]) -> list[dict]:
-        latest_by_field: dict[str, tuple[datetime, int, dict]] = {}
+        latest_by_field: dict[tuple[str, str | None], tuple[datetime, int, dict]] = {}
 
         for index, decision in enumerate(decisions):
-            field_name = str(decision["field_name"])
+            field_key = (str(decision["field_name"]), self._record_key(decision))
             reviewed_at = self._parse_reviewed_at(decision["reviewed_at"])
 
-            previous = latest_by_field.get(field_name)
+            previous = latest_by_field.get(field_key)
             if (
                 previous is None
                 or reviewed_at > previous[0]
                 or (reviewed_at == previous[0] and index > previous[1])
             ):
-                latest_by_field[field_name] = (reviewed_at, index, copy.deepcopy(decision))
+                latest_by_field[field_key] = (reviewed_at, index, copy.deepcopy(decision))
 
         ordered = sorted(latest_by_field.values(), key=lambda item: item[1])
         return [copy.deepcopy(item[2]) for item in ordered]

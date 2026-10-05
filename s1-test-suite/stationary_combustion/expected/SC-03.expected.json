@@ -1,0 +1,35 @@
+{
+  "document_id": "SC-03",
+  "file": "SC-03_great_plains_multi_period_dth.pdf",
+  "description": "Corrected natural gas invoice with two service periods for one meter, energy in Dth; volume column must not be picked; one record per period.",
+  "expected_classification": "CT-S1-FUELQTY",
+  "expected_halt": null,
+  "document_fields": {
+    "facility_name": "Prairie Grain Processors Inc.",
+    "service_address": null,
+    "supplier_name": "Great Plains Energy Transport",
+    "account_number": "GPE-31-5520"
+  },
+  "records": [
+    {
+      "activity_quantity": 3039.96,
+      "raw_quantity": "3,039.96",
+      "service_period_start": "2024-02-01",
+      "service_period_end": "2024-02-29",
+      "record_hint": "GP-7781",
+      "fuel_type": "natural_gas",
+      "activity_unit": "MMBtu",
+      "raw_unit": "Dth"
+    },
+    {
+      "activity_quantity": 2693.49,
+      "raw_quantity": "2,693.49",
+      "service_period_start": "2024-03-01",
+      "service_period_end": "2024-03-31",
+      "record_hint": "GP-7781",
+      "fuel_type": "natural_gas",
+      "activity_unit": "MMBtu",
+      "raw_unit": "Dth"
+    }
+  ]
+}

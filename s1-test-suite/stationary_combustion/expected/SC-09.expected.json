@@ -1,0 +1,9 @@
+{
+  "document_id": "SC-09",
+  "file": "SC-09_water_bill_unsupported.pdf",
+  "description": "Water bill that looks like a gas bill (meter, CCF, billing period) but burns no fuel: must halt as unsupported.",
+  "expected_classification": null,
+  "expected_halt": "unsupported_document",
+  "document_fields": {},
+  "records": []
+}
