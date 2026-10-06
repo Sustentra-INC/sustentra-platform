@@ -15,7 +15,8 @@ from backend.app.reference.approved_evidence_mapping_loader import (
 def test_default_approved_evidence_mapping_seed_loads() -> None:
     mappings = load_default_approved_evidence_mappings()
 
-    assert len(mappings) == 6
+    # 6 original FUELQTY/MOBFUEL rows + 6 EXT-002 MOBFUEL transaction rows
+    assert len(mappings) == 12
     assert {mapping.mapping_status for mapping in mappings} == {
         "provisional",
         "needs_domain_review",

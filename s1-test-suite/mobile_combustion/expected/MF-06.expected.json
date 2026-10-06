@@ -1,0 +1,75 @@
+{
+  "document_id": "MF-06",
+  "file": "MF-06_kestrel_uk_statement_two_pages.pdf",
+  "description": "UK fuel-card statement: litres, day-first dates (31/03), table continues on page 2 under a repeated header; AdBlue skipped.",
+  "expected_classification": "CT-S1-MOBFUEL",
+  "expected_halt": null,
+  "document_fields": {},
+  "records": [
+    {
+      "transaction_date": "2024-03-04",
+      "fuel_type": "diesel",
+      "activity_quantity": 68.4,
+      "activity_unit": "L",
+      "raw_quantity": "68.40",
+      "raw_unit": "L",
+      "biofuel_blend_pct": null,
+      "record_hint": "KX19 ABC",
+      "vehicle_or_equipment_id": "KX19 ABC",
+      "merchant_or_supplier": "Kestrel Leeds Ring Rd",
+      "account_number": "KF-118204"
+    },
+    {
+      "transaction_date": "2024-03-12",
+      "fuel_type": "gasoline",
+      "activity_quantity": 41.25,
+      "activity_unit": "L",
+      "raw_quantity": "41.25",
+      "raw_unit": "L",
+      "biofuel_blend_pct": null,
+      "record_hint": "LM70 XYZ",
+      "vehicle_or_equipment_id": "LM70 XYZ",
+      "merchant_or_supplier": "Kestrel York North",
+      "account_number": "KF-118204"
+    },
+    {
+      "transaction_date": "2024-03-19",
+      "fuel_type": "diesel",
+      "activity_quantity": 71.06,
+      "activity_unit": "L",
+      "raw_quantity": "71.06",
+      "raw_unit": "L",
+      "biofuel_blend_pct": null,
+      "record_hint": "KX19 ABC",
+      "vehicle_or_equipment_id": "KX19 ABC",
+      "merchant_or_supplier": "Kestrel Leeds Ring Rd",
+      "account_number": "KF-118204"
+    },
+    {
+      "transaction_date": "2024-03-26",
+      "fuel_type": "gasoline",
+      "activity_quantity": 39.8,
+      "activity_unit": "L",
+      "raw_quantity": "39.80",
+      "raw_unit": "L",
+      "biofuel_blend_pct": null,
+      "record_hint": "LM70 XYZ",
+      "vehicle_or_equipment_id": "LM70 XYZ",
+      "merchant_or_supplier": "Kestrel York North",
+      "account_number": "KF-118204"
+    },
+    {
+      "transaction_date": "2024-03-28",
+      "fuel_type": "diesel",
+      "activity_quantity": 84.12,
+      "activity_unit": "L",
+      "raw_quantity": "84.12",
+      "raw_unit": "L",
+      "biofuel_blend_pct": null,
+      "record_hint": "PN21 QRS",
+      "vehicle_or_equipment_id": "PN21 QRS",
+      "merchant_or_supplier": "Kestrel Hull Docks",
+      "account_number": "KF-118204"
+    }
+  ]
+}

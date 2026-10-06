@@ -23,8 +23,8 @@ suppliers, customers, addresses and account numbers are fictional.
 Run the gate and print the per-document accuracy report:
 
 ```bash
-pytest backend/tests/golden_s1/test_stationary_combustion_golden.py
-python -m backend.tests.golden_s1.stationary_combustion_golden
+pytest backend/tests/golden_s1/test_fuel_golden.py
+python -m backend.tests.golden_s1.stationary_combustion_golden stationary_combustion
 ```
 
 Add real (redacted) bills here as they arrive: drop the PDF in `documents/`, write its

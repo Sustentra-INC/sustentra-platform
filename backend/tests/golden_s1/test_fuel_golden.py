@@ -1,4 +1,5 @@
-"""EXT-001 golden tests: every stationary-combustion sample must pass end to end."""
+"""EXT-001 / EXT-002 golden tests: every stationary- and mobile-combustion sample must
+pass end to end (classification, halts, records, normalization, traceability)."""
 
 from __future__ import annotations
 
@@ -9,27 +10,30 @@ import pytest
 
 from backend.tests.golden_s1.stationary_combustion_golden import (
     REPO_ROOT,
-    SUITE_ROOT,
+    SUITES,
     DocumentResult,
     expected_files,
     render_report,
     run_document,
+    suite_root,
 )
 
-EXPECTED = expected_files()
-IDS = [path.name.split(".")[0] for path in EXPECTED]
+EXPECTED = {path.name.split(".")[0]: (suite, path) for suite in SUITES for path in expected_files(suite_root(suite))}
+IDS = sorted(EXPECTED)
 
 
 @pytest.fixture(scope="module")
 def results() -> dict[str, DocumentResult]:
-    return {path.name.split(".")[0]: run_document(path) for path in EXPECTED}
+    return {doc_id: run_document(path, suite_root(suite)) for doc_id, (suite, path) in EXPECTED.items()}
 
 
-def test_golden_set_has_samples() -> None:
-    assert len(EXPECTED) >= 5
-    for path in EXPECTED:
+@pytest.mark.parametrize("suite", SUITES)
+def test_golden_set_has_samples(suite: str) -> None:
+    paths = expected_files(suite_root(suite))
+    assert len(paths) >= 5
+    for path in paths:
         expected = json.loads(path.read_text(encoding="utf-8"))
-        assert (SUITE_ROOT / "documents" / expected["file"]).is_file(), expected["file"]
+        assert (suite_root(suite) / "documents" / expected["file"]).is_file(), expected["file"]
 
 
 @pytest.mark.parametrize("document_id", IDS)
@@ -52,7 +56,7 @@ def test_stage_halt_reason(results: dict[str, DocumentResult], document_id: str)
 
 
 @pytest.mark.parametrize("document_id", IDS)
-def test_stage_candidates_one_record_per_meter_and_period(results: dict[str, DocumentResult], document_id: str) -> None:
+def test_stage_candidates_one_record_per_meter_period_or_transaction(results: dict[str, DocumentResult], document_id: str) -> None:
     result = results[document_id]
     assert result.records_actual == result.records_expected
 
@@ -74,7 +78,8 @@ def test_stage_traceability(results: dict[str, DocumentResult], document_id: str
 
 @pytest.mark.parametrize("document_id", IDS)
 def test_raw_quantity_and_unit_are_kept(results: dict[str, DocumentResult], document_id: str) -> None:
-    expected = json.loads((SUITE_ROOT / "expected" / f"{document_id}.expected.json").read_text(encoding="utf-8"))
+    suite, path = EXPECTED[document_id]
+    expected = json.loads(path.read_text(encoding="utf-8"))
     records = expected.get("records") or []
     items = results[document_id].payload["extraction_result"]["items"]
     for position, record in enumerate(records):

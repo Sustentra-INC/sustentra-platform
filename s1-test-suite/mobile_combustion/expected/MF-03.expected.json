@@ -1,0 +1,23 @@
+{
+  "document_id": "MF-03",
+  "file": "MF-03_laurentian_diesel_receipt_litres.pdf",
+  "description": "Canadian diesel receipt in litres with ISO date; 'Unit: T-118' is the vehicle, not a unit of measure.",
+  "expected_classification": "CT-S1-MOBFUEL",
+  "expected_halt": null,
+  "document_fields": {},
+  "records": [
+    {
+      "transaction_date": "2024-02-07",
+      "fuel_type": "diesel",
+      "activity_quantity": 182.4,
+      "activity_unit": "L",
+      "raw_quantity": "182.40",
+      "raw_unit": "L",
+      "biofuel_blend_pct": null,
+      "record_hint": null,
+      "vehicle_or_equipment_id": "T-118",
+      "merchant_or_supplier": "Laurentian Truck Stop Inc.",
+      "transaction_id": "LTS-55810"
+    }
+  ]
+}

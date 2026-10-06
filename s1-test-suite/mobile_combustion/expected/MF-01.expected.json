@@ -1,0 +1,66 @@
+{
+  "document_id": "MF-01",
+  "file": "MF-01_northline_fleet_card_statement.pdf",
+  "description": "Fleet fuel-card statement: one record per fuel transaction; DEF and car wash lines skipped; odometer column ignored; masked card per line; B20 is diesel with a 20% blend.",
+  "expected_classification": "CT-S1-MOBFUEL",
+  "expected_halt": null,
+  "document_fields": {},
+  "records": [
+    {
+      "transaction_date": "2024-03-02",
+      "fuel_type": "diesel",
+      "activity_quantity": 42.31,
+      "activity_unit": "gal",
+      "raw_quantity": "42.310",
+      "raw_unit": "gal",
+      "biofuel_blend_pct": null,
+      "record_hint": "T-101",
+      "vehicle_or_equipment_id": "T-101",
+      "merchant_or_supplier": "River Fuel Stop",
+      "fueling_location": "Akron, OH",
+      "account_number": "****0417"
+    },
+    {
+      "transaction_date": "2024-03-05",
+      "fuel_type": "gasoline",
+      "activity_quantity": 15.88,
+      "activity_unit": "gal",
+      "raw_quantity": "15.880",
+      "raw_unit": "gal",
+      "biofuel_blend_pct": null,
+      "record_hint": "V-12",
+      "vehicle_or_equipment_id": "V-12",
+      "merchant_or_supplier": "Corner Gas",
+      "fueling_location": "Kent, OH",
+      "account_number": "****0522"
+    },
+    {
+      "transaction_date": "2024-03-14",
+      "fuel_type": "diesel",
+      "activity_quantity": 55.02,
+      "activity_unit": "gal",
+      "raw_quantity": "55.020",
+      "raw_unit": "gal",
+      "biofuel_blend_pct": 20,
+      "record_hint": "T-101",
+      "vehicle_or_equipment_id": "T-101",
+      "merchant_or_supplier": "Lakeview Travel Ctr",
+      "fueling_location": "Erie, PA",
+      "account_number": "****0417"
+    },
+    {
+      "transaction_date": "2024-03-21",
+      "fuel_type": "diesel",
+      "activity_quantity": 38.905,
+      "activity_unit": "gal",
+      "raw_quantity": "38.905",
+      "raw_unit": "gal",
+      "biofuel_blend_pct": null,
+      "record_hint": "T-107",
+      "vehicle_or_equipment_id": "T-107",
+      "merchant_or_supplier": "River Fuel Stop",
+      "fueling_location": "Akron, OH",
+      "account_number": "****0630"
+    }
+  ]
+}

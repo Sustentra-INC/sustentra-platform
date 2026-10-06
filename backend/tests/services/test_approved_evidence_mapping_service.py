@@ -28,9 +28,9 @@ def test_default_mapping_seed_validates_against_real_methodology_registry() -> N
 
     mappings = service.list_mappings()
 
-    assert len(mappings) == 6
+    assert len(mappings) == 12
     assert all(mapping.mapping_status != "deprecated" for mapping in mappings)
-    assert len(service.list_unconfirmed()) == 6
+    assert len(service.list_unconfirmed()) == 12
 
 
 def test_mapping_service_lists_by_canonical_type_and_approved_field() -> None:
@@ -75,7 +75,15 @@ def test_mapping_service_lists_by_methodology_field_and_status() -> None:
         "activity_quantity",
         "activity_unit",
     }
-    assert len(review_mappings) == 2
+    assert len(review_mappings) == 5
+    # EXT-002: identifiers the schema marks "assigned" and the FUELPROP blend need ESG review
+    assert {m.approved_field_name for m in review_mappings} >= {
+        "vehicle_or_equipment_id", "transaction_id", "biofuel_blend_pct",
+    }
+    transaction_rows = service.list_by_methodology_field("S1-MOB-110")
+    assert {m.approved_field_name for m in transaction_rows} == {
+        "transaction_date", "merchant_or_supplier", "fueling_location",
+    }
 
 
 def test_mapping_service_excludes_deprecated_by_default() -> None:

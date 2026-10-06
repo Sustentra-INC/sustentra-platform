@@ -544,7 +544,7 @@ def test_low_confidence_fuel_bill_is_accepted_by_content_check(tmp_path):
 @pytest.mark.parametrize(
     "matches",
     [
-        [("CT-S1-FUELQTY", 0.62), ("CT-S1-MOBFUEL", 0.62)],  # stationary vs mobile undecidable
+        [("CT-S1-MOBFUEL", 0.62), ("CT-S1-FUELQTY", 0.5)],  # mobile leads but a therm bill has no vehicle cue
         [("CT-S1-FUELQTY", 0.35)],  # below the content-check floor
         [("CT-S1-MOBFUEL", 0.77), ("CT-S1-FUELQTY", 0.7)],  # mobile leads
     ],
@@ -597,3 +597,66 @@ def test_content_check_does_not_override_a_leading_non_fuel_type(tmp_path):
     run = service.process_local_document(local_file_path=path, engagement_id="ENG-1", persist_run=False)["pipeline_run"]
     assert run["canonical_type_id"] is None
     assert run["halt_reason"]["code"] == "unsupported_document"
+
+
+# --- EXT-002: stationary vs mobile ------------------------------------------------------------
+NO_CUE_DIESEL = "Valley Fuels\nProduct: Diesel\nQuantity: 300 gal\nDate: 04/01/2024\n"
+FLEET_DIESEL = "Valley Fuels fleet card\nVehicle: T-9\nProduct: Diesel\nQuantity: 300 gal\nDate: 04/01/2024\n"
+GENERATOR_DIESEL = "Valley Fuels\nDelivered to standby generator day tank\nProduct: Diesel\nQuantity: 300 gal\nDate: 04/01/2024\n"
+
+
+def _run_with(tmp_path, text, classification):
+    from backend.app.services.extraction_target_service import ExtractionTargetService
+
+    path = _write_temp_text_file(tmp_path)
+    service = _build_service(
+        parser_service=FakeParserService(_parser_output(text)),
+        classification_service=FakeClassificationService(classification),
+        target_service=ExtractionTargetService(),
+    )
+    return service.process_local_document(local_file_path=path, engagement_id="ENG-1", persist_run=False)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_type"),
+    [
+        (FLEET_DIESEL, "CT-S1-MOBFUEL"),        # vehicle/fleet cues break the tie
+        (GENERATOR_DIESEL, "CT-S1-FUELQTY"),    # generator/day-tank cues break the tie
+        (NO_CUE_DIESEL, None),                  # no cues: a reviewer decides
+    ],
+)
+def test_stationary_mobile_tie_is_broken_only_by_explicit_cues(tmp_path, text, expected_type):
+    output = _run_with(tmp_path, text, _low_confidence([("CT-S1-FUELQTY", 0.5), ("CT-S1-MOBFUEL", 0.5)]))
+    run = output["pipeline_run"]
+    assert run["canonical_type_id"] == expected_type
+    if expected_type is None:
+        assert "nothing says whether it was burned in vehicles or on site" in run["halt_reason"]["message"]
+    else:
+        assert run["canonical_type_source"] == "content_check"
+
+
+def test_mobfuel_content_check_extracts_transactions(tmp_path):
+    output = _run_with(tmp_path, FLEET_DIESEL, _low_confidence([("CT-S1-MOBFUEL", 0.5)]))
+    fields = {c["field_name"]: c for c in output["extraction_result"]["items"]}
+    assert output["pipeline_run"]["canonical_type_id"] == "CT-S1-MOBFUEL"
+    assert fields["activity_quantity"]["normalized_value"] == 300
+    assert fields["vehicle_or_equipment_id"]["normalized_value"] == "T-9"
+
+
+def test_confident_classification_contradicted_by_content_halts(tmp_path):
+    classified = {"status": "classified", "primary_canonical_type_id": "CT-S1-FUELQTY", "primary_variant_id": "VR-1",
+                  "confidence": 0.85, "threshold": 0.8,
+                  "candidate_matches": [{"canonical_type_id": "CT-S1-FUELQTY", "variant_id": "VR-1",
+                                         "confidence": 0.85, "threshold": 0.8}]}
+    run = _run_with(tmp_path, FLEET_DIESEL, classified)["pipeline_run"]
+    assert run["canonical_type_id"] is None
+    assert run["halt_reason"]["code"] == "unsupported_document"
+    assert "reads as mobile" in run["halt_reason"]["message"] and "vehicle" in run["halt_reason"]["message"]
+
+
+def test_confident_classification_with_both_cues_is_kept(tmp_path):
+    classified = {"status": "classified", "primary_canonical_type_id": "CT-S1-MOBFUEL", "primary_variant_id": "VR-1",
+                  "confidence": 0.85, "threshold": 0.8, "candidate_matches": []}
+    text = FLEET_DIESEL + "Also delivered to the standby generator\n"
+    run = _run_with(tmp_path, text, classified)["pipeline_run"]
+    assert run["canonical_type_id"] == "CT-S1-MOBFUEL" and run["halt_reason"] is None

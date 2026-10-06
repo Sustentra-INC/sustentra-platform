@@ -1,0 +1,24 @@
+{
+  "document_id": "MF-02",
+  "file": "MF-02_route9_pump_receipt.pdf",
+  "description": "Single pump receipt (narrow page): quantity written as '12.457 GAL @ price'; fleet-card prompts give the vehicle.",
+  "expected_classification": "CT-S1-MOBFUEL",
+  "expected_halt": null,
+  "document_fields": {},
+  "records": [
+    {
+      "transaction_date": "2024-03-14",
+      "fuel_type": "gasoline",
+      "activity_quantity": 12.457,
+      "activity_unit": "gal",
+      "raw_quantity": "12.457",
+      "raw_unit": "gal",
+      "biofuel_blend_pct": null,
+      "record_hint": null,
+      "vehicle_or_equipment_id": "TRK-22",
+      "merchant_or_supplier": "ROUTE 9 FUEL STOP",
+      "transaction_id": "004417",
+      "account_number": "****8814"
+    }
+  ]
+}
