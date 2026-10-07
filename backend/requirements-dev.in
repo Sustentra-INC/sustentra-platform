@@ -1,0 +1,9 @@
+# Dev / test tools. Edit THIS file, then regenerate requirements-dev.txt (see requirements.in).
+-r requirements.in
+-c requirements.txt  # production packages keep exactly their production versions
+ruff
+mypy
+pytest
+pytest-asyncio
+pytest-cov
+jsonschema

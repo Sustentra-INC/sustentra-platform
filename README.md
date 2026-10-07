@@ -31,6 +31,20 @@ python -m pytest -q backend/tests
 uvicorn backend.app.main:app --reload
 ```
 
+Dependencies are pinned (exact versions + hashes) in `backend/requirements.txt` and
+`backend/requirements-dev.txt`, generated from the short lists in `requirements.in` /
+`requirements-dev.in`. To add or upgrade a package, edit the `.in` file and regenerate
+(`pip install uv` once):
+
+```bash
+cd backend
+uv pip compile requirements.in --universal --python-version 3.12 --generate-hashes -o requirements.txt
+uv pip compile requirements-dev.in --universal --python-version 3.12 --generate-hashes -o requirements-dev.txt
+# upgrade one package: add  --upgrade-package fastapi  to both commands
+```
+
+CI fails when a `.txt` file is out of date with its `.in` file.
+
 FastAPI docs:
 
 ```text
