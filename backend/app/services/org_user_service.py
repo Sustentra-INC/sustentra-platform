@@ -10,12 +10,14 @@ Acceptance rules to honour when implementing:
 - Role changes are limited to org_admin <-> org_member. Never promote to provider_admin.
 - Last-admin safety: the final remaining active org_admin cannot be demoted or
   suspended -> 409. Check inside the same transaction to avoid a race.
-- `status` in the API is 'active'|'suspended'. The users table stores 'active'|'disabled'
-  (migration 0002), so suspend -> status='disabled', reactivate -> status='active'.
-  TODO(DB): decide whether to rename the DB enum or map in this layer (mapping now).
-- The users table stores a single `full_name`; the API exposes first_name/last_name.
-  TODO(DB): either split the column or map names here consistently with ORG-003.
-- max_users: reactivating a user when the org is already at its limit -> 422 (ORG-001).
+- Status/role vocabulary (DB-004 decision): the users table stores exactly the API
+  values - status invited|active|suspended|deleted, role org_admin|org_member|
+  provider_admin (backend.app.domain.tenancy). No mapping in this layer: suspend ->
+  status='suspended', reactivate -> status='active'. ('disabled' was retired by 0009.)
+- Names: users has first_name and last_name columns (migration 0005); read/write
+  those. full_name is legacy display text kept in sync on write.
+- max_users (organizations.max_users, 0009): users in SEATED_USER_STATUSES count
+  against it; reactivating or inviting when the org is full -> 422 (ORG-001).
 """
 
 from __future__ import annotations

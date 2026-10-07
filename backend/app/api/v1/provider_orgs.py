@@ -19,11 +19,13 @@ from ...services.organization_service import OrganizationService, get_organizati
 from .deps import Principal, require_provider_admin
 from .pagination import PageMeta, PageParams, page_params
 
+from ...domain.tenancy import DEFAULT_MAX_USERS, MAX_MAX_USERS
+from ...domain.tenancy import ORG_STATUSES as _ORG_STATUSES
+
 router = APIRouter(prefix="/provider/orgs", tags=["provider-orgs"])
 
-# API-level org status. NOTE: not yet a column on `organizations` (migration 0002);
-# see organization_service TODO(DB) to add organizations.status + organizations.max_users.
-ORG_STATUSES = ("active", "suspended")
+# organizations.status (0005) and organizations.max_users (0009); see domain.tenancy.
+ORG_STATUSES = _ORG_STATUSES
 
 SLUG_PATTERN = r"^[a-z0-9-]{3,63}$"
 
@@ -44,7 +46,7 @@ class CreateOrgRequest(BaseModel):
 
 class UpdateOrgRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    max_users: int | None = Field(default=None, ge=1)
+    max_users: int | None = Field(default=None, ge=1, le=MAX_MAX_USERS)
 
 
 class OrgResponse(BaseModel):
@@ -52,7 +54,7 @@ class OrgResponse(BaseModel):
     name: str
     slug: str
     status: str
-    max_users: int | None = None
+    max_users: int = DEFAULT_MAX_USERS
     user_count: int | None = None
     created_at: datetime
     updated_at: datetime

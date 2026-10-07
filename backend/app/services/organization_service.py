@@ -10,10 +10,11 @@ Acceptance rules to honour when implementing:
 - slug: 3-63 chars, lowercase alphanumeric + hyphen (^[a-z0-9-]{3,63}$), unique.
   DB already enforces the format + uniqueness (migration 0002); return 409 on clash.
 - create: optional initial_admin creates a seated org_admin user AND sends an invite.
-- status + max_users are NOT yet columns on `organizations` (migration 0002 only has
-  id/name/slug/timestamps). TODO(DB): add a migration for organizations.status
-  ('active'|'suspended') and organizations.max_users before these can persist.
+- organizations.status ('active'|'suspended', migration 0005) and
+  organizations.max_users (1..10000, default 25, migration 0009) are columns; the
+  API uses the same values (backend.app.domain.tenancy, DB-004 decision).
 - max_users: creating/activating a user at the limit must fail with 422 (ORG-002).
+  Lowering max_users below the current seat count is allowed but blocks new seats.
 - suspend: suspends the org and (per spec) blocks its users from logging in.
 """
 

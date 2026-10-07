@@ -20,12 +20,14 @@ from ...services.org_user_service import OrgUserService, get_org_user_service
 from .deps import Principal, require_org_admin
 from .pagination import PageMeta, PageParams, page_params
 
+from ...domain.tenancy import ASSIGNABLE_ROLES as _ASSIGNABLE_ROLES
+from ...domain.tenancy import LISTED_USER_STATUSES
+
 router = APIRouter(prefix="/orgs/{org_id}/users", tags=["org-users"])
 
-ASSIGNABLE_ROLES = ("org_admin", "org_member")
-# API-level status. The users table stores 'active'|'disabled' (migration 0002);
-# the service maps suspend -> 'disabled', reactivate -> 'active'.
-USER_STATUSES = ("active", "suspended")
+# Same values as the users table (DB-004, domain.tenancy): no mapping layer.
+ASSIGNABLE_ROLES = _ASSIGNABLE_ROLES
+USER_STATUSES = LISTED_USER_STATUSES
 
 
 class UserResponse(BaseModel):

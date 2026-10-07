@@ -3,8 +3,8 @@
 Role guards are now wired to the shipped AUTH-004 session/RBAC layer
 (``core.auth.require_role`` + ``get_current_user``): 401 without a valid session,
 403 for the wrong role, and — for an org_admin reaching into another org — 404.
-The service bodies are still ``NotImplementedError`` pending the DB work (and the
-``organizations`` ``status``/``max_users`` columns + ``users`` name split).
+The service bodies are still ``NotImplementedError`` pending ORG-001..003; the
+columns they need now exist (DB-004: ``organizations.max_users``, one status vocabulary).
 
 No ``from __future__ import annotations``: these are used as FastAPI dependencies
 and FastAPI must be able to resolve the annotations at runtime.
