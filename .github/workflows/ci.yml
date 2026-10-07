@@ -82,42 +82,9 @@ jobs:
           alembic upgrade head
           alembic current
 
-      - name: Verify runtime DB role safety
-        run: |
-          python - <<'PY'
-          import os
-          import psycopg2
-
-          app_url = os.environ["TEST_APP_DATABASE_URL"]
-          admin_url = os.environ["TEST_DATABASE_URL"]
-
-          with psycopg2.connect(app_url) as app_conn:
-            with app_conn.cursor() as cur:
-              cur.execute("SELECT current_database(), current_user")
-              current_database, current_user = cur.fetchone()
-
-          if current_user != "app_user":
-            raise SystemExit(f"Runtime DB user must be app_user, got {current_user!r}")
-
-          with psycopg2.connect(admin_url) as admin_conn:
-            with admin_conn.cursor() as cur:
-              cur.execute(
-                "SELECT rolsuper, rolbypassrls, rolcreatedb, rolcreaterole "
-                "FROM pg_roles WHERE rolname = 'app_user'"
-              )
-              role_flags = cur.fetchone()
-
-          if role_flags is None:
-            raise SystemExit("Role 'app_user' is missing")
-          if any(role_flags):
-            raise SystemExit(
-              "Role 'app_user' must not have superuser/bypassrls/createdb/createrole privileges"
-            )
-
-          print(f"Validated runtime DB identity: app_user on {current_database}")
-          PY
-
       - name: pytest + coverage gate (80%)
+        # --require-test-db fails fast unless the test DB is migrated and app_user has no
+        # superuser / BYPASSRLS / CREATEDB / CREATEROLE (backend/tests/db/_db_contract.py).
         run: pytest --require-test-db --cov --cov-report=term-missing --cov-report=xml:coverage.xml --cov-fail-under=80
 
       - name: Coverage summary

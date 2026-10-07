@@ -177,3 +177,25 @@ def test_required_database_mode_rejects_invalid_setup_before_destructive_work(
     monkeypatch.delenv(TEST_DATABASE_DISPOSABLE_ENV, raising=False)
     with pytest.raises(DatabaseContractError, match="TEST_DB_DISPOSABLE"):
         validate_required_database_setup(required=True)
+
+
+@pytest.mark.asyncio
+async def test_invite_emails_are_captured_not_sent(
+    seeded_identities,
+    db_test_client,
+    transport_guard,
+) -> None:
+    await db_test_client.login_with_otp(
+        email="admin.a@org-a.test",
+        password=seeded_identities.password,
+        org_slug="org-a",
+    )
+    response = await db_test_client.client.post(
+        f"/api/v1/orgs/{seeded_identities.org_a_id}/invites",
+        json={"email": "new@org-a.test", "role": "org_member", "first_name": "New", "last_name": "Person"},
+        headers=db_test_client.headers,
+    )
+    assert response.status_code == 201, response.text
+    link = db_test_client.email_capture.latest_invite_link("new@org-a.test")
+    assert "/invite/accept?token=" in link
+    assert transport_guard.smtp_calls == 0 and transport_guard.ses_calls == 0

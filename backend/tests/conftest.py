@@ -48,3 +48,18 @@ def pytest_collection_finish(session: pytest.Session) -> None:
         validate_required_database_setup(required=True)
     except DatabaseContractError as exc:
         raise pytest.UsageError(f"Required test-database validation failed: {exc}") from exc
+
+
+def pytest_terminal_summary(terminalreporter: pytest.TerminalReporter) -> None:
+    """Say it out loud when the DB tests were skipped by the disposable-data gate.
+
+    Without this, a local run with TEST_DATABASE_URL set but TEST_DB_DISPOSABLE unset
+    looks green while ~270 integration tests never ran.
+    """
+    skipped = terminalreporter.stats.get("skipped", [])
+    gated = sum(1 for report in skipped if "TEST_DB_DISPOSABLE" in str(report.longrepr))
+    if gated:
+        terminalreporter.write_sep(
+            "!", f"{gated} DB integration tests were SKIPPED: set TEST_DB_DISPOSABLE=1 (disposable test DB only)",
+            yellow=True,
+        )

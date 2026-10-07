@@ -46,6 +46,21 @@ $env:PUBLIC_BASE_URL = "https://app.sustentra.test"
 .\.venv\Scripts\python.exe -m pytest --require-test-db backend/tests --cov=backend/app --cov-report=term-missing --cov-fail-under=80
 ```
 
+Bash (macOS / Linux / Git Bash), from the repository root:
+
+```bash
+export TEST_DATABASE_URL=postgresql://sustentra_admin:local-admin-password@localhost:5433/sustentra_test
+export TEST_APP_DATABASE_URL=postgresql://app_user:local-app-password@localhost:5433/sustentra_test
+export TEST_DB_DISPOSABLE=1 TEST_DB_REQUIRED=1 OTP_HMAC_SECRET=local-otp-hmac-secret-for-tests
+(cd backend && DATABASE_URL=$TEST_DATABASE_URL alembic upgrade head)
+pytest --require-test-db --cov --cov-fail-under=80
+```
+
+Point these at a database you can lose: the tests TRUNCATE users, organizations, sessions
+and audit logs. Never the `sustentra` database your local `docker compose` app uses.
+Without `TEST_DB_DISPOSABLE=1` the DB tests are skipped and the run ends with a warning
+saying how many.
+
 ## 3. One-Command Local Runner
 
 The script below creates a unique compose project and DB port, waits for readiness, migrates, validates runtime role safety, runs tests, and tears down only resources it created.
@@ -60,7 +75,20 @@ Optional (skip full backend coverage run):
 .\scripts\run-backend-test-infra.ps1 -SkipFullSuite
 ```
 
-## 4. CI Behavior
+## 4. Shared fixtures (backend/tests/db/conftest.py)
+
+| Fixture | What it gives a test |
+|---|---|
+| `seeded_identities` | Org A and Org B, an org_admin and org_member in each, a provider_admin; one known password |
+| `db_test_client` | httpx client on the real app, connected as `app_user`; `login_with_otp(...)` returns the session cookie |
+| `email_capture` | OTP codes, reset links and invite links the app tried to send (`latest_otp_code`, `latest_invite_link`) |
+| `transport_guard` | Fails the test if anything reaches real SMTP / SES |
+| `controlled_clock` | A fixed clock for login, reset, session and invite expiry (`advance(timedelta)`) |
+| `as_app_user` | Run raw SQL as `app_user` in a tenant or provider scope (RLS assertions) |
+
+Older DB test modules still seed their own data; new tests should use these fixtures.
+
+## 5. CI Behavior
 
 The backend CI job now sets:
 

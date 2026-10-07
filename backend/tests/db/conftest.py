@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Any, Awaitable, Callable
 
@@ -17,8 +17,9 @@ from backend.app.main import create_app
 from backend.app.services import login as login_service
 from backend.app.services import otp_delivery
 from backend.app.services import password_reset as reset_service
+from backend.app.services import invite_service
 from backend.app.services import sessions as session_service
-from backend.app.services.otp_delivery import get_otp_sender, get_reset_sender
+from backend.app.services.otp_delivery import get_invite_sender, get_otp_sender, get_reset_sender
 from backend.app.services.sessions import SESSION_COOKIE
 from backend.tests.db._db_contract import (
     DatabaseContractError,
@@ -52,12 +53,23 @@ class SeedIdentities:
 class EmailCapture:
     otp_codes: list[tuple[str, str]]
     reset_links: list[tuple[str, str]]
+    invite_links: list[tuple[str, str]] = field(default_factory=list)
 
     def capture_otp(self, to: str, code: str) -> None:
         self.otp_codes.append((to, code))
 
     def capture_reset(self, to: str, link: str) -> None:
         self.reset_links.append((to, link))
+
+    def capture_invite(self, to: str, link: str) -> None:
+        self.invite_links.append((to, link))
+
+    def latest_invite_link(self, email: str) -> str:
+        match = email.strip().lower()
+        for recipient, link in reversed(self.invite_links):
+            if recipient.strip().lower() == match:
+                return link
+        raise AssertionError(f"No invite email captured for {email!r}.")
 
     def latest_otp_code(self, email: str) -> str:
         match = email.strip().lower()
@@ -69,6 +81,7 @@ class EmailCapture:
     def clear(self) -> None:
         self.otp_codes.clear()
         self.reset_links.clear()
+        self.invite_links.clear()
 
 
 @dataclass
@@ -186,6 +199,7 @@ def controlled_clock(monkeypatch: pytest.MonkeyPatch) -> ControlledClock:
     monkeypatch.setattr(login_service, "utcnow", clock.utcnow)
     monkeypatch.setattr(reset_service, "utcnow", clock.utcnow)
     monkeypatch.setattr(session_service, "utcnow", clock.utcnow)
+    monkeypatch.setattr(invite_service, "utcnow", clock.utcnow)
     return clock
 
 
@@ -268,6 +282,7 @@ async def db_test_client(db_urls: TestDatabaseUrls, email_capture: EmailCapture)
     app.dependency_overrides[core_db.get_sessionmaker_dependency] = lambda: sessionmaker
     app.dependency_overrides[get_otp_sender] = lambda: email_capture.capture_otp
     app.dependency_overrides[get_reset_sender] = lambda: email_capture.capture_reset
+    app.dependency_overrides[get_invite_sender] = lambda: email_capture.capture_invite
 
     transport = httpx.ASGITransport(app=app)
     try:
