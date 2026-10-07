@@ -21,7 +21,22 @@ function fillCredentials() {
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: "a-good-password" } });
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  window.localStorage.clear();
+});
+
+async function signInThroughOtp(props: Partial<Parameters<typeof LoginFlow>[0]> = {}) {
+  loginMock.mockResolvedValueOnce({ challenge_id: "ch_1" });
+  verifyMock.mockResolvedValueOnce(undefined);
+  const onAuthenticated = vi.fn();
+  render(<LoginFlow realm={{ kind: "org", slug: "acme" }} onAuthenticated={onAuthenticated} {...props} />);
+  fillCredentials();
+  fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+  fireEvent.change(await screen.findByLabelText(/6-digit code/i), { target: { value: "123456" } });
+  await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+  return onAuthenticated.mock.calls[0][0] as string;
+}
 
 describe("LoginFlow", () => {
   it("validates an empty submit without calling the API", () => {
@@ -61,5 +76,21 @@ describe("LoginFlow", () => {
 
     await waitFor(() => expect(verifyMock).toHaveBeenCalledWith("ch_1", "123456"));
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith("/org/acme"));
+  });
+
+  it("returns to a same-origin ?next= path after login (FE-007)", async () => {
+    expect(await signInThroughOtp({ next: "/?view=evidence" })).toBe("/?view=evidence");
+  });
+
+  it.each(["//evil.example", "https://evil.example/", "/\\evil.example", "javascript:alert(1)"])(
+    "ignores an off-site ?next= (%s) and goes home",
+    async (next) => {
+      expect(await signInThroughOtp({ next })).toBe("/org/acme");
+    }
+  );
+
+  it("remembers the org it signed in to, for the workpaper's session-ended redirect", async () => {
+    await signInThroughOtp();
+    expect(window.localStorage.getItem("sustentra.lastRealm")).toBe("org:acme");
   });
 });
