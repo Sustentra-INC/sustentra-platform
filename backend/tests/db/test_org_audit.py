@@ -212,7 +212,7 @@ def test_limit_bounds_and_default() -> None:
     assert len(call().json()["items"]) == SAME + 4  # default 50
 
 
-@pytest.mark.parametrize("cursor", ["garbage", "!!!", encode_cursor(T0, uuid.uuid4())[:-3] + "zzz", "fA"])
+@pytest.mark.parametrize("cursor", ["garbage", "!!!", encode_cursor(T0, uuid.uuid4(), "x")[:-3] + "zzz", "fA"])
 def test_a_bad_cursor_is_400(cursor: str) -> None:
     response = call(cursor=cursor)
     assert response.status_code == 400 and response.json()["detail"] == "Invalid cursor"
@@ -244,3 +244,60 @@ def test_filter_by_dates_inclusive() -> None:
 def test_filters_combine_with_the_cursor() -> None:
     items = all_pages(limit=1, user_id=str(A_MEMBER), from_date=(T0 - timedelta(days=1)).date().isoformat())
     assert [e["event_type"] for e in items] == ["user_role_changed"] * SAME + ["login_success"]
+
+
+# --- cursor scope and edge dates (cases from jackguo2005's COMP-002 branch) ----------
+
+def test_a_cursor_only_continues_its_own_query() -> None:
+    first = call(limit=2).json()
+    cursor = first["next_cursor"]
+    assert call(limit=2, cursor=cursor).status_code == 200
+    for changed in ({"event_type": "user_role_changed"}, {"user_id": str(A_MEMBER)},
+                    {"from_date": "2026-09-01"}, {"to_date": "2026-12-31"}):
+        response = call(limit=2, cursor=cursor, **changed)
+        assert response.status_code == 400
+        assert response.json()["detail"] == "Cursor does not match the requested organization or filters"
+    # Same cursor on another org (as a provider, who may read both).
+    other = call(f"/api/v1/orgs/{ORG_B}/audit-logs", "provider", limit=2, cursor=cursor)
+    assert other.status_code == 400
+
+
+def test_filtered_pages_carry_their_filters() -> None:
+    first = call(limit=2, event_type="user_role_changed").json()
+    second = call(limit=2, event_type="user_role_changed", cursor=first["next_cursor"])
+    assert second.status_code == 200
+    assert {e["event_type"] for e in second.json()["items"]} == {"user_role_changed"}
+
+
+def test_to_date_max_is_no_upper_bound_not_a_500() -> None:
+    response = call(to_date="9999-12-31")
+    assert response.status_code == 200
+    assert len(response.json()["items"]) == SAME + 4
+
+
+def test_events_written_between_pages_do_not_disturb_the_walk() -> None:
+    first = call(limit=3).json()
+    asyncio.run(_insert_newer_event())
+    rest = all_pages_from(first["next_cursor"], limit=3)
+    seen = [e["id"] for e in first["items"]] + [e["id"] for e in rest]
+    assert len(seen) == len(set(seen)) == SAME + 4  # the newer event belongs to page 1 of a new walk
+
+
+async def _insert_newer_event() -> None:
+    conn = await asyncpg.connect(ADMIN_URL)
+    try:
+        await conn.execute(
+            "INSERT INTO audit_logs (org_id, actor_user_id, actor_role, event_type, created_at) "
+            "VALUES ($1, $2, 'org_admin', 'user_invited', now())", ORG_A, A_ADMIN,
+        )
+    finally:
+        await conn.close()
+
+
+def all_pages_from(cursor: str | None, **params: Any) -> list[dict[str, Any]]:
+    items: list[dict[str, Any]] = []
+    while cursor:
+        body = call(cursor=cursor, **params).json()
+        items += body["items"]
+        cursor = body["next_cursor"]
+    return items

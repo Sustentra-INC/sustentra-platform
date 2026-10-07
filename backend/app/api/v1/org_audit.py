@@ -49,7 +49,7 @@ async def list_audit_logs(
     user_id: Annotated[UUID | None, Query()] = None,
     from_date: Annotated[date | None, Query(description="inclusive, UTC")] = None,
     to_date: Annotated[date | None, Query(description="inclusive, UTC")] = None,
-    cursor: Annotated[str | None, Query(max_length=200)] = None,
+    cursor: Annotated[str | None, Query(max_length=512)] = None,
     limit: Annotated[int, Query(ge=1, le=audit_query.MAX_LIMIT)] = audit_query.DEFAULT_LIMIT,
 ) -> AuditPageResponse:
     if from_date and to_date and from_date > to_date:
