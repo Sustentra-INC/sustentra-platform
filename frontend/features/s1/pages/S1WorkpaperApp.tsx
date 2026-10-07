@@ -14,7 +14,8 @@ import {
 import { ApiError } from "../../../lib/api";
 import { ExtractionReview } from "../components/ExtractionReview";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
-import { S1Chrome, type NavKey } from "../components/S1Chrome";
+import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
+import { logout } from "../../auth/api";
 import { DashboardScreen } from "../components/DashboardScreen";
 import { UploadScreen, type SampleScript } from "../components/UploadScreen";
 import { SetupScreen } from "../components/SetupScreen";
@@ -95,7 +96,7 @@ const EMPTY_ENGAGEMENT: EngagementConfig = {
   scopeBoundaryStatement: "",
 };
 
-export function S1WorkpaperApp() {
+export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const dataMode = process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture" ? "fixture" : "backend";
   // Demo-only: rehydrate the fixture state from localStorage once, so a refresh
   // does not wipe the walkthrough. Read a single time on mount.
@@ -339,6 +340,17 @@ export function S1WorkpaperApp() {
     saveTimer.current = window.setTimeout(flushEngagementSave, 700);
   }
 
+  async function signOut() {
+    flushEngagementSave();
+    try {
+      await logout();
+    } catch {
+      // The cookie may already be gone; continue to the login page either way.
+    }
+    // The realm cookie stays, so this browser goes back to the same login page.
+    window.location.assign(signInAgainPath("/") ?? "/sign-in");
+  }
+
   function addAuditIntent(intent: SessionAuditEntry) {
     setAuditIntents((current) => [...current, intent]);
   }
@@ -520,6 +532,8 @@ export function S1WorkpaperApp() {
     <main className="s1-app">
       <S1Chrome
         engagement={engagement}
+        user={dataMode === "backend" ? user : undefined}
+        onSignOut={dataMode === "backend" && user ? () => void signOut() : undefined}
         current={navCurrent}
         onNavigate={onNavigate}
         onReset={dataMode === "fixture" ? resetDemo : undefined}

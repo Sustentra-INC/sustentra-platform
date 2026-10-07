@@ -114,3 +114,10 @@ In `backend` mode the frontend starts **completely empty**: no engagement, no do
 - `settings` holds the rest of Setup using the frontend's names (`facilities`, `regulation`, `clientContact`, `engagementTeam`, `dataScope`, …); unknown keys are 422, max 64 KB.
 - Frontend (`features/s1/api/engagements.ts`, `components/EngagementPicker.tsx`): Setup lists the org's engagements, creates new ones and picks one; edits autosave (~0.7 s after typing stops); the last pick is remembered per browser. Uploads and the Evidence Workspace use the picked engagement's id; uploading without one asks the user to pick or create it first.
 - Document listings now return the latest version of each document (the store is append-only, so a processed upload used to show up once per status change).
+
+## FE-006: the workpaper behind login (done)
+
+- `/` needs a session in backend mode (the fixture demo stays open). The edge middleware redirects a signed-out visit using the non-secret `sustentra_realm` cookie (`org:<slug>` or `provider`, set at login): to `/org/<slug>/login?next=/`, `/provider-admin/login?next=/`, or — when the browser doesn't know — the new `/sign-in` page, which asks for the organization. `app/page.tsx` re-checks the session with `/api/v1/auth/me`, so an expired session lands on the same login.
+- After login: org members and org admins go to the workpaper (`/`), provider admins to `/provider-admin/orgs`; a same-origin `?next=` wins.
+- The workpaper header shows the signed-in user and role, **Sign out**, and **Admin** (org admins → `/org/<slug>`) or **Organizations** (provider admins). The org home page links back with **Open workpaper**. The header shows the engagement's name instead of its id.
+
