@@ -5,7 +5,7 @@ Every resource is named `sustentra-<environment>-<thing>` (e.g. `sustentra-prod-
 
 | Path | What it manages | How it is applied |
 |---|---|---|
-| `infra/bootstrap/` | S3 state bucket `sustentra-tfstate-012751249540` | Once, from a laptop |
+| `infra/bootstrap/` | S3 state bucket `sustentra-tfstate-012751249540` | From a laptop / the client admin (rare; see OPS-002) |
 | `infra/` | GitHub OIDC provider, `deploy` + `terraform` roles, ECR repos (and later: network, EC2, RDS, SES, monitoring) | First apply from a laptop, then CI only |
 
 State: S3 with versioning + AES-256, public access blocked, locking via
@@ -297,6 +297,51 @@ To change it, update all four together.
 
 The API image links `/app/local-data` to the `/app/data` volume: the S1 JSONL stores
 and uploads write to `./local-data`, and the root filesystem is read-only.
+
+## Hand-over to CI: remove laptop credentials (OPS-002)
+
+Infra was bootstrapped from a laptop (IAM user `Jerome`, profile `sustentra`).
+After this hand-over, GitHub Actions (OIDC roles) is the only way to change
+infrastructure and nobody keeps a long-lived access key.
+
+Check progress at any point (read-only; Git Bash or WSL on Windows):
+
+```bash
+bash infra/scripts/ops002-check.sh           # report
+bash infra/scripts/ops002-check.sh --final   # exit 1 until everything is done
+```
+
+Do the steps **in this order**. Step 2 must happen before step 4, or nobody but
+the account root can reach the Terraform state (it holds the DB passwords).
+
+1. **CI applies cleanly.** Actions → terraform-apply → Run workflow (from `main`)
+   for `staging`, then `prod`. Each plan must show no changes, or only ones you
+   expect. Fix any drift through a PR, not from the laptop.
+2. **Give the client admin state access.** Ask the client admin for their ARN
+   (`aws sts get-caller-identity --query Arn`), add it to
+   `state_bucket_engineer_arns` in `infra/bootstrap/terraform.tfvars` (PR), then
+   re-apply the bootstrap once more from the laptop:
+   ```powershell
+   $env:AWS_PROFILE = "sustentra"
+   cd infra\bootstrap
+   terraform init
+   terraform apply
+   ```
+   The check script should now list the client admin under "allowed".
+3. **Client removes the temporary bootstrap permissions** from IAM user `Jerome`
+   (attached policies, inline policies, groups). From here the laptop key can no
+   longer change anything.
+4. **Retire the laptop key.** IAM → Users → Jerome → Security credentials:
+   *Deactivate* the access key, wait a day to be sure nothing still uses it (the
+   check script prints when it was last used), then *Delete* it. Remove the
+   `sustentra` profile from `~/.aws/credentials` on the laptop.
+5. Run `bash infra/scripts/ops002-check.sh --final` as the client admin: all
+   checks pass. `user/Jerome` may stay in `state_bucket_engineer_arns`; with no
+   key and no permissions it grants nothing, and the next bootstrap change can
+   drop it.
+
+Re-applying the bootstrap later (rare: only the state bucket lives there) is
+done by the client admin with their own credentials.
 
 ## Branch protection and deploy approval (OPS-003)
 
