@@ -41,7 +41,8 @@ local-data/
 # docs/
 
 # Local S1/parser evaluation suites and generated artifacts
-# (stationary_combustion/ is the committed EXT-001 golden set; the golden tests need it)
+# (stationary_combustion/ and mobile_combustion/ are the committed EXT-001/002 golden sets)
 s1-test-suite/*
 !s1-test-suite/stationary_combustion/
+!s1-test-suite/mobile_combustion/
 parser_reliability_test_set/

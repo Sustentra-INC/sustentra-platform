@@ -175,7 +175,9 @@ _DATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?P<y>\d{4})-(?P<m>\d{1,2})-(?P<d>\d{1,2})"),
     re.compile(r"(?P<m>\d{1,2})/(?P<d>\d{1,2})/(?P<y>\d{4}|\d{2})(?!\d)"),
     re.compile(rf"(?P<mon>{_MONTH_RE})\.?\s+(?P<d>\d{{1,2}}),?\s+(?P<y>\d{{4}})", re.IGNORECASE),
-    re.compile(rf"(?P<d>\d{{1,2}})[\s-](?P<mon>{_MONTH_RE})\.?[\s-],?(?P<y>\d{{4}})", re.IGNORECASE),
+    re.compile(rf"(?P<d>\d{{1,2}})[\s-](?P<mon>{_MONTH_RE})\.?[\s-],?(?P<y>\d{{4}}|\d{{2}})(?!\d)", re.IGNORECASE),
+    # 14.03.2026 - dotted dates are day-first wherever they are used
+    re.compile(r"(?<![\d.])(?P<d>\d{1,2})\.(?P<m>\d{1,2})\.(?P<y>\d{4}|\d{2})(?![\d.])"),
 )
 _NUMBER_RE = re.compile(
     r"(?P<open>\()?(?P<sign>-)?(?<![\w.,])"
@@ -251,6 +253,7 @@ class UsageRecord:
     start: Located | None = None
     end: Located | None = None
     fuel: Located | None = None
+    extra: dict[str, Located] = field(default_factory=dict)  # subclass EXTRA_COLUMNS values
 
 
 @dataclass
@@ -381,10 +384,32 @@ def detect_fuel(text: str) -> tuple[str, str] | None:
 # Extractor
 # =========================================================================================
 class StationaryCombustionExtractor:
-    """Builds CT-S1-FUELQTY candidates (possibly several records) from parser_output."""
+    """Builds CT-S1-FUELQTY candidates (possibly several records) from parser_output.
+
+    The layout engine (visual rows, label/value lookup, usage tables, traceability) is
+    shared with other fuel types: subclasses override the class-level vocabularies,
+    ``EXTRA_COLUMNS`` and ``_fuel`` (see MobileCombustionExtractor).
+    """
+
+    CANONICAL_TYPE_ID: str = CANONICAL_TYPE_ID
+    FUEL_LABEL_GROUPS: tuple[tuple[str, ...], ...] = FUEL_LABELS
+    QUANTITY_LABEL_GROUPS: tuple[tuple[str, ...], ...] = QUANTITY_LABELS
+    ID_HEADERS: tuple[str, ...] = _ID_HEADERS
+    PRODUCT_HEADERS: tuple[str, ...] = _PRODUCT_HEADERS
+    DATE_HEADERS: tuple[str, ...] = _DATE_HEADERS
+    UNIT_HEADERS: tuple[str, ...] = _UNIT_HEADERS
+    QTY_EXCLUDE: tuple[str, ...] = _QTY_EXCLUDE
+    # Additional table columns kept on each record: key -> header names (normalized).
+    EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {}
+    ALL_LABELS: tuple[str, ...] = ()  # filled after the module-level label groups
 
     def handles(self, targets: Sequence[dict]) -> bool:
-        return bool(targets) and all(t.get("canonical_type_id") == CANONICAL_TYPE_ID for t in targets)
+        return bool(targets) and all(t.get("canonical_type_id") == self.CANONICAL_TYPE_ID for t in targets)
+
+    def _fuel(self, text: str) -> tuple[str, str] | None:
+        """(fuel_type, matched keyword) for a fuel this extractor accepts."""
+
+        return detect_fuel(text)
 
     def confirms(self, parser_output: dict) -> bool:
         """Content check used when the classifier is unsure: the document names a
@@ -396,7 +421,7 @@ class StationaryCombustionExtractor:
         try:
             if self._document_fuel(rows) is None:
                 return False
-            records = self._usage_table_records(rows) or self._labeled_quantity_records(rows)
+            records = self._quantity_records(rows)
             unit_hint = self._document_unit(rows)
             for record in records:
                 unit_text = record.unit_raw or (unit_hint.raw if unit_hint else None)
@@ -454,7 +479,7 @@ class StationaryCombustionExtractor:
         document_values["facility_name"] = facility
         document_values["service_address"] = self._address(rows) or address_from_facility
 
-        records = self._usage_table_records(rows) or self._labeled_quantity_records(rows)
+        records = self._quantity_records(rows)
         period = self._document_period(rows)
         unit_hint = self._document_unit(rows)
 
@@ -644,7 +669,7 @@ class StationaryCombustionExtractor:
                     #    another column's label or sits far away, as in a two-column header)
                     if position + 1 < len(row.cells):
                         nxt = row.cells[position + 1]
-                        is_label = self._label_prefix(nxt.text, _ALL_LABELS) is not None
+                        is_label = self._label_prefix(nxt.text, self.ALL_LABELS) is not None
                         far = cell.box is not None and nxt.box is not None and nxt.left - cell.right > 0.25
                         if not is_label and not far:
                             value = self._trim_value(nxt.text)
@@ -759,13 +784,13 @@ class StationaryCombustionExtractor:
     # Fuel
     # =================================================================================
     def _document_fuel(self, rows: Sequence[Row]) -> Located | None:
-        labeled = self._find_labeled(rows, FUEL_LABELS, accept=lambda v: detect_fuel(v) is not None,
-                                     accept_bare=lambda v: detect_fuel(v) is not None)
+        labeled = self._find_labeled(rows, self.FUEL_LABEL_GROUPS, accept=lambda v: self._fuel(v) is not None,
+                                     accept_bare=lambda v: self._fuel(v) is not None)
         if labeled is not None:
             return labeled
         for row in rows:
             for cell in row.cells:
-                if detect_fuel(cell.text) is not None:
+                if self._fuel(cell.text) is not None:
                     return Located(cell.text, [cell], row, CONF_DOCUMENT_SCAN)
         return None
 
@@ -825,11 +850,18 @@ class StationaryCombustionExtractor:
             if index == columns["quantity"]:
                 continue
             bare = text.strip(" :#")
-            if "unit" not in columns and bare in _UNIT_HEADERS:
+            extra = next(
+                (key for key, names in self.EXTRA_COLUMNS.items()
+                 if key not in columns and any(text == n or bare == n or text.startswith(n + " ") for n in names)),
+                None,
+            )
+            if extra is not None:
+                columns[extra] = index
+            elif "unit" not in columns and bare in self.UNIT_HEADERS:
                 columns["unit"] = index
-            elif "id" not in columns and any(bare == h or bare.startswith(h + " ") for h in _ID_HEADERS):
+            elif "id" not in columns and any(bare == h or bare.startswith(h + " ") for h in self.ID_HEADERS):
                 columns["id"] = index
-            elif "product" not in columns and bare in _PRODUCT_HEADERS:
+            elif "product" not in columns and bare in self.PRODUCT_HEADERS:
                 columns["product"] = index
             elif "range" not in columns and bare in _RANGE_HEADERS:
                 columns["range"] = index
@@ -837,14 +869,13 @@ class StationaryCombustionExtractor:
                 columns["start"] = index
             elif "end" not in columns and bare in _END_HEADERS:
                 columns["end"] = index
-            elif "date" not in columns and bare in _DATE_HEADERS:
+            elif "date" not in columns and bare in self.DATE_HEADERS:
                 columns["date"] = index
         return columns
 
-    @staticmethod
-    def _quantity_header_score(text: str) -> int:
+    def _quantity_header_score(self, text: str) -> int:
         bare = text.strip(" :#")
-        if any(word in text for word in _QTY_EXCLUDE) or bare in _UNIT_HEADERS or bare.endswith(" unit"):
+        if any(word in text for word in self.QTY_EXCLUDE) or bare in self.UNIT_HEADERS or bare.endswith(" unit"):
             return 0
         unit = fuel_units.canonical_unit(text) or fuel_units.find_unit(text)
         score = 0
@@ -864,7 +895,11 @@ class StationaryCombustionExtractor:
 
     def _table_records(self, rows: Sequence[Row], header_row: Row, columns: dict[str, int]) -> list[UsageRecord]:
         header_cells = header_row.cells
-        header_unit = fuel_units.find_unit(header_cells[columns["quantity"]].text)
+        header_text = header_cells[columns["quantity"]].text
+        paren = re.search(r"\(([^()]{1,20})\)", header_text)
+        # "Volume (L)": a unit in parentheses may be a single letter
+        header_unit_text = paren.group(1) if paren and fuel_units.canonical_unit(paren.group(1)) else header_text
+        header_unit = fuel_units.canonical_unit(header_unit_text) or fuel_units.find_unit(header_text)
         records: list[UsageRecord] = []
         last_top = header_row.top
         header_texts = [_norm(c.text) for c in header_cells]
@@ -908,13 +943,13 @@ class StationaryCombustionExtractor:
             elif fuel_units.find_unit(qty_cell.text):
                 unit_raw = qty_cell.text
             elif header_unit is not None:
-                unit_raw = header_cells[columns["quantity"]].text
+                unit_raw = header_unit_text
                 unit_located = Located(header_cells[columns["quantity"]].text, [header_cells[columns["quantity"]]],
                                        header_row, CONF_TABLE)
             product_cell = assigned.get(columns["product"]) if "product" in columns else None
             fuel = None
             if product_cell is not None:
-                if detect_fuel(product_cell.text) is None:
+                if self._fuel(product_cell.text) is None:
                     continue  # non-fuel line item
                 fuel = Located(product_cell.text, [product_cell], row, CONF_TABLE)
             hint_cell = assigned.get(columns["id"]) if "id" in columns else None
@@ -925,6 +960,11 @@ class StationaryCombustionExtractor:
                 hint=hint_cell.text if hint_cell is not None else None,
                 fuel=fuel,
             )
+            for key in self.EXTRA_COLUMNS:
+                cell = assigned.get(columns[key]) if key in columns else None
+                if cell is not None and cell.text.strip():
+                    record.extra[key] = Located(cell.text, [cell], row, CONF_TABLE,
+                                                context=self._row_context(header_row, row))
             self._row_dates(record, row, assigned, columns, header_row)
             records.append(record)
         return records
@@ -969,22 +1009,34 @@ class StationaryCombustionExtractor:
     def _row_context(header_row: Row, row: Row) -> str:
         return f"{header_row.text} | {row.text}"
 
+    def _quantity_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
+        """Usage table rows, else a labeled quantity (subclasses add more layouts)."""
+
+        return self._usage_table_records(rows) or self._labeled_quantity_records(rows)
+
     def _labeled_quantity_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
         def accept(value: str) -> bool:
             return parse_number(value) is not None and not value.strip().startswith("$")
 
-        located = self._find_labeled(rows, QUANTITY_LABELS, accept=accept,
+        located = self._find_labeled(rows, self.QUANTITY_LABEL_GROUPS, accept=accept,
                                      accept_bare=lambda v: bool(re.match(r"\(?-?\d", v)))
         if located is None:
             return []
         number = parse_number(located.raw)
         assert number is not None
         unit_raw = located.raw if fuel_units.find_unit(located.raw) else None
+        if unit_raw is None:
+            # "182.40 L": a whole-word unit right after the number (single letters included)
+            after = located.raw.split(number[1], 1)[-1].strip().split()
+            if after and fuel_units.canonical_unit(after[0]) is not None:
+                unit_raw = after[0]
         if unit_raw is None and located.label_cell is not None:
             # "Total Usage (Therms): 1,234" - the unit is in the label
             label_paren = re.search(r"\(([^()]{1,30})\)", located.label_cell.text)
             if label_paren and fuel_units.find_unit(label_paren.group(1)):
                 unit_raw = label_paren.group(1)
+            elif fuel_units.find_unit(located.label_cell.text.split(":")[0]):
+                unit_raw = located.label_cell.text.split(":")[0]  # "Gallons Delivered: 742.6"
         unit_located = None
         if unit_raw is None and located.row is not None:
             for cell in located.row.cells:
@@ -1013,7 +1065,7 @@ class StationaryCombustionExtractor:
         values["service_period_end"] = self._date_value(end_loc, first=False, inherited=inherited_period and record is not None)
 
         fuel_loc = record.fuel if record and record.fuel else doc_fuel
-        detected = detect_fuel(fuel_loc.raw)
+        detected = self._fuel(fuel_loc.raw)
         values["fuel_type"] = (fuel_loc, detected[0] if detected else None)
 
         values["activity_quantity"] = None
@@ -1253,3 +1305,4 @@ ALL_LABEL_GROUPS: tuple[tuple[str, ...], ...] = (
     + START_LABELS + END_LABELS + DELIVERY_DATE_LABELS + QUANTITY_LABELS
 )
 _ALL_LABELS: tuple[str, ...] = tuple(label for group in ALL_LABEL_GROUPS for label in group)
+StationaryCombustionExtractor.ALL_LABELS = _ALL_LABELS

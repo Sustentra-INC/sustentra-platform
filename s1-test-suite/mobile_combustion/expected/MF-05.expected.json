@@ -1,0 +1,25 @@
+{
+  "document_id": "MF-05",
+  "file": "MF-05_valley_propane_forklift.pdf",
+  "description": "Forklift (non-road) propane cylinder exchange: quantity by weight in lb; cylinder count is not the quantity. The classifier leans stationary (propane delivery) but the document says forklift: halts until a reviewer sets the type.",
+  "expected_classification": "CT-S1-MOBFUEL",
+  "expected_halt": null,
+  "reviewer_override": "CT-S1-MOBFUEL",
+  "expected_halt_without_override": "unsupported_document",
+  "document_fields": {},
+  "records": [
+    {
+      "transaction_date": "2024-05-06",
+      "fuel_type": "propane",
+      "activity_quantity": 402,
+      "activity_unit": "lb",
+      "raw_quantity": "402",
+      "raw_unit": "lb",
+      "biofuel_blend_pct": null,
+      "record_hint": null,
+      "vehicle_or_equipment_id": "Forklift fleet FL-1 to FL-6",
+      "merchant_or_supplier": "Valley Propane Exchange",
+      "transaction_id": "VPX-10422"
+    }
+  ]
+}

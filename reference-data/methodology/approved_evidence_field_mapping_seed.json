@@ -49,6 +49,54 @@
       "data_schema_field": "quantity_unit",
       "mapping_status": "needs_domain_review",
       "notes": "Likely maps the approved mobile activity unit to the mobile quantity unit; ESG should confirm unit semantics."
+    },
+    {
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "approved_field_name": "transaction_date",
+      "methodology_field_id": "S1-MOB-110",
+      "data_schema_field": "transaction_date",
+      "mapping_status": "provisional",
+      "notes": "EXT-002: transaction date of a mobile fuel purchase (fuel_transaction grain)."
+    },
+    {
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "approved_field_name": "merchant_or_supplier",
+      "methodology_field_id": "S1-MOB-110",
+      "data_schema_field": "merchant_or_supplier",
+      "mapping_status": "provisional",
+      "notes": "EXT-002: station / merchant / bulk supplier of the transaction."
+    },
+    {
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "approved_field_name": "fueling_location",
+      "methodology_field_id": "S1-MOB-110",
+      "data_schema_field": "fueling_location",
+      "mapping_status": "provisional",
+      "notes": "EXT-002: city/state or address of the fueling."
+    },
+    {
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "approved_field_name": "vehicle_or_equipment_id",
+      "methodology_field_id": "S1-MOB-410",
+      "data_schema_field": "vehicle_or_equipment_id",
+      "mapping_status": "needs_domain_review",
+      "notes": "EXT-002: extracted from statements/receipts; the schema marks this identifier as assigned, so ESG should confirm it may be pre-filled from evidence."
+    },
+    {
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "approved_field_name": "transaction_id",
+      "methodology_field_id": "S1-MOB-410",
+      "data_schema_field": "transaction_id",
+      "mapping_status": "needs_domain_review",
+      "notes": "EXT-002: receipt/invoice/transaction number; schema marks it assigned - confirm."
+    },
+    {
+      "canonical_type_id": "CT-S1-MOBFUEL",
+      "approved_field_name": "biofuel_blend_pct",
+      "methodology_field_id": "S1-MOB-310",
+      "data_schema_field": "biofuel_blend_pct",
+      "mapping_status": "needs_domain_review",
+      "notes": "EXT-002: Bxx/Exx blend share stated on the product line; S1-MOB-310 belongs to CT-S1-FUELPROP - confirm it may come from MOBFUEL evidence."
     }
   ]
 }

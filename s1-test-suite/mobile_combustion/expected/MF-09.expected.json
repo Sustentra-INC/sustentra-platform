@@ -1,0 +1,9 @@
+{
+  "document_id": "MF-09",
+  "file": "MF-09_chargeway_ev_charging.pdf",
+  "description": "Fleet EV-charging statement (kWh): electricity is Scope 2, so it halts as unsupported.",
+  "expected_classification": null,
+  "expected_halt": "unsupported_document",
+  "document_fields": {},
+  "records": []
+}

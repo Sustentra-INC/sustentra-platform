@@ -1,0 +1,9 @@
+{
+  "document_id": "MF-08",
+  "file": "MF-08_photographed_receipt_no_text.pdf",
+  "description": "Photographed receipt with no text layer (OCR disabled locally): halts as unreadable.",
+  "expected_classification": null,
+  "expected_halt": "unreadable_document",
+  "document_fields": {},
+  "records": []
+}

@@ -20,6 +20,14 @@ from backend.app.services.classification_service import ClassificationService
 from backend.app.services.extraction_service import ExtractionService
 from backend.app.services.extraction_target_service import ExtractionTargetService
 from backend.app.services.parser_service import ParserService
+from backend.app.services.mobile_combustion_extractor import (
+    CANONICAL_TYPE_ID as MOBFUEL_TYPE_ID,
+)
+from backend.app.services.mobile_combustion_extractor import (
+    MobileCombustionExtractor,
+    fuel_use_cues,
+    names_combusted_fuel,
+)
 from backend.app.services.review_decision_service import ReviewDecisionService
 from backend.app.services.stationary_combustion_extractor import (
     CANONICAL_TYPE_ID as FUELQTY_TYPE_ID,
@@ -32,12 +40,12 @@ CLASSIFIER_TARGET_STATUSES = {"classified", "multi_type_candidate"}
 HALT_UNREADABLE = "unreadable_document"
 HALT_UNSUPPORTED = "unsupported_document"
 LOW_CONFIDENCE_THRESHOLD = 0.5
-# EXT-001: a low-confidence CT-S1-FUELQTY match is accepted when it is the classifier's
+# EXT-001/002: a low-confidence Scope 1 fuel match (FUELQTY or MOBFUEL) is accepted when it is the classifier's
 # best match overall, scores at least this much (two content signal groups, e.g. header
 # terms + layout features), and the stationary-combustion content check passes (a
 # combusted fuel is named and a quantity is stated in a non-electric fuel unit).
-FUELQTY_CONTENT_CHECK_FLOOR = 0.4
-FUEL_TYPE_IDS = {FUELQTY_TYPE_ID, "CT-S1-MOBFUEL"}
+FUEL_CONTENT_CHECK_FLOOR = 0.4
+FUEL_TYPE_IDS = {FUELQTY_TYPE_ID, MOBFUEL_TYPE_ID}
 
 
 class PipelineOrchestrationService:
@@ -201,6 +209,19 @@ class PipelineOrchestrationService:
                 ):
                     canonical_type_id = primary.strip()
                     canonical_type_source = "classifier"
+                    mobile_cues, stationary_cues = fuel_use_cues(parser_output)
+                    if self._fuel_cues_conflict(canonical_type_id, mobile_cues, stationary_cues):
+                        other = "mobile (vehicles/fleet)" if canonical_type_id == FUELQTY_TYPE_ID else "stationary"
+                        cues = ", ".join(mobile_cues if canonical_type_id == FUELQTY_TYPE_ID else stationary_cues)
+                        halt_reason = {
+                            "code": HALT_UNSUPPORTED,
+                            "message": f"The classifier chose {canonical_type_id}, but the document reads as {other} "
+                            f"fuel use ({cues}). Set the document type manually.",
+                        }
+                        warnings.append(halt_reason["message"])
+                        canonical_type_id = None
+                        canonical_type_source = "none"
+                if canonical_type_id is not None and canonical_type_source == "classifier":
                     extraction_targets = (
                         self._get_target_service().get_targets_for_classification_result(
                             classification_result,
@@ -208,8 +229,8 @@ class PipelineOrchestrationService:
                             include_deprecated=include_deprecated,
                         )
                     )
-                elif self._fuelqty_content_confirmed(classification_result, parser_output):
-                    canonical_type_id = FUELQTY_TYPE_ID
+                elif (confirmed := self._fuel_content_confirmed(classification_result, parser_output)):
+                    canonical_type_id = confirmed
                     canonical_type_source = "content_check"
                     extraction_targets = self._get_target_service().get_targets_for_canonical_type(
                         canonical_type_id,
@@ -218,8 +239,9 @@ class PipelineOrchestrationService:
                     )
                     warnings.append(
                         f"Classifier confidence {float(classification_result.get('confidence') or 0):.2f} was below "
-                        f"its threshold; accepted {FUELQTY_TYPE_ID} because the document names a combusted fuel "
-                        "and a quantity in a fuel unit."
+                        f"its threshold; accepted {confirmed} because the document names a combusted fuel "
+                        "and a quantity in a fuel unit"
+                        + (" with vehicle/fleet details." if confirmed == MOBFUEL_TYPE_ID else ".")
                     )
                 else:
                     canonical_type_id = None
@@ -227,8 +249,9 @@ class PipelineOrchestrationService:
                     warnings.append(
                         "No confident canonical_type_id available; target planning and candidate generation were skipped."
                     )
-                    halt_reason = self._unsupported_halt(classification_result)
-                    warnings.append(halt_reason["message"])
+                    if halt_reason is None:
+                        halt_reason = self._unsupported_halt(classification_result, parser_output)
+                        warnings.append(halt_reason["message"])
 
             if canonical_type_id is None:
                 stage_statuses.target_plan = "skipped"
@@ -388,22 +411,52 @@ class PipelineOrchestrationService:
         }
 
     @staticmethod
-    def _fuelqty_content_confirmed(classification_result: dict, parser_output: dict) -> bool:
+    def _fuel_content_confirmed(classification_result: dict, parser_output: dict) -> str | None:
+        """Scope 1 fuel type to accept for a low-confidence classification, or None.
+
+        A fuel type must be the best match overall (ties with non-fuel types are settled
+        by its content check, which rejects electricity) and score at least the floor.
+        When stationary and mobile tie, explicit context decides (vehicle/fleet/fuel-card
+        cues vs boiler/generator/building cues); without one-sided cues nothing is
+        accepted. The chosen type must not contradict the cues and must pass its
+        extractor's content check.
+        """
+
         if classification_result.get("status") != "low_confidence":
-            return False
+            return None
         matches = [m for m in classification_result.get("candidate_matches") or [] if isinstance(m, dict)]
         if not matches:
-            return False
+            return None
         best = max(float(m.get("confidence") or 0) for m in matches)
         leaders = {m.get("canonical_type_id") for m in matches if float(m.get("confidence") or 0) == best}
-        # FUELQTY must be the best match overall (ties with non-fuel types are settled by the
-        # content check, which rejects electricity); stationary vs mobile cannot be decided
-        # from content (e.g. diesel), so a MOBFUEL tie is never overridden.
-        if FUELQTY_TYPE_ID not in leaders or leaders & (FUEL_TYPE_IDS - {FUELQTY_TYPE_ID}):
-            return False
-        if best < FUELQTY_CONTENT_CHECK_FLOOR:
-            return False
-        return StationaryCombustionExtractor().confirms(parser_output)
+        fuel_leaders = leaders & FUEL_TYPE_IDS
+        if not fuel_leaders or best < FUEL_CONTENT_CHECK_FLOOR:
+            return None
+        mobile, stationary = fuel_use_cues(parser_output)
+        fuel_type: str
+        if len(fuel_leaders) > 1:
+            if mobile and not stationary:
+                fuel_type = MOBFUEL_TYPE_ID
+            elif stationary and not mobile:
+                fuel_type = FUELQTY_TYPE_ID
+            else:
+                return None
+        else:
+            fuel_type = str(next(iter(fuel_leaders)))
+        if PipelineOrchestrationService._fuel_cues_conflict(fuel_type, mobile, stationary):
+            return None
+        extractor = StationaryCombustionExtractor() if fuel_type == FUELQTY_TYPE_ID else MobileCombustionExtractor()
+        return fuel_type if extractor.confirms(parser_output) else None
+
+    @staticmethod
+    def _fuel_cues_conflict(fuel_type: str, mobile: list[str], stationary: list[str]) -> bool:
+        """True when the document's context clearly says the other kind of fuel use."""
+
+        if fuel_type == FUELQTY_TYPE_ID:
+            return bool(mobile) and not stationary
+        if fuel_type == MOBFUEL_TYPE_ID:
+            return bool(stationary) and not mobile
+        return False
 
     @staticmethod
     def _unreadable_halt(parser_output: dict) -> dict[str, str]:
@@ -417,7 +470,7 @@ class PipelineOrchestrationService:
         return {"code": HALT_UNREADABLE, "message": f"{message} Parser said: {details}" if details else message}
 
     @staticmethod
-    def _unsupported_halt(classification_result: dict) -> dict[str, str]:
+    def _unsupported_halt(classification_result: dict, parser_output: dict | None = None) -> dict[str, str]:
         primary = classification_result.get("primary_canonical_type_id")
         confidence = classification_result.get("confidence")
         threshold = classification_result.get("threshold")
@@ -429,6 +482,20 @@ class PipelineOrchestrationService:
             )
         else:
             message = "Unsupported document type: it does not match any known evidence type."
+        fuel_matches = {
+            m.get("canonical_type_id") for m in classification_result.get("candidate_matches") or []
+            if isinstance(m, dict) and m.get("canonical_type_id") in FUEL_TYPE_IDS
+        }
+        if fuel_matches and parser_output is not None and names_combusted_fuel(parser_output):
+            mobile, stationary = fuel_use_cues(parser_output)
+            if mobile and stationary:
+                message += f" It mentions both mobile ({', '.join(mobile)}) and stationary ({', '.join(stationary)}) fuel use."
+            elif mobile:
+                message += f" It reads as mobile fuel use ({', '.join(mobile)}): CT-S1-MOBFUEL is likely."
+            elif stationary:
+                message += f" It reads as stationary fuel use ({', '.join(stationary)}): CT-S1-FUELQTY is likely."
+            else:
+                message += " It names a fuel but nothing says whether it was burned in vehicles or on site."
         return {"code": HALT_UNSUPPORTED, "message": message}
 
     @staticmethod
