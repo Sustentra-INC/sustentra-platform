@@ -104,3 +104,17 @@ def test_jsonl_uses_temporary_path(tmp_path: Path):
     repository.save(_document("DOC-1"))
     assert path.exists()
     assert path.read_text(encoding="utf-8").strip()
+
+
+def test_listings_return_the_latest_version_of_each_document() -> None:
+    from backend.app.repositories.document_repository import InMemoryDocumentRepository
+
+    repository = InMemoryDocumentRepository()
+    first = {"document_id": "D1", "engagement_id": "E", "evidence_id": "EV", "processing_status": "queued"}
+    second = {"document_id": "D2", "engagement_id": "E", "evidence_id": "EV", "processing_status": "queued"}
+    repository.save(first)
+    repository.save(second)
+    repository.save({**first, "processing_status": "completed"})
+    for listed in (repository.list_by_engagement("E"), repository.list_by_evidence("EV")):
+        assert [(d["document_id"], d["processing_status"]) for d in listed] == [("D1", "completed"), ("D2", "queued")]
+    assert len(repository.list_all()) == 3  # the log itself keeps every version

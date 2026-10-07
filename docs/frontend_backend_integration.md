@@ -81,7 +81,7 @@ In `backend` mode the frontend starts **completely empty**: no engagement, no do
 | **Evidence requests** (client email) | a requests model + send path | Needs backend + `EMAIL-001` |
 | **Dashboard** (KPIs, charts) | aggregate endpoints (counts, coverage %, phase) | Not built — decide build vs. demo-only |
 | **AI assistant** | a real assistant/LLM endpoint | Backend has a placeholder; decide real vs. canned |
-| **Setup — scope & assurance fields** (`dataScope`, `assuranceStandard`, `assuranceLevel`, `materialityThreshold`) | add these 4 fields to the engagement model so Setup persists | Small schema add |
+| **Setup — scope & assurance fields** (`dataScope`, `assuranceStandard`, `assuranceLevel`, `materialityThreshold`) | persisted with the engagement | **Done** (S1-BE-002, engagement `settings`) |
 
 ## Auth / tenancy note
 
@@ -106,3 +106,11 @@ In `backend` mode the frontend starts **completely empty**: no engagement, no do
 - All three: session required, org-scoped (404 for unknown or another org's document, like SEC-001).
 - The served `Content-Type` comes from the file's bytes, not the uploaded `mime_type`, and responses carry `nosniff`, so an HTML/SVG upload can never run as a page on the app's origin.
 - Embedding: the preview may be framed by the app only (`X-Frame-Options: SAMEORIGIN`, `frame-ancestors 'self'`); Caddy's `DENY` / `frame-ancestors 'none'` are defaults the API overrides for this route. Use an `<iframe>` (or `<img>`) — the page CSP has `object-src 'none'`, so `<object>`/`<embed>` are blocked.
+
+## S1-BE-002: engagements (done)
+
+- Stored in Postgres (`engagements`, migration 0008) with Row-Level Security: a row is visible only in its org's tenant context or provider scope. The app role cannot delete; engagements are archived (`status`).
+- `GET /api/v1/engagements` (active ones, newest first; `?include_archived=true`), `POST /api/v1/engagements` (`{name, client_name?, reporting_period_start?, reporting_period_end?, settings?}` → 201), `GET` / `PATCH /api/v1/engagements/{id}` (partial; `settings` is replaced whole). Org users read/write their own org's; provider_admin reads all (`?org_id=` to filter) and gets 403 on writes; another org's id is 404. Create/update/archive write audit events (field names only).
+- `settings` holds the rest of Setup using the frontend's names (`facilities`, `regulation`, `clientContact`, `engagementTeam`, `dataScope`, …); unknown keys are 422, max 64 KB.
+- Frontend (`features/s1/api/engagements.ts`, `components/EngagementPicker.tsx`): Setup lists the org's engagements, creates new ones and picks one; edits autosave (~0.7 s after typing stops); the last pick is remembered per browser. Uploads and the Evidence Workspace use the picked engagement's id; uploading without one asks the user to pick or create it first.
+- Document listings now return the latest version of each document (the store is append-only, so a processed upload used to show up once per status change).
