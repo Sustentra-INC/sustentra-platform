@@ -190,22 +190,24 @@ From your laptop (outside the VPC), port 5432 must be unreachable:
    proxy status **DNS only**. SES shows the domain as *Verified* within ~1 hour.
 2. Confirm the "AWS Notification - Subscription Confirmation" email for each
    address in `alert_emails`.
-3. Request production access (one per AWS account/region; takes up to 24h):
-   ```powershell
-   aws sesv2 put-account-details --region us-east-1 --profile sustentra `
-     --production-access-enabled --mail-type TRANSACTIONAL `
-     --website-url https://app.sustentra.com --contact-language EN `
-     --use-case-description "Transactional email for the Sustentra platform: sign-in one-time passcodes and account notifications to registered users only. No marketing. Bounces and complaints are handled via SNS and the SES suppression list." `
-     --additional-contact-email-addresses ops@sustentra.com
+3. Request production access (one per AWS account/region; AWS answers within ~24h) - OPS-001:
+   ```bash
+   bash infra/scripts/ses-production-access.sh --check     # status, quota, domain DKIM / MAIL FROM
+   bash infra/scripts/ses-production-access.sh --request   # shows the use case, asks, then submits
    ```
-   (Needs `ses:PutAccountDetails`; otherwise an admin can submit the same in the
-   SES console -> Account dashboard -> Request production access.)
+   The request is transactional mail only, contact `dev.sustentra@gmail.com`
+   (`SES_CONTACT=` to change). Needs `ses:PutAccountDetails`; otherwise an admin can
+   paste the same use case in the SES console -> Account dashboard -> Request
+   production access. If AWS asks follow-up questions, answer in the support case.
 
 ### Sandbox fallback (until production access is approved)
 
 SES only delivers to verified addresses. Add developer inboxes to
 `ses_sandbox_recipients` in the env tfvars, apply, and click the verification
-link AWS emails to each one. Remove them once production access is granted.
+link AWS emails to each one. Remove them **only after** `--check` shows
+production access `True` (the OPS-001 follow-up PR empties both lists), then run
+terraform-apply for staging and prod. Removing them earlier stops sign-in email
+to those inboxes.
 
 ### Tests (from the app host via `aws ssm start-session`)
 
