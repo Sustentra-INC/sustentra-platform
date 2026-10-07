@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 
-import { ApiError, acceptInvite, validateInvite, type InviteDetails } from "./api";
+import { ApiError, acceptInvite, validateInvite, type InviteDetails, passwordPolicyMessage } from "./api";
 import { PASSWORD_HINTS, passwordIssues } from "./passwordPolicy";
 import { AuthShell } from "./AuthShell";
 import styles from "./auth.module.css";
@@ -77,7 +77,7 @@ export function AcceptInviteForm({ onAccepted }: { onAccepted?: (path: string) =
       if (err instanceof ApiError && (err.status === 400 || err.status === 410)) {
         setError("This invite link is invalid or has expired. Ask your administrator to resend it.");
       } else {
-        setError("Could not set up your account. Please try again.");
+        setError(passwordPolicyMessage(err) ?? "Could not set up your account. Please try again.");
       }
     } finally {
       setSubmitting(false);

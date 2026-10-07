@@ -21,22 +21,20 @@ Rules:
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 from typing import Any
-from urllib.parse import quote
 
 from fastapi import HTTPException
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..core.config import get_settings
-from ..core.security_primitives import new_token
 from ..domain.tenancy import DEFAULT_MAX_USERS, SEATED_USER_STATUSES
 from .audit_log import write_audit_event
+from .invite_service import PendingInvite, create_invited_user
+from .org_user_service import Actor
 
-INVITE_TTL = timedelta(hours=24)  # same lifetime as ORG-003 invites (invite_service.INVITE_TTL_HOURS)
+__all__ = ["Actor", "PendingInvite", "activate_org", "create_org", "get_org", "list_orgs", "suspend_org",
+           "update_org"]
 
 _SEATED = ", ".join(f"'{s}'" for s in SEATED_USER_STATUSES)
 _SELECT = f"""
@@ -45,33 +43,6 @@ _SELECT = f"""
       FROM organizations o
 """
 _NOT_FOUND = HTTPException(status_code=404, detail="Organization not found")
-
-
-@dataclass(frozen=True)
-class Actor:
-    """Who did it, for the audit trail."""
-
-    user_id: uuid.UUID
-    role: str
-    request_id: str | None = None
-    ip_address: str | None = None
-    user_agent: str | None = None
-
-
-@dataclass(frozen=True)
-class PendingInvite:
-    """An invite email to send once the transaction has committed."""
-
-    to: str
-    link: str
-
-
-def utcnow() -> datetime:
-    return datetime.now(UTC)
-
-
-def invite_link(token: str) -> str:
-    return f"{get_settings().public_base_url.rstrip('/')}/invite/accept?token={quote(token)}"
 
 
 def _like(term: str) -> str:
@@ -133,25 +104,10 @@ async def create_org(db: AsyncSession, actor: Actor, *, name: str, slug: str, ma
 
     pending: PendingInvite | None = None
     if initial_admin:
-        email = initial_admin["email"]
-        first, last = initial_admin["first_name"], initial_admin["last_name"]
-        user_id = (await db.execute(
-            text("""
-                INSERT INTO users (org_id, email, first_name, last_name, full_name, role, status)
-                VALUES (:org_id, :email, :first, :last, :full, 'org_admin', 'invited') RETURNING id
-            """),
-            {"org_id": org_id, "email": email, "first": first, "last": last, "full": f"{first} {last}".strip()},
-        )).scalar_one()
-        token, token_hash = new_token()
-        now = utcnow()
-        await db.execute(
-            text("INSERT INTO auth_tokens (user_id, org_id, type, token_hash, created_at, expires_at) "
-                 "VALUES (:uid, :org_id, 'invite', :hash, :now, :expires)"),
-            {"uid": user_id, "org_id": org_id, "hash": token_hash, "now": now, "expires": now + INVITE_TTL},
+        _, _, pending = await create_invited_user(
+            db, actor, org_id, email=initial_admin["email"], role="org_admin", first_name=initial_admin["first_name"],
+            last_name=initial_admin["last_name"], source="org_created",
         )
-        await _audit(db, actor, "user_invited", org_id, target_type="user", target_id=str(user_id),
-                     metadata={"role": "org_admin", "source": "org_created"})
-        pending = PendingInvite(to=email, link=invite_link(token))
     return await _get(db, org_id), pending
 
 
