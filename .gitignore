@@ -46,3 +46,8 @@ s1-test-suite/*
 !s1-test-suite/stationary_combustion/
 !s1-test-suite/mobile_combustion/
 parser_reliability_test_set/
+
+# Test coverage data
+.coverage
+.coverage.*
+htmlcov/
