@@ -14,7 +14,7 @@ Invite tokens reuse the auth_tokens table (migration 0003), type='invite':
   It MUST NOT create a session - the user logs in normally afterwards (AUTH-005).
 
 Other acceptance rules:
-- create: the invited user is created up-front (status 'invited'/'disabled') with the
+- create: the invited user is created up-front (status 'invited', DB-004) with the
   chosen role (org_admin|org_member) so the seat is reserved; 409 if the email already
   exists in the org; 422 if the org is at max_users.
 - resend: issues a fresh token, invalidating prior unconsumed invite tokens for the user.
