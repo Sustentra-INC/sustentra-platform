@@ -19,10 +19,9 @@ One runtime flag decides where the workpaper's data comes from (`frontend/featur
 ```
 NEXT_PUBLIC_S1_DATA_MODE=fixture   # current — hardcoded demo data (Cascade Provisions)
 NEXT_PUBLIC_S1_DATA_MODE=backend   # calls the real API via the seam below
-NEXT_PUBLIC_BACKEND_API_URL=https://<api-host>   # where the backend lives
 ```
 
-Flip to `backend` + point the URL, and the screens that have endpoints light up with real data. **Nothing else on the frontend needs to change** to go live — that's the whole point of the seam.
+The S1 calls are same-origin (`/api/v1/*`, FE-007), so there is no URL to point: in dev `next.config` proxies `/api/v1` to `BACKEND_INTERNAL_URL` (default `http://localhost:8000`), in prod Caddy routes it. Flip to `backend`, and the screens that have endpoints light up with real data. **Nothing else on the frontend needs to change** to go live — that's the whole point of the seam.
 
 ## The seam (where FE talks to BE)
 
@@ -32,17 +31,19 @@ Flip to `backend` + point the URL, and the screens that have endpoints light up 
 
 ## Function → endpoint → page map (what to implement against)
 
-Every call the frontend makes, the function that makes it, and which screen it powers. All in `features/s1/api/s1Backend.ts` unless noted.
+Every call the frontend makes, the function that makes it, and which screen it powers. All in `features/s1/api/s1Backend.ts` unless noted. Since FE-007 every call goes through the same-origin cookie client `lib/api.ts` (`api` / `apiMaybe`, URLs via `apiPath`): the browser sends the `__Host-session` cookie, `next.config` rewrites `/api/v1/*` to the backend in dev and Caddy routes it in prod.
 
 | Function (frontend) | Calls (backend) | Method | Powers |
 |---|---|---|---|
-| `listWorkspaceEvidence(engagementId)` | `/v1/engagements/{engagementId}/documents` then per-doc `/v1/pipeline/evidence/{evidenceId}/latest-run`, `/v1/documents/{documentId}/extraction-result/latest`, `/v1/documents/{documentId}/reviews` | GET | **Evidence workspace** (and seeds Extraction review) |
-| `uploadDocument(engagementId, file)` | `/v1/engagements/{engagementId}/documents/upload` (multipart) | POST | **Upload page** |
-| `processDocument(documentId)` | `/v1/documents/{documentId}/pipeline/process` | POST | **Upload / Evidence** (kick off extraction) |
-| `submitFieldReview({ evidenceId, fieldName, decision, reviewedValue, candidate })` | `/v1/evidence/{evidenceId}/fields/{fieldName}/review` | PUT | **Extraction review** (accept / correct / reject / needs-more) |
-| `downloadUrl(documentId)` | `/v1/documents/{documentId}/download` | GET (url) | **Extraction review** (original PDF) |
-| `inlineDocumentUrl(documentId)` *(adapter)* | `/v1/documents/{documentId}/preview` | GET (url) | **Extraction review** (inline preview) |
+| `listWorkspaceEvidence(engagementId)` | `/api/v1/engagements/{engagementId}/documents` then per-doc `/api/v1/pipeline/evidence/{evidenceId}/latest-run`, `/api/v1/documents/{documentId}/extraction-result/latest`, `/api/v1/documents/{documentId}/reviews` | GET | **Evidence workspace** (and seeds Extraction review) |
+| `uploadDocument(engagementId, file)` | `/api/v1/engagements/{engagementId}/documents/upload` (multipart) | POST | **Upload page** |
+| `processDocument(documentId)` | `/api/v1/documents/{documentId}/pipeline/process` | POST | **Upload / Evidence** (kick off extraction) |
+| `submitFieldReview({ evidenceId, fieldName, decision, reviewedValue, candidate })` | `/api/v1/evidence/{evidenceId}/fields/{fieldName}/review` | PUT | **Extraction review** (accept / correct / reject / needs-more) |
+| `downloadUrl(documentId)` | `/api/v1/documents/{documentId}/download` | GET (url) | **Extraction review** (original PDF) |
+| `inlineDocumentUrl(documentId)` *(adapter)* | `/api/v1/documents/{documentId}/preview` | GET (url) | **Extraction review** (inline preview) |
+| `getSignedInUser()` | `/api/v1/auth/me` | GET | **Workpaper load** (session check before any data) |
 | `userFacingApiError(error)` | — | — | error-message helper (no call) |
+| `isSessionEnded(error)` / `signInAgainPath(next)` | — | — | 401 handling (see Auth note) |
 
 **Adapters (the response contract):**
 - `mapBackendDocumentToEvidenceItem(document, latestRun)` — backend document + pipeline run → an evidence row.
@@ -60,14 +61,14 @@ In `backend` mode the frontend starts **completely empty**: no engagement, no do
 
 | Screen | Endpoint the frontend calls | Method |
 |---|---|---|
-| Evidence workspace | `/v1/engagements/{id}/documents` | GET |
-| Upload | `/v1/engagements/{id}/documents/upload` | POST |
-| Evidence / Extraction | `/v1/pipeline/evidence/{id}/latest-run` | GET |
-| Extraction review | `/v1/documents/{id}/extraction-result/latest` | GET |
-| Run pipeline | `/v1/documents/{id}/pipeline/process` | POST |
-| Extraction review (PDF) | `/v1/documents/{id}/download`, `/v1/documents/{id}/preview` | GET |
-| Review decisions | `/v1/documents/{id}/reviews` | GET |
-| Accept / correct a field | `/v1/evidence/{id}/fields/{field}/review` | PUT |
+| Evidence workspace | `/api/v1/engagements/{id}/documents` | GET |
+| Upload | `/api/v1/engagements/{id}/documents/upload` | POST |
+| Evidence / Extraction | `/api/v1/pipeline/evidence/{id}/latest-run` | GET |
+| Extraction review | `/api/v1/documents/{id}/extraction-result/latest` *(MVP-34 — 404 until built; read as "no result yet")* | GET |
+| Run pipeline | `/api/v1/documents/{id}/pipeline/process` | POST |
+| Extraction review (PDF) | `/api/v1/documents/{id}/download`, `/api/v1/documents/{id}/preview` *(MVP-34)* | GET |
+| Review decisions | `/api/v1/documents/{id}/reviews` | GET |
+| Accept / correct a field | `/api/v1/evidence/{id}/fields/{field}/review` | PUT |
 
 **Jack/Jerome ask:** confirm these return the shapes the adapters expect (see `evidenceAdapter.ts` / `fieldAdapter.ts`), ensure they're tenant-scoped once auth is in, then we flip `DATA_MODE=backend` for these screens.
 
@@ -84,9 +85,12 @@ In `backend` mode the frontend starts **completely empty**: no engagement, no do
 
 ## Auth / tenancy note
 
-The workpaper currently has no login of its own (fixture demo). Once Jerome's auth lands, the product at `/` should sit behind the session guard like the admin pages, and the `/v1` calls above must be **tenant-scoped** (engagement/org filtered) so data is isolated. The seam already sends the bearer token via `lib/api/client.ts`.
+> **SEC-001 (done):** every `/api/v1` S1 call requires the `__Host-session` cookie (401 without it) and is scoped to the caller's org (another org's records answer 404). `uploaded_by` / `reviewer_id` in request bodies are ignored; the signed-in user is recorded. A `provider_admin` can read but gets 403 on writes. The old root `/v1` routes are local-dev only.
 
-> **SEC-001 (done):** every `/api/v1` S1 call now requires the `__Host-session` cookie (401 without it) and is scoped to the caller's org (another org's records answer 404). `uploaded_by` / `reviewer_id` in request bodies are ignored; the signed-in user is recorded. A `provider_admin` can read but gets 403 on writes. Same-origin `fetch` in prod sends the cookie automatically; local dev across ports needs `credentials: "include"` (FE-007).
+> **FE-007 (done):** the S1 seam uses the same-origin cookie client, so no request goes out without the session (local dev included, via the `next.config` rewrite — no `credentials: "include"` or CORS needed). On load the workpaper calls `/api/v1/auth/me`; any 401 means the session ended:
+> - the login page remembers the realm the user last signed in to (`features/auth/lastRealm.ts`, localStorage: `org:<slug>` or `provider` — no secrets), so the workpaper sends them to `/org/<slug>/login?next=/` (or `/provider-admin/login?next=/`);
+> - when the browser has no remembered realm it shows a small "Sign in to continue" panel asking for the organization;
+> - login pages honour `?next=` for same-origin paths only.
 
 ## TL;DR for the backend team
 
