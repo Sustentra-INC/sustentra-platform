@@ -104,25 +104,32 @@ export function resendInvite(orgId: string, userId: string): Promise<void> {
 export interface AuditEvent {
   id: string;
   event_type: string;
-  actor: string;
-  target?: string | null;
-  summary?: string | null;
   created_at: string;
+  actor_user_id?: string | null;
+  actor_role?: string | null;
+  /** Display name of whoever did it ("Sustentra" for provider staff). */
+  actor: string | null;
+  target_type?: string | null;
+  target_id?: string | null;
+  /** Display name of the affected user, when the target is a user. */
+  target?: string | null;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AuditResult {
   items: AuditEvent[];
-  total: number;
+  /** Pass back as `cursor` (with the same filters) for the next page; null on the last page. */
+  next_cursor: string | null;
 }
 
-/** Org audit log (COMP-002). */
+/** Org audit log (COMP-002): newest first, cursor-paginated. */
 export function listAuditLog(
   orgId: string,
-  params: { type?: string; page?: number } = {},
+  params: { type?: string; cursor?: string | null } = {},
 ): Promise<AuditResult> {
   const query = new URLSearchParams();
   if (params.type) query.set("event_type", params.type);
-  if (params.page && params.page > 1) query.set("page", String(params.page));
+  if (params.cursor) query.set("cursor", params.cursor);
   const qs = query.toString();
-  return api<AuditResult>(`/orgs/${encodeURIComponent(orgId)}/audit-log${qs ? `?${qs}` : ""}`);
+  return api<AuditResult>(`/orgs/${encodeURIComponent(orgId)}/audit-logs${qs ? `?${qs}` : ""}`);
 }
