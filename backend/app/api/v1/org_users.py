@@ -1,4 +1,4 @@
-"""ORG-002 - user management within an org, at /api/v1/orgs/{org_id}/users.
+"""ORG-002 - user management within an org, at /api/v1/orgs/{org_id}/users (+ COMP-001 DELETE).
 
 org_admin for their own org (another org's id -> 404), provider_admin for any org,
 org_member -> 403, no session -> 401. Business rules live in org_user_service.
@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -109,3 +109,10 @@ async def suspend_user(org_id: str, user_id: str, principal: OrgAdmin, db: Db, r
 @router.post("/{user_id}/reactivate", response_model=UserResponse)
 async def reactivate_user(org_id: str, user_id: str, principal: OrgAdmin, db: Db, request: Request) -> UserResponse:
     return UserResponse(**await users.reactivate_user(db, _actor(principal, request), org_id, user_id))
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, response_class=Response)
+async def delete_user(org_id: str, user_id: str, principal: OrgAdmin, db: Db, request: Request) -> Response:
+    """COMP-001: erase a user (soft delete + anonymize). 204, then the user is 404 everywhere."""
+    await users.delete_user(db, _actor(principal, request), org_id, user_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

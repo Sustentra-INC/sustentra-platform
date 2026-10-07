@@ -20,8 +20,16 @@ Rules:
   invited user who was suspended gets their invite flow back via ORG-003 resend).
   Seats: suspended users already hold a seat (SEATED_USER_STATUSES), so reactivating
   never exceeds max_users. Idempotent.
+- delete (COMP-001, erasure): same self / last-admin rules as suspend. The row is
+  kept (audit_logs and invited_by keep their references) but status 'deleted',
+  deleted_at = now(), and the personal data is overwritten: email
+  deleted_{id}@deleted, first/last name 'Deleted' 'User', password_hash NULL. Every
+  session and every auth token of the user is deleted. The user then no longer
+  exists for this API (404) and login with the old email gets the generic 401.
+  Deleting frees the seat (deleted is not in SEATED_USER_STATUSES).
 - Audit events (DB-003): user_role_changed (from/to), user_suspended
-  (sessions_revoked), user_reactivated (status).
+  (sessions_revoked), user_reactivated (status), user_deleted (previous status, role,
+  sessions_revoked - never the erased email or names).
 """
 
 from __future__ import annotations
@@ -196,3 +204,28 @@ async def reactivate_user(db: AsyncSession, actor: Actor, org_id: str, user_id: 
                      {"status": new_status, "id": user["id"]})
     await _audit(db, actor, "user_reactivated", org["id"], user["id"], {"status": new_status})
     return await _user(db, org["id"], user_id)
+
+
+async def delete_user(db: AsyncSession, actor: Actor, org_id: str, user_id: str) -> None:
+    org = await _org(db, org_id)
+    admins = await _lock_active_admins(db, org["id"])
+    user = await _user(db, org["id"], user_id, lock=True)
+    _refuse_self(actor, user["id"], "delete")
+    if user["role"] == "org_admin" and user["status"] == "active":
+        _ensure_another_active_admin(admins, user["id"])
+    uid = user["id"]
+    await db.execute(
+        text("""
+            UPDATE users
+               SET status = 'deleted', deleted_at = now(), updated_at = now(),
+                   email = 'deleted_' || id::text || '@deleted',
+                   first_name = 'Deleted', last_name = 'User', full_name = 'Deleted User',
+                   password_hash = NULL, failed_login_count = 0, locked_until = NULL
+             WHERE id = :id
+        """),
+        {"id": uid},
+    )
+    revoked = await revoke_user_sessions(db, uid)
+    await db.execute(text("DELETE FROM auth_tokens WHERE user_id = :id"), {"id": uid})
+    await _audit(db, actor, "user_deleted", org["id"], uid,
+                 {"previous_status": user["status"], "role": user["role"], "sessions_revoked": revoked})

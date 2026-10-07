@@ -150,3 +150,13 @@ Never commit `local-data/`, `local-samples/`, private evidence documents, parser
 - Links last 24 hours and work once. Any unusable link (unknown, expired, used, user suspended, org suspended) gets the same 400.
 - The email is sent after the transaction commits. An org created with `initial_admin` (ORG-001) uses the same invite path.
 - Audit events: `user_invited`, `user_invite_resent`, `invite_accepted`.
+
+## User erasure (COMP-001 / MVP-20)
+
+`DELETE /api/v1/orgs/{org_id}/users/{user_id}` -> 204. Same access as ORG-002 (org admin for their own org, provider admin for any org).
+
+- Soft delete: the row stays, so audit history and `invited_by` keep their references. Status becomes `deleted`, `deleted_at` is set (migration 0011), and the personal data is overwritten: email `deleted_{id}@deleted`, name "Deleted User", password cleared.
+- Every session and auth token of the user is deleted at once. Login with the old email gets the same 401 as an unknown email.
+- An admin cannot delete themselves, and the last active admin cannot be deleted (409).
+- The seat is freed, and the old email can be invited again.
+- Audit event `user_deleted` records the actor, previous status, role and sessions revoked, never the erased email or name.
