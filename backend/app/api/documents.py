@@ -258,6 +258,17 @@ def list_evidence_documents(evidence_id: str, user: CurrentUser = Depends(s1_rea
     }
 
 
+def failed_run_error(run: dict) -> HTTPException:
+    """A failed pipeline run as an HTTP error. A halt is about the document (unreadable,
+    corrupt, unsupported), so it is a 422 with the halt message for the user; anything
+    else is a server-side failure (500)."""
+
+    halt = run.get("halt_reason") or {}
+    if halt.get("message"):
+        return HTTPException(status_code=422, detail=str(halt["message"]))
+    return HTTPException(status_code=500, detail=run.get("errors") or ["Pipeline run failed."])
+
+
 @router.post("/documents/{document_id}/pipeline/process")
 def process_uploaded_document(
     document_id: str,
@@ -307,11 +318,10 @@ def process_uploaded_document(
             detail=f"Pipeline processing failed: {exc}",
         ) from exc
 
-    pipeline_status = result.get("pipeline_run", {}).get("status")
-    if pipeline_status == "failed":
+    run = result.get("pipeline_run", {})
+    if run.get("status") == "failed":
         _upload_service.update_processing_status(document_id, "failed")
-        detail = result.get("pipeline_run", {}).get("errors") or ["Pipeline run failed."]
-        raise HTTPException(status_code=500, detail=detail)
+        raise failed_run_error(run)
 
     _upload_service.update_processing_status(document_id, "completed")
     return result

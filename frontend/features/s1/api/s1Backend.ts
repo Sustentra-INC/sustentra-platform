@@ -20,6 +20,7 @@ export interface PipelineRunSummary {
   status: string;
   warnings?: string[];
   errors?: string[];
+  halt_reason?: { code: string; message: string } | null;
 }
 
 export interface BackendExtractionResult {
@@ -194,6 +195,9 @@ export function userFacingApiError(error: unknown): string {
   if (!(error instanceof Error)) return "Backend request failed.";
   // 413 from the API (readable detail) or from Caddy (no body): same message.
   if (error instanceof ApiError && error.status === 413) return UPLOAD_TOO_LARGE;
+  // 422 from processing = the pipeline halted on this document (see the API's halt message).
+  if (error.message.startsWith("Unreadable document")) return HALT_REASONS.unreadable;
+  if (error.message.startsWith("Unsupported document type")) return HALT_REASONS.noTemplate;
   if (error.message.includes(HALT_REASONS.unsupportedFormat)) return HALT_REASONS.unsupportedFormat;
   if (error.message.includes(HALT_REASONS.unreadable)) return HALT_REASONS.unreadable;
   return error.message;

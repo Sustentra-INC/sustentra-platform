@@ -440,8 +440,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setBackendError(null);
     const failures: string[] = [];
     for (const file of Array.from(files)) {
+      let uploadedId: string | null = null;
       try {
         const document = await uploadDocument(engagement.engagementId, file);
+        uploadedId = document.document_id;
         setEvidenceItems((current) => [
           {
             documentId: document.document_id,
@@ -483,12 +485,19 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           setIsUploading(false);
           return;
         }
-        failures.push(`${file.name}: ${userFacingApiError(error)}`);
+        if (uploadedId) {
+          // Uploaded, but processing stopped (e.g. unreadable file): the row shows why.
+          const id = uploadedId;
+          setProcessingDocumentIds((current) => current.filter((item) => item !== id));
+          failures.push(`${file.name} was uploaded but could not be processed: ${userFacingApiError(error)}`);
+        } else {
+          failures.push(`${file.name} was not uploaded: ${userFacingApiError(error)}`);
+        }
       }
     }
     await refreshBackendWorkspace("populated");
     if (failures.length > 0) {
-      setBackendError(`Some files were not uploaded. ${failures.join(" ")}`);
+      setBackendError(failures.join(" "));
     }
     setIsUploading(false);
   }

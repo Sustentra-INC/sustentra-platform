@@ -25,6 +25,8 @@ export function mapBackendDocumentToEvidenceItem(
     status?: string | null;
     warnings?: string[] | null;
     errors?: string[] | null;
+    /** Why the pipeline stopped before reviewable candidates (unreadable / unsupported). */
+    halt_reason?: { code?: string | null; message?: string | null } | null;
   } | null
 ): EvidenceItem {
   const hasType = Boolean(summary?.canonical_type_id);
@@ -33,8 +35,9 @@ export function mapBackendDocumentToEvidenceItem(
     summary?.status === "partial" &&
     Number(summary?.candidate_count ?? 0) === 0 &&
     Number(summary?.target_count ?? 0) === 0;
+  const halt = haltReasonFromCode(summary?.halt_reason?.code);
   const processingState =
-    document.processing_status === "failed"
+    document.processing_status === "failed" || halt
       ? "blocked"
       : noExtractionTargets
         ? "blocked"
@@ -56,8 +59,9 @@ export function mapBackendDocumentToEvidenceItem(
     evidenceClass: "main",
     disposition: "active",
     processingState,
-    haltReason:
-      document.processing_status === "failed" || noExtractionTargets
+    haltReason: halt
+      ? halt
+      : document.processing_status === "failed" || noExtractionTargets
         ? mapHaltReason({
             noExtractionTargets,
             details: [...(summary?.errors ?? []), ...summaryWarnings],
@@ -102,6 +106,13 @@ export function resolveCanonicalTypeDisplayName(
   const canonicalTypeId = summary?.canonical_type_id;
   if (!canonicalTypeId) return null;
   return CANONICAL_TYPE_DISPLAY_NAMES[canonicalTypeId] ?? "Unmapped document type";
+}
+
+/** The pipeline's structured halt (pipeline_run.halt_reason.code), when it gives one. */
+export function haltReasonFromCode(code: string | null | undefined): string | null {
+  if (code === "unreadable_document") return HALT_REASONS.unreadable;
+  if (code === "unsupported_document") return HALT_REASONS.noTemplate;
+  return null;
 }
 
 export function mapHaltReason({
