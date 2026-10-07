@@ -24,6 +24,7 @@ function fillCredentials() {
 beforeEach(() => {
   vi.clearAllMocks();
   window.localStorage.clear();
+  document.cookie = "sustentra_realm=; Path=/; Max-Age=0";
 });
 
 async function signInThroughOtp(props: Partial<Parameters<typeof LoginFlow>[0]> = {}) {
@@ -75,7 +76,7 @@ describe("LoginFlow", () => {
     fireEvent.change(otp, { target: { value: "123456" } });
 
     await waitFor(() => expect(verifyMock).toHaveBeenCalledWith("ch_1", "123456"));
-    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith("/org/acme"));
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith("/"));
   });
 
   it("returns to a same-origin ?next= path after login (FE-007)", async () => {
@@ -85,12 +86,17 @@ describe("LoginFlow", () => {
   it.each(["//evil.example", "https://evil.example/", "/\\evil.example", "javascript:alert(1)"])(
     "ignores an off-site ?next= (%s) and goes home",
     async (next) => {
-      expect(await signInThroughOtp({ next })).toBe("/org/acme");
+      expect(await signInThroughOtp({ next })).toBe("/");
     }
   );
 
   it("remembers the org it signed in to, for the workpaper's session-ended redirect", async () => {
     await signInThroughOtp();
     expect(window.localStorage.getItem("sustentra.lastRealm")).toBe("org:acme");
+    expect(document.cookie).toContain("sustentra_realm=org%3Aacme");
+  });
+
+  it("sends provider admins to their org list (FE-006)", async () => {
+    expect(await signInThroughOtp({ realm: { kind: "provider" } })).toBe("/provider-admin/orgs");
   });
 });

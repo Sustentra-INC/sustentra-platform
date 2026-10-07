@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isOrgSlug, lastRealm, rememberRealm, safeNext, signInPath } from "../lastRealm";
 
-beforeEach(() => window.localStorage.clear());
+beforeEach(() => {
+  window.localStorage.clear();
+  document.cookie = "sustentra_realm=; Path=/; Max-Age=0";
+});
 afterEach(() => vi.restoreAllMocks());
 
 describe("lastRealm (FE-007)", () => {
@@ -28,6 +31,8 @@ describe("lastRealm (FE-007)", () => {
       throw new Error("blocked");
     });
     expect(() => rememberRealm({ kind: "provider" })).not.toThrow();
+    expect(lastRealm()).toEqual({ kind: "provider" }); // the cookie still works
+    document.cookie = "sustentra_realm=; Path=/; Max-Age=0";
     expect(lastRealm()).toBeNull();
   });
 
@@ -47,5 +52,17 @@ describe("lastRealm (FE-007)", () => {
     expect(isOrgSlug("acme-foods")).toBe(true);
     expect(isOrgSlug("ab")).toBe(false);
     expect(isOrgSlug("Acme")).toBe(false);
+  });
+
+  it("prefers the realm cookie, which the edge middleware also reads (FE-006)", () => {
+    rememberRealm({ kind: "org", slug: "acme" });
+    expect(document.cookie).toContain("sustentra_realm=org%3Aacme");
+    window.localStorage.setItem("sustentra.lastRealm", "provider");
+    expect(lastRealm()).toEqual({ kind: "org", slug: "acme" });
+  });
+
+  it("falls back to storage when there is no cookie", () => {
+    window.localStorage.setItem("sustentra.lastRealm", "org:beta-co");
+    expect(lastRealm()).toEqual({ kind: "org", slug: "beta-co" });
   });
 });

@@ -2132,6 +2132,10 @@ html { font-size: 82%; }
 .s1-ctx__caret { color: var(--ink-3); font-size: 0.7em; }
 .s1-ctx__hint { font-size: var(--text-xs); }
 .s1-ctx__actions { display: flex; align-items: center; gap: var(--sp-4); flex: none; }
+.s1-ctx__user { display: inline-flex; align-items: baseline; gap: var(--sp-3); padding-left: var(--sp-4); border-left: var(--border-hairline); font-size: var(--text-sm); }
+.s1-ctx__user-name { font-weight: 600; color: var(--ink); max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s1-ctx__user-role { font-size: var(--text-xs); }
+@media (max-width: 48rem) { .s1-ctx__user-role { display: none; } .s1-ctx__user { padding-left: var(--sp-2); } }
 .s1-ctx__reset { display: inline-flex; align-items: center; gap: var(--sp-1); font: inherit; font-size: var(--text-sm); color: var(--brand-ink); background: none; border: 0; cursor: pointer; }
 .s1-ctx__reset:hover { text-decoration: underline; }
 .s1-ctx__reset svg { width: 0.9rem; height: 0.9rem; }

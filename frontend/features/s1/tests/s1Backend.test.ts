@@ -59,6 +59,7 @@ beforeEach(() => {
   fetchMock.mockImplementation(routeFetch);
   vi.stubGlobal("fetch", fetchMock);
   window.localStorage.clear();
+  document.cookie = "sustentra_realm=; Path=/; Max-Age=0";
 });
 afterEach(() => vi.unstubAllGlobals());
 

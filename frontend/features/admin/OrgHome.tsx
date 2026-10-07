@@ -7,7 +7,8 @@ import type { Me } from "./orgApi";
 import styles from "./admin.module.css";
 
 /** The authenticated org home (FE-005): who you are + sign out, plus admin links
- *  for admins. */
+ *  for admins. Org users land on the workpaper after login (FE-006); this page is
+ *  reached from its "Admin" link and links back. */
 export function OrgHome({ me, slug }: { me: Me; slug: string }) {
   const isAdmin = me.role === "org_admin" || me.role === "provider_admin";
   const name = me.first_name ? `Welcome, ${me.first_name}` : "Welcome";
@@ -33,6 +34,11 @@ export function OrgHome({ me, slug }: { me: Me; slug: string }) {
         <button type="button" className={`${styles.button} ${styles.ghost}`} onClick={onSignOut}>
           Sign out
         </button>
+      </div>
+      <div className={styles.actions}>
+        <Link className={styles.button} href="/">
+          Open workpaper
+        </Link>
       </div>
       {isAdmin ? (
         <div className={styles.actions}>

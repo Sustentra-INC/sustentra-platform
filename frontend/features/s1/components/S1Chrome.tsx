@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
@@ -15,8 +16,25 @@ export type NavKey =
   | "results"
   | "output";
 
+/** The signed-in user shown in the workpaper header (FE-006). */
+export interface WorkpaperUser {
+  email: string;
+  firstName: string | null;
+  role: "provider_admin" | "org_admin" | "org_member";
+  orgSlug: string | null;
+}
+
+const ROLE_LABEL: Record<WorkpaperUser["role"], string> = {
+  provider_admin: "Provider admin",
+  org_admin: "Org admin",
+  org_member: "Member",
+};
+
 interface S1ChromeProps {
   engagement: EngagementConfig;
+  /** Backend mode: who is signed in, with sign-out (FE-006). */
+  user?: WorkpaperUser;
+  onSignOut?: () => void;
   children: ReactNode;
   current?: NavKey;
   onNavigate?: (key: NavKey) => void;
@@ -35,7 +53,16 @@ const DESTINATIONS: Array<{ key: NavKey; label: string }> = [
   { key: "output", label: "Output" },
 ];
 
-export function S1Chrome({ engagement, children, current, onNavigate, onOpenGlossary, onReset }: S1ChromeProps) {
+export function S1Chrome({
+  engagement,
+  user,
+  onSignOut,
+  children,
+  current,
+  onNavigate,
+  onOpenGlossary,
+  onReset,
+}: S1ChromeProps) {
   const [navExpanded, setNavExpanded] = useState(true);
   const [ctxExpanded, setCtxExpanded] = useState(false);
   return (
@@ -53,6 +80,8 @@ export function S1Chrome({ engagement, children, current, onNavigate, onOpenGlos
           onToggle={() => setCtxExpanded((v) => !v)}
           onOpenGlossary={onOpenGlossary}
           onReset={onReset}
+          user={user}
+          onSignOut={onSignOut}
         />
         {children}
       </section>
@@ -117,19 +146,27 @@ function ContextBar({
   onToggle,
   onOpenGlossary,
   onReset,
+  user,
+  onSignOut,
 }: {
   engagement: EngagementConfig;
   expanded: boolean;
   onToggle: () => void;
   onOpenGlossary?: () => void;
   onReset?: () => void;
+  user?: WorkpaperUser;
+  onSignOut?: () => void;
 }) {
   return (
     <div className={`s1-ctx${expanded ? " s1-ctx--open" : ""}`}>
       <div className="s1-ctx__bar">
         <button className="s1-ctx__summary" type="button" onClick={onToggle} aria-expanded={expanded}>
           <span className="s1-ctx__client">{engagement.clientName}</span>
-          <span className="s1-ctx__id s1-mono">{engagement.engagementId}</span>
+          {engagement.engagementName ? (
+            <span className="s1-ctx__id">{engagement.engagementName}</span>
+          ) : (
+            <span className="s1-ctx__id s1-mono">{engagement.engagementId}</span>
+          )}
           <span className="s1-ctx__caret" aria-hidden>{expanded ? "▴" : "▾"}</span>
           <span className="s1-muted s1-ctx__hint">{expanded ? "Hide engagement" : "Engagement details"}</span>
         </button>
@@ -147,6 +184,29 @@ function ContextBar({
             >
               <ResetIcon /> Reset
             </button>
+          ) : null}
+          {user ? (
+            <div className="s1-ctx__user" aria-label="Signed in">
+              <span className="s1-ctx__user-name" title={user.email}>
+                {user.firstName || user.email}
+              </span>
+              <span className="s1-muted s1-ctx__user-role">{ROLE_LABEL[user.role]}</span>
+              {user.role === "org_admin" && user.orgSlug ? (
+                <Link className="s1-linklike" href={`/org/${user.orgSlug}`}>
+                  Admin
+                </Link>
+              ) : null}
+              {user.role === "provider_admin" ? (
+                <Link className="s1-linklike" href="/provider-admin/orgs">
+                  Organizations
+                </Link>
+              ) : null}
+              {onSignOut ? (
+                <button className="s1-linklike" type="button" onClick={onSignOut}>
+                  Sign out
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </div>

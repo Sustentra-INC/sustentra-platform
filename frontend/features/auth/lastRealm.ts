@@ -1,3 +1,4 @@
+import { encodeRealm, isOrgSlug, parseRealm, REALM_COOKIE } from "../../lib/realm-cookie";
 import { loginPath, type Realm } from "./realm";
 
 /**
@@ -8,29 +9,41 @@ import { loginPath, type Realm } from "./realm";
  */
 
 const KEY = "sustentra.lastRealm";
-const SLUG = /^[a-z0-9-]{3,63}$/; // same rule as the backend (provider_orgs.SLUG_PATTERN)
+const ONE_YEAR = 60 * 60 * 24 * 365;
 
 export function rememberRealm(realm: Realm): void {
+  const value = encodeRealm(realm);
+  // Cookie: lets the edge middleware send a signed-out "/" to the right login (FE-006).
   try {
-    window.localStorage.setItem(KEY, realm.kind === "org" ? `org:${realm.slug}` : "provider");
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${REALM_COOKIE}=${encodeURIComponent(value)}; Path=/; Max-Age=${ONE_YEAR}; SameSite=Lax${secure}`;
+  } catch {
+    // Cookies blocked: the sign-in page asks for the organization instead.
+  }
+  try {
+    window.localStorage.setItem(KEY, value);
   } catch {
     // Private mode / blocked storage: the workpaper falls back to its sign-in panel.
   }
 }
 
-export function lastRealm(): Realm | null {
-  let raw: string | null = null;
+function realmCookie(): string | null {
   try {
-    raw = window.localStorage.getItem(KEY);
+    const match = document.cookie.split("; ").find((part) => part.startsWith(`${REALM_COOKIE}=`));
+    return match ? decodeURIComponent(match.slice(REALM_COOKIE.length + 1)) : null;
   } catch {
     return null;
   }
-  if (raw === "provider") return { kind: "provider" };
-  if (raw?.startsWith("org:")) {
-    const slug = raw.slice(4);
-    if (SLUG.test(slug)) return { kind: "org", slug };
+}
+
+export function lastRealm(): Realm | null {
+  const fromCookie = parseRealm(realmCookie());
+  if (fromCookie) return fromCookie;
+  try {
+    return parseRealm(window.localStorage.getItem(KEY));
+  } catch {
+    return null;
   }
-  return null;
 }
 
 /** `/…/login?next=<path>` for a realm. */
@@ -45,7 +58,4 @@ export function safeNext(next: string | null | undefined): string | null {
   return next;
 }
 
-/** Whether a string is a valid org slug (for the workpaper's sign-in panel). */
-export function isOrgSlug(value: string): boolean {
-  return SLUG.test(value);
-}
+export { isOrgSlug };

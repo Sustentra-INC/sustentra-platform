@@ -11,9 +11,13 @@ import { isOrgSlug, signInPath } from "../../auth/lastRealm";
  */
 export function SessionEndedPanel({
   next = "/",
+  title = "Sign in to continue",
+  subtitle = "Your session has ended. Sign in again through your organization.",
   onNavigate = (path: string) => window.location.assign(path),
 }: {
   next?: string;
+  title?: string;
+  subtitle?: string;
   /** Injectable for tests. */
   onNavigate?: (path: string) => void;
 }) {
@@ -38,8 +42,8 @@ export function SessionEndedPanel({
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img className="s1-signin__logo" src="/sustentra-logo.png" alt="Sustentra" />
         </div>
-        <h1 className="s1-signin__title">Sign in to continue</h1>
-        <p className="s1-signin__sub">Your session has ended. Sign in again through your organization.</p>
+        <h1 className="s1-signin__title">{title}</h1>
+        <p className="s1-signin__sub">{subtitle}</p>
 
         {error ? (
           <p className="s1-signin__sub" role="alert">
