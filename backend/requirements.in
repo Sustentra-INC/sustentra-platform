@@ -1,0 +1,27 @@
+# Top-level backend dependencies. Edit THIS file, then regenerate the pins:
+#   uv pip compile requirements.in --python-version 3.12 --python-platform x86_64-manylinux_2_28 \
+#     --generate-hashes --universal -o requirements.txt   (see backend/README or infra/README)
+# requirements.txt (generated, exact versions + hashes) is what Docker and CI install.
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+slowapi
+python-multipart
+sqlalchemy[asyncio]
+alembic
+asyncpg
+psycopg2-binary
+boto3
+jinja2
+openai
+httpx
+tenacity
+python-dotenv
+pandas
+openpyxl
+pymupdf
+pdfplumber
+pillow
+python-docx
+bcrypt

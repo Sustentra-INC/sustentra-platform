@@ -51,6 +51,21 @@ jobs:
       - name: Install
         run: pip install -r backend/requirements-dev.txt
 
+      - name: Pinned requirements match requirements*.in
+        # Edit the .in files, then regenerate the .txt pins (command in their header).
+        working-directory: backend
+        run: |
+          pip install --quiet "uv==0.11.*"
+          for f in requirements requirements-dev; do
+            cp "$f.txt" "/tmp/$f.txt"   # start from the committed pins: only .in edits change them
+            uv pip compile "$f.in" --universal --python-version 3.12 --generate-hashes \
+              --quiet --no-header -o "/tmp/$f.txt"
+            if ! diff <(grep -v '^#' "$f.txt") <(grep -v '^#' "/tmp/$f.txt") > /dev/null; then
+              echo "::error file=backend/$f.txt::$f.txt is out of date with $f.in - regenerate it (see its header)"
+              exit 1
+            fi
+          done
+
       - name: ruff
         run: ruff check backend
 
