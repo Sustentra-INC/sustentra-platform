@@ -13,6 +13,7 @@ from collections.abc import Callable, Iterator
 import pytest
 
 from backend.app.api import documents as documents_api
+from backend.app.api.engagements import require_open_engagement
 from backend.app.core.auth import CurrentUser, get_current_user
 from backend.app.main import app
 from backend.app.repositories.document_repository import InMemoryDocumentRepository
@@ -108,3 +109,16 @@ def _s1_signed_in(request: pytest.FixtureRequest, tmp_path) -> Iterator[None]:
         documents_api.configure_services(
             upload_service=original[0], pipeline_service=original[1], storage_service=original[2]
         )
+
+
+@pytest.fixture(autouse=True)
+def _engagements_exist() -> Iterator[None]:
+    """API tests use engagement ids like ENG-1 that are not rows in Postgres: treat
+    every engagement as an existing, active one of the caller's org. The real check
+    (require_open_engagement) is covered against the database in tests/db."""
+
+    app.dependency_overrides[require_open_engagement] = lambda: {"status": "active"}
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(require_open_engagement, None)

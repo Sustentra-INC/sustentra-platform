@@ -274,3 +274,66 @@ def test_the_app_cannot_delete_engagements() -> None:
     create()
     with pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError):
         asyncio.run(_as_app(ORG_A, "DELETE FROM engagements"))
+
+
+# --- uploads need an existing, active engagement of the caller's org ---------------------
+
+@pytest.fixture
+def temp_uploads(tmp_path: Any) -> Any:
+    from backend.app.api import documents as documents_api
+    from backend.app.repositories.document_repository import InMemoryDocumentRepository
+    from backend.app.services.document_upload_service import DocumentUploadService
+    from backend.app.services.local_storage_service import LocalStorageService
+
+    original = (documents_api._upload_service, documents_api._pipeline_service, documents_api._storage_service)
+    service = DocumentUploadService(storage_service=LocalStorageService(tmp_path / "uploads"),
+                                    document_repository=InMemoryDocumentRepository())
+    documents_api.configure_services(upload_service=service)
+    yield
+    documents_api.configure_services(upload_service=original[0], pipeline_service=original[1],
+                                     storage_service=original[2])
+
+
+async def _upload(engagement_id: str, token: str) -> Any:
+    engine = db.create_engine(APP_URL or "", pool_size=2, max_overflow=0)
+    try:
+        transport = httpx.ASGITransport(app=_app(engine))
+        async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
+            return await client.post(
+                f"/api/v1/engagements/{engagement_id}/documents/upload",
+                cookies={SESSION_COOKIE: token}, headers={"Origin": ORIGIN},
+                files={"file": ("bill.pdf", b"%PDF-1.4 test", "application/pdf")},
+            )
+    finally:
+        await engine.dispose()
+
+
+def upload(engagement_id: str, token: str = "a_member") -> Any:
+    return asyncio.run(_upload(engagement_id, token))
+
+
+def test_upload_to_an_active_engagement_of_my_org(temp_uploads: None) -> None:
+    created = create()
+    response = upload(created["id"])
+    assert response.status_code == 200, response.text
+    assert response.json()["engagement_id"] == created["id"]
+
+
+def test_upload_to_an_unknown_or_foreign_engagement_is_404(temp_uploads: None) -> None:
+    created = create()
+    for engagement_id, token in ((str(uuid.uuid4()), "a_member"), ("ENG-1", "a_member"), (created["id"], "b_member")):
+        response = upload(engagement_id, token)
+        assert response.status_code == 404, (engagement_id, token)
+        assert response.json()["detail"] == "Engagement not found."
+
+
+def test_upload_to_an_archived_engagement_is_409(temp_uploads: None) -> None:
+    created = create()
+    call("PATCH", f"{BASE}/{created['id']}", body={"status": "archived"})
+    response = upload(created["id"])
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Engagement is archived."
+
+
+def test_provider_admin_cannot_upload(temp_uploads: None) -> None:
+    assert upload(create()["id"], "provider").status_code == 403

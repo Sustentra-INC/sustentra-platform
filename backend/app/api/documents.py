@@ -6,8 +6,9 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from backend.app.api.engagements import require_open_engagement
 from backend.app.api.s1_access import (
-    evidence_free_or_own,
+    evidence_owned_by_caller,
     org_of,
     require_visible,
     s1_reader,
@@ -75,8 +76,10 @@ def _uploader(user: CurrentUser) -> str:
 
 
 def _require_evidence_slot(evidence_id: str | None, user: CurrentUser) -> None:
-    # Attaching a document to another org's evidence must look like it does not exist.
-    if evidence_id and not evidence_free_or_own(evidence_id, user):
+    # A client-supplied evidence id attaches the document to EXISTING evidence of the
+    # caller's org; anything else (unknown, or another org's) looks like it does not
+    # exist. Without one, the server generates a fresh id.
+    if evidence_id and not evidence_owned_by_caller(evidence_id, user):
         raise HTTPException(status_code=404, detail="Evidence not found.")
 
 
@@ -85,6 +88,7 @@ def create_document(
     engagement_id: str,
     payload: CreateDocumentRequest,
     user: CurrentUser = Depends(s1_writer),
+    engagement: dict = Depends(require_open_engagement),
 ) -> dict:
     org_id = org_of(user)
     _require_evidence_slot(payload.evidence_id, user)
@@ -117,6 +121,7 @@ async def upload_document(
     evidence_id: str | None = Form(None),
     document_type: str | None = Form(None),
     user: CurrentUser = Depends(s1_writer),
+    engagement: dict = Depends(require_open_engagement),
 ) -> dict:
     org_id = org_of(user)
     _require_evidence_slot(evidence_id, user)

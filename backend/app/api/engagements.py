@@ -160,6 +160,20 @@ async def _visible(db: AsyncSession, engagement_id: str, user: CurrentUser) -> d
     return row
 
 
+async def require_open_engagement(
+    engagement_id: str,
+    user: CurrentUser = Depends(s1_writer),
+    db: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Dependency for routes that add documents to an engagement: it must exist in the
+    caller's org (404 otherwise, like every cross-org S1 lookup) and be active (409)."""
+
+    row = await _visible(db, engagement_id, user)
+    if row["status"] != "active":
+        raise HTTPException(status_code=409, detail="Engagement is archived.")
+    return row
+
+
 @router.get("/engagements", response_model=EngagementListResponse)
 async def list_engagements(
     include_archived: bool = Query(False),
