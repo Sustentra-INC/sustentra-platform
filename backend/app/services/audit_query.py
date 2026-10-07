@@ -3,8 +3,11 @@
 - Newest first: ORDER BY created_at DESC, id DESC. The (created_at, id) pair is the
   keyset, so pages never skip or repeat a row, even when many events share one
   timestamp (one transaction writes several with the same now()).
-- The cursor is opaque to clients: urlsafe base64 of "<created_at iso>|<id>". A
-  cursor that does not decode -> 400. Filters must be sent again with each page.
+- The cursor is opaque to clients: urlsafe base64 of "<created_at iso>|<id>|<scope>",
+  where scope fingerprints the org + filters. A cursor that does not decode -> 400
+  "Invalid cursor"; one used with another org or other filters -> 400 (filters must be
+  sent again, unchanged, with each page).
+- to_date = 9999-12-31 means no upper bound.
 - Filters: event_type (exact), user_id (events BY or ABOUT that user), from_date /
   to_date (dates, UTC, both inclusive).
 - Scope: WHERE org_id = :org plus RLS (tenant scope for an org admin). Events with
@@ -19,6 +22,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 import json
 import uuid
 from datetime import UTC, date, datetime, time, timedelta
@@ -33,23 +37,35 @@ DEFAULT_LIMIT = 50
 
 _ORG_NOT_FOUND = HTTPException(status_code=404, detail="Organization not found")
 _BAD_CURSOR = HTTPException(status_code=400, detail="Invalid cursor")
+# A cursor only continues the query it came from (idea from jackguo2005's COMP-002 branch).
+_CURSOR_SCOPE = HTTPException(status_code=400, detail="Cursor does not match the requested organization or filters")
 
 
-def encode_cursor(created_at: datetime, row_id: uuid.UUID) -> str:
-    raw = f"{created_at.isoformat()}|{row_id}".encode()
+def _scope(org_id: uuid.UUID, filters: dict[str, Any]) -> str:
+    """Short fingerprint of the org + filters a cursor belongs to."""
+    canonical = json.dumps({"org": str(org_id), **{k: str(v) if v is not None else None for k, v in filters.items()}},
+                           sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()[:16]
+
+
+def encode_cursor(created_at: datetime, row_id: uuid.UUID, scope: str) -> str:
+    raw = f"{created_at.isoformat()}|{row_id}|{scope}".encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+def decode_cursor(cursor: str, scope: str) -> tuple[datetime, uuid.UUID]:
     try:
         raw = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)).decode()
-        stamp, row_id = raw.split("|", 1)
+        stamp, row_id, cursor_scope = raw.split("|", 2)
         created_at = datetime.fromisoformat(stamp)
         if created_at.tzinfo is None:
             raise ValueError("naive timestamp")
-        return created_at, uuid.UUID(row_id)
+        parsed = created_at, uuid.UUID(row_id)
     except (ValueError, UnicodeDecodeError, binascii.Error):
         raise _BAD_CURSOR from None
+    if cursor_scope != scope:
+        raise _CURSOR_SCOPE
+    return parsed
 
 
 def _metadata(value: Any) -> dict[str, Any]:
@@ -90,11 +106,12 @@ async def list_events(db: AsyncSession, org_id: str, *, event_type: str | None, 
     if from_date is not None:
         where.append("a.created_at >= :from_ts")
         params["from_ts"] = datetime.combine(from_date, time.min, tzinfo=UTC)
-    if to_date is not None:
+    if to_date is not None and to_date < date.max:  # date.max: no upper bound (and no overflow)
         where.append("a.created_at < :to_ts")
         params["to_ts"] = datetime.combine(to_date + timedelta(days=1), time.min, tzinfo=UTC)
+    scope = _scope(oid, {"event_type": event_type, "user_id": user_id, "from_date": from_date, "to_date": to_date})
     if cursor:
-        params["c_at"], params["c_id"] = decode_cursor(cursor)
+        params["c_at"], params["c_id"] = decode_cursor(cursor, scope)
         where.append("(a.created_at, a.id) < (:c_at, :c_id)")
 
     rows = (await db.execute(
@@ -130,5 +147,5 @@ async def list_events(db: AsyncSession, org_id: str, *, event_type: str | None, 
                    if r["target_type"] == "user" else None),
         "metadata": _metadata(r["metadata"]),
     } for r in rows]
-    next_cursor = encode_cursor(rows[-1]["created_at"], rows[-1]["id"]) if more and rows else None
+    next_cursor = encode_cursor(rows[-1]["created_at"], rows[-1]["id"], scope) if more and rows else None
     return items, next_cursor
