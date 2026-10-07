@@ -1,10 +1,10 @@
-"""ORG-002 - user management within an org (org admin), at /api/v1/orgs/{org_id}/users.
+"""ORG-002 - user management within an org, at /api/v1/orgs/{org_id}/users.
 
-SCAFFOLD: routes, schemas, status codes and the org-admin guard are wired. The
-guard (require_org_admin) answers 501 until AUTH-004; the service bodies raise
-NotImplementedError until ORG-002 is implemented. See org_user_service for the
-acceptance rules (tenant isolation -> cross-org 404, last-admin 409, status/name
-mapping) and the DB/audit dependencies.
+org_admin for their own org (another org's id -> 404), provider_admin for any org,
+org_member -> 403, no session -> 401. Business rules live in org_user_service.
+
+The list is flat - {items, total, page, page_size, max_users, seats_used} - which is what the
+org-admin UI (frontend/features/admin/orgApi.ts) reads.
 
 No `from __future__ import annotations`: FastAPI resolves these annotations at runtime.
 """
@@ -13,15 +13,16 @@ from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Query, Request
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...services.org_user_service import OrgUserService, get_org_user_service
-from .deps import Principal, require_org_admin
-from .pagination import PageMeta, PageParams, page_params
-
+from ...core.db import get_db_session
 from ...domain.tenancy import ASSIGNABLE_ROLES as _ASSIGNABLE_ROLES
 from ...domain.tenancy import LISTED_USER_STATUSES
+from ...services import org_user_service as users
+from .deps import Principal, require_org_admin
+from .pagination import PageParams, page_params
 
 router = APIRouter(prefix="/orgs/{org_id}/users", tags=["org-users"])
 
@@ -34,9 +35,8 @@ class UserResponse(BaseModel):
     id: UUID
     org_id: UUID
     email: str
-    # The DB stores a single `full_name`; the service splits/maps to these (see ORG-003).
-    first_name: str | None = None
-    last_name: str | None = None
+    first_name: str
+    last_name: str
     role: str
     status: str
     last_login_at: datetime | None = None
@@ -46,71 +46,66 @@ class UserResponse(BaseModel):
 
 class UserListResponse(BaseModel):
     items: list[UserResponse]
-    meta: PageMeta
+    total: int
+    page: int
+    page_size: int
+    max_users: int
+    # Seats in use across the whole org (invited + active + suspended), independent of the filters.
+    seats_used: int
 
 
 class UpdateUserRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     role: Literal["org_admin", "org_member"]
+
+
+OrgAdmin = Annotated[Principal, Depends(require_org_admin)]
+Db = Annotated[AsyncSession, Depends(get_db_session)]
+
+
+def _actor(principal: Principal, request: Request) -> users.Actor:
+    return users.Actor(
+        user_id=principal.id,
+        role=principal.role,
+        request_id=getattr(request.state, "request_id", None),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
 
 
 @router.get("", response_model=UserListResponse)
 async def list_users(
     org_id: str,
-    principal: Annotated[Principal, Depends(require_org_admin)],
+    principal: OrgAdmin,
+    db: Db,
     params: Annotated[PageParams, Depends(page_params)],
-    service: Annotated[OrgUserService, Depends(get_org_user_service)],
-    user_status: Annotated[str | None, Query(alias="status")] = None,
-    role: Annotated[str | None, Query()] = None,
+    user_status: Annotated[Literal["invited", "active", "suspended"] | None, Query(alias="status")] = None,
+    role: Annotated[Literal["org_admin", "org_member"] | None, Query()] = None,
 ) -> UserListResponse:
-    rows, total = await service.list_users(
-        org_id=org_id, status=user_status, role=role, limit=params.page_size, offset=params.offset
-    )
-    return UserListResponse(
-        items=[UserResponse(**row) for row in rows],
-        meta=PageMeta(page=params.page, page_size=params.page_size, total=total),
-    )
+    rows, total, seats = await users.list_users(db, org_id, status=user_status, role=role,
+                                                    limit=params.page_size, offset=params.offset)
+    return UserListResponse(items=[UserResponse(**row) for row in rows], total=total, page=params.page,
+                            page_size=params.page_size, **seats)
 
 
 @router.get("/{user_id}", response_model=UserResponse)
-async def get_user(
-    org_id: str,
-    user_id: str,
-    principal: Annotated[Principal, Depends(require_org_admin)],
-    service: Annotated[OrgUserService, Depends(get_org_user_service)],
-) -> UserResponse:
-    row = await service.get_user(org_id=org_id, user_id=user_id)
-    return UserResponse(**row)
+async def get_user(org_id: str, user_id: str, principal: OrgAdmin, db: Db) -> UserResponse:
+    return UserResponse(**await users.get_user(db, org_id, user_id))
 
 
 @router.patch("/{user_id}", response_model=UserResponse)
 async def update_user(
-    org_id: str,
-    user_id: str,
-    payload: UpdateUserRequest,
-    principal: Annotated[Principal, Depends(require_org_admin)],
-    service: Annotated[OrgUserService, Depends(get_org_user_service)],
+    org_id: str, user_id: str, payload: UpdateUserRequest, principal: OrgAdmin, db: Db, request: Request
 ) -> UserResponse:
-    row = await service.change_role(org_id=org_id, user_id=user_id, role=payload.role)
-    return UserResponse(**row)
+    return UserResponse(**await users.change_role(db, _actor(principal, request), org_id, user_id, payload.role))
 
 
 @router.post("/{user_id}/suspend", response_model=UserResponse)
-async def suspend_user(
-    org_id: str,
-    user_id: str,
-    principal: Annotated[Principal, Depends(require_org_admin)],
-    service: Annotated[OrgUserService, Depends(get_org_user_service)],
-) -> UserResponse:
-    row = await service.suspend_user(org_id=org_id, user_id=user_id)
-    return UserResponse(**row)
+async def suspend_user(org_id: str, user_id: str, principal: OrgAdmin, db: Db, request: Request) -> UserResponse:
+    return UserResponse(**await users.suspend_user(db, _actor(principal, request), org_id, user_id))
 
 
 @router.post("/{user_id}/reactivate", response_model=UserResponse)
-async def reactivate_user(
-    org_id: str,
-    user_id: str,
-    principal: Annotated[Principal, Depends(require_org_admin)],
-    service: Annotated[OrgUserService, Depends(get_org_user_service)],
-) -> UserResponse:
-    row = await service.reactivate_user(org_id=org_id, user_id=user_id)
-    return UserResponse(**row)
+async def reactivate_user(org_id: str, user_id: str, principal: OrgAdmin, db: Db, request: Request) -> UserResponse:
+    return UserResponse(**await users.reactivate_user(db, _actor(principal, request), org_id, user_id))

@@ -29,7 +29,7 @@ export function UsersList({ orgId, slug }: { orgId: string; slug: string }) {
       .then((res) => {
         if (!active) return;
         setUsers(res.items);
-        setSeats({ used: res.total, max: res.max_users });
+        setSeats({ used: res.seats_used, max: res.max_users });
         setError(null);
       })
       .catch(() => {

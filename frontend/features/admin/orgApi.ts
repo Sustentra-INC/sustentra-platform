@@ -20,8 +20,11 @@ export interface OrgUser {
 
 export interface UsersResult {
   items: OrgUser[];
+  /** Users matching the filters. */
   total: number;
   max_users: number;
+  /** Seats in use across the whole org, regardless of filters. */
+  seats_used: number;
 }
 
 export interface Me {
@@ -46,6 +49,7 @@ export function listOrgUsers(
   const query = new URLSearchParams();
   if (params.status) query.set("status", params.status);
   if (params.role) query.set("role", params.role);
+  query.set("page_size", "100"); // the list is not paginated in the UI; 100 is the API maximum
   const qs = query.toString();
   return api<UsersResult>(`/orgs/${encodeURIComponent(orgId)}/users${qs ? `?${qs}` : ""}`);
 }

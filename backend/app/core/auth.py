@@ -70,6 +70,8 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db_s
                   FROM users u
                   LEFT JOIN organizations o ON o.id = u.org_id
                  WHERE u.id = :user_id
+                   AND u.status = 'active'
+                   AND (u.org_id IS NULL OR o.status = 'active')
                 """
             ),
             {"user_id": resolved.user_id},
