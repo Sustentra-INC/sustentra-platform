@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.api import documents as documents_api
+from backend.app.api.engagements import require_open_engagement
 from backend.app.core.auth import get_current_user
 from backend.app.core.config import Settings
 from backend.app.core.security import MULTIPART_OVERHEAD_BYTES
@@ -25,6 +26,7 @@ TOO_LARGE = "File is too large. The maximum upload size is 1 MB."
 def client(tmp_path: Path) -> Iterator[TestClient]:
     app = create_app(Settings(max_upload_mb=1))
     app.dependency_overrides[get_current_user] = lambda: make_user()
+    app.dependency_overrides[require_open_engagement] = lambda: {"status": "active"}
     original = (documents_api._upload_service, documents_api._pipeline_service, documents_api._storage_service)
     documents_api.configure_services(upload_service=owned_upload_service(tmp_path))
     try:

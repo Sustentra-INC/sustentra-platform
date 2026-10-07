@@ -11,7 +11,7 @@ from backend.app.main import app
 from backend.app.repositories.document_repository import InMemoryDocumentRepository
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
-from backend.tests.api.conftest import ORG_A, make_user
+from backend.tests.api.conftest import ORG_A, make_user, seeded_document
 
 
 class FakePipelineService:
@@ -45,6 +45,9 @@ def client_context(tmp_path: Path):
 
     storage_service = LocalStorageService(tmp_path / "uploads")
     repository = InMemoryDocumentRepository()
+    # Uploads may only attach to evidence that already exists in the caller's org.
+    for evidence_id in ("EV-1", "EV-123", "EV-PIPE", "EV-9"):
+        repository.save({**seeded_document(evidence_id, document_id=f"SEED-{evidence_id}"), "engagement_id": "ENG-SEED"})
 
     counters = {"document": 0, "evidence": 0}
 
