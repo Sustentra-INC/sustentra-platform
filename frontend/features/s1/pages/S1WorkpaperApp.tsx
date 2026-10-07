@@ -3,8 +3,11 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 
 import {
+  getSignedInUser,
+  isSessionEnded,
   listWorkspaceEvidence,
   processDocument,
+  signInAgainPath,
   uploadDocument,
   userFacingApiError,
 } from "../api/s1Backend";
@@ -41,6 +44,7 @@ import { seedAsks } from "../fixtures/requests/seedAsks";
 import { makeUploadItem, classifyGuess } from "../fixtures/upload/simulateUpload";
 import { loadDemoState, saveDemoState, clearDemoState, loadSignedIn, saveSignedIn, type DemoSnapshot } from "../utils/demoPersistence";
 import { DemoSignIn } from "../components/DemoSignIn";
+import { SessionEndedPanel } from "../components/SessionEndedPanel";
 import { useRequestsStore } from "../requests/requestsStore";
 import type { ContainerState, EvidenceItem, ReviewValue, StateDimension } from "../types";
 import type { SessionAuditEntry } from "../utils/auditIntent";
@@ -108,6 +112,8 @@ export function S1WorkpaperApp() {
   const [isUploading, setIsUploading] = useState(false);
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
+  // Backend mode: a 401 from the API means the session ended (FE-007).
+  const [sessionEnded, setSessionEnded] = useState(false);
   const requests = useRequestsStore(dataMode === "backend" ? [] : persisted?.asks ?? seedAsks);
   const verification = useVerificationStore(persisted?.examinations ?? {}, persisted?.findings ?? []);
   const [sessionUploads, setSessionUploads] = useState<string[]>(persisted?.sessionUploads ?? []);
@@ -189,9 +195,27 @@ export function S1WorkpaperApp() {
     });
   }
 
+  /** On a 401, send the user to log in again (back to this page afterwards).
+   *  Returns true when the error was handled that way. */
+  function handleSessionEnded(error: unknown): boolean {
+    if (!isSessionEnded(error)) return false;
+    setSessionEnded(true);
+    const path = signInAgainPath(window.location.pathname + window.location.search);
+    if (path) window.location.assign(path);
+    return true;
+  }
+
   useEffect(() => {
     if (dataMode !== "backend") return;
-    void refreshBackendWorkspace();
+    // Confirm the session first, so a signed-out visitor is sent to log in even
+    // before an engagement is configured; then load the workspace.
+    void getSignedInUser()
+      .then(() => refreshBackendWorkspace())
+      .catch((error: unknown) => {
+        if (handleSessionEnded(error)) return;
+        setBackendError(error instanceof Error ? error.message : "Could not reach the backend API.");
+        setDemoState("error_degraded");
+      });
   }, [dataMode]);
 
   async function refreshBackendWorkspace(nextContainerState?: ContainerState) {
@@ -207,6 +231,7 @@ export function S1WorkpaperApp() {
       setEvidenceItems(workspace.evidence);
       setDemoState(nextContainerState ?? (workspace.evidence.length === 0 ? "empty_nothing_yet" : "populated"));
     } catch (error) {
+      if (handleSessionEnded(error)) return;
       setBackendError(error instanceof Error ? error.message : "Could not reach the backend API.");
       setDemoState("error_degraded");
     }
@@ -336,6 +361,10 @@ export function S1WorkpaperApp() {
         await processDocument(document.document_id);
         setProcessingDocumentIds((current) => current.filter((id) => id !== document.document_id));
       } catch (error) {
+        if (handleSessionEnded(error)) {
+          setIsUploading(false);
+          return;
+        }
         failures.push(`${file.name}: ${userFacingApiError(error)}`);
       }
     }
@@ -354,6 +383,7 @@ export function S1WorkpaperApp() {
       await processDocument(documentId);
       await refreshBackendWorkspace("populated");
     } catch (error) {
+      if (handleSessionEnded(error)) return;
       setBackendError(userFacingApiError(error));
       await refreshBackendWorkspace();
     } finally {
@@ -363,6 +393,10 @@ export function S1WorkpaperApp() {
 
   if (!mounted) {
     return <div className="s1-signin" aria-hidden />;
+  }
+
+  if (sessionEnded) {
+    return <SessionEndedPanel next={window.location.pathname + window.location.search} />;
   }
 
   if (!signedIn) {

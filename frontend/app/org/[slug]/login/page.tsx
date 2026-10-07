@@ -1,6 +1,13 @@
 import { LoginFlow } from "../../../../features/auth/LoginFlow";
 
-export default async function OrgLoginPage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function OrgLoginPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const { slug } = await params;
-  return <LoginFlow realm={{ kind: "org", slug }} />;
+  const { next } = await searchParams;
+  return <LoginFlow realm={{ kind: "org", slug }} next={typeof next === "string" ? next : null} />;
 }

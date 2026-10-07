@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { ApiError, login, resendOtp, verifyOtp } from "./api";
 import { forgotPath, homePath, type Realm } from "./realm";
+import { rememberRealm, safeNext } from "./lastRealm";
 import { AuthShell } from "./AuthShell";
 import styles from "./auth.module.css";
 
@@ -16,9 +17,12 @@ const GENERIC_LOGIN_ERROR = "Invalid email or password.";
 /** Password + email-OTP login (FE-002). Both steps live on the same route. */
 export function LoginFlow({
   realm,
+  next,
   onAuthenticated,
 }: {
   realm: Realm;
+  /** `?next=` from the URL: where to go after login, if it is a same-origin path. */
+  next?: string | null;
   /** Navigate after a verified login. Defaults to a full navigation so the new
    *  session cookie is picked up by middleware and server guards. Injectable for tests. */
   onAuthenticated?: (path: string) => void;
@@ -89,7 +93,8 @@ export function LoginFlow({
     try {
       await verifyOtp(challengeId, value);
       const go = onAuthenticated ?? ((path: string) => window.location.assign(path));
-      go(homePath(realm));
+      rememberRealm(realm); // lets the workpaper at `/` send an ended session back here (FE-007)
+      go(safeNext(next) ?? homePath(realm));
     } catch {
       const attempts = otpAttempts + 1;
       setOtpAttempts(attempts);

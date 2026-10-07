@@ -1,4 +1,5 @@
-import { apiRequest, apiUrl } from "../../../lib/api/client";
+import { api, ApiError, apiMaybe, apiPath } from "../../../lib/api";
+import { lastRealm, signInPath } from "../../auth/lastRealm";
 import { mapBackendDocumentToEvidenceItem, type BackendDocumentLike } from "../adapters/evidenceAdapter";
 import {
   decodeReviewCandidateToken,
@@ -35,26 +36,46 @@ interface BackendReviewDecision {
   reviewed_value: string | number | boolean | null;
 }
 
+/**
+ * S1 workpaper data seam (FE-007). Every call goes through the same-origin cookie
+ * client (`lib/api.ts` → `/api/v1/*`), so the `__Host-session` cookie rides along
+ * and the API scopes the data to the caller's org (SEC-001). A 401 means the
+ * session ended: see `isSessionEnded` / `signInAgainPath`.
+ */
+
+/** The signed-in user, as the workpaper needs it. */
+export interface SignedInUser {
+  email: string;
+  role: "provider_admin" | "org_admin" | "org_member";
+  org_slug?: string | null;
+}
+
+/** Check the session up front so a signed-out visitor is sent to log in even
+ *  before any engagement data is requested. Throws `ApiError` (401) when signed out. */
+export function getSignedInUser(): Promise<SignedInUser> {
+  return api<SignedInUser>("/auth/me");
+}
+
 export async function listWorkspaceEvidence(engagementId: string): Promise<{
   evidence: EvidenceItem[];
   fields: ExtractedField[];
 }> {
-  const documents = await apiRequest<{ items: BackendDocumentLike[] }>(
-    `/v1/engagements/${encodeURIComponent(engagementId)}/documents`
+  const documents = await api<{ items: BackendDocumentLike[] }>(
+    `/engagements/${encodeURIComponent(engagementId)}/documents`
   );
 
   const enriched = await Promise.all(
     documents.items.map(async (document) => {
       const latestRun = document.evidence_id
         ? await apiMaybe<PipelineRunSummary>(
-            `/v1/pipeline/evidence/${encodeURIComponent(document.evidence_id)}/latest-run`
+            `/pipeline/evidence/${encodeURIComponent(document.evidence_id)}/latest-run`
           )
         : null;
       const extractionResult = await apiMaybe<BackendExtractionResult>(
-        `/v1/documents/${encodeURIComponent(document.document_id)}/extraction-result/latest`
+        `/documents/${encodeURIComponent(document.document_id)}/extraction-result/latest`
       );
       const reviews = await apiMaybe<BackendReviewDecision[]>(
-        `/v1/documents/${encodeURIComponent(document.document_id)}/reviews`
+        `/documents/${encodeURIComponent(document.document_id)}/reviews`
       );
       const canonicalTypeId = extractionResult?.canonical_type_id ?? latestRun?.canonical_type_id ?? null;
       const latestReviewByCandidate = new Map<string, BackendReviewDecision>();
@@ -99,22 +120,18 @@ export async function listWorkspaceEvidence(engagementId: string): Promise<{
 export async function uploadDocument(engagementId: string, file: File): Promise<BackendDocumentLike> {
   const body = new FormData();
   body.append("file", file);
-  body.append("uploaded_by", "local_reviewer");
   body.append("document_role", "source_evidence");
 
-  return apiRequest<BackendDocumentLike>(
-    `/v1/engagements/${encodeURIComponent(engagementId)}/documents/upload`,
-    {
-      method: "POST",
-      body,
-    }
-  );
+  return api<BackendDocumentLike>(`/engagements/${encodeURIComponent(engagementId)}/documents/upload`, {
+    method: "POST",
+    body,
+  });
 }
 
 export async function processDocument(documentId: string): Promise<void> {
-  await apiRequest(`/v1/documents/${encodeURIComponent(documentId)}/pipeline/process`, {
+  await api(`/documents/${encodeURIComponent(documentId)}/pipeline/process`, {
     method: "POST",
-    body: JSON.stringify({ persist_run: true }),
+    body: { persist_run: true },
   });
 }
 
@@ -134,27 +151,32 @@ export async function submitFieldReview({
   const fieldName = typeof candidate?.field_name === "string" ? candidate.field_name : null;
   if (!candidate || !evidenceId || !fieldName) return;
 
-  await apiRequest(`/v1/evidence/${encodeURIComponent(evidenceId)}/fields/${encodeURIComponent(fieldName)}/review`, {
+  await api(`/evidence/${encodeURIComponent(evidenceId)}/fields/${encodeURIComponent(fieldName)}/review`, {
     method: "PUT",
-    body: JSON.stringify({
+    // The reviewer is the signed-in user; the API records it from the session.
+    body: {
       candidate,
       decision,
-      reviewer_id: "local_reviewer",
       reviewed_value: decision === "edited" ? reviewedValue : undefined,
       reviewer_note: reviewerNote,
-    }),
+    },
   });
 }
 
 export function downloadUrl(documentId: string): string {
-  return apiUrl(`/v1/documents/${encodeURIComponent(documentId)}/download`);
+  return apiPath(`/documents/${encodeURIComponent(documentId)}/download`);
 }
 
-async function apiMaybe<T>(path: string): Promise<T | null> {
-  const response = await fetch(apiUrl(path), { cache: "no-store" });
-  if (response.status === 404) return null;
-  if (!response.ok) throw new Error(`API request failed: ${response.status}`);
-  return response.json() as Promise<T>;
+/** A 401 from any S1 call: the session expired or the user signed out. */
+export function isSessionEnded(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
+
+/** The login page to send an ended session to (back to `next` afterwards), or
+ *  `null` when this browser does not know which org the user belongs to. */
+export function signInAgainPath(next = "/"): string | null {
+  const realm = lastRealm();
+  return realm ? signInPath(realm, next) : null;
 }
 
 export function userFacingApiError(error: unknown): string {

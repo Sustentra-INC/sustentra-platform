@@ -1,5 +1,5 @@
 import type { EvidenceItem } from "../types";
-import { apiUrl } from "../../../lib/api/client";
+import { apiPath } from "../../../lib/api";
 import { HALT_REASONS } from "../constants/copy";
 
 export interface BackendDocumentLike {
@@ -49,7 +49,7 @@ export function mapBackendDocumentToEvidenceItem(
   return {
     documentId: document.document_id,
     filename: document.file_name,
-    downloadUrl: apiUrl(`/v1/documents/${document.document_id}/download`),
+    downloadUrl: apiPath(`/documents/${encodeURIComponent(document.document_id)}/download`),
     format: resolveFormat(document.file_name, document.mime_type),
     uploadedBy: { id: document.uploaded_by, name: document.uploaded_by, actorType: "preparer" },
     uploadedAt: document.uploaded_at,
@@ -133,7 +133,7 @@ export function mapHaltReason({
 }
 
 export function inlineDocumentUrl(documentId: string): string {
-  return apiUrl(`/v1/documents/${documentId}/preview`);
+  return apiPath(`/documents/${encodeURIComponent(documentId)}/preview`);
 }
 
 function resolveFormat(filename: string, mimeType?: string | null): EvidenceItem["format"] {

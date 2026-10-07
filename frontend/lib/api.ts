@@ -4,9 +4,8 @@
  * the backend in dev and Caddy routes in prod. Auth rides on the `__Host-session`
  * cookie via `credentials: "same-origin"` — no bearer tokens, no CORS.
  *
- * Note: the S1 workpaper feature has its own data seam (`features/s1/api`) that
- * talks to the S1 pilot backend (`/v1/*`) with the older client; this wrapper is
- * for the MVP auth/org/admin surface.
+ * The S1 workpaper seam (`features/s1/api`) uses it too (FE-007): every S1 route
+ * needs the session cookie and is scoped to the caller's org (SEC-001).
  */
 
 export class ApiError extends Error {
@@ -31,6 +30,11 @@ export interface ApiOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
+/** Same-origin URL for an API path, e.g. for a download link or a preview iframe. */
+export function apiPath(path: string): string {
+  return `/api/v1${path}`;
+}
+
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
   const { body, headers: headersInit, ...rest } = options;
   const headers = new Headers(headersInit);
@@ -44,7 +48,7 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
     if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(`/api/v1${path}`, {
+  const response = await fetch(apiPath(path), {
     ...rest,
     headers,
     body: payload,
@@ -72,4 +76,15 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
 
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+/** Like `api`, but a 404 resolves to `null` (the resource does not exist yet, or
+ *  belongs to another org). Every other failure still throws `ApiError`. */
+export async function apiMaybe<T>(path: string, options: ApiOptions = {}): Promise<T | null> {
+  try {
+    return await api<T>(path, options);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
 }
