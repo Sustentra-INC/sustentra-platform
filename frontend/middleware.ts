@@ -15,13 +15,15 @@ import { SESSION_COOKIE } from "./lib/session-cookie";
  *                            browser (`sustentra_realm` cookie), else `/sign-in` (FE-006)
  *   - `/provider-admin/*`  → `/provider-admin/login`
  *   - `/org/[slug]/*`      → `/org/[slug]/login`
- * Public auth pages under an org (login / forgot-password / reset-password) and
- * the provider login stay reachable without a session.
+ * The auth pages (login / forgot-password / reset-password) of both realms stay
+ * reachable without a session - the reset link in the email (and the one the
+ * create-provider-admin CLI prints) must work for someone who is signed out.
  */
 
 export { SESSION_COOKIE };
 
-// Pages under /org/[slug] that must stay open to signed-out visitors.
+// Auth pages that must stay open to signed-out visitors.
+const PUBLIC_PROVIDER_PAGE = /^\/provider-admin\/(login|forgot-password|reset-password)\/?$/;
 const PUBLIC_ORG_PAGE = /^\/org\/[^/]+\/(login|forgot-password|reset-password)\/?$/;
 
 export function middleware(request: NextRequest): NextResponse {
@@ -42,7 +44,7 @@ export function middleware(request: NextRequest): NextResponse {
 
   // Provider admin area.
   if (pathname === "/provider-admin" || pathname.startsWith("/provider-admin/")) {
-    if (pathname === "/provider-admin/login") return NextResponse.next();
+    if (PUBLIC_PROVIDER_PAGE.test(pathname)) return NextResponse.next();
     return redirectTo(request, "/provider-admin/login", pathname);
   }
 

@@ -36,8 +36,12 @@ describe("middleware auth guard", () => {
     }
   });
 
-  it("leaves the provider login reachable without a session", () => {
+  it("leaves the provider auth pages reachable without a session", () => {
     expect(location("/provider-admin/login")).toBeNull();
+    // The emailed / CLI-printed set-password link must work for a signed-out user (TEST-002 found this).
+    expect(location("/provider-admin/reset-password")).toBeNull();
+    expect(location("/provider-admin/forgot-password")).toBeNull();
+    expect(location("/provider-admin/reset-password/extra")?.pathname).toBe("/provider-admin/login");
   });
 
   it("passes through when the session cookie is present", () => {
@@ -64,11 +68,13 @@ describe("middleware auth guard", () => {
         const loc = location("/", false, realm);
         expect(loc?.pathname).toBe("/sign-in");
         expect(loc?.searchParams.get("next")).toBe("/");
-      }
+      },
     );
 
     it("keeps the query string in next", () => {
-      expect(location("/?view=evidence", false, "org:acme")?.searchParams.get("next")).toBe("/?view=evidence");
+      expect(location("/?view=evidence", false, "org:acme")?.searchParams.get("next")).toBe(
+        "/?view=evidence",
+      );
     });
 
     it("passes through with a session", () => {
