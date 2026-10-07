@@ -89,3 +89,28 @@ export async function requireSession(options: RequireSessionOptions = {}): Promi
 
   return me;
 }
+
+/**
+ * Where a signed-in user who may NOT see `/org/{slug}/...` should go instead, or
+ * null when they may (FE-005):
+ *   - provider admins manage orgs in the provider portal (the org pages need an org session),
+ *   - a user of another org goes to their own org's home (never a different org's pages),
+ *   - an org_member on an admin page goes to the org home.
+ */
+export function orgAreaRedirect(me: Me, slug: string, { admin }: { admin: boolean }): string | null {
+  if (me.role === "provider_admin") return "/provider-admin/orgs";
+  if (!me.org_slug || me.org_slug !== slug) return me.org_slug ? `/org/${me.org_slug}` : "/sign-in";
+  if (admin && me.role !== "org_admin") return `/org/${slug}`;
+  return null;
+}
+
+/** Guard for `/org/{slug}/...` server components. Signed out -> the org's login. */
+export async function requireOrgArea(
+  slug: string,
+  { admin }: { admin: boolean },
+): Promise<Me & { org_id: string }> {
+  const me = await requireSession({ loginPath: `/org/${slug}/login` });
+  const elsewhere = orgAreaRedirect(me, slug, { admin });
+  if (elsewhere) redirect(elsewhere);
+  return me as Me & { org_id: string };
+}

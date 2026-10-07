@@ -8,7 +8,7 @@ import { StatusBadge } from "./StatusBadge";
 import styles from "./admin.module.css";
 
 /** Org users list (FE-005): status/role filters, seat usage, invite button. */
-export function UsersList({ orgId, slug }: { orgId: string; slug: string }) {
+export function UsersList({ orgId, slug, notice }: { orgId: string; slug: string; notice?: string | null }) {
   const [users, setUsers] = useState<OrgUser[]>([]);
   const [seats, setSeats] = useState<{ used: number; max: number } | null>(null);
   const [status, setStatus] = useState<UserStatus | "">("");
@@ -58,6 +58,12 @@ export function UsersList({ orgId, slug }: { orgId: string; slug: string }) {
           + Invite user
         </Link>
       </div>
+
+      {notice ? (
+        <p className={styles.muted} role="status">
+          {notice}
+        </p>
+      ) : null}
 
       <div className={styles.toolbar}>
         <select

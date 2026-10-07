@@ -7,11 +7,13 @@ import { listOrgs, type Org, type OrgStatus } from "./providerApi";
 import { StatusBadge } from "./StatusBadge";
 import styles from "./admin.module.css";
 
-/** Provider-admin organisations list (FE-004): search + status filter. */
+/** Provider-admin organisations list (FE-004): search + status filter, paginated. */
 export function OrgsList() {
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<OrgStatus | "">("");
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
   const [reloadKey, setReloadKey] = useState(0);
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -20,15 +22,16 @@ export function OrgsList() {
   // the request settles, so the effect never calls setState synchronously
   // (react-hooks/set-state-in-effect); `loading` is derived from whether the
   // latest request has finished.
-  const requestKey = JSON.stringify([search, status, reloadKey]);
+  const requestKey = JSON.stringify([search, status, page, reloadKey]);
   const loading = loadedKey !== requestKey;
 
   useEffect(() => {
     let active = true;
-    listOrgs({ search, status })
+    listOrgs({ search, status, page })
       .then((res) => {
         if (!active) return;
         setOrgs(res.items);
+        setPages(Math.max(1, Math.ceil(res.total / res.page_size)));
         setError(null);
       })
       .catch(() => {
@@ -67,13 +70,19 @@ export function OrgsList() {
           className={`${styles.input} ${styles.grow}`}
           placeholder="Search name or slug"
           value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
           aria-label="Search organizations"
         />
         <select
           className={styles.select}
           value={status}
-          onChange={(e) => setStatus(e.target.value as OrgStatus | "")}
+          onChange={(e) => {
+            setStatus(e.target.value as OrgStatus | "");
+            setPage(1);
+          }}
           aria-label="Filter by status"
         >
           <option value="">All statuses</option>
@@ -135,6 +144,30 @@ export function OrgsList() {
           </tbody>
         </table>
       </div>
+
+      {pages > 1 ? (
+        <nav className={styles.toolbar} aria-label="Pages">
+          <button
+            type="button"
+            className={`${styles.button} ${styles.ghost}`}
+            onClick={() => setPage((p) => p - 1)}
+            disabled={page <= 1 || loading}
+          >
+            Previous
+          </button>
+          <span className={styles.muted}>
+            Page {page} of {pages}
+          </span>
+          <button
+            type="button"
+            className={`${styles.button} ${styles.ghost}`}
+            onClick={() => setPage((p) => p + 1)}
+            disabled={page >= pages || loading}
+          >
+            Next
+          </button>
+        </nav>
+      ) : null}
     </div>
   );
 }

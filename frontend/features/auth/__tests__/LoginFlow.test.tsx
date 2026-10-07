@@ -11,7 +11,7 @@ vi.mock("../api", async () => {
 });
 
 import { login, verifyOtp } from "../api";
-import { LoginFlow } from "../LoginFlow";
+import { ACCOUNT_READY_NOTICE, LoginFlow } from "../LoginFlow";
 
 const loginMock = login as unknown as ReturnType<typeof vi.fn>;
 const verifyMock = verifyOtp as unknown as ReturnType<typeof vi.fn>;
@@ -87,7 +87,7 @@ describe("LoginFlow", () => {
     "ignores an off-site ?next= (%s) and goes home",
     async (next) => {
       expect(await signInThroughOtp({ next })).toBe("/");
-    }
+    },
   );
 
   it("remembers the org it signed in to, for the workpaper's session-ended redirect", async () => {
@@ -98,5 +98,12 @@ describe("LoginFlow", () => {
 
   it("sends provider admins to their org list (FE-006)", async () => {
     expect(await signInThroughOtp({ realm: { kind: "provider" } })).toBe("/provider-admin/orgs");
+  });
+});
+
+describe("LoginFlow notices", () => {
+  it("shows the account-ready message after an accepted invite (FE-003)", () => {
+    render(<LoginFlow realm={{ kind: "org", slug: "acme" }} initialNotice={ACCOUNT_READY_NOTICE} />);
+    expect(screen.getByText("Your account is ready — sign in.")).toBeInTheDocument();
   });
 });
