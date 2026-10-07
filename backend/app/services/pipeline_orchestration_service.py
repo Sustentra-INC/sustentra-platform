@@ -15,6 +15,10 @@ from backend.app.domain.pipeline import (
     PipelineStatus,
 )
 from backend.app.repositories.pipeline_repository import JsonlPipelineRunRepository
+from backend.app.repositories.extraction_result_repository import (
+    InMemoryExtractionResultRepository,
+    JsonlExtractionResultRepository,
+)
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
 from backend.app.services.classification_service import ClassificationService
 from backend.app.services.extraction_service import ExtractionService
@@ -58,6 +62,7 @@ class PipelineOrchestrationService:
         review_service: Any | None = None,
         approved_evidence_service: Any | None = None,
         pipeline_repository: Any | None = None,
+        extraction_result_repository: Any | None = None,
         clock: Callable[[], str] | None = None,
         id_factory: Callable[[str, str], str] | None = None,
     ) -> None:
@@ -74,6 +79,15 @@ class PipelineOrchestrationService:
             approved_evidence_service or ApprovedEvidenceService()
         )
         self._pipeline_repository = pipeline_repository or JsonlPipelineRunRepository()
+        # Persisted candidates for GET /documents/{id}/extraction-result/latest (S1-BE-001).
+        # Follows the run store: JSONL by default, in memory when a run repository is injected.
+        if extraction_result_repository is None:
+            extraction_result_repository = (
+                JsonlExtractionResultRepository()
+                if pipeline_repository is None
+                else InMemoryExtractionResultRepository()
+            )
+        self._extraction_result_repository = extraction_result_repository
 
         self._clock = clock or (lambda: datetime.now(timezone.utc).isoformat())
         self._id_factory = id_factory or self._default_id_factory
@@ -172,7 +186,7 @@ class PipelineOrchestrationService:
                     completed_at=self._clock(),
                     halt_reason=halt_reason,
                 )
-                saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run)
+                saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
                 return {
                     "pipeline_run": saved_run,
                     "parser_output": parser_output,
@@ -278,7 +292,7 @@ class PipelineOrchestrationService:
                     completed_at=self._clock(),
                     halt_reason=halt_reason,
                 )
-                saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run)
+                saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
                 return {
                     "pipeline_run": saved_run,
                     "parser_output": parser_output,
@@ -335,7 +349,7 @@ class PipelineOrchestrationService:
                 completed_at=self._clock(),
                 halt_reason=halt_reason,
             )
-            saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run)
+            saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
             return {
                 "pipeline_run": saved_run,
                 "parser_output": parser_output,
@@ -374,7 +388,7 @@ class PipelineOrchestrationService:
                 created_at=created_at,
                 completed_at=self._clock(),
             )
-            saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run)
+            saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
             return {
                 "pipeline_run": saved_run,
                 "parser_output": parser_output,
@@ -525,10 +539,30 @@ class PipelineOrchestrationService:
     def _get_target_service(self):
         return self._target_service
 
-    def _persist_if_needed(self, run: dict, persist_run: bool) -> dict:
+    def _persist_if_needed(self, run: dict, persist_run: bool, extraction_result: dict | None = None) -> dict:
         if not persist_run:
             return copy.deepcopy(run)
-        return self._pipeline_repository.save(run)
+        saved = self._pipeline_repository.save(run)
+        if extraction_result is not None:
+            self._extraction_result_repository.save(
+                {
+                    "pipeline_run_id": run.get("pipeline_run_id"),
+                    "engagement_id": run.get("engagement_id"),
+                    "evidence_id": run.get("evidence_id"),
+                    "document_id": run.get("document_id"),
+                    "canonical_type_id": run.get("canonical_type_id"),
+                    "status": run.get("status"),
+                    "candidate_count": int(extraction_result.get("candidate_count") or 0),
+                    "items": copy.deepcopy(extraction_result.get("items") or []),
+                    "org_id": run.get("org_id"),
+                    "created_at": run.get("completed_at") or run.get("created_at"),
+                }
+            )
+        return saved
+
+    def list_extraction_results_by_document(self, document_id: str) -> list[dict]:
+        """Every persisted extraction result for a document, oldest first."""
+        return self._extraction_result_repository.list_by_document(document_id)
 
     def _build_pipeline_run(
         self,

@@ -52,7 +52,9 @@ def test_the_sweep_covers_the_known_routers() -> None:
     paths = {path for path, _ in S1_PATHS}
     for expected in ("/v1/engagements/{engagement_id}/documents/upload", "/v1/documents/{document_id}",
                      "/v1/pipeline/runs/{pipeline_run_id}", "/v1/evidence/{evidence_id}/fields/{field_name}/review",
-                     "/v1/approved-evidence/{approved_evidence_id}", "/v1/methodology/s2/run"):
+                     "/v1/approved-evidence/{approved_evidence_id}", "/v1/methodology/s2/run",
+                     "/v1/documents/{document_id}/extraction-result/latest",
+                     "/v1/documents/{document_id}/download", "/v1/documents/{document_id}/preview"):
         assert expected in paths
     assert len(S1_PATHS) >= 25
 
@@ -131,6 +133,8 @@ def _reads(w: dict) -> list[str]:
         "/v1/evidence/EV-A/approved-evidence/latest",
         f"/v1/approved-evidence/{w['approved']['approved_evidence_id']}",
         f"/v1/candidates/{w['candidate']['candidate_id']}/reviews/latest",
+        f"/v1/documents/{a_doc['document_id']}/extraction-result/latest",
+        f"/v1/documents/{a_doc['document_id']}/download",
     ]
 
 

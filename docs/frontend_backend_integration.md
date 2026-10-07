@@ -97,3 +97,12 @@ In `backend` mode the frontend starts **completely empty**: no engagement, no do
 1. The frontend is done and wired for the **evidence → extraction → review** chain — those endpoints already exist, so that half can go live now (confirm shapes + tenant-scope).
 2. The **calculation/verification** half (and requests, dashboard, assistant) is fixture-only until the backend builds it — the calc engine + Scope 2 is the critical dependency.
 3. Flipping `NEXT_PUBLIC_S1_DATA_MODE=backend` is the only switch needed on our side.
+
+## S1-BE-001: extraction result, download, preview (done)
+
+- `GET /api/v1/documents/{id}/extraction-result/latest` → `{evidence_id, document_id, pipeline_run_id, canonical_type_id, status, candidate_count, items, created_at}`; `items` are the extraction candidates `fieldAdapter.ts` reads. Every persisted pipeline run stores its candidates (`local-data/extraction-results/extraction_results.jsonl`); "latest" is the newest run for that document (a halted run gives `items: []`). 404 before the first persisted run.
+- `GET /api/v1/documents/{id}/download` → the original file as an attachment.
+- `GET /api/v1/documents/{id}/preview` → the file inline, **PDF / PNG / JPEG only** (415 otherwise).
+- All three: session required, org-scoped (404 for unknown or another org's document, like SEC-001).
+- The served `Content-Type` comes from the file's bytes, not the uploaded `mime_type`, and responses carry `nosniff`, so an HTML/SVG upload can never run as a page on the app's origin.
+- Embedding: the preview may be framed by the app only (`X-Frame-Options: SAMEORIGIN`, `frame-ancestors 'self'`); Caddy's `DENY` / `frame-ancestors 'none'` are defaults the API overrides for this route. Use an `<iframe>` (or `<img>`) — the page CSP has `object-src 'none'`, so `<object>`/`<embed>` are blocked.
