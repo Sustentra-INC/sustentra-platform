@@ -5,18 +5,46 @@ import { useEffect, useState } from "react";
 import { listAuditLog, type AuditEvent } from "./orgApi";
 import styles from "./admin.module.css";
 
+/** Event names as the backend writes them (audit_logs.event_type). */
+const EVENT_LABELS: Record<string, string> = {
+  user_invited: "User invited",
+  user_invite_resent: "Invite resent",
+  invite_accepted: "Invite accepted",
+  user_role_changed: "Role changed",
+  user_suspended: "User suspended",
+  user_reactivated: "User reactivated",
+  user_deleted: "User deleted",
+  login_success: "Signed in",
+  login_fail: "Sign-in failed",
+  account_locked: "Account locked",
+  logout: "Signed out",
+  password_reset: "Password reset",
+  engagement_created: "Engagement created",
+  org_created: "Organization created",
+  org_updated: "Organization updated",
+  org_suspended: "Organization suspended",
+  org_activated: "Organization reactivated",
+};
+
 const EVENT_TYPES = [
   { value: "", label: "All events" },
-  { value: "user.invited", label: "User invited" },
-  { value: "user.role_changed", label: "Role changed" },
-  { value: "user.suspended", label: "User suspended" },
-  { value: "user.reactivated", label: "User reactivated" },
-  { value: "user.deleted", label: "User deleted" },
+  ...Object.entries(EVENT_LABELS).map(([value, label]) => ({ value, label })),
 ];
+
+function label(eventType: string): string {
+  return EVENT_LABELS[eventType] ?? eventType;
+}
+
+function when(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
+}
 
 /** Org audit log (FE-005 / COMP-002): paginated event table with a type filter. */
 export function AuditLog({ orgId }: { orgId: string }) {
   const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [type, setType] = useState("");
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,6 +62,7 @@ export function AuditLog({ orgId }: { orgId: string }) {
       .then((res) => {
         if (!active) return;
         setEvents(res.items);
+        setNextCursor(res.next_cursor);
         setError(null);
       })
       .catch(() => {
@@ -48,6 +77,20 @@ export function AuditLog({ orgId }: { orgId: string }) {
     // requestKey captures every input of the request.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestKey]);
+
+  async function loadMore() {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    try {
+      const res = await listAuditLog(orgId, { type, cursor: nextCursor });
+      setEvents((prev) => [...prev, ...res.items]);
+      setNextCursor(res.next_cursor);
+    } catch {
+      setError("Could not load more events.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   return (
     <div className={styles.page}>
@@ -105,16 +148,29 @@ export function AuditLog({ orgId }: { orgId: string }) {
             ) : (
               events.map((event) => (
                 <tr key={event.id}>
-                  <td className={styles.muted}>{event.created_at}</td>
-                  <td>{event.event_type}</td>
-                  <td>{event.actor}</td>
-                  <td className={styles.muted}>{event.summary ?? event.target ?? "—"}</td>
+                  <td className={styles.muted}>{when(event.created_at)}</td>
+                  <td>{label(event.event_type)}</td>
+                  <td>{event.actor ?? "—"}</td>
+                  <td className={styles.muted}>{event.target ?? "—"}</td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {!loading && nextCursor ? (
+        <div className={styles.toolbar}>
+          <button
+            type="button"
+            className={styles.button}
+            onClick={() => void loadMore()}
+            disabled={loadingMore}
+          >
+            {loadingMore ? "Loading…" : "Load more"}
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -137,6 +137,14 @@ Never commit `local-data/`, `local-samples/`, private evidence documents, parser
 - A session only authenticates while the user is `active` and their org is `active`.
 - Audit events: `user_role_changed` (from/to), `user_suspended` (sessions revoked), `user_reactivated`.
 
+## Audit log (COMP-002 / MVP-21)
+
+`GET /api/v1/orgs/{org_id}/audit-logs?event_type=&user_id=&from_date=&to_date=&cursor=&limit=` - an org admin for their own org (another org -> 404), a provider admin for any org; members get 403.
+
+- Newest first, up to 100 per page (default 50). The response is `{items, next_cursor}`; pass `next_cursor` back as `cursor` with the same filters. Pages never skip or repeat rows, even when events share a timestamp. A malformed cursor -> 400.
+- `user_id` matches events done by or done to that user. `from_date` / `to_date` are UTC dates, both inclusive.
+- Each item has `actor` / `target` display names. Provider staff show as "Sustentra" to org admins, and erased users as "Deleted User". IP addresses and user agents are not returned.
+
 ## Invites (ORG-003 / MVP-19)
 
 | Method | Path | Who | Notes |
