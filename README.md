@@ -106,3 +106,19 @@ Never commit `local-data/`, `local-samples/`, private evidence documents, parser
 - `max_users` defaults to 25 (1..10000). Lowering it below the current seat count is allowed and only blocks new seats.
 - `initial_admin` creates an `org_admin` with status `invited` and a 24-hour invite token in the same transaction as the org, and emails `{PUBLIC_BASE_URL}/invite/accept?token=...` after the commit. Accepting the invite is ORG-003.
 - Audit events: `org_created`, `user_invited`, `org_updated` (changed field names only), `org_suspended` (with `sessions_revoked`), `org_activated`.
+
+## Users in an organization (ORG-002 / MVP-18)
+
+`/api/v1/orgs/{org_id}/users` - an `org_admin` for their own org (another org's id -> 404), a `provider_admin` for any org; `org_member` -> 403.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/orgs/{org_id}/users?status=&role=&page=&page_size=` | `{items, total, page, page_size, max_users, seats_used}`, newest first; deleted users are never listed |
+| GET | `/orgs/{org_id}/users/{user_id}` | 404 if unknown, deleted or in another org |
+| PATCH | `/orgs/{org_id}/users/{user_id}` | `{role: "org_admin" \| "org_member"}` |
+| POST | `/orgs/{org_id}/users/{user_id}/suspend` | deletes the user's sessions and outstanding tokens at once; idempotent |
+| POST | `/orgs/{org_id}/users/{user_id}/reactivate` | back to `active` (or `invited` if they never set a password); idempotent |
+
+- An admin cannot demote or suspend themselves (409), and an org always keeps at least one active `org_admin` (409). The active admins are row-locked first, so two admins demoting each other at the same moment cannot leave the org with none.
+- A session only authenticates while the user is `active` and their org is `active`.
+- Audit events: `user_role_changed` (from/to), `user_suspended` (sessions revoked), `user_reactivated`.
