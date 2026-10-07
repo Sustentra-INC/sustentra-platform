@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from backend.app.api.s1_access import (
@@ -13,6 +16,7 @@ from backend.app.api.s1_access import (
 )
 from backend.app.core.auth import CurrentUser
 
+from backend.app.services.document_file_types import served_type
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
@@ -145,6 +149,98 @@ def list_documents(engagement_id: str, user: CurrentUser = Depends(s1_reader)) -
 @router.get("/documents/{document_id}")
 def get_document(document_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
     return require_visible(_upload_service.get_document(document_id), user, "Document not found.")
+
+
+@router.get("/documents/{document_id}/extraction-result/latest")
+def latest_extraction_result(document_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
+    """The candidates from the document's latest persisted pipeline run (S1-BE-001),
+    in the shape the workpaper's field adapter reads."""
+
+    require_visible(_upload_service.get_document(document_id), user, "Document not found.")
+    results = visible(_pipeline_service.list_extraction_results_by_document(document_id), user)
+    if not results:
+        raise HTTPException(status_code=404, detail="Extraction result not found.")
+    latest = results[-1]
+    return {
+        "evidence_id": latest.get("evidence_id"),
+        "document_id": latest.get("document_id"),
+        "pipeline_run_id": latest.get("pipeline_run_id"),
+        "canonical_type_id": latest.get("canonical_type_id"),
+        "status": latest.get("status"),
+        "candidate_count": latest.get("candidate_count", 0),
+        "items": latest.get("items") or [],
+        "created_at": latest.get("created_at"),
+    }
+
+
+# Served-file headers (S1-BE-001). The API's own CSP/X-Frame-Options win over the
+# proxy defaults (deploy/Caddyfile sets them with `?`), so only the preview can be
+# framed, and only by the app itself.
+_NO_STORE = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
+_DOWNLOAD_HEADERS = {
+    **_NO_STORE,
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; sandbox",
+    "X-Frame-Options": "DENY",
+}
+_PREVIEW_HEADERS = {**_NO_STORE, "X-Frame-Options": "SAMEORIGIN"}
+# Chrome refuses to render a PDF under a `sandbox` CSP; images get the full lockdown.
+_PREVIEW_CSP = {
+    "application/pdf": "frame-ancestors 'self'",
+    "image": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'self'; sandbox",
+}
+
+
+def _stored_file(document_id: str, user: CurrentUser) -> tuple[dict, Path]:
+    """The document (404 unless visible) and its file (404 when missing)."""
+
+    document = require_visible(_upload_service.get_document(document_id), user, "Document not found.")
+    missing = HTTPException(status_code=404, detail="Stored document file is missing.")
+    storage_uri = str(document.get("storage_uri") or "")
+    owner = document.get("org_id")
+    # An owned document's file must sit in its org's folder (SEC-001); unowned
+    # (pre-SEC-001, provider-only) files only need to be inside the upload root.
+    if owner is not None and not _storage_service.is_owned_by(storage_uri, str(owner)):
+        raise missing
+    try:
+        path = _storage_service.resolve_storage_uri(storage_uri)
+    except ValueError:
+        raise missing from None
+    if not path.is_file():
+        raise missing
+    return document, path
+
+
+def _download_name(document: dict, path: Path) -> str:
+    name = str(document.get("file_name") or path.name)
+    return "".join(ch for ch in name if ch.isprintable()) or path.name
+
+
+@router.get("/documents/{document_id}/download")
+def download_document(document_id: str, user: CurrentUser = Depends(s1_reader)) -> FileResponse:
+    document, path = _stored_file(document_id, user)
+    return FileResponse(
+        path,
+        media_type=served_type(path, document.get("file_name")).media_type,
+        filename=_download_name(document, path),
+        content_disposition_type="attachment",
+        headers=_DOWNLOAD_HEADERS,
+    )
+
+
+@router.get("/documents/{document_id}/preview")
+def preview_document(document_id: str, user: CurrentUser = Depends(s1_reader)) -> FileResponse:
+    document, path = _stored_file(document_id, user)
+    kind = served_type(path, document.get("file_name"))
+    if not kind.previewable:
+        raise HTTPException(status_code=415, detail="Preview is not available for this file type.")
+    csp = _PREVIEW_CSP["application/pdf" if kind.media_type == "application/pdf" else "image"]
+    return FileResponse(
+        path,
+        media_type=kind.media_type,
+        filename=_download_name(document, path),
+        content_disposition_type="inline",
+        headers={**_PREVIEW_HEADERS, "Content-Security-Policy": csp},
+    )
 
 
 @router.get("/evidence/{evidence_id}/documents")

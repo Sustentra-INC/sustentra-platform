@@ -269,6 +269,18 @@ It only stamps records that have no owner (records owned by another org are repo
 left alone), moves the uploaded files into the org's folder, and keeps a
 `<file>.bak-<timestamp>` copy of each JSONL file it rewrites.
 
+## Security headers and document previews (S1-BE-001)
+
+`deploy/Caddyfile` sets the security headers on every response. `X-Frame-Options`
+and `Content-Security-Policy` are set as defaults (`?`): a response that already has
+them keeps its own. Only the API's document routes do that:
+
+- `/api/v1/documents/{id}/preview` - `X-Frame-Options: SAMEORIGIN`, `frame-ancestors 'self'`
+  (plus `default-src 'none'; sandbox` for images), so the workpaper can frame it;
+- `/api/v1/documents/{id}/download` - `X-Frame-Options: DENY` and a `sandbox` CSP.
+
+Everything else gets the proxy's `DENY` / `frame-ancestors 'none'` as before.
+
 ## CI/CD (MVP-5)
 
 | Workflow | Trigger | What it does | AWS role |
