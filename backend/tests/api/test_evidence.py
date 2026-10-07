@@ -6,6 +6,7 @@ from backend.app.main import app
 from backend.app.repositories.evidence_repository import InMemoryApprovedEvidenceRepository
 from backend.app.repositories.review_repository import InMemoryReviewDecisionRepository
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
+from backend.tests.api.conftest import ORG_A
 
 
 @pytest.fixture
@@ -76,6 +77,7 @@ def _review_decision(
             "document_id": document_id,
             "text_snippet": "Total Usage 28,100 MMBtu",
         },
+        "org_id": str(ORG_A),  # written after SEC-001 by an org-A reviewer
     }
 
 

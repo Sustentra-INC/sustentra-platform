@@ -1,0 +1,60 @@
+{
+  "document_id": "MF-07",
+  "file": "MF-07_prairie_coop_biofuel_blends.pdf",
+  "description": "Biofuel blends: B20 -> diesel 20%, B100 -> biodiesel 100%, E85 -> e85 (flagged, outside allowed values), E10 -> gasoline 10%. The classifier confidently picks the stationary biofuel variant, but the fleet context contradicts it: halts until a reviewer sets the type.",
+  "expected_classification": "CT-S1-MOBFUEL",
+  "expected_halt": null,
+  "reviewer_override": "CT-S1-MOBFUEL",
+  "expected_halt_without_override": "unsupported_document",
+  "document_fields": {},
+  "records": [
+    {
+      "transaction_date": "2024-06-03",
+      "fuel_type": "diesel",
+      "activity_quantity": 120.0,
+      "activity_unit": "gal",
+      "raw_quantity": "120.0",
+      "raw_unit": "gal",
+      "biofuel_blend_pct": 20,
+      "record_hint": "G-4",
+      "vehicle_or_equipment_id": "G-4",
+      "account_number": "PCF-3381"
+    },
+    {
+      "transaction_date": "2024-06-03",
+      "fuel_type": "biodiesel",
+      "activity_quantity": 80.0,
+      "activity_unit": "gal",
+      "raw_quantity": "80.0",
+      "raw_unit": "gal",
+      "biofuel_blend_pct": 100,
+      "record_hint": "G-5",
+      "vehicle_or_equipment_id": "G-5",
+      "account_number": "PCF-3381"
+    },
+    {
+      "transaction_date": "2024-06-10",
+      "fuel_type": "e85",
+      "activity_quantity": 22.5,
+      "activity_unit": "gal",
+      "raw_quantity": "22.5",
+      "raw_unit": "gal",
+      "biofuel_blend_pct": 85,
+      "record_hint": "P-2",
+      "vehicle_or_equipment_id": "P-2",
+      "account_number": "PCF-3381"
+    },
+    {
+      "transaction_date": "2024-06-10",
+      "fuel_type": "gasoline",
+      "activity_quantity": 18.0,
+      "activity_unit": "gal",
+      "raw_quantity": "18.0",
+      "raw_unit": "gal",
+      "biofuel_blend_pct": 10,
+      "record_hint": "P-3",
+      "vehicle_or_equipment_id": "P-3",
+      "account_number": "PCF-3381"
+    }
+  ]
+}

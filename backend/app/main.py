@@ -9,9 +9,6 @@ from slowapi.errors import RateLimitExceeded
 from . import observability
 from .api import (
     assistant,
-    audit,
-    auth,
-    clients,
     documents,
     engagements,
     evidence,
@@ -19,25 +16,19 @@ from .api import (
     pipeline,
     processing_runs,
     reviews,
-    users,
 )
 from .api import v1 as api_v1
 from .core.config import Settings, get_settings
 from .core.db import dispose_engine
 from .core.rate_limit import limiter
-from .core.security import JSONContentTypeMiddleware, OriginCheckMiddleware
+from .core.security import JSONContentTypeMiddleware, OriginCheckMiddleware, UploadSizeLimitMiddleware
 
 APP_TITLE = "Sustentra Evidence Extraction API"
-
-# Legacy JSONL identity routes (/v1/auth, /v1/users, /v1/clients): local/dev only,
-# replaced by /api/v1/auth (AUTH-004..006) - never exposed under /api.
-LEGACY_IDENTITY_ROUTERS = (auth.router, users.router, clients.router)
 
 # S1 workpaper routes the frontend seam calls (features/s1/api/s1Backend.ts).
 # Served at /v1/* (local, NEXT_PUBLIC_BACKEND_API_URL=http://localhost:8000) and at
 # /api/v1/* (prod via Caddy, NEXT_PUBLIC_BACKEND_API_URL=https://app.sustentra.com/api).
 S1_ROUTERS = (
-    audit.router,
     engagements.router,
     documents.router,
     processing_runs.router,
@@ -47,7 +38,11 @@ S1_ROUTERS = (
     reviews.router,
     assistant.router,
 )
-LEGACY_ROUTERS = LEGACY_IDENTITY_ROUTERS + S1_ROUTERS
+# The S1 routes are also mounted at root /v1/* for local development and existing
+# tests (never on staging/prod). The old bearer-token identity routes (/v1/auth,
+# /v1/users, /v1/clients, /v1/audit-events) were removed in CLEANUP-001; /api/v1/auth
+# (AUTH-004..006) is the only auth.
+LEGACY_ROUTERS = S1_ROUTERS
 
 
 @asynccontextmanager
@@ -76,6 +71,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Middleware: the LAST added runs FIRST. Order of execution:
     #   request logging (observability) -> CORS (local only) -> origin check -> JSON content type
+    #   -> upload size limit
+    app.state.max_upload_bytes = settings.max_upload_bytes  # the upload route checks the exact file size
+    app.add_middleware(UploadSizeLimitMiddleware, max_bytes=settings.max_upload_bytes)
     app.add_middleware(JSONContentTypeMiddleware)
     app.add_middleware(OriginCheckMiddleware, allowed_origins=settings.allowed_origins)
     if not settings.is_production_like:
@@ -98,15 +96,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(api_v1.router)
 
-    # TODO(AUTH-005 follow-up): once login works end to end, require a session on
-    # these and scope them to the user's org (integration doc: "tenant-scoped").
+    # SEC-001: every S1 route requires a session and is scoped to the caller's org
+    # (api/s1_access.py).
     for router in S1_ROUTERS:
         app.include_router(router, prefix="/api")
 
-    # Legacy (pre-AUTH-001) routes at /v1/*, kept for local development and
-    # existing tests until the new /api/v1 endpoints replace them.
-    for router in LEGACY_ROUTERS:
-        app.include_router(router)
+    # S1 routes at root /v1/*, for local development and existing tests only -
+    # never mounted on staging/prod (Caddy does not route them there either).
+    if not settings.is_production_like:
+        for router in LEGACY_ROUTERS:
+            app.include_router(router)
 
     return app
 

@@ -158,3 +158,16 @@ def test_normalize_volume_and_mass_keep_the_stated_unit(unit_text: str, unit: st
 def test_normalize_unknown_unit() -> None:
     with pytest.raises(UnitError):
         normalize_quantity(1, "widgets")
+
+
+@pytest.mark.parametrize(("label", "unit"), [("GGE", "GGE"), ("gasoline gallon equivalents", "GGE"), ("DGE", "DGE")])
+def test_gallon_equivalents_are_recognized_and_kept(label: str, unit: str) -> None:
+    from backend.app.domain.fuel_units import FUEL_EQUIVALENT
+
+    assert canonical_unit(label) == unit
+    assert dimension_of(unit) == FUEL_EQUIVALENT
+    result = normalize_quantity(412.6, label)
+    assert (result.value, result.unit, result.converted) == (412.6, unit, False)
+    assert convert(5, unit, unit) == 5
+    with pytest.raises(UnitError, match="fuel equivalent"):
+        convert(1, "GGE", "DGE")

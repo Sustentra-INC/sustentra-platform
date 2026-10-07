@@ -2,15 +2,17 @@ import { describe, it, expect } from "vitest";
 import { NextRequest } from "next/server";
 
 import { middleware, SESSION_COOKIE } from "../middleware";
+import { REALM_COOKIE } from "../lib/realm-cookie";
 
-function request(path: string, withSession = false): NextRequest {
+function request(path: string, withSession = false, realm?: string): NextRequest {
   const req = new NextRequest(new URL(`https://app.sustentra.com${path}`));
   if (withSession) req.cookies.set(SESSION_COOKIE, "session-value");
+  if (realm !== undefined) req.cookies.set(REALM_COOKIE, realm);
   return req;
 }
 
-function location(path: string, withSession = false): URL | null {
-  const res = middleware(request(path, withSession));
+function location(path: string, withSession = false, realm?: string): URL | null {
+  const res = middleware(request(path, withSession, realm));
   const loc = res.headers.get("location");
   return loc ? new URL(loc) : null;
 }
@@ -34,12 +36,53 @@ describe("middleware auth guard", () => {
     }
   });
 
-  it("leaves the provider login reachable without a session", () => {
+  it("leaves the provider auth pages reachable without a session", () => {
     expect(location("/provider-admin/login")).toBeNull();
+    // The emailed / CLI-printed set-password link must work for a signed-out user (TEST-002 found this).
+    expect(location("/provider-admin/reset-password")).toBeNull();
+    expect(location("/provider-admin/forgot-password")).toBeNull();
+    expect(location("/provider-admin/reset-password/extra")?.pathname).toBe("/provider-admin/login");
   });
 
   it("passes through when the session cookie is present", () => {
     expect(location("/org/acme/admin/users", true)).toBeNull();
     expect(location("/provider-admin/orgs", true)).toBeNull();
+  });
+
+  describe("the workpaper at / (FE-006)", () => {
+    it("sends a signed-out visitor to the org they last signed in to", () => {
+      const loc = location("/", false, "org:acme");
+      expect(loc?.pathname).toBe("/org/acme/login");
+      expect(loc?.searchParams.get("next")).toBe("/");
+    });
+
+    it("sends a provider admin to the provider login", () => {
+      const loc = location("/", false, "provider");
+      expect(loc?.pathname).toBe("/provider-admin/login");
+      expect(loc?.searchParams.get("next")).toBe("/");
+    });
+
+    it.each([undefined, "", "org:", "org:../x", "org:A", "admin"])(
+      "asks for the organization when the realm is unknown (%j)",
+      (realm) => {
+        const loc = location("/", false, realm);
+        expect(loc?.pathname).toBe("/sign-in");
+        expect(loc?.searchParams.get("next")).toBe("/");
+      },
+    );
+
+    it("keeps the query string in next", () => {
+      expect(location("/?view=evidence", false, "org:acme")?.searchParams.get("next")).toBe(
+        "/?view=evidence",
+      );
+    });
+
+    it("passes through with a session", () => {
+      expect(location("/", true)).toBeNull();
+    });
+
+    it("leaves /sign-in itself open", () => {
+      expect(location("/sign-in")).toBeNull();
+    });
   });
 });

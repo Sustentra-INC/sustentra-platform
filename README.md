@@ -31,6 +31,20 @@ python -m pytest -q backend/tests
 uvicorn backend.app.main:app --reload
 ```
 
+Dependencies are pinned (exact versions + hashes) in `backend/requirements.txt` and
+`backend/requirements-dev.txt`, generated from the short lists in `requirements.in` /
+`requirements-dev.in`. To add or upgrade a package, edit the `.in` file and regenerate
+(`pip install uv` once):
+
+```bash
+cd backend
+uv pip compile requirements.in --universal --python-version 3.12 --generate-hashes -o requirements.txt
+uv pip compile requirements-dev.in --universal --python-version 3.12 --generate-hashes -o requirements-dev.txt
+# upgrade one package: add  --upgrade-package fastapi  to both commands
+```
+
+CI fails when a `.txt` file is out of date with its `.in` file.
+
 FastAPI docs:
 
 ```text
@@ -89,3 +103,68 @@ Never commit `local-data/`, `local-samples/`, private evidence documents, parser
 - Reference JSON libraries and config: `reference-data/`
 - Demo fixtures: `demo-fixtures/mock_outputs/`
 - Legacy docs snapshot: `docs/legacy_streamlit_demo/`
+
+## Organizations - provider admin (ORG-001 / MVP-17)
+
+`/api/v1/provider/orgs` - provider admins only (401 without a session, 403 for any org user).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/provider/orgs?search=&status=&page=&page_size=` | `{items, total, page, page_size}`, newest first; search matches name or slug |
+| POST | `/provider/orgs` | `{name, slug, max_users?, initial_admin?: {email, first_name, last_name}}` -> 201; duplicate slug -> 409 |
+| GET | `/provider/orgs/{id}` | 404 if unknown |
+| PATCH | `/provider/orgs/{id}` | `{name?, max_users?}`; the slug is immutable |
+| POST | `/provider/orgs/{id}/suspend` | deletes every session of the org's users at once; idempotent |
+| POST | `/provider/orgs/{id}/activate` | idempotent; revoked sessions stay revoked |
+
+- `max_users` defaults to 25 (1..10000). Lowering it below the current seat count is allowed and only blocks new seats.
+- `initial_admin` creates an `org_admin` with status `invited` and a 24-hour invite token in the same transaction as the org, and emails `{PUBLIC_BASE_URL}/invite/accept?token=...` after the commit. Accepting the invite is ORG-003.
+- Audit events: `org_created`, `user_invited`, `org_updated` (changed field names only), `org_suspended` (with `sessions_revoked`), `org_activated`.
+
+## Users in an organization (ORG-002 / MVP-18)
+
+`/api/v1/orgs/{org_id}/users` - an `org_admin` for their own org (another org's id -> 404), a `provider_admin` for any org; `org_member` -> 403.
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/orgs/{org_id}/users?status=&role=&page=&page_size=` | `{items, total, page, page_size, max_users, seats_used}`, newest first; deleted users are never listed |
+| GET | `/orgs/{org_id}/users/{user_id}` | 404 if unknown, deleted or in another org |
+| PATCH | `/orgs/{org_id}/users/{user_id}` | `{role: "org_admin" \| "org_member"}` |
+| POST | `/orgs/{org_id}/users/{user_id}/suspend` | deletes the user's sessions and outstanding tokens at once; idempotent |
+| POST | `/orgs/{org_id}/users/{user_id}/reactivate` | back to `active` (or `invited` if they never set a password); idempotent |
+
+- An admin cannot demote or suspend themselves (409), and an org always keeps at least one active `org_admin` (409). The active admins are row-locked first, so two admins demoting each other at the same moment cannot leave the org with none.
+- A session only authenticates while the user is `active` and their org is `active`.
+- Audit events: `user_role_changed` (from/to), `user_suspended` (sessions revoked), `user_reactivated`.
+
+## Audit log (COMP-002 / MVP-21)
+
+`GET /api/v1/orgs/{org_id}/audit-logs?event_type=&user_id=&from_date=&to_date=&cursor=&limit=` - an org admin for their own org (another org -> 404), a provider admin for any org; members get 403.
+
+- Newest first, up to 100 per page (default 50). The response is `{items, next_cursor}`; pass `next_cursor` back as `cursor` with the same filters. Pages never skip or repeat rows, even when events share a timestamp. A malformed cursor -> 400.
+- `user_id` matches events done by or done to that user. `from_date` / `to_date` are UTC dates, both inclusive.
+- Each item has `actor` / `target` display names. Provider staff show as "Sustentra" to org admins, and erased users as "Deleted User". IP addresses and user agents are not returned.
+
+## Invites (ORG-003 / MVP-19)
+
+| Method | Path | Who | Notes |
+|---|---|---|---|
+| POST | `/api/v1/orgs/{org_id}/invites` | org admin (own org), provider admin | `{email, role, first_name, last_name}` -> 201; email already in the org -> 409; no free seat -> 422 |
+| POST | `/api/v1/orgs/{org_id}/invites/{user_id}/resend` | same | only while the user is `invited` (else 409); earlier links stop working |
+| GET | `/api/v1/auth/invite/validate?token=` | public | `{email, first_name, last_name, org_name, org_slug}` for the accept page |
+| POST | `/api/v1/auth/invite/accept` | public | `{token, password}`; password policy -> 422 (link still usable); sets the password and status `active`; no session - the user signs in with password + OTP |
+
+- The invited user is created straight away (status `invited`, `invited_by` = who sent it) so the seat is reserved. The org row is locked while seats are counted, so two invites cannot take the last seat together.
+- Links last 24 hours and work once. Any unusable link (unknown, expired, used, user suspended, org suspended) gets the same 400.
+- The email is sent after the transaction commits. An org created with `initial_admin` (ORG-001) uses the same invite path.
+- Audit events: `user_invited`, `user_invite_resent`, `invite_accepted`.
+
+## User erasure (COMP-001 / MVP-20)
+
+`DELETE /api/v1/orgs/{org_id}/users/{user_id}` -> 204. Same access as ORG-002 (org admin for their own org, provider admin for any org).
+
+- Soft delete: the row stays, so audit history and `invited_by` keep their references. Status becomes `deleted`, `deleted_at` is set (migration 0011), and the personal data is overwritten: email `deleted_{id}@deleted`, name "Deleted User", password cleared.
+- Every session and auth token of the user is deleted at once. Login with the old email gets the same 401 as an unknown email.
+- An admin cannot delete themselves, and the last active admin cannot be deleted (409).
+- The seat is freed, and the old email can be invited again.
+- Audit event `user_deleted` records the actor, previous status, role and sessions revoked, never the erased email or name.

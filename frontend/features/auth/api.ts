@@ -83,3 +83,13 @@ export function logout(): Promise<void> {
 }
 
 export { ApiError };
+
+/** The server's password-policy message for a 422 (AUTH-003), or null for any other error. */
+export function passwordPolicyMessage(err: unknown): string | null {
+  if (!(err instanceof ApiError) || err.status !== 422) return null;
+  const body = err.body as { violations?: unknown } | null;
+  if (body && Array.isArray(body.violations) && typeof body.violations[0] === "string") {
+    return body.violations[0];
+  }
+  return err.detail;
+}

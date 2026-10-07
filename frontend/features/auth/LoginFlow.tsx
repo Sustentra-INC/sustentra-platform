@@ -5,6 +5,7 @@ import Link from "next/link";
 
 import { ApiError, login, resendOtp, verifyOtp } from "./api";
 import { forgotPath, homePath, type Realm } from "./realm";
+import { rememberRealm, safeNext } from "./lastRealm";
 import { AuthShell } from "./AuthShell";
 import styles from "./auth.module.css";
 
@@ -12,13 +13,21 @@ const OTP_LENGTH = 6;
 const MAX_OTP_ATTEMPTS = 3;
 const RESEND_SECONDS = 60;
 const GENERIC_LOGIN_ERROR = "Invalid email or password.";
+/** `?status=ready` on the org login, after an invite is accepted (FE-003). */
+export const ACCOUNT_READY_NOTICE = "Your account is ready — sign in.";
 
 /** Password + email-OTP login (FE-002). Both steps live on the same route. */
 export function LoginFlow({
   realm,
+  next,
+  initialNotice,
   onAuthenticated,
 }: {
   realm: Realm;
+  /** Shown under the title until the next message replaces it (e.g. after accepting an invite). */
+  initialNotice?: string | null;
+  /** `?next=` from the URL: where to go after login, if it is a same-origin path. */
+  next?: string | null;
   /** Navigate after a verified login. Defaults to a full navigation so the new
    *  session cookie is picked up by middleware and server guards. Injectable for tests. */
   onAuthenticated?: (path: string) => void;
@@ -33,7 +42,7 @@ export function LoginFlow({
   const [otpAttempts, setOtpAttempts] = useState(0);
   const [resendIn, setResendIn] = useState(RESEND_SECONDS);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const [submitting, setSubmitting] = useState(false);
 
   // Resend countdown ticks only on the OTP step.
@@ -89,7 +98,8 @@ export function LoginFlow({
     try {
       await verifyOtp(challengeId, value);
       const go = onAuthenticated ?? ((path: string) => window.location.assign(path));
-      go(homePath(realm));
+      rememberRealm(realm); // lets the workpaper at `/` send an ended session back here (FE-007)
+      go(safeNext(next) ?? homePath(realm));
     } catch {
       const attempts = otpAttempts + 1;
       setOtpAttempts(attempts);

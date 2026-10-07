@@ -11,7 +11,7 @@ vi.mock("../api", async () => {
 });
 
 import { login, verifyOtp } from "../api";
-import { LoginFlow } from "../LoginFlow";
+import { ACCOUNT_READY_NOTICE, LoginFlow } from "../LoginFlow";
 
 const loginMock = login as unknown as ReturnType<typeof vi.fn>;
 const verifyMock = verifyOtp as unknown as ReturnType<typeof vi.fn>;
@@ -21,7 +21,23 @@ function fillCredentials() {
   fireEvent.change(screen.getByLabelText("Password"), { target: { value: "a-good-password" } });
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  window.localStorage.clear();
+  document.cookie = "sustentra_realm=; Path=/; Max-Age=0";
+});
+
+async function signInThroughOtp(props: Partial<Parameters<typeof LoginFlow>[0]> = {}) {
+  loginMock.mockResolvedValueOnce({ challenge_id: "ch_1" });
+  verifyMock.mockResolvedValueOnce(undefined);
+  const onAuthenticated = vi.fn();
+  render(<LoginFlow realm={{ kind: "org", slug: "acme" }} onAuthenticated={onAuthenticated} {...props} />);
+  fillCredentials();
+  fireEvent.click(screen.getByRole("button", { name: /sign in/i }));
+  fireEvent.change(await screen.findByLabelText(/6-digit code/i), { target: { value: "123456" } });
+  await waitFor(() => expect(onAuthenticated).toHaveBeenCalled());
+  return onAuthenticated.mock.calls[0][0] as string;
+}
 
 describe("LoginFlow", () => {
   it("validates an empty submit without calling the API", () => {
@@ -60,6 +76,34 @@ describe("LoginFlow", () => {
     fireEvent.change(otp, { target: { value: "123456" } });
 
     await waitFor(() => expect(verifyMock).toHaveBeenCalledWith("ch_1", "123456"));
-    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith("/org/acme"));
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledWith("/"));
+  });
+
+  it("returns to a same-origin ?next= path after login (FE-007)", async () => {
+    expect(await signInThroughOtp({ next: "/?view=evidence" })).toBe("/?view=evidence");
+  });
+
+  it.each(["//evil.example", "https://evil.example/", "/\\evil.example", "javascript:alert(1)"])(
+    "ignores an off-site ?next= (%s) and goes home",
+    async (next) => {
+      expect(await signInThroughOtp({ next })).toBe("/");
+    },
+  );
+
+  it("remembers the org it signed in to, for the workpaper's session-ended redirect", async () => {
+    await signInThroughOtp();
+    expect(window.localStorage.getItem("sustentra.lastRealm")).toBe("org:acme");
+    expect(document.cookie).toContain("sustentra_realm=org%3Aacme");
+  });
+
+  it("sends provider admins to their org list (FE-006)", async () => {
+    expect(await signInThroughOtp({ realm: { kind: "provider" } })).toBe("/provider-admin/orgs");
+  });
+});
+
+describe("LoginFlow notices", () => {
+  it("shows the account-ready message after an accepted invite (FE-003)", () => {
+    render(<LoginFlow realm={{ kind: "org", slug: "acme" }} initialNotice={ACCOUNT_READY_NOTICE} />);
+    expect(screen.getByText("Your account is ready — sign in.")).toBeInTheDocument();
   });
 });

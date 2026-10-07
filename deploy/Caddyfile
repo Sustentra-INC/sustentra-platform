@@ -21,7 +21,21 @@ http://{$APP_DOMAIN} {
 
 	encode zstd gzip
 
-	request_body {
+	# 1 MB for every request except S1 document uploads (INFRA-007): 26 MiB there =
+	# the API's MAX_UPLOAD_MB (25 MiB) + 1 MiB for the multipart envelope. The API
+	# enforces the exact file size and answers 413 with a readable message.
+	@document_upload path_regexp ^/api/v1/engagements/[^/]+/documents/upload$
+	request_body @document_upload {
+		max_size 26MiB
+	}
+	# A declared size over the limit is answered here, before any bytes are sent
+	# upstream (an early 413 from the API mid-upload would surface as a 502).
+	@document_upload_too_large {
+		path_regexp ^/api/v1/engagements/[^/]+/documents/upload$
+		expression `{http.request.header.Content-Length}.matches("^[0-9]{1,15}$") && int({http.request.header.Content-Length}) > 27262976`
+	}
+	@not_document_upload not path_regexp ^/api/v1/engagements/[^/]+/documents/upload$
+	request_body @not_document_upload {
 		max_size 1MB
 	}
 
@@ -32,17 +46,22 @@ http://{$APP_DOMAIN} {
 		# subdomains (e.g. email autodiscover) must not be forced to HTTPS.
 		Strict-Transport-Security "max-age=31536000"
 		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
+		# `?` = default only: the API may send its own (S1-BE-001: the document
+		# preview allows framing by this origin; everything else stays DENY / 'none').
+		?X-Frame-Options "DENY"
 		Referrer-Policy "strict-origin-when-cross-origin"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
 		Cross-Origin-Opener-Policy "same-origin"
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		?Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
 		-Server
 		-X-Powered-By
 	}
 
 	# /api/* -> FastAPI, path unchanged (the API serves /api/v1/* and /api/health).
 	handle /api/* {
+		respond @document_upload_too_large `{"detail":"File is too large. The maximum upload size is 25 MB."}` 413 {
+			close
+		}
 		reverse_proxy api:8000 {
 			# Same ID in the Caddy and API logs; the API echoes it back as X-Request-ID.
 			header_up X-Request-ID {http.request.uuid}

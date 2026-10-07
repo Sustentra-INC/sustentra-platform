@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import type { EngagementConfig } from "../types";
 import type { InScopeField } from "../types/scope";
 
@@ -44,11 +46,14 @@ export function SetupScreen({
   onChange,
   inScopeFields,
   onInScopeChange,
+  picker,
 }: {
   engagement: EngagementConfig;
   onChange: (next: EngagementConfig) => void;
   inScopeFields: InScopeField[];
   onInScopeChange: (fields: InScopeField[]) => void;
+  /** Backend mode: choose / create the engagement being edited (S1-BE-002). */
+  picker?: ReactNode;
 }) {
   const set = (patch: Partial<EngagementConfig>) => onChange({ ...engagement, ...patch });
   const team = engagement.engagementTeam ?? [];
@@ -77,10 +82,24 @@ export function SetupScreen({
         </div>
       </header>
 
-      {/* Engagement basics */}
+      {picker}
+
+      {/* Engagement basics. In backend mode they belong to the picked engagement. */}
+      {picker && !engagement.engagementId ? null : (
+      <>
       <div className="s1-setup-card">
-        <h2>Engagement</h2>
+        <h2>{picker ? "Details" : "Engagement"}</h2>
         <div className="s1-setup-grid">
+          {picker ? (
+            <label className="s1-setup-field">
+              <span>Engagement name</span>
+              <input
+                value={engagement.engagementName ?? ""}
+                maxLength={200}
+                onChange={(e) => set({ engagementName: e.target.value })}
+              />
+            </label>
+          ) : null}
           <label className="s1-setup-field">
             <span>Company name</span>
             <input value={engagement.clientName} onChange={(e) => set({ clientName: e.target.value })} />
@@ -316,6 +335,8 @@ export function SetupScreen({
           </table>
         </div>
       </div>
+      </>
+      )}
     </section>
   );
 }

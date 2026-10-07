@@ -27,9 +27,15 @@ export function resetPath(realm: Realm): string {
   return `${basePath(realm)}/reset-password`;
 }
 
-/** Where a successful login lands. */
+/** Where a successful login lands (FE-006): org users (members and admins) go to
+ *  the workpaper at `/`; provider admins to their org list. `?next=` wins. */
 export function homePath(realm: Realm): string {
-  return realm.kind === "org" ? `/org/${realm.slug}` : "/provider-admin/orgs";
+  return realm.kind === "org" ? "/" : "/provider-admin/orgs";
+}
+
+/** The org's own pages (welcome, users, audit log). */
+export function orgHomePath(slug: string): string {
+  return `/org/${slug}`;
 }
 
 export function realmTitle(realm: Realm): string {

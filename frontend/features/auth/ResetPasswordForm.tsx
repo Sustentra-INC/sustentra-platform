@@ -4,7 +4,7 @@ import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
-import { ApiError, resetPassword } from "./api";
+import { ApiError, resetPassword, passwordPolicyMessage } from "./api";
 import { forgotPath, loginPath, type Realm } from "./realm";
 import { PASSWORD_HINTS, passwordIssues } from "./passwordPolicy";
 import { AuthShell } from "./AuthShell";
@@ -63,7 +63,7 @@ export function ResetPasswordForm({ realm }: { realm: Realm }) {
       if (err instanceof ApiError && (err.status === 400 || err.status === 410)) {
         setError(INVALID_LINK);
       } else {
-        setError("Could not reset your password. Please try again.");
+        setError(passwordPolicyMessage(err) ?? "Could not reset your password. Please try again.");
       }
     } finally {
       setSubmitting(false);

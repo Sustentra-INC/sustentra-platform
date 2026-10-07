@@ -5,7 +5,7 @@ Every resource is named `sustentra-<environment>-<thing>` (e.g. `sustentra-prod-
 
 | Path | What it manages | How it is applied |
 |---|---|---|
-| `infra/bootstrap/` | S3 state bucket `sustentra-tfstate-012751249540` | Once, from a laptop |
+| `infra/bootstrap/` | S3 state bucket `sustentra-tfstate-012751249540` | From a laptop / the client admin (rare; see OPS-002) |
 | `infra/` | GitHub OIDC provider, `deploy` + `terraform` roles, ECR repos (and later: network, EC2, RDS, SES, monitoring) | First apply from a laptop, then CI only |
 
 State: S3 with versioning + AES-256, public access blocked, locking via
@@ -190,22 +190,24 @@ From your laptop (outside the VPC), port 5432 must be unreachable:
    proxy status **DNS only**. SES shows the domain as *Verified* within ~1 hour.
 2. Confirm the "AWS Notification - Subscription Confirmation" email for each
    address in `alert_emails`.
-3. Request production access (one per AWS account/region; takes up to 24h):
-   ```powershell
-   aws sesv2 put-account-details --region us-east-1 --profile sustentra `
-     --production-access-enabled --mail-type TRANSACTIONAL `
-     --website-url https://app.sustentra.com --contact-language EN `
-     --use-case-description "Transactional email for the Sustentra platform: sign-in one-time passcodes and account notifications to registered users only. No marketing. Bounces and complaints are handled via SNS and the SES suppression list." `
-     --additional-contact-email-addresses ops@sustentra.com
+3. Request production access (one per AWS account/region; AWS answers within ~24h) - OPS-001:
+   ```bash
+   bash infra/scripts/ses-production-access.sh --check     # status, quota, domain DKIM / MAIL FROM
+   bash infra/scripts/ses-production-access.sh --request   # shows the use case, asks, then submits
    ```
-   (Needs `ses:PutAccountDetails`; otherwise an admin can submit the same in the
-   SES console -> Account dashboard -> Request production access.)
+   The request is transactional mail only, contact `dev.sustentra@gmail.com`
+   (`SES_CONTACT=` to change). Needs `ses:PutAccountDetails`; otherwise an admin can
+   paste the same use case in the SES console -> Account dashboard -> Request
+   production access. If AWS asks follow-up questions, answer in the support case.
 
 ### Sandbox fallback (until production access is approved)
 
 SES only delivers to verified addresses. Add developer inboxes to
 `ses_sandbox_recipients` in the env tfvars, apply, and click the verification
-link AWS emails to each one. Remove them once production access is granted.
+link AWS emails to each one. Remove them **only after** `--check` shows
+production access `True` (the OPS-001 follow-up PR empties both lists), then run
+terraform-apply for staging and prod. Removing them earlier stops sign-in email
+to those inboxes.
 
 ### Tests (from the app host via `aws ssm start-session`)
 
@@ -247,6 +249,127 @@ over. If it expires, use *Forgot password* on `/provider-admin/login`.
 Then sign in at `https://<domain>/provider-admin/login` with password + email OTP.
 While SES is in the sandbox, the admin's email must be in `ses_sandbox_recipients`
 (see above) or the OTP is never delivered.
+
+## S1 data ownership (SEC-001)
+
+Every S1 workpaper endpoint under `/api/v1` needs a signed-in session, and data is
+scoped to the caller's organization: `org_admin` / `org_member` read and write their own
+org's documents, pipeline runs, reviews and approved evidence; a `provider_admin` can read
+every org's data (support) but not upload, process or review. Another org's records
+answer 404.
+
+S1 records written before SEC-001 have no owner, so only a provider admin sees them. To
+hand one engagement's records (and its uploaded files) to an organization:
+
+```bash
+sudo docker compose -f /opt/sustentra/docker-compose.prod.yml --env-file /opt/sustentra/.env \
+  exec api python -m backend.app.cli claim-s1-data --engagement-id ENG-123 --org-slug acme --dry-run
+# then the same without --dry-run
+```
+
+It only stamps records that have no owner (records owned by another org are reported and
+left alone), moves the uploaded files into the org's folder, and keeps a
+`<file>.bak-<timestamp>` copy of each JSONL file it rewrites.
+
+## Security headers and document previews (S1-BE-001)
+
+`deploy/Caddyfile` sets the security headers on every response. `X-Frame-Options`
+and `Content-Security-Policy` are set as defaults (`?`): a response that already has
+them keeps its own. Only the API's document routes do that:
+
+- `/api/v1/documents/{id}/preview` - `X-Frame-Options: SAMEORIGIN`, `frame-ancestors 'self'`
+  (plus `default-src 'none'; sandbox` for images), so the workpaper can frame it;
+- `/api/v1/documents/{id}/download` - `X-Frame-Options: DENY` and a `sandbox` CSP.
+
+Everything else gets the proxy's `DENY` / `frame-ancestors 'none'` as before.
+
+## Upload size limit (INFRA-007)
+
+S1 document uploads may be up to **25 MB** (`MAX_UPLOAD_MB` in the API's `app.env`,
+default 25). Every other request stays capped at 1 MB by Caddy.
+
+| Layer | Where | Limit |
+|---|---|---|
+| Caddy | `deploy/Caddyfile` (`@document_upload`) | 26 MiB body on `/api/v1/engagements/*/documents/upload`; a larger declared `Content-Length` gets 413 straight away |
+| API | `UploadSizeLimitMiddleware` + the upload route | 413 `File is too large. The maximum upload size is 25 MB.` |
+| Frontend | `features/s1/constants/uploads.ts` | checks the file before sending; any 413 shows the same message |
+| Next dev proxy | `next.config.ts` `proxyClientMaxBodySize` | 26 MB (local dev only) |
+
+To change it, update all four together.
+
+The API image links `/app/local-data` to the `/app/data` volume: the S1 JSONL stores
+and uploads write to `./local-data`, and the root filesystem is read-only.
+
+## Hand-over to CI: remove laptop credentials (OPS-002)
+
+Infra was bootstrapped from a laptop (IAM user `Jerome`, profile `sustentra`).
+After this hand-over, GitHub Actions (OIDC roles) is the only way to change
+infrastructure and nobody keeps a long-lived access key.
+
+Check progress at any point (read-only; Git Bash or WSL on Windows):
+
+```bash
+bash infra/scripts/ops002-check.sh           # report
+bash infra/scripts/ops002-check.sh --final   # exit 1 until everything is done
+```
+
+Do the steps **in this order**. Step 2 must happen before step 4, or nobody but
+the account root can reach the Terraform state (it holds the DB passwords).
+
+1. **CI applies cleanly.** Actions → terraform-apply → Run workflow (from `main`)
+   for `staging`, then `prod`. Each plan must show no changes, or only ones you
+   expect. Fix any drift through a PR, not from the laptop.
+2. **Give the client admin state access.** Ask the client admin for their ARN
+   (`aws sts get-caller-identity --query Arn`), add it to
+   `state_bucket_engineer_arns` in `infra/bootstrap/terraform.tfvars` (PR), then
+   re-apply the bootstrap once more from the laptop:
+   ```powershell
+   $env:AWS_PROFILE = "sustentra"
+   cd infra\bootstrap
+   terraform init
+   terraform apply
+   ```
+   The check script should now list the client admin under "allowed".
+3. **Client removes the temporary bootstrap permissions** from IAM user `Jerome`
+   (attached policies, inline policies, groups). From here the laptop key can no
+   longer change anything.
+4. **Retire the laptop key.** IAM → Users → Jerome → Security credentials:
+   *Deactivate* the access key, wait a day to be sure nothing still uses it (the
+   check script prints when it was last used), then *Delete* it. Remove the
+   `sustentra` profile from `~/.aws/credentials` on the laptop.
+5. Run `bash infra/scripts/ops002-check.sh --final` as the client admin: all
+   checks pass. `user/Jerome` may stay in `state_bucket_engineer_arns`; with no
+   key and no permissions it grants nothing, and the next bootstrap change can
+   drop it.
+
+Re-applying the bootstrap later (rare: only the state bucket lives there) is
+done by the client admin with their own credentials.
+
+## Branch protection and deploy approval (OPS-003)
+
+`infra/github/branch-protection.sh` sets everything up with the GitHub CLI
+(run it as a repository admin; it is idempotent):
+
+```bash
+gh auth login
+bash infra/github/branch-protection.sh --check   # what is in place now (read-only)
+bash infra/github/branch-protection.sh --apply   # create / update
+```
+
+| Target | Rules |
+|---|---|
+| `main` (ruleset `protect-main`) | PR required; checks `backend`, `frontend`, `validate`, `plan-pr` must pass; no force-push, no deletion |
+| `staging` (ruleset `protect-staging`) | PR required; checks `backend`, `frontend` must pass; no force-push, no deletion |
+| environment `production` | required reviewers (default: whoever runs the script; `REVIEWERS=a,b` to set); deploys from `main` only |
+
+- Checks must come from the GitHub Actions app, so nothing else can fake a green status.
+- `APPROVALS=1` makes PRs need an approving review (default 0: a PR is required but you may merge your own).
+- `validate` and `plan-pr` only matter for infra changes. `terraform.yml` therefore
+  runs on every PR and skips them when nothing under `infra/` changed — a skipped
+  check counts as passed. **Merge that workflow change before running `--apply`**,
+  or PRs to `main` that don't touch `infra/` would wait forever for those checks.
+- Emergency: a repo admin can temporarily set a ruleset's enforcement to
+  *Disabled* (Settings → Rules → Rulesets) instead of deleting it.
 
 ## CI/CD (MVP-5)
 
@@ -301,5 +424,30 @@ aws cloudwatch set-alarm-state --profile sustentra --alarm-name sustentra-prod-r
 
 # 3. Login request in the API logs with its request ID and no secrets
 aws logs filter-log-events --profile sustentra --log-group-name /sustentra/prod/api `
-  --filter-pattern '{ $.path = "/v1/auth/login" }' --max-items 5
+  --filter-pattern '{ $.path = "/api/v1/auth/login" }' --max-items 5
 ```
+
+## Acceptance tests (TEST-003)
+
+`infra/scripts/acceptance.sh` runs the checks above for one environment and writes a
+Markdown report (`acceptance-<env>-<time>.md`) to paste into the ticket. Git Bash or
+WSL, with credentials that can use SSM on the app host and read RDS / CloudWatch / logs:
+
+```bash
+bash infra/scripts/acceptance.sh staging --email you@example.com
+bash infra/scripts/acceptance.sh staging --email you@example.com --disruptive   # + uptime alarm
+bash infra/scripts/acceptance.sh prod    --email you@example.com
+```
+
+| Check | How |
+|---|---|
+| RDS SSL works, non-SSL refused, `row_security = on` | psql on the app host via SSM (automated) |
+| RDS port 5432 closed from outside the VPC | TCP connect from where you run it (automated) |
+| Login request in `/sustentra/<env>/api` with its request ID, password not logged | bogus login, then CloudWatch Logs search (automated) |
+| SES email SPF/DKIM/DMARC = PASS; simulated bounce -> SNS email | sent by the script, you confirm in the inboxes |
+| Alarm email | `set-alarm-state` on `rds-cpu-high`, you confirm the email |
+| Uptime alarm when the API stops | `--disruptive` only: stops the API, waits up to 6 min for ALARM, restarts it |
+| Failed `/api/health` rolls back; prod deploy waits for approval | manual, listed in the report |
+
+While SES is still in the sandbox (OPS-001), `--email` must be a verified address.
+

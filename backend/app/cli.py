@@ -5,6 +5,7 @@
     python -m backend.app.cli version
     python -m backend.app.cli create-provider-admin \
         --email a@b.com --first-name A --last-name B [--reset-link]   # ORG-000
+    python -m backend.app.cli claim-s1-data --engagement-id ENG --org-slug acme [--dry-run]  # SEC-001
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from .core import db as core_db
 from .core import security_primitives
 from .core.config import get_settings
 from .services import provider_admin_bootstrap as bootstrap
+from .services import s1_ownership_claim
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -128,6 +130,48 @@ def _create_provider_admin(args: argparse.Namespace) -> int:
         return 1
 
 
+async def _org_id_for_slug(slug: str) -> str | None:
+    from sqlalchemy import text
+
+    sessionmaker = core_db.get_sessionmaker()
+    try:
+        async with sessionmaker() as session, session.begin():
+            await core_db.set_provider(session)
+            row = (
+                await session.execute(text("SELECT id FROM organizations WHERE slug = :slug"), {"slug": slug})
+            ).first()
+    finally:
+        await core_db.dispose_engine()
+    return str(row[0]) if row else None
+
+
+def _claim_s1_data(args: argparse.Namespace) -> int:
+    """SEC-001: give one engagement's pre-scoping S1 records to an organization."""
+    try:
+        org_id = asyncio.run(_org_id_for_slug(args.org_slug))
+    except core_db.DatabaseNotConfiguredError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if org_id is None:
+        print(f"error: no organization with slug {args.org_slug!r}", file=sys.stderr)
+        return 2
+    report = s1_ownership_claim.claim_engagement(
+        args.engagement_id, org_id, data_root=args.data_root, dry_run=args.dry_run
+    )
+    verb = "Would claim" if report.dry_run else "Claimed"
+    print(f"{verb} engagement {report.engagement_id} for {args.org_slug} ({org_id}):")
+    for name, count in report.claimed.items():
+        other = report.owned_by_other_org.get(name, 0)
+        note = f" ({other} already owned by another org, left unchanged)" if other else ""
+        print(f"  {name}: {count}{note}")
+    if not report.dry_run:
+        print(f"  uploaded files moved: {report.files_moved}, missing: {report.files_missing}, "
+              f"skipped (outside the engagement's folder): {report.files_skipped}")
+        for backup in report.backups:
+            print(f"  backup: {backup}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sustentra")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -149,6 +193,16 @@ def main(argv: list[str] | None = None) -> int:
         help="don't prompt; leave the password unset and print a one-time set-password link (1 hour)",
     )
     create_admin.set_defaults(func=_create_provider_admin)
+
+    claim = sub.add_parser(
+        "claim-s1-data",
+        help="assign an engagement's pre-SEC-001 (unowned) S1 records to an organization",
+    )
+    claim.add_argument("--engagement-id", required=True, dest="engagement_id")
+    claim.add_argument("--org-slug", required=True, dest="org_slug")
+    claim.add_argument("--dry-run", action="store_true", dest="dry_run", help="report only; change nothing")
+    claim.add_argument("--data-root", default=".", dest="data_root", help="directory holding local-data/ (default: .)")
+    claim.set_defaults(func=_claim_s1_data)
 
     args = parser.parse_args(argv)
     return int(args.func(args))

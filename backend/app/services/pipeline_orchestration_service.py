@@ -15,11 +15,23 @@ from backend.app.domain.pipeline import (
     PipelineStatus,
 )
 from backend.app.repositories.pipeline_repository import JsonlPipelineRunRepository
+from backend.app.repositories.extraction_result_repository import (
+    InMemoryExtractionResultRepository,
+    JsonlExtractionResultRepository,
+)
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
 from backend.app.services.classification_service import ClassificationService
 from backend.app.services.extraction_service import ExtractionService
 from backend.app.services.extraction_target_service import ExtractionTargetService
 from backend.app.services.parser_service import ParserService
+from backend.app.services.mobile_combustion_extractor import (
+    CANONICAL_TYPE_ID as MOBFUEL_TYPE_ID,
+)
+from backend.app.services.mobile_combustion_extractor import (
+    MobileCombustionExtractor,
+    fuel_use_cues,
+    names_combusted_fuel,
+)
 from backend.app.services.review_decision_service import ReviewDecisionService
 from backend.app.services.stationary_combustion_extractor import (
     CANONICAL_TYPE_ID as FUELQTY_TYPE_ID,
@@ -32,12 +44,12 @@ CLASSIFIER_TARGET_STATUSES = {"classified", "multi_type_candidate"}
 HALT_UNREADABLE = "unreadable_document"
 HALT_UNSUPPORTED = "unsupported_document"
 LOW_CONFIDENCE_THRESHOLD = 0.5
-# EXT-001: a low-confidence CT-S1-FUELQTY match is accepted when it is the classifier's
+# EXT-001/002: a low-confidence Scope 1 fuel match (FUELQTY or MOBFUEL) is accepted when it is the classifier's
 # best match overall, scores at least this much (two content signal groups, e.g. header
 # terms + layout features), and the stationary-combustion content check passes (a
 # combusted fuel is named and a quantity is stated in a non-electric fuel unit).
-FUELQTY_CONTENT_CHECK_FLOOR = 0.4
-FUEL_TYPE_IDS = {FUELQTY_TYPE_ID, "CT-S1-MOBFUEL"}
+FUEL_CONTENT_CHECK_FLOOR = 0.4
+FUEL_TYPE_IDS = {FUELQTY_TYPE_ID, MOBFUEL_TYPE_ID}
 
 
 class PipelineOrchestrationService:
@@ -50,6 +62,7 @@ class PipelineOrchestrationService:
         review_service: Any | None = None,
         approved_evidence_service: Any | None = None,
         pipeline_repository: Any | None = None,
+        extraction_result_repository: Any | None = None,
         clock: Callable[[], str] | None = None,
         id_factory: Callable[[str, str], str] | None = None,
     ) -> None:
@@ -66,6 +79,15 @@ class PipelineOrchestrationService:
             approved_evidence_service or ApprovedEvidenceService()
         )
         self._pipeline_repository = pipeline_repository or JsonlPipelineRunRepository()
+        # Persisted candidates for GET /documents/{id}/extraction-result/latest (S1-BE-001).
+        # Follows the run store: JSONL by default, in memory when a run repository is injected.
+        if extraction_result_repository is None:
+            extraction_result_repository = (
+                JsonlExtractionResultRepository()
+                if pipeline_repository is None
+                else InMemoryExtractionResultRepository()
+            )
+        self._extraction_result_repository = extraction_result_repository
 
         self._clock = clock or (lambda: datetime.now(timezone.utc).isoformat())
         self._id_factory = id_factory or self._default_id_factory
@@ -87,6 +109,7 @@ class PipelineOrchestrationService:
         include_optional: bool = True,
         include_deprecated: bool = False,
         persist_run: bool = True,
+        org_id: str | None = None,
     ) -> dict:
         path = Path(local_file_path)
         if not path.exists() or not path.is_file():
@@ -163,7 +186,7 @@ class PipelineOrchestrationService:
                     completed_at=self._clock(),
                     halt_reason=halt_reason,
                 )
-                saved_run = self._persist_if_needed(run, persist_run)
+                saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
                 return {
                     "pipeline_run": saved_run,
                     "parser_output": parser_output,
@@ -201,6 +224,19 @@ class PipelineOrchestrationService:
                 ):
                     canonical_type_id = primary.strip()
                     canonical_type_source = "classifier"
+                    mobile_cues, stationary_cues = fuel_use_cues(parser_output)
+                    if self._fuel_cues_conflict(canonical_type_id, mobile_cues, stationary_cues):
+                        other = "mobile (vehicles/fleet)" if canonical_type_id == FUELQTY_TYPE_ID else "stationary"
+                        cues = ", ".join(mobile_cues if canonical_type_id == FUELQTY_TYPE_ID else stationary_cues)
+                        halt_reason = {
+                            "code": HALT_UNSUPPORTED,
+                            "message": f"The classifier chose {canonical_type_id}, but the document reads as {other} "
+                            f"fuel use ({cues}). Set the document type manually.",
+                        }
+                        warnings.append(halt_reason["message"])
+                        canonical_type_id = None
+                        canonical_type_source = "none"
+                if canonical_type_id is not None and canonical_type_source == "classifier":
                     extraction_targets = (
                         self._get_target_service().get_targets_for_classification_result(
                             classification_result,
@@ -208,8 +244,8 @@ class PipelineOrchestrationService:
                             include_deprecated=include_deprecated,
                         )
                     )
-                elif self._fuelqty_content_confirmed(classification_result, parser_output):
-                    canonical_type_id = FUELQTY_TYPE_ID
+                elif (confirmed := self._fuel_content_confirmed(classification_result, parser_output)):
+                    canonical_type_id = confirmed
                     canonical_type_source = "content_check"
                     extraction_targets = self._get_target_service().get_targets_for_canonical_type(
                         canonical_type_id,
@@ -218,8 +254,9 @@ class PipelineOrchestrationService:
                     )
                     warnings.append(
                         f"Classifier confidence {float(classification_result.get('confidence') or 0):.2f} was below "
-                        f"its threshold; accepted {FUELQTY_TYPE_ID} because the document names a combusted fuel "
-                        "and a quantity in a fuel unit."
+                        f"its threshold; accepted {confirmed} because the document names a combusted fuel "
+                        "and a quantity in a fuel unit"
+                        + (" with vehicle/fleet details." if confirmed == MOBFUEL_TYPE_ID else ".")
                     )
                 else:
                     canonical_type_id = None
@@ -227,8 +264,9 @@ class PipelineOrchestrationService:
                     warnings.append(
                         "No confident canonical_type_id available; target planning and candidate generation were skipped."
                     )
-                    halt_reason = self._unsupported_halt(classification_result)
-                    warnings.append(halt_reason["message"])
+                    if halt_reason is None:
+                        halt_reason = self._unsupported_halt(classification_result, parser_output)
+                        warnings.append(halt_reason["message"])
 
             if canonical_type_id is None:
                 stage_statuses.target_plan = "skipped"
@@ -254,7 +292,7 @@ class PipelineOrchestrationService:
                     completed_at=self._clock(),
                     halt_reason=halt_reason,
                 )
-                saved_run = self._persist_if_needed(run, persist_run)
+                saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
                 return {
                     "pipeline_run": saved_run,
                     "parser_output": parser_output,
@@ -311,7 +349,7 @@ class PipelineOrchestrationService:
                 completed_at=self._clock(),
                 halt_reason=halt_reason,
             )
-            saved_run = self._persist_if_needed(run, persist_run)
+            saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
             return {
                 "pipeline_run": saved_run,
                 "parser_output": parser_output,
@@ -350,7 +388,7 @@ class PipelineOrchestrationService:
                 created_at=created_at,
                 completed_at=self._clock(),
             )
-            saved_run = self._persist_if_needed(run, persist_run)
+            saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
             return {
                 "pipeline_run": saved_run,
                 "parser_output": parser_output,
@@ -361,6 +399,9 @@ class PipelineOrchestrationService:
 
     def get_pipeline_run(self, pipeline_run_id: str) -> dict | None:
         return self._pipeline_repository.get_by_id(pipeline_run_id)
+
+    def list_runs_by_evidence(self, evidence_id: str) -> list[dict]:
+        return self._pipeline_repository.list_by_evidence(evidence_id)
 
     def get_latest_run_by_evidence(self, evidence_id: str) -> dict | None:
         return self._pipeline_repository.get_latest_by_evidence(evidence_id)
@@ -388,22 +429,52 @@ class PipelineOrchestrationService:
         }
 
     @staticmethod
-    def _fuelqty_content_confirmed(classification_result: dict, parser_output: dict) -> bool:
+    def _fuel_content_confirmed(classification_result: dict, parser_output: dict) -> str | None:
+        """Scope 1 fuel type to accept for a low-confidence classification, or None.
+
+        A fuel type must be the best match overall (ties with non-fuel types are settled
+        by its content check, which rejects electricity) and score at least the floor.
+        When stationary and mobile tie, explicit context decides (vehicle/fleet/fuel-card
+        cues vs boiler/generator/building cues); without one-sided cues nothing is
+        accepted. The chosen type must not contradict the cues and must pass its
+        extractor's content check.
+        """
+
         if classification_result.get("status") != "low_confidence":
-            return False
+            return None
         matches = [m for m in classification_result.get("candidate_matches") or [] if isinstance(m, dict)]
         if not matches:
-            return False
+            return None
         best = max(float(m.get("confidence") or 0) for m in matches)
         leaders = {m.get("canonical_type_id") for m in matches if float(m.get("confidence") or 0) == best}
-        # FUELQTY must be the best match overall (ties with non-fuel types are settled by the
-        # content check, which rejects electricity); stationary vs mobile cannot be decided
-        # from content (e.g. diesel), so a MOBFUEL tie is never overridden.
-        if FUELQTY_TYPE_ID not in leaders or leaders & (FUEL_TYPE_IDS - {FUELQTY_TYPE_ID}):
-            return False
-        if best < FUELQTY_CONTENT_CHECK_FLOOR:
-            return False
-        return StationaryCombustionExtractor().confirms(parser_output)
+        fuel_leaders = leaders & FUEL_TYPE_IDS
+        if not fuel_leaders or best < FUEL_CONTENT_CHECK_FLOOR:
+            return None
+        mobile, stationary = fuel_use_cues(parser_output)
+        fuel_type: str
+        if len(fuel_leaders) > 1:
+            if mobile and not stationary:
+                fuel_type = MOBFUEL_TYPE_ID
+            elif stationary and not mobile:
+                fuel_type = FUELQTY_TYPE_ID
+            else:
+                return None
+        else:
+            fuel_type = str(next(iter(fuel_leaders)))
+        if PipelineOrchestrationService._fuel_cues_conflict(fuel_type, mobile, stationary):
+            return None
+        extractor = StationaryCombustionExtractor() if fuel_type == FUELQTY_TYPE_ID else MobileCombustionExtractor()
+        return fuel_type if extractor.confirms(parser_output) else None
+
+    @staticmethod
+    def _fuel_cues_conflict(fuel_type: str, mobile: list[str], stationary: list[str]) -> bool:
+        """True when the document's context clearly says the other kind of fuel use."""
+
+        if fuel_type == FUELQTY_TYPE_ID:
+            return bool(mobile) and not stationary
+        if fuel_type == MOBFUEL_TYPE_ID:
+            return bool(stationary) and not mobile
+        return False
 
     @staticmethod
     def _unreadable_halt(parser_output: dict) -> dict[str, str]:
@@ -417,7 +488,7 @@ class PipelineOrchestrationService:
         return {"code": HALT_UNREADABLE, "message": f"{message} Parser said: {details}" if details else message}
 
     @staticmethod
-    def _unsupported_halt(classification_result: dict) -> dict[str, str]:
+    def _unsupported_halt(classification_result: dict, parser_output: dict | None = None) -> dict[str, str]:
         primary = classification_result.get("primary_canonical_type_id")
         confidence = classification_result.get("confidence")
         threshold = classification_result.get("threshold")
@@ -429,6 +500,20 @@ class PipelineOrchestrationService:
             )
         else:
             message = "Unsupported document type: it does not match any known evidence type."
+        fuel_matches = {
+            m.get("canonical_type_id") for m in classification_result.get("candidate_matches") or []
+            if isinstance(m, dict) and m.get("canonical_type_id") in FUEL_TYPE_IDS
+        }
+        if fuel_matches and parser_output is not None and names_combusted_fuel(parser_output):
+            mobile, stationary = fuel_use_cues(parser_output)
+            if mobile and stationary:
+                message += f" It mentions both mobile ({', '.join(mobile)}) and stationary ({', '.join(stationary)}) fuel use."
+            elif mobile:
+                message += f" It reads as mobile fuel use ({', '.join(mobile)}): CT-S1-MOBFUEL is likely."
+            elif stationary:
+                message += f" It reads as stationary fuel use ({', '.join(stationary)}): CT-S1-FUELQTY is likely."
+            else:
+                message += " It names a fuel but nothing says whether it was burned in vehicles or on site."
         return {"code": HALT_UNSUPPORTED, "message": message}
 
     @staticmethod
@@ -454,10 +539,30 @@ class PipelineOrchestrationService:
     def _get_target_service(self):
         return self._target_service
 
-    def _persist_if_needed(self, run: dict, persist_run: bool) -> dict:
+    def _persist_if_needed(self, run: dict, persist_run: bool, extraction_result: dict | None = None) -> dict:
         if not persist_run:
             return copy.deepcopy(run)
-        return self._pipeline_repository.save(run)
+        saved = self._pipeline_repository.save(run)
+        if extraction_result is not None:
+            self._extraction_result_repository.save(
+                {
+                    "pipeline_run_id": run.get("pipeline_run_id"),
+                    "engagement_id": run.get("engagement_id"),
+                    "evidence_id": run.get("evidence_id"),
+                    "document_id": run.get("document_id"),
+                    "canonical_type_id": run.get("canonical_type_id"),
+                    "status": run.get("status"),
+                    "candidate_count": int(extraction_result.get("candidate_count") or 0),
+                    "items": copy.deepcopy(extraction_result.get("items") or []),
+                    "org_id": run.get("org_id"),
+                    "created_at": run.get("completed_at") or run.get("created_at"),
+                }
+            )
+        return saved
+
+    def list_extraction_results_by_document(self, document_id: str) -> list[dict]:
+        """Every persisted extraction result for a document, oldest first."""
+        return self._extraction_result_repository.list_by_document(document_id)
 
     def _build_pipeline_run(
         self,

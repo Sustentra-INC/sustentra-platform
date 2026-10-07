@@ -1,13 +1,28 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.app.api.documents import failed_run_error
+from backend.app.api.s1_access import (
+    evidence_free_or_own,
+    org_of,
+    require_evidence,
+    require_visible,
+    s1_reader,
+    s1_writer,
+)
+from backend.app.core.auth import CurrentUser
+from backend.app.core.config import get_settings
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
 
 router = APIRouter(prefix="/v1", tags=["pipeline"])
 
 _service = PipelineOrchestrationService()
+
+
+def current_service() -> PipelineOrchestrationService:
+    return _service
 
 
 def configure_service(service: PipelineOrchestrationService) -> None:
@@ -30,7 +45,12 @@ class LocalProcessDocumentRequest(BaseModel):
 
 
 @router.post("/pipeline/local/process-document")
-def process_local_document(payload: LocalProcessDocumentRequest) -> dict:
+def process_local_document(payload: LocalProcessDocumentRequest, user: CurrentUser = Depends(s1_writer)) -> dict:
+    # Reads an arbitrary server-side path: a local-development tool only (SEC-001).
+    if get_settings().is_production_like:
+        raise HTTPException(status_code=404, detail="Not Found")
+    if payload.evidence_id and not evidence_free_or_own(payload.evidence_id, user):
+        raise HTTPException(status_code=404, detail="Evidence not found.")
     try:
         result = _service.process_local_document(
             local_file_path=payload.local_file_path,
@@ -44,6 +64,7 @@ def process_local_document(payload: LocalProcessDocumentRequest) -> dict:
             include_optional=payload.include_optional,
             include_deprecated=payload.include_deprecated,
             persist_run=payload.persist_run,
+            org_id=org_of(user),
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -54,30 +75,24 @@ def process_local_document(payload: LocalProcessDocumentRequest) -> dict:
         result.get("pipeline_run", {}).get("status") if isinstance(result, dict) else None
     )
     if pipeline_status == "failed":
-        detail = result.get("pipeline_run", {}).get("errors") or [
-            "Pipeline run failed."
-        ]
-        raise HTTPException(status_code=500, detail=detail)
+        raise failed_run_error(result.get("pipeline_run", {}))
 
     return result
 
 
 @router.get("/pipeline/runs/{pipeline_run_id}")
-def get_pipeline_run(pipeline_run_id: str) -> dict:
-    run = _service.get_pipeline_run(pipeline_run_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="Pipeline run not found.")
-    return run
+def get_pipeline_run(pipeline_run_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
+    return require_visible(_service.get_pipeline_run(pipeline_run_id), user, "Pipeline run not found.")
 
 
 @router.get("/pipeline/evidence/{evidence_id}/latest-run")
-def get_latest_run_by_evidence(evidence_id: str) -> dict:
-    run = _service.get_latest_run_by_evidence(evidence_id)
-    if run is None:
-        raise HTTPException(status_code=404, detail="No pipeline run found for evidence.")
-    return run
+def get_latest_run_by_evidence(evidence_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
+    return require_visible(
+        _service.get_latest_run_by_evidence(evidence_id), user, "No pipeline run found for evidence."
+    )
 
 
 @router.get("/pipeline/evidence/{evidence_id}/status")
-def get_evidence_status(evidence_id: str) -> dict:
+def get_evidence_status(evidence_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
+    require_evidence(evidence_id, user)
     return _service.get_evidence_status(evidence_id)

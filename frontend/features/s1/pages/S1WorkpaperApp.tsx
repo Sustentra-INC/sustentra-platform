@@ -1,16 +1,21 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import {
+  getSignedInUser,
+  isSessionEnded,
   listWorkspaceEvidence,
   processDocument,
+  signInAgainPath,
   uploadDocument,
   userFacingApiError,
 } from "../api/s1Backend";
+import { ApiError } from "../../../lib/api";
 import { ExtractionReview } from "../components/ExtractionReview";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
-import { S1Chrome, type NavKey } from "../components/S1Chrome";
+import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
+import { logout } from "../../auth/api";
 import { DashboardScreen } from "../components/DashboardScreen";
 import { UploadScreen, type SampleScript } from "../components/UploadScreen";
 import { SetupScreen } from "../components/SetupScreen";
@@ -41,6 +46,18 @@ import { seedAsks } from "../fixtures/requests/seedAsks";
 import { makeUploadItem, classifyGuess } from "../fixtures/upload/simulateUpload";
 import { loadDemoState, saveDemoState, clearDemoState, loadSignedIn, saveSignedIn, type DemoSnapshot } from "../utils/demoPersistence";
 import { DemoSignIn } from "../components/DemoSignIn";
+import { SessionEndedPanel } from "../components/SessionEndedPanel";
+import { EngagementPicker, type SaveState } from "../components/EngagementPicker";
+import {
+  createEngagement,
+  engagementFromBackend,
+  engagementSaveProblem,
+  listEngagements,
+  pickEngagement,
+  rememberEngagement,
+  saveEngagement,
+  type BackendEngagement,
+} from "../api/engagements";
 import { useRequestsStore } from "../requests/requestsStore";
 import type { ContainerState, EvidenceItem, ReviewValue, StateDimension } from "../types";
 import type { SessionAuditEntry } from "../utils/auditIntent";
@@ -79,7 +96,7 @@ const EMPTY_ENGAGEMENT: EngagementConfig = {
   scopeBoundaryStatement: "",
 };
 
-export function S1WorkpaperApp() {
+export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const dataMode = process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture" ? "fixture" : "backend";
   // Demo-only: rehydrate the fixture state from localStorage once, so a refresh
   // does not wipe the walkthrough. Read a single time on mount.
@@ -108,6 +125,8 @@ export function S1WorkpaperApp() {
   const [isUploading, setIsUploading] = useState(false);
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
+  // Backend mode: a 401 from the API means the session ended (FE-007).
+  const [sessionEnded, setSessionEnded] = useState(false);
   const requests = useRequestsStore(dataMode === "backend" ? [] : persisted?.asks ?? seedAsks);
   const verification = useVerificationStore(persisted?.examinations ?? {}, persisted?.findings ?? []);
   const [sessionUploads, setSessionUploads] = useState<string[]>(persisted?.sessionUploads ?? []);
@@ -116,6 +135,11 @@ export function S1WorkpaperApp() {
   const [engagement, setEngagement] = useState<EngagementConfig>(
     persisted?.engagement ?? (dataMode === "fixture" ? engagementConfig : EMPTY_ENGAGEMENT)
   );
+  // Backend mode: the org's engagements (S1-BE-002); null until loaded.
+  const [engagements, setEngagements] = useState<BackendEngagement[] | null>(dataMode === "backend" ? null : []);
+  const [engagementSave, setEngagementSave] = useState<SaveState>("idle");
+  const [engagementSaveMessage, setEngagementSaveMessage] = useState<string | null>(null);
+  const saveTimer = useRef<number | null>(null);
   const [inScopeFields, setInScopeFields] = useState<InScopeField[]>(
     persisted?.inScopeFields ?? (dataMode === "fixture" ? inScopeFieldPlaceholders : [])
   );
@@ -189,27 +213,142 @@ export function S1WorkpaperApp() {
     });
   }
 
+  /** On a 401, send the user to log in again (back to this page afterwards).
+   *  Returns true when the error was handled that way. */
+  function handleSessionEnded(error: unknown): boolean {
+    if (!isSessionEnded(error)) return false;
+    setSessionEnded(true);
+    const path = signInAgainPath(window.location.pathname + window.location.search);
+    if (path) window.location.assign(path);
+    return true;
+  }
+
   useEffect(() => {
     if (dataMode !== "backend") return;
-    void refreshBackendWorkspace();
+    // Confirm the session first, so a signed-out visitor is sent to log in even
+    // before an engagement is configured; then load the workspace.
+    void getSignedInUser()
+      .then(() => listEngagements())
+      .then((items) => {
+        setEngagements(items);
+        const picked = pickEngagement(items);
+        if (picked) {
+          setEngagement(engagementFromBackend(picked));
+          rememberEngagement(picked.id);
+        }
+        return refreshBackendWorkspace(undefined, picked?.id ?? "");
+      })
+      .catch((error: unknown) => {
+        if (handleSessionEnded(error)) return;
+        setBackendError(error instanceof Error ? error.message : "Could not reach the backend API.");
+        setDemoState("error_degraded");
+      });
   }, [dataMode]);
 
-  async function refreshBackendWorkspace(nextContainerState?: ContainerState) {
+  async function refreshBackendWorkspace(
+    nextContainerState?: ContainerState,
+    engagementId: string = engagement.engagementId
+  ) {
     // No engagement configured yet → nothing to fetch; show the empty state.
-    if (!engagement.engagementId) {
+    if (!engagementId) {
       setEvidenceItems([]);
       setDemoState("empty_nothing_yet");
       return;
     }
     setBackendError(null);
     try {
-      const workspace = await listWorkspaceEvidence(engagement.engagementId);
+      const workspace = await listWorkspaceEvidence(engagementId);
       setEvidenceItems(workspace.evidence);
       setDemoState(nextContainerState ?? (workspace.evidence.length === 0 ? "empty_nothing_yet" : "populated"));
     } catch (error) {
+      if (handleSessionEnded(error)) return;
       setBackendError(error instanceof Error ? error.message : "Could not reach the backend API.");
       setDemoState("error_degraded");
     }
+  }
+
+  function selectEngagement(id: string) {
+    const row = engagements?.find((item) => item.id === id);
+    if (!row) return;
+    flushEngagementSave();
+    setEngagement(engagementFromBackend(row));
+    rememberEngagement(row.id);
+    setEngagementSave("idle");
+    setDemoState("loading");
+    void refreshBackendWorkspace(undefined, row.id);
+  }
+
+  async function createAndSelectEngagement(name: string) {
+    try {
+      const row = await createEngagement(name);
+      setEngagements((current) => [row, ...(current ?? [])]);
+      flushEngagementSave();
+      setEngagement(engagementFromBackend(row));
+      rememberEngagement(row.id);
+      setEngagementSave("idle");
+      await refreshBackendWorkspace(undefined, row.id);
+    } catch (error) {
+      if (handleSessionEnded(error)) return;
+      throw new Error(
+        error instanceof ApiError && error.status === 403
+          ? "Your role can view engagements but not create them."
+          : userFacingApiError(error)
+      );
+    }
+  }
+
+  // Setup edits save to the picked engagement shortly after typing stops.
+  const pendingSave = useRef<EngagementConfig | null>(null);
+
+  function flushEngagementSave() {
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    const config = pendingSave.current;
+    pendingSave.current = null;
+    if (config) void persistEngagement(config);
+  }
+
+  async function persistEngagement(config: EngagementConfig) {
+    const problem = engagementSaveProblem(config);
+    if (problem) {
+      setEngagementSave("error");
+      setEngagementSaveMessage(problem);
+      return;
+    }
+    setEngagementSave("saving");
+    try {
+      const row = await saveEngagement(config);
+      setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
+      setEngagementSave("saved");
+      setEngagementSaveMessage(null);
+    } catch (error) {
+      if (handleSessionEnded(error)) return;
+      setEngagementSave("error");
+      setEngagementSaveMessage(
+        error instanceof ApiError && error.status === 403
+          ? "Your role can view this engagement but not change it."
+          : `Changes not saved. ${userFacingApiError(error)}`
+      );
+    }
+  }
+
+  function changeEngagement(next: EngagementConfig) {
+    setEngagement(next);
+    if (dataMode !== "backend" || !next.engagementId) return;
+    pendingSave.current = next;
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(flushEngagementSave, 700);
+  }
+
+  async function signOut() {
+    flushEngagementSave();
+    try {
+      await logout();
+    } catch {
+      // The cookie may already be gone; continue to the login page either way.
+    }
+    // The realm cookie stays, so this browser goes back to the same login page.
+    window.location.assign(signInAgainPath("/") ?? "/sign-in");
   }
 
   function addAuditIntent(intent: SessionAuditEntry) {
@@ -293,12 +432,18 @@ export function S1WorkpaperApp() {
 
   async function handleUploadFiles(files: FileList) {
     if (dataMode !== "backend") return;
+    if (!engagement.engagementId) {
+      setBackendError("Create or pick an engagement in Setup before uploading.");
+      return;
+    }
     setIsUploading(true);
     setBackendError(null);
     const failures: string[] = [];
     for (const file of Array.from(files)) {
+      let uploadedId: string | null = null;
       try {
         const document = await uploadDocument(engagement.engagementId, file);
+        uploadedId = document.document_id;
         setEvidenceItems((current) => [
           {
             documentId: document.document_id,
@@ -336,12 +481,23 @@ export function S1WorkpaperApp() {
         await processDocument(document.document_id);
         setProcessingDocumentIds((current) => current.filter((id) => id !== document.document_id));
       } catch (error) {
-        failures.push(`${file.name}: ${userFacingApiError(error)}`);
+        if (handleSessionEnded(error)) {
+          setIsUploading(false);
+          return;
+        }
+        if (uploadedId) {
+          // Uploaded, but processing stopped (e.g. unreadable file): the row shows why.
+          const id = uploadedId;
+          setProcessingDocumentIds((current) => current.filter((item) => item !== id));
+          failures.push(`${file.name} was uploaded but could not be processed: ${userFacingApiError(error)}`);
+        } else {
+          failures.push(`${file.name} was not uploaded: ${userFacingApiError(error)}`);
+        }
       }
     }
     await refreshBackendWorkspace("populated");
     if (failures.length > 0) {
-      setBackendError(`Some files were not uploaded. ${failures.join(" ")}`);
+      setBackendError(failures.join(" "));
     }
     setIsUploading(false);
   }
@@ -354,6 +510,7 @@ export function S1WorkpaperApp() {
       await processDocument(documentId);
       await refreshBackendWorkspace("populated");
     } catch (error) {
+      if (handleSessionEnded(error)) return;
       setBackendError(userFacingApiError(error));
       await refreshBackendWorkspace();
     } finally {
@@ -363,6 +520,10 @@ export function S1WorkpaperApp() {
 
   if (!mounted) {
     return <div className="s1-signin" aria-hidden />;
+  }
+
+  if (sessionEnded) {
+    return <SessionEndedPanel next={window.location.pathname + window.location.search} />;
   }
 
   if (!signedIn) {
@@ -380,6 +541,8 @@ export function S1WorkpaperApp() {
     <main className="s1-app">
       <S1Chrome
         engagement={engagement}
+        user={dataMode === "backend" ? user : undefined}
+        onSignOut={dataMode === "backend" && user ? () => void signOut() : undefined}
         current={navCurrent}
         onNavigate={onNavigate}
         onReset={dataMode === "fixture" ? resetDemo : undefined}
@@ -401,7 +564,19 @@ export function S1WorkpaperApp() {
         ) : activeView.name === "setup" ? (
           <SetupScreen
             engagement={engagement}
-            onChange={setEngagement}
+            onChange={changeEngagement}
+            picker={
+              dataMode === "backend" && engagements !== null ? (
+                <EngagementPicker
+                  engagements={engagements.map((e) => ({ id: e.id, name: e.name, clientName: e.client_name }))}
+                  selectedId={engagement.engagementId}
+                  onSelect={selectEngagement}
+                  onCreate={createAndSelectEngagement}
+                  saveState={engagementSave}
+                  message={engagementSaveMessage}
+                />
+              ) : undefined
+            }
             inScopeFields={inScopeFields}
             onInScopeChange={setInScopeFields}
           />

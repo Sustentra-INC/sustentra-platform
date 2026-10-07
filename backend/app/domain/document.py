@@ -15,3 +15,6 @@ class Document(BaseModel):
     uploaded_by: str
     uploaded_at: str
     processing_status: str
+    # Owning organization (SEC-001). None = recorded before org scoping; only a
+    # provider_admin can see such records until they are claimed (cli claim-s1-data).
+    org_id: str | None = None

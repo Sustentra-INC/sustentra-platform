@@ -19,7 +19,18 @@ import styles from "./admin.module.css";
 
 /** User detail (FE-005): change role, suspend/reactivate, delete, resend invite.
  *  Suspend and delete confirm by typing the email; resend only for `invited`. */
-export function UserDetail({ orgId, userId }: { orgId: string; slug: string; userId: string }) {
+export function UserDetail({
+  orgId,
+  slug,
+  userId,
+  onDeleted,
+}: {
+  orgId: string;
+  slug: string;
+  userId: string;
+  /** After a successful delete. Defaults to the users list (the user no longer exists). */
+  onDeleted?: (path: string) => void;
+}) {
   const [user, setUser] = useState<OrgUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -197,7 +208,16 @@ export function UserDetail({ orgId, userId }: { orgId: string; slug: string; use
           danger
           onConfirm={() => {
             setConfirm(null);
-            void runAction(() => deleteUser(orgId, userId), "User deleted.")();
+            void (async () => {
+              setError(null);
+              try {
+                await deleteUser(orgId, userId);
+                const go = onDeleted ?? ((path: string) => window.location.assign(path));
+                go(`/org/${slug}/admin/users?deleted=1`);
+              } catch (err) {
+                setError(err instanceof ApiError ? err.detail : "Could not delete the user.");
+              }
+            })();
           }}
           onCancel={() => setConfirm(null)}
         />

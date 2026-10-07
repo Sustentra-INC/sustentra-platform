@@ -46,6 +46,7 @@ class DocumentUploadService:
         uploaded_by: str,
         evidence_id: str | None = None,
         document_type: str | None = None,
+        org_id: str | None = None,
     ) -> dict:
         self._require_non_empty(engagement_id, "engagement_id")
         self._require_non_empty(file_name, "file_name")
@@ -62,6 +63,7 @@ class DocumentUploadService:
             engagement_id=engagement_id,
             evidence_id=resolved_evidence_id,
             document_id=document_id,
+            owner=org_id,
         )
 
         model = Document(
@@ -76,6 +78,7 @@ class DocumentUploadService:
             uploaded_by=uploaded_by,
             uploaded_at=self._clock(),
             processing_status="not_started",
+            org_id=org_id,
         )
         return self._document_repository.save(model.model_dump())
 
@@ -91,6 +94,7 @@ class DocumentUploadService:
         evidence_id: str | None = None,
         document_type: str | None = None,
         processing_status: str = "queued",
+        org_id: str | None = None,
     ) -> dict:
         self._require_non_empty(engagement_id, "engagement_id")
         self._require_non_empty(file_name, "file_name")
@@ -114,6 +118,7 @@ class DocumentUploadService:
             uploaded_by=uploaded_by,
             uploaded_at=self._clock(),
             processing_status=processing_status,
+            org_id=org_id,
         )
         return self._document_repository.save(model.model_dump())
 

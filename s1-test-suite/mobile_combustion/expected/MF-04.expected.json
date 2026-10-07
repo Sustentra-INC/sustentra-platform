@@ -1,0 +1,54 @@
+{
+  "document_id": "MF-04",
+  "file": "MF-04_bluewater_cng_invoice.pdf",
+  "description": "CNG fleet invoice in gasoline gallon equivalents (kept as GGE); the price column is not the quantity. The vocabulary has no CNG fleet variant, so the classifier cannot pick a fuel type: halts until a reviewer sets it.",
+  "expected_classification": "CT-S1-MOBFUEL",
+  "expected_halt": null,
+  "reviewer_override": "CT-S1-MOBFUEL",
+  "expected_halt_without_override": "unsupported_document",
+  "document_fields": {},
+  "records": [
+    {
+      "transaction_date": "2024-04-03",
+      "fuel_type": "cng",
+      "activity_quantity": 61.4,
+      "activity_unit": "GGE",
+      "raw_quantity": "61.4",
+      "raw_unit": "GGE",
+      "biofuel_blend_pct": null,
+      "record_hint": "RT-31",
+      "vehicle_or_equipment_id": "RT-31",
+      "merchant_or_supplier": "Bluewater CNG Fueling",
+      "account_number": "BW-7720",
+      "transaction_id": "CNG-2404"
+    },
+    {
+      "transaction_date": "2024-04-03",
+      "fuel_type": "cng",
+      "activity_quantity": 58.9,
+      "activity_unit": "GGE",
+      "raw_quantity": "58.9",
+      "raw_unit": "GGE",
+      "biofuel_blend_pct": null,
+      "record_hint": "RT-32",
+      "vehicle_or_equipment_id": "RT-32",
+      "merchant_or_supplier": "Bluewater CNG Fueling",
+      "account_number": "BW-7720",
+      "transaction_id": "CNG-2404"
+    },
+    {
+      "transaction_date": "2024-04-10",
+      "fuel_type": "cng",
+      "activity_quantity": 63.2,
+      "activity_unit": "GGE",
+      "raw_quantity": "63.2",
+      "raw_unit": "GGE",
+      "biofuel_blend_pct": null,
+      "record_hint": "RT-31",
+      "vehicle_or_equipment_id": "RT-31",
+      "merchant_or_supplier": "Bluewater CNG Fueling",
+      "account_number": "BW-7720",
+      "transaction_id": "CNG-2404"
+    }
+  ]
+}

@@ -1,9 +1,11 @@
-"""/api/v1/auth/* - every endpoint here MUST use @auth_rate_limit and take `request`.
+"""/api/v1/auth/* - every endpoint here MUST be rate limited and take `request`:
+@auth_rate_limit (shared per-IP brute-force bucket) for everything except GET /me,
+which uses @session_rate_limit (per session, much higher; AUTH-007).
 
 AUTH-004: GET /me, POST /logout
 AUTH-005: POST /login, POST /login/verify, POST /login/resend
 AUTH-006: POST /password-reset/request, POST /password-reset/confirm
-ORG-003:  GET /invite/validate, POST /invite/accept (public; still stubbed)
+ORG-003:  GET /invite/validate, POST /invite/accept (public)
 
 No `from __future__ import annotations` here: slowapi wraps the endpoints and
 FastAPI must be able to resolve the annotations on the wrapper.
@@ -19,7 +21,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.auth import CurrentUser, get_current_user
 from ...core.db import get_db_session, get_sessionmaker_dependency
-from ...core.rate_limit import auth_rate_limit
+from ...core.rate_limit import auth_rate_limit, session_rate_limit
+from ...services import invite_service
 from ...services import login as login_service
 from ...services import password_reset as reset_service
 from ...services.audit_log import write_audit_event
@@ -75,10 +78,6 @@ def _meta(request: Request) -> login_service.RequestMeta:
 
 def _respond(outcome: login_service.LoginOutcome) -> JSONResponse:
     return JSONResponse(outcome.body, status_code=outcome.status, headers=outcome.headers or None)
-
-
-def _not_implemented(ticket: str) -> JSONResponse:
-    return JSONResponse({"detail": f"Not implemented yet ({ticket})"}, status_code=501)
 
 
 # --- AUTH-005: login ----------------------------------------------------------------
@@ -161,7 +160,7 @@ async def password_reset_confirm(
 # --- AUTH-004: session ----------------------------------------------------------------
 
 @router.get("/me")
-@auth_rate_limit
+@session_rate_limit
 async def me(request: Request, user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     return JSONResponse(
         {
@@ -204,42 +203,53 @@ async def logout(
 
 
 # --- ORG-003: public invite validate / accept --------------------------------------
-# Still stubbed (501): needs invite_service (token validate/accept) + EMAIL-001. The
-# response_model values document the intended contract for the frontend (FE-003).
+# One generic 400 for any unusable token (unknown, expired, used, user/org no longer
+# invitable). Accept does NOT create a session. Rules: services/invite_service.py.
 
 
 class InviteValidateResponse(BaseModel):
     email: str
-    first_name: str | None = None
-    last_name: str | None = None
+    first_name: str
+    last_name: str
     org_name: str
+    org_slug: str
 
 
 class AcceptInviteRequest(BaseModel):
-    token: str = Field(min_length=1)
-    # TODO(AUTH-003): enforce the shared password policy (length/complexity).
-    password: str = Field(min_length=8)
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1, max_length=256)
+    # The policy itself (AUTH-003) is checked by the service -> 422 with violations.
+    password: str = Field(min_length=1, max_length=1024)
 
 
 class AcceptInviteResponse(BaseModel):
-    # NOTE: accept does NOT create a session; the user logs in via /auth/login afterwards.
     user_id: UUID
     org_id: UUID
     email: str
+    org_slug: str
     accepted_at: datetime
 
 
 @router.get("/invite/validate", response_model=InviteValidateResponse)
 @auth_rate_limit
-async def validate_invite(request: Request, token: str = Query(min_length=1)) -> JSONResponse:
-    # TODO(ORG-003): return await invite_service.validate_token(token=token)
-    #                reject expired/consumed tokens; do not leak registration status.
-    return _not_implemented("ORG-003")
+async def validate_invite(
+    request: Request,
+    token: str = Query(min_length=1, max_length=256),
+    db: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    outcome = await invite_service.validate_invite(db, token)
+    return JSONResponse(outcome.body, status_code=outcome.status)
 
 
 @router.post("/invite/accept", response_model=AcceptInviteResponse)
 @auth_rate_limit
-async def accept_invite(request: Request, payload: AcceptInviteRequest) -> JSONResponse:
-    # TODO(ORG-003): return await invite_service.accept_invite(token=payload.token,
-    #                password=payload.password). Set password_hash + consumed_at in one tx.
-    return _not_implemented("ORG-003")
+async def accept_invite(
+    request: Request,
+    payload: AcceptInviteRequest,
+    db: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    meta = _meta(request)
+    outcome = await invite_service.accept_invite(db, payload.token, payload.password, request_id=meta.request_id,
+                                                 ip_address=meta.ip, user_agent=meta.user_agent)
+    return JSONResponse(outcome.body, status_code=outcome.status)

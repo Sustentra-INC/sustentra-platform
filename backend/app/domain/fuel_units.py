@@ -7,8 +7,9 @@ Policy (Scope 1 schema S1-STC-010/080/110 store the physical quantity + its unit
 heat-content conversion is a separate, HHV-driven calculation step, S1-STC-020):
 
 * energy units (therm, Dth, kWh, MWh, GJ, Btu) are converted to MMBtu, which is exact;
-* gas volume (scf, ccf, Mcf, MMcf, m3), liquid volume (gal, L, bbl) and mass
-  (lb, kg, short ton, metric ton) keep their canonical unit. Turning them into energy
+* gas volume (scf, ccf, Mcf, MMcf, m3), liquid volume (gal, L, bbl), mass
+  (lb, kg, short ton, metric ton) and fuel equivalents (GGE, DGE) keep their
+  canonical unit. Turning them into energy
   needs the fuel's heating value, so extraction never does it.
 """
 
@@ -22,6 +23,7 @@ ENERGY = "energy"
 GAS_VOLUME = "gas_volume"
 LIQUID_VOLUME = "liquid_volume"
 MASS = "mass"
+FUEL_EQUIVALENT = "fuel_equivalent"  # GGE / DGE (CNG, LNG, propane sold as gallon equivalents)
 
 # Canonical unit -> (dimension, size in the dimension's base unit).
 # Bases: energy = MMBtu, gas volume = scf, liquid volume = gal (US), mass = kg.
@@ -45,6 +47,10 @@ _UNITS: dict[str, tuple[str, Decimal]] = {
     "lb": (MASS, Decimal("0.45359237")),
     "short_ton": (MASS, Decimal("907.18474")),
     "metric_ton": (MASS, Decimal("1000")),
+    # Equivalents are defined by energy content of a *different* fuel; they are kept as
+    # stated and never converted (the factor depends on the reference fuel's HHV).
+    "GGE": (FUEL_EQUIVALENT, Decimal("1")),
+    "DGE": (FUEL_EQUIVALENT, Decimal("1")),
 }
 
 # Unit each dimension is normalized to during extraction (None = keep as stated).
@@ -53,6 +59,7 @@ _NORMALIZED_UNIT: dict[str, str | None] = {
     GAS_VOLUME: None,
     LIQUID_VOLUME: None,
     MASS: None,
+    FUEL_EQUIVALENT: None,
 }
 
 # Alias (lower-case, spaces collapsed, trailing '.' removed) -> canonical unit.
@@ -83,6 +90,8 @@ _alias("kg", "kgs", "kilogram", "kilograms")
 _alias("lb", "lbs", "pound", "pounds")
 _alias("short_ton", "ton", "tons", "short ton", "short tons", "st")
 _alias("metric_ton", "tonne", "tonnes", "metric ton", "metric tons", "mt", "t")
+_alias("GGE", "gge", "gasoline gallon equivalent", "gasoline gallon equivalents")
+_alias("DGE", "dge", "diesel gallon equivalent", "diesel gallon equivalents")
 
 # Longest aliases first so "cubic feet" wins over "cf" and "mmbtu" over "btu".
 _UNIT_TOKEN_RE = re.compile(
@@ -150,6 +159,8 @@ def convert(value: float | int | Decimal, from_unit: str, to_unit: str) -> float
         raise UnitError(f"unknown unit: {from_unit!r}")
     if to_dim is None or to_size is None:
         raise UnitError(f"unknown unit: {to_unit!r}")
+    if from_dim == FUEL_EQUIVALENT and from_unit != to_unit:
+        raise UnitError(f"{from_unit} is a fuel equivalent; it is not convertible without a heating value")
     if from_dim != to_dim:
         raise UnitError(
             f"cannot convert {from_unit} ({from_dim}) to {to_unit} ({to_dim}) without a heating value"

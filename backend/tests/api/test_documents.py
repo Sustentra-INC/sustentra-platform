@@ -11,6 +11,7 @@ from backend.app.main import app
 from backend.app.repositories.document_repository import InMemoryDocumentRepository
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
+from backend.tests.api.conftest import ORG_A, make_user, seeded_document
 
 
 class FakePipelineService:
@@ -44,6 +45,9 @@ def client_context(tmp_path: Path):
 
     storage_service = LocalStorageService(tmp_path / "uploads")
     repository = InMemoryDocumentRepository()
+    # Uploads may only attach to evidence that already exists in the caller's org.
+    for evidence_id in ("EV-1", "EV-123", "EV-PIPE", "EV-9"):
+        repository.save({**seeded_document(evidence_id, document_id=f"SEED-{evidence_id}"), "engagement_id": "ENG-SEED"})
 
     counters = {"document": 0, "evidence": 0}
 
@@ -102,14 +106,17 @@ def test_upload_endpoint_stores_file_and_returns_metadata(client_context):
     assert client_context["storage_service"].exists(body["storage_uri"]) is True
 
 
-def test_upload_endpoint_requires_uploaded_by(client_context):
+def test_upload_records_the_signed_in_uploader(client_context):
     client = client_context["client"]
     response = client.post(
         "/v1/engagements/ENG-1/documents/upload",
         files={"file": ("sample-bill.pdf", b"pdf-bytes", "application/pdf")},
-        data={"document_role": "source_evidence"},
+        # a client-supplied uploaded_by is ignored (SEC-001)
+        data={"document_role": "source_evidence", "uploaded_by": "someone-else@example.com"},
     )
-    assert response.status_code == 422
+    assert response.status_code == 200
+    assert response.json()["uploaded_by"] == make_user().email
+    assert response.json()["org_id"] == str(ORG_A)
 
 
 def test_get_document_returns_uploaded_document(client_context):
@@ -249,7 +256,7 @@ def test_metadata_create_endpoint_is_service_backed(client_context):
         json={
             "file_name": "metadata-only.pdf",
             "mime_type": "application/pdf",
-            "storage_uri": "local-data/uploads/ENG-1/EV-9/DOC-9/metadata-only.pdf",
+            "storage_uri": f"uploads/{ORG_A}/ENG-1/EV-9/DOC-9/metadata-only.pdf",
             "document_role": "source_evidence",
             "document_type": "utility_bill",
             "uploaded_by": "dev@example.com",

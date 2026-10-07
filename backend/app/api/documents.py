@@ -1,8 +1,24 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
+from backend.app.api.engagements import require_open_engagement
+from backend.app.api.s1_access import (
+    evidence_owned_by_caller,
+    org_of,
+    require_visible,
+    s1_reader,
+    s1_writer,
+    visible,
+)
+from backend.app.core.auth import CurrentUser
+from backend.app.core.security import upload_too_large_detail
+
+from backend.app.services.document_file_types import served_type
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
@@ -12,6 +28,10 @@ router = APIRouter(prefix="/v1", tags=["documents"])
 _upload_service = DocumentUploadService()
 _pipeline_service = PipelineOrchestrationService()
 _storage_service = _upload_service.storage_service
+
+
+def current_upload_service() -> DocumentUploadService:
+    return _upload_service
 
 
 def configure_services(
@@ -38,7 +58,8 @@ class CreateDocumentRequest(BaseModel):
     storage_uri: str
     document_role: str
     document_type: str | None = None
-    uploaded_by: str
+    # Ignored: the uploader is the signed-in user (SEC-001). Kept for older clients.
+    uploaded_by: str | None = None
     evidence_id: str | None = None
     processing_status: str = "queued"
 
@@ -50,8 +71,29 @@ class ProcessUploadedDocumentRequest(BaseModel):
     persist_run: bool = True
 
 
+def _uploader(user: CurrentUser) -> str:
+    return user.email
+
+
+def _require_evidence_slot(evidence_id: str | None, user: CurrentUser) -> None:
+    # A client-supplied evidence id attaches the document to EXISTING evidence of the
+    # caller's org; anything else (unknown, or another org's) looks like it does not
+    # exist. Without one, the server generates a fresh id.
+    if evidence_id and not evidence_owned_by_caller(evidence_id, user):
+        raise HTTPException(status_code=404, detail="Evidence not found.")
+
+
 @router.post("/engagements/{engagement_id}/documents")
-def create_document(engagement_id: str, payload: CreateDocumentRequest) -> dict:
+def create_document(
+    engagement_id: str,
+    payload: CreateDocumentRequest,
+    user: CurrentUser = Depends(s1_writer),
+    engagement: dict = Depends(require_open_engagement),
+) -> dict:
+    org_id = org_of(user)
+    _require_evidence_slot(payload.evidence_id, user)
+    if not _storage_service.is_owned_by(payload.storage_uri, org_id):
+        raise HTTPException(status_code=400, detail="storage_uri must point to a file uploaded by your organization.")
     try:
         return _upload_service.create_document_metadata(
             engagement_id=engagement_id,
@@ -59,10 +101,11 @@ def create_document(engagement_id: str, payload: CreateDocumentRequest) -> dict:
             mime_type=payload.mime_type,
             storage_uri=payload.storage_uri,
             document_role=payload.document_role,
-            uploaded_by=payload.uploaded_by,
+            uploaded_by=_uploader(user),
             evidence_id=payload.evidence_id,
             document_type=payload.document_type,
             processing_status=payload.processing_status,
+            org_id=org_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -70,17 +113,27 @@ def create_document(engagement_id: str, payload: CreateDocumentRequest) -> dict:
 
 @router.post("/engagements/{engagement_id}/documents/upload")
 async def upload_document(
+    request: Request,
     engagement_id: str,
     file: UploadFile = File(...),
     document_role: str = Form("source_evidence"),
-    uploaded_by: str = Form(...),
+    uploaded_by: str | None = Form(None),  # ignored: the signed-in user uploads (SEC-001)
     evidence_id: str | None = Form(None),
     document_type: str | None = Form(None),
+    user: CurrentUser = Depends(s1_writer),
+    engagement: dict = Depends(require_open_engagement),
 ) -> dict:
+    org_id = org_of(user)
+    _require_evidence_slot(evidence_id, user)
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file name is required.")
+    max_bytes = int(request.app.state.max_upload_bytes)  # INFRA-007, set by create_app
+    if file.size is not None and file.size > max_bytes:
+        raise HTTPException(status_code=413, detail=upload_too_large_detail(max_bytes))
     try:
         content = await file.read()
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=413, detail=upload_too_large_detail(max_bytes))
         mime_type = file.content_type or "application/octet-stream"
         return _upload_service.upload_document(
             engagement_id=engagement_id,
@@ -88,48 +141,151 @@ async def upload_document(
             content=content,
             mime_type=mime_type,
             document_role=document_role,
-            uploaded_by=uploaded_by,
+            uploaded_by=_uploader(user),
             evidence_id=evidence_id,
             document_type=document_type,
+            org_id=org_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/engagements/{engagement_id}/documents")
-def list_documents(engagement_id: str) -> dict:
+def list_documents(engagement_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
     return {
         "engagement_id": engagement_id,
-        "items": _upload_service.list_documents(engagement_id),
+        "items": visible(_upload_service.list_documents(engagement_id), user),
     }
 
 
 @router.get("/documents/{document_id}")
-def get_document(document_id: str) -> dict:
-    document = _upload_service.get_document(document_id)
-    if document is None:
-        raise HTTPException(status_code=404, detail="Document not found.")
-    return document
+def get_document(document_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
+    return require_visible(_upload_service.get_document(document_id), user, "Document not found.")
+
+
+@router.get("/documents/{document_id}/extraction-result/latest")
+def latest_extraction_result(document_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
+    """The candidates from the document's latest persisted pipeline run (S1-BE-001),
+    in the shape the workpaper's field adapter reads."""
+
+    require_visible(_upload_service.get_document(document_id), user, "Document not found.")
+    results = visible(_pipeline_service.list_extraction_results_by_document(document_id), user)
+    if not results:
+        raise HTTPException(status_code=404, detail="Extraction result not found.")
+    latest = results[-1]
+    return {
+        "evidence_id": latest.get("evidence_id"),
+        "document_id": latest.get("document_id"),
+        "pipeline_run_id": latest.get("pipeline_run_id"),
+        "canonical_type_id": latest.get("canonical_type_id"),
+        "status": latest.get("status"),
+        "candidate_count": latest.get("candidate_count", 0),
+        "items": latest.get("items") or [],
+        "created_at": latest.get("created_at"),
+    }
+
+
+# Served-file headers (S1-BE-001). The API's own CSP/X-Frame-Options win over the
+# proxy defaults (deploy/Caddyfile sets them with `?`), so only the preview can be
+# framed, and only by the app itself.
+_NO_STORE = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
+_DOWNLOAD_HEADERS = {
+    **_NO_STORE,
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; sandbox",
+    "X-Frame-Options": "DENY",
+}
+_PREVIEW_HEADERS = {**_NO_STORE, "X-Frame-Options": "SAMEORIGIN"}
+# Chrome refuses to render a PDF under a `sandbox` CSP; images get the full lockdown.
+_PREVIEW_CSP = {
+    "application/pdf": "frame-ancestors 'self'",
+    "image": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; frame-ancestors 'self'; sandbox",
+}
+
+
+def _stored_file(document_id: str, user: CurrentUser) -> tuple[dict, Path]:
+    """The document (404 unless visible) and its file (404 when missing)."""
+
+    document = require_visible(_upload_service.get_document(document_id), user, "Document not found.")
+    missing = HTTPException(status_code=404, detail="Stored document file is missing.")
+    storage_uri = str(document.get("storage_uri") or "")
+    owner = document.get("org_id")
+    # An owned document's file must sit in its org's folder (SEC-001); unowned
+    # (pre-SEC-001, provider-only) files only need to be inside the upload root.
+    if owner is not None and not _storage_service.is_owned_by(storage_uri, str(owner)):
+        raise missing
+    try:
+        path = _storage_service.resolve_storage_uri(storage_uri)
+    except ValueError:
+        raise missing from None
+    if not path.is_file():
+        raise missing
+    return document, path
+
+
+def _download_name(document: dict, path: Path) -> str:
+    name = str(document.get("file_name") or path.name)
+    return "".join(ch for ch in name if ch.isprintable()) or path.name
+
+
+@router.get("/documents/{document_id}/download")
+def download_document(document_id: str, user: CurrentUser = Depends(s1_reader)) -> FileResponse:
+    document, path = _stored_file(document_id, user)
+    return FileResponse(
+        path,
+        media_type=served_type(path, document.get("file_name")).media_type,
+        filename=_download_name(document, path),
+        content_disposition_type="attachment",
+        headers=_DOWNLOAD_HEADERS,
+    )
+
+
+@router.get("/documents/{document_id}/preview")
+def preview_document(document_id: str, user: CurrentUser = Depends(s1_reader)) -> FileResponse:
+    document, path = _stored_file(document_id, user)
+    kind = served_type(path, document.get("file_name"))
+    if not kind.previewable:
+        raise HTTPException(status_code=415, detail="Preview is not available for this file type.")
+    csp = _PREVIEW_CSP["application/pdf" if kind.media_type == "application/pdf" else "image"]
+    return FileResponse(
+        path,
+        media_type=kind.media_type,
+        filename=_download_name(document, path),
+        content_disposition_type="inline",
+        headers={**_PREVIEW_HEADERS, "Content-Security-Policy": csp},
+    )
 
 
 @router.get("/evidence/{evidence_id}/documents")
-def list_evidence_documents(evidence_id: str) -> dict:
+def list_evidence_documents(evidence_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
     return {
         "evidence_id": evidence_id,
-        "items": _upload_service.list_documents_by_evidence(evidence_id),
+        "items": visible(_upload_service.list_documents_by_evidence(evidence_id), user),
     }
+
+
+def failed_run_error(run: dict) -> HTTPException:
+    """A failed pipeline run as an HTTP error. A halt is about the document (unreadable,
+    corrupt, unsupported), so it is a 422 with the halt message for the user; anything
+    else is a server-side failure (500)."""
+
+    halt = run.get("halt_reason") or {}
+    if halt.get("message"):
+        return HTTPException(status_code=422, detail=str(halt["message"]))
+    return HTTPException(status_code=500, detail=run.get("errors") or ["Pipeline run failed."])
 
 
 @router.post("/documents/{document_id}/pipeline/process")
 def process_uploaded_document(
     document_id: str,
     payload: ProcessUploadedDocumentRequest,
+    user: CurrentUser = Depends(s1_writer),
 ) -> dict:
-    document = _upload_service.get_document(document_id)
-    if document is None:
-        raise HTTPException(status_code=404, detail="Document not found.")
+    document = require_visible(_upload_service.get_document(document_id), user, "Document not found.")
+    org_id = org_of(user)
 
     storage_uri = document.get("storage_uri")
+    if not _storage_service.is_owned_by(str(storage_uri), org_id):
+        raise HTTPException(status_code=400, detail="Stored document file is missing.")
     try:
         local_path = _storage_service.resolve_storage_uri(str(storage_uri))
     except ValueError as exc:
@@ -155,6 +311,7 @@ def process_uploaded_document(
             include_optional=payload.include_optional,
             include_deprecated=payload.include_deprecated,
             persist_run=payload.persist_run,
+            org_id=org_id,
         )
     except ValueError as exc:
         _upload_service.update_processing_status(document_id, "failed")
@@ -166,11 +323,10 @@ def process_uploaded_document(
             detail=f"Pipeline processing failed: {exc}",
         ) from exc
 
-    pipeline_status = result.get("pipeline_run", {}).get("status")
-    if pipeline_status == "failed":
+    run = result.get("pipeline_run", {})
+    if run.get("status") == "failed":
         _upload_service.update_processing_status(document_id, "failed")
-        detail = result.get("pipeline_run", {}).get("errors") or ["Pipeline run failed."]
-        raise HTTPException(status_code=500, detail=detail)
+        raise failed_run_error(run)
 
     _upload_service.update_processing_status(document_id, "completed")
     return result

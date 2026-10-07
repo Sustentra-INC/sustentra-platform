@@ -1,10 +1,11 @@
-"""EXT-001 golden set for CT-S1-FUELQTY (stationary combustion).
+"""Golden sets for Scope 1 fuel extraction: EXT-001 (CT-S1-FUELQTY, stationary) and
+EXT-002 (CT-S1-MOBFUEL, mobile).
 
-Runs each sample in ``s1-test-suite/stationary_combustion`` through the production
-pipeline (ParserService -> ClassificationService -> targets -> extraction) and scores
-the candidates against ``expected/<id>.expected.json``.
+Runs each sample in ``s1-test-suite/<suite>`` through the production pipeline
+(ParserService -> ClassificationService -> targets -> extraction) and scores the
+candidates against ``expected/<id>.expected.json``.
 
-    python -m backend.tests.golden_s1.stationary_combustion_golden   # prints the report
+    python -m backend.tests.golden_s1.stationary_combustion_golden [stationary_combustion|mobile_combustion]
 """
 
 from __future__ import annotations
@@ -18,10 +19,19 @@ from typing import Any
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+SUITES = ("stationary_combustion", "mobile_combustion")
 SUITE_ROOT = REPO_ROOT / "s1-test-suite" / "stationary_combustion"
-CORE_RECORD_FIELDS = ("fuel_type", "activity_quantity", "activity_unit", "service_period_start", "service_period_end")
-CORE_DOCUMENT_FIELDS = ("facility_name",)
-OTHER_DOCUMENT_FIELDS = ("service_address", "supplier_name", "account_number")
+# Core fields per canonical type; a core field is always checked (expected None if absent).
+CORE_FIELDS = {
+    "CT-S1-FUELQTY": ("fuel_type", "activity_quantity", "activity_unit", "service_period_start",
+                      "service_period_end", "facility_name"),
+    "CT-S1-MOBFUEL": ("fuel_type", "activity_quantity", "activity_unit", "transaction_date"),
+}
+NOT_FIELDS = {"record_hint", "raw_quantity", "raw_unit"}
+
+
+def suite_root(suite: str) -> Path:
+    return REPO_ROOT / "s1-test-suite" / suite
 
 
 @dataclass
@@ -170,11 +180,15 @@ def run_document(expected_path: Path, root: Path = SUITE_ROOT) -> DocumentResult
     for position, expected_record in enumerate(expected_records):
         record_index = None if len(expected_records) == 1 else position + 1
         actual = by_record.get(record_index, {})
-        for field_id in CORE_RECORD_FIELDS:
-            _check(result, actual.get(field_id), record_index, field_id, expected_record.get(field_id), True, document_id)
+        canonical = expected.get("reviewer_override") or expected.get("expected_classification")
+        core = CORE_FIELDS.get(str(canonical), ())
+        record_fields = [f for f in core if f not in (expected.get("document_fields") or {})]
+        record_fields += [f for f in expected_record if f not in NOT_FIELDS and f not in record_fields]
+        for field_id in record_fields:
+            _check(result, actual.get(field_id), record_index, field_id, expected_record.get(field_id),
+                   field_id in core, document_id)
         for field_id, value in (expected.get("document_fields") or {}).items():
-            _check(result, actual.get(field_id), record_index, field_id, value, field_id in CORE_DOCUMENT_FIELDS,
-                   document_id)
+            _check(result, actual.get(field_id), record_index, field_id, value, field_id in core, document_id)
     return result
 
 
@@ -205,7 +219,7 @@ def run_all(root: Path = SUITE_ROOT) -> list[DocumentResult]:
 
 def render_report(results: list[DocumentResult]) -> str:
     lines = [
-        "# EXT-001 stationary combustion - golden report",
+        "# Scope 1 fuel extraction - golden report",
         "",
         "| Document | Classified | Halt | Records | Core-field accuracy | All-field accuracy | Traceable | Result |",
         "|---|---|---|---|---|---|---|---|",
@@ -229,5 +243,6 @@ def render_report(results: list[DocumentResult]) -> str:
 
 
 if __name__ == "__main__":  # pragma: no cover - manual report
-    report = render_report(run_all())
-    sys.stdout.write(report)
+    suites = sys.argv[1:] or list(SUITES)
+    for name in suites:
+        sys.stdout.write(f"\n## {name}\n\n" + render_report(run_all(suite_root(name))))

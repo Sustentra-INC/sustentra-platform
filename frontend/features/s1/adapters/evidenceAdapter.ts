@@ -1,5 +1,5 @@
 import type { EvidenceItem } from "../types";
-import { apiUrl } from "../../../lib/api/client";
+import { apiPath } from "../../../lib/api";
 import { HALT_REASONS } from "../constants/copy";
 
 export interface BackendDocumentLike {
@@ -25,6 +25,8 @@ export function mapBackendDocumentToEvidenceItem(
     status?: string | null;
     warnings?: string[] | null;
     errors?: string[] | null;
+    /** Why the pipeline stopped before reviewable candidates (unreadable / unsupported). */
+    halt_reason?: { code?: string | null; message?: string | null } | null;
   } | null
 ): EvidenceItem {
   const hasType = Boolean(summary?.canonical_type_id);
@@ -33,8 +35,9 @@ export function mapBackendDocumentToEvidenceItem(
     summary?.status === "partial" &&
     Number(summary?.candidate_count ?? 0) === 0 &&
     Number(summary?.target_count ?? 0) === 0;
+  const halt = haltReasonFromCode(summary?.halt_reason?.code);
   const processingState =
-    document.processing_status === "failed"
+    document.processing_status === "failed" || halt
       ? "blocked"
       : noExtractionTargets
         ? "blocked"
@@ -49,15 +52,16 @@ export function mapBackendDocumentToEvidenceItem(
   return {
     documentId: document.document_id,
     filename: document.file_name,
-    downloadUrl: apiUrl(`/v1/documents/${document.document_id}/download`),
+    downloadUrl: apiPath(`/documents/${encodeURIComponent(document.document_id)}/download`),
     format: resolveFormat(document.file_name, document.mime_type),
     uploadedBy: { id: document.uploaded_by, name: document.uploaded_by, actorType: "preparer" },
     uploadedAt: document.uploaded_at,
     evidenceClass: "main",
     disposition: "active",
     processingState,
-    haltReason:
-      document.processing_status === "failed" || noExtractionTargets
+    haltReason: halt
+      ? halt
+      : document.processing_status === "failed" || noExtractionTargets
         ? mapHaltReason({
             noExtractionTargets,
             details: [...(summary?.errors ?? []), ...summaryWarnings],
@@ -104,6 +108,13 @@ export function resolveCanonicalTypeDisplayName(
   return CANONICAL_TYPE_DISPLAY_NAMES[canonicalTypeId] ?? "Unmapped document type";
 }
 
+/** The pipeline's structured halt (pipeline_run.halt_reason.code), when it gives one. */
+export function haltReasonFromCode(code: string | null | undefined): string | null {
+  if (code === "unreadable_document") return HALT_REASONS.unreadable;
+  if (code === "unsupported_document") return HALT_REASONS.noTemplate;
+  return null;
+}
+
 export function mapHaltReason({
   noExtractionTargets,
   details,
@@ -133,7 +144,7 @@ export function mapHaltReason({
 }
 
 export function inlineDocumentUrl(documentId: string): string {
-  return apiUrl(`/v1/documents/${documentId}/preview`);
+  return apiPath(`/documents/${encodeURIComponent(documentId)}/preview`);
 }
 
 function resolveFormat(filename: string, mimeType?: string | null): EvidenceItem["format"] {

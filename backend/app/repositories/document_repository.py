@@ -2,12 +2,23 @@ from __future__ import annotations
 
 import copy
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
 from backend.app.domain.document import Document
 
 DEFAULT_JSONL_PATH = "local-data/documents/documents.jsonl"
+
+
+def _latest_versions(records: Iterable[dict]) -> list[dict]:
+    """The store is append-only (a status change appends a new version): keep the
+    newest version of each document, in upload order."""
+
+    latest: dict[str, dict] = {}
+    for record in records:
+        latest[str(record.get("document_id"))] = record  # first insert fixes the order; later ones update
+    return list(latest.values())
 
 
 def _to_dict(document: Document | dict) -> dict[str, Any]:
@@ -29,10 +40,10 @@ class _BaseDocumentRepository:
         return list(self._records())
 
     def list_by_engagement(self, engagement_id: str) -> list[dict]:
-        return [r for r in self._records() if r.get("engagement_id") == engagement_id]
+        return _latest_versions(r for r in self._records() if r.get("engagement_id") == engagement_id)
 
     def list_by_evidence(self, evidence_id: str) -> list[dict]:
-        return [r for r in self._records() if r.get("evidence_id") == evidence_id]
+        return _latest_versions(r for r in self._records() if r.get("evidence_id") == evidence_id)
 
     def get_by_id(self, document_id: str) -> dict | None:
         for record in reversed(self._records()):
