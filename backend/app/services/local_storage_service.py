@@ -34,7 +34,13 @@ class LocalStorageService:
         engagement_id: str,
         evidence_id: str,
         document_id: str,
+        owner: str | None = None,
     ) -> dict:
+        """Store an upload at ``[<owner>/]<engagement>/<evidence>/<document>/<file>``.
+
+        ``owner`` (the org id, SEC-001) keeps each organization's files in its own
+        folder, so engagement ids chosen by different orgs never share a path.
+        """
         if not isinstance(content, (bytes, bytearray)):
             raise ValueError("content must be bytes.")
         raw_bytes = bytes(content)
@@ -45,9 +51,11 @@ class LocalStorageService:
         safe_engagement_id = self._sanitize_component(engagement_id, "engagement_id")
         safe_evidence_id = self._sanitize_component(evidence_id, "evidence_id")
         safe_document_id = self._sanitize_component(document_id, "document_id")
+        owner_dir = Path(self._sanitize_component(owner, "owner")) if owner else Path()
 
         relative_suffix = (
-            Path(safe_engagement_id)
+            owner_dir
+            / safe_engagement_id
             / safe_evidence_id
             / safe_document_id
             / safe_file_name
@@ -63,7 +71,8 @@ class LocalStorageService:
             while target_path.exists():
                 final_file_name = f"{stem}_{counter}{suffix}"
                 relative_suffix = (
-                    Path(safe_engagement_id)
+                    owner_dir
+                    / safe_engagement_id
                     / safe_evidence_id
                     / safe_document_id
                     / final_file_name
@@ -100,6 +109,17 @@ class LocalStorageService:
         if not self._is_within_root(candidate):
             raise ValueError("storage_uri resolves outside of storage root.")
         return candidate
+
+    def is_owned_by(self, storage_uri: str, owner: str) -> bool:
+        """True when ``storage_uri`` resolves inside ``owner``'s folder (SEC-001)."""
+
+        try:
+            path = self.resolve_storage_uri(storage_uri)
+            owner_root = self._storage_root.joinpath(self._sanitize_component(owner, "owner")).resolve()
+            path.relative_to(owner_root)
+        except ValueError:
+            return False
+        return True
 
     def exists(self, storage_uri: str) -> bool:
         try:

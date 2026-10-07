@@ -95,6 +95,7 @@ class PipelineOrchestrationService:
         include_optional: bool = True,
         include_deprecated: bool = False,
         persist_run: bool = True,
+        org_id: str | None = None,
     ) -> dict:
         path = Path(local_file_path)
         if not path.exists() or not path.is_file():
@@ -171,7 +172,7 @@ class PipelineOrchestrationService:
                     completed_at=self._clock(),
                     halt_reason=halt_reason,
                 )
-                saved_run = self._persist_if_needed(run, persist_run)
+                saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run)
                 return {
                     "pipeline_run": saved_run,
                     "parser_output": parser_output,
@@ -277,7 +278,7 @@ class PipelineOrchestrationService:
                     completed_at=self._clock(),
                     halt_reason=halt_reason,
                 )
-                saved_run = self._persist_if_needed(run, persist_run)
+                saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run)
                 return {
                     "pipeline_run": saved_run,
                     "parser_output": parser_output,
@@ -334,7 +335,7 @@ class PipelineOrchestrationService:
                 completed_at=self._clock(),
                 halt_reason=halt_reason,
             )
-            saved_run = self._persist_if_needed(run, persist_run)
+            saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run)
             return {
                 "pipeline_run": saved_run,
                 "parser_output": parser_output,
@@ -373,7 +374,7 @@ class PipelineOrchestrationService:
                 created_at=created_at,
                 completed_at=self._clock(),
             )
-            saved_run = self._persist_if_needed(run, persist_run)
+            saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run)
             return {
                 "pipeline_run": saved_run,
                 "parser_output": parser_output,
@@ -384,6 +385,9 @@ class PipelineOrchestrationService:
 
     def get_pipeline_run(self, pipeline_run_id: str) -> dict | None:
         return self._pipeline_repository.get_by_id(pipeline_run_id)
+
+    def list_runs_by_evidence(self, evidence_id: str) -> list[dict]:
+        return self._pipeline_repository.list_by_evidence(evidence_id)
 
     def get_latest_run_by_evidence(self, evidence_id: str) -> dict | None:
         return self._pipeline_repository.get_latest_by_evidence(evidence_id)

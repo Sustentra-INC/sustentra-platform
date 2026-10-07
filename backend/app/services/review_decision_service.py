@@ -59,6 +59,7 @@ class ReviewDecisionService:
         reviewed_value: str | float | int | bool | None = None,
         reviewed_unit: str | None = None,
         reviewer_note: str | None = None,
+        org_id: str | None = None,
     ) -> dict:
         self._validate_candidate(candidate)
 
@@ -87,6 +88,7 @@ class ReviewDecisionService:
             "reviewer_note": reviewer_note,
             "candidate_snapshot": copy.deepcopy(candidate),
             "source_reference": copy.deepcopy(candidate["source_reference"]),
+            "org_id": org_id,
         }
 
         # Validate against the strict domain model before persisting.
@@ -98,6 +100,9 @@ class ReviewDecisionService:
 
     def list_by_document(self, document_id: str) -> list[dict]:
         return self._repository.list_by_document(document_id)
+
+    def list_by_candidate(self, candidate_id: str) -> list[dict]:
+        return self._repository.list_by_candidate(candidate_id)
 
     def get_latest_by_candidate(self, candidate_id: str) -> dict | None:
         return self._repository.get_latest_by_candidate(candidate_id)

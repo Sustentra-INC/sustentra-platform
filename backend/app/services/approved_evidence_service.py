@@ -64,6 +64,7 @@ class ApprovedEvidenceService:
         review_decisions: list[dict],
         engagement_id: str,
         evidence_type: str,
+        org_id: str | None = None,
     ) -> dict:
         if not isinstance(review_decisions, list):
             raise ValueError("review_decisions must be a list of dictionaries.")
@@ -82,6 +83,7 @@ class ApprovedEvidenceService:
                     engagement_id=engagement_id,
                     evidence_type=evidence_type,
                     latest_decisions=[],
+                    org_id=org_id,
                 )
             )
 
@@ -94,6 +96,7 @@ class ApprovedEvidenceService:
                 engagement_id=engagement_id,
                 evidence_type=evidence_type,
                 latest_decisions=latest_decisions,
+                org_id=org_id,
             )
         )
 
@@ -102,8 +105,11 @@ class ApprovedEvidenceService:
         evidence_id: str,
         engagement_id: str,
         evidence_type: str,
+        org_id: str | None = None,
     ) -> dict:
         decisions = self._review_repository.list_by_evidence(evidence_id)
+        if org_id is not None:  # SEC-001: never project another org's (or unowned) decisions
+            decisions = [d for d in decisions if d.get("org_id") == org_id]
         if not decisions:
             return self._approved_repository.save(
                 self._build_aggregate(
@@ -112,13 +118,18 @@ class ApprovedEvidenceService:
                     engagement_id=engagement_id,
                     evidence_type=evidence_type,
                     latest_decisions=[],
+                    org_id=org_id,
                 )
             )
         return self.project_from_review_decisions(
             review_decisions=decisions,
             engagement_id=engagement_id,
             evidence_type=evidence_type,
+            org_id=org_id,
         )
+
+    def list_by_evidence(self, evidence_id: str) -> list[dict]:
+        return self._approved_repository.list_by_evidence(evidence_id)
 
     def list_by_engagement(self, engagement_id: str) -> list[dict]:
         return self._approved_repository.list_by_engagement(engagement_id)
@@ -218,6 +229,7 @@ class ApprovedEvidenceService:
         engagement_id: str,
         evidence_type: str,
         latest_decisions: list[dict],
+        org_id: str | None = None,
     ) -> dict:
         approved_fields: list[ApprovedEvidenceField] = []
         source_ids: list[str] = []
@@ -278,5 +290,6 @@ class ApprovedEvidenceService:
             fields=approved_fields,
             created_at=self._clock(),
             source_review_decision_ids=source_ids,
+            org_id=org_id,
         )
         return aggregate.model_dump()
