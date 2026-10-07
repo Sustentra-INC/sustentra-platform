@@ -117,8 +117,11 @@ async def _call(method: str, path: str, token: str | None = None) -> Any:
     try:
         transport = httpx.ASGITransport(app=_app(engine))
         async with httpx.AsyncClient(transport=transport, base_url="https://testserver") as client:
-            cookies = {SESSION_COOKIE: token} if token else None
-            return await client.request(method, path, cookies=cookies, headers={"Origin": ORIGIN})
+            if token is None:
+                client.cookies.pop(SESSION_COOKIE, None)
+            else:
+                client.cookies.set(SESSION_COOKIE, token)
+            return await client.request(method, path, headers={"Origin": ORIGIN})
     finally:
         await engine.dispose()
 

@@ -26,6 +26,12 @@ testpaths = ["backend/tests"]
 # so `from backend.app...` imports resolve in tests.
 pythonpath = ["."]
 addopts = "-q"
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+asyncio_default_test_loop_scope = "function"
+markers = [
+	"requires_test_db: needs TEST_DATABASE_URL/TEST_APP_DATABASE_URL and destructive-seed safety acknowledgement",
+]
 
 [tool.coverage.run]
 source = ["backend/app"]
