@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     smtp_host: str = "localhost"
     smtp_port: int = 1025
 
+    # Largest S1 document upload, in MB (INFRA-007). deploy/Caddyfile allows the same
+    # size on the upload route only (+1 MB for the multipart envelope); the frontend
+    # mirrors it in features/s1/constants/uploads.ts.
+    max_upload_mb: int = Field(default=25, ge=1, le=200)
+
     # Per-IP limit shared by all /api/v1/auth/* endpoints.
     auth_rate_limit: str = "100/5 minutes"
 
@@ -50,6 +55,10 @@ class Settings(BaseSettings):
     @classmethod
     def _strip(cls, value: str) -> str:
         return value.strip()
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1024 * 1024
 
     @property
     def allowed_origins(self) -> frozenset[str]:

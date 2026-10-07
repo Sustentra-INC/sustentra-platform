@@ -14,7 +14,9 @@ import {
   signInAgainPath,
   submitFieldReview,
   uploadDocument,
+  userFacingApiError,
 } from "../api/s1Backend";
+import { MAX_UPLOAD_BYTES } from "../constants/uploads";
 import type { ExtractedField } from "../types";
 
 const fetchMock = vi.fn();
@@ -145,5 +147,30 @@ describe("signInAgainPath", () => {
   it("sends provider admins to the provider login", () => {
     rememberRealm({ kind: "provider" });
     expect(signInAgainPath()).toBe("/provider-admin/login?next=%2F");
+  });
+});
+
+describe("upload size limit (INFRA-007)", () => {
+  it("refuses a file over the limit without sending it", async () => {
+    const big = new File(["x"], "big.pdf", { type: "application/pdf" });
+    Object.defineProperty(big, "size", { value: MAX_UPLOAD_BYTES + 1 });
+    const error = await uploadDocument("ENG-1", big).catch((e: unknown) => e);
+    expect(userFacingApiError(error)).toBe("This file is larger than the 25 MB upload limit.");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uploads a file at the limit", async () => {
+    const file = new File(["x"], "ok.pdf", { type: "application/pdf" });
+    Object.defineProperty(file, "size", { value: MAX_UPLOAD_BYTES });
+    await uploadDocument("ENG-1", file);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the same message for a 413 from the API or the proxy", () => {
+    const fromApi = new ApiError(413, "File is too large. The maximum upload size is 25 MB.", null, null);
+    const fromProxy = new ApiError(413, "Request failed (413)", null, null);
+    expect(userFacingApiError(fromApi)).toBe("This file is larger than the 25 MB upload limit.");
+    expect(userFacingApiError(fromProxy)).toBe("This file is larger than the 25 MB upload limit.");
+    expect(userFacingApiError(new ApiError(400, "Bad file", null, null))).toBe("Bad file");
   });
 });

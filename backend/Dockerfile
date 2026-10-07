@@ -45,9 +45,12 @@ COPY contracts/ contracts/
 COPY reference-data/ reference-data/
 
 # Non-root user; /app/data is the only writable app path (mounted volume in prod).
+# The S1 stores and uploads default to ./local-data (cwd /app), which the read-only
+# root filesystem cannot create: point it at the volume (INFRA-007).
 RUN useradd --system --uid 10001 --home-dir /app --shell /usr/sbin/nologin app \
     && mkdir -p /app/data \
-    && chown app:app /app/data
+    && chown app:app /app/data \
+    && ln -s /app/data /app/local-data
 USER 10001
 
 EXPOSE 8000

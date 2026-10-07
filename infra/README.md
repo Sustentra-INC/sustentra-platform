@@ -281,6 +281,23 @@ them keeps its own. Only the API's document routes do that:
 
 Everything else gets the proxy's `DENY` / `frame-ancestors 'none'` as before.
 
+## Upload size limit (INFRA-007)
+
+S1 document uploads may be up to **25 MB** (`MAX_UPLOAD_MB` in the API's `app.env`,
+default 25). Every other request stays capped at 1 MB by Caddy.
+
+| Layer | Where | Limit |
+|---|---|---|
+| Caddy | `deploy/Caddyfile` (`@document_upload`) | 26 MiB body on `/api/v1/engagements/*/documents/upload`; a larger declared `Content-Length` gets 413 straight away |
+| API | `UploadSizeLimitMiddleware` + the upload route | 413 `File is too large. The maximum upload size is 25 MB.` |
+| Frontend | `features/s1/constants/uploads.ts` | checks the file before sending; any 413 shows the same message |
+| Next dev proxy | `next.config.ts` `proxyClientMaxBodySize` | 26 MB (local dev only) |
+
+To change it, update all four together.
+
+The API image links `/app/local-data` to the `/app/data` volume: the S1 JSONL stores
+and uploads write to `./local-data`, and the root filesystem is read-only.
+
 ## CI/CD (MVP-5)
 
 | Workflow | Trigger | What it does | AWS role |

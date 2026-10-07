@@ -21,7 +21,21 @@ http://{$APP_DOMAIN} {
 
 	encode zstd gzip
 
-	request_body {
+	# 1 MB for every request except S1 document uploads (INFRA-007): 26 MiB there =
+	# the API's MAX_UPLOAD_MB (25 MiB) + 1 MiB for the multipart envelope. The API
+	# enforces the exact file size and answers 413 with a readable message.
+	@document_upload path_regexp ^/api/v1/engagements/[^/]+/documents/upload$
+	request_body @document_upload {
+		max_size 26MiB
+	}
+	# A declared size over the limit is answered here, before any bytes are sent
+	# upstream (an early 413 from the API mid-upload would surface as a 502).
+	@document_upload_too_large {
+		path_regexp ^/api/v1/engagements/[^/]+/documents/upload$
+		expression `{http.request.header.Content-Length}.matches("^[0-9]{1,15}$") && int({http.request.header.Content-Length}) > 27262976`
+	}
+	@not_document_upload not path_regexp ^/api/v1/engagements/[^/]+/documents/upload$
+	request_body @not_document_upload {
 		max_size 1MB
 	}
 
@@ -45,6 +59,9 @@ http://{$APP_DOMAIN} {
 
 	# /api/* -> FastAPI, path unchanged (the API serves /api/v1/* and /api/health).
 	handle /api/* {
+		respond @document_upload_too_large `{"detail":"File is too large. The maximum upload size is 25 MB."}` 413 {
+			close
+		}
 		reverse_proxy api:8000 {
 			# Same ID in the Caddy and API logs; the API echoes it back as X-Request-ID.
 			header_up X-Request-ID {http.request.uuid}
