@@ -33,10 +33,19 @@ check() {
     }
   echo
   for domain in "${DOMAINS[@]}"; do
-    aws sesv2 get-email-identity --region "$REGION" --email-identity "$domain" --output text --query \
-      '[VerifiedForSendingStatus, DkimAttributes.Status, MailFromAttributes.MailFromDomainStatus]' 2>/dev/null \
-      | { read -r verified dkim mailfrom && echo "  ${domain}: verified=${verified} dkim=${dkim} mail-from=${mailfrom}" \
-          || echo "  ${domain}: not found"; }
+    # Keep AWS's own error: "not found" and "not allowed to look" need different fixes.
+    local out
+    if out=$(aws sesv2 get-email-identity --region "$REGION" --email-identity "$domain" --output text --query \
+      '[VerifiedForSendingStatus, DkimAttributes.Status, MailFromAttributes.MailFromDomainStatus]' 2>&1); then
+      read -r verified dkim mailfrom <<<"$out"
+      echo "  ${domain}: verified=${verified} dkim=${dkim} mail-from=${mailfrom}"
+    elif grep -q NotFoundException <<<"$out"; then
+      echo "  ${domain}: NOT FOUND in ${REGION} - the SES domain identity is missing (terraform apply for that environment)"
+    elif grep -qE "AccessDenied|not authorized" <<<"$out"; then
+      echo "  ${domain}: cannot check - these credentials lack ses:GetEmailIdentity (try the client admin / CI role)"
+    else
+      echo "  ${domain}: cannot check - $(head -1 <<<"$out")"
+    fi
   done
 }
 
