@@ -353,14 +353,14 @@ export function EvidenceWorkspace({
             <div className="s1-table-wrap">
               <table className="s1-table s1-ws-table">
                 <colgroup>
-                  <col style={{ width: "22%" }} /> {/* Document */}
-                  <col style={{ width: "12%" }} /> {/* Facility */}
-                  <col style={{ width: "14%" }} /> {/* Document type */}
-                  <col style={{ width: "13%" }} /> {/* Processing state */}
-                  <col style={{ width: "14%" }} /> {/* Issue */}
-                  <col style={{ width: "11%" }} /> {/* Add to requests */}
-                  <col style={{ width: "10%" }} /> {/* Notes */}
-                  <col style={{ width: "4%" }} /> {/* Row menu */}
+                  <col style={{ width: "22%" }} /* Document */ />
+                  <col style={{ width: "12%" }} /* Facility */ />
+                  <col style={{ width: "14%" }} /* Document type */ />
+                  <col style={{ width: "13%" }} /* Processing state */ />
+                  <col style={{ width: "14%" }} /* Issue */ />
+                  <col style={{ width: "11%" }} /* Add to requests */ />
+                  <col style={{ width: "10%" }} /* Notes */ />
+                  <col style={{ width: "4%" }} /* Row menu */ />
                 </colgroup>
                 <thead>
                   <tr>

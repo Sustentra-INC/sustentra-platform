@@ -27,6 +27,8 @@ export interface TeamMember {
 export interface EngagementConfig {
   clientName: string;
   engagementId: string;
+  /** The engagement's own name, shown in the Setup picker (S1-BE-002). */
+  engagementName?: string;
   reportingPeriod: {
     start: string;
     end: string;
