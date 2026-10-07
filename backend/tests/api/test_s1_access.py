@@ -240,7 +240,7 @@ def test_legacy_root_routes_are_not_mounted_in_production() -> None:
     assert client.get("/v1/documents/x").status_code == 404      # legacy root mount: absent
     assert client.get("/v1/users").status_code == 404
     assert client.get("/api/v1/documents/x").status_code == 401  # S1 under /api: present, needs a session
-    assert client.get("/api/v1/audit-events").status_code == 404  # legacy JSONL identity: dev-only
+    assert client.get("/api/v1/audit-events").status_code == 404  # legacy JSONL identity: removed (CLEANUP-001)
 
 
 def test_local_file_pipeline_is_disabled_in_production(act_as, monkeypatch) -> None:
