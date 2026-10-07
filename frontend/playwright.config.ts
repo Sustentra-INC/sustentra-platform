@@ -11,7 +11,9 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
-  retries: process.env.CI ? 1 : 0,
+  // No retries: the provider reset link from global-setup is single-use, so a retry
+  // can never get past the first step and only hides the real failure.
+  retries: 0,
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   globalSetup: "./e2e/global-setup.ts",
   use: {
