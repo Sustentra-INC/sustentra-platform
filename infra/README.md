@@ -424,5 +424,30 @@ aws cloudwatch set-alarm-state --profile sustentra --alarm-name sustentra-prod-r
 
 # 3. Login request in the API logs with its request ID and no secrets
 aws logs filter-log-events --profile sustentra --log-group-name /sustentra/prod/api `
-  --filter-pattern '{ $.path = "/v1/auth/login" }' --max-items 5
+  --filter-pattern '{ $.path = "/api/v1/auth/login" }' --max-items 5
 ```
+
+## Acceptance tests (TEST-003)
+
+`infra/scripts/acceptance.sh` runs the checks above for one environment and writes a
+Markdown report (`acceptance-<env>-<time>.md`) to paste into the ticket. Git Bash or
+WSL, with credentials that can use SSM on the app host and read RDS / CloudWatch / logs:
+
+```bash
+bash infra/scripts/acceptance.sh staging --email you@example.com
+bash infra/scripts/acceptance.sh staging --email you@example.com --disruptive   # + uptime alarm
+bash infra/scripts/acceptance.sh prod    --email you@example.com
+```
+
+| Check | How |
+|---|---|
+| RDS SSL works, non-SSL refused, `row_security = on` | psql on the app host via SSM (automated) |
+| RDS port 5432 closed from outside the VPC | TCP connect from where you run it (automated) |
+| Login request in `/sustentra/<env>/api` with its request ID, password not logged | bogus login, then CloudWatch Logs search (automated) |
+| SES email SPF/DKIM/DMARC = PASS; simulated bounce -> SNS email | sent by the script, you confirm in the inboxes |
+| Alarm email | `set-alarm-state` on `rds-cpu-high`, you confirm the email |
+| Uptime alarm when the API stops | `--disruptive` only: stops the API, waits up to 6 min for ALARM, restarts it |
+| Failed `/api/health` rolls back; prod deploy waits for approval | manual, listed in the report |
+
+While SES is still in the sandbox (OPS-001), `--email` must be a verified address.
+
