@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from backend.app.api.documents import failed_run_error
 from backend.app.api.s1_access import (
     evidence_free_or_own,
     org_of,
@@ -74,10 +75,7 @@ def process_local_document(payload: LocalProcessDocumentRequest, user: CurrentUs
         result.get("pipeline_run", {}).get("status") if isinstance(result, dict) else None
     )
     if pipeline_status == "failed":
-        detail = result.get("pipeline_run", {}).get("errors") or [
-            "Pipeline run failed."
-        ]
-        raise HTTPException(status_code=500, detail=detail)
+        raise failed_run_error(result.get("pipeline_run", {}))
 
     return result
 

@@ -175,3 +175,36 @@ describe("upload size limit (INFRA-007)", () => {
     expect(userFacingApiError(new ApiError(400, "Bad file", null, null))).toBe("Bad file");
   });
 });
+
+describe("halted documents (unreadable / unsupported)", () => {
+  const failed = { ...DOCUMENT, processing_status: "failed" };
+
+  it("shows the pipeline's halt reason on the evidence row", () => {
+    const run = { status: "failed", errors: ["Parser stage returned failed status."],
+      halt_reason: { code: "unreadable_document", message: "Unreadable document: ..." } };
+    const item = mapBackendDocumentToEvidenceItem(failed, run);
+    expect(item.processingState).toBe("blocked");
+    expect(item.haltReason).toBe("File could not be read.");
+  });
+
+  it("maps an unsupported document type to the no-template reason", () => {
+    const run = { status: "partial", candidate_count: 0, target_count: 0,
+      halt_reason: { code: "unsupported_document", message: "Unsupported document type: ..." } };
+    expect(mapBackendDocumentToEvidenceItem(DOCUMENT, run).haltReason).toBe(
+      "No extraction template exists for this document type."
+    );
+  });
+
+  it("falls back to the error text when there is no structured halt", () => {
+    expect(mapBackendDocumentToEvidenceItem(failed, { status: "failed", errors: ["boom"] }).haltReason).toBe(
+      "Processing failed. Retry available."
+    );
+  });
+
+  it("turns the API's 422 halt message into the short reason", () => {
+    expect(userFacingApiError(new ApiError(422, "Unreadable document: no text could be extracted ...", null, null)))
+      .toBe("File could not be read.");
+    expect(userFacingApiError(new ApiError(422, "Unsupported document type: it does not match ...", null, null)))
+      .toBe("No extraction template exists for this document type.");
+  });
+});

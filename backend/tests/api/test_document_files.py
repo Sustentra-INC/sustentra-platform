@@ -236,3 +236,27 @@ def test_signed_out_is_401_on_both_mounts(env: dict) -> None:
     for prefix in ("", "/api"):
         for what in ("extraction-result/latest", "download", "preview"):
             assert env["client"].get(prefix + url(doc, what)).status_code == 401
+
+
+# --- unreadable documents are a 422 with the reason, not a 500 ---------------------------
+def test_an_unreadable_pdf_is_a_422_with_the_reason(env: dict) -> None:
+    doc = env["upload"]("scan.pdf", b"%PDF-1.4\n%%EOF\n", "application/pdf")  # corrupt: no objects
+    env["act_as"]("org_member", ORG_A)
+    response = env["client"].post(url(doc, "pipeline/process"), json={})
+    assert response.status_code == 422
+    assert response.json()["detail"].startswith("Unreadable document")
+
+    client = env["client"]
+    assert client.get(f"/v1/documents/{doc['document_id']}").json()["processing_status"] == "failed"
+    result = client.get(url(doc, "extraction-result/latest")).json()
+    assert result["items"] == [] and result["status"] == "failed"
+
+
+def test_a_failed_run_without_a_halt_is_still_a_server_error() -> None:
+    from backend.app.api.documents import failed_run_error
+
+    halted = failed_run_error({"status": "failed", "halt_reason": {"code": "unreadable_document", "message": "Nope."}})
+    assert (halted.status_code, halted.detail) == (422, "Nope.")
+    broken = failed_run_error({"status": "failed", "errors": ["Parser crashed."]})
+    assert (broken.status_code, broken.detail) == (500, ["Parser crashed."])
+    assert failed_run_error({"status": "failed"}).detail == ["Pipeline run failed."]
