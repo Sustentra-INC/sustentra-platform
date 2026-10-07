@@ -4,12 +4,14 @@ name: terraform
 #   plan role, posted as a PR comment.
 # - Push to main: plan against prod with the terraform role.
 # Applies run only in the separate, manually approved "terraform-apply" workflow.
+#
+# OPS-003: `validate` and `plan-pr` are required status checks on main. A required
+# check that never reports blocks the merge forever, so the workflow runs on EVERY
+# pull request; the `changes` job decides, and when nothing under infra/ changed
+# both jobs are skipped - and a skipped job counts as passed.
 
 on:
   pull_request:
-    paths:
-      - "infra/**"
-      - ".github/workflows/terraform.yml"
   push:
     branches: [main]
     paths:
@@ -35,7 +37,34 @@ defaults:
     working-directory: infra
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      infra: ${{ steps.diff.outputs.infra }}
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        name: Did infra/ or this workflow change?
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "infra=true" >> "$GITHUB_OUTPUT"   # push: the paths filter above already decided
+            exit 0
+          fi
+          base="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$base"...HEAD | grep -qE '^(infra/|\.github/workflows/terraform\.yml$)'; then
+            echo "infra=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "infra=false" >> "$GITHUB_OUTPUT"
+          fi
+
   validate:
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,8 +81,11 @@ jobs:
           terraform validate
 
   plan-pr:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-    needs: validate
+    if: >-
+      github.event_name == 'pull_request'
+      && needs.changes.outputs.infra == 'true'
+      && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [changes, validate]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -107,7 +139,7 @@ jobs:
 
   plan-main:
     if: github.event_name == 'push'
-    needs: validate
+    needs: [changes, validate]
     runs-on: ubuntu-latest
     permissions:
       contents: read

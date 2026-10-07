@@ -345,6 +345,32 @@ the account root can reach the Terraform state (it holds the DB passwords).
 Re-applying the bootstrap later (rare: only the state bucket lives there) is
 done by the client admin with their own credentials.
 
+## Branch protection and deploy approval (OPS-003)
+
+`infra/github/branch-protection.sh` sets everything up with the GitHub CLI
+(run it as a repository admin; it is idempotent):
+
+```bash
+gh auth login
+bash infra/github/branch-protection.sh --check   # what is in place now (read-only)
+bash infra/github/branch-protection.sh --apply   # create / update
+```
+
+| Target | Rules |
+|---|---|
+| `main` (ruleset `protect-main`) | PR required; checks `backend`, `frontend`, `validate`, `plan-pr` must pass; no force-push, no deletion |
+| `staging` (ruleset `protect-staging`) | PR required; checks `backend`, `frontend` must pass; no force-push, no deletion |
+| environment `production` | required reviewers (default: whoever runs the script; `REVIEWERS=a,b` to set); deploys from `main` only |
+
+- Checks must come from the GitHub Actions app, so nothing else can fake a green status.
+- `APPROVALS=1` makes PRs need an approving review (default 0: a PR is required but you may merge your own).
+- `validate` and `plan-pr` only matter for infra changes. `terraform.yml` therefore
+  runs on every PR and skips them when nothing under `infra/` changed — a skipped
+  check counts as passed. **Merge that workflow change before running `--apply`**,
+  or PRs to `main` that don't touch `infra/` would wait forever for those checks.
+- Emergency: a repo admin can temporarily set a ruleset's enforcement to
+  *Disabled* (Settings → Rules → Rulesets) instead of deleting it.
+
 ## CI/CD (MVP-5)
 
 | Workflow | Trigger | What it does | AWS role |
