@@ -8,8 +8,8 @@ import "../features/s1/styles/s1-workpaper.css";
  * Root layout. The Sustentra product surface (the S1 workpaper) lives at `/` and
  * brings its own in-app chrome (left sidebar + context bar) from `S1Chrome`, so
  * the root layout stays minimal and just loads the design-system tokens and the
- * workpaper styles. The Sustentra-internal admin pages (login / clients / users
- * / account) add their own `AppShell` via the `(admin)` route group layout.
+ * workpaper styles. The provider and org admin areas (/provider-admin, /org/[slug])
+ * are separate route trees with their own layouts.
  */
 // Favicon / app icons come from the Next.js file conventions in this folder:
 // favicon.ico, icon.png and apple-icon.png (generated from public/sustentra-mark.png).

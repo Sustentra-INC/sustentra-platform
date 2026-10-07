@@ -8,7 +8,7 @@
 The real product frontend now **is** the demo UI. On branch `integrate/demo-ui` (off `main`):
 
 - `/` → the full S1 audit **workpaper** (Setup, Upload, Evidence, Extraction review, Check coverage, Verification, Output, Dashboard, + the floating assistant). This is the polished demo, now the product home. Code lives in `frontend/features/s1/`.
-- **Jerome's auth/tenancy pages are preserved** — `/login`, `/login/reset`, `/clients`, `/users`, `/account` still work exactly as before (moved into an `app/(admin)/` route group that keeps `AppShell`; URLs unchanged).
+- **Legacy auth/admin pages removed (CLEANUP-001)** — the old bearer-token pages (`/login`, `/login/reset`, `/clients`, `/users`, `/account`) and their `/v1/auth`, `/v1/users`, `/v1/clients` API are gone. Sign-in is `/org/<slug>/login` or `/provider-admin/login` (cookie session, `/api/v1/auth`); `lib/api.ts` is the only API client.
 - Jack's old placeholder route stubs (`evidence-intake`, `extraction-review`, `calculation`, `gap-analysis`, `validation`, `audit-setup`, `assistant`) were removed — the workpaper supersedes them.
 - Builds clean (`next build` ✓, TypeScript ✓). The workpaper currently runs on **fixtures**.
 

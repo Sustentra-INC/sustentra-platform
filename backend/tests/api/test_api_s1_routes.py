@@ -33,13 +33,14 @@ def test_frontend_seam_routes_exist_under_api_v1_and_v1() -> None:
         assert "/api" + path in paths, "/api" + path
 
 
-def test_legacy_identity_routes_are_not_exposed_under_api() -> None:
+def test_the_legacy_identity_routes_are_gone() -> None:
+    # CLEANUP-001: the bearer-token JSONL identity API was removed everywhere.
     paths = _paths()
-    assert "/api/v1/users" not in paths
-    assert "/api/v1/clients" not in paths
-    # /api/v1/auth/* belongs to the new auth (AUTH-004..006), not the JSONL one.
+    for path in ("/v1/users", "/v1/clients", "/v1/auth/login", "/v1/auth/mfa/setup", "/v1/audit-events",
+                 "/api/v1/users", "/api/v1/clients", "/api/v1/auth/mfa/setup", "/api/v1/audit-events"):
+        assert path not in paths, path
+    # /api/v1/auth/* is the only auth (AUTH-004..006).
     assert "/api/v1/auth/me" in paths
-    assert "/api/v1/auth/mfa/setup" not in paths
 
 
 def test_multipart_upload_passes_the_json_only_rule() -> None:
