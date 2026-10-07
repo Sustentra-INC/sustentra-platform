@@ -103,3 +103,20 @@ Never commit `local-data/`, `local-samples/`, private evidence documents, parser
 - Reference JSON libraries and config: `reference-data/`
 - Demo fixtures: `demo-fixtures/mock_outputs/`
 - Legacy docs snapshot: `docs/legacy_streamlit_demo/`
+
+## Organizations - provider admin (ORG-001 / MVP-17)
+
+`/api/v1/provider/orgs` - provider admins only (401 without a session, 403 for any org user).
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/provider/orgs?search=&status=&page=&page_size=` | `{items, total, page, page_size}`, newest first; search matches name or slug |
+| POST | `/provider/orgs` | `{name, slug, max_users?, initial_admin?: {email, first_name, last_name}}` -> 201; duplicate slug -> 409 |
+| GET | `/provider/orgs/{id}` | 404 if unknown |
+| PATCH | `/provider/orgs/{id}` | `{name?, max_users?}`; the slug is immutable |
+| POST | `/provider/orgs/{id}/suspend` | deletes every session of the org's users at once; idempotent |
+| POST | `/provider/orgs/{id}/activate` | idempotent; revoked sessions stay revoked |
+
+- `max_users` defaults to 25 (1..10000). Lowering it below the current seat count is allowed and only blocks new seats.
+- `initial_admin` creates an `org_admin` with status `invited` and a 24-hour invite token in the same transaction as the org, and emails `{PUBLIC_BASE_URL}/invite/accept?token=...` after the commit. Accepting the invite is ORG-003.
+- Audit events: `org_created`, `user_invited`, `org_updated` (changed field names only), `org_suspended` (with `sessions_revoked`), `org_activated`.
