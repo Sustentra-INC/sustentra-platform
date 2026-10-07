@@ -13,7 +13,7 @@ vi.mock("../api", async () => {
   return { ...actual, validateInvite: vi.fn(), acceptInvite: vi.fn() };
 });
 
-import { validateInvite, acceptInvite } from "../api";
+import { ApiError, validateInvite, acceptInvite } from "../api";
 import { AcceptInviteForm } from "../AcceptInviteForm";
 
 const validateMock = validateInvite as unknown as ReturnType<typeof vi.fn>;
@@ -56,7 +56,9 @@ describe("AcceptInviteForm", () => {
     expect(screen.getByDisplayValue("sam@acme.com")).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "a-long-enough-password" } });
-    fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "a-long-enough-password" } });
+    fireEvent.change(screen.getByLabelText("Confirm password"), {
+      target: { value: "a-long-enough-password" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /activate account/i }));
 
     await waitFor(() => expect(acceptMock).toHaveBeenCalledWith("invite-abc", "a-long-enough-password"));
@@ -72,5 +74,26 @@ describe("AcceptInviteForm", () => {
     fireEvent.click(screen.getByRole("button", { name: /activate account/i }));
     expect(screen.getByRole("alert")).toHaveTextContent(/do not match/i);
     expect(acceptMock).not.toHaveBeenCalled();
+  });
+
+  it("shows the server's password-policy message on 422", async () => {
+    validateMock.mockResolvedValueOnce(INVITE);
+    acceptMock.mockRejectedValueOnce(
+      new ApiError(
+        422,
+        "Password does not meet the requirements",
+        {
+          detail: "Password does not meet the requirements",
+          violations: ["Password is too common; choose something less predictable."],
+        },
+        null,
+      ),
+    );
+    render(<AcceptInviteForm />);
+    await waitFor(() => expect(screen.getByText(/join acme foods/i)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "password12345" } });
+    fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "password12345" } });
+    fireEvent.click(screen.getByRole("button", { name: /activate account/i }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(/too common/i));
   });
 });

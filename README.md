@@ -136,3 +136,17 @@ Never commit `local-data/`, `local-samples/`, private evidence documents, parser
 - An admin cannot demote or suspend themselves (409), and an org always keeps at least one active `org_admin` (409). The active admins are row-locked first, so two admins demoting each other at the same moment cannot leave the org with none.
 - A session only authenticates while the user is `active` and their org is `active`.
 - Audit events: `user_role_changed` (from/to), `user_suspended` (sessions revoked), `user_reactivated`.
+
+## Invites (ORG-003 / MVP-19)
+
+| Method | Path | Who | Notes |
+|---|---|---|---|
+| POST | `/api/v1/orgs/{org_id}/invites` | org admin (own org), provider admin | `{email, role, first_name, last_name}` -> 201; email already in the org -> 409; no free seat -> 422 |
+| POST | `/api/v1/orgs/{org_id}/invites/{user_id}/resend` | same | only while the user is `invited` (else 409); earlier links stop working |
+| GET | `/api/v1/auth/invite/validate?token=` | public | `{email, first_name, last_name, org_name, org_slug}` for the accept page |
+| POST | `/api/v1/auth/invite/accept` | public | `{token, password}`; password policy -> 422 (link still usable); sets the password and status `active`; no session - the user signs in with password + OTP |
+
+- The invited user is created straight away (status `invited`, `invited_by` = who sent it) so the seat is reserved. The org row is locked while seats are counted, so two invites cannot take the last seat together.
+- Links last 24 hours and work once. Any unusable link (unknown, expired, used, user suspended, org suspended) gets the same 400.
+- The email is sent after the transaction commits. An org created with `initial_admin` (ORG-001) uses the same invite path.
+- Audit events: `user_invited`, `user_invite_resent`, `invite_accepted`.
