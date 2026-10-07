@@ -3,3 +3,8 @@
 .env*.local
 .vercel
 *.tsbuildinfo
+
+# Playwright (TEST-002)
+/playwright-report/
+/test-results/
+/e2e/.state.json

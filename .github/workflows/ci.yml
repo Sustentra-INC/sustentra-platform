@@ -108,3 +108,72 @@ jobs:
         run: npm run build
         env:
           NEXT_PUBLIC_BACKEND_API_URL: /api
+
+  e2e:
+    # TEST-002: one Playwright smoke test of the whole account lifecycle against the
+    # real stack - db, mailpit and api from docker-compose.yml, the web app as a
+    # production build on the runner (faster and closer to prod than `next dev`).
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start db, mailpit and api
+        run: |
+          docker compose up -d --build --wait db mailpit
+          docker compose up -d --build api
+          # The api runs migrations first; it is up when /auth/me answers 401.
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8000/api/v1/auth/me || true)
+            [ "$code" = "401" ] && exit 0
+            sleep 2
+          done
+          docker compose logs api
+          exit 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build and start the web app
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          nohup npm start -- --port 3000 > /tmp/web.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:3000/sign-in -o /dev/null && exit 0
+            sleep 2
+          done
+          cat /tmp/web.log
+          exit 1
+        env:
+          BACKEND_INTERNAL_URL: http://localhost:8000
+
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Smoke test
+        working-directory: frontend
+        run: npm run test:e2e
+        env:
+          E2E_BASE_URL: http://localhost:3000
+          E2E_MAILPIT_URL: http://localhost:8025
+
+      - name: Logs on failure
+        if: failure()
+        run: |
+          docker compose logs api | tail -200
+          tail -100 /tmp/web.log || true
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 14
