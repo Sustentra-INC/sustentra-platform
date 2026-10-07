@@ -248,6 +248,27 @@ Then sign in at `https://<domain>/provider-admin/login` with password + email OT
 While SES is in the sandbox, the admin's email must be in `ses_sandbox_recipients`
 (see above) or the OTP is never delivered.
 
+## S1 data ownership (SEC-001)
+
+Every S1 workpaper endpoint under `/api/v1` needs a signed-in session, and data is
+scoped to the caller's organization: `org_admin` / `org_member` read and write their own
+org's documents, pipeline runs, reviews and approved evidence; a `provider_admin` can read
+every org's data (support) but not upload, process or review. Another org's records
+answer 404.
+
+S1 records written before SEC-001 have no owner, so only a provider admin sees them. To
+hand one engagement's records (and its uploaded files) to an organization:
+
+```bash
+sudo docker compose -f /opt/sustentra/docker-compose.prod.yml --env-file /opt/sustentra/.env \
+  exec api python -m backend.app.cli claim-s1-data --engagement-id ENG-123 --org-slug acme --dry-run
+# then the same without --dry-run
+```
+
+It only stamps records that have no owner (records owned by another org are reported and
+left alone), moves the uploaded files into the org's folder, and keeps a
+`<file>.bak-<timestamp>` copy of each JSONL file it rewrites.
+
 ## CI/CD (MVP-5)
 
 | Workflow | Trigger | What it does | AWS role |

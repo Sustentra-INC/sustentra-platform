@@ -1,7 +1,10 @@
 from datetime import datetime, timezone
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+
+from backend.app.api.s1_access import s1_reader, s1_writer
+from backend.app.core.auth import CurrentUser
 
 router = APIRouter(prefix="/v1", tags=["processing-runs"])
 
@@ -12,7 +15,11 @@ class StartProcessingRunRequest(BaseModel):
 
 
 @router.post("/documents/{document_id}/processing-runs")
-def start_processing_run(document_id: str, payload: StartProcessingRunRequest) -> dict[str, str | None]:
+def start_processing_run(
+    document_id: str,
+    payload: StartProcessingRunRequest,
+    user: CurrentUser = Depends(s1_writer),
+) -> dict[str, str | None]:
     return {
         "run_id": "run_demo_001",
         "document_id": document_id,
@@ -26,7 +33,7 @@ def start_processing_run(document_id: str, payload: StartProcessingRunRequest) -
 
 
 @router.get("/processing-runs/{run_id}")
-def get_processing_run(run_id: str) -> dict[str, str | None]:
+def get_processing_run(run_id: str, user: CurrentUser = Depends(s1_reader)) -> dict[str, str | None]:
     return {
         "run_id": run_id,
         "document_id": "doc_demo_001",

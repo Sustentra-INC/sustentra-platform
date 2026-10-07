@@ -1,7 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
+
+from backend.app.api.s1_access import (
+    evidence_free_or_own,
+    org_of,
+    require_visible,
+    s1_reader,
+    s1_writer,
+    visible,
+)
+from backend.app.core.auth import CurrentUser
 
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
@@ -12,6 +22,10 @@ router = APIRouter(prefix="/v1", tags=["documents"])
 _upload_service = DocumentUploadService()
 _pipeline_service = PipelineOrchestrationService()
 _storage_service = _upload_service.storage_service
+
+
+def current_upload_service() -> DocumentUploadService:
+    return _upload_service
 
 
 def configure_services(
@@ -38,7 +52,8 @@ class CreateDocumentRequest(BaseModel):
     storage_uri: str
     document_role: str
     document_type: str | None = None
-    uploaded_by: str
+    # Ignored: the uploader is the signed-in user (SEC-001). Kept for older clients.
+    uploaded_by: str | None = None
     evidence_id: str | None = None
     processing_status: str = "queued"
 
@@ -50,8 +65,26 @@ class ProcessUploadedDocumentRequest(BaseModel):
     persist_run: bool = True
 
 
+def _uploader(user: CurrentUser) -> str:
+    return user.email
+
+
+def _require_evidence_slot(evidence_id: str | None, user: CurrentUser) -> None:
+    # Attaching a document to another org's evidence must look like it does not exist.
+    if evidence_id and not evidence_free_or_own(evidence_id, user):
+        raise HTTPException(status_code=404, detail="Evidence not found.")
+
+
 @router.post("/engagements/{engagement_id}/documents")
-def create_document(engagement_id: str, payload: CreateDocumentRequest) -> dict:
+def create_document(
+    engagement_id: str,
+    payload: CreateDocumentRequest,
+    user: CurrentUser = Depends(s1_writer),
+) -> dict:
+    org_id = org_of(user)
+    _require_evidence_slot(payload.evidence_id, user)
+    if not _storage_service.is_owned_by(payload.storage_uri, org_id):
+        raise HTTPException(status_code=400, detail="storage_uri must point to a file uploaded by your organization.")
     try:
         return _upload_service.create_document_metadata(
             engagement_id=engagement_id,
@@ -59,10 +92,11 @@ def create_document(engagement_id: str, payload: CreateDocumentRequest) -> dict:
             mime_type=payload.mime_type,
             storage_uri=payload.storage_uri,
             document_role=payload.document_role,
-            uploaded_by=payload.uploaded_by,
+            uploaded_by=_uploader(user),
             evidence_id=payload.evidence_id,
             document_type=payload.document_type,
             processing_status=payload.processing_status,
+            org_id=org_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -73,10 +107,13 @@ async def upload_document(
     engagement_id: str,
     file: UploadFile = File(...),
     document_role: str = Form("source_evidence"),
-    uploaded_by: str = Form(...),
+    uploaded_by: str | None = Form(None),  # ignored: the signed-in user uploads (SEC-001)
     evidence_id: str | None = Form(None),
     document_type: str | None = Form(None),
+    user: CurrentUser = Depends(s1_writer),
 ) -> dict:
+    org_id = org_of(user)
+    _require_evidence_slot(evidence_id, user)
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file name is required.")
     try:
@@ -88,35 +125,33 @@ async def upload_document(
             content=content,
             mime_type=mime_type,
             document_role=document_role,
-            uploaded_by=uploaded_by,
+            uploaded_by=_uploader(user),
             evidence_id=evidence_id,
             document_type=document_type,
+            org_id=org_id,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/engagements/{engagement_id}/documents")
-def list_documents(engagement_id: str) -> dict:
+def list_documents(engagement_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
     return {
         "engagement_id": engagement_id,
-        "items": _upload_service.list_documents(engagement_id),
+        "items": visible(_upload_service.list_documents(engagement_id), user),
     }
 
 
 @router.get("/documents/{document_id}")
-def get_document(document_id: str) -> dict:
-    document = _upload_service.get_document(document_id)
-    if document is None:
-        raise HTTPException(status_code=404, detail="Document not found.")
-    return document
+def get_document(document_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
+    return require_visible(_upload_service.get_document(document_id), user, "Document not found.")
 
 
 @router.get("/evidence/{evidence_id}/documents")
-def list_evidence_documents(evidence_id: str) -> dict:
+def list_evidence_documents(evidence_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
     return {
         "evidence_id": evidence_id,
-        "items": _upload_service.list_documents_by_evidence(evidence_id),
+        "items": visible(_upload_service.list_documents_by_evidence(evidence_id), user),
     }
 
 
@@ -124,12 +159,14 @@ def list_evidence_documents(evidence_id: str) -> dict:
 def process_uploaded_document(
     document_id: str,
     payload: ProcessUploadedDocumentRequest,
+    user: CurrentUser = Depends(s1_writer),
 ) -> dict:
-    document = _upload_service.get_document(document_id)
-    if document is None:
-        raise HTTPException(status_code=404, detail="Document not found.")
+    document = require_visible(_upload_service.get_document(document_id), user, "Document not found.")
+    org_id = org_of(user)
 
     storage_uri = document.get("storage_uri")
+    if not _storage_service.is_owned_by(str(storage_uri), org_id):
+        raise HTTPException(status_code=400, detail="Stored document file is missing.")
     try:
         local_path = _storage_service.resolve_storage_uri(str(storage_uri))
     except ValueError as exc:
@@ -155,6 +192,7 @@ def process_uploaded_document(
             include_optional=payload.include_optional,
             include_deprecated=payload.include_deprecated,
             persist_run=payload.persist_run,
+            org_id=org_id,
         )
     except ValueError as exc:
         _upload_service.update_processing_status(document_id, "failed")

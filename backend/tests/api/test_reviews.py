@@ -5,6 +5,7 @@ from backend.app.api import reviews
 from backend.app.main import app
 from backend.app.repositories.review_repository import InMemoryReviewDecisionRepository
 from backend.app.services.review_decision_service import ReviewDecisionService
+from backend.tests.api.conftest import ORG_A, make_user
 
 
 @pytest.fixture
@@ -50,7 +51,9 @@ def test_put_review_stores_accepted_decision(client):
     assert body["reviewed_unit"] == "MMBtu"
     assert "approved_value" not in body
     assert "approved_unit" not in body
-    assert body["reviewer_id"] == "reviewer-1"
+    # the reviewer is the signed-in user, not the client-supplied reviewer_id (SEC-001)
+    assert body["reviewer_id"] == make_user().email
+    assert body["org_id"] == str(ORG_A)
 
 
 def test_put_review_stores_edited_decision(client):
@@ -133,5 +136,5 @@ def test_backward_compatible_aliases(client):
     )
     assert response.status_code == 200
     body = response.json()
-    assert body["reviewer_id"] == "legacy-reviewer"
+    assert body["reviewer_id"] == make_user().email
     assert "reviewed_by" not in body

@@ -37,7 +37,6 @@ LEGACY_IDENTITY_ROUTERS = (auth.router, users.router, clients.router)
 # Served at /v1/* (local, NEXT_PUBLIC_BACKEND_API_URL=http://localhost:8000) and at
 # /api/v1/* (prod via Caddy, NEXT_PUBLIC_BACKEND_API_URL=https://app.sustentra.com/api).
 S1_ROUTERS = (
-    audit.router,
     engagements.router,
     documents.router,
     processing_runs.router,
@@ -47,7 +46,8 @@ S1_ROUTERS = (
     reviews.router,
     assistant.router,
 )
-LEGACY_ROUTERS = LEGACY_IDENTITY_ROUTERS + S1_ROUTERS
+# audit.router reads the legacy JSONL identity system, so it stays legacy/dev-only.
+LEGACY_ROUTERS = LEGACY_IDENTITY_ROUTERS + (audit.router,) + S1_ROUTERS
 
 
 @asynccontextmanager
@@ -98,15 +98,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(api_v1.router)
 
-    # TODO(AUTH-005 follow-up): once login works end to end, require a session on
-    # these and scope them to the user's org (integration doc: "tenant-scoped").
+    # SEC-001: every S1 route requires a session and is scoped to the caller's org
+    # (api/s1_access.py).
     for router in S1_ROUTERS:
         app.include_router(router, prefix="/api")
 
-    # Legacy (pre-AUTH-001) routes at /v1/*, kept for local development and
-    # existing tests until the new /api/v1 endpoints replace them.
-    for router in LEGACY_ROUTERS:
-        app.include_router(router)
+    # Legacy (pre-AUTH-001) routes at /v1/*, for local development and existing tests
+    # only - never mounted on staging/prod (Caddy does not route them there either).
+    if not settings.is_production_like:
+        for router in LEGACY_ROUTERS:
+            app.include_router(router)
 
     return app
 

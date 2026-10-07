@@ -86,6 +86,8 @@ In `backend` mode the frontend starts **completely empty**: no engagement, no do
 
 The workpaper currently has no login of its own (fixture demo). Once Jerome's auth lands, the product at `/` should sit behind the session guard like the admin pages, and the `/v1` calls above must be **tenant-scoped** (engagement/org filtered) so data is isolated. The seam already sends the bearer token via `lib/api/client.ts`.
 
+> **SEC-001 (done):** every `/api/v1` S1 call now requires the `__Host-session` cookie (401 without it) and is scoped to the caller's org (another org's records answer 404). `uploaded_by` / `reviewer_id` in request bodies are ignored; the signed-in user is recorded. A `provider_admin` can read but gets 403 on writes. Same-origin `fetch` in prod sends the cookie automatically; local dev across ports needs `credentials: "include"` (FE-007).
+
 ## TL;DR for the backend team
 
 1. The frontend is done and wired for the **evidence → extraction → review** chain — those endpoints already exist, so that half can go live now (confirm shapes + tenant-scope).

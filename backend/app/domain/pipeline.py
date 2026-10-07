@@ -50,6 +50,9 @@ class PipelineRun(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     halt_reason: HaltReason | None = None
+    # Owning organization (SEC-001). None = recorded before org scoping; only a
+    # provider_admin can see such records until they are claimed (cli claim-s1-data).
+    org_id: str | None = None
     created_at: str
     completed_at: str | None = None
     artifacts: dict[str, str | None] = Field(default_factory=dict)
