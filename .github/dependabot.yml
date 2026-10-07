@@ -1,0 +1,45 @@
+# FE-008: controlled dependency upgrades instead of "latest" in package.json.
+# Weekly PRs into staging (CI must pass, OPS-003). Minor + patch updates are grouped
+# into one PR per ecosystem; each major upgrade gets its own PR to review on its own.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /frontend
+    target-branch: staging
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies, frontend]
+
+  - package-ecosystem: pip
+    directory: /backend
+    target-branch: staging
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-and-patch:
+        update-types: [minor, patch]
+    labels: [dependencies, backend]
+
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: staging
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    labels: [dependencies, ci]
+
+  - package-ecosystem: docker
+    directories: [/backend, /frontend]
+    target-branch: staging
+    schedule:
+      interval: monthly
+    labels: [dependencies, docker]
