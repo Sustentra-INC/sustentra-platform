@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import type { EvidenceItem } from "../types";
+import { MAX_UPLOAD_MB } from "../constants/uploads";
 
 /**
  * Upload (screen 1). The drop area takes the client's files; a prepared invoice
@@ -103,7 +104,9 @@ export function UploadScreen({
         >
           <div>
             <h3>Or drop your own files</h3>
-            <div className="s1-muted">Each file appears as a row in the Evidence Workspace as it uploads.</div>
+            <div className="s1-muted">
+              Each file appears as a row in the Evidence Workspace as it uploads. Up to {MAX_UPLOAD_MB} MB per file.
+            </div>
           </div>
           <div className="s1-upload-drop__actions">
             <label className="s1-button">

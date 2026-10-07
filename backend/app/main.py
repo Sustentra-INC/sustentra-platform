@@ -25,7 +25,7 @@ from .api import v1 as api_v1
 from .core.config import Settings, get_settings
 from .core.db import dispose_engine
 from .core.rate_limit import limiter
-from .core.security import JSONContentTypeMiddleware, OriginCheckMiddleware
+from .core.security import JSONContentTypeMiddleware, OriginCheckMiddleware, UploadSizeLimitMiddleware
 
 APP_TITLE = "Sustentra Evidence Extraction API"
 
@@ -76,6 +76,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Middleware: the LAST added runs FIRST. Order of execution:
     #   request logging (observability) -> CORS (local only) -> origin check -> JSON content type
+    #   -> upload size limit
+    app.state.max_upload_bytes = settings.max_upload_bytes  # the upload route checks the exact file size
+    app.add_middleware(UploadSizeLimitMiddleware, max_bytes=settings.max_upload_bytes)
     app.add_middleware(JSONContentTypeMiddleware)
     app.add_middleware(OriginCheckMiddleware, allowed_origins=settings.allowed_origins)
     if not settings.is_production_like:

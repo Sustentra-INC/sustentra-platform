@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
@@ -15,6 +15,7 @@ from backend.app.api.s1_access import (
     visible,
 )
 from backend.app.core.auth import CurrentUser
+from backend.app.core.security import upload_too_large_detail
 
 from backend.app.services.document_file_types import served_type
 from backend.app.services.document_upload_service import DocumentUploadService
@@ -108,6 +109,7 @@ def create_document(
 
 @router.post("/engagements/{engagement_id}/documents/upload")
 async def upload_document(
+    request: Request,
     engagement_id: str,
     file: UploadFile = File(...),
     document_role: str = Form("source_evidence"),
@@ -120,8 +122,13 @@ async def upload_document(
     _require_evidence_slot(evidence_id, user)
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file name is required.")
+    max_bytes = int(request.app.state.max_upload_bytes)  # INFRA-007, set by create_app
+    if file.size is not None and file.size > max_bytes:
+        raise HTTPException(status_code=413, detail=upload_too_large_detail(max_bytes))
     try:
         content = await file.read()
+        if len(content) > max_bytes:
+            raise HTTPException(status_code=413, detail=upload_too_large_detail(max_bytes))
         mime_type = file.content_type or "application/octet-stream"
         return _upload_service.upload_document(
             engagement_id=engagement_id,

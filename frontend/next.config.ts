@@ -9,6 +9,12 @@ const API_URL =
 const nextConfig: NextConfig = {
   // Self-contained server bundle for the Docker image (node server.js).
   output: "standalone",
+  experimental: {
+    // The dev rewrite below buffers request bodies (10 MB by default), which cut off
+    // document uploads. Match the upload limit (INFRA-007: 25 MB + multipart envelope).
+    // Prod is unaffected: Caddy sends /api/* straight to the API.
+    proxyClientMaxBodySize: "26mb",
+  },
   async rewrites() {
     return [{ source: "/api/v1/:path*", destination: `${API_URL}/api/v1/:path*` }];
   },

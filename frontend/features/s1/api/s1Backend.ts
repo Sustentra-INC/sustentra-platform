@@ -8,6 +8,7 @@ import {
 } from "../adapters/fieldAdapter";
 import type { EvidenceItem, ExtractedField } from "../types";
 import { HALT_REASONS } from "../constants/copy";
+import { MAX_UPLOAD_BYTES, UPLOAD_TOO_LARGE } from "../constants/uploads";
 
 export interface PipelineRunSummary {
   evidence_id: string;
@@ -117,7 +118,17 @@ export async function listWorkspaceEvidence(engagementId: string): Promise<{
   };
 }
 
+/** Thrown before an upload is sent when the file is over the size limit. */
+export class FileTooLargeError extends Error {
+  constructor() {
+    super(UPLOAD_TOO_LARGE);
+    this.name = "FileTooLargeError";
+  }
+}
+
 export async function uploadDocument(engagementId: string, file: File): Promise<BackendDocumentLike> {
+  // Fail fast instead of sending the bytes only to have the proxy or API refuse them.
+  if (file.size > MAX_UPLOAD_BYTES) throw new FileTooLargeError();
   const body = new FormData();
   body.append("file", file);
   body.append("document_role", "source_evidence");
@@ -181,6 +192,8 @@ export function signInAgainPath(next = "/"): string | null {
 
 export function userFacingApiError(error: unknown): string {
   if (!(error instanceof Error)) return "Backend request failed.";
+  // 413 from the API (readable detail) or from Caddy (no body): same message.
+  if (error instanceof ApiError && error.status === 413) return UPLOAD_TOO_LARGE;
   if (error.message.includes(HALT_REASONS.unsupportedFormat)) return HALT_REASONS.unsupportedFormat;
   if (error.message.includes(HALT_REASONS.unreadable)) return HALT_REASONS.unreadable;
   return error.message;
