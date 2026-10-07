@@ -38,6 +38,22 @@ describe("apiMaybe (FE-007)", () => {
 });
 
 describe("api", () => {
+  it("turns FastAPI validation errors into a readable detail", async () => {
+    fetchMock.mockResolvedValueOnce(
+      respond(422, {
+        detail: [
+          { loc: ["body", "initial_admin", "email"], msg: "Value error, must be a valid email address" },
+          { loc: ["body", "slug"], msg: "String should match pattern" },
+          "plain",
+        ],
+      }),
+    );
+    const error = await api("/provider/orgs", { method: "POST", body: {} }).catch((e: unknown) => e);
+    expect((error as ApiError).detail).toBe(
+      "initial_admin.email: Value error, must be a valid email address; slug: String should match pattern; plain",
+    );
+  });
+
   it("calls the same-origin /api/v1 path with the session cookie", async () => {
     fetchMock.mockResolvedValueOnce(respond(200, {}));
     await api("/auth/me");

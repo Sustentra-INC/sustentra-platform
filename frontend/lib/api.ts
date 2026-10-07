@@ -64,7 +64,8 @@ export async function api<T>(path: string, options: ApiOptions = {}): Promise<T>
       if (parsed && typeof parsed === "object" && "detail" in parsed) {
         const d = (parsed as { detail: unknown }).detail;
         if (typeof d === "string") detail = d;
-        else if (Array.isArray(d)) detail = d.join(", ");
+        // FastAPI 422s: [{loc, msg, type}, ...] -> "body.slug: String should match pattern ..."
+        else if (Array.isArray(d)) detail = d.map(validationMessage).join("; ");
       }
     } catch {
       // Non-JSON error body — keep the status-only message.
@@ -87,4 +88,13 @@ export async function apiMaybe<T>(path: string, options: ApiOptions = {}): Promi
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
   }
+}
+
+function validationMessage(item: unknown): string {
+  if (item && typeof item === "object" && "msg" in item) {
+    const { loc, msg } = item as { loc?: unknown; msg: unknown };
+    const field = Array.isArray(loc) ? loc.filter((p) => p !== "body").join(".") : "";
+    return field ? `${field}: ${String(msg)}` : String(msg);
+  }
+  return String(item);
 }
