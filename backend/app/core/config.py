@@ -48,7 +48,11 @@ class Settings(BaseSettings):
     # mirrors it in features/s1/constants/uploads.ts.
     max_upload_mb: int = Field(default=25, ge=1, le=200)
 
-    # Per-IP limit shared by all /api/v1/auth/* endpoints.
+    # Per-session limit for GET /api/v1/auth/me (AUTH-007): called on every page
+    # render, so it is kept out of the brute-force bucket below.
+    session_rate_limit: str = "600/minute"
+
+    # Per-IP limit shared by all /api/v1/auth/* endpoints except /me.
     auth_rate_limit: str = "100/5 minutes"
 
     @field_validator("allowed_origins_csv")

@@ -1,4 +1,6 @@
-"""/api/v1/auth/* - every endpoint here MUST use @auth_rate_limit and take `request`.
+"""/api/v1/auth/* - every endpoint here MUST be rate limited and take `request`:
+@auth_rate_limit (shared per-IP brute-force bucket) for everything except GET /me,
+which uses @session_rate_limit (per session, much higher; AUTH-007).
 
 AUTH-004: GET /me, POST /logout
 AUTH-005: POST /login, POST /login/verify, POST /login/resend
@@ -19,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.auth import CurrentUser, get_current_user
 from ...core.db import get_db_session, get_sessionmaker_dependency
-from ...core.rate_limit import auth_rate_limit
+from ...core.rate_limit import auth_rate_limit, session_rate_limit
 from ...services import login as login_service
 from ...services import password_reset as reset_service
 from ...services.audit_log import write_audit_event
@@ -161,7 +163,7 @@ async def password_reset_confirm(
 # --- AUTH-004: session ----------------------------------------------------------------
 
 @router.get("/me")
-@auth_rate_limit
+@session_rate_limit
 async def me(request: Request, user: CurrentUser = Depends(get_current_user)) -> JSONResponse:
     return JSONResponse(
         {
