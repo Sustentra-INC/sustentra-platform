@@ -37,6 +37,10 @@ interface ExtractionReviewProps {
     span: ReviewSpan | null,
     onPickBox?: (box: { x: number; y: number; w: number; h: number }) => void
   ) => ReactNode | null;
+  /** Who the record names for a human action. */
+  reviewerName?: string;
+  /** Records an accept on the backend; on failure the card goes back to "to review". */
+  onPersistAccept?: (value: ReviewValue) => Promise<void>;
 }
 
 const SCOPE_LABEL: Record<ScopePlacement, string> = {
@@ -49,7 +53,18 @@ const SCOPE_LABEL: Record<ScopePlacement, string> = {
 
 const REVIEW_CAP = 60; // stressor render cap; the count still shows the true total
 
-export function ExtractionReview({ engagement, values, onValuesChange, initialDocumentId, initialNodeKey, onSaveAsk, onBack, renderPage }: ExtractionReviewProps) {
+export function ExtractionReview({
+  engagement,
+  values,
+  onValuesChange,
+  initialDocumentId,
+  initialNodeKey,
+  onSaveAsk,
+  onBack,
+  renderPage,
+  reviewerName = "M. Osei",
+  onPersistAccept,
+}: ExtractionReviewProps) {
   // Review data lives in app state (via onValuesChange); selection below is
   // local, ephemeral UI. So accepts/corrections/requests survive navigation.
   const items = values;
@@ -125,7 +140,7 @@ export function ExtractionReview({ engagement, values, onValuesChange, initialDo
                 ...x.record,
                 {
                   kind: "human",
-                  actor: "M. Osei",
+                  actor: reviewerName,
                   at: now,
                   action: "accepted as read",
                   // Carry the S1->S2 handoff id: Accept is what mints the
@@ -139,6 +154,10 @@ export function ExtractionReview({ engagement, values, onValuesChange, initialDo
     );
     flash("Accepted · number, unit, field, facility and period confirmed");
     advanceFrom(v);
+    onPersistAccept?.(v).catch((error: unknown) => {
+      onValuesChange((cur) => cur.map((x) => (x.id === v.id ? v : x)));
+      flash(`Not saved, back to review. ${error instanceof Error ? error.message : ""}`.trim());
+    });
   }
 
   function advanceFrom(v: ReviewValue) {
@@ -198,7 +217,7 @@ export function ExtractionReview({ engagement, values, onValuesChange, initialDo
             ? {
                 ...x,
                 reviewState: "requested",
-                record: [...x.record, { kind: "human", actor: "M. Osei", at: now, action: "requested from client" }],
+                record: [...x.record, { kind: "human", actor: reviewerName, at: now, action: "requested from client" }],
               }
             : x
         )
@@ -463,7 +482,11 @@ function SourcePane({
       <div className="s1-xr-src-head">
         <div className="s1-xr-src-fn">{value.filename}</div>
         <div className="s1-muted">
-          {value.span ? "Opened at the page, value highlighted." : "Highlight unavailable for this value."}
+          {realPage && value.reviewToken
+            ? "The uploaded document. Check the value against it."
+            : value.span
+              ? "Opened at the page, value highlighted."
+              : "Highlight unavailable for this value."}
         </div>
         {value.sourceKind !== "text" ? (
           <div className="s1-xr-pager">

@@ -115,6 +115,9 @@ def test_workbook_example_end_to_end_location_and_market_based() -> None:
     assert comparisons["scope2_market_total"]["status"] == "within_tolerance"
     assert comparisons["scope2_location_total"]["workbook_row"] == 29
     assert result["needs_input"] == [] and result["awaiting_review"] == []
+    # Each facility's MWh names the reviewed bills it came from.
+    facility_a = next(i for i in location["details"]["inputs"] if i["fuel"] == "Facility A")
+    assert facility_a["quantity"] == 1200 and [d["document_id"] for d in facility_a["documents"]] == ["BILL-A1", "BILL-A2"]
 
 
 # --- reviewed values only ------------------------------------------------------------------

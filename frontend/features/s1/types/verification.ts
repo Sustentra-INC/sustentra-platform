@@ -41,6 +41,32 @@ export interface VerificationRow {
   delta: string | null;
   checkOutcome: CheckOutcome;
   checkReason: string;
+  /** The audit trail behind the number, when the backend computed it. */
+  working?: WorkingSpec;
+}
+
+/** "Show working": formula, inputs with their source, factors, result, references. */
+export interface WorkingSpec {
+  formula: string;
+  inputs: { label: string; value: string; source?: string }[];
+  factor?: { value: string; source: string };
+  /** Several factors (one per gas or facility) when the calculation uses more than one. */
+  factors?: { label: string; value: string; source: string }[];
+  result?: string;
+  references: string[];
+  note?: string;
+}
+
+/** The materiality tiles above the results table. */
+export interface MaterialityFigures {
+  total: number;
+  /** What the total is made of, e.g. "Scope 1 + Scope 2 (reported)". */
+  totalBasis: string;
+  tolerancePct: number;
+  misstatement: number;
+  uncorrected: number;
+  /** One sentence on what the misstatement covers and what is still open. */
+  note: string;
 }
 
 /* ---- Frontend-owned dispositions ---- */

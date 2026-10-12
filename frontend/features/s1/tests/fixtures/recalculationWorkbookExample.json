@@ -1,0 +1,1441 @@
+{
+ "engagement_id": "ENG-1",
+ "gwp_set": "AR5",
+ "reporting_period": {
+  "start": "2025-01-01",
+  "end": "2025-12-31"
+ },
+ "categories": {
+  "stationary_combustion": {
+   "category": "stationary_combustion",
+   "lines": [
+    {
+     "key": "Natural Gas",
+     "equations": {
+      "CO2": "Eq 1",
+      "CH4": "Eq 1",
+      "N2O": "Eq 1"
+     },
+     "mass_t": {
+      "CH4": 0.0281,
+      "N2O": 0.00281,
+      "CO2": 1490.986
+     },
+     "steps": [
+      {
+       "label": "CO2 (Eq 1)",
+       "formula": "Fuel (mmBtu) x EF1",
+       "inputs": {
+        "fuel energy": {
+         "value": 28100.0,
+         "unit": "mmBtu",
+         "source": null
+        },
+        "EF": {
+         "value": 53.06,
+         "unit": "kg CO2 per mmBtu",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 1, row 38"
+        }
+       },
+       "result": 1490.986,
+       "result_unit": "t"
+      },
+      {
+       "label": "CH4 (Eq 1)",
+       "formula": "Fuel (mmBtu) x EF1",
+       "inputs": {
+        "fuel energy": {
+         "value": 28100.0,
+         "unit": "mmBtu",
+         "source": null
+        },
+        "EF": {
+         "value": 1.0,
+         "unit": "g CH4 per mmBtu",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 1, row 38"
+        }
+       },
+       "result": 0.0281,
+       "result_unit": "t"
+      },
+      {
+       "label": "N2O (Eq 1)",
+       "formula": "Fuel (mmBtu) x EF1",
+       "inputs": {
+        "fuel energy": {
+         "value": 28100.0,
+         "unit": "mmBtu",
+         "source": null
+        },
+        "EF": {
+         "value": 0.1,
+         "unit": "g N2O per mmBtu",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 1, row 38"
+        }
+       },
+       "result": 0.00281,
+       "result_unit": "t"
+      }
+     ],
+     "flags": [
+      "fuel_auto_matched"
+     ],
+     "biogenic_co2_t": 0.0
+    }
+   ],
+   "total_mass_t": {
+    "CO2": 1490.986,
+    "CH4": 0.0281,
+    "N2O": 0.00281
+   },
+   "total_co2e_t": {
+    "CO2": 1490.986,
+    "CH4": 0.7867999999999999,
+    "N2O": 0.74465
+   },
+   "total_co2e": 1492.51745,
+   "gwp": {
+    "CO2": {
+     "value": 1.0,
+     "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 524 (IPCC AR5)"
+    },
+    "CH4": {
+     "value": 28.0,
+     "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 525 (IPCC AR5)"
+    },
+    "N2O": {
+     "value": 265.0,
+     "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 526 (IPCC AR5)"
+    }
+   },
+   "biogenic_co2_t": 0.0,
+   "steps": [
+    {
+     "label": "Total CO2 emissions, in mass",
+     "formula": "sum of all CO2 outputs",
+     "inputs": {
+      "Natural Gas": {
+       "value": 1490.986,
+       "unit": "t",
+       "source": null
+      }
+     },
+     "result": 1490.986,
+     "result_unit": "t"
+    },
+    {
+     "label": "Total CO2 emissions, in CO2e",
+     "formula": "total CO2 mass x GWP",
+     "inputs": {
+      "mass": {
+       "value": 1490.986,
+       "unit": "t",
+       "source": null
+      },
+      "GWP": {
+       "value": 1.0,
+       "unit": "",
+       "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 524 (IPCC AR5)"
+      }
+     },
+     "result": 1490.986,
+     "result_unit": "t CO2e"
+    },
+    {
+     "label": "Total CH4 emissions, in mass",
+     "formula": "sum of all CH4 outputs",
+     "inputs": {
+      "Natural Gas": {
+       "value": 0.0281,
+       "unit": "t",
+       "source": null
+      }
+     },
+     "result": 0.0281,
+     "result_unit": "t"
+    },
+    {
+     "label": "Total CH4 emissions, in CO2e",
+     "formula": "total CH4 mass x GWP",
+     "inputs": {
+      "mass": {
+       "value": 0.0281,
+       "unit": "t",
+       "source": null
+      },
+      "GWP": {
+       "value": 28.0,
+       "unit": "",
+       "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 525 (IPCC AR5)"
+      }
+     },
+     "result": 0.7867999999999999,
+     "result_unit": "t CO2e"
+    },
+    {
+     "label": "Total N2O emissions, in mass",
+     "formula": "sum of all N2O outputs",
+     "inputs": {
+      "Natural Gas": {
+       "value": 0.00281,
+       "unit": "t",
+       "source": null
+      }
+     },
+     "result": 0.00281,
+     "result_unit": "t"
+    },
+    {
+     "label": "Total N2O emissions, in CO2e",
+     "formula": "total N2O mass x GWP",
+     "inputs": {
+      "mass": {
+       "value": 0.00281,
+       "unit": "t",
+       "source": null
+      },
+      "GWP": {
+       "value": 265.0,
+       "unit": "",
+       "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 526 (IPCC AR5)"
+      }
+     },
+     "result": 0.74465,
+     "result_unit": "t CO2e"
+    },
+    {
+     "label": "Total stationary combustion emissions, in CO2e",
+     "formula": "CO2 in CO2e + CH4 in CO2e + N2O in CO2e",
+     "inputs": {
+      "CO2": {
+       "value": 1490.986,
+       "unit": "t CO2e",
+       "source": null
+      },
+      "CH4": {
+       "value": 0.7867999999999999,
+       "unit": "t CO2e",
+       "source": null
+      },
+      "N2O": {
+       "value": 0.74465,
+       "unit": "t CO2e",
+       "source": null
+      }
+     },
+     "result": 1492.51745,
+     "result_unit": "t CO2e"
+    }
+   ],
+   "flags": [
+    "fuel_auto_matched"
+   ],
+   "details": {
+    "inputs": [
+     {
+      "fuel": "Natural Gas",
+      "unit": "MMBtu",
+      "quantity": 28100.0,
+      "documents": [
+       {
+        "document_id": "GAS-1",
+        "record": "GAS-1.pdf",
+        "quantity": 28100.0,
+        "unit": "MMBtu",
+        "share_in_period": 1.0
+       }
+      ]
+     }
+    ]
+   },
+   "gwp_set": "AR5"
+  },
+  "mobile_combustion": null,
+  "purchased_electricity_location_based": {
+   "category": "purchased_electricity_location_based",
+   "lines": [
+    {
+     "key": "Facility A",
+     "equations": {
+      "CO2": "Emissions = MWh x EF",
+      "CH4": "Emissions = MWh x EF",
+      "N2O": "Emissions = MWh x EF"
+     },
+     "mass_t": {
+      "CO2": 131.17362629387378,
+      "CH4": 0.005987426404550444,
+      "N2O": 0.0005443114913227676
+     },
+     "steps": [
+      {
+       "label": "CO2 (electricity)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "electricity": {
+         "value": 1200.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (NYUP)": {
+         "value": 240.99,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 353"
+        }
+       },
+       "result": 289188.0,
+       "result_unit": "lb"
+      },
+      {
+       "label": "CO2 in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 289188.0,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 131.17362629387378,
+       "result_unit": "t"
+      },
+      {
+       "label": "CH4 (electricity)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "electricity": {
+         "value": 1200.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (NYUP)": {
+         "value": 0.011,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 353"
+        }
+       },
+       "result": 13.2,
+       "result_unit": "lb"
+      },
+      {
+       "label": "CH4 in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 13.2,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 0.005987426404550444,
+       "result_unit": "t"
+      },
+      {
+       "label": "N2O (electricity)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "electricity": {
+         "value": 1200.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (NYUP)": {
+         "value": 0.001,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 353"
+        }
+       },
+       "result": 1.2,
+       "result_unit": "lb"
+      },
+      {
+       "label": "N2O in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 1.2,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 0.0005443114913227676,
+       "result_unit": "t"
+      }
+     ],
+     "flags": [],
+     "biogenic_co2_t": 0.0
+    },
+    {
+     "key": "Facility B",
+     "equations": {
+      "CO2": "Emissions = MWh x EF",
+      "CH4": "Emissions = MWh x EF",
+      "N2O": "Emissions = MWh x EF"
+     },
+     "mass_t": {
+      "CO2": 215.8158775662019,
+      "CH4": 0.013063475791746423,
+      "N2O": 0.0018143716377425588
+     },
+     "steps": [
+      {
+       "label": "CO2 (electricity)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "electricity": {
+         "value": 800.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (RFCE)": {
+         "value": 594.74,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 355"
+        }
+       },
+       "result": 475792.0,
+       "result_unit": "lb"
+      },
+      {
+       "label": "CO2 in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 475792.0,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 215.8158775662019,
+       "result_unit": "t"
+      },
+      {
+       "label": "CH4 (electricity)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "electricity": {
+         "value": 800.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (RFCE)": {
+         "value": 0.036,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 355"
+        }
+       },
+       "result": 28.799999999999997,
+       "result_unit": "lb"
+      },
+      {
+       "label": "CH4 in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 28.799999999999997,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 0.013063475791746423,
+       "result_unit": "t"
+      },
+      {
+       "label": "N2O (electricity)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "electricity": {
+         "value": 800.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (RFCE)": {
+         "value": 0.005,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 355"
+        }
+       },
+       "result": 4.0,
+       "result_unit": "lb"
+      },
+      {
+       "label": "N2O in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 4.0,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 0.0018143716377425588,
+       "result_unit": "t"
+      }
+     ],
+     "flags": [],
+     "biogenic_co2_t": 0.0
+    }
+   ],
+   "total_mass_t": {
+    "CO2": 346.9895038600757,
+    "CH4": 0.01905090219629687,
+    "N2O": 0.0023586831290653264
+   },
+   "total_co2e_t": {
+    "CO2": 346.9895038600757,
+    "CH4": 0.5334252614963123,
+    "N2O": 0.6250510292023115
+   },
+   "total_co2e": 348.1479801507743,
+   "gwp": {
+    "CO2": {
+     "value": 1.0,
+     "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 524 (IPCC AR5)"
+    },
+    "CH4": {
+     "value": 28.0,
+     "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 525 (IPCC AR5)"
+    },
+    "N2O": {
+     "value": 265.0,
+     "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 526 (IPCC AR5)"
+    }
+   },
+   "biogenic_co2_t": 0.0,
+   "steps": [
+    {
+     "label": "Total CO2 emissions, in mass",
+     "formula": "sum of all CO2 outputs",
+     "inputs": {
+      "Facility A": {
+       "value": 131.17362629387378,
+       "unit": "t",
+       "source": null
+      },
+      "Facility B": {
+       "value": 215.8158775662019,
+       "unit": "t",
+       "source": null
+      }
+     },
+     "result": 346.9895038600757,
+     "result_unit": "t"
+    },
+    {
+     "label": "Total CO2 emissions, in CO2e",
+     "formula": "total CO2 mass x GWP",
+     "inputs": {
+      "mass": {
+       "value": 346.9895038600757,
+       "unit": "t",
+       "source": null
+      },
+      "GWP": {
+       "value": 1.0,
+       "unit": "",
+       "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 524 (IPCC AR5)"
+      }
+     },
+     "result": 346.9895038600757,
+     "result_unit": "t CO2e"
+    },
+    {
+     "label": "Total CH4 emissions, in mass",
+     "formula": "sum of all CH4 outputs",
+     "inputs": {
+      "Facility A": {
+       "value": 0.005987426404550444,
+       "unit": "t",
+       "source": null
+      },
+      "Facility B": {
+       "value": 0.013063475791746423,
+       "unit": "t",
+       "source": null
+      }
+     },
+     "result": 0.01905090219629687,
+     "result_unit": "t"
+    },
+    {
+     "label": "Total CH4 emissions, in CO2e",
+     "formula": "total CH4 mass x GWP",
+     "inputs": {
+      "mass": {
+       "value": 0.01905090219629687,
+       "unit": "t",
+       "source": null
+      },
+      "GWP": {
+       "value": 28.0,
+       "unit": "",
+       "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 525 (IPCC AR5)"
+      }
+     },
+     "result": 0.5334252614963123,
+     "result_unit": "t CO2e"
+    },
+    {
+     "label": "Total N2O emissions, in mass",
+     "formula": "sum of all N2O outputs",
+     "inputs": {
+      "Facility A": {
+       "value": 0.0005443114913227676,
+       "unit": "t",
+       "source": null
+      },
+      "Facility B": {
+       "value": 0.0018143716377425588,
+       "unit": "t",
+       "source": null
+      }
+     },
+     "result": 0.0023586831290653264,
+     "result_unit": "t"
+    },
+    {
+     "label": "Total N2O emissions, in CO2e",
+     "formula": "total N2O mass x GWP",
+     "inputs": {
+      "mass": {
+       "value": 0.0023586831290653264,
+       "unit": "t",
+       "source": null
+      },
+      "GWP": {
+       "value": 265.0,
+       "unit": "",
+       "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 526 (IPCC AR5)"
+      }
+     },
+     "result": 0.6250510292023115,
+     "result_unit": "t CO2e"
+    },
+    {
+     "label": "Total purchased electricity location based emissions, in CO2e",
+     "formula": "CO2 in CO2e + CH4 in CO2e + N2O in CO2e",
+     "inputs": {
+      "CO2": {
+       "value": 346.9895038600757,
+       "unit": "t CO2e",
+       "source": null
+      },
+      "CH4": {
+       "value": 0.5334252614963123,
+       "unit": "t CO2e",
+       "source": null
+      },
+      "N2O": {
+       "value": 0.6250510292023115,
+       "unit": "t CO2e",
+       "source": null
+      }
+     },
+     "result": 348.1479801507743,
+     "result_unit": "t CO2e"
+    }
+   ],
+   "flags": [],
+   "details": {
+    "inputs": [
+     {
+      "fuel": "Facility A",
+      "unit": "MWh",
+      "quantity": 1200.0,
+      "documents": [
+       {
+        "document_id": "BILL-A1",
+        "record": "BILL-A1.pdf",
+        "quantity": 700.0,
+        "unit": "MWh",
+        "share_in_period": 1.0
+       },
+       {
+        "document_id": "BILL-A2",
+        "record": "BILL-A2.pdf",
+        "quantity": 500.0,
+        "unit": "MWh",
+        "share_in_period": 1.0
+       }
+      ]
+     },
+     {
+      "fuel": "Facility B",
+      "unit": "MWh",
+      "quantity": 800.0,
+      "documents": [
+       {
+        "document_id": "BILL-B1",
+        "record": "BILL-B1.pdf",
+        "quantity": 800.0,
+        "unit": "MWh",
+        "share_in_period": 1.0
+       }
+      ]
+     }
+    ]
+   },
+   "gwp_set": "AR5"
+  },
+  "purchased_electricity_market_based": {
+   "category": "purchased_electricity_market_based",
+   "lines": [
+    {
+     "key": "Facility A",
+     "equations": {
+      "CO2": "Emissions = MWh x EF",
+      "CH4": "Emissions = MWh x EF",
+      "N2O": "Emissions = MWh x EF"
+     },
+     "mass_t": {
+      "CO2": 91.82153840571165,
+      "CH4": 0.004191198483185311,
+      "N2O": 0.0003810180439259374
+     },
+     "steps": [
+      {
+       "label": "Remainder MWh",
+       "formula": "electricity (MWh) x (1 - coverage %)",
+       "inputs": {
+        "electricity": {
+         "value": 1200.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "coverage": {
+         "value": 0.3,
+         "unit": "fraction",
+         "source": null
+        }
+       },
+       "result": 840.0,
+       "result_unit": "MWh"
+      },
+      {
+       "label": "CO2 (remainder)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "remainder": {
+         "value": 840.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (NYUP)": {
+         "value": 240.99,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 353"
+        }
+       },
+       "result": 202431.6,
+       "result_unit": "lb"
+      },
+      {
+       "label": "CO2 in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 202431.6,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 91.82153840571165,
+       "result_unit": "t"
+      },
+      {
+       "label": "CH4 (remainder)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "remainder": {
+         "value": 840.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (NYUP)": {
+         "value": 0.011,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 353"
+        }
+       },
+       "result": 9.24,
+       "result_unit": "lb"
+      },
+      {
+       "label": "CH4 in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 9.24,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 0.004191198483185311,
+       "result_unit": "t"
+      },
+      {
+       "label": "N2O (remainder)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "remainder": {
+         "value": 840.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (NYUP)": {
+         "value": 0.001,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 353"
+        }
+       },
+       "result": 0.84,
+       "result_unit": "lb"
+      },
+      {
+       "label": "N2O in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 0.84,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 0.0003810180439259374,
+       "result_unit": "t"
+      }
+     ],
+     "flags": [],
+     "biogenic_co2_t": 0.0
+    },
+    {
+     "key": "Facility B",
+     "equations": {
+      "CO2": "Emissions = MWh x EF",
+      "CH4": "Emissions = MWh x EF",
+      "N2O": "Emissions = MWh x EF"
+     },
+     "mass_t": {
+      "CO2": 151.07111429634134,
+      "CH4": 0.009144433054222497,
+      "N2O": 0.0012700601464197914
+     },
+     "steps": [
+      {
+       "label": "Remainder MWh",
+       "formula": "electricity (MWh) x (1 - coverage %)",
+       "inputs": {
+        "electricity": {
+         "value": 800.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "coverage": {
+         "value": 0.3,
+         "unit": "fraction",
+         "source": null
+        }
+       },
+       "result": 560.0,
+       "result_unit": "MWh"
+      },
+      {
+       "label": "CO2 (remainder)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "remainder": {
+         "value": 560.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (RFCE)": {
+         "value": 594.74,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 355"
+        }
+       },
+       "result": 333054.4,
+       "result_unit": "lb"
+      },
+      {
+       "label": "CO2 in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 333054.4,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 151.07111429634134,
+       "result_unit": "t"
+      },
+      {
+       "label": "CH4 (remainder)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "remainder": {
+         "value": 560.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (RFCE)": {
+         "value": 0.036,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 355"
+        }
+       },
+       "result": 20.16,
+       "result_unit": "lb"
+      },
+      {
+       "label": "CH4 in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 20.16,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 0.009144433054222497,
+       "result_unit": "t"
+      },
+      {
+       "label": "N2O (remainder)",
+       "formula": "MWh x EF",
+       "inputs": {
+        "remainder": {
+         "value": 560.0,
+         "unit": "MWh",
+         "source": null
+        },
+        "EF (RFCE)": {
+         "value": 0.005,
+         "unit": "lb per MWh",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 6, row 355"
+        }
+       },
+       "result": 2.8000000000000003,
+       "result_unit": "lb"
+      },
+      {
+       "label": "N2O in metric tons",
+       "formula": "lb / 2,204.62",
+       "inputs": {
+        "emissions": {
+         "value": 2.8000000000000003,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 0.0012700601464197914,
+       "result_unit": "t"
+      }
+     ],
+     "flags": [],
+     "biogenic_co2_t": 0.0
+    }
+   ],
+   "total_mass_t": {
+    "CO2": 242.892652702053,
+    "CH4": 0.013335631537407808,
+    "N2O": 0.0016510781903457288
+   },
+   "total_co2e_t": {
+    "CO2": 242.892652702053,
+    "CH4": 0.3733976830474186,
+    "N2O": 0.43753572044161815
+   },
+   "total_co2e": 243.70358610554203,
+   "gwp": {
+    "CO2": {
+     "value": 1.0,
+     "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 524 (IPCC AR5)"
+    },
+    "CH4": {
+     "value": 28.0,
+     "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 525 (IPCC AR5)"
+    },
+    "N2O": {
+     "value": 265.0,
+     "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 526 (IPCC AR5)"
+    }
+   },
+   "biogenic_co2_t": 0.0,
+   "steps": [
+    {
+     "label": "Total CO2 emissions, in mass",
+     "formula": "sum of all CO2 outputs",
+     "inputs": {
+      "Facility A": {
+       "value": 91.82153840571165,
+       "unit": "t",
+       "source": null
+      },
+      "Facility B": {
+       "value": 151.07111429634134,
+       "unit": "t",
+       "source": null
+      }
+     },
+     "result": 242.892652702053,
+     "result_unit": "t"
+    },
+    {
+     "label": "Total CO2 emissions, in CO2e",
+     "formula": "total CO2 mass x GWP",
+     "inputs": {
+      "mass": {
+       "value": 242.892652702053,
+       "unit": "t",
+       "source": null
+      },
+      "GWP": {
+       "value": 1.0,
+       "unit": "",
+       "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 524 (IPCC AR5)"
+      }
+     },
+     "result": 242.892652702053,
+     "result_unit": "t CO2e"
+    },
+    {
+     "label": "Total CH4 emissions, in mass",
+     "formula": "sum of all CH4 outputs",
+     "inputs": {
+      "Facility A": {
+       "value": 0.004191198483185311,
+       "unit": "t",
+       "source": null
+      },
+      "Facility B": {
+       "value": 0.009144433054222497,
+       "unit": "t",
+       "source": null
+      }
+     },
+     "result": 0.013335631537407808,
+     "result_unit": "t"
+    },
+    {
+     "label": "Total CH4 emissions, in CO2e",
+     "formula": "total CH4 mass x GWP",
+     "inputs": {
+      "mass": {
+       "value": 0.013335631537407808,
+       "unit": "t",
+       "source": null
+      },
+      "GWP": {
+       "value": 28.0,
+       "unit": "",
+       "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 525 (IPCC AR5)"
+      }
+     },
+     "result": 0.3733976830474186,
+     "result_unit": "t CO2e"
+    },
+    {
+     "label": "Total N2O emissions, in mass",
+     "formula": "sum of all N2O outputs",
+     "inputs": {
+      "Facility A": {
+       "value": 0.0003810180439259374,
+       "unit": "t",
+       "source": null
+      },
+      "Facility B": {
+       "value": 0.0012700601464197914,
+       "unit": "t",
+       "source": null
+      }
+     },
+     "result": 0.0016510781903457288,
+     "result_unit": "t"
+    },
+    {
+     "label": "Total N2O emissions, in CO2e",
+     "formula": "total N2O mass x GWP",
+     "inputs": {
+      "mass": {
+       "value": 0.0016510781903457288,
+       "unit": "t",
+       "source": null
+      },
+      "GWP": {
+       "value": 265.0,
+       "unit": "",
+       "source": "EPA GHG Emission Factors Hub 2025, Table 11, row 526 (IPCC AR5)"
+      }
+     },
+     "result": 0.43753572044161815,
+     "result_unit": "t CO2e"
+    },
+    {
+     "label": "Total purchased electricity market based emissions, in CO2e",
+     "formula": "CO2 in CO2e + CH4 in CO2e + N2O in CO2e",
+     "inputs": {
+      "CO2": {
+       "value": 242.892652702053,
+       "unit": "t CO2e",
+       "source": null
+      },
+      "CH4": {
+       "value": 0.3733976830474186,
+       "unit": "t CO2e",
+       "source": null
+      },
+      "N2O": {
+       "value": 0.43753572044161815,
+       "unit": "t CO2e",
+       "source": null
+      }
+     },
+     "result": 243.70358610554203,
+     "result_unit": "t CO2e"
+    }
+   ],
+   "flags": [],
+   "details": {
+    "covered_mwh": 600.0,
+    "total_mwh": 2000.0,
+    "coverage": 0.3,
+    "coverage_steps": [
+     {
+      "label": "Total electricity covered by certificates",
+      "formula": "sum of certificate MWh",
+      "inputs": {
+       "REC 1": {
+        "value": 400.0,
+        "unit": "MWh",
+        "source": null
+       },
+       "REC 2": {
+        "value": 200.0,
+        "unit": "MWh",
+        "source": null
+       }
+      },
+      "result": 600.0,
+      "result_unit": "MWh"
+     },
+     {
+      "label": "Certificate coverage percentage",
+      "formula": "covered MWh / total electricity consumption (max 100%)",
+      "inputs": {
+       "covered": {
+        "value": 600.0,
+        "unit": "MWh",
+        "source": null
+       },
+       "total consumption": {
+        "value": 2000.0,
+        "unit": "MWh",
+        "source": null
+       }
+      },
+      "result": 0.3,
+      "result_unit": "fraction"
+     }
+    ],
+    "inputs": [
+     {
+      "fuel": "Facility A",
+      "unit": "MWh",
+      "quantity": 1200.0,
+      "documents": [
+       {
+        "document_id": "BILL-A1",
+        "record": "BILL-A1.pdf",
+        "quantity": 700.0,
+        "unit": "MWh",
+        "share_in_period": 1.0
+       },
+       {
+        "document_id": "BILL-A2",
+        "record": "BILL-A2.pdf",
+        "quantity": 500.0,
+        "unit": "MWh",
+        "share_in_period": 1.0
+       }
+      ]
+     },
+     {
+      "fuel": "Facility B",
+      "unit": "MWh",
+      "quantity": 800.0,
+      "documents": [
+       {
+        "document_id": "BILL-B1",
+        "record": "BILL-B1.pdf",
+        "quantity": 800.0,
+        "unit": "MWh",
+        "share_in_period": 1.0
+       }
+      ]
+     }
+    ]
+   },
+   "gwp_set": "AR5"
+  }
+ },
+ "scope_totals": {
+  "scope1": {
+   "total_co2e": 1492.51745,
+   "mass_t": {
+    "CO2": 1490.986,
+    "CH4": 0.0281,
+    "N2O": 0.00281
+   },
+   "co2e_t": {
+    "CO2": 1490.986,
+    "CH4": 0.7867999999999999,
+    "N2O": 0.74465
+   },
+   "biogenic_co2_t": 0.0,
+   "categories": [
+    "stationary_combustion"
+   ]
+  },
+  "scope2_location": {
+   "total_co2e": 348.1479801507743,
+   "mass_t": {
+    "CO2": 346.9895038600757,
+    "CH4": 0.01905090219629687,
+    "N2O": 0.0023586831290653264
+   },
+   "co2e_t": {
+    "CO2": 346.9895038600757,
+    "CH4": 0.5334252614963123,
+    "N2O": 0.6250510292023115
+   },
+   "biogenic_co2_t": 0.0,
+   "categories": [
+    "purchased_electricity_location_based"
+   ]
+  },
+  "scope2_market": {
+   "total_co2e": 243.70358610554203,
+   "mass_t": {
+    "CO2": 242.892652702053,
+    "CH4": 0.013335631537407808,
+    "N2O": 0.0016510781903457288
+   },
+   "co2e_t": {
+    "CO2": 242.892652702053,
+    "CH4": 0.3733976830474186,
+    "N2O": 0.43753572044161815
+   },
+   "biogenic_co2_t": 0.0,
+   "categories": [
+    "purchased_electricity_market_based"
+   ]
+  }
+ },
+ "tolerance_pct": 5.0,
+ "comparisons": [
+  {
+   "data_point": "Scope 1 (Total)",
+   "reported": 1400.0,
+   "recalculated": 1492.51745,
+   "difference": 92.51745000000005,
+   "difference_pct": 6.6083892857142885,
+   "status": "exceeds_tolerance",
+   "tolerance_pct": 5.0,
+   "key": "scope1_total",
+   "workbook_row": 22,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 CO2",
+   "reported": null,
+   "recalculated": 1490.986,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "scope1_co2",
+   "workbook_row": 23,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 CH4",
+   "reported": null,
+   "recalculated": 0.0281,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "scope1_ch4",
+   "workbook_row": 24,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 N2O",
+   "reported": null,
+   "recalculated": 0.00281,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "scope1_n2o",
+   "workbook_row": 25,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 HFCs",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_recalculated",
+   "key": "scope1_hfcs",
+   "workbook_row": 26,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 PFCs",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_recalculated",
+   "key": "scope1_pfcs",
+   "workbook_row": 27,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 SF6",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_recalculated",
+   "key": "scope1_sf6",
+   "workbook_row": 28,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 2 (Total), location-based",
+   "reported": 348.14,
+   "recalculated": 348.1479801507743,
+   "difference": 0.007980150774301364,
+   "difference_pct": 0.002292224614896698,
+   "status": "within_tolerance",
+   "tolerance_pct": 5.0,
+   "key": "scope2_location_total",
+   "workbook_row": 29,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 2 (Total), market-based",
+   "reported": 243.7,
+   "recalculated": 243.70358610554203,
+   "difference": 0.003586105542041196,
+   "difference_pct": 0.00147152463768617,
+   "status": "within_tolerance",
+   "tolerance_pct": 5.0,
+   "key": "scope2_market_total",
+   "workbook_row": 29,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 2 CO2 (location-based)",
+   "reported": null,
+   "recalculated": 346.9895038600757,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "scope2_co2",
+   "workbook_row": 30,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 2 CH4 (location-based)",
+   "reported": null,
+   "recalculated": 0.01905090219629687,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "scope2_ch4",
+   "workbook_row": 31,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 2 N2O (location-based)",
+   "reported": null,
+   "recalculated": 0.0023586831290653264,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "scope2_n2o",
+   "workbook_row": 32,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "CO2 emissions from biogenic combustion",
+   "reported": null,
+   "recalculated": 0.0,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "biogenic_co2",
+   "workbook_row": 37,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Direct emissions from stationary combustion",
+   "reported": null,
+   "recalculated": 1492.51745,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "stationary_combustion_total",
+   "workbook_row": 42,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Direct emissions from mobile combustion",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "no_evidence",
+   "key": "mobile_combustion_total",
+   "workbook_row": 43,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Indirect emissions from purchased electricity (location-based)",
+   "reported": null,
+   "recalculated": 348.1479801507743,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "purchased_electricity_total",
+   "workbook_row": 47,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  }
+ ],
+ "needs_input": [],
+ "awaiting_review": [],
+ "not_recalculated": [
+  "Scope 1 fugitive sources",
+  "Scope 1 process sources",
+  "Scope 2 steam, heat and cooling"
+ ],
+ "documents_considered": 4
+}

@@ -294,7 +294,8 @@ class EngagementRecalculationService:
         awaiting: list[dict[str, Any]] = []
         stationary = self._stationary(records, inputs, period, needs_input, awaiting)
         mobile = self._mobile(records, inputs, period, needs_input, awaiting)
-        electricity = self._electricity(records, inputs, period, needs_input, awaiting)
+        bills: dict[str, list[dict[str, Any]]] = {}
+        electricity = self._electricity(records, inputs, period, needs_input, awaiting, bills)
 
         categories: dict[str, calc.CategoryResult | None] = {
             "stationary_combustion": stationary,
@@ -310,6 +311,13 @@ class EngagementRecalculationService:
                             for i, c in enumerate(inputs.certificates, start=1)]
             categories["purchased_electricity_market_based"] = calc.electricity_market_based(
                 electricity, certificates, self.reference, gwp_set=inputs.gwp_set)
+            # Which reviewed bills each facility's MWh came from, as for the fuel categories.
+            facility_inputs = [{"fuel": f.facility, "unit": "MWh", "quantity": f.consumption.value,
+                                "documents": bills.get(f.facility, [])} for f in electricity]
+            for name in ("purchased_electricity_location_based", "purchased_electricity_market_based"):
+                part = categories[name]
+                if part is not None:
+                    part.details["inputs"] = facility_inputs
 
         totals = self._scope_totals(categories)
         incomplete = bool(needs_input or awaiting)
@@ -507,7 +515,8 @@ class EngagementRecalculationService:
     # =================================================================================
     def _electricity(self, records: list[ReviewedRecord], inputs: RecalculationInputs,
                      period: tuple[date | None, date | None], needs_input: list[dict[str, Any]],
-                     awaiting: list[dict[str, Any]]) -> list[calc.FacilityElectricity]:
+                     awaiting: list[dict[str, Any]], bills: dict[str, list[dict[str, Any]]] | None = None,
+                     ) -> list[calc.FacilityElectricity]:
         facilities: dict[str, dict[str, Any]] = {}
         for record in (r for r in records if r.canonical_type_id == ELECTRICITY):
             if not self._require_reviewed(record, ("activity_quantity",), awaiting):
@@ -542,6 +551,8 @@ class EngagementRecalculationService:
                     "options": [r["egrid_subregion"] for r in self.reference.egrid_subregions()],
                 })
                 continue
+            if bills is not None:
+                bills[key] = entry["documents"]
             out.append(calc.FacilityElectricity(key, calc.Measure(entry["mwh"], "MWh",
                                                                   f"{len(entry['documents'])} reviewed bill(s)"),
                                                 region))

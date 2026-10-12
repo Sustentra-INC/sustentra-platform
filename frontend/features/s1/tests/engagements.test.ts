@@ -66,6 +66,14 @@ describe("engagement mapping (S1-BE-002)", () => {
     expect(Object.keys(payload.settings)).not.toContain("signedInLogin");
   });
 
+  it("keeps the recalculation inputs when Setup saves", () => {
+    const recalculation = { gwp_set: "AR5", grid_regions: { "Kent Cannery": "NYUP" }, reported: { scope1_total: 12.5 } };
+    const config = engagementFromBackend({ ...ROW, settings: { ...ROW.settings, recalculation } });
+    const payload = engagementToBackend({ ...config, assuranceLevel: "Reasonable" });
+    expect(payload.settings.recalculation).toEqual(recalculation);
+    expect(payload.settings.assuranceLevel).toBe("Reasonable");
+  });
+
   it("handles a brand-new engagement with empty fields", () => {
     const config = engagementFromBackend({ ...ROW, client_name: null, reporting_period_start: null,
       reporting_period_end: null, settings: {} });
