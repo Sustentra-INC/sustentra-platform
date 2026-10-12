@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from backend.app.services.electricity_extractor import ElectricityExtractor
 from backend.app.services.extraction_candidate_service import ExtractionCandidateService
 from backend.app.services.extraction_target_service import ExtractionTargetService
 from backend.app.services.mobile_combustion_extractor import MobileCombustionExtractor
@@ -15,11 +16,13 @@ class ExtractionService:
         candidate_service: ExtractionCandidateService | None = None,
         stationary_extractor: StationaryCombustionExtractor | None = None,
         mobile_extractor: MobileCombustionExtractor | None = None,
+        electricity_extractor: ElectricityExtractor | None = None,
     ) -> None:
         self._target_service = target_service
         self._candidate_service = candidate_service or ExtractionCandidateService()
         self._stationary_extractor = stationary_extractor or StationaryCombustionExtractor()
         self._mobile_extractor = mobile_extractor or MobileCombustionExtractor()
+        self._electricity_extractor = electricity_extractor or ElectricityExtractor()
 
     def extract(self, payload: dict) -> dict:
         """Generate extraction candidates from parser_output + targets (PR6).
@@ -40,9 +43,14 @@ class ExtractionService:
         extraction_targets = payload["extraction_targets"]
         evidence_id = str(payload.get("evidence_id") or "evidence-unknown")
 
-        # EXT-001 / EXT-002: Scope 1 fuel types have layout-aware extractors (records, units, halts).
+        # EXT-001 / EXT-002: Scope 1 fuel types, and Scope 2 purchased electricity, have
+        # layout-aware extractors (records, units, halts).
         fuel_extractor = next(
-            (e for e in (self._stationary_extractor, self._mobile_extractor) if e.handles(extraction_targets)),
+            (
+                e
+                for e in (self._stationary_extractor, self._mobile_extractor, self._electricity_extractor)
+                if e.handles(extraction_targets)
+            ),
             None,
         )
         if fuel_extractor is not None:
