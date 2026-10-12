@@ -25,16 +25,31 @@ class ClassificationService:
         "layout_features": 0.15,
     }
 
+    # Extra credit for matching MANY header/key-phrase terms (per term beyond the
+    # first), capped. A real fuel bill matches several headers even when its
+    # filename and the library's exact key-phrases do not, so content strength
+    # must be able to raise confidence past a single-term match.
+    STRENGTH_BONUS_PER_TERM = 0.08
+    STRENGTH_BONUS_CAP = 0.25
+
+    # The library ships provisional 0.80 thresholds (uncalibrated). Cap the
+    # effective threshold so strong CONTENT matches can classify without a
+    # matching filename (uploads are rarely named "*gas*bill*.pdf"). Thresholds
+    # already below the cap (e.g. test fixtures at 0.35/0.50) are left untouched.
+    CALIBRATED_THRESHOLD_CAP = 0.55
+
     def __init__(
         self,
         vocabulary_library: VocabularyLibrary | None = None,
         workbook_path: Path | None = None,
         repo_root: Path | None = None,
+        threshold_cap: float | None = None,
     ) -> None:
         self._vocabulary_library = vocabulary_library
         self._workbook_path = Path(workbook_path) if workbook_path is not None else None
         self._repo_root = Path(repo_root) if repo_root is not None else None
-        self._classifier_version = "classification-v0"
+        self._threshold_cap = threshold_cap if threshold_cap is not None else self.CALIBRATED_THRESHOLD_CAP
+        self._classifier_version = "classification-v1"
 
     def classify(self, payload: dict) -> dict:
         document_id = str(payload.get("document_id") or "")
@@ -169,14 +184,15 @@ class ClassificationService:
             if confidence <= 0:
                 continue
 
+            effective_threshold = min(variant.confidence_threshold_default, self._threshold_cap)
             candidate = {
                 "canonical_type_id": variant.canonical_type_id,
                 "variant_id": variant.variant_id,
                 "confidence": round(confidence, 4),
-                "threshold": variant.confidence_threshold_default,
+                "threshold": effective_threshold,
                 "matched_signals": matched_signals,
                 "reason": self._build_reason(matched_signals),
-                "review_required": confidence < variant.confidence_threshold_default,
+                "review_required": confidence < effective_threshold,
             }
             candidates.append(candidate)
 
@@ -290,7 +306,15 @@ class ClassificationService:
         for signal_name, weight in self.SIGNAL_WEIGHTS.items():
             if matched_signals.get(signal_name):
                 confidence += weight
-        return confidence
+        # Strength bonus: additional header/key-phrase matches beyond the first
+        # raise confidence, so a document that matches several content terms
+        # outranks one that matches a single term (and can clear threshold even
+        # when its filename does not match any variant glob).
+        extra_terms = 0
+        for signal_name in ("header_terms", "key_phrases"):
+            extra_terms += max(len(matched_signals.get(signal_name) or []) - 1, 0)
+        confidence += min(extra_terms * self.STRENGTH_BONUS_PER_TERM, self.STRENGTH_BONUS_CAP)
+        return min(confidence, 1.0)
 
     def _build_reason(self, matched_signals: dict[str, list[str]]) -> str:
         groups = [
