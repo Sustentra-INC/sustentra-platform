@@ -151,8 +151,22 @@ def dimension_of(unit: str) -> str:
 
 
 def convert(value: float | int | Decimal, from_unit: str, to_unit: str) -> float:
-    """Convert between canonical units of the same dimension."""
+    """Convert between canonical units of the same dimension (rounded to 6 decimals, for display)."""
 
+    return float(round(_convert(value, from_unit, to_unit), 6))
+
+
+def convert_exact(value: float | int | Decimal, from_unit: str, to_unit: str) -> float:
+    """``convert`` without rounding, for calculations.
+
+    Emissions math must not round intermediate quantities: 20 lb is 0.0090718474 t, and
+    rounding it to 0.009072 t shifts a 22,800 GWP result by about 8 lb CO2e.
+    """
+
+    return float(_convert(value, from_unit, to_unit))
+
+
+def _convert(value: float | int | Decimal, from_unit: str, to_unit: str) -> Decimal:
     from_dim, from_size = _UNITS.get(from_unit, (None, None))
     to_dim, to_size = _UNITS.get(to_unit, (None, None))
     if from_dim is None or from_size is None:
@@ -165,8 +179,7 @@ def convert(value: float | int | Decimal, from_unit: str, to_unit: str) -> float
         raise UnitError(
             f"cannot convert {from_unit} ({from_dim}) to {to_unit} ({to_dim}) without a heating value"
         )
-    result = Decimal(str(value)) * from_size / to_size
-    return float(round(result, 6))
+    return Decimal(str(value)) * from_size / to_size
 
 
 def normalize_quantity(value: float | int, unit_text: str) -> NormalizedQuantity:

@@ -8,10 +8,13 @@ import {
   listWorkspaceEvidence,
   processDocument,
   signInAgainPath,
+  submitFieldReview,
   uploadDocument,
   userFacingApiError,
 } from "../api/s1Backend";
 import { ApiError } from "../../../lib/api";
+import { inlineDocumentUrl } from "../adapters/evidenceAdapter";
+import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
 import { ExtractionReview } from "../components/ExtractionReview";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
@@ -31,6 +34,7 @@ import {
 import { EvidenceRequests } from "../components/EvidenceRequests";
 import { CheckCoverage } from "../components/CheckCoverage";
 import { VerificationResults } from "../components/VerificationResults";
+import { BackendVerificationResults } from "../components/BackendVerificationResults";
 import { OutputScreen } from "../components/OutputScreen";
 import { coverageRules } from "../fixtures/verification/coverageRules";
 import { verificationRows } from "../fixtures/verification/verificationResults";
@@ -39,7 +43,7 @@ import { StateIndicator } from "../components/StateIndicator";
 import { EXACT_COPY } from "../constants/copy";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { inScopeFieldPlaceholders } from "../fixtures/scope/inScopeFields";
-import type { EngagementConfig, InScopeField } from "../types";
+import type { EngagementConfig, InScopeField, RecalculationSettings } from "../types";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
 import { seedAsks } from "../fixtures/requests/seedAsks";
@@ -252,6 +256,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     // No engagement configured yet → nothing to fetch; show the empty state.
     if (!engagementId) {
       setEvidenceItems([]);
+      setReviewValues([]);
       setDemoState("empty_nothing_yet");
       return;
     }
@@ -259,6 +264,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     try {
       const workspace = await listWorkspaceEvidence(engagementId);
       setEvidenceItems(workspace.evidence);
+      setReviewValues(reviewValuesFromFields(workspace.fields, workspace.evidence));
       setDemoState(nextContainerState ?? (workspace.evidence.length === 0 ? "empty_nothing_yet" : "populated"));
     } catch (error) {
       if (handleSessionEnded(error)) return;
@@ -330,6 +336,18 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           : `Changes not saved. ${userFacingApiError(error)}`
       );
     }
+  }
+
+  /** Saves the recalculation inputs now, folding in any Setup edit still waiting to save. */
+  async function saveRecalculationInputs(recalculation: RecalculationSettings) {
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    const base = pendingSave.current ?? engagement;
+    pendingSave.current = null;
+    const next = { ...base, recalculation };
+    const row = await saveEngagement(next);
+    setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
+    setEngagement(next);
   }
 
   function changeEngagement(next: EngagementConfig) {
@@ -608,7 +626,16 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         ) : activeView.name === "coverage" ? (
           <CheckCoverage rules={dataMode === "backend" ? [] : coverageRules} />
         ) : activeView.name === "results" ? (
-          <VerificationResults rows={dataMode === "backend" ? [] : verificationRows} store={verification} />
+          dataMode === "backend" ? (
+            <BackendVerificationResults
+              engagement={engagement}
+              store={verification}
+              onSaveInputs={saveRecalculationInputs}
+              onError={handleSessionEnded}
+            />
+          ) : (
+            <VerificationResults rows={verificationRows} store={verification} />
+          )
         ) : activeView.name === "output" ? (
           <OutputScreen engagement={engagement} />
         ) : activeView.name === "evidence" ? (
@@ -638,12 +665,38 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}
             onBack={() => setActiveView({ name: "evidence" })}
+            reviewerName={dataMode === "backend" ? user?.firstName ?? user?.email : undefined}
+            onPersistAccept={
+              dataMode === "backend"
+                ? async (value) => {
+                    try {
+                      await submitFieldReview({ field: { reviewToken: value.reviewToken }, decision: "accepted" });
+                    } catch (error) {
+                      if (handleSessionEnded(error)) return;
+                      throw error instanceof ApiError ? new Error(userFacingApiError(error)) : error;
+                    }
+                  }
+                : undefined
+            }
             renderPage={(documentId, span, onPickBox) =>
               documentId === DEMO_INVOICE_ID ? (
                 <InvoicePage
                   highlight={span ? { x: span.x, y: span.y, w: span.w, h: span.h } : null}
                   onMarkClick={onPickBox}
                 />
+              ) : dataMode === "backend" &&
+                evidenceItems.find((item) => item.documentId === documentId)?.format === "pdf" ? (
+                // The uploaded file itself (the preview route allows same-origin framing for PDFs).
+                <>
+                  <iframe
+                    className="s1-xr-pdf"
+                    src={`${inlineDocumentUrl(documentId)}#page=${span?.page ?? 1}`}
+                    title="Source document"
+                  />
+                  <a className="s1-linklike s1-xr-pdf-open" href={inlineDocumentUrl(documentId)} target="_blank" rel="noreferrer">
+                    Open the document in a new tab
+                  </a>
+                </>
               ) : null
             }
           />

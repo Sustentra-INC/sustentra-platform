@@ -34,6 +34,10 @@ def current_upload_service() -> DocumentUploadService:
     return _upload_service
 
 
+def current_pipeline_service() -> PipelineOrchestrationService:
+    return _pipeline_service
+
+
 def configure_services(
     upload_service: DocumentUploadService | None = None,
     pipeline_service: PipelineOrchestrationService | None = None,

@@ -1,0 +1,4820 @@
+{
+  "dataset": "EPA GHG Emission Factors Hub 2025",
+  "source_file": "ghg-emission-factors-hub-2025.xlsx",
+  "source_sha256": "43afb91d79b2ae765b3a447549d9e1021a144a407cec5eb804be9fcf69a668a7",
+  "sheet": "Emission Factors Hub",
+  "gwp_set": "IPCC AR5 100-year",
+  "units": {
+    "stationary_combustion": "per_energy: kg CO2 / g CH4 / g N2O per mmBtu; per_unit: per physical unit",
+    "mobile_co2": "kg CO2 per unit (unit given per row)",
+    "mobile_on_road": "g per vehicle-mile",
+    "mobile_non_road": "g per gallon",
+    "electricity": "lb per MWh (eGRID2023 subregion output rates)",
+    "steam_heat": "kg CO2 / g CH4 / g N2O per mmBtu"
+  },
+  "stationary_combustion": [
+    {
+      "fuel_type": "Anthracite",
+      "category": "Coal and Coke",
+      "heat_content_hhv": {
+        "value": 25.09,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 103.69,
+        "ch4_g_per_mmbtu": 11,
+        "n2o_g_per_mmbtu": 1.6
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 2602,
+        "ch4_g_per_unit": 276,
+        "n2o_g_per_unit": 40
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 17
+      }
+    },
+    {
+      "fuel_type": "Bituminous",
+      "category": "Coal and Coke",
+      "heat_content_hhv": {
+        "value": 24.93,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 93.28,
+        "ch4_g_per_mmbtu": 11,
+        "n2o_g_per_mmbtu": 1.6
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 2325,
+        "ch4_g_per_unit": 274,
+        "n2o_g_per_unit": 40
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 18
+      }
+    },
+    {
+      "fuel_type": "Sub-bituminous",
+      "category": "Coal and Coke",
+      "heat_content_hhv": {
+        "value": 17.25,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 97.17,
+        "ch4_g_per_mmbtu": 11,
+        "n2o_g_per_mmbtu": 1.6
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 1676,
+        "ch4_g_per_unit": 190,
+        "n2o_g_per_unit": 28
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 19
+      }
+    },
+    {
+      "fuel_type": "Lignite",
+      "category": "Coal and Coke",
+      "heat_content_hhv": {
+        "value": 14.21,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 97.72,
+        "ch4_g_per_mmbtu": 11,
+        "n2o_g_per_mmbtu": 1.6
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 1389,
+        "ch4_g_per_unit": 156,
+        "n2o_g_per_unit": 23
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 20
+      }
+    },
+    {
+      "fuel_type": "Mixed (Commercial Sector)",
+      "category": "Coal and Coke",
+      "heat_content_hhv": {
+        "value": 21.39,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 94.27,
+        "ch4_g_per_mmbtu": 11,
+        "n2o_g_per_mmbtu": 1.6
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 2016,
+        "ch4_g_per_unit": 235,
+        "n2o_g_per_unit": 34
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 21
+      }
+    },
+    {
+      "fuel_type": "Mixed (Electric Power Sector)",
+      "category": "Coal and Coke",
+      "heat_content_hhv": {
+        "value": 19.73,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 95.52,
+        "ch4_g_per_mmbtu": 11,
+        "n2o_g_per_mmbtu": 1.6
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 1885,
+        "ch4_g_per_unit": 217,
+        "n2o_g_per_unit": 32
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 22
+      }
+    },
+    {
+      "fuel_type": "Mixed (Industrial Coking)",
+      "category": "Coal and Coke",
+      "heat_content_hhv": {
+        "value": 26.28,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 93.9,
+        "ch4_g_per_mmbtu": 11,
+        "n2o_g_per_mmbtu": 1.6
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 2468,
+        "ch4_g_per_unit": 289,
+        "n2o_g_per_unit": 42
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 23
+      }
+    },
+    {
+      "fuel_type": "Mixed (Industrial Sector)",
+      "category": "Coal and Coke",
+      "heat_content_hhv": {
+        "value": 22.35,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 94.67,
+        "ch4_g_per_mmbtu": 11,
+        "n2o_g_per_mmbtu": 1.6
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 2116,
+        "ch4_g_per_unit": 246,
+        "n2o_g_per_unit": 36
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 24
+      }
+    },
+    {
+      "fuel_type": "Coal Coke",
+      "category": "Coal and Coke",
+      "heat_content_hhv": {
+        "value": 24.8,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 113.67,
+        "ch4_g_per_mmbtu": 11,
+        "n2o_g_per_mmbtu": 1.6
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 2819,
+        "ch4_g_per_unit": 273,
+        "n2o_g_per_unit": 40
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 25
+      }
+    },
+    {
+      "fuel_type": "Municipal Solid Waste",
+      "category": "Other Fuels - Solid",
+      "heat_content_hhv": {
+        "value": 9.95,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 90.7,
+        "ch4_g_per_mmbtu": 32,
+        "n2o_g_per_mmbtu": 4.2
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 902,
+        "ch4_g_per_unit": 318,
+        "n2o_g_per_unit": 42
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 27
+      }
+    },
+    {
+      "fuel_type": "Petroleum Coke (Solid)",
+      "category": "Other Fuels - Solid",
+      "heat_content_hhv": {
+        "value": 30,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 102.41,
+        "ch4_g_per_mmbtu": 32,
+        "n2o_g_per_mmbtu": 4.2
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 3072,
+        "ch4_g_per_unit": 960,
+        "n2o_g_per_unit": 126
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 28
+      }
+    },
+    {
+      "fuel_type": "Plastics",
+      "category": "Other Fuels - Solid",
+      "heat_content_hhv": {
+        "value": 38,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 75,
+        "ch4_g_per_mmbtu": 32,
+        "n2o_g_per_mmbtu": 4.2
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 2850,
+        "ch4_g_per_unit": 1216,
+        "n2o_g_per_unit": 160
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 29
+      }
+    },
+    {
+      "fuel_type": "Tires",
+      "category": "Other Fuels - Solid",
+      "heat_content_hhv": {
+        "value": 28,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 85.97,
+        "ch4_g_per_mmbtu": 32,
+        "n2o_g_per_mmbtu": 4.2
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 2407,
+        "ch4_g_per_unit": 896,
+        "n2o_g_per_unit": 118
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 30
+      }
+    },
+    {
+      "fuel_type": "Agricultural Byproducts",
+      "category": "Biomass Fuels - Solid",
+      "heat_content_hhv": {
+        "value": 8.25,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 118.17,
+        "ch4_g_per_mmbtu": 32,
+        "n2o_g_per_mmbtu": 4.2
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 975,
+        "ch4_g_per_unit": 264,
+        "n2o_g_per_unit": 35
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 32
+      }
+    },
+    {
+      "fuel_type": "Peat",
+      "category": "Biomass Fuels - Solid",
+      "heat_content_hhv": {
+        "value": 8,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 111.84,
+        "ch4_g_per_mmbtu": 32,
+        "n2o_g_per_mmbtu": 4.2
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 895,
+        "ch4_g_per_unit": 256,
+        "n2o_g_per_unit": 34
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 33
+      }
+    },
+    {
+      "fuel_type": "Solid Byproducts",
+      "category": "Biomass Fuels - Solid",
+      "heat_content_hhv": {
+        "value": 10.39,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 105.51,
+        "ch4_g_per_mmbtu": 32,
+        "n2o_g_per_mmbtu": 4.2
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 1096,
+        "ch4_g_per_unit": 332,
+        "n2o_g_per_unit": 44
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 34
+      }
+    },
+    {
+      "fuel_type": "Wood and Wood Residuals",
+      "category": "Biomass Fuels - Solid",
+      "heat_content_hhv": {
+        "value": 17.48,
+        "unit": "mmBtu per short ton"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 93.8,
+        "ch4_g_per_mmbtu": 7.2,
+        "n2o_g_per_mmbtu": 3.6
+      },
+      "per_unit": {
+        "unit": "short ton",
+        "co2_kg_per_unit": 1640,
+        "ch4_g_per_unit": 126,
+        "n2o_g_per_unit": 63
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 35
+      }
+    },
+    {
+      "fuel_type": "Natural Gas",
+      "category": "Natural Gas",
+      "heat_content_hhv": {
+        "value": 0.001026,
+        "unit": "mmBtu per scf"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 53.06,
+        "ch4_g_per_mmbtu": 1,
+        "n2o_g_per_mmbtu": 0.1
+      },
+      "per_unit": {
+        "unit": "scf",
+        "co2_kg_per_unit": 0.05444,
+        "ch4_g_per_unit": 0.00103,
+        "n2o_g_per_unit": 0.0001
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 38
+      }
+    },
+    {
+      "fuel_type": "Blast Furnace Gas",
+      "category": "Other Fuels - Gaseous",
+      "heat_content_hhv": {
+        "value": 9.2e-05,
+        "unit": "mmBtu per scf"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 274.32,
+        "ch4_g_per_mmbtu": 0.022000000000000002,
+        "n2o_g_per_mmbtu": 0.1
+      },
+      "per_unit": {
+        "unit": "scf",
+        "co2_kg_per_unit": 0.02524,
+        "ch4_g_per_unit": 2e-06,
+        "n2o_g_per_unit": 9e-06
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 40
+      }
+    },
+    {
+      "fuel_type": "Coke Oven Gas",
+      "category": "Other Fuels - Gaseous",
+      "heat_content_hhv": {
+        "value": 0.000599,
+        "unit": "mmBtu per scf"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 46.85,
+        "ch4_g_per_mmbtu": 0.48,
+        "n2o_g_per_mmbtu": 0.1
+      },
+      "per_unit": {
+        "unit": "scf",
+        "co2_kg_per_unit": 0.02806,
+        "ch4_g_per_unit": 0.000288,
+        "n2o_g_per_unit": 6e-05
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 41
+      }
+    },
+    {
+      "fuel_type": "Fuel Gas",
+      "category": "Other Fuels - Gaseous",
+      "heat_content_hhv": {
+        "value": 0.001388,
+        "unit": "mmBtu per scf"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 59,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "scf",
+        "co2_kg_per_unit": 0.08189,
+        "ch4_g_per_unit": 0.004164,
+        "n2o_g_per_unit": 0.000833
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 42
+      }
+    },
+    {
+      "fuel_type": "Propane Gas",
+      "category": "Other Fuels - Gaseous",
+      "heat_content_hhv": {
+        "value": 0.002516,
+        "unit": "mmBtu per scf"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 61.46,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "scf",
+        "co2_kg_per_unit": 0.15463,
+        "ch4_g_per_unit": 0.007548,
+        "n2o_g_per_unit": 0.00151
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 43
+      }
+    },
+    {
+      "fuel_type": "Landfill Gas",
+      "category": "Biomass Fuels - Gaseous",
+      "heat_content_hhv": {
+        "value": 0.000485,
+        "unit": "mmBtu per scf"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 52.07,
+        "ch4_g_per_mmbtu": 3.2,
+        "n2o_g_per_mmbtu": 0.63
+      },
+      "per_unit": {
+        "unit": "scf",
+        "co2_kg_per_unit": 0.025254,
+        "ch4_g_per_unit": 0.001552,
+        "n2o_g_per_unit": 0.000306
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 45
+      }
+    },
+    {
+      "fuel_type": "Other Biomass Gases",
+      "category": "Biomass Fuels - Gaseous",
+      "heat_content_hhv": {
+        "value": 0.000655,
+        "unit": "mmBtu per scf"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 52.07,
+        "ch4_g_per_mmbtu": 3.2,
+        "n2o_g_per_mmbtu": 0.63
+      },
+      "per_unit": {
+        "unit": "scf",
+        "co2_kg_per_unit": 0.034106,
+        "ch4_g_per_unit": 0.002096,
+        "n2o_g_per_unit": 0.000413
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 46
+      }
+    },
+    {
+      "fuel_type": "Asphalt and Road Oil",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.158,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 75.36,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 11.91,
+        "ch4_g_per_unit": 0.47,
+        "n2o_g_per_unit": 0.09
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 49
+      }
+    },
+    {
+      "fuel_type": "Aviation Gasoline",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.12,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 69.25,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 8.31,
+        "ch4_g_per_unit": 0.36,
+        "n2o_g_per_unit": 0.07
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 50
+      }
+    },
+    {
+      "fuel_type": "Butane",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.103,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 64.77,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 6.67,
+        "ch4_g_per_unit": 0.31,
+        "n2o_g_per_unit": 0.06
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 51
+      }
+    },
+    {
+      "fuel_type": "Butylene",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.105,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 68.72,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 7.22,
+        "ch4_g_per_unit": 0.32,
+        "n2o_g_per_unit": 0.06
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 52
+      }
+    },
+    {
+      "fuel_type": "Crude Oil",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.138,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 74.54,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 10.29,
+        "ch4_g_per_unit": 0.41,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 53
+      }
+    },
+    {
+      "fuel_type": "Distillate Fuel Oil No. 1",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.139,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 73.25,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 10.18,
+        "ch4_g_per_unit": 0.42,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 54
+      }
+    },
+    {
+      "fuel_type": "Distillate Fuel Oil No. 2",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.138,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 73.96,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 10.21,
+        "ch4_g_per_unit": 0.41,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 55
+      }
+    },
+    {
+      "fuel_type": "Distillate Fuel Oil No. 4",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.146,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 75.04,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 10.96,
+        "ch4_g_per_unit": 0.44,
+        "n2o_g_per_unit": 0.09
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 56
+      }
+    },
+    {
+      "fuel_type": "Ethane",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.068,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 59.6,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 4.05,
+        "ch4_g_per_unit": 0.2,
+        "n2o_g_per_unit": 0.04
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 57
+      }
+    },
+    {
+      "fuel_type": "Ethylene",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.058,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 65.96,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 3.83,
+        "ch4_g_per_unit": 0.17,
+        "n2o_g_per_unit": 0.03
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 58
+      }
+    },
+    {
+      "fuel_type": "Heavy Gas Oils",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.148,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 74.92,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 11.09,
+        "ch4_g_per_unit": 0.44,
+        "n2o_g_per_unit": 0.09
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 59
+      }
+    },
+    {
+      "fuel_type": "Isobutane",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.099,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 64.94,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 6.43,
+        "ch4_g_per_unit": 0.3,
+        "n2o_g_per_unit": 0.06
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 60
+      }
+    },
+    {
+      "fuel_type": "Isobutylene",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.103,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 68.86,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 7.09,
+        "ch4_g_per_unit": 0.31,
+        "n2o_g_per_unit": 0.06
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 61
+      }
+    },
+    {
+      "fuel_type": "Kerosene",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.135,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 75.2,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 10.15,
+        "ch4_g_per_unit": 0.41,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 62
+      }
+    },
+    {
+      "fuel_type": "Kerosene-Type Jet Fuel",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.135,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 72.22,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 9.75,
+        "ch4_g_per_unit": 0.41,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 63
+      }
+    },
+    {
+      "fuel_type": "Liquefied Petroleum Gases (LPG)",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.092,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 61.71,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 5.68,
+        "ch4_g_per_unit": 0.28,
+        "n2o_g_per_unit": 0.06
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 64
+      }
+    },
+    {
+      "fuel_type": "Lubricants",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.144,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 74.27,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 10.69,
+        "ch4_g_per_unit": 0.43,
+        "n2o_g_per_unit": 0.09
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 65
+      }
+    },
+    {
+      "fuel_type": "Motor Gasoline",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.125,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 70.22,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 8.78,
+        "ch4_g_per_unit": 0.38,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 66
+      }
+    },
+    {
+      "fuel_type": "Naphtha (<401 deg F)",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.125,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 68.02,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 8.5,
+        "ch4_g_per_unit": 0.38,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 67
+      }
+    },
+    {
+      "fuel_type": "Natural Gasoline",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.11,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 66.88,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 7.36,
+        "ch4_g_per_unit": 0.33,
+        "n2o_g_per_unit": 0.07
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 68
+      }
+    },
+    {
+      "fuel_type": "Other Oil (>401 deg F)",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.139,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 76.22,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 10.59,
+        "ch4_g_per_unit": 0.42,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 69
+      }
+    },
+    {
+      "fuel_type": "Pentanes Plus",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.11,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 70.02,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 7.7,
+        "ch4_g_per_unit": 0.33,
+        "n2o_g_per_unit": 0.07
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 70
+      }
+    },
+    {
+      "fuel_type": "Petrochemical Feedstocks",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.125,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 71.02,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 8.88,
+        "ch4_g_per_unit": 0.38,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 71
+      }
+    },
+    {
+      "fuel_type": "Propane",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.091,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 62.87,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 5.72,
+        "ch4_g_per_unit": 0.27,
+        "n2o_g_per_unit": 0.05
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 72
+      }
+    },
+    {
+      "fuel_type": "Propylene",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.091,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 67.77,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 6.17,
+        "ch4_g_per_unit": 0.27,
+        "n2o_g_per_unit": 0.05
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 73
+      }
+    },
+    {
+      "fuel_type": "Residual Fuel Oil No. 5",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.14,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 72.93,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 10.21,
+        "ch4_g_per_unit": 0.42,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 74
+      }
+    },
+    {
+      "fuel_type": "Residual Fuel Oil No. 6",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.15,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 75.1,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 11.27,
+        "ch4_g_per_unit": 0.45,
+        "n2o_g_per_unit": 0.09
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 75
+      }
+    },
+    {
+      "fuel_type": "Special Naphtha",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.125,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 72.34,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 9.04,
+        "ch4_g_per_unit": 0.38,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 76
+      }
+    },
+    {
+      "fuel_type": "Unfinished Oils",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.139,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 74.54,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 10.36,
+        "ch4_g_per_unit": 0.42,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 77
+      }
+    },
+    {
+      "fuel_type": "Used Oil",
+      "category": "Petroleum Products",
+      "heat_content_hhv": {
+        "value": 0.138,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 74,
+        "ch4_g_per_mmbtu": 3,
+        "n2o_g_per_mmbtu": 0.6
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 10.21,
+        "ch4_g_per_unit": 0.41,
+        "n2o_g_per_unit": 0.08
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 78
+      }
+    },
+    {
+      "fuel_type": "Biodiesel (100%)",
+      "category": "Biomass Fuels - Liquid",
+      "heat_content_hhv": {
+        "value": 0.128,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 73.84,
+        "ch4_g_per_mmbtu": 1.1,
+        "n2o_g_per_mmbtu": 0.11
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 9.45,
+        "ch4_g_per_unit": 0.14,
+        "n2o_g_per_unit": 0.01
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 80
+      }
+    },
+    {
+      "fuel_type": "Ethanol (100%)",
+      "category": "Biomass Fuels - Liquid",
+      "heat_content_hhv": {
+        "value": 0.084,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 68.44,
+        "ch4_g_per_mmbtu": 1.1,
+        "n2o_g_per_mmbtu": 0.11
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 5.75,
+        "ch4_g_per_unit": 0.09,
+        "n2o_g_per_unit": 0.01
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 81
+      }
+    },
+    {
+      "fuel_type": "Rendered Animal Fat",
+      "category": "Biomass Fuels - Liquid",
+      "heat_content_hhv": {
+        "value": 0.125,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 71.06,
+        "ch4_g_per_mmbtu": 1.1,
+        "n2o_g_per_mmbtu": 0.11
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 8.88,
+        "ch4_g_per_unit": 0.14,
+        "n2o_g_per_unit": 0.01
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 82
+      }
+    },
+    {
+      "fuel_type": "Vegetable Oil",
+      "category": "Biomass Fuels - Liquid",
+      "heat_content_hhv": {
+        "value": 0.12,
+        "unit": "mmBtu per gallon"
+      },
+      "per_energy": {
+        "co2_kg_per_mmbtu": 81.55,
+        "ch4_g_per_mmbtu": 1.1,
+        "n2o_g_per_mmbtu": 0.11
+      },
+      "per_unit": {
+        "unit": "gallon",
+        "co2_kg_per_unit": 9.79,
+        "ch4_g_per_unit": 0.13,
+        "n2o_g_per_unit": 0.01
+      },
+      "source": {
+        "table": "Table 1",
+        "row": 83
+      }
+    },
+    {
+      "fuel_type": "North American Softwood",
+      "category": "Biomass Fuels - Kraft Pulping Liquor, by Wood Furnish",
+      "heat_content_hhv": null,
+      "per_energy": {
+        "co2_kg_per_mmbtu": 94.4,
+        "ch4_g_per_mmbtu": 1.9,
+        "n2o_g_per_mmbtu": 0.42
+      },
+      "per_unit": null,
+      "source": {
+        "table": "Table 1",
+        "row": 85
+      }
+    },
+    {
+      "fuel_type": "North American Hardwood",
+      "category": "Biomass Fuels - Kraft Pulping Liquor, by Wood Furnish",
+      "heat_content_hhv": null,
+      "per_energy": {
+        "co2_kg_per_mmbtu": 93.7,
+        "ch4_g_per_mmbtu": 1.9,
+        "n2o_g_per_mmbtu": 0.42
+      },
+      "per_unit": null,
+      "source": {
+        "table": "Table 1",
+        "row": 86
+      }
+    },
+    {
+      "fuel_type": "Bagasse",
+      "category": "Biomass Fuels - Kraft Pulping Liquor, by Wood Furnish",
+      "heat_content_hhv": null,
+      "per_energy": {
+        "co2_kg_per_mmbtu": 95.5,
+        "ch4_g_per_mmbtu": 1.9,
+        "n2o_g_per_mmbtu": 0.42
+      },
+      "per_unit": null,
+      "source": {
+        "table": "Table 1",
+        "row": 87
+      }
+    },
+    {
+      "fuel_type": "Bamboo",
+      "category": "Biomass Fuels - Kraft Pulping Liquor, by Wood Furnish",
+      "heat_content_hhv": null,
+      "per_energy": {
+        "co2_kg_per_mmbtu": 93.7,
+        "ch4_g_per_mmbtu": 1.9,
+        "n2o_g_per_mmbtu": 0.42
+      },
+      "per_unit": null,
+      "source": {
+        "table": "Table 1",
+        "row": 88
+      }
+    },
+    {
+      "fuel_type": "Straw",
+      "category": "Biomass Fuels - Kraft Pulping Liquor, by Wood Furnish",
+      "heat_content_hhv": null,
+      "per_energy": {
+        "co2_kg_per_mmbtu": 95.1,
+        "ch4_g_per_mmbtu": 1.9,
+        "n2o_g_per_mmbtu": 0.42
+      },
+      "per_unit": null,
+      "source": {
+        "table": "Table 1",
+        "row": 89
+      }
+    }
+  ],
+  "mobile_co2": [
+    {
+      "fuel_type": "Aviation Gasoline",
+      "co2_kg_per_unit": 8.31,
+      "unit": "gallon",
+      "source": {
+        "table": "Table 2",
+        "row": 104
+      }
+    },
+    {
+      "fuel_type": "Biodiesel (100%)",
+      "co2_kg_per_unit": 9.45,
+      "unit": "gallon",
+      "source": {
+        "table": "Table 2",
+        "row": 105
+      }
+    },
+    {
+      "fuel_type": "Compressed Natural Gas (CNG)",
+      "co2_kg_per_unit": 0.05444,
+      "unit": "scf",
+      "source": {
+        "table": "Table 2",
+        "row": 106
+      }
+    },
+    {
+      "fuel_type": "Diesel Fuel",
+      "co2_kg_per_unit": 10.21,
+      "unit": "gallon",
+      "source": {
+        "table": "Table 2",
+        "row": 107
+      }
+    },
+    {
+      "fuel_type": "Ethanol (100%)",
+      "co2_kg_per_unit": 5.75,
+      "unit": "gallon",
+      "source": {
+        "table": "Table 2",
+        "row": 108
+      }
+    },
+    {
+      "fuel_type": "Kerosene-Type Jet Fuel",
+      "co2_kg_per_unit": 9.75,
+      "unit": "gallon",
+      "source": {
+        "table": "Table 2",
+        "row": 109
+      }
+    },
+    {
+      "fuel_type": "Liquefied Natural Gas (LNG)",
+      "co2_kg_per_unit": 4.5,
+      "unit": "gallon",
+      "source": {
+        "table": "Table 2",
+        "row": 110
+      }
+    },
+    {
+      "fuel_type": "Liquefied Petroleum Gases (LPG)",
+      "co2_kg_per_unit": 5.68,
+      "unit": "gallon",
+      "source": {
+        "table": "Table 2",
+        "row": 111
+      }
+    },
+    {
+      "fuel_type": "Motor Gasoline",
+      "co2_kg_per_unit": 8.78,
+      "unit": "gallon",
+      "source": {
+        "table": "Table 2",
+        "row": 112
+      }
+    },
+    {
+      "fuel_type": "Residual Fuel Oil",
+      "co2_kg_per_unit": 11.27,
+      "unit": "gallon",
+      "source": {
+        "table": "Table 2",
+        "row": 113
+      }
+    }
+  ],
+  "mobile_on_road_gasoline": [
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1973,
+      "model_year_to": 1974,
+      "ch4_g_per_mile": 0.1696,
+      "n2o_g_per_mile": 0.0197,
+      "source": {
+        "table": "Table 3",
+        "row": 127
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1975,
+      "model_year_to": 1975,
+      "ch4_g_per_mile": 0.1423,
+      "n2o_g_per_mile": 0.0443,
+      "source": {
+        "table": "Table 3",
+        "row": 128
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1976,
+      "model_year_to": 1977,
+      "ch4_g_per_mile": 0.1406,
+      "n2o_g_per_mile": 0.0458,
+      "source": {
+        "table": "Table 3",
+        "row": 129
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1978,
+      "model_year_to": 1979,
+      "ch4_g_per_mile": 0.1389,
+      "n2o_g_per_mile": 0.0473,
+      "source": {
+        "table": "Table 3",
+        "row": 130
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1980,
+      "model_year_to": 1980,
+      "ch4_g_per_mile": 0.1326,
+      "n2o_g_per_mile": 0.0499,
+      "source": {
+        "table": "Table 3",
+        "row": 131
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1981,
+      "model_year_to": 1981,
+      "ch4_g_per_mile": 0.0802,
+      "n2o_g_per_mile": 0.0626,
+      "source": {
+        "table": "Table 3",
+        "row": 132
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1982,
+      "model_year_to": 1982,
+      "ch4_g_per_mile": 0.0795,
+      "n2o_g_per_mile": 0.0627,
+      "source": {
+        "table": "Table 3",
+        "row": 133
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1983,
+      "model_year_to": 1983,
+      "ch4_g_per_mile": 0.0782,
+      "n2o_g_per_mile": 0.063,
+      "source": {
+        "table": "Table 3",
+        "row": 134
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1984,
+      "model_year_to": 1993,
+      "ch4_g_per_mile": 0.0704,
+      "n2o_g_per_mile": 0.0647,
+      "source": {
+        "table": "Table 3",
+        "row": 135
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1994,
+      "model_year_to": 1994,
+      "ch4_g_per_mile": 0.0617,
+      "n2o_g_per_mile": 0.0603,
+      "source": {
+        "table": "Table 3",
+        "row": 136
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1995,
+      "model_year_to": 1995,
+      "ch4_g_per_mile": 0.0531,
+      "n2o_g_per_mile": 0.056,
+      "source": {
+        "table": "Table 3",
+        "row": 137
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1996,
+      "model_year_to": 1996,
+      "ch4_g_per_mile": 0.0434,
+      "n2o_g_per_mile": 0.0503,
+      "source": {
+        "table": "Table 3",
+        "row": 138
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1997,
+      "model_year_to": 1997,
+      "ch4_g_per_mile": 0.0337,
+      "n2o_g_per_mile": 0.0446,
+      "source": {
+        "table": "Table 3",
+        "row": 139
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1998,
+      "model_year_to": 1998,
+      "ch4_g_per_mile": 0.024,
+      "n2o_g_per_mile": 0.0389,
+      "source": {
+        "table": "Table 3",
+        "row": 140
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1999,
+      "model_year_to": 1999,
+      "ch4_g_per_mile": 0.0215,
+      "n2o_g_per_mile": 0.0355,
+      "source": {
+        "table": "Table 3",
+        "row": 141
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2000,
+      "model_year_to": 2000,
+      "ch4_g_per_mile": 0.0175,
+      "n2o_g_per_mile": 0.0304,
+      "source": {
+        "table": "Table 3",
+        "row": 142
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2001,
+      "model_year_to": 2001,
+      "ch4_g_per_mile": 0.0105,
+      "n2o_g_per_mile": 0.0212,
+      "source": {
+        "table": "Table 3",
+        "row": 143
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2002,
+      "model_year_to": 2002,
+      "ch4_g_per_mile": 0.0102,
+      "n2o_g_per_mile": 0.0207,
+      "source": {
+        "table": "Table 3",
+        "row": 144
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2003,
+      "model_year_to": 2003,
+      "ch4_g_per_mile": 0.0095,
+      "n2o_g_per_mile": 0.0181,
+      "source": {
+        "table": "Table 3",
+        "row": 145
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2004,
+      "model_year_to": 2004,
+      "ch4_g_per_mile": 0.0078,
+      "n2o_g_per_mile": 0.0085,
+      "source": {
+        "table": "Table 3",
+        "row": 146
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2005,
+      "model_year_to": 2005,
+      "ch4_g_per_mile": 0.0075,
+      "n2o_g_per_mile": 0.0067,
+      "source": {
+        "table": "Table 3",
+        "row": 147
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2006,
+      "model_year_to": 2006,
+      "ch4_g_per_mile": 0.0076,
+      "n2o_g_per_mile": 0.0075,
+      "source": {
+        "table": "Table 3",
+        "row": 148
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2007,
+      "model_year_to": 2007,
+      "ch4_g_per_mile": 0.0072,
+      "n2o_g_per_mile": 0.0052,
+      "source": {
+        "table": "Table 3",
+        "row": 149
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2008,
+      "model_year_to": 2008,
+      "ch4_g_per_mile": 0.0072,
+      "n2o_g_per_mile": 0.0049,
+      "source": {
+        "table": "Table 3",
+        "row": 150
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2009,
+      "model_year_to": 2009,
+      "ch4_g_per_mile": 0.0071,
+      "n2o_g_per_mile": 0.0046,
+      "source": {
+        "table": "Table 3",
+        "row": 151
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2010,
+      "model_year_to": 2010,
+      "ch4_g_per_mile": 0.0071,
+      "n2o_g_per_mile": 0.0046,
+      "source": {
+        "table": "Table 3",
+        "row": 152
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2011,
+      "model_year_to": 2011,
+      "ch4_g_per_mile": 0.0071,
+      "n2o_g_per_mile": 0.0046,
+      "source": {
+        "table": "Table 3",
+        "row": 153
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2012,
+      "model_year_to": 2012,
+      "ch4_g_per_mile": 0.0071,
+      "n2o_g_per_mile": 0.0046,
+      "source": {
+        "table": "Table 3",
+        "row": 154
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2013,
+      "model_year_to": 2013,
+      "ch4_g_per_mile": 0.0071,
+      "n2o_g_per_mile": 0.0046,
+      "source": {
+        "table": "Table 3",
+        "row": 155
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2014,
+      "model_year_to": 2014,
+      "ch4_g_per_mile": 0.0071,
+      "n2o_g_per_mile": 0.0046,
+      "source": {
+        "table": "Table 3",
+        "row": 156
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2015,
+      "model_year_to": 2015,
+      "ch4_g_per_mile": 0.0068,
+      "n2o_g_per_mile": 0.0042,
+      "source": {
+        "table": "Table 3",
+        "row": 157
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2016,
+      "model_year_to": 2016,
+      "ch4_g_per_mile": 0.0065,
+      "n2o_g_per_mile": 0.0038,
+      "source": {
+        "table": "Table 3",
+        "row": 158
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2017,
+      "model_year_to": 2017,
+      "ch4_g_per_mile": 0.0054,
+      "n2o_g_per_mile": 0.0018,
+      "source": {
+        "table": "Table 3",
+        "row": 159
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2018,
+      "model_year_to": 2018,
+      "ch4_g_per_mile": 0.0052,
+      "n2o_g_per_mile": 0.0016,
+      "source": {
+        "table": "Table 3",
+        "row": 160
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2019,
+      "model_year_to": 2019,
+      "ch4_g_per_mile": 0.0051,
+      "n2o_g_per_mile": 0.0015,
+      "source": {
+        "table": "Table 3",
+        "row": 161
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2020,
+      "model_year_to": 2020,
+      "ch4_g_per_mile": 0.005,
+      "n2o_g_per_mile": 0.0014,
+      "source": {
+        "table": "Table 3",
+        "row": 162
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2021,
+      "model_year_to": 2021,
+      "ch4_g_per_mile": 0.0051,
+      "n2o_g_per_mile": 0.0014,
+      "source": {
+        "table": "Table 3",
+        "row": 163
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Passenger Cars",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2022,
+      "model_year_to": 2022,
+      "ch4_g_per_mile": 0.005,
+      "n2o_g_per_mile": 0.0014,
+      "source": {
+        "table": "Table 3",
+        "row": 164
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1973,
+      "model_year_to": 1974,
+      "ch4_g_per_mile": 0.1908,
+      "n2o_g_per_mile": 0.0218,
+      "source": {
+        "table": "Table 3",
+        "row": 165
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1975,
+      "model_year_to": 1975,
+      "ch4_g_per_mile": 0.1634,
+      "n2o_g_per_mile": 0.0513,
+      "source": {
+        "table": "Table 3",
+        "row": 166
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1976,
+      "model_year_to": 1976,
+      "ch4_g_per_mile": 0.1594,
+      "n2o_g_per_mile": 0.0555,
+      "source": {
+        "table": "Table 3",
+        "row": 167
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1977,
+      "model_year_to": 1978,
+      "ch4_g_per_mile": 0.1614,
+      "n2o_g_per_mile": 0.0534,
+      "source": {
+        "table": "Table 3",
+        "row": 168
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1979,
+      "model_year_to": 1980,
+      "ch4_g_per_mile": 0.1594,
+      "n2o_g_per_mile": 0.0555,
+      "source": {
+        "table": "Table 3",
+        "row": 169
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1981,
+      "model_year_to": 1981,
+      "ch4_g_per_mile": 0.1479,
+      "n2o_g_per_mile": 0.066,
+      "source": {
+        "table": "Table 3",
+        "row": 170
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1982,
+      "model_year_to": 1982,
+      "ch4_g_per_mile": 0.1442,
+      "n2o_g_per_mile": 0.0681,
+      "source": {
+        "table": "Table 3",
+        "row": 171
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1983,
+      "model_year_to": 1983,
+      "ch4_g_per_mile": 0.1368,
+      "n2o_g_per_mile": 0.0722,
+      "source": {
+        "table": "Table 3",
+        "row": 172
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1984,
+      "model_year_to": 1984,
+      "ch4_g_per_mile": 0.1294,
+      "n2o_g_per_mile": 0.0764,
+      "source": {
+        "table": "Table 3",
+        "row": 173
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1985,
+      "model_year_to": 1985,
+      "ch4_g_per_mile": 0.122,
+      "n2o_g_per_mile": 0.0806,
+      "source": {
+        "table": "Table 3",
+        "row": 174
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1986,
+      "model_year_to": 1986,
+      "ch4_g_per_mile": 0.1146,
+      "n2o_g_per_mile": 0.0848,
+      "source": {
+        "table": "Table 3",
+        "row": 175
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1987,
+      "model_year_to": 1993,
+      "ch4_g_per_mile": 0.0813,
+      "n2o_g_per_mile": 0.1035,
+      "source": {
+        "table": "Table 3",
+        "row": 176
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1994,
+      "model_year_to": 1994,
+      "ch4_g_per_mile": 0.0646,
+      "n2o_g_per_mile": 0.0982,
+      "source": {
+        "table": "Table 3",
+        "row": 177
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1995,
+      "model_year_to": 1995,
+      "ch4_g_per_mile": 0.0517,
+      "n2o_g_per_mile": 0.0908,
+      "source": {
+        "table": "Table 3",
+        "row": 178
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1996,
+      "model_year_to": 1996,
+      "ch4_g_per_mile": 0.0452,
+      "n2o_g_per_mile": 0.0871,
+      "source": {
+        "table": "Table 3",
+        "row": 179
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1997,
+      "model_year_to": 1997,
+      "ch4_g_per_mile": 0.0452,
+      "n2o_g_per_mile": 0.0871,
+      "source": {
+        "table": "Table 3",
+        "row": 180
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1998,
+      "model_year_to": 1998,
+      "ch4_g_per_mile": 0.0412,
+      "n2o_g_per_mile": 0.0787,
+      "source": {
+        "table": "Table 3",
+        "row": 181
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1999,
+      "model_year_to": 1999,
+      "ch4_g_per_mile": 0.0333,
+      "n2o_g_per_mile": 0.0618,
+      "source": {
+        "table": "Table 3",
+        "row": 182
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2000,
+      "model_year_to": 2000,
+      "ch4_g_per_mile": 0.034,
+      "n2o_g_per_mile": 0.0631,
+      "source": {
+        "table": "Table 3",
+        "row": 183
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2001,
+      "model_year_to": 2001,
+      "ch4_g_per_mile": 0.0221,
+      "n2o_g_per_mile": 0.0379,
+      "source": {
+        "table": "Table 3",
+        "row": 184
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2002,
+      "model_year_to": 2002,
+      "ch4_g_per_mile": 0.0242,
+      "n2o_g_per_mile": 0.0424,
+      "source": {
+        "table": "Table 3",
+        "row": 185
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2003,
+      "model_year_to": 2003,
+      "ch4_g_per_mile": 0.0221,
+      "n2o_g_per_mile": 0.0373,
+      "source": {
+        "table": "Table 3",
+        "row": 186
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2004,
+      "model_year_to": 2004,
+      "ch4_g_per_mile": 0.0115,
+      "n2o_g_per_mile": 0.0088,
+      "source": {
+        "table": "Table 3",
+        "row": 187
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2005,
+      "model_year_to": 2005,
+      "ch4_g_per_mile": 0.0105,
+      "n2o_g_per_mile": 0.0064,
+      "source": {
+        "table": "Table 3",
+        "row": 188
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2006,
+      "model_year_to": 2006,
+      "ch4_g_per_mile": 0.0108,
+      "n2o_g_per_mile": 0.008,
+      "source": {
+        "table": "Table 3",
+        "row": 189
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2007,
+      "model_year_to": 2007,
+      "ch4_g_per_mile": 0.0103,
+      "n2o_g_per_mile": 0.0061,
+      "source": {
+        "table": "Table 3",
+        "row": 190
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2008,
+      "model_year_to": 2008,
+      "ch4_g_per_mile": 0.0095,
+      "n2o_g_per_mile": 0.0036,
+      "source": {
+        "table": "Table 3",
+        "row": 191
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2009,
+      "model_year_to": 2009,
+      "ch4_g_per_mile": 0.0095,
+      "n2o_g_per_mile": 0.0036,
+      "source": {
+        "table": "Table 3",
+        "row": 192
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2010,
+      "model_year_to": 2010,
+      "ch4_g_per_mile": 0.0095,
+      "n2o_g_per_mile": 0.0035,
+      "source": {
+        "table": "Table 3",
+        "row": 193
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2011,
+      "model_year_to": 2011,
+      "ch4_g_per_mile": 0.0096,
+      "n2o_g_per_mile": 0.0034,
+      "source": {
+        "table": "Table 3",
+        "row": 194
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2012,
+      "model_year_to": 2012,
+      "ch4_g_per_mile": 0.0096,
+      "n2o_g_per_mile": 0.0033,
+      "source": {
+        "table": "Table 3",
+        "row": 195
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2013,
+      "model_year_to": 2013,
+      "ch4_g_per_mile": 0.0095,
+      "n2o_g_per_mile": 0.0035,
+      "source": {
+        "table": "Table 3",
+        "row": 196
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2014,
+      "model_year_to": 2014,
+      "ch4_g_per_mile": 0.0095,
+      "n2o_g_per_mile": 0.0033,
+      "source": {
+        "table": "Table 3",
+        "row": 197
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2015,
+      "model_year_to": 2015,
+      "ch4_g_per_mile": 0.0094,
+      "n2o_g_per_mile": 0.0031,
+      "source": {
+        "table": "Table 3",
+        "row": 198
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2016,
+      "model_year_to": 2016,
+      "ch4_g_per_mile": 0.0091,
+      "n2o_g_per_mile": 0.0029,
+      "source": {
+        "table": "Table 3",
+        "row": 199
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2017,
+      "model_year_to": 2017,
+      "ch4_g_per_mile": 0.0084,
+      "n2o_g_per_mile": 0.0018,
+      "source": {
+        "table": "Table 3",
+        "row": 200
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2018,
+      "model_year_to": 2018,
+      "ch4_g_per_mile": 0.0081,
+      "n2o_g_per_mile": 0.0015,
+      "source": {
+        "table": "Table 3",
+        "row": 201
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2019,
+      "model_year_to": 2019,
+      "ch4_g_per_mile": 0.008,
+      "n2o_g_per_mile": 0.0013,
+      "source": {
+        "table": "Table 3",
+        "row": 202
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2020,
+      "model_year_to": 2020,
+      "ch4_g_per_mile": 0.0079,
+      "n2o_g_per_mile": 0.0012,
+      "source": {
+        "table": "Table 3",
+        "row": 203
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2021,
+      "model_year_to": 2021,
+      "ch4_g_per_mile": 0.0079,
+      "n2o_g_per_mile": 0.0012,
+      "source": {
+        "table": "Table 3",
+        "row": 204
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Light-Duty Trucks",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2022,
+      "model_year_to": 2022,
+      "ch4_g_per_mile": 0.0079,
+      "n2o_g_per_mile": 0.0012,
+      "source": {
+        "table": "Table 3",
+        "row": 205
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": null,
+      "model_year_to": 1980,
+      "ch4_g_per_mile": 0.4604,
+      "n2o_g_per_mile": 0.0497,
+      "source": {
+        "table": "Table 3",
+        "row": 206
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1981,
+      "model_year_to": 1984,
+      "ch4_g_per_mile": 0.4492,
+      "n2o_g_per_mile": 0.0538,
+      "source": {
+        "table": "Table 3",
+        "row": 207
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1985,
+      "model_year_to": 1986,
+      "ch4_g_per_mile": 0.409,
+      "n2o_g_per_mile": 0.0515,
+      "source": {
+        "table": "Table 3",
+        "row": 208
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1987,
+      "model_year_to": 1987,
+      "ch4_g_per_mile": 0.3675,
+      "n2o_g_per_mile": 0.0849,
+      "source": {
+        "table": "Table 3",
+        "row": 209
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1988,
+      "model_year_to": 1989,
+      "ch4_g_per_mile": 0.3492,
+      "n2o_g_per_mile": 0.0933,
+      "source": {
+        "table": "Table 3",
+        "row": 210
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1990,
+      "model_year_to": 1995,
+      "ch4_g_per_mile": 0.3246,
+      "n2o_g_per_mile": 0.1142,
+      "source": {
+        "table": "Table 3",
+        "row": 211
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1996,
+      "model_year_to": 1996,
+      "ch4_g_per_mile": 0.1278,
+      "n2o_g_per_mile": 0.168,
+      "source": {
+        "table": "Table 3",
+        "row": 212
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1997,
+      "model_year_to": 1997,
+      "ch4_g_per_mile": 0.0924,
+      "n2o_g_per_mile": 0.1726,
+      "source": {
+        "table": "Table 3",
+        "row": 213
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1998,
+      "model_year_to": 1998,
+      "ch4_g_per_mile": 0.0655,
+      "n2o_g_per_mile": 0.175,
+      "source": {
+        "table": "Table 3",
+        "row": 214
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1999,
+      "model_year_to": 1999,
+      "ch4_g_per_mile": 0.0648,
+      "n2o_g_per_mile": 0.1724,
+      "source": {
+        "table": "Table 3",
+        "row": 215
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2000,
+      "model_year_to": 2000,
+      "ch4_g_per_mile": 0.063,
+      "n2o_g_per_mile": 0.166,
+      "source": {
+        "table": "Table 3",
+        "row": 216
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2001,
+      "model_year_to": 2001,
+      "ch4_g_per_mile": 0.0577,
+      "n2o_g_per_mile": 0.1468,
+      "source": {
+        "table": "Table 3",
+        "row": 217
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2002,
+      "model_year_to": 2002,
+      "ch4_g_per_mile": 0.0634,
+      "n2o_g_per_mile": 0.1673,
+      "source": {
+        "table": "Table 3",
+        "row": 218
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2003,
+      "model_year_to": 2003,
+      "ch4_g_per_mile": 0.0602,
+      "n2o_g_per_mile": 0.1553,
+      "source": {
+        "table": "Table 3",
+        "row": 219
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2004,
+      "model_year_to": 2004,
+      "ch4_g_per_mile": 0.0298,
+      "n2o_g_per_mile": 0.0164,
+      "source": {
+        "table": "Table 3",
+        "row": 220
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2005,
+      "model_year_to": 2005,
+      "ch4_g_per_mile": 0.0297,
+      "n2o_g_per_mile": 0.0083,
+      "source": {
+        "table": "Table 3",
+        "row": 221
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2006,
+      "model_year_to": 2006,
+      "ch4_g_per_mile": 0.0299,
+      "n2o_g_per_mile": 0.0241,
+      "source": {
+        "table": "Table 3",
+        "row": 222
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2007,
+      "model_year_to": 2007,
+      "ch4_g_per_mile": 0.0322,
+      "n2o_g_per_mile": 0.0015,
+      "source": {
+        "table": "Table 3",
+        "row": 223
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2008,
+      "model_year_to": 2008,
+      "ch4_g_per_mile": 0.034,
+      "n2o_g_per_mile": 0.0015,
+      "source": {
+        "table": "Table 3",
+        "row": 224
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2009,
+      "model_year_to": 2009,
+      "ch4_g_per_mile": 0.0339,
+      "n2o_g_per_mile": 0.0015,
+      "source": {
+        "table": "Table 3",
+        "row": 225
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2010,
+      "model_year_to": 2010,
+      "ch4_g_per_mile": 0.032,
+      "n2o_g_per_mile": 0.0015,
+      "source": {
+        "table": "Table 3",
+        "row": 226
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2011,
+      "model_year_to": 2011,
+      "ch4_g_per_mile": 0.0304,
+      "n2o_g_per_mile": 0.0015,
+      "source": {
+        "table": "Table 3",
+        "row": 227
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2012,
+      "model_year_to": 2012,
+      "ch4_g_per_mile": 0.0313,
+      "n2o_g_per_mile": 0.0015,
+      "source": {
+        "table": "Table 3",
+        "row": 228
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2013,
+      "model_year_to": 2013,
+      "ch4_g_per_mile": 0.0313,
+      "n2o_g_per_mile": 0.0015,
+      "source": {
+        "table": "Table 3",
+        "row": 229
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2014,
+      "model_year_to": 2014,
+      "ch4_g_per_mile": 0.0315,
+      "n2o_g_per_mile": 0.0015,
+      "source": {
+        "table": "Table 3",
+        "row": 230
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2015,
+      "model_year_to": 2015,
+      "ch4_g_per_mile": 0.0332,
+      "n2o_g_per_mile": 0.0021,
+      "source": {
+        "table": "Table 3",
+        "row": 231
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2016,
+      "model_year_to": 2016,
+      "ch4_g_per_mile": 0.0321,
+      "n2o_g_per_mile": 0.0061,
+      "source": {
+        "table": "Table 3",
+        "row": 232
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2017,
+      "model_year_to": 2017,
+      "ch4_g_per_mile": 0.0329,
+      "n2o_g_per_mile": 0.0084,
+      "source": {
+        "table": "Table 3",
+        "row": 233
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2018,
+      "model_year_to": 2018,
+      "ch4_g_per_mile": 0.0326,
+      "n2o_g_per_mile": 0.0082,
+      "source": {
+        "table": "Table 3",
+        "row": 234
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2019,
+      "model_year_to": 2019,
+      "ch4_g_per_mile": 0.033,
+      "n2o_g_per_mile": 0.0091,
+      "source": {
+        "table": "Table 3",
+        "row": 235
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2020,
+      "model_year_to": 2020,
+      "ch4_g_per_mile": 0.0332,
+      "n2o_g_per_mile": 0.01,
+      "source": {
+        "table": "Table 3",
+        "row": 236
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2021,
+      "model_year_to": 2021,
+      "ch4_g_per_mile": 0.0332,
+      "n2o_g_per_mile": 0.01,
+      "source": {
+        "table": "Table 3",
+        "row": 237
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Heavy-Duty Vehicles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2022,
+      "model_year_to": 2022,
+      "ch4_g_per_mile": 0.0332,
+      "n2o_g_per_mile": 0.01,
+      "source": {
+        "table": "Table 3",
+        "row": 238
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Motorcycles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1960,
+      "model_year_to": 1995,
+      "ch4_g_per_mile": 0.009,
+      "n2o_g_per_mile": 0.09,
+      "source": {
+        "table": "Table 3",
+        "row": 239
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Motorcycles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 1996,
+      "model_year_to": 2005,
+      "ch4_g_per_mile": 0.007,
+      "n2o_g_per_mile": 0.067,
+      "source": {
+        "table": "Table 3",
+        "row": 240
+      }
+    },
+    {
+      "vehicle_type": "Gasoline Motorcycles",
+      "fuel_type": "Gasoline",
+      "model_year_from": 2006,
+      "model_year_to": 2022,
+      "ch4_g_per_mile": 0.018,
+      "n2o_g_per_mile": 0.066,
+      "source": {
+        "table": "Table 3",
+        "row": 241
+      }
+    }
+  ],
+  "mobile_on_road_other": [
+    {
+      "vehicle_type": "Passenger Cars",
+      "fuel_type": "Diesel",
+      "model_year_from": 1960,
+      "model_year_to": 1982,
+      "ch4_g_per_mile": 0.0006,
+      "n2o_g_per_mile": 0.0012,
+      "source": {
+        "table": "Table 4",
+        "row": 249
+      }
+    },
+    {
+      "vehicle_type": "Passenger Cars",
+      "fuel_type": "Diesel",
+      "model_year_from": 1983,
+      "model_year_to": 2006,
+      "ch4_g_per_mile": 0.0005,
+      "n2o_g_per_mile": 0.001,
+      "source": {
+        "table": "Table 4",
+        "row": 250
+      }
+    },
+    {
+      "vehicle_type": "Passenger Cars",
+      "fuel_type": "Diesel",
+      "model_year_from": 2007,
+      "model_year_to": 2022,
+      "ch4_g_per_mile": 0.0302,
+      "n2o_g_per_mile": 0.0192,
+      "source": {
+        "table": "Table 4",
+        "row": 251
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Trucks",
+      "fuel_type": "Diesel",
+      "model_year_from": 1960,
+      "model_year_to": 1982,
+      "ch4_g_per_mile": 0.0011,
+      "n2o_g_per_mile": 0.0017,
+      "source": {
+        "table": "Table 4",
+        "row": 252
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Trucks",
+      "fuel_type": "Diesel",
+      "model_year_from": 1983,
+      "model_year_to": 2006,
+      "ch4_g_per_mile": 0.0009,
+      "n2o_g_per_mile": 0.0014,
+      "source": {
+        "table": "Table 4",
+        "row": 253
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Trucks",
+      "fuel_type": "Diesel",
+      "model_year_from": 2007,
+      "model_year_to": 2022,
+      "ch4_g_per_mile": 0.029,
+      "n2o_g_per_mile": 0.0214,
+      "source": {
+        "table": "Table 4",
+        "row": 254
+      }
+    },
+    {
+      "vehicle_type": "Medium- and Heavy-Duty Vehicles",
+      "fuel_type": "Diesel",
+      "model_year_from": 1960,
+      "model_year_to": 2006,
+      "ch4_g_per_mile": 0.0051,
+      "n2o_g_per_mile": 0.0048,
+      "source": {
+        "table": "Table 4",
+        "row": 255
+      }
+    },
+    {
+      "vehicle_type": "Medium- and Heavy-Duty Vehicles",
+      "fuel_type": "Diesel",
+      "model_year_from": 2007,
+      "model_year_to": 2022,
+      "ch4_g_per_mile": 0.0095,
+      "n2o_g_per_mile": 0.0431,
+      "source": {
+        "table": "Table 4",
+        "row": 256
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Cars",
+      "fuel_type": "Methanol",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.012,
+      "n2o_g_per_mile": 0.004,
+      "source": {
+        "table": "Table 4",
+        "row": 257
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Cars",
+      "fuel_type": "Ethanol",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.012,
+      "n2o_g_per_mile": 0.004,
+      "source": {
+        "table": "Table 4",
+        "row": 258
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Cars",
+      "fuel_type": "CNG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.12,
+      "n2o_g_per_mile": 0.004,
+      "source": {
+        "table": "Table 4",
+        "row": 259
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Cars",
+      "fuel_type": "LPG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.012,
+      "n2o_g_per_mile": 0.004,
+      "source": {
+        "table": "Table 4",
+        "row": 260
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Cars",
+      "fuel_type": "Biodiesel",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.03,
+      "n2o_g_per_mile": 0.001,
+      "source": {
+        "table": "Table 4",
+        "row": 261
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Trucks",
+      "fuel_type": "Ethanol",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.013,
+      "n2o_g_per_mile": 0.005,
+      "source": {
+        "table": "Table 4",
+        "row": 262
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Trucks",
+      "fuel_type": "CNG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.13,
+      "n2o_g_per_mile": 0.005,
+      "source": {
+        "table": "Table 4",
+        "row": 263
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Trucks",
+      "fuel_type": "LPG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.013,
+      "n2o_g_per_mile": 0.005,
+      "source": {
+        "table": "Table 4",
+        "row": 264
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Trucks",
+      "fuel_type": "LNG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.13,
+      "n2o_g_per_mile": 0.005,
+      "source": {
+        "table": "Table 4",
+        "row": 265
+      }
+    },
+    {
+      "vehicle_type": "Light-Duty Trucks",
+      "fuel_type": "Biodiesel",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.054,
+      "n2o_g_per_mile": 0.001,
+      "source": {
+        "table": "Table 4",
+        "row": 266
+      }
+    },
+    {
+      "vehicle_type": "Medium-Duty Trucks",
+      "fuel_type": "CNG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 1.786,
+      "n2o_g_per_mile": 0.033,
+      "source": {
+        "table": "Table 4",
+        "row": 267
+      }
+    },
+    {
+      "vehicle_type": "Medium-Duty Trucks",
+      "fuel_type": "LPG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.179,
+      "n2o_g_per_mile": 0.033,
+      "source": {
+        "table": "Table 4",
+        "row": 268
+      }
+    },
+    {
+      "vehicle_type": "Medium-Duty Trucks",
+      "fuel_type": "LNG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 1.786,
+      "n2o_g_per_mile": 0.033,
+      "source": {
+        "table": "Table 4",
+        "row": 269
+      }
+    },
+    {
+      "vehicle_type": "Medium-Duty Trucks",
+      "fuel_type": "Biodiesel",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.009,
+      "n2o_g_per_mile": 0.005,
+      "source": {
+        "table": "Table 4",
+        "row": 270
+      }
+    },
+    {
+      "vehicle_type": "Heavy-Duty Trucks",
+      "fuel_type": "Methanol",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.072,
+      "n2o_g_per_mile": 0.026,
+      "source": {
+        "table": "Table 4",
+        "row": 271
+      }
+    },
+    {
+      "vehicle_type": "Heavy-Duty Trucks",
+      "fuel_type": "Ethanol",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.072,
+      "n2o_g_per_mile": 0.026,
+      "source": {
+        "table": "Table 4",
+        "row": 272
+      }
+    },
+    {
+      "vehicle_type": "Heavy-Duty Trucks",
+      "fuel_type": "CNG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.921,
+      "n2o_g_per_mile": 0.017,
+      "source": {
+        "table": "Table 4",
+        "row": 273
+      }
+    },
+    {
+      "vehicle_type": "Heavy-Duty Trucks",
+      "fuel_type": "LPG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.092,
+      "n2o_g_per_mile": 0.017,
+      "source": {
+        "table": "Table 4",
+        "row": 274
+      }
+    },
+    {
+      "vehicle_type": "Heavy-Duty Trucks",
+      "fuel_type": "LNG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.921,
+      "n2o_g_per_mile": 0.017,
+      "source": {
+        "table": "Table 4",
+        "row": 275
+      }
+    },
+    {
+      "vehicle_type": "Heavy-Duty Trucks",
+      "fuel_type": "Biodiesel",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.009,
+      "n2o_g_per_mile": 0.002,
+      "source": {
+        "table": "Table 4",
+        "row": 276
+      }
+    },
+    {
+      "vehicle_type": "Buses",
+      "fuel_type": "Methanol",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.19,
+      "n2o_g_per_mile": 0.029,
+      "source": {
+        "table": "Table 4",
+        "row": 277
+      }
+    },
+    {
+      "vehicle_type": "Buses",
+      "fuel_type": "Ethanol",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.19,
+      "n2o_g_per_mile": 0.029,
+      "source": {
+        "table": "Table 4",
+        "row": 278
+      }
+    },
+    {
+      "vehicle_type": "Buses",
+      "fuel_type": "CNG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 2.719,
+      "n2o_g_per_mile": 0.017,
+      "source": {
+        "table": "Table 4",
+        "row": 279
+      }
+    },
+    {
+      "vehicle_type": "Buses",
+      "fuel_type": "LPG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.272,
+      "n2o_g_per_mile": 0.017,
+      "source": {
+        "table": "Table 4",
+        "row": 280
+      }
+    },
+    {
+      "vehicle_type": "Buses",
+      "fuel_type": "LNG",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 2.719,
+      "n2o_g_per_mile": 0.017,
+      "source": {
+        "table": "Table 4",
+        "row": 281
+      }
+    },
+    {
+      "vehicle_type": "Buses",
+      "fuel_type": "Biodiesel",
+      "model_year_from": null,
+      "model_year_to": null,
+      "ch4_g_per_mile": 0.009,
+      "n2o_g_per_mile": 0.003,
+      "source": {
+        "table": "Table 4",
+        "row": 282
+      }
+    }
+  ],
+  "mobile_non_road": [
+    {
+      "vehicle_type": "Ships and Boats",
+      "fuel_type": "Residual Fuel Oil",
+      "ch4_g_per_gallon": 1.1,
+      "n2o_g_per_gallon": 0.31,
+      "source": {
+        "table": "Table 5",
+        "row": 290
+      }
+    },
+    {
+      "vehicle_type": "Ships and Boats",
+      "fuel_type": "Gasoline (2 stroke)",
+      "ch4_g_per_gallon": 4.67,
+      "n2o_g_per_gallon": 0.08,
+      "source": {
+        "table": "Table 5",
+        "row": 291
+      }
+    },
+    {
+      "vehicle_type": "Ships and Boats",
+      "fuel_type": "Gasoline (4 stroke)",
+      "ch4_g_per_gallon": 2.27,
+      "n2o_g_per_gallon": 0.01,
+      "source": {
+        "table": "Table 5",
+        "row": 292
+      }
+    },
+    {
+      "vehicle_type": "Ships and Boats",
+      "fuel_type": "Diesel",
+      "ch4_g_per_gallon": 6.51,
+      "n2o_g_per_gallon": 0.17,
+      "source": {
+        "table": "Table 5",
+        "row": 293
+      }
+    },
+    {
+      "vehicle_type": "Locomotives",
+      "fuel_type": "Diesel",
+      "ch4_g_per_gallon": 0.8,
+      "n2o_g_per_gallon": 0.26,
+      "source": {
+        "table": "Table 5",
+        "row": 294
+      }
+    },
+    {
+      "vehicle_type": "Aircraft",
+      "fuel_type": "Jet Fuel",
+      "ch4_g_per_gallon": 0,
+      "n2o_g_per_gallon": 0.3,
+      "source": {
+        "table": "Table 5",
+        "row": 295
+      }
+    },
+    {
+      "vehicle_type": "Aircraft",
+      "fuel_type": "Aviation Gasoline",
+      "ch4_g_per_gallon": 7.06,
+      "n2o_g_per_gallon": 0.11,
+      "source": {
+        "table": "Table 5",
+        "row": 296
+      }
+    },
+    {
+      "vehicle_type": "Agricultural Equipment",
+      "fuel_type": "Gasoline (2 stroke)",
+      "ch4_g_per_gallon": 6.9,
+      "n2o_g_per_gallon": 0.47,
+      "source": {
+        "table": "Table 5",
+        "row": 297
+      }
+    },
+    {
+      "vehicle_type": "Agricultural Equipment",
+      "fuel_type": "Gasoline (4 stroke)",
+      "ch4_g_per_gallon": 1.93,
+      "n2o_g_per_gallon": 1.2,
+      "source": {
+        "table": "Table 5",
+        "row": 298
+      }
+    },
+    {
+      "vehicle_type": "Agricultural Equipment",
+      "fuel_type": "Gasoline Off-Road Trucks",
+      "ch4_g_per_gallon": 1.93,
+      "n2o_g_per_gallon": 1.2,
+      "source": {
+        "table": "Table 5",
+        "row": 299
+      }
+    },
+    {
+      "vehicle_type": "Agricultural Equipment",
+      "fuel_type": "Diesel Equipment",
+      "ch4_g_per_gallon": 1.26,
+      "n2o_g_per_gallon": 1.07,
+      "source": {
+        "table": "Table 5",
+        "row": 300
+      }
+    },
+    {
+      "vehicle_type": "Agricultural Equipment",
+      "fuel_type": "Diesel Off-Road Trucks",
+      "ch4_g_per_gallon": 0.92,
+      "n2o_g_per_gallon": 0.56,
+      "source": {
+        "table": "Table 5",
+        "row": 301
+      }
+    },
+    {
+      "vehicle_type": "Agricultural Equipment",
+      "fuel_type": "LPG",
+      "ch4_g_per_gallon": 0.33,
+      "n2o_g_per_gallon": 0.94,
+      "source": {
+        "table": "Table 5",
+        "row": 302
+      }
+    },
+    {
+      "vehicle_type": "Construction/Mining Equipment",
+      "fuel_type": "Gasoline (2 stroke)",
+      "ch4_g_per_gallon": 8,
+      "n2o_g_per_gallon": 0.12,
+      "source": {
+        "table": "Table 5",
+        "row": 303
+      }
+    },
+    {
+      "vehicle_type": "Construction/Mining Equipment",
+      "fuel_type": "Gasoline (4 stroke)",
+      "ch4_g_per_gallon": 2.86,
+      "n2o_g_per_gallon": 1.48,
+      "source": {
+        "table": "Table 5",
+        "row": 304
+      }
+    },
+    {
+      "vehicle_type": "Construction/Mining Equipment",
+      "fuel_type": "Gasoline Off-Road Trucks",
+      "ch4_g_per_gallon": 2.86,
+      "n2o_g_per_gallon": 1.48,
+      "source": {
+        "table": "Table 5",
+        "row": 305
+      }
+    },
+    {
+      "vehicle_type": "Construction/Mining Equipment",
+      "fuel_type": "Diesel Equipment",
+      "ch4_g_per_gallon": 1.01,
+      "n2o_g_per_gallon": 0.94,
+      "source": {
+        "table": "Table 5",
+        "row": 306
+      }
+    },
+    {
+      "vehicle_type": "Construction/Mining Equipment",
+      "fuel_type": "Diesel Off-Road Trucks",
+      "ch4_g_per_gallon": 0.92,
+      "n2o_g_per_gallon": 0.56,
+      "source": {
+        "table": "Table 5",
+        "row": 307
+      }
+    },
+    {
+      "vehicle_type": "Construction/Mining Equipment",
+      "fuel_type": "LPG",
+      "ch4_g_per_gallon": 0.59,
+      "n2o_g_per_gallon": 0.5,
+      "source": {
+        "table": "Table 5",
+        "row": 308
+      }
+    },
+    {
+      "vehicle_type": "Lawn and Garden Equipment",
+      "fuel_type": "Gasoline (2 stroke)",
+      "ch4_g_per_gallon": 7.34,
+      "n2o_g_per_gallon": 0.31,
+      "source": {
+        "table": "Table 5",
+        "row": 309
+      }
+    },
+    {
+      "vehicle_type": "Lawn and Garden Equipment",
+      "fuel_type": "Gasoline (4 stroke)",
+      "ch4_g_per_gallon": 3.02,
+      "n2o_g_per_gallon": 1.5,
+      "source": {
+        "table": "Table 5",
+        "row": 310
+      }
+    },
+    {
+      "vehicle_type": "Lawn and Garden Equipment",
+      "fuel_type": "Diesel",
+      "ch4_g_per_gallon": 0.67,
+      "n2o_g_per_gallon": 0.49,
+      "source": {
+        "table": "Table 5",
+        "row": 311
+      }
+    },
+    {
+      "vehicle_type": "Lawn and Garden Equipment",
+      "fuel_type": "LPG",
+      "ch4_g_per_gallon": 0.37,
+      "n2o_g_per_gallon": 0.63,
+      "source": {
+        "table": "Table 5",
+        "row": 312
+      }
+    },
+    {
+      "vehicle_type": "Airport Equipment",
+      "fuel_type": "Gasoline",
+      "ch4_g_per_gallon": 1.07,
+      "n2o_g_per_gallon": 1.12,
+      "source": {
+        "table": "Table 5",
+        "row": 313
+      }
+    },
+    {
+      "vehicle_type": "Airport Equipment",
+      "fuel_type": "Diesel",
+      "ch4_g_per_gallon": 1.98,
+      "n2o_g_per_gallon": 1.21,
+      "source": {
+        "table": "Table 5",
+        "row": 314
+      }
+    },
+    {
+      "vehicle_type": "Airport Equipment",
+      "fuel_type": "LPG",
+      "ch4_g_per_gallon": 0.37,
+      "n2o_g_per_gallon": 0.93,
+      "source": {
+        "table": "Table 5",
+        "row": 315
+      }
+    },
+    {
+      "vehicle_type": "Industrial/Commercial Equipment",
+      "fuel_type": "Gasoline (2 stroke)",
+      "ch4_g_per_gallon": 7.3,
+      "n2o_g_per_gallon": 0.51,
+      "source": {
+        "table": "Table 5",
+        "row": 316
+      }
+    },
+    {
+      "vehicle_type": "Industrial/Commercial Equipment",
+      "fuel_type": "Gasoline (4 stroke)",
+      "ch4_g_per_gallon": 2.81,
+      "n2o_g_per_gallon": 1.57,
+      "source": {
+        "table": "Table 5",
+        "row": 317
+      }
+    },
+    {
+      "vehicle_type": "Industrial/Commercial Equipment",
+      "fuel_type": "Diesel",
+      "ch4_g_per_gallon": 0.43,
+      "n2o_g_per_gallon": 0.62,
+      "source": {
+        "table": "Table 5",
+        "row": 318
+      }
+    },
+    {
+      "vehicle_type": "Industrial/Commercial Equipment",
+      "fuel_type": "LPG",
+      "ch4_g_per_gallon": 0.46,
+      "n2o_g_per_gallon": 0.66,
+      "source": {
+        "table": "Table 5",
+        "row": 319
+      }
+    },
+    {
+      "vehicle_type": "Logging Equipment",
+      "fuel_type": "Gasoline (2 stroke)",
+      "ch4_g_per_gallon": 9.62,
+      "n2o_g_per_gallon": 0,
+      "source": {
+        "table": "Table 5",
+        "row": 320
+      }
+    },
+    {
+      "vehicle_type": "Logging Equipment",
+      "fuel_type": "Gasoline (4 stroke)",
+      "ch4_g_per_gallon": 3.22,
+      "n2o_g_per_gallon": 2.05,
+      "source": {
+        "table": "Table 5",
+        "row": 321
+      }
+    },
+    {
+      "vehicle_type": "Logging Equipment",
+      "fuel_type": "Diesel",
+      "ch4_g_per_gallon": 0.49,
+      "n2o_g_per_gallon": 1.26,
+      "source": {
+        "table": "Table 5",
+        "row": 322
+      }
+    },
+    {
+      "vehicle_type": "Railroad Equipment",
+      "fuel_type": "Gasoline",
+      "ch4_g_per_gallon": 3.32,
+      "n2o_g_per_gallon": 1.86,
+      "source": {
+        "table": "Table 5",
+        "row": 323
+      }
+    },
+    {
+      "vehicle_type": "Railroad Equipment",
+      "fuel_type": "Diesel",
+      "ch4_g_per_gallon": 0.41,
+      "n2o_g_per_gallon": 0.97,
+      "source": {
+        "table": "Table 5",
+        "row": 324
+      }
+    },
+    {
+      "vehicle_type": "Railroad Equipment",
+      "fuel_type": "LPG",
+      "ch4_g_per_gallon": 2.05,
+      "n2o_g_per_gallon": 0.01,
+      "source": {
+        "table": "Table 5",
+        "row": 325
+      }
+    },
+    {
+      "vehicle_type": "Recreational Equipment",
+      "fuel_type": "Gasoline (2 stroke)",
+      "ch4_g_per_gallon": 9.86,
+      "n2o_g_per_gallon": 0.11,
+      "source": {
+        "table": "Table 5",
+        "row": 326
+      }
+    },
+    {
+      "vehicle_type": "Recreational Equipment",
+      "fuel_type": "Gasoline (4 stroke)",
+      "ch4_g_per_gallon": 2.74,
+      "n2o_g_per_gallon": 1.49,
+      "source": {
+        "table": "Table 5",
+        "row": 327
+      }
+    },
+    {
+      "vehicle_type": "Recreational Equipment",
+      "fuel_type": "Diesel",
+      "ch4_g_per_gallon": 0.73,
+      "n2o_g_per_gallon": 0.66,
+      "source": {
+        "table": "Table 5",
+        "row": 328
+      }
+    },
+    {
+      "vehicle_type": "Recreational Equipment",
+      "fuel_type": "LPG",
+      "ch4_g_per_gallon": 0.44,
+      "n2o_g_per_gallon": 0.61,
+      "source": {
+        "table": "Table 5",
+        "row": 329
+      }
+    }
+  ],
+  "electricity": [
+    {
+      "egrid_subregion": "AKGD",
+      "name": "ASCC Alaska Grid",
+      "total_output": {
+        "co2_lb_per_mwh": 899.003,
+        "ch4_lb_per_mwh": 0.086,
+        "n2o_lb_per_mwh": 0.012
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1077.11,
+        "ch4_lb_per_mwh": 0.116,
+        "n2o_lb_per_mwh": 0.016
+      },
+      "grid_gross_loss": 0.041,
+      "source": {
+        "table": "Table 6",
+        "row": 339
+      }
+    },
+    {
+      "egrid_subregion": "AKMS",
+      "name": "ASCC Miscellaneous",
+      "total_output": {
+        "co2_lb_per_mwh": 519.445,
+        "ch4_lb_per_mwh": 0.026,
+        "n2o_lb_per_mwh": 0.004
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1548.607,
+        "ch4_lb_per_mwh": 0.067,
+        "n2o_lb_per_mwh": 0.012
+      },
+      "grid_gross_loss": 0.041,
+      "source": {
+        "table": "Table 6",
+        "row": 340
+      }
+    },
+    {
+      "egrid_subregion": "AZNM",
+      "name": "WECC Southwest",
+      "total_output": {
+        "co2_lb_per_mwh": 740.81,
+        "ch4_lb_per_mwh": 0.041,
+        "n2o_lb_per_mwh": 0.006
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1260.436,
+        "ch4_lb_per_mwh": 0.067,
+        "n2o_lb_per_mwh": 0.009
+      },
+      "grid_gross_loss": 0.041,
+      "source": {
+        "table": "Table 6",
+        "row": 341
+      }
+    },
+    {
+      "egrid_subregion": "CAMX",
+      "name": "WECC California",
+      "total_output": {
+        "co2_lb_per_mwh": 436.655,
+        "ch4_lb_per_mwh": 0.025,
+        "n2o_lb_per_mwh": 0.003
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1033.985,
+        "ch4_lb_per_mwh": 0.051,
+        "n2o_lb_per_mwh": 0.007
+      },
+      "grid_gross_loss": 0.041,
+      "source": {
+        "table": "Table 6",
+        "row": 342
+      }
+    },
+    {
+      "egrid_subregion": "ERCT",
+      "name": "ERCOT All",
+      "total_output": {
+        "co2_lb_per_mwh": 738.038,
+        "ch4_lb_per_mwh": 0.043,
+        "n2o_lb_per_mwh": 0.006
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1264.939,
+        "ch4_lb_per_mwh": 0.076,
+        "n2o_lb_per_mwh": 0.01
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 343
+      }
+    },
+    {
+      "egrid_subregion": "FRCC",
+      "name": "FRCC All",
+      "total_output": {
+        "co2_lb_per_mwh": 801.891,
+        "ch4_lb_per_mwh": 0.042,
+        "n2o_lb_per_mwh": 0.005
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1033.954,
+        "ch4_lb_per_mwh": 0.045,
+        "n2o_lb_per_mwh": 0.006
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 344
+      }
+    },
+    {
+      "egrid_subregion": "HIMS",
+      "name": "HICC Miscellaneous",
+      "total_output": {
+        "co2_lb_per_mwh": 1122.117,
+        "ch4_lb_per_mwh": 0.146,
+        "n2o_lb_per_mwh": 0.022
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1596.385,
+        "ch4_lb_per_mwh": 0.17,
+        "n2o_lb_per_mwh": 0.027
+      },
+      "grid_gross_loss": 0.044,
+      "source": {
+        "table": "Table 6",
+        "row": 345
+      }
+    },
+    {
+      "egrid_subregion": "HIOA",
+      "name": "HICC Oahu",
+      "total_output": {
+        "co2_lb_per_mwh": 1489.362,
+        "ch4_lb_per_mwh": 0.134,
+        "n2o_lb_per_mwh": 0.021
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1753.441,
+        "ch4_lb_per_mwh": 0.159,
+        "n2o_lb_per_mwh": 0.025
+      },
+      "grid_gross_loss": 0.044,
+      "source": {
+        "table": "Table 6",
+        "row": 346
+      }
+    },
+    {
+      "egrid_subregion": "MROE",
+      "name": "MRO East",
+      "total_output": {
+        "co2_lb_per_mwh": 1402.005,
+        "ch4_lb_per_mwh": 0.116,
+        "n2o_lb_per_mwh": 0.017
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1713.772,
+        "ch4_lb_per_mwh": 0.161,
+        "n2o_lb_per_mwh": 0.023
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 347
+      }
+    },
+    {
+      "egrid_subregion": "MROW",
+      "name": "MRO West",
+      "total_output": {
+        "co2_lb_per_mwh": 920.022,
+        "ch4_lb_per_mwh": 0.097,
+        "n2o_lb_per_mwh": 0.014
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1776.58,
+        "ch4_lb_per_mwh": 0.18,
+        "n2o_lb_per_mwh": 0.026
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 348
+      }
+    },
+    {
+      "egrid_subregion": "NEWE",
+      "name": "NPCC New England",
+      "total_output": {
+        "co2_lb_per_mwh": 537.243,
+        "ch4_lb_per_mwh": 0.063,
+        "n2o_lb_per_mwh": 0.008
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 885.161,
+        "ch4_lb_per_mwh": 0.067,
+        "n2o_lb_per_mwh": 0.009
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 349
+      }
+    },
+    {
+      "egrid_subregion": "NWPP",
+      "name": "WECC Northwest",
+      "total_output": {
+        "co2_lb_per_mwh": 631.705,
+        "ch4_lb_per_mwh": 0.054,
+        "n2o_lb_per_mwh": 0.008
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1613.426,
+        "ch4_lb_per_mwh": 0.146,
+        "n2o_lb_per_mwh": 0.021
+      },
+      "grid_gross_loss": 0.041,
+      "source": {
+        "table": "Table 6",
+        "row": 350
+      }
+    },
+    {
+      "egrid_subregion": "NYCW",
+      "name": "NPCC NYC/Westchester",
+      "total_output": {
+        "co2_lb_per_mwh": 974.656,
+        "ch4_lb_per_mwh": 0.025,
+        "n2o_lb_per_mwh": 0.003
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1008.891,
+        "ch4_lb_per_mwh": 0.02,
+        "n2o_lb_per_mwh": 0.002
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 351
+      }
+    },
+    {
+      "egrid_subregion": "NYLI",
+      "name": "NPCC Long Island",
+      "total_output": {
+        "co2_lb_per_mwh": 1180.678,
+        "ch4_lb_per_mwh": 0.14,
+        "n2o_lb_per_mwh": 0.018
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1316.557,
+        "ch4_lb_per_mwh": 0.05,
+        "n2o_lb_per_mwh": 0.006
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 352
+      }
+    },
+    {
+      "egrid_subregion": "NYUP",
+      "name": "NPCC Upstate NY",
+      "total_output": {
+        "co2_lb_per_mwh": 240.99,
+        "ch4_lb_per_mwh": 0.011,
+        "n2o_lb_per_mwh": 0.001
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 909.108,
+        "ch4_lb_per_mwh": 0.041,
+        "n2o_lb_per_mwh": 0.005
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 353
+      }
+    },
+    {
+      "egrid_subregion": "PRMS",
+      "name": "Puerto Rico Miscellaneous",
+      "total_output": {
+        "co2_lb_per_mwh": 1542.952,
+        "ch4_lb_per_mwh": 0.077,
+        "n2o_lb_per_mwh": 0.012
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1636.738,
+        "ch4_lb_per_mwh": 0.072,
+        "n2o_lb_per_mwh": 0.012
+      },
+      "grid_gross_loss": null,
+      "source": {
+        "table": "Table 6",
+        "row": 354
+      }
+    },
+    {
+      "egrid_subregion": "RFCE",
+      "name": "RFC East",
+      "total_output": {
+        "co2_lb_per_mwh": 594.74,
+        "ch4_lb_per_mwh": 0.036,
+        "n2o_lb_per_mwh": 0.005
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1175.499,
+        "ch4_lb_per_mwh": 0.077,
+        "n2o_lb_per_mwh": 0.01
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 355
+      }
+    },
+    {
+      "egrid_subregion": "RFCM",
+      "name": "RFC Michigan",
+      "total_output": {
+        "co2_lb_per_mwh": 962.084,
+        "ch4_lb_per_mwh": 0.082,
+        "n2o_lb_per_mwh": 0.011
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1508.119,
+        "ch4_lb_per_mwh": 0.144,
+        "n2o_lb_per_mwh": 0.02
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 356
+      }
+    },
+    {
+      "egrid_subregion": "RFCW",
+      "name": "RFC West",
+      "total_output": {
+        "co2_lb_per_mwh": 911.321,
+        "ch4_lb_per_mwh": 0.071,
+        "n2o_lb_per_mwh": 0.01
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1757.345,
+        "ch4_lb_per_mwh": 0.161,
+        "n2o_lb_per_mwh": 0.023
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 357
+      }
+    },
+    {
+      "egrid_subregion": "RMPA",
+      "name": "WECC Rockies",
+      "total_output": {
+        "co2_lb_per_mwh": 1036.021,
+        "ch4_lb_per_mwh": 0.09,
+        "n2o_lb_per_mwh": 0.013
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1620.64,
+        "ch4_lb_per_mwh": 0.124,
+        "n2o_lb_per_mwh": 0.018
+      },
+      "grid_gross_loss": 0.041,
+      "source": {
+        "table": "Table 6",
+        "row": 358
+      }
+    },
+    {
+      "egrid_subregion": "SPNO",
+      "name": "SPP North",
+      "total_output": {
+        "co2_lb_per_mwh": 861.925,
+        "ch4_lb_per_mwh": 0.087,
+        "n2o_lb_per_mwh": 0.012
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1892.091,
+        "ch4_lb_per_mwh": 0.188,
+        "n2o_lb_per_mwh": 0.027
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 359
+      }
+    },
+    {
+      "egrid_subregion": "SPSO",
+      "name": "SPP South",
+      "total_output": {
+        "co2_lb_per_mwh": 891.103,
+        "ch4_lb_per_mwh": 0.055,
+        "n2o_lb_per_mwh": 0.008
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1508.425,
+        "ch4_lb_per_mwh": 0.095,
+        "n2o_lb_per_mwh": 0.013
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 360
+      }
+    },
+    {
+      "egrid_subregion": "SRMV",
+      "name": "SERC Mississippi Valley",
+      "total_output": {
+        "co2_lb_per_mwh": 739.415,
+        "ch4_lb_per_mwh": 0.032,
+        "n2o_lb_per_mwh": 0.004
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1145.487,
+        "ch4_lb_per_mwh": 0.061,
+        "n2o_lb_per_mwh": 0.008
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 361
+      }
+    },
+    {
+      "egrid_subregion": "SRMW",
+      "name": "SERC Midwest",
+      "total_output": {
+        "co2_lb_per_mwh": 1238.311,
+        "ch4_lb_per_mwh": 0.132,
+        "n2o_lb_per_mwh": 0.019
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1818.554,
+        "ch4_lb_per_mwh": 0.19,
+        "n2o_lb_per_mwh": 0.027
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 362
+      }
+    },
+    {
+      "egrid_subregion": "SRSO",
+      "name": "SERC South",
+      "total_output": {
+        "co2_lb_per_mwh": 840.893,
+        "ch4_lb_per_mwh": 0.055,
+        "n2o_lb_per_mwh": 0.008
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1385.997,
+        "ch4_lb_per_mwh": 0.096,
+        "n2o_lb_per_mwh": 0.014
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 363
+      }
+    },
+    {
+      "egrid_subregion": "SRTV",
+      "name": "SERC Tennessee Valley",
+      "total_output": {
+        "co2_lb_per_mwh": 895.693,
+        "ch4_lb_per_mwh": 0.079,
+        "n2o_lb_per_mwh": 0.011
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1665.755,
+        "ch4_lb_per_mwh": 0.154,
+        "n2o_lb_per_mwh": 0.022
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 364
+      }
+    },
+    {
+      "egrid_subregion": "SRVC",
+      "name": "SERC Virginia/Carolina",
+      "total_output": {
+        "co2_lb_per_mwh": 590.229,
+        "ch4_lb_per_mwh": 0.045,
+        "n2o_lb_per_mwh": 0.006
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1286.77,
+        "ch4_lb_per_mwh": 0.1,
+        "n2o_lb_per_mwh": 0.014
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 365
+      }
+    },
+    {
+      "egrid_subregion": "US Average",
+      "name": "US Average",
+      "total_output": {
+        "co2_lb_per_mwh": 771.523,
+        "ch4_lb_per_mwh": 0.057,
+        "n2o_lb_per_mwh": 0.008
+      },
+      "non_baseload": {
+        "co2_lb_per_mwh": 1393.7,
+        "ch4_lb_per_mwh": 0.104,
+        "n2o_lb_per_mwh": 0.015
+      },
+      "grid_gross_loss": 0.042,
+      "source": {
+        "table": "Table 6",
+        "row": 366
+      }
+    }
+  ],
+  "steam_heat": [
+    {
+      "name": "Steam and Heat",
+      "co2_kg_per_mmbtu": 66.33,
+      "ch4_g_per_mmbtu": 1.25,
+      "n2o_g_per_mmbtu": 0.125,
+      "source": {
+        "table": "Table 7",
+        "row": 410
+      }
+    }
+  ],
+  "gwp": [
+    {
+      "name": "Carbon dioxide",
+      "formula": "CO2",
+      "gwp_100yr": 1,
+      "source": {
+        "table": "Table 11",
+        "row": 524
+      }
+    },
+    {
+      "name": "Methane",
+      "formula": "CH4",
+      "gwp_100yr": 28,
+      "source": {
+        "table": "Table 11",
+        "row": 525
+      }
+    },
+    {
+      "name": "Nitrous oxide",
+      "formula": "N2O",
+      "gwp_100yr": 265,
+      "source": {
+        "table": "Table 11",
+        "row": 526
+      }
+    },
+    {
+      "name": "HFC-23",
+      "formula": "CHF3",
+      "gwp_100yr": 12400,
+      "source": {
+        "table": "Table 11",
+        "row": 527
+      }
+    },
+    {
+      "name": "HFC-32",
+      "formula": "CH2F2",
+      "gwp_100yr": 677,
+      "source": {
+        "table": "Table 11",
+        "row": 528
+      }
+    },
+    {
+      "name": "HFC-41",
+      "formula": "CH3F",
+      "gwp_100yr": 116,
+      "source": {
+        "table": "Table 11",
+        "row": 529
+      }
+    },
+    {
+      "name": "HFC-125",
+      "formula": "CHF2CF3",
+      "gwp_100yr": 3170,
+      "source": {
+        "table": "Table 11",
+        "row": 530
+      }
+    },
+    {
+      "name": "HFC-134",
+      "formula": "CHF2CHF2",
+      "gwp_100yr": 1120,
+      "source": {
+        "table": "Table 11",
+        "row": 531
+      }
+    },
+    {
+      "name": "HFC-134a",
+      "formula": "CH2FCF3",
+      "gwp_100yr": 1300,
+      "source": {
+        "table": "Table 11",
+        "row": 532
+      }
+    },
+    {
+      "name": "HFC-143",
+      "formula": "CH2FCHF2",
+      "gwp_100yr": 328,
+      "source": {
+        "table": "Table 11",
+        "row": 533
+      }
+    },
+    {
+      "name": "HFC-143a",
+      "formula": "CH3CF3",
+      "gwp_100yr": 4800,
+      "source": {
+        "table": "Table 11",
+        "row": 534
+      }
+    },
+    {
+      "name": "HFC-152",
+      "formula": "CH2FCH2F",
+      "gwp_100yr": 16,
+      "source": {
+        "table": "Table 11",
+        "row": 535
+      }
+    },
+    {
+      "name": "HFC-152a",
+      "formula": "CH3CHF2",
+      "gwp_100yr": 138,
+      "source": {
+        "table": "Table 11",
+        "row": 536
+      }
+    },
+    {
+      "name": "HFC-161",
+      "formula": "CH3CH2F",
+      "gwp_100yr": 4,
+      "source": {
+        "table": "Table 11",
+        "row": 537
+      }
+    },
+    {
+      "name": "HFC-227ea",
+      "formula": "CF3CHFCF3",
+      "gwp_100yr": 3350,
+      "source": {
+        "table": "Table 11",
+        "row": 538
+      }
+    },
+    {
+      "name": "HFC-236cb",
+      "formula": "CH2FCF2CF3",
+      "gwp_100yr": 1210,
+      "source": {
+        "table": "Table 11",
+        "row": 539
+      }
+    },
+    {
+      "name": "HFC-236ea",
+      "formula": "CHF2CHFCF3",
+      "gwp_100yr": 1330,
+      "source": {
+        "table": "Table 11",
+        "row": 540
+      }
+    },
+    {
+      "name": "HFC-236fa",
+      "formula": "CF3CH2CF3",
+      "gwp_100yr": 8060,
+      "source": {
+        "table": "Table 11",
+        "row": 541
+      }
+    },
+    {
+      "name": "HFC-245ca",
+      "formula": "CH2FCF2CHF2",
+      "gwp_100yr": 716,
+      "source": {
+        "table": "Table 11",
+        "row": 542
+      }
+    },
+    {
+      "name": "HFC-245fa",
+      "formula": "CHF2CH2CF3",
+      "gwp_100yr": 858,
+      "source": {
+        "table": "Table 11",
+        "row": 543
+      }
+    },
+    {
+      "name": "HFC-365mfc",
+      "formula": "CH3CF2CH2CF3",
+      "gwp_100yr": 804,
+      "source": {
+        "table": "Table 11",
+        "row": 544
+      }
+    },
+    {
+      "name": "HFC-43-10mee",
+      "formula": "CF3CHFCHFCF2CF3",
+      "gwp_100yr": 1650,
+      "source": {
+        "table": "Table 11",
+        "row": 545
+      }
+    },
+    {
+      "name": "Sulfur hexafluoride",
+      "formula": "SF6",
+      "gwp_100yr": 23500,
+      "source": {
+        "table": "Table 11",
+        "row": 546
+      }
+    },
+    {
+      "name": "Nitrogen trifluoride",
+      "formula": "NF3",
+      "gwp_100yr": 16100,
+      "source": {
+        "table": "Table 11",
+        "row": 547
+      }
+    },
+    {
+      "name": "PFC-14",
+      "formula": "CF4",
+      "gwp_100yr": 6630,
+      "source": {
+        "table": "Table 11",
+        "row": 548
+      }
+    },
+    {
+      "name": "PFC-116",
+      "formula": "C2F6",
+      "gwp_100yr": 11100,
+      "source": {
+        "table": "Table 11",
+        "row": 549
+      }
+    },
+    {
+      "name": "PFC-218",
+      "formula": "C3F8",
+      "gwp_100yr": 8900,
+      "source": {
+        "table": "Table 11",
+        "row": 550
+      }
+    },
+    {
+      "name": "PFC-318",
+      "formula": "c-C4F8",
+      "gwp_100yr": 9540,
+      "source": {
+        "table": "Table 11",
+        "row": 551
+      }
+    },
+    {
+      "name": "PFC-31-10",
+      "formula": "C4F10",
+      "gwp_100yr": 9200,
+      "source": {
+        "table": "Table 11",
+        "row": 552
+      }
+    },
+    {
+      "name": "PFC-41-12",
+      "formula": "C5F12",
+      "gwp_100yr": 8550,
+      "source": {
+        "table": "Table 11",
+        "row": 553
+      }
+    },
+    {
+      "name": "PFC-51-14",
+      "formula": "C6F14",
+      "gwp_100yr": 7910,
+      "source": {
+        "table": "Table 11",
+        "row": 554
+      }
+    },
+    {
+      "name": "PFC-91-18",
+      "formula": "C10F18",
+      "gwp_100yr": 7190,
+      "source": {
+        "table": "Table 11",
+        "row": 555
+      }
+    }
+  ],
+  "gwp_refrigerant_blends": [
+    {
+      "ashrae": "R-401A",
+      "gwp_100yr": 18,
+      "composition": "53% HCFC-22 , 34% HCFC-124 , 13% HFC-152a",
+      "source": {
+        "table": "Table 12",
+        "row": 561
+      }
+    },
+    {
+      "ashrae": "R-401B",
+      "gwp_100yr": 15,
+      "composition": "61% HCFC-22 , 28% HCFC-124 , 11% HFC-152a",
+      "source": {
+        "table": "Table 12",
+        "row": 562
+      }
+    },
+    {
+      "ashrae": "R-401C",
+      "gwp_100yr": 21,
+      "composition": "33% HCFC-22 , 52% HCFC-124 , 15% HFC-152a",
+      "source": {
+        "table": "Table 12",
+        "row": 563
+      }
+    },
+    {
+      "ashrae": "R-402A",
+      "gwp_100yr": 1902,
+      "composition": "38% HCFC-22 , 60% HFC-125 , 2% propane",
+      "source": {
+        "table": "Table 12",
+        "row": 564
+      }
+    },
+    {
+      "ashrae": "R-402B",
+      "gwp_100yr": 1205,
+      "composition": "60% HCFC-22 , 38% HFC-125 , 2% propane",
+      "source": {
+        "table": "Table 12",
+        "row": 565
+      }
+    },
+    {
+      "ashrae": "R-403B",
+      "gwp_100yr": 3471,
+      "composition": "56% HCFC-22 , 39% PFC-218 , 5% propane",
+      "source": {
+        "table": "Table 12",
+        "row": 566
+      }
+    },
+    {
+      "ashrae": "R-404A",
+      "gwp_100yr": 3943,
+      "composition": "44% HFC-125 , 4% HFC-134a , 52% HFC-143a",
+      "source": {
+        "table": "Table 12",
+        "row": 567
+      }
+    },
+    {
+      "ashrae": "R-406A",
+      "gwp_100yr": 0,
+      "composition": "55% HCFC-22 , 41% HCFC-142b , 4% isobutane",
+      "source": {
+        "table": "Table 12",
+        "row": 568
+      }
+    },
+    {
+      "ashrae": "R-407A",
+      "gwp_100yr": 1923,
+      "composition": "20% HFC-32 , 40% HFC-125 , 40% HFC-134a",
+      "source": {
+        "table": "Table 12",
+        "row": 569
+      }
+    },
+    {
+      "ashrae": "R-407B",
+      "gwp_100yr": 2547,
+      "composition": "10% HFC-32 , 70% HFC-125 , 20% HFC-134a",
+      "source": {
+        "table": "Table 12",
+        "row": 570
+      }
+    },
+    {
+      "ashrae": "R-407C",
+      "gwp_100yr": 1624,
+      "composition": "23% HFC-32 , 25% HFC-125 , 52% HFC-134a",
+      "source": {
+        "table": "Table 12",
+        "row": 571
+      }
+    },
+    {
+      "ashrae": "R-407D",
+      "gwp_100yr": 1487,
+      "composition": "15% HFC-32 , 15% HFC-125 , 70% HFC-134a",
+      "source": {
+        "table": "Table 12",
+        "row": 572
+      }
+    },
+    {
+      "ashrae": "R-408A",
+      "gwp_100yr": 2430,
+      "composition": "47% HCFC-22 , 7% HFC-125 , 46% HFC-143a",
+      "source": {
+        "table": "Table 12",
+        "row": 573
+      }
+    },
+    {
+      "ashrae": "R-409A",
+      "gwp_100yr": 0,
+      "composition": "60% HCFC-22 , 25% HCFC-124 , 15% HCFC-142b",
+      "source": {
+        "table": "Table 12",
+        "row": 574
+      }
+    },
+    {
+      "ashrae": "R-410A",
+      "gwp_100yr": 1924,
+      "composition": "50% HFC-32 , 50% HFC-125",
+      "source": {
+        "table": "Table 12",
+        "row": 575
+      }
+    },
+    {
+      "ashrae": "R-410B",
+      "gwp_100yr": 2048,
+      "composition": "45% HFC-32 , 55% HFC-125",
+      "source": {
+        "table": "Table 12",
+        "row": 576
+      }
+    },
+    {
+      "ashrae": "R-411A",
+      "gwp_100yr": 15,
+      "composition": "87.5% HCFC-22 , 11% HFC-152a , 1.5% propylene",
+      "source": {
+        "table": "Table 12",
+        "row": 577
+      }
+    },
+    {
+      "ashrae": "R-411B",
+      "gwp_100yr": 4,
+      "composition": "94% HCFC-22 , 3% HFC-152a , 3% propylene",
+      "source": {
+        "table": "Table 12",
+        "row": 578
+      }
+    },
+    {
+      "ashrae": "R-414A",
+      "gwp_100yr": 0,
+      "composition": "51% HCFC-22 , 28.5% HCFC-124 , 16.5% HCFC-142b , 4% isobutane",
+      "source": {
+        "table": "Table 12",
+        "row": 579
+      }
+    },
+    {
+      "ashrae": "R-414B",
+      "gwp_100yr": 0,
+      "composition": "50% HCFC-22 , 39% HCFC-124 , 9.5% HCFC-142b , 1.5% isobutane",
+      "source": {
+        "table": "Table 12",
+        "row": 580
+      }
+    },
+    {
+      "ashrae": "R-417A",
+      "gwp_100yr": 2127,
+      "composition": "46.6% HFC-125 , 50% HFC-134a , 3.4% butane",
+      "source": {
+        "table": "Table 12",
+        "row": 581
+      }
+    },
+    {
+      "ashrae": "R-422A",
+      "gwp_100yr": 2847,
+      "composition": "85.1% HFC-125 , 11.5% HFC-134a , 3.4% isobutane",
+      "source": {
+        "table": "Table 12",
+        "row": 582
+      }
+    },
+    {
+      "ashrae": "R-422D",
+      "gwp_100yr": 2473,
+      "composition": "65.1% HFC-125 , 31.5% HFC-134a , 3.4% isobutane",
+      "source": {
+        "table": "Table 12",
+        "row": 583
+      }
+    },
+    {
+      "ashrae": "R-424A",
+      "gwp_100yr": 3104,
+      "composition": "50.5% HFC-125 , 47% HFC-134a , 1% butane , 0.9% isobutane , 0.6% isopentane",
+      "source": {
+        "table": "Table 12",
+        "row": 584
+      }
+    },
+    {
+      "ashrae": "R-426A",
+      "gwp_100yr": 1371,
+      "composition": "5.1% HFC-125 , 93% HFC-134a , 1.3% butane , 0.6% isobutane",
+      "source": {
+        "table": "Table 12",
+        "row": 585
+      }
+    },
+    {
+      "ashrae": "R-428A",
+      "gwp_100yr": 3417,
+      "composition": "77.5% HFC-125 , 20% HFC-143a , 1.9% isobutane , 0.6% propane",
+      "source": {
+        "table": "Table 12",
+        "row": 586
+      }
+    },
+    {
+      "ashrae": "R-434A",
+      "gwp_100yr": 3075,
+      "composition": "63.2% HFC-125 , 16% HFC-134a , 18% HFC-143a , 2.8% isobutane",
+      "source": {
+        "table": "Table 12",
+        "row": 587
+      }
+    },
+    {
+      "ashrae": "R-507A",
+      "gwp_100yr": 3985,
+      "composition": "50% HFC-125 , 50% HFC-143a",
+      "source": {
+        "table": "Table 12",
+        "row": 588
+      }
+    },
+    {
+      "ashrae": "R-508A",
+      "gwp_100yr": 11607,
+      "composition": "39% HFC-23 , 61% PFC-116",
+      "source": {
+        "table": "Table 12",
+        "row": 589
+      }
+    },
+    {
+      "ashrae": "R-508B",
+      "gwp_100yr": 11698,
+      "composition": "46% HFC-23 , 54% PFC-116",
+      "source": {
+        "table": "Table 12",
+        "row": 590
+      }
+    }
+  ]
+}

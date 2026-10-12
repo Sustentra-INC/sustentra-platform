@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { EXACT_COPY } from "../constants/copy";
 import { HALT_REASONS } from "../constants/copy";
-import { mapBackendDocumentToEvidenceItem, mapHaltReason } from "../adapters/evidenceAdapter";
+import { mapBackendDocumentToEvidenceItem, mapHaltReason, resolveCanonicalTypeDisplayName } from "../adapters/evidenceAdapter";
 import { sixDocumentEvidence } from "../fixtures/evidence/sixDocuments";
 import { findBlockedUiTerms } from "../utils/copyCompliance";
 
@@ -71,5 +71,9 @@ describe("copy compliance", () => {
 
     expect(item.detectedType).toBe("Stationary fuel consumption record");
     expect(item.detectedType).not.toMatch(/^CT-/);
+  });
+
+  it("names Scope 2 electricity bills instead of calling them unmapped", () => {
+    expect(resolveCanonicalTypeDisplayName({ canonical_type_id: "CT-S2-ELEC" })).toBe("Purchased electricity record");
   });
 });

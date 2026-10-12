@@ -1,0 +1,261 @@
+"""Engagement recalculation: reviewed evidence in, workbook-checked numbers out."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from backend.app.services.engagement_recalculation_service import (
+    EngagementRecalculationService,
+    materiality_tolerance,
+    validate_recalculation_settings,
+)
+
+ORG = "org-a"
+
+
+class FakeStore:
+    """documents / extraction results / review decisions, as the S1 services return them."""
+
+    def __init__(self) -> None:
+        self.documents: list[dict] = []
+        self.results: dict[str, list[dict]] = {}
+        self.reviews: dict[str, list[dict]] = {}
+
+    def add_document(self, document_id: str, canonical_type_id: str, records: list[dict[str, tuple]],
+                     engagement_id: str = "ENG-1", org_id: str = ORG, decision: str | None = "accepted") -> None:
+        """``records``: one dict per record of field_name -> (normalized_value, unit)."""
+
+        self.documents.append({"document_id": document_id, "engagement_id": engagement_id, "org_id": org_id,
+                               "file_name": f"{document_id}.pdf"})
+        items, reviews = [], []
+        multi = len(records) > 1
+        for index, record in enumerate(records, start=1):
+            for field_name, (value, unit) in record.items():
+                candidate_id = f"{document_id}:{index}:{field_name}"
+                items.append({"candidate_id": candidate_id, "field_name": field_name, "normalized_value": value,
+                              "unit": unit, "record_index": index if multi else None,
+                              "source_reference": {"document_id": document_id, "page_number": 1}})
+                if decision:
+                    reviews.append({"candidate_id": candidate_id, "decision": decision, "org_id": org_id,
+                                    "reviewed_value": value if decision == "accepted" else None,
+                                    "reviewed_unit": unit if decision == "accepted" else None})
+        self.results[document_id] = [{"document_id": document_id, "org_id": org_id,
+                                      "canonical_type_id": canonical_type_id, "items": items}]
+        self.reviews[document_id] = reviews
+
+    # the three service seams
+    def list_documents(self, engagement_id: str) -> list[dict]:
+        return [d for d in self.documents if d["engagement_id"] == engagement_id]
+
+    def list_extraction_results_by_document(self, document_id: str) -> list[dict]:
+        return self.results.get(document_id, [])
+
+    def list_by_document(self, document_id: str) -> list[dict]:
+        return self.reviews.get(document_id, [])
+
+
+def _service(store: FakeStore) -> EngagementRecalculationService:
+    return EngagementRecalculationService(store, store, store)
+
+
+def _engagement(**settings: Any) -> dict:
+    return {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
+            "settings": settings}
+
+
+def _own(record: dict) -> bool:
+    return record.get("org_id") == ORG
+
+
+def _elec(mwh: float, facility: str, address: str, start: str = "2025-01-01", end: str = "2025-12-31") -> dict:
+    return {"activity_quantity": (mwh, "MWh"), "activity_unit": ("MWh", None), "energy_type": ("electricity", None),
+            "facility_name": (facility, None), "service_address": (address, None),
+            "service_period_start": (start, None), "service_period_end": (end, None)}
+
+
+def _by_key(result: dict) -> dict[str, dict]:
+    return {c["key"]: c for c in result["comparisons"]}
+
+
+# --- the workbook's two-facility example, as reviewed utility bills -----------------------
+def _workbook_example_store() -> FakeStore:
+    store = FakeStore()
+    # Facility A 1,200,000 kWh and Facility B 800,000 kWh for the year, split over bills.
+    store.add_document("BILL-A1", "CT-S2-ELEC", [_elec(700, "Facility A", "Albany, NY", "2025-01-01", "2025-06-30")])
+    store.add_document("BILL-A2", "CT-S2-ELEC", [_elec(500, "Facility A", "Albany, NY", "2025-07-01", "2025-12-31")])
+    store.add_document("BILL-B1", "CT-S2-ELEC", [_elec(800, "Facility B", "Philadelphia, PA")])
+    return store
+
+
+def test_grid_region_is_required_and_never_defaulted() -> None:
+    result = _service(_workbook_example_store()).recalculate(_engagement(), _own)
+    assert result["categories"]["purchased_electricity_location_based"] is None
+    asks = {item["key"]: item for item in result["needs_input"] if item["kind"] == "grid_region"}
+    assert set(asks) == {"Facility A", "Facility B"}
+    assert "NYUP" in asks["Facility A"]["options"] and "Albany, NY" in asks["Facility A"]["message"]
+    assert _by_key(result)["scope2_location_total"]["status"] == "no_evidence"
+
+
+def test_workbook_example_end_to_end_location_and_market_based() -> None:
+    settings = {"recalculation": {
+        "grid_regions": {"Facility A": "NYUP", "Facility B": "RFCE"},
+        "certificates": [{"label": "REC retirement report 1", "mwh": 400},
+                         {"label": "REC retirement report 2", "mwh": 200}],
+        "reported": {"scope2_location_total": 348.14, "scope2_market_total": 243.70},
+    }}
+    result = _service(_workbook_example_store()).recalculate(_engagement(**settings), _own)
+    location = result["categories"]["purchased_electricity_location_based"]
+    assert [round(line["mass_t"]["CO2"], 2) for line in location["lines"]] == [131.17, 215.82]  # exact EPA factors
+    assert round(location["total_co2e"], 2) == 348.15  # workbook: 348.14 with factors rounded to 241.0 / 594.7
+    assert round(result["categories"]["purchased_electricity_market_based"]["total_co2e"], 2) == 243.70
+    comparisons = _by_key(result)
+    assert comparisons["scope2_location_total"]["status"] == "within_tolerance"
+    assert comparisons["scope2_market_total"]["status"] == "within_tolerance"
+    assert comparisons["scope2_location_total"]["workbook_row"] == 29
+    assert result["needs_input"] == [] and result["awaiting_review"] == []
+    # Each facility's MWh names the reviewed bills it came from.
+    facility_a = next(i for i in location["details"]["inputs"] if i["fuel"] == "Facility A")
+    assert facility_a["quantity"] == 1200 and [d["document_id"] for d in facility_a["documents"]] == ["BILL-A1", "BILL-A2"]
+
+
+# --- reviewed values only ------------------------------------------------------------------
+def _gas(quantity: float, unit: str = "MMBtu", start: str = "2025-01-01", end: str = "2025-01-31",
+         fuel: str = "natural_gas") -> dict:
+    return {"fuel_type": (fuel, None), "activity_quantity": (quantity, unit), "activity_unit": (unit, None),
+            "service_period_start": (start, None), "service_period_end": (end, None),
+            "facility_name": ("Plant 1", None)}
+
+
+def test_unreviewed_and_rejected_values_never_reach_a_number() -> None:
+    store = FakeStore()
+    store.add_document("GAS-OK", "CT-S1-FUELQTY", [_gas(1000)])
+    store.add_document("GAS-PENDING", "CT-S1-FUELQTY", [_gas(5000)], decision=None)
+    store.add_document("GAS-REJECTED", "CT-S1-FUELQTY", [_gas(9000)], decision="rejected")
+    result = _service(store).recalculate(_engagement(), _own)
+    stationary = result["categories"]["stationary_combustion"]
+    assert stationary["lines"][0]["mass_t"]["CO2"] == pytest.approx(1000 * 53.06 / 1000)
+    pending = {item["document_id"] for item in result["awaiting_review"]}
+    assert pending == {"GAS-PENDING", "GAS-REJECTED"}
+    assert _by_key(result)["scope1_total"]["inputs_incomplete"] is True
+
+
+def test_edited_value_is_used() -> None:
+    store = FakeStore()
+    store.add_document("GAS-1", "CT-S1-FUELQTY", [_gas(1000)])
+    store.reviews["GAS-1"] = [
+        {**r, "decision": "edited", "reviewed_value": "1,250", "reviewed_unit": None}
+        if r["candidate_id"].endswith("activity_quantity") else r for r in store.reviews["GAS-1"]
+    ]
+    result = _service(store).recalculate(_engagement(), _own)
+    assert result["categories"]["stationary_combustion"]["lines"][0]["mass_t"]["CO2"] == pytest.approx(
+        1250 * 53.06 / 1000)
+
+
+def test_other_organizations_are_invisible() -> None:
+    store = FakeStore()
+    store.add_document("MINE", "CT-S1-FUELQTY", [_gas(1000)])
+    store.add_document("THEIRS", "CT-S1-FUELQTY", [_gas(999_999)], org_id="org-b")
+    result = _service(store).recalculate(_engagement(), _own)
+    assert result["documents_considered"] == 1
+    assert result["categories"]["stationary_combustion"]["total_co2e"] < 100
+
+
+# --- grouping and proration ----------------------------------------------------------------
+def test_one_total_per_fuel_type_across_bills_and_units() -> None:
+    store = FakeStore()
+    store.add_document("JAN", "CT-S1-FUELQTY", [_gas(1000)])  # 1,000 MMBtu
+    store.add_document("FEB", "CT-S1-FUELQTY", [_gas(5000, "therm", "2025-02-01", "2025-02-28")])  # 500 MMBtu
+    result = _service(store).recalculate(_engagement(), _own)
+    lines = result["categories"]["stationary_combustion"]["lines"]
+    assert len(lines) == 1 and lines[0]["key"] == "Natural Gas"
+    assert lines[0]["mass_t"]["CO2"] == pytest.approx(1500 * 53.06 / 1000)
+
+
+def test_bills_spanning_the_reporting_period_are_prorated() -> None:
+    store = FakeStore()
+    # 31-day bill (Dec 19 - Jan 18), 18 days of it in the reporting year
+    store.add_document("DEC-JAN", "CT-S1-FUELQTY", [_gas(3100, start="2024-12-19", end="2025-01-18")])
+    result = _service(store).recalculate(_engagement(), _own)
+    line = result["categories"]["stationary_combustion"]["lines"][0]
+    assert line["mass_t"]["CO2"] == pytest.approx(3100 * 18 / 31 * 53.06 / 1000)
+    assert "prorated_to_reporting_period" in line["flags"]
+
+
+# --- fuel matching -------------------------------------------------------------------------
+def test_ambiguous_fuel_asks_and_the_reviewer_choice_is_used() -> None:
+    store = FakeStore()
+    store.add_document("OIL", "CT-S1-FUELQTY", [_gas(1000, "gal", fuel="fuel_oil")])
+    asked = _service(store).recalculate(_engagement(), _own)
+    choice = next(item for item in asked["needs_input"] if item["kind"] == "fuel_choice")
+    assert choice["key"] == "stationary:fuel_oil"
+    assert "Distillate Fuel Oil No. 2" in choice["options"] and "Residual Fuel Oil No. 6" in choice["options"]
+    assert asked["categories"]["stationary_combustion"] is None
+
+    chosen = _service(store).recalculate(
+        _engagement(recalculation={"fuel_choices": {"stationary:fuel_oil": "Residual Fuel Oil No. 6"}}), _own)
+    line = chosen["categories"]["stationary_combustion"]["lines"][0]
+    assert line["key"] == "Residual Fuel Oil No. 6"
+    assert line["mass_t"]["CO2"] == pytest.approx(1000 * 11.27 / 1000)  # Table 1: 11.27 kg CO2 per gallon
+
+
+def test_diesel_auto_match_is_flagged_for_the_reviewer() -> None:
+    store = FakeStore()
+    store.add_document("GEN", "CT-S1-FUELQTY", [_gas(100, "gal", fuel="diesel")])
+    line = _service(store).recalculate(_engagement(), _own)["categories"]["stationary_combustion"]["lines"][0]
+    assert line["key"] == "Distillate Fuel Oil No. 2"
+    assert "diesel_matched_to_distillate_fuel_oil_no_2" in line["flags"]
+
+
+# --- mobile combustion ---------------------------------------------------------------------
+def _fill(gallons: float, day: str, fuel: str = "diesel") -> dict:
+    return {"fuel_type": (fuel, None), "activity_quantity": (gallons, "gal"), "activity_unit": ("gal", None),
+            "transaction_date": (day, None)}
+
+
+def test_mobile_fuel_receipts_sum_per_fuel_and_skip_other_years() -> None:
+    store = FakeStore()
+    store.add_document("CARD-STMT", "CT-S1-MOBFUEL", [_fill(40, "2025-03-02"), _fill(60, "2025-03-09"),
+                                                      _fill(15, "2025-03-04", "gasoline"),
+                                                      _fill(500, "2024-12-30")])  # last year: excluded
+    result = _service(store).recalculate(_engagement(), _own)
+    lines = {line["key"]: line for line in result["categories"]["mobile_combustion"]["lines"]}
+    assert lines["Diesel Fuel"]["mass_t"]["CO2"] == pytest.approx(100 * 10.21 / 1000)  # Table 2
+    assert lines["Motor Gasoline"]["mass_t"]["CO2"] == pytest.approx(15 * 8.78 / 1000)
+    # receipts carry no vehicle type / model year / distance: CH4 and N2O need vehicle groups
+    assert "ch4_n2o_need_vehicle_groups" in result["categories"]["mobile_combustion"]["flags"]
+    assert _by_key(result)["mobile_combustion_total"]["recalculated"] == pytest.approx(
+        result["categories"]["mobile_combustion"]["total_co2e"])
+
+
+def test_unclear_mobile_fuel_asks() -> None:
+    store = FakeStore()
+    store.add_document("E85", "CT-S1-MOBFUEL", [_fill(30, "2025-05-01", "e85")])
+    result = _service(store).recalculate(_engagement(), _own)
+    choice = next(item for item in result["needs_input"] if item["kind"] == "fuel_choice")
+    assert choice["key"] == "mobile:e85" and "Ethanol (100%)" in choice["options"]
+    assert result["categories"]["mobile_combustion"] is None
+
+
+# --- comparison tolerance ------------------------------------------------------------------
+def test_comparison_uses_the_engagement_materiality_threshold() -> None:
+    store = FakeStore()
+    store.add_document("GAS", "CT-S1-FUELQTY", [_gas(1000)])
+    recalculated = 1000 * 53.06 / 1000 + 1000 / 1e6 * 28 + 100 / 1e6 * 265
+    reported = recalculated * 0.92  # 8.7% below
+    five = _service(store).recalculate(
+        _engagement(recalculation={"reported": {"scope1_total": reported}}), _own)
+    ten = _service(store).recalculate(
+        _engagement(materialityThreshold="10%", recalculation={"reported": {"scope1_total": reported}}), _own)
+    assert _by_key(five)["scope1_total"]["status"] == "exceeds_tolerance"
+    assert _by_key(ten)["scope1_total"]["status"] == "within_tolerance"
+    assert (materiality_tolerance({}), materiality_tolerance({"materialityThreshold": "10%"})) == (5.0, 10.0)
+
+
+def test_settings_validation() -> None:
+    validate_recalculation_settings({"gwp_set": "AR6", "reported": {"scope1_total": 1.0}})
+    for bad in ({"gwp_set": "AR4"}, {"surprise": 1}, {"reported": {"not_a_point": 1}},
+                {"certificates": [{"mwh": -1}]}, {"grid_regions": {"A": 1}}):
+        with pytest.raises(ValueError):
+            validate_recalculation_settings(bad)

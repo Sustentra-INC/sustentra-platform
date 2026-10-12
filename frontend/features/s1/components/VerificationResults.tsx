@@ -1,13 +1,15 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 
 import type {
   CheckOutcome,
   ExaminationState,
+  MaterialityFigures,
   NextActionWith,
   ResultLayer,
   VerificationRow,
+  WorkingSpec,
 } from "../types/verification";
 import type { VerificationStore } from "../verification/verificationStore";
 
@@ -54,7 +56,19 @@ const NEXT_OPTIONS: { value: NextActionWith; label: string }[] = [
   { value: "client", label: "With client" },
 ];
 
-export function VerificationResults({ rows, store }: { rows: VerificationRow[]; store: VerificationStore }) {
+export function VerificationResults({
+  rows,
+  store,
+  materiality,
+  inputs,
+}: {
+  rows: VerificationRow[];
+  store: VerificationStore;
+  /** Backend figures; without them the tiles are summed from the rows at 5%. */
+  materiality?: MaterialityFigures;
+  /** Shown above the results table, e.g. the recalculation inputs. */
+  inputs?: ReactNode;
+}) {
   const [tab, setTab] = useState<"results" | "findings">("results");
   const [findingFor, setFindingFor] = useState<VerificationRow | null>(null);
 
@@ -76,7 +90,15 @@ export function VerificationResults({ rows, store }: { rows: VerificationRow[]; 
       </header>
 
       {tab === "results" ? (
-        <ResultsTab rows={rows} store={store} onRegister={setFindingFor} />
+        <>
+          {inputs}
+          <ResultsTab
+            rows={rows}
+            store={store}
+            materiality={materiality ?? materialityFromRows(rows)}
+            onRegister={setFindingFor}
+          />
+        </>
       ) : (
         <FindingsTab store={store} />
       )}
@@ -106,10 +128,12 @@ export function VerificationResults({ rows, store }: { rows: VerificationRow[]; 
 function ResultsTab({
   rows,
   store,
+  materiality,
   onRegister,
 }: {
   rows: VerificationRow[];
   store: VerificationStore;
+  materiality: MaterialityFigures;
   onRegister: (row: VerificationRow) => void;
 }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
@@ -123,18 +147,18 @@ function ResultsTab({
 
   return (
     <>
-      <MaterialitySummary rows={rows} />
+      <MaterialitySummary figures={materiality} />
       <div className="s1-table-wrap">
         <table className="s1-table s1-vr-table">
           <colgroup>
-            <col style={{ width: "15%" }} /> {/* Data point */}
-            <col style={{ width: "9%" }} /> {/* Reported */}
-            <col style={{ width: "14%" }} /> {/* Recomputed / expected */}
-            <col style={{ width: "7%" }} /> {/* Delta */}
-            <col style={{ width: "15%" }} /> {/* Check outcome */}
-            <col style={{ width: "17%" }} /> {/* Examination state */}
-            <col style={{ width: "13%" }} /> {/* Next action */}
-            <col style={{ width: "10%" }} /> {/* actions */}
+            <col style={{ width: "15%" }} /* Data point */ />
+            <col style={{ width: "9%" }} /* Reported */ />
+            <col style={{ width: "14%" }} /* Recomputed / expected */ />
+            <col style={{ width: "7%" }} /* Delta */ />
+            <col style={{ width: "15%" }} /* Check outcome */ />
+            <col style={{ width: "17%" }} /* Examination state */ />
+            <col style={{ width: "13%" }} /* Next action */ />
+            <col style={{ width: "10%" }} /* actions */ />
           </colgroup>
           <thead>
             <tr>
@@ -168,7 +192,11 @@ function ResultsTab({
                             {row.scopeBasis ? <div className="s1-muted s1-ws-src">{row.scopeBasis}-based</div> : null}
                           </td>
                           <td className="s1-mono">
-                            {row.reportedValue} {row.unit}
+                            {row.reportedValue ? (
+                              `${row.reportedValue} ${row.unit}`
+                            ) : (
+                              <span className="s1-muted">Not entered</span>
+                            )}
                           </td>
                           <td>
                             {row.recomputed !== null ? (
@@ -212,7 +240,7 @@ function ResultsTab({
                           </td>
                           <td>
                             <div className="s1-vr-rowactions">
-                              {WORKING[row.dataPointId] ? (
+                              {workingOf(row) ? (
                                 <button
                                   className={`s1-vr-working-btn${isOpen ? " is-on" : ""}`}
                                   type="button"
@@ -228,10 +256,10 @@ function ResultsTab({
                             </div>
                           </td>
                         </tr>
-                        {isOpen && WORKING[row.dataPointId] ? (
+                        {isOpen && workingOf(row) ? (
                           <tr className="s1-vr-workingrow">
                             <td colSpan={8}>
-                              <WorkingPanel row={row} spec={WORKING[row.dataPointId]} />
+                              <WorkingPanel spec={workingOf(row) as WorkingSpec} />
                             </td>
                           </tr>
                         ) : null}
@@ -256,7 +284,7 @@ function parseNum(s: string | null): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-function MaterialitySummary({ rows }: { rows: VerificationRow[] }) {
+function materialityFromRows(rows: VerificationRow[]): MaterialityFigures {
   // Location-based total = Scope 1 + Scope 2 (location). Identified misstatement
   // = sum of |recomputed − reported| for the rows that were recomputed.
   const locationRows = rows.filter((r) => r.layer === "scope1" || (r.layer === "scope2" && r.scopeBasis === "location"));
@@ -267,9 +295,24 @@ function MaterialitySummary({ rows }: { rows: VerificationRow[] }) {
   const uncorrected = rows
     .filter((r) => r.recomputed !== null && r.checkOutcome === "exception")
     .reduce((s, r) => s + Math.abs(parseNum(r.recomputed) - parseNum(r.reportedValue)), 0);
-  const threshold = Math.round(total * 0.05);
   const couldNotCheck = rows.filter((r) => r.checkOutcome === "could_not_check").length;
-  const fmt = (n: number) => n.toLocaleString();
+  return {
+    total,
+    totalBasis: "Scope 1 + Scope 2",
+    tolerancePct: 5,
+    misstatement,
+    uncorrected,
+    note:
+      `Aggregate misstatement is summed only over the ${rows.filter((r) => r.recomputed !== null).length} recomputed ` +
+      `sources. ${couldNotCheck} data points could not be checked yet (no recompute path or missing documentation), so ` +
+      "the register is not complete — the conclusion stays provisional until they are resolved.",
+  };
+}
+
+function MaterialitySummary({ figures }: { figures: MaterialityFigures }) {
+  const { total, misstatement, uncorrected, tolerancePct } = figures;
+  const threshold = total * (tolerancePct / 100);
+  const fmt = (n: number) => n.toLocaleString(undefined, { maximumFractionDigits: n < 100 ? 2 : 0 });
   const pct = (n: number) => (total ? `${((n / total) * 100).toFixed(1)}%` : "—");
   const over = uncorrected > threshold;
 
@@ -279,41 +322,28 @@ function MaterialitySummary({ rows }: { rows: VerificationRow[] }) {
         <div className="s1-mat__tile">
           <div className="s1-mat__label">Total emissions (location-based)</div>
           <div className="s1-mat__value">{fmt(total)} <span className="s1-mat__unit">tCO₂e</span></div>
-          <div className="s1-mat__sub">Scope 1 + Scope 2</div>
+          <div className="s1-mat__sub">{figures.totalBasis}</div>
         </div>
         <div className="s1-mat__tile">
           <div className="s1-mat__label">Materiality threshold</div>
           <div className="s1-mat__value">{fmt(threshold)} <span className="s1-mat__unit">tCO₂e</span></div>
-          <div className="s1-mat__sub">5% of total</div>
+          <div className="s1-mat__sub">{tolerancePct}% of total</div>
         </div>
         <div className="s1-mat__tile">
           <div className="s1-mat__label">Identified misstatement</div>
-          <div className="s1-mat__value">{fmt(Math.round(misstatement))} <span className="s1-mat__unit">tCO₂e</span></div>
+          <div className="s1-mat__value">{fmt(misstatement)} <span className="s1-mat__unit">tCO₂e</span></div>
           <div className="s1-mat__sub">{pct(misstatement)} of total · across recomputed sources</div>
         </div>
         <div className={`s1-mat__tile${over ? " s1-mat__tile--over" : ""}`}>
           <div className="s1-mat__label">Uncorrected (exceptions)</div>
-          <div className="s1-mat__value">{fmt(Math.round(uncorrected))} <span className="s1-mat__unit">tCO₂e</span></div>
+          <div className="s1-mat__value">{fmt(uncorrected)} <span className="s1-mat__unit">tCO₂e</span></div>
           <div className="s1-mat__sub">{over ? "above" : "below"} threshold · {pct(uncorrected)}</div>
         </div>
       </div>
-      <p className="s1-mat__note">
-        Aggregate misstatement is summed only over the {rows.filter((r) => r.recomputed !== null).length} recomputed
-        sources. {couldNotCheck} data points could not be checked yet (no recompute path or missing documentation), so
-        the register is not complete — the conclusion stays provisional until they are resolved.
-      </p>
+      <p className="s1-mat__note">{figures.note}</p>
     </div>
   );
 }
-
-type WorkingSpec = {
-  formula: string;
-  inputs: { label: string; value: string; source?: string }[];
-  factor?: { value: string; source: string };
-  result?: string;
-  references: string[];
-  note?: string;
-};
 
 /** The audit trail per data point: formula, extracted inputs with source,
  *  emission factor with reference, result, and all references. Illustrative
@@ -372,7 +402,11 @@ const WORKING: Record<string, WorkingSpec> = {
   },
 };
 
-function WorkingPanel({ row, spec }: { row: VerificationRow; spec: WorkingSpec }) {
+function workingOf(row: VerificationRow): WorkingSpec | undefined {
+  return row.working ?? WORKING[row.dataPointId];
+}
+
+function WorkingPanel({ spec }: { spec: WorkingSpec }) {
   return (
     <div className="s1-working">
       <div className="s1-working__grid">
@@ -385,7 +419,7 @@ function WorkingPanel({ row, spec }: { row: VerificationRow; spec: WorkingSpec }
           <h4>Extracted data (cross-check to source)</h4>
           <ul className="s1-working__list">
             {spec.inputs.map((i) => (
-              <li key={i.label}>
+              <li key={`${i.label}|${i.value}`}>
                 <span className="s1-working__k">{i.label}</span>
                 <span className="s1-working__v s1-mono">{i.value}</span>
                 {i.source ? <span className="s1-working__src">{i.source}</span> : null}
@@ -396,7 +430,17 @@ function WorkingPanel({ row, spec }: { row: VerificationRow; spec: WorkingSpec }
 
         <section className="s1-working__block">
           <h4>Emission factor</h4>
-          {spec.factor ? (
+          {spec.factors?.length ? (
+            <ul className="s1-working__list">
+              {spec.factors.map((f) => (
+                <li key={`${f.label}|${f.value}`}>
+                  <span className="s1-working__k">{f.label}</span>
+                  <span className="s1-working__v s1-mono">{f.value}</span>
+                  <span className="s1-working__src">{f.source}</span>
+                </li>
+              ))}
+            </ul>
+          ) : spec.factor ? (
             <ul className="s1-working__list">
               <li>
                 <span className="s1-working__v s1-mono">{spec.factor.value}</span>

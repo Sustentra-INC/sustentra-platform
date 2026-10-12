@@ -153,7 +153,7 @@ export async function submitFieldReview({
   reviewedValue,
   reviewerNote,
 }: {
-  field: ExtractedField;
+  field: Pick<ExtractedField, "reviewToken">;
   decision: "accepted" | "edited";
   reviewedValue?: string | null;
   reviewerNote?: string | null;
@@ -161,7 +161,8 @@ export async function submitFieldReview({
   const candidate = field.reviewToken ? decodeReviewCandidateToken(field.reviewToken) : null;
   const evidenceId = typeof candidate?.evidence_id === "string" ? candidate.evidence_id : null;
   const fieldName = typeof candidate?.field_name === "string" ? candidate.field_name : null;
-  if (!candidate || !evidenceId || !fieldName) return;
+  // Never report a review as saved when there is nothing to record it against.
+  if (!candidate || !evidenceId || !fieldName) throw new Error("This value has no extraction record to review.");
 
   await api(`/evidence/${encodeURIComponent(evidenceId)}/fields/${encodeURIComponent(fieldName)}/review`, {
     method: "PUT",

@@ -69,4 +69,6 @@ export interface ReviewValue {
   snippet?: string | null;
   sheet?: string | null;
   cell?: string | null;
+  /** Backend values only: the candidate a review decision is recorded against. */
+  reviewToken?: string;
 }

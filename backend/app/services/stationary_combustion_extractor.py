@@ -151,12 +151,16 @@ _QTY_EXCLUDE = ("read", "factor", "heat value", "heat content", "price", "rate",
 _ID_HEADERS = ("meter number", "meter id", "meter #", "meter no", "meter", "tank", "invoice", "ticket", "delivery no")
 _UNIT_HEADERS = ("unit", "units", "uom", "unit of measure")
 _PRODUCT_HEADERS = ("product", "description", "fuel", "commodity", "item")
-_START_HEADERS = ("from", "start", "previous read date", "prev read date", "start date", "period start")
-_END_HEADERS = ("to", "end", "current read date", "pres read date", "end date", "period end", "through")
+_START_HEADERS = ("from", "start", "previous read date", "prev read date", "start date", "period start",
+                  "cycle start", "service start", "from date")
+_END_HEADERS = ("to", "end", "current read date", "pres read date", "end date", "period end", "through",
+                "cycle end", "service end", "to date")
 _RANGE_HEADERS = ("service period", "period", "billing period", "service dates")
 _DATE_HEADERS = ("date", "delivery date", "read date", "invoice date", "date posted", "posting date",
                  "transaction date", "date delivered")
-_TOTAL_ROW_WORDS = ("total", "totals", "subtotal", "grand total")
+# A usage table ends at its summary row: "Total", or a yearly roll-up such as "Annual quantity" /
+# "Year to date", which would double count the rows above it if read as one more record.
+_TOTAL_ROW_WORDS = ("total", "totals", "subtotal", "grand total", "annual", "year to date", "ytd", "year total")
 
 _MONTHS = {
     m: i

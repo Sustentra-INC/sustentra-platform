@@ -15,6 +15,7 @@ from .api import (
     methodology,
     pipeline,
     processing_runs,
+    recalculation,
     reviews,
 )
 from .api import v1 as api_v1
@@ -36,6 +37,7 @@ S1_ROUTERS = (
     evidence.router,
     methodology.router,
     reviews.router,
+    recalculation.router,
     assistant.router,
 )
 # The S1 routes are also mounted at root /v1/* for local development and existing

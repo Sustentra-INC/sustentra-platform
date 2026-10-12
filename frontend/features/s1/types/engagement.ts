@@ -60,4 +60,26 @@ export interface EngagementConfig {
   assuranceStandard?: string;
   /** The materiality threshold as a percentage of total, e.g. "5%". */
   materialityThreshold?: string;
+
+  /** Inputs the emissions recalculation needs that the evidence does not carry. */
+  recalculation?: RecalculationSettings;
+}
+
+/** A renewable energy certificate applied to the market-based Scope 2 total. */
+export interface RecalculationCertificate {
+  label: string;
+  mwh: number;
+}
+
+/** Stored by the API under settings.recalculation; the backend validates every value. */
+export interface RecalculationSettings {
+  /** "AR5" (default) or "AR6". */
+  gwp_set?: string;
+  /** Facility name (as on the bill) to eGRID subregion, e.g. { "Facility A": "NYUP" }. */
+  grid_regions?: Record<string, string>;
+  /** "stationary:<fuel code>" or "mobile:<fuel code>" to the EPA fuel name chosen for it. */
+  fuel_choices?: Record<string, string>;
+  certificates?: RecalculationCertificate[];
+  /** Reported data point key to the client's reported value. */
+  reported?: Record<string, number>;
 }

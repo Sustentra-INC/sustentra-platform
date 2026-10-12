@@ -90,6 +90,7 @@ export function mapBackendDocumentToEvidenceItem(
 const CANONICAL_TYPE_DISPLAY_NAMES: Record<string, string> = {
   "CT-S1-FUELQTY": "Stationary fuel consumption record",
   "CT-S1-MOBFUEL": "Mobile fuel consumption record",
+  "CT-S2-ELEC": "Purchased electricity record",
 };
 
 export function resolveCanonicalTypeDisplayName(
