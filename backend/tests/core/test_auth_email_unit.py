@@ -429,7 +429,7 @@ def test_send_ses_uses_sesv2_payload_shape(monkeypatch: pytest.MonkeyPatch) -> N
 
     fake_client = FakeSesClient()
 
-    def client_factory(name: str) -> FakeSesClient:
+    def client_factory(name: str, **kwargs: Any) -> FakeSesClient:
         requested_services.append(name)
         return fake_client
 
@@ -451,6 +451,26 @@ def test_send_ses_uses_sesv2_payload_shape(monkeypatch: pytest.MonkeyPatch) -> N
     assert payload["Content"]["Simple"]["Subject"] == {"Data": "Your Sustentra sign-in code", "Charset": "UTF-8"}
     assert payload["Content"]["Simple"]["Body"]["Text"] == {"Data": "Text body", "Charset": "UTF-8"}
     assert payload["Content"]["Simple"]["Body"]["Html"] == {"Data": "<p>HTML body</p>", "Charset": "UTF-8"}
+
+
+def test_send_ses_uses_the_container_aws_region(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The app containers get AWS_REGION only; boto3 alone would raise NoRegionError.
+    regions: list[str | None] = []
+
+    class FakeSesClient:
+        def send_email(self, **kwargs: Any) -> None:
+            pass
+
+    def client_factory(name: str, region_name: str | None = None) -> FakeSesClient:
+        regions.append(region_name)
+        return FakeSesClient()
+
+    monkeypatch.setitem(sys.modules, "boto3", type("FakeBoto3", (), {"client": staticmethod(client_factory)}))
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.delenv("AWS_DEFAULT_REGION", raising=False)
+    email = otp_delivery.RenderedEmail(subject="s", text_body="t", html_body="<p>h</p>")
+    otp_delivery._send_ses(_settings(environment="prod", from_address="no-reply@sustentra.example"), "a@acme.test", email)
+    assert regions == ["us-east-1"]
 
 
 def test_delivery_boundary_logs_smtp_failure_without_leaking_secrets(

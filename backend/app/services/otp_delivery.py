@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 import logging
+import os
 import smtplib
 from collections.abc import Callable
 from email.message import EmailMessage
@@ -156,7 +157,10 @@ def _send_ses(settings: Settings, to: str, email: RenderedEmail) -> None:
     if not settings.ses_from_address:
         raise RuntimeError("SES_FROM_ADDRESS is required for staging/prod email sending")
 
-    boto3.client("sesv2").send_email(
+    # The containers get AWS_REGION, but boto3 only reads AWS_DEFAULT_REGION by itself;
+    # without a region every send fails with NoRegionError before reaching SES.
+    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+    boto3.client("sesv2", **({"region_name": region} if region else {})).send_email(
         FromEmailAddress=settings.ses_from_address,
         Destination={"ToAddresses": [to]},
         Content={
