@@ -56,6 +56,11 @@ LOW_CONFIDENCE_THRESHOLD = 0.5
 # combusted fuel is named and a quantity is stated in a non-electric fuel unit).
 FUEL_CONTENT_CHECK_FLOOR = 0.4
 FUEL_TYPE_IDS = {FUELQTY_TYPE_ID, MOBFUEL_TYPE_ID}
+# Types read by a layout-aware extractor. Those extractors take one type's targets, so a
+# multi-type candidate gets its primary type's targets only: mixing in a runner-up type's
+# targets (e.g. a gas bill that also mentions electricity) would send it to the generic
+# fallback, which reads labels without layout.
+LAYOUT_EXTRACTOR_TYPE_IDS = FUEL_TYPE_IDS | {ELEC_TYPE_ID}
 
 
 class PipelineOrchestrationService:
@@ -251,6 +256,12 @@ class PipelineOrchestrationService:
                         )
                         canonical_type_id = ELEC_TYPE_ID
                         canonical_type_source = "content_check"
+                        extraction_targets = self._get_target_service().get_targets_for_canonical_type(
+                            canonical_type_id,
+                            include_optional=include_optional,
+                            include_deprecated=include_deprecated,
+                        )
+                    elif canonical_type_id in LAYOUT_EXTRACTOR_TYPE_IDS:
                         extraction_targets = self._get_target_service().get_targets_for_canonical_type(
                             canonical_type_id,
                             include_optional=include_optional,

@@ -434,3 +434,21 @@ def test_multi_record_candidates_carry_record_key_in_source_reference(targets: l
     for candidate in outcome.candidates:
         assert candidate["source_reference"]["record_key"] == candidate["record_key"]
     assert {c["record_key"] for c in outcome.candidates} == {"r1:A", "r2:B"}
+
+
+def test_annual_summary_row_is_not_a_record(targets: list[dict]) -> None:
+    # Richmond Refinery bill: twelve monthly meter rows, then "Annual quantity" (their sum).
+    text = (
+        "Pacific Gas Supply Company\nFuel Type: Natural gas\n"
+        "Month\tCycle start\tCycle end\tMMBtu\n"
+        "Jan\t2025-01-01\t2025-01-31\t41,820\n"
+        "Feb\t2025-02-01\t2025-02-28\t34,360\n"
+        "Annual quantity\t76,180\n"
+    )
+    outcome = StationaryCombustionExtractor().extract(_text_output(text), targets, "EV-1")
+    assert outcome.records == 2
+    quantities = [c["normalized_value"] for c in outcome.candidates if c["field_name"] == "activity_quantity"]
+    assert quantities == [41820, 34360]
+    # Each month keeps its own cycle dates rather than the statement's service year.
+    assert _by_field(outcome.candidates, 2)["service_period_start"]["normalized_value"] == "2025-02-01"
+    assert _by_field(outcome.candidates, 2)["service_period_end"]["normalized_value"] == "2025-02-28"

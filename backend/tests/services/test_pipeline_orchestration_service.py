@@ -660,3 +660,22 @@ def test_confident_classification_with_both_cues_is_kept(tmp_path):
     text = FLEET_DIESEL + "Also delivered to the standby generator\n"
     run = _run_with(tmp_path, text, classified)["pipeline_run"]
     assert run["canonical_type_id"] == "CT-S1-MOBFUEL" and run["halt_reason"] is None
+
+
+def test_multi_type_candidate_uses_the_primary_types_layout_extractor(tmp_path):
+    # A gas bill that also mentions electricity: the runner-up type's targets must not be
+    # mixed in, or the stationary extractor declines and the generic fallback guesses.
+    multi = {"status": "multi_type_candidate", "primary_canonical_type_id": "CT-S1-FUELQTY",
+             "primary_variant_id": "VR-1", "confidence": 1.0, "threshold": 0.8,
+             "candidate_matches": [
+                 {"canonical_type_id": "CT-S1-FUELQTY", "variant_id": "VR-1", "confidence": 1.0, "threshold": 0.8},
+                 {"canonical_type_id": "CT-S2-ELEC", "variant_id": "VR-2", "confidence": 0.75, "threshold": 0.8},
+             ]}
+    text = GAS_BILL_TEXT + "Meter serves the cogeneration duct burners and electricity generator.\n"
+    output = _run_with(tmp_path, text, multi)
+    items = output["extraction_result"]["items"]
+    assert {item["canonical_type_id"] for item in output["extraction_targets"]} == {"CT-S1-FUELQTY"}
+    quantity = next(i for i in items if i["field_name"] == "activity_quantity")
+    # 1,240 therms read and converted by the stationary extractor (the generic fallback does not convert).
+    assert (quantity["normalized_value"], quantity["unit"]) == (124, "MMBtu")
+    assert not any(i["display_label"] == "Electricity consumed" for i in items)
