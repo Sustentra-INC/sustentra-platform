@@ -1451,6 +1451,7 @@ select:focus-visible,
 /* Card actions wrap inside the card instead of spilling over its edge. */
 .s1-xr-actions { flex-wrap: wrap; align-items: center; }
 .s1-xr-actions .s1-button { white-space: nowrap; }
+.s1-xr-missing { font-size: var(--text-md); color: var(--state-open-fg); font-style: italic; }
 .s1-xr-recorrect { font-size: var(--text-sm); margin-left: var(--sp-2); }
 .s1-xr-edit { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2); width: 100%; }
 .s1-xr-edit__field { display: flex; flex-direction: column; gap: 0.15rem; font-size: var(--text-xs); color: var(--ink-3); flex: 1 1 7rem; min-width: 0; }
@@ -1763,6 +1764,14 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-xr-src-body { flex: 1; display: flex; justify-content: center; align-items: flex-start; overflow: auto; padding: var(--sp-5); }
 .s1-xr-realpage { max-width: 42rem; width: 100%; box-shadow: 0 0.1rem 0.6rem rgba(40, 40, 112, 0.10); }
 .s1-xr-pdf { display: block; width: 100%; height: min(72vh, 52rem); border: 0; background: var(--sf-card); }
+/* Source page with the extracted value outlined. */
+.s1-pv { display: flex; flex-direction: column; gap: var(--sp-2); }
+.s1-pv__bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.s1-pv__open { margin-left: auto; font-size: var(--text-sm); }
+.s1-pv__page { position: relative; box-sizing: border-box; width: 100%; background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input); overflow: hidden; }
+.s1-pv__img { display: block; width: 100%; height: auto; }
+.s1-pv__mark { position: absolute; box-sizing: content-box; margin: -0.2rem 0 0 -0.2rem; padding: 0.2rem; border: 0.15rem solid var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 45%, transparent); border-radius: 0.2rem; pointer-events: none; }
+.s1-pv__note { font-size: var(--text-xs); margin: 0; }
 .s1-xr-pdf-open { display: inline-block; margin-top: var(--sp-2); font-size: var(--text-sm); }
 
 /* Matching (values) pane — document-to-text on the right */

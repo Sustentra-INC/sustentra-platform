@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 
 from backend.app.api.engagements import require_open_engagement
@@ -257,6 +257,61 @@ def preview_document(document_id: str, user: CurrentUser = Depends(s1_reader)) -
         content_disposition_type="inline",
         headers={**_PREVIEW_HEADERS, "Content-Security-Policy": csp},
     )
+
+
+# Page images: the source pane shows a PDF page as a picture so the extracted value can be
+# outlined on it (a framed PDF cannot be drawn over). Images are served at their own size.
+_PAGE_ZOOM = 2.0  # about 144 dpi: sharp text without a heavy image
+_MAX_PAGES = 500
+
+
+def _pdf_page_count(path: Path) -> int:
+    import fitz  # PyMuPDF, already the PDF parser
+
+    with fitz.open(path) as pdf:
+        return int(pdf.page_count)
+
+
+@router.get("/documents/{document_id}/pages")
+def document_pages(document_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
+    """How many pages the source pane can show (an image is one page)."""
+
+    document, path = _stored_file(document_id, user)
+    kind = served_type(path, document.get("file_name"))
+    if kind.media_type == "application/pdf":
+        try:
+            return {"pages": min(_pdf_page_count(path), _MAX_PAGES), "kind": "pdf"}
+        except Exception as exc:  # unreadable PDF: the pane falls back to the snippet
+            raise HTTPException(status_code=422, detail="This PDF could not be opened.") from exc
+    if kind.previewable:
+        return {"pages": 1, "kind": "image"}
+    raise HTTPException(status_code=415, detail="Pages are not available for this file type.")
+
+
+@router.get("/documents/{document_id}/pages/{page}/image")
+def document_page_image(document_id: str, page: int, user: CurrentUser = Depends(s1_reader)) -> Response:
+    """One page as a PNG (PDF), or the uploaded image itself (page 1)."""
+
+    document, path = _stored_file(document_id, user)
+    kind = served_type(path, document.get("file_name"))
+    headers = {**_NO_STORE, "Content-Security-Policy": _PREVIEW_CSP["image"]}
+    if kind.media_type != "application/pdf":
+        if not kind.previewable or page != 1:
+            raise HTTPException(status_code=404, detail="Page not found.")
+        return FileResponse(path, media_type=kind.media_type, headers=headers)
+    import fitz
+
+    try:
+        with fitz.open(path) as pdf:
+            if page < 1 or page > min(pdf.page_count, _MAX_PAGES):
+                raise HTTPException(status_code=404, detail="Page not found.")
+            pixmap = pdf[page - 1].get_pixmap(matrix=fitz.Matrix(_PAGE_ZOOM, _PAGE_ZOOM), alpha=False)
+            png = pixmap.tobytes("png")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="This PDF page could not be rendered.") from exc
+    return Response(content=png, media_type="image/png", headers=headers)
 
 
 @router.get("/evidence/{evidence_id}/documents")

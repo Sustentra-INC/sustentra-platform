@@ -260,3 +260,40 @@ def test_a_failed_run_without_a_halt_is_still_a_server_error() -> None:
     broken = failed_run_error({"status": "failed", "errors": ["Parser crashed."]})
     assert (broken.status_code, broken.detail) == (500, ["Parser crashed."])
     assert failed_run_error({"status": "failed"}).detail == ["Pipeline run failed."]
+
+
+# --- page images for the source pane -----------------------------------------------------------
+def _real_pdf(pages: int = 2) -> bytes:
+    import fitz
+
+    with fitz.open() as pdf:
+        for number in range(pages):
+            pdf.new_page().insert_text((72, 72), f"Total Usage: 120 therms (page {number + 1})")
+        return pdf.tobytes()
+
+
+def test_pdf_pages_render_as_png_for_the_highlight(env: dict) -> None:
+    doc = env["upload"]("bill.pdf", _real_pdf(2), "application/pdf")
+    assert env["client"].get(url(doc, "pages")).json() == {"pages": 2, "kind": "pdf"}
+    page = env["client"].get(url(doc, "pages/2/image"))
+    assert page.status_code == 200
+    assert page.headers["content-type"] == "image/png" and page.content.startswith(b"\x89PNG")
+    assert page.headers["cache-control"] == "private, no-store"
+    assert "sandbox" in page.headers["content-security-policy"]
+    assert env["client"].get(url(doc, "pages/3/image")).status_code == 404
+    assert env["client"].get(url(doc, "pages/0/image")).status_code == 404
+
+
+def test_an_image_is_one_page_and_other_files_have_none(env: dict) -> None:
+    image = env["upload"]("meter.png", PNG, "image/png")
+    assert env["client"].get(url(image, "pages")).json() == {"pages": 1, "kind": "image"}
+    assert env["client"].get(url(image, "pages/1/image")).headers["content-type"] == "image/png"
+    csv = env["upload"]("data.csv", b"a,b\n1,2\n", "text/csv")
+    assert env["client"].get(url(csv, "pages")).status_code == 415
+
+
+def test_another_org_cannot_see_page_images(env: dict) -> None:
+    doc = env["upload"]("bill.pdf", _real_pdf(1), "application/pdf")
+    env["act_as"]("org_member", ORG_B)
+    assert env["client"].get(url(doc, "pages")).status_code == 404
+    assert env["client"].get(url(doc, "pages/1/image")).status_code == 404

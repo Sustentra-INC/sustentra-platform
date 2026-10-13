@@ -71,4 +71,6 @@ export interface ReviewValue {
   cell?: string | null;
   /** Backend values only: the candidate a review decision is recorded against. */
   reviewToken?: string;
+  /** The extractor did not find this value on the document; the reviewer can enter it. */
+  missing?: boolean;
 }

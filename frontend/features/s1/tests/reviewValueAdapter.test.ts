@@ -54,6 +54,12 @@ describe("extracted fields as review cards", () => {
     expect(card.record[1]).toMatchObject({ actor: "claire@sustentra.com", at: "2026-10-12T22:00:00Z" });
   });
 
+  it("gives the reviewer a card for a key value that was not found, and none for others", () => {
+    const cards = reviewValuesFromFields([field("activity_quantity", null), field("supplier_name", null)], [DOC]);
+    expect(cards.map((c) => [c.whatItIs, c.missing])).toEqual([["activity_quantity", true]]);
+    expect(cards[0].record[0].action).toBe("did not find this on the document");
+  });
+
   it("never gives two cards the same id", () => {
     const cards = reviewValuesFromFields([field("account_number", "A"), field("account_number", "A")], [DOC]);
     expect(new Set(cards.map((c) => c.id)).size).toBe(2);

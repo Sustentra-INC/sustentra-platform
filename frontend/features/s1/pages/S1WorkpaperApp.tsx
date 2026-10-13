@@ -13,7 +13,6 @@ import {
   userFacingApiError,
 } from "../api/s1Backend";
 import { ApiError } from "../../../lib/api";
-import { inlineDocumentUrl } from "../adapters/evidenceAdapter";
 import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
 import { getRecalculationReference } from "../api/recalculation";
 import {
@@ -44,6 +43,7 @@ import { CheckCoverage } from "../components/CheckCoverage";
 import { VerificationResults } from "../components/VerificationResults";
 import { BackendVerificationResults } from "../components/BackendVerificationResults";
 import { BackendCheckCoverage } from "../components/BackendCheckCoverage";
+import { BackendPageView } from "../components/BackendPageView";
 import { OutputScreen } from "../components/OutputScreen";
 import { coverageRules } from "../fixtures/verification/coverageRules";
 import { verificationRows } from "../fixtures/verification/verificationResults";
@@ -574,7 +574,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           patchTask(taskId, { progress: fraction })
         );
         uploadedId = document.document_id;
-        patchTask(taskId, { stage: "reading", progress: 1 });
+        patchTask(taskId, { stage: "reading", progress: 1, documentId: document.document_id });
         setEvidenceItems((current) => [
           {
             documentId: document.document_id,
@@ -870,18 +870,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                   onMarkClick={onPickBox}
                 />
               ) : dataMode === "backend" &&
-                evidenceItems.find((item) => item.documentId === documentId)?.format === "pdf" ? (
-                // The uploaded file itself (the preview route allows same-origin framing for PDFs).
-                <>
-                  <iframe
-                    className="s1-xr-pdf"
-                    src={`${inlineDocumentUrl(documentId)}#page=${span?.page ?? 1}`}
-                    title="Source document"
-                  />
-                  <a className="s1-linklike s1-xr-pdf-open" href={inlineDocumentUrl(documentId)} target="_blank" rel="noreferrer">
-                    Open the document in a new tab
-                  </a>
-                </>
+                ["pdf", "image"].includes(evidenceItems.find((item) => item.documentId === documentId)?.format ?? "") ? (
+                // The uploaded page as an image, the value outlined where it was read.
+                <BackendPageView key={`${documentId}:${span?.page ?? 0}`} documentId={documentId} span={span} />
               ) : null
             }
           />
