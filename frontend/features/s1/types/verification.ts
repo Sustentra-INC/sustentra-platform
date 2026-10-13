@@ -90,4 +90,7 @@ export interface Finding {
   status: string;
   /** Request-linked (the sent date of the linked ask); null until linked. */
   withClientSince: string | null;
+  /** When and by whom the finding was registered. */
+  registeredAt?: string;
+  registeredBy?: string;
 }

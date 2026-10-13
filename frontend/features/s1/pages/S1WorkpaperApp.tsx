@@ -40,6 +40,7 @@ import { OutputScreen } from "../components/OutputScreen";
 import { coverageRules } from "../fixtures/verification/coverageRules";
 import { verificationRows } from "../fixtures/verification/verificationResults";
 import { useVerificationStore } from "../verification/verificationStore";
+import { useWorkpaperSync } from "../verification/useWorkpaperSync";
 import { StateIndicator } from "../components/StateIndicator";
 import { EXACT_COPY } from "../constants/copy";
 import { engagementConfig } from "../fixtures/engagementConfig";
@@ -134,7 +135,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   // Backend mode: a 401 from the API means the session ended (FE-007).
   const [sessionEnded, setSessionEnded] = useState(false);
   const requests = useRequestsStore(dataMode === "backend" ? [] : persisted?.asks ?? seedAsks);
-  const verification = useVerificationStore(persisted?.examinations ?? {}, persisted?.findings ?? []);
+  const verification = useVerificationStore(
+    persisted?.examinations ?? {},
+    persisted?.findings ?? [],
+    dataMode === "backend" ? user?.firstName ?? user?.email : undefined
+  );
   const [sessionUploads, setSessionUploads] = useState<string[]>(persisted?.sessionUploads ?? []);
   // Engagement config is editable on Setup; facilities here feed the Workspace.
   // Backend mode starts blank (no templated data); fixture mode seeds the demo.
@@ -143,6 +148,21 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   );
   // Backend mode: the org's engagements (S1-BE-002); null until loaded.
   const [engagements, setEngagements] = useState<BackendEngagement[] | null>(dataMode === "backend" ? null : []);
+
+  // Requests, findings and examination states are saved per engagement (backend mode).
+  useWorkpaperSync({
+    enabled: dataMode === "backend",
+    engagementId: engagement.engagementId,
+    asks: requests.asks,
+    findings: verification.findings,
+    examinations: verification.examinations,
+    replaceAsks: requests.replaceAsks,
+    replaceVerification: verification.replaceAll,
+    onError: (error) => {
+      if (handleSessionEnded(error)) return;
+      setBackendError(`Your last change was not saved. ${userFacingApiError(error)}`);
+    },
+  });
   const [engagementSave, setEngagementSave] = useState<SaveState>("idle");
   const [engagementSaveMessage, setEngagementSaveMessage] = useState<string | null>(null);
   const saveTimer = useRef<number | null>(null);

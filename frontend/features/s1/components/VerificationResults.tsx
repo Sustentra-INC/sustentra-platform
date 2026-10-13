@@ -501,6 +501,7 @@ function FindingsTab({ store }: { store: VerificationStore }) {
               <th>Cause</th>
               <th>Magnitude</th>
               <th>Status</th>
+              <th>Registered</th>
               <th>With the client since</th>
             </tr>
           </thead>
@@ -508,7 +509,7 @@ function FindingsTab({ store }: { store: VerificationStore }) {
             {Array.from(byCause.entries()).map(([cause, findings]) => (
               <Fragment key={cause}>
                 <tr className="s1-ws-group">
-                  <td colSpan={6}>{cause}</td>
+                  <td colSpan={7}>{cause}</td>
                 </tr>
                 {findings.map((f) => (
                   <tr key={f.id}>
@@ -518,6 +519,10 @@ function FindingsTab({ store }: { store: VerificationStore }) {
                     <td className="s1-mono">{f.magnitude}</td>
                     <td>
                       <span className="s1-state s1-state--open">{f.status}</span>
+                    </td>
+                    <td>
+                      {f.registeredBy ?? <span className="s1-muted">Not recorded</span>}
+                      {f.registeredAt ? <div className="s1-mono s1-muted">{formatWhen(f.registeredAt)}</div> : null}
                     </td>
                     <td className="s1-muted">{f.withClientSince ?? "Request-linked"}</td>
                   </tr>
@@ -578,6 +583,13 @@ function RegisterFindingModal({
       </div>
     </div>
   );
+}
+
+function formatWhen(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function rowLabel(row: VerificationRow): string {
