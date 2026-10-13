@@ -8,7 +8,7 @@ import type { Examination, Finding } from "../types/verification";
  * its id; saving an item again replaces it.
  */
 
-export type WorkpaperKind = "ask" | "finding" | "examination";
+export type WorkpaperKind = "ask" | "finding" | "examination" | "document";
 
 export interface WorkpaperItem {
   kind: WorkpaperKind;
@@ -37,7 +37,7 @@ export async function loadWorkpaper(engagementId: string): Promise<SavedWorkpape
   for (const item of items) {
     if (item.kind === "ask") saved.asks.push(item.payload as unknown as Ask);
     else if (item.kind === "finding") saved.findings.push(item.payload as unknown as Finding);
-    else {
+    else if (item.kind === "examination") {
       const { dataPointId, ...examination } = item.payload as unknown as Examination & { dataPointId: string };
       saved.examinations[dataPointId] = examination;
     }

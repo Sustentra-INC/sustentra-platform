@@ -30,7 +30,7 @@ from backend.app.services.audit_log import write_audit_event
 
 router = APIRouter(prefix="/v1", tags=["workpaper"])
 
-Kind = Literal["ask", "finding", "examination"]
+Kind = Literal["ask", "finding", "examination", "document"]
 MAX_PAYLOAD_BYTES = 32 * 1024
 _KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._\-]{0,199}$")
 

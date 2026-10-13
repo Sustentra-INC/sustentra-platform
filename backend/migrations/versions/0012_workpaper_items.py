@@ -1,7 +1,8 @@
 """workpaper_items: the verifier's work on an engagement, kept in Postgres with RLS.
 
-Evidence requests ("asks"), registered findings and per-data-point examination
-states used to live only in the browser, so a reload lost them. Each is one row,
+Evidence requests ("asks"), registered findings, per-data-point examination states
+and the reviewer's decisions on a document (facility, type, notes, duplicate,
+withdrawn) used to live only in the browser, so a reload lost them. Each is one row,
 keyed by (engagement, kind, item_key), holding the frontend's object as JSON.
 
 - ``org_id`` mirrors the engagement's org so RLS can use the same predicate as
@@ -28,7 +29,7 @@ down_revision: str | None = "0011"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-KINDS = ("ask", "finding", "examination")
+KINDS = ("ask", "finding", "examination", "document")
 
 TENANT_PREDICATE = (
     "org_id::text = current_setting('app.tenant_id', true) "

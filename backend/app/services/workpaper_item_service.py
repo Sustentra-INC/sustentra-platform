@@ -10,7 +10,7 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-KINDS = ("ask", "finding", "examination")
+KINDS = ("ask", "finding", "examination", "document")
 
 _COLUMNS = "kind, item_key, payload, created_by, created_at, updated_by, updated_at"
 

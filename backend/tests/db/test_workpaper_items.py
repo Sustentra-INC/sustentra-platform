@@ -67,6 +67,7 @@ def test_other_orgs_and_provider_admins_cannot_write() -> None:
 def test_bad_kind_key_or_payload_is_refused() -> None:
     engagement = create()
     assert save(engagement["id"], "note", "x", ASK).status_code == 422
+    assert save(engagement["id"], "document", "DOC-1", {"documentId": "DOC-1", "disposition": "withdrawn"}).status_code == 200
     assert save(engagement["id"], "ask", "has space", ASK).status_code == 422
     assert save(engagement["id"], "ask", "big", {"text": "x" * 40_000}).status_code == 422
 
