@@ -2123,6 +2123,24 @@ html { font-size: 82%; }
 .s1-rc__field select, .s1-rc__group input { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); min-width: 0; }
 .s1-rc__group input[aria-invalid="true"] { border-color: var(--state-blocking-line); }
 .s1-rc__out { color: var(--ink-2); }
+/* Dashboard: emissions by category (one scale), coverage split, recent activity. */
+.s1-dash-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.s1-dash-bars li { display: grid; grid-template-columns: minmax(8rem, 1fr) 2fr auto; align-items: center; gap: var(--sp-3); font-size: var(--text-sm); }
+.s1-dash-bars__track { height: 0.6rem; background: var(--sf-sunken); border-radius: var(--radius-chip); overflow: hidden; }
+.s1-dash-bars__fill { display: block; height: 100%; background: var(--state-active-fg); border-radius: var(--radius-chip); }
+.s1-dash-bars__value { text-align: right; font-variant-numeric: tabular-nums; }
+.s1-dash-cov { display: flex; flex-direction: column; gap: var(--sp-3); }
+.s1-dash-cov__bar { display: flex; height: 0.75rem; border-radius: var(--radius-chip); overflow: hidden; background: var(--sf-sunken); }
+.s1-dash-cov__seg--present { background: var(--state-resolved-fg); }
+.s1-dash-cov__seg--missing { background: var(--state-open-fg); }
+.s1-dash-cov__seg--na { background: var(--ink-3); }
+.s1-dash-cov__seg--oos { background: var(--line-strong); }
+.s1-dash-cov__legend { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-1) var(--sp-3); font-size: var(--text-sm); }
+.s1-dash-cov__dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: var(--radius-chip); margin-right: var(--sp-1); }
+.s1-dash-activity { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.s1-dash-activity li { display: flex; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-2) 0; border-top: var(--border-hairline); font-size: var(--text-sm); }
+.s1-dash-activity li:first-child { border-top: 0; }
+.s1-dash-activity__what { min-width: 0; overflow-wrap: anywhere; }
 /* Setup facilities: name, address, grid region per row; facilities found on bills. */
 .s1-fac { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-3) 0; }
 .s1-fac__head, .s1-fac__row { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(10rem, 1.4fr) minmax(10rem, 1fr) auto; gap: var(--sp-2); align-items: center; }
