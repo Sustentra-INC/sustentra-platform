@@ -191,10 +191,14 @@ export function uploadDocumentWithProgress(
   });
 }
 
-export async function processDocument(documentId: string): Promise<void> {
+/** Run the pipeline on a document; with a type, it is read as that type instead of the
+ *  classifier's guess (the reviewer set it). */
+export async function processDocument(documentId: string, canonicalTypeIdOverride?: string): Promise<void> {
   await api(`/documents/${encodeURIComponent(documentId)}/pipeline/process`, {
     method: "POST",
-    body: { persist_run: true },
+    body: canonicalTypeIdOverride
+      ? { persist_run: true, canonical_type_id_override: canonicalTypeIdOverride }
+      : { persist_run: true },
   });
 }
 

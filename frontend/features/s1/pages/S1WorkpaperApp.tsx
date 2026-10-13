@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import {
   getSignedInUser,
@@ -15,6 +15,14 @@ import {
 import { ApiError } from "../../../lib/api";
 import { inlineDocumentUrl } from "../adapters/evidenceAdapter";
 import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
+import { getRecalculationReference } from "../api/recalculation";
+import {
+  applyDocumentView,
+  BACKEND_TYPE_IDS,
+  decisionFromEdit,
+  documentFacts,
+  unmatchedFacilities,
+} from "../utils/documentView";
 import { ExtractionReview } from "../components/ExtractionReview";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
@@ -65,7 +73,14 @@ import {
   type BackendEngagement,
 } from "../api/engagements";
 import { useRequestsStore } from "../requests/requestsStore";
-import type { ContainerState, EvidenceItem, ReviewValue, StateDimension } from "../types";
+import type {
+  ContainerState,
+  DocumentDecision,
+  EvidenceItem,
+  ExtractedField,
+  ReviewValue,
+  StateDimension,
+} from "../types";
 import type { SessionAuditEntry } from "../utils/auditIntent";
 
 type ActiveView =
@@ -130,6 +145,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   );
   const [isUploading, setIsUploading] = useState(false);
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
+  // Backend mode: every extracted field (facts about each document) and the reviewer's
+  // saved decisions per document, laid over the machine's view of the evidence.
+  const [workspaceFields, setWorkspaceFields] = useState<ExtractedField[]>([]);
+  const [documentDecisions, setDocumentDecisions] = useState<Record<string, DocumentDecision>>({});
+  const [gridRegions, setGridRegions] = useState<{ code: string; name: string }[] | undefined>(undefined);
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
   // Backend mode: a 401 from the API means the session ended (FE-007).
@@ -149,6 +169,20 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   // Backend mode: the org's engagements (S1-BE-002); null until loaded.
   const [engagements, setEngagements] = useState<BackendEngagement[] | null>(dataMode === "backend" ? null : []);
 
+  // eGRID subregions for the Setup facility picker (backend mode).
+  useEffect(() => {
+    if (dataMode !== "backend") return;
+    let live = true;
+    getRecalculationReference()
+      .then((ref) => {
+        if (live) setGridRegions(ref.egrid_subregions.map((r) => ({ code: r.egrid_subregion, name: r.name })));
+      })
+      .catch(() => undefined); // the picker simply stays hidden
+    return () => {
+      live = false;
+    };
+  }, [dataMode]);
+
   // Requests, findings and examination states are saved per engagement (backend mode).
   useWorkpaperSync({
     enabled: dataMode === "backend",
@@ -156,8 +190,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     asks: requests.asks,
     findings: verification.findings,
     examinations: verification.examinations,
+    documents: documentDecisions,
     replaceAsks: requests.replaceAsks,
     replaceVerification: verification.replaceAll,
+    replaceDocuments: setDocumentDecisions,
     onError: (error) => {
       if (handleSessionEnded(error)) return;
       setBackendError(`Your last change was not saved. ${userFacingApiError(error)}`);
@@ -278,6 +314,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     // No engagement configured yet → nothing to fetch; show the empty state.
     if (!engagementId) {
       setEvidenceItems([]);
+      setWorkspaceFields([]);
       setReviewValues([]);
       setDemoState("empty_nothing_yet");
       return;
@@ -286,6 +323,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     try {
       const workspace = await listWorkspaceEvidence(engagementId);
       setEvidenceItems(workspace.evidence);
+      setWorkspaceFields(workspace.fields);
       setReviewValues(reviewValuesFromFields(workspace.fields, workspace.evidence));
       setDemoState(nextContainerState ?? (workspace.evidence.length === 0 ? "empty_nothing_yet" : "populated"));
     } catch (error) {
@@ -470,6 +508,42 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     .map((id) => evidenceItems.find((i) => i.documentId === id))
     .filter((i): i is EvidenceItem => Boolean(i));
 
+  /** Evidence edits in backend mode become saved decisions; a new type re-reads the document. */
+  function changeEvidence(updater: (cur: EvidenceItem[]) => EvidenceItem[]) {
+    if (dataMode !== "backend") {
+      setEvidenceItems(updater);
+      return;
+    }
+    const before = new Map(evidenceView.map((item) => [item.documentId, item]));
+    const after = updater(evidenceView);
+    const changes: Record<string, DocumentDecision> = {};
+    const retype: { documentId: string; typeId: string }[] = [];
+    for (const item of after) {
+      const prior = before.get(item.documentId);
+      if (!prior) continue;
+      const decision = decisionFromEdit(prior, item, documentDecisions[item.documentId]);
+      if (!decision) continue;
+      changes[item.documentId] = decision;
+      const typeId = item.detectedType ? BACKEND_TYPE_IDS[item.detectedType] : undefined;
+      if (item.detectedType !== prior.detectedType && typeId) retype.push({ documentId: item.documentId, typeId });
+    }
+    if (Object.keys(changes).length) setDocumentDecisions((cur) => ({ ...cur, ...changes }));
+    for (const { documentId, typeId } of retype) void rereadAs(documentId, typeId);
+  }
+
+  async function rereadAs(documentId: string, typeId: string) {
+    setProcessingDocumentIds((current) => [...new Set([...current, documentId])]);
+    try {
+      await processDocument(documentId, typeId);
+      await refreshBackendWorkspace("populated");
+    } catch (error) {
+      if (handleSessionEnded(error)) return;
+      setBackendError(`Could not re-read the document as that type. ${userFacingApiError(error)}`);
+    } finally {
+      setProcessingDocumentIds((current) => current.filter((id) => id !== documentId));
+    }
+  }
+
   async function handleUploadFiles(files: FileList) {
     if (dataMode !== "backend") return;
     if (!engagement.engagementId) {
@@ -580,6 +654,36 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     }
   }
 
+  // Backend mode: the evidence as the screens show it (Setup facility, period, decisions).
+  const facts = useMemo(() => documentFacts(workspaceFields), [workspaceFields]);
+  const evidenceView = useMemo(
+    () =>
+      dataMode === "backend"
+        ? applyDocumentView(evidenceItems, facts, documentDecisions, engagement.facilities)
+        : evidenceItems,
+    [dataMode, evidenceItems, facts, documentDecisions, engagement.facilities]
+  );
+  const reviewValuesView = useMemo(() => {
+    if (dataMode !== "backend") return reviewValues;
+    const byId = new Map(evidenceView.map((item) => [item.documentId, item]));
+    return reviewValues.map((value) => {
+      const item = byId.get(value.documentId);
+      if (!item) return value;
+      return {
+        ...value,
+        facilityId: item.facilityId,
+        notYetKnown: !item.facilityId,
+        documentType: item.detectedType ?? value.documentType,
+        withdrawn: item.disposition === "withdrawn",
+        withdrawnReason: item.disposition === "withdrawn" ? "Document withdrawn; it is left out of the results." : undefined,
+      };
+    });
+  }, [dataMode, reviewValues, evidenceView]);
+  const foundFacilities = useMemo(
+    () => (dataMode === "backend" ? unmatchedFacilities(facts, engagement.facilities) : []),
+    [dataMode, facts, engagement.facilities]
+  );
+
   if (!mounted) {
     return <div className="s1-signin" aria-hidden />;
   }
@@ -651,6 +755,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             }
             inScopeFields={inScopeFields}
             onInScopeChange={setInScopeFields}
+            gridRegions={dataMode === "backend" ? gridRegions : undefined}
+            foundFacilities={foundFacilities}
           />
         ) : activeView.name === "upload" ? (
           <UploadScreen
@@ -702,11 +808,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         ) : activeView.name === "evidence" ? (
           <EvidenceWorkspace
             engagement={engagementForUser}
-            evidence={evidenceItems}
+            evidence={evidenceView}
             asks={requests.asks}
             onSaveAsk={requests.saveAsk}
             onResolveAsk={requests.resolveAsk}
-            onEvidenceChange={setEvidenceItems}
+            onEvidenceChange={changeEvidence}
             onOpenRequests={() => setActiveView({ name: "requests" })}
             auditIntents={auditIntents}
             onAuditIntent={addAuditIntent}
@@ -715,12 +821,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onUploadFiles={uploadFiles}
             isUploading={isUploading}
             backendError={backendError}
-            writesEnabled={dataMode !== "backend"}
+            writesEnabled
+            typeOptions={dataMode === "backend" ? Object.keys(BACKEND_TYPE_IDS) : undefined}
           />
         ) : activeView.name === "extraction" ? (
           <ExtractionReview
             engagement={engagementForUser}
-            values={reviewValues}
+            values={reviewValuesView}
             onValuesChange={setReviewValues}
             initialDocumentId={activeView.documentId}
             initialNodeKey={activeView.nodeKey}

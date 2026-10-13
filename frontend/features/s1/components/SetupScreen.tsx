@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 
-import type { EngagementConfig } from "../types";
+import type { EngagementConfig, FacilityOption } from "../types";
 import type { InScopeField } from "../types/scope";
 
 /**
@@ -41,12 +41,21 @@ const LAYER_LABEL: Record<InScopeField["layer"], string> = {
   scope2: "Scope 2",
 };
 
+let facilitySeq = 0;
+/** A new facility's id: unique within the engagement, stable once saved. */
+function newFacilityId(): string {
+  facilitySeq += 1;
+  return `facility-${Date.now().toString(36)}-${facilitySeq}`;
+}
+
 export function SetupScreen({
   engagement,
   onChange,
   inScopeFields,
   onInScopeChange,
   picker,
+  gridRegions,
+  foundFacilities = [],
 }: {
   engagement: EngagementConfig;
   onChange: (next: EngagementConfig) => void;
@@ -54,16 +63,28 @@ export function SetupScreen({
   onInScopeChange: (fields: InScopeField[]) => void;
   /** Backend mode: choose / create the engagement being edited (S1-BE-002). */
   picker?: ReactNode;
+  /** eGRID subregions to pick a facility's grid region from (backend mode). */
+  gridRegions?: { code: string; name: string }[];
+  /** Facilities named on uploaded bills that match no Setup facility yet. */
+  foundFacilities?: { name: string; address: string | null }[];
 }) {
   const set = (patch: Partial<EngagementConfig>) => onChange({ ...engagement, ...patch });
   const team = engagement.engagementTeam ?? [];
 
-  function addFacility() {
-    const id = `facility-${Date.now().toString(36)}`;
-    set({ facilities: [...engagement.facilities, { facilityId: id, name: "New facility" }] });
+  function addFacility(seed?: { name: string; address: string | null }) {
+    const id = newFacilityId();
+    set({
+      facilities: [
+        ...engagement.facilities,
+        { facilityId: id, name: seed?.name ?? "New facility", ...(seed?.address ? { address: seed.address } : {}) },
+      ],
+    });
+  }
+  function patchFacility(facilityId: string, patch: Partial<FacilityOption>) {
+    set({ facilities: engagement.facilities.map((f) => (f.facilityId === facilityId ? { ...f, ...patch } : f)) });
   }
   function renameFacility(facilityId: string, name: string) {
-    set({ facilities: engagement.facilities.map((f) => (f.facilityId === facilityId ? { ...f, name } : f)) });
+    patchFacility(facilityId, { name });
   }
   function removeFacility(facilityId: string) {
     set({ facilities: engagement.facilities.filter((f) => f.facilityId !== facilityId) });
@@ -199,19 +220,68 @@ export function SetupScreen({
       {/* Facilities */}
       <div className="s1-setup-card">
         <h2>Facilities</h2>
-        <p className="s1-muted">Entered manually. The Evidence Workspace facility column and filter read from this list.</p>
-        <div className="s1-setup-list">
-          {engagement.facilities.map((f) => (
-            <div className="s1-setup-row" key={f.facilityId}>
-              <input value={f.name} onChange={(e) => renameFacility(f.facilityId, e.target.value)} />
-              <span className="s1-mono s1-muted">{f.facilityId}</span>
-              <button className="s1-linklike" type="button" onClick={() => removeFacility(f.facilityId)}>
-                Remove
-              </button>
+        <p className="s1-muted">
+          Bills are matched to a facility by its name or street address. The grid region is used for its electricity
+          (Scope 2, location-based).
+        </p>
+        {engagement.facilities.length ? (
+          <div className="s1-fac">
+            <div className="s1-fac__head" aria-hidden>
+              <span>Name</span>
+              <span>Street address</span>
+              {gridRegions ? <span>Grid region (eGRID)</span> : null}
+              <span />
             </div>
-          ))}
-        </div>
-        <button className="s1-button" type="button" onClick={addFacility}>
+            {engagement.facilities.map((f) => (
+              <div className="s1-fac__row" key={f.facilityId}>
+                <input aria-label="Facility name" value={f.name} onChange={(e) => renameFacility(f.facilityId, e.target.value)} />
+                <input
+                  aria-label="Street address"
+                  placeholder="e.g. 15 State Street, Albany, NY"
+                  value={f.address ?? ""}
+                  onChange={(e) => patchFacility(f.facilityId, { address: e.target.value })}
+                />
+                {gridRegions ? (
+                  <select
+                    aria-label="Grid region"
+                    value={f.gridRegion ?? ""}
+                    onChange={(e) => patchFacility(f.facilityId, { gridRegion: e.target.value || undefined })}
+                  >
+                    <option value="">Not set</option>
+                    {gridRegions.map((r) => (
+                      <option key={r.code} value={r.code}>
+                        {r.code} · {r.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                <button className="s1-linklike" type="button" onClick={() => removeFacility(f.facilityId)}>
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {foundFacilities.length ? (
+          <div className="s1-fac__found">
+            <strong>Found on uploaded bills</strong>
+            <span className="s1-muted"> · not matched to a facility yet</span>
+            <ul>
+              {foundFacilities.map((found) => (
+                <li key={`${found.name}|${found.address ?? ""}`}>
+                  <span>
+                    {found.name}
+                    {found.address ? <span className="s1-muted"> · {found.address}</span> : null}
+                  </span>
+                  <button className="s1-linklike" type="button" onClick={() => addFacility(found)}>
+                    Add as facility
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+        <button className="s1-button" type="button" onClick={() => addFacility()}>
           Add facility
         </button>
       </div>

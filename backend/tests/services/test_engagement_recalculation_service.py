@@ -273,3 +273,55 @@ def test_records_outside_the_reporting_period_are_listed_not_silently_dropped() 
     # The out-of-period bill neither counts nor asks for a grid region.
     assert not any(item["kind"] == "grid_region" for item in result["needs_input"])
     assert result["categories"]["stationary_combustion"]["lines"][0]["mass_t"]["CO2"] == pytest.approx(1000 * 53.06 / 1000)
+
+
+# --- the reviewer's document decisions and Setup facilities ----------------------------------
+def test_withdrawn_duplicate_and_superseded_documents_are_left_out_and_listed() -> None:
+    store = FakeStore()
+    for doc in ("GAS-KEEP", "GAS-WITHDRAWN", "GAS-DUP", "GAS-OLD", "GAS-NEW"):
+        store.add_document(doc, "CT-S1-FUELQTY", [_gas(100)])
+    decisions = {
+        "GAS-WITHDRAWN": {"documentId": "GAS-WITHDRAWN", "disposition": "withdrawn"},
+        "GAS-DUP": {"documentId": "GAS-DUP", "relationships": [{"kind": "duplicate", "otherDocumentId": "GAS-KEEP"}]},
+        "GAS-NEW": {"documentId": "GAS-NEW", "relationships": [{"kind": "supersedes", "otherDocumentId": "GAS-OLD"}]},
+    }
+    result = _service(store).recalculate(_engagement(), _own, decisions)
+    reasons = {item["document_id"]: item["reason"] for item in result["excluded"]}
+    assert reasons == {"GAS-WITHDRAWN": "withdrawn", "GAS-DUP": "duplicate", "GAS-OLD": "superseded"}
+    stationary = result["categories"]["stationary_combustion"]
+    assert stationary["lines"][0]["mass_t"]["CO2"] == pytest.approx(2 * 100 * 53.06 / 1000)  # GAS-KEEP + GAS-NEW
+
+
+def test_bills_take_their_setup_facility_and_its_grid_region() -> None:
+    store = FakeStore()
+    store.add_document("BILL-A", "CT-S2-ELEC", [_elec(1200, "HVP Account 1001", "15 State Street, Albany, NY 12207")])
+    store.add_document("BILL-B", "CT-S2-ELEC", [_elec(800, "Facility B", "Philadelphia, PA")])
+    facilities = [
+        {"facilityId": "F1", "name": "Albany Plant", "address": "15 State Street", "gridRegion": "NYUP"},
+        {"facilityId": "F2", "name": "Philly Warehouse", "gridRegion": "RFCE"},
+    ]
+    engagement = _engagement(facilities=facilities, recalculation={"grid_regions": {"Philly Warehouse": "RFCE"}})
+    # BILL-A matches by address; BILL-B only through the reviewer's facility decision.
+    result = _service(store).recalculate(engagement, _own, {"BILL-B": {"documentId": "BILL-B", "facilityId": "F2"}})
+    location = result["categories"]["purchased_electricity_location_based"]
+    assert [line["key"] for line in location["lines"]] == ["Albany Plant", "Philly Warehouse"]
+    assert round(location["total_co2e"], 2) == 348.15  # Claire's worked example, regions from Setup
+    assert not [n for n in result["needs_input"] if n["kind"] == "grid_region"]
+
+
+def test_match_facility_needs_a_clear_name_or_address() -> None:
+    from backend.app.services.engagement_recalculation_service import match_facility
+
+    facilities = [{"facilityId": "F1", "name": "Kent Cannery", "address": "88 Mill Road, Kent, WA"}]
+    assert match_facility("KENT CANNERY", None, facilities)["facilityId"] == "F1"
+    assert match_facility(None, "88 Mill Road", facilities)["facilityId"] == "F1"
+    assert match_facility("Kent", "Kent", facilities) is None  # too short to be sure
+    assert match_facility("Other site", "1 Elm St, Kent", facilities) is None
+
+
+def test_setup_facilities_reject_an_unknown_grid_region() -> None:
+    from backend.app.services.engagement_recalculation_service import validate_facilities
+
+    validate_facilities([{"facilityId": "F1", "name": "A", "gridRegion": "NYUP"}, {"facilityId": "F2", "name": "B"}])
+    with pytest.raises(ValueError):
+        validate_facilities([{"facilityId": "F1", "name": "A", "gridRegion": "MOON"}])

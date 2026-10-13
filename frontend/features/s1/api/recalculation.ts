@@ -102,6 +102,34 @@ export interface RecalcAwaitingReview {
   fields: string[];
 }
 
+/** Why a reviewed record was left out of the numbers. */
+export type ExcludedReason = "outside_reporting_period" | "withdrawn" | "duplicate" | "superseded";
+
+const EXCLUDED_LABEL: Record<ExcludedReason, string> = {
+  outside_reporting_period: "outside the reporting period",
+  withdrawn: "withdrawn by the reviewer",
+  duplicate: "marked as a duplicate",
+  superseded: "superseded by a newer document",
+};
+
+function reasonOf(item: { reason?: ExcludedReason }): ExcludedReason {
+  return item.reason ?? "outside_reporting_period";
+}
+
+/** "1 withdrawn by the reviewer, 2 outside the reporting period". */
+function describeLeftOut(items: { reason?: ExcludedReason }[]): string {
+  const counts = new Map<ExcludedReason, number>();
+  items.forEach((item) => counts.set(reasonOf(item), (counts.get(reasonOf(item)) ?? 0) + 1));
+  return [...counts].map(([reason, n]) => `${n} ${EXCLUDED_LABEL[reason]}`).join(", ");
+}
+
+export function leftOutMessage(item: { record: string; period: string; reason?: ExcludedReason }): string {
+  const reason = reasonOf(item);
+  return reason === "outside_reporting_period"
+    ? `${item.record} (${item.period}) is outside the reporting period, so it is not counted.`
+    : `${item.record} is ${EXCLUDED_LABEL[reason]}, so it is not counted.`;
+}
+
 export type CategoryKey =
   | "stationary_combustion"
   | "mobile_combustion"
@@ -119,7 +147,7 @@ export interface Recalculation {
   needs_input: RecalcNeedsInput[];
   awaiting_review: RecalcAwaitingReview[];
   /** Reviewed records entirely outside the reporting period: listed, never counted. */
-  excluded?: { document_id: string; record: string; canonical_type_id: string; period: string }[];
+  excluded?: { document_id: string; record: string; canonical_type_id: string; period: string; reason?: ExcludedReason }[];
   not_recalculated: string[];
   documents_considered: number;
 }
@@ -233,11 +261,11 @@ function outcomeOf(c: RecalcComparison, result?: Recalculation): { outcome: Chec
   }
   if (c.status === "no_evidence") {
     const typeId = DATA_POINT_TYPE[c.key];
-    const outside = typeId ? (result?.excluded ?? []).filter((e) => e.canonical_type_id === typeId).length : 0;
+    const leftOut = typeId ? (result?.excluded ?? []).filter((e) => e.canonical_type_id === typeId) : [];
     return {
       outcome: "could_not_check",
-      reason: outside
-        ? `All ${outside} reviewed record(s) for this are outside the reporting period, so none are counted.`
+      reason: leftOut.length
+        ? `Every reviewed record for this is left out (${describeLeftOut(leftOut)}), so none are counted.`
         : "No reviewed evidence feeds this data point yet.",
     };
   }
@@ -361,7 +389,7 @@ export function recalculationRows(result: Recalculation): VerificationRow[] {
         ? c.status === "not_recalculated"
           ? "fugitive gases are not recalculated yet"
           : DATA_POINT_TYPE[c.key] && (result.excluded ?? []).some((e) => e.canonical_type_id === DATA_POINT_TYPE[c.key])
-            ? "records are outside the reporting period"
+            ? "its records are left out (see why)"
             : "no reviewed evidence yet"
         : undefined,
       delta: c.difference_pct !== null ? formatPct(c.difference_pct) : null,
@@ -462,14 +490,14 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
         reason: `${category.lines.map((l) => l.key).join(", ")} from ${docs} reviewed record(s).${vehicles}`,
       });
     } else {
-      const outside = (result.excluded ?? []).filter((e) => e.canonical_type_id === typeId);
+      const leftOut = (result.excluded ?? []).filter((e) => e.canonical_type_id === typeId);
       rules.push({
         ruleId,
         assertion,
         appliesTo,
         status: "not_applicable",
-        reason: outside.length
-          ? `All ${outside.length} reviewed ${TYPE_LABEL[typeId]} record(s) are outside the reporting period, so none are counted.`
+        reason: leftOut.length
+          ? `Every reviewed ${TYPE_LABEL[typeId]} record is left out (${describeLeftOut(leftOut)}), so none are counted.`
           : `No reviewed ${TYPE_LABEL[typeId]} documents in this engagement.`,
       });
     }
@@ -557,7 +585,17 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
     });
   }
 
-  const excluded = result.excluded ?? [];
+  const excluded = (result.excluded ?? []).filter((e) => reasonOf(e) === "outside_reporting_period");
+  const setAside = (result.excluded ?? []).filter((e) => reasonOf(e) !== "outside_reporting_period");
+  if (setAside.length) {
+    rules.push({
+      ruleId: "COV-DECISIONS",
+      assertion: "Documents the reviewer withdrew, marked as duplicates or replaced are left out of the numbers",
+      appliesTo: ["All recalculated data points"],
+      status: "inputs_present",
+      reason: setAside.map((e) => `${e.record} (${EXCLUDED_LABEL[reasonOf(e)]})`).join("; ") + ".",
+    });
+  }
   rules.push({
     ruleId: "COV-PERIOD",
     assertion: "Bills are counted only for the days inside the reporting period",

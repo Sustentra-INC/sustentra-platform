@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { loadWorkpaper, saveWorkpaperItem, type WorkpaperKind } from "../api/workpaper";
+import type { DocumentDecision } from "../types";
 import type { Ask } from "../types/requests";
 import type { Examination, Finding } from "../types/verification";
 
@@ -18,8 +19,10 @@ export function useWorkpaperSync({
   asks,
   findings,
   examinations,
+  documents,
   replaceAsks,
   replaceVerification,
+  replaceDocuments,
   onError,
 }: {
   enabled: boolean;
@@ -27,8 +30,10 @@ export function useWorkpaperSync({
   asks: Ask[];
   findings: Finding[];
   examinations: Record<string, Examination>;
+  documents: Record<string, DocumentDecision>;
   replaceAsks: (asks: Ask[]) => void;
   replaceVerification: (examinations: Record<string, Examination>, findings: Finding[]) => void;
+  replaceDocuments: (documents: Record<string, DocumentDecision>) => void;
   /** Called with the failure; the item is retried on its next change. */
   onError: (error: unknown) => void;
 }): { loaded: boolean } {
@@ -47,12 +52,13 @@ export function useWorkpaperSync({
       .then((loaded) => {
         if (!live) return;
         const snapshot = new Map<string, string>();
-        for (const [kind, id, payload] of entries(loaded.asks, loaded.findings, loaded.examinations)) {
+        for (const [kind, id, payload] of entries(loaded.asks, loaded.findings, loaded.examinations, loaded.documents)) {
           snapshot.set(`${kind}|${id}`, JSON.stringify(payload));
         }
         saved.current = snapshot;
         replaceAsks(loaded.asks);
         replaceVerification(loaded.examinations, loaded.findings);
+        replaceDocuments(loaded.documents);
         setReadyFor(engagementId);
       })
       .catch((error: unknown) => {
@@ -61,11 +67,11 @@ export function useWorkpaperSync({
     return () => {
       live = false;
     };
-  }, [enabled, engagementId, replaceAsks, replaceVerification]);
+  }, [enabled, engagementId, replaceAsks, replaceVerification, replaceDocuments]);
 
   useEffect(() => {
     if (!enabled || !engagementId || readyFor !== engagementId) return;
-    for (const [kind, id, payload] of entries(asks, findings, examinations)) {
+    for (const [kind, id, payload] of entries(asks, findings, examinations, documents)) {
       const key = `${kind}|${id}`;
       const json = JSON.stringify(payload);
       if (saved.current.get(key) === json) continue;
@@ -75,7 +81,7 @@ export function useWorkpaperSync({
         onErrorRef.current(error);
       });
     }
-  }, [enabled, engagementId, readyFor, asks, findings, examinations]);
+  }, [enabled, engagementId, readyFor, asks, findings, examinations, documents]);
 
   return { loaded: !enabled || readyFor === engagementId };
 }
@@ -83,7 +89,8 @@ export function useWorkpaperSync({
 function entries(
   asks: Ask[],
   findings: Finding[],
-  examinations: Record<string, Examination>
+  examinations: Record<string, Examination>,
+  documents: Record<string, DocumentDecision>
 ): [WorkpaperKind, string, object][] {
   return [
     ...asks.map((ask): [WorkpaperKind, string, object] => ["ask", ask.id, ask]),
@@ -95,5 +102,10 @@ function entries(
         { dataPointId, ...examination },
       ]
     ),
+    ...Object.values(documents).map((decision): [WorkpaperKind, string, object] => [
+      "document",
+      decision.documentId,
+      decision,
+    ]),
   ];
 }

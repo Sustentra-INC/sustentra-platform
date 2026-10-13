@@ -1,4 +1,5 @@
 import { api } from "../../../lib/api";
+import type { DocumentDecision } from "../types";
 import type { Ask } from "../types/requests";
 import type { Examination, Finding } from "../types/verification";
 
@@ -22,6 +23,7 @@ export interface SavedWorkpaper {
   asks: Ask[];
   findings: Finding[];
   examinations: Record<string, Examination>;
+  documents: Record<string, DocumentDecision>;
 }
 
 /** Item keys allow letters, digits and : . _ - only. */
@@ -33,11 +35,14 @@ export async function loadWorkpaper(engagementId: string): Promise<SavedWorkpape
   const { items } = await api<{ items: WorkpaperItem[] }>(
     `/engagements/${encodeURIComponent(engagementId)}/workpaper-items`
   );
-  const saved: SavedWorkpaper = { asks: [], findings: [], examinations: {} };
+  const saved: SavedWorkpaper = { asks: [], findings: [], examinations: {}, documents: {} };
   for (const item of items) {
     if (item.kind === "ask") saved.asks.push(item.payload as unknown as Ask);
     else if (item.kind === "finding") saved.findings.push(item.payload as unknown as Finding);
-    else if (item.kind === "examination") {
+    else if (item.kind === "document") {
+      const decision = item.payload as unknown as DocumentDecision;
+      saved.documents[decision.documentId] = decision;
+    } else if (item.kind === "examination") {
       const { dataPointId, ...examination } = item.payload as unknown as Examination & { dataPointId: string };
       saved.examinations[dataPointId] = examination;
     }

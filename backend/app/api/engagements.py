@@ -24,7 +24,10 @@ from backend.app.api.s1_access import s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
 from backend.app.services import engagement_service
-from backend.app.services.engagement_recalculation_service import validate_recalculation_settings
+from backend.app.services.engagement_recalculation_service import (
+    validate_facilities,
+    validate_recalculation_settings,
+)
 from backend.app.services.audit_log import write_audit_event
 
 router = APIRouter(prefix="/v1", tags=["engagements"])
@@ -68,6 +71,8 @@ def _check_settings(value: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("settings are too large")
     if "recalculation" in value:
         validate_recalculation_settings(value["recalculation"])
+    if "facilities" in value:
+        validate_facilities(value["facilities"])
     return value
 
 

@@ -143,6 +143,52 @@ def parse_inputs(settings: dict[str, Any] | None) -> RecalculationInputs:
 
 
 # =========================================================================================
+# Setup facilities and the reviewer's document decisions
+# =========================================================================================
+def _norm_text(value: Any) -> str:
+    return " ".join(re.sub(r"[^a-z0-9 ]+", " ", str(value or "").lower()).split())
+
+
+def match_facility(name: Any, address: Any, facilities: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The Setup facility a bill belongs to: same name, or the same street address
+    (one address containing the other, so "15 State Street" matches "15 State Street,
+    Albany, NY 12207"). None when nothing matches clearly."""
+
+    bill_name, bill_address = _norm_text(name), _norm_text(address)
+    for facility in facilities:
+        if bill_name and _norm_text(facility.get("name")) == bill_name:
+            return facility
+    if len(bill_address) >= 8:
+        for facility in facilities:
+            setup_address = _norm_text(facility.get("address"))
+            if len(setup_address) >= 8 and (setup_address in bill_address or bill_address in setup_address):
+                return facility
+    return None
+
+
+def validate_facilities(value: Any) -> None:
+    """Raise ValueError when Setup facilities are malformed or name an unknown eGRID subregion."""
+
+    if not isinstance(value, list):
+        raise ValueError("facilities must be a list")
+    ref = default_emission_factor_reference()
+    for facility in value:
+        if not isinstance(facility, dict):
+            raise ValueError("each facility must be an object")
+        region = facility.get("gridRegion")
+        if region:
+            try:
+                ref.electricity(str(region))
+            except EmissionFactorNotFoundError as exc:
+                raise ValueError(f"facility {facility.get('name')!r}: unknown eGRID subregion {region!r}") from exc
+
+
+def setup_facilities(settings: dict[str, Any] | None) -> list[dict[str, Any]]:
+    raw = (settings or {}).get("facilities") or []
+    return [f for f in raw if isinstance(f, dict) and f.get("name")]
+
+
+# =========================================================================================
 # Reviewed evidence
 # =========================================================================================
 @dataclass
@@ -241,6 +287,9 @@ class EngagementRecalculationService:
         self._pipeline = pipeline_service
         self._reviews = review_service
         self._reference = reference
+        # Set per recalculation: the engagement's Setup facilities and document decisions.
+        self._facilities: list[dict[str, Any]] = []
+        self._decisions: dict[str, dict[str, Any]] = {}
 
     @property
     def reference(self) -> EmissionFactorReference:
@@ -284,11 +333,18 @@ class EngagementRecalculationService:
         return records
 
     # ---------------------------------------------------------------------------------
-    def recalculate(self, engagement: dict[str, Any], can_see: Callable[[dict], bool]) -> dict[str, Any]:
+    def recalculate(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
+                    decisions: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+        """``decisions``: the reviewer's per-document decisions (facility, withdrawn,
+        duplicate / supersedes), keyed by document id."""
+
         engagement_id = str(engagement.get("id") or engagement.get("engagement_id"))
         inputs = parse_inputs(engagement.get("settings"))
         period = (_date(engagement.get("reporting_period_start")), _date(engagement.get("reporting_period_end")))
-        records = self.reviewed_records(engagement_id, can_see)
+        decisions = decisions or {}
+        records, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
+        self._facilities = setup_facilities(engagement.get("settings"))
+        self._decisions = decisions
 
         needs_input: list[dict[str, Any]] = []
         awaiting: list[dict[str, Any]] = []
@@ -333,11 +389,42 @@ class EngagementRecalculationService:
             "comparisons": self._comparisons(inputs, totals, categories, incomplete, tolerance),
             "needs_input": needs_input,
             "awaiting_review": awaiting,
-            "excluded": self._outside_period(records, period),
+            "excluded": set_aside + self._outside_period(records, period),
             "not_recalculated": ["Scope 1 fugitive sources", "Scope 1 process sources",
                                  "Scope 2 steam, heat and cooling"],
             "documents_considered": len({r.document_id for r in records}),
         }
+
+    @staticmethod
+    def _apply_decisions(records: list[ReviewedRecord], decisions: dict[str, dict[str, Any]]
+                         ) -> tuple[list[ReviewedRecord], list[dict[str, Any]]]:
+        """Leave out documents the reviewer withdrew, marked as a duplicate, or replaced
+        with a superseding one; list them (once per document) with the reason."""
+
+        superseded = {
+            str(rel.get("otherDocumentId"))
+            for decision in decisions.values()
+            for rel in decision.get("relationships") or []
+            if isinstance(rel, dict) and rel.get("kind") == "supersedes"
+        }
+        keep: list[ReviewedRecord] = []
+        set_aside: dict[str, dict[str, Any]] = {}
+        for record in records:
+            decision = decisions.get(record.document_id) or {}
+            relationships = [r for r in decision.get("relationships") or [] if isinstance(r, dict)]
+            if decision.get("disposition") == "withdrawn":
+                reason = "withdrawn"
+            elif any(r.get("kind") == "duplicate" for r in relationships):
+                reason = "duplicate"
+            elif record.document_id in superseded:
+                reason = "superseded"
+            else:
+                keep.append(record)
+                continue
+            set_aside.setdefault(record.document_id, {
+                "document_id": record.document_id, "record": record.file_name or record.document_id,
+                "canonical_type_id": record.canonical_type_id, "period": "", "reason": reason})
+        return keep, list(set_aside.values())
 
     @staticmethod
     def _outside_period(records: list[ReviewedRecord], period: tuple[date | None, date | None]
@@ -356,7 +443,8 @@ class EngagementRecalculationService:
             if _proration(start, end, period)[1] == "outside_reporting_period":
                 out.append({"document_id": record.document_id, "record": record.label,
                             "canonical_type_id": record.canonical_type_id,
-                            "period": str(start) if start == end else f"{start} to {end}"})
+                            "period": str(start) if start == end else f"{start} to {end}",
+                            "reason": "outside_reporting_period"})
         return out
 
     # =================================================================================
@@ -552,15 +640,18 @@ class EngagementRecalculationService:
                 continue
             quantity, unit = amount
             mwh = quantity / 1000 if unit == "kWh" else quantity
-            key = " ".join(str(record.best("facility_name") or record.best("service_address")
-                               or "Unnamed facility").split())
-            entry = facilities.setdefault(key, {"mwh": 0.0, "documents": [], "address": record.best("service_address")})
+            setup = self._setup_facility(record)
+            key = setup["name"] if setup else " ".join(
+                str(record.best("facility_name") or record.best("service_address") or "Unnamed facility").split())
+            entry = facilities.setdefault(key, {"mwh": 0.0, "documents": [], "address": record.best("service_address"),
+                                                "setup_region": (setup or {}).get("gridRegion")})
             entry["mwh"] += mwh
             entry["documents"].append({"document_id": record.document_id, "record": record.label,
                                        "quantity": quantity, "unit": unit, "share_in_period": prorate[0]})
         out: list[calc.FacilityElectricity] = []
         for key, entry in facilities.items():
-            region = inputs.grid_regions.get(key)
+            # A choice on the results screen wins; otherwise the facility's region from Setup.
+            region = inputs.grid_regions.get(key) or entry.get("setup_region")
             if region:
                 try:
                     self.reference.electricity(region)
@@ -580,6 +671,17 @@ class EngagementRecalculationService:
                                                                   f"{len(entry['documents'])} reviewed bill(s)"),
                                                 region))
         return out
+
+    def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
+        """The reviewer's facility for the bill's document, else a clear name/address match."""
+
+        facilities = self._facilities
+        chosen = (self._decisions.get(record.document_id) or {}).get("facilityId")
+        if chosen:
+            for facility in facilities:
+                if facility.get("facilityId") == chosen:
+                    return facility
+        return match_facility(record.best("facility_name"), record.best("service_address"), facilities)
 
     # =================================================================================
     # Totals and comparison

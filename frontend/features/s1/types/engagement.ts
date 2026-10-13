@@ -7,6 +7,10 @@ export interface Actor {
 export interface FacilityOption {
   facilityId: string;
   name: string;
+  /** Street address, used to match bills to this facility. */
+  address?: string;
+  /** eGRID subregion for purchased electricity (Scope 2 location-based). */
+  gridRegion?: string;
 }
 
 /** The client's point of contact — one recipient for all Evidence requests. */

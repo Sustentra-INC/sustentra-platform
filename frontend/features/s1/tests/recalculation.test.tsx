@@ -186,8 +186,23 @@ describe("materiality and coverage when inputs are partial", () => {
     };
     const rules = Object.fromEntries(coverageFromRecalculation(outside).map((r) => [r.ruleId, r]));
     expect(rules["COV-PERIOD"].reason).toContain("MF-01.pdf (record 1) (2024-03-02)");
-    expect(rules["COV-S1-MOBILE"].reason).toContain("outside the reporting period");
+    expect(rules["COV-S1-MOBILE"].reason).toContain("1 outside the reporting period");
     const mobileRow = byKey(recalculationRows(outside)).mobile_combustion_total;
-    expect(mobileRow.recomputeReason).toBe("records are outside the reporting period");
+    expect(mobileRow.recomputeReason).toBe("its records are left out (see why)");
+  });
+
+  it("says which documents the reviewer left out and why", () => {
+    const decided: Recalculation = {
+      ...RESULT,
+      excluded: [
+        { document_id: "GAS-1", record: "gas.pdf", canonical_type_id: "CT-S1-MOBFUEL", period: "", reason: "withdrawn" },
+        { document_id: "FUEL-2", record: "fuel.pdf (record 1)", canonical_type_id: "CT-S1-MOBFUEL", period: "2024-03-02",
+          reason: "outside_reporting_period" },
+      ],
+    };
+    const rules = Object.fromEntries(coverageFromRecalculation(decided).map((r) => [r.ruleId, r]));
+    expect(rules["COV-DECISIONS"].reason).toBe("gas.pdf (withdrawn by the reviewer).");
+    expect(rules["COV-S1-MOBILE"].reason).toContain("1 withdrawn by the reviewer, 1 outside the reporting period");
+    expect(rules["COV-PERIOD"].reason).not.toContain("gas.pdf");
   });
 });
