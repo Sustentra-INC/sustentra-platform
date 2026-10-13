@@ -609,12 +609,14 @@ function SourcePane({
         <div className="s1-xr-src-fn">{value.filename}</div>
         <div className="s1-muted">
           {realPage && value.reviewToken
-            ? "The uploaded document. Check the value against it."
+            ? value.span
+              ? "The uploaded document, the value outlined where it was read."
+              : "The uploaded document. Check the value against it."
             : value.span
               ? "Opened at the page, value highlighted."
               : "Highlight unavailable for this value."}
         </div>
-        {value.sourceKind !== "text" ? (
+        {value.sourceKind !== "text" && !(realPage && value.reviewToken) ? (
           <div className="s1-xr-pager">
             <button className="s1-button s1-button--compact" type="button" onClick={() => setPage(Math.max(1, page - 1))} aria-label="Previous page">
               ‹
