@@ -142,6 +142,7 @@ describe("recalculation inputs panel", () => {
       reported: { scope1_total: 1450.5 },
       certificates: [],
       refrigerant_gwps: {},
+      vehicle_groups: [],
     });
   });
 
@@ -299,6 +300,64 @@ describe("refrigerants (simplified material balance)", () => {
     fireEvent.change(within(field).getByRole("textbox"), { target: { value: "466" } });
     fireEvent.click(screen.getByRole("button", { name: "Save and recalculate" }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ refrigerant_gwps: { "R-454B": 466 } }));
+  });
+});
+
+describe("vehicle groups (mobile CH4 and N2O)", () => {
+  const mobileLine = { ...RESULT.categories.purchased_electricity_location_based!.lines[0], key: "Diesel Fuel" };
+  const withMobile: Recalculation = {
+    ...RESULT,
+    categories: {
+      ...RESULT.categories,
+      mobile_combustion: { ...RESULT.categories.purchased_electricity_location_based!, category: "mobile_combustion",
+        lines: [mobileLine], flags: ["ch4_n2o_need_vehicle_groups"] },
+    },
+  };
+  const reference: RecalculationReference = {
+    ...REFERENCE,
+    vehicle_types: [
+      { vehicle_type: "Medium- and Heavy-Duty Vehicles", fuel_type: "Diesel", on_road: true, by_model_year: true,
+        first_model_year: 1960, last_model_year: 2022 },
+      { vehicle_type: "Industrial/Commercial Equipment", fuel_type: "Diesel", on_road: false, by_model_year: false,
+        first_model_year: null, last_model_year: null },
+    ],
+  };
+
+  it("adds an on-road group with model year and distance, and saves it", () => {
+    const onSave = vi.fn();
+    render(<RecalculationInputs result={withMobile} reference={reference} settings={{}} saving={false} error={null}
+      onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", { name: /Recalculation inputs/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add vehicle group" }));
+    const group = screen.getByRole("group", { name: "Vehicle group 1" });
+    fireEvent.change(within(group).getByLabelText("Vehicle type (EPA)"), {
+      target: { value: "Medium- and Heavy-Duty Vehicles" } });
+    expect((within(group).getByLabelText("EPA fuel for CH₄ and N₂O") as HTMLSelectElement).value).toBe("Diesel");
+    const save = screen.getByRole("button", { name: "Save and recalculate" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true); // no distance yet
+    fireEvent.change(within(group).getByLabelText("Model year"), { target: { value: "2018" } });
+    fireEvent.change(within(group).getByLabelText("Distance driven"), { target: { value: "10000" } });
+    fireEvent.change(within(group).getByLabelText("Group"), { target: { value: "4 heavy trucks" } });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      vehicle_groups: [{ fuel: "Diesel Fuel", vehicle_type: "Medium- and Heavy-Duty Vehicles",
+        factor_fuel_type: "Diesel", on_road: true, label: "4 heavy trucks", distance: 10000, distance_unit: "mi",
+        model_year: 2018 }],
+    }));
+  });
+
+  it("lets a lone non-road group leave the fuel blank", () => {
+    const onSave = vi.fn();
+    render(<RecalculationInputs result={withMobile} reference={reference} settings={{ vehicle_groups: [
+      { fuel: "Diesel Fuel", vehicle_type: "Industrial/Commercial Equipment", factor_fuel_type: "Diesel",
+        on_road: false }] }} saving={false} error={null} onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", { name: /Recalculation inputs/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Save and recalculate" }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
+      vehicle_groups: [{ fuel: "Diesel Fuel", vehicle_type: "Industrial/Commercial Equipment",
+        factor_fuel_type: "Diesel", on_road: false }],
+    }));
   });
 });
 

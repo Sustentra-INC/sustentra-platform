@@ -79,6 +79,10 @@ def test_reference_lists_the_input_choices(act_as) -> None:
     assert len(body["egrid_subregions"]) == 28 and len(body["stationary_fuels"]) == 63
     assert {"key": "scope1_total", "label": "Scope 1 (Total)", "workbook_row": 22, "unit": "t CO2e"} in \
         body["reported_data_points"]
+    assert {"vehicle_type": "Medium- and Heavy-Duty Vehicles", "fuel_type": "Diesel", "on_road": True,
+            "by_model_year": True, "first_model_year": 1960, "last_model_year": 2022} in body["vehicle_types"]
+    assert {"vehicle_type": "Industrial/Commercial Equipment", "fuel_type": "Diesel", "on_road": False,
+            "by_model_year": False, "first_model_year": None, "last_model_year": None} in body["vehicle_types"]
 
 
 def test_engagement_settings_validate_recalculation_inputs() -> None:

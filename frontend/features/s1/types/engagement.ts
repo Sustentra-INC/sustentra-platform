@@ -90,4 +90,23 @@ export interface RecalculationSettings {
   reported?: Record<string, number>;
   /** Refrigerant to the GWP entered from its safety data sheet, for gases the EPA Hub does not list. */
   refrigerant_gwps?: Record<string, number>;
+  /** Which vehicles used each mobile fuel, for CH4 and N2O (workbook Eq 4 / Eq 5). */
+  vehicle_groups?: VehicleGroupSetting[];
+}
+
+/** One vehicle group: on-road by distance (and model year where the factor needs it),
+ *  non-road by the fuel it used. */
+export interface VehicleGroupSetting {
+  /** The EPA Table 2 fuel of the reviewed records, e.g. "Diesel Fuel". */
+  fuel: string;
+  vehicle_type: string;
+  /** The fuel as the CH4/N2O table names it, e.g. "Diesel", "Gasoline (4 stroke)". */
+  factor_fuel_type: string;
+  on_road: boolean;
+  model_year?: number;
+  distance?: number;
+  distance_unit?: "mi" | "km";
+  fuel_quantity?: number;
+  fuel_unit?: "gal" | "L";
+  label?: string;
 }

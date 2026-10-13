@@ -406,3 +406,73 @@ def test_refrigerant_gwps_are_validated() -> None:
         validate_recalculation_settings({"refrigerant_gwps": {"R-454B": "high"}})
     with pytest.raises(ValueError, match="refrigerant_gwps"):
         validate_recalculation_settings({"refrigerant_gwps": {"R-454B": -1}})
+
+
+# --- Mobile CH4 / N2O by vehicle group (workbook Eq 4 / Eq 5) ------------------------------
+def _diesel_purchase(gallons: float, day: str = "2025-05-01") -> dict:
+    return {"fuel_type": ("diesel", None), "activity_quantity": (gallons, "gal"), "activity_unit": ("gal", None),
+            "transaction_date": (day, None)}
+
+
+def _mobile_store() -> FakeStore:
+    store = FakeStore()
+    store.add_document("FLEET", "CT-S1-MOBFUEL", [_diesel_purchase(600), _diesel_purchase(400, "2025-09-01")])
+    return store
+
+
+def test_vehicle_groups_add_ch4_and_n2o_by_distance_and_by_fuel() -> None:
+    groups = [
+        {"fuel": "Diesel Fuel", "vehicle_type": "Medium- and Heavy-Duty Vehicles", "factor_fuel_type": "Diesel",
+         "on_road": True, "model_year": 2018, "distance": 10000, "distance_unit": "mi", "label": "4 heavy trucks"},
+        {"fuel": "Diesel Fuel", "vehicle_type": "Industrial/Commercial Equipment", "factor_fuel_type": "Diesel",
+         "on_road": False, "fuel_quantity": 200, "fuel_unit": "gal", "label": "3 forklifts"},
+    ]
+    service = _service(_mobile_store())
+    result = service.recalculate(_engagement(recalculation={"vehicle_groups": groups}), _own)
+    mobile = result["categories"]["mobile_combustion"]
+    line = mobile["lines"][0]
+    on_road = service.reference.on_road("Medium- and Heavy-Duty Vehicles", "Diesel", 2018)
+    non_road = service.reference.non_road("Industrial/Commercial Equipment", "Diesel")
+    expected_ch4 = (10000 * on_road["ch4_g_per_mile"] + 200 * non_road["ch4_g_per_gallon"]) / 1e6
+    assert line["mass_t"]["CH4"] == pytest.approx(expected_ch4)
+    assert line["mass_t"]["N2O"] == pytest.approx(
+        (10000 * on_road["n2o_g_per_mile"] + 200 * non_road["n2o_g_per_gallon"]) / 1e6)
+    assert "ch4_n2o_need_vehicle_groups" not in mobile["flags"]
+    assert any("vehicle group: 4 heavy trucks" == s["inputs"]["distance"]["source"]
+               for s in line["steps"] if "distance" in s["inputs"])
+    assert result["needs_input"] == []
+
+
+def test_vehicle_group_gaps_are_asked_and_a_lone_non_road_group_uses_all_the_fuel() -> None:
+    service = _service(_mobile_store())
+    lone = [{"fuel": "Diesel Fuel", "vehicle_type": "Construction/Mining Equipment",
+             "factor_fuel_type": "Diesel Equipment", "on_road": False}]
+    line = service.recalculate(_engagement(recalculation={"vehicle_groups": lone}), _own)[
+        "categories"]["mobile_combustion"]["lines"][0]
+    ef5 = service.reference.non_road("Construction/Mining Equipment", "Diesel Equipment")["ch4_g_per_gallon"]
+    assert line["mass_t"]["CH4"] == pytest.approx(1000 * ef5 / 1e6)  # all 1,000 gal
+
+    gaps = [
+        {"fuel": "Diesel Fuel", "vehicle_type": "Passenger Cars", "factor_fuel_type": "Diesel", "on_road": True,
+         "distance": 5000},  # no model year
+        {"fuel": "Diesel Fuel", "vehicle_type": "Light-Duty Trucks", "factor_fuel_type": "Diesel", "on_road": True,
+         "model_year": 2025, "distance": 8000},  # newer than the table: newest year's factor
+        {"fuel": "Diesel Fuel", "vehicle_type": "Rocket", "factor_fuel_type": "Diesel", "on_road": True,
+         "model_year": 2020, "distance": 1},
+    ]
+    result = service.recalculate(_engagement(recalculation={"vehicle_groups": gaps}), _own)
+    asks = [n["message"] for n in result["needs_input"] if n["kind"] == "vehicle_group"]
+    assert len(asks) == 2 and "model year" in asks[0] and "no on-road CH4/N2O factor" in asks[1]
+    mobile = result["categories"]["mobile_combustion"]
+    newest = service.reference.on_road("Light-Duty Trucks", "Diesel", 2022)
+    assert mobile["lines"][0]["mass_t"]["CH4"] == pytest.approx(8000 * newest["ch4_g_per_mile"] / 1e6)
+    assert "model_year_newer_than_table" in mobile["flags"]
+
+
+def test_vehicle_groups_are_validated() -> None:
+    good = {"fuel": "Diesel Fuel", "vehicle_type": "Buses", "factor_fuel_type": "CNG", "on_road": True}
+    validate_recalculation_settings({"vehicle_groups": [good]})
+    for bad in ({**good, "on_road": "yes"}, {**good, "model_year": 25}, {**good, "distance": -3},
+                {**good, "distance_unit": "furlong"}, {**good, "colour": "red"}, {"fuel": "Diesel Fuel"}):
+        with pytest.raises(ValueError):
+            validate_recalculation_settings({"vehicle_groups": [bad]})

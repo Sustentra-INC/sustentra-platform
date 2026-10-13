@@ -91,7 +91,7 @@ export interface RecalcComparison {
 }
 
 export interface RecalcNeedsInput {
-  kind: "grid_region" | "fuel_choice" | "quantity" | "fuel_line" | "mobile" | "refrigerant_gwp";
+  kind: "grid_region" | "fuel_choice" | "quantity" | "fuel_line" | "mobile" | "refrigerant_gwp" | "vehicle_group";
   key: string;
   message: string;
   options?: string[];
@@ -177,6 +177,16 @@ export interface Recalculation {
   documents_considered: number;
 }
 
+/** A vehicle type with CH4/N2O factors: on-road (Tables 3-4) or non-road (Table 5). */
+export interface VehicleTypeOption {
+  vehicle_type: string;
+  fuel_type: string;
+  on_road: boolean;
+  by_model_year: boolean;
+  first_model_year: number | null;
+  last_model_year: number | null;
+}
+
 export interface RecalculationReference {
   dataset: string;
   gwp_sets: string[];
@@ -184,6 +194,8 @@ export interface RecalculationReference {
   egrid_subregions: { egrid_subregion: string; name: string }[];
   stationary_fuels: string[];
   mobile_fuels: string[];
+  /** Absent from an API that predates vehicle groups. */
+  vehicle_types?: VehicleTypeOption[];
   reported_data_points: { key: string; label: string; workbook_row: number; unit: string }[];
 }
 
@@ -244,7 +256,12 @@ const FLAG_NOTE: Record<string, string> = {
   no_reporting_period: "The engagement has no reporting period, so bills were not prorated.",
   service_period_reversed: "A bill's service period ends before it starts; all of it was counted.",
   biogenic_co2_reported_separately: "Biomass CO₂ is reported separately as biogenic, not in the total.",
-  ch4_n2o_need_vehicle_groups: "CH₄ and N₂O are not included: they need vehicle type, model year and distance.",
+  ch4_n2o_need_vehicle_groups:
+    "CH₄ and N₂O are not included for a fuel without vehicle groups: add them under Recalculation inputs.",
+  model_year_newer_than_table:
+    "A vehicle newer than the EPA table's latest model year uses that latest year's factor.",
+  model_year_older_than_table:
+    "A vehicle older than the EPA table's first model year uses that first year's factor.",
   no_certificates_market_equals_location: "No certificates entered, so market-based equals location-based.",
   certificates_exceed_consumption: "Certificates exceed consumption; coverage was capped at 100%.",
   unit_converted: "Quantities were converted to the EPA factor's unit.",
@@ -525,7 +542,9 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
     appliesTo: string[]
   ) => {
     const waiting = awaitingFor(result, typeId);
-    const choices = result.needs_input.filter((n) => n.key.startsWith(`${kind}:`) || (kind === "mobile" && n.kind === "mobile"));
+    const choices = result.needs_input.filter(
+      (n) => n.key.startsWith(`${kind}:`) || (kind === "mobile" && (n.kind === "mobile" || n.kind === "vehicle_group"))
+    );
     if (waiting.length || choices.length) {
       const parts = [
         category ? `Recalculated so far: ${category.lines.map((l) => l.key).join(", ")}` : "",
@@ -536,7 +555,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
     } else if (category) {
       const docs = (category.details.inputs ?? []).reduce((n, i) => n + i.documents.length, 0);
       const vehicles = category.flags.includes("ch4_n2o_need_vehicle_groups")
-        ? " CH4 and N2O need vehicle type, model year and distance, so they are not included yet."
+        ? " CH4 and N2O need vehicle groups (type, model year, distance), so they are not included for every fuel yet."
         : "";
       rules.push({
         ruleId,

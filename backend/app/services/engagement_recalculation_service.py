@@ -98,6 +98,9 @@ class RecalculationInputs:
     reported: dict[str, float] = field(default_factory=dict)  # data point key -> value
     # Refrigerant -> GWP the reviewer entered (from the safety data sheet) for gases the EPA Hub lacks.
     refrigerant_gwps: dict[str, float] = field(default_factory=dict)
+    # Mobile CH4/N2O (workbook Eq 4 / Eq 5): [{fuel, vehicle_type, factor_fuel_type, on_road,
+    # model_year?, distance?, distance_unit?, fuel_quantity?, fuel_unit?, label?}]
+    vehicle_groups: list[dict[str, Any]] = field(default_factory=list)
 
 
 def validate_recalculation_settings(value: Any) -> None:
@@ -106,7 +109,7 @@ def validate_recalculation_settings(value: Any) -> None:
     if not isinstance(value, dict):
         raise ValueError("recalculation must be an object")
     unknown = set(value) - {"gwp_set", "grid_regions", "fuel_choices", "certificates", "reported",
-                            "refrigerant_gwps"}
+                            "refrigerant_gwps", "vehicle_groups"}
     if unknown:
         raise ValueError(f"unknown recalculation settings: {', '.join(sorted(unknown))}")
     if "gwp_set" in value and value["gwp_set"] not in GWP_SETS:
@@ -127,6 +130,7 @@ def validate_recalculation_settings(value: Any) -> None:
             isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0
             for k, v in gwps.items()):
         raise ValueError("refrigerant_gwps must map each refrigerant to a non-negative number")
+    _validate_vehicle_groups(value.get("vehicle_groups", []))
     reported = value.get("reported", {})
     if not isinstance(reported, dict):
         raise ValueError("reported must be an object")
@@ -135,6 +139,36 @@ def validate_recalculation_settings(value: Any) -> None:
             raise ValueError(f"unknown reported data point: {key}")
         if number is not None and not isinstance(number, (int, float)):
             raise ValueError(f"reported {key} must be a number")
+
+
+VEHICLE_GROUP_KEYS = {"fuel", "vehicle_type", "factor_fuel_type", "on_road", "model_year", "distance",
+                      "distance_unit", "fuel_quantity", "fuel_unit", "label"}
+
+
+def _validate_vehicle_groups(groups: Any) -> None:
+    if not isinstance(groups, list) or len(groups) > 200:
+        raise ValueError("vehicle_groups must be a list of at most 200 groups")
+
+    def number(value: Any) -> bool:
+        return value is None or (isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0)
+
+    for group in groups:
+        if not isinstance(group, dict) or set(group) - VEHICLE_GROUP_KEYS:
+            raise ValueError(f"each vehicle group takes only: {', '.join(sorted(VEHICLE_GROUP_KEYS))}")
+        for key in ("fuel", "vehicle_type", "factor_fuel_type"):
+            if not isinstance(group.get(key), str) or not group[key].strip():
+                raise ValueError(f"each vehicle group needs {key}")
+        if not isinstance(group.get("on_road"), bool):
+            raise ValueError("each vehicle group needs on_road (true or false)")
+        year = group.get("model_year")
+        if year is not None and (not isinstance(year, int) or isinstance(year, bool) or not 1900 <= year <= 2100):
+            raise ValueError("model_year must be a year")
+        if not number(group.get("distance")) or not number(group.get("fuel_quantity")):
+            raise ValueError("distance and fuel_quantity must be numbers of 0 or more")
+        if group.get("distance_unit") not in (None, "mi", "km") or group.get("fuel_unit") not in (None, "gal", "L"):
+            raise ValueError("distance_unit is mi or km; fuel_unit is gal or L")
+        if group.get("label") is not None and (not isinstance(group["label"], str) or len(group["label"]) > 200):
+            raise ValueError("label must be text of at most 200 characters")
 
 
 def materiality_tolerance(settings: dict[str, Any] | None) -> float:
@@ -154,6 +188,7 @@ def parse_inputs(settings: dict[str, Any] | None) -> RecalculationInputs:
         certificates=list(raw.get("certificates") or []),
         reported={k: float(v) for k, v in (raw.get("reported") or {}).items() if v is not None},
         refrigerant_gwps={k: float(v) for k, v in (raw.get("refrigerant_gwps") or {}).items()},
+        vehicle_groups=[dict(g) for g in raw.get("vehicle_groups") or []],
     )
 
 
@@ -661,9 +696,12 @@ class EngagementRecalculationService:
             entry["flags"].update(flags)
         if not totals:
             return None
-        fuels = [calc.MobileFuel(fuel, calc.Measure(entry["quantity"], base,
-                                                    f"{len(entry['documents'])} reviewed record(s)"))
-                 for (fuel, base), entry in totals.items()]
+        fuels = []
+        for (fuel, base), entry in totals.items():
+            measure = calc.Measure(entry["quantity"], base, f"{len(entry['documents'])} reviewed record(s)")
+            groups, group_flags = self._vehicle_groups(fuel, measure, inputs, needs_input)
+            entry["flags"].update(group_flags)
+            fuels.append(calc.MobileFuel(fuel, measure, vehicle_groups=groups))
         try:
             result = calc.mobile_combustion(fuels, self.reference, gwp_set=inputs.gwp_set)
         except (calc.CalculationError, EmissionFactorNotFoundError) as exc:
@@ -675,6 +713,71 @@ class EngagementRecalculationService:
                                     for (fuel, base), e in totals.items()]
         result.flags = sorted({*result.flags, *(f for line in result.lines for f in line.flags)})
         return result
+
+    def _vehicle_groups(self, fuel: str, fuel_total: calc.Measure, inputs: RecalculationInputs,
+                        needs_input: list[dict[str, Any]]) -> tuple[list[calc.VehicleGroup], list[str]]:
+        """The reviewer's vehicle groups for one fuel, checked against the EPA tables.
+
+        On-road groups need distance (Eq 4) and, where the factor depends on it, a model
+        year; a model year newer than the table uses its newest year. A non-road group
+        needs the fuel it used (Eq 5), except when it is the fuel's only group: then it
+        used all of it. A group that cannot be used is asked about and left out.
+        """
+
+        mine = [g for g in inputs.vehicle_groups if str(g.get("fuel", "")).strip().lower() == fuel.lower()]
+        types = {(t["vehicle_type"].lower(), t["fuel_type"].lower(), t["on_road"]): t
+                 for t in self.reference.vehicle_types()}
+        groups: list[calc.VehicleGroup] = []
+        flags: list[str] = []
+        for index, group in enumerate(mine, start=1):
+            label = str(group.get("label") or f"{group['vehicle_type']} ({group['factor_fuel_type']})")
+            key = f"{fuel}|{index}"
+
+            def ask(message: str, group_label: str = label, ask_key: str = key) -> None:
+                needs_input.append({"kind": "vehicle_group", "key": ask_key,
+                                    "message": f"{fuel}, {group_label}: {message}"})
+
+            on_road = bool(group["on_road"])
+            known = types.get((str(group["vehicle_type"]).lower(), str(group["factor_fuel_type"]).lower(), on_road))
+            if known is None:
+                ask(f"no {'on-road' if on_road else 'non-road'} CH4/N2O factor for this vehicle type and fuel "
+                    f"in the EPA Hub ({'Tables 3-4' if on_road else 'Table 5'}).")
+                continue
+            source = f"vehicle group: {label}"
+            if on_road:
+                if group.get("distance") is None:
+                    ask("enter the distance driven in the reporting period (Eq 4).")
+                    continue
+                year = group.get("model_year")
+                if known["by_model_year"]:
+                    if year is None:
+                        ask("enter the model year: this factor depends on it.")
+                        continue
+                    first, last = known["first_model_year"], known["last_model_year"]
+                    if last is not None and year > last:
+                        year = last
+                        flags.append("model_year_newer_than_table")
+                    elif first is not None and year < first:
+                        year = first
+                        flags.append("model_year_older_than_table")
+                unit = "km" if group.get("distance_unit") == "km" else "mi"
+                groups.append(calc.VehicleGroup(known["vehicle_type"], known["fuel_type"], True, year,
+                                                distance=calc.Measure(float(group["distance"]), unit, source)))
+            else:
+                quantity = group.get("fuel_quantity")
+                if quantity is None:
+                    if len(mine) > 1:
+                        ask("enter the fuel this group used (Eq 5): the fuel has more than one vehicle group.")
+                        continue
+                    if fuel_units.dimension_of(fuel_total.unit) != fuel_units.LIQUID_VOLUME:
+                        ask("enter the fuel this group used in gallons or litres (Eq 5).")
+                        continue
+                    measure = calc.Measure(fuel_total.value, fuel_total.unit, "all of this fuel (its only group)")
+                else:
+                    measure = calc.Measure(float(quantity), "L" if group.get("fuel_unit") == "L" else "gal", source)
+                groups.append(calc.VehicleGroup(known["vehicle_type"], known["fuel_type"], False,
+                                                fuel_quantity=measure))
+        return groups, flags
 
     # =================================================================================
     # Scope 2 electricity

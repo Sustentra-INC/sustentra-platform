@@ -2154,6 +2154,8 @@ html { font-size: 82%; }
 .s1-rc__hint { font-size: var(--text-xs); }
 .s1-rc__chosen { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: baseline; font-size: var(--text-sm); }
 .s1-rc__cert { display: grid; grid-template-columns: minmax(0, 1fr) 6rem auto; gap: var(--sp-2); align-items: center; }
+.s1-rc__vg { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--sp-2) var(--sp-3); align-items: end; padding-top: var(--sp-3); border-top: var(--border-hairline); }
+.s1-rc__vg-foot { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-2); font-size: var(--text-sm); }
 .s1-rc__reported { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2) var(--sp-5); }
 .s1-rc__num { display: flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
 .s1-rc__num input { width: 8rem; text-align: right; font-variant-numeric: tabular-nums; }
