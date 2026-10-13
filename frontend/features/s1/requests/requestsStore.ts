@@ -40,6 +40,19 @@ export interface RequestsStore {
   sendAsks: (askIds: string[], lineNumbers?: Record<string, number>) => ClientRequest;
   resolveAsk: (askId: string, resolution?: { link?: string | null; note?: string | null }) => void;
   withdrawAsk: (askId: string, reason: string) => void;
+  /** Replace every ask with ones loaded from the backend (an engagement was opened). */
+  replaceAsks: (asks: Ask[]) => void;
+}
+
+function requestsFrom(asks: Ask[]): ClientRequest[] {
+  const numbers = Array.from(
+    new Set(asks.filter((a) => a.requestNumber != null).map((a) => a.requestNumber as number))
+  ).sort((a, b) => a - b);
+  return numbers.map((rn) => ({
+    requestNumber: rn,
+    sentAt: asks.find((a) => a.requestNumber === rn)?.raisedAt ?? new Date().toISOString(),
+    askIds: asks.filter((a) => a.requestNumber === rn).map((a) => a.id),
+  }));
 }
 
 let counter = 0;
@@ -49,16 +62,12 @@ export function useRequestsStore(initial: Ask[] = []): RequestsStore {
   const [asks, setAsks] = useState<Ask[]>(initial);
   // Reconstruct any requests the seeded asks already belong to, so the next
   // "mark as sent" continues the numbering instead of colliding with them.
-  const [requests, setRequests] = useState<ClientRequest[]>(() => {
-    const numbers = Array.from(
-      new Set(initial.filter((a) => a.requestNumber != null).map((a) => a.requestNumber as number))
-    ).sort((a, b) => a - b);
-    return numbers.map((rn) => ({
-      requestNumber: rn,
-      sentAt: initial.find((a) => a.requestNumber === rn)?.raisedAt ?? new Date().toISOString(),
-      askIds: initial.filter((a) => a.requestNumber === rn).map((a) => a.id),
-    }));
-  });
+  const [requests, setRequests] = useState<ClientRequest[]>(() => requestsFrom(initial));
+
+  const replaceAsks = useCallback((next: Ask[]) => {
+    setAsks(next);
+    setRequests(requestsFrom(next));
+  }, []);
 
   const saveAsk = useCallback((draft: AskDraft): Ask => {
     const now = new Date().toISOString();
@@ -159,5 +168,5 @@ export function useRequestsStore(initial: Ask[] = []): RequestsStore {
     );
   }, []);
 
-  return { asks, requests, saveAsk, editAsk, sendAsks, resolveAsk, withdrawAsk };
+  return { asks, requests, saveAsk, editAsk, sendAsks, resolveAsk, withdrawAsk, replaceAsks };
 }

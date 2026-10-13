@@ -16,13 +16,17 @@ export interface VerificationStore {
   setExaminationState: (dataPointId: string, state: ExaminationState) => void;
   setNextAction: (dataPointId: string, next: NextActionWith) => void;
   registerFinding: (finding: Omit<Finding, "id">) => Finding;
+  /** Replace everything with what was loaded from the backend (an engagement was opened). */
+  replaceAll: (examinations: Record<string, Examination>, findings: Finding[]) => void;
 }
 
 let counter = 0;
 
 export function useVerificationStore(
   initialExaminations: Record<string, Examination> = {},
-  initialFindings: Finding[] = []
+  initialFindings: Finding[] = [],
+  /** Who registers findings in this session (the signed-in person, in backend mode). */
+  actorName?: string
 ): VerificationStore {
   const [examinations, setExaminations] = useState<Record<string, Examination>>(initialExaminations);
   const [findings, setFindings] = useState<Finding[]>(initialFindings);
@@ -47,12 +51,23 @@ export function useVerificationStore(
 
   const registerFinding = useCallback((finding: Omit<Finding, "id">): Finding => {
     counter += 1;
-    const created: Finding = { ...finding, id: `FND-${counter}` };
+    // Unique across reloads: saved findings must never be overwritten by a new one.
+    const created: Finding = {
+      ...finding,
+      id: `FND-${Date.now().toString(36)}-${counter}`,
+      registeredAt: finding.registeredAt ?? new Date().toISOString(),
+      registeredBy: finding.registeredBy ?? actorName,
+    };
     setFindings((cur) => [...cur, created]);
     // Raising a finding is an examination outcome.
     patch(finding.dataPointId, { examinationState: "finding_raised" });
     return created;
+  }, [actorName]);
+
+  const replaceAll = useCallback((nextExaminations: Record<string, Examination>, nextFindings: Finding[]) => {
+    setExaminations(nextExaminations);
+    setFindings(nextFindings);
   }, []);
 
-  return { examinations, findings, setExaminationState, setNextAction, registerFinding };
+  return { examinations, findings, setExaminationState, setNextAction, registerFinding, replaceAll };
 }
