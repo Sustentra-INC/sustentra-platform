@@ -88,4 +88,6 @@ export interface RecalculationSettings {
   certificates?: RecalculationCertificate[];
   /** Reported data point key to the client's reported value. */
   reported?: Record<string, number>;
+  /** Refrigerant to the GWP entered from its safety data sheet, for gases the EPA Hub does not list. */
+  refrigerant_gwps?: Record<string, number>;
 }

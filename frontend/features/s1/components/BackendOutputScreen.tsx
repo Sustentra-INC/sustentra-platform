@@ -23,6 +23,7 @@ import type { Finding } from "../types/verification";
 const ROWS: { key: string; label: string }[] = [
   { key: "stationary_combustion_total", label: "Scope 1 · fuel burned on site" },
   { key: "mobile_combustion_total", label: "Scope 1 · vehicle fuel" },
+  { key: "fugitive_total", label: "Scope 1 · refrigerants and fire suppression" },
   { key: "scope1_total", label: "Scope 1 · total" },
   { key: "scope2_location_total", label: "Scope 2 · purchased electricity, location-based" },
   { key: "scope2_market_total", label: "Scope 2 · purchased electricity, market-based" },

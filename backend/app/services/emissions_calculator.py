@@ -15,6 +15,8 @@ Purchased electricity (once per facility, per gas)
     market-based    the same on the remainder: MWh x (1 - certificate coverage %)
 Purchased industrial gases
     emissions = amount purchased; CO2e = mass x GWP
+Fugitive refrigerants and fire suppression (Simplified Material Balance, once per refrigerant)
+    emissions = (P_N - C_N) + P_S + (C_D - R_D); CO2e = mass x GWP (Table 11, blends Table 12)
 
 Every gas result is in metric tons and converted to CO2e with GWP from Table 11. Each
 calculation records its steps (formula, inputs with units and sources, result), so the
@@ -111,6 +113,22 @@ class PurchasedGas:
     gas: str
     amount: Measure  # lb, kg, short ton or metric ton
     gwp_override: float | None = None
+
+
+@dataclass
+class RefrigerantUse:
+    """One refrigerant's Simplified Material Balance terms for the year, all in ``unit``."""
+
+    gas: str
+    unit: str  # lb or kg
+    new_charged: float = 0.0  # P_N  refrigerant charged into new equipment
+    new_capacity: float = 0.0  # C_N  full charge of the new equipment
+    serviced: float = 0.0  # P_S  refrigerant added to service existing equipment
+    retired_capacity: float = 0.0  # C_D  full charge of retired equipment
+    recovered: float = 0.0  # R_D  refrigerant recovered from retired equipment
+    source: str | None = None
+    gwp_override: float | None = None
+    gwp_override_source: str | None = None
 
 
 # =========================================================================================
@@ -543,6 +561,58 @@ def purchased_gases(gases: list[PurchasedGas], ref: EmissionFactorReference | No
                    {k: _inp(v, "t CO2e") for k, v in co2e_by_gas.items()}, total_co2e, "t CO2e")
     return CategoryResult("purchased_gases", lines, totals, co2e_by_gas, total_co2e, gwp_used, 0.0, [summary],
                           gwp_set=gwp_set)
+
+
+# =========================================================================================
+# Scope 1 fugitive: refrigeration, AC and fire suppression (Simplified Material Balance)
+# =========================================================================================
+REFRIGERANT_EQUATION = "(P_N - C_N) + P_S + (C_D - R_D)"
+
+
+def refrigerants(uses: list[RefrigerantUse], ref: EmissionFactorReference | None = None,
+                 gwp_set: str = DEFAULT_GWP_SET) -> CategoryResult:
+    """Once per refrigerant: emissions = (P_N - C_N) + P_S + (C_D - R_D); CO2e = mass x GWP
+    (Hub Table 11 for pure gases, Table 12 for blends such as R-410A)."""
+
+    ref = ref or default_emission_factor_reference()
+    lines: list[LineResult] = []
+    gwp_used: dict[str, dict[str, Any]] = {}
+    flags: list[str] = []
+    for use in uses:
+        terms = {
+            "P_N (charged into new equipment)": use.new_charged,
+            "C_N (full charge of new equipment)": use.new_capacity,
+            "P_S (added when servicing)": use.serviced,
+            "C_D (full charge of retired equipment)": use.retired_capacity,
+            "R_D (recovered from retired equipment)": use.recovered,
+        }
+        shown = {k: _inp(v, use.unit, use.source) for k, v in terms.items() if v} or {
+            "P_S (added when servicing)": _inp(0.0, use.unit, use.source)}
+        mass = (use.new_charged - use.new_capacity) + use.serviced + (use.retired_capacity - use.recovered)
+        mass_t = _to_metric_tons(mass, use.unit)
+        if use.gwp_override is not None:
+            gwp_value, gwp_source = use.gwp_override, use.gwp_override_source or "entered by the reviewer"
+        else:
+            factor = ref.gwp(use.gas, gwp_set)
+            gwp_value, gwp_source = factor.value, factor.source
+        gwp_used[use.gas] = {"value": gwp_value, "source": gwp_source}
+        co2e = mass_t * gwp_value
+        line_flags = ["negative_refrigerant_emissions"] if mass < 0 else []
+        flags.extend(f for f in line_flags if f not in flags)
+        lines.append(LineResult(use.gas, {use.gas: REFRIGERANT_EQUATION}, {use.gas: mass_t}, steps=[
+            Step(f"{use.gas} emitted", REFRIGERANT_EQUATION, shown, mass, use.unit),
+            Step(f"{use.gas} emitted in metric tons", f"{use.unit} to metric tons",
+                 {"mass": _inp(mass, use.unit)}, mass_t, "t"),
+            Step(f"{use.gas} in CO2e", "mass x GWP",
+                 {"mass": _inp(mass_t, "t"), "GWP": _inp(gwp_value, "", gwp_source)}, co2e, "t CO2e"),
+        ], flags=line_flags))
+    totals = {line.key: line.mass_t[line.key] for line in lines}
+    co2e_by_gas = {line.key: line.steps[-1].result for line in lines}
+    total = sum(co2e_by_gas.values())
+    summary = Step("Total refrigerant emissions in CO2e", "sum of each refrigerant's emissions in CO2e",
+                   {k: _inp(v, "t CO2e") for k, v in co2e_by_gas.items()}, total, "t CO2e")
+    return CategoryResult("fugitive_refrigerants", lines, totals, co2e_by_gas, total, gwp_used, 0.0, [summary],
+                          flags, gwp_set=gwp_set)
 
 
 # =========================================================================================

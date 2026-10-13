@@ -38,6 +38,12 @@ from backend.app.services.mobile_combustion_extractor import (
     fuel_use_cues,
     names_combusted_fuel,
 )
+from backend.app.services.refrigerant_extractor import (
+    CANONICAL_TYPE_ID as REFRIGERANT_TYPE_ID,
+)
+from backend.app.services.refrigerant_extractor import (
+    RefrigerantServiceExtractor,
+)
 from backend.app.services.review_decision_service import ReviewDecisionService
 from backend.app.services.stationary_combustion_extractor import (
     CANONICAL_TYPE_ID as FUELQTY_TYPE_ID,
@@ -60,7 +66,12 @@ FUEL_TYPE_IDS = {FUELQTY_TYPE_ID, MOBFUEL_TYPE_ID}
 # multi-type candidate gets its primary type's targets only: mixing in a runner-up type's
 # targets (e.g. a gas bill that also mentions electricity) would send it to the generic
 # fallback, which reads labels without layout.
-LAYOUT_EXTRACTOR_TYPE_IDS = FUEL_TYPE_IDS | {ELEC_TYPE_ID}
+LAYOUT_EXTRACTOR_TYPE_IDS = FUEL_TYPE_IDS | {ELEC_TYPE_ID, REFRIGERANT_TYPE_ID}
+# Fluorinated-gas types without an extractor of their own. A document classified as one of
+# them that reads as a service record (a refrigerant named, an amount added or recovered)
+# is read as CT-S1-REFRSVC: an equipment inventory or leak log with charges is still the
+# refrigerant evidence the material balance needs.
+FGAS_RELATED_TYPE_IDS = {"CT-S1-FGASINV", "CT-S1-EQUIPLEAK", "CT-S1-ELECSF6", "CT-S1-FGASPROC"}
 
 
 class PipelineOrchestrationService:
@@ -261,6 +272,20 @@ class PipelineOrchestrationService:
                             include_optional=include_optional,
                             include_deprecated=include_deprecated,
                         )
+                    elif (canonical_type_id in FGAS_RELATED_TYPE_IDS
+                          and RefrigerantServiceExtractor().confirms(parser_output)):
+                        warnings.append(
+                            f"The classifier chose {canonical_type_id}; the document names a refrigerant and an "
+                            f"amount added or recovered, so it is read as {REFRIGERANT_TYPE_ID} (refrigerant "
+                            "service record)."
+                        )
+                        canonical_type_id = REFRIGERANT_TYPE_ID
+                        canonical_type_source = "content_check"
+                        extraction_targets = self._get_target_service().get_targets_for_canonical_type(
+                            canonical_type_id,
+                            include_optional=include_optional,
+                            include_deprecated=include_deprecated,
+                        )
                     elif canonical_type_id in LAYOUT_EXTRACTOR_TYPE_IDS:
                         extraction_targets = self._get_target_service().get_targets_for_canonical_type(
                             canonical_type_id,
@@ -278,6 +303,7 @@ class PipelineOrchestrationService:
                 elif (
                     confirmed := self._fuel_content_confirmed(classification_result, parser_output)
                     or self._electricity_content_confirmed(classification_result, parser_output)
+                    or self._refrigerant_content_confirmed(classification_result, parser_output)
                 ):
                     canonical_type_id = confirmed
                     canonical_type_source = "content_check"
@@ -288,6 +314,8 @@ class PipelineOrchestrationService:
                     )
                     if confirmed == ELEC_TYPE_ID:
                         reason = "names electricity and a quantity in kWh or MWh."
+                    elif confirmed == REFRIGERANT_TYPE_ID:
+                        reason = "names a refrigerant and an amount added or recovered."
                     elif confirmed == MOBFUEL_TYPE_ID:
                         reason = "names a combusted fuel and a quantity in a fuel unit with vehicle/fleet details."
                     else:
@@ -538,6 +566,22 @@ class PipelineOrchestrationService:
         if StationaryCombustionExtractor().confirms(parser_output):
             return None
         return ELEC_TYPE_ID if ElectricityExtractor().confirms(parser_output) else None
+
+    @staticmethod
+    def _refrigerant_content_confirmed(classification_result: dict, parser_output: dict) -> str | None:
+        """CT-S1-REFRSVC for a low-confidence classification whose best match is a
+        fluorinated-gas type, when the document names a refrigerant and an amount."""
+
+        if classification_result.get("status") != "low_confidence":
+            return None
+        matches = [m for m in classification_result.get("candidate_matches") or [] if isinstance(m, dict)]
+        if not matches:
+            return None
+        best = max(float(m.get("confidence") or 0) for m in matches)
+        leaders = {m.get("canonical_type_id") for m in matches if float(m.get("confidence") or 0) == best}
+        if not leaders & (FGAS_RELATED_TYPE_IDS | {REFRIGERANT_TYPE_ID}) or best < FUEL_CONTENT_CHECK_FLOOR:
+            return None
+        return REFRIGERANT_TYPE_ID if RefrigerantServiceExtractor().confirms(parser_output) else None
 
     @staticmethod
     def _fuel_cues_conflict(fuel_type: str, mobile: list[str], stationary: list[str]) -> bool:

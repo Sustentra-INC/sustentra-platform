@@ -18,6 +18,12 @@ const KEY_FIELDS = new Set([
   "transaction_date",
   "facility_name",
   "service_address",
+  // refrigerant service records (simplified material balance)
+  "refrigerant_type",
+  "refrigerant_added",
+  "refrigerant_recovered",
+  "equipment_capacity",
+  "service_date",
 ]);
 
 export function reviewValuesFromFields(fields: ExtractedField[], evidence: EvidenceItem[]): ReviewValue[] {
@@ -99,13 +105,14 @@ function fieldNameOf(field: ExtractedField): string | null {
 }
 
 /** "2025-01-01 to 2025-06-30" from a document's service period, or the span of its
- *  transaction dates (fuel purchases have a date, not a billing period). */
+ *  transaction or service dates (fuel purchases and refrigerant service have a date,
+ *  not a billing period). */
 function periodsByDocument(fields: ExtractedField[]): Map<string, string> {
   const found = new Map<string, { start: Set<string>; end: Set<string>; dates: string[] }>();
   for (const field of fields) {
     const name = fieldNameOf(field);
     const value = field.correctedValue ?? field.value;
-    if (!value || !name || !["service_period_start", "service_period_end", "transaction_date"].includes(name)) continue;
+    if (!value || !name || !["service_period_start", "service_period_end", "transaction_date", "service_date"].includes(name)) continue;
     const entry = found.get(field.documentId) ?? { start: new Set(), end: new Set(), dates: [] };
     if (name === "service_period_start") entry.start.add(value);
     else if (name === "service_period_end") entry.end.add(value);
