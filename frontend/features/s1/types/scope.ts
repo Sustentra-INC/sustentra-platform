@@ -33,4 +33,7 @@ export interface InScopeField {
   inScope: boolean;
   /** Reserved for the completeness tracker's status; not populated in Setup. */
   completenessStatus: CompletenessStatus | null;
+  /** Live data: the row in the GHG Required Data workbook and how the product checks it. */
+  workbookRow?: number;
+  checkedBy?: string;
 }

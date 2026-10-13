@@ -69,7 +69,9 @@ export function BackendDashboard({
       : null;
     const rules = current ? coverageFromRecalculation(current) : null;
     const calculated = current
-      ? current.comparisons.filter((c) => c.recalculated !== null).map((c) => `RECALC-${c.key}`)
+      ? current.comparisons
+          .filter((c) => c.recalculated !== null && c.status !== "not_in_scope")
+          .map((c) => `RECALC-${c.key}`)
       : [];
 
     const activity: LiveDashboard["activity"] = [];

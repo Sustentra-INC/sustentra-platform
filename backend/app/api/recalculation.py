@@ -28,6 +28,7 @@ from backend.app.reference.emission_factor_loader import (
 from backend.app.services import workpaper_export_service, workpaper_item_service
 from backend.app.services.audit_log import write_audit_event
 from backend.app.services.engagement_recalculation_service import (
+    DATA_POINT_CATALOGUE,
     DATA_POINTS,
     EngagementRecalculationService,
 )
@@ -110,5 +111,11 @@ def recalculation_reference(user: CurrentUser = Depends(s1_reader)) -> dict:
         "vehicle_types": ref.vehicle_types(),
         "reported_data_points": [
             {"key": key, "label": label, "workbook_row": row, "unit": unit} for key, label, row, unit in DATA_POINTS
+        ],
+        # Every reported data point in the workbook, for Setup's in-scope list.
+        "data_points": [
+            {"key": key, "label": label, "workbook_row": row, "unit": unit, "layer": layer,
+             "requirement": requirement, "check": check}
+            for key, label, row, unit, layer, requirement, check in DATA_POINT_CATALOGUE
         ],
     }

@@ -2,6 +2,7 @@ import { api } from "../../../lib/api";
 import type {
   CheckOutcome,
   CoverageRule,
+  InScopeField,
   MaterialityFigures,
   ResultLayer,
   VerificationRow,
@@ -74,7 +75,9 @@ export type ComparisonStatus =
   | "exceeds_tolerance"
   | "not_reported"
   | "no_evidence"
-  | "not_recalculated";
+  | "not_recalculated"
+  /** Setup says the engagement does not cover it: shown, never judged. */
+  | "not_in_scope";
 
 export interface RecalcComparison {
   key: string;
@@ -187,6 +190,17 @@ export interface VehicleTypeOption {
   last_model_year: number | null;
 }
 
+/** A reported data point in the GHG Required Data workbook (rows 22-49). */
+export interface DataPointOption {
+  key: string;
+  label: string;
+  workbook_row: number;
+  unit: string;
+  layer: "scope1" | "scope2";
+  requirement: "Required" | "Optional";
+  check: "recalculated" | "compared_under_fugitive" | "not_recalculated";
+}
+
 export interface RecalculationReference {
   dataset: string;
   gwp_sets: string[];
@@ -197,6 +211,30 @@ export interface RecalculationReference {
   /** Absent from an API that predates vehicle groups. */
   vehicle_types?: VehicleTypeOption[];
   reported_data_points: { key: string; label: string; workbook_row: number; unit: string }[];
+  /** Absent from an API that predates the in-scope list. */
+  data_points?: DataPointOption[];
+}
+
+const CHECKED_BY: Record<DataPointOption["check"], string> = {
+  recalculated: "Recalculated from reviewed evidence",
+  compared_under_fugitive: "Compared under fugitive sources",
+  not_recalculated: "Not recalculated yet",
+};
+
+/** Setup's in-scope rows from the workbook's data points and the engagement's choices. */
+export function inScopeFieldsFrom(points: DataPointOption[], outOfScope: string[] | undefined): InScopeField[] {
+  const out = new Set(outOfScope ?? []);
+  return points.map((p) => ({
+    methodologyFieldId: p.key,
+    label: p.label,
+    layer: p.layer,
+    requirementLevel: p.requirement,
+    valueOrigin: null,
+    inScope: !out.has(p.key),
+    completenessStatus: null,
+    workbookRow: p.workbook_row,
+    checkedBy: CHECKED_BY[p.check],
+  }));
 }
 
 export function getRecalculation(engagementId: string): Promise<Recalculation> {
@@ -308,6 +346,9 @@ const DATA_POINT_TYPE: Record<string, string> = {
 
 function outcomeOf(c: RecalcComparison, result?: Recalculation): { outcome: CheckOutcome; reason: string } {
   const tolerance = c.tolerance_pct ?? 5;
+  if (c.status === "not_in_scope") {
+    return { outcome: "out_of_scope", reason: "Not in scope for this engagement (set in Setup)." };
+  }
   if (c.status === "not_recalculated") {
     return {
       outcome: "out_of_scope",
@@ -458,7 +499,9 @@ export function recalculationRows(result: Recalculation): VerificationRow[] {
       unit: unitLabel(c.unit),
       recomputed: c.recalculated !== null ? formatNumber(c.recalculated) : null,
       recomputeReason: c.recalculated === null
-        ? c.status === "not_recalculated"
+        ? c.status === "not_in_scope"
+          ? "not in scope"
+          : c.status === "not_recalculated"
           ? "compared under fugitive sources"
           : DATA_POINT_TYPE[c.key] && (result.excluded ?? []).some((e) => e.canonical_type_id === DATA_POINT_TYPE[c.key])
             ? "its records are left out (see why)"
@@ -477,7 +520,10 @@ export function recalculationRows(result: Recalculation): VerificationRow[] {
  *  recalculated one stands in (and the label says so) rather than shrinking the threshold. */
 export function recalculationMateriality(result: Recalculation): MaterialityFigures {
   const headline = result.comparisons.filter(
-    (c) => (c.key === "scope1_total" || c.key === "scope2_location_total") && (c.reported !== null || c.recalculated !== null)
+    (c) =>
+      (c.key === "scope1_total" || c.key === "scope2_location_total") &&
+      c.status !== "not_in_scope" &&
+      (c.reported !== null || c.recalculated !== null)
   );
   const total = headline.reduce((sum, c) => sum + (c.reported ?? c.recalculated ?? 0), 0);
   const allReported = headline.every((c) => c.reported !== null);
@@ -644,9 +690,9 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
 
   const missingReported = ["scope1_total", "scope2_location_total", "scope2_market_total"]
     .map(reported)
-    .filter((c): c is RecalcComparison => !!c && c.recalculated !== null && c.reported === null);
+    .filter((c): c is RecalcComparison => !!c && c.status !== "not_in_scope" && c.recalculated !== null && c.reported === null);
   const headline = ["scope1_total", "scope2_location_total", "scope2_market_total"].map(reported).filter(
-    (c): c is RecalcComparison => !!c && c.recalculated !== null
+    (c): c is RecalcComparison => !!c && c.status !== "not_in_scope" && c.recalculated !== null
   );
   if (headline.length) {
     rules.push({

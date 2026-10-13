@@ -69,6 +69,8 @@ export interface EngagementConfig {
 
   /** Inputs the emissions recalculation needs that the evidence does not carry. */
   recalculation?: RecalculationSettings;
+  /** Workbook data point keys the engagement does not cover (set in Setup's in-scope list). */
+  outOfScopeDataPoints?: string[];
 }
 
 /** A renewable energy certificate applied to the market-based Scope 2 total. */

@@ -38,6 +38,7 @@ export const SETTINGS_KEYS = [
   "materialityThreshold",
   // Not a Setup field, but PATCH replaces `settings`, so it must round-trip or a Setup save wipes it.
   "recalculation",
+  "outOfScopeDataPoints",
 ] as const satisfies readonly (keyof EngagementConfig)[];
 
 export interface EngagementPayload {

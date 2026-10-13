@@ -12,9 +12,10 @@ import type { InScopeField } from "../types/scope";
  * for Evidence Requests. Regulation and methodology are real selectors — nothing
  * downstream assumes SB 253, and no deadlines are derived here.
  *
- * The in-scope data-point list is placeholder: the real field list is pending
- * from product. The rows carry methodologyFieldId and a completeness slot so
- * the shape does not have to be retrofitted.
+ * In-scope data points: on live data the rows are the reported data points of the
+ * GHG Required Data workbook (rows carry ``workbookRow``); a data point set out of
+ * scope shows on Verification results as not in scope and is left out of coverage
+ * and materiality. The fixture demo keeps its placeholder rows.
  */
 
 const REGULATION_OPTIONS = [
@@ -69,6 +70,8 @@ export function SetupScreen({
   foundFacilities?: { name: string; address: string | null }[];
 }) {
   const set = (patch: Partial<EngagementConfig>) => onChange({ ...engagement, ...patch });
+  // Live data: the rows are the workbook's data points, each with its workbook row.
+  const live = inScopeFields.some((f) => f.workbookRow !== undefined);
   const team = engagement.engagementTeam ?? [];
 
   function addFacility(seed?: { name: string; address: string | null }) {
@@ -351,16 +354,29 @@ export function SetupScreen({
         </button>
       </div>
 
-      {/* In-scope data points — placeholder */}
+      {/* In-scope data points: the workbook's reported data points (live), placeholders (demo) */}
       <div className="s1-setup-card">
         <div className="s1-setup-card__head">
           <h2>In-scope data points</h2>
-          <span className="s1-state s1-state--open">Field list pending · placeholder rows</span>
+          {live ? (
+            <span className="s1-state s1-state--resolved">
+              {inScopeFields.filter((f) => f.inScope).length} of {inScopeFields.length} in scope
+            </span>
+          ) : (
+            <span className="s1-state s1-state--open">Field list pending · placeholder rows</span>
+          )}
         </div>
-        <p className="s1-muted">
-          The in-scope list is what makes the rest of the product finite. These rows are placeholders until product
-          delivers the field list; each already carries its methodology field id and a slot for completeness status.
-        </p>
+        {live ? (
+          <p className="s1-muted">
+            The reported data points of the GHG Required Data workbook. Untick one the client does not report: it then
+            shows as not in scope on Verification results and is left out of coverage and materiality.
+          </p>
+        ) : (
+          <p className="s1-muted">
+            The in-scope list is what makes the rest of the product finite. These rows are placeholders until product
+            delivers the field list; each already carries its methodology field id and a slot for completeness status.
+          </p>
+        )}
         <div className="s1-table-wrap">
           <table className="s1-table">
             <colgroup>
@@ -377,8 +393,8 @@ export function SetupScreen({
                 <th>Data point</th>
                 <th>Layer</th>
                 <th>Requirement</th>
-                <th>Methodology field id</th>
-                <th>Completeness</th>
+                <th>{live ? "Workbook row" : "Methodology field id"}</th>
+                <th>{live ? "How it is checked" : "Completeness"}</th>
               </tr>
             </thead>
             <tbody>
@@ -397,8 +413,17 @@ export function SetupScreen({
                   <td>{field.label}</td>
                   <td>{LAYER_LABEL[field.layer]}</td>
                   <td>{field.requirementLevel ?? "None"}</td>
-                  <td className="s1-mono s1-muted">{field.methodologyFieldId}</td>
-                  <td className="s1-muted">{field.completenessStatus ?? "Pending"}</td>
+                  {live ? (
+                    <>
+                      <td className="s1-mono s1-muted">{field.workbookRow}</td>
+                      <td className="s1-muted">{field.checkedBy}</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="s1-mono s1-muted">{field.methodologyFieldId}</td>
+                      <td className="s1-muted">{field.completenessStatus ?? "Pending"}</td>
+                    </>
+                  )}
                 </tr>
               ))}
             </tbody>
