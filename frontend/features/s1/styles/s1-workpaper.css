@@ -1451,6 +1451,7 @@ select:focus-visible,
 /* Card actions wrap inside the card instead of spilling over its edge. */
 .s1-xr-actions { flex-wrap: wrap; align-items: center; }
 .s1-xr-actions .s1-button { white-space: nowrap; }
+.s1-xr-missing { font-size: var(--text-md); color: var(--state-open-fg); font-style: italic; }
 .s1-xr-recorrect { font-size: var(--text-sm); margin-left: var(--sp-2); }
 .s1-xr-edit { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2); width: 100%; }
 .s1-xr-edit__field { display: flex; flex-direction: column; gap: 0.15rem; font-size: var(--text-xs); color: var(--ink-3); flex: 1 1 7rem; min-width: 0; }

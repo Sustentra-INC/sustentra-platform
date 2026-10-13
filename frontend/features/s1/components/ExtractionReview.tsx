@@ -176,12 +176,20 @@ export function ExtractionReview({
               originalValue: x.originalValue ?? x.value,
               value: next.value,
               unit: next.unit,
-              record: [...x.record, { kind: "human", actor: reviewerName, at: now, action: `corrected from ${was}` }],
+              record: [
+                ...x.record,
+                {
+                  kind: "human",
+                  actor: reviewerName,
+                  at: now,
+                  action: v.value ? `corrected from ${was}` : "entered a value the extractor did not find",
+                },
+              ],
             }
           : x
       )
     );
-    flash(`Corrected to ${next.value}${next.unit ? ` ${next.unit}` : ""}`);
+    flash(`${v.value ? "Corrected to" : "Entered"} ${next.value}${next.unit ? ` ${next.unit}` : ""}`);
     if (v.reviewState === "to_review") advanceFrom(v);
     onPersistCorrect?.(v, next).catch((error: unknown) => {
       onValuesChange((cur) => cur.map((x) => (x.id === v.id ? v : x)));
@@ -191,7 +199,10 @@ export function ExtractionReview({
 
   /** Accept every value of one document still to review, saving up to six at a time. */
   function acceptAll(documentId: string) {
-    const pending = items.filter((x) => x.documentId === documentId && x.reviewState === "to_review" && !x.withdrawn);
+    // Values not found on the document need the reviewer to enter them; they are never "accepted".
+    const pending = items.filter(
+      (x) => x.documentId === documentId && x.reviewState === "to_review" && !x.withdrawn && !x.missing
+    );
     if (pending.length === 0) return;
     const now = new Date().toISOString();
     const ids = new Set(pending.map((x) => x.id));
@@ -385,7 +396,9 @@ export function ExtractionReview({
                     ) : null}
                     {(() => {
                       const docId = group.values[0]?.documentId;
-                      const left = items.filter((x) => x.documentId === docId && x.reviewState === "to_review" && !x.withdrawn).length;
+                      const left = items.filter(
+                        (x) => x.documentId === docId && x.reviewState === "to_review" && !x.withdrawn && !x.missing
+                      ).length;
                       return left > 1 && docId ? (
                         <button className="s1-button s1-button--compact s1-xr-acceptall" type="button" onClick={() => acceptAll(docId)}>
                           Accept all {left}
@@ -489,10 +502,16 @@ function ValueCard({
           <span className={`s1-xr-scope s1-xr-scope--${v.scope}`}>{SCOPE_LABEL[v.scope]}</span>
         </div>
         <div className="s1-xr-l3">
-          <span className="s1-xr-val">{v.value}</span>
-          {v.unit ? <span className="s1-xr-unit">{v.unit}</span> : null}
-          {v.reviewState === "corrected" && v.originalValue ? (
-            <span className="s1-xr-was">was {v.originalValue}</span>
+          {v.missing && v.reviewState === "to_review" ? (
+            <span className="s1-xr-missing">Not found on the document</span>
+          ) : (
+            <>
+              <span className="s1-xr-val">{v.value}</span>
+              {v.unit ? <span className="s1-xr-unit">{v.unit}</span> : null}
+            </>
+          )}
+          {v.reviewState === "corrected" ? (
+            <span className="s1-xr-was">{v.originalValue ? `was ${v.originalValue}` : "entered by the reviewer"}</span>
           ) : null}
         </div>
 
@@ -548,6 +567,15 @@ function ValueCard({
               <span className="s1-muted">{reviewStateLabel(v.reviewState)}</span>
               <button className="s1-linklike s1-xr-recorrect" type="button" onClick={startEditing}>
                 Correct
+              </button>
+            </>
+          ) : v.missing ? (
+            <>
+              <button className="s1-button s1-button--pri" type="button" onClick={startEditing}>
+                Enter value
+              </button>
+              <button className="s1-button" type="button" onClick={onAddToRequests}>
+                Request
               </button>
             </>
           ) : (

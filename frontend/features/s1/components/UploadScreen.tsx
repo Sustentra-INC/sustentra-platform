@@ -21,6 +21,8 @@ export interface UploadTask {
   /** Fraction of the file's bytes sent, 0..1 (measured, not estimated). */
   progress: number;
   error?: string;
+  /** Set once the server has stored the file. */
+  documentId?: string;
 }
 
 export interface SampleScript {
@@ -163,7 +165,7 @@ export function UploadScreen({
         </div>
       ) : null}
 
-      {tasks.length > 0 ? <UploadProgress tasks={tasks} onOpenWorkspace={onOpenWorkspace} /> : null}
+      {tasks.length > 0 ? <UploadProgress tasks={tasks} items={history ?? []} onOpenWorkspace={onOpenWorkspace} /> : null}
 
       {batch.length > 0 && !script ? (
         <div className="s1-upload-batch" aria-live="polite">
@@ -198,7 +200,16 @@ function formatSize(bytes: number): string {
 
 /** Overall and per-file progress. The bar is bytes actually sent; reading has no
  *  measurable progress, so it shows as an in-progress stripe, not a made-up number. */
-function UploadProgress({ tasks, onOpenWorkspace }: { tasks: UploadTask[]; onOpenWorkspace: () => void }) {
+function UploadProgress({
+  tasks,
+  items,
+  onOpenWorkspace,
+}: {
+  tasks: UploadTask[];
+  items: EvidenceItem[];
+  onOpenWorkspace: () => void;
+}) {
+  const byId = new Map(items.map((item) => [item.documentId, item]));
   const totalBytes = tasks.reduce((sum, t) => sum + t.size, 0);
   const sentBytes = tasks.reduce(
     (sum, t) => sum + (t.stage === "waiting" ? 0 : t.stage === "uploading" ? t.size * t.progress : t.size),
@@ -207,6 +218,9 @@ function UploadProgress({ tasks, onOpenWorkspace }: { tasks: UploadTask[]; onOpe
   const percent = totalBytes ? Math.round((sentBytes / totalBytes) * 100) : 0;
   const finished = tasks.filter((t) => t.stage === "done" || t.stage === "failed").length;
   const failed = tasks.filter((t) => t.stage === "failed").length;
+  // What reading found, once a file is done: blocked files need the reviewer (e.g. set a type).
+  const outcome = (t: UploadTask) => (t.stage === "done" && t.documentId ? byId.get(t.documentId) : undefined);
+  const needsYou = tasks.filter((t) => outcome(t)?.processingState === "blocked").length;
   const running = finished < tasks.length;
 
   return (
@@ -219,6 +233,7 @@ function UploadProgress({ tasks, onOpenWorkspace }: { tasks: UploadTask[]; onOpe
         </strong>
         <span className="s1-muted">
           {finished} of {tasks.length} done{failed ? ` · ${failed} failed` : ""}
+          {needsYou ? ` · ${needsYou} need${needsYou === 1 ? "s" : ""} you in the Evidence Workspace` : ""}
         </span>
         {!running ? (
           <button className="s1-linklike" type="button" onClick={onOpenWorkspace}>
@@ -255,10 +270,17 @@ function UploadProgress({ tasks, onOpenWorkspace }: { tasks: UploadTask[]; onOpe
                   : t.stage === "reading"
                     ? "Reading…"
                     : t.stage === "done"
-                      ? "Done"
+                      ? outcome(t)?.processingState === "blocked"
+                        ? "Needs you"
+                        : "Done"
                       : "Failed"}
             </span>
             {t.error ? <span className="s1-upq__error">{t.error}</span> : null}
+            {outcome(t)?.processingState === "blocked" ? (
+              <span className="s1-upq__error">
+                {outcome(t)?.haltReason ?? "Could not be read."} Set its type in the Evidence Workspace to read it again.
+              </span>
+            ) : null}
           </li>
         ))}
       </ul>

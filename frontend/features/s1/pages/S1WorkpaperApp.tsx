@@ -574,7 +574,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           patchTask(taskId, { progress: fraction })
         );
         uploadedId = document.document_id;
-        patchTask(taskId, { stage: "reading", progress: 1 });
+        patchTask(taskId, { stage: "reading", progress: 1, documentId: document.document_id });
         setEvidenceItems((current) => [
           {
             documentId: document.document_id,

@@ -8,13 +8,28 @@ import { decodeReviewCandidateToken } from "./fieldAdapter";
  * Only values the extractor found are cards: an empty field has nothing to accept
  * and stays visible as "n of m fields" in the Evidence Workspace.
  */
+/** Fields the numbers depend on: when one is not found, the reviewer gets a card to enter it. */
+const KEY_FIELDS = new Set([
+  "fuel_type",
+  "activity_quantity",
+  "activity_unit",
+  "service_period_start",
+  "service_period_end",
+  "transaction_date",
+  "facility_name",
+  "service_address",
+]);
+
 export function reviewValuesFromFields(fields: ExtractedField[], evidence: EvidenceItem[]): ReviewValue[] {
   const documents = new Map(evidence.map((item) => [item.documentId, item]));
   const periods = periodsByDocument(fields);
   const seen = new Map<string, number>();
 
   return fields
-    .filter((field) => field.value !== null || field.correctedValue !== null)
+    .filter(
+      (field) =>
+        field.value !== null || field.correctedValue !== null || KEY_FIELDS.has(fieldNameOf(field) ?? "")
+    )
     .map((field) => {
       const document = documents.get(field.documentId);
       const location = field.location;
@@ -47,7 +62,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
             kind: "machine",
             actor: "Extraction",
             at: document?.uploadedAt ?? "",
-            action: field.snippet ? `read "${field.snippet}"` : "extracted",
+            action: field.value === null ? "did not find this on the document" : field.snippet ? `read "${field.snippet}"` : "extracted",
           },
           ...(accepted || corrected
             ? [{
@@ -69,6 +84,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         sheet: location?.kind === "cells" ? location.sheet : null,
         cell: location?.kind === "cells" ? location.range : null,
         reviewToken: field.reviewToken,
+        missing: field.value === null && field.correctedValue === null,
       } satisfies ReviewValue;
     });
 }
