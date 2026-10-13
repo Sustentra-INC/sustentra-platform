@@ -22,6 +22,7 @@ from backend.app.reference.emission_factor_loader import (
     GWP_SETS,
     default_emission_factor_reference,
 )
+from backend.app.services import workpaper_item_service
 from backend.app.services.engagement_recalculation_service import (
     DATA_POINTS,
     EngagementRecalculationService,
@@ -45,7 +46,11 @@ async def get_recalculation(
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     engagement = await _visible(db, engagement_id, user)
-    return _service().recalculate(engagement, lambda record: can_see(record, user))
+    decisions = {
+        str(item["payload"].get("documentId") or item["item_key"]): item["payload"]
+        for item in await workpaper_item_service.list_items(db, engagement["id"], "document")
+    }
+    return _service().recalculate(engagement, lambda record: can_see(record, user), decisions)
 
 
 @router.get("/reference/recalculation")

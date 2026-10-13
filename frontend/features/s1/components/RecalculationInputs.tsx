@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import type { Recalculation, RecalculationReference } from "../api/recalculation";
+import { leftOutMessage, type Recalculation, type RecalculationReference } from "../api/recalculation";
 import type { RecalculationCertificate, RecalculationSettings } from "../types";
 
 /**
@@ -97,7 +97,7 @@ export function RecalculationInputs({
               ))}
               {(result.excluded ?? []).map((e) => (
                 <li key={`out|${e.document_id}|${e.record}`} className="s1-rc__out">
-                  {e.record} ({e.period}) is outside the reporting period, so it is not counted.
+                  {leftOutMessage(e)}
                 </li>
               ))}
               {result.awaiting_review.map((a) => (

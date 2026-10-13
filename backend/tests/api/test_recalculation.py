@@ -35,6 +35,11 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
 
     monkeypatch.setattr(recalculation_api, "_visible", visible)
     monkeypatch.setattr(recalculation_api, "_service", lambda: _service(store))
+
+    async def no_decisions(db, engagement_id, kind=None):  # noqa: ANN001, ANN202
+        return []
+
+    monkeypatch.setattr(recalculation_api.workpaper_item_service, "list_items", no_decisions)
     app.dependency_overrides[get_db_session] = no_db
     yield store
     app.dependency_overrides.pop(get_db_session, None)

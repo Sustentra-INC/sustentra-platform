@@ -83,6 +83,8 @@ interface EvidenceWorkspaceProps {
   onUploadFiles?: (files: FileList) => void;
   isUploading?: boolean;
   writesEnabled?: boolean;
+  /** Types the reviewer can set (backend mode: the types the backend can read). */
+  typeOptions?: string[];
   backendError?: string | null;
   demoState?: ContainerState;
   auditIntents?: SessionAuditEntry[];
@@ -105,6 +107,7 @@ export function EvidenceWorkspace({
   onUploadFiles,
   isUploading = false,
   writesEnabled = true,
+  typeOptions = SET_TYPE_OPTIONS,
   backendError,
   demoState,
   auditIntents = [],
@@ -402,6 +405,7 @@ export function EvidenceWorkspace({
                             asks={asks}
                             engagement={engagement}
                             writesEnabled={writesEnabled}
+                            typeOptions={typeOptions}
                             editing={editing?.id === item.documentId ? editing.field : null}
                             menuOpen={openMenuId === item.documentId}
                             expanded={expandedIds.includes(item.documentId)}
@@ -588,6 +592,7 @@ function WorkspaceRow(props: {
   asks: Ask[];
   engagement: EngagementConfig;
   writesEnabled: boolean;
+  typeOptions: string[];
   editing: "type" | "facility" | null;
   menuOpen: boolean;
   expanded: boolean;
@@ -685,7 +690,7 @@ function WorkspaceRow(props: {
               <option value="" disabled>
                 Choose type
               </option>
-              {SET_TYPE_OPTIONS.map((t) => (
+              {props.typeOptions.map((t) => (
                 <option key={t} value={t}>
                   {t}
                 </option>

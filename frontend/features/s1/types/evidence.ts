@@ -83,3 +83,19 @@ export interface EvidenceItem {
   /** For "partially extracted": the required fields the extractor did not find. */
   missingFields?: string[];
 }
+
+/**
+ * What the reviewer decided about a document, saved in the backend (workpaper item
+ * "document") and laid over the machine's view of it. The recalculation honours it:
+ * withdrawn, duplicate and superseded documents are left out, and the facility is used.
+ */
+export interface DocumentDecision {
+  documentId: string;
+  facilityId?: string | null;
+  disposition?: EvidenceDisposition;
+  note?: string | null;
+  notes?: NoteEntry[];
+  relationships?: EvidenceItem["relationships"];
+  /** The type the reviewer set (display name); the document was re-read as that type. */
+  detectedType?: string | null;
+}
