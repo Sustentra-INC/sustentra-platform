@@ -4,8 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   coverageFromRecalculation,
+  leftOutMessage,
   recalculationMateriality,
   recalculationRows,
+  type RecalcCategory,
   type Recalculation,
   type RecalculationReference,
 } from "../api/recalculation";
@@ -139,6 +141,7 @@ describe("recalculation inputs panel", () => {
       grid_regions: { "Facility A": "NYUP", "Facility C": "NYUP" },
       reported: { scope1_total: 1450.5 },
       certificates: [],
+      refrigerant_gwps: {},
     });
   });
 
@@ -175,7 +178,7 @@ describe("materiality and coverage when inputs are partial", () => {
     expect(rules["COV-S2-MARKET"].reason).toBe("600.00 of 2,000.00 MWh covered by certificates.".replace(/\.00/g, ""));
     expect(rules["COV-REPORTED"].status).toBe("inputs_missing");
     expect(rules["COV-REPORTED"].reason).toContain("Scope 1 (Total)");
-    expect(rules["COV-FUGITIVE"].status).toBe("out_of_scope");
+    expect(rules["COV-S1-FUGITIVE"].status).toBe("not_applicable");
     expect(rules["COV-S1-MOBILE"].status).toBe("not_applicable");
   });
 
@@ -206,3 +209,96 @@ describe("materiality and coverage when inputs are partial", () => {
     expect(rules["COV-PERIOD"].reason).not.toContain("gas.pdf");
   });
 });
+
+describe("refrigerants (simplified material balance)", () => {
+  const LB_T = 0.45359237 / 1000;
+  const mass = 5.5 * LB_T;
+  const fugitive: RecalcCategory = {
+    category: "fugitive_refrigerants",
+    lines: [{
+      key: "R-410A",
+      equations: { "R-410A": "(P_N - C_N) + P_S + (C_D - R_D)" },
+      mass_t: { "R-410A": mass },
+      steps: [
+        { label: "R-410A emitted", formula: "(P_N - C_N) + P_S + (C_D - R_D)", result: 5.5, result_unit: "lb",
+          inputs: {
+            "P_N (charged into new equipment)": { value: 21, unit: "lb", source: "2 reviewed record(s)" },
+            "C_N (full charge of new equipment)": { value: 20, unit: "lb", source: "2 reviewed record(s)" },
+            "P_S (added when servicing)": { value: 4.5, unit: "lb", source: "2 reviewed record(s)" },
+          } },
+        { label: "R-410A emitted in metric tons", formula: "lb to metric tons", result: mass, result_unit: "t",
+          inputs: { mass: { value: 5.5, unit: "lb", source: null } } },
+        { label: "R-410A in CO2e", formula: "mass x GWP", result: mass * 1924, result_unit: "t CO2e",
+          inputs: { mass: { value: mass, unit: "t", source: null },
+            GWP: { value: 1924, unit: "", source: "EPA GHG Emission Factors Hub 2025, Table 12, row 575 (IPCC AR5)" } } },
+      ],
+      flags: [],
+      biogenic_co2_t: 0,
+    }],
+    total_mass_t: { "R-410A": mass },
+    total_co2e_t: { "R-410A": mass * 1924 },
+    total_co2e: mass * 1924,
+    gwp: { "R-410A": { value: 1924, source: "EPA GHG Emission Factors Hub 2025, Table 12, row 575 (IPCC AR5)" } },
+    biogenic_co2_t: 0,
+    steps: [],
+    flags: [],
+    details: { inputs: [{ fuel: "R-410A", unit: "lb", quantity: 5.5, documents: [
+      { document_id: "LOG", record: "log.pdf (record 2)", quantity: 4.5, unit: "lb", service_type: "service" },
+      { document_id: "LOG", record: "log.pdf (record 4)", quantity: 21, unit: "lb", service_type: "installation" },
+    ] }] },
+    gwp_set: "AR5",
+  };
+  const withRefrigerants: Recalculation = {
+    ...RESULT,
+    categories: { ...RESULT.categories, fugitive_refrigerants: fugitive },
+    comparisons: [...RESULT.comparisons, {
+      key: "fugitive_total", data_point: "Direct emissions from fugitive sources", workbook_row: 45, unit: "t CO2e",
+      reported: null, recalculated: mass * 1924, difference: null, difference_pct: null, status: "not_reported",
+      inputs_incomplete: false,
+    }],
+    excluded: [{ document_id: "LOG", record: "log.pdf (record 5)", canonical_type_id: "CT-S1-REFRSVC",
+      period: "2025-10-02", reason: "montreal_protocol_gas", gas: "HCFC-22" }],
+  };
+
+  it("shows every material-balance term with the records it came from", () => {
+    const row = byKey(recalculationRows(withRefrigerants)).fugitive_total;
+    expect(row.recomputed).toBe("4.80");
+    const working = row.working!;
+    expect(working.formula).toContain("(P_N − C_N) + P_S + (C_D − R_D)");
+    expect(working.inputs.map((i) => i.label)).toEqual([
+      "R-410A · P_N (charged into new equipment)",
+      "R-410A · C_N (full charge of new equipment)",
+      "R-410A · P_S (added when servicing)",
+    ]);
+    expect(working.inputs[0].source).toBe("log.pdf (record 4)"); // P_N: the installation
+    expect(working.inputs[2].source).toBe("log.pdf (record 2)"); // P_S: the service
+    expect(working.factors).toEqual([{ label: "GWP R-410A (AR5)", value: "1924",
+      source: "EPA GHG Emission Factors Hub 2025, Table 12, row 575 (IPCC AR5)" }]);
+    expect(working.references[0]).toBe("EPA GHG Emission Factors Hub 2025, Table 12");
+  });
+
+  it("explains an HCFC left out of Scope 1 and covers the category", () => {
+    expect(leftOutMessage(withRefrigerants.excluded![0])).toContain("HCFC-22 is a CFC or HCFC");
+    const rules = Object.fromEntries(coverageFromRecalculation(withRefrigerants).map((r) => [r.ruleId, r]));
+    expect(rules["COV-S1-FUGITIVE"].status).toBe("inputs_present");
+    expect(rules["COV-S1-FUGITIVE"].reason).toContain("R-410A from 2 reviewed record(s)");
+    expect(rules["COV-S1-FUGITIVE"].reason).toContain("(HCFC-22) are listed but not counted");
+    expect(rules["COV-DECISIONS"]).toBeUndefined();
+  });
+
+  it("asks for a GWP the EPA Hub does not have and saves it", () => {
+    const onSave = vi.fn();
+    const result: Recalculation = {
+      ...RESULT,
+      needs_input: [{ kind: "refrigerant_gwp", key: "R-454B",
+        message: "No AR5 GWP for R-454B in the EPA GHG Emission Factors Hub (Tables 11-12)." }],
+    };
+    render(<RecalculationInputs result={result} reference={REFERENCE} settings={{}} saving={false} error={null}
+      onSave={onSave} />);
+    const field = screen.getByText("R-454B").closest("label")!;
+    fireEvent.change(within(field).getByRole("textbox"), { target: { value: "466" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and recalculate" }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ refrigerant_gwps: { "R-454B": 466 } }));
+  });
+});
+

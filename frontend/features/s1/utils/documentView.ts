@@ -6,6 +6,7 @@ import { matchFacility } from "./facilityMatch";
 export const BACKEND_TYPE_IDS: Record<string, string> = {
   "Stationary fuel consumption record": "CT-S1-FUELQTY",
   "Mobile fuel consumption record": "CT-S1-MOBFUEL",
+  "Refrigerant service record": "CT-S1-REFRSVC",
   "Purchased electricity record": "CT-S2-ELEC",
 };
 
@@ -39,6 +40,7 @@ export function documentFacts(fields: ExtractedField[]): Map<string, DocumentFac
         break;
       case "service_period_start":
       case "transaction_date":
+      case "service_date":
         entry.dates.push(value);
         break;
       case "service_period_end":

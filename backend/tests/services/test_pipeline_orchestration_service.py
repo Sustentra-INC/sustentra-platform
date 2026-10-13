@@ -679,3 +679,27 @@ def test_multi_type_candidate_uses_the_primary_types_layout_extractor(tmp_path):
     # 1,240 therms read and converted by the stationary extractor (the generic fallback does not convert).
     assert (quantity["normalized_value"], quantity["unit"]) == (124, "MMBtu")
     assert not any(i["display_label"] == "Electricity consumed" for i in items)
+
+
+# --- CT-S1-REFRSVC: refrigerant service records ----------------------------------------------
+REFRIGERANT_WORK_ORDER = (
+    "Arctic Air Mechanical, Inc.\nService Date: 03/14/2025\nEquipment ID: RTU-3\nRefrigerant Type: R-410A\n"
+    "Refrigerant Added: 6 lb 8 oz\nReason for Service: Leak repair\n"
+)
+
+
+def test_fgas_inventory_classification_with_service_amounts_reads_as_a_service_record(tmp_path):
+    classified = {"status": "classified", "primary_canonical_type_id": "CT-S1-FGASINV", "primary_variant_id": "VR-1",
+                  "confidence": 0.7, "threshold": 0.55, "candidate_matches": []}
+    output = _run_with(tmp_path, REFRIGERANT_WORK_ORDER, classified)
+    run = output["pipeline_run"]
+    assert (run["canonical_type_id"], run["canonical_type_source"]) == ("CT-S1-REFRSVC", "content_check")
+    fields = {c["field_name"]: c for c in output["extraction_result"]["items"]}
+    assert (fields["refrigerant_added"]["normalized_value"], fields["refrigerant_added"]["unit"]) == (6.5, "lb")
+
+
+def test_low_confidence_refrigerant_record_is_accepted_on_content(tmp_path):
+    output = _run_with(tmp_path, REFRIGERANT_WORK_ORDER, _low_confidence([("CT-S1-REFRSVC", 0.5)]))
+    run = output["pipeline_run"]
+    assert run["canonical_type_id"] == "CT-S1-REFRSVC" and run["canonical_type_source"] == "content_check"
+    assert any("names a refrigerant" in w for w in run["warnings"])

@@ -62,6 +62,7 @@ export function BackendDashboard({
       ? [
           category("stationary_combustion", "Scope 1 · fuel burned on site"),
           category("mobile_combustion", "Scope 1 · vehicle fuel"),
+          category("fugitive_refrigerants", "Scope 1 · refrigerants"),
           category("purchased_electricity_location_based", "Scope 2 · location-based"),
           category("purchased_electricity_market_based", "Scope 2 · market-based"),
         ].filter((row): row is { label: string; value: number } => row !== null)

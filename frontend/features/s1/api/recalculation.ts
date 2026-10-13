@@ -45,6 +45,8 @@ export interface RecalcDocument {
   quantity: number;
   unit: string;
   share_in_period?: number;
+  /** Refrigerant records: service, installation or disposal. */
+  service_type?: string;
 }
 
 export interface RecalcCategory {
@@ -89,7 +91,7 @@ export interface RecalcComparison {
 }
 
 export interface RecalcNeedsInput {
-  kind: "grid_region" | "fuel_choice" | "quantity" | "fuel_line" | "mobile";
+  kind: "grid_region" | "fuel_choice" | "quantity" | "fuel_line" | "mobile" | "refrigerant_gwp";
   key: string;
   message: string;
   options?: string[];
@@ -103,14 +105,30 @@ export interface RecalcAwaitingReview {
 }
 
 /** Why a reviewed record was left out of the numbers. */
-export type ExcludedReason = "outside_reporting_period" | "withdrawn" | "duplicate" | "superseded";
+export type ExcludedReason =
+  | "outside_reporting_period"
+  | "withdrawn"
+  | "duplicate"
+  | "superseded"
+  | "montreal_protocol_gas";
 
 const EXCLUDED_LABEL: Record<ExcludedReason, string> = {
   outside_reporting_period: "outside the reporting period",
   withdrawn: "withdrawn by the reviewer",
   duplicate: "marked as a duplicate",
   superseded: "superseded by a newer document",
+  montreal_protocol_gas: "a CFC or HCFC, which Scope 1 leaves out",
 };
+
+export interface ExcludedRecord {
+  document_id: string;
+  record: string;
+  canonical_type_id: string;
+  period: string;
+  reason?: ExcludedReason;
+  /** Refrigerant left out as a Montreal Protocol gas. */
+  gas?: string;
+}
 
 function reasonOf(item: { reason?: ExcludedReason }): ExcludedReason {
   return item.reason ?? "outside_reporting_period";
@@ -123,8 +141,12 @@ function describeLeftOut(items: { reason?: ExcludedReason }[]): string {
   return [...counts].map(([reason, n]) => `${n} ${EXCLUDED_LABEL[reason]}`).join(", ");
 }
 
-export function leftOutMessage(item: { record: string; period: string; reason?: ExcludedReason }): string {
+export function leftOutMessage(item: { record: string; period: string; reason?: ExcludedReason; gas?: string }): string {
   const reason = reasonOf(item);
+  if (reason === "montreal_protocol_gas") {
+    return `${item.record}: ${item.gas ?? "the refrigerant"} is a CFC or HCFC (a Montreal Protocol gas). The GHG ` +
+      "Protocol reports these outside Scope 1, so it is not counted.";
+  }
   return reason === "outside_reporting_period"
     ? `${item.record} (${item.period}) is outside the reporting period, so it is not counted.`
     : `${item.record} is ${EXCLUDED_LABEL[reason]}, so it is not counted.`;
@@ -133,6 +155,7 @@ export function leftOutMessage(item: { record: string; period: string; reason?: 
 export type CategoryKey =
   | "stationary_combustion"
   | "mobile_combustion"
+  | "fugitive_refrigerants"
   | "purchased_electricity_location_based"
   | "purchased_electricity_market_based";
 
@@ -141,13 +164,15 @@ export interface Recalculation {
   gwp_set: string;
   reporting_period: { start: string | null; end: string | null };
   tolerance_pct: number;
-  categories: Record<CategoryKey, RecalcCategory | null>;
+  /** fugitive_refrigerants is missing from results computed before refrigerants were added. */
+  categories: Record<Exclude<CategoryKey, "fugitive_refrigerants">, RecalcCategory | null> &
+    Partial<Record<"fugitive_refrigerants", RecalcCategory | null>>;
   scope_totals: Record<"scope1" | "scope2_location" | "scope2_market", { total_co2e: number } | null>;
   comparisons: RecalcComparison[];
   needs_input: RecalcNeedsInput[];
   awaiting_review: RecalcAwaitingReview[];
   /** Reviewed records entirely outside the reporting period: listed, never counted. */
-  excluded?: { document_id: string; record: string; canonical_type_id: string; period: string; reason?: ExcludedReason }[];
+  excluded?: ExcludedRecord[];
   not_recalculated: string[];
   documents_considered: number;
 }
@@ -174,13 +199,14 @@ export function getRecalculationReference(): Promise<RecalculationReference> {
 
 /** Which calculation each reported data point comes from. */
 const SOURCES: Record<string, CategoryKey[]> = {
-  scope1_total: ["stationary_combustion", "mobile_combustion"],
+  scope1_total: ["stationary_combustion", "mobile_combustion", "fugitive_refrigerants"],
   scope1_co2: ["stationary_combustion", "mobile_combustion"],
   scope1_ch4: ["stationary_combustion", "mobile_combustion"],
   scope1_n2o: ["stationary_combustion", "mobile_combustion"],
   biogenic_co2: ["stationary_combustion", "mobile_combustion"],
   stationary_combustion_total: ["stationary_combustion"],
   mobile_combustion_total: ["mobile_combustion"],
+  fugitive_total: ["fugitive_refrigerants"],
   scope2_location_total: ["purchased_electricity_location_based"],
   scope2_co2: ["purchased_electricity_location_based"],
   scope2_ch4: ["purchased_electricity_location_based"],
@@ -196,6 +222,11 @@ const FORMULA: Record<CategoryKey, string> = {
   mobile_combustion:
     "Per fuel: CO₂ = fuel (gal or scf) × EF. CH₄, N₂O need distance by vehicle type and model year (Eq 4) or " +
     "non-road fuel use (Eq 5). CO₂e = Σ gas mass × GWP.",
+  fugitive_refrigerants:
+    "Per refrigerant (simplified material balance): emissions = (P_N − C_N) + P_S + (C_D − R_D). P_S is " +
+    "refrigerant added when servicing; P_N and C_N are refrigerant charged into new equipment and its full charge; " +
+    "C_D and R_D are the full charge of retired equipment and what was recovered. CO₂e = mass × GWP (EPA Hub " +
+    "Table 11, blends Table 12).",
   purchased_electricity_location_based:
     "Per facility: gas mass (t) = MWh × eGRID subregion factor (lb/MWh) ÷ 2,204.62. CO₂e = Σ gas mass × GWP.",
   purchased_electricity_market_based:
@@ -217,6 +248,9 @@ const FLAG_NOTE: Record<string, string> = {
   no_certificates_market_equals_location: "No certificates entered, so market-based equals location-based.",
   certificates_exceed_consumption: "Certificates exceed consumption; coverage was capped at 100%.",
   unit_converted: "Quantities were converted to the EPA factor's unit.",
+  negative_refrigerant_emissions:
+    "A refrigerant's balance is negative (more recovered than the retired equipment held, or new equipment charged " +
+    "below its full charge). Check those records.",
 };
 
 const SCOPE2 = new Set(["scope2_location_total", "scope2_market_total", "scope2_co2", "scope2_ch4", "scope2_n2o",
@@ -249,6 +283,7 @@ function unitLabel(unit: string): string {
 const DATA_POINT_TYPE: Record<string, string> = {
   stationary_combustion_total: "CT-S1-FUELQTY",
   mobile_combustion_total: "CT-S1-MOBFUEL",
+  fugitive_total: "CT-S1-REFRSVC",
   purchased_electricity_total: "CT-S2-ELEC",
   scope2_location_total: "CT-S2-ELEC",
   scope2_market_total: "CT-S2-ELEC",
@@ -257,7 +292,11 @@ const DATA_POINT_TYPE: Record<string, string> = {
 function outcomeOf(c: RecalcComparison, result?: Recalculation): { outcome: CheckOutcome; reason: string } {
   const tolerance = c.tolerance_pct ?? 5;
   if (c.status === "not_recalculated") {
-    return { outcome: "out_of_scope", reason: "Not recalculated yet: needs purchased-gas (refrigerant) records." };
+    return {
+      outcome: "out_of_scope",
+      reason: "Per-gas HFC, PFC and SF6 totals are not compared yet. Refrigerant emissions are recalculated under " +
+        "Direct emissions from fugitive sources.",
+    };
   }
   if (c.status === "no_evidence") {
     const typeId = DATA_POINT_TYPE[c.key];
@@ -284,10 +323,16 @@ function outcomeOf(c: RecalcComparison, result?: Recalculation): { outcome: Chec
     : { outcome: "exception", reason: `Exceeds the ±${tolerance}% materiality tolerance by ${(Math.abs(pct) - tolerance).toFixed(2)} points.` };
 }
 
-function sourceOf(category: RecalcCategory, line: RecalcLine): string | undefined {
+/** Which refrigerant records feed each material-balance term. */
+const TERM_SERVICE: Record<string, string> = { P_S: "service", P_N: "installation", C_N: "installation",
+  C_D: "disposal", R_D: "disposal" };
+
+function sourceOf(category: RecalcCategory, line: RecalcLine, term?: string): string | undefined {
   const input = category.details.inputs?.find((item) => item.fuel === line.key);
   if (!input) return undefined;
+  const serviceType = term ? TERM_SERVICE[term.slice(0, 3)] : undefined;
   return input.documents
+    .filter((doc) => !serviceType || !doc.service_type || doc.service_type === serviceType)
     .map((doc) => {
       const share = doc.share_in_period !== undefined && doc.share_in_period < 1
         ? ` (${Math.round(doc.share_in_period * 100)}% in period)` : "";
@@ -298,7 +343,7 @@ function sourceOf(category: RecalcCategory, line: RecalcLine): string | undefine
 
 function workingFor(c: RecalcComparison, result: Recalculation): WorkingSpec | undefined {
   const categories = (SOURCES[c.key] ?? [])
-    .map((key) => [key, result.categories[key]] as const)
+    .map((key) => [key, result.categories[key] ?? null] as const)
     .filter((entry): entry is readonly [CategoryKey, RecalcCategory] => entry[1] !== null);
   if (categories.length === 0) return undefined;
 
@@ -309,7 +354,14 @@ function workingFor(c: RecalcComparison, result: Recalculation): WorkingSpec | u
 
   for (const [, category] of categories) {
     for (const line of category.lines) {
-      const activity = Object.values(line.steps[0]?.inputs ?? {})[0];
+      if (category.category === "fugitive_refrigerants") {
+        // Every material-balance term the records gave: "R-410A · P_S (added when servicing)".
+        for (const [term, input] of Object.entries(line.steps[0]?.inputs ?? {})) {
+          inputs.push({ label: `${line.key} · ${term}`, value: `${formatQuantity(input.value)} ${input.unit}`,
+            source: sourceOf(category, line, term) });
+        }
+      }
+      const activity = category.category === "fugitive_refrigerants" ? undefined : Object.values(line.steps[0]?.inputs ?? {})[0];
       if (activity) {
         inputs.push({
           label: line.key,
@@ -318,6 +370,8 @@ function workingFor(c: RecalcComparison, result: Recalculation): WorkingSpec | u
         });
       }
       for (const step of line.steps) {
+        // A refrigerant's amounts are inputs (listed above) and its GWP is listed once per gas below.
+        if (category.category === "fugitive_refrigerants") continue;
         for (const [name, input] of Object.entries(step.inputs)) {
           if (!input.source) continue;
           const label = `${line.key} · ${step.label.replace(/ in metric tons$/, "")}`;
@@ -334,6 +388,7 @@ function workingFor(c: RecalcComparison, result: Recalculation): WorkingSpec | u
     category.flags.forEach((flag) => FLAG_NOTE[flag] && notes.add(FLAG_NOTE[flag]));
     for (const [gas, gwp] of Object.entries(category.gwp)) {
       factors.set(`GWP|${gas}`, { label: `GWP ${gas} (${category.gwp_set})`, value: String(gwp.value), source: gwp.source });
+      if (category.category === "fugitive_refrigerants") references.add(gwp.source.replace(/, row \d+.*$/, ""));
     }
     const coverage = category.details.coverage;
     if (typeof coverage === "number") {
@@ -387,7 +442,7 @@ export function recalculationRows(result: Recalculation): VerificationRow[] {
       recomputed: c.recalculated !== null ? formatNumber(c.recalculated) : null,
       recomputeReason: c.recalculated === null
         ? c.status === "not_recalculated"
-          ? "fugitive gases are not recalculated yet"
+          ? "compared under fugitive sources"
           : DATA_POINT_TYPE[c.key] && (result.excluded ?? []).some((e) => e.canonical_type_id === DATA_POINT_TYPE[c.key])
             ? "its records are left out (see why)"
             : "no reviewed evidence yet"
@@ -439,6 +494,7 @@ export function recalculationMateriality(result: Recalculation): MaterialityFigu
 const TYPE_LABEL: Record<string, string> = {
   "CT-S1-FUELQTY": "stationary fuel",
   "CT-S1-MOBFUEL": "vehicle fuel",
+  "CT-S1-REFRSVC": "refrigerant",
   "CT-S2-ELEC": "electricity",
 };
 
@@ -586,7 +642,9 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
   }
 
   const excluded = (result.excluded ?? []).filter((e) => reasonOf(e) === "outside_reporting_period");
-  const setAside = (result.excluded ?? []).filter((e) => reasonOf(e) !== "outside_reporting_period");
+  const setAside = (result.excluded ?? []).filter(
+    (e) => reasonOf(e) !== "outside_reporting_period" && reasonOf(e) !== "montreal_protocol_gas"
+  );
   if (setAside.length) {
     rules.push({
       ruleId: "COV-DECISIONS",
@@ -618,15 +676,9 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
     reason: `${result.gwp_set} (${result.gwp_set === "AR5" ? "EPA Hub Table 11" : "IPCC AR6"}).`,
   });
 
-  rules.push({
-    ruleId: "COV-FUGITIVE",
-    assertion: "Refrigerant and other fugitive gas emissions are recalculated",
-    appliesTo: ["Scope 1 HFCs", "Scope 1 PFCs", "Scope 1 SF6"],
-    status: "out_of_scope",
-    reason: "Not built yet: needs refrigerant service and purchase records.",
-  });
+  rules.push(refrigerantRule(result));
 
-  for (const item of result.not_recalculated.filter((n) => !/fugitive/i.test(n))) {
+  for (const item of result.not_recalculated) {
     rules.push({
       ruleId: `COV-NOT-${item.replace(/\W+/g, "-").toUpperCase()}`,
       assertion: `${item} are recalculated`,
@@ -637,4 +689,51 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
   }
 
   return rules;
+}
+
+/** Refrigerants and fire suppression: reviewed service records through the material balance. */
+function refrigerantRule(result: Recalculation): CoverageRule {
+  const base = {
+    ruleId: "COV-S1-FUGITIVE",
+    assertion: "Refrigerant and fire-suppression gas emissions are recalculated with the simplified material balance",
+    appliesTo: ["Direct emissions from fugitive sources", "Scope 1 (Total)"],
+  };
+  const category = result.categories.fugitive_refrigerants ?? null;
+  const waiting = awaitingFor(result, "CT-S1-REFRSVC");
+  const gwps = result.needs_input.filter((n) => n.kind === "refrigerant_gwp");
+  const amounts = result.needs_input.filter((n) => n.kind === "quantity" && /refrigerant|equipment_capacity/.test(n.key));
+  const hcfcs = (result.excluded ?? []).filter((e) => reasonOf(e) === "montreal_protocol_gas");
+  const hcfcNote = hcfcs.length
+    ? ` ${hcfcs.length} record(s) of CFCs or HCFCs (${listed(hcfcs.map((e) => e.gas ?? e.record))}) are listed but not counted in Scope 1.`
+    : "";
+  if (waiting.length || gwps.length || amounts.length) {
+    return {
+      ...base,
+      status: "inputs_missing",
+      reason: [
+        category ? `Recalculated so far: ${category.lines.map((l) => l.key).join(", ")}` : "",
+        waiting.length ? `${waiting.length} record(s) awaiting review (${listed(waiting)})` : "",
+        gwps.length ? `GWP needed for ${listed(gwps.map((g) => g.key))} (not in the EPA Hub)` : "",
+        amounts.length ? amounts.map((a) => a.message).join(" ") : "",
+      ].filter(Boolean).join(". ") + "." + hcfcNote,
+    };
+  }
+  if (category) {
+    const docs = (category.details.inputs ?? []).reduce((n, i) => n + i.documents.length, 0);
+    return {
+      ...base,
+      status: "inputs_present",
+      reason: `${category.lines.map((l) => l.key).join(", ")} from ${docs} reviewed record(s).${hcfcNote}`,
+    };
+  }
+  const leftOut = (result.excluded ?? []).filter(
+    (e) => e.canonical_type_id === "CT-S1-REFRSVC" && reasonOf(e) !== "montreal_protocol_gas"
+  );
+  return {
+    ...base,
+    status: "not_applicable",
+    reason: leftOut.length
+      ? `Every reviewed refrigerant record is left out (${describeLeftOut(leftOut)}), so none are counted.${hcfcNote}`
+      : `No reviewed refrigerant service records in this engagement.${hcfcNote}`,
+  };
 }

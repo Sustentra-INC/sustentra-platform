@@ -8,7 +8,8 @@ engagement:
    listed under ``awaiting_review``.
 2. Group the way the workbook asks: one total quantity per fuel type (Scope 1) and one
    total electricity quantity per facility (Scope 2), each prorated to the engagement's
-   reporting period by the share of the bill's service period inside it.
+   reporting period by the share of the bill's service period inside it. Refrigerant
+   service records are grouped once per refrigerant (Simplified Material Balance).
 3. Apply the engagement's recalculation inputs (settings["recalculation"]): GWP set, eGRID
    subregion per facility, EPA fuel for ambiguous fuel codes, renewable-energy
    certificates and the company's reported totals. Anything still missing is listed under
@@ -26,6 +27,7 @@ from datetime import date
 from typing import Any
 
 from backend.app.domain import fuel_units
+from backend.app.domain.refrigerants import find_refrigerant, mass_unit
 from backend.app.reference.emission_factor_loader import (
     DEFAULT_GWP_SET,
     GWP_SETS,
@@ -34,10 +36,13 @@ from backend.app.reference.emission_factor_loader import (
     default_emission_factor_reference,
 )
 from backend.app.services import emissions_calculator as calc
+from backend.app.services.refrigerant_extractor import DISPOSAL, INSTALLATION, service_type_of
 
 STATIONARY = "CT-S1-FUELQTY"
 MOBILE = "CT-S1-MOBFUEL"
 ELECTRICITY = "CT-S2-ELEC"
+REFRIGERANT = "CT-S1-REFRSVC"
+RECALCULATED_TYPES = (STATIONARY, MOBILE, ELECTRICITY, REFRIGERANT)
 REVIEWED = ("accepted", "edited")
 
 # Unambiguous extractor fuel codes -> EPA names. Everything else asks the reviewer.
@@ -74,6 +79,7 @@ DATA_POINTS: tuple[tuple[str, str, int, str], ...] = (
     ("biogenic_co2", "CO2 emissions from biogenic combustion", 37, "t CO2e"),
     ("stationary_combustion_total", "Direct emissions from stationary combustion", 42, "t CO2e"),
     ("mobile_combustion_total", "Direct emissions from mobile combustion", 43, "t CO2e"),
+    ("fugitive_total", "Direct emissions from fugitive sources", 45, "t CO2e"),
     ("purchased_electricity_total", "Indirect emissions from purchased electricity (location-based)", 47,
      "t CO2e"),
 )
@@ -90,6 +96,8 @@ class RecalculationInputs:
     fuel_choices: dict[str, str] = field(default_factory=dict)  # "stationary:fuel_oil" -> EPA name
     certificates: list[dict[str, Any]] = field(default_factory=list)  # [{label, mwh}]
     reported: dict[str, float] = field(default_factory=dict)  # data point key -> value
+    # Refrigerant -> GWP the reviewer entered (from the safety data sheet) for gases the EPA Hub lacks.
+    refrigerant_gwps: dict[str, float] = field(default_factory=dict)
 
 
 def validate_recalculation_settings(value: Any) -> None:
@@ -97,7 +105,8 @@ def validate_recalculation_settings(value: Any) -> None:
 
     if not isinstance(value, dict):
         raise ValueError("recalculation must be an object")
-    unknown = set(value) - {"gwp_set", "grid_regions", "fuel_choices", "certificates", "reported"}
+    unknown = set(value) - {"gwp_set", "grid_regions", "fuel_choices", "certificates", "reported",
+                            "refrigerant_gwps"}
     if unknown:
         raise ValueError(f"unknown recalculation settings: {', '.join(sorted(unknown))}")
     if "gwp_set" in value and value["gwp_set"] not in GWP_SETS:
@@ -113,6 +122,11 @@ def validate_recalculation_settings(value: Any) -> None:
     for item in certificates:
         if not isinstance(item, dict) or not isinstance(item.get("mwh"), (int, float)) or item["mwh"] < 0:
             raise ValueError("each certificate needs a non-negative mwh")
+    gwps = value.get("refrigerant_gwps", {})
+    if not isinstance(gwps, dict) or not all(
+            isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0
+            for k, v in gwps.items()):
+        raise ValueError("refrigerant_gwps must map each refrigerant to a non-negative number")
     reported = value.get("reported", {})
     if not isinstance(reported, dict):
         raise ValueError("reported must be an object")
@@ -139,6 +153,7 @@ def parse_inputs(settings: dict[str, Any] | None) -> RecalculationInputs:
         fuel_choices=dict(raw.get("fuel_choices") or {}),
         certificates=list(raw.get("certificates") or []),
         reported={k: float(v) for k, v in (raw.get("reported") or {}).items() if v is not None},
+        refrigerant_gwps={k: float(v) for k, v in (raw.get("refrigerant_gwps") or {}).items()},
     )
 
 
@@ -346,7 +361,7 @@ class EngagementRecalculationService:
                 continue
             latest = results[-1]
             canonical_type_id = str(latest.get("canonical_type_id") or "")
-            if canonical_type_id not in (STATIONARY, MOBILE, ELECTRICITY):
+            if canonical_type_id not in RECALCULATED_TYPES:
                 continue
             decisions: dict[str, dict] = {}
             for decision in self._reviews.list_by_document(document_id):
@@ -389,10 +404,13 @@ class EngagementRecalculationService:
         mobile = self._mobile(records, inputs, period, needs_input, awaiting)
         bills: dict[str, list[dict[str, Any]]] = {}
         electricity = self._electricity(records, inputs, period, needs_input, awaiting, bills)
+        not_counted: list[dict[str, Any]] = []
+        fugitive = self._refrigerants(records, inputs, period, needs_input, awaiting, not_counted)
 
         categories: dict[str, calc.CategoryResult | None] = {
             "stationary_combustion": stationary,
             "mobile_combustion": mobile,
+            "fugitive_refrigerants": fugitive,
             "purchased_electricity_location_based": None,
             "purchased_electricity_market_based": None,
         }
@@ -426,9 +444,9 @@ class EngagementRecalculationService:
             "comparisons": self._comparisons(inputs, totals, categories, incomplete, tolerance),
             "needs_input": needs_input,
             "awaiting_review": awaiting,
-            "excluded": set_aside + self._outside_period(records, period),
-            "not_recalculated": ["Scope 1 fugitive sources", "Scope 1 process sources",
-                                 "Scope 2 steam, heat and cooling"],
+            "excluded": set_aside + self._outside_period(records, period) + not_counted,
+            "not_recalculated": ["Scope 1 fugitive sources other than refrigerants and fire suppression",
+                                 "Scope 1 process sources", "Scope 2 steam, heat and cooling"],
             "documents_considered": len({r.document_id for r in records}),
         }
 
@@ -473,6 +491,8 @@ class EngagementRecalculationService:
         for record in records:
             if record.canonical_type_id == MOBILE:
                 start = end = record.best("transaction_date")
+            elif record.canonical_type_id == REFRIGERANT:
+                start = end = record.best("service_date")
             elif record.canonical_type_id in (STATIONARY, ELECTRICITY):
                 start, end = record.best("service_period_start"), record.best("service_period_end")
             else:
@@ -709,6 +729,116 @@ class EngagementRecalculationService:
                                                 region))
         return out
 
+    # =================================================================================
+    # Scope 1 fugitive: refrigerants and fire suppression
+    # =================================================================================
+    def _refrigerants(self, records: list[ReviewedRecord], inputs: RecalculationInputs,
+                      period: tuple[date | None, date | None], needs_input: list[dict[str, Any]],
+                      awaiting: list[dict[str, Any]], not_counted: list[dict[str, Any]]
+                      ) -> calc.CategoryResult | None:
+        """Simplified Material Balance per refrigerant from reviewed service records.
+
+        service: P_S += added; installation: P_N += added, C_N += full charge;
+        disposal: C_D += full charge, R_D += recovered. CFCs and HCFCs (Montreal Protocol
+        gases) are listed as not counted; a gas without a Hub GWP asks for one.
+        """
+
+        needed = {INSTALLATION: ("refrigerant_added", "equipment_capacity"),
+                  DISPOSAL: ("equipment_capacity", "refrigerant_recovered")}
+        totals: dict[str, dict[str, Any]] = {}
+        for record in (r for r in records if r.canonical_type_id == REFRIGERANT):
+            kind = service_type_of(record.best("service_type"))
+            names = ("refrigerant_type",) + needed.get(kind, ("refrigerant_added",))
+            if record.best("service_type") is not None:
+                names += ("service_type",)
+            if not self._require_reviewed(record, names, awaiting):
+                continue
+            day = record.best("service_date")
+            if _proration(day, day, period)[0] == 0:  # listed under "excluded"
+                continue
+            text = str(record.reviewed("refrigerant_type") or "").strip()
+            found = find_refrigerant(text)
+            gas = found.name if found is not None else text
+            if found is not None and found.montreal:
+                not_counted.append({"document_id": record.document_id, "record": record.label,
+                                    "canonical_type_id": REFRIGERANT, "period": str(day or ""),
+                                    "reason": "montreal_protocol_gas", "gas": gas})
+                continue
+            amounts: dict[str, float] = {}
+            unit = None
+            for name in names[1:]:
+                if name == "service_type":
+                    continue
+                mass = self._mass(record, name)
+                if mass is None:
+                    needs_input.append({"kind": "quantity", "key": f"{record.label}:{name}",
+                                        "message": f"{record.label}: the {name.replace('_', ' ')} or its unit "
+                                                   "(lb or kg) is not a usable number."})
+                    break
+                amounts[name] = mass[0] if unit is None or mass[1] == unit else fuel_units.convert_exact(
+                    mass[0], mass[1], unit)
+                unit = unit or mass[1]
+            else:
+                entry = totals.setdefault(gas, {"unit": unit, "terms": dict.fromkeys(
+                    ("P_N", "C_N", "P_S", "C_D", "R_D"), 0.0), "documents": []})
+                if entry["unit"] != unit:
+                    amounts = {k: fuel_units.convert_exact(v, str(unit), entry["unit"]) for k, v in amounts.items()}
+                terms = entry["terms"]
+                if kind == INSTALLATION:
+                    terms["P_N"] += amounts["refrigerant_added"]
+                    terms["C_N"] += amounts["equipment_capacity"]
+                elif kind == DISPOSAL:
+                    terms["C_D"] += amounts["equipment_capacity"]
+                    terms["R_D"] += amounts["refrigerant_recovered"]
+                else:
+                    terms["P_S"] += amounts["refrigerant_added"]
+                entry["documents"].append({
+                    "document_id": record.document_id, "record": record.label, "service_type": kind,
+                    "quantity": amounts.get("refrigerant_added", amounts.get("refrigerant_recovered", 0.0)),
+                    "unit": entry["unit"]})
+        uses: list[calc.RefrigerantUse] = []
+        for gas, entry in totals.items():
+            override = next((v for k, v in inputs.refrigerant_gwps.items() if k.strip().lower() == gas.lower()), None)
+            if override is None:
+                try:
+                    self.reference.gwp(gas, inputs.gwp_set)
+                except EmissionFactorNotFoundError:
+                    needs_input.append({
+                        "kind": "refrigerant_gwp", "key": gas,
+                        "message": f"No {inputs.gwp_set} GWP for {gas} in the EPA GHG Emission Factors Hub "
+                                   "(Tables 11-12). Enter it from the refrigerant's safety data sheet.",
+                    })
+                    continue
+            terms = entry["terms"]
+            uses.append(calc.RefrigerantUse(
+                gas, entry["unit"], new_charged=terms["P_N"], new_capacity=terms["C_N"], serviced=terms["P_S"],
+                retired_capacity=terms["C_D"], recovered=terms["R_D"],
+                source=f"{len(entry['documents'])} reviewed record(s)", gwp_override=override,
+                gwp_override_source="entered by the reviewer (safety data sheet)" if override is not None else None))
+        if not uses:
+            return None
+        result = calc.refrigerants(uses, self.reference, gwp_set=inputs.gwp_set)
+        result.details["inputs"] = [
+            {"fuel": use.gas, "unit": use.unit, "quantity": result.lines[i].steps[0].result,
+             "documents": totals[use.gas]["documents"]}
+            for i, use in enumerate(uses)
+        ]
+        return result
+
+    @staticmethod
+    def _mass(record: ReviewedRecord, name: str) -> tuple[float, str] | None:
+        """A reviewed refrigerant amount in lb or kg (ounces and grams converted)."""
+
+        number = _number(record.reviewed(name))
+        if number is None:
+            return None
+        unit = mass_unit(record.unit_of(name))
+        if unit == "oz":
+            return number / 16, "lb"
+        if unit == "g":
+            return number / 1000, "kg"
+        return (number, unit) if unit in ("lb", "kg") else None
+
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""
 
@@ -738,7 +868,7 @@ class EngagementRecalculationService:
             }
 
         return {
-            "scope1": combine(("stationary_combustion", "mobile_combustion")),
+            "scope1": combine(("stationary_combustion", "mobile_combustion", "fugitive_refrigerants")),
             "scope2_location": combine(("purchased_electricity_location_based",)),
             "scope2_market": combine(("purchased_electricity_market_based",)),
         }
@@ -769,6 +899,7 @@ class EngagementRecalculationService:
             "biogenic_co2": scope1["biogenic_co2_t"] if scope1 else None,
             "stationary_combustion_total": category("stationary_combustion"),
             "mobile_combustion_total": category("mobile_combustion"),
+            "fugitive_total": category("fugitive_refrigerants"),
             "purchased_electricity_total": category("purchased_electricity_location_based"),
         }
         out = []

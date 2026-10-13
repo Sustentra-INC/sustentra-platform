@@ -325,3 +325,84 @@ def test_setup_facilities_reject_an_unknown_grid_region() -> None:
     validate_facilities([{"facilityId": "F1", "name": "A", "gridRegion": "NYUP"}, {"facilityId": "F2", "name": "B"}])
     with pytest.raises(ValueError):
         validate_facilities([{"facilityId": "F1", "name": "A", "gridRegion": "MOON"}])
+
+
+# --- Scope 1 fugitive: refrigerants (Simplified Material Balance) --------------------------
+LB = 0.45359237 / 1000  # metric tons per lb
+
+
+def _refrigerant(gas: str, day: str, service_type: str | None = "service", added: float | None = None,
+                 recovered: float | None = None, capacity: float | None = None, unit: str = "lb") -> dict:
+    record: dict[str, tuple] = {"refrigerant_type": (gas, None), "service_date": (day, None),
+                                "equipment_id": ("RTU-1", None)}
+    if service_type is not None:
+        record["service_type"] = (service_type, None)
+    for name, value in (("refrigerant_added", added), ("refrigerant_recovered", recovered),
+                        ("equipment_capacity", capacity)):
+        if value is not None:
+            record[name] = (value, unit)
+    return record
+
+
+def test_refrigerants_follow_the_simplified_material_balance_per_gas() -> None:
+    store = FakeStore()
+    store.add_document("REFRIG-LOG", "CT-S1-REFRSVC", [
+        _refrigerant("HFC-134a", "2025-01-22", added=45, capacity=650),  # P_S 45
+        _refrigerant("R-410A", "2025-04-09", added=4.5),  # P_S 4.5
+        _refrigerant("R-410A", "2025-08-18", "installation", added=21, capacity=20),  # P_N 21, C_N 20
+        _refrigerant("HFC-134a", "2025-12-05", "disposal", added=0, recovered=580, capacity=600),  # C_D 600, R_D 580
+    ])
+    result = _service(store).recalculate(_engagement(), _own)
+    fugitive = result["categories"]["fugitive_refrigerants"]
+    lines = {line["key"]: line for line in fugitive["lines"]}
+    assert lines["HFC-134a"]["steps"][0]["result"] == pytest.approx(65)  # 45 + (600 - 580)
+    assert lines["R-410A"]["steps"][0]["result"] == pytest.approx(5.5)  # (21 - 20) + 4.5
+    assert lines["HFC-134a"]["mass_t"]["HFC-134a"] == pytest.approx(65 * LB)
+    assert fugitive["gwp"]["R-410A"]["value"] == 1924 and "Table 12" in fugitive["gwp"]["R-410A"]["source"]
+    expected = 65 * LB * 1300 + 5.5 * LB * 1924
+    assert fugitive["total_co2e"] == pytest.approx(expected)
+    # Fugitive emissions are part of Scope 1 and have their own reported data point (row 45).
+    assert result["scope_totals"]["scope1"]["total_co2e"] == pytest.approx(expected)
+    fugitive_row = _by_key(result)["fugitive_total"]
+    assert fugitive_row["recalculated"] == pytest.approx(expected) and fugitive_row["workbook_row"] == 45
+    assert result["needs_input"] == [] and result["awaiting_review"] == []
+
+
+def test_hcfcs_are_listed_not_counted_and_unknown_gases_ask_for_a_gwp() -> None:
+    store = FakeStore()
+    store.add_document("R22", "CT-S1-REFRSVC", [_refrigerant("R-22", "2025-03-01", added=10)])
+    store.add_document("R454B", "CT-S1-REFRSVC", [_refrigerant("R-454B", "2025-03-02", added=8)])
+    result = _service(store).recalculate(_engagement(), _own)
+    assert result["categories"]["fugitive_refrigerants"] is None
+    left_out = [e for e in result["excluded"] if e["reason"] == "montreal_protocol_gas"]
+    assert [(e["document_id"], e["gas"]) for e in left_out] == [("R22", "HCFC-22")]
+    asks = [n for n in result["needs_input"] if n["kind"] == "refrigerant_gwp"]
+    assert [a["key"] for a in asks] == ["R-454B"] and "safety data sheet" in asks[0]["message"]
+
+    entered = {"recalculation": {"refrigerant_gwps": {"R-454B": 466}}}
+    result = _service(store).recalculate(_engagement(**entered), _own)
+    fugitive = result["categories"]["fugitive_refrigerants"]
+    assert fugitive["total_co2e"] == pytest.approx(8 * LB * 466)
+    assert fugitive["gwp"]["R-454B"]["source"] == "entered by the reviewer (safety data sheet)"
+
+
+def test_refrigerant_records_need_the_reviewed_amounts_their_service_type_uses() -> None:
+    store = FakeStore()
+    # A disposal needs the retired equipment's full charge and what was recovered.
+    store.add_document("RETIRE", "CT-S1-REFRSVC", [_refrigerant("R-410A", "2025-05-01", "disposal", recovered=9)])
+    store.add_document("OLD", "CT-S1-REFRSVC", [_refrigerant("R-410A", "2024-11-01", added=3)])
+    store.add_document("OZ", "CT-S1-REFRSVC", [_refrigerant("R-410A", "2025-06-01", added=72, unit="oz")])
+    result = _service(store).recalculate(_engagement(), _own)
+    waiting = {a["document_id"]: a["fields"] for a in result["awaiting_review"]}
+    assert waiting == {"RETIRE": ["equipment_capacity"]}
+    assert [e["document_id"] for e in result["excluded"]] == ["OLD"]  # outside the reporting period
+    fugitive = result["categories"]["fugitive_refrigerants"]
+    assert fugitive["lines"][0]["steps"][0]["result"] == pytest.approx(4.5)  # 72 oz
+
+
+def test_refrigerant_gwps_are_validated() -> None:
+    validate_recalculation_settings({"refrigerant_gwps": {"R-454B": 466}})
+    with pytest.raises(ValueError, match="refrigerant_gwps"):
+        validate_recalculation_settings({"refrigerant_gwps": {"R-454B": "high"}})
+    with pytest.raises(ValueError, match="refrigerant_gwps"):
+        validate_recalculation_settings({"refrigerant_gwps": {"R-454B": -1}})

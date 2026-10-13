@@ -33,6 +33,9 @@ export function RecalculationInputs({
   const [certificateText, setCertificateText] = useState<{ label: string; mwh: string }[]>(() =>
     (settings.certificates ?? []).map((c) => ({ label: c.label, mwh: String(c.mwh) }))
   );
+  const [gwpText, setGwpText] = useState<Record<string, string>>(() =>
+    Object.fromEntries(Object.entries(settings.refrigerant_gwps ?? {}).map(([gas, value]) => [gas, String(value)]))
+  );
   const asks = result.needs_input;
   const [open, setOpen] = useState(asks.length > 0);
 
@@ -44,11 +47,14 @@ export function RecalculationInputs({
     ])
   );
   const fuelAsks = asks.filter((a) => a.kind === "fuel_choice");
-  const otherAsks = asks.filter((a) => a.kind !== "grid_region" && a.kind !== "fuel_choice");
+  const gwpAsks = asks.filter((a) => a.kind === "refrigerant_gwp");
+  const otherAsks = asks.filter((a) => !["grid_region", "fuel_choice", "refrigerant_gwp"].includes(a.kind));
+  const gases = Array.from(new Set([...gwpAsks.map((a) => a.key), ...Object.keys(gwpText)]));
 
   const badReported = Object.entries(reportedText).filter(([, text]) => text.trim() && !Number.isFinite(Number(text)));
   const badCertificates = certificateText.filter((c) => !c.label.trim() || !(Number(c.mwh) > 0));
-  const invalid = badReported.length > 0 || badCertificates.length > 0;
+  const badGwps = Object.entries(gwpText).filter(([, text]) => text.trim() && !(Number(text) >= 0));
+  const invalid = badReported.length > 0 || badCertificates.length > 0 || badGwps.length > 0;
 
   function save() {
     const reported: Record<string, number> = {};
@@ -57,7 +63,9 @@ export function RecalculationInputs({
       label: c.label.trim(),
       mwh: Number(c.mwh),
     }));
-    onSave({ ...draft, reported, certificates });
+    const refrigerant_gwps: Record<string, number> = {};
+    for (const [gas, text] of Object.entries(gwpText)) if (text.trim()) refrigerant_gwps[gas] = Number(text);
+    onSave({ ...draft, reported, certificates, refrigerant_gwps });
   }
 
   const setRegion = (facility: string, region: string) => {
@@ -179,6 +187,31 @@ export function RecalculationInputs({
                 ))}
             </fieldset>
 
+            {gases.length ? (
+              <fieldset className="s1-rc__group">
+                <legend>Refrigerant GWP (not in the EPA Hub)</legend>
+                {gases.map((gas) => {
+                  const ask = gwpAsks.find((a) => a.key === gas);
+                  return (
+                    <label key={gas} className="s1-rc__field">
+                      <span>
+                        {gas}
+                        {ask ? <span className="s1-rc__need"> needed</span> : null}
+                      </span>
+                      <input
+                        inputMode="decimal"
+                        placeholder={`${result.gwp_set} 100-year GWP`}
+                        value={gwpText[gas] ?? ""}
+                        aria-invalid={badGwps.some(([key]) => key === gas)}
+                        onChange={(e) => setGwpText({ ...gwpText, [gas]: e.target.value })}
+                      />
+                      <span className="s1-muted s1-rc__hint">From the refrigerant&rsquo;s safety data sheet.</span>
+                    </label>
+                  );
+                })}
+              </fieldset>
+            ) : null}
+
             <fieldset className="s1-rc__group">
               <legend>Renewable energy certificates (market-based)</legend>
               {certificateText.map((c, index) => (
@@ -248,7 +281,8 @@ export function RecalculationInputs({
             {invalid ? (
               <span className="s1-rc__error">
                 {badReported.length ? "Reported values must be numbers. " : ""}
-                {badCertificates.length ? "Each certificate needs a name and a positive MWh." : ""}
+                {badCertificates.length ? "Each certificate needs a name and a positive MWh. " : ""}
+                {badGwps.length ? "A GWP must be a number of 0 or more." : ""}
               </span>
             ) : error ? (
               <span className="s1-rc__error">{error}</span>

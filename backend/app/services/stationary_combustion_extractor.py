@@ -203,6 +203,7 @@ class Cell:
     source_reference_id: str | None
     confidence: float | None
     order: int
+    column: int | None = None  # spreadsheet column (A = 1), when the cell came from a sheet
 
     @property
     def left(self) -> float:
@@ -533,10 +534,23 @@ class StationaryCombustionExtractor:
     def _rows(self, parser_output: dict) -> list[Row]:
         cells: list[Cell] = []
         order = 0
+        sheet_positions = self._sheet_positions(parser_output)
+        sheet_rows: dict[tuple[str | None, int], list[Cell]] = {}
         for block in parser_output.get("text_blocks", []) or []:
             if not isinstance(block, dict):
                 continue
             text = str(block.get("text") or "")
+            position = sheet_positions.get(str(block.get("source_reference_id") or ""))
+            if position is not None:
+                # A spreadsheet cell: one visual row per sheet row, columns by letter.
+                if text.strip():
+                    order += 1
+                    sheet_rows.setdefault((position[0], position[1]), []).append(Cell(
+                        text=" ".join(text.split()), page=block.get("page_number"), box=None,
+                        block_id=block.get("block_id"), source_reference_id=block.get("source_reference_id"),
+                        confidence=self._as_conf(block.get("confidence")), order=order, column=position[2],
+                    ))
+                continue
             box = block.get("bounding_box") if isinstance(block.get("bounding_box"), dict) else None
             lines = [line for line in text.splitlines() if line.strip()]
             if box is not None and len(lines) > 1:
@@ -581,11 +595,32 @@ class StationaryCombustionExtractor:
                        for p in parts] or [cell],
                 page=cell.page,
             ))
+        for sheet_cells in sheet_rows.values():
+            sheet_cells.sort(key=lambda c: c.column or 0)
+            rows.append(Row(cells=sheet_cells, page=sheet_cells[0].page))
         rows.extend(self._table_rows(parser_output, order))
         rows.sort(key=lambda r: (r.page or 0, r.top if r.cells[0].box else 0, r.cells[0].order))
         for index, row in enumerate(rows):
             row.index = index
         return rows
+
+    @staticmethod
+    def _sheet_positions(parser_output: dict) -> dict[str, tuple[str | None, int, int]]:
+        """source_reference_id -> (sheet, row, column) for spreadsheet cells ("B12" -> 12, 2)."""
+
+        positions: dict[str, tuple[str | None, int, int]] = {}
+        for reference in parser_output.get("source_references", []) or []:
+            if not isinstance(reference, dict):
+                continue
+            match = re.fullmatch(r"([A-Za-z]{1,3})(\d+)", str(reference.get("cell_or_range") or ""))
+            if match is None or not reference.get("source_reference_id"):
+                continue
+            column = 0
+            for letter in match.group(1).upper():
+                column = column * 26 + ord(letter) - 64
+            positions[str(reference["source_reference_id"])] = (reference.get("sheet_name"), int(match.group(2)),
+                                                                column)
+        return positions
 
     def _table_rows(self, parser_output: dict, order: int) -> list[Row]:
         """Rows of structured parser tables (Textract / spreadsheets) not already in text."""
@@ -993,6 +1028,9 @@ class StationaryCombustionExtractor:
         """Map each data cell to the header column it sits under."""
 
         assigned: dict[int, Cell] = {}
+        if all(c.column for c in row.cells) and all(h.column for h in header_cells):
+            by_column = {h.column: index for index, h in enumerate(header_cells)}
+            return {by_column[c.column]: c for c in row.cells if c.column in by_column}
         if not all(c.box for c in row.cells) or not all(h.box for h in header_cells):
             for index, cell in enumerate(row.cells[: len(header_cells)]):
                 assigned[index] = cell
