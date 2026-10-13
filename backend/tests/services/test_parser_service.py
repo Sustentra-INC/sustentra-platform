@@ -11,6 +11,25 @@ from backend.tests.adapters.parsers._parser_output_asserts import (
 class FakeLiveTextractParser:
     def __init__(self) -> None:
         self.calls: list[Path] = []
+        self.byte_calls: list[bytes] = []
+
+    def parse_bytes(self, document_bytes: bytes, document_id: str, processing_run_id: str) -> dict:
+        """One page image read by Textract: a LINE on its page 1, with a normalized box."""
+
+        self.byte_calls.append(document_bytes)
+        output = self.parse(Path("page.png"), document_id, processing_run_id)
+        self.calls.pop()
+        output["pages"] = [{"page_number": 1, "text": "Total kWh Used: 700,000 kWh"}]
+        output["text_blocks"] = [{"block_id": f"tx-{len(self.byte_calls)}", "text": "Total kWh Used: 700,000 kWh",
+                                  "page_number": 1, "confidence": 0.99,
+                                  "bounding_box": {"left": 0.1, "top": 0.4, "width": 0.5, "height": 0.03},
+                                  "source_reference_id": f"SRC-tx-{len(self.byte_calls)}"}]
+        output["source_references"] = [{"source_reference_id": f"SRC-tx-{len(self.byte_calls)}",
+                                        "document_id": document_id, "page_number": 1, "sheet_name": None,
+                                        "cell_or_range": None, "text_snippet": "Total kWh Used: 700,000 kWh",
+                                        "bounding_box": {"x": 0.1, "y": 0.4, "width": 0.5, "height": 0.03},
+                                        "parser_block_ids": [f"tx-{len(self.byte_calls)}"]}]
+        return output
 
     def parse(self, file_path: str | Path, document_id: str, processing_run_id: str) -> dict:
         self.calls.append(Path(file_path))
@@ -151,7 +170,7 @@ def test_image_extension_returns_ocr_not_implemented_stub(tmp_path: Path) -> Non
     assert any(w["code"] == "ocr_not_implemented" for w in output["warnings"])
 
 
-def test_textract_enabled_routes_pdf_to_live_textract(
+def test_textract_enabled_reads_an_unopenable_pdf_whole(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("TEXTRACT_ENABLED", "true")
@@ -166,6 +185,60 @@ def test_textract_enabled_routes_pdf_to_live_textract(
     assert_parser_output_shape(output)
     assert output["parser_name"] == "aws_textract"
     assert live_parser.calls == [file_path]
+
+
+def _pdf(path: Path, page_texts: list[str]) -> Path:
+    import fitz
+
+    with fitz.open() as pdf:
+        for text in page_texts:
+            page = pdf.new_page()
+            if text:
+                page.insert_text((72, 72), text)
+        pdf.save(path)
+    return path
+
+
+def test_textract_enabled_leaves_a_text_pdf_local(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    live_parser = FakeLiveTextractParser()
+    path = _pdf(tmp_path / "bill.pdf", ["Electricity bill  Total kWh Used: 1,200 kWh", "Page two of the bill text"])
+
+    output = ParserService(live_textract_parser=live_parser).parse_document(path, "DOC-1", "RUN-1")
+
+    assert output["status"] == "parsed" and output["parser_name"] != "aws_textract"
+    assert live_parser.calls == [] and live_parser.byte_calls == []
+
+
+def test_textract_enabled_reads_only_the_pages_without_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")
+    live_parser = FakeLiveTextractParser()
+    path = _pdf(tmp_path / "mixed.pdf", ["Cover letter with enough text to count", "", "Back page text that counts"])
+
+    output = ParserService(live_textract_parser=live_parser).parse_document(path, "DOC-1", "RUN-1")
+
+    assert_parser_output_shape(output)
+    assert len(live_parser.byte_calls) == 1 and live_parser.byte_calls[0].startswith(b"\x89PNG")
+    assert output["status"] == "parsed"
+    assert output["pages"][1] == {"page_number": 2, "text": "Total kWh Used: 700,000 kWh"}
+    ocr_block = next(b for b in output["text_blocks"] if b["block_id"] == "tx-1")
+    assert ocr_block["page_number"] == 2 and ocr_block["bounding_box"]["top"] == 0.4
+    assert next(r for r in output["source_references"] if r["source_reference_id"] == "SRC-tx-1")["page_number"] == 2
+    codes = [w["code"] for w in output["warnings"]]
+    assert "ocr_applied" in codes and "empty_page_text" not in codes
+
+
+def test_scanned_pages_stay_flagged_without_textract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("TEXTRACT_ENABLED", raising=False)
+    live_parser = FakeLiveTextractParser()
+    path = _pdf(tmp_path / "mixed.pdf", ["Cover letter with enough text to count", ""])
+
+    output = ParserService(live_textract_parser=live_parser).parse_document(path, "DOC-1", "RUN-1")
+
+    assert output["status"] == "partial" and live_parser.byte_calls == []
+    assert any(w["code"] == "empty_page_text" for w in output["warnings"])
 
 
 def test_textract_enabled_routes_image_to_live_textract(

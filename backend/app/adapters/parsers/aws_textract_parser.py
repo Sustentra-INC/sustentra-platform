@@ -43,9 +43,22 @@ class AwsTextractParser:
         self._normalizer = normalizer or TextractParser()
 
     def parse(self, file_path: str | Path, document_id: str, processing_run_id: str) -> dict:
-        path = Path(file_path)
         try:
-            document_bytes = path.read_bytes()
+            document_bytes = Path(file_path).read_bytes()
+        except OSError as exc:
+            return build_failed_parser_output(
+                document_id=document_id,
+                processing_run_id=processing_run_id,
+                parser_name=self.parser_name,
+                warnings=[build_warning("file_unreadable", f"Could not read the file: {type(exc).__name__}.",
+                                        severity="error")],
+            )
+        return self.parse_bytes(document_bytes, document_id, processing_run_id)
+
+    def parse_bytes(self, document_bytes: bytes, document_id: str, processing_run_id: str) -> dict:
+        """One synchronous AnalyzeDocument call: an image, or a single-page PDF."""
+
+        try:
             response = self._client().analyze_document(
                 Document={"Bytes": document_bytes},
                 FeatureTypes=self._resolved_feature_types(),
