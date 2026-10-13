@@ -9,7 +9,7 @@ import {
   processDocument,
   signInAgainPath,
   submitFieldReview,
-  uploadDocument,
+  uploadDocumentWithProgress,
   userFacingApiError,
 } from "../api/s1Backend";
 import { ApiError } from "../../../lib/api";
@@ -20,7 +20,7 @@ import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
 import { logout } from "../../auth/api";
 import { DashboardScreen } from "../components/DashboardScreen";
-import { UploadScreen, type SampleScript } from "../components/UploadScreen";
+import { UploadScreen, type SampleScript, type UploadTask } from "../components/UploadScreen";
 import { SetupScreen } from "../components/SetupScreen";
 import { InvoicePage } from "../components/demo/InvoicePage";
 import {
@@ -35,6 +35,7 @@ import { EvidenceRequests } from "../components/EvidenceRequests";
 import { CheckCoverage } from "../components/CheckCoverage";
 import { VerificationResults } from "../components/VerificationResults";
 import { BackendVerificationResults } from "../components/BackendVerificationResults";
+import { BackendCheckCoverage } from "../components/BackendCheckCoverage";
 import { OutputScreen } from "../components/OutputScreen";
 import { coverageRules } from "../fixtures/verification/coverageRules";
 import { verificationRows } from "../fixtures/verification/verificationResults";
@@ -127,6 +128,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     dataMode === "backend" ? [] : persisted?.reviewValues ?? manufacturerValues
   );
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
   // Backend mode: a 401 from the API means the session ended (FE-007).
@@ -454,14 +456,31 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       setBackendError("Create or pick an engagement in Setup before uploading.");
       return;
     }
+    const picked = Array.from(files);
+    const batchId = Date.now().toString(36);
+    const tasks: UploadTask[] = picked.map((file, index) => ({
+      id: `${batchId}-${index}`,
+      filename: file.name,
+      size: file.size,
+      stage: "waiting",
+      progress: 0,
+    }));
+    const patchTask = (id: string, next: Partial<UploadTask>) =>
+      setUploadTasks((current) => current.map((task) => (task.id === id ? { ...task, ...next } : task)));
+    setUploadTasks(tasks);
     setIsUploading(true);
     setBackendError(null);
     const failures: string[] = [];
-    for (const file of Array.from(files)) {
+    for (const [index, file] of picked.entries()) {
+      const taskId = tasks[index].id;
       let uploadedId: string | null = null;
       try {
-        const document = await uploadDocument(engagement.engagementId, file);
+        patchTask(taskId, { stage: "uploading" });
+        const document = await uploadDocumentWithProgress(engagement.engagementId, file, (fraction) =>
+          patchTask(taskId, { progress: fraction })
+        );
         uploadedId = document.document_id;
+        patchTask(taskId, { stage: "reading", progress: 1 });
         setEvidenceItems((current) => [
           {
             documentId: document.document_id,
@@ -498,6 +517,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         setProcessingDocumentIds((current) => [...current, document.document_id]);
         await processDocument(document.document_id);
         setProcessingDocumentIds((current) => current.filter((id) => id !== document.document_id));
+        patchTask(taskId, { stage: "done" });
       } catch (error) {
         if (handleSessionEnded(error)) {
           setIsUploading(false);
@@ -507,9 +527,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           // Uploaded, but processing stopped (e.g. unreadable file): the row shows why.
           const id = uploadedId;
           setProcessingDocumentIds((current) => current.filter((item) => item !== id));
-          failures.push(`${file.name} was uploaded but could not be processed: ${userFacingApiError(error)}`);
+          const reason = `Uploaded, but could not be read: ${userFacingApiError(error)}`;
+          patchTask(taskId, { stage: "failed", error: reason });
+          failures.push(`${file.name}: ${reason}`);
         } else {
-          failures.push(`${file.name} was not uploaded: ${userFacingApiError(error)}`);
+          const reason = `Not uploaded: ${userFacingApiError(error)}`;
+          patchTask(taskId, { stage: "failed", error: reason });
+          failures.push(`${file.name}: ${reason}`);
         }
       }
     }
@@ -554,6 +578,16 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       />
     );
   }
+
+  // Screens that record who did something get the signed-in person (backend mode).
+  const engagementForUser: EngagementConfig =
+    dataMode === "backend" && user
+      ? {
+          ...engagement,
+          signedInLogin: engagement.signedInLogin ?? user.email,
+          signedInName: engagement.signedInName ?? user.firstName ?? user.email,
+        }
+      : engagement;
 
   return (
     <main className="s1-app">
@@ -608,12 +642,15 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 : undefined
             }
             script={sampleScript}
-            batch={sessionUploadItems}
+            batch={dataMode === "backend" ? [] : sessionUploadItems}
+            tasks={dataMode === "backend" ? uploadTasks : undefined}
+            history={dataMode === "backend" ? evidenceItems : undefined}
             onOpenWorkspace={() => setActiveView({ name: "evidence" })}
+            onOpenDocument={dataMode === "backend" ? openExtraction : undefined}
           />
         ) : activeView.name === "requests" ? (
           <EvidenceRequests
-            engagement={engagement}
+            engagement={engagementForUser}
             asks={requests.asks}
             onSend={(ids, lineNumbers) => requests.sendAsks(ids, lineNumbers).requestNumber}
             onResolve={requests.resolveAsk}
@@ -624,7 +661,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onOpenSetup={() => setActiveView({ name: "setup" })}
           />
         ) : activeView.name === "coverage" ? (
-          <CheckCoverage rules={dataMode === "backend" ? [] : coverageRules} />
+          dataMode === "backend" ? (
+            <BackendCheckCoverage engagementId={engagement.engagementId} onError={handleSessionEnded} />
+          ) : (
+            <CheckCoverage rules={coverageRules} />
+          )
         ) : activeView.name === "results" ? (
           dataMode === "backend" ? (
             <BackendVerificationResults
@@ -640,7 +681,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           <OutputScreen engagement={engagement} />
         ) : activeView.name === "evidence" ? (
           <EvidenceWorkspace
-            engagement={engagement}
+            engagement={engagementForUser}
             evidence={evidenceItems}
             asks={requests.asks}
             onSaveAsk={requests.saveAsk}
@@ -658,7 +699,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           />
         ) : activeView.name === "extraction" ? (
           <ExtractionReview
-            engagement={engagement}
+            engagement={engagementForUser}
             values={reviewValues}
             onValuesChange={setReviewValues}
             initialDocumentId={activeView.documentId}
@@ -671,6 +712,23 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 ? async (value) => {
                     try {
                       await submitFieldReview({ field: { reviewToken: value.reviewToken }, decision: "accepted" });
+                    } catch (error) {
+                      if (handleSessionEnded(error)) return;
+                      throw error instanceof ApiError ? new Error(userFacingApiError(error)) : error;
+                    }
+                  }
+                : undefined
+            }
+            onPersistCorrect={
+              dataMode === "backend"
+                ? async (value, next) => {
+                    try {
+                      await submitFieldReview({
+                        field: { reviewToken: value.reviewToken },
+                        decision: "edited",
+                        reviewedValue: next.value,
+                        reviewedUnit: next.unit && next.unit !== value.unit ? next.unit : null,
+                      });
                     } catch (error) {
                       if (handleSessionEnded(error)) return;
                       throw error instanceof ApiError ? new Error(userFacingApiError(error)) : error;

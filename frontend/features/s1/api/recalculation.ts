@@ -1,6 +1,7 @@
 import { api } from "../../../lib/api";
 import type {
   CheckOutcome,
+  CoverageRule,
   MaterialityFigures,
   ResultLayer,
   VerificationRow,
@@ -117,6 +118,8 @@ export interface Recalculation {
   comparisons: RecalcComparison[];
   needs_input: RecalcNeedsInput[];
   awaiting_review: RecalcAwaitingReview[];
+  /** Reviewed records entirely outside the reporting period: listed, never counted. */
+  excluded?: { document_id: string; record: string; canonical_type_id: string; period: string }[];
   not_recalculated: string[];
   documents_considered: number;
 }
@@ -214,13 +217,29 @@ function unitLabel(unit: string): string {
   return unit === "t CO2e" ? "tCO₂e" : unit;
 }
 
-function outcomeOf(c: RecalcComparison): { outcome: CheckOutcome; reason: string } {
+/** Which document type feeds each category-level data point (for "why is there no number"). */
+const DATA_POINT_TYPE: Record<string, string> = {
+  stationary_combustion_total: "CT-S1-FUELQTY",
+  mobile_combustion_total: "CT-S1-MOBFUEL",
+  purchased_electricity_total: "CT-S2-ELEC",
+  scope2_location_total: "CT-S2-ELEC",
+  scope2_market_total: "CT-S2-ELEC",
+};
+
+function outcomeOf(c: RecalcComparison, result?: Recalculation): { outcome: CheckOutcome; reason: string } {
   const tolerance = c.tolerance_pct ?? 5;
   if (c.status === "not_recalculated") {
     return { outcome: "out_of_scope", reason: "Not recalculated yet: needs purchased-gas (refrigerant) records." };
   }
   if (c.status === "no_evidence") {
-    return { outcome: "could_not_check", reason: "No reviewed evidence feeds this data point yet." };
+    const typeId = DATA_POINT_TYPE[c.key];
+    const outside = typeId ? (result?.excluded ?? []).filter((e) => e.canonical_type_id === typeId).length : 0;
+    return {
+      outcome: "could_not_check",
+      reason: outside
+        ? `All ${outside} reviewed record(s) for this are outside the reporting period, so none are counted.`
+        : "No reviewed evidence feeds this data point yet.",
+    };
   }
   if (c.inputs_incomplete) {
     return {
@@ -327,7 +346,7 @@ function workingFor(c: RecalcComparison, result: Recalculation): WorkingSpec | u
 export function recalculationRows(result: Recalculation): VerificationRow[] {
   return result.comparisons.map((c) => {
     const layer: ResultLayer = SCOPE2.has(c.key) ? "scope2" : "scope1";
-    const { outcome, reason } = outcomeOf(c);
+    const { outcome, reason } = outcomeOf(c, result);
     const scopeBasis = c.key === "scope2_market_total" ? "market" : SCOPE2.has(c.key) ? "location" : undefined;
     return {
       dataPointId: `RECALC-${c.key}`,
@@ -339,7 +358,11 @@ export function recalculationRows(result: Recalculation): VerificationRow[] {
       unit: unitLabel(c.unit),
       recomputed: c.recalculated !== null ? formatNumber(c.recalculated) : null,
       recomputeReason: c.recalculated === null
-        ? c.status === "not_recalculated" ? "fugitive gases are not recalculated yet" : "no reviewed evidence yet"
+        ? c.status === "not_recalculated"
+          ? "fugitive gases are not recalculated yet"
+          : DATA_POINT_TYPE[c.key] && (result.excluded ?? []).some((e) => e.canonical_type_id === DATA_POINT_TYPE[c.key])
+            ? "records are outside the reporting period"
+            : "no reviewed evidence yet"
         : undefined,
       delta: c.difference_pct !== null ? formatPct(c.difference_pct) : null,
       checkOutcome: outcome,
@@ -349,11 +372,15 @@ export function recalculationRows(result: Recalculation): VerificationRow[] {
   });
 }
 
-/** Materiality on the headline totals only (Scope 1 + Scope 2 location-based), so nothing is counted twice. */
+/** Materiality on the headline totals only (Scope 1 + Scope 2 location-based), so nothing is
+ *  counted twice. The total is what was reported; where a total was not entered yet, the
+ *  recalculated one stands in (and the label says so) rather than shrinking the threshold. */
 export function recalculationMateriality(result: Recalculation): MaterialityFigures {
-  const headline = result.comparisons.filter((c) => c.key === "scope1_total" || c.key === "scope2_location_total");
-  const reported = headline.filter((c) => c.reported !== null);
-  const total = reported.reduce((sum, c) => sum + (c.reported ?? 0), 0);
+  const headline = result.comparisons.filter(
+    (c) => (c.key === "scope1_total" || c.key === "scope2_location_total") && (c.reported !== null || c.recalculated !== null)
+  );
+  const total = headline.reduce((sum, c) => sum + (c.reported ?? c.recalculated ?? 0), 0);
+  const allReported = headline.every((c) => c.reported !== null);
   const checked = headline.filter((c) => c.difference !== null && !c.inputs_incomplete);
   const misstatement = checked.reduce((sum, c) => sum + Math.abs(c.difference ?? 0), 0);
   const uncorrected = checked
@@ -362,7 +389,9 @@ export function recalculationMateriality(result: Recalculation): MaterialityFigu
   const open = result.needs_input.length + result.awaiting_review.length;
   return {
     total,
-    totalBasis: reported.length === headline.length ? "Scope 1 + Scope 2, as reported" : "Reported totals entered so far",
+    totalBasis: allReported
+      ? "Scope 1 + Scope 2, as reported"
+      : "Scope 1 + Scope 2: reported where entered, recalculated otherwise",
     tolerancePct: result.tolerance_pct,
     misstatement,
     uncorrected,
@@ -371,6 +400,203 @@ export function recalculationMateriality(result: Recalculation): MaterialityFigu
       `totals, from ${result.documents_considered} document(s) with reviewed values, at ${result.gwp_set} GWPs. ` +
       (open
         ? `${open} item(s) still need an input or a review, so the conclusion stays provisional.`
-        : "Nothing is waiting on an input or a review."),
+        : allReported
+          ? "Nothing is waiting on an input or a review."
+          : "Enter every reported total to compare them all; until then the threshold uses the recalculated figure."),
   };
+}
+
+// --- recalculation → Check coverage ----------------------------------------------------
+
+const TYPE_LABEL: Record<string, string> = {
+  "CT-S1-FUELQTY": "stationary fuel",
+  "CT-S1-MOBFUEL": "vehicle fuel",
+  "CT-S2-ELEC": "electricity",
+};
+
+function awaitingFor(result: Recalculation, typeId: string): string[] {
+  return result.awaiting_review.filter((a) => a.canonical_type_id === typeId).map((a) => a.record);
+}
+
+function listed(items: string[], max = 3): string {
+  const unique = Array.from(new Set(items));
+  return unique.length <= max ? unique.join(", ") : `${unique.slice(0, max).join(", ")} and ${unique.length - max} more`;
+}
+
+/**
+ * What the recalculation could and could not check, from its own result: which inputs
+ * are present, which are missing and why. Nothing here is a guess about rules that did
+ * not run; every row restates something the backend reported.
+ */
+export function coverageFromRecalculation(result: Recalculation): CoverageRule[] {
+  const rules: CoverageRule[] = [];
+  const reported = (key: string) => result.comparisons.find((c) => c.key === key);
+
+  const fuelRule = (
+    ruleId: string,
+    assertion: string,
+    category: RecalcCategory | null,
+    typeId: string,
+    kind: "stationary" | "mobile",
+    appliesTo: string[]
+  ) => {
+    const waiting = awaitingFor(result, typeId);
+    const choices = result.needs_input.filter((n) => n.key.startsWith(`${kind}:`) || (kind === "mobile" && n.kind === "mobile"));
+    if (waiting.length || choices.length) {
+      const parts = [
+        category ? `Recalculated so far: ${category.lines.map((l) => l.key).join(", ")}` : "",
+        waiting.length ? `${waiting.length} record(s) awaiting review (${listed(waiting)})` : "",
+        choices.length ? choices.map((c) => c.message).join(" ") : "",
+      ].filter(Boolean);
+      rules.push({ ruleId, assertion, appliesTo, status: "inputs_missing", reason: parts.join(". ") });
+    } else if (category) {
+      const docs = (category.details.inputs ?? []).reduce((n, i) => n + i.documents.length, 0);
+      const vehicles = category.flags.includes("ch4_n2o_need_vehicle_groups")
+        ? " CH4 and N2O need vehicle type, model year and distance, so they are not included yet."
+        : "";
+      rules.push({
+        ruleId,
+        assertion,
+        appliesTo,
+        status: "inputs_present",
+        reason: `${category.lines.map((l) => l.key).join(", ")} from ${docs} reviewed record(s).${vehicles}`,
+      });
+    } else {
+      const outside = (result.excluded ?? []).filter((e) => e.canonical_type_id === typeId);
+      rules.push({
+        ruleId,
+        assertion,
+        appliesTo,
+        status: "not_applicable",
+        reason: outside.length
+          ? `All ${outside.length} reviewed ${TYPE_LABEL[typeId]} record(s) are outside the reporting period, so none are counted.`
+          : `No reviewed ${TYPE_LABEL[typeId]} documents in this engagement.`,
+      });
+    }
+  };
+
+  fuelRule(
+    "COV-S1-STATIONARY",
+    "Fuel burned on site is recalculated from reviewed bills with EPA Hub Table 1 factors",
+    result.categories.stationary_combustion,
+    "CT-S1-FUELQTY",
+    "stationary",
+    ["Direct emissions from stationary combustion", "Scope 1 (Total)"]
+  );
+  fuelRule(
+    "COV-S1-MOBILE",
+    "Vehicle fuel is recalculated from reviewed fuel records with EPA Hub Table 2 factors",
+    result.categories.mobile_combustion,
+    "CT-S1-MOBFUEL",
+    "mobile",
+    ["Direct emissions from mobile combustion", "Scope 1 (Total)"]
+  );
+
+  const regions = result.needs_input.filter((n) => n.kind === "grid_region");
+  const elecWaiting = awaitingFor(result, "CT-S2-ELEC");
+  const location = result.categories.purchased_electricity_location_based;
+  const elecAppliesTo = ["Scope 2 (Total), location-based", "Indirect emissions from purchased electricity"];
+  if (regions.length || elecWaiting.length) {
+    rules.push({
+      ruleId: "COV-S2-LOCATION",
+      assertion: "Purchased electricity is recalculated with each facility's eGRID subregion factor (EPA Hub Table 6)",
+      appliesTo: elecAppliesTo,
+      status: "inputs_missing",
+      reason: [
+        regions.length ? `Grid region not chosen for ${listed(regions.map((r) => r.key))}` : "",
+        elecWaiting.length ? `${elecWaiting.length} bill(s) awaiting review (${listed(elecWaiting)})` : "",
+      ].filter(Boolean).join(". "),
+    });
+  } else if (location) {
+    rules.push({
+      ruleId: "COV-S2-LOCATION",
+      assertion: "Purchased electricity is recalculated with each facility's eGRID subregion factor (EPA Hub Table 6)",
+      appliesTo: elecAppliesTo,
+      status: "inputs_present",
+      reason: `${location.lines.length} facilit${location.lines.length === 1 ? "y" : "ies"}: ${location.lines.map((l) => l.key).join(", ")}.`,
+    });
+  } else {
+    rules.push({
+      ruleId: "COV-S2-LOCATION",
+      assertion: "Purchased electricity is recalculated with each facility's eGRID subregion factor (EPA Hub Table 6)",
+      appliesTo: elecAppliesTo,
+      status: "not_applicable",
+      reason: "No reviewed electricity bills in this engagement.",
+    });
+  }
+
+  const market = result.categories.purchased_electricity_market_based;
+  if (market) {
+    const noCerts = market.flags.includes("no_certificates_market_equals_location");
+    rules.push({
+      ruleId: "COV-S2-MARKET",
+      assertion: "Market-based Scope 2 applies renewable energy certificates pro rata to each facility",
+      appliesTo: ["Scope 2 (Total), market-based"],
+      status: "inputs_present",
+      reason: noCerts
+        ? "No certificates entered, so market-based equals location-based."
+        : `${formatQuantity(market.details.covered_mwh ?? 0)} of ${formatQuantity(market.details.total_mwh ?? 0)} MWh covered by certificates.`,
+    });
+  }
+
+  const missingReported = ["scope1_total", "scope2_location_total", "scope2_market_total"]
+    .map(reported)
+    .filter((c): c is RecalcComparison => !!c && c.recalculated !== null && c.reported === null);
+  const headline = ["scope1_total", "scope2_location_total", "scope2_market_total"].map(reported).filter(
+    (c): c is RecalcComparison => !!c && c.recalculated !== null
+  );
+  if (headline.length) {
+    rules.push({
+      ruleId: "COV-REPORTED",
+      assertion: "The client's reported totals are compared with the recalculation at the materiality tolerance",
+      appliesTo: headline.map((c) => c.data_point),
+      status: missingReported.length ? "inputs_missing" : "inputs_present",
+      reason: missingReported.length
+        ? `Reported value not entered for ${listed(missingReported.map((c) => c.data_point))}.`
+        : `All entered; tolerance ±${result.tolerance_pct}%.`,
+    });
+  }
+
+  const excluded = result.excluded ?? [];
+  rules.push({
+    ruleId: "COV-PERIOD",
+    assertion: "Bills are counted only for the days inside the reporting period",
+    appliesTo: ["All recalculated data points"],
+    status: result.reporting_period.start && result.reporting_period.end ? "inputs_present" : "inputs_missing",
+    reason:
+      result.reporting_period.start && result.reporting_period.end
+        ? `${result.reporting_period.start} to ${result.reporting_period.end}.` +
+          (excluded.length
+            ? ` ${excluded.length} record(s) fall entirely outside it and are not counted: ${listed(excluded.map((e) => `${e.record} (${e.period})`))}.`
+            : "")
+        : "Set the reporting period in Setup; until then bills are counted in full.",
+  });
+
+  rules.push({
+    ruleId: "COV-GWP",
+    assertion: "CH4, N2O and other gases are converted to CO2e on one documented GWP basis",
+    appliesTo: ["All CO2e data points"],
+    status: "inputs_present",
+    reason: `${result.gwp_set} (${result.gwp_set === "AR5" ? "EPA Hub Table 11" : "IPCC AR6"}).`,
+  });
+
+  rules.push({
+    ruleId: "COV-FUGITIVE",
+    assertion: "Refrigerant and other fugitive gas emissions are recalculated",
+    appliesTo: ["Scope 1 HFCs", "Scope 1 PFCs", "Scope 1 SF6"],
+    status: "out_of_scope",
+    reason: "Not built yet: needs refrigerant service and purchase records.",
+  });
+
+  for (const item of result.not_recalculated.filter((n) => !/fugitive/i.test(n))) {
+    rules.push({
+      ruleId: `COV-NOT-${item.replace(/\W+/g, "-").toUpperCase()}`,
+      assertion: `${item} are recalculated`,
+      appliesTo: [item],
+      status: "out_of_scope",
+      reason: "Not built yet.",
+    });
+  }
+
+  return rules;
 }

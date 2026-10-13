@@ -63,10 +63,10 @@ export function CheckCoverage({ rules }: { rules: CoverageRule[] }) {
       <div className="s1-table-wrap">
         <table className="s1-table s1-cov-table">
           <colgroup>
-            <col style={{ width: "34%" }} /> {/* What it checks */}
-            <col style={{ width: "26%" }} /> {/* Data points */}
-            <col style={{ width: "16%" }} /> {/* Status */}
-            <col style={{ width: "24%" }} /> {/* Reason */}
+            <col style={{ width: "34%" }} /* What it checks */ />
+            <col style={{ width: "26%" }} /* Data points */ />
+            <col style={{ width: "16%" }} /* Status */ />
+            <col style={{ width: "24%" }} /* Reason */ />
           </colgroup>
           <thead>
             <tr>

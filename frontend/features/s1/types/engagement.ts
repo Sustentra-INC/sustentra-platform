@@ -50,6 +50,8 @@ export interface EngagementConfig {
   engagementTeam?: TeamMember[];
   /** The signed-in user's login, pre-selected as "raised by". */
   signedInLogin?: string;
+  /** The signed-in user's display name, used when the engagement team is empty. */
+  signedInName?: string;
   /** The verifier's own email — the "from" address for Request-by-email. */
   verifierEmail?: string;
 

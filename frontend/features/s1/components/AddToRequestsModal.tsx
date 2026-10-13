@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { EngagementConfig } from "../types";
 import type { AskOrigin, RequestType } from "../types/requests";
@@ -44,80 +44,119 @@ export function AddToRequestsModal({
   const [type, setType] = useState<RequestType>(target.defaultType);
   const [whatIsNeeded, setWhatIsNeeded] = useState(target.prefill);
   const team = engagement.engagementTeam ?? [];
-  const signed = team.find((m) => m.login === engagement.signedInLogin) ?? team[0] ?? { name: "You", login: "you" };
+  // The signed-in person by default; the Setup team list only adds choices.
+  const me = engagement.signedInLogin
+    ? { name: engagement.signedInName ?? engagement.signedInLogin, login: engagement.signedInLogin }
+    : null;
+  const signed = team.find((m) => m.login === engagement.signedInLogin) ?? me ?? team[0] ?? { name: "You", login: "you" };
   const [raisedBy, setRaisedBy] = useState(signed.login);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onCancel]);
+
+  const about: [string, string][] = [
+    ["Item", target.itemLabel],
+    ["Facility", target.facilityName ?? "Not yet known"],
+    ["Period", target.period ?? "Not stated"],
+    ...(target.sourcePage ? ([["Page", String(target.sourcePage)]] as [string, string][]) : []),
+  ];
+  const add = () => {
+    const chosen = (team.length ? team : [signed]).find((m) => m.login === raisedBy) ?? signed;
+    onAdd({
+      origin: target.origin,
+      documentId: target.documentId ?? null,
+      fieldKey: target.fieldKey ?? null,
+      itemLabel: target.itemLabel,
+      facilityName: target.facilityName,
+      period: target.period,
+      arrival: target.arrival ?? null,
+      sourcePage: target.sourcePage ?? null,
+      type,
+      whatIsNeeded,
+      raisedByName: chosen.name,
+      raisedByLogin: chosen.login,
+    });
+  };
 
   return (
     <div className="s1-modal-scrim" role="presentation" onClick={onCancel}>
       <div
-        className="s1-modal"
+        className="s1-modal s1-atr"
         role="dialog"
         aria-modal="true"
-        aria-label="Add to requests"
+        aria-labelledby="s1-atr-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="s1-modal__head">
-          <strong>Add to requests</strong>
-          <div className="s1-muted">{target.headerLine}</div>
-        </div>
-
-        <label className="s1-modal__field">
-          <span>Request type</span>
-          <select value={type} onChange={(e) => setType(e.target.value as RequestType)}>
-            {REQUEST_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="s1-modal__field">
-          <span>What is needed</span>
-          <textarea rows={3} value={whatIsNeeded} onChange={(e) => setWhatIsNeeded(e.target.value)} />
-        </label>
-
-        <label className="s1-modal__field">
-          <span>Raised by</span>
-          <select value={raisedBy} onChange={(e) => setRaisedBy(e.target.value)}>
-            {(team.length ? team : [signed]).map((m) => (
-              <option key={m.login} value={m.login}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <p className="s1-muted s1-modal__note">Goes to Evidence requests as not yet sent; nothing is sent from here.</p>
-
-        <div className="s1-modal__actions">
-          <button
-            className="s1-button"
-            type="button"
-            onClick={() => {
-              const chosen = (team.length ? team : [signed]).find((m) => m.login === raisedBy) ?? signed;
-              onAdd({
-                origin: target.origin,
-                documentId: target.documentId ?? null,
-                fieldKey: target.fieldKey ?? null,
-                itemLabel: target.itemLabel,
-                facilityName: target.facilityName,
-                period: target.period,
-                arrival: target.arrival ?? null,
-                sourcePage: target.sourcePage ?? null,
-                type,
-                whatIsNeeded,
-                raisedByName: chosen.name,
-                raisedByLogin: chosen.login,
-              });
-            }}
-          >
-            Add
-          </button>
-          <button className="s1-button" type="button" onClick={onCancel}>
-            Cancel
+        <div className="s1-atr__head">
+          <h2 id="s1-atr-title" className="s1-atr__title">
+            Add to requests
+          </h2>
+          <button className="s1-atr__close" type="button" aria-label="Close" onClick={onCancel}>
+            ×
           </button>
         </div>
+
+        <dl className="s1-atr__about" title={target.headerLine}>
+          {about.map(([k, v]) => (
+            <div key={k} className="s1-atr__fact">
+              <dt>{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+
+        <form
+          className="s1-atr__form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            add();
+          }}
+        >
+          <div className="s1-atr__row">
+            <label className="s1-modal__field">
+              <span>Request type</span>
+              <select value={type} onChange={(e) => setType(e.target.value as RequestType)}>
+                {REQUEST_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="s1-modal__field">
+              <span>Raised by</span>
+              <select value={raisedBy} onChange={(e) => setRaisedBy(e.target.value)}>
+                {(team.length ? team : [signed]).map((m) => (
+                  <option key={m.login} value={m.login}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="s1-modal__field">
+            <span>What is needed</span>
+            <textarea autoFocus rows={4} value={whatIsNeeded} onChange={(e) => setWhatIsNeeded(e.target.value)} />
+          </label>
+
+          <div className="s1-atr__foot">
+            <p className="s1-muted s1-modal__note">Saved to Evidence requests as not yet sent. Nothing is emailed from here.</p>
+            <div className="s1-modal__actions">
+              <button className="s1-button" type="button" onClick={onCancel}>
+                Cancel
+              </button>
+              <button className="s1-button s1-button--pri" type="submit" disabled={!whatIsNeeded.trim()}>
+                Add to requests
+              </button>
+            </div>
+          </div>
+        </form>
       </div>
     </div>
   );

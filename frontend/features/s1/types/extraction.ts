@@ -29,6 +29,11 @@ export interface ExtractedField {
   location: SourceLocation | null;
   reviewStatus: ReviewStatus;
   correctedValue: string | null;
+  /** The unit the reviewer set when correcting, if they changed it. */
+  correctedUnit?: string | null;
+  /** Who made the latest review decision, and when (from the API). */
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
   valueOrigin: "extracted" | "computed" | "verifier_determined" | "assigned";
 }
 

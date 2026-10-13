@@ -38,7 +38,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         whatItIs: field.fieldLabel,
         scope: scopeOf(field.canonicalTypeId),
         value: (corrected ? field.correctedValue : field.value) ?? "",
-        unit: field.unit ?? "",
+        unit: (corrected ? field.correctedUnit ?? field.unit : field.unit) ?? "",
         methodologyFieldId: fieldNameOf(field) ?? undefined,
         reviewState: accepted ? "accepted" : corrected ? "corrected" : "to_review",
         originalValue: corrected ? field.value : undefined,
@@ -50,7 +50,12 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
             action: field.snippet ? `read "${field.snippet}"` : "extracted",
           },
           ...(accepted || corrected
-            ? [{ kind: "human" as const, actor: "Reviewer", at: "", action: accepted ? "accepted as read" : "corrected" }]
+            ? [{
+                kind: "human" as const,
+                actor: field.reviewedBy ?? "Reviewer",
+                at: field.reviewedAt ?? "",
+                action: accepted ? "accepted as read" : `corrected from ${field.value ?? "blank"}${field.unit ? ` ${field.unit}` : ""}`,
+              }]
             : []),
         ],
         sourceKind: sourceKindOf(document?.format),
@@ -73,21 +78,32 @@ function fieldNameOf(field: ExtractedField): string | null {
   return typeof candidate?.field_name === "string" ? candidate.field_name : null;
 }
 
-/** "2025-01-01 to 2025-06-30" from a document's own service period fields. */
+/** "2025-01-01 to 2025-06-30" from a document's service period, or the span of its
+ *  transaction dates (fuel purchases have a date, not a billing period). */
 function periodsByDocument(fields: ExtractedField[]): Map<string, string> {
-  const ends = new Map<string, { start: Set<string>; end: Set<string> }>();
+  const found = new Map<string, { start: Set<string>; end: Set<string>; dates: string[] }>();
   for (const field of fields) {
     const name = fieldNameOf(field);
     const value = field.correctedValue ?? field.value;
-    if (!value || (name !== "service_period_start" && name !== "service_period_end")) continue;
-    const entry = ends.get(field.documentId) ?? { start: new Set(), end: new Set() };
-    (name === "service_period_start" ? entry.start : entry.end).add(value);
-    ends.set(field.documentId, entry);
+    if (!value || !name || !["service_period_start", "service_period_end", "transaction_date"].includes(name)) continue;
+    const entry = found.get(field.documentId) ?? { start: new Set(), end: new Set(), dates: [] };
+    if (name === "service_period_start") entry.start.add(value);
+    else if (name === "service_period_end") entry.end.add(value);
+    else entry.dates.push(value);
+    found.set(field.documentId, entry);
   }
   const out = new Map<string, string>();
-  ends.forEach(({ start, end }, documentId) => {
-    if (start.size > 1 || end.size > 1) out.set(documentId, "Several service periods");
-    else out.set(documentId, `${[...start][0] ?? "?"} to ${[...end][0] ?? "?"}`);
+  found.forEach(({ start, end, dates }, documentId) => {
+    if (start.size || end.size) {
+      if (start.size > 1 || end.size > 1) {
+        const first = [...start].sort()[0];
+        const last = [...end].sort().at(-1);
+        out.set(documentId, first && last ? `${first} to ${last}` : "Several service periods");
+      } else out.set(documentId, `${[...start][0] ?? "?"} to ${[...end][0] ?? "?"}`);
+    } else if (dates.length) {
+      const sorted = [...dates].sort();
+      out.set(documentId, sorted[0] === sorted.at(-1) ? sorted[0] : `${sorted[0]} to ${sorted.at(-1)}`);
+    }
   });
   return out;
 }

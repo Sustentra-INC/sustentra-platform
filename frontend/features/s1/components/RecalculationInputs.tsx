@@ -90,10 +90,15 @@ export function RecalculationInputs({
 
       {open ? (
         <div className="s1-rc__body">
-          {otherAsks.length || result.awaiting_review.length ? (
+          {otherAsks.length || result.awaiting_review.length || (result.excluded ?? []).length ? (
             <ul className="s1-rc__asks">
               {otherAsks.map((a) => (
                 <li key={`${a.kind}|${a.key}`}>{a.message}</li>
+              ))}
+              {(result.excluded ?? []).map((e) => (
+                <li key={`out|${e.document_id}|${e.record}`} className="s1-rc__out">
+                  {e.record} ({e.period}) is outside the reporting period, so it is not counted.
+                </li>
               ))}
               {result.awaiting_review.map((a) => (
                 <li key={`${a.document_id}|${a.record}`}>
