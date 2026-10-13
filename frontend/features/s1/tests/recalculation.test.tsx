@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  coverageFromRecalculation,
   recalculationMateriality,
   recalculationRows,
   type Recalculation,
@@ -150,5 +151,43 @@ describe("recalculation inputs panel", () => {
     fireEvent.change(within(row).getByRole("textbox"), { target: { value: "about 1400" } });
     expect((screen.getByRole("button", { name: "Save and recalculate" }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Reported values must be numbers/)).toBeTruthy();
+  });
+});
+
+
+describe("materiality and coverage when inputs are partial", () => {
+  const withoutScope1Reported: Recalculation = {
+    ...RESULT,
+    comparisons: RESULT.comparisons.map((c) =>
+      c.key === "scope1_total" ? { ...c, reported: null, difference: null, difference_pct: null, status: "not_reported" } : c
+    ),
+  };
+
+  it("uses the recalculated total where a reported total is missing, and says so", () => {
+    const figures = recalculationMateriality(withoutScope1Reported);
+    expect(figures.total).toBeCloseTo(1492.51745 + 348.14, 4);
+    expect(figures.totalBasis).toContain("recalculated otherwise");
+  });
+
+  it("lists what is present, missing and out of scope from the recalculation itself", () => {
+    const rules = Object.fromEntries(coverageFromRecalculation(withoutScope1Reported).map((r) => [r.ruleId, r]));
+    expect(rules["COV-S2-LOCATION"].status).toBe("inputs_present");
+    expect(rules["COV-S2-MARKET"].reason).toBe("600.00 of 2,000.00 MWh covered by certificates.".replace(/\.00/g, ""));
+    expect(rules["COV-REPORTED"].status).toBe("inputs_missing");
+    expect(rules["COV-REPORTED"].reason).toContain("Scope 1 (Total)");
+    expect(rules["COV-FUGITIVE"].status).toBe("out_of_scope");
+    expect(rules["COV-S1-MOBILE"].status).toBe("not_applicable");
+  });
+
+  it("says when records were left out for being outside the reporting period", () => {
+    const outside: Recalculation = {
+      ...RESULT,
+      excluded: [{ document_id: "MF-01", record: "MF-01.pdf (record 1)", canonical_type_id: "CT-S1-MOBFUEL", period: "2024-03-02" }],
+    };
+    const rules = Object.fromEntries(coverageFromRecalculation(outside).map((r) => [r.ruleId, r]));
+    expect(rules["COV-PERIOD"].reason).toContain("MF-01.pdf (record 1) (2024-03-02)");
+    expect(rules["COV-S1-MOBILE"].reason).toContain("outside the reporting period");
+    const mobileRow = byKey(recalculationRows(outside)).mobile_combustion_total;
+    expect(mobileRow.recomputeReason).toBe("records are outside the reporting period");
   });
 });

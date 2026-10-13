@@ -47,7 +47,9 @@ export function mapBackendDocumentToEvidenceItem(
           ? "not_ingested"
           : "ingested";
 
-  const fieldsExpected = Number(summary?.target_count ?? summary?.candidate_count ?? 0);
+  // A multi-record document (12 monthly readings, several fuel purchases) has one set of
+  // targets per record, so the expected count is every candidate, not one record's targets.
+  const fieldsExpected = Math.max(Number(summary?.candidate_count ?? 0), Number(summary?.target_count ?? 0));
 
   return {
     documentId: document.document_id,

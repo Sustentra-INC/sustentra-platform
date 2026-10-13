@@ -229,7 +229,8 @@ export function EvidenceRequests({
                         </td>
                         <td>{REQUEST_TYPES.find((t) => t.value === ask.type)?.label}</td>
                         <td>
-                          {ask.source.facilityName ?? "Entity-level"}
+                          {/* A document's facility can be not yet known; Entity-level is for asks with no document. */}
+                          {ask.source.facilityName ?? (ask.source.documentId ? "Not yet known" : "Entity-level")}
                           <div className="s1-muted s1-ws-src">{ask.source.period ?? "Not set"}</div>
                         </td>
                         <td>
@@ -722,7 +723,9 @@ function capitalize(s: string): string {
 }
 function formatDate(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
 function EnvelopeIcon() {

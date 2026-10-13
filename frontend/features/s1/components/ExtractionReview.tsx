@@ -41,6 +41,8 @@ interface ExtractionReviewProps {
   reviewerName?: string;
   /** Records an accept on the backend; on failure the card goes back to "to review". */
   onPersistAccept?: (value: ReviewValue) => Promise<void>;
+  /** Records a correction on the backend; on failure the card goes back to how it was. */
+  onPersistCorrect?: (value: ReviewValue, next: { value: string; unit: string }) => Promise<void>;
 }
 
 const SCOPE_LABEL: Record<ScopePlacement, string> = {
@@ -64,6 +66,7 @@ export function ExtractionReview({
   renderPage,
   reviewerName = "M. Osei",
   onPersistAccept,
+  onPersistCorrect,
 }: ExtractionReviewProps) {
   // Review data lives in app state (via onValuesChange); selection below is
   // local, ephemeral UI. So accepts/corrections/requests survive navigation.
@@ -157,6 +160,70 @@ export function ExtractionReview({
     onPersistAccept?.(v).catch((error: unknown) => {
       onValuesChange((cur) => cur.map((x) => (x.id === v.id ? v : x)));
       flash(`Not saved, back to review. ${error instanceof Error ? error.message : ""}`.trim());
+    });
+  }
+
+  function correct(v: ReviewValue, next: { value: string; unit: string }) {
+    const now = new Date().toISOString();
+    const was = `${v.value}${v.unit ? ` ${v.unit}` : ""}`;
+    onValuesChange((cur) =>
+      cur.map((x) =>
+        x.id === v.id
+          ? {
+              ...x,
+              reviewState: "corrected",
+              // The machine's original stays visible beside the change.
+              originalValue: x.originalValue ?? x.value,
+              value: next.value,
+              unit: next.unit,
+              record: [...x.record, { kind: "human", actor: reviewerName, at: now, action: `corrected from ${was}` }],
+            }
+          : x
+      )
+    );
+    flash(`Corrected to ${next.value}${next.unit ? ` ${next.unit}` : ""}`);
+    if (v.reviewState === "to_review") advanceFrom(v);
+    onPersistCorrect?.(v, next).catch((error: unknown) => {
+      onValuesChange((cur) => cur.map((x) => (x.id === v.id ? v : x)));
+      flash(`Correction not saved, back as it was. ${error instanceof Error ? error.message : ""}`.trim());
+    });
+  }
+
+  /** Accept every value of one document still to review, saving up to six at a time. */
+  function acceptAll(documentId: string) {
+    const pending = items.filter((x) => x.documentId === documentId && x.reviewState === "to_review" && !x.withdrawn);
+    if (pending.length === 0) return;
+    const now = new Date().toISOString();
+    const ids = new Set(pending.map((x) => x.id));
+    onValuesChange((cur) =>
+      cur.map((x) =>
+        ids.has(x.id)
+          ? {
+              ...x,
+              reviewState: "accepted",
+              record: [...x.record, { kind: "human", actor: reviewerName, at: now, action: "accepted as read (accept all)" }],
+            }
+          : x
+      )
+    );
+    flash(`Accepted ${pending.length} value${pending.length === 1 ? "" : "s"} from this document`);
+    if (!onPersistAccept) return;
+    const failed: ReviewValue[] = [];
+    const queue = [...pending];
+    const worker = async () => {
+      for (let next = queue.shift(); next; next = queue.shift()) {
+        try {
+          await onPersistAccept(next);
+        } catch {
+          failed.push(next);
+        }
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(6, queue.length) }, worker)).then(() => {
+      if (failed.length === 0) return;
+      const back = new Map(failed.map((x) => [x.id, x]));
+      onValuesChange((cur) => cur.map((x) => back.get(x.id) ?? x));
+      flash(`${failed.length} of ${pending.length} were not saved and are back to review.`);
     });
   }
 
@@ -316,6 +383,15 @@ export function ExtractionReview({
                     {group.values.length > REVIEW_CAP ? (
                       <span className="s1-muted"> · {group.values.length} values from one file</span>
                     ) : null}
+                    {(() => {
+                      const docId = group.values[0]?.documentId;
+                      const left = items.filter((x) => x.documentId === docId && x.reviewState === "to_review" && !x.withdrawn).length;
+                      return left > 1 && docId ? (
+                        <button className="s1-button s1-button--compact s1-xr-acceptall" type="button" onClick={() => acceptAll(docId)}>
+                          Accept all {left}
+                        </button>
+                      ) : null;
+                    })()}
                   </div>
                   {capped.map((v) => (
                     <ValueCard
@@ -324,6 +400,7 @@ export function ExtractionReview({
                       selected={selectedId === v.id}
                       onSelect={() => selectValue(v)}
                       onAccept={() => accept(v)}
+                      onCorrect={(next) => correct(v, next)}
                       onAddToRequests={() => openAddToRequests(v)}
                     />
                   ))}
@@ -367,15 +444,26 @@ function ValueCard({
   selected,
   onSelect,
   onAccept,
+  onCorrect,
   onAddToRequests,
 }: {
   v: ReviewValue;
   selected: boolean;
   onSelect: () => void;
   onAccept: () => void;
+  onCorrect: (next: { value: string; unit: string }) => void;
   onAddToRequests: () => void;
 }) {
   const done = v.reviewState !== "to_review";
+  const [editing, setEditing] = useState(false);
+  const [draftValue, setDraftValue] = useState(v.value);
+  const [draftUnit, setDraftUnit] = useState(v.unit);
+  const startEditing = () => {
+    setDraftValue(v.value);
+    setDraftUnit(v.unit);
+    setEditing(true);
+  };
+  const changed = draftValue.trim() !== v.value || draftUnit.trim() !== v.unit;
   return (
     <article
       className={`s1-xr-card${selected ? " is-sel" : ""} s1-xr-card--${v.reviewState}${v.withdrawn ? " s1-xr-card--withdrawn" : ""}`}
@@ -411,7 +499,13 @@ function ValueCard({
         <div className="s1-xr-record">
           {v.record.map((r, i) => (
             <div key={i} className={`s1-xr-rec s1-xr-rec--${r.kind}`}>
-              {r.kind === "machine" ? <span className="s1-xr-rec__mk" aria-hidden /> : <span className="s1-xr-rec__who">MO</span>}
+              {r.kind === "machine" ? (
+                <span className="s1-xr-rec__mk" aria-hidden />
+              ) : (
+                <span className="s1-xr-rec__who" title={r.actor}>
+                  {initials(r.actor)}
+                </span>
+              )}
               <span className="s1-xr-rec__act">{r.kind === "machine" ? "System read" : `${r.actor} · ${r.action}`}</span>
               {r.reason ? <span className="s1-muted"> · {r.reason}</span> : null}
               <span className="s1-mono s1-muted"> {formatTime(r.at)}</span>
@@ -422,18 +516,50 @@ function ValueCard({
         <div className="s1-xr-actions" onClick={(e) => e.stopPropagation()}>
           {v.withdrawn ? (
             <span className="s1-reason">{v.withdrawnReason ?? "Document withdrawn; actions disabled."}</span>
+          ) : editing ? (
+            <form
+              className="s1-xr-edit"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!draftValue.trim() || !changed) return;
+                onCorrect({ value: draftValue.trim(), unit: draftUnit.trim() });
+                setEditing(false);
+              }}
+            >
+              <label className="s1-xr-edit__field">
+                <span>Value</span>
+                <input autoFocus value={draftValue} onChange={(e) => setDraftValue(e.target.value)} />
+              </label>
+              <label className="s1-xr-edit__field s1-xr-edit__field--unit">
+                <span>Unit</span>
+                <input value={draftUnit} onChange={(e) => setDraftUnit(e.target.value)} />
+              </label>
+              <div className="s1-xr-edit__actions">
+                <button className="s1-button s1-button--pri" type="submit" disabled={!draftValue.trim() || !changed}>
+                  Save correction
+                </button>
+                <button className="s1-button" type="button" onClick={() => setEditing(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
           ) : done ? (
-            <span className="s1-muted">{reviewStateLabel(v.reviewState)}</span>
+            <>
+              <span className="s1-muted">{reviewStateLabel(v.reviewState)}</span>
+              <button className="s1-linklike s1-xr-recorrect" type="button" onClick={startEditing}>
+                Correct
+              </button>
+            </>
           ) : (
             <>
-              <button className="s1-button" type="button" onClick={onAccept}>
+              <button className="s1-button s1-button--pri" type="button" onClick={onAccept}>
                 Accept
               </button>
-              <button className="s1-button" type="button" disabled title="Edit surface pending product confirmation">
+              <button className="s1-button" type="button" onClick={startEditing}>
                 Correct
               </button>
               <button className="s1-button" type="button" onClick={onAddToRequests}>
-                Add to requests
+                Request
               </button>
             </>
           )}
@@ -785,5 +911,15 @@ function reviewStateLabel(s: ValueReviewState): string {
 function formatTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const sameDay = d.toDateString() === new Date().toDateString();
+  return sameDay
+    ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+/** "Thanishque Harshaa" -> "TH"; "claire@acme.com" -> "C". */
+function initials(name: string): string {
+  const base = name.includes("@") ? name.split("@")[0] : name;
+  const parts = base.split(/[\s._-]+/).filter(Boolean);
+  return (parts.length > 1 ? parts[0][0] + parts[1][0] : (parts[0] ?? "?").slice(0, 2)).toUpperCase();
 }

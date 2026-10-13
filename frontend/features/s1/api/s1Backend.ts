@@ -36,6 +36,9 @@ interface BackendReviewDecision {
   field_name: string;
   decision: "accepted" | "edited" | "rejected" | "needs_more_evidence";
   reviewed_value: string | number | boolean | null;
+  reviewed_unit?: string | null;
+  reviewer_id?: string | null;
+  reviewed_at?: string | null;
 }
 
 /**
@@ -94,12 +97,15 @@ export async function listWorkspaceEvidence(engagementId: string): Promise<{
               ? latestReviewByCandidate.get(candidate.candidate_id)
               : undefined;
             if (!review) return field;
+            const who = { reviewedBy: review.reviewer_id ?? null, reviewedAt: review.reviewed_at ?? null };
             if (review.decision === "accepted") {
-              return { ...field, reviewStatus: "accepted" as const };
+              return { ...field, ...who, reviewStatus: "accepted" as const };
             }
             if (review.decision === "edited") {
               return {
                 ...field,
+                ...who,
+                correctedUnit: review.reviewed_unit ?? null,
                 correctedValue:
                   review.reviewed_value === null || review.reviewed_value === undefined
                     ? null
@@ -140,6 +146,51 @@ export async function uploadDocument(engagementId: string, file: File): Promise<
   });
 }
 
+/**
+ * The same upload, reporting progress as the bytes leave the browser (fetch cannot
+ * report upload progress, XMLHttpRequest can). `onProgress` gets 0..1.
+ */
+export function uploadDocumentWithProgress(
+  engagementId: string,
+  file: File,
+  onProgress: (fraction: number) => void
+): Promise<BackendDocumentLike> {
+  if (file.size > MAX_UPLOAD_BYTES) return Promise.reject(new FileTooLargeError());
+  const body = new FormData();
+  body.append("file", file);
+  body.append("document_role", "source_evidence");
+
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", apiPath(`/engagements/${encodeURIComponent(engagementId)}/documents/upload`));
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("Accept", "application/json");
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && event.total > 0) onProgress(event.loaded / event.total);
+    };
+    xhr.onerror = () => reject(new Error("The upload was interrupted. Check your connection and try again."));
+    xhr.onload = () => {
+      let parsed: unknown = null;
+      try {
+        parsed = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        parsed = null;
+      }
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(1);
+        resolve(parsed as BackendDocumentLike);
+        return;
+      }
+      const detail =
+        parsed && typeof parsed === "object" && "detail" in parsed && typeof (parsed as { detail: unknown }).detail === "string"
+          ? (parsed as { detail: string }).detail
+          : `Request failed (${xhr.status})`;
+      reject(new ApiError(xhr.status, detail, parsed, null));
+    };
+    xhr.send(body);
+  });
+}
+
 export async function processDocument(documentId: string): Promise<void> {
   await api(`/documents/${encodeURIComponent(documentId)}/pipeline/process`, {
     method: "POST",
@@ -151,11 +202,14 @@ export async function submitFieldReview({
   field,
   decision,
   reviewedValue,
+  reviewedUnit,
   reviewerNote,
 }: {
   field: Pick<ExtractedField, "reviewToken">;
   decision: "accepted" | "edited";
   reviewedValue?: string | null;
+  /** A corrected unit, when the reviewer changed it. */
+  reviewedUnit?: string | null;
   reviewerNote?: string | null;
 }): Promise<void> {
   const candidate = field.reviewToken ? decodeReviewCandidateToken(field.reviewToken) : null;
@@ -171,6 +225,7 @@ export async function submitFieldReview({
       candidate,
       decision,
       reviewed_value: decision === "edited" ? reviewedValue : undefined,
+      reviewed_unit: decision === "edited" && reviewedUnit ? reviewedUnit : undefined,
       reviewer_note: reviewerNote,
     },
   });
