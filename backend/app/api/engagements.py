@@ -26,6 +26,7 @@ from backend.app.core.db import get_db_session
 from backend.app.services import engagement_service
 from backend.app.services.engagement_recalculation_service import (
     validate_facilities,
+    validate_out_of_scope,
     validate_recalculation_settings,
 )
 from backend.app.services.audit_log import write_audit_event
@@ -46,6 +47,7 @@ SETTINGS_KEYS = frozenset(
         "clientContact",
         "engagementTeam",
         "verifierEmail",
+        "outOfScopeDataPoints",
         "dataScope",
         "assuranceStandard",
         "materialityThreshold",
@@ -73,6 +75,8 @@ def _check_settings(value: dict[str, Any]) -> dict[str, Any]:
         validate_recalculation_settings(value["recalculation"])
     if "facilities" in value:
         validate_facilities(value["facilities"])
+    if "outOfScopeDataPoints" in value:
+        validate_out_of_scope(value["outOfScopeDataPoints"])
     return value
 
 

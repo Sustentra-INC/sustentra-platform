@@ -79,6 +79,11 @@ def test_reference_lists_the_input_choices(act_as) -> None:
     assert len(body["egrid_subregions"]) == 28 and len(body["stationary_fuels"]) == 63
     assert {"key": "scope1_total", "label": "Scope 1 (Total)", "workbook_row": 22, "unit": "t CO2e"} in \
         body["reported_data_points"]
+    assert {"key": "fugitive_total", "label": "Direct emissions from fugitive sources", "workbook_row": 45,
+            "unit": "t CO2e", "layer": "scope1", "requirement": "Optional", "check": "recalculated"} in body["data_points"]
+    assert {"key": "purchased_steam_total", "label": "Indirect emissions from purchased steam", "workbook_row": 48,
+            "unit": "t CO2e", "layer": "scope2", "requirement": "Optional",
+            "check": "not_recalculated"} in body["data_points"]
     assert {"vehicle_type": "Medium- and Heavy-Duty Vehicles", "fuel_type": "Diesel", "on_road": True,
             "by_model_year": True, "first_model_year": 1960, "last_model_year": 2022} in body["vehicle_types"]
     assert {"vehicle_type": "Industrial/Commercial Equipment", "fuel_type": "Diesel", "on_road": False,
@@ -89,6 +94,9 @@ def test_engagement_settings_validate_recalculation_inputs() -> None:
     EngagementUpdate(settings={"recalculation": {"gwp_set": "AR6", "grid_regions": {"Facility A": "NYUP"}}})
     with pytest.raises(ValueError):
         EngagementUpdate(settings={"recalculation": {"gwp_set": "AR4"}})
+    EngagementUpdate(settings={"outOfScopeDataPoints": ["process_total"]})
+    with pytest.raises(ValueError):
+        EngagementUpdate(settings={"outOfScopeDataPoints": ["not_a_data_point"]})
 
 
 def test_export_is_an_excel_workpaper_of_the_same_numbers(act_as, wired: FakeStore) -> None:

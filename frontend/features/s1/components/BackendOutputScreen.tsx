@@ -35,6 +35,7 @@ const OUTCOME: Record<ComparisonStatus, { label: string; role: string }> = {
   not_reported: { label: "Reported value not entered", role: "unverifiable" },
   no_evidence: { label: "No reviewed evidence", role: "unverifiable" },
   not_recalculated: { label: "Not calculated yet", role: "na" },
+  not_in_scope: { label: "Not in scope", role: "na" },
 };
 
 export function BackendOutputScreen({

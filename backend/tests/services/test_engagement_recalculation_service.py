@@ -476,3 +476,28 @@ def test_vehicle_groups_are_validated() -> None:
                 {**good, "distance_unit": "furlong"}, {**good, "colour": "red"}, {"fuel": "Diesel Fuel"}):
         with pytest.raises(ValueError):
             validate_recalculation_settings({"vehicle_groups": [bad]})
+
+
+# --- Setup's in-scope data points -----------------------------------------------------------
+def test_data_points_set_out_of_scope_are_shown_but_never_judged() -> None:
+    from backend.app.services.engagement_recalculation_service import CATALOGUE_KEYS, DATA_POINT_KEYS
+
+    assert DATA_POINT_KEYS <= CATALOGUE_KEYS  # every compared data point can be scoped
+    settings = {"recalculation": {"grid_regions": {"Facility A": "NYUP", "Facility B": "RFCE"},
+                                  "reported": {"scope2_market_total": 999.0}},
+                "outOfScopeDataPoints": ["scope2_market_total"]}
+    rows = _by_key(_service(_workbook_example_store()).recalculate(_engagement(**settings), _own))
+    market = rows["scope2_market_total"]
+    assert market["status"] == "not_in_scope" and market["recalculated"] == pytest.approx(348.15, abs=0.01)
+    assert market["inputs_incomplete"] is False
+    assert rows["scope2_location_total"]["status"] == "not_reported"
+
+
+def test_out_of_scope_keys_are_validated() -> None:
+    from backend.app.services.engagement_recalculation_service import validate_out_of_scope
+
+    validate_out_of_scope(["process_total", "scope2_nf3"])
+    with pytest.raises(ValueError, match="unknown data points"):
+        validate_out_of_scope(["scope9_total"])
+    with pytest.raises(ValueError):
+        validate_out_of_scope("scope1_total")

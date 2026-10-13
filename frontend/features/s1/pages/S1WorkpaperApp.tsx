@@ -14,7 +14,7 @@ import {
 } from "../api/s1Backend";
 import { ApiError } from "../../../lib/api";
 import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
-import { getRecalculationReference } from "../api/recalculation";
+import { getRecalculationReference, inScopeFieldsFrom, type DataPointOption } from "../api/recalculation";
 import {
   applyDocumentView,
   BACKEND_TYPE_IDS,
@@ -152,6 +152,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [workspaceFields, setWorkspaceFields] = useState<ExtractedField[]>([]);
   const [documentDecisions, setDocumentDecisions] = useState<Record<string, DocumentDecision>>({});
   const [gridRegions, setGridRegions] = useState<{ code: string; name: string }[] | undefined>(undefined);
+  const [dataPoints, setDataPoints] = useState<DataPointOption[]>([]);
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<string | null>(null);
   // Backend mode: a 401 from the API means the session ended (FE-007).
@@ -171,13 +172,16 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   // Backend mode: the org's engagements (S1-BE-002); null until loaded.
   const [engagements, setEngagements] = useState<BackendEngagement[] | null>(dataMode === "backend" ? null : []);
 
-  // eGRID subregions for the Setup facility picker (backend mode).
+  // Reference lists for Setup (backend mode): eGRID subregions for the facility picker and
+  // the workbook's reported data points for the in-scope list.
   useEffect(() => {
     if (dataMode !== "backend") return;
     let live = true;
     getRecalculationReference()
       .then((ref) => {
-        if (live) setGridRegions(ref.egrid_subregions.map((r) => ({ code: r.egrid_subregion, name: r.name })));
+        if (!live) return;
+        setGridRegions(ref.egrid_subregions.map((r) => ({ code: r.egrid_subregion, name: r.name })));
+        setDataPoints(ref.data_points ?? []);
       })
       .catch(() => undefined); // the picker simply stays hidden
     return () => {
@@ -768,8 +772,18 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 />
               ) : undefined
             }
-            inScopeFields={inScopeFields}
-            onInScopeChange={setInScopeFields}
+            inScopeFields={
+              dataMode === "backend" ? inScopeFieldsFrom(dataPoints, engagement.outOfScopeDataPoints) : inScopeFields
+            }
+            onInScopeChange={
+              dataMode === "backend"
+                ? (fields) =>
+                    changeEngagement({
+                      ...engagement,
+                      outOfScopeDataPoints: fields.filter((f) => !f.inScope).map((f) => f.methodologyFieldId),
+                    })
+                : setInScopeFields
+            }
             gridRegions={dataMode === "backend" ? gridRegions : undefined}
             foundFacilities={foundFacilities}
           />

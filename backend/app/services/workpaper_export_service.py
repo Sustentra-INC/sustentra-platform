@@ -23,12 +23,14 @@ _STATUS = {
     "not_reported": "Could not check (reported value not entered)",
     "no_evidence": "Could not check (no reviewed evidence)",
     "not_recalculated": "Out of scope (not recalculated yet)",
+    "not_in_scope": "Not in scope (set in Setup)",
 }
 _LEFT_OUT = {
     "outside_reporting_period": "Outside the reporting period",
     "withdrawn": "Withdrawn by the reviewer",
     "duplicate": "Marked as a duplicate",
     "superseded": "Superseded by a newer document",
+    "montreal_protocol_gas": "A CFC or HCFC (Montreal Protocol gas), reported outside Scope 1",
 }
 
 

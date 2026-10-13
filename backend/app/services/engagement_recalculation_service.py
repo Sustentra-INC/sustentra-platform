@@ -85,6 +85,59 @@ DATA_POINTS: tuple[tuple[str, str, int, str], ...] = (
 )
 DATA_POINT_KEYS = frozenset(key for key, *_ in DATA_POINTS)
 
+# Every reported data point in the workbook's "Data from summary documents" (rows 22-49),
+# for Setup's in-scope list: (key, label, row, unit, layer, Required/Optional, how it is
+# checked). "recalculated" rows are in DATA_POINTS; the others are listed, not compared.
+DATA_POINT_CATALOGUE: tuple[tuple[str, str, int, str, str, str, str], ...] = (
+    ("scope1_total", "Scope 1 (Total)", 22, "t CO2e", "scope1", "Required", "recalculated"),
+    ("scope1_co2", "Scope 1 CO2", 23, "t", "scope1", "Required", "recalculated"),
+    ("scope1_ch4", "Scope 1 CH4", 24, "t", "scope1", "Required", "recalculated"),
+    ("scope1_n2o", "Scope 1 N2O", 25, "t", "scope1", "Required", "recalculated"),
+    ("scope1_hfcs", "Scope 1 HFCs", 26, "t", "scope1", "Required", "compared_under_fugitive"),
+    ("scope1_pfcs", "Scope 1 PFCs", 27, "t", "scope1", "Required", "compared_under_fugitive"),
+    ("scope1_sf6", "Scope 1 SF6", 28, "t", "scope1", "Required", "compared_under_fugitive"),
+    ("scope2_location_total", "Scope 2 (Total), location-based", 29, "t CO2e", "scope2", "Required", "recalculated"),
+    ("scope2_market_total", "Scope 2 (Total), market-based", 29, "t CO2e", "scope2", "Required", "recalculated"),
+    ("scope2_co2", "Scope 2 CO2 (location-based)", 30, "t", "scope2", "Required", "recalculated"),
+    ("scope2_ch4", "Scope 2 CH4 (location-based)", 31, "t", "scope2", "Required", "recalculated"),
+    ("scope2_n2o", "Scope 2 N2O (location-based)", 32, "t", "scope2", "Required", "recalculated"),
+    ("scope2_hfcs", "Scope 2 HFCs", 33, "t", "scope2", "Required", "not_recalculated"),
+    ("scope2_pfcs", "Scope 2 PFCs", 34, "t", "scope2", "Required", "not_recalculated"),
+    ("scope2_sf6", "Scope 2 SF6", 35, "t", "scope2", "Required", "not_recalculated"),
+    ("scope2_nf3", "Scope 2 NF3", 36, "t", "scope2", "Required", "not_recalculated"),
+    ("biogenic_co2", "CO2 emissions from biogenic combustion", 37, "t CO2e", "scope1", "Required", "recalculated"),
+    ("stationary_combustion_total", "Direct emissions from stationary combustion", 42, "t CO2e", "scope1", "Optional",
+     "recalculated"),
+    ("mobile_combustion_total", "Direct emissions from mobile combustion", 43, "t CO2e", "scope1", "Optional",
+     "recalculated"),
+    ("process_total", "Direct emissions from process sources", 44, "t CO2e", "scope1", "Optional",
+     "not_recalculated"),
+    ("fugitive_total", "Direct emissions from fugitive sources", 45, "t CO2e", "scope1", "Optional", "recalculated"),
+    ("agricultural_total", "Direct emissions from agricultural sources", 46, "t CO2e", "scope1", "Optional",
+     "not_recalculated"),
+    ("purchased_electricity_total", "Indirect emissions from purchased electricity (location-based)", 47, "t CO2e",
+     "scope2", "Optional", "recalculated"),
+    ("purchased_steam_total", "Indirect emissions from purchased steam", 48, "t CO2e", "scope2", "Optional",
+     "not_recalculated"),
+    ("purchased_heating_total", "Indirect emissions from purchased heating", 49, "t CO2e", "scope2", "Optional",
+     "not_recalculated"),
+)
+CATALOGUE_KEYS = frozenset(key for key, *_ in DATA_POINT_CATALOGUE)
+
+
+def validate_out_of_scope(value: Any) -> None:
+    """settings["outOfScopeDataPoints"]: the catalogue keys the engagement does not cover."""
+
+    if not isinstance(value, list) or not all(isinstance(k, str) for k in value):
+        raise ValueError("outOfScopeDataPoints must be a list of data point keys")
+    unknown = sorted(set(value) - CATALOGUE_KEYS)
+    if unknown:
+        raise ValueError(f"unknown data points: {', '.join(unknown)}")
+
+
+def out_of_scope(settings: dict[str, Any] | None) -> frozenset[str]:
+    return frozenset((settings or {}).get("outOfScopeDataPoints") or [])
+
 
 # =========================================================================================
 # Engagement inputs (settings["recalculation"])
@@ -476,7 +529,8 @@ class EngagementRecalculationService:
             "categories": {k: (v.to_dict() if v is not None else None) for k, v in categories.items()},
             "scope_totals": totals,
             "tolerance_pct": tolerance,
-            "comparisons": self._comparisons(inputs, totals, categories, incomplete, tolerance),
+            "comparisons": self._comparisons(inputs, totals, categories, incomplete, tolerance,
+                                             out_of_scope(engagement.get("settings"))),
             "needs_input": needs_input,
             "awaiting_review": awaiting,
             "excluded": set_aside + self._outside_period(records, period) + not_counted,
@@ -979,7 +1033,8 @@ class EngagementRecalculationService:
     @staticmethod
     def _comparisons(inputs: RecalculationInputs, totals: dict[str, Any],
                      categories: dict[str, calc.CategoryResult | None], incomplete: bool,
-                     tolerance: float = calc.COMPARISON_TOLERANCE_PCT) -> list[dict[str, Any]]:
+                     tolerance: float = calc.COMPARISON_TOLERANCE_PCT,
+                     not_in_scope: frozenset[str] = frozenset()) -> list[dict[str, Any]]:
         scope1, s2_location, s2_market = totals["scope1"], totals["scope2_location"], totals["scope2_market"]
 
         def total_of(part: dict[str, Any] | None) -> float | None:
@@ -1017,7 +1072,9 @@ class EngagementRecalculationService:
                         "difference_pct": None, "status": "no_evidence"}
             else:
                 item = calc.compare(label, reported, value, tolerance)
+            if key in not_in_scope:  # Setup says the engagement does not cover it: shown, never judged
+                item["status"] = "not_in_scope"
             item.update({"key": key, "workbook_row": row, "unit": unit,
-                         "inputs_incomplete": incomplete and item["status"] not in ("not_recalculated",)})
+                         "inputs_incomplete": incomplete and item["status"] not in ("not_recalculated", "not_in_scope")})
             out.append(item)
         return out
