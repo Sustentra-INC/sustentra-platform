@@ -75,7 +75,7 @@ def build_workbook(
         part = totals.get(name)
         return part["total_co2e"] if part else None
 
-    summary = [
+    summary: list[list[Any]] = [
         ["Engagement", engagement.get("name")],
         ["Company", engagement.get("client_name")],
         ["Reporting period", f"{engagement.get('reporting_period_start') or '?'} to "
