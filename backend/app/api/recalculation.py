@@ -8,7 +8,10 @@ PATCH /v1/engagements/{engagement_id} under settings["recalculation"].
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+import re
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api import documents as documents_api
@@ -22,7 +25,8 @@ from backend.app.reference.emission_factor_loader import (
     GWP_SETS,
     default_emission_factor_reference,
 )
-from backend.app.services import workpaper_item_service
+from backend.app.services import workpaper_export_service, workpaper_item_service
+from backend.app.services.audit_log import write_audit_event
 from backend.app.services.engagement_recalculation_service import (
     DATA_POINTS,
     EngagementRecalculationService,
@@ -51,6 +55,44 @@ async def get_recalculation(
         for item in await workpaper_item_service.list_items(db, engagement["id"], "document")
     }
     return _service().recalculate(engagement, lambda record: can_see(record, user), decisions)
+
+
+@router.get("/engagements/{engagement_id}/export")
+async def export_workpaper(
+    engagement_id: str,
+    request: Request,
+    user: CurrentUser = Depends(s1_reader),
+    db: AsyncSession = Depends(get_db_session),
+) -> Response:
+    """The workpaper as an Excel file (the same numbers the screens show)."""
+
+    engagement = await _visible(db, engagement_id, user)
+    items = await workpaper_item_service.list_items(db, engagement["id"])
+    decisions = {str(i["payload"].get("documentId") or i["item_key"]): i["payload"]
+                 for i in items if i["kind"] == "document"}
+    service = _service()
+    visible = lambda record: can_see(record, user)  # noqa: E731
+    recalculation = service.recalculate(engagement, visible, decisions)
+    register = service.evidence_register(str(engagement["id"]), visible)
+    content = workpaper_export_service.build_workbook(
+        engagement=engagement, recalculation=recalculation, register=register, items=items,
+        exported_by=user.email,
+    )
+    await write_audit_event(
+        db, "workpaper_exported", org_id=engagement["org_id"], actor_user_id=user.id, actor_role=user.role,
+        target_type="engagement", target_id=str(engagement["id"]),
+        request_id=getattr(request.state, "request_id", None),
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"), metadata={"format": "xlsx"},
+    )
+    name = re.sub(r"[^A-Za-z0-9 ._-]+", "", str(engagement.get("name") or "engagement")).strip() or "engagement"
+    filename = f"{name} workpaper {datetime.now(UTC):%Y-%m-%d}.xlsx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"',
+                 "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @router.get("/reference/recalculation")

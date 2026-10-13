@@ -298,6 +298,43 @@ class EngagementRecalculationService:
         return self._reference
 
     # ---------------------------------------------------------------------------------
+    def evidence_register(self, engagement_id: str, can_see: Callable[[dict], bool]) -> dict[str, list[dict[str, Any]]]:
+        """Every document of the engagement and every extracted value with its latest review,
+        for the workpaper export (what was read, what the reviewer decided, who and when)."""
+
+        documents: list[dict[str, Any]] = []
+        values: list[dict[str, Any]] = []
+        for document in self._upload.list_documents(engagement_id):
+            if not can_see(document):
+                continue
+            document_id = str(document.get("document_id"))
+            results = [r for r in self._pipeline.list_extraction_results_by_document(document_id) if can_see(r)]
+            latest = results[-1] if results else {}
+            documents.append({
+                "document_id": document_id, "file_name": document.get("file_name"),
+                "uploaded_at": document.get("uploaded_at"), "uploaded_by": document.get("uploaded_by"),
+                "canonical_type_id": latest.get("canonical_type_id"),
+                "candidate_count": len(latest.get("items") or []),
+            })
+            decisions: dict[str, dict] = {}
+            for decision in self._reviews.list_by_document(document_id):
+                if can_see(decision):
+                    decisions[str(decision.get("candidate_id"))] = decision
+            for item in latest.get("items") or []:
+                review = decisions.get(str(item.get("candidate_id"))) or {}
+                values.append({
+                    "file_name": document.get("file_name"), "record_index": item.get("record_index"),
+                    "field": item.get("display_label") or item.get("field_name"),
+                    "extracted": item.get("normalized_value"), "unit": item.get("unit"),
+                    "decision": review.get("decision") or "not reviewed",
+                    "reviewed_value": review.get("reviewed_value"),
+                    "reviewed_unit": review.get("reviewed_unit"),
+                    "reviewer": review.get("reviewer_id"), "reviewed_at": review.get("reviewed_at"),
+                    "page": (item.get("source_reference") or {}).get("page_number"),
+                    "snippet": (item.get("source_reference") or {}).get("text_snippet"),
+                })
+        return {"documents": documents, "values": values}
+
     def reviewed_records(self, engagement_id: str, can_see: Callable[[dict], bool]) -> list[ReviewedRecord]:
         records: list[ReviewedRecord] = []
         for document in self._upload.list_documents(engagement_id):
