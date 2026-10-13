@@ -45,6 +45,7 @@ import { BackendVerificationResults } from "../components/BackendVerificationRes
 import { BackendCheckCoverage } from "../components/BackendCheckCoverage";
 import { BackendPageView } from "../components/BackendPageView";
 import { BackendOutputScreen } from "../components/BackendOutputScreen";
+import { BackendDashboard } from "../components/BackendDashboard";
 import { OutputScreen } from "../components/OutputScreen";
 import { coverageRules } from "../fixtures/verification/coverageRules";
 import { verificationRows } from "../fixtures/verification/verificationResults";
@@ -730,14 +731,27 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         }
       >
         {activeView.name === "dashboard" ? (
-          <DashboardScreen
-            engagement={engagement}
-            metrics={{
-              documents: evidenceItems.length,
-              openRequests: requests.asks.filter((a) => a.state === "not_yet_sent" || a.state === "requested").length,
-            }}
-            onNavigate={onNavigate}
-          />
+          dataMode === "backend" ? (
+            <BackendDashboard
+              engagement={engagement}
+              evidence={evidenceView}
+              values={reviewValuesView}
+              asks={requests.asks}
+              findings={verification.findings}
+              examinations={verification.examinations}
+              onNavigate={onNavigate}
+              onError={handleSessionEnded}
+            />
+          ) : (
+            <DashboardScreen
+              engagement={engagement}
+              metrics={{
+                documents: evidenceItems.length,
+                openRequests: requests.asks.filter((a) => a.state === "not_yet_sent" || a.state === "requested").length,
+              }}
+              onNavigate={onNavigate}
+            />
+          )
         ) : activeView.name === "setup" ? (
           <SetupScreen
             engagement={engagement}

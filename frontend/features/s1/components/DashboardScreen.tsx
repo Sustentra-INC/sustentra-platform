@@ -8,6 +8,24 @@ import type { NavKey } from "./S1Chrome";
 export interface DashboardMetrics {
   documents: number;
   openRequests: number;
+  /** Backend mode: the live state behind the figures below (absent: they show "—"). */
+  live?: LiveDashboard;
+}
+
+export interface LiveDashboard {
+  valuesReviewed: number;
+  valuesToReview: number;
+  blockedDocuments: number;
+  requestsRaised: number;
+  requestsResolved: number;
+  /** Recalculated t CO2e per category, null when nothing is calculated yet. */
+  emissions: { label: string; value: number }[] | null;
+  coverage: { present: number; missing: number; notApplicable: number; outOfScope: number } | null;
+  dataPointsExamined: number;
+  dataPointsCalculated: number;
+  findings: number;
+  /** Newest first. */
+  activity: { at: string; who: string; what: string }[];
 }
 
 /**
@@ -36,8 +54,13 @@ export function DashboardScreen({
         <div className="s1-ws-header__id">
           <h1>{hasEngagement ? engagement.clientName : "New engagement"}</h1>
           <span className="s1-muted">
-            {hasEngagement && engagement.regulation
-              ? `${engagement.regulation}${engagement.reportingPeriod.start ? ` · ${engagement.reportingPeriod.start} to ${engagement.reportingPeriod.end}` : ""}`
+            {hasEngagement
+              ? [
+                  engagement.regulation || "Regulation not set",
+                  engagement.reportingPeriod.start
+                    ? `${engagement.reportingPeriod.start} to ${engagement.reportingPeriod.end}`
+                    : "Reporting period not set",
+                ].join(" · ")
               : "Set up the engagement to begin"}
           </span>
         </div>
@@ -66,19 +89,48 @@ export function DashboardScreen({
       {/* KPIs — derived from live state; "—" where the backend has not supplied a figure yet */}
       <div className="s1-dash-kpis">
         <Kpi icon={<DocIcon />} label="Documents held" value={String(metrics.documents)} sub={metrics.documents === 1 ? "document" : "documents"} onClick={go("evidence")} />
-        <Kpi icon={<CheckIcon />} label="Values reviewed" value="—" sub="awaiting extraction" tone="accent" onClick={go("evidence")} />
+        <Kpi
+          icon={<CheckIcon />}
+          label="Values reviewed"
+          value={metrics.live ? String(metrics.live.valuesReviewed) : "—"}
+          sub={
+            metrics.live
+              ? metrics.live.valuesToReview
+                ? `${metrics.live.valuesToReview} still to review`
+                : metrics.live.valuesReviewed
+                  ? "all reviewed"
+                  : "nothing extracted yet"
+              : "awaiting extraction"
+          }
+          tone="accent"
+          onClick={go("evidence")}
+        />
         <Kpi icon={<MailIcon />} label="Open requests" value={String(metrics.openRequests)} sub={metrics.openRequests === 0 ? "none open" : "awaiting client"} tone="open" onClick={go("requests")} />
-        <Kpi icon={<ShieldIcon />} label="Coverage ready" value="—" sub="awaiting coverage run" onClick={go("coverage")} />
+        <Kpi
+          icon={<ShieldIcon />}
+          label="Checks ready"
+          value={metrics.live?.coverage ? String(metrics.live.coverage.present) : "—"}
+          sub={
+            metrics.live?.coverage
+              ? `${metrics.live.coverage.missing} missing an input`
+              : "awaiting coverage run"
+          }
+          onClick={go("coverage")}
+        />
       </div>
 
       {/* Visualizations — populate from backend verification/coverage; empty until then */}
       <div className="s1-dash-grid">
         <div className="s1-dash-card">
           <div className="s1-dash-card__head">
-            <h2>Verified emissions by category</h2>
+            <h2>Recalculated emissions by category</h2>
             <span className="s1-muted">tCO2e · reporting year</span>
           </div>
-          <EmptyViz label="Verified emissions appear here once verification results are computed." />
+          {metrics.live?.emissions?.length ? (
+            <EmissionsBars rows={metrics.live.emissions} />
+          ) : (
+            <EmptyViz label="Recalculated emissions appear here once values are reviewed." />
+          )}
         </div>
 
         <div className="s1-dash-card">
@@ -88,7 +140,11 @@ export function DashboardScreen({
               Open
             </button>
           </div>
-          <EmptyViz label="Coverage appears here once the evidence is checked." />
+          {metrics.live?.coverage ? (
+            <CoverageBar coverage={metrics.live.coverage} />
+          ) : (
+            <EmptyViz label="Coverage appears here once the evidence is checked." />
+          )}
         </div>
       </div>
 
@@ -98,14 +154,27 @@ export function DashboardScreen({
           <div className="s1-dash-card__head">
             <h2>Verification phases</h2>
           </div>
-          <PhaseTracker hasEngagement={hasEngagement} hasEvidence={hasEvidence} onNavigate={onNavigate} />
+          <PhaseTracker hasEngagement={hasEngagement} hasEvidence={hasEvidence} live={metrics.live} onNavigate={onNavigate} />
         </div>
 
         <div className="s1-dash-card">
           <div className="s1-dash-card__head">
             <h2>Recent activity</h2>
           </div>
-          <p className="s1-muted s1-dash-emptyline">No activity yet.</p>
+          {metrics.live?.activity.length ? (
+            <ul className="s1-dash-activity">
+              {metrics.live.activity.map((a, i) => (
+                <li key={`${a.at}|${i}`}>
+                  <span className="s1-dash-activity__what">
+                    <strong>{a.who}</strong> {a.what}
+                  </span>
+                  <span className="s1-mono s1-muted">{when(a.at)}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="s1-muted s1-dash-emptyline">No activity yet.</p>
+          )}
         </div>
       </div>
     </section>
@@ -114,6 +183,59 @@ export function DashboardScreen({
 
 function EmptyViz({ label }: { label: string }) {
   return <p className="s1-muted s1-dash-emptyline">{label}</p>;
+}
+
+function when(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+/** One bar per category on a shared scale (the largest category fills the track). */
+function EmissionsBars({ rows }: { rows: { label: string; value: number }[] }) {
+  const max = Math.max(...rows.map((r) => r.value), 0) || 1;
+  return (
+    <ul className="s1-dash-bars">
+      {rows.map((r) => (
+        <li key={r.label}>
+          <span className="s1-dash-bars__label">{r.label}</span>
+          <span className="s1-dash-bars__track" aria-hidden>
+            <span className="s1-dash-bars__fill" style={{ width: `${Math.max((r.value / max) * 100, r.value > 0 ? 1 : 0)}%` }} />
+          </span>
+          <span className="s1-dash-bars__value s1-mono">
+            {r.value.toLocaleString(undefined, { maximumFractionDigits: 2 })} t
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function CoverageBar({ coverage }: { coverage: NonNullable<LiveDashboard["coverage"]> }) {
+  const parts = [
+    { key: "present", label: "Inputs present", n: coverage.present },
+    { key: "missing", label: "Inputs missing", n: coverage.missing },
+    { key: "na", label: "Not applicable", n: coverage.notApplicable },
+    { key: "oos", label: "Out of scope", n: coverage.outOfScope },
+  ];
+  const total = parts.reduce((sum, p) => sum + p.n, 0) || 1;
+  return (
+    <div className="s1-dash-cov">
+      <div className="s1-dash-cov__bar" aria-hidden>
+        {parts.map((p) =>
+          p.n ? <span key={p.key} className={`s1-dash-cov__seg s1-dash-cov__seg--${p.key}`} style={{ width: `${(p.n / total) * 100}%` }} /> : null
+        )}
+      </div>
+      <ul className="s1-dash-cov__legend">
+        {parts.map((p) => (
+          <li key={p.key}>
+            <span className={`s1-dash-cov__dot s1-dash-cov__seg--${p.key}`} aria-hidden />
+            {p.label} <strong>{p.n}</strong>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 /* =============================== KPIs =============================== */
@@ -156,53 +278,90 @@ type Phase = {
 };
 
 // Phase status is derived from live progress, not hardcoded. Before Setup it is
-// all "Not started"; Setup completes once an engagement exists; intake/review
-// becomes active once evidence is present.
-function buildPhases(hasEngagement: boolean, hasEvidence: boolean): Phase[] {
+// all "Not started"; with live state (backend mode) each step reads what was done.
+function buildPhases(hasEngagement: boolean, hasEvidence: boolean, live?: LiveDashboard): Phase[] {
   const setup: Phase["status"] = hasEngagement ? "completed" : "active";
-  const intake: Phase["status"] = hasEvidence ? "active" : "pending";
   const stepState = (s: Phase["status"]): "Completed" | "Active" | "Pending" =>
     s === "completed" ? "Completed" : s === "active" ? "Active" : "Pending";
+  const phase = (states: ("Completed" | "Active" | "Open" | "Pending")[]): Phase["status"] =>
+    states.every((x) => x === "Completed") ? "completed" : states.some((x) => x !== "Pending") ? "active" : "pending";
+
+  const uploaded = hasEvidence ? "Completed" : "Pending";
+  const workspace = !hasEvidence ? "Pending" : live && live.blockedDocuments === 0 ? "Completed" : "Active";
+  const review = !live
+    ? "Pending"
+    : live.valuesReviewed > 0 && live.valuesToReview === 0
+      ? "Completed"
+      : live.valuesReviewed > 0
+        ? "Active"
+        : "Pending";
+  const requests = !live || live.requestsRaised === 0
+    ? "Pending"
+    : live.requestsResolved === live.requestsRaised
+      ? "Completed"
+      : "Open";
+  const coverage = !live?.coverage
+    ? "Pending"
+    : live.coverage.missing === 0 && live.coverage.present > 0
+      ? "Completed"
+      : "Active";
+  const results = !live || live.dataPointsCalculated === 0
+    ? "Pending"
+    : live.dataPointsExamined >= live.dataPointsCalculated
+      ? "Completed"
+      : "Active";
+  const intakeStates: ("Completed" | "Active" | "Open" | "Pending")[] = [uploaded, workspace];
+  const reviewStates: ("Completed" | "Active" | "Open" | "Pending")[] = [review, requests === "Pending" ? review : requests];
   return [
     { key: "setup", label: "Setup", status: setup, icon: <GearIcon />, steps: [{ label: "Engagement configured", state: stepState(setup), nav: "setup" }] },
     {
       key: "intake",
       label: "Evidence intake",
-      status: intake,
+      status: live ? phase(intakeStates) : hasEvidence ? "active" : "pending",
       icon: <InboxIcon />,
       steps: [
-        { label: "Documents uploaded", state: stepState(intake), nav: "upload" },
-        { label: "Evidence workspace", state: stepState(intake), nav: "evidence" },
+        { label: "Documents uploaded", state: live ? uploaded : stepState(hasEvidence ? "active" : "pending"), nav: "upload" },
+        { label: "Evidence workspace", state: live ? workspace : stepState(hasEvidence ? "active" : "pending"), nav: "evidence" },
       ],
     },
     {
       key: "review",
       label: "Review",
-      status: "pending",
+      status: live ? phase(reviewStates) : "pending",
       icon: <BoltIcon />,
       steps: [
-        { label: "Extraction review", state: "Pending", nav: "evidence" },
-        { label: "Evidence requests", state: "Pending", nav: "requests" },
+        { label: "Extraction review", state: review, nav: "evidence" },
+        { label: "Evidence requests", state: requests, nav: "requests" },
       ],
     },
     {
       key: "assessment",
       label: "Assessment",
-      status: "pending",
+      status: live ? phase([coverage, results]) : "pending",
       icon: <ShieldIcon />,
       steps: [
-        { label: "Check coverage", state: "Pending", nav: "coverage" },
-        { label: "Verification results", state: "Pending", nav: "results" },
+        { label: "Check coverage", state: coverage, nav: "coverage" },
+        { label: "Verification results", state: results, nav: "results" },
       ],
     },
     { key: "opinion", label: "Opinion", status: "pending", icon: <DocIcon />, steps: [{ label: "Assurance statement", state: "Pending", nav: "output" }] },
   ];
 }
 
-function PhaseTracker({ hasEngagement, hasEvidence, onNavigate }: { hasEngagement: boolean; hasEvidence: boolean; onNavigate?: (k: NavKey) => void }) {
+function PhaseTracker({
+  hasEngagement,
+  hasEvidence,
+  live,
+  onNavigate,
+}: {
+  hasEngagement: boolean;
+  hasEvidence: boolean;
+  live?: LiveDashboard;
+  onNavigate?: (k: NavKey) => void;
+}) {
   return (
     <ol className="s1-phases">
-      {buildPhases(hasEngagement, hasEvidence).map((p) => (
+      {buildPhases(hasEngagement, hasEvidence, live).map((p) => (
         <li key={p.key} className={`s1-phase s1-phase--${p.status}`}>
           <div className="s1-phase__head">
             <span className="s1-phase__icon">{p.icon}</span>

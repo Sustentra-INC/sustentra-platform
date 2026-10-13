@@ -69,7 +69,11 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
                 kind: "human" as const,
                 actor: field.reviewedBy ?? "Reviewer",
                 at: field.reviewedAt ?? "",
-                action: accepted ? "accepted as read" : `corrected from ${field.value ?? "blank"}${field.unit ? ` ${field.unit}` : ""}`,
+                action: accepted
+                  ? "accepted as read"
+                  : field.value === null
+                    ? "entered a value the extractor did not find"
+                    : `corrected from ${field.value}${field.unit ? ` ${field.unit}` : ""}`,
               }]
             : []),
         ],
