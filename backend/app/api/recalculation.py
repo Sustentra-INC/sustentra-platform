@@ -97,7 +97,7 @@ async def export_workpaper(
 
 @router.get("/reference/recalculation")
 def recalculation_reference(user: CurrentUser = Depends(s1_reader)) -> dict:
-    """Choices for the recalculation inputs: grid regions, EPA fuels, GWP sets, data points."""
+    """Choices for the recalculation inputs: grid regions, EPA fuels, vehicle types, GWP sets, data points."""
 
     ref = default_emission_factor_reference()
     return {
@@ -107,6 +107,7 @@ def recalculation_reference(user: CurrentUser = Depends(s1_reader)) -> dict:
         "egrid_subregions": ref.egrid_subregions(),
         "stationary_fuels": ref.stationary_fuel_types(),
         "mobile_fuels": [row["fuel_type"] for row in ref.data["mobile_co2"]],
+        "vehicle_types": ref.vehicle_types(),
         "reported_data_points": [
             {"key": key, "label": label, "workbook_row": row, "unit": unit} for key, label, row, unit in DATA_POINTS
         ],

@@ -150,6 +150,29 @@ class EmissionFactorReference:
             f"No {vehicle_type!r} / {fuel_type!r} factor covers model year {model_year} in {self.dataset}."
         )
 
+    def vehicle_types(self) -> list[dict[str, Any]]:
+        """Vehicle types with CH4/N2O factors: on-road (Tables 3-4, per mile, some by model
+        year) and non-road (Table 5, per gallon), with the fuels each has factors for."""
+
+        grouped: dict[tuple[str, str, bool], list[dict[str, Any]]] = {}
+        for row in self.data["mobile_on_road_gasoline"] + self.data["mobile_on_road_other"]:
+            grouped.setdefault((row["vehicle_type"], row["fuel_type"], True), []).append(row)
+        for row in self.data["mobile_non_road"]:
+            grouped.setdefault((row["vehicle_type"], row["fuel_type"], False), []).append(row)
+        out = []
+        for (vehicle_type, fuel_type, on_road), rows in grouped.items():
+            dated = [r for r in rows if r.get("model_year_from") is not None or r.get("model_year_to") is not None]
+            starts = [r["model_year_from"] for r in dated if r.get("model_year_from") is not None]
+            ends = [r["model_year_to"] for r in dated if r.get("model_year_to") is not None]
+            out.append({
+                "vehicle_type": vehicle_type, "fuel_type": fuel_type, "on_road": on_road,
+                "by_model_year": bool(dated),
+                "first_model_year": min(starts) if starts else None,
+                # None when the newest band is open-ended ("2021 and later") or nothing is dated.
+                "last_model_year": max(ends) if dated and len(ends) == len(dated) else None,
+            })
+        return out
+
     def non_road(self, vehicle_type: str, fuel_type: str) -> dict[str, Any]:
         for row in self.data["mobile_non_road"]:
             if _norm(row["vehicle_type"]) == _norm(vehicle_type) and _norm(row["fuel_type"]) == _norm(fuel_type):

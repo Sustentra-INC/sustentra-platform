@@ -165,7 +165,7 @@ const LIVE_KB: { keys: string[]; answer: string }[] = [
   {
     keys: ["scope 1", "combustion", "gas", "diesel", "fuel", "vehicle"],
     answer:
-      "Scope 1 is direct emissions. Fuel burned on site and vehicle fuel are recalculated from reviewed bills and fuel records; refrigerants and fire-suppression gases from reviewed service records. Vehicle CH₄ and N₂O need vehicle type, model year and distance, so they are not included yet, and process emissions are not recalculated yet.",
+      "Scope 1 is direct emissions. Fuel burned on site and vehicle fuel are recalculated from reviewed bills and fuel records; refrigerants and fire-suppression gases from reviewed service records. Vehicle CH₄ and N₂O are added once you enter vehicle groups under Recalculation inputs: on-road vehicles by distance and model year, non-road equipment by the fuel it used. Process emissions are not recalculated yet.",
   },
   {
     keys: ["refrigerant", "fugitive", "hfc", "r-22", "r-410a", "fire suppression"],

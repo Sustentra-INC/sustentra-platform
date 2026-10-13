@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { leftOutMessage, type Recalculation, type RecalculationReference } from "../api/recalculation";
 import type { RecalculationCertificate, RecalculationSettings } from "../types";
+import { draftProblem, draftsFrom, settingsFrom, VehicleGroupsFieldset, type VehicleGroupDraft } from "./VehicleGroupsFieldset";
 
 /**
  * What the recalculation needs that the evidence does not carry: the eGRID subregion
@@ -33,6 +34,7 @@ export function RecalculationInputs({
   const [certificateText, setCertificateText] = useState<{ label: string; mwh: string }[]>(() =>
     (settings.certificates ?? []).map((c) => ({ label: c.label, mwh: String(c.mwh) }))
   );
+  const [vehicleDrafts, setVehicleDrafts] = useState<VehicleGroupDraft[]>(() => draftsFrom(settings.vehicle_groups));
   const [gwpText, setGwpText] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(settings.refrigerant_gwps ?? {}).map(([gas, value]) => [gas, String(value)]))
   );
@@ -48,13 +50,19 @@ export function RecalculationInputs({
   );
   const fuelAsks = asks.filter((a) => a.kind === "fuel_choice");
   const gwpAsks = asks.filter((a) => a.kind === "refrigerant_gwp");
-  const otherAsks = asks.filter((a) => !["grid_region", "fuel_choice", "refrigerant_gwp"].includes(a.kind));
+  const vehicleAsks = asks.filter((a) => a.kind === "vehicle_group");
+  const otherAsks = asks.filter(
+    (a) => !["grid_region", "fuel_choice", "refrigerant_gwp", "vehicle_group"].includes(a.kind)
+  );
+  const vehicleTypes = reference.vehicle_types ?? [];
+  const mobileFuels = result.categories.mobile_combustion?.lines.map((l) => l.key) ?? [];
   const gases = Array.from(new Set([...gwpAsks.map((a) => a.key), ...Object.keys(gwpText)]));
 
   const badReported = Object.entries(reportedText).filter(([, text]) => text.trim() && !Number.isFinite(Number(text)));
   const badCertificates = certificateText.filter((c) => !c.label.trim() || !(Number(c.mwh) > 0));
   const badGwps = Object.entries(gwpText).filter(([, text]) => text.trim() && !(Number(text) >= 0));
-  const invalid = badReported.length > 0 || badCertificates.length > 0 || badGwps.length > 0;
+  const badVehicles = vehicleDrafts.filter((d) => draftProblem(d, vehicleTypes) !== null);
+  const invalid = badReported.length > 0 || badCertificates.length > 0 || badGwps.length > 0 || badVehicles.length > 0;
 
   function save() {
     const reported: Record<string, number> = {};
@@ -65,7 +73,7 @@ export function RecalculationInputs({
     }));
     const refrigerant_gwps: Record<string, number> = {};
     for (const [gas, text] of Object.entries(gwpText)) if (text.trim()) refrigerant_gwps[gas] = Number(text);
-    onSave({ ...draft, reported, certificates, refrigerant_gwps });
+    onSave({ ...draft, reported, certificates, refrigerant_gwps, vehicle_groups: settingsFrom(vehicleDrafts) });
   }
 
   const setRegion = (facility: string, region: string) => {
@@ -251,6 +259,16 @@ export function RecalculationInputs({
               </button>
             </fieldset>
 
+            {mobileFuels.length || vehicleDrafts.length || vehicleAsks.length ? (
+              <VehicleGroupsFieldset
+                drafts={vehicleDrafts}
+                fuels={mobileFuels}
+                types={vehicleTypes}
+                asks={vehicleAsks}
+                onChange={setVehicleDrafts}
+              />
+            ) : null}
+
             <fieldset className="s1-rc__group s1-rc__group--wide">
               <legend>Reported values (from the client&rsquo;s summary documents)</legend>
               <div className="s1-rc__reported">
@@ -282,7 +300,8 @@ export function RecalculationInputs({
               <span className="s1-rc__error">
                 {badReported.length ? "Reported values must be numbers. " : ""}
                 {badCertificates.length ? "Each certificate needs a name and a positive MWh. " : ""}
-                {badGwps.length ? "A GWP must be a number of 0 or more." : ""}
+                {badGwps.length ? "A GWP must be a number of 0 or more. " : ""}
+                {badVehicles.length ? "Finish or remove the vehicle groups marked below." : ""}
               </span>
             ) : error ? (
               <span className="s1-rc__error">{error}</span>
