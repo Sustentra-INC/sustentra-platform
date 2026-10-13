@@ -85,7 +85,8 @@ export function S1Chrome({
         />
         {children}
       </section>
-      <AssistantWidget page={current} />
+      {/* A signed-in user means live data: the assistant explains methods, not demo figures. */}
+      <AssistantWidget page={current} live={Boolean(user)} />
     </div>
   );
 }
