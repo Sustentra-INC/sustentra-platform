@@ -333,10 +333,31 @@ class EngagementRecalculationService:
             "comparisons": self._comparisons(inputs, totals, categories, incomplete, tolerance),
             "needs_input": needs_input,
             "awaiting_review": awaiting,
+            "excluded": self._outside_period(records, period),
             "not_recalculated": ["Scope 1 fugitive sources", "Scope 1 process sources",
                                  "Scope 2 steam, heat and cooling"],
             "documents_considered": len({r.document_id for r in records}),
         }
+
+    @staticmethod
+    def _outside_period(records: list[ReviewedRecord], period: tuple[date | None, date | None]
+                        ) -> list[dict[str, Any]]:
+        """Records whose dates fall entirely outside the reporting period, so nothing of them
+        is counted. Listed so the cutoff is visible instead of the record silently vanishing."""
+
+        out: list[dict[str, Any]] = []
+        for record in records:
+            if record.canonical_type_id == MOBILE:
+                start = end = record.best("transaction_date")
+            elif record.canonical_type_id in (STATIONARY, ELECTRICITY):
+                start, end = record.best("service_period_start"), record.best("service_period_end")
+            else:
+                continue
+            if _proration(start, end, period)[1] == "outside_reporting_period":
+                out.append({"document_id": record.document_id, "record": record.label,
+                            "canonical_type_id": record.canonical_type_id,
+                            "period": str(start) if start == end else f"{start} to {end}"})
+        return out
 
     # =================================================================================
     # Scope 1 stationary
@@ -522,6 +543,8 @@ class EngagementRecalculationService:
             if not self._require_reviewed(record, ("activity_quantity",), awaiting):
                 continue
             prorate = _proration(record.best("service_period_start"), record.best("service_period_end"), period)
+            if prorate[0] == 0:  # entirely outside the reporting period: listed under "excluded"
+                continue
             amount = self._quantity(record, prorate)
             if amount is None or amount[1] not in ("kWh", "MWh"):
                 needs_input.append({"kind": "quantity", "key": record.label,

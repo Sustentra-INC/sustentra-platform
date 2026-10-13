@@ -259,3 +259,17 @@ def test_settings_validation() -> None:
                 {"certificates": [{"mwh": -1}]}, {"grid_regions": {"A": 1}}):
         with pytest.raises(ValueError):
             validate_recalculation_settings(bad)
+
+
+def test_records_outside_the_reporting_period_are_listed_not_silently_dropped() -> None:
+    store = FakeStore()
+    store.add_document("GAS-2024", "CT-S1-FUELQTY", [_gas(500, start="2024-01-01", end="2024-01-31")])
+    store.add_document("BILL-2024", "CT-S2-ELEC", [_elec(90, "Facility Z", "Albany, NY", "2024-03-01", "2024-03-31")])
+    store.add_document("GAS-2025", "CT-S1-FUELQTY", [_gas(1000)])
+    result = _service(store).recalculate(_engagement(), _own)
+    excluded = {item["document_id"]: item for item in result["excluded"]}
+    assert set(excluded) == {"GAS-2024", "BILL-2024"}
+    assert excluded["GAS-2024"]["period"] == "2024-01-01 to 2024-01-31"
+    # The out-of-period bill neither counts nor asks for a grid region.
+    assert not any(item["kind"] == "grid_region" for item in result["needs_input"])
+    assert result["categories"]["stationary_combustion"]["lines"][0]["mass_t"]["CO2"] == pytest.approx(1000 * 53.06 / 1000)
