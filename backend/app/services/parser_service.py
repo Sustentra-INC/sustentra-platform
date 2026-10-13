@@ -26,6 +26,7 @@ from backend.app.adapters.parsers.base import build_failed_parser_output, build_
 from backend.app.adapters.parsers.csv_parser import CsvParser
 from backend.app.adapters.parsers.excel_parser import ExcelParser
 from backend.app.adapters.parsers.image_parser import ImageParser
+from backend.app.adapters.parsers.docx_parser import DocxParser
 from backend.app.adapters.parsers.pdf_parser import PdfParser
 from backend.app.adapters.parsers.text_parser import TextParser
 from backend.app.adapters.parsers.textract_parser import TextractParser
@@ -34,6 +35,7 @@ TEXT_EXTENSIONS = {".txt", ".md", ".markdown"}
 CSV_EXTENSIONS = {".csv"}
 EXCEL_EXTENSIONS = {".xlsx", ".xlsm"}
 PDF_EXTENSIONS = {".pdf"}
+DOCX_EXTENSIONS = {".docx"}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".gif", ".bmp", ".webp"}
 
 MIME_TYPE_ROUTES = {
@@ -42,6 +44,7 @@ MIME_TYPE_ROUTES = {
     "text/csv": "csv",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "excel",
     "application/pdf": "pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
 }
 
 
@@ -53,6 +56,7 @@ class ParserService:
         self._csv_parser = CsvParser()
         self._excel_parser = ExcelParser()
         self._pdf_parser = PdfParser()
+        self._docx_parser = DocxParser()
         self._image_parser = ImageParser()
         self._textract_parser = TextractParser()
         self._live_textract_parser = live_textract_parser or AwsTextractParser()
@@ -79,6 +83,8 @@ class ParserService:
 
         if parser_kind == "text":
             return self._text_parser.parse(path, document_id, processing_run_id)
+        if parser_kind == "docx":
+            return self._docx_parser.parse(path, document_id, processing_run_id)
         if parser_kind == "csv":
             return self._csv_parser.parse(path, document_id, processing_run_id)
         if parser_kind == "excel":
@@ -136,6 +142,8 @@ class ParserService:
             return "excel"
         if suffix in PDF_EXTENSIONS:
             return "pdf"
+        if suffix in DOCX_EXTENSIONS:
+            return "docx"
         if suffix in IMAGE_EXTENSIONS:
             return "image"
 

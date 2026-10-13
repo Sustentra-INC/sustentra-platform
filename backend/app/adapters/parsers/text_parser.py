@@ -43,6 +43,14 @@ class TextParser:
                 )
             )
 
+        return self.parse_text(raw_text, document_id, processing_run_id, warnings)
+
+    def parse_text(
+        self, raw_text: str, document_id: str, processing_run_id: str, warnings: list[dict[str, str]]
+    ) -> dict:
+        """One traceable text block per non-empty line (shared with readers that turn a
+        file into lines first, like Word documents)."""
+
         lines = raw_text.splitlines()
         non_empty = [(idx, line) for idx, line in enumerate(lines) if line.strip()]
 
@@ -50,7 +58,7 @@ class TextParser:
             warnings.append(
                 build_warning(
                     "empty_document",
-                    "Text file contained no non-empty lines.",
+                    "The document contained no text.",
                     severity="info",
                 )
             )

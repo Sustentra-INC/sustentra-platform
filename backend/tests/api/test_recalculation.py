@@ -14,7 +14,7 @@ from backend.tests.services.test_engagement_recalculation_service import (
     _service,
 )
 
-ENGAGEMENT = {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
+ENGAGEMENT = {"id": "ENG-1", "org_id": ORG_A, "name": "FY2025 GHG", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
               "settings": {"recalculation": {"grid_regions": {"Facility A": "NYUP"}}}}
 
 
@@ -40,6 +40,11 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
         return []
 
     monkeypatch.setattr(recalculation_api.workpaper_item_service, "list_items", no_decisions)
+
+    async def no_audit(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        return None
+
+    monkeypatch.setattr(recalculation_api, "write_audit_event", no_audit)
     app.dependency_overrides[get_db_session] = no_db
     yield store
     app.dependency_overrides.pop(get_db_session, None)
@@ -80,3 +85,29 @@ def test_engagement_settings_validate_recalculation_inputs() -> None:
     EngagementUpdate(settings={"recalculation": {"gwp_set": "AR6", "grid_regions": {"Facility A": "NYUP"}}})
     with pytest.raises(ValueError):
         EngagementUpdate(settings={"recalculation": {"gwp_set": "AR4"}})
+
+
+def test_export_is_an_excel_workpaper_of_the_same_numbers(act_as, wired: FakeStore) -> None:
+    import io
+
+    from openpyxl import load_workbook
+
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        response = client.get("/v1/engagements/ENG-1/export")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    assert response.headers["content-disposition"].startswith("attachment;")
+    book = load_workbook(io.BytesIO(response.content))
+    assert book.sheetnames == ["Summary", "Data points", "Working", "Evidence", "Reviewed values", "Requests",
+                               "Findings", "Left out"]
+    location = next(row for row in book["Data points"].iter_rows(values_only=True)
+                    if row[1] == "Scope 2 (Total), location-based")
+    assert round(location[4], 2) == round(1200 * (240.99 + 0.011 * 28 + 0.001 * 265) / 2204.62, 2)
+    assert any("Table 6" in str(row[4]) for row in book["Working"].iter_rows(values_only=True))
+    assert [row[0] for row in book["Evidence"].iter_rows(min_row=2, values_only=True)] == ["BILL-A.pdf"]
+
+    act_as("org_member", ORG_B)
+    with TestClient(app) as client:
+        assert client.get("/v1/engagements/ENG-1/export").status_code == 404

@@ -44,6 +44,7 @@ import { VerificationResults } from "../components/VerificationResults";
 import { BackendVerificationResults } from "../components/BackendVerificationResults";
 import { BackendCheckCoverage } from "../components/BackendCheckCoverage";
 import { BackendPageView } from "../components/BackendPageView";
+import { BackendOutputScreen } from "../components/BackendOutputScreen";
 import { OutputScreen } from "../components/OutputScreen";
 import { coverageRules } from "../fixtures/verification/coverageRules";
 import { verificationRows } from "../fixtures/verification/verificationResults";
@@ -804,7 +805,18 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             <VerificationResults rows={verificationRows} store={verification} />
           )
         ) : activeView.name === "output" ? (
-          <OutputScreen engagement={engagement} />
+          dataMode === "backend" ? (
+            <BackendOutputScreen
+              engagement={engagement}
+              evidence={evidenceView}
+              values={reviewValuesView}
+              asks={requests.asks}
+              findings={verification.findings}
+              onError={handleSessionEnded}
+            />
+          ) : (
+            <OutputScreen engagement={engagement} />
+          )
         ) : activeView.name === "evidence" ? (
           <EvidenceWorkspace
             engagement={engagementForUser}
