@@ -3,14 +3,27 @@
 import { useEffect, useRef, useState } from "react";
 
 import { api, apiPath } from "../../../lib/api";
-import type { ReviewSpan } from "../types/review";
+import type { PageMark, ReviewSpan } from "../types/review";
 
 /**
  * The uploaded document's page as an image, with the extracted value outlined at the
  * position the extractor recorded. Opens at the value's page; the reviewer can page
  * through the rest. Works the same in every browser (a framed PDF cannot be drawn over).
+ *
+ * Every other value read from the page is drawn as a faint box too: clicking one selects
+ * that value, so the reviewer can go from the document to the value as well as back.
  */
-export function BackendPageView({ documentId, span }: { documentId: string; span: ReviewSpan | null }) {
+export function BackendPageView({
+  documentId,
+  span,
+  marks = [],
+  onPickMark,
+}: {
+  documentId: string;
+  span: ReviewSpan | null;
+  marks?: PageMark[];
+  onPickMark?: (mark: PageMark) => void;
+}) {
   const [pages, setPages] = useState<number | null>(null);
   const [page, setPage] = useState(span?.page ?? 1);
   const [failed, setFailed] = useState(false);
@@ -88,6 +101,28 @@ export function BackendPageView({ documentId, span }: { documentId: string; span
           alt={`Page ${page} of the uploaded document`}
           onLoad={() => mark.current?.scrollIntoView({ block: "center", behavior: "smooth" })}
         />
+        {onPickMark
+          ? boxesOnPage(marks, page).map((group) => {
+              const [first] = group;
+              const labels = group.map((m) => m.label).join(" · ");
+              return (
+                <button
+                  key={first.id}
+                  type="button"
+                  className={`s1-pv__box s1-pv__box--${first.reviewState}`}
+                  style={{
+                    left: `${first.span.x * 100}%`,
+                    top: `${first.span.y * 100}%`,
+                    width: `${first.span.w * 100}%`,
+                    height: `${first.span.h * 100}%`,
+                  }}
+                  title={labels}
+                  aria-label={`Select ${labels}`}
+                  onClick={() => onPickMark(first)}
+                />
+              );
+            })
+          : null}
         {onThisPage ? (
           <div
             ref={mark}
@@ -105,4 +140,17 @@ export function BackendPageView({ documentId, span }: { documentId: string; span
       {!span ? <p className="s1-muted s1-pv__note">The value&rsquo;s position was not recorded; check it on the page.</p> : null}
     </div>
   );
+}
+
+/** The values on one page, one box per position: values read from the same line (an amount
+ *  and its unit) share a box, so the box is drawn once and a click selects the first of them
+ *  (clicking again moves to the next). */
+function boxesOnPage(marks: PageMark[], page: number): PageMark[][] {
+  const groups = new Map<string, PageMark[]>();
+  for (const m of marks) {
+    if (m.span.page !== page) continue;
+    const key = [m.span.x, m.span.y, m.span.w, m.span.h].map((n) => n.toFixed(3)).join("|");
+    groups.set(key, [...(groups.get(key) ?? []), m]);
+  }
+  return Array.from(groups.values());
 }

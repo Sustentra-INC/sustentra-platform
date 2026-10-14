@@ -909,7 +909,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                   }
                 : undefined
             }
-            renderPage={(documentId, span, onPickBox) =>
+            renderPage={(documentId, span, onPickBox, marks) =>
               documentId === DEMO_INVOICE_ID ? (
                 <InvoicePage
                   highlight={span ? { x: span.x, y: span.y, w: span.w, h: span.h } : null}
@@ -918,7 +918,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               ) : dataMode === "backend" &&
                 ["pdf", "image"].includes(evidenceItems.find((item) => item.documentId === documentId)?.format ?? "") ? (
                 // The uploaded page as an image, the value outlined where it was read.
-                <BackendPageView key={`${documentId}:${span?.page ?? 0}`} documentId={documentId} span={span} />
+                <BackendPageView
+                  key={`${documentId}:${span?.page ?? 0}`}
+                  documentId={documentId}
+                  span={span}
+                  marks={marks}
+                  onPickMark={onPickBox ? (m) => onPickBox(m.span, m.id) : undefined}
+                />
               ) : null
             }
           />

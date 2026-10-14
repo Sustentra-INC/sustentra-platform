@@ -3,7 +3,7 @@
 import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
-import type { ReviewSpan, ReviewValue, ScopePlacement, ValueReviewState } from "../types/review";
+import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueReviewState } from "../types/review";
 import type { AskDraft } from "../requests/requestsStore";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 
@@ -31,11 +31,13 @@ interface ExtractionReviewProps {
   onSaveAsk: (draft: AskDraft) => void;
   onBack: () => void;
   /** Render the real source page for a document (else a facsimile is drawn).
-   *  `onPickBox` lets a clicked highlight on the page select its value card. */
+   *  `onPickBox` lets a clicked highlight on the page select its value card (by its id
+   *  when the page knows it); `marks` are every value of the document that has a position. */
   renderPage?: (
     documentId: string,
     span: ReviewSpan | null,
-    onPickBox?: (box: { x: number; y: number; w: number; h: number }) => void
+    onPickBox?: (box: { x: number; y: number; w: number; h: number }, id?: string) => void,
+    marks?: PageMark[]
   ) => ReactNode | null;
   /** Who the record names for a human action. */
   reviewerName?: string;
@@ -116,11 +118,16 @@ export function ExtractionReview({
     setSelectedId(v.id);
   }
 
-  /** A highlight on the document was clicked: select the value it belongs to. */
-  function selectByBox(box: { x: number; y: number; w: number; h: number }) {
-    const match = items.find(
+  /** A highlight on the document was clicked: select the value it belongs to. Several values
+   *  can share one line ("Total kWh Used: 700,000 kWh" holds the amount and its unit), so a
+   *  second click on the same box moves to the next of them. */
+  function selectByBox(box: { x: number; y: number; w: number; h: number }, id?: string) {
+    const sameBox = items.filter(
       (v) => v.span && Math.abs(v.span.x - box.x) < 0.003 && Math.abs(v.span.y - box.y) < 0.003
     );
+    const byId = id ? items.find((v) => v.id === id) : undefined;
+    const here = sameBox.findIndex((v) => v.id === selectedId);
+    const match = here >= 0 && sameBox.length > 1 ? sameBox[(here + 1) % sameBox.length] : byId ?? sameBox[0];
     if (!match) return;
     const nk = nodeKeyForValue(match);
     if (nk !== nodeKey) {
@@ -432,7 +439,12 @@ export function ExtractionReview({
 
         {/* Source */}
         <aside className="s1-xr-source" aria-label="Source">
-          <SourcePane value={selected} renderPage={renderPage} onPickBox={selectByBox} />
+          <SourcePane
+            value={selected}
+            renderPage={renderPage}
+            onPickBox={selectByBox}
+            marks={selected ? pageMarks(items, selected.documentId) : []}
+          />
         </aside>
       </div>
 
@@ -599,18 +611,29 @@ function ValueCard({
 
 /* =============================== source pane =============================== */
 
+/** Every value of a document that has a position on a page, to draw as clickable boxes. */
+function pageMarks(items: ReviewValue[], documentId: string): PageMark[] {
+  return items
+    .filter((v) => v.documentId === documentId && v.span && !v.missing && !v.withdrawn)
+    .map((v) => ({ id: v.id, span: v.span!, label: `${v.whatItIs}: ${v.value}${v.unit ? ` ${v.unit}` : ""}`,
+      reviewState: v.reviewState }));
+}
+
 function SourcePane({
   value,
   renderPage,
   onPickBox,
+  marks,
 }: {
   value: ReviewValue | null;
   renderPage?: (
     documentId: string,
     span: ReviewSpan | null,
-    onPickBox?: (box: { x: number; y: number; w: number; h: number }) => void
+    onPickBox?: (box: { x: number; y: number; w: number; h: number }, id?: string) => void,
+    marks?: PageMark[]
   ) => ReactNode | null;
-  onPickBox?: (box: { x: number; y: number; w: number; h: number }) => void;
+  onPickBox?: (box: { x: number; y: number; w: number; h: number }, id?: string) => void;
+  marks?: PageMark[];
 }) {
   // Page state tracked here (hook must run every render); resets when the
   // selected value changes, guarded so it fires once per change.
@@ -630,7 +653,7 @@ function SourcePane({
   }
   const page = pageState.id === value.id ? pageState.page : value.page;
   const setPage = (nextPage: number) => setPageState({ id: value.id, page: nextPage });
-  const realPage = renderPage ? renderPage(value.documentId, value.span ?? null, onPickBox) : null;
+  const realPage = renderPage ? renderPage(value.documentId, value.span ?? null, onPickBox, marks) : null;
   return (
     <div className="s1-xr-src">
       <div className="s1-xr-src-head">

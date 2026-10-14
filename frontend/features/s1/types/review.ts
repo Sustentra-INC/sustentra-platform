@@ -15,6 +15,15 @@ export interface ValueRecordEntry {
   reason?: string;
 }
 
+/** A value drawn on its page in the source pane: clicking it selects the value. */
+export interface PageMark {
+  id: string;
+  span: ReviewSpan;
+  /** What the value is, for the box's tooltip and screen readers. */
+  label: string;
+  reviewState: ValueReviewState;
+}
+
 /** Normalized 0..1 rectangle over the rendered page — ready for real geometry. */
 export interface ReviewSpan {
   page: number;
