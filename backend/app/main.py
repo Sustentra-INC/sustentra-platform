@@ -1,7 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -23,6 +23,7 @@ from .api import v1 as api_v1
 from .core.config import Settings, get_settings
 from .core.db import dispose_engine
 from .core.rate_limit import limiter
+from .core.s1_scope import bind_s1_scope
 from .core.security import JSONContentTypeMiddleware, OriginCheckMiddleware, UploadSizeLimitMiddleware
 
 APP_TITLE = "Sustentra Evidence Extraction API"
@@ -103,13 +104,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # SEC-001: every S1 route requires a session and is scoped to the caller's org
     # (api/s1_access.py).
     for router in S1_ROUTERS:
-        app.include_router(router, prefix="/api")
+        app.include_router(router, prefix="/api", dependencies=[Depends(bind_s1_scope)])
 
     # S1 routes at root /v1/*, for local development and existing tests only -
     # never mounted on staging/prod (Caddy does not route them there either).
     if not settings.is_production_like:
         for router in LEGACY_ROUTERS:
-            app.include_router(router)
+            app.include_router(router, dependencies=[Depends(bind_s1_scope)])
 
     return app
 

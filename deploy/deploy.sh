@@ -44,6 +44,8 @@ PUBLIC_BASE_URL=https://${APP_DOMAIN}
 DATABASE_URL=$(get_param db_app_url)
 OTP_HMAC_SECRET=$(get_param otp_hmac_secret)
 SES_FROM_ADDRESS=no-reply@${APP_DOMAIN}
+S1_STORE=${S1_STORE:-jsonl}
+TEXTRACT_ENABLED=${TEXTRACT_ENABLED:-false}
 EOF
 }
 

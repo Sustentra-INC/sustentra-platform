@@ -25,8 +25,17 @@ import uuid
 from collections.abc import AsyncIterator
 from urllib.parse import parse_qsl, unquote, urlencode, urlsplit, urlunsplit
 
-from sqlalchemy import text
+from contextlib import contextmanager
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Connection, Engine, text
+from sqlalchemy import create_engine as create_sync_engine
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from .s1_scope import S1Scope
 
 from .config import Settings, get_settings
 
@@ -43,6 +52,7 @@ _SET_PROVIDER = text(
 
 _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
+_sync_engine: Engine | None = None
 
 
 class DatabaseNotConfiguredError(RuntimeError):
@@ -56,6 +66,14 @@ def to_async_url(url: str) -> str:
     parts = urlsplit(url)
     scheme = "postgresql+asyncpg" if parts.scheme in ("postgres", "postgresql", "postgresql+psycopg2") else parts.scheme
     query = [("ssl", v) if k == "sslmode" else (k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)]
+    return urlunsplit((scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
+
+
+def to_sync_url(url: str) -> str:
+    """postgresql://u:p@h/db?sslmode=require -> postgresql+psycopg2://u:p@h/db?sslmode=require"""
+    parts = urlsplit(url)
+    scheme = "postgresql+psycopg2" if parts.scheme in ("postgres", "postgresql", "postgresql+asyncpg") else parts.scheme
+    query = [("sslmode", v) if k == "ssl" else (k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)]
     return urlunsplit((scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
@@ -109,11 +127,49 @@ def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
 
 
 async def dispose_engine() -> None:
-    global _engine, _sessionmaker
+    global _engine, _sessionmaker, _sync_engine
     if _engine is not None:
         await _engine.dispose()
     _engine = None
     _sessionmaker = None
+    if _sync_engine is not None:
+        _sync_engine.dispose()
+    _sync_engine = None
+
+
+# --- sync engine (the S1 document stores) ------------------------------------------
+
+def get_sync_engine() -> Engine:
+    """A sync engine on the same app_user URL, for the synchronous S1 pipeline's stores.
+
+    Same pool size as the async engine; each store call holds a connection only for its
+    own short transaction (``tenant_transaction``), never while documents are parsed.
+    """
+    global _sync_engine
+    if _sync_engine is None:
+        _sync_engine = create_sync_engine(
+            to_sync_url(runtime_database_url(get_settings())),
+            pool_size=POOL_SIZE,
+            max_overflow=MAX_OVERFLOW,
+            pool_pre_ping=True,
+            pool_recycle=1800,
+        )
+    return _sync_engine
+
+
+@contextmanager
+def tenant_transaction(scope: S1Scope, engine: Engine | None = None) -> Iterator[Connection]:
+    """One transaction in the scope's RLS context, committed on exit (rolled back on error).
+
+    Uses the same set_config(..., true) statements as the request session, so the tenant
+    lasts only for this transaction and never reaches the next user of the pooled connection.
+    """
+    with (engine or get_sync_engine()).begin() as connection:
+        if scope.provider:
+            connection.execute(_SET_PROVIDER)
+        else:
+            connection.execute(_SET_TENANT, {"org_id": str(_as_uuid(scope.org_id))})  # type: ignore[arg-type]
+        yield connection
 
 
 def get_sessionmaker_dependency() -> async_sessionmaker[AsyncSession]:
