@@ -198,9 +198,29 @@ export interface Recalculation {
   excluded?: ExcludedRecord[];
   not_recalculated: string[];
   documents_considered: number;
+  /** Missing months, duplicates, overlapping and cross-year bills (formula library checks).
+   *  Absent from results computed before the checks. */
+  quality_checks?: QualityCheck[];
   /** Category results to Scope 1, Scope 2 and inventory totals, then the final outputs.
    *  Absent from results computed before the roll-up; fall back to `comparisons`. */
   rollup?: Rollup;
+}
+
+/** A data quality signal for the reviewer (backend/app/services/data_quality_checks.py):
+ *  never a conclusion, and it changes no number. */
+export interface QualityCheck {
+  /** Formula library id: Q-001 completeness, Q-003 duplicates, Q-004 overlaps, Q-005 cross-year,
+   *  N-003 missing service period. */
+  check: "Q-001" | "Q-003" | "Q-004" | "Q-005" | "N-003";
+  trigger: string;
+  /** warning: likely wrong numbers; review: confirm with the client; info: how it was handled. */
+  severity: "warning" | "review" | "info";
+  category: string;
+  facility: string;
+  documents: string[];
+  records: string[];
+  message: string;
+  detail: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------------------

@@ -11,6 +11,8 @@ import type {
   NoteEntry,
   RequestType,
 } from "../types";
+import type { QualityCheck } from "../api/recalculation";
+import { qualityIssueLines } from "./QualityChecksPanel";
 import { StateIndicator } from "./StateIndicator";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { formatPeriod } from "../utils/formatPeriod";
@@ -85,6 +87,8 @@ interface EvidenceWorkspaceProps {
   writesEnabled?: boolean;
   /** Types the reviewer can set (backend mode: the types the backend can read). */
   typeOptions?: string[];
+  /** Data quality checks (duplicates, overlaps, cross-year bills) shown in the Issue column. */
+  qualityChecks?: QualityCheck[];
   backendError?: string | null;
   demoState?: ContainerState;
   auditIntents?: SessionAuditEntry[];
@@ -108,6 +112,7 @@ export function EvidenceWorkspace({
   isUploading = false,
   writesEnabled = true,
   typeOptions = SET_TYPE_OPTIONS,
+  qualityChecks,
   backendError,
   demoState,
   auditIntents = [],
@@ -408,6 +413,7 @@ export function EvidenceWorkspace({
                             engagement={engagement}
                             writesEnabled={writesEnabled}
                             typeOptions={typeOptions}
+                            qualityChecks={qualityChecks}
                             editing={editing?.id === item.documentId ? editing.field : null}
                             menuOpen={openMenuId === item.documentId}
                             expanded={expandedIds.includes(item.documentId)}
@@ -625,6 +631,7 @@ function WorkspaceRow(props: {
   engagement: EngagementConfig;
   writesEnabled: boolean;
   typeOptions: string[];
+  qualityChecks?: QualityCheck[];
   editing: "type" | "facility" | null;
   menuOpen: boolean;
   expanded: boolean;
@@ -652,7 +659,12 @@ function WorkspaceRow(props: {
   const { item, items, asks, engagement } = props;
   const withdrawn = item.disposition === "withdrawn";
   const proc = processingDisplay(item);
-  const issues = issueLines(item, items, engagement);
+  const issues = [
+    ...issueLines(item, items, engagement),
+    ...(withdrawn
+      ? []
+      : qualityIssueLines(props.qualityChecks, item.documentId, (id) => items.find((d) => d.documentId === id)?.filename ?? id)),
+  ];
   const ask = latestAsk(asks, item.documentId);
   const askCount = asks.filter((a) => a.source.documentId === item.documentId).length;
 

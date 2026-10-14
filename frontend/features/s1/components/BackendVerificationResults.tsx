@@ -13,6 +13,7 @@ import {
 import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig, RecalculationSettings } from "../types";
 import type { VerificationStore } from "../verification/verificationStore";
+import { QualityChecksPanel } from "./QualityChecksPanel";
 import { RecalculationInputs } from "./RecalculationInputs";
 import { VerificationResults } from "./VerificationResults";
 
@@ -122,15 +123,18 @@ export function BackendVerificationResults({
       store={store}
       materiality={recalculationMateriality(result)}
       inputs={
-        <RecalculationInputs
-          key={`${engagementId}:${attempt}`}
-          result={result}
-          reference={reference}
-          settings={engagement.recalculation ?? {}}
-          saving={saving}
-          error={saveError}
-          onSave={(next) => void save(next)}
-        />
+        <>
+          {result.quality_checks ? <QualityChecksPanel checks={result.quality_checks} /> : null}
+          <RecalculationInputs
+            key={`${engagementId}:${attempt}`}
+            result={result}
+            reference={reference}
+            settings={engagement.recalculation ?? {}}
+            saving={saving}
+            error={saveError}
+            onSave={(next) => void save(next)}
+          />
+        </>
       }
     />
   );
