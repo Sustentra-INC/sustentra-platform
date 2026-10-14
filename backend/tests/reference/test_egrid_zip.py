@@ -43,6 +43,9 @@ def test_subregions_for_zip(zip_code: str | None, subregions: list[str]) -> None
         ("15 State Street, Albany, NY 12207", "12207"),
         ("4100 Deepwater Terminal Rd, Richmond, VA 23234-1234", "23234"),
         ("12345 Main St, Austin TX 78701", "78701"),
+        ("2200 Market Street, Philadelphia, PA 19103, USA", "19103"),
+        ("12345 Main St", None),  # a street number, not a ZIP code
+        ("12345 Main St, Dallas", None),
         ("Albany, NY", None),
         (None, None),
     ],

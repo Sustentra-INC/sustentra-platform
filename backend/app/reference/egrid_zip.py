@@ -17,7 +17,9 @@ from typing import Any
 ZIP_PATH = Path(__file__).resolve().parents[3] / "reference-data" / "emission-factors" / "egrid_zip_subregions_2023.json"
 DATASET = "EPA Power Profiler ZIP Code Tool v14.2 (eGRID2023 rev 1)"
 
-_ZIP_RE = re.compile(r"(?<!\d)(\d{5})(?:-\d{4})?(?!\d)")
+# A ZIP code ends a US address ("..., Albany, NY 12207", "..., VA 23234-1234", optionally
+# followed by the country). A 5-digit number elsewhere is a street number ("12345 Main St").
+_ZIP_RE = re.compile(r"(?<![\d-])(\d{5})(?:-\d{4})?\s*(?:,?\s*(?:USA|U\.S\.A\.|US|United States))?\s*$", re.I)
 
 
 @lru_cache(maxsize=1)
@@ -36,7 +38,11 @@ def subregions_for_zip(zip_code: str | None) -> list[str]:
 
 
 def zip_from_address(address: Any) -> str | None:
-    """The ZIP code of a US address: the last 5-digit group ("..., Albany, NY 12207-1234")."""
+    """The ZIP code ending a US address ("..., Albany, NY 12207-1234"), else None.
 
-    matches = _ZIP_RE.findall(str(address or ""))
-    return matches[-1] if matches else None
+    Only a ZIP code at the end counts: a bill's address line without a city line
+    ("12345 Main St") has no ZIP code, and its street number must not be read as one.
+    """
+
+    match = _ZIP_RE.search(" ".join(str(address or "").split()))
+    return match.group(1) if match else None

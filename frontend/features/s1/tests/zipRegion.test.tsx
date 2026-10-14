@@ -14,6 +14,8 @@ describe("grid region from a ZIP code", () => {
     expect(zipFromAddress("15 State Street, Albany, NY 12207")).toBe("12207");
     expect(zipFromAddress("12345 Main St, Austin TX 78701-1234")).toBe("78701");
     expect(zipFromAddress("Albany, NY")).toBeNull();
+    expect(zipFromAddress("12345 Main St")).toBeNull(); // a street number
+    expect(zipFromAddress("2200 Market Street, Philadelphia, PA 19103, USA")).toBe("19103");
     expect(zipFromAddress(null)).toBeNull();
   });
 

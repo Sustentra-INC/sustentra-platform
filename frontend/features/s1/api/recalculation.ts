@@ -253,10 +253,12 @@ export function getRecalculationReference(): Promise<RecalculationReference> {
   return api<RecalculationReference>("/reference/recalculation");
 }
 
-/** The ZIP code of a US address: its last 5-digit group ("Albany, NY 12207-1234" -> "12207"). */
+/** The ZIP code ending a US address ("Albany, NY 12207-1234" -> "12207"). A 5-digit number
+ *  elsewhere is a street number ("12345 Main St"), never a ZIP code. Same rule as the backend. */
 export function zipFromAddress(address: string | null | undefined): string | null {
-  const matches = Array.from((address ?? "").matchAll(/(?<!\d)(\d{5})(?:-\d{4})?(?!\d)/g));
-  return matches.length ? matches[matches.length - 1][1] : null;
+  const text = (address ?? "").split(/\s+/).filter(Boolean).join(" ");
+  const match = /(?<![\d-])(\d{5})(?:-\d{4})?\s*(?:,?\s*(?:USA|U\.S\.A\.|US|United States))?\s*$/i.exec(text);
+  return match ? match[1] : null;
 }
 
 /** eGRID subregions for a ZIP code (EPA Power Profiler, eGRID2023); [] when EPA does not list it. */

@@ -515,6 +515,15 @@ def test_a_single_subregion_zip_sets_the_grid_region_and_says_so() -> None:
     assert result["needs_input"] == []
 
 
+def test_a_street_number_is_not_taken_for_a_zip_code() -> None:
+    store = FakeStore()
+    store.add_document("BILL-D", "CT-S2-ELEC", [_elec(300, "Dallas Office", "12345 Main St")])
+    result = _service(store).recalculate(_engagement(), _own)
+    assert result["categories"]["purchased_electricity_location_based"] is None
+    ask = result["needs_input"][0]
+    assert ask["kind"] == "grid_region" and len(ask["options"]) == 28  # every subregion: nothing guessed
+
+
 def test_a_zip_with_several_subregions_asks_with_just_those() -> None:
     store = FakeStore()
     store.add_document("BILL-C", "CT-S2-ELEC", [_elec(500, "Facility C", "1 Main St, Ardsley, NY 10501")])
