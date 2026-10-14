@@ -15,7 +15,7 @@ import { ExtractionReview } from "../components/ExtractionReview";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import type { EvidenceItem, ExtractedField } from "../types";
 import type { PageMark, ReviewValue } from "../types/review";
-import { anchorOf, columnIndex, columnLetter, findInText } from "../utils/sourceAnchor";
+import { anchorOf, columnIndex, columnLetter, findInText, findTokens } from "../utils/sourceAnchor";
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = () => {}; // jsdom has no layout
@@ -175,5 +175,105 @@ describe("from the extraction to the review screen", () => {
     expect(selected()).toContain("96,000");
     fireEvent.click(screen.getByRole("button", { name: /^Select account_number/ }));
     expect(selected()).toContain("KGE-7781-B");
+  });
+});
+
+describe("review findings: the right spot, every time", () => {
+  beforeEach(() => {
+    content.body = {};
+  });
+
+  it("finds numbers only as whole tokens", () => {
+    expect(findTokens("Invoice 01/12/2025 at 10:12", "12")).toEqual([]);
+    expect(findTokens("Account 112, total 1,200 and 12.5", "12")).toEqual([]);
+    expect(findTokens("Usage 1,200 kWh", "1200")).toEqual([[6, 11]]);
+    expect(findTokens("Usage 1,200 kWh", "200")).toEqual([]);
+    expect(findTokens("Gallons 12", "12")).toEqual([[8, 10]]);
+  });
+
+  it("reads CSV cells and workbook cells from the reference, whatever the file is called", () => {
+    expect(anchorOf("csv", { cell_or_range: "E2", parser_block_ids: ["csv_parser-r2-b2"] }))
+      .toEqual({ kind: "row", row: 2, column: 4 });
+    expect(anchorOf("other", { sheet_name: "Log", cell_or_range: "F2" }))
+      .toEqual({ kind: "cell", sheet: "Log", row: 2, column: 5 }); // an .xlsm
+    expect(anchorOf("docx", { cell_or_range: "part 2", parser_block_ids: ["docx_parser-p1-b5"] }))
+      .toEqual({ kind: "line", line: 5, part: 2 });
+  });
+
+  it("never marks a CSV value inside the date: its own column, else the one cell equal to it", async () => {
+    content.body = { kind: "sheets", truncated: false, sheets: [{ name: null, columns: 7, rows: [
+      { number: 2, cells: ["01/22/2025", "Richmond", "Chiller", "R-134a", "45", "0", "650"] },
+      { number: 3, cells: ["04/09/2025", "Richmond", "RTU-5", "R-410A", "0", "0", "16"] },
+    ] }] };
+    render(
+      <DocumentContentView
+        documentId="DOC"
+        selectedId={null}
+        marks={marks(
+          ["recovered", { kind: "row", row: 2, column: 5 }, "0"],
+          ["recovered-old", { kind: "row", row: 2 }, "0"], // no column recorded: the one cell that is "0"
+          ["added-ambiguous", { kind: "row", row: 3 }, "0"] // two cells are "0": the row, not a guess
+        )}
+      />
+    );
+    expect((await screen.findByRole("button", { name: "Select recovered · recovered-old" })).textContent).toBe("0");
+    expect(screen.getByRole("button", { name: "Select added-ambiguous" }).textContent).toBe("3"); // the row number
+  });
+
+  it("marks a unit after the label, and in the part of the line the extractor read", async () => {
+    content.body = { kind: "lines", truncated: false, lines: [
+      "Total kWh Used: 96,000 kWh",
+      "Meter M-1\tTotal kWh Used\t96,000 kWh",
+      "Account Number\tKGE-7781-B",
+    ] };
+    render(
+      <DocumentContentView
+        documentId="DOC"
+        selectedId={null}
+        marks={marks(
+          ["unit-colon", { kind: "line", line: 1 }, "kWh"],
+          ["unit-tabs", { kind: "line", line: 2 }, "kWh"],
+          ["account", { kind: "line", line: 3, part: 2 }, "KGE-7781-B"]
+        )}
+      />
+    );
+    const colon = await screen.findByRole("button", { name: "Select unit-colon" });
+    expect(colon.previousSibling?.textContent).toBe("Total kWh Used: 96,000 ");
+    expect(screen.getByRole("button", { name: "Select unit-tabs" }).previousSibling?.textContent)
+      .toBe("Meter M-1\tTotal kWh Used\t96,000 ");
+    expect(screen.getByRole("button", { name: "Select account" }).textContent).toBe("KGE-7781-B");
+  });
+
+  it("keeps every other value on a line marked when one value's text is not on it", async () => {
+    content.body = { kind: "lines", truncated: false, lines: ["07/03/2025  Card ****  Diesel  12.4 gal"] };
+    const onPickAmong = vi.fn();
+    render(
+      <DocumentContentView
+        documentId="DOC"
+        selectedId="card"
+        onPickAmong={onPickAmong}
+        marks={marks(["card", { kind: "line", line: 1 }, "****1182"], ["qty", { kind: "line", line: 1, part: 4 }, "12.4"])}
+      />
+    );
+    const card = await screen.findByRole("button", { name: "Select card" });
+    expect(card.textContent).toBe("1"); // on the line number
+    expect(card.className).toContain("s1-cv__mark--selected");
+    fireEvent.click(screen.getByRole("button", { name: "Select qty" }));
+    expect(onPickAmong).toHaveBeenCalledWith(["qty"]);
+  });
+
+  it("opens the selected value's own sheet again after another tab was looked at", async () => {
+    content.body = { kind: "sheets", truncated: false, sheets: [
+      { name: "Log", columns: 1, rows: [{ number: 1, cells: ["450"] }] },
+      { name: "Notes", columns: 1, rows: [{ number: 1, cells: ["memo"] }] },
+    ] };
+    const valueMarks = marks(["x", { kind: "cell", sheet: "Log", row: 1, column: 0 }, "450"],
+      ["y", { kind: "cell", sheet: "Notes", row: 1, column: 0 }, "memo"]);
+    const view = render(<DocumentContentView documentId="DOC" selectedId="x" marks={valueMarks} />);
+    await screen.findByRole("button", { name: "Select x" });
+    fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
+    view.rerender(<DocumentContentView documentId="DOC" selectedId="y" marks={valueMarks} />);
+    view.rerender(<DocumentContentView documentId="DOC" selectedId="x" marks={valueMarks} />);
+    expect(screen.getByRole("tab", { name: "Log" }).getAttribute("aria-selected")).toBe("true");
   });
 });

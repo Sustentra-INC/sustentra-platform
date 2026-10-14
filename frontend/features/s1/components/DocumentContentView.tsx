@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api, apiPath } from "../../../lib/api";
 import type { PageMark } from "../types/review";
-import { columnLetter, findInText } from "../utils/sourceAnchor";
+import { columnLetter, findTokens, lineParts, sameText } from "../utils/sourceAnchor";
 
 /**
  * A workbook, CSV, Word or text file as the parsers read it, with every extracted value
@@ -52,8 +52,9 @@ export function placeMarks(content: DocumentContent, marks: PageMark[]): Map<str
     } else if (content.kind === "sheets" && anchor.kind === "row") {
       const row = content.sheets[0]?.rows.find((r) => r.number === anchor.row);
       if (!row) continue;
-      // The cell holding the value's text; the whole row when no single cell does.
-      const column = row.cells.findIndex((cell) => cell !== null && findInText(cell, mark.rawText) !== null);
+      // The column the extractor recorded; else the one cell whose text is the value (never a
+      // cell that merely contains it, like "0" inside a date); else the whole row.
+      const column = anchor.column ?? onlyCell(row.cells, mark.rawText);
       add(
         column >= 0
           ? { key: `s0:r${anchor.row}:c${column}`, sheet: 0, row: anchor.row, column, range: null }
@@ -63,7 +64,7 @@ export function placeMarks(content: DocumentContent, marks: PageMark[]): Map<str
     } else if (content.kind === "lines" && anchor.kind === "line") {
       const text = content.lines[anchor.line - 1];
       if (text === undefined) continue;
-      const range = findInLine(text, mark.rawText);
+      const range = findInLine(text, mark.rawText, anchor.part);
       add(
         { key: range ? `l${anchor.line}:${range[0]}-${range[1]}` : `l${anchor.line}`, sheet: 0, row: anchor.line, column: null, range },
         mark.id
@@ -86,8 +87,13 @@ export function DocumentContentView({
 }) {
   const [content, setContent] = useState<DocumentContent | null>(null);
   const [failed, setFailed] = useState(false);
-  // A sheet tab the reviewer opened, for the value selected at the time.
-  const [sheetChoice, setSheetChoice] = useState<{ forId: string | null; sheet: number } | null>(null);
+  // A sheet tab the reviewer opened; forgotten as soon as another value is selected, so the
+  // selected value's own sheet always opens.
+  const [sheetChoice, setSheetChoice] = useState<{ forId: string | null; sheet: number | null }>({
+    forId: selectedId,
+    sheet: null,
+  });
+  if (sheetChoice.forId !== selectedId) setSheetChoice({ forId: selectedId, sheet: null });
   const selectedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
@@ -117,7 +123,7 @@ export function DocumentContentView({
     ids.map((id) => marks.find((m) => m.id === id)?.label).filter(Boolean).join(" · ");
 
   // The selected value's sheet opens unless the reviewer picked another tab for it.
-  const sheet = sheetChoice && sheetChoice.forId === selectedId ? sheetChoice.sheet : (selectedSpot?.sheet ?? 0);
+  const sheet = (sheetChoice.forId === selectedId ? sheetChoice.sheet : null) ?? selectedSpot?.sheet ?? 0;
   useEffect(() => {
     selectedRef.current?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
   }, [selectedSpot, content, sheet]);
@@ -147,23 +153,30 @@ export function DocumentContentView({
           {content.lines.map((text, index) => {
             const line = index + 1;
             const here = Array.from(spots.values()).filter((e) => e.spot.row === line);
+            // A value whose text is not on the line (a masked card number) is marked on the line
+            // number, so the values that are on the line keep their own marks.
             const whole = here.find((e) => e.spot.range === null);
             const ranged = here.filter((e) => e.spot.range !== null).sort((a, b) => a.spot.range![0] - b.spot.range![0]);
             return (
-              <li key={line} className={`s1-cv__line${whole ? " s1-cv__line--marked" : ""}`} value={line}>
+              <li key={line} className="s1-cv__line">
                 {whole ? (
                   <button
                     type="button"
                     ref={markRef(whole.ids)}
-                    className={markClass(stateOf(whole.ids), isSelected(whole.ids))}
+                    className={`${markClass(stateOf(whole.ids), isSelected(whole.ids))} s1-cv__lineno`}
                     title={labelOf(whole.ids)}
                     aria-label={`Select ${labelOf(whole.ids)}`}
                     onClick={() => onPickAmong?.(whole.ids)}
                   >
-                    {text}
+                    {line}
                   </button>
                 ) : (
-                  segments(text, ranged).map((part, i) =>
+                  <span className="s1-cv__lineno s1-muted" aria-hidden>
+                    {line}
+                  </span>
+                )}
+                <span className="s1-cv__text">
+                  {segments(text, ranged).map((part, i) =>
                     part.entry ? (
                       <button
                         key={i}
@@ -179,8 +192,8 @@ export function DocumentContentView({
                     ) : (
                       <span key={i}>{part.text}</span>
                     )
-                  )
-                )}
+                  )}
+                </span>
               </li>
             );
           })}
@@ -277,15 +290,31 @@ export function DocumentContentView({
   );
 }
 
-/** A Word table row or "Label<tab>value" line holds its value after the label, so look there
- *  first: "kWh" in "Total kWh Used<tab>96,000 kWh" is the unit, not the label's word. */
-function findInLine(text: string, rawText: string | null | undefined): [number, number] | null {
-  const tab = text.indexOf("\t");
-  if (tab >= 0) {
-    const after = findInText(text.slice(tab + 1), rawText);
-    if (after) return [after[0] + tab + 1, after[1] + tab + 1];
+/** The one cell whose whole text is the value, or -1 (none, or more than one). */
+function onlyCell(cells: (string | null)[], rawText: string | null | undefined): number {
+  const matches = cells.flatMap((cell, i) => (cell !== null && sameText(cell, rawText) ? [i] : []));
+  return matches.length === 1 ? matches[0] : -1;
+}
+
+/**
+ * Where a value sits in its line. The extractor says which part of the line it read (parts
+ * split on tabs, 2+ spaces or pipes): the value is looked for in that part, and the whole part
+ * is marked if its words differ. Without a part, a label's word is skipped: the value comes
+ * after the last tab, else after a ":" or "=", else it is the last match ("kWh" in "Total kWh
+ * Used: 96,000 kWh" is the unit, not the label).
+ */
+function findInLine(text: string, rawText: string | null | undefined, part?: number): [number, number] | null {
+  const span = part !== undefined ? lineParts(text).get(part) : undefined;
+  if (span) {
+    const inPart = findTokens(text.slice(span[0], span[1]), rawText);
+    const pick = inPart[inPart.length - 1];
+    return pick ? [pick[0] + span[0], pick[1] + span[0]] : span;
   }
-  return findInText(text, rawText);
+  const found = findTokens(text, rawText);
+  if (!found.length) return null;
+  const tab = text.lastIndexOf("\t");
+  const label = tab >= 0 ? tab : Math.max(text.indexOf(":"), text.indexOf("="));
+  return found.find(([start]) => label >= 0 && start > label) ?? found[found.length - 1];
 }
 
 function markClass(state: PageMark["reviewState"], selected: boolean): string {

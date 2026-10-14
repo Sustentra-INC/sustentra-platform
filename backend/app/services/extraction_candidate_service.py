@@ -227,7 +227,7 @@ class ExtractionCandidateService:
             normalized_value=normalized_value,
             unit=unit,
             confidence=confidence,
-            source_reference=self._with_position(parser_output, hit.source_reference, hit.raw_value),
+            source_reference=self._with_position(parser_output, hit.source_reference, hit.raw_value, hit.context),
             validation_flags=flags,
         )
 
@@ -652,10 +652,16 @@ class ExtractionCandidateService:
             return resolved
         return self._inline_from_table(table, document_id)
 
-    def _with_position(self, parser_output: dict, reference: dict, raw_value: Any) -> dict:
+    def _with_position(self, parser_output: dict, reference: dict, raw_value: Any,
+                       context: dict[str, Any] | None = None) -> dict:
         """A value found on a page, in a table or in a label/value pair carries no position of
         its own: point it at the line (or cell) that holds it, so the reviewer sees it
-        outlined on the document. The reference is kept as it was when nothing matches."""
+        outlined on the document.
+
+        The value must appear as a whole token ("12" is not found in "01/12/2025" or "112");
+        the line sharing most words with the hit's own row, pair label or snippet wins. When
+        nothing matches, or two lines match equally well, the reference is kept as it was.
+        """
 
         if reference.get("bounding_box") or reference.get("parser_block_ids") or reference.get("cell_or_range"):
             return reference
@@ -664,26 +670,27 @@ class ExtractionCandidateService:
             return reference
         page = reference.get("page_number")
         sheet = reference.get("sheet_name")
-        context = set(self._squash(reference.get("text_snippet") or "").split())
-        best: tuple[tuple[int, int], dict, dict | None] | None = None
+        hints = " ".join(str((context or {}).get(k) or "") for k in ("row_text", "pair_key", "matched_anchor"))
+        words = set(self._squash(f"{hints} {reference.get('text_snippet') or ''}").replace("|", " ").split())
+        scored: list[tuple[tuple[int, int], dict, dict | None]] = []
         for block in parser_output.get("text_blocks", []) or []:
             if not isinstance(block, dict) or not block.get("block_id"):
                 continue
             if page is not None and block.get("page_number") not in (page, None):
                 continue
             text = self._squash(block.get("text") or "")
-            if not any(needle in text or needle in text.replace(",", "") for needle in needles):
+            if not any(self._has_token(text, needle) for needle in needles):
                 continue
             resolved = self._resolve_source_reference(parser_output, block.get("source_reference_id"))
             if sheet is not None and (resolved or {}).get("sheet_name") not in (sheet, None):
                 continue
-            # The line sharing most words with the hit's context (its label), then the shortest.
-            score = (-len(context & set(text.split())), len(text))
-            if best is None or score < best[0]:
-                best = (score, block, resolved)
-        if best is None:
+            scored.append(((-len(words & set(text.replace("|", " ").split())), len(text)), block, resolved))
+        if not scored:
             return reference
-        _, block, resolved = best
+        scored.sort(key=lambda item: item[0])
+        if len(scored) > 1 and scored[0][0] == scored[1][0]:
+            return reference  # two lines fit equally well: better no outline than a wrong one
+        _, block, resolved = scored[0]
         located = copy.deepcopy(reference)
         located["parser_block_ids"] = [block["block_id"]]
         located["page_number"] = page if page is not None else block.get("page_number")
@@ -696,6 +703,14 @@ class ExtractionCandidateService:
         if not located.get("text_snippet"):
             located["text_snippet"] = self._snippet(block.get("text"))
         return located
+
+    @staticmethod
+    def _has_token(text: str, needle: str) -> bool:
+        """``needle`` in ``text`` as a whole token: not inside a longer number or word, and not
+        part of "1,200" or "12.5". Commas between digits are ignored on both sides."""
+
+        pattern = r"(?<![0-9a-z.])(?<!\d,)" + re.escape(needle) + r"(?![0-9a-z])(?![.,]\d)"
+        return bool(re.search(pattern, text) or re.search(pattern, re.sub(r"(?<=\d),(?=\d)", "", text)))
 
     @staticmethod
     def _squash(text: str) -> str:

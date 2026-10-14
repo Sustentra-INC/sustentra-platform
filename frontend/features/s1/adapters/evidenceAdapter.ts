@@ -154,7 +154,7 @@ export function inlineDocumentUrl(documentId: string): string {
 
 function resolveFormat(filename: string, mimeType?: string | null): EvidenceItem["format"] {
   const lower = filename.toLowerCase();
-  if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) return "xlsx";
+  if (lower.endsWith(".xlsx") || lower.endsWith(".xlsm") || lower.endsWith(".xls")) return "xlsx";
   if (lower.endsWith(".csv") || mimeType === "text/csv") return "csv";
   if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image";
   if (lower.endsWith(".pdf") || mimeType === "application/pdf") return "pdf";

@@ -347,3 +347,16 @@ def test_pages_and_unreadable_files_have_no_content(env: dict) -> None:
     csv = env["upload"]("log.csv", b"a,b\n", "text/csv")
     env["act_as"]("org_member", ORG_B)
     assert env["client"].get(url(csv, "content")).status_code == 404
+
+
+def test_content_stays_bounded_whatever_the_file_holds(env: dict, monkeypatch) -> None:
+    from backend.app.services import document_content_service as content
+
+    monkeypatch.setattr(content, "MAX_CELLS", 3)
+    many = env["upload"]("many.csv", b"a,b\n1,2\n3,4\n5,6\n", "text/csv")
+    body = env["client"].get(url(many, "content")).json()
+    assert body["truncated"] is True and [r["number"] for r in body["sheets"][0]["rows"]] == [1]
+    monkeypatch.setattr(content, "MAX_LINE_CHARS", 10)
+    long_line = env["upload"]("long.txt", b"x" * 50 + b"\nshort\n", "text/plain")
+    body = env["client"].get(url(long_line, "content")).json()
+    assert body["lines"][0] == "x" * 10 + "…" and body["truncated"] is True

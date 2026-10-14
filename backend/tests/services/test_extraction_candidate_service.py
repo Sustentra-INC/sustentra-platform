@@ -383,3 +383,32 @@ def test_a_value_on_no_single_line_keeps_its_page_level_reference():
     reference = ExtractionCandidateService().generate_candidates(parser_output, [target], "EV-1")[0]["source_reference"]
 
     assert reference["bounding_box"] is None and reference["parser_block_ids"] == []
+
+
+def _pair_output(lines, key, value):
+    built = [_pdf_line(f"b{i}", text, {"x": 0.1, "y": 0.1 * i, "width": 0.3, "height": 0.02})
+             for i, text in enumerate(lines, start=1)]
+    return _parser_output(
+        parser_name="pymupdf", text_blocks=[b for b, _ in built], source_references=[r for _, r in built],
+        key_value_pairs=[{"pair_id": "kv1", "page_number": 1, "sheet_name": None, "key": key, "value": value,
+                          "confidence": None, "key_source_reference_id": None, "value_source_reference_id": None}],
+    )
+
+
+def test_a_short_number_is_never_found_inside_a_date_or_a_longer_number():
+    output = _pair_output(["Invoice date 01/12/2025", "Account 11,200", "Gallons 12"], "Gallons", "12")
+    target = _target("activity_quantity", ["key_value_pair"], value_type="number", anchor_labels=["Gallons"])
+
+    reference = ExtractionCandidateService().generate_candidates(output, [target], "EV-1")[0]["source_reference"]
+
+    assert reference["parser_block_ids"] == ["b3"]
+
+
+def test_two_lines_that_fit_equally_well_leave_the_value_unplaced():
+    output = _pair_output(["Meter A 450", "Meter B 450"], "Reading", "450")
+    target = _target("activity_quantity", ["key_value_pair"], value_type="number", anchor_labels=["Reading"])
+
+    reference = ExtractionCandidateService().generate_candidates(output, [target], "EV-1")[0]["source_reference"]
+
+    assert reference["parser_block_ids"] == [] and reference["bounding_box"] is None
+    assert reference["text_snippet"] == "Reading: 450"  # the pair's own snippet, not a guessed line

@@ -1792,9 +1792,10 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-cv__rowhead { left: 0; text-align: right; }
 .s1-cv__corner { left: 0; z-index: 2; }
 .s1-cv__grid td.s1-cv__cell--marked { padding: 0; }
-.s1-cv__lines { margin: 0; padding: var(--sp-2) var(--sp-2) var(--sp-2) 3rem; max-height: 70vh; overflow: auto; border: var(--border-hairline); border-radius: var(--radius-input); background: var(--sf-card); font-size: var(--text-sm); line-height: 1.7; }
-.s1-cv__line { white-space: pre-wrap; tab-size: 4; overflow-wrap: anywhere; }
-.s1-cv__line::marker { color: var(--ink-3); font-size: var(--text-xs); }
+.s1-cv__lines { list-style: none; margin: 0; padding: var(--sp-2); max-height: 70vh; overflow: auto; border: var(--border-hairline); border-radius: var(--radius-input); background: var(--sf-card); font-size: var(--text-sm); line-height: 1.7; }
+.s1-cv__line { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: var(--sp-2); align-items: baseline; }
+.s1-cv__lineno { justify-self: end; font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.s1-cv__text { white-space: pre-wrap; tab-size: 4; overflow-wrap: anywhere; }
 .s1-cv__mark { font: inherit; color: inherit; text-align: inherit; margin: 0; padding: 0 0.15rem; border: 0.08rem dashed var(--state-open-line); border-radius: 0.15rem; background: transparent; cursor: pointer; white-space: inherit; }
 .s1-cv__grid .s1-cv__mark { display: block; width: 100%; height: 100%; min-height: var(--sp-6); padding: 0 var(--sp-2); }
 .s1-cv__mark:hover { border-style: solid; border-color: var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 35%, transparent); }

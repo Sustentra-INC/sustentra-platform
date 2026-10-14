@@ -911,7 +911,12 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 : undefined
             }
             renderPage={(documentId, span, onPickBox, marks, pick) => {
-              const format = evidenceItems.find((item) => item.documentId === documentId)?.format ?? "";
+              const item = evidenceItems.find((e) => e.documentId === documentId);
+              const format = item?.format ?? "";
+              // Drawn as content: workbooks, CSVs, Word and plain-text files (not TIFFs and other images).
+              const asContent =
+                ["xlsx", "csv", "docx"].includes(format) ||
+                (format === "other" && /\.(txt|md|markdown)$/i.test(item?.filename ?? ""));
               return documentId === DEMO_INVOICE_ID ? (
                 <InvoicePage
                   highlight={span ? { x: span.x, y: span.y, w: span.w, h: span.h } : null}
@@ -926,7 +931,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                   marks={marks}
                   onPickMark={onPickBox ? (m) => m.span && onPickBox(m.span, m.id) : undefined}
                 />
-              ) : dataMode === "backend" && ["xlsx", "csv", "docx", "other"].includes(format) ? (
+              ) : dataMode === "backend" && asContent ? (
                 // A workbook, CSV or Word file drawn as its cells or lines, the value marked.
                 <DocumentContentView
                   key={documentId}
