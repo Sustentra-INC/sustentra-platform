@@ -71,6 +71,18 @@ def test_other_org_and_signed_out_cannot_read(act_as, wired: FakeStore) -> None:
         assert client.get("/v1/engagements/ENG-1/recalculation").status_code == 401
 
 
+def test_egrid_zip_lookup(act_as) -> None:
+    act_as("org_member", ORG_A)
+    with TestClient(app) as client:
+        assert client.get("/v1/reference/egrid-zip/12207").json()["subregions"] == ["NYUP"]
+        assert client.get("/v1/reference/egrid-zip/10501").json()["subregions"] == ["NYCW", "NYUP"]
+        assert client.get("/v1/reference/egrid-zip/99999").status_code == 404
+        assert client.get("/v1/reference/egrid-zip/1220").status_code == 422
+    act_as(None)
+    with TestClient(app) as client:
+        assert client.get("/v1/reference/egrid-zip/12207").status_code == 401
+
+
 def test_reference_lists_the_input_choices(act_as) -> None:
     act_as("org_member", ORG_A)
     with TestClient(app) as client:

@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import type { EngagementConfig, FacilityOption } from "../types";
 import type { InScopeField } from "../types/scope";
+import { ZipRegionHint } from "./ZipRegionHint";
 
 /**
  * Setup (screen 0). Records what the engagement covers so every later page
@@ -56,6 +57,7 @@ export function SetupScreen({
   onInScopeChange,
   picker,
   gridRegions,
+  lookupZip,
   foundFacilities = [],
 }: {
   engagement: EngagementConfig;
@@ -66,6 +68,8 @@ export function SetupScreen({
   picker?: ReactNode;
   /** eGRID subregions to pick a facility's grid region from (backend mode). */
   gridRegions?: { code: string; name: string }[];
+  /** eGRID subregions for a ZIP code (backend mode), to suggest each facility's grid region. */
+  lookupZip?: (zip: string) => Promise<string[]>;
   /** Facilities named on uploaded bills that match no Setup facility yet. */
   foundFacilities?: { name: string; address: string | null }[];
 }) {
@@ -261,6 +265,14 @@ export function SetupScreen({
                 <button className="s1-linklike" type="button" onClick={() => removeFacility(f.facilityId)}>
                   Remove
                 </button>
+                {gridRegions && lookupZip ? (
+                  <ZipRegionHint
+                    address={f.address}
+                    region={f.gridRegion}
+                    lookup={lookupZip}
+                    onUse={(code) => patchFacility(f.facilityId, { gridRegion: code })}
+                  />
+                ) : null}
               </div>
             ))}
           </div>
