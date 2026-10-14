@@ -193,6 +193,12 @@ class ParserService:
         }
 
     @staticmethod
+    def parser_kind(path: Path, mime_type: str | None = None) -> str | None:
+        """Which parser reads this file ("pdf", "excel", "csv", "docx", "text", "image")."""
+
+        return ParserService._detect_parser_kind(path, mime_type)
+
+    @staticmethod
     def _detect_parser_kind(path: Path, mime_type: str | None) -> str | None:
         """Resolve the parser kind by file extension, then mime type."""
 

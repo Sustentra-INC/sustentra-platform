@@ -1,3 +1,4 @@
+import type { SourceAnchor } from "../utils/sourceAnchor";
 import type { RequestType } from "./requests";
 
 /** Scope placement of a value. Line 2 of a card never goes blank. */
@@ -15,10 +16,14 @@ export interface ValueRecordEntry {
   reason?: string;
 }
 
-/** A value drawn on its page in the source pane: clicking it selects the value. */
+/** A value drawn on its document in the source pane: clicking it selects the value. A PDF
+ *  or image value has a box on its page (`span`); a workbook, CSV or Word value has a cell,
+ *  row or line (`anchor`) and the text it was read as (`rawText`). */
 export interface PageMark {
   id: string;
-  span: ReviewSpan;
+  span: ReviewSpan | null;
+  anchor?: SourceAnchor | null;
+  rawText?: string | null;
   /** What the value is, for the box's tooltip and screen readers. */
   label: string;
   reviewState: ValueReviewState;
@@ -78,6 +83,10 @@ export interface ReviewValue {
   snippet?: string | null;
   sheet?: string | null;
   cell?: string | null;
+  /** Workbook, CSV, Word: the cell, row or line the value was read from. */
+  anchor?: SourceAnchor | null;
+  /** The text as read on the document ("96,000"), to find it within its row or line. */
+  rawText?: string | null;
   /** Backend values only: the candidate a review decision is recorded against. */
   reviewToken?: string;
   /** The extractor did not find this value on the document; the reviewer can enter it. */

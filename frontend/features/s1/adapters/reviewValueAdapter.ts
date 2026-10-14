@@ -1,6 +1,7 @@
 import type { EvidenceItem, ExtractedField } from "../types";
 import type { ReviewValue, ScopePlacement, SourceKind } from "../types/review";
 import { resolveCanonicalTypeDisplayName } from "./evidenceAdapter";
+import { anchorOf } from "../utils/sourceAnchor";
 import { decodeReviewCandidateToken } from "./fieldAdapter";
 
 /**
@@ -39,6 +40,8 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
     .map((field) => {
       const document = documents.get(field.documentId);
       const location = field.location;
+      const candidate = field.reviewToken ? decodeReviewCandidateToken(field.reviewToken) : null;
+      const rawValue = candidate?.raw_value ?? candidate?.normalized_value;
       const page = location?.kind === "page" ? location.page : 1;
       const accepted = field.reviewStatus === "accepted";
       const corrected = field.reviewStatus === "corrected" || field.reviewStatus === "keyed_by_reviewer";
@@ -93,6 +96,8 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         snippet: field.snippet,
         sheet: location?.kind === "cells" ? location.sheet : null,
         cell: location?.kind === "cells" ? location.range : null,
+        anchor: field.value === null ? null : anchorOf(document?.format, candidate?.source_reference),
+        rawText: rawValue === null || rawValue === undefined ? null : String(rawValue),
         reviewToken: field.reviewToken,
         missing: field.value === null && field.correctedValue === null,
       } satisfies ReviewValue;

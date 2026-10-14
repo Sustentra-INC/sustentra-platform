@@ -338,3 +338,48 @@ def test_deterministic_candidate_id():
     candidate = ExtractionCandidateService().generate_candidates(parser_output, [target], "EV-1")[0]
 
     assert candidate["candidate_id"] == "candidate::EV-1::DOC-1::facility_name"
+
+
+def _pdf_line(block_id, text, box, page=1):
+    reference = {"source_reference_id": f"SRC-{block_id}", "document_id": "DOC-1", "page_number": page,
+                 "sheet_name": None, "cell_or_range": None, "text_snippet": text, "bounding_box": box,
+                 "parser_block_ids": [block_id], "source_kind": "page_text"}
+    block = {"block_id": block_id, "page_number": page, "text": text, "confidence": None,
+             "bounding_box": None, "source_reference_id": reference["source_reference_id"]}
+    return block, reference
+
+
+def test_a_label_value_pair_is_outlined_on_the_line_that_holds_it():
+    header, header_ref = _pdf_line("b1", "Invoice total 1,200", {"x": 0.1, "y": 0.1, "width": 0.3, "height": 0.02})
+    usage, usage_ref = _pdf_line("b2", "Total Usage 28,100 therms", {"x": 0.1, "y": 0.5, "width": 0.4, "height": 0.02})
+    parser_output = _parser_output(
+        parser_name="pymupdf",
+        text_blocks=[header, usage],
+        source_references=[header_ref, usage_ref],
+        key_value_pairs=[{"pair_id": "kv1", "page_number": 1, "sheet_name": None, "key": "Total Usage",
+                          "value": "28100", "confidence": None, "key_source_reference_id": None,
+                          "value_source_reference_id": None}],
+    )
+    target = _target("activity_quantity", ["key_value_pair"], value_type="number", anchor_labels=["Total Usage"])
+
+    reference = ExtractionCandidateService().generate_candidates(parser_output, [target], "EV-1")[0]["source_reference"]
+
+    # "28100" is found as "28,100" on the usage line, and the pair's own snippet is kept.
+    assert reference["parser_block_ids"] == ["b2"]
+    assert reference["bounding_box"] == {"x": 0.1, "y": 0.5, "width": 0.4, "height": 0.02}
+    assert reference["text_snippet"] == "Total Usage: 28100"
+
+
+def test_a_value_on_no_single_line_keeps_its_page_level_reference():
+    block, ref = _pdf_line("b1", "Usage", {"x": 0.1, "y": 0.1, "width": 0.1, "height": 0.02})
+    parser_output = _parser_output(
+        parser_name="pymupdf", text_blocks=[block], source_references=[ref],
+        key_value_pairs=[{"pair_id": "kv1", "page_number": 1, "sheet_name": None, "key": "Usage",
+                          "value": "512", "confidence": None, "key_source_reference_id": None,
+                          "value_source_reference_id": None}],
+    )
+    target = _target("activity_quantity", ["key_value_pair"], value_type="number", anchor_labels=["Usage"])
+
+    reference = ExtractionCandidateService().generate_candidates(parser_output, [target], "EV-1")[0]["source_reference"]
+
+    assert reference["bounding_box"] is None and reference["parser_block_ids"] == []
