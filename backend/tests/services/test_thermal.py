@@ -122,3 +122,34 @@ def test_the_thermal_calculation_converts_other_energy_units() -> None:
                                     [calc.FacilityThermal("A", calc.Measure(3400, "therm"))])
     assert result.lines[0].steps[0].result == pytest.approx(340)  # therms -> MMBtu
     assert result.total_mass_t["CO2"] == pytest.approx(340 * 66.33 / 1000)
+
+
+GAS_FOR_STEAM_BOILER = """Lakeshore Gas Company
+Natural Gas Bill
+Account Number: 552-118-91
+Facility: Steam Boiler House
+Service Address: 2525 S Michigan Ave, Chicago, IL 60616
+Billing Period: 01/05/2025 to 02/04/2025
+Therms: 48,210
+"""
+GAS_FOR_HOT_WATER = """Lakeshore Gas Company
+Natural Gas Bill
+Account Number: 552-118-90
+Service Type: Natural gas for central heating and hot water
+Billing Period: 01/05/2025 to 02/04/2025
+Therms: 1,234
+"""
+
+
+@pytest.mark.parametrize("text", [GAS_FOR_STEAM_BOILER, GAS_FOR_HOT_WATER])
+def test_a_gas_bill_that_mentions_steam_or_hot_water_is_never_purchased_steam(tmp_path: Path, text: str) -> None:
+    # The company burns this gas itself (Scope 1); it did not buy steam or heat (Scope 2).
+    assert _read(tmp_path, text)["type"] != "CT-S2-THERMAL"
+
+
+def test_a_thousand_pounds_is_pounds_not_thousands_of_pounds() -> None:
+    from backend.app.domain import fuel_units
+
+    assert fuel_units.find_unit("Quantity Delivered: 1,000 lbs") == "lb"
+    assert fuel_units.find_unit("1000 lbs") == "lb"
+    assert fuel_units.find_unit("Steam Usage: 980 Mlb") == "klb"

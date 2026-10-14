@@ -27,6 +27,8 @@ from backend.app.services.electricity_extractor import ElectricityExtractor
 from backend.app.services.stationary_combustion_extractor import (
     _ALL_LABELS as _BASE_LABELS,
 )
+from backend.app.services.stationary_combustion_extractor import detect_fuel
+from backend.app.services.mobile_combustion_extractor import normalize_mobile_fuel
 from backend.app.services.stationary_combustion_extractor import (
     HALT_UNREADABLE,
     HALT_UNSUPPORTED,
@@ -77,6 +79,21 @@ def detect_thermal(text: str) -> tuple[str, str] | None:
     return None
 
 
+# Unit words detect_fuel also takes as natural gas cues: a steam or hot water bill may be in therms.
+_UNIT_ONLY_CUES = frozenset({"therm", "therms", "thm", "dekatherm", "dekatherms", "decatherm", "decatherms", "dth"})
+
+
+def _names_fuel(rows: Sequence[Row]) -> bool:
+    """True when any line names a combusted fuel (natural gas, oil, propane, diesel...)."""
+
+    for row in rows:
+        for cell in row.cells:
+            hit = detect_fuel(cell.text)
+            if (hit and hit[1].lower() not in _UNIT_ONLY_CUES) or normalize_mobile_fuel(cell.text):
+                return True
+    return False
+
+
 class ThermalExtractor(ElectricityExtractor):
     """Builds CT-S2-THERMAL candidates: one record per usage line (or one per bill)."""
 
@@ -100,11 +117,13 @@ class ThermalExtractor(ElectricityExtractor):
 
     def confirms(self, parser_output: dict) -> bool:
         """Content check: the document names steam, hot water or chilled water, states a
-        thermal quantity, and names no combusted fuel (a gas bill is fuel, not steam)."""
+        thermal quantity, and names no combusted fuel. A gas bill for a "Steam Boiler House"
+        or for "central heating and hot water" is the company's own fuel (Scope 1), not
+        purchased steam or heat."""
 
         rows = self._rows(parser_output)
         found = next((detect_thermal(c.text) for r in rows for c in r.cells if detect_thermal(c.text)), None)
-        if found is None or StationaryCombustionExtractor().confirms(parser_output):
+        if found is None or _names_fuel(rows) or StationaryCombustionExtractor().confirms(parser_output):
             return False
         unit_hint = self._document_unit(rows)
         return any(self._counts(self._record_unit(r, unit_hint), found[0]) for r in self._quantity_records(rows))
