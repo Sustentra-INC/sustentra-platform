@@ -51,6 +51,7 @@ import { VerificationResults } from "../components/VerificationResults";
 import { BackendVerificationResults } from "../components/BackendVerificationResults";
 import { BackendCheckCoverage } from "../components/BackendCheckCoverage";
 import { BackendPageView } from "../components/BackendPageView";
+import { DocumentContentView } from "../components/DocumentContentView";
 import { BackendOutputScreen } from "../components/BackendOutputScreen";
 import { BackendDashboard } from "../components/BackendDashboard";
 import { OutputScreen } from "../components/OutputScreen";
@@ -933,24 +934,38 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                   }
                 : undefined
             }
-            renderPage={(documentId, span, onPickBox, marks) =>
-              documentId === DEMO_INVOICE_ID ? (
+            renderPage={(documentId, span, onPickBox, marks, pick) => {
+              const item = evidenceItems.find((e) => e.documentId === documentId);
+              const format = item?.format ?? "";
+              // Drawn as content: workbooks, CSVs, Word and plain-text files (not TIFFs and other images).
+              const asContent =
+                ["xlsx", "csv", "docx"].includes(format) ||
+                (format === "other" && /\.(txt|md|markdown)$/i.test(item?.filename ?? ""));
+              return documentId === DEMO_INVOICE_ID ? (
                 <InvoicePage
                   highlight={span ? { x: span.x, y: span.y, w: span.w, h: span.h } : null}
                   onMarkClick={onPickBox}
                 />
-              ) : dataMode === "backend" &&
-                ["pdf", "image"].includes(evidenceItems.find((item) => item.documentId === documentId)?.format ?? "") ? (
+              ) : dataMode === "backend" && ["pdf", "image"].includes(format) ? (
                 // The uploaded page as an image, the value outlined where it was read.
                 <BackendPageView
                   key={`${documentId}:${span?.page ?? 0}`}
                   documentId={documentId}
                   span={span}
                   marks={marks}
-                  onPickMark={onPickBox ? (m) => onPickBox(m.span, m.id) : undefined}
+                  onPickMark={onPickBox ? (m) => m.span && onPickBox(m.span, m.id) : undefined}
                 />
-              ) : null
-            }
+              ) : dataMode === "backend" && asContent ? (
+                // A workbook, CSV or Word file drawn as its cells or lines, the value marked.
+                <DocumentContentView
+                  key={documentId}
+                  documentId={documentId}
+                  marks={marks ?? []}
+                  selectedId={pick?.selectedId ?? null}
+                  onPickAmong={pick?.onPickAmong}
+                />
+              ) : null;
+            }}
           />
         ) : (
           <GlossaryPage onBack={() => setActiveView(activeView.previous)} />

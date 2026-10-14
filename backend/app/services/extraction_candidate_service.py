@@ -227,7 +227,7 @@ class ExtractionCandidateService:
             normalized_value=normalized_value,
             unit=unit,
             confidence=confidence,
-            source_reference=hit.source_reference,
+            source_reference=self._with_position(parser_output, hit.source_reference, hit.raw_value, hit.context),
             validation_flags=flags,
         )
 
@@ -651,6 +651,78 @@ class ExtractionCandidateService:
         if resolved is not None:
             return resolved
         return self._inline_from_table(table, document_id)
+
+    def _with_position(self, parser_output: dict, reference: dict, raw_value: Any,
+                       context: dict[str, Any] | None = None) -> dict:
+        """A value found on a page, in a table or in a label/value pair carries no position of
+        its own: point it at the line (or cell) that holds it, so the reviewer sees it
+        outlined on the document.
+
+        The value must appear as a whole token ("12" is not found in "01/12/2025" or "112");
+        the line sharing most words with the hit's own row, pair label or snippet wins. When
+        nothing matches, or two lines match equally well, the reference is kept as it was.
+        """
+
+        if reference.get("bounding_box") or reference.get("parser_block_ids") or reference.get("cell_or_range"):
+            return reference
+        needles = self._needles(raw_value)
+        if not needles:
+            return reference
+        page = reference.get("page_number")
+        sheet = reference.get("sheet_name")
+        hints = " ".join(str((context or {}).get(k) or "") for k in ("row_text", "pair_key", "matched_anchor"))
+        words = set(self._squash(f"{hints} {reference.get('text_snippet') or ''}").replace("|", " ").split())
+        scored: list[tuple[tuple[int, int], dict, dict | None]] = []
+        for block in parser_output.get("text_blocks", []) or []:
+            if not isinstance(block, dict) or not block.get("block_id"):
+                continue
+            if page is not None and block.get("page_number") not in (page, None):
+                continue
+            text = self._squash(block.get("text") or "")
+            if not any(self._has_token(text, needle) for needle in needles):
+                continue
+            resolved = self._resolve_source_reference(parser_output, block.get("source_reference_id"))
+            if sheet is not None and (resolved or {}).get("sheet_name") not in (sheet, None):
+                continue
+            scored.append(((-len(words & set(text.replace("|", " ").split())), len(text)), block, resolved))
+        if not scored:
+            return reference
+        scored.sort(key=lambda item: item[0])
+        if len(scored) > 1 and scored[0][0] == scored[1][0]:
+            return reference  # two lines fit equally well: better no outline than a wrong one
+        _, block, resolved = scored[0]
+        located = copy.deepcopy(reference)
+        located["parser_block_ids"] = [block["block_id"]]
+        located["page_number"] = page if page is not None else block.get("page_number")
+        if resolved is not None:
+            located["bounding_box"] = resolved.get("bounding_box")
+            located["sheet_name"] = resolved.get("sheet_name") or located.get("sheet_name")
+            located["cell_or_range"] = resolved.get("cell_or_range")
+            if located.get("page_number") is None:
+                located["page_number"] = resolved.get("page_number")
+        if not located.get("text_snippet"):
+            located["text_snippet"] = self._snippet(block.get("text"))
+        return located
+
+    @staticmethod
+    def _has_token(text: str, needle: str) -> bool:
+        """``needle`` in ``text`` as a whole token: not inside a longer number or word, and not
+        part of "1,200" or "12.5". Commas between digits are ignored on both sides."""
+
+        pattern = r"(?<![0-9a-z.])(?<!\d,)" + re.escape(needle) + r"(?![0-9a-z])(?![.,]\d)"
+        return bool(re.search(pattern, text) or re.search(pattern, re.sub(r"(?<=\d),(?=\d)", "", text)))
+
+    @staticmethod
+    def _squash(text: str) -> str:
+        return " ".join(str(text).lower().split())
+
+    def _needles(self, raw_value: Any) -> list[str]:
+        if raw_value is None or isinstance(raw_value, bool):
+            return []
+        text = self._squash(str(raw_value))
+        if len(text.replace(" ", "")) < 2:  # a single character would match almost any line
+            return []
+        return list(dict.fromkeys([text, text.replace(",", "")]))
 
     def _inline_from_block(self, block: dict, document_id: str) -> dict:
         block_id = block.get("block_id")

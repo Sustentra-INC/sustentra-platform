@@ -32,12 +32,15 @@ interface ExtractionReviewProps {
   onBack: () => void;
   /** Render the real source page for a document (else a facsimile is drawn).
    *  `onPickBox` lets a clicked highlight on the page select its value card (by its id
-   *  when the page knows it); `marks` are every value of the document that has a position. */
+   *  when the page knows it); `marks` are every value of the document that has a position.
+   *  `pick` serves files drawn as content (workbook, CSV, Word): the selected value, and a
+   *  click on a spot holding several values (`ids`) selects the next of them. */
   renderPage?: (
     documentId: string,
     span: ReviewSpan | null,
     onPickBox?: (box: { x: number; y: number; w: number; h: number }, id?: string) => void,
-    marks?: PageMark[]
+    marks?: PageMark[],
+    pick?: SourcePick
   ) => ReactNode | null;
   /** Who the record names for a human action. */
   reviewerName?: string;
@@ -128,7 +131,19 @@ export function ExtractionReview({
     const byId = id ? items.find((v) => v.id === id) : undefined;
     const here = sameBox.findIndex((v) => v.id === selectedId);
     const match = here >= 0 && sameBox.length > 1 ? sameBox[(here + 1) % sameBox.length] : byId ?? sameBox[0];
-    if (!match) return;
+    if (match) focusValue(match);
+  }
+
+  /** A spot in a workbook, CSV or Word file was clicked: `ids` are the values read there.
+   *  The first is selected, or the next one when one of them already is. */
+  function selectAmong(ids: string[]) {
+    const here = selectedId ? ids.indexOf(selectedId) : -1;
+    const nextId = here >= 0 ? ids[(here + 1) % ids.length] : ids[0];
+    const match = items.find((v) => v.id === nextId);
+    if (match) focusValue(match);
+  }
+
+  function focusValue(match: ReviewValue) {
     const nk = nodeKeyForValue(match);
     if (nk !== nodeKey) {
       setNodeKey(nk);
@@ -444,6 +459,7 @@ export function ExtractionReview({
             renderPage={renderPage}
             onPickBox={selectByBox}
             marks={selected ? pageMarks(items, selected.documentId) : []}
+            pick={selected ? { selectedId: selected.id, onPickAmong: selectAmong } : undefined}
           />
         </aside>
       </div>
@@ -614,9 +630,15 @@ function ValueCard({
 /** Every value of a document that has a position on a page, to draw as clickable boxes. */
 function pageMarks(items: ReviewValue[], documentId: string): PageMark[] {
   return items
-    .filter((v) => v.documentId === documentId && v.span && !v.missing && !v.withdrawn)
-    .map((v) => ({ id: v.id, span: v.span!, label: `${v.whatItIs}: ${v.value}${v.unit ? ` ${v.unit}` : ""}`,
-      reviewState: v.reviewState }));
+    .filter((v) => v.documentId === documentId && (v.span || v.anchor) && !v.missing && !v.withdrawn)
+    .map((v) => ({ id: v.id, span: v.span ?? null, anchor: v.anchor ?? null, rawText: v.rawText ?? null,
+      label: `${v.whatItIs}: ${v.value}${v.unit ? ` ${v.unit}` : ""}`, reviewState: v.reviewState }));
+}
+
+/** What a content view (workbook, CSV, Word) needs to select values from the file. */
+export interface SourcePick {
+  selectedId: string;
+  onPickAmong: (ids: string[]) => void;
 }
 
 function SourcePane({
@@ -624,16 +646,13 @@ function SourcePane({
   renderPage,
   onPickBox,
   marks,
+  pick,
 }: {
   value: ReviewValue | null;
-  renderPage?: (
-    documentId: string,
-    span: ReviewSpan | null,
-    onPickBox?: (box: { x: number; y: number; w: number; h: number }, id?: string) => void,
-    marks?: PageMark[]
-  ) => ReactNode | null;
+  renderPage?: ExtractionReviewProps["renderPage"];
   onPickBox?: (box: { x: number; y: number; w: number; h: number }, id?: string) => void;
   marks?: PageMark[];
+  pick?: SourcePick;
 }) {
   // Page state tracked here (hook must run every render); resets when the
   // selected value changes, guarded so it fires once per change.
@@ -653,14 +672,15 @@ function SourcePane({
   }
   const page = pageState.id === value.id ? pageState.page : value.page;
   const setPage = (nextPage: number) => setPageState({ id: value.id, page: nextPage });
-  const realPage = renderPage ? renderPage(value.documentId, value.span ?? null, onPickBox, marks) : null;
+  const realPage = renderPage ? renderPage(value.documentId, value.span ?? null, onPickBox, marks, pick) : null;
+  const placed = Boolean(value.span || value.anchor);
   return (
     <div className="s1-xr-src">
       <div className="s1-xr-src-head">
         <div className="s1-xr-src-fn">{value.filename}</div>
         <div className="s1-muted">
           {realPage && value.reviewToken
-            ? value.span
+            ? placed
               ? "The uploaded document, the value outlined where it was read."
               : "The uploaded document. Check the value against it."
             : value.span
@@ -687,7 +707,8 @@ function SourcePane({
       <div className="s1-xr-src-body">
         {realPage ? (
           <div className="s1-xr-page s1-xr-realpage">{realPage}</div>
-        ) : value.sourceKind === "spreadsheet" ? (
+        ) : value.sourceKind === "spreadsheet" && !value.reviewToken ? (
+          // The demo's drawn sheet. An uploaded file's value never shows invented rows.
           <SheetView value={value} />
         ) : value.sourceKind === "text" ? (
           <div className="s1-xr-passage">{value.snippet}</div>

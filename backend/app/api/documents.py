@@ -18,6 +18,7 @@ from backend.app.api.s1_access import (
 from backend.app.core.auth import CurrentUser
 from backend.app.core.security import upload_too_large_detail
 
+from backend.app.services.document_content_service import UnreadableContent, UnsupportedContent, document_content
 from backend.app.services.document_file_types import served_type
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
@@ -312,6 +313,22 @@ def document_page_image(document_id: str, page: int, user: CurrentUser = Depends
     except Exception as exc:
         raise HTTPException(status_code=422, detail="This PDF page could not be rendered.") from exc
     return Response(content=png, media_type="image/png", headers=headers)
+
+
+@router.get("/documents/{document_id}/content")
+def document_content_view(document_id: str, response: Response, user: CurrentUser = Depends(s1_reader)) -> dict:
+    """A spreadsheet, CSV or Word/text file's content (sheets or lines), so the source pane
+    can show where a value was read: these files have no page to outline it on."""
+
+    document, path = _stored_file(document_id, user)
+    try:
+        content = document_content(path, document.get("mime_type"))
+    except UnsupportedContent as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    except UnreadableContent as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    response.headers.update(_NO_STORE)
+    return content
 
 
 @router.get("/evidence/{evidence_id}/documents")

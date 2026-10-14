@@ -145,12 +145,13 @@ export function BackendPageView({
 /** The values on one page, one box per position: values read from the same line (an amount
  *  and its unit) share a box, so the box is drawn once and a click selects the first of them
  *  (clicking again moves to the next). */
-function boxesOnPage(marks: PageMark[], page: number): PageMark[][] {
-  const groups = new Map<string, PageMark[]>();
+function boxesOnPage(marks: PageMark[], page: number): (PageMark & { span: ReviewSpan })[][] {
+  const groups = new Map<string, (PageMark & { span: ReviewSpan })[]>();
   for (const m of marks) {
-    if (m.span.page !== page) continue;
-    const key = [m.span.x, m.span.y, m.span.w, m.span.h].map((n) => n.toFixed(3)).join("|");
-    groups.set(key, [...(groups.get(key) ?? []), m]);
+    const span = m.span;
+    if (!span || span.page !== page) continue;
+    const key = [span.x, span.y, span.w, span.h].map((n) => n.toFixed(3)).join("|");
+    groups.set(key, [...(groups.get(key) ?? []), { ...m, span }]);
   }
   return Array.from(groups.values());
 }

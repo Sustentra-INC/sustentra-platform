@@ -61,7 +61,7 @@ describe("document to value", () => {
         renderPage={(_doc, _span, onPickBox, marks) => (
           <div>
             {(marks ?? []).map((m) => (
-              <button key={m.id} type="button" aria-label={`box ${m.id}`} onClick={() => onPickBox?.(m.span, m.id)} />
+              <button key={m.id} type="button" aria-label={`box ${m.id}`} onClick={() => m.span && onPickBox?.(m.span, m.id)} />
             ))}
           </div>
         )}

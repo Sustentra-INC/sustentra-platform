@@ -297,3 +297,66 @@ def test_another_org_cannot_see_page_images(env: dict) -> None:
     env["act_as"]("org_member", ORG_B)
     assert env["client"].get(url(doc, "pages")).status_code == 404
     assert env["client"].get(url(doc, "pages/1/image")).status_code == 404
+
+
+# --- content: spreadsheets, CSV and Word/text, numbered the way the parsers number them ---------
+def _xlsx() -> bytes:
+    import io
+
+    from openpyxl import Workbook
+
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "2025 log"
+    sheet["A1"], sheet["B1"], sheet["D1"] = "Date", "Site", "Gallons"
+    sheet["A3"], sheet["B3"], sheet["D3"] = "02/10/2025", "Richmond", 450
+    book.create_sheet("Notes")["C2"] = "Generator only"
+    out = io.BytesIO()
+    book.save(out)
+    return out.getvalue()
+
+
+def test_a_workbook_is_its_sheets_with_cell_positions(env: dict) -> None:
+    doc = env["upload"]("log.xlsx", _xlsx(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    response = env["client"].get(url(doc, "content"))
+    assert response.status_code == 200 and response.headers["cache-control"] == "private, no-store"
+    body = response.json()
+    log, notes = body["sheets"]
+    assert body["kind"] == "sheets" and log["name"] == "2025 log"
+    # Blank row 2 is left out, but the numbers stay the workbook's own; C stays an empty column.
+    assert log["rows"] == [{"number": 1, "cells": ["Date", "Site", None, "Gallons"]},
+                           {"number": 3, "cells": ["02/10/2025", "Richmond", None, "450"]}]
+    assert notes["rows"] == [{"number": 2, "cells": [None, None, "Generator only"]}]
+
+
+def test_csv_rows_keep_their_line_numbers_and_text_is_its_non_empty_lines(env: dict) -> None:
+    csv = env["upload"]("log.csv", b"Date,Gallons\n\n02/10/2025,450\n", "text/csv")
+    body = env["client"].get(url(csv, "content")).json()
+    assert body["sheets"][0]["rows"] == [{"number": 1, "cells": ["Date", "Gallons"]},
+                                         {"number": 3, "cells": ["02/10/2025", "450"]}]
+    text = env["upload"]("bill.txt", b"Acme Gas\n\nTotal Usage: 120 therms\n", "text/plain")
+    assert env["client"].get(url(text, "content")).json() == {
+        "kind": "lines", "lines": ["Acme Gas", "Total Usage: 120 therms"], "truncated": False}
+
+
+def test_pages_and_unreadable_files_have_no_content(env: dict) -> None:
+    pdf = env["upload"]("bill.pdf", _real_pdf(1), "application/pdf")
+    assert env["client"].get(url(pdf, "content")).status_code == 415
+    broken = env["upload"]("bill.docx", b"not a zip", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    assert env["client"].get(url(broken, "content")).status_code == 422
+    csv = env["upload"]("log.csv", b"a,b\n", "text/csv")
+    env["act_as"]("org_member", ORG_B)
+    assert env["client"].get(url(csv, "content")).status_code == 404
+
+
+def test_content_stays_bounded_whatever_the_file_holds(env: dict, monkeypatch) -> None:
+    from backend.app.services import document_content_service as content
+
+    monkeypatch.setattr(content, "MAX_CELLS", 3)
+    many = env["upload"]("many.csv", b"a,b\n1,2\n3,4\n5,6\n", "text/csv")
+    body = env["client"].get(url(many, "content")).json()
+    assert body["truncated"] is True and [r["number"] for r in body["sheets"][0]["rows"]] == [1]
+    monkeypatch.setattr(content, "MAX_LINE_CHARS", 10)
+    long_line = env["upload"]("long.txt", b"x" * 50 + b"\nshort\n", "text/plain")
+    body = env["client"].get(url(long_line, "content")).json()
+    assert body["lines"][0] == "x" * 10 + "…" and body["truncated"] is True

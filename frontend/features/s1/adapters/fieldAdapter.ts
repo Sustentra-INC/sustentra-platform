@@ -17,6 +17,7 @@ export interface BackendExtractionCandidateLike {
     page_number?: number | null;
     sheet_name?: string | null;
     cell_or_range?: string | null;
+    parser_block_ids?: string[] | null;
     // Contract (source_reference.schema.json): normalized 0-1 {x, y, width, height}.
     // `w`/`h` are accepted for older payloads.
     bounding_box?: { x?: number; y?: number; width?: number; height?: number; w?: number; h?: number } | null;

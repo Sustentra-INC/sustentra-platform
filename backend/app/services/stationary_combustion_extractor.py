@@ -175,6 +175,11 @@ _MONTHS = {
     for m in names
 }
 _MONTH_RE = "|".join(sorted(_MONTHS, key=len, reverse=True))
+# How a line without geometry splits into parts (tabs, 2+ spaces, pipes); the source pane
+# splits lines the same way (frontend utils/sourceAnchor.ts).
+_LINE_PARTS_RE = re.compile(r"\t+|\s{2,}|\s*\|\s*")
+_CSV_BLOCK_PREFIX = "csv_parser-"
+
 _DATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"(?P<y>\d{4})-(?P<m>\d{1,2})-(?P<d>\d{1,2})"),
     re.compile(r"(?P<m>\d{1,2})/(?P<d>\d{1,2})/(?P<y>\d{4}|\d{2})(?!\d)"),
@@ -194,6 +199,14 @@ _SLASH_DATE_RE = re.compile(r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})(?!\d)")
 # =========================================================================================
 # Layout model
 # =========================================================================================
+def _column_letters(column: int) -> str:
+    letters = ""
+    while column > 0:
+        column, rest = divmod(column - 1, 26)
+        letters = chr(65 + rest) + letters
+    return letters
+
+
 @dataclass
 class Cell:
     text: str
@@ -204,6 +217,9 @@ class Cell:
     confidence: float | None
     order: int
     column: int | None = None  # spreadsheet column (A = 1), when the cell came from a sheet
+    # Lines without geometry (CSV rows, Word/text lines): which part of the line this cell is
+    # (1 = first), so the source pane can mark the exact spot. For a CSV row it is the column.
+    part: int | None = None
 
     @property
     def left(self) -> float:
@@ -593,12 +609,17 @@ class StationaryCombustionExtractor:
                 rows.append(Row(cells=[cell], page=cell.page))
         for row in rows:
             row.cells.sort(key=lambda c: c.left)
-        # Lines without geometry: split columns on runs of 2+ spaces, tabs or pipes.
+        # Lines without geometry: split columns on runs of 2+ spaces, tabs or pipes. A CSV row
+        # is split exactly as the CSV parser joined it (" | "), so each part keeps its column.
         for cell in (c for c in cells if not c.box):
-            parts = [" ".join(p.split()) for p in re.split(r"\t+|\s{2,}|\s*\|\s*", cell.text) if p.strip()]
+            if str(cell.block_id or "").startswith(_CSV_BLOCK_PREFIX):
+                numbered = [(i, " ".join(p.split())) for i, p in enumerate(cell.text.split(" | "), start=1)]
+            else:
+                numbered = list(enumerate((" ".join(p.split()) for p in _LINE_PARTS_RE.split(cell.text)), start=1))
+            parts = [(i, p) for i, p in numbered if p]
             rows.append(Row(
-                cells=[Cell(p, cell.page, None, cell.block_id, cell.source_reference_id, cell.confidence, cell.order)
-                       for p in parts] or [cell],
+                cells=[Cell(p, cell.page, None, cell.block_id, cell.source_reference_id, cell.confidence, cell.order,
+                            part=i) for i, p in parts] or [cell],
                 page=cell.page,
             ))
         for sheet_cells in sheet_rows.values():
@@ -1322,6 +1343,12 @@ class StationaryCombustionExtractor:
         reference.setdefault("sheet_name", None)
         reference.setdefault("cell_or_range", None)
         reference.pop("source_kind", None)
+        if cell is not None and cell.part is not None and cell.box is None:
+            row = re.fullmatch(r"row (\d+)", str(reference.get("cell_or_range") or ""))
+            if str(cell.block_id or "").startswith(_CSV_BLOCK_PREFIX) and row:
+                reference["cell_or_range"] = f"{_column_letters(cell.part)}{row.group(1)}"  # "row 2", part 5 -> "E2"
+            elif reference.get("cell_or_range") is None:
+                reference["cell_or_range"] = f"part {cell.part}"
         return reference
 
     @staticmethod
