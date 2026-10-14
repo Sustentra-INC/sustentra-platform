@@ -755,6 +755,15 @@ class EngagementRecalculationService:
             entry["documents"].append({"document_id": record.document_id, "record": record.label,
                                        "quantity": quantity, "unit": unit})
             entry["flags"].update(flags)
+        lines = {fuel.lower() for fuel, _ in totals}
+        for group in inputs.vehicle_groups:  # a group for a fuel with no reviewed records adds nothing
+            fuel_name = str(group.get("fuel", "")).strip()
+            if fuel_name.lower() not in lines:
+                needs_input.append({
+                    "kind": "vehicle_group", "key": f"{fuel_name}|unused",
+                    "message": f"{fuel_name}, {group.get('label') or group.get('vehicle_type')}: there are no reviewed "
+                               f"{fuel_name} records in the reporting period, so this vehicle group is not used.",
+                })
         if not totals:
             return None
         fuels = []
@@ -938,6 +947,11 @@ class EngagementRecalculationService:
             if _proration(day, day, period)[0] == 0:  # listed under "excluded"
                 continue
             text = str(record.reviewed("refrigerant_type") or "").strip()
+            if not text:
+                needs_input.append({"kind": "refrigerant_record", "key": f"{record.label}:refrigerant_type",
+                                    "message": f"{record.label}: the refrigerant is blank. Enter it in Extraction "
+                                               "Review to include this record."})
+                continue
             found = find_refrigerant(text)
             gas = found.name if found is not None else text
             if found is not None and found.montreal:
@@ -960,6 +974,24 @@ class EngagementRecalculationService:
                     mass[0], mass[1], unit)
                 unit = unit or mass[1]
             else:
+                # A term that would come out negative is a data question, not an emission:
+                # equipment charged below its full charge usually came pre-charged (EPA: leave
+                # both out), and more recovered than the equipment held is a misread amount.
+                if kind == INSTALLATION and amounts["refrigerant_added"] < amounts["equipment_capacity"]:
+                    needs_input.append({
+                        "kind": "refrigerant_record", "key": f"{record.label}:installation",
+                        "message": f"{record.label}: {amounts['refrigerant_added']:g} {unit} charged into new "
+                                   f"equipment with a full charge of {amounts['equipment_capacity']:g} {unit}. If it "
+                                   "came pre-charged, set the service type to service and the amount to what was "
+                                   "added on site; otherwise correct the amounts."})
+                    continue
+                if kind == DISPOSAL and amounts["refrigerant_recovered"] > amounts["equipment_capacity"]:
+                    needs_input.append({
+                        "kind": "refrigerant_record", "key": f"{record.label}:disposal",
+                        "message": f"{record.label}: {amounts['refrigerant_recovered']:g} {unit} recovered from "
+                                   f"equipment with a full charge of {amounts['equipment_capacity']:g} {unit}. "
+                                   "Check both amounts in Extraction Review."})
+                    continue
                 entry = totals.setdefault(gas, {"unit": unit, "terms": dict.fromkeys(
                     ("P_N", "C_N", "P_S", "C_D", "R_D"), 0.0), "documents": []})
                 if entry["unit"] != unit:

@@ -643,12 +643,33 @@ def test_mobfuel_content_check_extracts_transactions(tmp_path):
     assert fields["vehicle_or_equipment_id"]["normalized_value"] == "T-9"
 
 
-def test_confident_classification_contradicted_by_content_halts(tmp_path):
-    classified = {"status": "classified", "primary_canonical_type_id": "CT-S1-FUELQTY", "primary_variant_id": "VR-1",
-                  "confidence": 0.85, "threshold": 0.8,
-                  "candidate_matches": [{"canonical_type_id": "CT-S1-FUELQTY", "variant_id": "VR-1",
-                                         "confidence": 0.85, "threshold": 0.8}]}
-    run = _run_with(tmp_path, FLEET_DIESEL, classified)["pipeline_run"]
+def _classified(type_id: str) -> dict:
+    return {"status": "classified", "primary_canonical_type_id": type_id, "primary_variant_id": "VR-1",
+            "confidence": 0.85, "threshold": 0.8,
+            "candidate_matches": [{"canonical_type_id": type_id, "variant_id": "VR-1", "confidence": 0.85,
+                                   "threshold": 0.8}]}
+
+
+@pytest.mark.parametrize(
+    ("text", "classified_as", "read_as"),
+    [
+        (FLEET_DIESEL, "CT-S1-FUELQTY", "CT-S1-MOBFUEL"),  # fleet card cues
+        (GENERATOR_DIESEL, "CT-S1-MOBFUEL", "CT-S1-FUELQTY"),  # standby generator / day tank cues
+    ],
+)
+def test_confident_classification_contradicted_by_content_is_read_as_the_other_fuel_type(
+        tmp_path, text, classified_as, read_as):
+    output = _run_with(tmp_path, text, _classified(classified_as))
+    run = output["pipeline_run"]
+    assert (run["canonical_type_id"], run["canonical_type_source"]) == (read_as, "content_check")
+    assert run["halt_reason"] is None and any(f"using {read_as}" in w for w in run["warnings"])
+    quantity = next(i for i in output["extraction_result"]["items"] if i["field_name"] == "activity_quantity")
+    assert quantity["normalized_value"] == 300
+
+
+def test_contradicted_classification_halts_when_the_other_type_cannot_read_it(tmp_path):
+    no_quantity = "Valley Fuels fleet card\nVehicle: T-9\nProduct: Diesel\nDate: 04/01/2024\n"
+    run = _run_with(tmp_path, no_quantity, _classified("CT-S1-FUELQTY"))["pipeline_run"]
     assert run["canonical_type_id"] is None
     assert run["halt_reason"]["code"] == "unsupported_document"
     assert "reads as mobile" in run["halt_reason"]["message"] and "vehicle" in run["halt_reason"]["message"]
@@ -703,3 +724,20 @@ def test_low_confidence_refrigerant_record_is_accepted_on_content(tmp_path):
     run = output["pipeline_run"]
     assert run["canonical_type_id"] == "CT-S1-REFRSVC" and run["canonical_type_source"] == "content_check"
     assert any("names a refrigerant" in w for w in run["warnings"])
+
+
+def test_a_photo_or_scan_says_it_needs_ocr_while_textract_is_off(monkeypatch):
+    from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
+
+    monkeypatch.delenv("TEXTRACT_ENABLED", raising=False)
+    photo = {"status": "failed", "warnings": [{"code": "ocr_not_implemented", "message": "Image OCR is not implemented."}]}
+    scan = {"status": "empty", "parser_name": "pymupdf",
+            "warnings": [{"code": "empty_page_text", "message": "Page 1 had no extractable text."}]}
+    blank_text = {**scan, "parser_name": "text"}  # an empty text file is not a scan
+    assert PipelineOrchestrationService._unreadable_halt(blank_text)["code"] == "unreadable_document"
+    corrupt = {"status": "failed", "warnings": [{"code": "unreadable_docx", "message": "not well-formed"}]}
+    assert PipelineOrchestrationService._unreadable_halt(photo)["code"] == "ocr_required"
+    assert PipelineOrchestrationService._unreadable_halt(scan)["code"] == "ocr_required"
+    assert PipelineOrchestrationService._unreadable_halt(corrupt)["code"] == "unreadable_document"
+    monkeypatch.setenv("TEXTRACT_ENABLED", "true")  # with OCR on, a scan that still fails is unreadable
+    assert PipelineOrchestrationService._unreadable_halt(scan)["code"] == "unreadable_document"

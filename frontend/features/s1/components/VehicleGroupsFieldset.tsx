@@ -51,14 +51,19 @@ export function draftProblem(draft: VehicleGroupDraft, types: VehicleTypeOption[
   const option = optionFor(types, draft);
   if (draft.onRoad) {
     if (!isNumber(draft.distance)) return "On-road groups need the distance driven.";
-    if (option?.by_model_year && !/^\d{4}$/.test(draft.modelYear.trim())) return "This vehicle type needs a model year.";
+    const year = Number(draft.modelYear.trim());
+    if (option?.by_model_year && !(/^\d{4}$/.test(draft.modelYear.trim()) && year >= 1900 && year <= 2100)) {
+      return "This vehicle type needs a model year (four digits).";
+    }
   } else if (draft.fuelQuantity.trim() && !isNumber(draft.fuelQuantity)) {
     return "Fuel used must be a number.";
   }
   return null;
 }
 
-export function settingsFrom(drafts: VehicleGroupDraft[]): VehicleGroupSetting[] {
+/** The groups as saved. A model year is sent only where the EPA factor uses one, so a year
+ *  typed before switching to a type without one (hidden from then on) is not sent. */
+export function settingsFrom(drafts: VehicleGroupDraft[], types: VehicleTypeOption[]): VehicleGroupSetting[] {
   return drafts.map((d) => ({
     fuel: d.fuel,
     vehicle_type: d.vehicleType,
@@ -69,7 +74,7 @@ export function settingsFrom(drafts: VehicleGroupDraft[]): VehicleGroupSetting[]
       ? {
           distance: Number(d.distance),
           distance_unit: d.distanceUnit,
-          ...(d.modelYear.trim() ? { model_year: Number(d.modelYear) } : {}),
+          ...(d.modelYear.trim() && optionFor(types, d)?.by_model_year ? { model_year: Number(d.modelYear) } : {}),
         }
       : d.fuelQuantity.trim()
         ? { fuel_quantity: Number(d.fuelQuantity), fuel_unit: d.fuelUnit }
@@ -180,7 +185,8 @@ export function VehicleGroupsFieldset({
                     <span>Model year</span>
                     <input
                       inputMode="numeric"
-                      placeholder={`${option.first_model_year ?? ""} to ${option.last_model_year ?? "now"}`}
+                      placeholder={option.first_model_year ? `${option.first_model_year} to ${option.last_model_year ?? "now"}`
+                        : `up to ${option.last_model_year ?? "now"}`}
                       value={draft.modelYear}
                       onChange={(e) => update(index, { modelYear: e.target.value })}
                     />

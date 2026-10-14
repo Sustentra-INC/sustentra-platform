@@ -1,11 +1,11 @@
 {
   "document_id": "MF-05",
   "file": "MF-05_valley_propane_forklift.pdf",
-  "description": "Forklift (non-road) propane cylinder exchange: quantity by weight in lb; cylinder count is not the quantity. The classifier leans stationary (propane delivery) but the document says forklift: halts until a reviewer sets the type.",
+  "description": "Forklift (non-road) propane cylinder exchange: quantity by weight in lb; cylinder count is not the quantity. The classifier leans stationary (propane delivery) but the document says forklift, and the mobile content check passes: read as CT-S1-MOBFUEL without a reviewer.",
   "expected_classification": "CT-S1-MOBFUEL",
   "expected_halt": null,
   "reviewer_override": "CT-S1-MOBFUEL",
-  "expected_halt_without_override": "unsupported_document",
+  "expected_halt_without_override": null,
   "document_fields": {},
   "records": [
     {

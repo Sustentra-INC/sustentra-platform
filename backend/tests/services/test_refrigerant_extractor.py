@@ -215,3 +215,56 @@ def test_confirms_needs_a_refrigerant_and_an_amount() -> None:
     extractor = RefrigerantServiceExtractor()
     assert extractor.confirms(_text_output(WORK_ORDER))
     assert not extractor.confirms(_text_output("Chiller CH-1 uses R-134a. Annual inspection passed.\n"))
+
+
+# --- review findings: misreads that would change the material balance --------------------
+@pytest.mark.parametrize(
+    ("text", "kind"),
+    [
+        ("Replaced failed compressor, installed new filter drier, evacuated and recharged", "service"),
+        ("Replaced TXV; old valve disposed", "service"),
+        ("Seasonal start-up", None),  # read as a service downstream
+        ("Commissioning check", None),
+        ("Installed new rooftop unit RTU-12", "installation"),
+        ("New RTU-12 installed", "installation"),
+        ("Chiller CH-2 retired and scrapped", "disposal"),
+        ("Removed from service", "disposal"),
+        ("Disposal", "disposal"),
+        ("Installation", "installation"),
+    ],
+)
+def test_only_the_equipment_itself_makes_an_installation_or_disposal(text: str, kind: str | None) -> None:
+    assert classify_service(text) == kind
+
+
+def test_a_repair_work_order_stays_a_service(targets: list[dict]) -> None:
+    text = ("Refrigerant Type: R-410A\nRefrigerant Added: 8 lbs\nSystem Charge: 10 lbs\n"
+            "Work Performed: Replaced failed compressor, installed new filter drier, evacuated and recharged\n")
+    fields = _by_field(RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1").candidates)
+    assert fields["service_type"]["normalized_value"] == "service"
+
+
+def test_an_invoice_unit_column_is_the_unit_not_the_equipment(targets: list[dict]) -> None:
+    text = ("Item    Description    Qty    Unit    Price\n"
+            "1    R-410A refrigerant    6    LB    210.00\n"
+            "2    R-404A refrigerant    12    OZ    95.00\n")
+    outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
+    first, second = _by_field(outcome.candidates, 1), _by_field(outcome.candidates, 2)
+    assert (first["refrigerant_added"]["normalized_value"], first["refrigerant_added"]["unit"]) == (6, "lb")
+    assert (second["refrigerant_added"]["normalized_value"], second["refrigerant_added"]["unit"]) == (0.75, "lb")
+    assert first["equipment_id"]["normalized_value"] is None
+
+
+def test_a_cylinder_size_multiplies_the_quantity(targets: list[dict]) -> None:
+    text = "Description    Qty    Price\nR-410A refrigerant 25 lb cylinder    2    300.00\n"
+    fields = _by_field(RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1").candidates)
+    added = fields["refrigerant_added"]
+    assert (added["normalized_value"], added["unit"]) == (50, "lb")
+    assert "quantity_times_package_size" in added["validation_flags"]
+
+
+def test_cooling_tonnage_is_not_a_refrigerant_charge(targets: list[dict]) -> None:
+    text = "Refrigerant Type: R-410A\nCapacity: 5 tons\nRefrigerant Added: 3 lb\n"
+    fields = _by_field(RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1").candidates)
+    assert fields["equipment_capacity"]["normalized_value"] is None
+    assert fields["refrigerant_added"]["normalized_value"] == 3

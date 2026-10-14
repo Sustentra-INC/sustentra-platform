@@ -1,11 +1,11 @@
 {
   "document_id": "MF-07",
   "file": "MF-07_prairie_coop_biofuel_blends.pdf",
-  "description": "Biofuel blends: B20 -> diesel 20%, B100 -> biodiesel 100%, E85 -> e85 (flagged, outside allowed values), E10 -> gasoline 10%. The classifier confidently picks the stationary biofuel variant, but the fleet context contradicts it: halts until a reviewer sets the type.",
+  "description": "Biofuel blends: B20 -> diesel 20%, B100 -> biodiesel 100%, E85 -> e85 (flagged, outside allowed values), E10 -> gasoline 10%. The classifier confidently picks the stationary biofuel variant, but the fleet context contradicts it and the mobile content check passes: read as CT-S1-MOBFUEL without a reviewer.",
   "expected_classification": "CT-S1-MOBFUEL",
   "expected_halt": null,
   "reviewer_override": "CT-S1-MOBFUEL",
-  "expected_halt_without_override": "unsupported_document",
+  "expected_halt_without_override": null,
   "document_fields": {},
   "records": [
     {

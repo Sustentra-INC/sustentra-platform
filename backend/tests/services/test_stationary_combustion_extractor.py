@@ -452,3 +452,15 @@ def test_annual_summary_row_is_not_a_record(targets: list[dict]) -> None:
     # Each month keeps its own cycle dates rather than the statement's service year.
     assert _by_field(outcome.candidates, 2)["service_period_start"]["normalized_value"] == "2025-02-01"
     assert _by_field(outcome.candidates, 2)["service_period_end"]["normalized_value"] == "2025-02-28"
+
+
+def test_a_fuel_log_site_column_is_each_lines_facility(targets: list[dict]) -> None:
+    text = ("Date    Site    Equipment    Product    Gallons\n"
+            "02/10/2025    Richmond Refinery    Standby generator    Diesel    450\n"
+            "08/22/2025    Albany Plant    Boiler 2    Diesel    380\n")
+    outcome = StationaryCombustionExtractor().extract(_text_output(text), targets, "EV-1")
+    first, second = _by_field(outcome.candidates, 1), _by_field(outcome.candidates, 2)
+    assert (first["facility_name"]["normalized_value"], first["activity_quantity"]["normalized_value"]) == (
+        "Richmond Refinery", 450)
+    assert (second["facility_name"]["normalized_value"], second["activity_quantity"]["normalized_value"]) == (
+        "Albany Plant", 380)

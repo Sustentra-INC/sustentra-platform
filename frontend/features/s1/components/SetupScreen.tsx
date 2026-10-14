@@ -150,12 +150,18 @@ export function SetupScreen({
           <label className="s1-setup-field">
             <span>Regulation</span>
             <select
-              value={engagement.regulation}
+              value={engagement.regulation ?? ""}
               onChange={(e) => {
                 const opt = REGULATION_OPTIONS.find((o) => o.short === e.target.value);
                 if (opt) set({ regulation: opt.short, regulationJurisdiction: opt.full });
               }}
             >
+              {/* An unset regulation shows as unset, not as the first option. */}
+              {engagement.regulation ? null : (
+                <option value="" disabled>
+                  Choose a regulation
+                </option>
+              )}
               {REGULATION_OPTIONS.map((o) => (
                 <option key={o.short} value={o.short}>
                   {o.full}
@@ -203,7 +209,12 @@ export function SetupScreen({
           </label>
           <label className="s1-setup-field">
             <span>Assurance level</span>
-            <select value={engagement.assuranceLevel} onChange={(e) => set({ assuranceLevel: e.target.value })}>
+            <select value={engagement.assuranceLevel ?? ""} onChange={(e) => set({ assuranceLevel: e.target.value })}>
+              {engagement.assuranceLevel ? null : (
+                <option value="" disabled>
+                  Choose a level
+                </option>
+              )}
               {ASSURANCE_LEVEL_OPTIONS.map((o) => (
                 <option key={o} value={o}>
                   {o}

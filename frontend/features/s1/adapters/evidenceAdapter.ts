@@ -115,6 +115,7 @@ export function resolveCanonicalTypeDisplayName(
 /** The pipeline's structured halt (pipeline_run.halt_reason.code), when it gives one. */
 export function haltReasonFromCode(code: string | null | undefined): string | null {
   if (code === "unreadable_document") return HALT_REASONS.unreadable;
+  if (code === "ocr_required") return HALT_REASONS.ocrRequired;
   if (code === "unsupported_document") return HALT_REASONS.noTemplate;
   return null;
 }
@@ -157,5 +158,6 @@ function resolveFormat(filename: string, mimeType?: string | null): EvidenceItem
   if (lower.endsWith(".csv") || mimeType === "text/csv") return "csv";
   if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image";
   if (lower.endsWith(".pdf") || mimeType === "application/pdf") return "pdf";
+  if (lower.endsWith(".docx")) return "docx";
   return "other";
 }

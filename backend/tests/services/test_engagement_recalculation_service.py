@@ -536,3 +536,41 @@ def test_a_zip_with_several_subregions_asks_with_just_those() -> None:
     assert result["needs_input"] == []
     source = result["categories"]["purchased_electricity_location_based"]["details"]["inputs"][0]["grid_region_source"]
     assert source == "chosen under Recalculation inputs"
+
+
+# --- review findings: records that would net a negative or vanish silently --------------------
+def test_refrigerant_records_that_cannot_be_right_are_asked_about_not_netted() -> None:
+    store = FakeStore()
+    store.add_document("PRECHARGED", "CT-S1-REFRSVC", [_refrigerant("R-410A", "2025-03-01", "installation",
+                                                                    added=8, capacity=10)])
+    store.add_document("OVER", "CT-S1-REFRSVC", [_refrigerant("R-410A", "2025-04-01", "disposal", recovered=12,
+                                                              capacity=10)])
+    store.add_document("BLANK", "CT-S1-REFRSVC", [_refrigerant("", "2025-05-01", added=3)])
+    store.add_document("OK", "CT-S1-REFRSVC", [_refrigerant("R-410A", "2025-06-01", added=4)])
+    result = _service(store).recalculate(_engagement(), _own)
+    asks = {n["key"]: n["message"] for n in result["needs_input"] if n["kind"] == "refrigerant_record"}
+    assert set(asks) == {"PRECHARGED.pdf:installation", "OVER.pdf:disposal", "BLANK.pdf:refrigerant_type"}
+    assert "pre-charged" in asks["PRECHARGED.pdf:installation"]
+    line = result["categories"]["fugitive_refrigerants"]["lines"][0]
+    assert line["steps"][0]["result"] == pytest.approx(4)  # only the usable record, nothing negative
+
+
+def test_a_vehicle_group_for_a_fuel_without_records_is_reported() -> None:
+    groups = [{"fuel": "Motor Gasoline", "vehicle_type": "Gasoline Passenger Cars", "factor_fuel_type": "Gasoline",
+               "on_road": True, "model_year": 2020, "distance": 5000, "label": "pool cars"}]
+    result = _service(_mobile_store()).recalculate(_engagement(recalculation={"vehicle_groups": groups}), _own)
+    asks = [n["message"] for n in result["needs_input"] if n["kind"] == "vehicle_group"]
+    assert asks == ["Motor Gasoline, pool cars: there are no reviewed Motor Gasoline records in the reporting "
+                    "period, so this vehicle group is not used."]
+
+
+def test_an_open_ended_oldest_model_year_band_is_used_as_is() -> None:
+    groups = [{"fuel": "Diesel Fuel", "vehicle_type": "Medium- and Heavy-Duty Vehicles", "factor_fuel_type": "Diesel",
+               "on_road": True, "model_year": 1955, "distance": 1000}]
+    service = _service(_mobile_store())
+    mobile = service.recalculate(_engagement(recalculation={"vehicle_groups": groups}), _own)["categories"][
+        "mobile_combustion"]
+    # Diesel trucks start at 1960 in Table 4: a 1955 truck uses the oldest band, with a note.
+    assert "model_year_older_than_table" in mobile["flags"]
+    hdv = next(t for t in service.reference.vehicle_types() if t["vehicle_type"] == "Gasoline Heavy-Duty Vehicles")
+    assert hdv["first_model_year"] is None  # "1980 and earlier" covers any older year: nothing is moved

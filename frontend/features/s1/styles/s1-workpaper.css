@@ -2145,6 +2145,9 @@ html { font-size: 82%; }
 .s1-fac { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-3) 0; }
 .s1-fac__head, .s1-fac__row { display: grid; grid-template-columns: minmax(8rem, 1fr) minmax(10rem, 1.4fr) minmax(10rem, 1fr) auto; gap: var(--sp-2); align-items: center; }
 .s1-fac__hint { grid-column: 1 / -1; margin: 0; font-size: var(--text-xs); }
+.s1-relate { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); padding: var(--sp-2) 0; }
+.s1-relate label { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); min-width: 0; }
+.s1-relate select { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); max-width: 100%; }
 .s1-fac__head { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
 .s1-fac__row input, .s1-fac__row select { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); min-width: 0; }
 .s1-fac__found { margin: var(--sp-2) 0 var(--sp-3); padding: var(--sp-3); background: var(--state-open-bg); border: var(--border-hairline); border-color: var(--state-open-line); border-radius: var(--radius-input); font-size: var(--text-sm); }

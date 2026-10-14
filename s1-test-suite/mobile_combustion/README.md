@@ -11,10 +11,10 @@ One record per fuel **transaction** (Scope 1 schema `fuel_transaction`, S1-MOB-1
 | MF-02 | Pump receipt (narrow page) | "12.457 GAL @ $3.459/GAL"; fleet-card prompts give vehicle and card |
 | MF-03 | Canadian diesel receipt | Litres, ISO date; "Unit: T-118" is the vehicle, not a unit of measure |
 | MF-04 | CNG fleet invoice | GGE kept as GGE; price column ignored; **no CNG fleet variant in the vocabulary**, so it halts until a reviewer sets the type |
-| MF-05 | Forklift propane cylinders | Quantity by weight (lb), not cylinder count; classifier leans stationary but "forklift" contradicts it, so it halts for a reviewer |
+| MF-05 | Forklift propane cylinders | Quantity by weight (lb), not cylinder count; classifier leans stationary but "forklift" contradicts it and the mobile content check passes, so it is read as mobile fuel |
 | MF-06 | UK fuel-card statement, 2 pages | Litres; day-first dates; table continues under a repeated header on page 2; AdBlue skipped; stationary/mobile tie broken by "fuel card"/"vehicle" |
-| MF-07 | Biofuel blends statement | B20 -> diesel 20%, B100 -> biodiesel, E85 -> e85 (flagged), E10 -> gasoline 10%; the classifier confidently picks the stationary biofuel variant, contradicted by fleet context, so it halts for a reviewer |
-| MF-08 | Photographed receipt, no text | Halts: `unreadable_document` |
+| MF-07 | Biofuel blends statement | B20 -> diesel 20%, B100 -> biodiesel, E85 -> e85 (flagged), E10 -> gasoline 10%; the classifier confidently picks the stationary biofuel variant, contradicted by fleet context; the mobile content check passes, so it is read as mobile fuel |
+| MF-08 | Photographed receipt, no text | Halts: `ocr_required` (readable once OCR is on) |
 | MF-09 | Fleet EV-charging statement (kWh) | Halts: `unsupported_document` (electricity is Scope 2) |
 
 Samples with `reviewer_override` are run twice by the tests: without the override they

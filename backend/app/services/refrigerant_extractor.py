@@ -120,20 +120,32 @@ COLUMNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("unit", ("uom", "unit of measure", "units")),
 )
 
-_INSTALL_RE = re.compile(
-    r"\b(?:new (?:equipment|unit|system)|install(?:ation|ed)?|(?<!de)commission(?:ing|ed)?|initial charge|"
-    r"start[- ]?up)\b", re.I)
+# Installation and disposal change the material balance (P_N - C_N, C_D - R_D), so they are
+# only read when the equipment itself is the subject: "new rooftop unit installed", "chiller
+# decommissioned". A part ("installed new filter drier", "old valve disposed") or a vague word
+# ("start-up", "commissioning check") is ordinary service (P_S), the default.
+_EQUIPMENT = (r"(?:units?|equipment|system|chiller|rtu|rooftop unit|condenser|condensing unit|compressor rack|rack|"
+              r"walk-in(?: cooler| freezer)?|cooler|freezer|air handler|heat pump|a/?c unit|split system|"
+              r"package unit|ice machine|refrigerator|suppression system|fm-?200 system)"
+              r"(?:[\s#-]*[\w#-]*\d[\w#-]*)?")  # optionally followed by its ID: "chiller CH-2", "RTU-12"
 _DISPOSAL_RE = re.compile(
-    r"\b(?:decommission(?:ing|ed)?|retire(?:d|ment)?|dispos(?:al|ed)|scrap(?:ped)?|removed from service|"
-    r"end of life)\b", re.I)
-_SERVICE_RE = re.compile(r"\b(?:leak|recharge|top[- ]?(?:off|up)|repair|maintenance|service call|preventive)\b",
-                         re.I)
-# Scanning free text (technician notes) needs stronger phrases: "Install date: 2015" on a
-# work order is the equipment's age, not a new installation.
-_NOTE_INSTALL_RE = re.compile(r"\b(?:new (?:equipment|unit|system) install(?:ed|ation)?|installed (?:a )?new|"
-                              r"initial charge|commissioning of (?:the )?new)\b", re.I)
-_NOTE_DISPOSAL_RE = re.compile(r"\b(?:decommission(?:ed|ing)?|removed from service|(?:unit|equipment|system) "
-                               r"retired|disposal of|scrapped)\b", re.I)
+    r"\bdecommission(?:ed|ing)?\b|\bend of life\b|\b(?:removed|taken) (?:from|out of) service\b"
+    rf"|\b{_EQUIPMENT}\s+(?:was\s+|has been\s+)?(?:retired|scrapped|disposed(?: of)?)\b"
+    rf"|\b(?:retired|scrapped|disposed of)\s+(?:the\s+)?(?:old\s+)?{_EQUIPMENT}\b"
+    rf"|\b(?:equipment|unit) (?:disposal|retirement)\b", re.I)
+_INSTALL_RE = re.compile(
+    rf"\b(?:new|replacement)\s+{_EQUIPMENT}\s+(?:was\s+)?(?:installed|install(?:ation)?|commissioned|charged)\b"
+    rf"|\binstall(?:ed|ation of)?\s+(?:a |an |the )?(?:new|replacement)\s+{_EQUIPMENT}\b"
+    r"|\binitial charge\b|\bnew install(?:ation)?\b", re.I)
+_SERVICE_RE = re.compile(r"\b(?:leak|recharge[ds]?|top[- ]?(?:off|up)|repair(?:ed)?|maintenance|service call|preventive|"
+                         r"replaced|evacuat\w*)\b", re.I)
+# A short Service Type cell may hold just the word.
+_SHORT_DISPOSAL = {"disposal", "disposed", "retired", "retirement", "decommissioned", "decommission", "scrapped"}
+_SHORT_INSTALL = {"installation", "install", "installed", "new install", "new installation", "new unit"}
+# A bare mass unit in a cell ("LB", "oz") is a unit of measure, never an equipment ID.
+_UNIT_ONLY_RE = re.compile(r"\s*(?:lbs?|pounds?|oz|ounces?|kgs?|kilograms?|g|grams?)\.?\s*", re.I)
+# Cooling capacity, airflow and fuel units: a "Capacity: 5 tons" is tonnage, not a refrigerant charge.
+_NOT_A_CHARGE_RE = re.compile(r"\b(?:tons?|btu\w*|mbh|kw|hp|cfm|gallons?|gal)\b", re.I)
 _DOCUMENT_UNIT_RE = re.compile(r"(?:all )?(?:quantities|amounts|weights?) (?:are )?(?:in|shown in) ([a-z]+)", re.I)
 
 
@@ -149,22 +161,26 @@ class ServiceRecord:
     provider: Located | None = None
     service_type: tuple[Located, str] | None = None
     unit_missing: set[str] = field(default_factory=set)
+    flags: dict[str, list[str]] = field(default_factory=dict)  # field -> extra validation flags
 
 
 def classify_service(text: str, notes: bool = False) -> str | None:
-    """service / installation / disposal named in ``text``, or None. ``notes``: free text,
-    where only explicit phrases count."""
+    """service / installation / disposal named in ``text``, or None (read as service).
 
-    if notes:
-        if _NOTE_DISPOSAL_RE.search(text):
-            return DISPOSAL
-        if _NOTE_INSTALL_RE.search(text):
-            return INSTALLATION
-        return SERVICE if _SERVICE_RE.search(text) else None
+    ``notes``: free text such as technician notes; otherwise a Service Type cell or label,
+    where a single word ("Disposal", "Installation") is enough on its own.
+    """
+
     if _DISPOSAL_RE.search(text):
         return DISPOSAL
     if _INSTALL_RE.search(text):
         return INSTALLATION
+    if not notes:
+        words = " ".join(re.sub(r"[^a-z/ -]", " ", text.lower()).split())
+        if words in _SHORT_DISPOSAL:
+            return DISPOSAL
+        if words in _SHORT_INSTALL:
+            return INSTALLATION
     if _SERVICE_RE.search(text):
         return SERVICE
     return None
@@ -332,16 +348,31 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             return None
         unit_cell = cell("unit")
         row_unit = mass_unit(unit_cell.text) if unit_cell is not None else None
+        # An invoice's "Unit" column (lb, oz) can land under the equipment heading: a unit of
+        # measure is never an equipment ID.
+        equipment_cell = cell("equipment")
+        if equipment_cell is not None and _UNIT_ONLY_RE.fullmatch(equipment_cell.text):
+            row_unit = row_unit or mass_unit(equipment_cell.text)
+            equipment_cell = None
         record = ServiceRecord(refrigerant=(located(gas_cell), gas))
+        # "R-410A refrigerant 25 lb cylinder" names a package size; "R-410A refrigerant (lbs)" a unit.
+        package = parse_mass(gas_cell.text)
         for name in ("added", "recovered", "capacity"):
             c = cell(name)
-            if c is None or not c.text.strip():
+            if c is None or not c.text.strip() or _NOT_A_CHARGE_RE.search(c.text):
                 continue
-            # A materials line names its unit in the description: "R-410A refrigerant (lbs)".
-            line_unit = mass_unit(gas_cell.text) if name == "added" else None
+            bare = re.fullmatch(r"\s*(\d[\d,]*(?:\.\d+)?)\s*", c.text)
+            if name == "added" and package is not None and bare:
+                count = float(bare.group(1).replace(",", ""))
+                packaged = Mass(count * package.value, package.unit, f"{bare.group(1)} x {package.raw}",
+                                converted=package.converted)
+                record.flags.setdefault(name, []).append("quantity_times_package_size")
+                setattr(record, name, (located(c), packaged))
+                continue
+            line_unit = mass_unit(gas_cell.text) if name == "added" and package is None else None
             default = units.get(name) or row_unit or line_unit or document_unit
             mass = parse_mass(c.text, default)
-            if mass is None and re.fullmatch(r"\s*\d[\d,]*(?:\.\d+)?\s*", c.text):
+            if mass is None and bare:
                 mass = parse_mass(c.text, "lb")
                 if mass is not None:
                     record.unit_missing.add(name)
@@ -353,7 +384,7 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
         if date_cell is not None and (hit := parse_date(date_cell.text)):
             record.date = (located(date_cell), hit[0])
         for name, attr in (("equipment", "equipment"), ("site", "site"), ("provider", "provider")):
-            c = cell(name)
+            c = equipment_cell if name == "equipment" else cell(name)
             if c is not None and c.text.strip():
                 setattr(record, attr, located(c))
         type_cell = cell("service_type")
@@ -420,7 +451,7 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
                       ) -> tuple[Located, Mass, bool] | None:
         found = self._find_labeled(rows, groups,
                                    accept=lambda v: bool(re.match(r"\(?\s*\d|\.\d", v)), allow_next_row=True)
-        if found is None:
+        if found is None or _NOT_A_CHARGE_RE.search(found.raw):
             return None
         label_unit = mass_unit(found.label_cell.text if found.label_cell is not None else None)
         mass = parse_mass(found.raw, label_unit or document_unit)
@@ -433,8 +464,14 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
         return (found, bare, True) if bare is not None else None
 
     def _equipment(self, rows: Sequence[Row]) -> Located | None:
-        return self._find_labeled(rows, EQUIPMENT_LABELS,
-                                  accept=lambda v: bool(re.search(r"[A-Za-z0-9]", v)) and parse_date(v) is None)
+        # "Equipment ID: Rooftop unit" is trusted; a bare "Unit" / "System" label only with an
+        # ID-like value ("RTU-3"), so a table header ("Unit  Price") is not read as one.
+        explicit, generic = EQUIPMENT_LABELS[0], EQUIPMENT_LABELS[1]
+        return (self._find_labeled(rows, (explicit,),
+                                   accept=lambda v: bool(re.search(r"[A-Za-z0-9]", v)) and parse_date(v) is None)
+                or self._find_labeled(rows, (generic,),
+                                      accept=lambda v: bool(re.search(r"\d", v)) and parse_date(v) is None
+                                      and _UNIT_ONLY_RE.fullmatch(v) is None))
 
     def _service_type(self, rows: Sequence[Row]) -> tuple[Located, str] | None:
         labeled = self._find_labeled(rows, SERVICE_TYPE_LABELS, accept=lambda v: classify_service(v) is not None)
@@ -472,6 +509,7 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
                 flags.append("unit_converted")
             name = {"refrigerant_added": "added", "refrigerant_recovered": "recovered",
                     "equipment_capacity": "capacity"}[field_id]
+            flags.extend(record.flags.get(name, []))
             if name in record.unit_missing:
                 flags.append("unit_missing")
                 return self._candidate(target, located, mass.raw, self._clean_number(mass.value), None, *args,

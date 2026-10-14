@@ -102,7 +102,15 @@ export interface RecalcComparison {
 }
 
 export interface RecalcNeedsInput {
-  kind: "grid_region" | "fuel_choice" | "quantity" | "fuel_line" | "mobile" | "refrigerant_gwp" | "vehicle_group";
+  kind:
+    | "grid_region"
+    | "fuel_choice"
+    | "quantity"
+    | "fuel_line"
+    | "mobile"
+    | "refrigerant_gwp"
+    | "vehicle_group"
+    | "refrigerant_record";
   key: string;
   message: string;
   options?: string[];

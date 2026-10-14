@@ -12,7 +12,7 @@ suppliers, customers, addresses and account numbers are fictional.
 | SC-05 | Propane invoice (Canada) | Litres; ISO dates; the non-fuel line item (tank rental, `EA`) is skipped |
 | SC-06 | Monthly bulk diesel statement (standby generators) | Three deliveries become three records; the total row is not a record; site line split into name and address |
 | SC-07 | Industrial gas bill, label: value lines only | Mcf; separate period start/end labels; the daily average is not the quantity |
-| SC-08 | Scanned bill, no text layer | Halts: `unreadable_document` |
+| SC-08 | Scanned bill, no text layer | Halts: `ocr_required` (readable once OCR is on) |
 | SC-09 | Water bill shaped like a gas bill | Halts: `unsupported_document` (no combusted fuel) |
 
 - `documents/` - the PDFs (committed; regenerate with `python scripts/generate_stationary_combustion_samples.py`).
