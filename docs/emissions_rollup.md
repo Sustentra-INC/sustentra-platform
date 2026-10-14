@@ -43,7 +43,7 @@ Numbers are unrounded metric tonnes. Round only for display (2 dp). `null` means
 | `stationary_combustion` | yes | 42 |
 | `mobile_combustion` | yes | 43 |
 | `process_sources` | no | 44 |
-| `fugitive_refrigerants` | yes | 45 (part) |
+| `fugitive_refrigerants` | yes | 45 (part); can emit CO2, HFCs, PFCs, SF6, NF3, other |
 | `fugitive_purchased_gases` | no | 45 (part) |
 | `agricultural_sources` | no | 46 |
 | `purchased_electricity` | yes | 47 |

@@ -31,7 +31,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from backend.app.domain.refrigerants import find_refrigerant
-from backend.app.reference.emission_factor_loader import GAS_GROUPS, EmissionFactorReference
+from backend.app.reference.emission_factor_loader import (
+    GAS_GROUPS,
+    EmissionFactorNotFoundError,
+    EmissionFactorReference,
+)
 from backend.app.services import emissions_calculator as calc
 
 ROLLUP_VERSION = 1
@@ -61,7 +65,7 @@ SOURCES: tuple[Source, ...] = (
            {"location": "mobile_combustion"}, COMBUSTION_GASES),
     Source("process_sources", "Process sources", "scope1", 44, False, {}, GAS_GROUPS),
     Source("fugitive_refrigerants", "Fugitive: refrigeration, AC and fire suppression", "scope1", 45, True,
-           {"location": "fugitive_refrigerants"}, ("CO2", "HFCs", "PFCs", "other")),
+           {"location": "fugitive_refrigerants"}, ("CO2", "HFCs", "PFCs", "SF6", "NF3", "other")),
     Source("fugitive_purchased_gases", "Fugitive: purchased industrial gases", "scope1", 45, False, {},
            GROUPS),
     Source("agricultural_sources", "Agricultural sources", "scope1", 46, False, {}, COMBUSTION_GASES),
@@ -274,11 +278,13 @@ class _SourceState:
     open_items: int
     absent_reason: str | None
     gaps: list[dict[str, Any]] = field(default_factory=list)
-    flags: list[str] = field(default_factory=list)
+    flags: list[str] = field(default_factory=list)  # the source's own flags plus every line's
+    source_flags: list[str] = field(default_factory=list)  # the source's own flags only
     vectors: dict[str, dict[str, dict[str, float]] | None] = field(default_factory=dict)  # basis -> group vector
     biogenic: float | None = None
     lines: list[_Line] = field(default_factory=list)
-    negative: bool = False
+    # Gas groups (and "biogenic") with a negative line: a partial value that includes one is no lower bound.
+    negative: set[str] = field(default_factory=set)
 
     @property
     def backed(self) -> bool:
@@ -299,6 +305,13 @@ def _combustion_vector(result: calc.CategoryResult) -> dict[str, dict[str, float
         vector[gas] = {"mass_t": float(result.total_mass_t.get(gas, 0.0)),
                        "co2e_t": float(result.total_co2e_t.get(gas, 0.0))}
     return vector
+
+
+def _hub_gwp_ar5(ref: EmissionFactorReference, gas: str) -> float | None:
+    try:
+        return ref.gwp(gas, "AR5").value
+    except EmissionFactorNotFoundError:
+        return None
 
 
 def _fugitive_vector(result: calc.CategoryResult, ref: EmissionFactorReference, gwp_set: str
@@ -322,11 +335,21 @@ def _fugitive_vector(result: calc.CategoryResult, ref: EmissionFactorReference, 
         else:
             if not groups:
                 flags.append("blend_without_kyoto_gases")
-            if gwp_set != "AR5" and len(groups) > 1:
+            hub = _hub_gwp_ar5(ref, line.key)
+            used = result.gwp.get(line.key, {}).get("value")
+            entered = hub is None or used is None or abs(float(used) - hub) > 1e-9  # not the Hub AR5 GWP
+            grouped = co2e
+            if entered and hub is not None and groups and sum(g["mass_fraction"] for g in groups.values()) < 1 - 1e-9:
+                # An entered GWP (safety data sheet, AR6) for a blend with HCFCs or hydrocarbons may
+                # count those too: only the Kyoto components' Table 12 share goes to the gas groups.
+                kyoto = mass * hub
+                grouped = kyoto if abs(kyoto) < abs(co2e) else co2e
+                flags.append("gas_split_uses_ar5_ratios")
+            elif entered and len(groups) > 1:
                 flags.append("gas_split_uses_ar5_ratios")
             for group, share in groups.items():
-                split[group] = {"mass_t": mass * share["mass_fraction"], "co2e_t": co2e * share["co2e_fraction"]}
-            residual = co2e * (1 - sum(s["co2e_fraction"] for s in groups.values()))
+                split[group] = {"mass_t": mass * share["mass_fraction"], "co2e_t": grouped * share["co2e_fraction"]}
+            residual = co2e - sum(v["co2e_t"] for v in split.values())
             if abs(residual) > EPSILON:
                 split["other"] = {"mass_t": 0.0, "co2e_t": residual}
         for group, amounts in split.items():
@@ -352,33 +375,35 @@ def _source_states(categories: Mapping[str, calc.CategoryResult | None], open_it
                 if any("gas_split_unknown" in line.flags for line in lines):
                     state.gaps.append({"gap": "gas_split_unknown", "gases": ["HFCs", "PFCs"], "affects_total": False})
                 state.flags.extend(sorted({f for line in lines for f in line.flags}))
-                state.negative = any(v["mass_t"] < 0 or v["co2e_t"] < 0
-                                     for line in lines for v in line.groups.values())
+                state.negative = {g for line in lines for g, v in line.groups.items()
+                                  if v["mass_t"] < 0 or v["co2e_t"] < 0}
             else:
                 location = _combustion_vector(primary)
                 market = results.get("market")
                 state.vectors = {"location": location,
                                  "market": _combustion_vector(market) if market is not None else location}
-                state.negative = any(v["co2e_t"] < 0 for v in location.values())
-            if "negative_refrigerant_emissions" in primary.flags:
-                state.negative = True
+                state.negative = {gas for result in results.values() if result is not None
+                                  for line in result.lines for gas, mass in line.mass_t.items() if mass < 0}
+                if any(line.biogenic_co2_t < 0 for line in primary.lines):
+                    state.negative.add("biogenic")
             if source.key == "mobile_combustion" and any(
                     "ch4_n2o_need_vehicle_groups" in line.flags for line in primary.lines):
                 state.gaps.append({"gap": "vehicle_groups_missing", "gases": ["CH4", "N2O"], "affects_total": True})
             state.biogenic = float(primary.biogenic_co2_t)
             state.status = "partial" if items or any(g["affects_total"] for g in state.gaps) else "calculated"
             if state.absent_reason is not None:
-                state.flags.append("marked_absent_but_evidence_found")
+                state.source_flags.append("marked_absent_but_evidence_found")
         elif source.built and items:
             state.status = "awaiting_inputs"
             if state.absent_reason is not None:
-                state.flags.append("marked_absent_but_evidence_found")
+                state.source_flags.append("marked_absent_but_evidence_found")
         elif state.absent_reason is not None:
             state.status = "confirmed_absent"
             state.vectors = {"location": _zeros(), "market": _zeros()}
             state.biogenic = 0.0
         else:
             state.status = "no_evidence" if source.built else "not_built"
+        state.flags.extend(state.source_flags)
         states[source.key] = state
     return states
 
@@ -417,6 +442,26 @@ def _complete_for(state: _SourceState, node: Node) -> bool:
     if not state.backed or state.open_items:
         return False
     return not any(_gap_touches(g, node) for g in state.gaps)
+
+
+def _flags_for(state: _SourceState, node: Node) -> list[str]:
+    """A gas node takes the flags of the lines that add to its gas, not every line's."""
+
+    if node.kind != "gas" or not state.lines:
+        return state.flags
+    gas = node.gas or ""
+    lines = [line for line in state.lines
+             if gas in line.groups and (abs(line.groups[gas]["co2e_t"]) > EPSILON
+                                        or abs(line.groups[gas]["mass_t"]) > EPSILON)]
+    return [*state.source_flags, *sorted({f for line in lines for f in line.flags})]
+
+
+def _no_negative(state: _SourceState, node: Node) -> bool:
+    if node.kind == "gas":
+        return node.gas not in state.negative
+    if node.kind == "memo":
+        return "biogenic" not in state.negative
+    return not state.negative - {"biogenic"}
 
 
 def _gap_touches(gap: dict[str, Any], node: Node) -> bool:
@@ -516,8 +561,8 @@ class _Evaluator:
                 terms.append(term)
                 missing.extend(_missing_for(state, node))
                 if state.contributes:
-                    flags.extend(f for f in state.flags if f not in flags)
-                lower_bound = lower_bound and not state.negative
+                    flags.extend(f for f in _flags_for(state, node) if f not in flags)
+                lower_bound = lower_bound and _no_negative(state, node)
                 backed = backed or state.backed
                 complete = complete and _complete_for(state, node)
                 if co2e is not None:
@@ -715,5 +760,6 @@ def rollup_layout() -> dict[str, Any]:
                    "structural_zero": n.structural_zero} for n in NODES],
         "final_outputs": [{"key": o.key, "label": o.label, "workbook_row": o.workbook_row,
                            "requirement": o.requirement, "node": o.node, "default_measure": o.default_measure,
+                           "unit": {"co2e_t": "t CO2e", "mass_t": "t"}.get(o.default_measure or ""),
                            "unit_settable": o.gas_row} for o in FINAL_OUTPUTS],
     }

@@ -356,7 +356,8 @@ export interface RollupLayout {
   nodes: { key: string; step: RollupNode["step"]; label: string; unit: string; kind: RollupNode["kind"];
     scope: RollupNode["scope"]; gas: GasGroup | null; formula: string; terms: string[]; structural_zero: boolean }[];
   final_outputs: { key: string; label: string; workbook_row: number; requirement: "Required" | "Optional";
-    node: string; default_measure: "co2e_t" | "mass_t" | null; unit_settable: boolean }[];
+    node: string; default_measure: "co2e_t" | "mass_t" | null; unit: "t CO2e" | "t" | null;
+    unit_settable: boolean }[];
 }
 
 /** A vehicle type with CH4/N2O factors: on-road (Tables 3-4) or non-road (Table 5). */

@@ -316,6 +316,64 @@ def test_a_negative_refrigerant_balance_means_a_partial_total_cannot_conclude() 
     assert _out(result, "scope1_total")["status"] == "incomplete"
 
 
+def test_an_open_refrigerant_question_keeps_sf6_and_nf3_open() -> None:
+    fugitive = _refrigerants(calc.RefrigerantUse("R-410A", "lb", serviced=100))
+    others = {k: "none" for k in SOURCE_KEYS if k != "fugitive_refrigerants"}
+    open_question = _rollup({"fugitive_refrigerants": fugitive}, absent=others,
+                            open_items={"fugitive_refrigerants": 1}, reported={"scope1_sf6": 0})
+    for gas in ("scope1_sf6", "scope1_nf3"):
+        assert open_question["nodes"][gas]["status"] == "partial", gas  # the open record may be SF6
+    assert _out(open_question, "scope1_sf6")["status"] == "incomplete"
+    waiting = _rollup({}, absent=others, open_items={"fugitive_refrigerants": 1}, reported={"scope1_sf6": 0})
+    assert waiting["nodes"]["scope1_sf6"]["co2e_t"] is None
+    assert (_out(waiting, "scope1_sf6")["status"], _out(waiting, "scope1_sf6")["reason"]) == (
+        "no_evidence", "awaiting_inputs")
+    answered = _rollup({"fugitive_refrigerants": fugitive}, absent=others, reported={"scope1_sf6": 0})
+    assert _out(answered, "scope1_sf6")["status"] == "within_tolerance"  # no SF6 line: a true 0
+
+
+def test_an_entered_gwp_on_a_blend_with_hcfcs_counts_only_its_hfc_share_as_hfcs() -> None:
+    # AR6 has no blend GWPs, so the reviewer enters R-402A's from the safety data sheet (HCFC-22 included).
+    fugitive = calc.refrigerants([calc.RefrigerantUse("R-402A", "kg", serviced=1000, gwp_override=2989)], REF,
+                                 gwp_set="AR6")
+    result = _rollup({"fugitive_refrigerants": fugitive}, absent=ABSENT_A, gwp_set="AR6")
+    hub = REF.gwp("R-402A", "AR5").value
+    split = result["categories"]["fugitive_refrigerants"]["gas_split"]["R-402A"]
+    assert split["groups"]["HFCs"]["co2e_t"] == pytest.approx(hub)  # 1 t x the Table 12 (HFC-only) GWP
+    assert split["groups"]["other"]["co2e_t"] == pytest.approx(2989 - hub)
+    assert split["flags"] == ["gas_split_uses_ar5_ratios"]
+    assert result["nodes"]["fugitive_total"]["co2e_t"] == pytest.approx(2989)
+
+
+def test_a_negative_line_stops_only_the_partial_totals_it_is_part_of_from_concluding() -> None:
+    # A negative R-410A balance makes HFCs and the totals no lower bound, but not CO2.
+    fugitive = _refrigerants(calc.RefrigerantUse("R-410A", "lb", retired_capacity=10, recovered=50))
+    result = _rollup({"stationary_combustion": _stationary(), "fugitive_refrigerants": fugitive},
+                     reported={"scope1_co2": 10, "scope1_total": 1})
+    assert result["nodes"]["scope1_co2"]["lower_bound"] is True
+    assert (_out(result, "scope1_co2")["status"], _out(result, "scope1_co2")["reason"]) == (
+        "exceeds_tolerance", "lower_bound")
+    assert result["nodes"]["scope1_hfcs"]["lower_bound"] is False
+    assert _out(result, "scope1_total")["status"] == "incomplete"
+    # A negative fuel line (a credit on a bill) counts too, though the fuel total stays positive.
+    stationary = calc.stationary_combustion([
+        calc.StationaryFuel("Natural Gas", calc.Measure(-100, "MMBtu")),
+        calc.StationaryFuel("Natural Gas", calc.Measure(1000, "MMBtu"))], REF)
+    credited = _rollup({"stationary_combustion": stationary}, reported={"scope1_total": 1})
+    assert credited["nodes"]["scope1_total"]["lower_bound"] is False
+    assert _out(credited, "scope1_total")["status"] == "incomplete"
+
+
+def test_gas_rows_carry_only_the_flags_of_lines_with_that_gas() -> None:
+    fugitive = calc.refrigerants([calc.RefrigerantUse("R-410A", "lb", serviced=100),
+                                  calc.RefrigerantUse("R-1234yf", "lb", serviced=10, gwp_override=1)], REF)
+    result = _rollup({"fugitive_refrigerants": fugitive}, absent={**ABSENT_A, "stationary_combustion": "none"})
+    nodes = result["nodes"]
+    assert nodes["scope1_hfcs"]["flags"] == [] and nodes["scope1_co2"]["flags"] == []
+    assert nodes["scope1_other_gases"]["flags"] == ["non_kyoto_gas_in_total"]
+    assert nodes["fugitive_total"]["flags"] == ["non_kyoto_gas_in_total"]
+
+
 # --- the tables themselves ---------------------------------------------------------------------
 def test_the_roll_up_tables_are_consistent() -> None:
     assert (len(SOURCES), len(NODES), len(FINAL_OUTPUTS)) == (10, 37, 26)
