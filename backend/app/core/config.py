@@ -43,6 +43,11 @@ class Settings(BaseSettings):
     smtp_host: str = "localhost"
     smtp_port: int = 1025
 
+    # Where the S1 document stores live: "jsonl" (files on the server's disk, today),
+    # "postgres+jsonl" (Postgres, also written to the files so a switch back loses nothing)
+    # or "postgres". Set in /opt/sustentra/.env; deploy.sh passes it to the api container.
+    s1_store: Literal["jsonl", "postgres+jsonl", "postgres"] = "jsonl"
+
     # Largest S1 document upload, in MB (INFRA-007). deploy/Caddyfile allows the same
     # size on the upload route only (+1 MB for the multipart envelope); the frontend
     # mirrors it in features/s1/constants/uploads.ts.
