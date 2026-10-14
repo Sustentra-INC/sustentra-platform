@@ -39,6 +39,7 @@ from backend.app.reference.emission_factor_loader import (
 )
 from backend.app.services import emissions_calculator as calc
 from backend.app.services import emissions_rollup as rollup
+from backend.app.services.data_quality_checks import EvidenceRecord, run_checks
 from backend.app.services.refrigerant_extractor import DISPOSAL, INSTALLATION, service_type_of
 
 STATIONARY = "CT-S1-FUELQTY"
@@ -361,6 +362,13 @@ class ReviewedRecord:
         return item.unit if item is not None else None
 
 
+def rollup_category(canonical_type_id: str) -> str | None:
+    """The roll-up source a recalculated document type belongs to."""
+
+    return {STATIONARY: "stationary_combustion", MOBILE: "mobile_combustion", REFRIGERANT: "fugitive_refrigerants",
+            ELECTRICITY: "purchased_electricity"}.get(canonical_type_id)
+
+
 def _number(value: Any) -> float | None:
     if isinstance(value, bool):
         return None
@@ -585,6 +593,8 @@ class EngagementRecalculationService:
             "not_recalculated": ["Scope 1 fugitive sources other than refrigerants and fire suppression",
                                  "Scope 1 process sources", "Scope 2 steam, heat and cooling"],
             "documents_considered": len({r.document_id for r in records}),
+            # Missing months, duplicates, overlapping and cross-year bills (formula library Q-001..Q-005).
+            "quality_checks": run_checks([e for r in records if (e := self._evidence_record(r)) is not None], period),
             "rollup": rollup.build_rollup(categories, open_items=open_items, absent=inputs.absent_sources,
                                           reported=inputs.reported, reported_units=inputs.reported_units,
                                           out_of_scope=not_in_scope, tolerance=tolerance, gwp_set=inputs.gwp_set,
@@ -1096,6 +1106,39 @@ class EngagementRecalculationService:
         if unit == "g":
             return number / 1000, "kg"
         return (number, unit) if unit in ("lb", "kg") else None
+
+    def _evidence_record(self, record: ReviewedRecord) -> EvidenceRecord | None:
+        """A record as the data quality checks see it (extracted values count before review:
+        the checks are about the documents, not the numbers)."""
+
+        category = rollup_category(record.canonical_type_id)
+        if category is None:
+            return None
+        setup = self._setup_facility(record)
+        facility = setup["name"] if setup else " ".join(
+            str(record.best("facility_name") or record.best("service_address") or "Facility not known").split())
+        amounts: tuple[float | None, ...]
+        if record.canonical_type_id == REFRIGERANT:
+            start = end = _date(record.best("service_date"))
+            item = " ".join(str(x) for x in (record.best("refrigerant_type"), record.best("equipment_id")) if x) or None
+            amounts = tuple(_number(record.best(n)) for n in
+                            ("refrigerant_added", "refrigerant_recovered", "equipment_capacity"))
+            unit = record.unit_of("refrigerant_added")
+        else:
+            if record.canonical_type_id == MOBILE:
+                start = end = _date(record.best("transaction_date"))
+            else:
+                start, end = _date(record.best("service_period_start")), _date(record.best("service_period_end"))
+            item = None if record.canonical_type_id == ELECTRICITY else (str(record.best("fuel_type") or "") or None)
+            amounts = (_number(record.best("activity_quantity")),)
+            unit = record.unit_of("activity_quantity")
+        # A bill covers a service period; a delivery or purchase on one day is an event.
+        periodic = record.canonical_type_id in (STATIONARY, ELECTRICITY) and not (start and end and start == end)
+        account = record.best("account_number")
+        return EvidenceRecord(category=category, document_id=record.document_id,
+                              file_name=record.file_name or record.document_id, label=record.label,
+                              facility=facility, item=item, account=str(account) if account else None,
+                              start=start, end=end, amounts=amounts, unit=unit, periodic=periodic)
 
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""

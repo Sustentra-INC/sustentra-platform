@@ -2148,6 +2148,16 @@ html { font-size: 82%; }
 .s1-rc__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-4); }
 .s1-rc__group { margin: 0; padding: var(--sp-3); border: var(--border-hairline); border-radius: var(--radius-input); display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
 .s1-rc__group--wide { grid-column: 1 / -1; }
+/* Data quality checks: one row per signal, its severity as a chip. */
+.s1-qc { margin-bottom: var(--sp-4); }
+.s1-qc__list { list-style: none; margin: 0; padding: 0 var(--sp-4) var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }
+.s1-qc__item { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: var(--sp-3); align-items: start; }
+.s1-qc__sev { justify-self: start; font-size: var(--text-xs); font-weight: var(--weight-medium); padding: 0.1rem var(--sp-2); border-radius: var(--radius-chip); border: var(--border-hairline); white-space: nowrap; }
+.s1-qc__sev--warning { color: var(--state-blocking-fg); border-color: currentColor; }
+.s1-qc__sev--review { color: var(--state-open-fg); border-color: currentColor; }
+.s1-qc__sev--info { color: var(--state-na-fg); }
+.s1-qc__what { font-size: var(--text-sm); font-weight: var(--weight-medium); }
+.s1-qc__msg { margin: var(--sp-1) 0 0; font-size: var(--text-sm); max-width: 72ch; }
 .s1-rc__group legend { padding: 0 var(--sp-1); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
 .s1-rc__field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); }
 .s1-rc__field--row { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--sp-3); }

@@ -2,7 +2,8 @@
 and how, the evidence behind it, what the reviewer decided, and the open work.
 
 Every number comes from the same recalculation the screens show; nothing is computed
-here. Sheets: Summary, Data points, Working, Evidence, Reviewed values, Requests,
+here. Sheets: Summary, Final outputs, Roll-up, Categories (the emissions roll-up, when the
+recalculation has one), Data points, Working, Evidence, Reviewed values, Requests,
 Findings, Left out.
 """
 
@@ -24,7 +25,36 @@ _STATUS = {
     "no_evidence": "Could not check (no reviewed evidence)",
     "not_recalculated": "Out of scope (not recalculated yet)",
     "not_in_scope": "Not in scope (set in Setup)",
+    "incomplete": "Not concluded (the total is missing categories)",
+    "needs_unit": "Could not check (reported unit not confirmed: t or t CO2e)",
 }
+_REASON = {
+    "lower_bound": "Already above the reported value, and the missing categories can only add",
+    "reported_zero": "Reported as 0",
+    "partial_total": "Missing categories could still change the result",
+    "unit_unconfirmed": "Set whether the company reported tonnes of gas or t CO2e",
+    "not_built": "Category not built yet",
+    "no_evidence": "No reviewed evidence",
+    "awaiting_inputs": "Evidence waiting on reviewer inputs",
+    "set_out_of_scope": "Set out of scope in Setup",
+}
+_MISSING = {
+    "not_built": "not built yet",
+    "no_evidence": "no evidence",
+    "awaiting_inputs": "waiting on inputs",
+    "inputs_open": "questions open",
+    "vehicle_groups_missing": "no vehicle groups for CH4/N2O",
+    "gas_split_unknown": "blend's gas split unknown",
+}
+_SOURCE_STATUS = {
+    "calculated": "Calculated",
+    "partial": "Calculated, questions open",
+    "awaiting_inputs": "Waiting on inputs",
+    "confirmed_absent": "Confirmed absent (0)",
+    "no_evidence": "No evidence",
+    "not_built": "Not built yet",
+}
+_NODE_STATUS = {"complete": "Complete", "partial": "Partial", "not_available": "Not available"}
 _LEFT_OUT = {
     "outside_reporting_period": "Outside the reporting period",
     "withdrawn": "Withdrawn by the reviewer",
@@ -60,6 +90,50 @@ def _when(value: Any) -> str:
     return str(value or "")[:19].replace("T", " ")
 
 
+def _missing(items: list[dict[str, Any]] | None, labels: dict[str, str]) -> str:
+    return "; ".join(f"{labels.get(m.get('source', ''), m.get('source'))}: "
+                     f"{_MISSING.get(str(m.get('reason')), m.get('reason'))}" for m in items or [])
+
+
+def _rollup_sheets(book: Workbook, rollup: dict[str, Any]) -> None:
+    """Final outputs, the Steps 1a/1b/2 nodes, and each category's state."""
+
+    categories = rollup.get("categories") or {}
+    labels = {key: str(c.get("label") or key) for key, c in categories.items()}
+    _sheet(
+        book, "Final outputs",
+        ["Workbook row", "Data point", "Requirement", "Unit", "Reported", "Recalculated", "Difference",
+         "Difference %", "Within threshold", "Outcome", "Why", "Completeness", "Missing"],
+        [[o.get("workbook_row"), o.get("label"), o.get("requirement"), o.get("unit"), o.get("reported"),
+          o.get("recalculated"), o.get("difference"), o.get("difference_pct"),
+          {True: "yes", False: "no"}.get(o.get("within_threshold"), ""),
+          _STATUS.get(str(o.get("status")), o.get("status")), _REASON.get(str(o.get("reason")), o.get("reason")),
+          _NODE_STATUS.get(str(o.get("completeness")), o.get("completeness")), _missing(o.get("missing"), labels)]
+         for o in rollup.get("final_outputs") or []],
+        [12, 52, 12, 10, 14, 14, 14, 13, 10, 40, 44, 14, 60],
+    )
+    nodes = rollup.get("nodes") or {}
+    steps = {step.get("key"): step.get("label") for step in rollup.get("steps") or []}
+    order = [key for step in rollup.get("steps") or [] for key in step.get("node_keys") or []]
+    _sheet(
+        book, "Roll-up",
+        ["Step", "Line", "t CO2e", "t of gas", "Status", "Adds up", "Missing", "Notes"],
+        [[steps.get(nodes[key].get("step"), nodes[key].get("step")), nodes[key].get("label"), nodes[key].get("co2e_t"),
+          nodes[key].get("mass_t"), _NODE_STATUS.get(str(nodes[key].get("status")), nodes[key].get("status")),
+          nodes[key].get("formula"), _missing(nodes[key].get("missing"), labels), ", ".join(nodes[key].get("flags") or [])]
+         for key in order if key in nodes],
+        [40, 52, 14, 12, 14, 52, 60, 40],
+    )
+    _sheet(
+        book, "Categories",
+        ["Category", "Scope", "Workbook row", "Status", "Open questions", "Reviewer's reason it is absent", "Notes"],
+        [[c.get("label"), c.get("scope"), c.get("workbook_row"), _SOURCE_STATUS.get(str(c.get("status")), c.get("status")),
+          c.get("open_items"), c.get("absent_reason"), ", ".join(c.get("flags") or [])]
+         for c in categories.values()],
+        [48, 10, 12, 26, 14, 44, 40],
+    )
+
+
 def build_workbook(
     *,
     engagement: dict[str, Any],
@@ -73,9 +147,16 @@ def build_workbook(
     settings = engagement.get("settings") or {}
     totals = recalculation.get("scope_totals") or {}
 
+    rollup = recalculation.get("rollup") or {}
+
     def total(name: str) -> float | None:
         part = totals.get(name)
         return part["total_co2e"] if part else None
+
+    def node(name: str) -> Any:
+        value = (rollup.get("nodes") or {}).get(name) or {}
+        return value.get("co2e_t") if value.get("status") == "complete" else (
+            f"{value.get('co2e_t'):.4f} (partial)" if value.get("co2e_t") is not None else "Not available")
 
     summary: list[list[Any]] = [
         ["Engagement", engagement.get("name")],
@@ -92,11 +173,15 @@ def build_workbook(
         ["Scope 1 recalculated (t CO2e)", total("scope1")],
         ["Scope 2 location-based recalculated (t CO2e)", total("scope2_location")],
         ["Scope 2 market-based recalculated (t CO2e)", total("scope2_market")],
+        *([["Inventory total, location-based (t CO2e)", node("inventory_location_total")],
+           ["Inventory total, market-based (t CO2e)", node("inventory_market_total")]] if rollup else []),
         ["Documents with reviewed values", recalculation.get("documents_considered")],
         ["Status", "Draft working paper, not an assurance opinion"],
         ["Exported", f"{datetime.now(UTC):%Y-%m-%d %H:%M} UTC by {exported_by}"],
     ]
     _sheet(book, "Summary", ["Item", "Value"], summary, [44, 70])
+    if rollup:
+        _rollup_sheets(book, rollup)
 
     _sheet(
         book, "Data points",
