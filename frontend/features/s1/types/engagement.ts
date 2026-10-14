@@ -94,6 +94,10 @@ export interface RecalculationSettings {
   refrigerant_gwps?: Record<string, number>;
   /** Which vehicles used each mobile fuel, for CH4 and N2O (workbook Eq 4 / Eq 5). */
   vehicle_groups?: VehicleGroupSetting[];
+  /** Emission source (roll-up key) to the reviewer's reason the company has none: a true 0. */
+  absent_sources?: Record<string, string>;
+  /** Per-gas data point (workbook rows 23-28, 30-36) to the unit the company reported it in. */
+  reported_units?: Record<string, "t" | "t CO2e">;
 }
 
 /** One vehicle group: on-road by distance (and model year where the factor needs it),

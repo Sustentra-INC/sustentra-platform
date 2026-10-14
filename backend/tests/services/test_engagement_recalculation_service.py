@@ -574,3 +574,62 @@ def test_an_open_ended_oldest_model_year_band_is_used_as_is() -> None:
     assert "model_year_older_than_table" in mobile["flags"]
     hdv = next(t for t in service.reference.vehicle_types() if t["vehicle_type"] == "Gasoline Heavy-Duty Vehicles")
     assert hdv["first_model_year"] is None  # "1980 and earlier" covers any older year: nothing is moved
+
+
+# --- the emissions roll-up ----------------------------------------------------------------
+def test_open_items_name_their_roll_up_category() -> None:
+    store = _workbook_example_store()
+    store.add_document("GAS", "CT-S1-FUELQTY", [_gas(1000)], decision=None)
+    result = _service(store).recalculate(_engagement(), _own)
+    assert {item["category"] for item in result["needs_input"]} == {"purchased_electricity"}
+    assert {item["category"] for item in result["awaiting_review"]} == {"stationary_combustion"}
+    categories = result["rollup"]["categories"]
+    assert (categories["purchased_electricity"]["status"], categories["purchased_electricity"]["open_items"]) == (
+        "awaiting_inputs", 2)
+    assert categories["stationary_combustion"]["status"] == "awaiting_inputs"
+
+
+def test_roll_up_agrees_with_the_legacy_comparisons() -> None:
+    store = _workbook_example_store()
+    store.add_document("GAS", "CT-S1-FUELQTY", [_gas(1000)])
+    store.add_document("REFRIG-LOG", "CT-S1-REFRSVC", [_refrigerant("R-410A", "2025-04-09", added=100)])
+    settings = {"recalculation": {"grid_regions": {"Facility A": "NYUP", "Facility B": "RFCE"},
+                                  "certificates": [{"label": "REC", "mwh": 600}]}}
+    result = _service(store).recalculate(_engagement(**settings), _own)
+    outputs = {o["key"]: o for o in result["rollup"]["final_outputs"]}
+    for comparison in result["comparisons"]:
+        if comparison["recalculated"] is not None and comparison["key"] != "biogenic_co2":
+            assert outputs[comparison["key"]]["recalculated"] == pytest.approx(comparison["recalculated"]), \
+                comparison["key"]
+    nodes = result["rollup"]["nodes"]
+    assert nodes["scope1_total"]["co2e_t"] == pytest.approx(result["scope_totals"]["scope1"]["total_co2e"])
+    assert nodes["inventory_location_total"]["co2e_t"] == pytest.approx(
+        result["scope_totals"]["scope1"]["total_co2e"] + result["scope_totals"]["scope2_location"]["total_co2e"])
+    assert nodes["scope1_total"]["status"] == "partial"  # mobile has no evidence; process etc. not built
+
+
+def test_absent_sources_complete_the_totals() -> None:
+    store = FakeStore()
+    store.add_document("GAS", "CT-S1-FUELQTY", [_gas(1000)])
+    absent = {key: "None at this company (site visit)" for key in (
+        "mobile_combustion", "process_sources", "fugitive_refrigerants", "fugitive_purchased_gases",
+        "agricultural_sources")}
+    result = _service(store).recalculate(_engagement(recalculation={
+        "absent_sources": absent, "reported": {"scope1_total": 53.17}}), _own)
+    scope1 = next(o for o in result["rollup"]["final_outputs"] if o["key"] == "scope1_total")
+    assert (scope1["status"], scope1["completeness"]) == ("within_tolerance", "complete")
+    assert result["rollup"]["categories"]["process_sources"]["absent_reason"] == "None at this company (site visit)"
+
+
+def test_roll_up_settings_are_validated() -> None:
+    validate_recalculation_settings({
+        "absent_sources": {"process_sources": "No industrial processes"},
+        "reported_units": {"scope1_hfcs": "t CO2e", "scope1_co2": "t"},
+        "reported": {"purchased_cooling_total": 0, "scope2_nf3": 0.0, "scope1_total": None},
+    })
+    for bad in ({"absent_sources": {"not_a_source": "x"}}, {"absent_sources": {"process_sources": ""}},
+                {"absent_sources": {"process_sources": "x" * 501}}, {"absent_sources": []},
+                {"reported_units": {"scope1_total": "t"}}, {"reported_units": {"scope1_hfcs": "kg"}},
+                {"reported": {"scope1_total": -1}}, {"reported": {"scope1_total": True}}):
+        with pytest.raises(ValueError):
+            validate_recalculation_settings(bad)
