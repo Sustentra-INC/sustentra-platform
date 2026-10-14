@@ -110,7 +110,9 @@ export interface RecalcNeedsInput {
     | "mobile"
     | "refrigerant_gwp"
     | "vehicle_group"
-    | "refrigerant_record";
+    | "refrigerant_record"
+    | "steam_heat_content"
+    | "thermal_type";
   key: string;
   message: string;
   options?: string[];
@@ -133,7 +135,8 @@ export type ExcludedReason =
   | "withdrawn"
   | "duplicate"
   | "superseded"
-  | "montreal_protocol_gas";
+  | "montreal_protocol_gas"
+  | "purchased_cooling_not_calculated";
 
 const EXCLUDED_LABEL: Record<ExcludedReason, string> = {
   outside_reporting_period: "outside the reporting period",
@@ -141,6 +144,7 @@ const EXCLUDED_LABEL: Record<ExcludedReason, string> = {
   duplicate: "marked as a duplicate",
   superseded: "superseded by a newer document",
   montreal_protocol_gas: "a CFC or HCFC, which Scope 1 leaves out",
+  purchased_cooling_not_calculated: "purchased cooling, which is not calculated yet",
 };
 
 export interface ExcludedRecord {
@@ -170,6 +174,10 @@ export function leftOutMessage(item: { record: string; period: string; reason?: 
     return `${item.record}: ${item.gas ?? "the refrigerant"} is a CFC or HCFC (a Montreal Protocol gas). The GHG ` +
       "Protocol reports these outside Scope 1, so it is not counted.";
   }
+  if (reason === "purchased_cooling_not_calculated") {
+    return `${item.record}: purchased cooling (chilled water) is not calculated yet. The EPA Hub has no ` +
+      "default factor for it, so it is not counted.";
+  }
   return reason === "outside_reporting_period"
     ? `${item.record} (${item.period}) is outside the reporting period, so it is not counted.`
     : `${item.record} is ${EXCLUDED_LABEL[reason]}, so it is not counted.`;
@@ -180,16 +188,28 @@ export type CategoryKey =
   | "mobile_combustion"
   | "fugitive_refrigerants"
   | "purchased_electricity_location_based"
-  | "purchased_electricity_market_based";
+  | "purchased_electricity_market_based"
+  | "purchased_steam_location_based"
+  | "purchased_steam_market_based"
+  | "purchased_heating_location_based"
+  | "purchased_heating_market_based";
+
+/** Categories added after the first results: older results do not have them. */
+type LaterCategory =
+  | "fugitive_refrigerants"
+  | "purchased_steam_location_based"
+  | "purchased_steam_market_based"
+  | "purchased_heating_location_based"
+  | "purchased_heating_market_based";
 
 export interface Recalculation {
   engagement_id: string;
   gwp_set: string;
   reporting_period: { start: string | null; end: string | null };
   tolerance_pct: number;
-  /** fugitive_refrigerants is missing from results computed before refrigerants were added. */
-  categories: Record<Exclude<CategoryKey, "fugitive_refrigerants">, RecalcCategory | null> &
-    Partial<Record<"fugitive_refrigerants", RecalcCategory | null>>;
+  /** Later categories (refrigerants, steam, heating) are missing from results computed before them. */
+  categories: Record<Exclude<CategoryKey, LaterCategory>, RecalcCategory | null> &
+    Partial<Record<LaterCategory, RecalcCategory | null>>;
   scope_totals: Record<"scope1" | "scope2_location" | "scope2_market", { total_co2e: number } | null>;
   comparisons: RecalcComparison[];
   needs_input: RecalcNeedsInput[];
@@ -465,6 +485,12 @@ export function lookupEgridZip(zip: string): Promise<string[]> {
 
 // --- comparison → Verification Results row ---------------------------------------------
 
+const SCOPE2_LOCATION: CategoryKey[] = [
+  "purchased_electricity_location_based",
+  "purchased_steam_location_based",
+  "purchased_heating_location_based",
+];
+
 /** Which calculation each reported data point comes from. */
 const SOURCES: Record<string, CategoryKey[]> = {
   scope1_total: ["stationary_combustion", "mobile_combustion", "fugitive_refrigerants"],
@@ -475,13 +501,19 @@ const SOURCES: Record<string, CategoryKey[]> = {
   stationary_combustion_total: ["stationary_combustion"],
   mobile_combustion_total: ["mobile_combustion"],
   fugitive_total: ["fugitive_refrigerants"],
-  scope2_location_total: ["purchased_electricity_location_based"],
-  scope2_co2: ["purchased_electricity_location_based"],
-  scope2_ch4: ["purchased_electricity_location_based"],
-  scope2_n2o: ["purchased_electricity_location_based"],
+  scope2_location_total: [...SCOPE2_LOCATION],
+  scope2_co2: [...SCOPE2_LOCATION],
+  scope2_ch4: [...SCOPE2_LOCATION],
+  scope2_n2o: [...SCOPE2_LOCATION],
   purchased_electricity_total: ["purchased_electricity_location_based"],
-  scope2_market_total: ["purchased_electricity_market_based"],
+  purchased_steam_total: ["purchased_steam_location_based"],
+  purchased_heating_total: ["purchased_heating_location_based"],
+  scope2_market_total: ["purchased_electricity_market_based", "purchased_steam_market_based", "purchased_heating_market_based"],
 };
+
+const THERMAL_FORMULA =
+  "Per facility: gas mass = MMBtu delivered × EF (EPA Hub Table 7: 66.33 kg CO₂, 1.25 g CH₄, 0.125 g N₂O per MMBtu; " +
+  "steam by weight × its heat content). CO₂e = Σ gas mass × GWP.";
 
 const FORMULA: Record<CategoryKey, string> = {
   stationary_combustion:
@@ -500,9 +532,15 @@ const FORMULA: Record<CategoryKey, string> = {
   purchased_electricity_market_based:
     "Certificate coverage = certificate MWh ÷ consumption (max 100%). Per facility: uncovered MWh × eGRID factor " +
     "(lb/MWh) ÷ 2,204.62. CO₂e = Σ gas mass × GWP.",
+  purchased_steam_location_based: THERMAL_FORMULA,
+  purchased_steam_market_based: `${THERMAL_FORMULA} No supplier factor is read yet, so market-based equals location-based.`,
+  purchased_heating_location_based: THERMAL_FORMULA,
+  purchased_heating_market_based: `${THERMAL_FORMULA} No supplier factor is read yet, so market-based equals location-based.`,
 };
 
 const FLAG_NOTE: Record<string, string> = {
+  no_supplier_factor_market_equals_location:
+    "No supplier-specific steam or heat factor is read yet, so market-based uses the EPA factor (same as location-based).",
   fuel_auto_matched: "Fuel matched to the EPA fuel automatically.",
   fuel_chosen_by_reviewer: "EPA fuel chosen by the reviewer.",
   diesel_matched_to_distillate_fuel_oil_no_2: "Stationary diesel treated as Distillate Fuel Oil No. 2.",
@@ -561,6 +599,8 @@ const DATA_POINT_TYPE: Record<string, string> = {
   purchased_electricity_total: "CT-S2-ELEC",
   scope2_location_total: "CT-S2-ELEC",
   scope2_market_total: "CT-S2-ELEC",
+  purchased_steam_total: "CT-S2-THERMAL",
+  purchased_heating_total: "CT-S2-THERMAL",
 };
 
 function outcomeOf(c: RecalcComparison, result?: Recalculation): { outcome: CheckOutcome; reason: string } {
@@ -783,6 +823,7 @@ const TYPE_LABEL: Record<string, string> = {
   "CT-S1-MOBFUEL": "vehicle fuel",
   "CT-S1-REFRSVC": "refrigerant",
   "CT-S2-ELEC": "electricity",
+  "CT-S2-THERMAL": "steam, heat or cooling",
 };
 
 function awaitingFor(result: Recalculation, typeId: string): string[] {
@@ -931,8 +972,8 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
   }
 
   const excluded = (result.excluded ?? []).filter((e) => reasonOf(e) === "outside_reporting_period");
-  const setAside = (result.excluded ?? []).filter(
-    (e) => reasonOf(e) !== "outside_reporting_period" && reasonOf(e) !== "montreal_protocol_gas"
+  const setAside = (result.excluded ?? []).filter((e) =>
+    ["withdrawn", "duplicate", "superseded"].includes(reasonOf(e))
   );
   if (setAside.length) {
     rules.push({

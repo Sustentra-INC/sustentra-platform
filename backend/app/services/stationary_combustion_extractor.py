@@ -449,7 +449,7 @@ class StationaryCombustionExtractor:
             unit_hint = self._document_unit(rows)
             for record in records:
                 unit_text = record.unit_raw or (unit_hint.raw if unit_hint else None)
-                unit = fuel_units.find_unit(unit_text) if unit_text else None
+                unit = self._find_unit(unit_text) if unit_text else None
                 if unit is not None and unit not in ELECTRIC_UNITS:
                     return True
             return False
@@ -507,7 +507,7 @@ class StationaryCombustionExtractor:
         period = self._document_period(rows)
         unit_hint = self._document_unit(rows)
 
-        units = {fuel_units.find_unit(r.unit_raw or (unit_hint.raw if unit_hint else "")) for r in records}
+        units = {self._find_unit(r.unit_raw or (unit_hint.raw if unit_hint else "")) for r in records}
         if records and units <= ELECTRIC_UNITS and any("electric" in _norm(r.text) for r in rows):
             return ExtractionOutcome(
                 candidates=[],
@@ -939,11 +939,19 @@ class StationaryCombustionExtractor:
                 columns["date"] = index
         return columns
 
+    # Unit lookups, so a subclass can know units the others must not (the thermal
+    # extractor's kBtu, ton-hours and Mlb of steam).
+    def _find_unit(self, text: str | None) -> str | None:
+        return fuel_units.find_unit(text)
+
+    def _canonical_unit(self, text: str | None) -> str | None:
+        return fuel_units.canonical_unit(text)
+
     def _quantity_header_score(self, text: str) -> int:
         bare = text.strip(" :#")
         if any(word in text for word in self.QTY_EXCLUDE) or bare in self.UNIT_HEADERS or bare.endswith(" unit"):
             return 0
-        unit = fuel_units.canonical_unit(text) or fuel_units.find_unit(text)
+        unit = self._canonical_unit(text) or self._find_unit(text)
         score = 0
         if any(w in text for w in ("usage", "consumption", "consumed", "delivered", "billed", "used", "issued")):
             score += 4
@@ -953,7 +961,7 @@ class StationaryCombustionExtractor:
             score += 1
         if unit is not None:
             score += 2 + (1 if fuel_units.dimension_of(unit) == fuel_units.ENERGY else 0)
-            if fuel_units.canonical_unit(text) is not None:
+            if self._canonical_unit(text) is not None:
                 score += 1  # the whole header is a unit, e.g. "Dth", "Gallons"
         if "difference" in text:
             score = min(score, 1)
@@ -964,8 +972,8 @@ class StationaryCombustionExtractor:
         header_text = header_cells[columns["quantity"]].text
         paren = re.search(r"\(([^()]{1,20})\)", header_text)
         # "Volume (L)": a unit in parentheses may be a single letter
-        header_unit_text = paren.group(1) if paren and fuel_units.canonical_unit(paren.group(1)) else header_text
-        header_unit = fuel_units.canonical_unit(header_unit_text) or fuel_units.find_unit(header_text)
+        header_unit_text = paren.group(1) if paren and self._canonical_unit(paren.group(1)) else header_text
+        header_unit = self._canonical_unit(header_unit_text) or self._find_unit(header_text)
         records: list[UsageRecord] = []
         last_top = header_row.top
         header_texts = [_norm(c.text) for c in header_cells]
@@ -1002,11 +1010,11 @@ class StationaryCombustionExtractor:
             unit_raw = None
             unit_located = None
             if unit_cell is not None:
-                if fuel_units.canonical_unit(unit_cell.text) is None:
+                if self._canonical_unit(unit_cell.text) is None:
                     continue  # e.g. "EA" for a tank rental line: not a fuel quantity
                 unit_raw = unit_cell.text
                 unit_located = Located(unit_cell.text, [unit_cell], row, CONF_TABLE)
-            elif fuel_units.find_unit(qty_cell.text):
+            elif self._find_unit(qty_cell.text):
                 unit_raw = qty_cell.text
             elif header_unit is not None:
                 unit_raw = header_unit_text
@@ -1083,33 +1091,34 @@ class StationaryCombustionExtractor:
 
         return self._usage_table_records(rows) or self._labeled_quantity_records(rows)
 
-    def _labeled_quantity_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
+    def _labeled_quantity_records(self, rows: Sequence[Row],
+                                  label_groups: tuple[tuple[str, ...], ...] | None = None) -> list[UsageRecord]:
         def accept(value: str) -> bool:
             return parse_number(value) is not None and not value.strip().startswith("$")
 
-        located = self._find_labeled(rows, self.QUANTITY_LABEL_GROUPS, accept=accept,
+        located = self._find_labeled(rows, label_groups or self.QUANTITY_LABEL_GROUPS, accept=accept,
                                      accept_bare=lambda v: bool(re.match(r"\(?-?\d", v)))
         if located is None:
             return []
         number = parse_number(located.raw)
         assert number is not None
-        unit_raw = located.raw if fuel_units.find_unit(located.raw) else None
+        unit_raw = located.raw if self._find_unit(located.raw) else None
         if unit_raw is None:
             # "182.40 L": a whole-word unit right after the number (single letters included)
             after = located.raw.split(number[1], 1)[-1].strip().split()
-            if after and fuel_units.canonical_unit(after[0]) is not None:
+            if after and self._canonical_unit(after[0]) is not None:
                 unit_raw = after[0]
         if unit_raw is None and located.label_cell is not None:
             # "Total Usage (Therms): 1,234" - the unit is in the label
             label_paren = re.search(r"\(([^()]{1,30})\)", located.label_cell.text)
-            if label_paren and fuel_units.find_unit(label_paren.group(1)):
+            if label_paren and self._find_unit(label_paren.group(1)):
                 unit_raw = label_paren.group(1)
-            elif fuel_units.find_unit(located.label_cell.text.split(":")[0]):
+            elif self._find_unit(located.label_cell.text.split(":")[0]):
                 unit_raw = located.label_cell.text.split(":")[0]  # "Gallons Delivered: 742.6"
         unit_located = None
         if unit_raw is None and located.row is not None:
             for cell in located.row.cells:
-                if cell not in located.cells and fuel_units.canonical_unit(cell.text):
+                if cell not in located.cells and self._canonical_unit(cell.text):
                     unit_raw, unit_located = cell.text, Located(cell.text, [cell], located.row, CONF_NEXT_CELL)
                     break
         quantity = Located(number[1], located.cells, located.row, located.confidence, located.label_cell,
@@ -1118,7 +1127,7 @@ class StationaryCombustionExtractor:
 
     def _document_unit(self, rows: Sequence[Row]) -> Located | None:
         located = self._find_labeled(rows, (("usage unit", "unit of measure", "unit", "units", "uom"),),
-                                     accept=lambda v: fuel_units.canonical_unit(v) is not None)
+                                     accept=lambda v: self._canonical_unit(v) is not None)
         return located
 
     # =================================================================================
@@ -1243,7 +1252,7 @@ class StationaryCombustionExtractor:
                 return self._missing(target, document_id, evidence_id, record_key, record_index)
             located, unit_text, normalized = hit
             flags = ["unit_converted"] if normalized.converted else []
-            raw_unit = fuel_units.find_unit(unit_text) or unit_text
+            raw_unit = self._find_unit(unit_text) or unit_text
             return self._candidate(target, located, raw_unit, normalized.unit, None, document_id, evidence_id,
                                    record_key, record_index, parser_output, flags)
         return self._missing(target, document_id, evidence_id, record_key, record_index)

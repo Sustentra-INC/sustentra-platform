@@ -72,8 +72,12 @@ SOURCES: tuple[Source, ...] = (
     Source("purchased_electricity", "Purchased electricity", "scope2", 47, True,
            {"location": "purchased_electricity_location_based", "market": "purchased_electricity_market_based"},
            COMBUSTION_GASES),
-    Source("purchased_steam", "Purchased steam", "scope2", 48, False, {}, COMBUSTION_GASES),
-    Source("purchased_heating", "Purchased heating", "scope2", 49, False, {}, COMBUSTION_GASES),
+    Source("purchased_steam", "Purchased steam", "scope2", 48, True,
+           {"location": "purchased_steam_location_based", "market": "purchased_steam_market_based"},
+           COMBUSTION_GASES),
+    Source("purchased_heating", "Purchased heating", "scope2", 49, True,
+           {"location": "purchased_heating_location_based", "market": "purchased_heating_market_based"},
+           COMBUSTION_GASES),
     Source("purchased_cooling", "Purchased cooling", "scope2", 50, False, {}, COMBUSTION_GASES),
 )
 SOURCE_BY_KEY = {s.key: s for s in SOURCES}

@@ -41,12 +41,17 @@ from backend.app.services import emissions_calculator as calc
 from backend.app.services import emissions_rollup as rollup
 from backend.app.services.data_quality_checks import EvidenceRecord, run_checks
 from backend.app.services.refrigerant_extractor import DISPOSAL, INSTALLATION, service_type_of
+from backend.app.services.thermal_extractor import thermal_kind
 
 STATIONARY = "CT-S1-FUELQTY"
 MOBILE = "CT-S1-MOBFUEL"
 ELECTRICITY = "CT-S2-ELEC"
 REFRIGERANT = "CT-S1-REFRSVC"
-RECALCULATED_TYPES = (STATIONARY, MOBILE, ELECTRICITY, REFRIGERANT)
+THERMAL = "CT-S2-THERMAL"
+RECALCULATED_TYPES = (STATIONARY, MOBILE, ELECTRICITY, REFRIGERANT, THERMAL)
+# A thermal bill's energy type -> its roll-up source (workbook rows 48, 49, 50).
+THERMAL_SOURCE = {"steam": "purchased_steam", "hot_water": "purchased_heating", "chilled_water": "purchased_cooling"}
+STEAM_BTU_PER_LB_RANGE = (500.0, 1600.0)  # saturated and superheated steam, as delivered
 REVIEWED = ("accepted", "edited")
 
 # Unambiguous extractor fuel codes -> EPA names. Everything else asks the reviewer.
@@ -86,6 +91,8 @@ DATA_POINTS: tuple[tuple[str, str, int, str], ...] = (
     ("fugitive_total", "Direct emissions from fugitive sources", 45, "t CO2e"),
     ("purchased_electricity_total", "Indirect emissions from purchased electricity (location-based)", 47,
      "t CO2e"),
+    ("purchased_steam_total", "Indirect emissions from purchased steam", 48, "t CO2e"),
+    ("purchased_heating_total", "Indirect emissions from purchased heating", 49, "t CO2e"),
 )
 DATA_POINT_KEYS = frozenset(key for key, *_ in DATA_POINTS)
 
@@ -122,9 +129,9 @@ DATA_POINT_CATALOGUE: tuple[tuple[str, str, int, str, str, str, str], ...] = (
     ("purchased_electricity_total", "Indirect emissions from purchased electricity (location-based)", 47, "t CO2e",
      "scope2", "Optional", "recalculated"),
     ("purchased_steam_total", "Indirect emissions from purchased steam", 48, "t CO2e", "scope2", "Optional",
-     "not_recalculated"),
+     "recalculated"),
     ("purchased_heating_total", "Indirect emissions from purchased heating", 49, "t CO2e", "scope2", "Optional",
-     "not_recalculated"),
+     "recalculated"),
     ("purchased_cooling_total", "Indirect emissions from purchased cooling", 50, "t CO2e", "scope2", "Optional",
      "not_recalculated"),
 )
@@ -164,6 +171,8 @@ class RecalculationInputs:
     absent_sources: dict[str, str] = field(default_factory=dict)
     # Per-gas data point -> the unit the company reported it in ("t" of gas or "t CO2e").
     reported_units: dict[str, str] = field(default_factory=dict)
+    # Facility -> heat content of the steam it buys (Btu per lb), for steam billed by weight.
+    steam_heat_content: dict[str, float] = field(default_factory=dict)
 
 
 def validate_recalculation_settings(value: Any) -> None:
@@ -172,7 +181,8 @@ def validate_recalculation_settings(value: Any) -> None:
     if not isinstance(value, dict):
         raise ValueError("recalculation must be an object")
     unknown = set(value) - {"gwp_set", "grid_regions", "fuel_choices", "certificates", "reported",
-                            "refrigerant_gwps", "vehicle_groups", "absent_sources", "reported_units"}
+                            "refrigerant_gwps", "vehicle_groups", "absent_sources", "reported_units",
+                            "steam_heat_content"}
     if unknown:
         raise ValueError(f"unknown recalculation settings: {', '.join(sorted(unknown))}")
     if "gwp_set" in value and value["gwp_set"] not in GWP_SETS:
@@ -210,6 +220,12 @@ def validate_recalculation_settings(value: Any) -> None:
             raise ValueError(f"unknown emission source: {key}")
         if not isinstance(reason, str) or not reason.strip() or len(reason) > 500:
             raise ValueError(f"absent_sources {key} needs a reason of at most 500 characters")
+    steam = value.get("steam_heat_content", {})
+    low, high = STEAM_BTU_PER_LB_RANGE
+    if not isinstance(steam, dict) or not all(
+            isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool) and low <= v <= high
+            for k, v in steam.items()):
+        raise ValueError(f"steam_heat_content maps each facility to Btu per lb between {low:.0f} and {high:.0f}")
     units = value.get("reported_units", {})
     if not isinstance(units, dict):
         raise ValueError("reported_units must be an object")
@@ -270,6 +286,7 @@ def parse_inputs(settings: dict[str, Any] | None) -> RecalculationInputs:
         vehicle_groups=[dict(g) for g in raw.get("vehicle_groups") or []],
         absent_sources={k: str(v) for k, v in (raw.get("absent_sources") or {}).items()},
         reported_units={k: str(v) for k, v in (raw.get("reported_units") or {}).items()},
+        steam_heat_content={k: float(v) for k, v in (raw.get("steam_heat_content") or {}).items()},
     )
 
 
@@ -362,9 +379,11 @@ class ReviewedRecord:
         return item.unit if item is not None else None
 
 
-def rollup_category(canonical_type_id: str) -> str | None:
-    """The roll-up source a recalculated document type belongs to."""
+def rollup_category(canonical_type_id: str, energy_type: Any = None) -> str | None:
+    """The roll-up source a recalculated document type belongs to (a thermal bill: by what it bought)."""
 
+    if canonical_type_id == THERMAL:
+        return THERMAL_SOURCE.get(thermal_kind(energy_type) or "", "purchased_steam")
     return {STATIONARY: "stationary_combustion", MOBILE: "mobile_combustion", REFRIGERANT: "fugitive_refrigerants",
             ELECTRICITY: "purchased_electricity"}.get(canonical_type_id)
 
@@ -544,6 +563,8 @@ class EngagementRecalculationService:
         mark = (len(needs_input), len(awaiting))
         fugitive = self._refrigerants(records, inputs, period, needs_input, awaiting, not_counted)
         tag("fugitive_refrigerants", *mark)
+        thermal_bills: dict[str, list[dict[str, Any]]] = {}
+        thermal = self._thermal(records, inputs, period, needs_input, awaiting, not_counted, thermal_bills)
 
         categories: dict[str, calc.CategoryResult | None] = {
             "stationary_combustion": stationary,
@@ -552,6 +573,18 @@ class EngagementRecalculationService:
             "purchased_electricity_location_based": None,
             "purchased_electricity_market_based": None,
         }
+        for source, facilities in thermal.items():
+            location = calc.purchased_thermal(f"{source}_location_based", facilities, self.reference,
+                                              gwp_set=inputs.gwp_set)
+            # No supplier-specific factor or contract is read yet: market-based uses the same factor.
+            market = calc.purchased_thermal(f"{source}_market_based", facilities, self.reference,
+                                            gwp_set=inputs.gwp_set, flags=["no_supplier_factor_market_equals_location"])
+            for result in (location, market):
+                result.details["inputs"] = [{"fuel": f.facility, "unit": "MMBtu", "quantity": f.energy.value,
+                                           "documents": thermal_bills.get(f"{source}:{f.facility}", [])}
+                                          for f in facilities]
+            categories[f"{source}_location_based"] = location
+            categories[f"{source}_market_based"] = market
         if electricity:
             categories["purchased_electricity_location_based"] = calc.electricity_location_based(
                 electricity, self.reference, gwp_set=inputs.gwp_set)
@@ -591,7 +624,7 @@ class EngagementRecalculationService:
             "awaiting_review": awaiting,
             "excluded": set_aside + self._outside_period(records, period) + not_counted,
             "not_recalculated": ["Scope 1 fugitive sources other than refrigerants and fire suppression",
-                                 "Scope 1 process sources", "Scope 2 steam, heat and cooling"],
+                                 "Scope 1 process sources", "Scope 2 cooling"],
             "documents_considered": len({r.document_id for r in records}),
             # Missing months, duplicates, overlapping and cross-year bills (formula library Q-001..Q-005).
             "quality_checks": run_checks([e for r in records if (e := self._evidence_record(r)) is not None], period),
@@ -644,7 +677,7 @@ class EngagementRecalculationService:
                 start = end = record.best("transaction_date")
             elif record.canonical_type_id == REFRIGERANT:
                 start = end = record.best("service_date")
-            elif record.canonical_type_id in (STATIONARY, ELECTRICITY):
+            elif record.canonical_type_id in (STATIONARY, ELECTRICITY, THERMAL):
                 start, end = record.best("service_period_start"), record.best("service_period_end")
             else:
                 continue
@@ -705,13 +738,16 @@ class EngagementRecalculationService:
         options = [r["fuel_type"] for r in rows if family(r)] if family else []
         return options or [r["fuel_type"] for r in rows]
 
-    def _quantity(self, record: ReviewedRecord, prorate: tuple[float, str | None]
+    def _quantity(self, record: ReviewedRecord, prorate: tuple[float, str | None], thermal: bool = False
                   ) -> tuple[float, str] | None:
+        """Reviewed quantity prorated to the period, with its canonical unit. ``thermal`` also
+        reads the district energy units (kBtu, ton-hours, Mlb of steam)."""
+
         number = _number(record.reviewed("activity_quantity"))
         unit_text = record.unit_of("activity_quantity") or record.best("activity_unit")
         if number is None or not unit_text:
             return None
-        unit = fuel_units.canonical_unit(str(unit_text)) or fuel_units.find_unit(str(unit_text))
+        unit = fuel_units.canonical_unit(str(unit_text), thermal) or fuel_units.find_unit(str(unit_text), thermal)
         if unit is None:
             return None
         return number * prorate[0], unit
@@ -975,6 +1011,83 @@ class EngagementRecalculationService:
         return out
 
     # =================================================================================
+    # Scope 2 purchased steam, heat and cooling
+    # =================================================================================
+    def _thermal(self, records: list[ReviewedRecord], inputs: RecalculationInputs,
+                 period: tuple[date | None, date | None], needs_input: list[dict[str, Any]],
+                 awaiting: list[dict[str, Any]], not_counted: list[dict[str, Any]],
+                 bills: dict[str, list[dict[str, Any]]]) -> dict[str, list[calc.FacilityThermal]]:
+        """MMBtu of purchased steam and of purchased heat (hot water) per facility, prorated to
+        the reporting period. Steam billed by weight needs its heat content (Btu per lb) from
+        the reviewer. Cooling (chilled water) is listed under excluded, not calculated: the EPA
+        Hub has no default factor for it, and nothing the reviewer enters can change that yet."""
+
+        totals: dict[tuple[str, str], dict[str, Any]] = {}
+        for record in (r for r in records if r.canonical_type_id == THERMAL):
+            source = rollup_category(THERMAL, record.best("energy_type")) or "purchased_steam"
+            before = len(awaiting)
+            if not self._require_reviewed(record, ("activity_quantity", "energy_type"), awaiting):
+                for item in awaiting[before:]:
+                    item["category"] = source
+                continue
+            kind = thermal_kind(record.reviewed("energy_type"))
+            if kind is None:
+                needs_input.append({
+                    "kind": "thermal_type", "key": record.label, "category": source,
+                    "message": f"{record.label}: the energy type '{record.reviewed('energy_type') or ''}' is not "
+                    "steam, hot water or chilled water. Correct it in Extraction Review to include this bill.",
+                })
+                continue
+            source = THERMAL_SOURCE[kind]
+            start, end = record.best("service_period_start"), record.best("service_period_end")
+            prorate = _proration(start, end, period)
+            if prorate[0] == 0:  # entirely outside the reporting period: listed under "excluded"
+                continue
+            if source == "purchased_cooling":
+                not_counted.append({"document_id": record.document_id, "record": record.label,
+                                    "canonical_type_id": THERMAL,
+                                    "period": str(start or "") if start == end else f"{start} to {end}",
+                                    "reason": "purchased_cooling_not_calculated"})
+                continue
+            setup = self._setup_facility(record)
+            facility = setup["name"] if setup else " ".join(
+                str(record.best("facility_name") or record.best("service_address") or "Unnamed facility").split())
+            amount = self._quantity(record, prorate, thermal=True)
+            if amount is None:
+                needs_input.append({"kind": "quantity", "key": record.label, "category": source,
+                                    "message": f"{record.label}: the thermal quantity must be a number with its unit."})
+                continue
+            quantity, unit = amount
+            if fuel_units.dimension_of(unit) == fuel_units.MASS:
+                btu_per_lb = inputs.steam_heat_content.get(facility)
+                if btu_per_lb is None:
+                    if not any(i.get("kind") == "steam_heat_content" and i.get("key") == facility for i in needs_input):
+                        needs_input.append({
+                            "kind": "steam_heat_content", "key": facility, "category": source,
+                            "message": f"{facility}: steam is billed by weight ({unit}). Enter its heat content "
+                            "in Btu per lb from the supplier (often 1,000 to 1,200).",
+                        })
+                    continue
+                pounds = fuel_units.convert_exact(quantity, unit, "lb")
+                mmbtu = pounds * btu_per_lb / 1_000_000
+            elif fuel_units.dimension_of(unit) == fuel_units.ENERGY:
+                mmbtu = fuel_units.convert_exact(quantity, unit, "MMBtu")
+            else:
+                needs_input.append({"kind": "quantity", "key": record.label, "category": source,
+                                    "message": f"{record.label}: {unit} is not a thermal energy unit."})
+                continue
+            entry = totals.setdefault((source, facility), {"mmbtu": 0.0, "documents": []})
+            entry["mmbtu"] += mmbtu
+            entry["documents"].append({"document_id": record.document_id, "record": record.label,
+                                       "quantity": quantity, "unit": unit, "share_in_period": prorate[0]})
+        out: dict[str, list[calc.FacilityThermal]] = {}
+        for (source, facility), entry in totals.items():
+            bills[f"{source}:{facility}"] = entry["documents"]
+            out.setdefault(source, []).append(calc.FacilityThermal(
+                facility, calc.Measure(entry["mmbtu"], "MMBtu", f"{len(entry['documents'])} reviewed bill(s)")))
+        return out
+
+    # =================================================================================
     # Scope 1 fugitive: refrigerants and fire suppression
     # =================================================================================
     def _refrigerants(self, records: list[ReviewedRecord], inputs: RecalculationInputs,
@@ -1111,7 +1224,7 @@ class EngagementRecalculationService:
         """A record as the data quality checks see it (extracted values count before review:
         the checks are about the documents, not the numbers)."""
 
-        category = rollup_category(record.canonical_type_id)
+        category = rollup_category(record.canonical_type_id, record.best("energy_type"))
         if category is None:
             return None
         setup = self._setup_facility(record)
@@ -1133,7 +1246,7 @@ class EngagementRecalculationService:
             amounts = (_number(record.best("activity_quantity")),)
             unit = record.unit_of("activity_quantity")
         # A bill covers a service period; a delivery or purchase on one day is an event.
-        periodic = record.canonical_type_id in (STATIONARY, ELECTRICITY) and not (start and end and start == end)
+        periodic = record.canonical_type_id in (STATIONARY, ELECTRICITY, THERMAL) and not (start and end and start == end)
         account = record.best("account_number")
         return EvidenceRecord(category=category, document_id=record.document_id,
                               file_name=record.file_name or record.document_id, label=record.label,
@@ -1170,8 +1283,10 @@ class EngagementRecalculationService:
 
         return {
             "scope1": combine(("stationary_combustion", "mobile_combustion", "fugitive_refrigerants")),
-            "scope2_location": combine(("purchased_electricity_location_based",)),
-            "scope2_market": combine(("purchased_electricity_market_based",)),
+            "scope2_location": combine(("purchased_electricity_location_based", "purchased_steam_location_based",
+                                        "purchased_heating_location_based")),
+            "scope2_market": combine(("purchased_electricity_market_based", "purchased_steam_market_based",
+                                      "purchased_heating_market_based")),
         }
 
     @staticmethod
@@ -1203,6 +1318,8 @@ class EngagementRecalculationService:
             "mobile_combustion_total": category("mobile_combustion"),
             "fugitive_total": category("fugitive_refrigerants"),
             "purchased_electricity_total": category("purchased_electricity_location_based"),
+            "purchased_steam_total": category("purchased_steam_location_based"),
+            "purchased_heating_total": category("purchased_heating_location_based"),
         }
         out = []
         for key, label, row, unit in DATA_POINTS:
