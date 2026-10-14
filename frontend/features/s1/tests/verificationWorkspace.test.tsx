@@ -186,6 +186,11 @@ describe("the Verification results panes", () => {
   it("loads a row's calculation, opens a facility card and its sources, and records the examination", () => {
     render(<Harness />);
     expect(screen.getByText(/Select a row in Reported vs recomputed/)).toBeTruthy();
+    // Before a row is chosen, the differences worth opening first, largest % material first.
+    const start = screen.getByRole("list");
+    expect(within(start).getAllByRole("button").map((b) => b.textContent?.split(" · ")[0])).toEqual([
+      "Electricity", "Natural gas", "Diesel", "R-404A", "Heating", "Heating",
+    ]);
     const scope1 = screen.getByText("Scope 1").closest(".s1-vw-box") as HTMLElement;
     const gasRow = within(scope1).getByRole("button", { name: "Natural gas" }).closest("tr") as HTMLElement;
     expect(within(gasRow).getByText("0 of 3")).toBeTruthy();
@@ -193,7 +198,7 @@ describe("the Verification results panes", () => {
     fireEvent.click(within(gasRow).getByRole("button", { name: "Natural gas" }));
     const calc = screen.getByRole("region", { name: "Calculation" });
     expect(within(calc).getByRole("heading", { level: 2 }).textContent).toBe("Scope 1 › Stationary combustion › Natural gas");
-    expect(within(calc).getByText(/Reported 9,561 · Recomputed 9,906/)).toBeTruthy();
+    expect(calc.querySelector(".s1-vw-summary")?.textContent).toBe("Reported 9,561Recomputed 9,906Difference +345");
 
     fireEvent.click(within(calc).getByRole("button", { name: /Kent Cannery/ }));
     expect(within(calc).getByText(/the March bill is missing from the reported total/)).toBeTruthy();

@@ -48,6 +48,11 @@ export function VerificationWorkspace({
     [lines, store.examinations]
   );
   const selected = lines.find((line) => line.id === selectedId) ?? null;
+  const select = (id: string) => {
+    if (id === selectedId) return;
+    setSelectedId(id);
+    setSource(null);
+  };
   // Where the Source pane stacks under Calculation (laptop widths), bring an opened document into view.
   const sourcePane = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -59,18 +64,10 @@ export function VerificationWorkspace({
       <section className="s1-vw-pane s1-vw-pane--table" aria-label="Reported vs recomputed">
         <h2 className="s1-vw-pane__title">Reported vs recomputed</h2>
         {boxes.map((box) => (
-          <BoxTable
-            key={box.key}
-            box={box}
-            selectedId={selectedId}
-            onSelect={(id) => {
-              if (id === selectedId) return;
-              setSelectedId(id);
-              setSource(null);
-            }}
-          />
+          <BoxTable key={box.key} box={box} selectedId={selectedId} onSelect={select} />
         ))}
       </section>
+      <div className="s1-vw-side">
       <section className="s1-vw-pane s1-vw-pane--calc" aria-label="Calculation">
         {selected ? (
           <CalculationPane
@@ -83,16 +80,50 @@ export function VerificationWorkspace({
             onOpenSource={setSource}
           />
         ) : (
-          <div className="s1-vw-empty">
-            <h2 className="s1-vw-pane__title">Calculation</h2>
-            <p className="s1-muted">Select a row in Reported vs recomputed to see its calculation by facility.</p>
-          </div>
+          <StartHere boxes={boxes} onSelect={select} />
         )}
       </section>
       <section ref={sourcePane} className="s1-vw-pane s1-vw-pane--source" aria-label="Source">
         <h2 className="s1-vw-pane__title">Source</h2>
         <VerificationSource source={source} />
       </section>
+      </div>
+    </div>
+  );
+}
+
+/** Before a row is chosen: the differences worth opening first, largest % material first. */
+function StartHere({ boxes, onSelect }: { boxes: ResultBox[]; onSelect: (id: string) => void }) {
+  const differing = boxes
+    .flatMap((box) => box.rows.filter((row) => differs(row.difference)).map((row) => ({ box, row })))
+    .sort((a, b) => Math.abs(b.row.pctMaterial ?? 0) - Math.abs(a.row.pctMaterial ?? 0));
+  return (
+    <div className="s1-vw-empty">
+      <h2 className="s1-vw-pane__title">Calculation</h2>
+      <p className="s1-vw-empty__lead">Select a row in Reported vs recomputed to see its calculation by facility.</p>
+      {differing.length ? (
+        <>
+          <div className="s1-vw-label">Where reported and recomputed differ</div>
+          <ul className="s1-vw-start">
+            {differing.map(({ box, row }) => (
+              <li key={row.key}>
+                <button className="s1-vw-start__item" type="button" onClick={() => onSelect(row.key)}>
+                  <span className="s1-vw-start__name">
+                    {row.activity}
+                    <span className="s1-muted"> · {box.title}</span>
+                  </span>
+                  <span className="s1-vw-start__figures">
+                    <span className="s1-vw-red">{formatSignedTonnes(row.difference ?? 0)} tCO₂e</span>
+                    <span className="s1-muted">{formatPercent(row.pctMaterial ?? 0, true)} material</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <p className="s1-muted">Every recomputed line agrees with what was reported.</p>
+      )}
     </div>
   );
 }
@@ -105,10 +136,15 @@ function BoxTable({ box, selectedId, onSelect }: { box: ResultBox; selectedId: s
   const span = scope1 ? 2 : 1;
   return (
     <div className="s1-vw-box">
-      <h3 className="s1-vw-box__title">
-        {box.title}
-        {box.key === "biogenic" ? <span className="s1-muted"> outside scopes · not added to any total</span> : null}
-      </h3>
+      <div className="s1-vw-box__head">
+        <h3 className="s1-vw-box__title">
+          {box.title}
+          {box.key === "biogenic" ? <span className="s1-muted"> outside scopes · not added to any total</span> : null}
+        </h3>
+        <span className={`s1-vw-pill${differs(totals.difference) ? " s1-vw-pill--differs" : " s1-vw-pill--agrees"}`}>
+          {formatPercent(totals.pctMaterial, true)} material
+        </span>
+      </div>
       <div className="s1-vw-scroll">
         <table className="s1-vw-table">
           <thead>
@@ -298,12 +334,16 @@ function CalculationPane({
           ))}
         </h2>
         <p className="s1-vw-summary">
-          Reported {formatTonnes(reported)} · Recomputed {recomputed === null ? "not tested" : formatTonnes(recomputed)}
+          <span>
+            Reported <strong>{formatTonnes(reported)}</strong>
+          </span>
+          <span>
+            Recomputed <strong>{recomputed === null ? "not tested" : formatTonnes(recomputed)}</strong>
+          </span>
           {difference === null ? null : (
-            <>
-              {" "}
-              · Difference <span className={differs(difference) ? "s1-vw-red" : undefined}>{formatSignedTonnes(difference)}</span>
-            </>
+            <span>
+              Difference <strong className={differs(difference) ? "s1-vw-red" : undefined}>{formatSignedTonnes(difference)}</strong>
+            </span>
           )}
         </p>
       </header>
@@ -454,7 +494,9 @@ function CalculationCard({
           </tbody>
         </table>
       </div>
-      <p className="s1-vw-cause">{facility.cause}</p>
+      <p className={`s1-vw-cause${differs(facilityDifference(facility)) ? " s1-vw-cause--differs" : " s1-vw-cause--agrees"}`}>
+        {facility.cause}
+      </p>
       <div className="s1-vw-actions">
         <button className="s1-button" type="button" aria-expanded={box === "examination"} onClick={() => setBox(box === "examination" ? null : "examination")}>
           Record examination
@@ -615,6 +657,10 @@ function AddNote({ title, onCancel, onSave }: { title: string; onCancel: () => v
       <p className="s1-muted s1-vw-help">Notes do not count as examination and are not evidence.</p>
     </div>
   );
+}
+
+function facilityDifference(facility: FacilityResult): number | null {
+  return facility.recomputed === null || facility.reported === null ? null : facility.recomputed - facility.reported;
 }
 
 function formatWhen(iso: string): string {
