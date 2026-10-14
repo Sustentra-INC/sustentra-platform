@@ -397,8 +397,14 @@ describe("purchased steam billed by weight", () => {
     expect(within(field).getByText(/needed/)).toBeTruthy();
     fireEvent.change(within(field).getByRole("textbox"), { target: { value: "90" } });
     expect((screen.getByRole("button", { name: "Save and recalculate" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(within(field).getByRole("textbox"), { target: { value: "1194" } });
+    fireEvent.change(within(field).getByRole("textbox"), { target: { value: "1,194" } }); // as suppliers write it
     fireEvent.click(screen.getByRole("button", { name: "Save and recalculate" }));
     expect(onSave.mock.calls[0][0].steam_heat_content).toEqual({ "Facility C": 1194 });
+  });
+
+  it("says purchased cooling is listed, not calculated", () => {
+    const message = leftOutMessage({ record: "COOL-JUL.pdf", period: "2025-07-01 to 2025-07-31",
+      reason: "purchased_cooling_not_calculated" });
+    expect(message).toMatch(/^COOL-JUL\.pdf: purchased cooling \(chilled water\) is not calculated yet/);
   });
 });

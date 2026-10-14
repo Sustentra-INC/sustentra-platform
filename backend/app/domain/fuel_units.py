@@ -78,8 +78,6 @@ _alias("MMBtu", "mmbtus", "mm btu", "mmbtu's", "million btu", "mbtu (millions)")
 _alias("Dth", "dth", "dths", "dekatherm", "dekatherms", "decatherm", "decatherms", "dt")
 _alias("therm", "therms", "thm", "thms")
 _alias("Btu", "btus", "british thermal units")
-_alias("kBtu", "kbtu", "kbtus", "thousand btu")
-_alias("ton_hour", "ton-hour", "ton-hours", "ton hour", "ton hours", "ton-hr", "ton-hrs", "tonhr", "tonhrs")
 _alias("kWh", "kwh", "kwhs", "kw h", "kilowatt hour", "kilowatt hours", "kilowatt-hour", "kilowatt-hours")
 _alias("MWh", "mwh", "megawatt hour", "megawatt hours")
 _alias("GJ", "gj", "gigajoule", "gigajoules")
@@ -93,20 +91,38 @@ _alias("L", "l", "liter", "liters", "litre", "litres", "ltr", "ltrs", "lt")
 _alias("bbl", "bbls", "barrel", "barrels")
 _alias("kg", "kgs", "kilogram", "kilograms")
 _alias("lb", "lbs", "pound", "pounds")
-# No number-bearing aliases ("1,000 lbs"): they would match a quantity of 1,000 pounds itself.
-_alias("klb", "klbs", "mlb", "mlbs", "thousand pounds")
 _alias("short_ton", "ton", "tons", "short ton", "short tons", "st")
 _alias("metric_ton", "tonne", "tonnes", "metric ton", "metric tons", "mt", "t")
 _alias("GGE", "gge", "gasoline gallon equivalent", "gasoline gallon equivalents")
 _alias("DGE", "dge", "diesel gallon equivalent", "diesel gallon equivalents")
 
-# Longest aliases first so "cubic feet" wins over "cf" and "mmbtu" over "btu".
-_UNIT_TOKEN_RE = re.compile(
-    r"(?<![A-Za-z0-9])("
-    + "|".join(re.escape(a) for a in sorted(_ALIASES, key=len, reverse=True))
-    + r")(?![A-Za-z0-9])",
-    re.IGNORECASE,
-)
+# District energy units (kBtu, ton-hours of cooling, thousands of pounds of steam) are known
+# only to the thermal extractor: in the shared table they would also score fuel-log and
+# electricity columns ("Chilled Water (Ton-Hrs)" next to "Natural Gas (Therms)") as quantities.
+_THERMAL_ALIASES: dict[str, str] = {}
+for _canonical, *_names in (
+    ("kBtu", "kbtu", "kbtus", "thousand btu"),
+    ("ton_hour", "ton-hour", "ton-hours", "ton hour", "ton hours", "ton-hr", "ton-hrs", "tonhr", "tonhrs"),
+    # No number-bearing aliases ("1,000 lbs"): they would match a quantity of 1,000 pounds itself.
+    ("klb", "klbs", "mlb", "mlbs", "m lb", "m lbs", "k lb", "k lbs", "thousand lb", "thousand lbs",
+     "thousand pounds"),
+):
+    for _name in (_canonical, *_names):
+        _THERMAL_ALIASES[_name.lower()] = _canonical
+
+
+def _token_re(aliases: dict[str, str]) -> re.Pattern[str]:
+    # Longest aliases first so "cubic feet" wins over "cf" and "mmbtu" over "btu".
+    return re.compile(
+        r"(?<![A-Za-z0-9])("
+        + "|".join(re.escape(a) for a in sorted(aliases, key=len, reverse=True))
+        + r")(?![A-Za-z0-9])",
+        re.IGNORECASE,
+    )
+
+
+_UNIT_TOKEN_RE = _token_re(_ALIASES)
+_THERMAL_TOKEN_RE = _token_re({**_ALIASES, **_THERMAL_ALIASES})
 # Aliases too ambiguous to trust when scanning free text (only accepted as a whole cell).
 _AMBIGUOUS_IN_TEXT = {"l", "t", "mt", "st", "dt", "lt", "gl", "cf", "ton", "tons"}
 
@@ -125,28 +141,29 @@ class NormalizedQuantity:
     converted: bool
 
 
-def canonical_unit(text: str | None) -> str | None:
-    """Canonical unit for a whole label ("Therms" -> "therm"), or None if unknown."""
+def canonical_unit(text: str | None, thermal: bool = False) -> str | None:
+    """Canonical unit for a whole label ("Therms" -> "therm"), or None if unknown.
+    ``thermal`` also knows the district energy units (kBtu, ton-hours, Mlb of steam)."""
 
     if text is None:
         return None
     key = " ".join(str(text).strip().rstrip(".").replace("(", " ").replace(")", " ").split()).lower()
-    return _ALIASES.get(key)
+    return _ALIASES.get(key) or (_THERMAL_ALIASES.get(key) if thermal else None)
 
 
-def find_unit(text: str | None) -> str | None:
+def find_unit(text: str | None, thermal: bool = False) -> str | None:
     """First recognizable unit mentioned inside free text ("32,400 MMBtu" -> "MMBtu")."""
 
     if not text:
         return None
-    whole = canonical_unit(text)
+    whole = canonical_unit(text, thermal)
     if whole is not None:
         return whole
-    for match in _UNIT_TOKEN_RE.finditer(str(text)):
+    for match in (_THERMAL_TOKEN_RE if thermal else _UNIT_TOKEN_RE).finditer(str(text)):
         token = match.group(1).lower()
         if token in _AMBIGUOUS_IN_TEXT:
             continue
-        return _ALIASES[token]
+        return _ALIASES.get(token) or _THERMAL_ALIASES[token]
     return None
 
 

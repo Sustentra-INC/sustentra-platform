@@ -91,14 +91,17 @@ def test_steam_and_heat_are_recalculated_with_the_hub_table_7_factor() -> None:
     assert rollup["nodes"]["purchased_heating_total"]["co2e_t"] == pytest.approx(heating)
 
 
-def test_steam_by_weight_asks_for_its_heat_content_and_cooling_is_listed() -> None:
+def test_steam_by_weight_asks_for_its_heat_content_and_cooling_is_listed_as_not_calculated() -> None:
     store = FakeStore()
     store.add_document("STEAM-FEB", "CT-S2-THERMAL", [_thermal("steam", 980, "klb")])
     store.add_document("COOL-JUL", "CT-S2-THERMAL", [_thermal("chilled_water", 504, "MMBtu", "Facility B",
                                                               "2025-07-01", "2025-07-31")])
     asked = _service(store).recalculate(_engagement(), _own)
     kinds = {(i["kind"], i["category"]) for i in asked["needs_input"]}
-    assert kinds == {("steam_heat_content", "purchased_steam"), ("cooling_factor", "purchased_cooling")}
+    assert kinds == {("steam_heat_content", "purchased_steam")}  # nothing the reviewer enters prices cooling yet
+    cooling = [e for e in asked["excluded"] if e["document_id"] == "COOL-JUL"]
+    assert [(e["reason"], e["period"]) for e in cooling] == [("purchased_cooling_not_calculated",
+                                                               "2025-07-01 to 2025-07-31")]
     assert asked["categories"].get("purchased_steam_location_based") is None
     assert asked["rollup"]["categories"]["purchased_steam"]["status"] == "awaiting_inputs"
 
@@ -152,4 +155,87 @@ def test_a_thousand_pounds_is_pounds_not_thousands_of_pounds() -> None:
 
     assert fuel_units.find_unit("Quantity Delivered: 1,000 lbs") == "lb"
     assert fuel_units.find_unit("1000 lbs") == "lb"
-    assert fuel_units.find_unit("Steam Usage: 980 Mlb") == "klb"
+    assert fuel_units.find_unit("Steam Usage: 980 Mlb", thermal=True) == "klb"
+    assert fuel_units.canonical_unit("M lbs", thermal=True) == "klb"
+
+
+def test_district_energy_units_never_change_how_fuel_and_electricity_are_read() -> None:
+    from backend.app.domain import fuel_units
+
+    # Outside the thermal extractor these are not units, so a fuel log's "Chilled Water
+    # (Ton-Hrs)" column next to "Natural Gas (Therms)" is never taken as the quantity.
+    assert fuel_units.find_unit("Steam Usage: 980 Mlb") is None
+    assert fuel_units.find_unit("Chilled Water (Ton-Hrs)") is None
+    assert fuel_units.canonical_unit("kBtu") is None
+    assert fuel_units.canonical_unit("kBtu", thermal=True) == "kBtu"
+
+
+def test_reviewer_typed_energy_types_are_normalized_and_an_unknown_one_is_asked() -> None:
+    store = FakeStore()
+    store.add_document("STEAM-MAR", "CT-S2-THERMAL", [_thermal("Steam", 100, "MMBtu")])
+    store.add_document("HEAT-MAR", "CT-S2-THERMAL", [_thermal("Hot-water", 50, "MMBtu", "Facility A")])
+    store.add_document("ODD-MAR", "CT-S2-THERMAL", [_thermal("District energy", 70, "MMBtu", "Facility B")])
+    result = _service(store).recalculate(_engagement(), _own)
+    assert result["categories"]["purchased_steam_location_based"]["lines"][0]["key"] == "Facility C"
+    assert result["categories"]["purchased_heating_location_based"]["lines"][0]["key"] == "Facility A"
+    asks = [(i["kind"], i["key"]) for i in result["needs_input"]]
+    assert asks == [("thermal_type", "ODD-MAR.pdf")]
+
+
+def test_a_thermal_bill_outside_the_reporting_period_is_listed_as_excluded() -> None:
+    store = FakeStore()
+    store.add_document("STEAM-2024", "CT-S2-THERMAL", [_thermal("steam", 900, "MMBtu", start="2024-11-01",
+                                                                end="2024-11-30")])
+    result = _service(store).recalculate(_engagement(), _own)
+    assert [(e["document_id"], e["reason"]) for e in result["excluded"]] == [("STEAM-2024", "outside_reporting_period")]
+    assert result["categories"].get("purchased_steam_location_based") is None
+
+
+COMBINED_BILL = """Metro District Energy
+Steam and Chilled Water Statement
+Account Number: MDE-44120
+Customer: Facility C
+Service Period: 07/01/2025 to 07/31/2025
+Steam Usage: 410 MMBtu
+Steam Demand: 12 Mlb/hr
+Chilled Water Usage: 42,000 ton-hours
+Condensate Return Credit: 35 MMBtu
+"""
+DISTRICT_HEAT_IN_MWH = STEAM_BILL.replace("Steam Service Statement", "District Heating Statement").replace(
+    "Steam Usage: 1,250 MMBtu", "Heat Delivered: 310 MWh")
+ELECTRIC_BILL_WITH_A_HOT_WATER_TIP = """Riverside Electric Utility
+Electricity Bill
+Account Number: RE-7781-2210
+Service Period: 01/01/2025 to 01/31/2025
+Total kWh Used: 12,450 kWh
+Energy tip: lower your hot water heater to 120 F.
+"""
+
+
+def _records(tmp_path: Path, text: str) -> dict[Any, dict[str, Any]]:
+    path = tmp_path / "bill.txt"
+    path.write_text(text)
+    out = PipelineOrchestrationService().process_local_document(str(path), engagement_id="ENG", persist_run=False)
+    records: dict[Any, dict[str, Any]] = {}
+    for c in out["extraction_result"]["items"]:
+        records.setdefault(c["record_index"], {})[c["field_name"]] = (c["normalized_value"], c.get("unit"))
+    return records
+
+
+def test_a_combined_bill_keeps_each_commodity_and_skips_demand_and_condensate(tmp_path: Path) -> None:
+    records = _records(tmp_path, COMBINED_BILL)
+    read = sorted((r["energy_type"][0], r["activity_quantity"]) for r in records.values())
+    assert read == [("chilled_water", (pytest.approx(504), "MMBtu")), ("steam", (pytest.approx(410), "MMBtu"))]
+
+
+def test_district_heat_in_mwh_is_purchased_heat_and_an_electric_bill_stays_electricity(tmp_path: Path) -> None:
+    from backend.tests.services.test_electricity_extractor import _text_output
+
+    heat = _text_output(DISTRICT_HEAT_IN_MWH)
+    assert PipelineOrchestrationService._electricity_reroute("CT-S1-FUELQTY", heat) is False
+    assert PipelineOrchestrationService._thermal_reroute("CT-S1-FUELQTY", heat) is True
+    assert PipelineOrchestrationService._thermal_reroute("CT-S2-ELEC", heat) is True
+    tip = _text_output(ELECTRIC_BILL_WITH_A_HOT_WATER_TIP)
+    assert PipelineOrchestrationService._thermal_reroute("CT-S2-ELEC", tip) is False
+    assert _read(tmp_path, DISTRICT_HEAT_IN_MWH)["values"]["activity_quantity"] == (
+        pytest.approx(310 * 3.412141633), "MMBtu")

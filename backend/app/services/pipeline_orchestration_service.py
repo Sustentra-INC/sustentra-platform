@@ -581,12 +581,14 @@ class PipelineOrchestrationService:
         Gas and electric bills share most header vocabulary (account number, service
         address, billing period, usage), so the classifier can pick CT-S1-FUELQTY for an
         electricity bill. The unit decides: kWh/MWh quantities with no combusted fuel
-        named mean purchased electricity (Scope 2). Mobile fuel is left alone.
+        named mean purchased electricity (Scope 2). Mobile fuel is left alone. A district
+        heating or cooling bill in MWh is purchased heat, not electricity: the thermal check
+        takes it (and declines any bill that names electricity in words).
         """
 
         if canonical_type_id != FUELQTY_TYPE_ID:
             return False
-        if StationaryCombustionExtractor().confirms(parser_output):
+        if StationaryCombustionExtractor().confirms(parser_output) or ThermalExtractor().confirms(parser_output):
             return False
         return ElectricityExtractor().confirms(parser_output)
 
@@ -594,11 +596,10 @@ class PipelineOrchestrationService:
     def _thermal_reroute(canonical_type_id: str | None, parser_output: dict) -> bool:
         """True when a document classified as a utility bill (fuel or electricity) is really a
         steam, hot water or chilled water bill: it names one, states a thermal quantity, and
-        reads neither as combusted fuel nor as electricity."""
+        names neither a combusted fuel nor electricity in words. Heat billed in MWh counts:
+        the unit alone does not make it electricity."""
 
         if canonical_type_id not in (FUELQTY_TYPE_ID, ELEC_TYPE_ID):
-            return False
-        if ElectricityExtractor().confirms(parser_output):
             return False
         return ThermalExtractor().confirms(parser_output)
 
@@ -633,7 +634,7 @@ class PipelineOrchestrationService:
         leaders = {m.get("canonical_type_id") for m in matches if float(m.get("confidence") or 0) == best}
         if not leaders & {FUELQTY_TYPE_ID, ELEC_TYPE_ID} or best < FUEL_CONTENT_CHECK_FLOOR:
             return None
-        if StationaryCombustionExtractor().confirms(parser_output):
+        if StationaryCombustionExtractor().confirms(parser_output) or ThermalExtractor().confirms(parser_output):
             return None
         return ELEC_TYPE_ID if ElectricityExtractor().confirms(parser_output) else None
 

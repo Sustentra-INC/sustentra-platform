@@ -6,6 +6,9 @@ import { leftOutMessage, type Recalculation, type RecalculationReference } from 
 import type { RecalculationCertificate, RecalculationSettings } from "../types";
 import { draftProblem, draftsFrom, settingsFrom, VehicleGroupsFieldset, type VehicleGroupDraft } from "./VehicleGroupsFieldset";
 
+/** Btu per lb as typed: suppliers write "1,194". */
+const steamNumber = (text: string) => Number(text.replace(/,/g, "").trim());
+
 /**
  * What the recalculation needs that the evidence does not carry: the eGRID subregion
  * for each facility, the EPA fuel where the match is not clear, renewable energy
@@ -67,7 +70,9 @@ export function RecalculationInputs({
   const badCertificates = certificateText.filter((c) => !c.label.trim() || !(Number(c.mwh) > 0));
   const badGwps = Object.entries(gwpText).filter(([, text]) => text.trim() && !(Number(text) >= 0));
   // Saturated and superheated steam as delivered: 500 to 1,600 Btu per lb (the backend checks the same).
-  const badSteam = Object.entries(steamText).filter(([, text]) => text.trim() && !(Number(text) >= 500 && Number(text) <= 1600));
+  const badSteam = Object.entries(steamText).filter(
+    ([, text]) => text.trim() && !(steamNumber(text) >= 500 && steamNumber(text) <= 1600)
+  );
   const badVehicles = vehicleDrafts.filter((d) => draftProblem(d, vehicleTypes) !== null);
   const invalid =
     badReported.length > 0 || badCertificates.length > 0 || badGwps.length > 0 || badVehicles.length > 0 ||
@@ -83,7 +88,7 @@ export function RecalculationInputs({
     const refrigerant_gwps: Record<string, number> = {};
     for (const [gas, text] of Object.entries(gwpText)) if (text.trim()) refrigerant_gwps[gas] = Number(text);
     const steam_heat_content: Record<string, number> = {};
-    for (const [site, text] of Object.entries(steamText)) if (text.trim()) steam_heat_content[site] = Number(text);
+    for (const [site, text] of Object.entries(steamText)) if (text.trim()) steam_heat_content[site] = steamNumber(text);
     onSave({
       ...draft,
       reported,

@@ -112,7 +112,7 @@ export interface RecalcNeedsInput {
     | "vehicle_group"
     | "refrigerant_record"
     | "steam_heat_content"
-    | "cooling_factor";
+    | "thermal_type";
   key: string;
   message: string;
   options?: string[];
@@ -135,7 +135,8 @@ export type ExcludedReason =
   | "withdrawn"
   | "duplicate"
   | "superseded"
-  | "montreal_protocol_gas";
+  | "montreal_protocol_gas"
+  | "purchased_cooling_not_calculated";
 
 const EXCLUDED_LABEL: Record<ExcludedReason, string> = {
   outside_reporting_period: "outside the reporting period",
@@ -143,6 +144,7 @@ const EXCLUDED_LABEL: Record<ExcludedReason, string> = {
   duplicate: "marked as a duplicate",
   superseded: "superseded by a newer document",
   montreal_protocol_gas: "a CFC or HCFC, which Scope 1 leaves out",
+  purchased_cooling_not_calculated: "purchased cooling, which is not calculated yet",
 };
 
 export interface ExcludedRecord {
@@ -171,6 +173,10 @@ export function leftOutMessage(item: { record: string; period: string; reason?: 
   if (reason === "montreal_protocol_gas") {
     return `${item.record}: ${item.gas ?? "the refrigerant"} is a CFC or HCFC (a Montreal Protocol gas). The GHG ` +
       "Protocol reports these outside Scope 1, so it is not counted.";
+  }
+  if (reason === "purchased_cooling_not_calculated") {
+    return `${item.record}: purchased cooling (chilled water) is not calculated yet. The EPA Hub has no ` +
+      "default factor for it, so it is not counted.";
   }
   return reason === "outside_reporting_period"
     ? `${item.record} (${item.period}) is outside the reporting period, so it is not counted.`
@@ -966,8 +972,8 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
   }
 
   const excluded = (result.excluded ?? []).filter((e) => reasonOf(e) === "outside_reporting_period");
-  const setAside = (result.excluded ?? []).filter(
-    (e) => reasonOf(e) !== "outside_reporting_period" && reasonOf(e) !== "montreal_protocol_gas"
+  const setAside = (result.excluded ?? []).filter((e) =>
+    ["withdrawn", "duplicate", "superseded"].includes(reasonOf(e))
   );
   if (setAside.length) {
     rules.push({
