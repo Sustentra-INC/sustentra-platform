@@ -738,11 +738,22 @@ class StationaryCombustionExtractor:
                         is_label = self._label_prefix(nxt.text, self.ALL_LABELS) is not None
                         far = cell.box is not None and nxt.box is not None and nxt.left - cell.right > 0.25
                         if not is_label and not far:
-                            value = self._trim_value(nxt.text)
+                            after = row.cells[position + 2] if position + 2 < len(row.cells) else None
+                            lines = self._wrapped_value(rows, row, cell, after.left if after and after.box else 1.0)
+                            lines = lines if nxt in lines else [nxt]
+                            value = self._trim_value(" ".join(line.text for line in lines))
                             if value and (accept is None or accept(value)):
-                                return Located(value, [nxt], row, CONF_NEXT_CELL, label_cell=cell,
-                                               context=f"{cell.text} {nxt.text}")
+                                return Located(value, lines, row, CONF_NEXT_CELL, label_cell=cell,
+                                               context=f"{cell.text} {value}")
                             continue
+                    # 2b) a wrapped value centered on its label: no line of it is on the label's row
+                    if cell.box is not None:
+                        after = next((c for c in row.cells[position + 1:] if c.box is not None), None)
+                        lines = self._wrapped_value(rows, row, cell, after.left if after else 1.0)
+                        value = self._trim_value(" ".join(line.text for line in lines))
+                        if value and (accept is None or accept(value)):
+                            return Located(value, lines, row, CONF_NEXT_CELL, label_cell=cell,
+                                           context=f"{cell.text} {value}")
                     # 3) label alone on its row: value directly below, left-aligned
                     if allow_next_row and cell.box is not None:
                         below = self._cell_below(rows, row, cell)
@@ -752,6 +763,43 @@ class StationaryCombustionExtractor:
                                 return Located(value, [below[1]], below[0], CONF_NEXT_ROW, label_cell=cell,
                                                context=f"{cell.text} {below[1].text}")
         return None
+
+    @staticmethod
+    def _wrapped_value(rows: Sequence[Row], row: Row, label: Cell, column_end: float) -> list[Cell]:
+        """The lines of one value in a label/value table, top to bottom: the cells right of
+        ``label`` and left of ``column_end`` that together span the label's height.
+
+        A value that wraps in a table cell sits vertically centered on its label
+        ("Anheuser-Busch Baldwinsville" above "Customer", "Brewery" below it), so it
+        straddles visual rows. A row with a cell under the label is the next field, and a
+        line nearer another field's label belongs to that field.
+        """
+
+        if label.box is None:
+            return []
+        nearby = [r for r in rows if r.page == row.page and abs(r.top - row.top) <= 0.1]
+
+        def in_label_column(c: Cell) -> bool:
+            return c.box is not None and c.left < label.right and c.right > label.left - 0.01
+
+        others = [c for r in nearby if r is not row for c in r.cells if in_label_column(c)]
+        lines: list[Cell] = []
+        for other in nearby:
+            if other is not row and any(in_label_column(c) for c in other.cells):
+                continue
+            for c in other.cells:
+                distance = abs(c.center_y - label.center_y)
+                if (c.box is not None and c is not label and label.right <= c.left < column_end
+                        and distance <= 1.5 * max(label.height, c.height)
+                        and all(abs(c.center_y - o.center_y) >= distance for o in others)):
+                    lines.append(c)
+        if not lines:
+            return []
+        top = min(c.box["top"] for c in lines if c.box)
+        bottom = max(c.box["top"] + c.box["height"] for c in lines if c.box)
+        if not top <= label.center_y <= bottom:
+            return []
+        return sorted(lines, key=lambda c: c.center_y)
 
     @staticmethod
     def _cell_below(rows: Sequence[Row], row: Row, cell: Cell) -> tuple[Row, Cell] | None:
