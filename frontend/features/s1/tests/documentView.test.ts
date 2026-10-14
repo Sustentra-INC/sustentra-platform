@@ -40,7 +40,18 @@ describe("documents as the screens show them", () => {
 
   it("lets the reviewer's saved decisions win", () => {
     const [c] = applyDocumentView([item("C")], facts, { C: { documentId: "C", facilityId: "F2", disposition: "withdrawn" } }, FACILITIES);
-    expect([c.facilityName, c.disposition]).toEqual(["Facility B", "withdrawn"]);
+    expect([c.facilityName, c.disposition, c.facilitySource]).toEqual(["Facility B", "withdrawn", "reviewer"]);
+    const [a] = applyDocumentView([item("A")], facts, {}, FACILITIES);
+    expect(a.facilitySource).toBe("matched");
+  });
+
+  it("shows a log whose records name several facilities as multiple facilities", () => {
+    const log = new Map<string, DocumentFacts>([["L", {
+      facilityName: "Albany Plant", address: null, periodStart: null, periodEnd: null,
+      facilityNames: ["Albany Plant", "Facility B", "Somewhere Else"], addresses: [],
+    }]]);
+    const [l] = applyDocumentView([item("L")], log, {}, FACILITIES);
+    expect([l.facilityState, l.facilityCount, l.facilityIds]).toEqual(["multiple", 2, ["F1", "F2"]]);
   });
 
   it("turns an edit into a decision, and ignores no-op updates", () => {

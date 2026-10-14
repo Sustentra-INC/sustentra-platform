@@ -167,7 +167,8 @@ class EmissionFactorReference:
             out.append({
                 "vehicle_type": vehicle_type, "fuel_type": fuel_type, "on_road": on_road,
                 "by_model_year": bool(dated),
-                "first_model_year": min(starts) if starts else None,
+                # None when the oldest band is open-ended ("1980 and earlier"), like last_model_year.
+                "first_model_year": min(starts) if dated and len(starts) == len(dated) else None,
                 # None when the newest band is open-ended ("2021 and later") or nothing is dated.
                 "last_model_year": max(ends) if dated and len(ends) == len(dated) else None,
             })

@@ -130,6 +130,9 @@ export function EvidenceWorkspace({
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [editing, setEditing] = useState<{ id: string; field: "type" | "facility" } | null>(null);
   const [noteFor, setNoteFor] = useState<string | null>(null);
+  // "Mark duplicate of…" / "Mark supersedes…": the document being related, and to which file.
+  const [relateFor, setRelateFor] = useState<{ documentId: string; kind: "duplicate" | "supersedes" } | null>(null);
+  const [relateTarget, setRelateTarget] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const [modalDoc, setModalDoc] = useState<EvidenceItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -254,17 +257,16 @@ export function EvidenceWorkspace({
   }
 
   function markRelationship(documentId: string, kind: "duplicate" | "supersedes") {
-    const others = items.filter((i) => i.documentId !== documentId && i.disposition === "active");
-    const label = window.prompt(
-      `Mark this file as ${kind === "duplicate" ? "a duplicate of" : "superseding"} which file?\nType part of the file name.`,
-      ""
-    );
-    if (!label) return;
-    const target = others.find((i) => i.filename.toLowerCase().includes(label.toLowerCase()));
-    if (!target) {
-      flash(`No file matched "${label}"`);
-      return;
-    }
+    setRelateFor({ documentId, kind });
+    setRelateTarget("");
+  }
+
+  function saveRelationship() {
+    if (!relateFor) return;
+    const { documentId, kind } = relateFor;
+    const target = items.find((i) => i.documentId === relateTarget);
+    if (!target) return;
+    setRelateFor(null);
     onEvidenceChange((cur) =>
       cur.map((i) =>
         i.documentId === documentId
@@ -439,6 +441,36 @@ export function EvidenceWorkspace({
                             onWithdraw={() => withdraw(item.documentId)}
                             onReinstate={() => reinstate(item.documentId)}
                           />
+                          {relateFor?.documentId === item.documentId ? (
+                            <tr className="s1-history-row">
+                              <td colSpan={8}>
+                                <div className="s1-relate" role="group" aria-label={`Relate ${item.filename}`}>
+                                  <label>
+                                    <span>
+                                      Mark {item.filename} as {relateFor.kind === "duplicate" ? "a duplicate of" : "superseding"}
+                                    </span>
+                                    <select value={relateTarget} onChange={(e) => setRelateTarget(e.target.value)}>
+                                      <option value="">Choose a file</option>
+                                      {items
+                                        .filter((i) => i.documentId !== item.documentId && i.disposition === "active")
+                                        .map((i) => (
+                                          <option key={i.documentId} value={i.documentId}>
+                                            {i.filename}
+                                          </option>
+                                        ))}
+                                    </select>
+                                  </label>
+                                  <button className="s1-button s1-button--pri" type="button" disabled={!relateTarget}
+                                    onClick={saveRelationship}>
+                                    Mark
+                                  </button>
+                                  <button className="s1-linklike" type="button" onClick={() => setRelateFor(null)}>
+                                    Cancel
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ) : null}
                           {expandedIds.includes(item.documentId) ? (
                             <tr className="s1-history-row">
                               <td colSpan={8}>
@@ -773,7 +805,9 @@ function FacilityCell({ item, onSet, writesEnabled }: { item: EvidenceItem; onSe
     return (
       <div>
         <div>{item.facilityName}</div>
-        <div className="s1-muted s1-ws-src">from accepted value</div>
+        <div className="s1-muted s1-ws-src">
+          {item.facilitySource === "reviewer" ? "chosen by the reviewer" : "matched by name or address"}
+        </div>
       </div>
     );
   }

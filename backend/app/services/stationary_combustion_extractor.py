@@ -405,7 +405,10 @@ class StationaryCombustionExtractor:
     UNIT_HEADERS: tuple[str, ...] = _UNIT_HEADERS
     QTY_EXCLUDE: tuple[str, ...] = _QTY_EXCLUDE
     # Additional table columns kept on each record: key -> header names (normalized).
-    EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {}
+    # A fuel log's "Site" / "Facility" column: each line's facility (a log can cover several).
+    EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {
+        "site": ("site", "site name", "facility", "facility name", "plant", "building", "premises"),
+    }
     ALL_LABELS: tuple[str, ...] = ()  # filled after the module-level label groups
 
     def handles(self, targets: Sequence[dict]) -> bool:
@@ -510,8 +513,11 @@ class StationaryCombustionExtractor:
             for target in targets:
                 field_id = str(target.get("field_id") or "")
                 if field_id in DOCUMENT_FIELDS:
+                    located = document_values.get(field_id)
+                    if field_id == "facility_name" and record is not None and record.extra.get("site") is not None:
+                        located = record.extra["site"]
                     record_candidates.append(self._candidate_for_text(
-                        target, document_values.get(field_id), document_id, evidence_id, record_key,
+                        target, located, document_id, evidence_id, record_key,
                         record_index, parser_output, field_id))
                 elif field_id in RECORD_FIELDS:
                     record_candidates.append(self._record_candidate(

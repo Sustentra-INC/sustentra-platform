@@ -16,6 +16,9 @@ export interface DocumentFacts {
   address: string | null;
   periodStart: string | null;
   periodEnd: string | null;
+  /** Every facility name and address the document's records give (a log can cover several sites). */
+  facilityNames?: string[];
+  addresses?: string[];
 }
 
 function fieldName(field: ExtractedField): string | null {
@@ -29,14 +32,17 @@ export function documentFacts(fields: ExtractedField[]): Map<string, DocumentFac
     const value = field.correctedValue ?? field.value;
     if (!value) continue;
     const entry = facts.get(field.documentId) ?? {
-      facilityName: null, address: null, periodStart: null, periodEnd: null, dates: [],
+      facilityName: null, address: null, periodStart: null, periodEnd: null, dates: [], facilityNames: [],
+      addresses: [],
     };
     switch (fieldName(field)) {
       case "facility_name":
         entry.facilityName ??= value;
+        if (!entry.facilityNames!.includes(value)) entry.facilityNames!.push(value);
         break;
       case "service_address":
         entry.address ??= value;
+        if (!entry.addresses!.includes(value)) entry.addresses!.push(value);
         break;
       case "service_period_start":
       case "transaction_date":
@@ -72,12 +78,19 @@ export function applyDocumentView(
     const fact = facts.get(item.documentId);
     const decision = decisions[item.documentId];
     const chosen = decision?.facilityId ? facilities.find((f) => f.facilityId === decision.facilityId) : undefined;
-    const facility = chosen ?? (fact ? matchFacility(fact.facilityName, fact.address, facilities) : null);
+    const matched = chosen ? [] : matchedFacilities(fact, facilities);
     const next: EvidenceItem = { ...item };
-    if (facility) {
+    if (chosen || matched.length === 1) {
+      const facility = chosen ?? matched[0];
       next.facilityState = "resolved";
       next.facilityId = facility.facilityId;
       next.facilityName = facility.name;
+      next.facilitySource = chosen ? "reviewer" : "matched";
+    } else if (matched.length > 1) {
+      // A log or statement whose records name several Setup facilities.
+      next.facilityState = "multiple";
+      next.facilityCount = matched.length;
+      next.facilityIds = matched.map((f) => f.facilityId);
     }
     if (fact?.periodStart && item.periodState === "unresolved") {
       next.periodState = "resolved";
@@ -93,6 +106,17 @@ export function applyDocumentView(
     }
     return next;
   });
+}
+
+/** The Setup facilities a document's records match, by name or address, each once. */
+function matchedFacilities(fact: DocumentFacts | undefined, facilities: FacilityOption[]): FacilityOption[] {
+  if (!fact) return [];
+  const found = [
+    matchFacility(fact.facilityName, fact.address, facilities),
+    ...(fact.facilityNames ?? []).map((name) => matchFacility(name, null, facilities)),
+    ...(fact.addresses ?? []).map((address) => matchFacility(null, address, facilities)),
+  ].filter((f): f is FacilityOption => f !== null);
+  return found.filter((f, i) => found.findIndex((g) => g.facilityId === f.facilityId) === i);
 }
 
 /** The reviewer's edits between two views of a document, as a decision (or null if none). */

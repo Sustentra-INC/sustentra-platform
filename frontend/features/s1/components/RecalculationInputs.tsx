@@ -73,7 +73,7 @@ export function RecalculationInputs({
     }));
     const refrigerant_gwps: Record<string, number> = {};
     for (const [gas, text] of Object.entries(gwpText)) if (text.trim()) refrigerant_gwps[gas] = Number(text);
-    onSave({ ...draft, reported, certificates, refrigerant_gwps, vehicle_groups: settingsFrom(vehicleDrafts) });
+    onSave({ ...draft, reported, certificates, refrigerant_gwps, vehicle_groups: settingsFrom(vehicleDrafts, vehicleTypes) });
   }
 
   const setRegion = (facility: string, region: string) => {

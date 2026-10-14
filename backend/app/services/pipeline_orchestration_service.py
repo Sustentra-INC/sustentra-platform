@@ -54,6 +54,9 @@ from backend.app.services.stationary_combustion_extractor import (
 
 CLASSIFIER_TARGET_STATUSES = {"classified", "multi_type_candidate"}
 HALT_UNREADABLE = "unreadable_document"
+# A photo or a scan without a text layer while OCR (Textract) is off: readable once it is on.
+HALT_OCR_REQUIRED = "ocr_required"
+PDF_PARSER_NAMES = {"pymupdf", "pdfplumber", "pdf_parser"}
 HALT_UNSUPPORTED = "unsupported_document"
 LOW_CONFIDENCE_THRESHOLD = 0.5
 # EXT-001/002: a low-confidence Scope 1 fuel match (FUELQTY or MOBFUEL) is accepted when it is the classifier's
@@ -250,14 +253,33 @@ class PipelineOrchestrationService:
                     if self._fuel_cues_conflict(canonical_type_id, mobile_cues, stationary_cues):
                         other = "mobile (vehicles/fleet)" if canonical_type_id == FUELQTY_TYPE_ID else "stationary"
                         cues = ", ".join(mobile_cues if canonical_type_id == FUELQTY_TYPE_ID else stationary_cues)
-                        halt_reason = {
-                            "code": HALT_UNSUPPORTED,
-                            "message": f"The classifier chose {canonical_type_id}, but the document reads as {other} "
-                            f"fuel use ({cues}). Set the document type manually.",
-                        }
-                        warnings.append(halt_reason["message"])
-                        canonical_type_id = None
-                        canonical_type_source = "none"
+                        other_type = MOBFUEL_TYPE_ID if canonical_type_id == FUELQTY_TYPE_ID else FUELQTY_TYPE_ID
+                        other_extractor = (MobileCombustionExtractor() if other_type == MOBFUEL_TYPE_ID
+                                           else StationaryCombustionExtractor())
+                        if other_extractor.confirms(parser_output):
+                            # The cues are one-sided and the other fuel type's content check
+                            # passes: read it as that type (e.g. a diesel log for a standby
+                            # generator that the classifier took for fleet fuel).
+                            warnings.append(
+                                f"The classifier chose {canonical_type_id}, but the document reads as {other} "
+                                f"fuel use ({cues}); using {other_type}."
+                            )
+                            canonical_type_id = other_type
+                            canonical_type_source = "content_check"
+                            extraction_targets = self._get_target_service().get_targets_for_canonical_type(
+                                canonical_type_id,
+                                include_optional=include_optional,
+                                include_deprecated=include_deprecated,
+                            )
+                        else:
+                            halt_reason = {
+                                "code": HALT_UNSUPPORTED,
+                                "message": f"The classifier chose {canonical_type_id}, but the document reads as "
+                                f"{other} fuel use ({cues}). Set the document type manually.",
+                            }
+                            warnings.append(halt_reason["message"])
+                            canonical_type_id = None
+                            canonical_type_source = "none"
                 if canonical_type_id is not None and canonical_type_source == "classifier":
                     if self._electricity_reroute(canonical_type_id, parser_output):
                         warnings.append(
@@ -300,6 +322,8 @@ class PipelineOrchestrationService:
                                 include_deprecated=include_deprecated,
                             )
                         )
+                elif canonical_type_id is not None and canonical_type_source == "content_check":
+                    pass  # read as the other fuel type above; its targets are already planned
                 elif (
                     confirmed := self._fuel_content_confirmed(classification_result, parser_output)
                     or self._electricity_content_confirmed(classification_result, parser_output)
@@ -602,6 +626,12 @@ class PipelineOrchestrationService:
             "Unreadable document: no text could be extracted (for example a scan without a text layer "
             "while OCR is off, a password-protected or corrupt file)."
         )
+        codes = {str(w.get("code")) for w in (parser_output.get("warnings") or []) if isinstance(w, dict)}
+        scanned_pdf = "empty_page_text" in codes and parser_output.get("parser_name") in PDF_PARSER_NAMES
+        if ("ocr_not_implemented" in codes or scanned_pdf) and not ParserService._textract_enabled():
+            return {"code": HALT_OCR_REQUIRED,
+                    "message": "This is a photo or a scan without a text layer. Its text can be read once OCR "
+                               "(Textract) is switched on; until then, ask for a text PDF or the original file."}
         return {"code": HALT_UNREADABLE, "message": f"{message} Parser said: {details}" if details else message}
 
     @staticmethod

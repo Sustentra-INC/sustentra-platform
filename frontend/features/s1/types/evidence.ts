@@ -8,7 +8,7 @@ import type {
 } from "./states";
 
 export type EvidenceClass = "main" | "supportive";
-export type EvidenceFormat = "pdf" | "image" | "xlsx" | "csv" | "other";
+export type EvidenceFormat = "pdf" | "image" | "xlsx" | "csv" | "docx" | "other";
 
 export type RelationshipKind =
   | "duplicate"
@@ -53,6 +53,8 @@ export interface EvidenceItem {
   facilityId: string | null;
   facilityName: string | null;
   facilityCount: number | null;
+  /** How a resolved facility was found: the reviewer chose it, or the document's name or address matched. */
+  facilitySource?: "reviewer" | "matched";
   /**
    * Every facility this file covers, by id. Set for multi-facility files (a
    * workbook covering three sites) so the file appears under each of those

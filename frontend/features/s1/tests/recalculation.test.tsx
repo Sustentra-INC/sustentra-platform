@@ -347,6 +347,27 @@ describe("vehicle groups (mobile CH4 and N2O)", () => {
     }));
   });
 
+  it("does not send a model year left behind when the vehicle type no longer uses one", () => {
+    const onSave = vi.fn();
+    const typesWithCng = { ...reference, vehicle_types: [...reference.vehicle_types!, { vehicle_type: "Buses",
+      fuel_type: "CNG", on_road: true, by_model_year: false, first_model_year: null, last_model_year: null }] };
+    render(<RecalculationInputs result={withMobile} reference={typesWithCng} settings={{}} saving={false} error={null}
+      onSave={onSave} />);
+    fireEvent.click(screen.getByRole("button", { name: /Recalculation inputs/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add vehicle group" }));
+    const group = screen.getByRole("group", { name: "Vehicle group 1" });
+    fireEvent.change(within(group).getByLabelText("Vehicle type (EPA)"), {
+      target: { value: "Medium- and Heavy-Duty Vehicles" } });
+    fireEvent.change(within(group).getByLabelText("Model year"), { target: { value: "201" } });
+    fireEvent.change(within(group).getByLabelText("Distance driven"), { target: { value: "100" } });
+    const save = screen.getByRole("button", { name: "Save and recalculate" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true); // "201" is not a year
+    fireEvent.change(within(group).getByLabelText("Vehicle type (EPA)"), { target: { value: "Buses" } });
+    expect(save.disabled).toBe(false);
+    fireEvent.click(save);
+    expect(onSave.mock.calls[0][0].vehicle_groups[0]).not.toHaveProperty("model_year");
+  });
+
   it("lets a lone non-road group leave the fuel blank", () => {
     const onSave = vi.fn();
     render(<RecalculationInputs result={withMobile} reference={reference} settings={{ vehicle_groups: [

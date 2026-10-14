@@ -3,7 +3,7 @@
   "file": "SC-08_scanned_bill_no_text_layer.pdf",
   "description": "Scanned bill with no text layer (OCR disabled locally): must halt as unreadable.",
   "expected_classification": null,
-  "expected_halt": "unreadable_document",
+  "expected_halt": "ocr_required",
   "document_fields": {},
   "records": []
 }
