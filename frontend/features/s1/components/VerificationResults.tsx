@@ -11,7 +11,10 @@ import type {
   VerificationRow,
   WorkingSpec,
 } from "../types/verification";
+import type { TeamMember } from "../types/engagement";
+import type { ResultLine } from "../types/verificationResults";
 import type { VerificationStore } from "../verification/verificationStore";
+import { VerificationWorkspace } from "./VerificationWorkspace";
 
 /**
  * Verification results (screen 6). Two tabs. The workpaper: every data point,
@@ -61,6 +64,9 @@ export function VerificationResults({
   store,
   materiality,
   inputs,
+  lines,
+  team = [],
+  signedInLogin,
 }: {
   rows: VerificationRow[];
   store: VerificationStore;
@@ -68,6 +74,10 @@ export function VerificationResults({
   materiality?: MaterialityFigures;
   /** Shown above the results table, e.g. the recalculation inputs. */
   inputs?: ReactNode;
+  /** The client's inventory lines, by facility: Results shows reported vs recomputed in three panes. */
+  lines?: ResultLine[];
+  team?: TeamMember[];
+  signedInLogin?: string;
 }) {
   const [tab, setTab] = useState<"results" | "findings">("results");
   const [findingFor, setFindingFor] = useState<VerificationRow | null>(null);
@@ -77,7 +87,11 @@ export function VerificationResults({
       <header className="s1-ws-header">
         <div className="s1-ws-header__id">
           <h1>Verification results</h1>
-          <span className="s1-muted">Every data point: reported, recomputed, and your position on each.</span>
+          <span className="s1-muted">
+            {lines
+              ? "What the client reported against what the evidence recomputes, down to the input that explains each difference."
+              : "Every data point: reported, recomputed, and your position on each."}
+          </span>
         </div>
         <div className="s1-ws-header__counts">
           <button className={`s1-ws-count${tab === "results" ? " is-on" : ""}`} type="button" onClick={() => setTab("results")}>
@@ -92,12 +106,16 @@ export function VerificationResults({
       {tab === "results" ? (
         <>
           {inputs}
-          <ResultsTab
-            rows={rows}
-            store={store}
-            materiality={materiality ?? materialityFromRows(rows)}
-            onRegister={setFindingFor}
-          />
+          {lines ? (
+            <VerificationWorkspace lines={lines} store={store} team={team} signedInLogin={signedInLogin} />
+          ) : (
+            <ResultsTab
+              rows={rows}
+              store={store}
+              materiality={materiality ?? materialityFromRows(rows)}
+              onRegister={setFindingFor}
+            />
+          )}
         </>
       ) : (
         <FindingsTab store={store} />
