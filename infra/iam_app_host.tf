@@ -1,7 +1,8 @@
 # Instance role for the app host (least privilege):
 #   ECR pull, ssm:GetParameter on /<env>/*, ses:SendEmail from the verified
-#   identity, CloudWatch Logs write, plus the AWS-managed SSM core policy
-#   required for Session Manager and SSM SendCommand from the deploy role.
+#   identity, CloudWatch Logs write, textract:AnalyzeDocument for scanned
+#   bills, plus the AWS-managed SSM core policy required for Session Manager
+#   and SSM SendCommand from the deploy role.
 
 data "aws_iam_policy_document" "ec2_assume" {
   statement {
@@ -71,6 +72,15 @@ data "aws_iam_policy_document" "app_host" {
       ["${aws_cloudwatch_log_group.app.arn}:*"],
       [for g in aws_cloudwatch_log_group.service : "${g.arn}:*"],
     )
+  }
+
+  # Scanned bills and photos (S1 parser, used only when TEXTRACT_ENABLED=true):
+  # synchronous AnalyzeDocument, one page image at a time. Textract has no
+  # resource-level permissions, so the resource is "*".
+  statement {
+    sid       = "TextractAnalyzeDocument"
+    actions   = ["textract:AnalyzeDocument"]
+    resources = ["*"]
   }
 
   # SES v2 SendEmail is authorized against both the identity and the configuration set.
