@@ -1772,6 +1772,12 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-pv__img { display: block; width: 100%; height: auto; }
 .s1-pv__mark { position: absolute; box-sizing: content-box; margin: -0.2rem 0 0 -0.2rem; padding: 0.2rem; border: 0.15rem solid var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 45%, transparent); border-radius: 0.2rem; pointer-events: none; }
 .s1-pv__note { font-size: var(--text-xs); margin: 0; }
+/* Every value read from the page: a faint box that selects its value when clicked. */
+/* Exactly the line's box (no padding), so the boxes of neighbouring lines never overlap. */
+.s1-pv__box { position: absolute; box-sizing: border-box; margin: 0; padding: 0; border: 0.08rem dashed var(--state-open-line); border-radius: 0.15rem; background: transparent; cursor: pointer; }
+.s1-pv__box:hover { border-style: solid; border-color: var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 35%, transparent); }
+.s1-pv__box:focus-visible { outline: var(--focus-ring); outline-offset: 0.1rem; }
+.s1-pv__box--accepted, .s1-pv__box--corrected { border-color: var(--state-resolved-line); }
 .s1-xr-pdf-open { display: inline-block; margin-top: var(--sp-2); font-size: var(--text-sm); }
 
 /* Matching (values) pane — document-to-text on the right */
