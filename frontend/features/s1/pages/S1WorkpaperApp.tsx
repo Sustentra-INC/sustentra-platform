@@ -14,7 +14,12 @@ import {
 } from "../api/s1Backend";
 import { ApiError } from "../../../lib/api";
 import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
-import { getRecalculationReference, inScopeFieldsFrom, type DataPointOption } from "../api/recalculation";
+import {
+  getRecalculationReference,
+  inScopeFieldsFrom,
+  lookupEgridZip,
+  type DataPointOption,
+} from "../api/recalculation";
 import {
   applyDocumentView,
   BACKEND_TYPE_IDS,
@@ -785,6 +790,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 : setInScopeFields
             }
             gridRegions={dataMode === "backend" ? gridRegions : undefined}
+            lookupZip={dataMode === "backend" ? lookupEgridZip : undefined}
             foundFacilities={foundFacilities}
           />
         ) : activeView.name === "upload" ? (

@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api import documents as documents_api
@@ -20,6 +20,7 @@ from backend.app.api.engagements import _visible
 from backend.app.api.s1_access import can_see, s1_reader
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
+from backend.app.reference import egrid_zip
 from backend.app.reference.emission_factor_loader import (
     DEFAULT_GWP_SET,
     GWP_SETS,
@@ -94,6 +95,19 @@ async def export_workpaper(
         headers={"Content-Disposition": f'attachment; filename="{filename}"',
                  "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
+
+
+@router.get("/reference/egrid-zip/{zip_code}")
+def egrid_zip_lookup(zip_code: str, user: CurrentUser = Depends(s1_reader)) -> dict:
+    """eGRID subregion(s) for a US ZIP code (EPA Power Profiler, eGRID2023): one is
+    definitive; several mean the facility's utility decides."""
+
+    if not re.fullmatch(r"\d{5}", zip_code):
+        raise HTTPException(status_code=422, detail="A ZIP code is 5 digits.")
+    subregions = egrid_zip.subregions_for_zip(zip_code)
+    if not subregions:
+        raise HTTPException(status_code=404, detail=f"ZIP code {zip_code} is not in the EPA lookup.")
+    return {"zip": zip_code, "subregions": subregions, "dataset": egrid_zip.DATASET}
 
 
 @router.get("/reference/recalculation")

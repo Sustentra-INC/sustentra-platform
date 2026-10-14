@@ -61,7 +61,15 @@ export interface RecalcCategory {
   steps: RecalcStep[];
   flags: string[];
   details: {
-    inputs?: { fuel: string; unit: string; quantity: number; documents: RecalcDocument[] }[];
+    inputs?: {
+      fuel: string;
+      unit: string;
+      quantity: number;
+      documents: RecalcDocument[];
+      /** Electricity: the facility's eGRID subregion and where it came from. */
+      grid_region?: string;
+      grid_region_source?: string | null;
+    }[];
     covered_mwh?: number;
     total_mwh?: number;
     coverage?: number;
@@ -245,6 +253,22 @@ export function getRecalculationReference(): Promise<RecalculationReference> {
   return api<RecalculationReference>("/reference/recalculation");
 }
 
+/** The ZIP code ending a US address ("Albany, NY 12207-1234" -> "12207"). A 5-digit number
+ *  elsewhere is a street number ("12345 Main St"), never a ZIP code. Same rule as the backend. */
+export function zipFromAddress(address: string | null | undefined): string | null {
+  const text = (address ?? "").split(/\s+/).filter(Boolean).join(" ");
+  const match = /(?<![\d-])(\d{5})(?:-\d{4})?\s*(?:,?\s*(?:USA|U\.S\.A\.|US|United States))?\s*$/i.exec(text);
+  return match ? match[1] : null;
+}
+
+/** eGRID subregions for a ZIP code (EPA Power Profiler, eGRID2023); [] when EPA does not list it. */
+export function lookupEgridZip(zip: string): Promise<string[]> {
+  return api<{ zip: string; subregions: string[] }>(`/reference/egrid-zip/${encodeURIComponent(zip)}`).then(
+    (body) => body.subregions,
+    () => []
+  );
+}
+
 // --- comparison → Verification Results row ---------------------------------------------
 
 /** Which calculation each reported data point comes from. */
@@ -301,6 +325,7 @@ const FLAG_NOTE: Record<string, string> = {
   model_year_older_than_table:
     "A vehicle older than the EPA table's first model year uses that first year's factor.",
   no_certificates_market_equals_location: "No certificates entered, so market-based equals location-based.",
+  grid_region_from_zip: "A facility's eGRID subregion came from its ZIP code (EPA Power Profiler, eGRID2023).",
   certificates_exceed_consumption: "Certificates exceed consumption; coverage was capped at 100%.",
   unit_converted: "Quantities were converted to the EPA factor's unit.",
   negative_refrigerant_emissions:
@@ -389,6 +414,11 @@ function sourceOf(category: RecalcCategory, line: RecalcLine, term?: string): st
   const input = category.details.inputs?.find((item) => item.fuel === line.key);
   if (!input) return undefined;
   const serviceType = term ? TERM_SERVICE[term.slice(0, 3)] : undefined;
+  const region = input.grid_region
+    ? ` · subregion ${input.grid_region}${input.grid_region_source?.startsWith("ZIP")
+      ? ` from ${input.grid_region_source.split(" (")[0]}`
+      : input.grid_region_source ? ` ${input.grid_region_source}` : ""}`
+    : "";
   return input.documents
     .filter((doc) => !serviceType || !doc.service_type || doc.service_type === serviceType)
     .map((doc) => {
@@ -396,7 +426,7 @@ function sourceOf(category: RecalcCategory, line: RecalcLine, term?: string): st
         ? ` (${Math.round(doc.share_in_period * 100)}% in period)` : "";
       return `${doc.record}${share}`;
     })
-    .join(" · ");
+    .join(" · ") + region;
 }
 
 function workingFor(c: RecalcComparison, result: Recalculation): WorkingSpec | undefined {

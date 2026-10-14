@@ -133,6 +133,11 @@ export function RecalculationInputs({
               ) : (
                 facilities.map((facility) => {
                   const ask = asks.find((a) => a.kind === "grid_region" && a.key === facility);
+                  // A ZIP code served by several subregions narrows the choice to those.
+                  const narrowed = ask?.options && ask.options.length < reference.egrid_subregions.length;
+                  const choices = narrowed
+                    ? reference.egrid_subregions.filter((r) => ask.options!.includes(r.egrid_subregion))
+                    : reference.egrid_subregions;
                   return (
                     <label key={facility} className="s1-rc__field">
                       <span>
@@ -141,7 +146,7 @@ export function RecalculationInputs({
                       </span>
                       <select value={draft.grid_regions?.[facility] ?? ""} onChange={(e) => setRegion(facility, e.target.value)}>
                         <option value="">Choose a subregion</option>
-                        {reference.egrid_subregions.map((r) => (
+                        {choices.map((r) => (
                           <option key={r.egrid_subregion} value={r.egrid_subregion}>
                             {r.egrid_subregion} · {r.name}
                           </option>

@@ -501,3 +501,38 @@ def test_out_of_scope_keys_are_validated() -> None:
         validate_out_of_scope(["scope9_total"])
     with pytest.raises(ValueError):
         validate_out_of_scope("scope1_total")
+
+
+# --- grid region from the facility's ZIP code (EPA Power Profiler) --------------------------
+def test_a_single_subregion_zip_sets_the_grid_region_and_says_so() -> None:
+    store = FakeStore()
+    store.add_document("BILL-A", "CT-S2-ELEC", [_elec(1200, "Facility A", "15 State Street, Albany, NY 12207")])
+    result = _service(store).recalculate(_engagement(), _own)
+    location = result["categories"]["purchased_electricity_location_based"]
+    assert location["lines"][0]["key"] == "Facility A" and "grid_region_from_zip" in location["flags"]
+    facility = location["details"]["inputs"][0]
+    assert facility["grid_region"] == "NYUP" and facility["grid_region_source"].startswith("ZIP 12207")
+    assert result["needs_input"] == []
+
+
+def test_a_street_number_is_not_taken_for_a_zip_code() -> None:
+    store = FakeStore()
+    store.add_document("BILL-D", "CT-S2-ELEC", [_elec(300, "Dallas Office", "12345 Main St")])
+    result = _service(store).recalculate(_engagement(), _own)
+    assert result["categories"]["purchased_electricity_location_based"] is None
+    ask = result["needs_input"][0]
+    assert ask["kind"] == "grid_region" and len(ask["options"]) == 28  # every subregion: nothing guessed
+
+
+def test_a_zip_with_several_subregions_asks_with_just_those() -> None:
+    store = FakeStore()
+    store.add_document("BILL-C", "CT-S2-ELEC", [_elec(500, "Facility C", "1 Main St, Ardsley, NY 10501")])
+    ask = _service(store).recalculate(_engagement(), _own)["needs_input"][0]
+    assert ask["kind"] == "grid_region" and ask["options"] == ["NYCW", "NYUP"]
+    assert "ZIP 10501 is served by NYCW or NYUP" in ask["message"]
+    # A reviewer's choice still wins over the ZIP code.
+    chosen = {"recalculation": {"grid_regions": {"Facility C": "NYUP"}}}
+    result = _service(store).recalculate(_engagement(**chosen), _own)
+    assert result["needs_input"] == []
+    source = result["categories"]["purchased_electricity_location_based"]["details"]["inputs"][0]["grid_region_source"]
+    assert source == "chosen under Recalculation inputs"

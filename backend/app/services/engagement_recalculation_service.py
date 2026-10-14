@@ -28,6 +28,7 @@ from typing import Any
 
 from backend.app.domain import fuel_units
 from backend.app.domain.refrigerants import find_refrigerant, mass_unit
+from backend.app.reference import egrid_zip
 from backend.app.reference.emission_factor_loader import (
     DEFAULT_GWP_SET,
     GWP_SETS,
@@ -491,7 +492,8 @@ class EngagementRecalculationService:
         stationary = self._stationary(records, inputs, period, needs_input, awaiting)
         mobile = self._mobile(records, inputs, period, needs_input, awaiting)
         bills: dict[str, list[dict[str, Any]]] = {}
-        electricity = self._electricity(records, inputs, period, needs_input, awaiting, bills)
+        region_sources: dict[str, str] = {}
+        electricity = self._electricity(records, inputs, period, needs_input, awaiting, bills, region_sources)
         not_counted: list[dict[str, Any]] = []
         fugitive = self._refrigerants(records, inputs, period, needs_input, awaiting, not_counted)
 
@@ -512,11 +514,16 @@ class EngagementRecalculationService:
                 electricity, certificates, self.reference, gwp_set=inputs.gwp_set)
             # Which reviewed bills each facility's MWh came from, as for the fuel categories.
             facility_inputs = [{"fuel": f.facility, "unit": "MWh", "quantity": f.consumption.value,
-                                "documents": bills.get(f.facility, [])} for f in electricity]
+                                "documents": bills.get(f.facility, []), "grid_region": f.egrid_subregion,
+                                "grid_region_source": region_sources.get(f.facility)} for f in electricity]
             for name in ("purchased_electricity_location_based", "purchased_electricity_market_based"):
                 part = categories[name]
                 if part is not None:
                     part.details["inputs"] = facility_inputs
+                    for line in part.lines:
+                        if (region_sources.get(line.key) or "").startswith("ZIP"):
+                            line.flags.append("grid_region_from_zip")
+                    part.flags = sorted({*part.flags, *(f for line in part.lines for f in line.flags)})
 
         totals = self._scope_totals(categories)
         incomplete = bool(needs_input or awaiting)
@@ -839,7 +846,7 @@ class EngagementRecalculationService:
     def _electricity(self, records: list[ReviewedRecord], inputs: RecalculationInputs,
                      period: tuple[date | None, date | None], needs_input: list[dict[str, Any]],
                      awaiting: list[dict[str, Any]], bills: dict[str, list[dict[str, Any]]] | None = None,
-                     ) -> list[calc.FacilityElectricity]:
+                     region_sources: dict[str, str] | None = None) -> list[calc.FacilityElectricity]:
         facilities: dict[str, dict[str, Any]] = {}
         for record in (r for r in records if r.canonical_type_id == ELECTRICITY):
             if not self._require_reviewed(record, ("activity_quantity",), awaiting):
@@ -858,27 +865,44 @@ class EngagementRecalculationService:
             key = setup["name"] if setup else " ".join(
                 str(record.best("facility_name") or record.best("service_address") or "Unnamed facility").split())
             entry = facilities.setdefault(key, {"mwh": 0.0, "documents": [], "address": record.best("service_address"),
-                                                "setup_region": (setup or {}).get("gridRegion")})
+                                                "setup_region": (setup or {}).get("gridRegion"),
+                                                "setup_address": (setup or {}).get("address")})
             entry["mwh"] += mwh
             entry["documents"].append({"document_id": record.document_id, "record": record.label,
                                        "quantity": quantity, "unit": unit, "share_in_period": prorate[0]})
         out: list[calc.FacilityElectricity] = []
         for key, entry in facilities.items():
-            # A choice on the results screen wins; otherwise the facility's region from Setup.
-            region = inputs.grid_regions.get(key) or entry.get("setup_region")
+            # A choice on the results screen wins, then the facility's region from Setup, then
+            # its ZIP code when EPA maps that ZIP code to a single subregion.
+            region = inputs.grid_regions.get(key)
+            source = "chosen under Recalculation inputs"
+            if not region and entry.get("setup_region"):
+                region, source = entry["setup_region"], "set in Setup"
             if region:
                 try:
                     self.reference.electricity(region)
                 except EmissionFactorNotFoundError:
                     region = None
+            zip_code = egrid_zip.zip_from_address(entry.get("setup_address")) or egrid_zip.zip_from_address(
+                entry.get("address"))
+            candidates = egrid_zip.subregions_for_zip(zip_code)
+            if not region and len(candidates) == 1:
+                region, source = candidates[0], f"ZIP {zip_code} ({egrid_zip.DATASET})"
             if not region:
+                where = f" ({entry['address']})" if entry.get("address") else ""
+                if len(candidates) > 1:
+                    message = (f"Choose the eGRID subregion for {key}{where}: ZIP {zip_code} is served by "
+                               f"{' or '.join(candidates)}. Choose by the facility's electric utility.")
+                else:
+                    message = f"Choose the eGRID subregion for {key}{where}."
                 needs_input.append({
-                    "kind": "grid_region", "key": key,
-                    "message": f"Choose the eGRID subregion for {key}"
-                               + (f" ({entry['address']})." if entry.get("address") else "."),
-                    "options": [r["egrid_subregion"] for r in self.reference.egrid_subregions()],
+                    "kind": "grid_region", "key": key, "message": message,
+                    "options": candidates if len(candidates) > 1 else [
+                        r["egrid_subregion"] for r in self.reference.egrid_subregions()],
                 })
                 continue
+            if region_sources is not None:
+                region_sources[key] = source
             if bills is not None:
                 bills[key] = entry["documents"]
             out.append(calc.FacilityElectricity(key, calc.Measure(entry["mwh"], "MWh",
