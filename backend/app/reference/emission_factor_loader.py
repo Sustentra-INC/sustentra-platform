@@ -12,6 +12,7 @@ Lookups never guess: an unknown fuel, subregion, vehicle or gas raises
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -33,6 +34,23 @@ EPA_UNIT_TO_CANONICAL = {"short ton": "short_ton", "scf": "scf", "gallon": "gal"
 # reference-data/config/libraries/emission_factor_library.json. The engagement chooses.
 GWP_SETS = ("AR5", "AR6")
 DEFAULT_GWP_SET = "AR5"
+
+# The gas groups reported separately (GHG Protocol / SB 253): CO2, CH4, N2O, HFCs, PFCs, SF6, NF3.
+GAS_GROUPS = ("CO2", "CH4", "N2O", "HFCs", "PFCs", "SF6", "NF3")
+
+
+def gas_group_of(name: str) -> str | None:
+    """The reported gas group of a single gas ("HFC-32" -> "HFCs"), or None when it is not one
+    of them (HCFCs and CFCs are Montreal Protocol gases; hydrocarbons are not reported)."""
+
+    low = " ".join(str(name).lower().split())
+    if low.startswith("hfc-") or low in ("chf3", "ch2f2"):
+        return "HFCs"
+    if low.startswith("pfc-") or low in ("cf4", "c2f6", "c3f8", "c-c4f8", "c4f10", "c5f12", "c6f14", "c10f18"):
+        return "PFCs"
+    return {"co2": "CO2", "carbon dioxide": "CO2", "ch4": "CH4", "methane": "CH4", "n2o": "N2O",
+            "nitrous oxide": "N2O", "sf6": "SF6", "sulfur hexafluoride": "SF6", "nf3": "NF3",
+            "nitrogen trifluoride": "NF3"}.get(low)
 
 
 class EmissionFactorNotFoundError(LookupError):
@@ -81,6 +99,43 @@ class EmissionFactorReference:
         if row is None:
             raise EmissionFactorNotFoundError(f"No GWP for {gas!r} in {self.dataset} (Tables 11-12).")
         return Factor(float(row["gwp_100yr"]), "kg CO2e per kg", _cite(self.dataset, row["source"]) + " (IPCC AR5)")
+
+    def gas_groups(self, gas: str) -> dict[str, dict[str, float]] | None:
+        """Which reported gas groups a gas or refrigerant blend is made of.
+
+        Returns {group: {"mass_fraction": f, "co2e_fraction": g}}: a pure gas is one group at
+        1.0; a Table 12 blend splits by its composition, mass by weight percent and CO2e by
+        each component's share of the blend's CO2e (weight percent x Table 11 GWP), so the
+        groups add up to the blend's own CO2e. Components outside the groups (HCFCs,
+        hydrocarbons) carry mass but no CO2e here, as in Table 12. None when the gas is not
+        in the Hub (its split is unknown).
+        """
+
+        row = self._gwp.get(_norm(gas))
+        if row is None:
+            group = gas_group_of(gas)
+            return {group: {"mass_fraction": 1.0, "co2e_fraction": 1.0}} if group else None
+        if "composition" not in row:  # Table 11: a single gas
+            group = gas_group_of(row["name"]) or gas_group_of(row["formula"])
+            return {group: {"mass_fraction": 1.0, "co2e_fraction": 1.0}} if group else None
+        parts: list[tuple[str, float]] = []
+        for part in str(row["composition"]).split(","):
+            match = re.match(r"\s*([\d.]+)\s*%\s*(.+?)\s*$", part)
+            if match:
+                parts.append((match.group(2), float(match.group(1)) / 100))
+        weights: dict[str, float] = {}
+        masses: dict[str, float] = {}
+        for component, fraction in parts:
+            group = gas_group_of(component)
+            if group is None:
+                continue
+            masses[group] = masses.get(group, 0.0) + fraction
+            component_row = self._gwp.get(_norm(component))
+            gwp = float(component_row["gwp_100yr"]) if component_row is not None else 0.0
+            weights[group] = weights.get(group, 0.0) + fraction * gwp
+        total = sum(weights.values())
+        return {group: {"mass_fraction": masses[group],
+                        "co2e_fraction": (weights[group] / total) if total else 0.0} for group in masses}
 
     # --- Scope 2 electricity ----------------------------------------------------------
     def egrid_subregions(self) -> list[dict[str, Any]]:

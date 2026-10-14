@@ -93,3 +93,33 @@ def test_matches_the_curated_stationary_library(ref) -> None:
         assert math.isclose(theirs["co2"]["value"], ours["per_energy"]["co2_kg_per_mmbtu"])
         assert math.isclose(theirs["ch4"]["value"], ours["per_energy"]["ch4_g_per_mmbtu"])
         assert math.isclose(theirs["n2o"]["value"], ours["per_energy"]["n2o_g_per_mmbtu"])
+
+
+# --- reported gas groups (HFCs, PFCs, SF6, NF3, CO2...) ------------------------------------
+@pytest.mark.parametrize(
+    ("gas", "groups"),
+    [
+        ("HFC-134a", {"HFCs": (1.0, 1.0)}),
+        ("R-410A", {"HFCs": (1.0, 1.0)}),  # 50% HFC-32 + 50% HFC-125
+        ("R-401A", {"HFCs": (0.13, 1.0)}),  # 87% HCFCs: mass but no CO2e in Table 12
+        ("SF6", {"SF6": (1.0, 1.0)}),
+        ("NF3", {"NF3": (1.0, 1.0)}),
+        ("PFC-14", {"PFCs": (1.0, 1.0)}),
+        ("CO2", {"CO2": (1.0, 1.0)}),
+    ],
+)
+def test_gas_groups_of_pure_gases_and_blends(ref, gas: str, groups: dict) -> None:
+    found = ref.gas_groups(gas)
+    assert {g: (round(v["mass_fraction"], 6), round(v["co2e_fraction"], 6)) for g, v in found.items()} == groups
+
+
+def test_a_blend_across_groups_splits_its_co2e_by_component_gwp(ref) -> None:
+    groups = ref.gas_groups("R-508A")  # 39% HFC-23 (12,400) + 61% PFC-116 (11,100); Table 12 GWP 11,607
+    assert groups["HFCs"]["mass_fraction"] == pytest.approx(0.39)
+    assert groups["HFCs"]["co2e_fraction"] == pytest.approx(0.39 * 12400 / 11607)
+    assert groups["PFCs"]["co2e_fraction"] == pytest.approx(0.61 * 11100 / 11607)
+
+
+def test_gases_without_a_known_split_say_so(ref) -> None:
+    assert ref.gas_groups("R-454B") is None  # not in the Hub: the reviewer gave its GWP
+    assert ref.gas_groups("HCFC-22") is None  # a Montreal Protocol gas, not reported
