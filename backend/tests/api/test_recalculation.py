@@ -60,6 +60,8 @@ def test_recalculation_for_my_engagement(act_as, wired: FakeStore) -> None:
     assert location["lines"][0]["key"] == "Facility A"
     assert round(location["total_co2e"], 2) == round(1200 * (240.99 + 0.011 * 28 + 0.001 * 265) / 2204.62, 2)
     assert body["gwp_set"] == "AR5" and body["tolerance_pct"] == 5.0
+    electricity = body["rollup"]["nodes"]["purchased_electricity_total"]
+    assert electricity["co2e_t"] == location["total_co2e"] and electricity["status"] == "complete"
 
 
 def test_other_org_and_signed_out_cannot_read(act_as, wired: FakeStore) -> None:
@@ -100,6 +102,10 @@ def test_reference_lists_the_input_choices(act_as) -> None:
             "by_model_year": True, "first_model_year": 1960, "last_model_year": 2022} in body["vehicle_types"]
     assert {"vehicle_type": "Industrial/Commercial Equipment", "fuel_type": "Diesel", "on_road": False,
             "by_model_year": False, "first_model_year": None, "last_model_year": None} in body["vehicle_types"]
+    layout = body["rollup_layout"]
+    assert (len(layout["sources"]), len(layout["nodes"]), len(layout["final_outputs"])) == (10, 37, 26)
+    assert [step["key"] for step in layout["steps"]] == ["step_1a", "step_1b", "step_2", "final_outputs"]
+    assert any(p["key"] == "purchased_cooling_total" and p["workbook_row"] == 50 for p in body["data_points"])
 
 
 def test_engagement_settings_validate_recalculation_inputs() -> None:

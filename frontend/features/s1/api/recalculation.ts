@@ -114,6 +114,8 @@ export interface RecalcNeedsInput {
   key: string;
   message: string;
   options?: string[];
+  /** The roll-up source the question holds open (absent from older results). */
+  category?: RollupSourceKey;
 }
 
 export interface RecalcAwaitingReview {
@@ -121,6 +123,8 @@ export interface RecalcAwaitingReview {
   record: string;
   canonical_type_id: string;
   fields: string[];
+  /** The roll-up source the record belongs to (absent from older results). */
+  category?: RollupSourceKey;
 }
 
 /** Why a reviewed record was left out of the numbers. */
@@ -194,6 +198,165 @@ export interface Recalculation {
   excluded?: ExcludedRecord[];
   not_recalculated: string[];
   documents_considered: number;
+  /** Category results to Scope 1, Scope 2 and inventory totals, then the final outputs.
+   *  Absent from results computed before the roll-up; fall back to `comparisons`. */
+  rollup?: Rollup;
+}
+
+// ---------------------------------------------------------------------------------------
+// Emissions roll-up (backend/app/services/emissions_rollup.py). Numbers are unrounded
+// metric tonnes; null means "not available", never 0.
+// ---------------------------------------------------------------------------------------
+export type GasGroup = "CO2" | "CH4" | "N2O" | "HFCs" | "PFCs" | "SF6" | "NF3" | "other";
+
+export type RollupSourceKey =
+  | "stationary_combustion"
+  | "mobile_combustion"
+  | "process_sources"
+  | "fugitive_refrigerants"
+  | "fugitive_purchased_gases"
+  | "agricultural_sources"
+  | "purchased_electricity"
+  | "purchased_steam"
+  | "purchased_heating"
+  | "purchased_cooling";
+
+/** calculated / partial carry numbers; confirmed_absent is a true 0 (the reviewer said the
+ *  company has none); the rest are null. */
+export type SourceStatus =
+  | "calculated"
+  | "partial"
+  | "awaiting_inputs"
+  | "confirmed_absent"
+  | "no_evidence"
+  | "not_built";
+
+export type NodeStatus = "complete" | "partial" | "not_available";
+
+export type MissingReason =
+  | "not_built"
+  | "no_evidence"
+  | "awaiting_inputs"
+  | "inputs_open"
+  | "vehicle_groups_missing"
+  | "gas_split_unknown";
+
+/** The comparison statuses plus incomplete (a partial total: never within tolerance) and
+ *  needs_unit (a per-gas row whose unit, t or t CO2e, is not set). */
+export type OutputStatus = ComparisonStatus | "incomplete" | "needs_unit";
+
+export interface GasAmount {
+  mass_t: number;
+  co2e_t: number;
+}
+
+export interface RollupCategory {
+  label: string;
+  scope: "scope1" | "scope2";
+  workbook_row: number;
+  built: boolean;
+  backend_categories: Partial<Record<"location" | "market", string>>;
+  gases: GasGroup[];
+  status: SourceStatus;
+  open_items: number;
+  gaps: { gap: MissingReason; gases: GasGroup[]; affects_total: boolean }[];
+  absent_reason: string | null;
+  flags: string[];
+  /** Fugitive refrigerants: each line split into gas groups. */
+  gas_split?: Record<string, { groups: Partial<Record<GasGroup, GasAmount>>; flags: string[] }>;
+}
+
+export interface RollupTerm {
+  /** "category:<source>" or "node:<node key>". */
+  ref: string;
+  co2e_t: number | null;
+  mass_t?: number | null;
+  status: SourceStatus | NodeStatus;
+}
+
+export interface RollupMissing {
+  source: RollupSourceKey;
+  reason: MissingReason;
+}
+
+export interface RollupNode {
+  step: "step_1a" | "step_1b" | "step_2";
+  label: string;
+  kind: "category" | "gas" | "total" | "memo";
+  scope: "scope1" | "scope2_location" | "scope2_market" | "inventory_location" | "inventory_market";
+  unit: string;
+  formula: string;
+  co2e_t: number | null;
+  /** Gas nodes only: tonnes of the gas itself. */
+  gas?: GasGroup;
+  mass_t?: number | null;
+  status: NodeStatus;
+  terms: RollupTerm[];
+  missing: RollupMissing[];
+  /** A partial value that can only grow (no negative contributions). */
+  lower_bound: boolean;
+  flags: string[];
+  /** Category nodes: the value split into gas groups. */
+  gases?: Partial<Record<GasGroup, GasAmount>>;
+  basis?: "structural_zero";
+}
+
+export interface RollupFinalOutput {
+  key: string;
+  label: string;
+  workbook_row: number;
+  requirement: "Required" | "Optional";
+  node: string;
+  measure: "co2e_t" | "mass_t" | null;
+  unit: "t CO2e" | "t" | null;
+  reported: number | null;
+  reported_unit: "t" | "t CO2e" | null;
+  recalculated: number | null;
+  difference: number | null;
+  difference_pct: number | null;
+  tolerance_pct: number;
+  within_threshold: boolean | null;
+  status: OutputStatus;
+  reason: string | null;
+  completeness: NodeStatus;
+  missing: RollupMissing[];
+  flags: string[];
+  /** Per-gas rows: both measures, until the reported unit is known. */
+  candidates?: { mass_t: number | null; co2e_t: number | null };
+  unit_hint?: "t" | "t CO2e" | null;
+}
+
+export interface RollupStep {
+  key: "step_1a" | "step_1b" | "step_2" | "final_outputs";
+  label: string;
+  order: number;
+  node_keys?: string[];
+  output_keys?: string[];
+}
+
+export interface Rollup {
+  version: number;
+  gwp_set: string;
+  tolerance_pct: number;
+  gas_groups: GasGroup[];
+  steps: RollupStep[];
+  categories: Record<RollupSourceKey, RollupCategory>;
+  nodes: Record<string, RollupNode>;
+  final_outputs: RollupFinalOutput[];
+  /** Each total against the sum of its gases, and each inventory total against its scopes. */
+  checks: { key: string; total: number; sum: number; ok: boolean }[];
+}
+
+/** The roll-up's structure with no values (GET /v1/reference/recalculation). */
+export interface RollupLayout {
+  version: number;
+  steps: RollupStep[];
+  sources: { key: RollupSourceKey; label: string; scope: "scope1" | "scope2"; workbook_row: number; built: boolean;
+    gases: GasGroup[] }[];
+  nodes: { key: string; step: RollupNode["step"]; label: string; unit: string; kind: RollupNode["kind"];
+    scope: RollupNode["scope"]; gas: GasGroup | null; formula: string; terms: string[]; structural_zero: boolean }[];
+  final_outputs: { key: string; label: string; workbook_row: number; requirement: "Required" | "Optional";
+    node: string; default_measure: "co2e_t" | "mass_t" | null; unit_settable: boolean }[];
 }
 
 /** A vehicle type with CH4/N2O factors: on-road (Tables 3-4) or non-road (Table 5). */
@@ -206,7 +369,7 @@ export interface VehicleTypeOption {
   last_model_year: number | null;
 }
 
-/** A reported data point in the GHG Required Data workbook (rows 22-49). */
+/** A reported data point in the GHG Required Data workbook (rows 22-50). */
 export interface DataPointOption {
   key: string;
   label: string;
@@ -229,6 +392,8 @@ export interface RecalculationReference {
   reported_data_points: { key: string; label: string; workbook_row: number; unit: string }[];
   /** Absent from an API that predates the in-scope list. */
   data_points?: DataPointOption[];
+  /** Absent from an API that predates the roll-up. */
+  rollup_layout?: RollupLayout;
 }
 
 const CHECKED_BY: Record<DataPointOption["check"], string> = {

@@ -21,6 +21,7 @@ engagement:
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
@@ -37,6 +38,7 @@ from backend.app.reference.emission_factor_loader import (
     default_emission_factor_reference,
 )
 from backend.app.services import emissions_calculator as calc
+from backend.app.services import emissions_rollup as rollup
 from backend.app.services.refrigerant_extractor import DISPOSAL, INSTALLATION, service_type_of
 
 STATIONARY = "CT-S1-FUELQTY"
@@ -86,7 +88,7 @@ DATA_POINTS: tuple[tuple[str, str, int, str], ...] = (
 )
 DATA_POINT_KEYS = frozenset(key for key, *_ in DATA_POINTS)
 
-# Every reported data point in the workbook's "Data from summary documents" (rows 22-49),
+# Every reported data point in the workbook's "Data from summary documents" (rows 22-50),
 # for Setup's in-scope list: (key, label, row, unit, layer, Required/Optional, how it is
 # checked). "recalculated" rows are in DATA_POINTS; the others are listed, not compared.
 DATA_POINT_CATALOGUE: tuple[tuple[str, str, int, str, str, str, str], ...] = (
@@ -122,6 +124,8 @@ DATA_POINT_CATALOGUE: tuple[tuple[str, str, int, str, str, str, str], ...] = (
      "not_recalculated"),
     ("purchased_heating_total", "Indirect emissions from purchased heating", 49, "t CO2e", "scope2", "Optional",
      "not_recalculated"),
+    ("purchased_cooling_total", "Indirect emissions from purchased cooling", 50, "t CO2e", "scope2", "Optional",
+     "not_recalculated"),
 )
 CATALOGUE_KEYS = frozenset(key for key, *_ in DATA_POINT_CATALOGUE)
 
@@ -155,6 +159,10 @@ class RecalculationInputs:
     # Mobile CH4/N2O (workbook Eq 4 / Eq 5): [{fuel, vehicle_type, factor_fuel_type, on_road,
     # model_year?, distance?, distance_unit?, fuel_quantity?, fuel_unit?, label?}]
     vehicle_groups: list[dict[str, Any]] = field(default_factory=list)
+    # Roll-up source -> the reviewer's reason the company has no such source (a true 0).
+    absent_sources: dict[str, str] = field(default_factory=dict)
+    # Per-gas data point -> the unit the company reported it in ("t" of gas or "t CO2e").
+    reported_units: dict[str, str] = field(default_factory=dict)
 
 
 def validate_recalculation_settings(value: Any) -> None:
@@ -163,7 +171,7 @@ def validate_recalculation_settings(value: Any) -> None:
     if not isinstance(value, dict):
         raise ValueError("recalculation must be an object")
     unknown = set(value) - {"gwp_set", "grid_regions", "fuel_choices", "certificates", "reported",
-                            "refrigerant_gwps", "vehicle_groups"}
+                            "refrigerant_gwps", "vehicle_groups", "absent_sources", "reported_units"}
     if unknown:
         raise ValueError(f"unknown recalculation settings: {', '.join(sorted(unknown))}")
     if "gwp_set" in value and value["gwp_set"] not in GWP_SETS:
@@ -189,10 +197,26 @@ def validate_recalculation_settings(value: Any) -> None:
     if not isinstance(reported, dict):
         raise ValueError("reported must be an object")
     for key, number in reported.items():
-        if key not in DATA_POINT_KEYS:
+        if key not in rollup.FINAL_OUTPUT_KEYS:
             raise ValueError(f"unknown reported data point: {key}")
-        if number is not None and not isinstance(number, (int, float)):
-            raise ValueError(f"reported {key} must be a number")
+        if number is not None and (not isinstance(number, (int, float)) or isinstance(number, bool) or number < 0):
+            raise ValueError(f"reported {key} must be a number of 0 or more")
+    absent = value.get("absent_sources", {})
+    if not isinstance(absent, dict):
+        raise ValueError("absent_sources must be an object")
+    for key, reason in absent.items():
+        if key not in rollup.SOURCE_KEYS:
+            raise ValueError(f"unknown emission source: {key}")
+        if not isinstance(reason, str) or not reason.strip() or len(reason) > 500:
+            raise ValueError(f"absent_sources {key} needs a reason of at most 500 characters")
+    units = value.get("reported_units", {})
+    if not isinstance(units, dict):
+        raise ValueError("reported_units must be an object")
+    for key, unit in units.items():
+        if key not in rollup.UNIT_KEYS:
+            raise ValueError(f"reported_units does not apply to {key}")
+        if unit not in ("t", "t CO2e"):
+            raise ValueError(f"reported_units {key} must be t or t CO2e")
 
 
 VEHICLE_GROUP_KEYS = {"fuel", "vehicle_type", "factor_fuel_type", "on_road", "model_year", "distance",
@@ -243,6 +267,8 @@ def parse_inputs(settings: dict[str, Any] | None) -> RecalculationInputs:
         reported={k: float(v) for k, v in (raw.get("reported") or {}).items() if v is not None},
         refrigerant_gwps={k: float(v) for k, v in (raw.get("refrigerant_gwps") or {}).items()},
         vehicle_groups=[dict(g) for g in raw.get("vehicle_groups") or []],
+        absent_sources={k: str(v) for k, v in (raw.get("absent_sources") or {}).items()},
+        reported_units={k: str(v) for k, v in (raw.get("reported_units") or {}).items()},
     )
 
 
@@ -489,13 +515,27 @@ class EngagementRecalculationService:
 
         needs_input: list[dict[str, Any]] = []
         awaiting: list[dict[str, Any]] = []
+
+        def tag(source: str, asked: int, waiting: int) -> None:
+            """The roll-up source each open item belongs to (it marks only that source partial)."""
+            for item in needs_input[asked:] + awaiting[waiting:]:
+                item.setdefault("category", source)
+
+        mark = (len(needs_input), len(awaiting))
         stationary = self._stationary(records, inputs, period, needs_input, awaiting)
+        tag("stationary_combustion", *mark)
+        mark = (len(needs_input), len(awaiting))
         mobile = self._mobile(records, inputs, period, needs_input, awaiting)
+        tag("mobile_combustion", *mark)
         bills: dict[str, list[dict[str, Any]]] = {}
         region_sources: dict[str, str] = {}
+        mark = (len(needs_input), len(awaiting))
         electricity = self._electricity(records, inputs, period, needs_input, awaiting, bills, region_sources)
+        tag("purchased_electricity", *mark)
         not_counted: list[dict[str, Any]] = []
+        mark = (len(needs_input), len(awaiting))
         fugitive = self._refrigerants(records, inputs, period, needs_input, awaiting, not_counted)
+        tag("fugitive_refrigerants", *mark)
 
         categories: dict[str, calc.CategoryResult | None] = {
             "stationary_combustion": stationary,
@@ -528,6 +568,8 @@ class EngagementRecalculationService:
         totals = self._scope_totals(categories)
         incomplete = bool(needs_input or awaiting)
         tolerance = materiality_tolerance(engagement.get("settings"))
+        not_in_scope = out_of_scope(engagement.get("settings"))
+        open_items = Counter(str(item.get("category")) for item in needs_input + awaiting)
         return {
             "engagement_id": engagement_id,
             "gwp_set": inputs.gwp_set,
@@ -536,14 +578,17 @@ class EngagementRecalculationService:
             "categories": {k: (v.to_dict() if v is not None else None) for k, v in categories.items()},
             "scope_totals": totals,
             "tolerance_pct": tolerance,
-            "comparisons": self._comparisons(inputs, totals, categories, incomplete, tolerance,
-                                             out_of_scope(engagement.get("settings"))),
+            "comparisons": self._comparisons(inputs, totals, categories, incomplete, tolerance, not_in_scope),
             "needs_input": needs_input,
             "awaiting_review": awaiting,
             "excluded": set_aside + self._outside_period(records, period) + not_counted,
             "not_recalculated": ["Scope 1 fugitive sources other than refrigerants and fire suppression",
                                  "Scope 1 process sources", "Scope 2 steam, heat and cooling"],
             "documents_considered": len({r.document_id for r in records}),
+            "rollup": rollup.build_rollup(categories, open_items=open_items, absent=inputs.absent_sources,
+                                          reported=inputs.reported, reported_units=inputs.reported_units,
+                                          out_of_scope=not_in_scope, tolerance=tolerance, gwp_set=inputs.gwp_set,
+                                          ref=self.reference),
         }
 
     @staticmethod

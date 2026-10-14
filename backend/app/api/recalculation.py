@@ -26,7 +26,7 @@ from backend.app.reference.emission_factor_loader import (
     GWP_SETS,
     default_emission_factor_reference,
 )
-from backend.app.services import workpaper_export_service, workpaper_item_service
+from backend.app.services import emissions_rollup, workpaper_export_service, workpaper_item_service
 from backend.app.services.audit_log import write_audit_event
 from backend.app.services.engagement_recalculation_service import (
     DATA_POINT_CATALOGUE,
@@ -112,7 +112,8 @@ def egrid_zip_lookup(zip_code: str, user: CurrentUser = Depends(s1_reader)) -> d
 
 @router.get("/reference/recalculation")
 def recalculation_reference(user: CurrentUser = Depends(s1_reader)) -> dict:
-    """Choices for the recalculation inputs: grid regions, EPA fuels, vehicle types, GWP sets, data points."""
+    """Choices for the recalculation inputs (grid regions, EPA fuels, vehicle types, GWP sets, data
+    points) and the roll-up layout."""
 
     ref = default_emission_factor_reference()
     return {
@@ -132,4 +133,6 @@ def recalculation_reference(user: CurrentUser = Depends(s1_reader)) -> dict:
              "requirement": requirement, "check": check}
             for key, label, row, unit, layer, requirement, check in DATA_POINT_CATALOGUE
         ],
+        # The emissions roll-up's structure (no values): sources, Steps 1a/1b/2 and the final outputs.
+        "rollup_layout": emissions_rollup.rollup_layout(),
     }
