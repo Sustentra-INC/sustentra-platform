@@ -464,3 +464,65 @@ def test_a_fuel_log_site_column_is_each_lines_facility(targets: list[dict]) -> N
         "Richmond Refinery", 450)
     assert (second["facility_name"]["normalized_value"], second["activity_quantity"]["normalized_value"]) == (
         "Albany Plant", 380)
+
+
+# --- values that wrap inside a table cell ----------------------------------------------------
+def _measured_output(lines: list[tuple[str, float, float, float, float]]) -> dict[str, Any]:
+    """parser_output with measured geometry: (text, left, top, width, height)."""
+    blocks = [{"block_id": f"w{i}", "page_number": 1, "text": text, "confidence": None,
+               "bounding_box": {"left": left, "top": top, "width": width, "height": height},
+               "source_reference_id": None} for i, (text, left, top, width, height) in enumerate(lines)]
+    return {"document_id": "DOC-WRAP", "pages": [], "text_blocks": blocks, "tables": [], "key_value_pairs": [],
+            "source_references": []}
+
+
+# The text-PDF reader's layout of a two-column label/value table (National Fuel Gas sample,
+# EV-NG-2023-001): the first line of a wrapped value shares the label's row, the second does not.
+PDF_WRAPPED = [
+    ("Natural Gas Statement", 0.147, 0.135, 0.38, 0.014),
+    ("Customer", 0.077, 0.196, 0.061, 0.013), ("Anheuser-Busch Baldwinsville", 0.293, 0.190, 0.181, 0.013),
+    ("Service Address", 0.509, 0.196, 0.099, 0.013), ("4797 River Road, Baldwinsville,", 0.725, 0.190, 0.186, 0.013),
+    ("Brewery", 0.293, 0.203, 0.050, 0.013), ("NY 13027", 0.725, 0.203, 0.054, 0.013),
+    ("Account Number", 0.077, 0.219, 0.106, 0.013), ("ACC-2023-BWV-001", 0.293, 0.219, 0.112, 0.013),
+    ("Bill Number", 0.509, 0.219, 0.076, 0.013), ("NFG-23-BWV-0001", 0.725, 0.219, 0.107, 0.013),
+    ("Service Period", 0.077, 0.237, 0.090, 0.013), ("Jan 1, 2023 to Jan 31, 2023", 0.293, 0.237, 0.150, 0.013),
+    ("Usage", 0.077, 0.30, 0.05, 0.013), ("32,400 MMBtu", 0.293, 0.30, 0.09, 0.013),
+]
+
+
+def test_a_wrapped_value_is_read_whole_and_the_next_field_keeps_its_own(targets: list[dict]) -> None:
+    fields = _by_field(StationaryCombustionExtractor().extract(_measured_output(PDF_WRAPPED), targets, "EV-1").candidates)
+    assert fields["facility_name"]["normalized_value"] == "Anheuser-Busch Baldwinsville Brewery"
+    assert fields["service_address"]["normalized_value"] == "4797 River Road, Baldwinsville, NY 13027"
+    # "Brewery" is nearer "Customer" than "Account Number", so it is not the account's
+    assert fields["account_number"]["normalized_value"] == "ACC-2023-BWV-001"
+    # the highlight covers both lines of the name
+    box = fields["facility_name"]["source_reference"]["bounding_box"]
+    assert box["y"] == pytest.approx(0.190) and box["height"] == pytest.approx(0.026)
+
+
+def test_a_scanned_bills_wrapped_values_are_read_from_textract() -> None:
+    from pathlib import Path
+
+    from backend.app.services.parser_service import ParserService
+    from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
+
+    # Live AnalyzeDocument (FORMS, TABLES) response for the scanned National Fuel Gas bill
+    # (s1-test-suite/raw_documents/ocr_png/EV-NG-2023-001/page-1.png). On the scan each
+    # wrapped value sits centered on its label: neither line shares the label's row.
+    saved = Path(__file__).parent / "data" / "textract_scanned_gas_bill.json"
+    parser_output = ParserService().parse_textract_json(saved, "DOC-SCAN", "RUN-1")
+    assert PipelineOrchestrationService._fuel_content_confirmed(
+        {"status": "low_confidence", "candidate_matches": [{"canonical_type_id": "CT-S1-FUELQTY", "confidence": 0.9}]},
+        parser_output) == "CT-S1-FUELQTY"
+    result = ExtractionService().extract({"parser_output": parser_output, "evidence_id": "EV-SCAN",
+                                          "extraction_targets": ExtractionTargetService()
+                                          .get_targets_for_canonical_type("CT-S1-FUELQTY")})
+    values = {i["field_name"]: i["normalized_value"] for i in result["items"]}
+    assert values["facility_name"] == "Anheuser-Busch Baldwinsville Brewery"
+    assert values["service_address"] == "4797 River Road, Baldwinsville, NY 13027"
+    assert values["account_number"] == "ACC-2023-BWV-001"
+    assert (values["activity_quantity"], values["activity_unit"]) == (32400, "MMBtu")
+    assert (values["service_period_start"], values["service_period_end"]) == ("2023-01-01", "2023-01-31")
+    boxed = [i for i in result["items"] if i["normalized_value"] is not None]
+    assert all(i["source_reference"]["bounding_box"] for i in boxed)  # every value can be highlighted on the scan
