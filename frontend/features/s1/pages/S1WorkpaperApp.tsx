@@ -57,6 +57,7 @@ import { BackendDashboard } from "../components/BackendDashboard";
 import { OutputScreen } from "../components/OutputScreen";
 import { coverageRules } from "../fixtures/verification/coverageRules";
 import { verificationRows } from "../fixtures/verification/verificationResults";
+import { seedExaminations, verificationLines } from "../fixtures/verification/resultsDataset";
 import { useVerificationStore } from "../verification/verificationStore";
 import { useWorkpaperSync } from "../verification/useWorkpaperSync";
 import { StateIndicator } from "../components/StateIndicator";
@@ -127,6 +128,9 @@ const EMPTY_ENGAGEMENT: EngagementConfig = {
   scopeBoundaryStatement: "",
 };
 
+/** The demo's signed-in verifier, who writes the notes saved in fixture mode. */
+const DEMO_ACTOR = engagementConfig.engagementTeam?.find((m) => m.login === engagementConfig.signedInLogin)?.name;
+
 export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const dataMode = process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture" ? "fixture" : "backend";
   // Demo-only: rehydrate the fixture state from localStorage once, so a refresh
@@ -167,9 +171,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [sessionEnded, setSessionEnded] = useState(false);
   const requests = useRequestsStore(dataMode === "backend" ? [] : persisted?.asks ?? seedAsks);
   const verification = useVerificationStore(
-    persisted?.examinations ?? {},
+    persisted?.examinations ?? (dataMode === "fixture" ? seedExaminations : {}),
     persisted?.findings ?? [],
-    dataMode === "backend" ? user?.firstName ?? user?.email : undefined
+    dataMode === "backend" ? user?.firstName ?? user?.email : DEMO_ACTOR
   );
   const [sessionUploads, setSessionUploads] = useState<string[]>(persisted?.sessionUploads ?? []);
   // Engagement config is editable on Setup; facilities here feed the Workspace.
@@ -860,7 +864,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               onError={handleSessionEnded}
             />
           ) : (
-            <VerificationResults rows={verificationRows} store={verification} />
+            <VerificationResults
+              rows={verificationRows}
+              lines={verificationLines}
+              store={verification}
+              team={engagement.engagementTeam ?? []}
+              signedInLogin={engagement.signedInLogin}
+            />
           )
         ) : activeView.name === "output" ? (
           dataMode === "backend" ? (

@@ -16,6 +16,11 @@ export interface VerificationStore {
   setExaminationState: (dataPointId: string, state: ExaminationState) => void;
   setNextAction: (dataPointId: string, next: NextActionWith) => void;
   registerFinding: (finding: Omit<Finding, "id">) => Finding;
+  /** Record examination on a facility row: the examiner, now, and an optional note. */
+  recordExamination: (key: string, examiner: { name: string; login?: string }, note?: string) => void;
+  clearExamination: (key: string) => void;
+  /** A note on a facility row; it does not count as examination. */
+  addNote: (key: string, text: string) => void;
   /** Replace everything with what was loaded from the backend (an engagement was opened). */
   replaceAll: (examinations: Record<string, Examination>, findings: Finding[]) => void;
 }
@@ -64,10 +69,42 @@ export function useVerificationStore(
     return created;
   }, [actorName]);
 
+  const recordExamination = useCallback((key: string, examiner: { name: string; login?: string }, note?: string) => {
+    patch(key, {
+      examinationState: "examined_no_exceptions",
+      examinedBy: examiner.name,
+      examinedByLogin: examiner.login,
+      examinedAt: new Date().toISOString(),
+      note: note?.trim() || undefined,
+    });
+  }, []);
+
+  const clearExamination = useCallback((key: string) => {
+    patch(key, { examinationState: "not_examined", examinedBy: undefined, examinedByLogin: undefined, examinedAt: undefined, note: undefined });
+  }, []);
+
+  const addNote = useCallback((key: string, text: string) => {
+    setExaminations((cur) => {
+      const existing = cur[key];
+      return {
+        ...cur,
+        [key]: {
+          ...existing,
+          examinationState: existing?.examinationState ?? "not_examined",
+          nextActionWith: existing?.nextActionWith ?? "none",
+          notes: [...(existing?.notes ?? []), { text: text.trim(), by: actorName, at: new Date().toISOString() }],
+        },
+      };
+    });
+  }, [actorName]);
+
   const replaceAll = useCallback((nextExaminations: Record<string, Examination>, nextFindings: Finding[]) => {
     setExaminations(nextExaminations);
     setFindings(nextFindings);
   }, []);
 
-  return { examinations, findings, setExaminationState, setNextAction, registerFinding, replaceAll };
+  return {
+    examinations, findings, setExaminationState, setNextAction, registerFinding, recordExamination, clearExamination, addNote,
+    replaceAll,
+  };
 }

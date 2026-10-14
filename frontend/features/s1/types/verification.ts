@@ -76,6 +76,19 @@ export type NextActionWith = "me" | "client" | "none";
 export interface Examination {
   examinationState: ExaminationState;
   nextActionWith: NextActionWith;
+  /** Record examination (Verification results): who examined a facility row, and when. */
+  examinedBy?: string;
+  examinedByLogin?: string;
+  examinedAt?: string;
+  note?: string;
+  /** Verifier notes on the row: not an examination, not evidence. */
+  notes?: VerifierNote[];
+}
+
+export interface VerifierNote {
+  text: string;
+  by?: string;
+  at: string;
 }
 
 export interface Finding {
