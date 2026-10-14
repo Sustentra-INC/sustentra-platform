@@ -15,10 +15,12 @@ import {
 import { ApiError } from "../../../lib/api";
 import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
 import {
+  getRecalculation,
   getRecalculationReference,
   inScopeFieldsFrom,
   lookupEgridZip,
   type DataPointOption,
+  type QualityCheck,
 } from "../api/recalculation";
 import {
   applyDocumentView,
@@ -674,6 +676,27 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         : evidenceItems,
     [dataMode, evidenceItems, facts, documentDecisions, engagement.facilities]
   );
+  // The data quality checks behind the Evidence screen's Issue column (backend mode), fetched
+  // again when the documents or the reviewer's decisions change.
+  const [qualityChecks, setQualityChecks] = useState<QualityCheck[] | undefined>(undefined);
+  const evidenceSignature = useMemo(
+    () => evidenceView.map((e) => `${e.documentId}:${e.processingState}:${e.disposition}:${e.relationships.length}`).join("|"),
+    [evidenceView]
+  );
+  useEffect(() => {
+    if (dataMode !== "backend" || activeView.name !== "evidence" || !engagement.engagementId) return;
+    let live = true;
+    getRecalculation(engagement.engagementId)
+      .then((result) => {
+        if (live) setQualityChecks(result.quality_checks);
+      })
+      .catch(() => {
+        // The Issue column then shows the document's own issues only.
+      });
+    return () => {
+      live = false;
+    };
+  }, [dataMode, activeView.name, engagement.engagementId, evidenceSignature]);
   const reviewValuesView = useMemo(() => {
     if (dataMode !== "backend") return reviewValues;
     const byId = new Map(evidenceView.map((item) => [item.documentId, item]));
@@ -869,6 +892,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             backendError={backendError}
             writesEnabled
             typeOptions={dataMode === "backend" ? Object.keys(BACKEND_TYPE_IDS) : undefined}
+            qualityChecks={qualityChecks}
           />
         ) : activeView.name === "extraction" ? (
           <ExtractionReview

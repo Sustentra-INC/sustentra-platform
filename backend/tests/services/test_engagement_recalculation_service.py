@@ -633,3 +633,22 @@ def test_roll_up_settings_are_validated() -> None:
                 {"reported": {"scope1_total": -1}}, {"reported": {"scope1_total": True}}):
         with pytest.raises(ValueError):
             validate_recalculation_settings(bad)
+
+
+# --- data quality checks ---------------------------------------------------------------------
+def test_quality_checks_name_the_documents_a_reviewer_should_look_at() -> None:
+    store = _workbook_example_store()  # Facility A: two half-year bills; Facility B: one annual bill
+    store.add_document("BILL-B-Q1", "CT-S2-ELEC", [_elec(96, "Facility B", "Philadelphia, PA", "2025-01-01", "2025-03-31")])
+    store.add_document("GAS-JAN", "CT-S1-FUELQTY", [_gas(1000)])
+    store.add_document("GAS-JAN-COPY", "CT-S1-FUELQTY", [_gas(1000)])
+    result = _service(store).recalculate(_engagement(), _own)
+    found = {(c["check"], c["trigger"]): c for c in result["quality_checks"]}
+    overlap = found[("Q-004", "overlap_same_source_different_document_id")]
+    assert overlap["documents"] == ["BILL-B1", "BILL-B-Q1"] and overlap["facility"] == "Facility B"
+    assert found[("Q-003", "same_document_reuploaded_with_different_file_name")]["documents"] == ["GAS-JAN", "GAS-JAN-COPY"]
+    gas_gap = found[("Q-001", "missing_month")]
+    assert gas_gap["category"] == "stationary_combustion" and gas_gap["detail"]["missing_months"][0] == "Feb 2025"
+    assert not any(c["facility"] == "Facility A" for c in result["quality_checks"])  # two half-year bills: complete
+    # Marking the copy as a duplicate takes it out of the numbers and out of the checks.
+    decided = _service(store).recalculate(_engagement(), _own, decisions={"GAS-JAN-COPY": {"relationships": [{"kind": "duplicate", "otherDocumentId": "GAS-JAN"}]}})
+    assert not any(c["check"] == "Q-003" for c in decided["quality_checks"])
