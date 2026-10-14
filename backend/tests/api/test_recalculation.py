@@ -130,8 +130,19 @@ def test_export_is_an_excel_workpaper_of_the_same_numbers(act_as, wired: FakeSto
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     assert response.headers["content-disposition"].startswith("attachment;")
     book = load_workbook(io.BytesIO(response.content))
-    assert book.sheetnames == ["Summary", "Data points", "Working", "Evidence", "Reviewed values", "Requests",
-                               "Findings", "Left out"]
+    assert book.sheetnames == ["Summary", "Final outputs", "Roll-up", "Categories", "Data points", "Working",
+                               "Evidence", "Reviewed values", "Requests", "Findings", "Left out"]
+    outputs = {row[1]: row for row in book["Final outputs"].iter_rows(min_row=2, values_only=True)}
+    assert len(outputs) == 26  # row 29 twice: location- and market-based
+    electricity = outputs["Indirect emissions from purchased electricity (location-based)"]
+    assert electricity[5] == pytest.approx(1200 * (240.99 + 0.011 * 28 + 0.001 * 265) / 2204.62, rel=1e-3)
+    assert outputs["Indirect emissions from purchased steam"][9] == "Out of scope (not recalculated yet)"
+    rollup_lines = [row[1] for row in book["Roll-up"].iter_rows(min_row=2, values_only=True)]
+    assert len(rollup_lines) == 37 and "Scope 1 (Total)" in rollup_lines
+    categories = {row[0]: row for row in book["Categories"].iter_rows(min_row=2, values_only=True)}
+    assert categories["Purchased electricity"][3] == "Calculated" and categories["Process sources"][3] == "Not built yet"
+    summary = dict(book["Summary"].iter_rows(min_row=2, values_only=True))
+    assert str(summary["Inventory total, location-based (t CO2e)"]).endswith("(partial)")
     location = next(row for row in book["Data points"].iter_rows(values_only=True)
                     if row[1] == "Scope 2 (Total), location-based")
     assert round(location[4], 2) == round(1200 * (240.99 + 0.011 * 28 + 0.001 * 265) / 2204.62, 2)
