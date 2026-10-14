@@ -97,7 +97,8 @@ def test_reference_lists_the_input_choices(act_as) -> None:
             "unit": "t CO2e", "layer": "scope1", "requirement": "Optional", "check": "recalculated"} in body["data_points"]
     assert {"key": "purchased_steam_total", "label": "Indirect emissions from purchased steam", "workbook_row": 48,
             "unit": "t CO2e", "layer": "scope2", "requirement": "Optional",
-            "check": "not_recalculated"} in body["data_points"]
+            "check": "recalculated"} in body["data_points"]
+    assert next(p for p in body["data_points"] if p["key"] == "purchased_cooling_total")["check"] == "not_recalculated"
     assert {"vehicle_type": "Medium- and Heavy-Duty Vehicles", "fuel_type": "Diesel", "on_road": True,
             "by_model_year": True, "first_model_year": 1960, "last_model_year": 2022} in body["vehicle_types"]
     assert {"vehicle_type": "Industrial/Commercial Equipment", "fuel_type": "Diesel", "on_road": False,
@@ -136,7 +137,7 @@ def test_export_is_an_excel_workpaper_of_the_same_numbers(act_as, wired: FakeSto
     assert len(outputs) == 26  # row 29 twice: location- and market-based
     electricity = outputs["Indirect emissions from purchased electricity (location-based)"]
     assert electricity[5] == pytest.approx(1200 * (240.99 + 0.011 * 28 + 0.001 * 265) / 2204.62, rel=1e-3)
-    assert outputs["Indirect emissions from purchased steam"][9] == "Out of scope (not recalculated yet)"
+    assert outputs["Indirect emissions from purchased cooling"][9] == "Out of scope (not recalculated yet)"
     rollup_lines = [row[1] for row in book["Roll-up"].iter_rows(min_row=2, values_only=True)]
     assert len(rollup_lines) == 37 and "Scope 1 (Total)" in rollup_lines
     categories = {row[0]: row for row in book["Categories"].iter_rows(min_row=2, values_only=True)}

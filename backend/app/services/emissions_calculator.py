@@ -94,6 +94,15 @@ class MobileFuel:
 
 
 @dataclass
+class FacilityThermal:
+    """Purchased steam or heat at one facility, in MMBtu delivered."""
+
+    facility: str
+    energy: Measure  # MMBtu (or another energy unit)
+    factors: dict[str, Factor] | None = None  # a supplier-specific factor, when there is one
+
+
+@dataclass
 class FacilityElectricity:
     facility: str
     consumption: Measure  # kWh or MWh
@@ -525,6 +534,39 @@ def electricity_market_based(facilities: list[FacilityElectricity], certificates
     return _category("purchased_electricity_market_based", lines, ref, flags=flags, gwp_set=gwp_set,
                      details={"covered_mwh": covered, "total_mwh": total_mwh, "coverage": coverage,
                               "coverage_steps": [asdict(s) for s in coverage_steps]})
+
+
+# =========================================================================================
+# Scope 2 purchased steam and heat (Hub Table 7)
+# =========================================================================================
+def purchased_thermal(category: str, facilities: list[FacilityThermal], ref: EmissionFactorReference | None = None,
+                      gwp_set: str = DEFAULT_GWP_SET, flags: list[str] | None = None) -> CategoryResult:
+    """Per facility: gas mass = MMBtu x EF (kg CO2, g CH4, g N2O per MMBtu); CO2e = mass x GWP.
+
+    The EPA factor assumes a natural gas boiler at 80% efficiency; a supplier's own factor
+    replaces it when given (``FacilityThermal.factors``).
+    """
+
+    ref = ref or default_emission_factor_reference()
+    lines = []
+    for facility in facilities:
+        mmbtu = (facility.energy.value if _canonical(facility.energy.unit) == "MMBtu"
+                 else fuel_units.convert_exact(facility.energy.value, _canonical(facility.energy.unit), "MMBtu"))
+        factors = facility.factors or ref.steam_heat()
+        line = LineResult(facility.facility, {gas: "Emissions = MMBtu x EF" for gas in GASES}, {}, steps=[])
+        if _canonical(facility.energy.unit) != "MMBtu":
+            line.steps.append(Step("Thermal energy in MMBtu", f"{facility.energy.unit} to MMBtu",
+                                   {"energy": _inp(facility.energy.value, facility.energy.unit, facility.energy.source)},
+                                   mmbtu, "MMBtu"))
+        for gas, per in (("CO2", KG_PER_METRIC_TON), ("CH4", G_PER_METRIC_TON), ("N2O", G_PER_METRIC_TON)):
+            factor = factors[gas]
+            tons = mmbtu * factor.value / per
+            line.steps.append(Step(f"{gas} from {facility.facility}", "MMBtu x EF",
+                                   {"thermal energy": _inp(mmbtu, "MMBtu", facility.energy.source),
+                                    "EF": _inp(factor.value, factor.unit, factor.source)}, tons, "t"))
+            line.mass_t[gas] = tons
+        lines.append(line)
+    return _category(category, lines, ref, flags=flags, gwp_set=gwp_set)
 
 
 # =========================================================================================

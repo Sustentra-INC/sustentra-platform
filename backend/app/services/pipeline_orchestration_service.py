@@ -28,6 +28,8 @@ from backend.app.services.electricity_extractor import (
     ElectricityExtractor,
 )
 from backend.app.services.extraction_service import ExtractionService
+from backend.app.services.thermal_extractor import CANONICAL_TYPE_ID as THERMAL_TYPE_ID
+from backend.app.services.thermal_extractor import ThermalExtractor
 from backend.app.services.extraction_target_service import ExtractionTargetService
 from backend.app.services.parser_service import ParserService
 from backend.app.services.mobile_combustion_extractor import (
@@ -69,7 +71,7 @@ FUEL_TYPE_IDS = {FUELQTY_TYPE_ID, MOBFUEL_TYPE_ID}
 # multi-type candidate gets its primary type's targets only: mixing in a runner-up type's
 # targets (e.g. a gas bill that also mentions electricity) would send it to the generic
 # fallback, which reads labels without layout.
-LAYOUT_EXTRACTOR_TYPE_IDS = FUEL_TYPE_IDS | {ELEC_TYPE_ID, REFRIGERANT_TYPE_ID}
+LAYOUT_EXTRACTOR_TYPE_IDS = FUEL_TYPE_IDS | {ELEC_TYPE_ID, REFRIGERANT_TYPE_ID, THERMAL_TYPE_ID}
 # Fluorinated-gas types without an extractor of their own. A document classified as one of
 # them that reads as a service record (a refrigerant named, an amount added or recovered)
 # is read as CT-S1-REFRSVC: an equipment inventory or leak log with charges is still the
@@ -294,6 +296,19 @@ class PipelineOrchestrationService:
                             include_optional=include_optional,
                             include_deprecated=include_deprecated,
                         )
+                    elif self._thermal_reroute(canonical_type_id, parser_output):
+                        warnings.append(
+                            f"The classifier chose {canonical_type_id}, but the document is a steam, hot water or "
+                            f"chilled water bill and names no combusted fuel; using {THERMAL_TYPE_ID} (purchased "
+                            "steam, heat or cooling, Scope 2)."
+                        )
+                        canonical_type_id = THERMAL_TYPE_ID
+                        canonical_type_source = "content_check"
+                        extraction_targets = self._get_target_service().get_targets_for_canonical_type(
+                            canonical_type_id,
+                            include_optional=include_optional,
+                            include_deprecated=include_deprecated,
+                        )
                     elif (canonical_type_id in FGAS_RELATED_TYPE_IDS
                           and RefrigerantServiceExtractor().confirms(parser_output)):
                         warnings.append(
@@ -328,6 +343,7 @@ class PipelineOrchestrationService:
                     confirmed := self._fuel_content_confirmed(classification_result, parser_output)
                     or self._electricity_content_confirmed(classification_result, parser_output)
                     or self._refrigerant_content_confirmed(classification_result, parser_output)
+                    or self._thermal_content_confirmed(classification_result, parser_output)
                 ):
                     canonical_type_id = confirmed
                     canonical_type_source = "content_check"
@@ -340,6 +356,8 @@ class PipelineOrchestrationService:
                         reason = "names electricity and a quantity in kWh or MWh."
                     elif confirmed == REFRIGERANT_TYPE_ID:
                         reason = "names a refrigerant and an amount added or recovered."
+                    elif confirmed == THERMAL_TYPE_ID:
+                        reason = "names steam, hot water or chilled water and a thermal quantity."
                     elif confirmed == MOBFUEL_TYPE_ID:
                         reason = "names a combusted fuel and a quantity in a fuel unit with vehicle/fleet details."
                     else:
@@ -571,6 +589,34 @@ class PipelineOrchestrationService:
         if StationaryCombustionExtractor().confirms(parser_output):
             return False
         return ElectricityExtractor().confirms(parser_output)
+
+    @staticmethod
+    def _thermal_reroute(canonical_type_id: str | None, parser_output: dict) -> bool:
+        """True when a document classified as a utility bill (fuel or electricity) is really a
+        steam, hot water or chilled water bill: it names one, states a thermal quantity, and
+        reads neither as combusted fuel nor as electricity."""
+
+        if canonical_type_id not in (FUELQTY_TYPE_ID, ELEC_TYPE_ID):
+            return False
+        if ElectricityExtractor().confirms(parser_output):
+            return False
+        return ThermalExtractor().confirms(parser_output)
+
+    @staticmethod
+    def _thermal_content_confirmed(classification_result: dict, parser_output: dict) -> str | None:
+        """CT-S2-THERMAL for a low-confidence classification whose best match is a utility-bill
+        type, when the document is a steam, hot water or chilled water bill."""
+
+        if classification_result.get("status") != "low_confidence":
+            return None
+        matches = [m for m in classification_result.get("candidate_matches") or [] if isinstance(m, dict)]
+        if not matches:
+            return None
+        best = max(float(m.get("confidence") or 0) for m in matches)
+        leaders = {m.get("canonical_type_id") for m in matches if float(m.get("confidence") or 0) == best}
+        if not leaders & {FUELQTY_TYPE_ID, ELEC_TYPE_ID, THERMAL_TYPE_ID} or best < FUEL_CONTENT_CHECK_FLOOR:
+            return None
+        return THERMAL_TYPE_ID if ThermalExtractor().confirms(parser_output) else None
 
     @staticmethod
     def _electricity_content_confirmed(classification_result: dict, parser_output: dict) -> str | None:

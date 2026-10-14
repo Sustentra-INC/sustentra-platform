@@ -139,8 +139,8 @@ def test_missing_categories_make_totals_partial_never_a_silent_zero() -> None:
     assert statuses == {"stationary_combustion": "calculated", "mobile_combustion": "no_evidence",
                         "process_sources": "not_built", "fugitive_refrigerants": "calculated",
                         "fugitive_purchased_gases": "not_built", "agricultural_sources": "not_built",
-                        "purchased_electricity": "calculated", "purchased_steam": "not_built",
-                        "purchased_heating": "not_built", "purchased_cooling": "not_built"}
+                        "purchased_electricity": "calculated", "purchased_steam": "no_evidence",
+                        "purchased_heating": "no_evidence", "purchased_cooling": "not_built"}
 
 
 def test_a_partial_total_is_never_within_tolerance_but_can_exceed_as_a_lower_bound() -> None:

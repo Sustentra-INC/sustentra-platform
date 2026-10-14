@@ -8,6 +8,7 @@ export const BACKEND_TYPE_IDS: Record<string, string> = {
   "Mobile fuel consumption record": "CT-S1-MOBFUEL",
   "Refrigerant service record": "CT-S1-REFRSVC",
   "Purchased electricity record": "CT-S2-ELEC",
+  "Purchased steam, heat or cooling record": "CT-S2-THERMAL",
 };
 
 /** What a document's own extracted values say about it. */

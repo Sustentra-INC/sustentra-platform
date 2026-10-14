@@ -94,6 +94,7 @@ const CANONICAL_TYPE_DISPLAY_NAMES: Record<string, string> = {
   "CT-S1-MOBFUEL": "Mobile fuel consumption record",
   "CT-S1-REFRSVC": "Refrigerant service record",
   "CT-S2-ELEC": "Purchased electricity record",
+  "CT-S2-THERMAL": "Purchased steam, heat or cooling record",
 };
 
 export function resolveCanonicalTypeDisplayName(

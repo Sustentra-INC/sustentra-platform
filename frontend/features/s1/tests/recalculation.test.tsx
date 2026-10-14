@@ -142,6 +142,7 @@ describe("recalculation inputs panel", () => {
       reported: { scope1_total: 1450.5 },
       certificates: [],
       refrigerant_gwps: {},
+      steam_heat_content: {},
       vehicle_groups: [],
     });
   });
@@ -382,3 +383,22 @@ describe("vehicle groups (mobile CH4 and N2O)", () => {
   });
 });
 
+
+describe("purchased steam billed by weight", () => {
+  it("asks for the steam's heat content and saves it per facility", () => {
+    const onSave = vi.fn();
+    const result: Recalculation = {
+      ...RESULT,
+      needs_input: [{ kind: "steam_heat_content", key: "Facility C", category: "purchased_steam",
+        message: "Facility C: steam is billed by weight (klb). Enter its heat content in Btu per lb." }],
+    };
+    render(<RecalculationInputs result={result} reference={REFERENCE} settings={{}} saving={false} error={null} onSave={onSave} />);
+    const field = screen.getByText("Facility C", { selector: "legend ~ label span" }).closest("label")!;
+    expect(within(field).getByText(/needed/)).toBeTruthy();
+    fireEvent.change(within(field).getByRole("textbox"), { target: { value: "90" } });
+    expect((screen.getByRole("button", { name: "Save and recalculate" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(within(field).getByRole("textbox"), { target: { value: "1194" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and recalculate" }));
+    expect(onSave.mock.calls[0][0].steam_heat_content).toEqual({ "Facility C": 1194 });
+  });
+});

@@ -98,6 +98,8 @@ export interface RecalculationSettings {
   absent_sources?: Record<string, string>;
   /** Per-gas data point (workbook rows 23-28, 30-36) to the unit the company reported it in. */
   reported_units?: Record<string, "t" | "t CO2e">;
+  /** Facility to the heat content (Btu per lb) of the steam it buys, for steam billed by weight. */
+  steam_heat_content?: Record<string, number>;
 }
 
 /** One vehicle group: on-road by distance (and model year where the factor needs it),

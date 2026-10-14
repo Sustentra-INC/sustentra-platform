@@ -38,6 +38,9 @@ export function RecalculationInputs({
   const [gwpText, setGwpText] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(settings.refrigerant_gwps ?? {}).map(([gas, value]) => [gas, String(value)]))
   );
+  const [steamText, setSteamText] = useState<Record<string, string>>(() =>
+    Object.fromEntries(Object.entries(settings.steam_heat_content ?? {}).map(([site, value]) => [site, String(value)]))
+  );
   const asks = result.needs_input;
   const [open, setOpen] = useState(asks.length > 0);
 
@@ -50,19 +53,25 @@ export function RecalculationInputs({
   );
   const fuelAsks = asks.filter((a) => a.kind === "fuel_choice");
   const gwpAsks = asks.filter((a) => a.kind === "refrigerant_gwp");
+  const steamAsks = asks.filter((a) => a.kind === "steam_heat_content");
   const vehicleAsks = asks.filter((a) => a.kind === "vehicle_group");
   const otherAsks = asks.filter(
-    (a) => !["grid_region", "fuel_choice", "refrigerant_gwp", "vehicle_group"].includes(a.kind)
+    (a) => !["grid_region", "fuel_choice", "refrigerant_gwp", "vehicle_group", "steam_heat_content"].includes(a.kind)
   );
   const vehicleTypes = reference.vehicle_types ?? [];
   const mobileFuels = result.categories.mobile_combustion?.lines.map((l) => l.key) ?? [];
   const gases = Array.from(new Set([...gwpAsks.map((a) => a.key), ...Object.keys(gwpText)]));
+  const steamSites = Array.from(new Set([...steamAsks.map((a) => a.key), ...Object.keys(steamText)]));
 
   const badReported = Object.entries(reportedText).filter(([, text]) => text.trim() && !Number.isFinite(Number(text)));
   const badCertificates = certificateText.filter((c) => !c.label.trim() || !(Number(c.mwh) > 0));
   const badGwps = Object.entries(gwpText).filter(([, text]) => text.trim() && !(Number(text) >= 0));
+  // Saturated and superheated steam as delivered: 500 to 1,600 Btu per lb (the backend checks the same).
+  const badSteam = Object.entries(steamText).filter(([, text]) => text.trim() && !(Number(text) >= 500 && Number(text) <= 1600));
   const badVehicles = vehicleDrafts.filter((d) => draftProblem(d, vehicleTypes) !== null);
-  const invalid = badReported.length > 0 || badCertificates.length > 0 || badGwps.length > 0 || badVehicles.length > 0;
+  const invalid =
+    badReported.length > 0 || badCertificates.length > 0 || badGwps.length > 0 || badVehicles.length > 0 ||
+    badSteam.length > 0;
 
   function save() {
     const reported: Record<string, number> = {};
@@ -73,7 +82,16 @@ export function RecalculationInputs({
     }));
     const refrigerant_gwps: Record<string, number> = {};
     for (const [gas, text] of Object.entries(gwpText)) if (text.trim()) refrigerant_gwps[gas] = Number(text);
-    onSave({ ...draft, reported, certificates, refrigerant_gwps, vehicle_groups: settingsFrom(vehicleDrafts, vehicleTypes) });
+    const steam_heat_content: Record<string, number> = {};
+    for (const [site, text] of Object.entries(steamText)) if (text.trim()) steam_heat_content[site] = Number(text);
+    onSave({
+      ...draft,
+      reported,
+      certificates,
+      refrigerant_gwps,
+      steam_heat_content,
+      vehicle_groups: settingsFrom(vehicleDrafts, vehicleTypes),
+    });
   }
 
   const setRegion = (facility: string, region: string) => {
@@ -219,6 +237,33 @@ export function RecalculationInputs({
                         onChange={(e) => setGwpText({ ...gwpText, [gas]: e.target.value })}
                       />
                       <span className="s1-muted s1-rc__hint">From the refrigerant&rsquo;s safety data sheet.</span>
+                    </label>
+                  );
+                })}
+              </fieldset>
+            ) : null}
+
+            {steamSites.length ? (
+              <fieldset className="s1-rc__group">
+                <legend>Steam billed by weight</legend>
+                {steamSites.map((site) => {
+                  const ask = steamAsks.find((a) => a.key === site);
+                  return (
+                    <label key={site} className="s1-rc__field">
+                      <span>
+                        {site}
+                        {ask ? <span className="s1-rc__need"> needed</span> : null}
+                      </span>
+                      <input
+                        inputMode="decimal"
+                        placeholder="Btu per lb, e.g. 1,194"
+                        value={steamText[site] ?? ""}
+                        aria-invalid={badSteam.some(([key]) => key === site)}
+                        onChange={(e) => setSteamText({ ...steamText, [site]: e.target.value })}
+                      />
+                      <span className="s1-muted s1-rc__hint">
+                        The steam&rsquo;s heat content from the supplier (500 to 1,600 Btu per lb).
+                      </span>
                     </label>
                   );
                 })}

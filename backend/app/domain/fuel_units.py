@@ -32,6 +32,8 @@ _UNITS: dict[str, tuple[str, Decimal]] = {
     "Dth": (ENERGY, Decimal("1")),  # dekatherm = 10 therms = 1,000,000 Btu
     "therm": (ENERGY, Decimal("0.1")),  # 100,000 Btu
     "Btu": (ENERGY, Decimal("0.000001")),
+    "kBtu": (ENERGY, Decimal("0.001")),  # 1,000 Btu (district energy bills)
+    "ton_hour": (ENERGY, Decimal("0.012")),  # a ton of cooling for an hour: 12,000 Btu (chilled water)
     "kWh": (ENERGY, Decimal("0.003412141633")),  # 3,412.141633 Btu (IT)
     "MWh": (ENERGY, Decimal("3.412141633")),
     "GJ": (ENERGY, Decimal("0.9478171203")),
@@ -45,6 +47,7 @@ _UNITS: dict[str, tuple[str, Decimal]] = {
     "bbl": (LIQUID_VOLUME, Decimal("42")),
     "kg": (MASS, Decimal("1")),
     "lb": (MASS, Decimal("0.45359237")),
+    "klb": (MASS, Decimal("453.59237")),  # 1,000 lb (steam is often billed in Mlb)
     "short_ton": (MASS, Decimal("907.18474")),
     "metric_ton": (MASS, Decimal("1000")),
     # Equivalents are defined by energy content of a *different* fuel; they are kept as
@@ -75,6 +78,8 @@ _alias("MMBtu", "mmbtus", "mm btu", "mmbtu's", "million btu", "mbtu (millions)")
 _alias("Dth", "dth", "dths", "dekatherm", "dekatherms", "decatherm", "decatherms", "dt")
 _alias("therm", "therms", "thm", "thms")
 _alias("Btu", "btus", "british thermal units")
+_alias("kBtu", "kbtu", "kbtus", "thousand btu")
+_alias("ton_hour", "ton-hour", "ton-hours", "ton hour", "ton hours", "ton-hr", "ton-hrs", "tonhr", "tonhrs")
 _alias("kWh", "kwh", "kwhs", "kw h", "kilowatt hour", "kilowatt hours", "kilowatt-hour", "kilowatt-hours")
 _alias("MWh", "mwh", "megawatt hour", "megawatt hours")
 _alias("GJ", "gj", "gigajoule", "gigajoules")
@@ -88,6 +93,7 @@ _alias("L", "l", "liter", "liters", "litre", "litres", "ltr", "ltrs", "lt")
 _alias("bbl", "bbls", "barrel", "barrels")
 _alias("kg", "kgs", "kilogram", "kilograms")
 _alias("lb", "lbs", "pound", "pounds")
+_alias("klb", "klbs", "mlb", "mlbs", "thousand pounds", "1000 lbs", "1,000 lbs")
 _alias("short_ton", "ton", "tons", "short ton", "short tons", "st")
 _alias("metric_ton", "tonne", "tonnes", "metric ton", "metric tons", "mt", "t")
 _alias("GGE", "gge", "gasoline gallon equivalent", "gasoline gallon equivalents")

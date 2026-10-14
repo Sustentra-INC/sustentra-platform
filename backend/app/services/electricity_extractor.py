@@ -167,6 +167,14 @@ class ElectricityExtractor(StationaryCombustionExtractor):
                 "message": "No electricity quantity in kWh or MWh was found, so this is not purchased-"
                 "electricity evidence (for example a gas, fuel or water bill).",
             })
+        return self._records_to_candidates(rows, parser_output, targets, evidence_id, document_id, records,
+                                           doc_energy, unit_hint)
+
+    def _records_to_candidates(self, rows: list[Row], parser_output: dict, targets: Sequence[dict],
+                               evidence_id: str, document_id: str, records: list[UsageRecord],
+                               doc_energy: Located, unit_hint: Located | None) -> ExtractionOutcome:
+        """One candidate per target for each usage record; the bill's own fields (facility,
+        address, supplier, account) are shared by its records."""
 
         facility, address_from_facility = self._facility(rows)
         document_values: dict[str, Located | None] = {

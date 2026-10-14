@@ -141,7 +141,7 @@ function periodsByDocument(fields: ExtractedField[]): Map<string, string> {
 }
 
 function scopeOf(canonicalTypeId: string | null): ScopePlacement {
-  if (canonicalTypeId === "CT-S2-ELEC") return "scope2_location";
+  if (canonicalTypeId === "CT-S2-ELEC" || canonicalTypeId === "CT-S2-THERMAL") return "scope2_location";
   if (canonicalTypeId?.startsWith("CT-S1-")) return "scope1";
   return "not_placed";
 }

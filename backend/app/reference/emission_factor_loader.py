@@ -141,6 +141,20 @@ class EmissionFactorReference:
     def egrid_subregions(self) -> list[dict[str, Any]]:
         return [{"egrid_subregion": r["egrid_subregion"], "name": r["name"]} for r in self.data["electricity"]]
 
+    def steam_heat(self) -> dict[str, Factor]:
+        """Purchased steam and heat (Hub Table 7): kg CO2, g CH4 and g N2O per MMBtu delivered."""
+
+        rows = self.data.get("steam_heat") or []
+        if not rows:
+            raise EmissionFactorNotFoundError(f"No steam and heat factor in {self.dataset} (Table 7).")
+        row = rows[0]
+        cite = _cite(self.dataset, row["source"])
+        return {
+            "CO2": Factor(float(row["co2_kg_per_mmbtu"]), "kg per MMBtu", cite),
+            "CH4": Factor(float(row["ch4_g_per_mmbtu"]), "g per MMBtu", cite),
+            "N2O": Factor(float(row["n2o_g_per_mmbtu"]), "g per MMBtu", cite),
+        }
+
     def electricity(self, subregion: str) -> dict[str, Factor]:
         row = self._egrid.get(_norm(subregion))
         if row is None:
