@@ -4,7 +4,6 @@
 # the account root) is denied access to the state bucket.
 state_bucket_engineer_arns = [
   "arn:aws:iam::012751249540:user/Jerome",
-  # OPS-002: add the client admin BEFORE the laptop key is removed, or only the
-  # account root can reach the state. See infra/README.md "Hand-over to CI".
-  # "arn:aws:iam::012751249540:user/<client-admin>",
+  # OPS-002 hand-over: the client admin, added before the laptop key is removed.
+  "arn:aws:iam::012751249540:user/Thanishque",
 ]
