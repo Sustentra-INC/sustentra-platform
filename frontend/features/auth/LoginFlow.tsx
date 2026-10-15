@@ -28,8 +28,9 @@ export function LoginFlow({
   initialNotice?: string | null;
   /** `?next=` from the URL: where to go after login, if it is a same-origin path. */
   next?: string | null;
-  /** Navigate after a verified login. Defaults to a full navigation so the new
-   *  session cookie is picked up by middleware and server guards. Injectable for tests. */
+  /** Navigate after a verified login. Defaults to a full navigation that replaces the login
+   *  in the history, so the new session cookie is picked up by middleware and server guards
+   *  and Back does not return to the login. Injectable for tests. */
   onAuthenticated?: (path: string) => void;
 }) {
   const [step, setStep] = useState<"password" | "otp">("password");
@@ -44,6 +45,16 @@ export function LoginFlow({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(initialNotice ?? null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Restored from the browser's back/forward cache (Back after signing in): reload, so the
+  // server sees the session and moves on instead of showing the login or its code step.
+  useEffect(() => {
+    const onShow = (event: PageTransitionEvent) => {
+      if (event.persisted) window.location.reload();
+    };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, []);
 
   // Resend countdown ticks only on the OTP step.
   useEffect(() => {
@@ -97,7 +108,8 @@ export function LoginFlow({
     setError(null);
     try {
       await verifyOtp(challengeId, value);
-      const go = onAuthenticated ?? ((path: string) => window.location.assign(path));
+      // replace(): the login leaves the history, so Back does not return to it.
+      const go = onAuthenticated ?? ((path: string) => window.location.replace(path));
       rememberRealm(realm); // lets the workpaper at `/` send an ended session back here (FE-007)
       go(safeNext(next) ?? homePath(realm));
     } catch {
