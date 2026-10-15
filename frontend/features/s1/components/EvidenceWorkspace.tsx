@@ -216,13 +216,13 @@ export function EvidenceWorkspace({
     onEvidenceChange((cur) =>
       cur.map((i) =>
         i.documentId === documentId
-          ? { ...i, detectedType: nextType, typeReviewBand: null, typeReviewReason: null }
+          ? { ...i, detectedType: nextType, typeReviewBand: null, typeReviewReason: null, typeConfirmed: true }
           : i
       )
     );
     setEditing(null);
     record("set_type", documentId, prev, nextType);
-    flash(`Type set to ${nextType}`);
+    flash(prev === nextType ? `Type confirmed: ${nextType}` : `Type set to ${nextType}`);
   }
 
   function setFacility(documentId: string, facilityId: string) {
@@ -722,8 +722,7 @@ function WorkspaceRow(props: {
         {props.writesEnabled &&
         (props.editing === "type" ||
           item.detectedType == null ||
-          item.typeReviewBand === "needs_review" ||
-          item.typeReviewBand === "cannot_determine") ? (
+          (!item.typeConfirmed && (item.typeReviewBand === "needs_review" || item.typeReviewBand === "cannot_determine"))) ? (
           <div className="s1-ws-setcell">
             <select
               className="s1-inline-input s1-select"
@@ -740,7 +739,19 @@ function WorkspaceRow(props: {
                 </option>
               ))}
             </select>
-            {item.detectedType != null ? <div className="s1-muted s1-ws-src">not confirmed yet</div> : null}
+            {item.detectedType != null && !item.typeConfirmed ? (
+              <div className="s1-ws-confirm">
+                <span className="s1-muted s1-ws-src">not confirmed yet</span>
+                {/* Choosing the type already shown fires no change: confirm it here instead. */}
+                <button
+                  className="s1-linklike"
+                  type="button"
+                  onClick={() => props.onSetType(item.documentId, item.detectedType as string)}
+                >
+                  Confirm
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : (
           <TypeCell item={item} onSet={() => props.onStartEdit("type")} writesEnabled={props.writesEnabled} />
@@ -852,7 +863,9 @@ function FacilityCell({ item, onSet, writesEnabled }: { item: EvidenceItem; onSe
 }
 
 function TypeCell({ item, onSet, writesEnabled }: { item: EvidenceItem; onSet: () => void; writesEnabled: boolean }) {
-  const unconfirmed = item.detectedType == null || item.typeReviewBand === "needs_review" || item.typeReviewBand === "cannot_determine";
+  const unconfirmed =
+    item.detectedType == null ||
+    (!item.typeConfirmed && (item.typeReviewBand === "needs_review" || item.typeReviewBand === "cannot_determine"));
   return (
     <div>
       <div>{item.detectedType ?? <span className="s1-muted">Type unresolved</span>}</div>

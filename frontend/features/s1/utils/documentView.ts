@@ -104,6 +104,11 @@ export function applyDocumentView(
       if (decision.note !== undefined) next.note = decision.note;
       if (decision.relationships) next.relationships = decision.relationships;
       if (decision.detectedType) next.detectedType = decision.detectedType;
+      if (decision.detectedType || decision.typeConfirmed) {
+        next.typeConfirmed = true;
+        next.typeReviewBand = null;
+        next.typeReviewReason = null;
+      }
     }
     return next;
   });
@@ -143,6 +148,10 @@ export function decisionFromEdit(before: EvidenceItem, after: EvidenceItem, prio
   }
   if (after.detectedType !== before.detectedType) {
     decision.detectedType = after.detectedType;
+    changed = true;
+  }
+  if (after.typeConfirmed && !before.typeConfirmed) {
+    decision.typeConfirmed = true;
     changed = true;
   }
   return changed ? decision : null;

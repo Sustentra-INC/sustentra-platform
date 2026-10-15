@@ -1091,6 +1091,7 @@ select:focus-visible,
 .s1-ws-notes { display: flex; flex-direction: column; gap: var(--sp-1); }
 .s1-ws-note-line { font-size: var(--text-sm); }
 /* The note field above its actions, so a narrow Notes column never squeezes "Save" to one letter per line. */
+.s1-ws-confirm { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-2); }
 .s1-ws-note-edit { display: flex; flex-direction: column; align-items: stretch; gap: var(--sp-1); min-width: 8rem; }
 .s1-ws-note-edit .s1-inline-input { width: 100%; min-width: 0; box-sizing: border-box; }
 .s1-ws-note-edit__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }

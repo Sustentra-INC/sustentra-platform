@@ -61,6 +61,20 @@ describe("documents as the screens show them", () => {
     expect(decision).toEqual({ documentId: "A", disposition: "withdrawn" });
   });
 
+  it("keeps a type the reviewer chose or confirmed as confirmed, across a reload", () => {
+    const guessed = { ...item("A"), typeReviewBand: "needs_review", typeReviewReason: "low confidence" } as EvidenceItem;
+    // Confirming the type already shown records a decision even though the type did not change.
+    const confirmed = decisionFromEdit(guessed, { ...guessed, typeConfirmed: true });
+    expect(confirmed).toEqual({ documentId: "A", typeConfirmed: true });
+    const [shown] = applyDocumentView([guessed], new Map(), { A: confirmed! }, FACILITIES);
+    expect([shown.typeConfirmed, shown.typeReviewBand, shown.detectedType]).toEqual([true, null, "Purchased electricity record"]);
+    // A type set to something else is confirmed too.
+    const [changed] = applyDocumentView([guessed], new Map(), { A: { documentId: "A", detectedType: "Stationary fuel consumption record" } }, FACILITIES);
+    expect([changed.typeConfirmed, changed.detectedType]).toEqual([true, "Stationary fuel consumption record"]);
+    // Without a decision, the machine's guess stays unconfirmed.
+    expect(applyDocumentView([guessed], new Map(), {}, FACILITIES)[0].typeConfirmed).toBeUndefined();
+  });
+
   it("offers the facilities found on bills that match nothing yet", () => {
     expect(unmatchedFacilities(facts, FACILITIES)).toEqual([
       { name: "Harborview Cold Storage", address: "210 Dock Street, Erie, PA" },
