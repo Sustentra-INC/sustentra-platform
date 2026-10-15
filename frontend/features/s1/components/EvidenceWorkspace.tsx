@@ -938,9 +938,14 @@ function NotesCell({
             if (e.key === "Escape") onCancel();
           }}
         />
-        <button className="s1-button s1-button--compact" type="button" onClick={onSave}>
-          Save
-        </button>
+        <div className="s1-ws-note-edit__actions">
+          <button className="s1-button s1-button--compact" type="button" onClick={onSave}>
+            Save
+          </button>
+          <button className="s1-linklike" type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
       </div>
     );
   }
