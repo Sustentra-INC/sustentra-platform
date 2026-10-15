@@ -129,7 +129,6 @@ export function VerificationWorkspace({
 
   return (
     <div className={`s1-vw${selected ? " has-panel" : ""}`}>
-      <Differences boxes={boxes} selectedId={selectedId} onSelect={select} />
       <section className="s1-vw-boxes" aria-label="Reported vs recomputed">
         {boxes.map((box) => (
           <BoxPanel
@@ -166,65 +165,6 @@ export function VerificationWorkspace({
         </aside>
       ) : null}
     </div>
-  );
-}
-
-/* ============================ differences strip ============================ */
-
-/** Every line where reported and recomputed differ, largest % material first. */
-function Differences({
-  boxes,
-  selectedId,
-  onSelect,
-}: {
-  boxes: ResultBox[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-}) {
-  const differing = boxes
-    .flatMap((box) => box.rows.filter((row) => differs(row.difference)).map((row) => ({ box, row })))
-    .sort((a, b) => Math.abs(b.row.pctMaterial ?? 0) - Math.abs(a.row.pctMaterial ?? 0));
-  if (!differing.length) {
-    return (
-      <p className="s1-vw-strip s1-vw-strip--clear">
-        <CircleCheck className="s1-vw-ico" aria-hidden /> Every recomputed line agrees with what was reported.
-      </p>
-    );
-  }
-  return (
-    <section className="s1-vw-strip" aria-label="Where reported and recomputed differ">
-      <div className="s1-vw-strip__head">
-        <TriangleAlert className="s1-vw-ico" aria-hidden />
-        <span>
-          <strong>{differing.length}</strong> {differing.length === 1 ? "line differs" : "lines differ"} from what was reported.
-          Open one to trace the cause.
-        </span>
-      </div>
-      <ul className="s1-vw-strip__list">
-        {differing.map(({ box, row }) => {
-          const Icon = BOX_ICON[box.key];
-          return (
-            <li key={row.key}>
-              <button
-                className={`s1-vw-chipbtn s1-vw-tone--${box.key}${row.key === selectedId ? " is-on" : ""}`}
-                type="button"
-                aria-pressed={row.key === selectedId}
-                onClick={() => onSelect(row.key)}
-              >
-                <span className="s1-vw-chipbtn__icon">
-                  <Icon className="s1-vw-ico" aria-hidden />
-                </span>
-                <span className="s1-vw-chipbtn__text">
-                  <span className="s1-vw-chipbtn__name">{row.activity}</span>
-                  <span className="s1-vw-chipbtn__where">{box.title}</span>
-                </span>
-                <Delta value={row.difference} />
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </section>
   );
 }
 

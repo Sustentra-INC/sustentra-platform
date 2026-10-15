@@ -183,26 +183,23 @@ function Harness() {
 }
 
 describe("the Verification results page", () => {
-  it("lists the differences, folds boxes, and opens a line's calculation in a panel that Esc closes", () => {
+  it("folds boxes to their summary line and opens a line's calculation in a panel that Esc closes", () => {
     render(<Harness />);
-    // Every differing line, largest % material first, one click from its calculation.
-    const strip = screen.getByRole("region", { name: "Where reported and recomputed differ" });
-    expect(within(strip).getAllByRole("button").map((b) => b.querySelector(".s1-vw-chipbtn__name")?.textContent)).toEqual([
-      "Electricity", "Natural gas", "Diesel", "R-404A", "Heating", "Heating",
-    ]);
     // Scope 1 starts open; the other boxes show their summary line and fold open on click.
     const boxHead = (name: RegExp) =>
       screen.getAllByRole("button", { name }).find((b) => b.hasAttribute("aria-expanded")) as HTMLElement;
     const location = boxHead(/Scope 2, location-based/);
     expect(location.getAttribute("aria-expanded")).toBe("false");
     expect(location.textContent).toContain("+0.1% material");
+    expect(screen.queryByRole("button", { name: "Steam" })).toBeNull();
     fireEvent.click(location);
     expect(location.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("button", { name: "Steam" })).toBeTruthy();
 
-    // A chip opens the line (and its box) in the panel; Esc closes it.
-    fireEvent.click(within(strip).getAllByRole("button")[0]);
-    expect(boxHead(/Scope 2, market-based/).getAttribute("aria-expanded")).toBe("true");
+    // A row opens its line in the panel; Esc closes it.
+    fireEvent.click(boxHead(/Scope 2, market-based/));
+    const market = boxHead(/Scope 2, market-based/).closest(".s1-vw-box") as HTMLElement;
+    fireEvent.click(within(market).getByRole("button", { name: "Electricity" }));
     expect(within(screen.getByRole("region", { name: "Calculation" })).getByRole("heading", { level: 2 }).textContent).toBe(
       "Scope 2, market-based › Electricity"
     );

@@ -93,14 +93,17 @@ export function VerificationResults({
               : "Every data point: reported, recomputed, and your position on each."}
           </span>
         </div>
-        <div className="s1-ws-header__counts">
-          <button className={`s1-ws-count${tab === "results" ? " is-on" : ""}`} type="button" onClick={() => setTab("results")}>
-            Results
-          </button>
-          <button className={`s1-ws-count${tab === "findings" ? " is-on" : ""}`} type="button" onClick={() => setTab("findings")}>
-            <span className="s1-ws-count__n">{store.findings.length}</span> Findings
-          </button>
-        </div>
+        {/* The three-pane page has no Results / Findings switch for now (product, 2026-10-15). */}
+        {lines ? null : (
+          <div className="s1-ws-header__counts">
+            <button className={`s1-ws-count${tab === "results" ? " is-on" : ""}`} type="button" onClick={() => setTab("results")}>
+              Results
+            </button>
+            <button className={`s1-ws-count${tab === "findings" ? " is-on" : ""}`} type="button" onClick={() => setTab("findings")}>
+              <span className="s1-ws-count__n">{store.findings.length}</span> Findings
+            </button>
+          </div>
+        )}
       </header>
 
       {tab === "results" ? (
