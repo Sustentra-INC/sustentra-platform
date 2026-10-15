@@ -604,18 +604,33 @@ class PipelineOrchestrationService:
         return ThermalExtractor().confirms(parser_output)
 
     @staticmethod
+    def _utility_guess(classification_result: dict, parser_output: dict, types: set[str]) -> bool:
+        """True when a low-confidence classification leads with one of ``types``, or with
+        vehicle fuel on a document that does not read as a fleet log. A sparse bill (a phone
+        photo with a kWh total and a period) matches vehicle-fuel vocabulary ("period")
+        as well as anything, so the weak guess must not keep a utility bill from its check."""
+
+        if classification_result.get("status") != "low_confidence":
+            return False
+        matches = [m for m in classification_result.get("candidate_matches") or [] if isinstance(m, dict)]
+        if not matches:
+            return False
+        best = max(float(m.get("confidence") or 0) for m in matches)
+        if best < FUEL_CONTENT_CHECK_FLOOR:
+            return False
+        leaders = {m.get("canonical_type_id") for m in matches if float(m.get("confidence") or 0) == best}
+        if leaders & types:
+            return True
+        return MOBFUEL_TYPE_ID in leaders and not MobileCombustionExtractor().confirms(parser_output)
+
+    @staticmethod
     def _thermal_content_confirmed(classification_result: dict, parser_output: dict) -> str | None:
         """CT-S2-THERMAL for a low-confidence classification whose best match is a utility-bill
         type, when the document is a steam, hot water or chilled water bill."""
 
-        if classification_result.get("status") != "low_confidence":
-            return None
-        matches = [m for m in classification_result.get("candidate_matches") or [] if isinstance(m, dict)]
-        if not matches:
-            return None
-        best = max(float(m.get("confidence") or 0) for m in matches)
-        leaders = {m.get("canonical_type_id") for m in matches if float(m.get("confidence") or 0) == best}
-        if not leaders & {FUELQTY_TYPE_ID, ELEC_TYPE_ID, THERMAL_TYPE_ID} or best < FUEL_CONTENT_CHECK_FLOOR:
+        if not PipelineOrchestrationService._utility_guess(
+            classification_result, parser_output, {FUELQTY_TYPE_ID, ELEC_TYPE_ID, THERMAL_TYPE_ID}
+        ):
             return None
         return THERMAL_TYPE_ID if ThermalExtractor().confirms(parser_output) else None
 
@@ -625,14 +640,7 @@ class PipelineOrchestrationService:
         type (stationary fuel or electricity), when the document's quantities are
         electricity and no combusted fuel is named."""
 
-        if classification_result.get("status") != "low_confidence":
-            return None
-        matches = [m for m in classification_result.get("candidate_matches") or [] if isinstance(m, dict)]
-        if not matches:
-            return None
-        best = max(float(m.get("confidence") or 0) for m in matches)
-        leaders = {m.get("canonical_type_id") for m in matches if float(m.get("confidence") or 0) == best}
-        if not leaders & {FUELQTY_TYPE_ID, ELEC_TYPE_ID} or best < FUEL_CONTENT_CHECK_FLOOR:
+        if not PipelineOrchestrationService._utility_guess(classification_result, parser_output, {FUELQTY_TYPE_ID, ELEC_TYPE_ID}):
             return None
         if StationaryCombustionExtractor().confirms(parser_output) or ThermalExtractor().confirms(parser_output):
             return None

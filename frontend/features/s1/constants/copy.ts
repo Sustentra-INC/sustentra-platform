@@ -4,6 +4,7 @@ export const HALT_REASONS = {
   ocrFailed: "Text could not be extracted. Request a better scan, or enter values manually.",
   ocrRequired: "Photo or scan: its text is read once OCR is switched on. Ask for a text PDF meanwhile.",
   noTemplate: "No extraction template exists for this document type.",
+  typeUnknown: "Document type not recognised. Choose its type on Evidence and it is read again.",
   multiFacility: "Multi-facility document · splitting is not supported in V1.",
   pipeline: "Processing failed. Retry available.",
 } as const;

@@ -187,11 +187,11 @@ describe("halted documents (unreadable / unsupported)", () => {
     expect(item.haltReason).toBe("File could not be read.");
   });
 
-  it("maps an unsupported document type to the no-template reason", () => {
+  it("maps a document whose type was not recognised to choosing its type", () => {
     const run = { status: "partial", candidate_count: 0, target_count: 0,
       halt_reason: { code: "unsupported_document", message: "Unsupported document type: ..." } };
     expect(mapBackendDocumentToEvidenceItem(DOCUMENT, run).haltReason).toBe(
-      "No extraction template exists for this document type."
+      "Document type not recognised. Choose its type on Evidence and it is read again."
     );
   });
 
@@ -205,6 +205,6 @@ describe("halted documents (unreadable / unsupported)", () => {
     expect(userFacingApiError(new ApiError(422, "Unreadable document: no text could be extracted ...", null, null)))
       .toBe("File could not be read.");
     expect(userFacingApiError(new ApiError(422, "Unsupported document type: it does not match ...", null, null)))
-      .toBe("No extraction template exists for this document type.");
+      .toBe("Document type not recognised. Choose its type on Evidence and it is read again.");
   });
 });

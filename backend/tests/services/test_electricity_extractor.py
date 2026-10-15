@@ -202,3 +202,19 @@ def test_pipeline_still_sends_gas_bills_to_stationary_combustion(tmp_path: Path)
         str(path), engagement_id="ENG-1", persist_run=False, org_id="org-1"
     )
     assert result["pipeline_run"]["canonical_type_id"] == "CT-S1-FUELQTY"
+
+
+# A phone photo of a bill reads as two lines: a total in kWh and a period. The classifier's best
+# (weak) guess for so little text is a vehicle fuel log, so the electricity check must still run.
+SPARSE_PHOTO_BILL = "City Water & Power\nTotal kWh Used: 41,200 kWh\nService Period: 05/01/2025 to 05/31/2025\n"
+
+
+def test_a_sparse_photo_of_an_electric_bill_is_read_as_electricity(tmp_path: Path) -> None:
+    path = tmp_path / "photo_electric_bill_may2025.txt"
+    path.write_text(SPARSE_PHOTO_BILL, encoding="utf-8")
+    result = PipelineOrchestrationService().process_local_document(str(path), engagement_id="ENG-1", persist_run=False)
+    assert result["classification_result"]["primary_canonical_type_id"] == "CT-S1-MOBFUEL"  # the weak guess
+    assert result["pipeline_run"]["canonical_type_id"] == CANONICAL_TYPE_ID
+    items = {i["field_name"]: i for i in result["extraction_result"]["items"]}
+    assert (items["activity_quantity"]["normalized_value"], items["activity_quantity"]["unit"]) == (41.2, "MWh")
+    assert items["service_period_start"]["normalized_value"] == "2025-05-01"

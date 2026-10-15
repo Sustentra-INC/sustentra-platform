@@ -239,3 +239,12 @@ def test_district_heat_in_mwh_is_purchased_heat_and_an_electric_bill_stays_elect
     assert PipelineOrchestrationService._thermal_reroute("CT-S2-ELEC", tip) is False
     assert _read(tmp_path, DISTRICT_HEAT_IN_MWH)["values"]["activity_quantity"] == (
         pytest.approx(310 * 3.412141633), "MMBtu")
+
+
+SPARSE_DISTRICT_HEAT = "Northside Thermal\nDistrict Heating Statement\nService Period: 01/01/2025 to 01/31/2025\nHeat Delivered: 310 MWh\n"
+
+
+def test_a_sparse_district_heat_bill_is_not_lost_to_a_weak_vehicle_fuel_guess(tmp_path: Path) -> None:
+    read = _read(tmp_path, SPARSE_DISTRICT_HEAT)
+    assert read["type"] == "CT-S2-THERMAL"
+    assert read["values"]["energy_type"][0] == "hot_water"
