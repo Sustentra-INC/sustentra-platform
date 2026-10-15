@@ -1314,8 +1314,6 @@ select:focus-visible,
 .s1-req-state__actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
 .s1-req-subrow td { background: var(--sf-sunken); }
 .s1-req-box { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3); max-width: 32rem; }
-.s1-req-deferred ul { margin: var(--sp-1) 0 0; padding-left: var(--sp-4); }
-.s1-req-deferred li { font-size: var(--text-sm); }
 
 /* Request-by-email side panel */
 .s1-req-panel { position: fixed; top: 0; right: 0; height: 100vh; width: min(38rem, 96vw); background: var(--sf-card); border-left: var(--border-strong); padding: var(--sp-5); overflow-y: auto; display: flex; flex-direction: column; gap: var(--sp-3); z-index: var(--z-modal); }
