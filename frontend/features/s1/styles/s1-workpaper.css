@@ -2411,20 +2411,6 @@ html, body { margin: 0; padding: 0; }
 .s1-vw-scroll { overflow-x: auto; }
 .s1-vw-red { color: var(--state-blocking-fg); }
 
-/* Differences strip: every line that differs, one click from its calculation */
-.s1-vw-strip { display: flex; flex-direction: column; gap: var(--sp-3); margin: 0; padding: var(--sp-3) var(--sp-4); background: var(--state-open-bg); border: var(--border-hairline); border-color: var(--state-open-line); border-radius: var(--radius-card); }
-.s1-vw-strip--clear { flex-direction: row; align-items: center; gap: var(--sp-2); font-size: var(--text-sm); color: var(--state-resolved-fg); background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
-.s1-vw-strip__head { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-sm); color: var(--ink); }
-.s1-vw-strip__head .s1-vw-ico { color: var(--state-open-fg); font-size: var(--text-md); }
-.s1-vw-strip__list { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin: 0; padding: 0; list-style: none; }
-.s1-vw-chipbtn { display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-2) var(--sp-1) var(--sp-1); font: inherit; font-size: var(--text-sm); text-align: left; color: var(--ink); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input); cursor: pointer; transition: transform 160ms var(--ease-out), border-color 160ms ease, background-color 160ms ease; }
-.s1-vw-chipbtn:active { transform: scale(0.97); }
-.s1-vw-chipbtn.is-on { border-color: var(--vw-tone); background: color-mix(in srgb, var(--vw-tone) 10%, var(--sf-card)); }
-.s1-vw-chipbtn__icon { display: inline-flex; align-items: center; justify-content: center; width: 1.75rem; height: 1.75rem; font-size: var(--text-sm); color: color-mix(in srgb, var(--vw-tone) 75%, var(--ink)); background: color-mix(in srgb, var(--vw-tone) 16%, var(--sf-card)); border-radius: var(--radius-chip); }
-.s1-vw-chipbtn__text { display: flex; flex-direction: column; line-height: var(--leading-tight); }
-.s1-vw-chipbtn__name { font-weight: var(--weight-medium); }
-.s1-vw-chipbtn__where { font-size: var(--text-xs); color: var(--ink-3); }
-
 /* Difference badge */
 .s1-vw-delta { display: inline-flex; align-items: center; gap: 0.15rem; padding: 0.1rem 0.45rem; font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--state-blocking-fg); background: var(--state-blocking-bg); border-radius: var(--state-chip-radius); }
 .s1-vw-delta--zero { padding-inline: 0; font-weight: var(--weight-regular); color: var(--ink-3); background: none; }
@@ -2486,7 +2472,7 @@ html, body { margin: 0; padding: 0; }
 .s1-vw-row.is-selected .s1-vw-rowbtn__go { opacity: 1; transform: none; }
 .s1-vw-share { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; width: 3.5rem; vertical-align: middle; }
 .s1-vw-share__bar { display: block; justify-self: end; height: 0.2rem; min-width: 0.15rem; background: color-mix(in srgb, var(--accent) 45%, var(--sf-card)); border-radius: var(--state-chip-radius); }
-.s1-vw-rowbtn:focus-visible, .s1-vw-input:focus-visible, .s1-vw-chip:focus-visible, .s1-vw-chipbtn:focus-visible, .s1-vw-close:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-vw-rowbtn:focus-visible, .s1-vw-input:focus-visible, .s1-vw-chip:focus-visible, .s1-vw-close:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 
 /* The calculation panel: slides in from the right over the boxes; Esc or × closes */
 .s1-vw-panel { position: fixed; top: 0; right: 0; bottom: 0; z-index: 60; width: min(84rem, calc(100vw - var(--rail-width))); overflow-y: auto; overscroll-behavior: contain; padding: var(--sp-4); background: var(--sf-page); border-left: var(--border-strong); transition: transform 280ms var(--vw-ease-drawer), opacity 200ms var(--ease-out); }
@@ -2590,7 +2576,6 @@ html, body { margin: 0; padding: 0; }
   .s1-vw-row.is-unreported:hover td { background: none; }
   .s1-vw-row:hover .s1-vw-rowbtn__go { opacity: 1; transform: none; }
   .s1-vw-box__head:hover { background: var(--sf-page); }
-  .s1-vw-chipbtn:hover { border-color: color-mix(in srgb, var(--vw-tone) 50%, var(--sf-card)); }
   .s1-vw-input:hover { background: var(--accent-soft); }
   .s1-vw-close:hover { background: var(--sf-sunken); }
   .s1-vw-chip:hover { border-color: var(--line-strong); }
