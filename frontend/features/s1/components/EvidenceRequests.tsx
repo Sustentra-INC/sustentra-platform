@@ -317,8 +317,6 @@ export function EvidenceRequests({
               </table>
             </div>
           )}
-
-          <DeferredPanel />
         </div>
       </div>
 
@@ -602,29 +600,6 @@ function RequestByEmailPanel({
         </div>
       </aside>
     </div>
-  );
-}
-
-function DeferredPanel() {
-  const items = [
-    "Due dates and overdue",
-    "Chase",
-    "The “new document arrived” hint",
-    "Client login and shared upload",
-    "Real email sending from the product",
-    "The needed-items grid (waits on the in-scope field list)",
-  ];
-  return (
-    <section className="s1-panel s1-req-deferred">
-      <strong>Deferred (per the spec) · not built</strong>
-      <ul>
-        {items.map((i) => (
-          <li key={i} className="s1-muted">
-            {i}
-          </li>
-        ))}
-      </ul>
-    </section>
   );
 }
 
