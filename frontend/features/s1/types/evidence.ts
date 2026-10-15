@@ -49,6 +49,8 @@ export interface EvidenceItem {
   detectedType: string | null;
   typeReviewBand: TypeReviewBand;
   typeReviewReason: string | null;
+  /** The reviewer chose or confirmed this type, so it is no longer the machine's guess. */
+  typeConfirmed?: boolean;
   facilityState: FacilityState;
   facilityId: string | null;
   facilityName: string | null;
@@ -100,4 +102,6 @@ export interface DocumentDecision {
   relationships?: EvidenceItem["relationships"];
   /** The type the reviewer set (display name); the document was re-read as that type. */
   detectedType?: string | null;
+  /** The reviewer confirmed the type (the one set, or the machine's as it stood). */
+  typeConfirmed?: boolean;
 }
