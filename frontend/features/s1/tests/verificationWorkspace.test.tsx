@@ -182,58 +182,84 @@ function Harness() {
   );
 }
 
-describe("the Verification results panes", () => {
-  it("loads a row's calculation, opens a facility card and its sources, and records the examination", () => {
+describe("the Verification results page", () => {
+  it("lists the differences, folds boxes, and opens a line's calculation in a panel that Esc closes", () => {
     render(<Harness />);
-    expect(screen.getByText(/Select a row in Reported vs recomputed/)).toBeTruthy();
-    // Before a row is chosen, the differences worth opening first, largest % material first.
-    const start = screen.getByRole("list");
-    expect(within(start).getAllByRole("button").map((b) => b.textContent?.split(" · ")[0])).toEqual([
+    // Every differing line, largest % material first, one click from its calculation.
+    const strip = screen.getByRole("region", { name: "Where reported and recomputed differ" });
+    expect(within(strip).getAllByRole("button").map((b) => b.querySelector(".s1-vw-chipbtn__name")?.textContent)).toEqual([
       "Electricity", "Natural gas", "Diesel", "R-404A", "Heating", "Heating",
     ]);
-    const scope1 = screen.getByText("Scope 1").closest(".s1-vw-box") as HTMLElement;
-    const gasRow = within(scope1).getByRole("button", { name: "Natural gas" }).closest("tr") as HTMLElement;
+    // Scope 1 starts open; the other boxes show their summary line and fold open on click.
+    const boxHead = (name: RegExp) =>
+      screen.getAllByRole("button", { name }).find((b) => b.hasAttribute("aria-expanded")) as HTMLElement;
+    const location = boxHead(/Scope 2, location-based/);
+    expect(location.getAttribute("aria-expanded")).toBe("false");
+    expect(location.textContent).toContain("+0.1% material");
+    fireEvent.click(location);
+    expect(location.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "Steam" })).toBeTruthy();
+
+    // A chip opens the line (and its box) in the panel; Esc closes it.
+    fireEvent.click(within(strip).getAllByRole("button")[0]);
+    expect(boxHead(/Scope 2, market-based/).getAttribute("aria-expanded")).toBe("true");
+    expect(within(screen.getByRole("region", { name: "Calculation" })).getByRole("heading", { level: 2 }).textContent).toBe(
+      "Scope 2, market-based › Electricity"
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("region", { name: "Calculation" })).toBeNull();
+  });
+
+  it("opens the differing facility's card and its sources, and records the examination", () => {
+    render(<Harness />);
+    const gasRow = screen.getByRole("button", { name: "Natural gas" }).closest("tr") as HTMLElement;
     expect(within(gasRow).getByText("0 of 3")).toBeTruthy();
 
     fireEvent.click(within(gasRow).getByRole("button", { name: "Natural gas" }));
     const calc = screen.getByRole("region", { name: "Calculation" });
     expect(within(calc).getByRole("heading", { level: 2 }).textContent).toBe("Scope 1 › Stationary combustion › Natural gas");
     expect(calc.querySelector(".s1-vw-summary")?.textContent).toBe("Reported 9,561Recomputed 9,906Difference +345");
-
-    fireEvent.click(within(calc).getByRole("button", { name: /Kent Cannery/ }));
+    // Kent Cannery explains the difference, so its card is already open.
+    expect(within(calc).getByRole("button", { name: /Kent Cannery/ }).getAttribute("aria-expanded")).toBe("true");
     expect(within(calc).getByText(/the March bill is missing from the reported total/)).toBeTruthy();
 
-    // Underlined inputs open their documents on the right.
+    // Underlined inputs open their documents beside the calculation.
     const source = screen.getByRole("region", { name: "Source" });
     fireEvent.click(within(calc).getByRole("button", { name: "650,000 therms" }));
     expect(within(source).getByText(/cell D3/)).toBeTruthy();
-    fireEvent.click(within(calc).getByRole("button", { name: "715,000 therms" }));
+    const bills = within(calc).getByRole("button", { name: "715,000 therms" });
+    fireEvent.click(bills);
+    expect(bills.getAttribute("aria-pressed")).toBe("true");
     expect(within(source).getByText("Not in the reported total")).toBeTruthy();
     fireEvent.click(within(source).getByRole("button", { name: "kent_gas_mar_2025.pdf" }));
     expect(within(source).getByText("65,000 therms").closest("[aria-current]")).toBeTruthy();
     fireEvent.click(within(calc).getByRole("button", { name: "53.06 kg/MMBtu" }));
     expect(within(source).getByText(/Table 1, row 38/)).toBeTruthy();
 
-    // Record examination: the signed-in member is pre-selected; Save recounts the left pane.
+    // Record examination: the signed-in member is pre-selected; Save recounts the table.
     fireEvent.click(within(calc).getByRole("button", { name: "Record examination" }));
     const box = within(calc).getByRole("group", { name: /Record examination · Kent Cannery · Natural gas/ });
-    expect(within(box).getByRole("button", { name: "M. Osei" }).getAttribute("aria-pressed")).toBe("true");
+    expect(within(box).getByRole("button", { name: /M\. Osei/ }).getAttribute("aria-pressed")).toBe("true");
     fireEvent.change(within(box).getByRole("textbox"), { target: { value: "Traced to the March bill." } });
     fireEvent.click(within(box).getByRole("button", { name: "Save" }));
     expect(within(gasRow).getByText("1 of 3")).toBeTruthy();
+    expect(within(calc).getByText("Examined by M. Osei")).toBeTruthy();
 
     // Re-opening shows what was stored, with Clear.
     fireEvent.click(within(calc).getByRole("button", { name: "Record examination" }));
     const again = within(calc).getByRole("group", { name: /Record examination/ });
-    expect(within(again).getByText(/Examined by M\. Osei/)).toBeTruthy();
+    expect(within(again).getByText(/Examined by M\. Osei,/)).toBeTruthy();
     expect((within(again).getByRole("textbox") as HTMLTextAreaElement).value).toBe("Traced to the March bill.");
     fireEvent.click(within(again).getByRole("button", { name: "Clear examination" }));
     expect(within(gasRow).getByText("0 of 3")).toBeTruthy();
+
+    fireEvent.click(within(calc).getByRole("button", { name: "Close calculation" }));
+    expect(screen.queryByRole("region", { name: "Source" })).toBeNull();
   });
 
   it("saves a note only with text, and a note is not an examination", () => {
     render(<Harness />);
-    fireEvent.click(screen.getAllByRole("button", { name: "Natural gas" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Natural gas" }));
     const calc = screen.getByRole("region", { name: "Calculation" });
     fireEvent.click(within(calc).getByRole("button", { name: /Tualatin Plant/ }));
     fireEvent.click(within(calc).getByRole("button", { name: "Add notes" }));
@@ -243,7 +269,7 @@ describe("the Verification results panes", () => {
     fireEvent.change(within(box).getByRole("textbox"), { target: { value: "Ask for the meter photos." } });
     fireEvent.click(save);
     expect(within(calc).getByText("Ask for the meter photos.")).toBeTruthy();
-    const gasRow = screen.getAllByRole("button", { name: "Natural gas" })[0].closest("tr") as HTMLElement;
+    const gasRow = screen.getByRole("button", { name: "Natural gas" }).closest("tr") as HTMLElement;
     expect(within(gasRow).getByText("0 of 3")).toBeTruthy();
   });
 });

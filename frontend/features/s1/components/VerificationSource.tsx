@@ -1,5 +1,6 @@
 "use client";
 
+import { BookOpen, FileSpreadsheet, FileText, Files, Info, MousePointerClick, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type {
@@ -28,6 +29,7 @@ export function VerificationSource({ source }: { source: SourceRef | null }) {
   if (!source) {
     return (
       <div className="s1-xr-src-empty">
+        <MousePointerClick className="s1-vw-ico s1-vw-src-empty__icon" aria-hidden />
         <p className="s1-muted">
           Any underlined input opens here at its cited location. When the selected input has no document, this pane shows
           its determination basis instead.
@@ -37,7 +39,7 @@ export function VerificationSource({ source }: { source: SourceRef | null }) {
   }
   if (opened) {
     return (
-      <Frame title={opened.doc.filename} meta={`p. ${opened.doc.page}`}>
+      <Frame icon={FileText} title={opened.doc.filename} meta={`p. ${opened.doc.page}`}>
         <button className="s1-linklike s1-vw-back" type="button" onClick={() => setOpened(null)}>
           ‹ {opened.from.title}
         </button>
@@ -48,43 +50,48 @@ export function VerificationSource({ source }: { source: SourceRef | null }) {
   switch (source.kind) {
     case "workbook":
       return (
-        <Frame title={source.filename} meta={`sheet ‘${source.sheet}’ · cell ${cellName(source)}`}>
+        <Frame icon={FileSpreadsheet} title={source.filename} meta={`sheet ‘${source.sheet}’ · cell ${cellName(source)}`}>
           <WorkbookView source={source} />
         </Frame>
       );
     case "records":
       return (
-        <Frame title={source.title} meta={`${source.items.length} documents`}>
+        <Frame icon={Files} title={source.title} meta={`${source.items.length} documents`}>
           <RecordsView source={source} onOpen={(doc) => setOpened({ from: source, doc })} />
         </Frame>
       );
     case "document":
       return (
-        <Frame title={source.filename} meta={`p. ${source.page}`}>
+        <Frame icon={FileText} title={source.filename} meta={`p. ${source.page}`}>
           <DocumentView doc={source} />
         </Frame>
       );
     case "reference":
       return (
-        <Frame title={source.title} meta={source.citation}>
+        <Frame icon={BookOpen} title={source.title} meta={source.citation}>
           <ReferenceView source={source} />
         </Frame>
       );
     case "basis":
       return (
-        <Frame title={source.title} meta="Determination basis: no document">
+        <Frame icon={Info} title={source.title} meta="Determination basis: no document">
           <p className="s1-vw-basis">{source.text}</p>
         </Frame>
       );
   }
 }
 
-function Frame({ title, meta, children }: { title: string; meta: string; children: ReactNode }) {
+function Frame({ icon: Icon, title, meta, children }: { icon: LucideIcon; title: string; meta: string; children: ReactNode }) {
   return (
-    <div className="s1-xr-src">
-      <div className="s1-xr-src-head">
-        <div className="s1-xr-src-fn">{title}</div>
-        <div className="s1-muted s1-vw-src-meta">{meta}</div>
+    <div className="s1-xr-src s1-vw-src">
+      <div className="s1-xr-src-head s1-vw-src__head">
+        <span className="s1-vw-src__icon">
+          <Icon className="s1-vw-ico" aria-hidden />
+        </span>
+        <div>
+          <div className="s1-xr-src-fn">{title}</div>
+          <div className="s1-muted s1-vw-src-meta">{meta}</div>
+        </div>
       </div>
       <div className="s1-xr-src-body">{children}</div>
     </div>
