@@ -9,18 +9,23 @@ differ. ``seq`` is the file order of the JSONL stores: lists come back oldest fi
 Every call is one short transaction in the scope bound for the request
 (``core.s1_scope.current_scope``), so RLS limits it to the signed-in organization (or provider
 scope). With no scope bound the call raises instead of reading every organization.
+
+A record with an evidence id claims that id in ``s1_evidence_owners`` (migration 0014) in the
+same transaction: the first organization to save it owns it, and a save by any other is
+refused, even though RLS hides the owner's records from it.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any
+import uuid
+from typing import Any, Literal
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from backend.app.core.db import get_sync_engine, tenant_transaction
-from backend.app.core.s1_scope import current_scope
+from backend.app.core.s1_scope import S1Scope, current_scope
 
 # table -> the columns filled from the record (besides org_id); must match migration 0013.
 COLUMNS: dict[str, tuple[str, ...]] = {
@@ -43,6 +48,49 @@ def _column_value(value: Any) -> str | None:
 def _org_id(record: dict[str, Any]) -> str | None:
     owner = record.get("org_id")
     return None if owner in (None, "") else str(owner)
+
+
+def _same_org(a: Any, b: Any) -> bool:
+    if a in (None, "") or b in (None, ""):
+        return a in (None, "") and b in (None, "")
+    return uuid.UUID(str(a)) == uuid.UUID(str(b))
+
+
+class EvidenceOwnedElsewhere(PermissionError):
+    """The evidence id is already owned by another organization (or is unowned legacy evidence)."""
+
+
+_CLAIM = text(
+    "INSERT INTO s1_evidence_owners (evidence_id, org_id) VALUES (:evidence_id, :org_id) "
+    "ON CONFLICT (evidence_id) DO NOTHING RETURNING evidence_id"
+)
+_OWNER = text("SELECT org_id FROM s1_evidence_owners WHERE evidence_id = :evidence_id")
+
+
+def _claim_evidence(connection: Any, evidence_id: str, org_id: str | None) -> None:
+    connection.execute(_CLAIM, {"evidence_id": evidence_id, "org_id": org_id})
+    owner = connection.execute(_OWNER, {"evidence_id": evidence_id}).first()
+    if owner is None or not _same_org(owner.org_id, org_id):
+        raise EvidenceOwnedElsewhere(f"Evidence {evidence_id} belongs to another organization.")
+
+
+def evidence_owner_status(evidence_id: str, engine: Engine | None = None) -> Literal["free", "own", "taken"]:
+    """Whether the bound organization may use an evidence id: nobody has it ("free"), it does
+    ("own"), or another organization (or unowned legacy evidence) does ("taken"). Provider
+    scope owns nothing, so it only ever sees "free" or "taken"."""
+
+    scope: S1Scope = current_scope()
+    with tenant_transaction(scope, engine or get_sync_engine()) as connection:
+        owner = connection.execute(_OWNER, {"evidence_id": evidence_id}).first()
+        if owner is not None:
+            return "own" if not scope.provider and _same_org(owner.org_id, scope.org_id) else "taken"
+        if scope.provider:
+            return "free"
+        # RLS hides another organization's claim: a claim attempt, undone at once, tells.
+        probe = connection.begin_nested()
+        claimed = connection.execute(_CLAIM, {"evidence_id": evidence_id, "org_id": str(scope.org_id)}).first()
+        probe.rollback()
+        return "free" if claimed is not None else "taken"
 
 
 class S1Table:
@@ -74,7 +122,10 @@ class S1Table:
         if self._unique:
             updates = ", ".join(f"{n} = EXCLUDED.{n}" for n in names if n != self._unique)
             statement += f" ON CONFLICT ({self._unique}) DO UPDATE SET {updates}, updated_at = now()"
+        evidence_id = record.get("evidence_id") if "evidence_id" in self._columns else None
         with self._transaction() as connection:
+            if evidence_id not in (None, ""):
+                _claim_evidence(connection, str(evidence_id), params["org_id"])
             connection.execute(text(statement), params)
 
     def select(self, **where: Any) -> list[dict[str, Any]]:

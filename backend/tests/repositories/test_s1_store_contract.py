@@ -7,6 +7,7 @@ without them only the Postgres runs are skipped.
 
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from collections.abc import Iterator
@@ -43,7 +44,7 @@ from backend.app.repositories.review_repository import (
     JsonlReviewDecisionRepository,
     PostgresReviewDecisionRepository,
 )
-from backend.app.repositories.s1_postgres import COLUMNS
+from backend.app.repositories.s1_postgres import COLUMNS, EvidenceOwnedElsewhere, evidence_owner_status
 
 ADMIN_URL = os.environ.get("TEST_DATABASE_URL")
 APP_URL = os.environ.get("TEST_APP_DATABASE_URL")
@@ -75,7 +76,7 @@ def pg_engines() -> Iterator[tuple[Any, Any]]:
 
 def _reset(admin: Any) -> None:
     with admin.begin() as connection:
-        connection.execute(text(f"TRUNCATE {', '.join(COLUMNS)}"))
+        connection.execute(text(f"TRUNCATE {', '.join(COLUMNS)}, s1_evidence_owners"))
         connection.execute(
             text("INSERT INTO organizations (id, name, slug) VALUES (:a, 'Repo A', 's1-repo-a'), "
                  "(:b, 'Repo B', 's1-repo-b') ON CONFLICT DO NOTHING"),
@@ -203,25 +204,80 @@ def test_a_record_comes_back_exactly_as_saved(stores: Stores) -> None:
 
 # --- Postgres only --------------------------------------------------------------------
 
+def _admin_insert_document(admin: Any, org: uuid.UUID | None, document_id: str, evidence_id: str) -> None:
+    """A row written straight to the table, past the store (and its evidence claim)."""
+
+    record = {"document_id": document_id, "evidence_id": evidence_id, "org_id": str(org) if org else None}
+    with admin.begin() as connection:
+        connection.execute(text(
+            "INSERT INTO s1_documents (org_id, document_id, evidence_id, record) "
+            "VALUES (:org, :document_id, :evidence_id, CAST(:record AS jsonb))"),
+            {"org": org, "document_id": document_id, "evidence_id": evidence_id, "record": json.dumps(record)})
+
+
 def test_postgres_stores_see_only_the_bound_organization(pg_engines: tuple[Any, Any]) -> None:
     admin, app = pg_engines
     _reset(admin)
     pg = _postgres_stores(app)
-    for org in (ORG, OTHER_ORG):
-        with scoped(S1Scope.tenant(org)):
-            pg.documents.save({"org_id": str(org), "document_id": f"D-{org}", "evidence_id": "EV-SHARED"})
-    with admin.begin() as connection:  # a record made before uploads had an owner
-        connection.execute(text(
-            "INSERT INTO s1_documents (document_id, evidence_id, record) "
-            "VALUES ('D-legacy', 'EV-SHARED', CAST(:r AS jsonb))"),
-            {"r": '{"document_id": "D-legacy", "evidence_id": "EV-SHARED", "org_id": null}'})
+    with scoped(S1Scope.tenant(ORG)):
+        pg.documents.save({"org_id": str(ORG), "document_id": "D-own", "evidence_id": "EV-SHARED"})
+    _admin_insert_document(admin, OTHER_ORG, "D-other", "EV-SHARED")
+    _admin_insert_document(admin, None, "D-legacy", "EV-SHARED")  # from before uploads had an owner
 
     with scoped(S1Scope.tenant(ORG)):
-        assert _ids(pg.documents.list_by_evidence("EV-SHARED"), "document_id") == [f"D-{ORG}"]
-        assert pg.documents.get_by_id(f"D-{OTHER_ORG}") is None
+        assert _ids(pg.documents.list_by_evidence("EV-SHARED"), "document_id") == ["D-own"]
+        assert pg.documents.get_by_id("D-other") is None
+    with scoped(S1Scope.tenant(OTHER_ORG)):
+        assert _ids(pg.documents.list_by_evidence("EV-SHARED"), "document_id") == ["D-other"]
     with scoped(S1Scope.platform()):
-        assert _ids(pg.documents.list_by_evidence("EV-SHARED"), "document_id") == [
-            f"D-{ORG}", f"D-{OTHER_ORG}", "D-legacy"]
+        assert _ids(pg.documents.list_by_evidence("EV-SHARED"), "document_id") == ["D-own", "D-other", "D-legacy"]
+
+
+def test_the_first_organization_to_save_an_evidence_id_owns_it(pg_engines: tuple[Any, Any]) -> None:
+    admin, app = pg_engines
+    _reset(admin)
+    pg = _postgres_stores(app)
+    with scoped(S1Scope.tenant(ORG)):
+        pg.documents.save({"org_id": str(ORG), "document_id": "D1", "evidence_id": "EV-1"})
+        pg.runs.save({"org_id": str(ORG), "pipeline_run_id": "R1", "evidence_id": "EV-1"})
+    with scoped(S1Scope.tenant(OTHER_ORG)), pytest.raises(EvidenceOwnedElsewhere):
+        pg.reviews.save({"org_id": str(OTHER_ORG), "review_decision_id": "V1", "evidence_id": "EV-1"})
+
+    with admin.begin() as connection:
+        assert connection.execute(text("SELECT count(*) FROM s1_review_decisions")).scalar() == 0
+        owners = connection.execute(text("SELECT evidence_id, org_id FROM s1_evidence_owners")).all()
+    assert [(e, str(o)) for e, o in owners] == [("EV-1", str(ORG))]
+
+
+def test_evidence_owner_status_tells_free_own_and_taken_apart(pg_engines: tuple[Any, Any]) -> None:
+    admin, app = pg_engines
+    _reset(admin)
+    with scoped(S1Scope.tenant(ORG)):
+        assert evidence_owner_status("EV-1", app) == "free"
+        PostgresDocumentRepository(app).save({"org_id": str(ORG), "document_id": "D1", "evidence_id": "EV-1"})
+        assert evidence_owner_status("EV-1", app) == "own"
+    with scoped(S1Scope.tenant(OTHER_ORG)):
+        assert evidence_owner_status("EV-1", app) == "taken"
+        assert evidence_owner_status("EV-2", app) == "free"
+    with scoped(S1Scope.platform()):
+        assert evidence_owner_status("EV-1", app) == "taken"
+        assert evidence_owner_status("EV-2", app) == "free"
+    with admin.begin() as connection:  # asking claimed nothing
+        assert connection.execute(text("SELECT count(*) FROM s1_evidence_owners")).scalar() == 1
+
+
+def test_unowned_legacy_evidence_is_taken_for_every_organization(pg_engines: tuple[Any, Any]) -> None:
+    admin, app = pg_engines
+    _reset(admin)
+    with scoped(S1Scope.platform()):  # the import of records made before uploads had an owner
+        PostgresPipelineRunRepository(app).save({"org_id": None, "pipeline_run_id": "R0", "evidence_id": "EV-OLD"})
+        PostgresDocumentRepository(app).save({"org_id": None, "document_id": "D0"})  # no evidence id: no claim
+    with scoped(S1Scope.tenant(ORG)):
+        assert evidence_owner_status("EV-OLD", app) == "taken"
+        with pytest.raises(EvidenceOwnedElsewhere):
+            PostgresDocumentRepository(app).save({"org_id": str(ORG), "document_id": "D1", "evidence_id": "EV-OLD"})
+    with admin.begin() as connection:
+        assert connection.execute(text("SELECT count(*) FROM s1_evidence_owners")).scalar() == 1
 
 
 def test_postgres_stores_refuse_to_work_with_no_organization_bound(pg_engines: tuple[Any, Any]) -> None:
