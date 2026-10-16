@@ -11,6 +11,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy.engine import Engine
+
+from backend.app.repositories.s1_postgres import S1Table
+
 DEFAULT_JSONL_PATH = "local-data/extraction-results/extraction_results.jsonl"
 
 
@@ -66,3 +70,22 @@ class JsonlExtractionResultRepository(_BaseExtractionResultRepository):
         with self._path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         return record
+
+
+class PostgresExtractionResultRepository(_BaseExtractionResultRepository):
+    def __init__(self, engine: Engine | None = None) -> None:
+        self._table = S1Table("s1_extraction_results", engine=engine)
+
+    def _records(self) -> list[dict[str, Any]]:
+        return self._table.select()
+
+    def save(self, record: dict[str, Any]) -> dict[str, Any]:
+        record = copy.deepcopy(record)
+        self._table.insert(record)
+        return record
+
+    def list_by_document(self, document_id: str) -> list[dict[str, Any]]:
+        return self._table.select(document_id=document_id)
+
+    def list_by_evidence(self, evidence_id: str) -> list[dict[str, Any]]:
+        return self._table.select(evidence_id=evidence_id)
