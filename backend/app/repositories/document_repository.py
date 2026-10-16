@@ -6,7 +6,10 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy.engine import Engine
+
 from backend.app.domain.document import Document
+from backend.app.repositories.s1_postgres import S1Table
 
 DEFAULT_JSONL_PATH = "local-data/documents/documents.jsonl"
 
@@ -103,3 +106,31 @@ class JsonlDocumentRepository(_BaseDocumentRepository):
         with self._path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         return record
+
+
+class PostgresDocumentRepository(_BaseDocumentRepository):
+    """s1_documents: one row per document, replaced by each save (a status change), so it
+    keeps its place in upload order. ``list_all`` gives each document once."""
+
+    def __init__(self, engine: Engine | None = None) -> None:
+        self._table = S1Table("s1_documents", unique="document_id", engine=engine)
+
+    def _records(self) -> list[dict]:
+        return self._table.select()
+
+    def save(self, document: Document | dict) -> dict:
+        record = _to_dict(document)
+        self._table.insert(record)
+        return record
+
+    def list_by_engagement(self, engagement_id: str) -> list[dict]:
+        return self._table.select(engagement_id=engagement_id)
+
+    def list_by_evidence(self, evidence_id: str) -> list[dict]:
+        return self._table.select(evidence_id=evidence_id)
+
+    def get_by_id(self, document_id: str) -> dict | None:
+        return self._table.latest(document_id=document_id)
+
+    def get_latest_by_evidence(self, evidence_id: str) -> dict | None:
+        return self._table.latest(evidence_id=evidence_id)

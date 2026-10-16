@@ -12,7 +12,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy.engine import Engine
+
 from backend.app.domain.review import ReviewDecision
+from backend.app.repositories.s1_postgres import S1Table
 
 DEFAULT_JSONL_PATH = "local-data/review-decisions/review_decisions.jsonl"
 
@@ -100,3 +103,31 @@ class JsonlReviewDecisionRepository(_BaseReviewDecisionRepository):
         with self._path.open("a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
         return record
+
+
+class PostgresReviewDecisionRepository(_BaseReviewDecisionRepository):
+    def __init__(self, engine: Engine | None = None) -> None:
+        self._table = S1Table("s1_review_decisions", engine=engine)
+
+    def _records(self) -> list[dict]:
+        return self._table.select()
+
+    def save(self, decision: ReviewDecision | dict) -> dict:
+        record = _to_dict(decision)
+        self._table.insert(record)
+        return record
+
+    def list_by_evidence(self, evidence_id: str) -> list[dict]:
+        return self._table.select(evidence_id=evidence_id)
+
+    def list_by_document(self, document_id: str) -> list[dict]:
+        return self._table.select(document_id=document_id)
+
+    def list_by_candidate(self, candidate_id: str) -> list[dict]:
+        return self._table.select(candidate_id=candidate_id)
+
+    def get_latest_by_candidate(self, candidate_id: str) -> dict | None:
+        return self._table.latest(candidate_id=candidate_id)
+
+    def get_latest_by_field(self, evidence_id: str, field_name: str) -> dict | None:
+        return self._table.latest(evidence_id=evidence_id, field_name=field_name)
