@@ -6,8 +6,7 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from backend.app.domain.document import Document
-from backend.app.repositories.document_repository import JsonlDocumentRepository
-from backend.app.services.local_storage_service import LocalStorageService
+from backend.app.repositories import s1_stores
 
 _ALLOWED_PROCESSING_STATUSES = {
     "not_started",
@@ -26,8 +25,8 @@ class DocumentUploadService:
         clock: Callable[[], str] | None = None,
         id_factory: Callable[[str, str], str] | None = None,
     ) -> None:
-        self._storage_service = storage_service or LocalStorageService()
-        self._document_repository = document_repository or JsonlDocumentRepository()
+        self._storage_service = storage_service or s1_stores.files()
+        self._document_repository = document_repository or s1_stores.documents()
         self._clock = clock or (lambda: datetime.now(timezone.utc).isoformat())
         self._id_factory = id_factory or self._default_id_factory
 
