@@ -88,7 +88,7 @@ async def login(
     request: Request,
     payload: LoginRequest,
     background: BackgroundTasks,
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
     send_otp: OtpSender = Depends(get_otp_sender),
 ) -> JSONResponse:
     outcome = await login_service.start_login(db, payload.email, payload.password, payload.org_slug, _meta(request))
@@ -103,7 +103,7 @@ async def login(
 async def login_verify(
     request: Request,
     payload: VerifyRequest,
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     outcome = await login_service.verify_login(db, payload.challenge_id, payload.code, _meta(request))
     response = _respond(outcome)
@@ -118,7 +118,7 @@ async def login_resend(
     request: Request,
     payload: ResendRequest,
     background: BackgroundTasks,
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
     send_otp: OtpSender = Depends(get_otp_sender),
 ) -> JSONResponse:
     outcome = await login_service.resend_code(db, payload.challenge_id, _meta(request))
@@ -151,7 +151,7 @@ async def password_reset_request(
 async def password_reset_confirm(
     request: Request,
     payload: PasswordResetConfirm,
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     outcome = await reset_service.confirm_reset(db, payload.token, payload.password, _meta(request))
     return JSONResponse(outcome.body, status_code=outcome.status)
@@ -181,7 +181,7 @@ async def me(request: Request, user: CurrentUser = Depends(get_current_user)) ->
 async def logout(
     request: Request,
     user: CurrentUser = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     # Only THIS session ends; the user's other sessions stay valid.
     await delete_session(db, user.session_id)
@@ -236,7 +236,7 @@ class AcceptInviteResponse(BaseModel):
 async def validate_invite(
     request: Request,
     token: str = Query(min_length=1, max_length=256),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     outcome = await invite_service.validate_invite(db, token)
     return JSONResponse(outcome.body, status_code=outcome.status)
@@ -247,7 +247,7 @@ async def validate_invite(
 async def accept_invite(
     request: Request,
     payload: AcceptInviteRequest,
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> JSONResponse:
     meta = _meta(request)
     outcome = await invite_service.accept_invite(db, payload.token, payload.password, request_id=meta.request_id,

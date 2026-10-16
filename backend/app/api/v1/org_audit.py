@@ -44,7 +44,7 @@ class AuditPageResponse(BaseModel):
 async def list_audit_logs(
     org_id: str,
     principal: Annotated[Principal, Depends(require_org_admin)],
-    db: Annotated[AsyncSession, Depends(get_db_session)],
+    db: Annotated[AsyncSession, Depends(get_db_session, scope="function")],
     event_type: Annotated[str | None, Query(max_length=64, pattern=r"^[a-z][a-z0-9_]{1,63}$")] = None,
     user_id: Annotated[UUID | None, Query()] = None,
     from_date: Annotated[date | None, Query(description="inclusive, UTC")] = None,

@@ -178,7 +178,13 @@ def get_sessionmaker_dependency() -> async_sessionmaker[AsyncSession]:
 
 
 async def get_db_session() -> AsyncIterator[AsyncSession]:
-    """FastAPI dependency: one session, one transaction per request."""
+    """FastAPI dependency: one session, one transaction per request.
+
+    Declare it as ``Depends(get_db_session, scope="function")``: the transaction then commits
+    when the endpoint returns, before the response is sent. With FastAPI's default scope for a
+    yield dependency ("request") the commit runs after the response, so a client that acts on
+    it at once (the session check right after a login) can arrive before the commit.
+    """
     async with get_sessionmaker()() as session:
         async with session.begin():
             yield session

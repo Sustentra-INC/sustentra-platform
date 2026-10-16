@@ -49,7 +49,7 @@ def _service() -> EngagementRecalculationService:
 async def get_recalculation(
     engagement_id: str,
     user: CurrentUser = Depends(s1_reader),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict:
     engagement = await _visible(db, engagement_id, user)
     decisions = {
@@ -64,7 +64,7 @@ async def export_workpaper(
     engagement_id: str,
     request: Request,
     user: CurrentUser = Depends(s1_reader),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> Response:
     """The workpaper as an Excel file (the same numbers the screens show)."""
 
