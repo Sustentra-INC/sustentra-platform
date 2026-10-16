@@ -46,7 +46,7 @@ class CurrentUser:
         return self.role == "provider_admin"
 
 
-async def get_current_user(request: Request, db: AsyncSession = Depends(get_db_session)) -> CurrentUser:
+async def get_current_user(request: Request, db: AsyncSession = Depends(get_db_session, scope="function")) -> CurrentUser:
     token = request.cookies.get(SESSION_COOKIE)
     if not token:
         raise _UNAUTHENTICATED

@@ -107,7 +107,7 @@ class OrgListResponse(BaseModel):
 
 
 ProviderAdmin = Annotated[Principal, Depends(require_provider_admin)]
-Db = Annotated[AsyncSession, Depends(get_db_session)]
+Db = Annotated[AsyncSession, Depends(get_db_session, scope="function")]
 
 
 def _actor(principal: Principal, request: Request) -> orgs.Actor:

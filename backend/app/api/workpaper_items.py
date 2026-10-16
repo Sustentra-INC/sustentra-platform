@@ -65,7 +65,7 @@ async def list_workpaper_items(
     engagement_id: str,
     kind: Kind | None = Query(None),
     user: CurrentUser = Depends(s1_reader),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> WorkpaperItemList:
     engagement = await _visible(db, engagement_id, user)
     rows = await workpaper_item_service.list_items(db, engagement["id"], kind)
@@ -80,7 +80,7 @@ async def save_workpaper_item(
     request: Request,
     user: CurrentUser = Depends(s1_writer),
     engagement: dict[str, Any] = Depends(require_open_engagement),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> WorkpaperItem:
     if not _KEY.match(item_key):
         raise HTTPException(status_code=422, detail="item_key: letters, digits and : . _ - only (max 200).")

@@ -176,7 +176,7 @@ async def _visible(db: AsyncSession, engagement_id: str, user: CurrentUser) -> d
 async def require_open_engagement(
     engagement_id: str,
     user: CurrentUser = Depends(s1_writer),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict[str, Any]:
     """Dependency for routes that add documents to an engagement: it must exist in the
     caller's org (404 otherwise, like every cross-org S1 lookup) and be active (409)."""
@@ -192,7 +192,7 @@ async def list_engagements(
     include_archived: bool = Query(False),
     org_id: uuid.UUID | None = Query(None, description="provider_admin only: one org's engagements"),
     user: CurrentUser = Depends(s1_reader),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> EngagementListResponse:
     scope = org_id if user.is_provider else user.org_id
     rows = await engagement_service.list_engagements(db, include_archived=include_archived, org_id=scope)
@@ -204,7 +204,7 @@ async def create_engagement(
     payload: EngagementCreate,
     request: Request,
     user: CurrentUser = Depends(s1_writer),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> EngagementResponse:
     assert user.org_id is not None  # s1_writer excludes provider_admin
     row = await engagement_service.create_engagement(
@@ -225,7 +225,7 @@ async def create_engagement(
 async def get_engagement(
     engagement_id: str,
     user: CurrentUser = Depends(s1_reader),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> EngagementResponse:
     return EngagementResponse(**await _visible(db, engagement_id, user))
 
@@ -236,7 +236,7 @@ async def update_engagement(
     payload: EngagementUpdate,
     request: Request,
     user: CurrentUser = Depends(s1_writer),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> EngagementResponse:
     current = await _visible(db, engagement_id, user)
     changes = payload.model_dump(exclude_unset=True)

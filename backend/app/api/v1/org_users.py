@@ -61,7 +61,7 @@ class UpdateUserRequest(BaseModel):
 
 
 OrgAdmin = Annotated[Principal, Depends(require_org_admin)]
-Db = Annotated[AsyncSession, Depends(get_db_session)]
+Db = Annotated[AsyncSession, Depends(get_db_session, scope="function")]
 
 
 def _actor(principal: Principal, request: Request) -> users.Actor:
