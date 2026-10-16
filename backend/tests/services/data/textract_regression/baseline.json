@@ -833,6 +833,14 @@
      "unit": null,
      "value": "electricity"
     },
+    "service_period_end": {
+     "unit": null,
+     "value": "2025-05-31"
+    },
+    "service_period_start": {
+     "unit": null,
+     "value": "2025-05-01"
+    },
     "supplier_name": {
      "unit": null,
      "value": "City Water & Power"

@@ -28,6 +28,9 @@ from backend.app.adapters.parsers.base import (
 
 PARSER_NAME = "textract"
 
+# A gap between two words of a LINE wider than this many line heights splits the line.
+WIDE_GAP = 0.9
+
 
 class TextractParser:
     """Normalizes saved Textract JSON; never calls AWS."""
@@ -73,39 +76,41 @@ class TextractParser:
         source_references: list[dict] = []
         warnings: list[dict] = []
 
-        # LINE blocks -> text blocks + page text accumulation.
+        # LINE blocks -> text blocks + page text accumulation. A line whose words are far
+        # apart holds side-by-side fields ("Total kWh Used: 41,200 kWh    Service Period:
+        # 05/01/2025 to 05/31/2025"): each part becomes its own text block, so every label
+        # starts a block. The page text keeps the whole line.
         for block in blocks:
             if block.get("BlockType") != "LINE":
                 continue
             text = block.get("Text", "") or ""
             page_number = int(block.get("Page", 1) or 1)
-            block_id = block.get("Id")
             pages.setdefault(page_number, "")
             pages[page_number] = (pages[page_number] + "\n" + text).strip() if pages[page_number] else text
 
-            source_reference_id = f"SRC-{self.parser_name}-{block_id}"
-            bounding_box = self._bounding_box(block)
-            source_references.append(
-                build_source_reference(
-                    source_reference_id,
-                    document_id,
-                    page_number=page_number,
-                    text_snippet=snippet(text),
-                    bounding_box=to_reference_box(bounding_box),
-                    parser_block_ids=[block_id],
-                    source_kind="page_text",
+            for block_id, part_text, bounding_box in self._line_parts(block, block_map):
+                source_reference_id = f"SRC-{self.parser_name}-{block_id}"
+                source_references.append(
+                    build_source_reference(
+                        source_reference_id,
+                        document_id,
+                        page_number=page_number,
+                        text_snippet=snippet(part_text),
+                        bounding_box=to_reference_box(bounding_box),
+                        parser_block_ids=[block_id],
+                        source_kind="page_text",
+                    )
                 )
-            )
-            text_blocks.append(
-                build_text_block(
-                    block_id,
-                    text,
-                    page_number=page_number,
-                    confidence=self._normalize_confidence(block.get("Confidence")),
-                    bounding_box=bounding_box,
-                    source_reference_id=source_reference_id,
+                text_blocks.append(
+                    build_text_block(
+                        block_id,
+                        part_text,
+                        page_number=page_number,
+                        confidence=self._normalize_confidence(block.get("Confidence")),
+                        bounding_box=bounding_box,
+                        source_reference_id=source_reference_id,
+                    )
                 )
-            )
 
         # KEY_VALUE_SET (KEY entities) -> key/value pairs.
         for block in blocks:
@@ -274,6 +279,50 @@ class TextractParser:
                 }
             )
         return tables
+
+    @classmethod
+    def _line_parts(
+        cls, line: dict[str, Any], block_map: dict[str, Any]
+    ) -> list[tuple[Any, str, dict[str, float] | None]]:
+        """(block id, text, box) for each part of a LINE, split where the gap between two
+        words is wider than WIDE_GAP line heights. Ordinary word spacing on scanned bills
+        is under half a line height; side-by-side fields sit more than a line height apart.
+        A line without WORD geometry stays whole."""
+
+        whole = [(line.get("Id"), line.get("Text", "") or "", cls._bounding_box(line))]
+        line_box = cls._bounding_box(line)
+        words = [
+            block_map[child_id]
+            for relationship in line.get("Relationships") or []
+            if relationship.get("Type") == "CHILD"
+            for child_id in relationship.get("Ids") or []
+            if child_id in block_map and block_map[child_id].get("BlockType") == "WORD"
+        ]
+        boxes = [cls._bounding_box(word) for word in words]
+        if line_box is None or line_box["height"] <= 0 or len(words) < 2 or any(b is None for b in boxes):
+            return whole
+        groups: list[list[int]] = [[0]]
+        for i in range(1, len(words)):
+            previous, current = boxes[groups[-1][-1]], boxes[i]
+            assert previous is not None and current is not None
+            gap = current["left"] - (previous["left"] + previous["width"])
+            if gap > WIDE_GAP * line_box["height"]:
+                groups.append([i])
+            else:
+                groups[-1].append(i)
+        if len(groups) == 1:
+            return whole
+        parts: list[tuple[Any, str, dict[str, float] | None]] = []
+        for n, group in enumerate(groups, start=1):
+            group_boxes = [boxes[i] for i in group]
+            left = min(b["left"] for b in group_boxes if b)
+            top = min(b["top"] for b in group_boxes if b)
+            right = max(b["left"] + b["width"] for b in group_boxes if b)
+            bottom = max(b["top"] + b["height"] for b in group_boxes if b)
+            text = " ".join(str(words[i].get("Text") or "") for i in group).strip()
+            parts.append((f"{line.get('Id')}#{n}", text,
+                          {"left": left, "top": top, "width": right - left, "height": bottom - top}))
+        return parts
 
     @staticmethod
     def _bounding_box(block: dict) -> dict[str, float] | None:
