@@ -22,6 +22,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from ..core.auth import CurrentUser, require_role
+from ..core.config import get_settings
 
 S1_READ_ROLES = ("org_admin", "org_member", "provider_admin")
 S1_WRITE_ROLES = ("org_admin", "org_member")
@@ -79,12 +80,25 @@ def evidence_records(evidence_id: str) -> list[dict[str, Any]]:
     ]
 
 
+def claimed_elsewhere(evidence_id: str, user: CurrentUser) -> bool:
+    """Postgres stores only: RLS hides another organization's records from the checks below,
+    so the evidence owners table says whether another organization (or unowned legacy
+    evidence) holds the id. The JSONL stores show every record, so there it is False."""
+
+    if user.is_provider or get_settings().s1_store == "jsonl":
+        return False
+    from ..repositories.s1_postgres import evidence_owner_status
+
+    return evidence_owner_status(evidence_id) == "taken"
+
+
 def evidence_visible(evidence_id: str, user: CurrentUser) -> bool:
     """An evidence id is visible when every record referencing it is visible: one
     unowned or foreign record (e.g. a pre-SEC-001 review) hides it from org users."""
 
     records = evidence_records(evidence_id)
-    return bool(records) and all(can_see(record, user) for record in records)
+    return (bool(records) and all(can_see(record, user) for record in records)
+            and not claimed_elsewhere(evidence_id, user))
 
 
 def require_evidence(evidence_id: str, user: CurrentUser, detail: str = "Evidence not found.") -> None:
@@ -100,12 +114,13 @@ def evidence_owned_by_caller(evidence_id: str, user: CurrentUser) -> bool:
     records = evidence_records(evidence_id)
     return bool(records) and all(
         record.get("org_id") is not None and str(record.get("org_id")) == str(user.org_id) for record in records
-    )
+    ) and not claimed_elsewhere(evidence_id, user)
 
 
 def evidence_free_or_own(evidence_id: str, user: CurrentUser) -> bool:
     """For writes that name an evidence id: unused, or already owned by the caller."""
 
     records = evidence_records(evidence_id)
-    return not records or all(can_see(record, user) and record.get("org_id") is not None for record in records)
+    return (not records or all(can_see(record, user) and record.get("org_id") is not None for record in records)) \
+        and not claimed_elsewhere(evidence_id, user)
 
