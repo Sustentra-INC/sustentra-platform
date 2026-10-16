@@ -8,13 +8,7 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from backend.app.domain.evidence import ApprovedEvidence, ApprovedEvidenceField, ApprovedEvidenceReviewStatus
-from backend.app.repositories.evidence_repository import (
-    JsonlApprovedEvidenceRepository,
-)
-from backend.app.repositories.review_repository import (
-    DEFAULT_JSONL_PATH as REVIEW_JSONL_PATH,
-    JsonlReviewDecisionRepository,
-)
+from backend.app.repositories import s1_stores
 
 REQUIRED_REVIEW_DECISION_FIELDS = (
     "review_decision_id",
@@ -46,12 +40,8 @@ class ApprovedEvidenceService:
         clock: Callable[[], str] | None = None,
         id_factory: Callable[[str, str], str] | None = None,
     ) -> None:
-        self._review_repository = review_repository or JsonlReviewDecisionRepository(
-            REVIEW_JSONL_PATH
-        )
-        self._approved_repository = (
-            approved_repository or JsonlApprovedEvidenceRepository()
-        )
+        self._review_repository = review_repository or s1_stores.review_decisions()
+        self._approved_repository = approved_repository or s1_stores.approved_evidence()
         self._clock = clock or (lambda: datetime.now(timezone.utc).isoformat())
         self._id_factory = id_factory or self._default_id_factory
 

@@ -14,11 +14,8 @@ from backend.app.domain.pipeline import (
     PipelineStageStatuses,
     PipelineStatus,
 )
-from backend.app.repositories.pipeline_repository import JsonlPipelineRunRepository
-from backend.app.repositories.extraction_result_repository import (
-    InMemoryExtractionResultRepository,
-    JsonlExtractionResultRepository,
-)
+from backend.app.repositories import s1_stores
+from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
 from backend.app.services.classification_service import ClassificationService
 from backend.app.services.electricity_extractor import (
@@ -105,12 +102,12 @@ class PipelineOrchestrationService:
         self._approved_evidence_service = (
             approved_evidence_service or ApprovedEvidenceService()
         )
-        self._pipeline_repository = pipeline_repository or JsonlPipelineRunRepository()
+        self._pipeline_repository = pipeline_repository or s1_stores.pipeline_runs()
         # Persisted candidates for GET /documents/{id}/extraction-result/latest (S1-BE-001).
-        # Follows the run store: JSONL by default, in memory when a run repository is injected.
+        # Follows the run store: S1_STORE's by default, in memory when a run repository is injected.
         if extraction_result_repository is None:
             extraction_result_repository = (
-                JsonlExtractionResultRepository()
+                s1_stores.extraction_results()
                 if pipeline_repository is None
                 else InMemoryExtractionResultRepository()
             )

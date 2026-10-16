@@ -15,17 +15,14 @@ from backend.app.api.s1_access import (
 )
 from backend.app.core.auth import CurrentUser
 
-from backend.app.repositories.review_repository import (
-    DEFAULT_JSONL_PATH,
-    JsonlReviewDecisionRepository,
-)
+from backend.app.repositories import s1_stores
 from backend.app.services.review_decision_service import ReviewDecisionService
 
 router = APIRouter(prefix="/v1", tags=["reviews"])
 
 # Module-level service backed by local JSONL persistence (ignored by git).
 _service = ReviewDecisionService(
-    repository=JsonlReviewDecisionRepository(DEFAULT_JSONL_PATH)
+    repository=s1_stores.review_decisions()
 )
 
 

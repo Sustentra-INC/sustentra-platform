@@ -6,21 +6,14 @@ from pydantic import BaseModel
 from backend.app.api.s1_access import org_of, require_evidence, require_visible, s1_reader, s1_writer, visible
 from backend.app.core.auth import CurrentUser
 
-from backend.app.repositories.evidence_repository import (
-    DEFAULT_JSONL_PATH as APPROVED_EVIDENCE_JSONL_PATH,
-    JsonlApprovedEvidenceRepository,
-)
-from backend.app.repositories.review_repository import (
-    DEFAULT_JSONL_PATH as REVIEW_DECISION_JSONL_PATH,
-    JsonlReviewDecisionRepository,
-)
+from backend.app.repositories import s1_stores
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
 
 router = APIRouter(prefix="/v1", tags=["evidence"])
 
 _service = ApprovedEvidenceService(
-    review_repository=JsonlReviewDecisionRepository(REVIEW_DECISION_JSONL_PATH),
-    approved_repository=JsonlApprovedEvidenceRepository(APPROVED_EVIDENCE_JSONL_PATH),
+    review_repository=s1_stores.review_decisions(),
+    approved_repository=s1_stores.approved_evidence(),
 )
 
 
