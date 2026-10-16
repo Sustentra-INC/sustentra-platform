@@ -7,6 +7,8 @@ baseline, field by field.
 
     record    call Textract now and save the raw responses and the extracted values
     compare   call Textract now and report every field (and model version) that changed
+    reread    no AWS call: read the saved responses again with the current code and save
+              the values, after a change to our own reading rules (prints what changed)
 
 Credentials: the AWS profile's session, exported first:
 
@@ -165,9 +167,22 @@ def compare(baseline: dict[str, Any], now: dict[str, Any]) -> list[tuple[str, st
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("mode", choices=("record", "compare"))
+    parser.add_argument("mode", choices=("record", "compare", "reread"))
     parser.add_argument("--region", default=os.environ.get("AWS_REGION", "us-east-1"))
     args = parser.parse_args(argv)
+
+    if args.mode == "reread":
+        baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+        before = json.loads(json.dumps(baseline))
+        for name, sample in baseline["samples"].items():
+            replay = ReplayClient(sample["responses"])
+            with sample_file(SAMPLES[name]) as path:
+                sample.update(extract(path, lambda *_args, **_kwargs: replay))
+        for name, what, old, new in compare(before, baseline["samples"]):
+            print(f"CHANGED  {name}  {what}:  {json.dumps(old)}  ->  {json.dumps(new)}")
+        BASELINE.write_text(json.dumps(baseline, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"Values re-read from the saved responses into {BASELINE.relative_to(REPO_ROOT)}")
+        return 0
 
     now = run_live(args.region)
     if args.mode == "record":
