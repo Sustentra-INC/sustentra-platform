@@ -6,6 +6,8 @@
     python -m backend.app.cli create-provider-admin \
         --email a@b.com --first-name A --last-name B [--reset-link]   # ORG-000
     python -m backend.app.cli claim-s1-data --engagement-id ENG --org-slug acme [--dry-run]  # SEC-001
+    python -m backend.app.cli import-s1-stores [--dry-run]   # S1 JSONL stores -> Postgres (S1_STORE=jsonl only)
+    python -m backend.app.cli verify-s1-stores               # do the files and Postgres agree?
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from .core import db as core_db
 from .core import security_primitives
 from .core.config import get_settings
 from .services import provider_admin_bootstrap as bootstrap
-from .services import s1_ownership_claim
+from .services import s1_ownership_claim, s1_store_import
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 
@@ -172,6 +174,38 @@ def _claim_s1_data(args: argparse.Namespace) -> int:
     return 0
 
 
+def _import_s1_stores(args: argparse.Namespace) -> int:
+    try:
+        report = s1_store_import.import_stores(args.data_root, dry_run=args.dry_run)
+    except s1_store_import.ImportRefused as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print("Would import (nothing written):" if report.dry_run else "Imported into Postgres:")
+    for name, counts in report.stores.items():
+        print(f"  {name}: {counts.lines} lines - {counts.inserted} new, {counts.updated} updated, "
+              f"{counts.unchanged} unchanged")
+    print(f"  uploaded files: {report.files_copied} copied, {report.files_unchanged} already there, "
+          f"{len(report.files_missing)} missing on disk, {len(report.files_conflicting)} differ from the copy")
+    for uri in report.files_conflicting:
+        print(f"    differs: {uri}")
+    print(f"  evidence ids: {report.evidence_owners}, of which {len(report.evidence_hidden)} have no single "
+          "owner and stay visible to provider scope only (as today)")
+    return 1 if report.files_conflicting else 0
+
+
+def _verify_s1_stores(args: argparse.Namespace) -> int:
+    report = s1_store_import.verify_stores(args.data_root)
+    print(f"{report.checks} checks, {len(report.mismatches)} mismatches.")
+    for mismatch in report.mismatches[:50]:
+        print(f"  MISMATCH {mismatch}")
+    if len(report.mismatches) > 50:
+        print(f"  ... and {len(report.mismatches) - 50} more")
+    if report.files_missing_on_disk:
+        print(f"  {len(report.files_missing_on_disk)} documents name a file that is missing on disk (not a mismatch).")
+    print("The files and Postgres agree." if report.ok else "The files and Postgres do NOT agree.")
+    return 0 if report.ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="sustentra")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -203,6 +237,18 @@ def main(argv: list[str] | None = None) -> int:
     claim.add_argument("--dry-run", action="store_true", dest="dry_run", help="report only; change nothing")
     claim.add_argument("--data-root", default=".", dest="data_root", help="directory holding local-data/ (default: .)")
     claim.set_defaults(func=_claim_s1_data)
+
+    importer = sub.add_parser(
+        "import-s1-stores",
+        help="copy the S1 JSONL stores and uploaded files into Postgres (only while S1_STORE=jsonl; repeatable)",
+    )
+    importer.add_argument("--dry-run", action="store_true", dest="dry_run", help="count only; write nothing")
+    importer.add_argument("--data-root", default=".", dest="data_root", help="directory holding local-data/ (default: .)")
+    importer.set_defaults(func=_import_s1_stores)
+
+    verify = sub.add_parser("verify-s1-stores", help="check that Postgres answers every S1 lookup as the files do")
+    verify.add_argument("--data-root", default=".", dest="data_root", help="directory holding local-data/ (default: .)")
+    verify.set_defaults(func=_verify_s1_stores)
 
     args = parser.parse_args(argv)
     return int(args.func(args))
