@@ -1,8 +1,7 @@
 "use client";
 
 import { ChevronRight, Send, StickyNote, Upload } from "lucide-react";
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { Fragment, useMemo, useRef, useState } from "react";
 
 import { createAuditIntent, type AuditIntentAction, type SessionAuditEntry } from "../utils/auditIntent";
 import type {
@@ -15,6 +14,7 @@ import type {
 } from "../types";
 import type { QualityCheck } from "../api/recalculation";
 import { qualityIssueLines } from "./QualityChecksPanel";
+import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { formatPeriod } from "../utils/formatPeriod";
 import type { AskDraft } from "../requests/requestsStore";
@@ -929,47 +929,8 @@ function RowMenu({
   onReinstate: () => void;
   onHistory: () => void;
 }) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const withdrawn = item.disposition === "withdrawn";
-  // Where the floating menu opens: under the button, or above it near the bottom of the window.
-  const [place, setPlace] = useState<{ top: number; left: number; up: boolean } | null>(null);
-  useLayoutEffect(() => {
-    if (!isOpen || !triggerRef.current) {
-      setPlace(null);
-      return;
-    }
-    const measure = () => {
-      const box = triggerRef.current?.getBoundingClientRect();
-      if (!box) return;
-      const height = menuRef.current?.offsetHeight ?? 320;
-      const width = menuRef.current?.offsetWidth ?? 208;
-      const up = box.bottom + height + 8 > window.innerHeight && box.top - height - 8 > 0;
-      setPlace({ top: up ? box.top - height - 4 : box.bottom + 4, left: Math.max(8, box.right - width), up });
-    };
-    measure();
-    const frame = window.requestAnimationFrame(measure); // again once the menu has its size
-    window.addEventListener("scroll", measure, true);
-    window.addEventListener("resize", measure);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("scroll", measure, true);
-      window.removeEventListener("resize", measure);
-    };
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    function onDown(e: PointerEvent) {
-      const t = e.target as Node;
-      if (menuRef.current?.contains(t) || triggerRef.current?.contains(t)) return;
-      onOpenChange(false);
-    }
-    document.addEventListener("pointerdown", onDown);
-    return () => document.removeEventListener("pointerdown", onDown);
-  }, [isOpen, onOpenChange]);
-
-  const entries: Array<{ label: string; action: () => void; disabled?: boolean }> = withdrawn
+  const entries: ActionMenuEntry[] = withdrawn
     ? [
         { label: "Open", action: onOpen },
         { label: "History", action: onHistory },
@@ -988,48 +949,7 @@ function RowMenu({
         { label: "Withdraw", action: onWithdraw },
       ];
 
-  return (
-    <div className="s1-menu">
-      <button
-        ref={triggerRef}
-        className="s1-button s1-button--icon"
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={isOpen}
-        aria-label={`Actions for ${item.filename}`}
-        onClick={() => onOpenChange(!isOpen)}
-      >
-        ⋯
-      </button>
-      {isOpen && place
-        ? createPortal(
-        <div
-          className="s1-menu__panel s1-menu__panel--float"
-          role="menu"
-          ref={menuRef}
-          style={{ top: place.top, left: place.left, transformOrigin: place.up ? "bottom right" : "top right" }}
-        >
-          {entries.map((entry) => (
-            <button
-              key={entry.label}
-              className="s1-menu__item"
-              type="button"
-              role="menuitem"
-              disabled={entry.disabled}
-              onClick={() => {
-                entry.action();
-                onOpenChange(false);
-              }}
-            >
-              {entry.label}
-            </button>
-          ))}
-        </div>,
-            document.querySelector(".s1-app") ?? document.body
-          )
-        : null}
-    </div>
-  );
+  return <ActionMenu label={`Actions for ${item.filename}`} entries={entries} isOpen={isOpen} onOpenChange={onOpenChange} />;
 }
 
 /* ======================= Add to requests target ======================= */

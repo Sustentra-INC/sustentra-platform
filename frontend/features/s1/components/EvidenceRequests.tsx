@@ -8,6 +8,7 @@ import type { EngagementConfig } from "../types";
 import type { Ask, AskState, RequestType } from "../types/requests";
 import { REQUEST_TYPES } from "../types/requests";
 import type { CoverageRule } from "../types/verification";
+import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { CoveragePanel, type CoverageState } from "./CoveragePanel";
 import { InfoTip } from "./InfoTip";
@@ -71,6 +72,8 @@ export function EvidenceRequests({
   const [panelOpen, setPanelOpen] = useState(false);
   const [resolveFor, setResolveFor] = useState<string | null>(null);
   const [withdrawFor, setWithdrawFor] = useState<string | null>(null);
+  // One row menu open at a time.
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const [requestRule, setRequestRule] = useState<CoverageRule | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
@@ -245,6 +248,9 @@ export function EvidenceRequests({
                       <td>
                         <StateCell
                           ask={ask}
+                          menuOpen={menuFor === ask.id}
+                          onMenuChange={(open) => setMenuFor(open ? ask.id : null)}
+                          recordOpen={expanded.includes(ask.id)}
                           onResolveOpen={() => {
                             setResolveFor(ask.id);
                             setWithdrawFor(null);
@@ -357,56 +363,54 @@ function coverageTarget(rule: CoverageRule, engagement: EngagementConfig): AddTo
 
 /* =============================== state cell =============================== */
 
+/**
+ * A request's state: a chip that fits its words, the one next step (Resolve) when there
+ * is one, and the rest in the row's menu, all on one line.
+ */
 function StateCell({
   ask,
+  menuOpen,
+  onMenuChange,
+  recordOpen,
   onResolveOpen,
   onWithdrawOpen,
   onFollowUp,
   onExpand,
 }: {
   ask: Ask;
+  menuOpen: boolean;
+  onMenuChange: (open: boolean) => void;
+  recordOpen: boolean;
   onResolveOpen: () => void;
   onWithdrawOpen: () => void;
   onFollowUp: () => void;
   onExpand: () => void;
 }) {
+  const entries: ActionMenuEntry[] = [
+    ...(ask.state === "not_yet_sent" || ask.state === "requested" ? [{ label: "Withdraw", action: onWithdrawOpen }] : []),
+    ...(ask.state === "resolved" ? [{ label: "Raise follow-up", action: onFollowUp }] : []),
+    { label: recordOpen ? "Hide history" : "History", action: onExpand },
+  ];
   return (
     <div className="s1-req-state">
-      <span className="s1-req-state__label">
-        {STATE_LABEL[ask.state]}
-        {ask.state === "requested" && ask.requestNumber ? ` · request ${ask.requestNumber}` : ""}
-      </span>
-      {ask.state === "resolved" && ask.resolution?.link ? (
-        <div className="s1-muted s1-ws-src">answered by {ask.resolution.link}</div>
-      ) : null}
-      {ask.state === "withdrawn" && ask.withdrawReason ? (
-        <div className="s1-muted s1-ws-src">{ask.withdrawReason}</div>
-      ) : null}
-      <div className="s1-req-state__actions">
-        {ask.state === "not_yet_sent" ? (
-          <button className="s1-linklike" type="button" onClick={onWithdrawOpen}>
-            Withdraw
-          </button>
-        ) : null}
-        {ask.state === "requested" ? (
-          <>
-            <button className="s1-linklike" type="button" onClick={onResolveOpen}>
+      <div className="s1-req-state__row">
+        <span className="s1-req-state__label" title={ask.requestNumber ? `Request ${ask.requestNumber}` : undefined}>
+          {STATE_LABEL[ask.state]}
+          {ask.state === "requested" && ask.requestNumber ? ` · #${ask.requestNumber}` : ""}
+        </span>
+        <span className="s1-req-state__actions">
+          {ask.state === "requested" ? (
+            <button className="s1-req-state__go" type="button" onClick={onResolveOpen}>
               Resolve
             </button>
-            <button className="s1-linklike" type="button" onClick={onWithdrawOpen}>
-              Withdraw
-            </button>
-          </>
-        ) : null}
-        {ask.state === "resolved" ? (
-          <button className="s1-linklike" type="button" onClick={onFollowUp}>
-            Raise follow-up
-          </button>
-        ) : null}
-        <button className="s1-linklike" type="button" onClick={onExpand}>
-          Record
-        </button>
+          ) : null}
+          <ActionMenu label={`Actions for ${ask.source.itemLabel}`} entries={entries} isOpen={menuOpen} onOpenChange={onMenuChange} />
+        </span>
       </div>
+      {ask.state === "resolved" && ask.resolution?.link ? (
+        <div className="s1-muted s1-req-state__note">answered by {ask.resolution.link}</div>
+      ) : null}
+      {ask.state === "withdrawn" && ask.withdrawReason ? <div className="s1-muted s1-req-state__note">{ask.withdrawReason}</div> : null}
     </div>
   );
 }
