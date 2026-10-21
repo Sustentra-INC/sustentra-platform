@@ -81,6 +81,13 @@ export function examinationKey(lineId: string, facilityId: string): string {
   return `vr:${lineId}:${facilityId}`;
 }
 
+/** The examination key of every facility row that has a recomputed value. */
+export function testedExaminationKeys(lines: ResultLine[]): string[] {
+  return lines.flatMap((line) =>
+    (line.facilities ?? []).filter((f) => f.recomputed !== null).map((f) => examinationKey(line.id, f.facilityId))
+  );
+}
+
 /** Σ of a facility value, or null when any facility lacks it. */
 function sumOf(facilities: FacilityResult[], pick: (f: FacilityResult) => number | null): number | null {
   let total = 0;
