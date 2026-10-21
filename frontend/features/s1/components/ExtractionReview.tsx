@@ -25,6 +25,8 @@ interface ExtractionReviewProps {
    *  judgment survives navigation. Same pattern as the requests/findings stores. */
   onValuesChange: (updater: (cur: ReviewValue[]) => ReviewValue[]) => void;
   initialDocumentId?: string | null;
+  /** Open with this value selected (a link from the assistant). */
+  initialValueId?: string;
   /** Facility->type (or entity/not-yet-known) node the clicked row maps to, so
    *  a row whose exact document has no extracted value still deep-links to the
    *  right node rather than the first one. */
@@ -68,6 +70,7 @@ export function ExtractionReview({
   values,
   onValuesChange,
   initialDocumentId,
+  initialValueId,
   initialNodeKey,
   onSaveAsk,
   onBack,
@@ -82,8 +85,8 @@ export function ExtractionReview({
   const items = values;
 
   const initial = useMemo(
-    () => resolveInitial(items, initialDocumentId, initialNodeKey),
-    [items, initialDocumentId, initialNodeKey]
+    () => resolveInitial(items, initialDocumentId, initialNodeKey, initialValueId),
+    [items, initialDocumentId, initialNodeKey, initialValueId]
   );
 
   const [nodeKey, setNodeKey] = useState<string>(initial.nodeKey);
@@ -1111,9 +1114,12 @@ function rootKeyOf(v: ReviewValue): string {
 function resolveInitial(
   items: ReviewValue[],
   docId: string | null | undefined,
-  nodeKeyHint: string | undefined
+  nodeKeyHint: string | undefined,
+  valueId?: string
 ): { nodeKey: string; valueId: string | null; rootKey: string | null } {
   if (!items.length) return { nodeKey: "", valueId: null, rootKey: null };
+  const byValue = valueId ? items.find((v) => v.id === valueId) : undefined;
+  if (byValue) return { nodeKey: nodeKeyForValue(byValue), valueId: byValue.id, rootKey: rootKeyOf(byValue) };
   const byDoc = docId ? items.find((v) => v.documentId === docId) : undefined;
   if (byDoc) return { nodeKey: nodeKeyForValue(byDoc), valueId: byDoc.id, rootKey: rootKeyOf(byDoc) };
   if (nodeKeyHint) {
