@@ -67,7 +67,7 @@ export function BackendPageView({
         >
           ‹
         </button>
-        <span className="s1-mono s1-muted">
+        <span className="s1-num s1-muted">
           page {page} of {pages ?? "…"}
         </span>
         <button

@@ -1017,7 +1017,7 @@ function RowRecord({ item, intents }: { item: EvidenceItem; intents: SessionAudi
           <strong>Notes</strong>
           {notes.map((n) => (
             <div key={n.id}>
-              <span className="s1-mono s1-muted">
+              <span className="s1-num s1-muted">
                 {n.author} · {formatDate(n.at)}
               </span>{" "}
               {n.text}
@@ -1028,7 +1028,7 @@ function RowRecord({ item, intents }: { item: EvidenceItem; intents: SessionAudi
       <div className="s1-ws-record__log">
         <strong>History</strong>
         <div>
-          <span className="s1-mono s1-muted">
+          <span className="s1-num s1-muted">
             {item.uploadedBy.name} · {formatDate(item.uploadedAt)}
           </span>{" "}
           {item.answeredRequestNumber != null ? `uploaded it, answering request ${item.answeredRequestNumber}` : "uploaded it"}
@@ -1036,7 +1036,7 @@ function RowRecord({ item, intents }: { item: EvidenceItem; intents: SessionAudi
         {intents.length === 0 ? null : (
           [...intents].reverse().map((a) => (
             <div key={a.entryId}>
-              <span className="s1-mono s1-muted">
+              <span className="s1-num s1-muted">
                 {a.actor.name} · {new Date(a.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </span>{" "}
               {a.action.replaceAll("_", " ")}

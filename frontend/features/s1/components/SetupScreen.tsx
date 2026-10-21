@@ -373,7 +373,7 @@ export function SetupScreen({
               />
               <input
                 aria-label="Login"
-                className="s1-mono"
+                className="s1-num"
                 value={m.login}
                 onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, login: e.target.value } : t)))}
               />
@@ -438,7 +438,7 @@ export function SetupScreen({
                   <td>{field.requirementLevel ?? "None"}</td>
                   {live ? (
                     <>
-                      <td className="s1-mono s1-muted">{field.workbookRow}</td>
+                      <td className="s1-num s1-muted">{field.workbookRow}</td>
                       <td className="s1-muted">{field.checkedBy}</td>
                     </>
                   ) : (

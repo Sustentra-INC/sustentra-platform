@@ -135,13 +135,14 @@
      Four sizes. Two weights. No exceptions.
      ---------------------------------------------------------------------- */
 
+  /* The interface uses one family and three sizes (docs/design_standard.md). */
   --font-sans: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;   /* client documents only */
 
-  --text-lg:   16px;   /* screen titles */
-  --text-md:   14px;   /* body, primary table content */
-  --text-sm:   12px;   /* secondary content, table metadata */
-  --text-xs:   11px;   /* column headers, identifiers, timestamps */
+  --text-lg:   20px;   /* the page title, and the few key figures a page leads with */
+  --text-md:   14px;   /* everything people read or type; section titles in medium weight */
+  --text-sm:   12px;   /* labels, column headers, metadata, chips, timestamps */
+  --text-xs:   11px;   /* client documents only (the small print of a drawn bill) */
 
   --weight-regular: 400;
   --weight-medium:  500;
@@ -149,8 +150,8 @@
   --leading-tight: 1.35;   /* table rows, chips */
   --leading-body:  1.6;    /* prose, explanations, statute text */
 
-  /* Field_IDs, rule IDs, Node_IDs and timestamps are always mono at --text-xs
-     in --ink-3. They are identifiers, not content. */
+  /* Field_IDs, rule IDs, Node_IDs and timestamps are identifiers, not content:
+     --text-sm in --ink-3, with tabular figures (.s1-num), in the one interface font. */
 
 
   /* --- Numeric display ---------------------------------------------------
