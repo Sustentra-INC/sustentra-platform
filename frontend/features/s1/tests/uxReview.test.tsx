@@ -238,6 +238,43 @@ describe("extraction review: one card per reading", () => {
   });
 });
 
+describe("extraction review: compact cards", () => {
+  it("opens only the selected card to its record and actions, and moves with the arrow keys", async () => {
+    const { ExtractionReview } = await import("../components/ExtractionReview");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    const { container } = render(
+      <ExtractionReview
+        engagement={engagementConfig}
+        values={manufacturerValues}
+        onValuesChange={vi.fn()}
+        initialDocumentId="DOC-tualatin-elec-jan"
+        onSaveAsk={vi.fn()}
+        onBack={vi.fn()}
+      />
+    );
+    const cards = () => Array.from(container.querySelectorAll<HTMLElement>(".s1-xr-card"));
+    const selected = () => container.querySelector<HTMLElement>(".s1-xr-card.is-sel")!;
+    expect(cards().length).toBeGreaterThan(1);
+    // Actions and the record show on the selected card only.
+    for (const card of cards()) {
+      expect(Boolean(within(card).queryByRole("button", { name: "Accept" }))).toBe(card === selected());
+    }
+    const first = selected();
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    expect(selected()).not.toBe(first);
+    expect(cards().indexOf(selected())).toBe(cards().indexOf(first) + 1);
+    fireEvent.keyDown(selected(), { key: "ArrowUp" });
+    expect(selected()).toBe(first);
+    // The filter bar reads count over label, one column each.
+    expect(within(container.querySelector(".s1-xr-filters") as HTMLElement).getAllByRole("button").map((b) => b.textContent)).toEqual([
+      expect.stringMatching(/^\d+To review$/),
+      expect.stringMatching(/^\d+Accepted$/),
+      expect.stringMatching(/^\d+Corrected$/),
+      expect.stringMatching(/^\d+Requested$/),
+    ]);
+  });
+});
+
 describe("demo documents: the whole document, values highlighted in place", () => {
   it("draws a bill whole, marks each value read and each value not found, and picks values from the page", async () => {
     const { DemoDocument } = await import("../components/demo/DemoDocument");
