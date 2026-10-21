@@ -323,7 +323,7 @@ export function ExtractionReview({
     const now = new Date().toISOString();
     const added: ReviewValue = {
       ...base,
-      id: `keyed-${base.documentId}-${Date.now().toString(36)}`,
+      id: `keyed-${base.documentId}-${now}`,
       whatItIs: entry.whatItIs,
       value: entry.value,
       unit: entry.unit,
