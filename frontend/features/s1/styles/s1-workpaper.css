@@ -3241,6 +3241,7 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-card .s1-xr-actions .s1-button { padding: 0.25rem var(--sp-3); font-size: var(--text-sm); }
 @media (prefers-reduced-motion: reduce) { .s1-xr-card__more { transition: none; } }
 
+/* ==========================================================================
    Methodology review: the stated boundary and methods, accepted or corrected.
    Folding groups, one "Adjusted by verifier" line under each change.
    ========================================================================== */
