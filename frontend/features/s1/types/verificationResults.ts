@@ -99,6 +99,11 @@ export interface FacilityResult {
   steps: CalcStep[];
   /** Plain sentence under the calculation: why the two sides differ, or that they agree. */
   cause: string;
+  /**
+   * The fraction of the facility's emissions the inventory consolidates, from the boundary
+   * approach (equity share or control). 1 when absent; not applied to biogenic CO₂.
+   */
+  consolidatedShare?: number;
 }
 
 /** One reported line of the inventory (an activity of a box). */

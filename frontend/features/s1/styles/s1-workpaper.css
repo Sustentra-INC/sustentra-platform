@@ -2423,6 +2423,8 @@ html, body { margin: 0; padding: 0; }
 .s1-vw-steps td { padding: var(--sp-1) var(--sp-2); vertical-align: middle; color: var(--ink-2); border-bottom: var(--border-hairline); }
 .s1-vw-steps tr:last-child td { border-bottom: 0; }
 .s1-vw-steps__total td { font-weight: var(--weight-medium); color: var(--ink); background: var(--sf-page); border-top: var(--border-strong); }
+/* The consolidated row closes the Total: one block, not two ruled-off totals. */
+.s1-vw-steps__total + .s1-vw-steps__share td { border-top: var(--border-hairline); }
 .s1-vw-input { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.05rem 0.35rem; white-space: nowrap; font: inherit; color: var(--accent); background: var(--accent-softer); border: var(--border-hairline); border-color: var(--accent-line); border-radius: var(--radius-chip); cursor: pointer; text-decoration: underline; text-decoration-style: dotted; text-underline-offset: var(--underline-offset); transition: background-color 140ms ease, transform 140ms var(--ease-out); }
 .s1-vw-input:active { transform: scale(0.97); }
 .s1-vw-input.is-active { color: var(--accent-strong); background: var(--accent-soft); border-color: var(--accent); text-decoration-style: solid; }

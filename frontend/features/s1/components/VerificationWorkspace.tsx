@@ -29,8 +29,11 @@ import type { Examination } from "../types/verification";
 import type { CalcCell, CalcStep, FacilityResult, ResultBoxKey, ResultLine, SourceRef } from "../types/verificationResults";
 import {
   buildResultBoxes,
+  consolidatedShare,
   differs,
   examinationKey,
+  facilityRecomputed,
+  facilityReported,
   formatPercent,
   formatSignedTonnes,
   formatTonnes,
@@ -421,8 +424,16 @@ function nameColumn(line: ResultLine): string {
   return line.category === "Fugitive emissions" ? "Refrigerant" : "Fuel";
 }
 
-function facilityDifference(facility: FacilityResult): number | null {
-  return facility.recomputed === null || facility.reported === null ? null : facility.recomputed - facility.reported;
+/** After the facility's consolidated share, like the line it adds up to. */
+function facilityDifference(line: ResultLine, facility: FacilityResult): number | null {
+  const reported = facilityReported(line, facility);
+  const recomputed = facilityRecomputed(line, facility);
+  return recomputed === null || reported === null ? null : recomputed - reported;
+}
+
+/** Scope 1 and 2 lines consolidate each facility by its share; biogenic CO₂ does not. */
+function hasShare(line: ResultLine): boolean {
+  return line.box !== "biogenic";
 }
 
 function CalculationPane({
@@ -447,13 +458,15 @@ function CalculationPane({
   const facilities = line.facilities ?? [];
   // The facility that explains the difference opens first; with none, the first one.
   const [openId, setOpenId] = useState<string | null>(
-    () => (facilities.find((f) => differs(facilityDifference(f))) ?? facilities[0])?.facilityId ?? null
+    () => (facilities.find((f) => differs(facilityDifference(line, f))) ?? facilities[0])?.facilityId ?? null
   );
   const reported = lineReported(line) ?? 0;
   const recomputed = lineRecomputed(line);
   const difference = recomputed === null ? null : recomputed - reported;
   const crumbs = [BOX_CRUMB[line.box], line.category, line.activity].filter(Boolean) as string[];
   const Icon = BOX_ICON[line.box];
+  const share = hasShare(line);
+  const columns = share ? 6 : 5;
 
   return (
     <div className="s1-vw-calc">
@@ -494,6 +507,7 @@ function CalculationPane({
             <tr>
               <th>{nameColumn(line)}</th>
               <th>Facility</th>
+              {share ? <th className="s1-vw-num">Consolidated share</th> : null}
               <th className="s1-vw-num">
                 Reported <span className="s1-vw-unit">(tCO₂e)</span>
               </th>
@@ -506,7 +520,9 @@ function CalculationPane({
           <tbody>
             {facilities.map((facility) => {
               const open = facility.facilityId === openId;
-              const diff = facilityDifference(facility);
+              const diff = facilityDifference(line, facility);
+              const facReported = facilityReported(line, facility);
+              const facRecomputed = facilityRecomputed(line, facility);
               const examined = isExamined(line.id, facility.facilityId);
               return (
                 <Fragment key={facility.facilityId}>
@@ -534,15 +550,16 @@ function CalculationPane({
                         ) : null}
                       </button>
                     </td>
-                    <td className="s1-vw-num">{facility.reported === null ? "" : formatTonnes(facility.reported)}</td>
-                    <td className="s1-vw-num">{facility.recomputed === null ? "not tested" : formatTonnes(facility.recomputed)}</td>
+                    {share ? <td className="s1-vw-num">{formatWholePercent(consolidatedShare(line, facility) ?? 1)}</td> : null}
+                    <td className="s1-vw-num">{facReported === null ? "" : formatTonnes(facReported)}</td>
+                    <td className="s1-vw-num">{facRecomputed === null ? "not tested" : formatTonnes(facRecomputed)}</td>
                     <td className="s1-vw-num">
                       <Delta value={diff} />
                     </td>
                   </tr>
                   {open ? (
                     <tr className="s1-vw-cardrow">
-                      <td colSpan={5}>
+                      <td colSpan={columns}>
                         <CalculationCard
                           line={line}
                           facility={facility}
@@ -563,6 +580,7 @@ function CalculationPane({
             <tr className="s1-vw-total">
               <td>{line.activity}</td>
               <td>Total</td>
+              {share ? <td /> : null}
               <td className="s1-vw-num">{formatTonnes(reported)}</td>
               <td className="s1-vw-num">{recomputed === null ? "" : formatTonnes(recomputed)}</td>
               <td className="s1-vw-num">
@@ -611,18 +629,20 @@ function Cell({
 
 function StepRow({
   step,
-  facility,
+  difference,
+  className,
   source,
   onOpenSource,
 }: {
   step: CalcStep;
-  facility: FacilityResult;
+  /** Shown beside Recomputed on the row the panel's total is taken from. */
+  difference: number | null;
+  className?: string;
   source: SourceRef | null;
   onOpenSource: (source: SourceRef) => void;
 }) {
-  const diff = facilityDifference(facility);
   return (
-    <tr className={step.total ? "s1-vw-steps__total" : undefined}>
+    <tr className={className ?? (step.total ? "s1-vw-steps__total" : undefined)}>
       <td>{step.step}</td>
       <td>
         {step.how.map((cell, i) => (
@@ -632,10 +652,28 @@ function StepRow({
       <td className="s1-vw-num">{step.reported ? <Cell cell={step.reported} source={source} onOpenSource={onOpenSource} /> : null}</td>
       <td className="s1-vw-num">
         {step.recomputed ? <Cell cell={step.recomputed} source={source} onOpenSource={onOpenSource} /> : null}
-        {step.total && differs(diff) ? <span className="s1-vw-red"> ({formatSignedTonnes(diff ?? 0)})</span> : null}
+        {differs(difference) ? <span className="s1-vw-red"> ({formatSignedTonnes(difference ?? 0)})</span> : null}
       </td>
     </tr>
   );
+}
+
+/**
+ * The card's last row, after Total: the facility's total times its consolidated share.
+ * The facility's row in the panel, and so the panel's Total, take their values from it.
+ */
+function consolidatedStep(line: ResultLine, facility: FacilityResult): CalcStep | null {
+  const share = consolidatedShare(line, facility);
+  if (share === null) return null;
+  const reported = facilityReported(line, facility);
+  const recomputed = facilityRecomputed(line, facility);
+  return {
+    step: "Consolidated",
+    how: [{ text: `Total × ${formatWholePercent(share)} consolidated share` }],
+    reported: reported === null ? null : { text: `${formatTonnes(reported)} tCO₂e` },
+    recomputed: recomputed === null ? null : { text: `${formatTonnes(recomputed)} tCO₂e` },
+    total: true,
+  };
 }
 
 function CalculationCard({
@@ -662,7 +700,9 @@ function CalculationCard({
   const [box, setBox] = useState<"examination" | "note" | null>(null);
   const key = examinationKey(line.id, facility.facilityId);
   const title = `${facility.facility} · ${line.activity}`;
-  const different = differs(facilityDifference(facility));
+  const difference = facilityDifference(line, facility);
+  const different = differs(difference);
+  const consolidated = consolidatedStep(line, facility);
   const CauseIcon = different ? TriangleAlert : CircleCheck;
 
   return (
@@ -680,8 +720,23 @@ function CalculationCard({
           </thead>
           <tbody>
             {facility.steps.map((step, i) => (
-              <StepRow key={i} step={step} facility={facility} source={source} onOpenSource={onOpenSource} />
+              <StepRow
+                key={i}
+                step={step}
+                difference={step.total && !consolidated ? difference : null}
+                source={source}
+                onOpenSource={onOpenSource}
+              />
             ))}
+            {consolidated ? (
+              <StepRow
+                step={consolidated}
+                difference={difference}
+                className="s1-vw-steps__total s1-vw-steps__share"
+                source={source}
+                onOpenSource={onOpenSource}
+              />
+            ) : null}
           </tbody>
         </table>
       </div>
