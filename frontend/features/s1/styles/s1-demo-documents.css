@@ -182,3 +182,6 @@
 .s1-dd-hlform__actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .s1-dd-hlform__actions span { font-size: var(--text-xs); color: var(--ink-3); }
 @media (prefers-reduced-motion: reduce) { .s1-dd-pick, .s1-dd-pickhint, .s1-dd-fig, .s1-dd-hlform { transition: none; } }
+.s1-dd-key--requested::before { background: rgba(160, 170, 185, 0.6); }
+/* While highlighting, the hint stays in view at the top of the document. */
+.s1-dd-pickhint { position: sticky; top: calc(-1 * var(--sp-5)); z-index: 3; }

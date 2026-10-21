@@ -3247,3 +3247,11 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-card .s1-xr-actions { margin: 0; gap: var(--sp-2); }
 .s1-xr-card .s1-xr-actions .s1-button { padding: 0.25rem var(--sp-3); font-size: var(--text-sm); }
 @media (prefers-reduced-motion: reduce) { .s1-xr-card__more { transition: none; } }
+
+/* Extraction review: the document's key, pinned above the cards (Vivian, 21 Oct). */
+.s1-xr-key { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3); font-size: var(--text-xs); color: var(--ink-2); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); }
+.s1-xr-key__count { font-size: var(--text-sm); color: var(--ink-2); }
+.s1-xr-key__count strong { color: var(--ink); font-weight: var(--weight-medium); }
+.s1-xr-key__keys { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); }
+.s1-xr-key__top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.s1-xr-key__pick { flex: none; }

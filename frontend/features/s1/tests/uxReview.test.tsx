@@ -275,6 +275,45 @@ describe("extraction review: compact cards", () => {
   });
 });
 
+describe("extraction review: the document's key, pinned with the cards", () => {
+  it("shows what the colours mean and switches highlight mode for the page", async () => {
+    const { ExtractionReview } = await import("../components/ExtractionReview");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    const seen: (boolean | undefined)[] = [];
+    render(
+      <ExtractionReview
+        engagement={engagementConfig}
+        values={manufacturerValues}
+        onValuesChange={vi.fn()}
+        initialDocumentId="DOC-PARTIAL"
+        onSaveAsk={vi.fn()}
+        onBack={vi.fn()}
+        allowAddValue
+        drawnWhole={() => true}
+        renderPage={(_id, _span, _box, _marks, pick) => {
+          seen.push(pick?.highlighting);
+          return <div>page</div>;
+        }}
+      />
+    );
+    const key = screen.getByRole("group", { name: "Highlights on the document" });
+    expect(key.textContent).toContain("1 not found");
+    expect(within(key).getByText("Not found")).toBeInTheDocument();
+    fireEvent.click(within(key).getByRole("button", { name: "Highlight a figure" }));
+    expect(within(key).getByRole("button", { name: "Done highlighting" })).toHaveAttribute("aria-pressed", "true");
+    expect(seen.at(-1)).toBe(true);
+  });
+
+  it("is not shown for a page drawn some other way", async () => {
+    const { ExtractionReview } = await import("../components/ExtractionReview");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    render(
+      <ExtractionReview engagement={engagementConfig} values={manufacturerValues} onValuesChange={vi.fn()} onSaveAsk={vi.fn()} onBack={vi.fn()} />
+    );
+    expect(screen.queryByRole("group", { name: "Highlights on the document" })).toBeNull();
+  });
+});
+
 describe("demo documents: the whole document, values highlighted in place", () => {
   it("draws a bill whole, marks each value read and each value not found, and picks values from the page", async () => {
     const { DemoDocument } = await import("../components/demo/DemoDocument");
