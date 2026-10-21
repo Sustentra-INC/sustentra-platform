@@ -1,6 +1,6 @@
 "use client";
 
-import { FileUp, History, ListChecks, Scale, Search, Send, PenLine, X } from "lucide-react";
+import { ClipboardList, FileUp, History, ListChecks, Scale, Search, Send, PenLine, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -13,6 +13,7 @@ const KINDS: { key: ActivityEntry["kind"] | "all"; label: string }[] = [
   { key: "document", label: "Document changes" },
   { key: "request", label: "Requests" },
   { key: "finding", label: "Findings" },
+  { key: "methodology", label: "Methodology" },
 ];
 
 const ICON: Record<ActivityEntry["kind"], ReactNode> = {
@@ -21,6 +22,7 @@ const ICON: Record<ActivityEntry["kind"], ReactNode> = {
   document: <PenLine />,
   request: <Send />,
   finding: <Scale />,
+  methodology: <ClipboardList />,
 };
 
 /** The engagement's activity log: who did what, and when, newest first. */
