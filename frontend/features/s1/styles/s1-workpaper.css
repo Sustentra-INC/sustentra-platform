@@ -3385,7 +3385,7 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
    not the browser's defaults (Arial in selects, 700 in <strong>). */
 .s1-app :where(button, input, select, textarea, optgroup) { font-family: inherit; font-size: inherit; }
 .s1-app :where(strong, b, th, h1, h2, h3, h4, h5, h6) { font-weight: var(--weight-strong); }
-.s1-xr-key .s1-xr-key__pick { font-size: var(--text-sm); }
+.s1-xr-key .s1-xr-key__pick { font-size: var(--text-sm); font-weight: var(--weight-strong); }
 
 /* Icons sized by their box, not by a text size (design standard: three text sizes). */
 .s1-vw-box__icon .s1-vw-ico, .s1-vw-close .s1-vw-ico, .s1-vw-ico.s1-vw-src-empty__icon { width: 1.25rem; height: 1.25rem; }

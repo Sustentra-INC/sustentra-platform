@@ -26,7 +26,7 @@
 
   --ink:            #23231F;   /* primary text */
   --ink-2:          #57564F;   /* secondary text, values in tables */
-  --ink-3:          #8A897F;   /* labels, metadata, column headers */
+  --ink-3:          #6A6961;   /* labels, metadata, column headers; 4.5:1 or better on every surface */
 
   --line:           #E0DDD3;   /* default hairline */
   --line-strong:    #C9C5B8;   /* emphasised border, hover, focus ring base */
@@ -40,7 +40,7 @@
      Warm tan ground + soft blue accent is a deliberate complementary pairing,
      not the generic corporate blue. Kept distinct from the engagement STATES
      below, which stay semantic. ------------------------------------------- */
-  --accent-solid:   #3D83C7;   /* solid fills: primary buttons, active tab */
+  --accent-solid:   #2C6FB3;   /* solid fills: primary buttons, active tab; white text on it is 5.2:1 */
   --accent:         #2C6FB3;   /* links, icons, active labels on paper */
   --accent-strong:  #24588F;   /* hover / pressed on solids */
   --accent-soft:    #EAF3FC;   /* tint: active chip / selected row */
@@ -103,7 +103,7 @@
   /* Not applicable under an unmet condition. Deliberately colourless: this is
      an absence of obligation, not a state with weight. Render as muted text on
      a dashed hairline, never as a filled chip. */
-  --state-na-fg:         #8A897F;
+  --state-na-fg:         #6A6961;
   --state-na-bg:         transparent;
   --state-na-line:       #D6D3C8;   /* use dashed */
 
