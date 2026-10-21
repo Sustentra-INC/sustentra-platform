@@ -4,6 +4,7 @@ import type { ReviewValue } from "../types/review";
 import type { InScopeField } from "../types/scope";
 import type { Ask } from "../types/requests";
 import type { Examination, Finding } from "../types/verification";
+import type { MethodologyState } from "../types/methodology";
 
 /**
  * Demo-only persistence. The fixture demo has no backend, so a browser refresh
@@ -27,6 +28,8 @@ export interface DemoSnapshot {
   asks: Ask[];
   examinations: Record<string, Examination>;
   findings: Finding[];
+  /** Added later: absent in snapshots saved before Methodology review. */
+  methodology?: MethodologyState;
 }
 
 export function loadDemoState(): DemoSnapshot | null {
