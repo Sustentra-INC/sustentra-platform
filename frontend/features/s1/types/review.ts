@@ -87,6 +87,8 @@ export interface ReviewValue {
   anchor?: SourceAnchor | null;
   /** The text as read on the document ("96,000"), to find it within its row or line. */
   rawText?: string | null;
+  /** Demo documents: where on the drawn page a reviewer highlighted this value. */
+  docAnchor?: string;
   /** Backend values only: the candidate a review decision is recorded against. */
   reviewToken?: string;
   /** The extractor did not find this value on the document; the reviewer can enter it. */

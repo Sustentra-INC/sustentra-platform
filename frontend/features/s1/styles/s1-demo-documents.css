@@ -133,3 +133,52 @@
 @media (prefers-reduced-motion: reduce) {
   .s1-dd-hl, .s1-dd-hl.is-sel { animation: none; transition: none; }
 }
+
+/* Highlight a figure the reading missed: the toggle, the targets, the form beside the figure. */
+.s1-dd { position: relative; }
+.s1-dd-pick {
+  display: inline-flex; align-items: center; gap: var(--sp-1); margin-left: var(--sp-2); padding: 0.2rem var(--sp-2);
+  font: inherit; font-size: var(--text-xs); font-weight: var(--weight-medium); cursor: pointer;
+  color: var(--accent-strong); background: var(--sf-card); border: var(--hairline-width) dashed var(--accent-line); border-radius: var(--radius-input);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.12s var(--ease-out);
+}
+.s1-dd-pick:hover { background: var(--accent-softer); border-color: var(--accent-solid); }
+.s1-dd-pick:active { transform: scale(0.97); }
+.s1-dd-pick.is-on { color: var(--sf-card); background: var(--accent-solid); border-style: solid; border-color: var(--accent-solid); }
+.s1-dd-pick svg { width: 0.85rem; height: 0.85rem; }
+.s1-dd-pickhint {
+  padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); color: var(--accent-strong);
+  background: var(--accent-soft); border: var(--hairline-width) solid var(--accent-line); border-radius: var(--radius-input);
+  transition: opacity 0.18s var(--ease-out), transform 0.18s var(--ease-out);
+}
+@starting-style { .s1-dd-pickhint { opacity: 0; transform: translateY(-0.25rem); } }
+.s1-dd-fig {
+  display: inline; padding: 0 0.2rem; margin: 0 -0.05rem; font: inherit; color: inherit; text-align: inherit; line-height: inherit;
+  background: none; border: 0; border-radius: 0.2rem; cursor: copy;
+  outline: 0.0625rem dashed rgba(61, 131, 199, 0.55); outline-offset: 0.0625rem;
+  transition: background-color 0.15s ease, outline-color 0.15s ease;
+}
+.s1-dd-fig:hover, .s1-dd-fig:focus-visible { background: rgba(61, 131, 199, 0.14); outline-color: var(--accent-solid); outline-style: solid; }
+.s1-dd.is-picking .s1-dd-page, .s1-dd.is-picking .s1-dd-sheet { box-shadow: 0 0 0 0.125rem rgba(61, 131, 199, 0.35), 0 0.5rem 1.5rem rgba(40, 40, 112, 0.08); }
+.s1-dd-hlform {
+  position: absolute; z-index: 5; width: 18.5rem; display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: var(--sp-3); background: var(--sf-card); border: var(--hairline-width) solid var(--accent-line); border-radius: var(--radius-card);
+  box-shadow: 0 0.75rem 2rem rgba(23, 23, 20, 0.18); font-family: var(--font-sans); font-size: var(--text-sm);
+  transform-origin: top left; transition: opacity 0.16s var(--ease-out), transform 0.16s var(--ease-out);
+}
+@starting-style { .s1-dd-hlform { opacity: 0; transform: scale(0.97); } }
+.s1-dd-hlform__head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.s1-dd-hlform__x { display: inline-flex; padding: 0.15rem; border: 0; background: none; color: var(--ink-3); cursor: pointer; border-radius: var(--radius-input); }
+.s1-dd-hlform__x:hover { background: var(--sf-sunken); color: var(--ink); }
+.s1-dd-hlform__x svg { width: 0.9rem; height: 0.9rem; }
+.s1-dd-hlform__quote { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--ink-2); padding: var(--sp-1) var(--sp-2); background: var(--sf-sunken); border-radius: var(--radius-input); overflow-wrap: anywhere; }
+.s1-dd-hlform label { display: flex; flex-direction: column; gap: 0.125rem; font-size: var(--text-xs); color: var(--ink-3); }
+.s1-dd-hlform input, .s1-dd-hlform select {
+  box-sizing: border-box; width: 100%; min-width: 0; height: 2rem; padding: 0 var(--sp-2); font: inherit; font-size: var(--text-sm); color: var(--ink);
+  background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input);
+}
+.s1-dd-hlform input:focus, .s1-dd-hlform select:focus { outline: var(--focus-ring); outline-offset: 0; border-color: var(--accent-solid); }
+.s1-dd-hlform__pair { display: grid; grid-template-columns: 1.4fr 1fr; gap: var(--sp-2); }
+.s1-dd-hlform__actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
+.s1-dd-hlform__actions span { font-size: var(--text-xs); color: var(--ink-3); }
+@media (prefers-reduced-motion: reduce) { .s1-dd-pick, .s1-dd-pickhint, .s1-dd-fig, .s1-dd-hlform { transition: none; } }
