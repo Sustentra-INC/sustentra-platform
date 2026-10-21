@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueReviewState } from "../types/review";
@@ -92,6 +92,9 @@ export function ExtractionReview({
   // A long document: show the values of one page at a time.
   const [pageFilter, setPageFilter] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  // A pick on the document asks the values pane to bring the picked card into view.
+  const [scrollTo, setScrollTo] = useState<{ id: string; tick: number } | null>(null);
+  const valuesPane = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.rootKey ? [initial.rootKey] : []));
   const [modalTarget, setModalTarget] = useState<AddToRequestsTarget | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -160,8 +163,28 @@ export function ExtractionReview({
       setFilter(null);
       setExpanded((s) => new Set(s).add(rootKeyOf(match)));
     }
+    if (pageFilter !== null && match.page !== pageFilter) setPageFilter(null);
     setSelectedId(match.id);
+    setScrollTo((cur) => ({ id: match.id, tick: (cur?.tick ?? 0) + 1 }));
   }
+
+  // Scroll the picked card to the middle of the values pane, and flash it.
+  useEffect(() => {
+    if (!scrollTo) return;
+    const frame = window.requestAnimationFrame(() => {
+      const pane = valuesPane.current;
+      const card = pane?.querySelector<HTMLElement>(`[data-value-id="${CSS.escape(scrollTo.id)}"]`);
+      if (!pane || !card) return;
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const box = card.getBoundingClientRect();
+      const view = pane.getBoundingClientRect();
+      pane.scrollTo({ top: pane.scrollTop + (box.top - view.top) - view.height / 2 + box.height / 2, behavior: reduce ? "auto" : "smooth" });
+      card.classList.remove("is-flash");
+      void card.offsetWidth; // restart the flash
+      card.classList.add("is-flash");
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [scrollTo]);
 
   function accept(v: ReviewValue) {
     const now = new Date().toISOString();
@@ -424,7 +447,7 @@ export function ExtractionReview({
         </aside>
 
         {/* Values */}
-        <div className="s1-xr-values">
+        <div className="s1-xr-values" ref={valuesPane}>
           <div className="s1-xr-vhead">
             <div className="s1-xr-vhead__top">
               <h2>{nodeHeaderLabel(nodeKey, engagement)}</h2>
@@ -464,7 +487,10 @@ export function ExtractionReview({
           ) : (
             groupValues(filtered).map((group) => {
               const capped = group.values.slice(0, REVIEW_CAP);
-              const hidden = group.values.length - capped.length;
+              // A value picked on the document beyond the cap still gets its card.
+              const picked = group.values.find((x) => x.id === selectedId);
+              if (picked && !capped.includes(picked)) capped.push(picked);
+              const hidden = Math.max(group.values.length - capped.length, 0);
               return (
                 <div key={group.key} className="s1-xr-group">
                   <div className="s1-xr-doc">
@@ -529,10 +555,8 @@ export function ExtractionReview({
                     />
                   ))}
                   {hidden > 0 ? (
-                    <div className="s1-xr-wall">
-                      <strong>One card per value does not survive this file.</strong> Showing {capped.length} of{" "}
-                      {group.values.length}; {hidden} more continue below, identical. Candidate treatment (product&rsquo;s call):
-                      a table mode for high-cardinality sources.
+                    <div className="s1-xr-more">
+                      Showing {capped.length} of {group.values.length}. Pick any highlighted figure on the document to open its value.
                     </div>
                   ) : null}
                 </div>
@@ -659,6 +683,7 @@ function ValueCard({
   const changed = draftValue.trim() !== v.value || draftUnit.trim() !== v.unit;
   return (
     <article
+      data-value-id={v.id}
       className={`s1-xr-card${selected ? " is-sel" : ""} s1-xr-card--${v.reviewState}${v.withdrawn ? " s1-xr-card--withdrawn" : ""}`}
       onClick={onSelect}
       tabIndex={0}
@@ -837,11 +862,13 @@ function SourcePane({
             ? placed
               ? "The uploaded document, the value outlined where it was read."
               : "The uploaded document. Check the value against it."
-            : value.span
+            : realPage
+              ? "Click a highlighted figure to review it."
+              : value.span
               ? "Opened at the page, value highlighted."
               : "Highlight unavailable for this value."}
         </div>
-        {value.sourceKind !== "text" && !(realPage && value.reviewToken) ? (
+        {value.sourceKind !== "text" && !realPage ? (
           <div className="s1-xr-pager">
             <button className="s1-button s1-button--compact" type="button" onClick={() => setPage(Math.max(1, page - 1))} aria-label="Previous page">
               ‹

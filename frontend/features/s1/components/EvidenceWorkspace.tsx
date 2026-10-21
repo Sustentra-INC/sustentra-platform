@@ -1,7 +1,8 @@
 "use client";
 
 import { ChevronRight, Send, StickyNote, Upload } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { createAuditIntent, type AuditIntentAction, type SessionAuditEntry } from "../utils/auditIntent";
 import type {
@@ -931,6 +932,31 @@ function RowMenu({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const withdrawn = item.disposition === "withdrawn";
+  // Where the floating menu opens: under the button, or above it near the bottom of the window.
+  const [place, setPlace] = useState<{ top: number; left: number; up: boolean } | null>(null);
+  useLayoutEffect(() => {
+    if (!isOpen || !triggerRef.current) {
+      setPlace(null);
+      return;
+    }
+    const measure = () => {
+      const box = triggerRef.current?.getBoundingClientRect();
+      if (!box) return;
+      const height = menuRef.current?.offsetHeight ?? 320;
+      const width = menuRef.current?.offsetWidth ?? 208;
+      const up = box.bottom + height + 8 > window.innerHeight && box.top - height - 8 > 0;
+      setPlace({ top: up ? box.top - height - 4 : box.bottom + 4, left: Math.max(8, box.right - width), up });
+    };
+    measure();
+    const frame = window.requestAnimationFrame(measure); // again once the menu has its size
+    window.addEventListener("scroll", measure, true);
+    window.addEventListener("resize", measure);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", measure, true);
+      window.removeEventListener("resize", measure);
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -975,8 +1001,14 @@ function RowMenu({
       >
         ⋯
       </button>
-      {isOpen ? (
-        <div className="s1-menu__panel" role="menu" ref={menuRef}>
+      {isOpen && place
+        ? createPortal(
+        <div
+          className="s1-menu__panel s1-menu__panel--float"
+          role="menu"
+          ref={menuRef}
+          style={{ top: place.top, left: place.left, transformOrigin: place.up ? "bottom right" : "top right" }}
+        >
           {entries.map((entry) => (
             <button
               key={entry.label}
@@ -992,8 +1024,10 @@ function RowMenu({
               {entry.label}
             </button>
           ))}
-        </div>
-      ) : null}
+        </div>,
+            document.querySelector(".s1-app") ?? document.body
+          )
+        : null}
     </div>
   );
 }

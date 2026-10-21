@@ -1,0 +1,135 @@
+/* ==========================================================================
+   Demo documents, drawn whole: the client's bills, tickets, photos and sheets as
+   they were sent, every value highlighted where it was read.
+
+   Outside the token system on purpose (see sustentra-tokens.css): these colours
+   draw third-party documents (a utility's letterhead, a meter, a spreadsheet),
+   not Sustentra's interface. Sustentra's own states (selected, missing) still
+   use the tokens.
+   ========================================================================== */
+.s1-xr-realpage:has(.s1-dd) { max-width: 46rem; box-shadow: none; background: none; }
+.s1-dd { display: flex; flex-direction: column; gap: var(--sp-4); width: 100%; color: var(--ink); }
+.s1-dd-legend {
+  position: sticky; top: calc(-1 * var(--sp-5)); z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-2) var(--sp-3); font-size: var(--text-xs); color: var(--ink-2);
+  background: rgba(251, 250, 246, 0.92); backdrop-filter: blur(0.375rem); border: var(--border-hairline); border-radius: var(--radius-input);
+}
+.s1-dd-legend > span:first-child { margin-right: auto; font-size: var(--text-sm); }
+.s1-dd-legend__miss { color: var(--state-blocking-fg); }
+.s1-dd-key { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.s1-dd-key::before { content: ""; width: 0.75rem; height: 0.5rem; border-radius: 0.125rem; }
+.s1-dd-key--to_review::before { background: rgba(253, 216, 92, 0.75); }
+.s1-dd-key--accepted::before { background: rgba(126, 190, 92, 0.55); }
+.s1-dd-key--corrected::before { background: rgba(110, 168, 230, 0.6); }
+.s1-dd-key--missing::before { background: none; border: 0.0625rem dashed var(--state-blocking-fg); }
+
+.s1-dd-page {
+  position: relative; display: flex; flex-direction: column; gap: var(--sp-2);
+  padding: 2.25rem 2.5rem 2.75rem; background: var(--sf-card); border-radius: 0.25rem;
+  box-shadow: 0 0.0625rem 0.125rem rgba(23, 23, 20, 0.06), 0 0.5rem 1.5rem rgba(40, 40, 112, 0.08);
+  font-size: var(--text-sm); line-height: 1.45; min-height: 52rem;
+}
+.s1-dd-page--letter { font-family: Georgia, "Times New Roman", serif; font-size: var(--text-md); line-height: 1.7; }
+.s1-dd-foot { margin-top: auto; padding-top: var(--sp-5); text-align: center; font-size: var(--text-xs); color: var(--ink-3); }
+.s1-dd-band {
+  display: flex; justify-content: space-between; gap: var(--sp-4); margin: -2.25rem -2.5rem var(--sp-4);
+  padding: var(--sp-5) 2.5rem; color: var(--sf-card); border-radius: 0.25rem 0.25rem 0 0;
+}
+.s1-dd-band strong { display: block; font-family: Georgia, "Times New Roman", serif; font-size: 1.45rem; letter-spacing: -0.01em; }
+.s1-dd-band span { display: block; font-size: var(--text-xs); opacity: 0.82; }
+.s1-dd-band__meta { text-align: right; }
+.s1-dd-band--electricity { background: linear-gradient(135deg, #1f3a5f 0%, #2d5a8a 100%); }
+.s1-dd-band--gas { background: linear-gradient(135deg, #5a3d1f 0%, #8a5d2d 100%); }
+.s1-dd-band--service { background: linear-gradient(135deg, #1f5a52 0%, #2a8a7b 100%); }
+.s1-dd-two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); padding-bottom: var(--sp-3); border-bottom: var(--border-hairline); }
+.s1-dd-right { text-align: right; }
+.s1-dd-label { font-size: var(--text-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); }
+.s1-dd-big { font-size: var(--text-md); font-weight: 700; }
+.s1-dd-dim { color: var(--ink-3); }
+.s1-dd-h { margin: var(--sp-4) 0 var(--sp-1); font-size: var(--text-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); font-weight: var(--weight-medium); }
+.s1-dd-title { margin: 0 0 var(--sp-2); font-size: 1.15rem; }
+.s1-dd-row { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-4); padding: 0.3rem 0; border-bottom: var(--hairline-width) solid var(--line); font-variant-numeric: tabular-nums; }
+.s1-dd-row > span:last-child { text-align: right; }
+.s1-dd-row--strong { font-weight: 700; font-size: var(--text-md); }
+.s1-dd-p { margin: var(--sp-2) 0; color: var(--ink-2); }
+.s1-dd-table { display: grid; gap: 0; border-top: var(--border-hairline); }
+.s1-dd-table--4 { grid-template-columns: 1.6fr 1fr 1fr 1fr; }
+.s1-dd-table--3 { grid-template-columns: 1.3fr 1fr 1.6fr; }
+.s1-dd-table > span { display: flex; align-items: center; padding: 0.4rem var(--sp-2) 0.4rem 0; border-bottom: var(--hairline-width) solid var(--line); font-variant-numeric: tabular-nums; }
+.s1-dd-table--4 > span:nth-child(-n + 4), .s1-dd-table--3 > span:nth-child(-n + 3) { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); }
+.s1-dd-bars { display: flex; align-items: flex-end; gap: 0.375rem; height: 7rem; padding: var(--sp-2) 0; border-bottom: var(--border-hairline); }
+.s1-dd-bars span { flex: 1; background: var(--line-strong); border-radius: 0.125rem 0.125rem 0 0; }
+.s1-dd-bars span.is-now { background: var(--accent-solid); }
+.s1-dd-barlabels { display: flex; gap: 0.375rem; font-size: var(--text-xs); color: var(--ink-3); }
+.s1-dd-barlabels span { flex: 1; text-align: center; }
+.s1-dd-stub { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-4); margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 0.125rem dashed var(--line-strong); }
+.s1-dd-sign { display: flex; justify-content: space-between; gap: var(--sp-4); margin-top: var(--sp-6); padding-top: var(--sp-2); border-top: var(--border-hairline); font-size: var(--text-xs); color: var(--ink-3); font-family: var(--font-sans); }
+.s1-dd-letterhead { display: flex; flex-direction: column; padding-bottom: var(--sp-3); margin-bottom: var(--sp-4); border-bottom: 0.125rem solid var(--brand-ink); }
+.s1-dd-letterhead strong { font-size: 1.2rem; color: var(--brand-ink); }
+.s1-dd-letterhead span { font-size: var(--text-xs); color: var(--ink-3); font-family: var(--font-sans); }
+.s1-dd-smudge { filter: blur(0.06rem); letter-spacing: 0.1em; color: var(--ink-3); }
+
+/* photo */
+.s1-dd-photo { display: flex; flex-direction: column; gap: var(--sp-2); }
+.s1-dd-photo__meta { display: flex; justify-content: space-between; font-size: var(--text-xs); color: var(--ink-3); font-family: var(--font-mono); }
+.s1-dd-photo__frame {
+  display: flex; align-items: center; justify-content: center; aspect-ratio: 4 / 3; border-radius: 0.5rem;
+  background: radial-gradient(ellipse at 40% 35%, #8b8f86 0%, #4c4f49 55%, #2b2d29 100%);
+  box-shadow: inset 0 0 4rem rgba(0, 0, 0, 0.45);
+}
+.s1-dd-photo__frame--note { background: radial-gradient(ellipse at 50% 40%, #f3ecd8 0%, #ddd2b4 70%, #b9ad8e 100%); }
+.s1-dd-meter {
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); padding: var(--sp-5) var(--sp-6);
+  border-radius: 50%; aspect-ratio: 1; justify-content: center; width: 58%;
+  background: radial-gradient(circle at 45% 35%, #f6f6f1 0%, #d9d9d2 70%, #b8b8b0 100%);
+  box-shadow: 0 0 0 0.75rem #3a3c37, 0 1rem 2rem rgba(0, 0, 0, 0.5);
+}
+.s1-dd-meter__brand, .s1-dd-meter__id { font-size: var(--text-xs); color: #4a4a45; font-family: var(--font-mono); text-align: center; }
+.s1-dd-meter__lcd { padding: var(--sp-2) var(--sp-3); background: #b7c4a3; border-radius: 0.25rem; font-family: var(--font-mono); font-size: 1.6rem; letter-spacing: 0.08em; color: #1d2418; box-shadow: inset 0 0.125rem 0.375rem rgba(0, 0, 0, 0.35); }
+.s1-dd-note { transform: rotate(-2deg); font-family: "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive; font-size: 1.4rem; color: #2b3a67; display: flex; flex-direction: column; gap: var(--sp-2); }
+
+/* sheet */
+.s1-dd-sheet { display: flex; flex-direction: column; background: var(--sf-card); border-radius: 0.25rem; overflow: hidden; box-shadow: 0 0.5rem 1.5rem rgba(40, 40, 112, 0.08); }
+.s1-dd-sheet__bar { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); background: #1d6f42; color: var(--sf-card); font-size: var(--text-xs); }
+.s1-dd-sheet__tab { padding: 0.125rem var(--sp-2); background: rgba(255, 255, 255, 0.18); border-radius: 0.25rem; }
+.s1-dd-sheet__scroll { overflow-x: auto; }
+.s1-dd-sheet table { border-collapse: collapse; width: 100%; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.s1-dd-sheet th, .s1-dd-sheet td { border: var(--hairline-width) solid #dadcd6; padding: 0.2rem var(--sp-2); white-space: nowrap; text-align: left; }
+.s1-dd-sheet thead th, .s1-dd-sheet tbody th { background: #f1f2ee; color: var(--ink-3); font-weight: var(--weight-regular); font-size: var(--text-xs); text-align: center; position: sticky; }
+.s1-dd-sheet thead th { top: 0; z-index: 1; }
+.s1-dd-sheet tbody th { left: 0; min-width: 2.25rem; }
+.s1-dd-sheet tr.is-title td { font-weight: 700; }
+
+/* the highlight itself: a highlighter stroke on the figure, by review state */
+.s1-dd-hl {
+  display: inline; padding: 0.05rem 0.3rem; margin: -0.05rem -0.1rem; font: inherit; color: inherit; text-align: inherit;
+  border: 0; border-radius: 0.2rem; cursor: pointer; line-height: inherit;
+  background: rgba(253, 216, 92, 0.55); box-shadow: inset 0 -0.1rem 0 rgba(212, 160, 20, 0.6);
+  transition: background-color 0.18s ease, box-shadow 0.18s var(--ease-out), transform 0.12s var(--ease-out);
+}
+.s1-dd-hl:hover { background: rgba(253, 216, 92, 0.85); }
+.s1-dd-hl:active { transform: scale(0.97); }
+.s1-dd-hl:focus-visible { outline: var(--focus-ring); outline-offset: 0.125rem; }
+.s1-dd-hl--accepted { background: rgba(126, 190, 92, 0.35); box-shadow: inset 0 -0.1rem 0 rgba(59, 109, 17, 0.5); }
+.s1-dd-hl--accepted:hover { background: rgba(126, 190, 92, 0.55); }
+.s1-dd-hl--corrected { background: rgba(110, 168, 230, 0.35); box-shadow: inset 0 -0.1rem 0 rgba(24, 95, 165, 0.5); }
+.s1-dd-hl--corrected:hover { background: rgba(110, 168, 230, 0.55); }
+.s1-dd-hl--requested { background: rgba(160, 170, 185, 0.35); box-shadow: inset 0 -0.1rem 0 rgba(78, 93, 108, 0.5); }
+.s1-dd-hl--missing {
+  background: rgba(251, 234, 234, 0.9); color: var(--state-blocking-fg); font-style: italic;
+  box-shadow: inset 0 0 0 0.0625rem var(--state-blocking-fg); outline: 0.0625rem dashed var(--state-blocking-fg); outline-offset: 0.125rem;
+}
+.s1-dd-hl.is-sel {
+  box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0.45rem rgba(61, 131, 199, 0.18);
+  animation: s1-dd-pulse 1.4s var(--ease-out) 1;
+}
+@keyframes s1-dd-pulse {
+  0% { box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0 rgba(61, 131, 199, 0.45); }
+  70% { box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0.75rem rgba(61, 131, 199, 0); }
+  100% { box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0.45rem rgba(61, 131, 199, 0.18); }
+}
+.s1-dd-meter__lcd .s1-dd-hl, .s1-dd-note .s1-dd-hl { padding: 0 0.25rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .s1-dd-hl, .s1-dd-hl.is-sel { animation: none; transition: none; }
+}

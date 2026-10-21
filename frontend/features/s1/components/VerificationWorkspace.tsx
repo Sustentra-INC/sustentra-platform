@@ -6,7 +6,6 @@ import {
   ArrowUpRight,
   BookOpen,
   Check,
-  ChevronDown,
   ChevronRight,
   CircleCheck,
   ClipboardCheck,
@@ -205,6 +204,7 @@ function BoxPanel({
   return (
     <div className={`s1-vw-box s1-vw-tone--${box.key}${open ? " is-open" : ""}`}>
       <button className="s1-vw-box__head" type="button" aria-expanded={open} aria-controls={bodyId} onClick={onToggle}>
+        <ChevronRight className="s1-vw-ico s1-vw-box__chev" aria-hidden />
         <span className="s1-vw-box__icon">
           <Icon className="s1-vw-ico" aria-hidden />
         </span>
@@ -237,7 +237,6 @@ function BoxPanel({
             {totals.examined}/{totals.facilities}
           </span>
         </span>
-        <ChevronDown className="s1-vw-ico s1-vw-box__chev" aria-hidden />
       </button>
       {open ? (
         <div className="s1-vw-box__body" id={bodyId}>
