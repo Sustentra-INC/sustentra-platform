@@ -3083,7 +3083,7 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-family: var(
    the top, a glass pill for the current page; wider, with larger, brighter labels.
    ========================================================================== */
 .s1-side {
-  position: sticky; width: 15.5rem; isolation: isolate;
+  position: sticky; width: 17rem; isolation: isolate;
   color: rgba(255, 255, 255, 0.96);
   background:
     linear-gradient(180deg,
@@ -3098,12 +3098,12 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-family: var(
 }
 .s1-side--min { width: 4.25rem; }
 .s1-side__top { padding: var(--sp-5) var(--sp-4) var(--sp-4); min-height: 4.25rem; }
-.s1-side__logo { height: 1.85rem; filter: brightness(0) invert(1) drop-shadow(0 0.125rem 0.5rem rgba(255, 255, 255, 0.25)); }
+.s1-side__logo { height: 2.1rem; filter: brightness(0) invert(1) drop-shadow(0 0.125rem 0.5rem rgba(255, 255, 255, 0.25)); }
 .s1-side--min .s1-side__logo { height: 1.9rem; }
 .s1-side__nav { gap: 0.25rem; padding: var(--sp-2) var(--sp-3); }
 .s1-side__item {
   position: relative; gap: var(--sp-3); padding: 0.65rem var(--sp-3);
-  font-size: 0.95rem; letter-spacing: 0.005em; color: rgba(255, 255, 255, 0.9);
+  font-size: 1.1rem; letter-spacing: 0.005em; color: rgba(255, 255, 255, 0.92);
   border-radius: 0.6rem;
   transition: background-color 0.16s var(--ease-out), color 0.16s var(--ease-out), box-shadow 0.2s var(--ease-out), transform 0.12s var(--ease-out);
 }
@@ -3120,7 +3120,7 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-family: var(
   content: ""; position: absolute; left: -0.75rem; top: 22%; bottom: 22%; width: 0.2rem; border-radius: 0 0.2rem 0.2rem 0;
   background: white; box-shadow: 0 0 0.6rem rgba(255, 255, 255, 0.7);
 }
-.s1-side__icon svg { width: 1.25rem; height: 1.25rem; }
+.s1-side__icon svg { width: 1.4rem; height: 1.4rem; }
 .s1-side__item.is-on .s1-side__icon { filter: drop-shadow(0 0 0.35rem rgba(255, 255, 255, 0.45)); }
 .s1-side__toggle { font-size: var(--text-sm); color: rgba(255, 255, 255, 0.72); border-top-color: rgba(255, 255, 255, 0.14); }
 @media (max-width: 48rem) {
