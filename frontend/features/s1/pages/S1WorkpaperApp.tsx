@@ -957,6 +957,21 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onBack={() => setActiveView({ name: "evidence" })}
             reviewerName={dataMode === "backend" ? user?.firstName ?? user?.email : undefined}
             allowAddValue={dataMode === "fixture"}
+            onValueAdded={(value, filled) => {
+              // The document follows its new value: a field it was missing is found, and the
+              // Evidence row's status and issue update with it.
+              setEvidenceItems((cur) =>
+                cur.map((item) =>
+                  item.documentId !== value.documentId
+                    ? item
+                    : {
+                        ...item,
+                        fieldsExtracted: filled ? Math.min(item.fieldsExtracted + 1, item.fieldsExpectedDisplay ?? item.fieldsExpected) : item.fieldsExtracted,
+                        missingFields: (item.missingFields ?? []).filter((f) => f.toLowerCase() !== value.whatItIs.toLowerCase()),
+                      }
+                )
+              );
+            }}
             onPersistAccept={
               dataMode === "backend"
                 ? async (value) => {
@@ -1007,6 +1022,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                   engagement={engagement}
                   selectedId={pick?.selectedId ?? null}
                   onPick={(ids) => pick?.onPickAmong(ids)}
+                  onAddValue={pick?.onAddValue}
                 />
               ) : dataMode === "backend" && ["pdf", "image"].includes(format) ? (
                 // The uploaded page as an image, the value outlined where it was read.

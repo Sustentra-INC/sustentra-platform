@@ -7,6 +7,7 @@ import type { EngagementConfig } from "../types";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueReviewState } from "../types/review";
 import type { AskDraft } from "../requests/requestsStore";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import type { HighlightEntry } from "./demo/DemoDocument";
 
 /**
  * Extraction Review (screen 3), built to the 09/16 revision. Three panes:
@@ -53,6 +54,8 @@ interface ExtractionReviewProps {
   onPersistCorrect?: (value: ReviewValue, next: { value: string; unit: string }) => Promise<void>;
   /** Lets the reviewer key a value the reading missed (kept in the session; not yet saved to the backend). */
   allowAddValue?: boolean;
+  /** A value was added or filled in by the reviewer: the rest of the workspace follows. */
+  onValueAdded?: (value: ReviewValue, filled: boolean) => void;
 }
 
 const SCOPE_LABEL: Record<ScopePlacement, string> = {
@@ -79,6 +82,7 @@ export function ExtractionReview({
   onPersistAccept,
   onPersistCorrect,
   allowAddValue = false,
+  onValueAdded,
 }: ExtractionReviewProps) {
   // Review data lives in app state (via onValuesChange); selection below is
   // local, ephemeral UI. So accepts/corrections/requests survive navigation.
@@ -343,35 +347,67 @@ export function ExtractionReview({
     });
   }
 
-  /** A value the reading missed, keyed by the reviewer: reviewed on entry, with no
-   *  machine reading behind it, and recorded as added by hand. */
-  function addValue(base: ReviewValue, entry: { whatItIs: string; value: string; unit: string; page: number }) {
+  /** A value the reading missed, keyed by the reviewer: reviewed on entry, with no machine
+   *  reading behind it, and recorded as added by hand. Highlighted on the page, it keeps
+   *  where (``docAnchor``); named like a value the reading could not find, it fills that in. */
+  function addValue(
+    base: ReviewValue,
+    entry: { whatItIs: string; value: string; unit: string; page: number; scope?: ReviewValue["scope"]; docAnchor?: string }
+  ) {
     const now = new Date().toISOString();
-    const added: ReviewValue = {
-      ...base,
-      id: `keyed-${base.documentId}-${now}`,
-      whatItIs: entry.whatItIs,
-      value: entry.value,
-      unit: entry.unit,
-      page: entry.page,
-      span: null,
-      anchor: null,
-      snippet: null,
-      rawText: null,
-      missing: false,
-      methodologyFieldId: undefined,
-      reviewToken: undefined,
-      reviewState: "corrected",
-      originalValue: null,
-      record: [{ kind: "human", actor: reviewerName, at: now, action: "added a value the reading missed" }],
-    };
-    onValuesChange((cur) => {
-      const at = cur.findIndex((x) => x.id === base.id);
-      return at < 0 ? [...cur, added] : [...cur.slice(0, at + 1), added, ...cur.slice(at + 1)];
-    });
+    const where = entry.docAnchor ? `highlighted on page ${entry.page}` : `keyed from page ${entry.page}`;
+    const gap = items.find(
+      (x) => x.documentId === base.documentId && (x.missing || x.value === "not found") && x.whatItIs.toLowerCase() === entry.whatItIs.toLowerCase()
+    );
+    let result: ReviewValue;
+    if (gap) {
+      result = {
+        ...gap,
+        value: entry.value,
+        unit: entry.unit,
+        page: entry.page,
+        missing: false,
+        docAnchor: entry.docAnchor,
+        reviewState: "corrected",
+        originalValue: "not found",
+        record: [...gap.record, { kind: "human", actor: reviewerName, at: now, action: "filled in a value the reading missed", reason: where }],
+      };
+      onValuesChange((cur) => cur.map((x) => (x.id === gap.id ? result : x)));
+    } else {
+      result = {
+        ...base,
+        id: `keyed-${base.documentId}-${now}`,
+        whatItIs: entry.whatItIs,
+        value: entry.value,
+        unit: entry.unit,
+        page: entry.page,
+        scope: entry.scope ?? base.scope,
+        span: null,
+        anchor: null,
+        snippet: null,
+        rawText: null,
+        missing: false,
+        docAnchor: entry.docAnchor,
+        methodologyFieldId: undefined,
+        reviewToken: undefined,
+        reviewState: "corrected",
+        originalValue: null,
+        record: [{ kind: "human", actor: reviewerName, at: now, action: "added a value the reading missed", reason: where }],
+      };
+      onValuesChange((cur) => {
+        const at = cur.findIndex((x) => x.id === base.id);
+        return at < 0 ? [...cur, result] : [...cur.slice(0, at + 1), result, ...cur.slice(at + 1)];
+      });
+    }
     setAdding(false);
-    setSelectedId(added.id);
-    flash(`Added: ${entry.whatItIs}`);
+    setSelectedId(result.id);
+    setScrollTo((cur) => ({ id: result.id, tick: (cur?.tick ?? 0) + 1 }));
+    onValueAdded?.(result, Boolean(gap));
+    flash(
+      entry.docAnchor
+        ? `${gap ? "Filled in" : "Added"}: ${entry.whatItIs}. Kept as a correction to the reading.`
+        : `Added: ${entry.whatItIs}`
+    );
   }
 
   function submitAsk(draft: AskDraft) {
@@ -575,7 +611,15 @@ export function ExtractionReview({
             renderPage={renderPage}
             onPickBox={selectByBox}
             marks={selected ? pageMarks(items, selected.documentId) : []}
-            pick={selected ? { selectedId: selected.id, onPickAmong: selectAmong } : undefined}
+            pick={
+              selected
+                ? {
+                    selectedId: selected.id,
+                    onPickAmong: selectAmong,
+                    onAddValue: allowAddValue && !selected.withdrawn ? (entry) => addValue(selected, entry) : undefined,
+                  }
+                : undefined
+            }
           />
         </aside>
       </div>
@@ -821,6 +865,8 @@ function pageMarks(items: ReviewValue[], documentId: string): PageMark[] {
 export interface SourcePick {
   selectedId: string;
   onPickAmong: (ids: string[]) => void;
+  /** Add (or fill in) a value from a figure the reviewer highlighted on the page. */
+  onAddValue?: (entry: HighlightEntry) => void;
 }
 
 function SourcePane({

@@ -258,3 +258,79 @@ describe("evidence row menu", () => {
     expect(menu.closest(".s1-ws-gr")).toBeNull();
   });
 });
+
+describe("highlight a figure the reading missed", () => {
+  it("turns the page's other figures into targets and adds the one clicked, pre-filled from the page", async () => {
+    const { DemoDocument } = await import("../components/demo/DemoDocument");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    const gas = manufacturerValues.filter((v) => v.documentId === "DOC-tualatin-gas-jan");
+    const onAddValue = vi.fn();
+    const { container } = render(
+      <DemoDocument values={gas} engagement={engagementConfig} selectedId={null} onPick={vi.fn()} onAddValue={onAddValue} />
+    );
+    expect(container.querySelector(".s1-dd-fig")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Highlight a figure" }));
+    fireEvent.click(container.querySelector('[data-anchor="heat-content"]')!);
+
+    expect(screen.getByText("Add this figure as a value")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add value" }));
+    expect(onAddValue).toHaveBeenCalledWith(
+      expect.objectContaining({ docAnchor: "heat-content", whatItIs: "Heat content", unit: "MMBtu", page: 1, scope: "not_placed" })
+    );
+  });
+
+  it("fills in a value the reading could not find when the figure is named like it", async () => {
+    const { DemoDocument } = await import("../components/demo/DemoDocument");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    const partial = manufacturerValues.filter((v) => v.documentId === "DOC-PARTIAL");
+    const onAddValue = vi.fn();
+    const { container } = render(
+      <DemoDocument values={partial} engagement={engagementConfig} selectedId={null} onPick={vi.fn()} onAddValue={onAddValue} />
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Highlight a figure" }));
+    fireEvent.click(container.querySelector('[data-anchor="current-read-date"]')!);
+    expect(screen.getByText("Fill in a value the reading missed")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Fill in" }));
+    expect(onAddValue).toHaveBeenCalledWith(expect.objectContaining({ whatItIs: "Service period end date", value: "30 Sep 2025" }));
+  });
+
+  it("in review, a filled-in value replaces the gap, says it was not found, and the workspace hears of it", async () => {
+    const { ExtractionReview } = await import("../components/ExtractionReview");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    const { useState } = await import("react");
+    const gap = manufacturerValues.find((v) => v.documentId === "DOC-PARTIAL")!;
+    let latest = manufacturerValues;
+    const onValueAdded = vi.fn();
+    let add: ((entry: import("../components/demo/DemoDocument").HighlightEntry) => void) | undefined;
+    function Harness() {
+      const [values, setValues] = useState(manufacturerValues);
+      latest = values;
+      return (
+        <ExtractionReview
+          engagement={engagementConfig}
+          values={values}
+          onValuesChange={setValues}
+          initialDocumentId="DOC-PARTIAL"
+          onSaveAsk={vi.fn()}
+          onBack={vi.fn()}
+          reviewerName="R. Iqbal"
+          allowAddValue
+          onValueAdded={onValueAdded}
+          renderPage={(_id, _span, _box, _marks, pick) => {
+            add = pick?.onAddValue;
+            return <div>page</div>;
+          }}
+        />
+      );
+    }
+    render(<Harness />);
+    const { act } = await import("@testing-library/react");
+    act(() => add!({ docAnchor: "current-read-date", whatItIs: "Service period end date", value: "30 Sep 2025", unit: "", scope: "not_placed", page: 1 }));
+
+    const filled = latest.find((v) => v.id === gap.id)!;
+    expect(filled).toMatchObject({ value: "30 Sep 2025", missing: false, reviewState: "corrected", originalValue: "not found", docAnchor: "current-read-date" });
+    expect(filled.record.at(-1)).toMatchObject({ actor: "R. Iqbal", action: "filled in a value the reading missed", reason: "highlighted on page 1" });
+    expect(latest.filter((v) => v.documentId === "DOC-PARTIAL")).toHaveLength(1);
+    expect(onValueAdded).toHaveBeenCalledWith(expect.objectContaining({ id: gap.id }), true);
+  });
+});

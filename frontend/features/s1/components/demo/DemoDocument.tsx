@@ -1,21 +1,38 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { Highlighter, X } from "lucide-react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../../types";
-import type { ReviewValue } from "../../types/review";
+import type { ReviewValue, ScopePlacement } from "../../types/review";
+
+/** A figure the reviewer highlighted on the page, to add (or fill in) as a value. */
+export interface HighlightEntry {
+  /** Where on the drawn document: the figure's anchor. */
+  docAnchor: string;
+  whatItIs: string;
+  value: string;
+  unit: string;
+  scope: ScopePlacement;
+  page: number;
+}
 
 /**
  * A demo document drawn whole, as the client sent it: every page, every line, with each
  * value the reading took from it highlighted in place. Values the reading could not find
  * are marked where they belong. Clicking a highlight selects its value (the review cards
  * scroll to it); selecting a card scrolls the document to its highlight.
+ *
+ * With ``onAddValue``, the reviewer can highlight a figure the reading missed: every
+ * other figure on the page becomes a target, and the one clicked is added as a value
+ * (or fills in a value the reading could not find), kept as a correction to the reading.
  */
 export function DemoDocument({
   values,
   engagement,
   selectedId,
   onPick,
+  onAddValue,
 }: {
   /** Every value read from this one document. */
   values: ReviewValue[];
@@ -23,8 +40,23 @@ export function DemoDocument({
   selectedId: string | null;
   /** The values behind a clicked highlight (several when one figure feeds two values). */
   onPick: (ids: string[]) => void;
+  /** Lets the reviewer highlight a figure the reading missed. */
+  onAddValue?: (entry: HighlightEntry) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const [picking, setPicking] = useState(false);
+  const [target, setTarget] = useState<FigureTarget | null>(null);
+
+  useEffect(() => {
+    if (!picking) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (target) setTarget(null);
+      else setPicking(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [picking, target]);
 
   // Bring the selected value's highlight into view, inside the source pane only.
   useEffect(() => {
@@ -44,11 +76,23 @@ export function DemoDocument({
 
   if (!values.length) return null;
   const first = values[0];
-  const ctx: Ctx = { values, engagement, selectedId, onPick };
+  const ctx: Ctx = {
+    values,
+    engagement,
+    selectedId,
+    onPick,
+    picking: picking && Boolean(onAddValue),
+    onFigure: (fig, el) => {
+      const box = el.getBoundingClientRect();
+      const frame = el.closest(".s1-dd")?.getBoundingClientRect();
+      if (!frame) return;
+      setTarget({ ...fig, top: box.bottom - frame.top + 6, left: Math.max(0, Math.min(box.left - frame.left, frame.width - 300)) });
+    },
+  };
   const missing = values.filter(isMissing).length;
 
   return (
-    <div className="s1-dd" ref={root}>
+    <div className={`s1-dd${ctx.picking ? " is-picking" : ""}`} ref={root}>
       <div className="s1-dd-legend" aria-label="Highlights on this document">
         <span>
           <strong>{values.length}</strong> {values.length === 1 ? "value" : "values"} read
@@ -63,7 +107,37 @@ export function DemoDocument({
         <span className="s1-dd-key s1-dd-key--accepted">Accepted</span>
         <span className="s1-dd-key s1-dd-key--corrected">Corrected</span>
         <span className="s1-dd-key s1-dd-key--missing">Not found</span>
+        {onAddValue ? (
+          <button
+            className={`s1-dd-pick${picking ? " is-on" : ""}`}
+            type="button"
+            aria-pressed={picking}
+            onClick={() => {
+              setPicking((v) => !v);
+              setTarget(null);
+            }}
+          >
+            <Highlighter aria-hidden /> {picking ? "Done highlighting" : "Highlight a figure"}
+          </button>
+        ) : null}
       </div>
+      {ctx.picking && !target ? (
+        <div className="s1-dd-pickhint" role="status">
+          Click any figure the reading missed to add it as a value. Press Esc when you are done.
+        </div>
+      ) : null}
+      {target && onAddValue ? (
+        <HighlightForm
+          target={target}
+          values={values}
+          onCancel={() => setTarget(null)}
+          onAdd={(entry) => {
+            onAddValue(entry);
+            setTarget(null);
+            setPicking(false);
+          }}
+        />
+      ) : null}
       {first.documentType === "Electricity bill" ? (
         <UtilityBill ctx={ctx} kind="electricity" />
       ) : first.documentType === "Natural gas bill" ? (
@@ -92,6 +166,40 @@ interface Ctx {
   engagement: EngagementConfig;
   selectedId: string | null;
   onPick: (ids: string[]) => void;
+  /** Highlight mode: plain figures are targets. */
+  picking: boolean;
+  onFigure: (fig: { docAnchor: string; label: string; text: string; page: number }, el: HTMLElement) => void;
+}
+
+interface FigureTarget {
+  docAnchor: string;
+  label: string;
+  text: string;
+  page: number;
+  top: number;
+  left: number;
+}
+
+const PageNumber = createContext(1);
+
+/** A figure the reading did not take. Highlighted once a reviewer adds it; in highlight
+ *  mode, a target that adds it. */
+function Fig({ ctx, anchor, label, children }: { ctx: Ctx; anchor: string; label: string; children: ReactNode }) {
+  const page = useContext(PageNumber);
+  const keyed = ctx.values.filter((v) => v.docAnchor === anchor);
+  if (keyed.length) return <Hl ctx={ctx} vs={keyed}>{children}</Hl>;
+  if (!ctx.picking) return <>{children}</>;
+  return (
+    <button
+      type="button"
+      className="s1-dd-fig"
+      data-anchor={anchor}
+      title={`Add ${label} as a value`}
+      onClick={(e) => ctx.onFigure({ docAnchor: anchor, label, text: e.currentTarget.textContent ?? "", page }, e.currentTarget)}
+    >
+      {children}
+    </button>
+  );
 }
 
 function isMissing(v: ReviewValue): boolean {
@@ -167,10 +275,12 @@ function facilityOf(ctx: Ctx): { name: string; address: string } {
 
 function Page({ n, of, children, tone }: { n: number; of: number; children: ReactNode; tone?: string }) {
   return (
-    <section className={`s1-dd-page${tone ? ` s1-dd-page--${tone}` : ""}`} aria-label={`Page ${n} of ${of}`}>
-      {children}
-      <footer className="s1-dd-foot">Page {n} of {of}</footer>
-    </section>
+    <PageNumber.Provider value={n}>
+      <section className={`s1-dd-page${tone ? ` s1-dd-page--${tone}` : ""}`} aria-label={`Page ${n} of ${of}`}>
+        {children}
+        <footer className="s1-dd-foot">Page {n} of {of}</footer>
+      </section>
+    </PageNumber.Provider>
   );
 }
 
@@ -249,32 +359,36 @@ function UtilityBill({ ctx, kind }: { ctx: Ctx; kind: "electricity" | "gas" }) {
             <div className="s1-dd-label">Service period</div>
             <div className="s1-dd-big">
               {period.start} –{" "}
-              {periodEnd.length ? <Hl ctx={ctx} vs={periodEnd}>not printed</Hl> : period.end}
+              {periodEnd.length ? <Hl ctx={ctx} vs={periodEnd}>{isMissing(periodEnd[0]) ? "not printed" : periodEnd[0].value}</Hl> : <Fig ctx={ctx} anchor="service-period-end" label="Service period end date">{period.end}</Fig>}
             </div>
-            <div className="s1-dd-dim">Billing days {period.days}</div>
+            <div className="s1-dd-dim">Billing days <Fig ctx={ctx} anchor="billing-days" label="Billing days">{period.days}</Fig></div>
           </div>
         </div>
 
         <h4 className="s1-dd-h">Meter readings · Meter {kind === "electricity" ? "E" : "G"}{String(s % 9000).padStart(4, "0")}</h4>
-        <Row label={`Previous read (${period.start})`}>{fmt(previous)} {kind === "electricity" ? "kWh" : "ccf"}</Row>
-        <Row label={`Current read (${period.end})`}>
-          {fmt(previous + (kind === "electricity" ? qty : qty * 0.97))} {kind === "electricity" ? "kWh" : "ccf"}
+        <Row label={<>Previous read (<Fig ctx={ctx} anchor="previous-read-date" label="Service period start date">{period.start}</Fig>)</>}>
+          <Fig ctx={ctx} anchor="previous-read" label="Previous meter read">{fmt(previous)} {kind === "electricity" ? "kWh" : "ccf"}</Fig>
         </Row>
-        <Row label="Multiplier">1.000</Row>
+        <Row label={<>Current read (<Fig ctx={ctx} anchor="current-read-date" label="Service period end date">{period.end}</Fig>)</>}>
+          <Fig ctx={ctx} anchor="current-read" label="Current meter read">
+            {fmt(previous + (kind === "electricity" ? qty : qty * 0.97))} {kind === "electricity" ? "kWh" : "ccf"}
+          </Fig>
+        </Row>
+        <Row label="Multiplier"><Fig ctx={ctx} anchor="multiplier" label="Meter multiplier">1.000</Fig></Row>
 
         <h4 className="s1-dd-h">Usage this period</h4>
         <Row label={kind === "electricity" ? "Electricity delivered" : "Natural gas used"} strong>
-          {consumption.length ? <Hl ctx={ctx} vs={consumption} /> : `${fmt(qty)} ${unit}`}
+          {consumption.length ? <Hl ctx={ctx} vs={consumption} /> : <Fig ctx={ctx} anchor="consumption" label={kind === "electricity" ? "Electricity consumed" : "Natural gas consumed"}>{`${fmt(qty)} ${unit}`}</Fig>}
         </Row>
         {kind === "electricity" ? (
           <>
-            <Row label="Peak demand">{peak.length ? <Hl ctx={ctx} vs={peak} /> : `${fmt(demandKw)} kW`}</Row>
-            <Row label="Power factor">0.96</Row>
+            <Row label="Peak demand">{peak.length ? <Hl ctx={ctx} vs={peak} /> : <Fig ctx={ctx} anchor="peak-demand" label="Peak demand">{`${fmt(demandKw)} kW`}</Fig>}</Row>
+            <Row label="Power factor"><Fig ctx={ctx} anchor="power-factor" label="Power factor">0.96</Fig></Row>
           </>
         ) : (
           <>
-            <Row label="Therm factor">1.037</Row>
-            <Row label="Heat content">{fmt(qty / 10, 1)} MMBtu</Row>
+            <Row label="Therm factor"><Fig ctx={ctx} anchor="therm-factor" label="Therm factor">1.037</Fig></Row>
+            <Row label="Heat content"><Fig ctx={ctx} anchor="heat-content" label="Heat content">{fmt(qty / 10, 1)} MMBtu</Fig></Row>
           </>
         )}
         {others.map((v) => (
@@ -284,12 +398,18 @@ function UtilityBill({ ctx, kind }: { ctx: Ctx; kind: "electricity" | "gas" }) {
         ))}
 
         <h4 className="s1-dd-h">Charges</h4>
-        <Row label={`${kind === "electricity" ? "Energy" : "Gas supply"} (${fmt(qty)} ${unit} × $${rate.toFixed(3)})`}>${fmt(energy, 2)}</Row>
-        {kind === "electricity" ? <Row label={`Demand (${fmt(demandKw)} kW × $6.25)`}>${fmt(demandCharge, 2)}</Row> : null}
-        <Row label="Basic service charge">${fmt(fixed, 2)}</Row>
-        <Row label="State and local taxes">${fmt(tax, 2)}</Row>
+        <Row label={`${kind === "electricity" ? "Energy" : "Gas supply"} (${fmt(qty)} ${unit} × $${rate.toFixed(3)})`}>
+          <Fig ctx={ctx} anchor="energy-charge" label={kind === "electricity" ? "Energy charge" : "Gas supply charge"}>{`$${fmt(energy, 2)}`}</Fig>
+        </Row>
+        {kind === "electricity" ? (
+          <Row label={`Demand (${fmt(demandKw)} kW × $6.25)`}>
+            <Fig ctx={ctx} anchor="demand-charge" label="Demand charge">{`$${fmt(demandCharge, 2)}`}</Fig>
+          </Row>
+        ) : null}
+        <Row label="Basic service charge"><Fig ctx={ctx} anchor="basic-charge" label="Basic service charge">{`$${fmt(fixed, 2)}`}</Fig></Row>
+        <Row label="State and local taxes"><Fig ctx={ctx} anchor="taxes" label="Taxes">{`$${fmt(tax, 2)}`}</Fig></Row>
         <Row label="Amount due" strong>
-          ${fmt(total, 2)}
+          <Fig ctx={ctx} anchor="amount-due" label="Amount due">{`$${fmt(total, 2)}`}</Fig>
         </Row>
       </Page>
 
@@ -368,20 +488,20 @@ function ServiceTicket({ ctx }: { ctx: Ctx }) {
         <span>Recovered</span>
         <span>RTU-3 · rooftop unit</span>
         <span>R-404A</span>
-        <span>{added.length ? <Hl ctx={ctx} vs={added} /> : "0 kg"}</span>
+        <span>{added.length ? <Hl ctx={ctx} vs={added} /> : <Fig ctx={ctx} anchor="rtu3-added" label="R-404A added on service">0 kg</Fig>}</span>
         <span>
           {recovered.length ? (
             <Hl ctx={ctx} vs={recovered}>
               {recovered[0].value === "n/a" ? <span className="s1-dd-smudge">illegible</span> : undefined}
             </Hl>
           ) : (
-            "0 kg"
+            <Fig ctx={ctx} anchor="rtu3-recovered" label="R-404A recovered on service">0 kg</Fig>
           )}
         </span>
         <span>WIC-1 · walk-in cooler</span>
         <span>R-404A</span>
-        <span>0 kg</span>
-        <span>0 kg</span>
+        <span><Fig ctx={ctx} anchor="wic1-added" label="R-404A added on service (WIC-1)">0 kg</Fig></span>
+        <span><Fig ctx={ctx} anchor="wic1-recovered" label="R-404A recovered on service (WIC-1)">0 kg</Fig></span>
       </div>
       {others.map((v) => (
         <Row key={v.id} label={v.whatItIs}>
@@ -549,7 +669,13 @@ function Sheet({ ctx }: { ctx: Ctx }) {
                   const vs = byCell.get(`${c}${r + 1}`) ?? [];
                   return (
                     <td key={c}>
-                      {vs.length ? <Hl ctx={ctx} vs={vs}>{vs[0].value}</Hl> : row[ci]}
+                      {vs.length ? (
+                        <Hl ctx={ctx} vs={vs}>{vs[0].value}</Hl>
+                      ) : row[ci] && r > 0 ? (
+                        <Fig ctx={ctx} anchor={`${c}${r + 1}`} label={layout.rows[r][0] || `Cell ${c}${r + 1}`}>{row[ci]}</Fig>
+                      ) : (
+                        row[ci]
+                      )}
                     </td>
                   );
                 })}
@@ -633,7 +759,7 @@ function FactorRow({ ctx, source, factor, reference, vs }: { ctx: Ctx; source: s
   return (
     <>
       <span>{source}</span>
-      <span>{vs.length ? <Hl ctx={ctx} vs={vs} /> : factor}</span>
+      <span>{vs.length ? <Hl ctx={ctx} vs={vs} /> : <Fig ctx={ctx} anchor={`factor-${source}`} label={`Emission factor · ${source}`}>{factor}</Fig>}</span>
       <span className="s1-dd-dim">{reference}</span>
     </>
   );
@@ -654,5 +780,111 @@ function Statement({ ctx }: { ctx: Ctx }) {
         </Row>
       ))}
     </Page>
+  );
+}
+
+/* ============================ highlight a figure ============================ */
+
+const SCOPES: { value: ScopePlacement; label: string }[] = [
+  { value: "scope1", label: "Scope 1" },
+  { value: "scope2_location", label: "Scope 2 · location-based" },
+  { value: "scope2_market", label: "Scope 2 · market-based" },
+  { value: "not_placed", label: "Not placed in a scope" },
+];
+
+const MONTH_WORD = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/i;
+
+/** "41,200 kWh" -> 41,200 + kWh; "$45,920.00" -> 45,920.00 + USD; a date stays whole. */
+export function parseFigure(text: string): { value: string; unit: string } {
+  const t = text.replace(/\s+/g, " ").trim();
+  if (MONTH_WORD.test(t)) return { value: t, unit: "" };
+  const money = /^\$\s*([\d,]+(?:\.\d+)?)$/.exec(t);
+  if (money) return { value: money[1], unit: "USD" };
+  const figure = /^([\d,]+(?:\.\d+)?)\s*(.*)$/.exec(t);
+  return figure ? { value: figure[1], unit: figure[2] } : { value: t, unit: "" };
+}
+
+function defaultScope(documentType: string, label: string): ScopePlacement {
+  if (!/consumed|delivered|used|added on service|recovered/i.test(label)) return "not_placed";
+  if (documentType === "Electricity bill") return "scope2_location";
+  return /gas|fuel|refrigerant/i.test(documentType) ? "scope1" : "not_placed";
+}
+
+function HighlightForm({
+  target,
+  values,
+  onCancel,
+  onAdd,
+}: {
+  target: FigureTarget;
+  values: ReviewValue[];
+  onCancel: () => void;
+  onAdd: (entry: HighlightEntry) => void;
+}) {
+  const listId = useId();
+  const parsed = parseFigure(target.text);
+  const missingNames = values.filter(isMissing).map((v) => v.whatItIs);
+  const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+  const [whatItIs, setWhatItIs] = useState(missingNames.find((n) => same(n, target.label)) ?? target.label);
+  const [value, setValue] = useState(parsed.value);
+  const [unit, setUnit] = useState(parsed.unit);
+  const [scope, setScope] = useState<ScopePlacement>(defaultScope(values[0].documentType, target.label));
+  const fills = missingNames.some((n) => same(n, whatItIs));
+  const suggestions = [...new Set([...missingNames, target.label, ...values.map((v) => v.whatItIs)])];
+  return (
+    <form
+      className="s1-dd-hlform"
+      style={{ top: target.top, left: target.left }}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!whatItIs.trim() || !value.trim()) return;
+        onAdd({ docAnchor: target.docAnchor, whatItIs: whatItIs.trim(), value: value.trim(), unit: unit.trim(), scope, page: target.page });
+      }}
+    >
+      <div className="s1-dd-hlform__head">
+        <strong>{fills ? "Fill in a value the reading missed" : "Add this figure as a value"}</strong>
+        <button type="button" className="s1-dd-hlform__x" aria-label="Cancel" onClick={onCancel}>
+          <X aria-hidden />
+        </button>
+      </div>
+      <div className="s1-dd-hlform__quote">
+        “{target.text.trim()}” · page {target.page}
+      </div>
+      <label>
+        <span>What it is</span>
+        <input list={listId} value={whatItIs} autoFocus onChange={(e) => setWhatItIs(e.target.value)} />
+        <datalist id={listId}>
+          {suggestions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      </label>
+      <div className="s1-dd-hlform__pair">
+        <label>
+          <span>Value</span>
+          <input value={value} onChange={(e) => setValue(e.target.value)} />
+        </label>
+        <label>
+          <span>Unit</span>
+          <input value={unit} onChange={(e) => setUnit(e.target.value)} />
+        </label>
+      </div>
+      <label>
+        <span>Scope</span>
+        <select value={scope} onChange={(e) => setScope(e.target.value as ScopePlacement)}>
+          {SCOPES.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="s1-dd-hlform__actions">
+        <button className="s1-button s1-button--pri s1-button--compact" type="submit" disabled={!whatItIs.trim() || !value.trim()}>
+          {fills ? "Fill in" : "Add value"}
+        </button>
+        <span>Kept as a correction to the reading</span>
+      </div>
+    </form>
   );
 }
