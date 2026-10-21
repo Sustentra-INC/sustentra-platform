@@ -21,15 +21,17 @@ The screen must make sense with no tip, tour or tooltip open.
 | Token | Size | Use |
 |---|---|---|
 | `--text-sm` | 12px | Labels, column headers, metadata, chips, timestamps, helper text |
-| `--text-md` | 14px | Everything people read or type: body, table cells, inputs, buttons, values, section titles |
+| `--text-md` | 14px | Everything people read or type: body, table cells, inputs, buttons, values; section titles in the strong weight |
 | `--text-lg` | 20px | The page title, and the few key figures a page leads with |
 
 - **One family**: `--font-sans`. No monospace in the interface. Digits that line up use
   tabular figures (`.s1-num`), in the same font.
-- **Two weights**: `--weight-regular` (400) and `--weight-medium` (500).
+- **Two weights**: `--weight-regular` (400) for content and `--weight-strong` (600) for
+  titles, labels and emphasis. In Helvetica Neue a 500 is too close to regular to carry a
+  title at body size, so the second weight is a true bold.
 - **Hierarchy comes from placement, grouping, contrast (`--ink`, `--ink-2`, `--ink-3`) and
-  weight, before size or colour.** A section title is `--text-md` in medium weight, not a
-  fourth size.
+  weight, before size or colour.** A section title is `--text-md` in the strong weight, not
+  a fourth size: it matches the text in its fields in size and outranks it in weight.
 - Uppercase only for column headers and small group labels, with 0.03em tracking.
 - Exception: the demo's client documents (bills, letters, photos) look like the real thing.
 

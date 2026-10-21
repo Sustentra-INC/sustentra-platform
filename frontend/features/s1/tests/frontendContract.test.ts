@@ -38,7 +38,7 @@ describe("frontend contract checks", () => {
     const sizes = new Set(["var(--text-sm)", "var(--text-md)", "var(--text-lg)", "inherit", "82%" /* the root scale */]);
     expect(values("font-size").filter((v) => !sizes.has(v))).toEqual([]);
     expect(css.match(/font-size:\s*82%/g)).toHaveLength(1);
-    const weights = new Set(["var(--weight-regular)", "var(--weight-medium)", "inherit"]);
+    const weights = new Set(["var(--weight-regular)", "var(--weight-strong)", "inherit"]);
     expect(values("font-weight").filter((v) => !weights.has(v))).toEqual([]);
     const families = new Set(["var(--font-sans)", "inherit"]);
     expect(values("font-family").filter((v) => !families.has(v))).toEqual([]);

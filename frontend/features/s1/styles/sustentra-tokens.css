@@ -145,7 +145,8 @@
   --text-xs:   11px;   /* client documents only (the small print of a drawn bill) */
 
   --weight-regular: 400;
-  --weight-medium:  500;
+  --weight-strong:  600;   /* the interface's second weight: titles, labels, emphasis (Helvetica Neue Bold) */
+  --weight-medium:  500;   /* client documents only */
 
   --leading-tight: 1.35;   /* table rows, chips */
   --leading-body:  1.6;    /* prose, explanations, statute text */
