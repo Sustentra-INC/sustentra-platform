@@ -115,6 +115,42 @@ describe("activity log", () => {
   });
 });
 
+describe("coverage & requests: a request's state on one line", () => {
+  it("fits the chip to its words, offers Resolve, and keeps the rest in the row menu", async () => {
+    const { EvidenceRequests } = await import("../components/EvidenceRequests");
+    const { coverageRules } = await import("../fixtures/verification/coverageRules");
+    const { seedAsks } = await import("../fixtures/requests/seedAsks");
+    const onWithdraw = vi.fn();
+    render(
+      <EvidenceRequests
+        engagement={engagementConfig}
+        asks={seedAsks}
+        coverage={{ rules: coverageRules }}
+        valuesToReview={0}
+        onReview={vi.fn()}
+        onSaveAsk={vi.fn()}
+        onSend={vi.fn(() => 1)}
+        onResolve={vi.fn()}
+        onWithdraw={onWithdraw}
+        onEdit={vi.fn()}
+        onRaiseFollowUp={vi.fn()}
+        onOpenSource={vi.fn()}
+      />
+    );
+    const requested = seedAsks.find((a) => a.state === "requested")!;
+    const row = screen.getByRole("button", { name: requested.source.itemLabel }).closest("tr") as HTMLElement;
+    expect(row.querySelector(".s1-req-state__label")?.textContent).toBe(`Requested · #${requested.requestNumber}`);
+    expect(within(row).getByRole("button", { name: "Resolve" })).toBeInTheDocument();
+    // No loose links: Withdraw and History live in the menu.
+    expect(within(row).queryByRole("button", { name: "Withdraw" })).toBeNull();
+    fireEvent.click(within(row).getByRole("button", { name: `Actions for ${requested.source.itemLabel}` }));
+    const menu = screen.getByRole("menu");
+    expect(within(menu).getAllByRole("menuitem").map((m) => m.textContent)).toEqual(["Withdraw", "History"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "History" }));
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+});
+
 describe("coverage & requests: one page", () => {
   it("leads with the values waiting for review, filters checks, and turns a missing check into a request", async () => {
     const { EvidenceRequests } = await import("../components/EvidenceRequests");
