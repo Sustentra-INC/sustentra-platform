@@ -10,7 +10,7 @@ export interface ActivityEntry {
   what: string;
   /** The document it concerns, when there is one. */
   documentId?: string;
-  kind: "upload" | "review" | "request" | "finding" | "document";
+  kind: "upload" | "review" | "request" | "finding" | "document" | "methodology";
 }
 
 /** The engagement's history, newest first: uploads, reviews, requests, findings and document edits. */
@@ -20,6 +20,8 @@ export function engagementActivity(input: {
   asks: Ask[];
   findings: Finding[];
   intents?: SessionAuditEntry[];
+  /** Methodology review changes, oldest first. */
+  methodology?: { at: string; who: string; what: string }[];
 }): ActivityEntry[] {
   const log: ActivityEntry[] = [];
   const filename = new Map(input.evidence.map((e) => [e.documentId, e.filename]));
@@ -79,6 +81,9 @@ export function engagementActivity(input: {
       documentId: intent.documentId,
       kind: "document",
     });
+  }
+  for (const change of input.methodology ?? []) {
+    log.push({ at: change.at, who: change.who, what: change.what, kind: "methodology" });
   }
   return log.sort((a, b) => b.at.localeCompare(a.at));
 }
