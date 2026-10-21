@@ -46,6 +46,34 @@ describe("frontend contract checks", () => {
     expect(css).not.toContain("--text-xs");
   });
 
+  // docs/design_standard.md, section 4: text reads at 4.5:1 or better on every surface it sits on.
+  it("keeps text colours legible on every surface (WCAG AA, 4.5:1)", () => {
+    const tokens = readFileSync(join(process.cwd(), "features", "s1", "styles", "sustentra-tokens.css"), "utf8");
+    const hex = (name: string) => {
+      const m = tokens.match(new RegExp(`--${name}:\\s*(#[0-9A-Fa-f]{6})`));
+      if (!m) throw new Error(`no --${name}`);
+      return m[1];
+    };
+    const luminance = (h: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const ratio = (a: string, b: string) => {
+      const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p);
+      return (x + 0.05) / (y + 0.05);
+    };
+    const surfaces = ["sf-page", "sf-card", "sf-sunken", "accent-soft", "accent-softer", "state-active-bg", "state-open-bg", "state-blocking-bg"];
+    for (const text of ["ink", "ink-2", "ink-3"]) {
+      for (const surface of surfaces) expect(ratio(hex(text), hex(surface)), `${text} on ${surface}`).toBeGreaterThanOrEqual(4.5);
+    }
+    // Links and selected text sit on the neutral and blue surfaces.
+    for (const surface of ["sf-page", "sf-card", "sf-sunken", "accent-soft", "accent-softer", "state-active-bg"]) {
+      expect(ratio(hex("accent"), hex(surface)), `accent on ${surface}`).toBeGreaterThanOrEqual(4.5);
+    }
+    // White text on the solid fills (primary button, active chip).
+    for (const fill of ["accent-solid", "accent-strong", "brand-ink"]) expect(ratio("#FFFFFF", hex(fill)), `white on ${fill}`).toBeGreaterThanOrEqual(4.5);
+  });
+
   it("documents the workpaper token alias layer", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
 
