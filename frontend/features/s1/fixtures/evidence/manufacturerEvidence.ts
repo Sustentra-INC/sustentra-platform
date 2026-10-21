@@ -601,7 +601,12 @@ docs.push(
   })
 );
 
-export const manufacturerEvidence: EvidenceItem[] = docs;
+// One row per file: a story document (partial, duplicate, conflicting, superseded) replaces
+// the monthly row generated for the same file, so a filename never points at two documents.
+const GENERATED = /^DOC-(tualatin|kent|modesto)-(elec|gas)-[a-z]{3}$/;
+const storyFiles = new Set(docs.filter((d) => !GENERATED.test(d.documentId)).map((d) => d.filename));
+
+export const manufacturerEvidence: EvidenceItem[] = docs.filter((d) => !(GENERATED.test(d.documentId) && storyFiles.has(d.filename)));
 
 /** A couple of supportive documents (enter the workpaper, never extracted). */
 export const manufacturerSupportive: EvidenceItem[] = [

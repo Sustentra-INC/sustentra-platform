@@ -444,7 +444,7 @@ describe("highlight a figure the reading missed", () => {
     const { ExtractionReview } = await import("../components/ExtractionReview");
     const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
     const { useState } = await import("react");
-    const gap = manufacturerValues.find((v) => v.documentId === "DOC-PARTIAL")!;
+    const gap = manufacturerValues.find((v) => v.documentId === "DOC-PARTIAL" && v.whatItIs === "Service period end date")!;
     let latest = manufacturerValues;
     const onValueAdded = vi.fn();
     let add: ((entry: import("../components/demo/DemoDocument").HighlightEntry) => void) | undefined;
@@ -476,7 +476,8 @@ describe("highlight a figure the reading missed", () => {
     const filled = latest.find((v) => v.id === gap.id)!;
     expect(filled).toMatchObject({ value: "30 Sep 2025", missing: false, reviewState: "corrected", originalValue: "not found", docAnchor: "current-read-date" });
     expect(filled.record.at(-1)).toMatchObject({ actor: "R. Iqbal", action: "filled in a value the reading missed", reason: "highlighted on page 1" });
-    expect(latest.filter((v) => v.documentId === "DOC-PARTIAL")).toHaveLength(1);
+    // Filled in where it was, not added beside it.
+    expect(latest.filter((v) => v.documentId === "DOC-PARTIAL" && v.whatItIs === "Service period end date")).toHaveLength(1);
     expect(onValueAdded).toHaveBeenCalledWith(expect.objectContaining({ id: gap.id }), true);
   });
 });
