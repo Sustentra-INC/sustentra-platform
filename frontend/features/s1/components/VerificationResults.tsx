@@ -1,5 +1,6 @@
 "use client";
 
+import { InfoTip } from "./InfoTip";
 import { Fragment, useState, type ReactNode } from "react";
 
 import type {
@@ -87,11 +88,11 @@ export function VerificationResults({
       <header className="s1-ws-header">
         <div className="s1-ws-header__id">
           <h1>Verification results</h1>
-          <span className="s1-muted">
+          <InfoTip label="Verification results">
             {lines
               ? "What the client reported against what the evidence recomputes, down to the input that explains each difference."
               : "Every data point: reported, recomputed, and your position on each."}
-          </span>
+          </InfoTip>
         </div>
         {/* The three-pane page has no Results / Findings switch for now (product, 2026-10-15). */}
         {lines ? null : (

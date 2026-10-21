@@ -3048,3 +3048,14 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-family: var(
 }
 @media (prefers-reduced-motion: reduce) { .s1-xr-addform { transition: none; } }
 .s1-xr-was--keyed { text-decoration: none; font-style: italic; }
+
+/* Verification results: every box's summary on one grid, so the figures line up box to box. */
+@media (min-width: 64rem) {
+  .s1-vw-box__figures {
+    display: grid; grid-template-columns: 5.5rem 1.25rem 5.5rem 4.75rem 8.5rem 3.5rem;
+    justify-content: end; justify-items: end; column-gap: var(--sp-3);
+  }
+  .s1-vw-box__figures .s1-vw-fig__arrow { justify-self: center; }
+  .s1-vw-box__figures .s1-vw-pill { justify-self: stretch; text-align: center; justify-content: center; }
+  .s1-vw-box__figures .s1-vw-box__meta { justify-self: start; }
+}
