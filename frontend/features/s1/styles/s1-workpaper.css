@@ -2540,13 +2540,6 @@ html, body { margin: 0; padding: 0; }
 .s1-dash__head { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); flex-wrap: wrap; }
 .s1-dash__id h1 { margin: 0; font-size: 1.5rem; letter-spacing: -0.02em; font-weight: var(--weight-medium); }
 .s1-dash__meta { margin: var(--sp-1) 0 0; color: var(--ink-2); font-size: var(--text-md); }
-.s1-dash__phase {
-  display: inline-flex; align-items: center; gap: var(--sp-2); padding: var(--sp-1) var(--sp-3);
-  border-radius: var(--state-chip-radius); font-size: var(--text-sm); font-weight: var(--weight-medium);
-  background: var(--state-active-bg); color: var(--state-active-fg); border: var(--hairline-width) solid var(--state-active-line);
-}
-.s1-dash__phase::before { content: ""; width: 0.45rem; height: 0.45rem; border-radius: 50%; background: currentColor; }
-.s1-dash__phase--done { background: var(--state-resolved-bg); color: var(--state-resolved-fg); border-color: var(--state-resolved-line); }
 
 /* timeline */
 .s1-timeline {
