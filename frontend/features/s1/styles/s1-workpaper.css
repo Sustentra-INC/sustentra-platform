@@ -3249,6 +3249,7 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-key__top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
 .s1-xr-key__pick { flex: none; }
 
+/* ==========================================================================
    Methodology review: the stated boundary and methods, accepted or corrected.
    Folding groups, one "Adjusted by verifier" line under each change.
    ========================================================================== */
