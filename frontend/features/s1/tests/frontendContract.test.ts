@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import postcss from "postcss";
 import { describe, expect, it } from "vitest";
 
 describe("frontend contract checks", () => {
@@ -18,6 +19,15 @@ describe("frontend contract checks", () => {
 
     expect(css).not.toMatch(/#[0-9A-Fa-f]{3,8}/);
     expect(css).not.toMatch(/\b[1-9][0-9]*px\b/);
+  });
+
+  it("ships stylesheets that parse: every comment closed, every rule well formed", () => {
+    for (const name of ["sustentra-tokens.css", "s1-workpaper.css", "s1-demo-documents.css"]) {
+      const css = readFileSync(join(process.cwd(), "features", "s1", "styles", name), "utf8");
+      // A comment that lost its opener in a merge turns its words into a broken selector.
+      expect((css.match(/\/\*/g) ?? []).length, name).toBe((css.match(/\*\//g) ?? []).length);
+      expect(() => postcss.parse(css, { from: name }), name).not.toThrow();
+    }
   });
 
   it("documents the workpaper token alias layer", () => {
