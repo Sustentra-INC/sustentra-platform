@@ -37,7 +37,6 @@ import { DashboardScreen } from "../components/DashboardScreen";
 import { UploadDialog, type SampleScript, type UploadTask } from "../components/UploadDialog";
 import { SetupScreen } from "../components/SetupScreen";
 import { DemoDocument } from "../components/demo/DemoDocument";
-import { InvoicePage } from "../components/demo/InvoicePage";
 import {
   preparedInvoiceEvidence,
   preparedInvoiceValues,
@@ -1024,7 +1023,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 : undefined
             }
             drawnWhole={(id) =>
-              dataMode === "fixture" && id !== DEMO_INVOICE_ID && reviewValuesView.some((v) => v.documentId === id)
+              dataMode === "fixture" && reviewValuesView.some((v) => v.documentId === id)
             }
             renderPage={(documentId, span, onPickBox, marks, pick) => {
               const item = evidenceItems.find((e) => e.documentId === documentId);
@@ -1035,12 +1034,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 (format === "other" && /\.(txt|md|markdown)$/i.test(item?.filename ?? ""));
               const demoValues =
                 dataMode === "fixture" ? reviewValuesView.filter((v) => v.documentId === documentId) : [];
-              return documentId === DEMO_INVOICE_ID ? (
-                <InvoicePage
-                  highlight={span ? { x: span.x, y: span.y, w: span.w, h: span.h } : null}
-                  onMarkClick={onPickBox}
-                />
-              ) : demoValues.length ? (
+              return demoValues.length ? (
                 // The demo's documents, drawn whole with every value highlighted in place.
                 <DemoDocument
                   values={demoValues}

@@ -367,6 +367,17 @@ describe("demo documents: the whole document, values highlighted in place", () =
     expect(onPick).toHaveBeenCalledWith(elec.map((v) => v.id));
   });
 
+  it("draws the sample invoice whole too, its emissions basis included", async () => {
+    const { DemoDocument } = await import("../components/demo/DemoDocument");
+    const { preparedInvoiceValues } = await import("../fixtures/demo/preparedInvoice");
+    render(<DemoDocument values={preparedInvoiceValues} engagement={engagementConfig} selectedId={null} onPick={vi.fn()} onAddValue={vi.fn()} />);
+    expect(screen.getByText("Emissions basis (location-based)")).toBeInTheDocument();
+    const highlighted = Array.from(document.querySelectorAll(".s1-dd-hl")).map((h) => h.textContent);
+    expect(highlighted).toEqual(["01 Feb 2025 – 28 Feb 2025", "182,400 kWh", "1,240 kW", "0.223 kgCO2e/kWh", "40.68 tCO2e"]);
+    // Its key and highlight switch, like any other demo document.
+    expect(screen.getByRole("button", { name: "Highlight a figure" })).toBeInTheDocument();
+  });
+
   it("marks a value the reading could not find where it belongs", async () => {
     const { DemoDocument } = await import("../components/demo/DemoDocument");
     const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");

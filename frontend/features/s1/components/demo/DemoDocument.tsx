@@ -330,7 +330,12 @@ function UtilityBill({ ctx, kind }: { ctx: Ctx; kind: "electricity" | "gas" }) {
   const consumption = pick(ctx, /consumed/i);
   const peak = pick(ctx, /peak demand/i);
   const periodEnd = pick(ctx, /service period end/i);
-  const others = rest(ctx, [...consumption, ...peak, ...periodEnd]);
+  const billingPeriod = pick(ctx, /billing period/i);
+  const factor = kind === "electricity" ? pick(ctx, /emission factor/i) : [];
+  const emissions = kind === "electricity" ? pick(ctx, /emissions$/i) : [];
+  const others = rest(ctx, [...consumption, ...peak, ...periodEnd, ...billingPeriod, ...factor, ...emissions]);
+  // eGRID subregion by facility: the Pacific Northwest sites are NWPP, Modesto is CAMX.
+  const subregion = first.facilityId === "facility-modesto" ? "CAMX" : "NWPP";
   const unit = kind === "electricity" ? "kWh" : "therms";
   const qty = num(consumption[0]?.value) ?? (kind === "electricity" ? 380000 + (s % 90000) : 22000 + (s % 9000));
   const previous = 1_000_000 + (s % 400_000);
@@ -371,8 +376,16 @@ function UtilityBill({ ctx, kind }: { ctx: Ctx; kind: "electricity" | "gas" }) {
           <div className="s1-dd-right">
             <div className="s1-dd-label">Service period</div>
             <div className="s1-dd-big">
-              {period.start} –{" "}
-              {periodEnd.length ? <Hl ctx={ctx} vs={periodEnd}>{isMissing(periodEnd[0]) ? "not printed" : periodEnd[0].value}</Hl> : <Fig ctx={ctx} anchor="service-period-end" label="Service period end date">{period.end}</Fig>}
+              {billingPeriod.length ? (
+                <Hl ctx={ctx} vs={billingPeriod}>
+                  {period.start} – {period.end}
+                </Hl>
+              ) : (
+                <>
+                  {period.start} –{" "}
+                  {periodEnd.length ? <Hl ctx={ctx} vs={periodEnd}>{isMissing(periodEnd[0]) ? "not printed" : periodEnd[0].value}</Hl> : <Fig ctx={ctx} anchor="service-period-end" label="Service period end date">{period.end}</Fig>}
+                </>
+              )}
             </div>
             <div className="s1-dd-dim">Billing days <Fig ctx={ctx} anchor="billing-days" label="Billing days">{period.days}</Fig></div>
           </div>
@@ -409,6 +422,21 @@ function UtilityBill({ ctx, kind }: { ctx: Ctx; kind: "electricity" | "gas" }) {
             <Hl ctx={ctx} vs={[v]} />
           </Row>
         ))}
+
+        {factor.length || emissions.length ? (
+          <>
+            <h4 className="s1-dd-h">Emissions basis (location-based)</h4>
+            <Row label={`Emission factor · eGRID ${subregion} subregion`}>
+              {factor.length ? <Hl ctx={ctx} vs={factor} /> : <Fig ctx={ctx} anchor="emission-factor" label="Emission factor (location-based)">0.223 kgCO2e/kWh</Fig>}
+            </Row>
+            <Row label="Grid subregion">
+              <Fig ctx={ctx} anchor="grid-subregion" label="Grid subregion">{subregion} · eGRID2023</Fig>
+            </Row>
+            <Row label="Estimated location-based emissions">
+              {emissions.length ? <Hl ctx={ctx} vs={emissions} /> : <Fig ctx={ctx} anchor="location-emissions" label="Location-based emissions">—</Fig>}
+            </Row>
+          </>
+        ) : null}
 
         <h4 className="s1-dd-h">Charges</h4>
         <Row label={`${kind === "electricity" ? "Energy" : "Gas supply"} (${fmt(qty)} ${unit} × $${rate.toFixed(3)})`}>
