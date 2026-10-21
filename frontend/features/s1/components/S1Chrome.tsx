@@ -49,8 +49,7 @@ const DESTINATIONS: Array<{ key: NavKey; label: string }> = [
   { key: "setup", label: "Setup" },
   { key: "upload", label: "Upload" },
   { key: "evidence", label: "Evidence" },
-  { key: "requests", label: "Requests" },
-  { key: "coverage", label: "Check coverage" },
+  { key: "requests", label: "Coverage & requests" },
   { key: "results", label: "Verification results" },
   { key: "output", label: "Output" },
 ];

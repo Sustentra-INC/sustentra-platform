@@ -1,23 +1,28 @@
 "use client";
 
+import { ArrowRight, ListChecks, Send } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
+import type { AskDraft } from "../requests/requestsStore";
 import type { EngagementConfig } from "../types";
 import type { Ask, AskState, RequestType } from "../types/requests";
 import { REQUEST_TYPES } from "../types/requests";
+import type { CoverageRule } from "../types/verification";
+import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import { CoveragePanel, type CoverageState } from "./CoveragePanel";
+import { InfoTip } from "./InfoTip";
 
 /**
- * Evidence Requests (screen 4). Every ask raised across the engagement, sent to
- * the client in one email and resolved by hand. Three holds, load-bearing:
- *   1. Nothing sends from the product — copy message / open in mail only, from
- *      the verifier's own address; "mark as sent" is a click; no internal id
- *      appears in the assembled message.
- *   2. Nothing resolves on its own — resolve is a click with an optional link;
- *      a problem that comes back is a new ask linked to the old, which stays
- *      resolved; an ask is in one request only.
- *   3. Row tints never carry meaning alone — the state label is always present.
- * This page never creates a request from nothing: asks are raised on the
- * Workspace and Extraction Review. Every write routes through the store.
+ * Coverage & requests: what the evidence held lets the verifier check, and what to ask
+ * the client for, on one page (the 20 Oct review merged Check coverage and Requests).
+ * The holds, load-bearing:
+ *   1. Nothing sends from the product yet: Send assembles one message to copy or open in
+ *      mail; "mark as sent" is a click; no internal id appears in the message.
+ *   2. Nothing resolves on its own: resolve is a click with an optional link; a problem
+ *      that comes back is a new ask linked to the old, which stays resolved.
+ *   3. Row tints never carry meaning alone: the state label is always present.
+ * Asks are raised on Evidence, Extraction review, or here from a check missing its
+ * inputs. Every write routes through the store.
  */
 
 const STATE_ORDER: Record<AskState, number> = { not_yet_sent: 0, requested: 1, resolved: 2, withdrawn: 3 };
@@ -32,33 +37,41 @@ const DOCUMENT_TYPES: RequestType[] = ["missing_document", "replace_document"];
 export function EvidenceRequests({
   engagement,
   asks,
+  coverage,
+  valuesToReview = 0,
+  onReview,
+  onSaveAsk,
   onSend,
   onResolve,
   onWithdraw,
   onEdit,
   onRaiseFollowUp,
   onOpenSource,
-  onOpenSetup,
 }: {
   engagement: EngagementConfig;
   asks: Ask[];
+  /** What can and cannot be checked; the page leads with it. */
+  coverage: CoverageState;
+  /** Values read but not yet accepted or corrected: coverage counts only reviewed ones. */
+  valuesToReview?: number;
+  onReview?: () => void;
+  /** Raise a request from a check that is missing its inputs. */
+  onSaveAsk: (draft: AskDraft) => void;
   onSend: (askIds: string[], lineNumbers: Record<string, number>) => number;
   onResolve: (askId: string, resolution: { link?: string | null; note?: string | null }) => void;
   onWithdraw: (askId: string, reason: string) => void;
   onEdit: (askId: string, whatIsNeeded: string) => void;
   onRaiseFollowUp: (fromAsk: Ask) => void;
   onOpenSource: (ask: Ask) => void;
-  onOpenSetup: () => void;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
-  const [facilityFilter, setFacilityFilter] = useState<string | null>(null);
   const [stateFilter, setStateFilter] = useState<AskState | null>(null);
-  const [typeFilter, setTypeFilter] = useState<RequestType | null>(null);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string[]>([]);
   const [panelOpen, setPanelOpen] = useState(false);
   const [resolveFor, setResolveFor] = useState<string | null>(null);
   const [withdrawFor, setWithdrawFor] = useState<string | null>(null);
+  const [requestRule, setRequestRule] = useState<CoverageRule | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const flash = (m: string) => {
@@ -75,12 +88,10 @@ export function EvidenceRequests({
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return asks
-      .filter((a) => (facilityFilter ? a.source.facilityName === facilityFilter : true))
-      .filter((a) => (stateFilter ? a.state === stateFilter : true))
-      .filter((a) => (typeFilter ? a.type === typeFilter : true))
+      .filter((a) => (stateFilter ? a.state === stateFilter : a.state !== "withdrawn"))
       .filter((a) => (q ? a.whatIsNeeded.toLowerCase().includes(q) || a.source.itemLabel.toLowerCase().includes(q) : true))
       .sort((a, b) => STATE_ORDER[a.state] - STATE_ORDER[b.state] || a.raisedAt.localeCompare(b.raisedAt));
-  }, [asks, facilityFilter, stateFilter, typeFilter, search]);
+  }, [asks, stateFilter, search]);
 
   const selectableIds = filtered.filter((a) => a.state === "not_yet_sent").map((a) => a.id);
   const selectedSendable = selected.filter((id) => selectableIds.includes(id));
@@ -90,238 +101,226 @@ export function EvidenceRequests({
     setSelected((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
   }
 
-  const typeCounts = useMemo(() => {
-    const c: Partial<Record<RequestType, number>> = {};
-    asks.forEach((a) => (c[a.type] = (c[a.type] ?? 0) + 1));
-    return c;
-  }, [asks]);
-
-  const hasFilter = facilityFilter || stateFilter || typeFilter || search.trim();
-
-  function clearFilters() {
-    setFacilityFilter(null);
-    setStateFilter(null);
-    setTypeFilter(null);
-    setSearch("");
-  }
-
-  if (asks.length === 0) {
-    return (
-      <section className="s1-content s1-req">
-        <RequestsHeader engagement={engagement} counts={counts} stateFilter={stateFilter} onStateFilter={setStateFilter} onOpenSetup={onOpenSetup} sendable={0} onSend={() => {}} />
-        <div className="s1-ws-empty">
-          <p>No requests yet. Requests are raised from the Evidence Workspace and Extraction Review.</p>
-        </div>
-      </section>
-    );
-  }
-
   const selectedAsks = selectedSendable
     .map((id) => asks.find((a) => a.id === id))
     .filter((a): a is Ask => Boolean(a));
 
+  const isRequested = (rule: CoverageRule) =>
+    asks.some((a) => a.source.origin === "data_point" && a.source.fieldKey === rule.ruleId && a.state !== "withdrawn");
+
   return (
-    <section className="s1-content s1-req">
-      <RequestsHeader
-        engagement={engagement}
-        counts={counts}
-        stateFilter={stateFilter}
-        onStateFilter={setStateFilter}
-        onOpenSetup={onOpenSetup}
-        sendable={selectedSendable.length}
-        onSend={() => setPanelOpen(true)}
-      />
+    <section className="s1-content s1-req s1-cr">
+      <header className="s1-ws-header">
+        <div className="s1-ws-header__id">
+          <h1>Coverage &amp; requests</h1>
+          <InfoTip label="Coverage and requests">
+            What the evidence held lets you check, and what to ask the client for. A check is ready once its values are
+            reviewed; anything missing becomes a request.
+          </InfoTip>
+        </div>
+      </header>
 
-      <div className="s1-req-body">
-        <aside className="s1-req-types" aria-label="Filter by type">
-          {REQUEST_TYPES.map((t) => (
-            <button
-              key={t.value}
-              className={`s1-req-typechip${typeFilter === t.value ? " is-on" : ""}`}
-              type="button"
-              onClick={() => setTypeFilter((cur) => (cur === t.value ? null : t.value))}
-            >
-              {t.label} <span className="s1-muted">{typeCounts[t.value] ?? 0}</span>
-            </button>
-          ))}
-        </aside>
+      {valuesToReview > 0 ? (
+        <button className="s1-cr-review" type="button" onClick={onReview}>
+          <span className="s1-cr-review__icon" aria-hidden>
+            <ListChecks />
+          </span>
+          <span className="s1-cr-review__text">
+            <strong>
+              {valuesToReview} {valuesToReview === 1 ? "value" : "values"} waiting for review
+            </strong>
+            <span>Checks count a value once it is accepted or corrected.</span>
+          </span>
+          <span className="s1-cr-review__go">
+            Review now <ArrowRight aria-hidden />
+          </span>
+        </button>
+      ) : null}
 
-        <div className="s1-req-main">
-          <div className="s1-toolbar">
-            <label>
-              Facility{" "}
-              <select value={facilityFilter ?? ""} onChange={(e) => setFacilityFilter(e.target.value || null)}>
-                <option value="">All</option>
-                {engagement.facilities.map((f) => (
-                  <option key={f.facilityId} value={f.name}>
-                    {f.name}
-                  </option>
-                ))}
-                <option value="Entity-level">Entity-level</option>
-              </select>
-            </label>
-            <label>
-              State{" "}
-              <select value={stateFilter ?? ""} onChange={(e) => setStateFilter((e.target.value || null) as AskState | null)}>
-                <option value="">All</option>
-                <option value="not_yet_sent">Not yet sent</option>
-                <option value="requested">Requested</option>
-                <option value="resolved">Resolved</option>
-                <option value="withdrawn">Withdrawn</option>
-              </select>
-            </label>
-            <label>
-              Search{" "}
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="ask text" />
-            </label>
-            {hasFilter ? (
-              <button className="s1-button" type="button" onClick={clearFilters}>
-                Clear filter
+      <CoveragePanel coverage={coverage} isRequested={isRequested} onRequest={setRequestRule} />
+
+      <section className="s1-cr-reqs" aria-labelledby="s1-cr-reqs-title">
+        <div className="s1-cr-sectionhead">
+          <h2 id="s1-cr-reqs-title">Requests</h2>
+          <div className="s1-cr-filters" role="group" aria-label="Show requests">
+            {(["not_yet_sent", "requested", "resolved"] as AskState[]).map((state) => (
+              <button
+                key={state}
+                className={`s1-cr-filter s1-cr-filter--${state}${stateFilter === state ? " is-on" : ""}`}
+                type="button"
+                aria-pressed={stateFilter === state}
+                onClick={() => setStateFilter((cur) => (cur === state ? null : state))}
+              >
+                <span className="s1-cr-filter__n">{counts[state]}</span>
+                {STATE_LABEL[state]}
               </button>
-            ) : null}
+            ))}
           </div>
+          <input
+            className="s1-cr-search"
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search requests"
+            aria-label="Search requests"
+          />
+          <button
+            className="s1-button s1-button--pri s1-cr-send"
+            type="button"
+            disabled={selectedSendable.length === 0}
+            onClick={() => setPanelOpen(true)}
+          >
+            <Send aria-hidden />
+            Send{selectedSendable.length ? ` (${selectedSendable.length})` : ""}
+          </button>
+        </div>
 
-          {filtered.length === 0 ? (
-            <div className="s1-ws-empty">
-              <p>No requests match this filter.</p>
-              <button className="s1-button" type="button" onClick={clearFilters}>
-                Clear filter
-              </button>
-            </div>
-          ) : (
-            <div className="s1-table-wrap">
-              <table className="s1-table s1-req-table">
-                <thead>
-                  <tr>
-                    <th>
-                      <input
-                        type="checkbox"
-                        checked={allSelectableChecked}
-                        aria-label="Select all sendable"
-                        onChange={() => setSelected(allSelectableChecked ? [] : selectableIds)}
-                      />
-                    </th>
-                    <th>Item</th>
-                    <th>Type</th>
-                    <th>Facility · period</th>
-                    <th>What is needed</th>
-                    <th>Raised from</th>
-                    <th>Raised by</th>
-                    <th>State</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((ask) => (
-                    <Fragment key={ask.id}>
-                      <tr className={`s1-req-row s1-req-row--${ask.state}`}>
-                        <td>
+        {asks.length === 0 ? (
+          <p className="s1-cr-note">No requests yet. Raise one from a missing check above, or from a document on Evidence.</p>
+        ) : filtered.length === 0 ? (
+          <p className="s1-cr-note">No requests match.</p>
+        ) : (
+          <div className="s1-table-wrap">
+            <table className="s1-table s1-req-table">
+              <colgroup>
+                <col style={{ width: "3rem" }} />
+                <col style={{ width: "30%" }} />
+                <col />
+                <col style={{ width: "22%" }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={allSelectableChecked}
+                      disabled={selectableIds.length === 0}
+                      aria-label="Select all not yet sent"
+                      onChange={() => setSelected(allSelectableChecked ? [] : selectableIds)}
+                    />
+                  </th>
+                  <th>Item</th>
+                  <th>What is needed</th>
+                  <th>State</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((ask) => (
+                  <Fragment key={ask.id}>
+                    <tr className={`s1-req-row s1-req-row--${ask.state}`}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={selected.includes(ask.id)}
+                          disabled={ask.state !== "not_yet_sent"}
+                          aria-label={`Select ${ask.source.itemLabel}`}
+                          onChange={() => toggle(ask.id)}
+                        />
+                      </td>
+                      <td>
+                        <button className="s1-doc-link" type="button" onClick={() => onOpenSource(ask)}>
+                          {ask.source.itemLabel}
+                        </button>
+                        <div className="s1-ws-docmeta">
+                          <span>{REQUEST_TYPES.find((t) => t.value === ask.type)?.label}</span>
+                          <span>
+                            {ask.source.facilityName ?? (ask.source.documentId ? "Facility not yet known" : "Entity-level")}
+                            {ask.source.period ? ` · ${ask.source.period}` : ""}
+                          </span>
+                          {ask.linkedFromAskId ? <span>Follow-up</span> : null}
+                        </div>
+                      </td>
+                      <td>
+                        {ask.state === "not_yet_sent" ? (
                           <input
-                            type="checkbox"
-                            checked={selected.includes(ask.id)}
-                            disabled={ask.state !== "not_yet_sent"}
-                            aria-label={`Select ${ask.source.itemLabel}`}
-                            onChange={() => toggle(ask.id)}
+                            className="s1-inline-input"
+                            defaultValue={ask.whatIsNeeded}
+                            onBlur={(e) => e.target.value !== ask.whatIsNeeded && onEdit(ask.id, e.target.value)}
+                            aria-label="What is needed"
                           />
-                        </td>
-                        <td>
-                          <div>{ask.source.itemLabel}</div>
-                          {ask.linkedFromAskId ? <div className="s1-muted s1-ws-src">follow-up</div> : null}
-                        </td>
-                        <td>{REQUEST_TYPES.find((t) => t.value === ask.type)?.label}</td>
-                        <td>
-                          {/* A document's facility can be not yet known; Entity-level is for asks with no document. */}
-                          {ask.source.facilityName ?? (ask.source.documentId ? "Not yet known" : "Entity-level")}
-                          <div className="s1-muted s1-ws-src">{ask.source.period ?? "Not set"}</div>
-                        </td>
-                        <td>
-                          {ask.state === "not_yet_sent" ? (
-                            <input
-                              className="s1-inline-input"
-                              defaultValue={ask.whatIsNeeded}
-                              onBlur={(e) => e.target.value !== ask.whatIsNeeded && onEdit(ask.id, e.target.value)}
-                              aria-label="What is needed"
-                            />
-                          ) : (
-                            <span>{ask.whatIsNeeded}</span>
-                          )}
-                        </td>
-                        <td>
-                          <button className="s1-linklike" type="button" onClick={() => onOpenSource(ask)}>
-                            {ask.source.origin === "review_value" ? "value" : "document"}
-                            {ask.source.sourcePage ? ` · p.${ask.source.sourcePage}` : ""}
-                          </button>
-                        </td>
-                        <td>
-                          {ask.raisedByName}
-                          <div className="s1-mono s1-muted">{formatDate(ask.raisedAt)}</div>
-                        </td>
-                        <td>
-                          <StateCell
-                            ask={ask}
-                            onResolveOpen={() => {
-                              setResolveFor(ask.id);
-                              setWithdrawFor(null);
-                            }}
-                            onWithdrawOpen={() => {
-                              setWithdrawFor(ask.id);
+                        ) : (
+                          <span>{ask.whatIsNeeded}</span>
+                        )}
+                      </td>
+                      <td>
+                        <StateCell
+                          ask={ask}
+                          onResolveOpen={() => {
+                            setResolveFor(ask.id);
+                            setWithdrawFor(null);
+                          }}
+                          onWithdrawOpen={() => {
+                            setWithdrawFor(ask.id);
+                            setResolveFor(null);
+                          }}
+                          onFollowUp={() => onRaiseFollowUp(ask)}
+                          onExpand={() =>
+                            setExpanded((cur) => (cur.includes(ask.id) ? cur.filter((x) => x !== ask.id) : [...cur, ask.id]))
+                          }
+                        />
+                      </td>
+                    </tr>
+
+                    {resolveFor === ask.id ? (
+                      <tr className="s1-req-subrow">
+                        <td colSpan={4}>
+                          <ResolveBox
+                            onCancel={() => setResolveFor(null)}
+                            onResolve={(link, note) => {
+                              onResolve(ask.id, { link, note });
                               setResolveFor(null);
+                              flash(`Resolved: ${ask.source.itemLabel}`);
                             }}
-                            onFollowUp={() => onRaiseFollowUp(ask)}
-                            onExpand={() =>
-                              setExpanded((cur) => (cur.includes(ask.id) ? cur.filter((x) => x !== ask.id) : [...cur, ask.id]))
-                            }
                           />
                         </td>
                       </tr>
+                    ) : null}
 
-                      {resolveFor === ask.id ? (
-                        <tr className="s1-req-subrow">
-                          <td colSpan={8}>
-                            <ResolveBox
-                              onCancel={() => setResolveFor(null)}
-                              onResolve={(link, note) => {
-                                onResolve(ask.id, { link, note });
-                                setResolveFor(null);
-                                flash(`Resolved — ${ask.source.itemLabel}`);
-                              }}
-                            />
-                          </td>
-                        </tr>
-                      ) : null}
+                    {withdrawFor === ask.id ? (
+                      <tr className="s1-req-subrow">
+                        <td colSpan={4}>
+                          <WithdrawBox
+                            onCancel={() => setWithdrawFor(null)}
+                            onWithdraw={(reason) => {
+                              onWithdraw(ask.id, reason);
+                              setWithdrawFor(null);
+                              flash("Withdrawn");
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ) : null}
 
-                      {withdrawFor === ask.id ? (
-                        <tr className="s1-req-subrow">
-                          <td colSpan={8}>
-                            <WithdrawBox
-                              onCancel={() => setWithdrawFor(null)}
-                              onWithdraw={(reason) => {
-                                onWithdraw(ask.id, reason);
-                                setWithdrawFor(null);
-                                flash("Withdrawn");
-                              }}
-                            />
-                          </td>
-                        </tr>
-                      ) : null}
+                    {expanded.includes(ask.id) ? (
+                      <tr className="s1-history-row">
+                        <td colSpan={4}>
+                          <AskRecord ask={ask} />
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
-                      {expanded.includes(ask.id) ? (
-                        <tr className="s1-history-row">
-                          <td colSpan={8}>
-                            <AskRecord ask={ask} />
-                          </td>
-                        </tr>
-                      ) : null}
-                    </Fragment>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
+      {requestRule ? (
+        <AddToRequestsModal
+          target={coverageTarget(requestRule, engagement)}
+          engagement={engagement}
+          onCancel={() => setRequestRule(null)}
+          onAdd={(draft) => {
+            onSaveAsk(draft);
+            setRequestRule(null);
+            flash("Added to requests, not sent yet");
+          }}
+        />
+      ) : null}
 
       {panelOpen ? (
-        <RequestByEmailPanel
+        <SendPanel
           engagement={engagement}
           asks={selectedAsks}
           onClose={() => setPanelOpen(false)}
@@ -329,7 +328,7 @@ export function EvidenceRequests({
             const n = onSend(orderedIds, lineNumbers);
             setSelected([]);
             setPanelOpen(false);
-            flash(`Marked as sent — request ${n}`);
+            flash(`Sent as request ${n}`);
           }}
           onCopied={() => flash("Message copied")}
         />
@@ -340,53 +339,20 @@ export function EvidenceRequests({
   );
 }
 
-/* =============================== header =============================== */
-
-function RequestsHeader({
-  engagement,
-  counts,
-  stateFilter,
-  onStateFilter,
-  onOpenSetup,
-  sendable,
-  onSend,
-}: {
-  engagement: EngagementConfig;
-  counts: Record<AskState, number>;
-  stateFilter: AskState | null;
-  onStateFilter: (s: AskState | null) => void;
-  onOpenSetup: () => void;
-  sendable: number;
-  onSend: () => void;
-}) {
-  return (
-    <header className="s1-ws-header">
-      <div className="s1-ws-header__id">
-        <h1>{engagement.clientName}</h1>
-        <button className="s1-linklike" type="button" onClick={onOpenSetup}>
-          Setup
-        </button>
-        <span className="s1-muted">
-          Since your last visit: {counts.resolved} resolved · {counts.not_yet_sent} raised
-        </span>
-      </div>
-      <div className="s1-ws-header__counts">
-        <button className={`s1-ws-count${stateFilter === "not_yet_sent" ? " is-on" : ""}`} type="button" onClick={() => onStateFilter(stateFilter === "not_yet_sent" ? null : "not_yet_sent")}>
-          <span className="s1-ws-count__n">{counts.not_yet_sent}</span> Not yet sent
-        </button>
-        <button className={`s1-ws-count${stateFilter === "requested" ? " is-on" : ""}`} type="button" onClick={() => onStateFilter(stateFilter === "requested" ? null : "requested")}>
-          <span className="s1-ws-count__n">{counts.requested}</span> Requested
-        </button>
-        <button className={`s1-ws-count${stateFilter === "resolved" ? " is-on" : ""}`} type="button" onClick={() => onStateFilter(stateFilter === "resolved" ? null : "resolved")}>
-          <span className="s1-ws-count__n">{counts.resolved}</span> Resolved
-        </button>
-        <button className="s1-button s1-button--pri s1-req-sendbtn" type="button" disabled={sendable === 0} onClick={onSend}>
-          <EnvelopeIcon />
-          Request by email{sendable ? ` (${sendable})` : ""}
-        </button>
-      </div>
-    </header>
-  );
+/** A check that is missing its inputs, as the Add to requests window's target. */
+function coverageTarget(rule: CoverageRule, engagement: EngagementConfig): AddToRequestsTarget {
+  const points = rule.appliesTo.join(", ");
+  const year = engagement.reportingPeriod.start.slice(0, 4);
+  return {
+    origin: "data_point",
+    fieldKey: rule.ruleId,
+    itemLabel: points,
+    facilityName: null,
+    period: year ? `FY ${year}` : null,
+    headerLine: `${rule.assertion} · ${rule.reason}`,
+    defaultType: "missing_document",
+    prefill: `${points}: ${rule.reason}`,
+  };
 }
 
 /* =============================== state cell =============================== */
@@ -512,9 +478,11 @@ function AskRecord({ ask }: { ask: Ask }) {
   );
 }
 
-/* ========================= request by email panel ========================= */
+/* ================================ send panel ================================ */
 
-function RequestByEmailPanel({
+/** The message for the selected requests. Sustentra does not email the client yet: the
+ *  verifier copies it or opens it in their mail, then marks it sent. */
+function SendPanel({
   engagement,
   asks,
   onClose,
@@ -529,17 +497,19 @@ function RequestByEmailPanel({
 }) {
   const year = engagement.reportingPeriod.start.slice(0, 4);
   const contactFirst = (engagement.clientContact?.name ?? "there").split(" ")[0];
-  const verifierName = (engagement.engagementTeam ?? []).find((m) => m.login === engagement.signedInLogin)?.name ?? "the verification team";
-
-  const [opening, setOpening] = useState(
-    `Hi ${contactFirst},\n\nThanks for the materials so far. To finish verifying ${engagement.clientName}'s ${year} emissions, could you help with the items below?`
-  );
-  const [closing, setClosing] = useState(`Send these whenever you can, and tell me if anything's unclear.\n\nBest,\n${verifierName}`);
-  const [subject, setSubject] = useState(`${engagement.clientName} — ${year} emissions verification`);
-
+  const verifierName =
+    (engagement.engagementTeam ?? []).find((m) => m.login === engagement.signedInLogin)?.name ??
+    engagement.signedInName ??
+    "the verification team";
   const built = useMemo(() => buildLines(asks), [asks]);
-  const body = useMemo(() => assembleMessage(opening, closing, built), [opening, closing, built]);
-
+  const [subject, setSubject] = useState(`${engagement.clientName}: ${year} emissions verification`);
+  const [body, setBody] = useState(() =>
+    assembleMessage(
+      `Hi ${contactFirst},\n\nThanks for the materials so far. To finish verifying ${engagement.clientName}'s ${year} emissions, could you help with the items below?`,
+      `Send these whenever you can, and tell me if anything's unclear.\n\nBest,\n${verifierName}`,
+      built
+    )
+  );
   const recipient = engagement.clientContact?.email ?? "";
   const orderedIds = built.flatMap((l) => l.askIds);
   const lineNumbers: Record<string, number> = {};
@@ -547,12 +517,13 @@ function RequestByEmailPanel({
 
   return (
     <div className="s1-modal-scrim" role="presentation" onClick={onClose}>
-      <aside className="s1-req-panel" role="dialog" aria-modal="true" aria-label="Request by email" onClick={(e) => e.stopPropagation()}>
+      <aside className="s1-req-panel" role="dialog" aria-modal="true" aria-label="Send requests" onClick={(e) => e.stopPropagation()}>
         <div className="s1-req-panel__head">
-          <strong>Request by email</strong>
-          <span className="s1-muted">Nothing is sent from here. Copy the message or open it in your mail, from your address ({engagement.verifierEmail ?? "set it in Setup"}).</span>
+          <strong>
+            Send {asks.length} {asks.length === 1 ? "request" : "requests"} to {engagement.clientContact?.name ?? "the client"}
+          </strong>
+          <span className="s1-muted">Copy the message or open it in your mail, then mark it sent.</span>
         </div>
-
         <label className="s1-setup-field">
           <span>To</span>
           <input value={recipient} readOnly />
@@ -562,19 +533,9 @@ function RequestByEmailPanel({
           <input value={subject} onChange={(e) => setSubject(e.target.value)} />
         </label>
         <label className="s1-setup-field">
-          <span>Opening</span>
-          <textarea rows={3} value={opening} onChange={(e) => setOpening(e.target.value)} />
+          <span>Message</span>
+          <textarea className="s1-req-message" rows={12} value={body} onChange={(e) => setBody(e.target.value)} />
         </label>
-        <label className="s1-setup-field">
-          <span>Closing</span>
-          <textarea rows={3} value={closing} onChange={(e) => setClosing(e.target.value)} />
-        </label>
-
-        <div className="s1-req-preview">
-          <div className="s1-muted">As the client will read it</div>
-          <pre className="s1-req-message">{body}</pre>
-        </div>
-
         <div className="s1-modal__actions">
           <button
             className="s1-button"
@@ -593,9 +554,6 @@ function RequestByEmailPanel({
           </a>
           <button className="s1-button s1-button--pri" type="button" onClick={() => onMarkSent(orderedIds, lineNumbers)}>
             Mark as sent
-          </button>
-          <button className="s1-button" type="button" onClick={onClose}>
-            Cancel
           </button>
         </div>
       </aside>
@@ -701,13 +659,4 @@ function formatDate(iso: string): string {
   return Number.isNaN(d.getTime())
     ? iso
     : d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-}
-
-function EnvelopeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <rect x="3" y="5" width="18" height="14" rx="2" />
-      <path d="m3.5 7 8.5 6 8.5-6" />
-    </svg>
-  );
 }

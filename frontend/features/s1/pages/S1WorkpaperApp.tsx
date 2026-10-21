@@ -46,10 +46,8 @@ import {
   DEMO_INVOICE_FILENAME,
 } from "../fixtures/demo/preparedInvoice";
 import { EvidenceRequests } from "../components/EvidenceRequests";
-import { CheckCoverage } from "../components/CheckCoverage";
 import { VerificationResults } from "../components/VerificationResults";
 import { BackendVerificationResults } from "../components/BackendVerificationResults";
-import { BackendCheckCoverage } from "../components/BackendCheckCoverage";
 import { BackendPageView } from "../components/BackendPageView";
 import { DocumentContentView } from "../components/DocumentContentView";
 import { BackendOutputScreen } from "../components/BackendOutputScreen";
@@ -95,6 +93,7 @@ import type {
 import type { SessionAuditEntry } from "../utils/auditIntent";
 import { dashboardFigures, engagementActivity } from "../utils/engagementActivity";
 import { ActivityDrawer } from "../components/ActivityDrawer";
+import { useBackendCoverage } from "../components/useBackendCoverage";
 import { testedExaminationKeys } from "../utils/verificationTable";
 
 type ActiveView =
@@ -493,7 +492,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     dashboard: "dashboard",
     setup: "setup",
     requests: "requests",
-    coverage: "coverage",
+    coverage: "requests",
     results: "results",
     output: "output",
   };
@@ -503,7 +502,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     else if (key === "setup") setActiveView({ name: "setup" });
     else if (key === "upload") setUploadOpen(true);
     else if (key === "requests") setActiveView({ name: "requests" });
-    else if (key === "coverage") setActiveView({ name: "coverage" });
+    else if (key === "coverage") setActiveView({ name: "requests" });
     else if (key === "results") setActiveView({ name: "results" });
     else if (key === "output") setActiveView({ name: "output" });
     else if (key === "evidence") setActiveView({ name: "evidence" });
@@ -723,6 +722,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       };
     });
   }, [dataMode, reviewValues, evidenceView]);
+  const backendCoverage = useBackendCoverage(
+    engagement.engagementId,
+    dataMode === "backend" && (activeView.name === "requests" || activeView.name === "coverage"),
+    handleSessionEnded
+  );
   const foundFacilities = useMemo(
     () => (dataMode === "backend" ? unmatchedFacilities(facts, engagement.facilities) : []),
     [dataMode, facts, engagement.facilities]
@@ -832,24 +836,24 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             lookupZip={dataMode === "backend" ? lookupEgridZip : undefined}
             foundFacilities={foundFacilities}
           />
-        ) : activeView.name === "requests" ? (
+        ) : activeView.name === "requests" || activeView.name === "coverage" ? (
           <EvidenceRequests
             engagement={engagementForUser}
             asks={requests.asks}
+            coverage={dataMode === "backend" ? backendCoverage : { rules: coverageRules }}
+            valuesToReview={reviewValuesView.filter((v) => !v.withdrawn && v.reviewState === "to_review").length}
+            onReview={() => {
+              const next = reviewValuesView.find((v) => !v.withdrawn && v.reviewState === "to_review");
+              if (next) openExtraction(next.documentId);
+            }}
+            onSaveAsk={requests.saveAsk}
             onSend={(ids, lineNumbers) => requests.sendAsks(ids, lineNumbers).requestNumber}
             onResolve={requests.resolveAsk}
             onWithdraw={requests.withdrawAsk}
             onEdit={requests.editAsk}
             onRaiseFollowUp={raiseFollowUp}
             onOpenSource={(ask) => ask.source.documentId && openExtraction(ask.source.documentId)}
-            onOpenSetup={() => setActiveView({ name: "setup" })}
           />
-        ) : activeView.name === "coverage" ? (
-          dataMode === "backend" ? (
-            <BackendCheckCoverage engagementId={engagement.engagementId} onError={handleSessionEnded} />
-          ) : (
-            <CheckCoverage rules={coverageRules} />
-          )
         ) : activeView.name === "results" ? (
           dataMode === "backend" ? (
             <BackendVerificationResults
