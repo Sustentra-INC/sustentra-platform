@@ -104,6 +104,8 @@ export function ExtractionReview({
   const valuesPane = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.rootKey ? [initial.rootKey] : []));
   const [modalTarget, setModalTarget] = useState<AddToRequestsTarget | null>(null);
+  // The values a request is for: every data point of the reading.
+  const [requestIds, setRequestIds] = useState<string[]>([]);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -120,9 +122,10 @@ export function ExtractionReview({
   );
   const selected = items.find((v) => v.id === selectedId) ?? null;
 
+  // Counted by card: values that share one reading are one card.
   const counts = useMemo(() => {
     const c = { to_review: 0, accepted: 0, corrected: 0, requested: 0 };
-    nodeValues.forEach((v) => (c[v.reviewState] += 1));
+    readings(nodeValues).forEach((vs) => (c[vs[0].reviewState] += 1));
     return c;
   }, [nodeValues]);
 
@@ -193,11 +196,13 @@ export function ExtractionReview({
     return () => window.cancelAnimationFrame(frame);
   }, [scrollTo]);
 
-  function accept(v: ReviewValue) {
+  /** Accept one reading: every data point it feeds. */
+  function accept(vs: ReviewValue[]) {
     const now = new Date().toISOString();
+    const ids = new Set(vs.map((v) => v.id));
     onValuesChange((cur) =>
       cur.map((x) =>
-        x.id === v.id
+        ids.has(x.id)
           ? {
               ...x,
               reviewState: "accepted",
@@ -210,7 +215,7 @@ export function ExtractionReview({
                   action: "accepted as read",
                   // Carry the S1->S2 handoff id: Accept is what mints the
                   // MethodologyValue keyed on this methodology field.
-                  reason: v.methodologyFieldId ? `mints methodology value ${v.methodologyFieldId}` : undefined,
+                  reason: x.methodologyFieldId ? `mints methodology value ${x.methodologyFieldId}` : undefined,
                 },
               ],
             }
@@ -218,19 +223,24 @@ export function ExtractionReview({
       )
     );
     flash("Accepted · number, unit, field, facility and period confirmed");
-    advanceFrom(v);
-    onPersistAccept?.(v).catch((error: unknown) => {
-      onValuesChange((cur) => cur.map((x) => (x.id === v.id ? v : x)));
-      flash(`Not saved, back to review. ${error instanceof Error ? error.message : ""}`.trim());
-    });
+    advanceFrom(ids);
+    for (const v of vs) {
+      onPersistAccept?.(v).catch((error: unknown) => {
+        onValuesChange((cur) => cur.map((x) => (x.id === v.id ? v : x)));
+        flash(`Not saved, back to review. ${error instanceof Error ? error.message : ""}`.trim());
+      });
+    }
   }
 
-  function correct(v: ReviewValue, next: { value: string; unit: string }) {
+  /** Correct one reading: every data point it feeds. */
+  function correct(vs: ReviewValue[], next: { value: string; unit: string }) {
+    const v = vs[0];
     const now = new Date().toISOString();
     const was = `${v.value}${v.unit ? ` ${v.unit}` : ""}`;
+    const ids = new Set(vs.map((x) => x.id));
     onValuesChange((cur) =>
       cur.map((x) =>
-        x.id === v.id
+        ids.has(x.id)
           ? {
               ...x,
               reviewState: "corrected",
@@ -252,11 +262,13 @@ export function ExtractionReview({
       )
     );
     flash(`${v.value ? "Corrected to" : "Entered"} ${next.value}${next.unit ? ` ${next.unit}` : ""}`);
-    if (v.reviewState === "to_review") advanceFrom(v);
-    onPersistCorrect?.(v, next).catch((error: unknown) => {
-      onValuesChange((cur) => cur.map((x) => (x.id === v.id ? v : x)));
-      flash(`Correction not saved, back as it was. ${error instanceof Error ? error.message : ""}`.trim());
-    });
+    if (v.reviewState === "to_review") advanceFrom(ids);
+    for (const one of vs) {
+      onPersistCorrect?.(one, next).catch((error: unknown) => {
+        onValuesChange((cur) => cur.map((x) => (x.id === one.id ? one : x)));
+        flash(`Correction not saved, back as it was. ${error instanceof Error ? error.message : ""}`.trim());
+      });
+    }
   }
 
   /** Accept every value of one document still to review, saving up to six at a time. */
@@ -300,9 +312,9 @@ export function ExtractionReview({
     });
   }
 
-  function advanceFrom(v: ReviewValue) {
+  function advanceFrom(done: Set<string>) {
     // next to-review in the current node, else first to-review in the next node
-    const here = valuesForNode(items, nodeKey).filter((x) => x.id !== v.id || x.reviewState !== "to_review");
+    const here = valuesForNode(items, nodeKey).filter((x) => !done.has(x.id));
     const next = here.find((x) => x.reviewState === "to_review");
     if (next) {
       setSelectedId(next.id);
@@ -327,9 +339,11 @@ export function ExtractionReview({
   // TODO(product): build the inline editor (number · unit · field · facility ·
   // period, with "not a value" last) once verifier feedback lands.
 
-  function openAddToRequests(v: ReviewValue) {
+  function openAddToRequests(vs: ReviewValue[]) {
+    const v = vs[0];
     const facilityName = v.facilityId ? engagement.facilities.find((f) => f.facilityId === v.facilityId)?.name ?? null : null;
-    const scope = SCOPE_LABEL[v.scope];
+    const scope = scopeLabels(vs).join(" + ");
+    setRequestIds(vs.map((x) => x.id));
     const facLabel = facilityName ?? (v.entityLevel ? "entity-level" : "not yet known");
     setModalTarget({
       origin: "review_value",
@@ -414,9 +428,10 @@ export function ExtractionReview({
     onSaveAsk(draft);
     if (modalTarget?.fieldKey) {
       const now = new Date().toISOString();
+      const ids = new Set(requestIds.length ? requestIds : [modalTarget.fieldKey]);
       onValuesChange((cur) =>
         cur.map((x) =>
-          x.id === modalTarget.fieldKey
+          ids.has(x.id)
             ? {
                 ...x,
                 reviewState: "requested",
@@ -525,11 +540,12 @@ export function ExtractionReview({
             </div>
           ) : (
             groupValues(filtered).map((group) => {
-              const capped = group.values.slice(0, REVIEW_CAP);
+              const cards = readings(group.values);
+              const capped = cards.slice(0, REVIEW_CAP);
               // A value picked on the document beyond the cap still gets its card.
-              const picked = group.values.find((x) => x.id === selectedId);
+              const picked = cards.find((vs) => vs.some((x) => x.id === selectedId));
               if (picked && !capped.includes(picked)) capped.push(picked);
-              const hidden = Math.max(group.values.length - capped.length, 0);
+              const hidden = Math.max(cards.length - capped.length, 0);
               return (
                 <div key={group.key} className="s1-xr-group">
                   <div className="s1-xr-doc">
@@ -582,20 +598,22 @@ export function ExtractionReview({
                       </div>
                     );
                   })()}
-                  {capped.map((v) => (
+                  {capped.map((vs) => (
                     <ValueCard
-                      key={v.id}
-                      v={v}
-                      selected={selectedId === v.id}
-                      onSelect={() => selectValue(v)}
-                      onAccept={() => accept(v)}
-                      onCorrect={(next) => correct(v, next)}
-                      onAddToRequests={() => openAddToRequests(v)}
+                      key={vs[0].id}
+                      vs={vs}
+                      selected={vs.some((x) => x.id === selectedId)}
+                      onSelect={() => {
+                        if (!vs.some((x) => x.id === selectedId)) selectValue(vs[0]);
+                      }}
+                      onAccept={() => accept(vs)}
+                      onCorrect={(next) => correct(vs, next)}
+                      onAddToRequests={() => openAddToRequests(vs)}
                     />
                   ))}
                   {hidden > 0 ? (
                     <div className="s1-xr-more">
-                      Showing {capped.length} of {group.values.length}. Pick any highlighted figure on the document to open its value.
+                      Showing {capped.length} of {cards.length}. Pick any highlighted figure on the document to open its value.
                     </div>
                   ) : null}
                 </div>
@@ -704,20 +722,22 @@ function AddValueForm({
 /* =============================== value card =============================== */
 
 function ValueCard({
-  v,
+  vs,
   selected,
   onSelect,
   onAccept,
   onCorrect,
   onAddToRequests,
 }: {
-  v: ReviewValue;
+  /** One reading: the values it feeds (two when location- and market-based share it). */
+  vs: ReviewValue[];
   selected: boolean;
   onSelect: () => void;
   onAccept: () => void;
   onCorrect: (next: { value: string; unit: string }) => void;
   onAddToRequests: () => void;
 }) {
+  const v = vs[0];
   const done = v.reviewState !== "to_review";
   const [editing, setEditing] = useState(false);
   const [draftValue, setDraftValue] = useState(v.value);
@@ -751,7 +771,11 @@ function ValueCard({
           <span>{v.period}</span>
         </div>
         <div className="s1-xr-l2">
-          <span className={`s1-xr-scope s1-xr-scope--${v.scope}`}>{SCOPE_LABEL[v.scope]}</span>
+          {scopeChips(vs).map((chip) => (
+            <span key={chip.label} className={`s1-xr-scope s1-xr-scope--${chip.scope}`}>
+              {chip.label}
+            </span>
+          ))}
         </div>
         <div className="s1-xr-l3">
           {v.missing && v.reviewState === "to_review" ? (
@@ -1196,6 +1220,43 @@ function nodeHeaderLabel(key: string, engagement: EngagementConfig): string {
   if (key === "N" || key.startsWith("N|")) return "Not yet known";
   const fid = key.slice(2).split("|")[0];
   return engagement.facilities.find((f) => f.facilityId === fid)?.name ?? "Facility";
+}
+
+/**
+ * One reading of a document can feed several data points: an electricity bill's kWh is
+ * both Scope 2 location-based and market-based. Values with the same figure, from the same
+ * spot, in the same review state are one card, reviewed together.
+ */
+function readingKey(v: ReviewValue): string {
+  const at = v.span ? `${v.span.page}:${v.span.x.toFixed(3)},${v.span.y.toFixed(3)}` : (v.docAnchor ?? "");
+  return [v.documentId, v.whatItIs, v.value, v.unit, v.page, v.period, at, v.reviewState, v.missing ? "missing" : "", v.withdrawn ? "withdrawn" : ""].join("|");
+}
+
+function readings(values: ReviewValue[]): ReviewValue[][] {
+  const map = new Map<string, ReviewValue[]>();
+  for (const v of values) {
+    const key = readingKey(v);
+    const same = map.get(key);
+    if (same) same.push(v);
+    else map.set(key, [v]);
+  }
+  return [...map.values()];
+}
+
+/** The scopes a reading feeds, as chips: location- and market-based share one. */
+function scopeChips(vs: ReviewValue[]): { scope: ScopePlacement; label: string }[] {
+  const scopes = distinct(vs.map((v) => v.scope)) as ScopePlacement[];
+  if (scopes.includes("scope2_location") && scopes.includes("scope2_market")) {
+    return [
+      { scope: "scope2_location", label: "Scope 2 · location- and market-based" },
+      ...scopes.filter((s) => s !== "scope2_location" && s !== "scope2_market").map((scope) => ({ scope, label: SCOPE_LABEL[scope] })),
+    ];
+  }
+  return scopes.map((scope) => ({ scope, label: SCOPE_LABEL[scope] }));
+}
+
+function scopeLabels(vs: ReviewValue[]): string[] {
+  return scopeChips(vs).map((chip) => chip.label);
 }
 
 function groupValues(values: ReviewValue[]): Array<{ key: string; filename: string; period: string; values: ReviewValue[] }> {
