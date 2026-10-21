@@ -1,5 +1,6 @@
 "use client";
 
+import { Plus } from "lucide-react";
 import { Fragment, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
@@ -48,6 +49,8 @@ interface ExtractionReviewProps {
   onPersistAccept?: (value: ReviewValue) => Promise<void>;
   /** Records a correction on the backend; on failure the card goes back to how it was. */
   onPersistCorrect?: (value: ReviewValue, next: { value: string; unit: string }) => Promise<void>;
+  /** Lets the reviewer key a value the reading missed (kept in the session; not yet saved to the backend). */
+  allowAddValue?: boolean;
 }
 
 const SCOPE_LABEL: Record<ScopePlacement, string> = {
@@ -72,6 +75,7 @@ export function ExtractionReview({
   reviewerName = "M. Osei",
   onPersistAccept,
   onPersistCorrect,
+  allowAddValue = false,
 }: ExtractionReviewProps) {
   // Review data lives in app state (via onValuesChange); selection below is
   // local, ephemeral UI. So accepts/corrections/requests survive navigation.
@@ -85,6 +89,9 @@ export function ExtractionReview({
   const [nodeKey, setNodeKey] = useState<string>(initial.nodeKey);
   const [selectedId, setSelectedId] = useState<string | null>(initial.valueId);
   const [filter, setFilter] = useState<ValueReviewState | null>(null);
+  // A long document: show the values of one page at a time.
+  const [pageFilter, setPageFilter] = useState<number | null>(null);
+  const [adding, setAdding] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.rootKey ? [initial.rootKey] : []));
   const [modalTarget, setModalTarget] = useState<AddToRequestsTarget | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -98,7 +105,9 @@ export function ExtractionReview({
 
   const tree = useMemo(() => buildTree(items, engagement), [items, engagement]);
   const nodeValues = useMemo(() => valuesForNode(items, nodeKey), [items, nodeKey]);
-  const filtered = filter ? nodeValues.filter((v) => v.reviewState === filter) : nodeValues;
+  const filtered = nodeValues.filter(
+    (v) => (!filter || v.reviewState === filter) && (pageFilter === null || v.page === pageFilter)
+  );
   const selected = items.find((v) => v.id === selectedId) ?? null;
 
   const counts = useMemo(() => {
@@ -112,6 +121,7 @@ export function ExtractionReview({
   function selectNode(key: string) {
     setNodeKey(key);
     setFilter(null);
+    setPageFilter(null);
     const first = valuesForNode(items, key);
     const firstToReview = first.find((v) => v.reviewState === "to_review") ?? first[0];
     setSelectedId(firstToReview?.id ?? null);
@@ -307,6 +317,37 @@ export function ExtractionReview({
     });
   }
 
+  /** A value the reading missed, keyed by the reviewer: reviewed on entry, with no
+   *  machine reading behind it, and recorded as added by hand. */
+  function addValue(base: ReviewValue, entry: { whatItIs: string; value: string; unit: string; page: number }) {
+    const now = new Date().toISOString();
+    const added: ReviewValue = {
+      ...base,
+      id: `keyed-${base.documentId}-${Date.now().toString(36)}`,
+      whatItIs: entry.whatItIs,
+      value: entry.value,
+      unit: entry.unit,
+      page: entry.page,
+      span: null,
+      anchor: null,
+      snippet: null,
+      rawText: null,
+      missing: false,
+      methodologyFieldId: undefined,
+      reviewToken: undefined,
+      reviewState: "corrected",
+      originalValue: null,
+      record: [{ kind: "human", actor: reviewerName, at: now, action: "added a value the reading missed" }],
+    };
+    onValuesChange((cur) => {
+      const at = cur.findIndex((x) => x.id === base.id);
+      return at < 0 ? [...cur, added] : [...cur.slice(0, at + 1), added, ...cur.slice(at + 1)];
+    });
+    setAdding(false);
+    setSelectedId(added.id);
+    flash(`Added: ${entry.whatItIs}`);
+  }
+
   function submitAsk(draft: AskDraft) {
     onSaveAsk(draft);
     if (modalTarget?.fieldKey) {
@@ -385,7 +426,14 @@ export function ExtractionReview({
         {/* Values */}
         <div className="s1-xr-values">
           <div className="s1-xr-vhead">
-            <h2>{nodeHeaderLabel(nodeKey, engagement)}</h2>
+            <div className="s1-xr-vhead__top">
+              <h2>{nodeHeaderLabel(nodeKey, engagement)}</h2>
+              {allowAddValue && (selected ?? nodeValues[0]) ? (
+                <button className="s1-xr-addvalue" type="button" aria-expanded={adding} onClick={() => setAdding((v) => !v)}>
+                  <Plus aria-hidden /> Add a value
+                </button>
+              ) : null}
+            </div>
             <div className="s1-xr-filters">
               {(["to_review", "accepted", "corrected", "requested"] as ValueReviewState[]).map((k) => (
                 <button
@@ -400,9 +448,18 @@ export function ExtractionReview({
             </div>
           </div>
 
+          {adding && (selected ?? nodeValues[0]) ? (
+            <AddValueForm
+              base={(selected ?? nodeValues[0]) as ReviewValue}
+              suggestions={[...new Set(items.filter((x) => x.documentType === (selected ?? nodeValues[0])?.documentType).map((x) => x.whatItIs))]}
+              onCancel={() => setAdding(false)}
+              onAdd={(entry) => addValue((selected ?? nodeValues[0]) as ReviewValue, entry)}
+            />
+          ) : null}
+
           {filtered.length === 0 ? (
             <div className="s1-ws-empty">
-              No values match {reviewStateLabel(filter ?? "to_review")}.
+              No values match {pageFilter !== null ? `page ${pageFilter}` : reviewStateLabel(filter ?? "to_review")}.
             </div>
           ) : (
             groupValues(filtered).map((group) => {
@@ -428,6 +485,38 @@ export function ExtractionReview({
                       ) : null;
                     })()}
                   </div>
+                  {(() => {
+                    const docId = group.values[0]?.documentId;
+                    const pages = [...new Set(nodeValues.filter((x) => x.documentId === docId).map((x) => x.page))].sort((a, b) => a - b);
+                    if (pages.length < 2) return null;
+                    return (
+                      <div className="s1-xr-pages" role="group" aria-label="Values by page">
+                        <button
+                          className={`s1-xr-pagechip${pageFilter === null ? " is-on" : ""}`}
+                          type="button"
+                          aria-pressed={pageFilter === null}
+                          onClick={() => setPageFilter(null)}
+                        >
+                          All pages
+                        </button>
+                        {pages.map((n) => (
+                          <button
+                            key={n}
+                            className={`s1-xr-pagechip${pageFilter === n ? " is-on" : ""}`}
+                            type="button"
+                            aria-pressed={pageFilter === n}
+                            onClick={() => {
+                              setPageFilter(n);
+                              const first = nodeValues.find((x) => x.documentId === docId && x.page === n);
+                              if (first) setSelectedId(first.id);
+                            }}
+                          >
+                            p.{n} <span>{nodeValues.filter((x) => x.documentId === docId && x.page === n).length}</span>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   {capped.map((v) => (
                     <ValueCard
                       key={v.id}
@@ -475,6 +564,69 @@ export function ExtractionReview({
 
       {toast ? <div className="s1-ws-toast">{toast}</div> : null}
     </section>
+  );
+}
+
+/* ============================ add a missed value ============================ */
+
+function AddValueForm({
+  base,
+  suggestions,
+  onCancel,
+  onAdd,
+}: {
+  base: ReviewValue;
+  suggestions: string[];
+  onCancel: () => void;
+  onAdd: (entry: { whatItIs: string; value: string; unit: string; page: number }) => void;
+}) {
+  const [whatItIs, setWhatItIs] = useState("");
+  const [value, setValue] = useState("");
+  const [unit, setUnit] = useState(base.unit);
+  const [page, setPage] = useState(base.page);
+  const ready = whatItIs.trim() && value.trim() && page >= 1 && page <= base.pageCount;
+  return (
+    <form
+      className="s1-xr-addform"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ready) onAdd({ whatItIs: whatItIs.trim(), value: value.trim(), unit: unit.trim(), page });
+      }}
+    >
+      <div className="s1-xr-addform__title">
+        A value the reading missed on <strong>{base.filename}</strong>
+      </div>
+      <label className="s1-xr-addform__what">
+        <span>What it is</span>
+        <input list="s1-xr-addform-suggestions" value={whatItIs} autoFocus onChange={(e) => setWhatItIs(e.target.value)} placeholder="e.g. Peak demand" />
+        <datalist id="s1-xr-addform-suggestions">
+          {suggestions.map((s) => (
+            <option key={s} value={s} />
+          ))}
+        </datalist>
+      </label>
+      <label>
+        <span>Value</span>
+        <input value={value} inputMode="decimal" onChange={(e) => setValue(e.target.value)} />
+      </label>
+      <label>
+        <span>Unit</span>
+        <input value={unit} onChange={(e) => setUnit(e.target.value)} />
+      </label>
+      <label>
+        <span>Page</span>
+        <input type="number" min={1} max={base.pageCount} value={page} onChange={(e) => setPage(Number(e.target.value))} />
+      </label>
+      <div className="s1-xr-addform__actions">
+        <button className="s1-button s1-button--pri s1-button--compact" type="submit" disabled={!ready}>
+          Add value
+        </button>
+        <button className="s1-linklike" type="button" onClick={onCancel}>
+          Cancel
+        </button>
+        <span className="s1-xr-addform__note">Recorded as keyed by you; it counts as reviewed.</span>
+      </div>
+    </form>
   );
 }
 
@@ -539,7 +691,9 @@ function ValueCard({
             </>
           )}
           {v.reviewState === "corrected" ? (
-            <span className="s1-xr-was">{v.originalValue ? `was ${v.originalValue}` : "entered by the reviewer"}</span>
+            <span className={`s1-xr-was${v.originalValue ? "" : " s1-xr-was--keyed"}`}>
+              {v.originalValue ? `was ${v.originalValue}` : "entered by the reviewer"}
+            </span>
           ) : null}
         </div>
 

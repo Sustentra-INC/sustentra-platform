@@ -156,3 +156,50 @@ describe("coverage & requests: one page", () => {
     expect(screen.queryByRole("button", { name: /Request by email/ })).toBeNull();
   });
 });
+
+describe("extraction review: a value the reading missed", () => {
+  it("is keyed by the reviewer, counts as reviewed, and says so in its record", async () => {
+    const { ExtractionReview } = await import("../components/ExtractionReview");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    const { useState } = await import("react");
+    const first = manufacturerValues[0];
+    let latest = manufacturerValues;
+    function Harness() {
+      const [values, setValues] = useState(manufacturerValues);
+      latest = values;
+      return (
+        <ExtractionReview
+          engagement={engagementConfig}
+          values={values}
+          onValuesChange={setValues}
+          initialDocumentId={first.documentId}
+          onSaveAsk={vi.fn()}
+          onBack={vi.fn()}
+          reviewerName="R. Iqbal"
+          allowAddValue
+        />
+      );
+    }
+    render(<Harness />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add a value" }));
+    fireEvent.change(screen.getByPlaceholderText("e.g. Peak demand"), { target: { value: "Billing days" } });
+    fireEvent.change(screen.getByLabelText("Value"), { target: { value: "28" } });
+    fireEvent.change(screen.getByLabelText("Unit"), { target: { value: "days" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add value" }));
+
+    const added = latest.find((v) => v.whatItIs === "Billing days");
+    expect(added).toMatchObject({ documentId: first.documentId, value: "28", unit: "days", reviewState: "corrected", originalValue: null });
+    expect(added?.record).toEqual([expect.objectContaining({ kind: "human", actor: "R. Iqbal", action: "added a value the reading missed" })]);
+    expect(screen.getByText("entered by the reviewer")).toBeInTheDocument();
+  });
+
+  it("is not offered when the backend cannot save it", async () => {
+    const { ExtractionReview } = await import("../components/ExtractionReview");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    render(
+      <ExtractionReview engagement={engagementConfig} values={manufacturerValues} onValuesChange={vi.fn()} onSaveAsk={vi.fn()} onBack={vi.fn()} />
+    );
+    expect(screen.queryByRole("button", { name: "Add a value" })).toBeNull();
+  });
+});

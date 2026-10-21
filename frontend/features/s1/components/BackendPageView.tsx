@@ -84,6 +84,23 @@ export function BackendPageView({
             Go to the value (page {span.page})
           </button>
         ) : null}
+        {pages !== null && pages > 2 ? (
+          <label className="s1-pv__goto">
+            Go to page
+            <input
+              type="number"
+              min={1}
+              max={pages}
+              defaultValue={page}
+              key={page}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter") return;
+                const n = Number((e.target as HTMLInputElement).value);
+                if (Number.isInteger(n) && n >= 1 && n <= pages) setPage(n);
+              }}
+            />
+          </label>
+        ) : null}
         <a
           className="s1-linklike s1-pv__open"
           href={apiPath(`/documents/${encodeURIComponent(documentId)}/preview`)}
@@ -93,6 +110,22 @@ export function BackendPageView({
           Open original
         </a>
       </div>
+      {valuePages(marks).length > 1 ? (
+        <div className="s1-pv__pages" role="group" aria-label="Pages with values">
+          <span>Values on</span>
+          {valuePages(marks).map((n) => (
+            <button
+              key={n}
+              className={`s1-pv__pagechip${n === page ? " is-on" : ""}`}
+              type="button"
+              aria-pressed={n === page}
+              onClick={() => setPage(n)}
+            >
+              p.{n}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="s1-pv__page">
         {/* eslint-disable-next-line @next/next/no-img-element -- an authenticated API image, not a static asset */}
         <img
@@ -154,4 +187,11 @@ function boxesOnPage(marks: PageMark[], page: number): (PageMark & { span: Revie
     groups.set(key, [...(groups.get(key) ?? []), { ...m, span }]);
   }
   return Array.from(groups.values());
+}
+
+/** The pages that hold at least one value read from the document, in order. */
+function valuePages(marks: PageMark[] | undefined): number[] {
+  const pages = new Set<number>();
+  for (const mark of marks ?? []) if (mark.span?.page) pages.add(mark.span.page);
+  return [...pages].sort((a, b) => a - b);
 }
