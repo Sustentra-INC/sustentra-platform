@@ -1,9 +1,11 @@
 "use client";
 
+import { Plus, X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { EngagementConfig, FacilityOption } from "../types";
 import type { InScopeField } from "../types/scope";
+import { InfoTip } from "./InfoTip";
 import { ZipRegionHint } from "./ZipRegionHint";
 
 /**
@@ -106,7 +108,10 @@ export function SetupScreen({
       <header className="s1-ws-header">
         <div className="s1-ws-header__id">
           <h1>Setup</h1>
-          <span className="s1-muted">What this engagement covers. Facilities feed the Evidence Workspace; the client contact and team feed Evidence Requests.</span>
+          <InfoTip label="Setup">
+            What this engagement covers. Facilities are used to match documents on Evidence; the client contact and
+            the team are used on requests.
+          </InfoTip>
         </div>
       </header>
 
@@ -184,8 +189,13 @@ export function SetupScreen({
 
       {/* Scope & assurance */}
       <div className="s1-setup-card">
-        <h2>Scope &amp; assurance</h2>
-        <p className="s1-muted">Defines the coverage and the standard the opinion is issued under. These drive the in-scope list and the deliverable.</p>
+        <h2>
+          Scope &amp; assurance
+          <InfoTip label="Scope and assurance">
+            The coverage and the standard the opinion is issued under. They set the in-scope data points and the
+            statement.
+          </InfoTip>
+        </h2>
         <div className="s1-setup-grid">
           <label className="s1-setup-field">
             <span>Data scope</span>
@@ -237,13 +247,15 @@ export function SetupScreen({
 
       {/* Facilities */}
       <div className="s1-setup-card">
-        <h2>Facilities</h2>
-        <p className="s1-muted">
-          Bills are matched to a facility by its name or street address. The grid region is used for its electricity
-          (Scope 2, location-based).
-        </p>
+        <h2>
+          Facilities
+          <InfoTip label="Facilities">
+            Bills are matched to a facility by its name or street address. The grid region sets the factor for its
+            electricity (Scope 2, location-based).
+          </InfoTip>
+        </h2>
         {engagement.facilities.length ? (
-          <div className="s1-fac">
+          <div className={`s1-fac${gridRegions ? " s1-fac--regions" : ""}`}>
             <div className="s1-fac__head" aria-hidden>
               <span>Name</span>
               <span>Street address</span>
@@ -273,9 +285,7 @@ export function SetupScreen({
                     ))}
                   </select>
                 ) : null}
-                <button className="s1-linklike" type="button" onClick={() => removeFacility(f.facilityId)}>
-                  Remove
-                </button>
+                <RemoveButton label={`Remove ${f.name || "facility"}`} onClick={() => removeFacility(f.facilityId)} />
                 {gridRegions && lookupZip ? (
                   <ZipRegionHint
                     address={f.address}
@@ -307,15 +317,15 @@ export function SetupScreen({
             </ul>
           </div>
         ) : null}
-        <button className="s1-button" type="button" onClick={() => addFacility()}>
-          Add facility
-        </button>
+        <AddButton onClick={() => addFacility()}>Add facility</AddButton>
       </div>
 
       {/* Client contact */}
       <div className="s1-setup-card">
-        <h2>Client contact</h2>
-        <p className="s1-muted">One recipient for the whole engagement. Evidence Requests sends to this address.</p>
+        <h2>
+          Client contact
+          <InfoTip label="Client contact">One recipient for the whole engagement. Requests are sent to this address.</InfoTip>
+        </h2>
         <div className="s1-setup-grid">
           <label className="s1-setup-field">
             <span>Name</span>
@@ -339,85 +349,75 @@ export function SetupScreen({
               onChange={(e) => set({ clientContact: { ...contact(engagement), company: e.target.value } })}
             />
           </label>
-          <label className="s1-setup-field">
-            <span>Your email (Request-by-email “from”)</span>
-            <input type="email" value={engagement.verifierEmail ?? ""} onChange={(e) => set({ verifierEmail: e.target.value })} />
-          </label>
         </div>
       </div>
 
       {/* Engagement team */}
       <div className="s1-setup-card">
-        <h2>Engagement team</h2>
-        <p className="s1-muted">The “raised by” options on a request. Typically up to four people.</p>
+        <h2>
+          Engagement team
+          <InfoTip label="Engagement team">Who can raise a request or examine a result. Typically up to four people.</InfoTip>
+        </h2>
         <div className="s1-setup-list">
+          <div className="s1-setup-row s1-setup-row--head" aria-hidden>
+            <span>Name</span>
+            <span>Login</span>
+            <span />
+          </div>
           {team.map((m, i) => (
             <div className="s1-setup-row" key={m.login}>
               <input
+                aria-label="Name"
                 value={m.name}
                 onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, name: e.target.value } : t)))}
               />
               <input
+                aria-label="Login"
                 className="s1-mono"
                 value={m.login}
                 onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, login: e.target.value } : t)))}
               />
-              <button className="s1-linklike" type="button" onClick={() => setTeam(team.filter((_, j) => j !== i))}>
-                Remove
-              </button>
+              <RemoveButton label={`Remove ${m.name}`} onClick={() => setTeam(team.filter((_, j) => j !== i))} />
             </div>
           ))}
         </div>
-        <button
-          className="s1-button"
-          type="button"
-          onClick={() => setTeam([...team, { name: "New member", login: `login${team.length + 1}` }])}
-        >
+        <AddButton onClick={() => setTeam([...team, { name: "New member", login: `login${team.length + 1}` }])}>
           Add member
-        </button>
+        </AddButton>
       </div>
 
       {/* In-scope data points: the workbook's reported data points (live), placeholders (demo) */}
       <div className="s1-setup-card">
         <div className="s1-setup-card__head">
-          <h2>In-scope data points</h2>
-          {live ? (
-            <span className="s1-state s1-state--resolved">
-              {inScopeFields.filter((f) => f.inScope).length} of {inScopeFields.length} in scope
-            </span>
-          ) : (
-            <span className="s1-state s1-state--open">Field list pending · placeholder rows</span>
-          )}
+          <h2>
+            In-scope data points
+            <InfoTip label="In-scope data points">
+              The reported data points of the client&rsquo;s inventory. Untick one the client does not report: it then
+              shows as not in scope on Verification results and is left out of coverage and materiality.
+            </InfoTip>
+          </h2>
+          <span className="s1-state s1-state--resolved">
+            {inScopeFields.filter((f) => f.inScope).length} of {inScopeFields.length} in scope
+          </span>
         </div>
-        {live ? (
-          <p className="s1-muted">
-            The reported data points of the GHG Required Data workbook. Untick one the client does not report: it then
-            shows as not in scope on Verification results and is left out of coverage and materiality.
-          </p>
-        ) : (
-          <p className="s1-muted">
-            The in-scope list is what makes the rest of the product finite. These rows are placeholders until product
-            delivers the field list; each already carries its methodology field id and a slot for completeness status.
-          </p>
-        )}
         <div className="s1-table-wrap">
           <table className="s1-table">
             <colgroup>
-              <col style={{ width: "6%" }} />
-              <col style={{ minWidth: "16rem" }} />
-              <col style={{ width: "10%" }} />
-              <col style={{ width: "12%" }} />
-              <col style={{ minWidth: "18rem" }} />
-              <col style={{ width: "12%" }} />
+              <col style={{ width: "7%" }} />
+              <col />
+              <col style={{ width: "11%" }} />
+              <col style={{ width: "13%" }} />
+              {live ? <col style={{ width: "13%" }} /> : null}
+              <col style={{ width: live ? "22%" : "16%" }} />
             </colgroup>
             <thead>
               <tr>
                 <th>In scope</th>
                 <th>Data point</th>
-                <th>Layer</th>
+                <th>Scope</th>
                 <th>Requirement</th>
-                <th>{live ? "Workbook row" : "Methodology field id"}</th>
-                <th>{live ? "How it is checked" : "Completeness"}</th>
+                {live ? <th>Workbook row</th> : null}
+                <th>{live ? "How it is checked" : "Evidence"}</th>
               </tr>
             </thead>
             <tbody>
@@ -442,10 +442,7 @@ export function SetupScreen({
                       <td className="s1-muted">{field.checkedBy}</td>
                     </>
                   ) : (
-                    <>
-                      <td className="s1-mono s1-muted">{field.methodologyFieldId}</td>
-                      <td className="s1-muted">{field.completenessStatus ?? "Pending"}</td>
-                    </>
+                    <td>{field.completenessStatus ?? "Pending"}</td>
                   )}
                 </tr>
               ))}
@@ -456,6 +453,22 @@ export function SetupScreen({
       </>
       )}
     </section>
+  );
+}
+
+function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button className="s1-setup-remove" type="button" aria-label={label} title={label} onClick={onClick}>
+      <X aria-hidden />
+    </button>
+  );
+}
+
+function AddButton({ onClick, children }: { onClick: () => void; children: ReactNode }) {
+  return (
+    <button className="s1-setup-add" type="button" onClick={onClick}>
+      <Plus aria-hidden /> {children}
+    </button>
   );
 }
 

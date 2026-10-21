@@ -14,9 +14,9 @@ export const engagementConfig: EngagementConfig = {
     end: "2025-12-31",
   },
   facilities: [
-    { facilityId: "facility-tualatin", name: "Tualatin Plant" },
-    { facilityId: "facility-kent", name: "Kent Cannery" },
-    { facilityId: "facility-modesto", name: "Modesto Bottling" },
+    { facilityId: "facility-tualatin", name: "Tualatin Plant", address: "1200 Industrial Way, Tualatin, OR 97062" },
+    { facilityId: "facility-kent", name: "Kent Cannery", address: "450 Valley Freight Rd, Kent, WA 98032" },
+    { facilityId: "facility-modesto", name: "Modesto Bottling", address: "88 Orchard Park Dr, Modesto, CA 95354" },
   ],
   regulation: "California Senate Bill 253",
   regulationJurisdiction:
