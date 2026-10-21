@@ -114,3 +114,45 @@ describe("activity log", () => {
     expect(figures.coverage).toBeNull();
   });
 });
+
+describe("coverage & requests: one page", () => {
+  it("leads with the values waiting for review, filters checks, and turns a missing check into a request", async () => {
+    const { EvidenceRequests } = await import("../components/EvidenceRequests");
+    const { coverageRules } = await import("../fixtures/verification/coverageRules");
+    const onReview = vi.fn();
+    const onSaveAsk = vi.fn();
+    render(
+      <EvidenceRequests
+        engagement={{ ...engagementConfig, engagementTeam: [{ name: "M. Osei", login: "mosei" }], signedInLogin: "mosei" }}
+        asks={[]}
+        coverage={{ rules: coverageRules }}
+        valuesToReview={14}
+        onReview={onReview}
+        onSaveAsk={onSaveAsk}
+        onSend={vi.fn(() => 1)}
+        onResolve={vi.fn()}
+        onWithdraw={vi.fn()}
+        onEdit={vi.fn()}
+        onRaiseFollowUp={vi.fn()}
+        onOpenSource={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /14 values waiting for review/ }));
+    expect(onReview).toHaveBeenCalled();
+
+    // Opens on the checks missing their inputs; a filter shows another state.
+    const missing = coverageRules.filter((r) => r.status === "inputs_missing");
+    expect(screen.getAllByRole("button", { name: /^Request$/ })).toHaveLength(missing.length);
+    fireEvent.click(screen.getByRole("button", { name: /Inputs present/ }));
+    expect(screen.queryAllByRole("button", { name: /^Request$/ })).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: /Inputs present/ })); // off again: every check
+
+    fireEvent.click(screen.getAllByRole("button", { name: /^Request$/ })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Add to requests" }));
+    expect(onSaveAsk).toHaveBeenCalledWith(
+      expect.objectContaining({ origin: "data_point", fieldKey: missing[0].ruleId, type: "missing_document" })
+    );
+    expect(screen.queryByRole("button", { name: /Request by email/ })).toBeNull();
+  });
+});
