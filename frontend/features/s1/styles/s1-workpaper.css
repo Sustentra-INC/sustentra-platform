@@ -3389,3 +3389,7 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 
 /* Icons sized by their box, not by a text size (design standard: three text sizes). */
 .s1-vw-box__icon .s1-vw-ico, .s1-vw-close .s1-vw-ico, .s1-vw-ico.s1-vw-src-empty__icon { width: 1.25rem; height: 1.25rem; }
+
+/* Extraction review: a document opened with no values says so. */
+.s1-xr-unread { margin: var(--sp-3) 0 0; padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); color: var(--ink-2); background: var(--state-open-bg); border: var(--hairline-width) solid var(--state-open-line); border-radius: var(--radius-input); overflow-wrap: anywhere; }
+.s1-xr-unread strong { color: var(--ink); }

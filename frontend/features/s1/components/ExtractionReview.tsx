@@ -26,6 +26,8 @@ interface ExtractionReviewProps {
    *  judgment survives navigation. Same pattern as the requests/findings stores. */
   onValuesChange: (updater: (cur: ReviewValue[]) => ReviewValue[]) => void;
   initialDocumentId?: string | null;
+  /** The opened document's file name, said when no value was read from it. */
+  initialDocumentName?: string;
   /** Open with this value selected (a link from the assistant). */
   initialValueId?: string;
   /** Facility->type (or entity/not-yet-known) node the clicked row maps to, so
@@ -76,6 +78,7 @@ export function ExtractionReview({
   values,
   onValuesChange,
   initialDocumentId,
+  initialDocumentName,
   initialValueId,
   initialNodeKey,
   onSaveAsk,
@@ -97,8 +100,12 @@ export function ExtractionReview({
     [items, initialDocumentId, initialNodeKey, initialValueId]
   );
 
+  // A document opened with no values: say so, rather than open another document's value.
+  const [unreadDocument] = useState<string | null>(() =>
+    initialDocumentId && !initialValueId && !items.some((v) => v.documentId === initialDocumentId) ? (initialDocumentName ?? "this document") : null
+  );
   const [nodeKey, setNodeKey] = useState<string>(initial.nodeKey);
-  const [selectedId, setSelectedId] = useState<string | null>(initial.valueId);
+  const [selectedId, setSelectedId] = useState<string | null>(unreadDocument ? null : initial.valueId);
   const [filter, setFilter] = useState<ValueReviewState | null>(null);
   // A long document: show the values of one page at a time.
   const [pageFilter, setPageFilter] = useState<number | null>(null);
@@ -572,6 +579,12 @@ export function ExtractionReview({
               />
             ) : null}
           </div>
+
+          {unreadDocument && !selectedId ? (
+            <p className="s1-xr-unread" role="status">
+              No values were read from <strong>{unreadDocument}</strong>. The cards below are the other documents here.
+            </p>
+          ) : null}
 
           {adding && (selected ?? nodeValues[0]) ? (
             <AddValueForm

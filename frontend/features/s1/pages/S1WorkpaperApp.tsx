@@ -972,6 +972,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onValuesChange={setReviewValues}
             key={`${activeView.documentId}:${activeView.valueId ?? ""}`}
             initialDocumentId={activeView.documentId}
+            initialDocumentName={evidenceView.find((e) => e.documentId === activeView.documentId)?.filename}
             initialValueId={activeView.valueId}
             initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}

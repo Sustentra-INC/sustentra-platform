@@ -1,4 +1,7 @@
 import type { ReviewValue, ScopePlacement, SourceKind, ValueRecordEntry } from "../../types/review";
+import type { SourceRef } from "../../types/verificationResults";
+import { manufacturerEvidence } from "../evidence/manufacturerEvidence";
+import { verificationLines } from "../verification/resultsDataset";
 
 /**
  * Extracted values for Cascade Provisions, keyed to the workspace documents.
@@ -53,13 +56,13 @@ const values: ReviewValue[] = [];
 const slug = (fid: string) => FAC_NAME[fid].split(" ")[0].toLowerCase();
 
 // electricity · Scope 2 always two values (location + market), with a span.
-function electricity(fid: string, month: string, kwh: number) {
+function electricity(fid: string, month: string, kwh: number, documentId = `DOC-${slug(fid)}-elec-${month.toLowerCase()}`) {
   const file = `${slug(fid)}_electric_${month.toLowerCase()}_2025.pdf`;
   const period = `${month} 2025`;
   const span = { page: 1, x: 0.58, y: 0.42, w: 0.3, h: 0.05 };
   values.push(
     rv({
-      documentId: `DOC-${slug(fid)}-elec-${month.toLowerCase()}`,
+      documentId,
       filename: file,
       documentType: "Electricity bill",
       facilityId: fid,
@@ -73,7 +76,7 @@ function electricity(fid: string, month: string, kwh: number) {
       requestPreselect: "clarify",
     }),
     rv({
-      documentId: `DOC-${slug(fid)}-elec-${month.toLowerCase()}`,
+      documentId,
       filename: file,
       documentType: "Electricity bill",
       facilityId: fid,
@@ -111,11 +114,34 @@ function gas(fid: string, month: string, therms: number, extra?: Partial<ReviewV
   );
 }
 
+/**
+ * What each bill reads, taken from the documents Verification results recomputes from, so a
+ * bill shows the same figure on Evidence, in review and in Verification results.
+ * Electricity is in MWh there and in kWh on the bill.
+ */
+const BILL_READS = (() => {
+  const reads = new Map<string, number>();
+  const take = (source?: SourceRef) => {
+    if (source?.kind === "records") source.items.forEach((d) => reads.set(d.filename, d.quantity));
+    else if (source?.kind === "document") reads.set(source.filename, source.quantity);
+  };
+  for (const line of verificationLines)
+    for (const facility of line.facilities ?? []) for (const step of facility.steps) [...step.how, step.reported, step.recomputed].forEach((c) => take(c?.source));
+  return reads;
+})();
+
+const MONTH_NAME = (m: string) => m.charAt(0).toUpperCase() + m.slice(1);
+
+// Every monthly electricity and gas bill on Evidence gets its reading.
+for (const doc of manufacturerEvidence) {
+  const bill = /^(tualatin|kent|modesto)_(electric|gas)_([a-z]{3})_2025\.pdf$/.exec(doc.filename);
+  const read = BILL_READS.get(doc.filename);
+  if (!bill || read === undefined || !doc.facilityId || doc.disposition === "withdrawn") continue;
+  if (bill[2] === "electric") electricity(doc.facilityId, MONTH_NAME(bill[3]), Math.round(read * 1000), doc.documentId);
+  else gas(doc.facilityId, MONTH_NAME(bill[3]), Math.round(read), { documentId: doc.documentId });
+}
+
 ([FAC.tualatin, FAC.kent, FAC.modesto] as string[]).forEach((fid, i) => {
-  electricity(fid, "Jan", 410000 + i * 90000);
-  electricity(fid, "Apr", 428000 + i * 90000);
-  gas(fid, "Jan", 28000 + i * 7000);
-  gas(fid, "Apr", 29200 + i * 7000);
   // refrigerant · Scope 1, no span (fallback state).
   values.push(
     rv({
@@ -163,7 +189,7 @@ values.push(
     period: "Jul 2025",
     whatItIs: "Electricity consumed",
     scope: "scope2_location",
-    value: "418,200",
+    value: Math.round((BILL_READS.get("tualatin_electric_jul_2025.pdf") ?? 0) * 1000).toLocaleString(),
     unit: "kWh",
     withdrawn: true,
     withdrawnReason: "Document withdrawn · duplicate of the July electricity bill.",
@@ -172,15 +198,18 @@ values.push(
 );
 
 // one corrected value (machine original stays visible) · Tualatin April gas.
-gas(FAC.tualatin, "AprCorr", 34200, {
+// The corrected April bill reads what the April bill reads; the reading dropped a digit.
+const APRIL_GAS = Math.round(BILL_READS.get("tualatin_gas_apr_2025.pdf") ?? 34200);
+const APRIL_MISREAD = Math.round(APRIL_GAS / 10).toLocaleString();
+gas(FAC.tualatin, "AprCorr", APRIL_GAS, {
   documentId: "DOC-tualatin-gas-aprcorr",
   filename: "tualatin_gas_apr_2025_corrected.pdf",
   period: "Apr 2025",
   reviewState: "corrected",
-  originalValue: "3,420",
+  originalValue: APRIL_MISREAD,
   record: [
-    { kind: "machine", actor: "System", at: "2025-09-10T08:00:00Z", action: "read", reason: "3,420 therms · from page" },
-    { kind: "human", actor: "M. Osei", at: "2025-09-15T10:24:00Z", action: "corrected value", reason: "OCR dropped a digit · 34,200 on the page" },
+    { kind: "machine", actor: "System", at: "2025-09-10T08:00:00Z", action: "read", reason: `${APRIL_MISREAD} therms · from page` },
+    { kind: "human", actor: "M. Osei", at: "2025-09-15T10:24:00Z", action: "corrected value", reason: `OCR dropped a digit · ${APRIL_GAS.toLocaleString()} on the page` },
   ],
 });
 
@@ -307,6 +336,16 @@ for (let i = 1; i <= 218; i += 1) {
       span: null,
     })
   );
+}
+
+// Each value belongs to the Evidence row for its file: where a value was keyed to another id
+// (refrigerant logs, meter photos, reference documents), it takes the row's.
+const evidenceIds = new Set(manufacturerEvidence.map((e) => e.documentId));
+const rowForFile = new Map<string, string | null>();
+for (const e of manufacturerEvidence) rowForFile.set(e.filename, rowForFile.has(e.filename) ? null : e.documentId);
+for (const v of values) {
+  const row = evidenceIds.has(v.documentId) ? null : rowForFile.get(v.filename);
+  if (row) v.documentId = row;
 }
 
 export const manufacturerValues: ReviewValue[] = values;

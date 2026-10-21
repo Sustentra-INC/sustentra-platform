@@ -53,10 +53,11 @@ describe("assistant tools: read-only lookups over what the user sees", () => {
 
   it("reads a document's values, with their review state and where they came from", () => {
     const out = JSON.parse(runAssistantTool("get_values", { document_id: "doc:DOC-PARTIAL" }, DATA));
-    expect(out.values).toEqual([
-      expect.objectContaining({ ref: expect.stringMatching(/^val:/), value: "not found on the document", review_state: "to_review" }),
-    ]);
-    expect(out.values[0].document).toMatchObject({ ref: "doc:DOC-PARTIAL", file: "kent_gas_sep_2025.pdf" });
+    // The September gas bill: its usage read, its service period end date not found.
+    expect(out.values).toContainEqual(
+      expect.objectContaining({ ref: expect.stringMatching(/^val:/), value: "not found on the document", review_state: "to_review" })
+    );
+    for (const value of out.values) expect(value.document).toMatchObject({ ref: "doc:DOC-PARTIAL", file: "kent_gas_sep_2025.pdf" });
   });
 
   it("gives the verification results box by box, and the reference library by topic", () => {
