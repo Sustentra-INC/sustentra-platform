@@ -556,8 +556,9 @@ export function ExtractionReview({
                     ) : null}
                     {(() => {
                       const docId = group.values[0]?.documentId;
-                      const left = items.filter(
-                        (x) => x.documentId === docId && x.reviewState === "to_review" && !x.withdrawn && !x.missing
+                      // Counted by card, like the list: one reading is one accept.
+                      const left = readings(
+                        items.filter((x) => x.documentId === docId && x.reviewState === "to_review" && !x.withdrawn && !x.missing)
                       ).length;
                       return left > 1 && docId ? (
                         <button className="s1-button s1-button--compact s1-xr-acceptall" type="button" onClick={() => acceptAll(docId)}>
