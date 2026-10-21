@@ -78,6 +78,14 @@ describe("the Reported vs recomputed table", () => {
     ]);
   });
 
+  it("adds each facility after its consolidated share, and leaves biogenic CO₂ whole", () => {
+    const half = { ...facility("jv", 400, 500), consolidatedShare: 0.5 };
+    const scope1 = line("ng", "Natural gas", [facility("a", 100, 100), half], { box: "scope1", category: "Stationary combustion" });
+    expect([lineReported(scope1), lineRecomputed(scope1)]).toEqual([300, 350]);
+    const biogenic = line("bio", "Direct", [half], { box: "biogenic" });
+    expect([lineReported(biogenic), lineRecomputed(biogenic)]).toEqual([400, 500]);
+  });
+
   it("formats tonnes and percentages with their signs", () => {
     expect(formatTonnes(9560.61)).toBe("9,561");
     expect(formatSignedTonnes(345.245)).toBe("+345");
@@ -252,6 +260,42 @@ describe("the Verification results page", () => {
 
     fireEvent.click(within(calc).getByRole("button", { name: "Close calculation" }));
     expect(screen.queryByRole("region", { name: "Source" })).toBeNull();
+  });
+
+  it("shows each facility's consolidated share, closes every card on it, and totals the panel from it", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "Natural gas" }));
+    const calc = screen.getByRole("region", { name: "Calculation" });
+    const table = calc.querySelector(".s1-vw-facilities") as HTMLTableElement;
+    const headers = Array.from(table.tHead!.rows[0].cells).map((th) => th.textContent);
+    expect(headers.slice(1, 3)).toEqual(["Facility", "Consolidated share"]);
+    const facilityRows = Array.from(table.tBodies[0].rows).filter((r) => r.classList.contains("s1-vw-row"));
+    expect(facilityRows).toHaveLength(3);
+    for (const row of facilityRows) expect(row.cells[2].textContent).toBe("100%");
+
+    // Kent's card: one last row after Total, the total times its share, with the difference.
+    const steps = Array.from(calc.querySelectorAll(".s1-vw-steps tbody tr")) as HTMLTableRowElement[];
+    const [total, consolidated] = steps.slice(-2);
+    expect(total.cells[0].textContent).toBe("Total");
+    expect(consolidated.cells[0].textContent).toBe("Consolidated");
+    expect(consolidated.cells[1].textContent).toBe("Total × 100% consolidated share");
+    expect(consolidated.cells[2].textContent).toBe(total.cells[2].textContent);
+    expect(consolidated.cells[3].textContent).toMatch(/^[\d,]+ tCO₂e \(\+\d+\)$/);
+    expect(total.cells[3].textContent).not.toMatch(/\(/);
+
+    // The panel's bottom row sums the facilities' consolidated values.
+    const bottom = table.querySelector(".s1-vw-total") as HTMLTableRowElement;
+    expect(Array.from(bottom.cells).map((c) => c.textContent)).toEqual(["Natural gas", "Total", "", "9,561", "9,906", "+345"]);
+  });
+
+  it("leaves biogenic CO₂ without a consolidated share", () => {
+    render(<Harness />);
+    const head = screen.getAllByRole("button", { name: /Biogenic CO₂/ }).find((b) => b.hasAttribute("aria-expanded")) as HTMLElement;
+    fireEvent.click(head);
+    fireEvent.click(within(head.closest(".s1-vw-box") as HTMLElement).getByRole("button", { name: "Direct" }));
+    const calc = screen.getByRole("region", { name: "Calculation" });
+    expect(within(calc).queryByText("Consolidated share")).toBeNull();
+    expect(within(calc).queryByText("Consolidated")).toBeNull();
   });
 
   it("saves a note only with text, and a note is not an examination", () => {

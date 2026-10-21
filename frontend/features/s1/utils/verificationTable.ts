@@ -17,8 +17,9 @@ import {
  * The total row sums Recomputed, Difference and %Material over the rows that have
  * both values; its Share is the coverage. Its Reported sums every reported row, so a
  * row reported but not tested lowers the coverage instead of vanishing from it.
- * Lines and facilities hold unrounded tCO2e: everything is summed first and rounded
- * once, at display.
+ * A line's Reported and Recomputed sum its facilities after each one's consolidated
+ * share (Scope 1 and 2; 100% for now). Lines and facilities hold unrounded tCO2e:
+ * everything is summed first and rounded once, at display.
  */
 
 export const RESULT_BOXES: { key: ResultBoxKey; title: string; totalLabel: string }[] = [
@@ -99,12 +100,29 @@ function sumOf(facilities: FacilityResult[], pick: (f: FacilityResult) => number
   return facilities.length ? total : null;
 }
 
+/**
+ * The share of a facility's emissions the line consolidates; null for biogenic CO₂,
+ * which is reported outside the scopes and takes no share.
+ */
+export function consolidatedShare(line: ResultLine, facility: FacilityResult): number | null {
+  return line.box === "biogenic" ? null : (facility.consolidatedShare ?? 1);
+}
+
+/** A facility's value after its consolidated share: what the line adds up. */
+export function facilityReported(line: ResultLine, facility: FacilityResult): number | null {
+  return facility.reported === null ? null : facility.reported * (consolidatedShare(line, facility) ?? 1);
+}
+
+export function facilityRecomputed(line: ResultLine, facility: FacilityResult): number | null {
+  return facility.recomputed === null ? null : facility.recomputed * (consolidatedShare(line, facility) ?? 1);
+}
+
 export function lineReported(line: ResultLine): number | null {
-  return line.facilities ? sumOf(line.facilities, (f) => f.reported) : null;
+  return line.facilities ? sumOf(line.facilities, (f) => facilityReported(line, f)) : null;
 }
 
 export function lineRecomputed(line: ResultLine): number | null {
-  return line.facilities ? sumOf(line.facilities, (f) => f.recomputed) : null;
+  return line.facilities ? sumOf(line.facilities, (f) => facilityRecomputed(line, f)) : null;
 }
 
 function emptyRow(key: string, activity: string, categoryLabel: string | null): ResultRow {
