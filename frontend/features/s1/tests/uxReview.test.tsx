@@ -203,3 +203,58 @@ describe("extraction review: a value the reading missed", () => {
     expect(screen.queryByRole("button", { name: "Add a value" })).toBeNull();
   });
 });
+
+describe("demo documents: the whole document, values highlighted in place", () => {
+  it("draws a bill whole, marks each value read and each value not found, and picks values from the page", async () => {
+    const { DemoDocument } = await import("../components/demo/DemoDocument");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    const elec = manufacturerValues.filter((v) => v.documentId === "DOC-tualatin-elec-jan");
+    const onPick = vi.fn();
+    render(<DemoDocument values={elec} engagement={engagementConfig} selectedId={elec[0].id} onPick={onPick} />);
+
+    expect(screen.getByLabelText("Page 1 of 2")).toBeInTheDocument();
+    expect(screen.getByLabelText("Page 2 of 2")).toBeInTheDocument();
+    // Location- and market-based read the same figure: one highlight picks both.
+    const figure = screen.getByRole("button", { pressed: true });
+    expect(figure).toHaveAttribute("data-ids", elec.map((v) => v.id).join(" "));
+    fireEvent.click(figure);
+    expect(onPick).toHaveBeenCalledWith(elec.map((v) => v.id));
+  });
+
+  it("marks a value the reading could not find where it belongs", async () => {
+    const { DemoDocument } = await import("../components/demo/DemoDocument");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    const partial = manufacturerValues.filter((v) => v.documentId === "DOC-PARTIAL");
+    render(<DemoDocument values={partial} engagement={engagementConfig} selectedId={null} onPick={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /Service period end date, not found/ })).toHaveClass("s1-dd-hl--missing");
+    expect(screen.getByText("1 not found")).toBeInTheDocument();
+  });
+
+  it("draws a spreadsheet with every value cell highlighted", async () => {
+    const { DemoDocument } = await import("../components/demo/DemoDocument");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    const workbook = manufacturerValues.filter((v) => v.documentId === "DOC-WORKBOOK");
+    const { container } = render(<DemoDocument values={workbook} engagement={engagementConfig} selectedId={null} onPick={vi.fn()} />);
+    expect(container.querySelectorAll(".s1-dd-hl")).toHaveLength(workbook.length);
+  });
+});
+
+describe("evidence row menu", () => {
+  it("floats above the page so no card can cut it off", () => {
+    render(
+      <EvidenceWorkspace
+        engagement={engagementConfig}
+        evidence={manufacturerEvidence}
+        asks={[]}
+        onSaveAsk={vi.fn()}
+        onEvidenceChange={vi.fn()}
+        onOpenExtraction={vi.fn()}
+      />
+    );
+    fireEvent.click(screen.getAllByRole("button", { expanded: false }).find((b) => b.textContent?.startsWith("Electricity bill"))!);
+    fireEvent.click(screen.getAllByRole("button", { name: /^Actions for / })[0]);
+    const menu = screen.getByRole("menu");
+    expect(menu).toHaveClass("s1-menu__panel--float");
+    expect(menu.closest(".s1-ws-gr")).toBeNull();
+  });
+});

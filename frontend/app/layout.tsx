@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import "../features/s1/styles/sustentra-tokens.css";
 import "../features/s1/styles/s1-workpaper.css";
+import "../features/s1/styles/s1-demo-documents.css";
 
 /**
  * Root layout. The Sustentra product surface (the S1 workpaper) lives at `/` and

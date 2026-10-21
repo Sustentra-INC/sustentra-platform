@@ -36,6 +36,7 @@ import { logout } from "../../auth/api";
 import { DashboardScreen } from "../components/DashboardScreen";
 import { UploadDialog, type SampleScript, type UploadTask } from "../components/UploadDialog";
 import { SetupScreen } from "../components/SetupScreen";
+import { DemoDocument } from "../components/demo/DemoDocument";
 import { InvoicePage } from "../components/demo/InvoicePage";
 import {
   preparedInvoiceEvidence,
@@ -955,10 +956,20 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               const asContent =
                 ["xlsx", "csv", "docx"].includes(format) ||
                 (format === "other" && /\.(txt|md|markdown)$/i.test(item?.filename ?? ""));
+              const demoValues =
+                dataMode === "fixture" ? reviewValuesView.filter((v) => v.documentId === documentId) : [];
               return documentId === DEMO_INVOICE_ID ? (
                 <InvoicePage
                   highlight={span ? { x: span.x, y: span.y, w: span.w, h: span.h } : null}
                   onMarkClick={onPickBox}
+                />
+              ) : demoValues.length ? (
+                // The demo's documents, drawn whole with every value highlighted in place.
+                <DemoDocument
+                  values={demoValues}
+                  engagement={engagement}
+                  selectedId={pick?.selectedId ?? null}
+                  onPick={(ids) => pick?.onPickAmong(ids)}
                 />
               ) : dataMode === "backend" && ["pdf", "image"].includes(format) ? (
                 // The uploaded page as an image, the value outlined where it was read.
