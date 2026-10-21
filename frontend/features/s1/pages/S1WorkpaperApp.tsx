@@ -918,6 +918,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onSaveAsk={requests.saveAsk}
             onBack={() => setActiveView({ name: "evidence" })}
             reviewerName={dataMode === "backend" ? user?.firstName ?? user?.email : undefined}
+            allowAddValue={dataMode === "fixture"}
             onPersistAccept={
               dataMode === "backend"
                 ? async (value) => {
