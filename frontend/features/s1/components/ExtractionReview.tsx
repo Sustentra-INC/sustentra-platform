@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueReviewState } from "../types/review";
@@ -445,6 +445,33 @@ export function ExtractionReview({
     flash("Added to requests · not yet sent");
   }
 
+  // The cards as listed, so arrow keys can move through them.
+  const groups = groupValues(filtered).map((group) => {
+    const cards = readings(group.values);
+    const capped = cards.slice(0, REVIEW_CAP);
+    // A value picked on the document beyond the cap still gets its card.
+    const picked = cards.find((vs) => vs.some((x) => x.id === selectedId));
+    if (picked && !capped.includes(picked)) capped.push(picked);
+    return { ...group, cards, capped, hidden: Math.max(cards.length - capped.length, 0) };
+  });
+  const listed = groups.flatMap((g) => g.capped);
+
+  /** ↑ and ↓ move through the cards; the document follows. */
+  function onListKey(e: KeyboardEvent<HTMLDivElement>) {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    if ((e.target as HTMLElement).closest("input, textarea, select")) return;
+    e.preventDefault();
+    const at = listed.findIndex((vs) => vs.some((x) => x.id === selectedId));
+    const next = listed[Math.max(0, Math.min(listed.length - 1, at + (e.key === "ArrowDown" ? 1 : -1)))];
+    if (!next) return;
+    setSelectedId(next[0].id);
+    window.requestAnimationFrame(() => {
+      const card = valuesPane.current?.querySelector<HTMLElement>(`[data-value-id="${CSS.escape(next[0].id)}"]`);
+      card?.scrollIntoView?.({ block: "nearest" });
+      card?.focus({ preventScroll: true });
+    });
+  }
+
   if (items.length === 0) {
     return (
       <section className="s1-content s1-xr">
@@ -501,7 +528,7 @@ export function ExtractionReview({
         </aside>
 
         {/* Values */}
-        <div className="s1-xr-values" ref={valuesPane}>
+        <div className="s1-xr-values" ref={valuesPane} onKeyDown={onListKey}>
           <div className="s1-xr-vhead">
             <div className="s1-xr-vhead__top">
               <h2>{nodeHeaderLabel(nodeKey, engagement)}</h2>
@@ -511,15 +538,17 @@ export function ExtractionReview({
                 </button>
               ) : null}
             </div>
-            <div className="s1-xr-filters">
+            <div className="s1-xr-filters" role="group" aria-label="Show cards by review state">
               {(["to_review", "accepted", "corrected", "requested"] as ValueReviewState[]).map((k) => (
                 <button
                   key={k}
-                  className={`s1-xr-filter${filter === k ? " is-on" : ""}`}
+                  className={`s1-xr-filter s1-xr-filter--${k}${filter === k ? " is-on" : ""}`}
                   type="button"
+                  aria-pressed={filter === k}
                   onClick={() => setFilter((cur) => (cur === k ? null : k))}
                 >
-                  <span className="s1-xr-filter__n">{counts[k]}</span> {reviewStateLabel(k)}
+                  <span className="s1-xr-filter__n">{counts[k]}</span>
+                  <span className="s1-xr-filter__label">{reviewStateLabel(k)}</span>
                 </button>
               ))}
             </div>
@@ -539,13 +568,7 @@ export function ExtractionReview({
               No values match {pageFilter !== null ? `page ${pageFilter}` : reviewStateLabel(filter ?? "to_review")}.
             </div>
           ) : (
-            groupValues(filtered).map((group) => {
-              const cards = readings(group.values);
-              const capped = cards.slice(0, REVIEW_CAP);
-              // A value picked on the document beyond the cap still gets its card.
-              const picked = cards.find((vs) => vs.some((x) => x.id === selectedId));
-              if (picked && !capped.includes(picked)) capped.push(picked);
-              const hidden = Math.max(cards.length - capped.length, 0);
+            groups.map(({ cards, capped, hidden, ...group }) => {
               return (
                 <div key={group.key} className="s1-xr-group">
                   <div className="s1-xr-doc">
@@ -757,59 +780,58 @@ function ValueCard({
       tabIndex={0}
       aria-current={selected}
       onKeyDown={(e) => {
-        if (e.key === "Enter") onSelect();
+        if (e.key === "Enter" && e.target === e.currentTarget) onSelect();
       }}
     >
-      <div className="s1-xr-gutter" aria-hidden>
-        {v.reviewState === "accepted" ? "✓" : v.reviewState === "corrected" ? "✎" : v.reviewState === "requested" ? "◷" : "·"}
+      <div className="s1-xr-card__top">
+        <span className="s1-xr-what">{v.whatItIs}</span>
+        <span className="s1-xr-period">{v.period}</span>
+        {done ? <span className={`s1-xr-badge s1-xr-badge--${v.reviewState}`}>{reviewStateLabel(v.reviewState)}</span> : null}
       </div>
-      <div className="s1-xr-body">
-        <div className="s1-xr-l1">
-          <span>{v.documentType}</span>
-          <span className="s1-xr-dot">·</span>
-          <span className="s1-xr-what">{v.whatItIs}</span>
-          <span className="s1-xr-dot">·</span>
-          <span>{v.period}</span>
-        </div>
-        <div className="s1-xr-l2">
-          {scopeChips(vs).map((chip) => (
-            <span key={chip.label} className={`s1-xr-scope s1-xr-scope--${chip.scope}`}>
-              {chip.label}
-            </span>
-          ))}
-        </div>
-        <div className="s1-xr-l3">
-          {v.missing && v.reviewState === "to_review" ? (
-            <span className="s1-xr-missing">Not found on the document</span>
-          ) : (
-            <>
-              <span className="s1-xr-val">{v.value}</span>
-              {v.unit ? <span className="s1-xr-unit">{v.unit}</span> : null}
-            </>
-          )}
-          {v.reviewState === "corrected" ? (
-            <span className={`s1-xr-was${v.originalValue ? "" : " s1-xr-was--keyed"}`}>
-              {v.originalValue ? `was ${v.originalValue}` : "entered by the reviewer"}
-            </span>
-          ) : null}
-        </div>
+      <div className="s1-xr-card__value">
+        {v.missing && v.reviewState === "to_review" ? (
+          <span className="s1-xr-missing">Not found on the document</span>
+        ) : (
+          <>
+            <span className="s1-xr-val">{v.value}</span>
+            {v.unit ? <span className="s1-xr-unit">{v.unit}</span> : null}
+          </>
+        )}
+        {v.reviewState === "corrected" ? (
+          <span className={`s1-xr-was${v.originalValue ? "" : " s1-xr-was--keyed"}`}>
+            {v.originalValue ? `was ${v.originalValue}` : "entered by the reviewer"}
+          </span>
+        ) : null}
+      </div>
+      <div className="s1-xr-card__scopes">
+        {scopeChips(vs).map((chip) => (
+          <span key={chip.label} className={`s1-xr-scope s1-xr-scope--${chip.scope}`}>
+            {chip.label}
+          </span>
+        ))}
+      </div>
 
-        <div className="s1-xr-record">
-          {v.record.map((r, i) => (
-            <div key={i} className={`s1-xr-rec s1-xr-rec--${r.kind}`}>
-              {r.kind === "machine" ? (
-                <span className="s1-xr-rec__mk" aria-hidden />
-              ) : (
-                <span className="s1-xr-rec__who" title={r.actor}>
-                  {initials(r.actor)}
+      {/* The selected card opens: where it came from, its record, and what to do. */}
+      {selected || editing ? (
+        <div className="s1-xr-card__more">
+          <div className="s1-xr-record">
+            {v.record.map((r, i) => (
+              <div key={i} className={`s1-xr-rec s1-xr-rec--${r.kind}`}>
+                {r.kind === "machine" ? (
+                  <span className="s1-xr-rec__mk" aria-hidden />
+                ) : (
+                  <span className="s1-xr-rec__who" title={r.actor}>
+                    {initials(r.actor)}
+                  </span>
+                )}
+                <span className="s1-xr-rec__act">
+                  {r.kind === "machine" ? `System read · ${v.documentType}, page ${v.page}` : `${r.actor} · ${r.action}`}
                 </span>
-              )}
-              <span className="s1-xr-rec__act">{r.kind === "machine" ? "System read" : `${r.actor} · ${r.action}`}</span>
-              {r.reason ? <span className="s1-muted"> · {r.reason}</span> : null}
-              <span className="s1-mono s1-muted"> {formatTime(r.at)}</span>
-            </div>
-          ))}
-        </div>
+                {r.reason ? <span className="s1-muted"> · {r.reason}</span> : null}
+                <span className="s1-muted s1-xr-rec__at">{formatTime(r.at)}</span>
+              </div>
+            ))}
+          </div>
 
         <div className="s1-xr-actions" onClick={(e) => e.stopPropagation()}>
           {v.withdrawn ? (
@@ -870,8 +892,9 @@ function ValueCard({
               </button>
             </>
           )}
+          </div>
         </div>
-      </div>
+      ) : null}
     </article>
   );
 }
