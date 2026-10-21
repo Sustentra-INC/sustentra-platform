@@ -2,6 +2,11 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { AnswerText, type ResolvedRef } from "../assistant/AnswerText";
+import { AssistantUnavailable, askAssistant } from "../assistant/client";
+import type { Message } from "../assistant/sanitize";
+import { TOOL_ACTIVITY } from "../assistant/spec";
+import type { AssistantData } from "../assistant/tools";
 import type { NavKey } from "./S1Chrome";
 
 /**
@@ -297,12 +302,50 @@ export function respond(question: string, page?: NavKey, live = false): string {
 
 const SUGGESTIONS = ["Explain materiality", "What emission factor is used?", "What does coverage mean?"];
 
-/** ``live``: the app is on the engagement's real data, so answers explain methods, not demo figures. */
-export function AssistantWidget({ page, live = false }: { page?: NavKey; live?: boolean }) {
+/** Starter questions for the connected assistant, per screen. */
+const CONNECTED_SUGGESTIONS: Partial<Record<NavKey, string[]>> = {
+  dashboard: ["What needs my attention first?", "Where does this engagement stand?"],
+  setup: ["What does limited assurance mean here?", "Which facilities are in scope?"],
+  evidence: ["Which documents are blocked, and why?", "What is missing for Kent Cannery?"],
+  requests: ["What is still missing?", "Draft a request for the missing September gas bill"],
+  coverage: ["What is still missing?", "Which checks are ready?"],
+  results: ["Why does Scope 2 market-based differ?", "Which results are not examined yet?"],
+  output: ["What is left before the statement can be issued?"],
+};
+
+/** The live assistant: the engagement data it may look things up in, and where its links lead. */
+export interface AssistantConnection {
+  data: AssistantData;
+  onOpenDocument: (documentId: string, valueId?: string) => void;
+  onNavigate: (key: NavKey) => void;
+}
+
+type ChatItem =
+  | { role: "user"; text: string }
+  | { role: "assistant"; text: string; status?: string; streaming?: boolean; error?: string; canned?: boolean };
+
+/** ``live``: the app is on the engagement's real data, so canned answers explain methods, not demo figures.
+ *  ``assistant``: connect to the live assistant (it looks things up in ``data``); without it,
+ *  or when the assistant is not connected on this site, the built-in help answers. */
+export function AssistantWidget({
+  page,
+  live = false,
+  assistant,
+}: {
+  page?: NavKey;
+  live?: boolean;
+  assistant?: AssistantConnection;
+}) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Msg[]>([]);
+  const [chat, setChat] = useState<ChatItem[]>([]);
   const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const history = useRef<Message[]>([]);
+  const abort = useRef<AbortController | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const connected = Boolean(assistant) && !offline;
 
   // Brief the current page whenever the panel opens (or the page changes while
   // open). Adjusting state during render on a key change, instead of in an
@@ -311,7 +354,7 @@ export function AssistantWidget({ page, live = false }: { page?: NavKey; live?: 
   const [shownBriefKey, setShownBriefKey] = useState(briefKey);
   if (briefKey !== shownBriefKey) {
     setShownBriefKey(briefKey);
-    if (open) {
+    if (open && !assistant) {
       const brief = page ? (live ? LIVE_BRIEF : PAGE_BRIEF)[page] : undefined;
       const intro: Msg = {
         role: "assistant",
@@ -325,14 +368,97 @@ export function AssistantWidget({ page, live = false }: { page?: NavKey; live?: 
 
   useEffect(() => {
     bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight });
-  }, [messages]);
+  }, [messages, chat]);
+
+  useEffect(() => () => abort.current?.abort(), []);
+
+  // A cited ref, resolved to what the user recognizes (a few per answer, so a plain lookup).
+  const resolve = (kind: ResolvedRef["kind"], id: string): ResolvedRef | null => {
+    if (!assistant) return null;
+    const { data } = assistant;
+    if (kind === "doc") {
+      const label = data.evidence.find((d) => d.documentId === id)?.filename ?? data.values.find((v) => v.documentId === id)?.filename;
+      return label ? { kind, id, label, onOpen: () => assistant.onOpenDocument(id) } : null;
+    }
+    if (kind === "val") {
+      const v = data.values.find((x) => x.id === id);
+      return v
+        ? { kind, id, label: `${v.value}${v.unit ? ` ${v.unit}` : ""} · ${v.filename}`, onOpen: () => assistant.onOpenDocument(v.documentId, v.id) }
+        : null;
+    }
+    if (kind === "req") {
+      const a = data.asks.find((x) => x.id === id);
+      return a ? { kind, id, label: `Request: ${a.source.itemLabel}`, onOpen: () => assistant.onNavigate("requests") } : null;
+    }
+    if (kind === "chk") {
+      const r = (data.coverage ?? []).find((x) => x.ruleId === id);
+      return r ? { kind, id, label: r.assertion, onOpen: () => assistant.onNavigate("requests") } : null;
+    }
+    return { kind, id, label: REFERENCE_LABEL[id] ?? id.replace(/_/g, " ") };
+  };
+
+  function sendCanned(t: string) {
+    // Built-in help next to live data explains methods only: its fixed figures would be stale.
+    if (assistant) setChat((c) => [...c, { role: "user", text: t }, { role: "assistant", text: respond(t, page, true), canned: true }]);
+    else setMessages((m) => [...m, { role: "user", text: t }, { role: "assistant", text: respond(t, page, live) }]);
+  }
+
+  async function sendConnected(t: string) {
+    if (!assistant) return;
+    const controller = new AbortController();
+    abort.current = controller;
+    setBusy(true);
+    setChat((c) => [...c, { role: "user", text: t }, { role: "assistant", text: "", status: "Thinking", streaming: true }]);
+    const patch = (next: Partial<Extract<ChatItem, { role: "assistant" }>>) =>
+      setChat((c) => {
+        const copy = [...c];
+        const last = copy[copy.length - 1];
+        if (last?.role === "assistant") copy[copy.length - 1] = { ...last, ...next };
+        return copy;
+      });
+    try {
+      const { history: next, answer } = await askAssistant(
+        t,
+        history.current,
+        assistant.data,
+        page,
+        {
+          onStepStart: () => patch({ text: "" }),
+          onTool: (name) => patch({ status: TOOL_ACTIVITY[name] ?? "Looking things up" }),
+          onText: (d) => setChat((c) => {
+            const copy = [...c];
+            const last = copy[copy.length - 1];
+            if (last?.role === "assistant") copy[copy.length - 1] = { ...last, text: last.text + d, status: undefined };
+            return copy;
+          }),
+        },
+        controller.signal
+      );
+      history.current = next;
+      patch({ text: answer || "I couldn't finish looking that up. Try asking it a narrower way.", streaming: false, status: undefined });
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      if (error instanceof AssistantUnavailable && (error.status === 503 || error.status === 404)) {
+        // Not connected on this site: the built-in help answers instead.
+        setOffline(true);
+        patch({ text: respond(t, page, true), canned: true, streaming: false, status: undefined });
+      } else {
+        patch({ text: "", error: error instanceof Error ? error.message : "The assistant could not answer.", streaming: false, status: undefined });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
 
   function send(text: string) {
     const t = text.trim();
-    if (!t) return;
-    setMessages((m) => [...m, { role: "user", text: t }, { role: "assistant", text: respond(t, page, live) }]);
+    if (!t || busy) return;
     setInput("");
+    if (connected) void sendConnected(t);
+    else sendCanned(t);
   }
+
+  const suggestions = assistant ? (page && CONNECTED_SUGGESTIONS[page]) || ["What needs my attention first?"] : SUGGESTIONS;
 
   return (
     <>
@@ -342,21 +468,67 @@ export function AssistantWidget({ page, live = false }: { page?: NavKey; live?: 
             <span className="s1-ai__brand">
               <img className="s1-ai__mark" src="/sustentra-mark.png" alt="" aria-hidden />
               Sustentra assistant
+              {assistant ? <span className={`s1-ai__badge${connected ? "" : " is-off"}`}>{connected ? "AI" : "Built-in help"}</span> : null}
             </span>
-            <button className="s1-ai__close" type="button" aria-label="Close" onClick={() => setOpen(false)}>
-              ✕
-            </button>
+            <span className="s1-ai__headactions">
+              {assistant && chat.length ? (
+                <button
+                  className="s1-ai__new"
+                  type="button"
+                  onClick={() => {
+                    abort.current?.abort();
+                    history.current = [];
+                    setChat([]);
+                    setBusy(false);
+                  }}
+                >
+                  New chat
+                </button>
+              ) : null}
+              <button className="s1-ai__close" type="button" aria-label="Close" onClick={() => setOpen(false)}>
+                ✕
+              </button>
+            </span>
           </header>
           <div className="s1-ai__body" ref={bodyRef}>
-            {messages.map((m, i) => (
-              <div key={i} className={`s1-ai__msg s1-ai__msg--${m.role}`}>
-                {m.text}
-              </div>
-            ))}
+            {assistant ? (
+              <>
+                {chat.length === 0 ? (
+                  <div className="s1-ai__msg s1-ai__msg--assistant">
+                    Ask me about this engagement. I look things up in its documents, values, requests and results, and
+                    link every figure to where it came from. I read; the decisions are yours.
+                  </div>
+                ) : null}
+                {chat.map((m, i) =>
+                  m.role === "user" ? (
+                    <div key={i} className="s1-ai__msg s1-ai__msg--user">
+                      {m.text}
+                    </div>
+                  ) : (
+                    <div key={i} className={`s1-ai__msg s1-ai__msg--assistant${m.error ? " is-error" : ""}`} aria-live="polite">
+                      {m.status ? (
+                        <span className="s1-ai__status">
+                          <span className="s1-ai__dots" aria-hidden />
+                          {m.status}…
+                        </span>
+                      ) : null}
+                      {m.error ? m.error : m.text ? m.canned ? m.text : <AnswerText text={m.text} resolve={resolve} /> : null}
+                      {!m.streaming && !m.error && !m.canned && m.text ? <span className="s1-ai__disclaimer">AI answer · check the linked sources</span> : null}
+                    </div>
+                  )
+                )}
+              </>
+            ) : (
+              messages.map((m, i) => (
+                <div key={i} className={`s1-ai__msg s1-ai__msg--${m.role}`}>
+                  {m.text}
+                </div>
+              ))
+            )}
           </div>
           <div className="s1-ai__sugs">
-            {SUGGESTIONS.map((s) => (
-              <button key={s} className="s1-ai__sug" type="button" onClick={() => send(s)}>
+            {suggestions.map((s) => (
+              <button key={s} className="s1-ai__sug" type="button" disabled={busy} onClick={() => send(s)}>
                 {s}
               </button>
             ))}
@@ -371,10 +543,11 @@ export function AssistantWidget({ page, live = false }: { page?: NavKey; live?: 
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about this page…"
+              placeholder={assistant ? "Ask about this engagement…" : "Ask about this page…"}
               aria-label="Ask the assistant"
+              maxLength={2000}
             />
-            <button className="s1-ai__send" type="submit" aria-label="Send">
+            <button className="s1-ai__send" type="submit" aria-label="Send" disabled={busy}>
               ↑
             </button>
           </form>
@@ -392,3 +565,17 @@ export function AssistantWidget({ page, live = false }: { page?: NavKey; live?: 
     </>
   );
 }
+
+const REFERENCE_LABEL: Record<string, string> = {
+  sb253: "California SB 253",
+  ghg_protocol_scopes: "GHG Protocol scopes",
+  scope2_methods: "Scope 2 methods",
+  materiality: "Materiality",
+  limited_assurance: "Limited assurance",
+  emission_factors: "Emission factors",
+  refrigerants: "Refrigerant method",
+  coverage: "Coverage",
+  review_states: "Review states",
+  requests: "Requests",
+  sustentra_workflow: "Sustentra workflow",
+};

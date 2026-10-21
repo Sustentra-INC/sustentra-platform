@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
-import { AssistantWidget } from "./AssistantWidget";
+import { AssistantWidget, type AssistantConnection } from "./AssistantWidget";
 
 export type NavKey =
   | "dashboard"
@@ -42,6 +42,8 @@ interface S1ChromeProps {
   onOpenGlossary?: () => void;
   onOpenActivity?: () => void;
   onReset?: () => void;
+  /** The live assistant's data and links; without it the assistant gives built-in help. */
+  assistant?: AssistantConnection;
 }
 
 const DESTINATIONS: Array<{ key: NavKey; label: string }> = [
@@ -64,6 +66,7 @@ export function S1Chrome({
   onOpenGlossary,
   onOpenActivity,
   onReset,
+  assistant,
 }: S1ChromeProps) {
   const [navExpanded, setNavExpanded] = useState(true);
   const [ctxExpanded, setCtxExpanded] = useState(false);
@@ -89,7 +92,7 @@ export function S1Chrome({
         {children}
       </section>
       {/* A signed-in user means live data: the assistant explains methods, not demo figures. */}
-      <AssistantWidget page={current} live={Boolean(user)} />
+      <AssistantWidget page={current} live={Boolean(user)} assistant={assistant} />
     </div>
   );
 }

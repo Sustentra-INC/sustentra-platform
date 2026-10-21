@@ -105,7 +105,7 @@ type ActiveView =
   | { name: "coverage" }
   | { name: "results" }
   | { name: "output" }
-  | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string }
+  | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string; valueId?: string }
   | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
 
 /** Facility->type (or entity/not-yet-known) node a Workspace row maps into. */
@@ -457,13 +457,14 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setAuditIntents((current) => [...current, intent]);
   }
 
-  function openExtraction(documentId: string) {
+  function openExtraction(documentId: string, valueId?: string) {
     const item = evidenceItems.find((i) => i.documentId === documentId);
     setActiveView({
       name: "extraction",
       documentId,
       mode: "snippet",
       nodeKey: item ? nodeKeyForEvidence(item) : undefined,
+      valueId,
     });
   }
 
@@ -728,6 +729,39 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     dataMode === "backend" && (activeView.name === "requests" || activeView.name === "coverage"),
     handleSessionEnded
   );
+  // What the demo's assistant may look things up in: the engagement as the screens show it.
+  const assistantData = useMemo(
+    () =>
+      dataMode === "fixture"
+        ? {
+                  engagement,
+                  evidence: evidenceView,
+                  values: reviewValuesView,
+                  asks: requests.asks,
+                  coverage: coverageRules,
+                  resultLines: verificationLines,
+                  examinations: verification.examinations,
+                  findings: verification.findings,
+                  activity: engagementActivity({
+                    evidence: evidenceView,
+                    values: reviewValuesView,
+                    asks: requests.asks,
+                    findings: verification.findings,
+                    intents: auditIntents,
+                  }),
+                  figures: dashboardFigures({
+                    evidence: evidenceView,
+                    values: reviewValuesView,
+                    asks: requests.asks,
+                    findings: verification.findings,
+                    examinations: verification.examinations,
+                    coverage: coverageRules,
+                    calculatedIds: testedExaminationKeys(verificationLines),
+                  }),
+                }
+        : null,
+    [dataMode, engagement, evidenceView, reviewValuesView, requests.asks, verification.examinations, verification.findings, auditIntents]
+  );
   const foundFacilities = useMemo(
     () => (dataMode === "backend" ? unmatchedFacilities(facts, engagement.facilities) : []),
     [dataMode, facts, engagement.facilities]
@@ -772,6 +806,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         onNavigate={onNavigate}
         onReset={dataMode === "fixture" ? resetDemo : undefined}
         onOpenActivity={() => setActivityOpen(true)}
+        assistant={assistantData ? { data: assistantData, onOpenDocument: openExtraction, onNavigate } : undefined}
         onOpenGlossary={() =>
           setActiveView((current) =>
             current.name === "glossary" ? current : { name: "glossary", previous: current }
@@ -914,7 +949,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             engagement={engagementForUser}
             values={reviewValuesView}
             onValuesChange={setReviewValues}
+            key={`${activeView.documentId}:${activeView.valueId ?? ""}`}
             initialDocumentId={activeView.documentId}
+            initialValueId={activeView.valueId}
             initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}
             onBack={() => setActiveView({ name: "evidence" })}

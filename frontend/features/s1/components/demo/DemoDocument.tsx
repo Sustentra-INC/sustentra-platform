@@ -607,7 +607,7 @@ function FactorList({ ctx }: { ctx: Ctx }) {
     ["Diesel (mobile)", "10.21 kg CO₂/gal", "EPA Emission Factors Hub 2025, Table 2", []],
     ["Grid electricity · WECC", "", "eGRID2023, NWPP subregion", grid],
     ["Grid electricity · CAMX", "0.197 kgCO₂e/kWh", "eGRID2023, CAMX subregion", []],
-    ["R-404A", "GWP 3,922", "IPCC AR5", []],
+    ["R-404A", "GWP 3,943", "IPCC AR5", []],
   ];
   return (
     <Page n={1} of={1}>

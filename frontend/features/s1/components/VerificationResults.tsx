@@ -401,7 +401,7 @@ const WORKING: Record<string, WorkingSpec> = {
   "DP-REFRIGERANT": {
     formula: "Emissions (tCO₂e) = Refrigerant recharged (kg) × GWP ÷ 1,000",
     inputs: [{ label: "R-404A recharged", value: "12.2 kg", source: "refrigerant service log · Kent Cannery" }],
-    factor: { value: "GWP 3,922 (R-404A)", source: "IPCC AR5 · 100-year GWP" },
+    factor: { value: "GWP 3,943 (R-404A)", source: "IPCC AR5 · 100-year GWP" },
     references: ["GHG Protocol Corporate Standard, Ch. 6 — fugitive emissions", "IPCC AR5"],
     note: "Recompute path for fugitive emissions not built yet.",
   },
