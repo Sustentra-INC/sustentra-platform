@@ -34,7 +34,7 @@ import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
 import { logout } from "../../auth/api";
 import { DashboardScreen } from "../components/DashboardScreen";
-import { UploadScreen, type SampleScript, type UploadTask } from "../components/UploadScreen";
+import { UploadDialog, type SampleScript, type UploadTask } from "../components/UploadDialog";
 import { SetupScreen } from "../components/SetupScreen";
 import { InvoicePage } from "../components/demo/InvoicePage";
 import {
@@ -93,12 +93,14 @@ import type {
   StateDimension,
 } from "../types";
 import type { SessionAuditEntry } from "../utils/auditIntent";
+import { dashboardFigures, engagementActivity } from "../utils/engagementActivity";
+import { ActivityDrawer } from "../components/ActivityDrawer";
+import { testedExaminationKeys } from "../utils/verificationTable";
 
 type ActiveView =
   | { name: "dashboard" }
   | { name: "evidence" }
   | { name: "setup" }
-  | { name: "upload" }
   | { name: "requests" }
   | { name: "coverage" }
   | { name: "results" }
@@ -258,10 +260,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   // The scripted "upload one invoice" beat: add the prepared doc + values, play
   // the analysis progress, then open Extraction Review with the highlight.
   const [sampleScript, setSampleScript] = useState<SampleScript | null>(null);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [activityOpen, setActivityOpen] = useState(false);
   const DEMO_NODE = "F:facility-kent|T:Electricity bill";
 
   function runSampleUpload() {
     if (evidenceItems.some((i) => i.documentId === DEMO_INVOICE_ID)) {
+      setUploadOpen(false);
       setActiveView({ name: "extraction", documentId: DEMO_INVOICE_ID, nodeKey: DEMO_NODE });
       return;
     }
@@ -289,6 +294,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     });
     step(3600, () => {
       setSampleScript(null);
+      setUploadOpen(false);
       setActiveView({ name: "extraction", documentId: DEMO_INVOICE_ID, nodeKey: DEMO_NODE });
     });
   }
@@ -486,7 +492,6 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const NAV_FOR_VIEW: Partial<Record<ActiveView["name"], NavKey>> = {
     dashboard: "dashboard",
     setup: "setup",
-    upload: "upload",
     requests: "requests",
     coverage: "coverage",
     results: "results",
@@ -496,7 +501,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   function onNavigate(key: NavKey) {
     if (key === "dashboard") setActiveView({ name: "dashboard" });
     else if (key === "setup") setActiveView({ name: "setup" });
-    else if (key === "upload") setActiveView({ name: "upload" });
+    else if (key === "upload") setUploadOpen(true);
     else if (key === "requests") setActiveView({ name: "requests" });
     else if (key === "coverage") setActiveView({ name: "coverage" });
     else if (key === "results") setActiveView({ name: "results" });
@@ -761,6 +766,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         current={navCurrent}
         onNavigate={onNavigate}
         onReset={dataMode === "fixture" ? resetDemo : undefined}
+        onOpenActivity={() => setActivityOpen(true)}
         onOpenGlossary={() =>
           setActiveView((current) =>
             current.name === "glossary" ? current : { name: "glossary", previous: current }
@@ -782,10 +788,15 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           ) : (
             <DashboardScreen
               engagement={engagement}
-              metrics={{
-                documents: evidenceItems.length,
-                openRequests: requests.asks.filter((a) => a.state === "not_yet_sent" || a.state === "requested").length,
-              }}
+              figures={dashboardFigures({
+                evidence: evidenceView,
+                values: reviewValuesView,
+                asks: requests.asks,
+                findings: verification.findings,
+                examinations: verification.examinations,
+                coverage: coverageRules,
+                calculatedIds: testedExaminationKeys(verificationLines),
+              })}
               onNavigate={onNavigate}
             />
           )
@@ -820,22 +831,6 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             gridRegions={dataMode === "backend" ? gridRegions : undefined}
             lookupZip={dataMode === "backend" ? lookupEgridZip : undefined}
             foundFacilities={foundFacilities}
-          />
-        ) : activeView.name === "upload" ? (
-          <UploadScreen
-            onUploadFiles={uploadFiles}
-            onUploadSample={dataMode === "fixture" ? runSampleUpload : undefined}
-            sampleFilename={
-              dataMode === "fixture" && !evidenceItems.some((i) => i.documentId === DEMO_INVOICE_ID)
-                ? DEMO_INVOICE_FILENAME
-                : undefined
-            }
-            script={sampleScript}
-            batch={dataMode === "backend" ? [] : sessionUploadItems}
-            tasks={dataMode === "backend" ? uploadTasks : undefined}
-            history={dataMode === "backend" ? evidenceItems : undefined}
-            onOpenWorkspace={() => setActiveView({ name: "evidence" })}
-            onOpenDocument={dataMode === "backend" ? openExtraction : undefined}
           />
         ) : activeView.name === "requests" ? (
           <EvidenceRequests
@@ -898,7 +893,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onAuditIntent={addAuditIntent}
             demoState={demoState}
             onOpenExtraction={openExtraction}
-            onUploadFiles={uploadFiles}
+            onUploadFiles={(files) => {
+              setUploadOpen(true);
+              uploadFiles(files);
+            }}
+            onOpenUpload={() => setUploadOpen(true)}
             isUploading={isUploading}
             backendError={backendError}
             writesEnabled
@@ -980,6 +979,35 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         ) : (
           <GlossaryPage onBack={() => setActiveView(activeView.previous)} />
         )}
+        {uploadOpen ? (
+          <UploadDialog
+            onClose={() => setUploadOpen(false)}
+            onUploadFiles={uploadFiles}
+            onUploadSample={dataMode === "fixture" ? runSampleUpload : undefined}
+            sampleFilename={
+              dataMode === "fixture" && !evidenceItems.some((i) => i.documentId === DEMO_INVOICE_ID)
+                ? DEMO_INVOICE_FILENAME
+                : undefined
+            }
+            script={sampleScript}
+            batch={dataMode === "backend" ? [] : sessionUploadItems}
+            tasks={dataMode === "backend" ? uploadTasks : undefined}
+            items={dataMode === "backend" ? evidenceItems : undefined}
+            onOpenWorkspace={() => setActiveView({ name: "evidence" })}
+          />
+        ) : null}
+        {activityOpen ? (
+          <ActivityDrawer
+            entries={engagementActivity({
+              evidence: evidenceView,
+              values: reviewValuesView,
+              asks: requests.asks,
+              findings: verification.findings,
+              intents: auditIntents,
+            })}
+            onClose={() => setActivityOpen(false)}
+          />
+        ) : null}
       </S1Chrome>
     </main>
   );

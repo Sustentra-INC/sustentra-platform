@@ -1,5 +1,6 @@
 "use client";
 
+import { History } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
@@ -39,6 +40,7 @@ interface S1ChromeProps {
   current?: NavKey;
   onNavigate?: (key: NavKey) => void;
   onOpenGlossary?: () => void;
+  onOpenActivity?: () => void;
   onReset?: () => void;
 }
 
@@ -61,6 +63,7 @@ export function S1Chrome({
   current,
   onNavigate,
   onOpenGlossary,
+  onOpenActivity,
   onReset,
 }: S1ChromeProps) {
   const [navExpanded, setNavExpanded] = useState(true);
@@ -79,6 +82,7 @@ export function S1Chrome({
           expanded={ctxExpanded}
           onToggle={() => setCtxExpanded((v) => !v)}
           onOpenGlossary={onOpenGlossary}
+          onOpenActivity={onOpenActivity}
           onReset={onReset}
           user={user}
           onSignOut={onSignOut}
@@ -146,6 +150,7 @@ function ContextBar({
   expanded,
   onToggle,
   onOpenGlossary,
+  onOpenActivity,
   onReset,
   user,
   onSignOut,
@@ -154,6 +159,7 @@ function ContextBar({
   expanded: boolean;
   onToggle: () => void;
   onOpenGlossary?: () => void;
+  onOpenActivity?: () => void;
   onReset?: () => void;
   user?: WorkpaperUser;
   onSignOut?: () => void;
@@ -172,6 +178,11 @@ function ContextBar({
           <span className="s1-muted s1-ctx__hint">{expanded ? "Hide engagement" : "Engagement details"}</span>
         </button>
         <div className="s1-ctx__actions">
+          {onOpenActivity ? (
+            <button className="s1-ctx__activity" type="button" onClick={onOpenActivity}>
+              <History aria-hidden /> Activity log
+            </button>
+          ) : null}
           <button className="s1-linklike" type="button" onClick={onOpenGlossary}>
             Glossary
           </button>
