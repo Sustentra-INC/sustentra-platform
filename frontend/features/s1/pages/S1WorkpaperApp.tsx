@@ -940,7 +940,19 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               onError={handleSessionEnded}
             />
           ) : (
-            <OutputScreen engagement={engagement} />
+            <OutputScreen
+              engagement={engagement}
+              lines={verificationLines}
+              figures={dashboardFigures({
+                evidence: evidenceView,
+                values: reviewValuesView,
+                asks: requests.asks,
+                findings: verification.findings,
+                examinations: verification.examinations,
+                coverage: coverageRules,
+                calculatedIds: testedExaminationKeys(verificationLines),
+              })}
+            />
           )
         ) : activeView.name === "evidence" ? (
           <EvidenceWorkspace

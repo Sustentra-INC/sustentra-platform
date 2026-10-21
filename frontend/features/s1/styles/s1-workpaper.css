@@ -3394,3 +3394,6 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 
 /* Icons sized by their box, not by a text size (design standard: three text sizes). */
 .s1-vw-box__icon .s1-vw-ico, .s1-vw-close .s1-vw-ico, .s1-vw-ico.s1-vw-src-empty__icon { width: 1.25rem; height: 1.25rem; }
+
+/* Output: a draft conclusion says why it cannot be issued yet. */
+.s1-out-draftnote { margin: 0 0 var(--sp-3); padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); color: var(--ink); background: var(--state-open-bg); border: var(--hairline-width) solid var(--state-open-line); border-radius: var(--radius-input); }
