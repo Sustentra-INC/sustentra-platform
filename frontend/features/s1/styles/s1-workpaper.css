@@ -2858,3 +2858,44 @@ html, body { margin: 0; padding: 0; }
 @media (prefers-reduced-motion: reduce) {
   .s1-ws-gr, .s1-ws-gr__caret, .s1-ws-gr__seg, .s1-ws-gr.is-open .s1-ws-gr__body, .s1-ws-dropveil { transition: none; }
 }
+
+/* ==========================================================================
+   Setup clean-up: info-tips instead of grey paragraphs, one grid for every row.
+   ========================================================================== */
+.s1-setup-card h2 { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.s1-setup-field input, .s1-setup-field select, .s1-setup-row input, .s1-fac__row input, .s1-fac__row select {
+  box-sizing: border-box; height: 2.5rem; width: 100%;
+  background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input);
+  padding: 0 var(--sp-3); font: inherit; font-size: var(--text-md); color: var(--ink);
+}
+.s1-setup-row input:focus, .s1-fac__row input:focus, .s1-fac__row select:focus { outline: var(--focus-ring); outline-offset: 0; border-color: var(--accent-solid); }
+.s1-setup-inline > input { flex: 1; min-width: 0; }
+/* Facility and team rows share the form's two columns, with the remove button in a fixed gutter. */
+.s1-fac { margin: 0; }
+.s1-fac__head, .s1-fac__row { grid-template-columns: repeat(2, minmax(0, 1fr)) 2.5rem; column-gap: var(--sp-3); }
+.s1-fac--regions .s1-fac__head, .s1-fac--regions .s1-fac__row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr) 2.5rem; }
+.s1-setup-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) 2.5rem; gap: var(--sp-3); align-items: center; }
+.s1-setup-row input:first-child { flex: none; }
+.s1-setup-row--head { font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.04em; color: var(--ink-3); }
+.s1-setup-remove {
+  display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; padding: 0;
+  border: 0; border-radius: var(--radius-input); background: none; color: var(--ink-3); cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.12s var(--ease-out);
+}
+.s1-setup-remove:hover { background: var(--state-blocking-bg); color: var(--state-blocking-fg); }
+.s1-setup-remove:active { transform: scale(0.94); }
+.s1-setup-remove:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-setup-remove svg { width: 1rem; height: 1rem; }
+.s1-setup-add {
+  align-self: flex-start; display: inline-flex; align-items: center; gap: var(--sp-1); padding: var(--sp-2) var(--sp-3);
+  font: inherit; font-size: var(--text-sm); color: var(--accent); background: none; cursor: pointer;
+  border: var(--hairline-width) dashed var(--accent-line); border-radius: var(--radius-input);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+.s1-setup-add:hover { background: var(--accent-softer); border-color: var(--accent-solid); }
+.s1-setup-add:active { transform: scale(0.98); }
+.s1-setup-add svg { width: 0.95rem; height: 0.95rem; }
+@media (max-width: 48rem) {
+  .s1-setup-row, .s1-fac__row, .s1-fac--regions .s1-fac__row { grid-template-columns: 1fr 2.5rem; }
+  .s1-setup-row--head { display: none; }
+}
