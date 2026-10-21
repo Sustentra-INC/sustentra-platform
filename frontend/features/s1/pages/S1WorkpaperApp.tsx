@@ -96,6 +96,9 @@ import { dashboardFigures, engagementActivity } from "../utils/engagementActivit
 import { ActivityDrawer } from "../components/ActivityDrawer";
 import { useBackendCoverage } from "../components/useBackendCoverage";
 import { testedExaminationKeys } from "../utils/verificationTable";
+import { MethodologyReview } from "../components/MethodologyReview";
+import { emptyMethodologyReview, methodologyStated } from "../fixtures/methodology/methodologyReview";
+import type { MethodologyState } from "../types/methodology";
 
 type ActiveView =
   | { name: "dashboard" }
@@ -103,6 +106,7 @@ type ActiveView =
   | { name: "setup" }
   | { name: "requests" }
   | { name: "coverage" }
+  | { name: "methodology" }
   | { name: "results" }
   | { name: "output" }
   | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string; valueId?: string }
@@ -225,6 +229,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [inScopeFields, setInScopeFields] = useState<InScopeField[]>(
     persisted?.inScopeFields ?? (dataMode === "fixture" ? inScopeFieldPlaceholders : [])
   );
+  // Methodology review (demo): the verifier's acceptances and changes to the stated methodology.
+  const [methodology, setMethodology] = useState<MethodologyState>(() => persisted?.methodology ?? emptyMethodologyReview());
 
   // Demo-only: snapshot fixture state to localStorage so a refresh keeps it.
   useEffect(() => {
@@ -238,6 +244,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       asks: requests.asks,
       examinations: verification.examinations,
       findings: verification.findings,
+      methodology,
     });
   }, [
     dataMode,
@@ -249,6 +256,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     requests.asks,
     verification.examinations,
     verification.findings,
+    methodology,
   ]);
 
 
@@ -495,6 +503,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setup: "setup",
     requests: "requests",
     coverage: "requests",
+    methodology: "methodology",
     results: "results",
     output: "output",
   };
@@ -505,6 +514,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     else if (key === "upload") setUploadOpen(true);
     else if (key === "requests") setActiveView({ name: "requests" });
     else if (key === "coverage") setActiveView({ name: "requests" });
+    else if (key === "methodology") setActiveView({ name: "methodology" });
     else if (key === "results") setActiveView({ name: "results" });
     else if (key === "output") setActiveView({ name: "output" });
     else if (key === "evidence") setActiveView({ name: "evidence" });
@@ -748,6 +758,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                     asks: requests.asks,
                     findings: verification.findings,
                     intents: auditIntents,
+                    methodology: methodology.log,
                   }),
                   figures: dashboardFigures({
                     evidence: evidenceView,
@@ -760,7 +771,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                   }),
                 }
         : null,
-    [dataMode, engagement, evidenceView, reviewValuesView, requests.asks, verification.examinations, verification.findings, auditIntents]
+    [dataMode, engagement, evidenceView, reviewValuesView, requests.asks, verification.examinations, verification.findings, auditIntents, methodology.log]
   );
   const foundFacilities = useMemo(
     () => (dataMode === "backend" ? unmatchedFacilities(facts, engagement.facilities) : []),
@@ -805,6 +816,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         current={navCurrent}
         onNavigate={onNavigate}
         onReset={dataMode === "fixture" ? resetDemo : undefined}
+        hiddenNav={dataMode === "backend" ? ["methodology"] : undefined}
         onOpenActivity={() => setActivityOpen(true)}
         assistant={assistantData ? { data: assistantData, onOpenDocument: openExtraction, onNavigate } : undefined}
         onOpenGlossary={() =>
@@ -890,6 +902,16 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onRaiseFollowUp={raiseFollowUp}
             onOpenSource={(ask) => ask.source.documentId && openExtraction(ask.source.documentId)}
           />
+        ) : activeView.name === "methodology" ? (
+          // Demo only for now: the backend does not read the methodology from the report yet.
+          dataMode === "fixture" ? (
+            <MethodologyReview
+              stated={methodologyStated}
+              review={methodology}
+              onChange={setMethodology}
+              verifier={engagement.engagementTeam?.find((m) => m.login === engagement.signedInLogin)?.name ?? DEMO_ACTOR ?? "Verifier"}
+            />
+          ) : null
         ) : activeView.name === "results" ? (
           dataMode === "backend" ? (
             <BackendVerificationResults
@@ -1078,6 +1100,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               asks: requests.asks,
               findings: verification.findings,
               intents: auditIntents,
+              methodology: dataMode === "fixture" ? methodology.log : undefined,
             })}
             onClose={() => setActivityOpen(false)}
           />

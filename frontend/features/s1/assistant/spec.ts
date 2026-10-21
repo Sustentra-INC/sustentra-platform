@@ -23,6 +23,7 @@ export const PAGE_LABEL: Record<string, string> = {
   evidence: "Evidence",
   requests: "Coverage & requests",
   coverage: "Coverage & requests",
+  methodology: "Methodology review",
   results: "Verification results",
   output: "Output",
 };
