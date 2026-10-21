@@ -30,6 +30,22 @@ describe("frontend contract checks", () => {
     }
   });
 
+  // docs/design_standard.md, section 2: one family, three sizes, two weights.
+  it("keeps the interface to one font family, three text sizes and two weights", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    const values = (property: string) => [...css.matchAll(new RegExp(`${property}:\\s*([^;}]+)`, "g"))].map((m) => m[1].trim());
+
+    const sizes = new Set(["var(--text-sm)", "var(--text-md)", "var(--text-lg)", "inherit", "82%" /* the root scale */]);
+    expect(values("font-size").filter((v) => !sizes.has(v))).toEqual([]);
+    expect(css.match(/font-size:\s*82%/g)).toHaveLength(1);
+    const weights = new Set(["var(--weight-regular)", "var(--weight-strong)", "inherit"]);
+    expect(values("font-weight").filter((v) => !weights.has(v))).toEqual([]);
+    const families = new Set(["var(--font-sans)", "inherit"]);
+    expect(values("font-family").filter((v) => !families.has(v))).toEqual([]);
+    expect(css).not.toContain("--font-mono");
+    expect(css).not.toContain("--text-xs");
+  });
+
   it("documents the workpaper token alias layer", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
 

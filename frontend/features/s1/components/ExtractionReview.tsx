@@ -1035,7 +1035,7 @@ function SourcePane({
             <button className="s1-button s1-button--compact" type="button" onClick={() => setPage(Math.max(1, page - 1))} aria-label="Previous page">
               ‹
             </button>
-            <span className="s1-mono s1-muted">page {page} of {value.pageCount}</span>
+            <span className="s1-num s1-muted">page {page} of {value.pageCount}</span>
             <button
               className="s1-button s1-button--compact"
               type="button"

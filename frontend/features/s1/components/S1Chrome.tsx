@@ -1,6 +1,6 @@
 "use client";
 
-import { History } from "lucide-react";
+import { ChevronDown, History } from "lucide-react";
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
@@ -177,15 +177,16 @@ function ContextBar({
   return (
     <div className={`s1-ctx${expanded ? " s1-ctx--open" : ""}`}>
       <div className="s1-ctx__bar">
+        {/* Two looks only: the client, then everything else in the small secondary style. */}
         <button className="s1-ctx__summary" type="button" onClick={onToggle} aria-expanded={expanded}>
           <span className="s1-ctx__client">{engagement.clientName}</span>
-          {engagement.engagementName ? (
-            <span className="s1-ctx__id">{engagement.engagementName}</span>
-          ) : (
-            <span className="s1-ctx__id s1-mono">{engagement.engagementId}</span>
-          )}
-          <span className="s1-ctx__caret" aria-hidden>{expanded ? "▴" : "▾"}</span>
-          <span className="s1-muted s1-ctx__hint">{expanded ? "Hide engagement" : "Engagement details"}</span>
+          <span className="s1-ctx__meta">
+            <span className="s1-ctx__id">{engagement.engagementName || engagement.engagementId}</span>
+            <span className="s1-ctx__hint">
+              {expanded ? "Hide details" : "Details"}
+              <ChevronDown className={`s1-ctx__chev${expanded ? " is-open" : ""}`} aria-hidden />
+            </span>
+          </span>
         </button>
         <div className="s1-ctx__actions">
           {onOpenActivity ? (

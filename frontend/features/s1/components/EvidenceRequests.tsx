@@ -469,7 +469,7 @@ function AskRecord({ ask }: { ask: Ask }) {
         <strong>Record</strong>
         {ask.history.map((h, i) => (
           <div key={i}>
-            <span className="s1-mono s1-muted">
+            <span className="s1-num s1-muted">
               {h.actorName} · {formatDate(h.at)}
             </span>{" "}
             {h.kind}

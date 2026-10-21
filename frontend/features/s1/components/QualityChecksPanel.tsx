@@ -44,7 +44,7 @@ export function QualityChecksPanel({ checks }: { checks: QualityCheck[] }) {
               <span className={`s1-qc__sev ${SEVERITY[c.severity].className}`}>{SEVERITY[c.severity].label}</span>
               <div className="s1-qc__text">
                 <div className="s1-qc__what">
-                  {CHECK_NAME[c.check] ?? c.check} <span className="s1-mono s1-muted">{c.check}</span>
+                  {CHECK_NAME[c.check] ?? c.check} <span className="s1-num s1-muted">{c.check}</span>
                 </div>
                 <p className="s1-qc__msg">{c.message}</p>
               </div>

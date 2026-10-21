@@ -213,7 +213,7 @@ function ResultsTab({
                             {rowLabel(row)}
                             {row.scopeBasis ? <div className="s1-muted s1-ws-src">{row.scopeBasis}-based</div> : null}
                           </td>
-                          <td className="s1-mono">
+                          <td className="s1-num">
                             {row.reportedValue ? (
                               `${row.reportedValue} ${row.unit}`
                             ) : (
@@ -222,14 +222,14 @@ function ResultsTab({
                           </td>
                           <td>
                             {row.recomputed !== null ? (
-                              <span className="s1-mono">
+                              <span className="s1-num">
                                 {row.recomputed} {row.unit}
                               </span>
                             ) : (
                               <span className="s1-muted">not recomputed · {row.recomputeReason}</span>
                             )}
                           </td>
-                          <td className="s1-mono">{row.delta ?? <span className="s1-muted">None</span>}</td>
+                          <td className="s1-num">{row.delta ?? <span className="s1-muted">None</span>}</td>
                           <td>
                             <span className={`s1-state s1-state--${OUTCOME_ROLE[row.checkOutcome]}`}>
                               {OUTCOME_LABEL[row.checkOutcome]}
@@ -443,7 +443,7 @@ function WorkingPanel({ spec }: { spec: WorkingSpec }) {
             {spec.inputs.map((i) => (
               <li key={`${i.label}|${i.value}`}>
                 <span className="s1-working__k">{i.label}</span>
-                <span className="s1-working__v s1-mono">{i.value}</span>
+                <span className="s1-working__v s1-num">{i.value}</span>
                 {i.source ? <span className="s1-working__src">{i.source}</span> : null}
               </li>
             ))}
@@ -457,7 +457,7 @@ function WorkingPanel({ spec }: { spec: WorkingSpec }) {
               {spec.factors.map((f) => (
                 <li key={`${f.label}|${f.value}`}>
                   <span className="s1-working__k">{f.label}</span>
-                  <span className="s1-working__v s1-mono">{f.value}</span>
+                  <span className="s1-working__v s1-num">{f.value}</span>
                   <span className="s1-working__src">{f.source}</span>
                 </li>
               ))}
@@ -465,7 +465,7 @@ function WorkingPanel({ spec }: { spec: WorkingSpec }) {
           ) : spec.factor ? (
             <ul className="s1-working__list">
               <li>
-                <span className="s1-working__v s1-mono">{spec.factor.value}</span>
+                <span className="s1-working__v s1-num">{spec.factor.value}</span>
                 <span className="s1-working__src">{spec.factor.source}</span>
               </li>
             </ul>
@@ -538,13 +538,13 @@ function FindingsTab({ store }: { store: VerificationStore }) {
                     <td>{f.dataPointLabel}</td>
                     <td>{f.sentence}</td>
                     <td>{f.cause}</td>
-                    <td className="s1-mono">{f.magnitude}</td>
+                    <td className="s1-num">{f.magnitude}</td>
                     <td>
                       <span className="s1-state s1-state--open">{f.status}</span>
                     </td>
                     <td>
                       {f.registeredBy ?? <span className="s1-muted">Not recorded</span>}
-                      {f.registeredAt ? <div className="s1-mono s1-muted">{formatWhen(f.registeredAt)}</div> : null}
+                      {f.registeredAt ? <div className="s1-num s1-muted">{formatWhen(f.registeredAt)}</div> : null}
                     </td>
                     <td className="s1-muted">{f.withClientSince ?? "Request-linked"}</td>
                   </tr>
