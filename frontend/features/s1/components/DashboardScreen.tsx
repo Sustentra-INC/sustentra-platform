@@ -34,7 +34,6 @@ export function DashboardScreen({
   const go = (key: NavKey) => () => onNavigate?.(key);
   const hasEngagement = Boolean(engagement.clientName);
   const phases = buildPhases(hasEngagement, figures);
-  const current = phases.find((p) => p.status === "active") ?? phases[phases.length - 1];
   const coverage = figures.coverage;
   const covered = coverage ? coverage.present + coverage.missing : 0;
   const reviewable = figures.valuesReviewed + figures.valuesToReview;
@@ -53,9 +52,6 @@ export function DashboardScreen({
               : "Set up the engagement to begin"}
           </p>
         </div>
-        <span className={`s1-dash__phase s1-dash__phase--${current.status}`}>
-          {current.status === "done" ? "All phases done" : current.label}
-        </span>
       </header>
 
       <ol className="s1-timeline" aria-label="Engagement timeline">

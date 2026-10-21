@@ -240,6 +240,40 @@ describe("extraction review: a value the reading missed", () => {
   });
 });
 
+describe("extraction review: one card per reading", () => {
+  it("shows a figure that feeds location- and market-based as one card, reviewed together", async () => {
+    const { ExtractionReview } = await import("../components/ExtractionReview");
+    const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
+    const { useState } = await import("react");
+    const elec = manufacturerValues.filter((v) => v.documentId === "DOC-tualatin-elec-jan");
+    expect(elec.map((v) => v.scope).sort()).toEqual(["scope2_location", "scope2_market"]);
+    let latest = manufacturerValues;
+    function Harness() {
+      const [values, setValues] = useState(manufacturerValues);
+      latest = values;
+      return (
+        <ExtractionReview
+          engagement={engagementConfig}
+          values={values}
+          onValuesChange={setValues}
+          initialDocumentId="DOC-tualatin-elec-jan"
+          onSaveAsk={vi.fn()}
+          onBack={vi.fn()}
+        />
+      );
+    }
+    const { container } = render(<Harness />);
+    const card = () =>
+      Array.from(container.querySelectorAll<HTMLElement>(".s1-xr-card")).filter((c) => elec.some((v) => v.id === c.dataset.valueId));
+    expect(card()).toHaveLength(1);
+    expect(card()[0].textContent).toContain("Scope 2 · location- and market-based");
+
+    fireEvent.click(within(card()[0]).getByRole("button", { name: "Accept" }));
+    expect(latest.filter((v) => v.documentId === "DOC-tualatin-elec-jan").map((v) => v.reviewState)).toEqual(["accepted", "accepted"]);
+    expect(card()).toHaveLength(1);
+  });
+});
+
 describe("demo documents: the whole document, values highlighted in place", () => {
   it("draws a bill whole, marks each value read and each value not found, and picks values from the page", async () => {
     const { DemoDocument } = await import("../components/demo/DemoDocument");

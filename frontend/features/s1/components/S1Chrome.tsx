@@ -14,6 +14,7 @@ export type NavKey =
   | "evidence"
   | "requests"
   | "coverage"
+  | "methodology"
   | "results"
   | "output";
 
@@ -44,6 +45,8 @@ interface S1ChromeProps {
   onReset?: () => void;
   /** The live assistant's data and links; without it the assistant gives built-in help. */
   assistant?: AssistantConnection;
+  /** Destinations this data mode does not have yet. */
+  hiddenNav?: NavKey[];
 }
 
 const DESTINATIONS: Array<{ key: NavKey; label: string }> = [
@@ -52,6 +55,7 @@ const DESTINATIONS: Array<{ key: NavKey; label: string }> = [
   { key: "upload", label: "Upload" },
   { key: "evidence", label: "Evidence" },
   { key: "requests", label: "Coverage & requests" },
+  { key: "methodology", label: "Methodology review" },
   { key: "results", label: "Verification results" },
   { key: "output", label: "Output" },
 ];
@@ -67,6 +71,7 @@ export function S1Chrome({
   onOpenActivity,
   onReset,
   assistant,
+  hiddenNav,
 }: S1ChromeProps) {
   const [navExpanded, setNavExpanded] = useState(true);
   const [ctxExpanded, setCtxExpanded] = useState(false);
@@ -75,6 +80,7 @@ export function S1Chrome({
       <Sidebar
         current={current}
         onNavigate={onNavigate}
+        hidden={hiddenNav}
         expanded={navExpanded}
         onToggle={() => setNavExpanded((v) => !v)}
       />
@@ -102,11 +108,13 @@ export function S1Chrome({
 function Sidebar({
   current,
   onNavigate,
+  hidden,
   expanded,
   onToggle,
 }: {
   current?: NavKey;
   onNavigate?: (key: NavKey) => void;
+  hidden?: NavKey[];
   expanded: boolean;
   onToggle: () => void;
 }) {
@@ -117,7 +125,7 @@ function Sidebar({
         <img className="s1-side__logo" src={expanded ? "/sustentra-logo.png" : "/sustentra-mark.png"} alt="Sustentra" />
       </div>
       <nav className="s1-side__nav" aria-label="Primary">
-        {DESTINATIONS.map((dest) => (
+        {DESTINATIONS.filter((dest) => !hidden?.includes(dest.key)).map((dest) => (
           <button
             key={dest.key}
             className={`s1-side__item${current === dest.key ? " is-on" : ""}`}
@@ -279,6 +287,8 @@ function NavIcon({ nav }: { nav: NavKey }) {
       return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3.5 7 8.5 6 8.5-6" /></svg>;
     case "coverage":
       return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M12 3.2 5 6v5.2c0 4.3 2.9 7.2 7 8.6 4.1-1.4 7-4.3 7-8.6V6z" /><path d="m9 12 2.1 2.1L15.2 10" /></svg>;
+    case "methodology":
+      return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M9 4h6v3H9z" /><path d="M15 5.5h2a2 2 0 0 1 2 2V19a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2h2" /><path d="M8.5 12h7M8.5 16h4.5" /></svg>;
     case "results":
       return <svg viewBox="0 0 24 24" {...p} aria-hidden="true"><path d="M4 20V4M4 20h16" /><path d="M8 16v-4M12 16V8M16 16v-6" /></svg>;
     case "output":
