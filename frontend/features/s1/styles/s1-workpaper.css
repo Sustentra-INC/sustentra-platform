@@ -1359,8 +1359,6 @@ select:focus-visible,
 .s1-rail__reset-btn:hover { color: var(--ink-2); }
 
 /* ---- Prepared invoice render + highlight ---- */
-.s1-invoice { width: 100%; height: auto; display: block; border: var(--border-hairline); border-radius: var(--radius-input); background: var(--sf-card); }
-.s1-invoice__hl { fill: rgba(250, 204, 21, 0.30); stroke: rgba(180, 120, 0, 0.85); stroke-width: 3; rx: 3; }
 .s1-xr-realpage { overflow: auto; }
 
 /* ---- Scripted analysis beat ---- */
@@ -1804,7 +1802,6 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-xr-values { overflow: auto; }
 
 /* Faint marks on every figure; the selected value draws bright on top */
-.s1-invoice__hl--faint { fill: rgba(250, 204, 21, 0.13); stroke: rgba(180, 120, 0, 0.30); stroke-width: 1.5; }
 
 /* ---- Reset workspace: a real brand-indigo button ---- */
 .s1-rail__reset-btn {
@@ -1848,8 +1845,6 @@ html { font-size: 82%; }
 .s1-button--pri:disabled { color: var(--sf-card); opacity: 0.5; }
 
 /* Clickable document highlights map back to the value cards. */
-.s1-invoice__hl { cursor: pointer; }
-.s1-invoice__hl--faint:hover { fill: rgba(250, 204, 21, 0.28); }
 
 /* ==========================================================================
    Output (screen 7) — the assurance deliverable, as a document.

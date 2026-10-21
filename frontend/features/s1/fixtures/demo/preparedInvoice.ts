@@ -1,11 +1,10 @@
 import type { EvidenceItem } from "../../types/evidence";
 import type { ReviewValue } from "../../types/review";
-import { INVOICE_MARKS } from "../../components/demo/InvoicePage";
 
 /**
  * The one prepared document for the demo: an electricity invoice for Cascade
- * Provisions (Kent Cannery, Feb 2025). Its extracted values carry spans authored
- * onto the InvoicePage render, so the highlight lands exactly on the figure.
+ * Provisions (Kent Cannery, Feb 2025). It is drawn whole like every other demo
+ * document (DemoDocument), each value highlighted on its figure.
  */
 
 export const DEMO_INVOICE_ID = "DOC-DEMO-INVOICE";
@@ -62,8 +61,6 @@ export const preparedInvoiceClassified: Partial<EvidenceItem> = {
   fieldsExtracted: 6,
 };
 
-const span = (mark: { x: number; y: number; w: number; h: number }) => ({ page: 1, ...mark });
-
 function machine(value: string): ReviewValue["record"] {
   return [{ kind: "machine", actor: "System", at: "2025-03-08T09:00:00Z", action: "read", reason: `${value} · from the invoice` }];
 }
@@ -96,7 +93,7 @@ export const preparedInvoiceValues: ReviewValue[] = [
     unit: "kWh",
     methodologyFieldId: "MF-PLH-electricity-consumed-scope2_location",
     record: machine("182,400 kWh"),
-    span: span(INVOICE_MARKS.consumption),
+    span: null,
     requestPreselect: "clarify",
   },
   {
@@ -108,7 +105,7 @@ export const preparedInvoiceValues: ReviewValue[] = [
     unit: "kWh",
     methodologyFieldId: "MF-PLH-electricity-consumed-scope2_market",
     record: machine("182,400 kWh"),
-    span: span(INVOICE_MARKS.consumption),
+    span: null,
     requestPreselect: "clarify",
   },
   {
@@ -119,7 +116,7 @@ export const preparedInvoiceValues: ReviewValue[] = [
     value: "1,240",
     unit: "kW",
     record: machine("1,240 kW"),
-    span: span(INVOICE_MARKS.demand),
+    span: null,
   },
   {
     ...base,
@@ -129,7 +126,7 @@ export const preparedInvoiceValues: ReviewValue[] = [
     value: "01 Feb – 28 Feb 2025",
     unit: "",
     record: machine("01 Feb – 28 Feb 2025"),
-    span: span(INVOICE_MARKS.period),
+    span: null,
   },
   {
     ...base,
@@ -139,7 +136,7 @@ export const preparedInvoiceValues: ReviewValue[] = [
     value: "0.223",
     unit: "kgCO2e/kWh",
     record: machine("0.223 kgCO2e/kWh"),
-    span: span(INVOICE_MARKS.emissionFactor),
+    span: null,
     requestPreselect: "confirm_or_restate",
   },
   {
@@ -150,7 +147,7 @@ export const preparedInvoiceValues: ReviewValue[] = [
     value: "40.68",
     unit: "tCO2e",
     record: machine("40.68 tCO2e"),
-    span: span(INVOICE_MARKS.emissions),
+    span: null,
   },
 ];
 
