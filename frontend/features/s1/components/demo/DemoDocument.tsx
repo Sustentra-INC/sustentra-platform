@@ -26,6 +26,8 @@ export interface HighlightEntry {
  * With ``onAddValue``, the reviewer can highlight a figure the reading missed: every
  * other figure on the page becomes a target, and the one clicked is added as a value
  * (or fills in a value the reading could not find), kept as a correction to the reading.
+ * In review, the legend and the highlight switch live in the values pane, pinned where
+ * the reviewer works (``highlighting``); on its own, the document draws its own legend.
  */
 export function DemoDocument({
   values,
@@ -33,6 +35,8 @@ export function DemoDocument({
   selectedId,
   onPick,
   onAddValue,
+  highlighting,
+  onHighlightingChange,
 }: {
   /** Every value read from this one document. */
   values: ReviewValue[];
@@ -42,9 +46,15 @@ export function DemoDocument({
   onPick: (ids: string[]) => void;
   /** Lets the reviewer highlight a figure the reading missed. */
   onAddValue?: (entry: HighlightEntry) => void;
+  /** Highlight mode, switched from outside (the values pane); the document then has no legend. */
+  highlighting?: boolean;
+  onHighlightingChange?: (on: boolean) => void;
 }) {
   const root = useRef<HTMLDivElement>(null);
-  const [picking, setPicking] = useState(false);
+  const [own, setOwn] = useState(false);
+  const controlled = Boolean(onHighlightingChange);
+  const picking = controlled ? Boolean(highlighting) : own;
+  const setPicking = (on: boolean) => (onHighlightingChange ? onHighlightingChange(on) : setOwn(on));
   const [target, setTarget] = useState<FigureTarget | null>(null);
 
   useEffect(() => {
@@ -52,11 +62,12 @@ export function DemoDocument({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       if (target) setTarget(null);
-      else setPicking(false);
+      else if (onHighlightingChange) onHighlightingChange(false);
+      else setOwn(false);
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [picking, target]);
+  }, [picking, target, onHighlightingChange]);
 
   // Bring the selected value's highlight into view, inside the source pane only.
   useEffect(() => {
@@ -93,6 +104,7 @@ export function DemoDocument({
 
   return (
     <div className={`s1-dd${ctx.picking ? " is-picking" : ""}`} ref={root}>
+      {controlled ? null : (
       <div className="s1-dd-legend" aria-label="Highlights on this document">
         <span>
           <strong>{values.length}</strong> {values.length === 1 ? "value" : "values"} read
@@ -113,7 +125,7 @@ export function DemoDocument({
             type="button"
             aria-pressed={picking}
             onClick={() => {
-              setPicking((v) => !v);
+              setPicking(!picking);
               setTarget(null);
             }}
           >
@@ -121,6 +133,7 @@ export function DemoDocument({
           </button>
         ) : null}
       </div>
+      )}
       {ctx.picking && !target ? (
         <div className="s1-dd-pickhint" role="status">
           Click any figure the reading missed to add it as a value. Press Esc when you are done.

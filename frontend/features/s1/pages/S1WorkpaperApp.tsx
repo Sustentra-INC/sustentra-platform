@@ -1023,6 +1023,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                   }
                 : undefined
             }
+            drawnWhole={(id) =>
+              dataMode === "fixture" && id !== DEMO_INVOICE_ID && reviewValuesView.some((v) => v.documentId === id)
+            }
             renderPage={(documentId, span, onPickBox, marks, pick) => {
               const item = evidenceItems.find((e) => e.documentId === documentId);
               const format = item?.format ?? "";
@@ -1045,6 +1048,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                   selectedId={pick?.selectedId ?? null}
                   onPick={(ids) => pick?.onPickAmong(ids)}
                   onAddValue={pick?.onAddValue}
+                  highlighting={pick?.highlighting}
+                  onHighlightingChange={pick?.onHighlightingChange}
                 />
               ) : dataMode === "backend" && ["pdf", "image"].includes(format) ? (
                 // The uploaded page as an image, the value outlined where it was read.

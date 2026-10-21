@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Highlighter, Plus } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
@@ -56,6 +56,9 @@ interface ExtractionReviewProps {
   allowAddValue?: boolean;
   /** A value was added or filled in by the reviewer: the rest of the workspace follows. */
   onValueAdded?: (value: ReviewValue, filled: boolean) => void;
+  /** The document is drawn whole with its values highlighted (the demo's documents): the
+   *  values pane pins its legend and, with allowAddValue, the switch to highlight a figure. */
+  drawnWhole?: (documentId: string) => boolean;
 }
 
 const SCOPE_LABEL: Record<ScopePlacement, string> = {
@@ -83,6 +86,7 @@ export function ExtractionReview({
   onPersistCorrect,
   allowAddValue = false,
   onValueAdded,
+  drawnWhole,
 }: ExtractionReviewProps) {
   // Review data lives in app state (via onValuesChange); selection below is
   // local, ephemeral UI. So accepts/corrections/requests survive navigation.
@@ -99,6 +103,8 @@ export function ExtractionReview({
   // A long document: show the values of one page at a time.
   const [pageFilter, setPageFilter] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  // Highlight mode, for one document: it ends when another document is selected.
+  const [highlightDoc, setHighlightDoc] = useState<string | null>(null);
   // A pick on the document asks the values pane to bring the picked card into view.
   const [scrollTo, setScrollTo] = useState<{ id: string; tick: number } | null>(null);
   const valuesPane = useRef<HTMLDivElement>(null);
@@ -121,6 +127,9 @@ export function ExtractionReview({
     (v) => (!filter || v.reviewState === filter) && (pageFilter === null || v.page === pageFilter)
   );
   const selected = items.find((v) => v.id === selectedId) ?? null;
+  const keyed = Boolean(selected && drawnWhole?.(selected.documentId));
+  const canHighlight = Boolean(keyed && allowAddValue && selected && !selected.withdrawn);
+  const highlighting = canHighlight && highlightDoc === selected?.documentId;
 
   // Counted by card: values that share one reading are one card.
   const counts = useMemo(() => {
@@ -552,6 +561,16 @@ export function ExtractionReview({
                 </button>
               ))}
             </div>
+            {selected && keyed ? (
+              <DocumentKey
+                values={items.filter((x) => x.documentId === selected.documentId && !x.withdrawn)}
+                highlight={
+                  canHighlight
+                    ? { on: highlighting, toggle: () => setHighlightDoc(highlighting ? null : selected.documentId) }
+                    : undefined
+                }
+              />
+            ) : null}
           </div>
 
           {adding && (selected ?? nodeValues[0]) ? (
@@ -659,6 +678,8 @@ export function ExtractionReview({
                     selectedId: selected.id,
                     onPickAmong: selectAmong,
                     onAddValue: allowAddValue && !selected.withdrawn ? (entry) => addValue(selected, entry) : undefined,
+                    highlighting,
+                    onHighlightingChange: (on) => setHighlightDoc(on ? selected.documentId : null),
                   }
                 : undefined
             }
@@ -740,6 +761,47 @@ function AddValueForm({
         <span className="s1-xr-addform__note">Recorded as keyed by you; it counts as reviewed.</span>
       </div>
     </form>
+  );
+}
+
+/* ============================ the document's key ============================ */
+
+/** Pinned above the cards: what the colours on the document mean, and the switch to
+ *  highlight a figure the reading missed. */
+function DocumentKey({ values, highlight }: { values: ReviewValue[]; highlight?: { on: boolean; toggle: () => void } }) {
+  const missing = values.filter((v) => v.missing || v.value === "not found").length;
+  const read = readings(values.filter((v) => !(v.missing || v.value === "not found"))).length;
+  return (
+    <div className="s1-xr-key" role="group" aria-label="Highlights on the document">
+      <div className="s1-xr-key__top">
+        <span className="s1-xr-key__count">
+          <strong>{read}</strong> {read === 1 ? "value" : "values"} read
+          {missing ? (
+            <>
+              {" · "}
+              <strong className="s1-dd-legend__miss">{missing} not found</strong>
+            </>
+          ) : null}
+        </span>
+        {highlight ? (
+          <button
+            className={`s1-dd-pick s1-xr-key__pick${highlight.on ? " is-on" : ""}`}
+            type="button"
+            aria-pressed={highlight.on}
+            onClick={highlight.toggle}
+          >
+            <Highlighter aria-hidden /> {highlight.on ? "Done highlighting" : "Highlight a figure"}
+          </button>
+        ) : null}
+      </div>
+      <div className="s1-xr-key__keys">
+        <span className="s1-dd-key s1-dd-key--to_review">To review</span>
+        <span className="s1-dd-key s1-dd-key--accepted">Accepted</span>
+        <span className="s1-dd-key s1-dd-key--corrected">Corrected</span>
+        <span className="s1-dd-key s1-dd-key--requested">Requested</span>
+        <span className="s1-dd-key s1-dd-key--missing">Not found</span>
+      </div>
+    </div>
   );
 }
 
@@ -915,6 +977,9 @@ export interface SourcePick {
   onPickAmong: (ids: string[]) => void;
   /** Add (or fill in) a value from a figure the reviewer highlighted on the page. */
   onAddValue?: (entry: HighlightEntry) => void;
+  /** Highlight mode, switched from the values pane. */
+  highlighting?: boolean;
+  onHighlightingChange?: (on: boolean) => void;
 }
 
 function SourcePane({
