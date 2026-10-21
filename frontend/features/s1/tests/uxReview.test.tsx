@@ -367,6 +367,17 @@ describe("demo documents: the whole document, values highlighted in place", () =
     expect(onPick).toHaveBeenCalledWith(elec.map((v) => v.id));
   });
 
+  it("draws the sample invoice whole too, its emissions basis included", async () => {
+    const { DemoDocument } = await import("../components/demo/DemoDocument");
+    const { preparedInvoiceValues } = await import("../fixtures/demo/preparedInvoice");
+    render(<DemoDocument values={preparedInvoiceValues} engagement={engagementConfig} selectedId={null} onPick={vi.fn()} onAddValue={vi.fn()} />);
+    expect(screen.getByText("Emissions basis (location-based)")).toBeInTheDocument();
+    const highlighted = Array.from(document.querySelectorAll(".s1-dd-hl")).map((h) => h.textContent);
+    expect(highlighted).toEqual(["01 Feb 2025 – 28 Feb 2025", "182,400 kWh", "1,240 kW", "0.223 kgCO2e/kWh", "40.68 tCO2e"]);
+    // Its key and highlight switch, like any other demo document.
+    expect(screen.getByRole("button", { name: "Highlight a figure" })).toBeInTheDocument();
+  });
+
   it("marks a value the reading could not find where it belongs", async () => {
     const { DemoDocument } = await import("../components/demo/DemoDocument");
     const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
@@ -444,7 +455,7 @@ describe("highlight a figure the reading missed", () => {
     const { ExtractionReview } = await import("../components/ExtractionReview");
     const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
     const { useState } = await import("react");
-    const gap = manufacturerValues.find((v) => v.documentId === "DOC-PARTIAL")!;
+    const gap = manufacturerValues.find((v) => v.documentId === "DOC-PARTIAL" && v.whatItIs === "Service period end date")!;
     let latest = manufacturerValues;
     const onValueAdded = vi.fn();
     let add: ((entry: import("../components/demo/DemoDocument").HighlightEntry) => void) | undefined;
@@ -476,7 +487,8 @@ describe("highlight a figure the reading missed", () => {
     const filled = latest.find((v) => v.id === gap.id)!;
     expect(filled).toMatchObject({ value: "30 Sep 2025", missing: false, reviewState: "corrected", originalValue: "not found", docAnchor: "current-read-date" });
     expect(filled.record.at(-1)).toMatchObject({ actor: "R. Iqbal", action: "filled in a value the reading missed", reason: "highlighted on page 1" });
-    expect(latest.filter((v) => v.documentId === "DOC-PARTIAL")).toHaveLength(1);
+    // Filled in where it was, not added beside it.
+    expect(latest.filter((v) => v.documentId === "DOC-PARTIAL" && v.whatItIs === "Service period end date")).toHaveLength(1);
     expect(onValueAdded).toHaveBeenCalledWith(expect.objectContaining({ id: gap.id }), true);
   });
 });
