@@ -3182,6 +3182,24 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-ai__sug:disabled, .s1-ai__send:disabled { opacity: 0.5; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .s1-ai__dots { animation: none; } }
 
+/* Coverage & requests: the State cell on one line (Vivian, 21 Oct). The chip fits its
+   words; Resolve and the row menu sit at the right, and rows centre their content. */
+.s1-cr .s1-req-table td { vertical-align: middle; }
+.s1-req-state { display: flex; flex-direction: column; align-items: stretch; gap: 0.125rem; }
+.s1-req-state__row { display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.s1-cr .s1-req-state__label { flex: none; white-space: nowrap; font-size: var(--text-xs); font-weight: var(--weight-medium); line-height: 1.6; }
+.s1-req-state__actions { display: flex; align-items: center; gap: var(--sp-1); margin-left: auto; }
+.s1-req-state__go {
+  padding: 0.125rem var(--sp-2); font: inherit; font-size: var(--text-sm); color: var(--accent); white-space: nowrap; cursor: pointer;
+  background: var(--sf-card); border: var(--hairline-width) solid var(--accent-line); border-radius: var(--radius-input);
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s var(--ease-out);
+}
+.s1-req-state__go:hover { background: var(--accent-softer); border-color: var(--accent-solid); }
+.s1-req-state__go:active { transform: scale(0.97); }
+.s1-req-state__go:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-req-state .s1-button--icon { width: 1.75rem; height: 1.75rem; }
+.s1-req-state__note { font-size: var(--text-xs); overflow-wrap: anywhere; }
+
 /* ==========================================================================
    Extraction review: compact value cards (Vivian, 21 Oct). Three short lines
    per card; the selected card opens to its record and actions. A state stripe
