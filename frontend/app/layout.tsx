@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Sans } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "../features/s1/styles/sustentra-tokens.css";
@@ -24,13 +25,18 @@ export const viewport: Viewport = {
   themeColor: "#2b2b77", // logo navy
 };
 
+// Font trial: IBM Plex Sans, self-hosted by next/font. Only the Evidence screen uses it for
+// now (s1-workpaper.css, "Font trial"); if it's confirmed it becomes --font-sans everywhere.
+// Plex isn't a variable font, so it loads the design standard's two weights.
+const plex = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "600"], variable: "--font-plex", display: "swap" });
+
 interface RootLayoutProps {
   children: ReactNode;
 }
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en">
+    <html lang="en" className={plex.variable}>
       <body>{children}</body>
     </html>
   );
