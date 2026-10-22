@@ -24,11 +24,13 @@ The screen must make sense with no tip, tour or tooltip open.
 | `--text-md` | 14px | Everything people read or type: body, table cells, inputs, buttons, values; section titles in the strong weight |
 | `--text-lg` | 20px | The page title, and the few key figures a page leads with |
 
-- **One family**: `--font-sans`. No monospace in the interface. Digits that line up use
-  tabular figures (`.s1-num`), in the same font.
-- **Two weights**: `--weight-regular` (400) for content and `--weight-strong` (600) for
-  titles, labels and emphasis. In Helvetica Neue a 500 is too close to regular to carry a
-  title at body size, so the second weight is a true bold.
+- **One family**: `--font-sans`, which is **IBM Plex Sans** (self-hosted with `next/font`,
+  loaded in `app/layout.tsx`). It was chosen with Vivian (22 October 2026) over Helvetica
+  Neue, Inter, Source Sans 3 and Manrope: it reads as institutional rather than generic, and
+  it is narrow enough for dense tables. No monospace in the interface. Digits that line up
+  use tabular figures (`.s1-num`), in the same font.
+- **Two weights**: `--weight-regular` (400) for content and `--weight-strong` (600,
+  Plex SemiBold) for titles, labels and emphasis. Only these two weights are loaded.
 - **Hierarchy comes from placement, grouping, contrast (`--ink`, `--ink-2`, `--ink-3`) and
   weight, before size or colour.** A section title is `--text-md` in the strong weight, not
   a fourth size: it matches the text in its fields in size and outranks it in weight.
@@ -127,10 +129,10 @@ Prompts for Emergent, Claude or any other tool include this file. A generated sc
 - uses the tokens and parts above, not new ones;
 - passes `npm run lint`, `npm run typecheck` and the contract test before review.
 
-## Where we are (21 October 2026)
+## Where we are (22 October 2026)
 
 - **Enforced by the contract test:**
-  - type: one family, three sizes, two weights, no monospace;
+  - type: one family (IBM Plex Sans), three sizes, two weights, no monospace;
   - tokens only, no raw hex or px;
   - stylesheets that parse.
 - **In place:**
