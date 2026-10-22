@@ -24,11 +24,12 @@ The screen must make sense with no tip, tour or tooltip open.
 | `--text-md` | 14px | Everything people read or type: body, table cells, inputs, buttons, values; section titles in the strong weight |
 | `--text-lg` | 20px | The page title, and the few key figures a page leads with |
 
-- **One family**: `--font-sans`, which is **IBM Plex Sans** (self-hosted with `next/font`,
-  loaded in `app/layout.tsx`). It was chosen with Vivian (22 October 2026) over Helvetica
-  Neue, Inter, Source Sans 3 and Manrope: it reads as institutional rather than generic, and
-  it is narrow enough for dense tables. No monospace in the interface. Digits that line up
-  use tabular figures (`.s1-num`), in the same font.
+- **One family**: `--font-sans`, which is **IBM Plex Sans** (font files committed in
+  `app/fonts`, loaded with `next/font/local` in `app/layout.tsx`). It was chosen with
+  Vivian (22 October 2026) over Helvetica Neue, Inter, Source Sans 3 and Manrope: it reads
+  as institutional rather than generic, and it is narrow enough for dense tables. No
+  monospace in the interface. Digits that line up use tabular figures (`.s1-num`), in the
+  same font.
 - **Two weights**: `--weight-regular` (400) for content and `--weight-strong` (600,
   Plex SemiBold) for titles, labels and emphasis. Only these two weights are loaded.
 - **Hierarchy comes from placement, grouping, contrast (`--ink`, `--ink-2`, `--ink-3`) and
