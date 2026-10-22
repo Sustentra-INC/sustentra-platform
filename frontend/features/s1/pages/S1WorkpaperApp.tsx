@@ -183,8 +183,14 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [sessionUploads, setSessionUploads] = useState<string[]>(persisted?.sessionUploads ?? []);
   // Engagement config is editable on Setup; facilities here feed the Workspace.
   // Backend mode starts blank (no templated data); fixture mode seeds the demo.
+  // A demo saved before the engagement had a name gets the fixture's, so the context bar
+  // shows the name rather than the ID.
   const [engagement, setEngagement] = useState<EngagementConfig>(
-    persisted?.engagement ?? (dataMode === "fixture" ? engagementConfig : EMPTY_ENGAGEMENT)
+    persisted?.engagement
+      ? { ...persisted.engagement, engagementName: persisted.engagement.engagementName || engagementConfig.engagementName }
+      : dataMode === "fixture"
+        ? engagementConfig
+        : EMPTY_ENGAGEMENT
   );
   // Backend mode: the org's engagements (S1-BE-002); null until loaded.
   const [engagements, setEngagements] = useState<BackendEngagement[] | null>(dataMode === "backend" ? null : []);

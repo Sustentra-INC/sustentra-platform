@@ -9,6 +9,7 @@ import type { EngagementConfig } from "../types";
 export const engagementConfig: EngagementConfig = {
   clientName: "Cascade Provisions Co.",
   engagementId: "ENG-CASCADE-2025",
+  engagementName: "2025 GHG assurance",
   reportingPeriod: {
     start: "2025-01-01",
     end: "2025-12-31",

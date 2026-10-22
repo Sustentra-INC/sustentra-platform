@@ -235,6 +235,7 @@ function ContextBar({
       </div>
       {expanded ? (
         <div className="s1-ctx__details">
+          <CtxItem label="Engagement ID" value={engagement.engagementId} />
           <CtxItem label="Reporting period" value={`${engagement.reportingPeriod.start} to ${engagement.reportingPeriod.end}`} />
           <CtxItem label="Regulation" value={engagement.regulation} />
           <CtxItem label="Assurance level" value={engagement.assuranceLevel} />
