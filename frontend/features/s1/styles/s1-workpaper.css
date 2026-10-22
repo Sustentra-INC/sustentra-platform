@@ -3396,3 +3396,10 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 /* Extraction review: a document opened with no values says so. */
 .s1-xr-unread { margin: var(--sp-3) 0 0; padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); color: var(--ink-2); background: var(--state-open-bg); border: var(--hairline-width) solid var(--state-open-line); border-radius: var(--radius-input); overflow-wrap: anywhere; }
 .s1-xr-unread strong { color: var(--ink); }
+
+/* Font trial, Evidence only, for Vivian to confirm: Inter (self-hosted, app/layout.tsx).
+   If confirmed, Inter becomes --font-sans in the tokens and this block goes. */
+.s1-ws {
+  --font-sans: var(--font-inter), "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
+}

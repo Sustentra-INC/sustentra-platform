@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import type { ReactNode } from "react";
 
 import "../features/s1/styles/sustentra-tokens.css";
@@ -24,13 +25,17 @@ export const viewport: Viewport = {
   themeColor: "#2b2b77", // logo navy
 };
 
+// Font trial: Inter, self-hosted by next/font. Only the Evidence screen uses it for now
+// (s1-workpaper.css, "Font trial"); if it's confirmed it becomes --font-sans everywhere.
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+
 interface RootLayoutProps {
   children: ReactNode;
 }
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en">
+    <html lang="en" className={inter.variable}>
       <body>{children}</body>
     </html>
   );
