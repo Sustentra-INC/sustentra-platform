@@ -2614,7 +2614,7 @@ html, body { margin: 0; padding: 0; }
 }
 .s1-attention__list li + li { border-top: var(--border-hairline); }
 .s1-attention__item {
-  display: grid; grid-template-columns: 2rem 3rem 1fr auto; align-items: center; gap: var(--sp-3); width: 100%;
+  display: grid; grid-template-columns: 2rem 2.5rem 1fr auto; align-items: center; gap: var(--sp-3); width: 100%;
   padding: var(--sp-3) var(--sp-4); border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer;
   transition: background-color 0.15s ease;
 }
@@ -2625,7 +2625,8 @@ html, body { margin: 0; padding: 0; }
 .s1-attention__item--blocking .s1-attention__icon { background: var(--state-blocking-bg); color: var(--state-blocking-fg); }
 .s1-attention__item--open .s1-attention__icon { background: var(--state-open-bg); color: var(--state-open-fg); }
 .s1-attention__item--waiting .s1-attention__icon { background: var(--state-unverifiable-bg); color: var(--state-unverifiable-fg); }
-.s1-attention__n { font-size: var(--text-md); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; text-align: right; }
+/* Numbers start in one column right after the icon, so every count lines up on the left. */
+.s1-attention__n { font-size: var(--text-md); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; text-align: left; }
 .s1-attention__item--blocking .s1-attention__n { color: var(--state-blocking-fg); }
 .s1-attention__what { min-width: 0; }
 .s1-attention__go { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--text-sm); color: var(--accent); }
