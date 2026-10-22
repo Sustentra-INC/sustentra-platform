@@ -1132,7 +1132,7 @@ select:focus-visible,
 .s1-modal__head { display: flex; flex-direction: column; gap: var(--sp-1); }
 .s1-modal__field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); }
 .s1-modal__field select, .s1-modal__field textarea {
-  font: inherit; font-size: var(--text-md); color: var(--ink);
+  font: inherit; font-size: var(--text-sm); color: var(--ink);
   background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input);
   padding: var(--sp-2);
 }
@@ -1298,7 +1298,7 @@ select:focus-visible,
 .s1-setup-field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); color: var(--ink-2); }
 .s1-setup-inline { display: flex; gap: var(--sp-2); }
 .s1-setup-field input, .s1-setup-field select, .s1-setup-row input {
-  font: inherit; font-size: var(--text-md); color: var(--ink);
+  font: inherit; font-size: var(--text-sm); color: var(--ink);
   background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-2);
 }
 .s1-setup-list { display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -1356,7 +1356,7 @@ select:focus-visible,
 .s1-signin__title { font-size: var(--text-lg); font-weight: var(--weight-strong); margin: var(--sp-3) 0 0; }
 .s1-signin__sub { margin: 0 0 var(--sp-2); color: var(--ink-3); font-size: var(--text-sm); }
 .s1-signin__field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); color: var(--ink-2); }
-.s1-signin__field input { font: inherit; font-size: var(--text-md); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-2) var(--sp-3); }
+.s1-signin__field input { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-2) var(--sp-3); }
 .s1-signin__submit { margin-top: var(--sp-2); font: inherit; font-size: var(--text-md); font-weight: var(--weight-strong); cursor: pointer; color: var(--sf-card); background: var(--state-active-fg); border: var(--hairline-width) solid var(--state-active-fg); border-radius: var(--radius-input); padding: var(--sp-2) var(--sp-3); }
 .s1-signin__submit:hover { filter: brightness(1.05); }
 .s1-signin__foot { display: flex; align-items: center; justify-content: space-between; font-size: var(--text-sm); color: var(--ink-3); margin-top: var(--sp-1); }
@@ -1462,7 +1462,7 @@ select:focus-visible,
 .s1-xr-edit { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2); width: 100%; }
 .s1-xr-edit__field { display: flex; flex-direction: column; gap: 0.15rem; font-size: var(--text-sm); color: var(--ink-3); flex: 1 1 7rem; min-width: 0; }
 .s1-xr-edit__field--unit { flex: 0 1 6rem; }
-.s1-xr-edit__field input { font: inherit; font-size: var(--text-md); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); min-width: 0; width: 100%; }
+.s1-xr-edit__field input { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); min-width: 0; width: 100%; }
 .s1-xr-edit__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .s1-xr-acceptall { margin-left: auto; }
 .s1-xr-doc { flex-wrap: wrap; }
@@ -2860,9 +2860,9 @@ html, body { margin: 0; padding: 0; }
    ========================================================================== */
 .s1-setup-card h2 { display: inline-flex; align-items: center; gap: var(--sp-1); }
 .s1-setup-field input, .s1-setup-field select, .s1-setup-row input, .s1-fac__row input, .s1-fac__row select {
-  box-sizing: border-box; height: 2.5rem; width: 100%;
+  box-sizing: border-box; height: 2.25rem; width: 100%;
   background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input);
-  padding: 0 var(--sp-3); font: inherit; font-size: var(--text-md); color: var(--ink);
+  padding: 0 var(--sp-3); font: inherit; font-size: var(--text-sm); color: var(--ink);
 }
 .s1-setup-row input:focus, .s1-fac__row input:focus, .s1-fac__row select:focus { outline: var(--focus-ring); outline-offset: 0; border-color: var(--accent-solid); }
 .s1-setup-inline > input { flex: 1; min-width: 0; }
@@ -3024,7 +3024,7 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-variant-nume
 .s1-xr-addform__title { font-size: var(--text-sm); color: var(--ink-2); overflow-wrap: anywhere; }
 .s1-xr-addform label { display: flex; flex-direction: column; gap: 0.125rem; font-size: var(--text-sm); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
 .s1-xr-addform input {
-  box-sizing: border-box; width: 100%; min-width: 0; height: 2.25rem; padding: 0 var(--sp-2); font: inherit; font-size: var(--text-md); text-transform: none; letter-spacing: normal;
+  box-sizing: border-box; width: 100%; min-width: 0; height: 2.25rem; padding: 0 var(--sp-2); font: inherit; font-size: var(--text-sm); text-transform: none; letter-spacing: normal;
   color: var(--ink); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input);
 }
 .s1-xr-addform input:focus { outline: var(--focus-ring); outline-offset: 0; border-color: var(--accent-solid); }
@@ -3278,13 +3278,13 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-mr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 
 /* Fields */
-.s1-mr-input { box-sizing: border-box; width: 100%; min-height: 2.25rem; padding: 0.375rem var(--sp-2); font: inherit; font-size: var(--text-md); color: var(--ink); background: var(--sf-card); border: var(--hairline-width) solid var(--line-strong); border-radius: var(--radius-input); }
+.s1-mr-input { box-sizing: border-box; width: 100%; min-height: 2.25rem; padding: 0.375rem var(--sp-2); font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-card); border: var(--hairline-width) solid var(--line-strong); border-radius: var(--radius-input); }
 .s1-mr-input:focus { outline: var(--focus-ring); outline-offset: 0; }
 textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-mr-input--period { width: 17.5rem; }
 .s1-mr-input--pct { width: 4.5rem; font-variant-numeric: tabular-nums; }
 .s1-mr-pct { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--ink-2); }
-.s1-mr-select { min-height: 2.25rem; max-width: 10rem; font-size: var(--text-md); color: var(--ink); background-color: var(--sf-card); border: var(--hairline-width) solid var(--line-strong); border-radius: var(--radius-input); }
+.s1-mr-select { min-height: 2.25rem; max-width: 10rem; font-size: var(--text-sm); color: var(--ink); background-color: var(--sf-card); border: var(--hairline-width) solid var(--line-strong); border-radius: var(--radius-input); }
 .s1-mr-select--wide { width: 17.5rem; max-width: 100%; min-height: 2.5rem; }
 .s1-mr-select--fill { max-width: none; }
 
