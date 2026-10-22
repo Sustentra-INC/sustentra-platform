@@ -370,6 +370,7 @@ export function EvidenceWorkspace({
         <>
           <FacilityFilterStrip
             engagement={engagement}
+            total={activeCount}
             counts={facilityCounts}
             active={facilityFilter}
             onSelect={(f) => setFacilityFilter((cur) => (cur === f ? null : f))}
@@ -415,7 +416,7 @@ export function EvidenceWorkspace({
                       <span className="s1-ws-gr__mix">
                         {mix.map((part) => (
                           <span key={part.role} className={`s1-ws-gr__mixitem s1-ws-gr__mixitem--${part.role}`}>
-                            {part.n} {part.label}
+                            <span className="s1-ws-gr__mixn">{part.n}</span> {part.label}
                           </span>
                         ))}
                       </span>
@@ -579,7 +580,7 @@ function WorkspaceHeader({
       </div>
       <div className="s1-ws-top__right">
         <div className="s1-ws-header__counts" role="group" aria-label="Show only">
-          <CountFilter label="Need you" tone="accent" n={counts.needs} on={activeFilter === "needs"} onClick={() => onFilter("needs")} />
+          <CountFilter label="To review" tone="open" n={counts.needs} on={activeFilter === "needs"} onClick={() => onFilter("needs")} />
           <CountFilter label="New since last visit" tone="neutral" n={counts.arrived} on={activeFilter === "arrived"} onClick={() => onFilter("arrived")} />
           <CountFilter label="Blocked" tone="blocking" n={counts.blocked} on={activeFilter === "blocked"} onClick={() => onFilter("blocked")} />
         </div>
@@ -603,7 +604,7 @@ function CountFilter({
   label: string;
   n: number;
   on: boolean;
-  tone?: "accent" | "blocking" | "neutral";
+  tone?: "open" | "blocking" | "neutral";
   onClick: () => void;
 }) {
   return (
@@ -621,19 +622,22 @@ function CountFilter({
 
 function FacilityFilterStrip({
   engagement,
+  total,
   counts,
   active,
   onSelect,
 }: {
   engagement: EngagementConfig;
+  total: number;
   counts: { map: Map<string, number>; multiple: number; none: number; unknown: number };
   active: FacilityFilter;
   onSelect: (f: FacilityFilter) => void;
 }) {
   return (
-    <div className="s1-ws-facilities" role="group" aria-label="Filter by facility">
+    <div className="s1-ws-factabs" role="group" aria-label="Filter by facility">
+      <FacilityTab label="All facilities" n={total} on={active === null} onClick={() => onSelect(null)} />
       {engagement.facilities.map((f) => (
-        <FacilityChip
+        <FacilityTab
           key={f.facilityId}
           label={f.name}
           n={counts.map.get(f.facilityId) ?? 0}
@@ -641,17 +645,17 @@ function FacilityFilterStrip({
           onClick={() => onSelect(f.facilityId)}
         />
       ))}
-      <FacilityChip label="Multiple facilities" n={counts.multiple} on={active === "multiple"} onClick={() => onSelect("multiple")} />
-      <FacilityChip label="No facility" n={counts.none} on={active === "none"} onClick={() => onSelect("none")} />
-      <FacilityChip label="Not yet known" n={counts.unknown} on={active === "unknown"} onClick={() => onSelect("unknown")} />
+      <FacilityTab label="Multiple facilities" n={counts.multiple} on={active === "multiple"} onClick={() => onSelect("multiple")} />
+      <FacilityTab label="No facility" n={counts.none} on={active === "none"} onClick={() => onSelect("none")} />
+      <FacilityTab label="Not yet known" n={counts.unknown} on={active === "unknown"} onClick={() => onSelect("unknown")} />
     </div>
   );
 }
 
-function FacilityChip({ label, n, on, onClick }: { label: string; n: number; on: boolean; onClick: () => void }) {
+function FacilityTab({ label, n, on, onClick }: { label: string; n: number; on: boolean; onClick: () => void }) {
   return (
-    <button className={`s1-ws-facchip${on ? " is-on" : ""}`} type="button" aria-pressed={on} onClick={onClick}>
-      {label} <span className="s1-muted">{n}</span>
+    <button className={`s1-ws-factab${on ? " is-on" : ""}`} type="button" aria-pressed={on} onClick={onClick}>
+      {label} <span className="s1-ws-factab__n">{n}</span>
     </button>
   );
 }
@@ -825,7 +829,7 @@ function askLabel(ask: Ask): string {
 function statusMix(items: EvidenceItem[]): Array<{ role: string; label: string; n: number }> {
   const buckets = [
     { role: "blocking", label: "blocked", n: 0 },
-    { role: "open", label: "need you", n: 0 },
+    { role: "open", label: "to review", n: 0 },
     { role: "active", label: "extracting", n: 0 },
     { role: "resolved", label: "extracted", n: 0 },
     { role: "na", label: "withdrawn", n: 0 },
@@ -1181,7 +1185,7 @@ function describeFilter(facility: FacilityFilter, header: HeaderFilter, engageme
     else if (facility === "unknown") parts.push("Not yet known");
     else parts.push(engagement.facilities.find((f) => f.facilityId === facility)?.name ?? "facility");
   }
-  if (header === "needs") parts.push("Needs you");
+  if (header === "needs") parts.push("To review");
   if (header === "arrived") parts.push("Arrived since last visit");
   if (header === "blocked") parts.push("Blocked");
   return parts.join(" + ") || "this filter";
