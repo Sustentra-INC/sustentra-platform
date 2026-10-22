@@ -65,6 +65,15 @@
   --chart-5:        #4E5D6C;   /* slate */
   --chart-grid:     #E6E3DA;
 
+  /* Status marks: the thin bars that summarise a list's states. Muted, so colour
+     points at exceptions only: done is slate, not green. */
+  --mark-done:      #66768A;   /* slate: extracted, complete */
+  --mark-review:    #B98C3E;   /* muted ochre: to review */
+  --mark-blocked:   #A23A3A;   /* brick: blocked */
+  --mark-progress:  #8FA6C2;   /* soft blue: extracting */
+  --mark-idle:      #C9C5B8;   /* withdrawn */
+  --mark-track:     #ECE9E1;
+
 
   /* --- Engagement state --------------------------------------------------
      Six roles. Every status indicator in the product resolves to exactly one

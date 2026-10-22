@@ -1070,15 +1070,23 @@ select:focus-visible,
 .s1-ws-count.is-on { border-color: var(--state-active-fg); background: var(--state-active-bg); color: var(--ink); }
 .s1-ws-count__n { font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; }
 
-.s1-ws-facilities { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.s1-ws-facchip {
-  font: inherit; font-size: var(--text-sm); cursor: pointer;
-  background: var(--sf-card); color: var(--ink);
-  border: var(--border-hairline); border-radius: var(--radius-chip);
-  padding: var(--sp-1) var(--sp-3);
+/* Facility filter: an underlined tab row, not pills. The current tab is ink with an ink
+   rule under it; counts sit beside each name in tabular figures. */
+.s1-ws-factabs {
+  display: flex; flex-wrap: wrap; gap: 0 var(--sp-5);
+  border-bottom: var(--hairline-width) solid var(--line);
 }
-.s1-ws-facchip:hover { border-color: var(--line-strong); }
-.s1-ws-facchip.is-on { border-color: var(--state-active-fg); background: var(--state-active-bg); }
+.s1-ws-factab {
+  display: inline-flex; align-items: baseline; gap: var(--sp-2);
+  padding: var(--sp-2) 0; margin-bottom: calc(-1 * var(--hairline-width));
+  font: inherit; font-size: var(--text-md); color: var(--ink-2); white-space: nowrap; cursor: pointer;
+  background: none; border: 0; border-bottom: calc(2 * var(--hairline-width)) solid transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.s1-ws-factab:hover { color: var(--ink); border-bottom-color: var(--line-strong); }
+.s1-ws-factab.is-on { color: var(--ink); border-bottom-color: var(--ink); }
+.s1-ws-factab__n { font-size: var(--text-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.s1-ws-factab.is-on .s1-ws-factab__n { color: var(--ink-2); }
 
 .s1-ws-table td { vertical-align: top; }
 .s1-ws-group td {
@@ -1505,27 +1513,27 @@ select:focus-visible,
    ========================================================================== */
 
 /* ---- Press-motion: everything clickable answers the finger ---- */
-.s1-button, .s1-tab, .s1-ws-count, .s1-ws-facchip, .s1-req-typechip,
+.s1-button, .s1-tab, .s1-ws-count, .s1-req-typechip,
 .s1-linklike, .s1-add-note, .s1-ws-setup, .s1-doc-link {
   transition: transform 0.16s var(--ease-out), background-color 0.16s var(--ease-out),
               border-color 0.16s var(--ease-out), color 0.16s var(--ease-out),
               box-shadow 0.16s var(--ease-out);
 }
 @media (hover: hover) and (pointer: fine) {
-  .s1-button:hover:not(:disabled), .s1-ws-count:hover, .s1-ws-facchip:hover,
+  .s1-button:hover:not(:disabled), .s1-ws-count:hover,
   .s1-req-typechip:hover, .s1-add-note:hover, .s1-ws-setup:hover { transform: translateY(-0.0625rem); }
 }
 .s1-button:active:not(:disabled), .s1-tab:active:not(:disabled), .s1-ws-count:active,
-.s1-ws-facchip:active, .s1-req-typechip:active, .s1-add-note:active,
+.s1-req-typechip:active, .s1-add-note:active,
 .s1-ws-setup:active, .s1-button--icon:active { transform: scale(0.96); }
 @media (prefers-reduced-motion: reduce) {
-  .s1-button, .s1-tab, .s1-ws-count, .s1-ws-facchip, .s1-req-typechip,
+  .s1-button, .s1-tab, .s1-ws-count, .s1-req-typechip,
   .s1-add-note, .s1-ws-setup { transition: background-color 0.16s ease, color 0.16s ease; transform: none !important; }
 }
 
 /* ---- Focus: one accent ring everywhere ---- */
 .s1-button:focus-visible, .s1-tab:focus-visible, .s1-ws-count:focus-visible,
-.s1-ws-facchip:focus-visible, .s1-req-typechip:focus-visible, .s1-add-note:focus-visible,
+.s1-ws-factab:focus-visible, .s1-req-typechip:focus-visible, .s1-add-note:focus-visible,
 .s1-ws-setup:focus-visible, .s1-doc-link:focus-visible, .s1-linklike:focus-visible,
 input:focus-visible, select:focus-visible, textarea:focus-visible {
   outline: var(--active-row-marker-width) solid var(--accent-line);
@@ -1558,7 +1566,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   border-radius: var(--radius-card); background: var(--sf-card);
 }
 .s1-ws-count__n { font-size: var(--text-md); font-weight: var(--weight-strong); color: var(--ink); }
-.s1-ws-count--accent .s1-ws-count__n { color: var(--accent); }
+.s1-ws-count--open .s1-ws-count__n { color: var(--state-open-fg); }
 .s1-ws-count--blocking .s1-ws-count__n { color: var(--state-blocking-fg); }
 .s1-ws-count.is-on { border-color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 var(--hairline-width) var(--accent-line); }
 .s1-ws-count--blocking.is-on { border-color: var(--state-blocking-line); background: var(--state-blocking-bg); box-shadow: inset 0 0 0 var(--hairline-width) var(--state-blocking-line); }
@@ -1574,21 +1582,20 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-ws-setup svg { width: 0.9rem; height: 0.9rem; }
 
 /* ---- Filter chips: appealing, obviously clickable ---- */
-.s1-ws-facilities { gap: var(--sp-2); }
-.s1-ws-facchip, .s1-req-typechip {
+.s1-req-typechip {
   border-radius: var(--state-chip-radius); padding: var(--sp-2) var(--sp-4);
   font-weight: var(--weight-strong); color: var(--ink-2);
 }
-.s1-ws-facchip .s1-muted, .s1-req-typechip .s1-muted {
+.s1-req-typechip .s1-muted {
   display: inline-flex; min-width: 1.2rem; justify-content: center;
   margin-left: var(--sp-1); padding: 0 var(--sp-1); border-radius: var(--state-chip-radius);
   background: var(--sf-sunken); color: var(--ink-3); font-variant-numeric: tabular-nums;
 }
-.s1-ws-facchip:hover, .s1-req-typechip:hover { border-color: var(--accent-line); color: var(--ink); }
-.s1-ws-facchip.is-on, .s1-req-typechip.is-on {
+.s1-req-typechip:hover { border-color: var(--accent-line); color: var(--ink); }
+.s1-req-typechip.is-on {
   border-color: var(--accent); background: var(--accent-soft); color: var(--accent-strong);
 }
-.s1-ws-facchip.is-on .s1-muted, .s1-req-typechip.is-on .s1-muted { background: var(--sf-card); color: var(--accent-strong); }
+.s1-req-typechip.is-on .s1-muted { background: var(--sf-card); color: var(--accent-strong); }
 
 /* ---- Table: a neater surface, calm rows, accent hover ---- */
 .s1-table-wrap { border-radius: var(--radius-card); box-shadow: 0 0.06rem 0.18rem rgba(40, 40, 112, 0.05); }
@@ -1673,7 +1680,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .s1-ws-count { flex: 1; min-width: 0; }
   .s1-table-wrap { overflow-x: auto; }
   .s1-table { table-layout: auto; min-width: 44rem; }  /* scroll the table, not the page */
-  .s1-button, .s1-tab, .s1-ws-facchip { min-height: 2.75rem; }
+  .s1-button, .s1-tab, .s1-ws-factab { min-height: 2.75rem; }
   .s1-xr-grid { grid-template-columns: 1fr; height: auto; }
   .s1-setup-grid { grid-template-columns: 1fr; }
   .s1-setup-inline { flex-wrap: wrap; }
@@ -2765,7 +2772,7 @@ html, body { margin: 0; padding: 0; }
 .s1-ws-top .s1-ws-header__counts { gap: var(--sp-2); }
 .s1-ws-top .s1-ws-count {
   flex-direction: row; align-items: baseline; gap: var(--sp-2); min-width: 0;
-  padding: var(--sp-1) var(--sp-3); border-radius: var(--state-chip-radius);
+  padding: var(--sp-1) var(--sp-3); border-radius: var(--radius-input);
 }
 .s1-ws-top .s1-ws-count__n { font-size: var(--text-md); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; }
 .s1-ws-top .s1-ws-count__label { font-size: var(--text-sm); color: var(--ink-2); }
@@ -2792,22 +2799,22 @@ html, body { margin: 0; padding: 0; }
 }
 .s1-ws-gr--prepared .s1-ws-gr__head { background: linear-gradient(90deg, var(--sf-sunken), transparent 60%); }
 .s1-ws-gr__n { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
-.s1-ws-gr__bar { display: flex; gap: 0.125rem; height: 0.5rem; border-radius: var(--radius-chip); overflow: hidden; background: var(--sf-sunken); }
-.s1-ws-gr__seg { flex-basis: 0; min-width: 0.25rem; transition: flex-grow 0.4s var(--ease-out); }
-.s1-ws-gr__seg--resolved { background: var(--state-resolved-fg); }
-.s1-ws-gr__seg--open { background: var(--chart-3); }
-.s1-ws-gr__seg--blocking { background: var(--state-blocking-fg); }
-.s1-ws-gr__seg--active { background: var(--accent-solid); }
-.s1-ws-gr__seg--na { background: var(--line-strong); }
-.s1-ws-gr__mix { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); font-size: var(--text-sm); }
-.s1-ws-gr__mixitem { display: inline-flex; align-items: center; gap: var(--sp-1); color: var(--ink-2); white-space: nowrap; }
-.s1-ws-gr__mixitem::before { content: ""; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: currentColor; }
-.s1-ws-gr__mixitem--resolved::before { background: var(--state-resolved-fg); }
-.s1-ws-gr__mixitem--open { color: var(--state-open-fg); font-weight: var(--weight-strong); }
-.s1-ws-gr__mixitem--open::before { background: var(--chart-3); }
-.s1-ws-gr__mixitem--blocking { color: var(--state-blocking-fg); font-weight: var(--weight-strong); }
-.s1-ws-gr__mixitem--active::before { background: var(--accent-solid); }
-.s1-ws-gr__mixitem--na::before { background: var(--line-strong); }
+/* Status: a thin, square-ended bar in muted marks, then the counts in words. Colour
+   flags exceptions only: done is slate, and only "blocked" and "to review" counts
+   take a colour. */
+.s1-ws-gr__bar { display: flex; gap: var(--hairline-width); height: 0.25rem; overflow: hidden; background: var(--mark-track); }
+.s1-ws-gr__seg { flex-basis: 0; min-width: 0.1875rem; transition: flex-grow 0.4s var(--ease-out); }
+.s1-ws-gr__seg--resolved { background: var(--mark-done); }
+.s1-ws-gr__seg--open { background: var(--mark-review); }
+.s1-ws-gr__seg--blocking { background: var(--mark-blocked); }
+.s1-ws-gr__seg--active { background: var(--mark-progress); }
+.s1-ws-gr__seg--na { background: var(--mark-idle); }
+.s1-ws-gr__mix { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); font-size: var(--text-sm); color: var(--ink-2); }
+.s1-ws-gr__mixitem { display: inline-flex; align-items: baseline; gap: var(--sp-2); white-space: nowrap; }
+.s1-ws-gr__mixitem + .s1-ws-gr__mixitem::before { content: "·"; color: var(--ink-3); }
+.s1-ws-gr__mixn { font-variant-numeric: tabular-nums; color: var(--ink); margin-right: calc(-1 * var(--sp-1)); }
+.s1-ws-gr__mixitem--open .s1-ws-gr__mixn { color: var(--state-open-fg); font-weight: var(--weight-strong); }
+.s1-ws-gr__mixitem--blocking .s1-ws-gr__mixn { color: var(--state-blocking-fg); font-weight: var(--weight-strong); }
 .s1-ws-gr__body { border-top: var(--border-hairline); border-radius: 0; border-inline: 0; border-bottom: 0; }
 .s1-ws-gr__body .s1-ws-table { margin: 0; }
 .s1-ws-gr.is-open .s1-ws-gr__body { transition: opacity 0.2s var(--ease-out), transform 0.2s var(--ease-out); }
