@@ -2783,7 +2783,7 @@ html, body { margin: 0; padding: 0; }
 .s1-ws-gr { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); overflow: hidden; transition: border-color 0.15s ease, box-shadow 0.2s var(--ease-out); }
 .s1-ws-gr.is-open { border-color: var(--line-strong); box-shadow: 0 0.25rem 1rem rgba(40, 40, 112, 0.06); }
 .s1-ws-gr__head {
-  display: grid; grid-template-columns: 1rem minmax(12rem, 1.4fr) 7rem minmax(8rem, 1fr) minmax(12rem, 1.2fr);
+  display: grid; grid-template-columns: 1rem minmax(12rem, 1.4fr) 7rem minmax(8rem, 1fr) 2.75rem minmax(12rem, 1.2fr);
   align-items: center; gap: var(--sp-4); width: 100%; padding: var(--sp-3) var(--sp-4);
   border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer;
   transition: background-color 0.15s ease;
@@ -2792,18 +2792,19 @@ html, body { margin: 0; padding: 0; }
 .s1-ws-gr__head:focus-visible { outline: var(--focus-ring); outline-offset: calc(-1 * var(--focus-offset)); }
 .s1-ws-gr__caret { width: 1rem; height: 1rem; color: var(--ink-3); transition: transform 0.2s var(--ease-out); }
 .s1-ws-gr.is-open .s1-ws-gr__caret { transform: rotate(90deg); color: var(--accent); }
-.s1-ws-gr__type { display: inline-flex; align-items: center; gap: var(--sp-2); font-weight: var(--weight-strong); min-width: 0; }
+.s1-ws-gr__type { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); font-weight: var(--weight-strong); min-width: 0; }
 .s1-ws-gr__tag {
   font-size: var(--text-sm); font-weight: var(--weight-regular); padding: 0.05rem var(--sp-2); border-radius: var(--state-chip-radius);
   background: var(--state-unverifiable-bg); color: var(--state-unverifiable-fg); white-space: nowrap;
 }
 .s1-ws-gr--prepared .s1-ws-gr__head { background: linear-gradient(90deg, var(--sf-sunken), transparent 60%); }
 .s1-ws-gr__n { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
-/* Status: a thin, square-ended bar in muted marks, then the counts in words. Colour
-   flags exceptions only: done is slate, and only "blocked" and "to review" counts
-   take a colour. */
-.s1-ws-gr__bar { display: flex; gap: var(--hairline-width); height: 0.25rem; overflow: hidden; background: var(--mark-track); }
-.s1-ws-gr__seg { flex-basis: 0; min-width: 0.1875rem; transition: flex-grow 0.4s var(--ease-out); }
+/* Status: a solid bar in muted marks with a gap between states, the share extracted,
+   then the counts in words. Colour flags exceptions only: done is slate, and only
+   "blocked" and "to review" counts take a colour. */
+.s1-ws-gr__bar { display: flex; gap: calc(2 * var(--hairline-width)); height: 0.625rem; border-radius: 0.125rem; overflow: hidden; }
+.s1-ws-gr__seg { flex-basis: 0; min-width: 0.25rem; transition: flex-grow 0.4s var(--ease-out); }
+.s1-ws-gr__pct { font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
 .s1-ws-gr__seg--resolved { background: var(--mark-done); }
 .s1-ws-gr__seg--open { background: var(--mark-review); }
 .s1-ws-gr__seg--blocking { background: var(--mark-blocked); }
@@ -2846,7 +2847,8 @@ html, body { margin: 0; padding: 0; }
 
 @media (max-width: 64rem) {
   .s1-ws-gr__head { grid-template-columns: 1rem 1fr auto; }
-  .s1-ws-gr__bar, .s1-ws-gr__mix { grid-column: 2 / -1; }
+  .s1-ws-gr__bar { grid-column: 2 / 3; }
+  .s1-ws-gr__mix { grid-column: 2 / -1; }
 }
 @media (prefers-reduced-motion: reduce) {
   .s1-ws-gr, .s1-ws-gr__caret, .s1-ws-gr__seg, .s1-ws-gr.is-open .s1-ws-gr__body, .s1-ws-dropveil { transition: none; }
