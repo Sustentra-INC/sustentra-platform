@@ -397,6 +397,10 @@ export function EvidenceWorkspace({
                 const open = hasFilter || openTypes.has(group.type);
                 const prepared = group.type === CLIENT_PREPARED_GROUP;
                 const mix = statusMix(group.items);
+                const counted = mix.filter((part) => part.role !== "na").reduce((sum, part) => sum + part.n, 0);
+                const done = mix.find((part) => part.role === "resolved")?.n ?? 0;
+                // Never round up to 100% while anything is still open.
+                const pctDone = counted === 0 ? 0 : done === counted ? 100 : Math.floor((done / counted) * 100);
                 return (
                   <section key={group.type} className={`s1-ws-gr${open ? " is-open" : ""}${prepared ? " s1-ws-gr--prepared" : ""}`}>
                     <button className="s1-ws-gr__head" type="button" aria-expanded={open} onClick={() => toggleType(group.type)}>
@@ -412,6 +416,9 @@ export function EvidenceWorkspace({
                         {mix.map((part) => (
                           <span key={part.role} className={`s1-ws-gr__seg s1-ws-gr__seg--${part.role}`} style={{ flexGrow: part.n }} />
                         ))}
+                      </span>
+                      <span className="s1-ws-gr__pct" title={`${done} of ${counted} extracted`}>
+                        {pctDone}%
                       </span>
                       <span className="s1-ws-gr__mix">
                         {mix.map((part) => (
