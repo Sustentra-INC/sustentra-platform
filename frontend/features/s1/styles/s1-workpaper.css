@@ -2799,10 +2799,10 @@ html, body { margin: 0; padding: 0; }
 }
 .s1-ws-gr--prepared .s1-ws-gr__head { background: linear-gradient(90deg, var(--sf-sunken), transparent 60%); }
 .s1-ws-gr__n { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
-/* Status: a solid bar in muted marks with a gap between states, the share extracted,
-   then the counts in words. Colour flags exceptions only: done is slate, and only
-   "blocked" and "to review" counts take a colour. */
-.s1-ws-gr__bar { display: flex; gap: calc(2 * var(--hairline-width)); height: 0.625rem; border-radius: 0.125rem; overflow: hidden; }
+/* Status: the rounded bar in muted marks, the share extracted, then the counts in
+   words. Colour flags exceptions only: done is slate, and only "blocked" and
+   "to review" counts take a colour. */
+.s1-ws-gr__bar { display: flex; gap: 0.125rem; height: 0.5rem; border-radius: var(--radius-chip); overflow: hidden; background: var(--sf-sunken); }
 .s1-ws-gr__seg { flex-basis: 0; min-width: 0.25rem; transition: flex-grow 0.4s var(--ease-out); }
 .s1-ws-gr__pct { font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
 .s1-ws-gr__seg--resolved { background: var(--mark-done); }
