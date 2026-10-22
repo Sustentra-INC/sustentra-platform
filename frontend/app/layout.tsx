@@ -25,9 +25,8 @@ export const viewport: Viewport = {
   themeColor: "#2b2b77", // logo navy
 };
 
-// Font trial: IBM Plex Sans, self-hosted by next/font. Only the Evidence screen uses it for
-// now (s1-workpaper.css, "Font trial"); if it's confirmed it becomes --font-sans everywhere.
-// Plex isn't a variable font, so it loads the design standard's two weights.
+// The interface font: IBM Plex Sans, self-hosted by next/font and used through --font-sans
+// (sustentra-tokens.css). Plex isn't a variable font, so it loads the standard's two weights.
 const plex = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "600"], variable: "--font-plex", display: "swap" });
 
 interface RootLayoutProps {

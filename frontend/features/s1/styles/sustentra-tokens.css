@@ -136,7 +136,7 @@
      ---------------------------------------------------------------------- */
 
   /* The interface uses one family and three sizes (docs/design_standard.md). */
-  --font-sans: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
+  --font-sans: var(--font-plex, "IBM Plex Sans"), "Helvetica Neue", Helvetica, Arial, sans-serif;   /* IBM Plex Sans, self-hosted (app/layout.tsx) */
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;   /* client documents only */
 
   --text-lg:   20px;   /* the page title, and the few key figures a page leads with */
@@ -145,7 +145,7 @@
   --text-xs:   11px;   /* client documents only (the small print of a drawn bill) */
 
   --weight-regular: 400;
-  --weight-strong:  600;   /* the interface's second weight: titles, labels, emphasis (Helvetica Neue Bold) */
+  --weight-strong:  600;   /* the interface's second weight: titles, labels, emphasis (Plex SemiBold) */
   --weight-medium:  500;   /* client documents only */
 
   --leading-tight: 1.35;   /* table rows, chips */
