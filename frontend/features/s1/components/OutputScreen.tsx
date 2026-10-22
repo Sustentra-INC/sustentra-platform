@@ -3,14 +3,29 @@
 import { useState } from "react";
 
 import type { EngagementConfig } from "../types";
+import type { ResultLine } from "../types/verificationResults";
+import type { DashboardFigures } from "../utils/engagementActivity";
+import { statementFigures } from "../utils/outputStatement";
+import { formatPercent, formatSignedTonnes, formatTonnes } from "../utils/verificationTable";
 
 /**
  * Output (screen 7). A preview of the assurance deliverable the engagement
  * produces: the independent limited-assurance statement, the verified emissions
- * summary, the corrections register and the evidence basis. Figures here are an
- * illustrative assembly of the workpaper for the demo.
+ * summary, the corrections register and the evidence basis. Its figures come from the
+ * same results as Verification results, and its counts from the engagement, so the
+ * statement never says something the workpaper does not.
  */
-export function OutputScreen({ engagement }: { engagement?: EngagementConfig }) {
+export function OutputScreen({
+  engagement,
+  lines,
+  figures,
+}: {
+  engagement?: EngagementConfig;
+  /** The verification results the statement reports. */
+  lines: ResultLine[];
+  /** The engagement's counts, for the basis of evidence. */
+  figures?: DashboardFigures;
+}) {
   const [toast, setToast] = useState<string | null>(null);
   function flash(m: string) {
     setToast(m);
@@ -25,6 +40,9 @@ export function OutputScreen({ engagement }: { engagement?: EngagementConfig }) 
   const regulation = engagement?.regulation ?? "California Senate Bill 253";
   const boundary = engagement?.boundaryApproach ?? "Operational control";
   const assurance = engagement?.assuranceLevel ?? "Limited assurance";
+  const methodology = engagement?.methodology ?? "GHG Protocol Corporate Standard";
+  const statement = statementFigures(lines, engagement?.materialityThreshold);
+  const material = statement.materialBoxes;
 
   return (
     <section className="s1-content s1-output">
@@ -70,22 +88,38 @@ export function OutputScreen({ engagement }: { engagement?: EngagementConfig }) 
 
         <section className="s1-out-section">
           <h3>Conclusion</h3>
+          {material.length ? (
+            <p className="s1-out-draftnote" role="note">
+              Draft: {material.map((b) => `${b.title} differs from the evidence by ${formatPercent(b.pctMaterial, true)} of its reported total`).join("; ")},
+              {" "}at or above the {formatPercent(statement.materiality)} materiality threshold. The conclusion below can be issued only once
+              the client corrects it or the difference is explained.
+            </p>
+          ) : null}
           <p className="s1-out-lead">
             Based on the procedures performed and the evidence obtained, nothing has come to our attention that causes us
             to believe that {client}&rsquo;s Scope 1 and Scope 2 greenhouse gas emissions for the year ended {year}, as set
-            out below, are not prepared, in all material respects, in accordance with the {engagement?.methodology ??
-              "GHG Protocol Corporate Standard"}{" "}
-            and the reporting requirements of {regulation}.
+            out below, are not prepared, in all material respects, in accordance with the {methodology} and the reporting
+            requirements of {regulation}.
           </p>
         </section>
 
         <section className="s1-out-section">
           <h3>Verified emissions</h3>
           <div className="s1-out-tiles">
-            <BigTile label="Total (location-based)" value="6,537.6" unit="tCO2e" tone="accent" />
-            <BigTile label="Total (market-based)" value="6,832.3" unit="tCO2e" />
-            <BigTile label="Uncorrected misstatement" value="118.4" unit="tCO2e" sub="1.8% of total" />
-            <BigTile label="Materiality threshold" value="5.0" unit="%" sub="327 tCO2e" />
+            <BigTile label="Total (location-based)" value={formatTonnes(statement.location.verified)} unit="tCO2e" tone="accent" sub={`Reported ${formatTonnes(statement.location.reported)}`} />
+            <BigTile label="Total (market-based)" value={formatTonnes(statement.market.verified)} unit="tCO2e" sub={`Reported ${formatTonnes(statement.market.reported)}`} />
+            <BigTile
+              label="Uncorrected misstatement"
+              value={formatSignedTonnes(statement.misstatement)}
+              unit="tCO2e"
+              sub={`${formatPercent(statement.misstatementPct, true)} of the reported total`}
+            />
+            <BigTile
+              label="Materiality threshold"
+              value={formatPercent(statement.materiality).replace("%", "")}
+              unit="%"
+              sub={`${formatTonnes(statement.materialityTonnes)} tCO2e`}
+            />
           </div>
 
           <div className="s1-table-wrap s1-out-tablewrap">
@@ -100,43 +134,63 @@ export function OutputScreen({ engagement }: { engagement?: EngagementConfig }) 
                 </tr>
               </thead>
               <tbody>
-                <ScopeRow cat="Scope 1 · stationary combustion (natural gas)" basis="Meter + invoice" reported="2,140.3" verified="2,140.3" outcome="held" />
-                <ScopeRow cat="Scope 1 · mobile combustion (fleet)" basis="Fuel records" reported="486.9" verified="486.9" outcome="held" />
-                <ScopeRow cat="Scope 2 · purchased electricity" basis="Location-based" reported="3,880.1" verified="3,910.4" outcome="corrected" />
-                <ScopeRow cat="Scope 2 · purchased electricity" basis="Market-based" reported="4,205.1" verified="4,205.1" outcome="held" />
+                {statement.rows.map((row) => (
+                  <ScopeRow key={`${row.label}|${row.basis}`} row={row} />
+                ))}
               </tbody>
               <tfoot>
                 <tr className="s1-out-total">
-                  <td colSpan={3}>Total location-based Scope 1 + Scope 2</td>
-                  <td className="s1-out-num">6,537.6</td>
+                  <td colSpan={2}>Total location-based Scope 1 + Scope 2</td>
+                  <td className="s1-out-num">{formatTonnes(statement.location.reported)}</td>
+                  <td className="s1-out-num">{formatTonnes(statement.location.verified)}</td>
                   <td />
                 </tr>
               </tfoot>
             </table>
           </div>
           <p className="s1-muted s1-out-foot">
-            Scope 2 location-based uses eGRID 2024 subregion factors. One correction posted (+30.3 tCO2e) for a
-            transposed meter read at Kent Cannery.
+            Figures in tCO2e, as on Verification results. Scope 2 location-based uses eGRID subregion factors; biogenic CO₂ is
+            reported outside the scopes.
           </p>
         </section>
 
         <section className="s1-out-section s1-out-split">
           <div>
-            <h3>Corrections register</h3>
-            <ul className="s1-out-list">
-              <li><span className="s1-state s1-state--resolved">Corrected</span> Kent Cannery electricity, Feb 2025 — meter read transposition</li>
-              <li><span className="s1-state s1-state--resolved">Corrected</span> Modesto Bottling diesel, Q2 — unit conversion</li>
-              <li><span className="s1-state s1-state--open">Uncorrected</span> Tualatin refrigerant estimate — below materiality</li>
-            </ul>
+            <h3>Differences found</h3>
+            {statement.findings.length ? (
+              <ul className="s1-out-list">
+                {statement.findings.slice(0, 5).map((f) => (
+                  <li key={`${f.facility}|${f.activity}`}>
+                    <span className="s1-state s1-state--open">Uncorrected</span> {f.facility} {f.activity.toLowerCase()},{" "}
+                    {formatSignedTonnes(f.difference)} tCO2e: {f.cause}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="s1-muted">No differences between the reported figures and the evidence.</p>
+            )}
           </div>
           <div>
             <h3>Basis of evidence</h3>
-            <ul className="s1-out-list">
-              <li><strong>34</strong> data points with inputs present and verified</li>
-              <li><strong>12</strong> data points requested from the client and resolved</li>
-              <li><strong>148</strong> source documents across 3 facilities</li>
-              <li><strong>5</strong> assertions out of scope for this engagement</li>
-            </ul>
+            {figures ? (
+              <ul className="s1-out-list">
+                <li>
+                  <strong>{figures.documents}</strong> source documents
+                </li>
+                <li>
+                  <strong>{figures.valuesReviewed}</strong> of {figures.valuesReviewed + figures.valuesToReview} values reviewed
+                </li>
+                {figures.coverage ? (
+                  <li>
+                    <strong>{figures.coverage.present}</strong> of {figures.coverage.present + figures.coverage.missing} in-scope data
+                    points with their inputs present
+                  </li>
+                ) : null}
+                <li>
+                  <strong>{figures.requestsResolved}</strong> of {figures.requestsRaised} requests to the client resolved
+                </li>
+              </ul>
+            ) : null}
           </div>
         </section>
 
@@ -178,17 +232,22 @@ function BigTile({ label, value, unit, sub, tone }: { label: string; value: stri
   );
 }
 
-function ScopeRow({ cat, basis, reported, verified, outcome }: { cat: string; basis: string; reported: string; verified: string; outcome: "held" | "corrected" }) {
+const OUTCOME: Record<"agrees" | "differs" | "material", { label: string; state: string }> = {
+  agrees: { label: "Agrees", state: "resolved" },
+  differs: { label: "Differs", state: "open" },
+  material: { label: "Above materiality", state: "blocking" },
+};
+
+function ScopeRow({ row }: { row: ReturnType<typeof statementFigures>["rows"][number] }) {
+  const outcome = OUTCOME[row.outcome];
   return (
     <tr>
-      <td>{cat}</td>
-      <td className="s1-muted">{basis}</td>
-      <td className="s1-out-num">{reported}</td>
-      <td className="s1-out-num">{verified}</td>
+      <td>{row.label}</td>
+      <td className="s1-muted">{row.basis}</td>
+      <td className="s1-out-num">{formatTonnes(row.reported)}</td>
+      <td className="s1-out-num">{formatTonnes(row.verified)}</td>
       <td>
-        <span className={`s1-state s1-state--${outcome === "held" ? "resolved" : "active"}`}>
-          {outcome === "held" ? "Held" : "Corrected"}
-        </span>
+        <span className={`s1-state s1-state--${outcome.state}`}>{outcome.label}</span>
       </td>
     </tr>
   );

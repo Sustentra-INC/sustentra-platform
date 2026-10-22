@@ -1047,7 +1047,7 @@ select:focus-visible,
   }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Evidence Workspace — revised spec (09/16). Structural only; all values
    resolve to existing tokens (no new palette).
    ========================================================================== */
@@ -1131,7 +1131,7 @@ select:focus-visible,
 .s1-modal__note { font-size: var(--text-sm); margin: 0; }
 .s1-modal__actions { display: flex; gap: var(--sp-2); }
 
-/* ==========================================================================
+/* ===================================================================
    Extraction Review — revised spec (09/16). Three panes. Structural only;
    all values resolve to existing tokens (no raw px in this file).
    ========================================================================== */
@@ -1381,7 +1381,7 @@ select:focus-visible,
 .s1-sample__icon { width: var(--sp-7); height: var(--sp-7); display: flex; align-items: center; justify-content: center; background: var(--state-blocking-bg); color: var(--state-blocking-fg); border-radius: var(--radius-input); font-size: var(--text-sm); font-weight: var(--weight-strong); }
 .s1-sample__fn { font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; }
 
-/* ==========================================================================
+/* ===================================================================
    POLISH PASS — de-cramp. More air, larger type, room to breathe. Light look
    and palette unchanged; spacing + typography opened up. (rem only, no px.)
    ========================================================================== */
@@ -1462,7 +1462,7 @@ select:focus-visible,
 .s1-xr-l1 { row-gap: 0; }
 .s1-xr-card.is-sel { box-shadow: 0 0 0 var(--nav-current-marker-width) var(--state-active-fg); }
 
-/* ==========================================================================
+/* ===================================================================
    FIT TO WIDTH — no horizontal slider. The workpaper's dense min-widths were
    built for a wide reviewer monitor; for the demo everything reads on one
    laptop screen. Let the shell and every table flow to the viewport, and give
@@ -1485,7 +1485,7 @@ select:focus-visible,
 .s1-req-table th:nth-child(2) { width: 32%; }     /* item   */
 .s1-req-table th:nth-child(4) { width: 22%; }     /* state  */
 
-/* ==========================================================================
+/* ===================================================================
    BRAND — the real Sustentra wordmark, and its indigo carried onto the
    product's own primary actions (not onto any engagement-state colour).
    ========================================================================== */
@@ -1498,7 +1498,7 @@ select:focus-visible,
 .s1-button--pri:hover { filter: brightness(1.12); }
 .s1-signin__submit { background: var(--brand-ink); border-color: var(--brand-ink); }
 
-/* ==========================================================================
+/* ===================================================================
    REDESIGN PASS — baby-blue accent on warm paper, tabs & filters as real
    boxes, a neater table, tactile press-motion, and a mobile baseline.
    All values resolve to tokens (rem / % / var only).
@@ -1652,7 +1652,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-signin__submit { background: var(--accent-solid); border-color: var(--accent-solid); }
 .s1-signin__submit:hover { filter: none; background: var(--accent-strong); }
 
-/* ==========================================================================
+/* ===================================================================
    MOBILE BASELINE — usable on a phone (scan a doc, check status). Deep
    card-per-row layout comes next; this makes the shell fit and stay tappable.
    ========================================================================== */
@@ -1681,7 +1681,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .s1-cov-tile { min-width: 0; flex-basis: 45%; }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Clean dropdowns (Facility / Type / selects): custom chevron, accent focus.
    ========================================================================== */
 .s1-select, select.s1-inline-input {
@@ -1694,7 +1694,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-select:hover { border-color: var(--accent-line); }
 .s1-ws-setcell { display: flex; flex-direction: column; gap: var(--sp-1); }
 
-/* ==========================================================================
+/* ===================================================================
    Check coverage — professional line icons + status tiles (no emoji).
    ========================================================================== */
 .s1-cov-header { align-items: center; gap: var(--sp-3); }
@@ -1726,7 +1726,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-cov-grouphead { display: inline-flex; align-items: center; gap: var(--sp-2); }
 .s1-cov-grouphead svg { width: 1em; height: 1em; flex: none; color: var(--ink-3); }
 
-/* ==========================================================================
+/* ===================================================================
    Full-screen Extraction Review — document centre stage, matching on the
    right, navigator on the left. Runs outside the rail/nav chrome.
    ========================================================================== */
@@ -1828,7 +1828,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
   .s1-xr-source { border-left: 0; border-right: 0; }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Global fixes: sign-in font, comfortable scale, no text overlap.
    ========================================================================== */
 /* The sign-in gate renders outside .s1-app, so give the whole document the
@@ -1846,7 +1846,7 @@ html { font-size: 82%; }
 
 /* Clickable document highlights map back to the value cards. */
 
-/* ==========================================================================
+/* ===================================================================
    Output (screen 7) — the assurance deliverable, as a document.
    ========================================================================== */
 .s1-out-actions { display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
@@ -1910,7 +1910,7 @@ html { font-size: 82%; }
   .s1-out-split { grid-template-columns: 1fr; }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Nav tab icons + Dashboard (landing) with visualizations.
    ========================================================================== */
 .s1-tab { display: inline-flex; align-items: center; gap: var(--sp-2); }
@@ -1956,7 +1956,7 @@ html { font-size: 82%; }
   .s1-donut { flex-direction: column; align-items: flex-start; }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Extraction inside the chrome — document centre, matching right, navigator
    left. The rail and the step-header stay exactly where they are on every
    other screen, so entering/leaving extraction never shifts the layout.
@@ -1972,7 +1972,7 @@ html { font-size: 82%; }
   .s1-xr-grid { grid-template-columns: 1fr; height: auto; min-height: 0; overflow: visible; }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Vivian feedback: collapsible rail, un-cut table headers, real modal backdrop.
    ========================================================================== */
 
@@ -2026,7 +2026,7 @@ html { font-size: 82%; }
   .s1-rail__toggle { position: static; }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Verification: materiality summary + the "show working" audit trail (#6).
    ========================================================================== */
 .s1-mat { display: flex; flex-direction: column; gap: var(--sp-3); }
@@ -2156,7 +2156,7 @@ html { font-size: 82%; }
 .s1-xr-sheet__rowhead { width: 2rem; }
 .s1-xr-sheet__title { font-weight: var(--weight-strong); color: var(--ink-2); background: var(--sf-page); white-space: nowrap; }
 
-/* ==========================================================================
+/* ===================================================================
    Left sidebar navigation (dark) + relocated, collapsed engagement context bar.
    Replaces the top horizontal nav and the light info rail.
    ========================================================================== */
@@ -2261,7 +2261,7 @@ html { font-size: 82%; }
 html, body { margin: 0; padding: 0; }
 .s1-side__top { padding: var(--sp-3) var(--sp-4); }
 
-/* ==========================================================================
+/* ===================================================================
    Sustentra assistant — floating agent, bottom-right on every screen.
    ========================================================================== */
 .s1-ai-fab {
@@ -2504,7 +2504,7 @@ html, body { margin: 0; padding: 0; }
   .s1-vw-box__figures { grid-column: 1 / -1; justify-content: flex-start; }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Info-tip: an (i) beside a heading that explains it on hover, focus or click,
    in place of a paragraph of grey text.
    ========================================================================== */
@@ -2529,7 +2529,7 @@ html, body { margin: 0; padding: 0; }
 }
 @starting-style { .s1-infotip__panel { opacity: 0; transform: scale(0.96); } }
 
-/* ==========================================================================
+/* ===================================================================
    Dashboard: progress only. Timeline, two meters, what needs attention.
    ========================================================================== */
 .s1-dash { display: flex; flex-direction: column; gap: var(--sp-5); }
@@ -2640,7 +2640,7 @@ html, body { margin: 0; padding: 0; }
   .s1-meter__fill, .s1-infotip__panel, .s1-timeline__dot, .s1-attention__go svg { transition: none; }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Upload pop-up (opens from the nav or a drop on Evidence) and the activity log.
    ========================================================================== */
 .s1-updlg-scrim, .s1-drawer-scrim {
@@ -2753,7 +2753,7 @@ html, body { margin: 0; padding: 0; }
   .s1-updlg, .s1-actlog, .s1-updlg-scrim, .s1-drawer-scrim, .s1-updlg__list li { transition: none; }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Evidence: bird's-eye first. One summary bar per document type; a type opens
    to a five-column table. Drop files anywhere on the page to upload.
    ========================================================================== */
@@ -2845,7 +2845,7 @@ html, body { margin: 0; padding: 0; }
   .s1-ws-gr, .s1-ws-gr__caret, .s1-ws-gr__seg, .s1-ws-gr.is-open .s1-ws-gr__body, .s1-ws-dropveil { transition: none; }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Setup clean-up: info-tips instead of grey paragraphs, one grid for every row.
    ========================================================================== */
 .s1-setup-card h2 { display: inline-flex; align-items: center; gap: var(--sp-1); }
@@ -2886,7 +2886,7 @@ html, body { margin: 0; padding: 0; }
   .s1-setup-row--head { display: none; }
 }
 
-/* ==========================================================================
+/* ===================================================================
    Coverage & requests (one page): the review callout, what can be checked,
    then the requests. Filters animate the list they filter.
    ========================================================================== */
@@ -2991,7 +2991,7 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-variant-nume
 .s1-cr .s1-req-row--requested .s1-req-state__label { background: var(--state-active-bg); border-color: var(--state-active-line); color: var(--state-active-fg); }
 .s1-cr .s1-req-row--resolved .s1-req-state__label { background: var(--state-resolved-bg); border-color: var(--state-resolved-line); color: var(--state-resolved-fg); }
 
-/* ==========================================================================
+/* ===================================================================
    Extraction review: add a value the reading missed; values and pages of a
    long document one page at a time.
    ========================================================================== */
@@ -3069,7 +3069,7 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-variant-nume
 @media (prefers-reduced-motion: reduce) { .s1-menu__panel--float { transition: none; } }
 .s1-xr-more { margin: var(--sp-2) 0; padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); color: var(--ink-3); background: var(--sf-sunken); border-radius: var(--radius-input); }
 
-/* ==========================================================================
+/* ===================================================================
    Sidebar: the same brand blue, glossier. A soft vertical gradient, a sheen at
    the top, a glass pill for the current page; wider, with larger, brighter labels.
    ========================================================================== */
@@ -3136,7 +3136,7 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-variant-nume
 }
 @media (max-width: 64rem) { .s1-vw-box__head { grid-template-columns: 1rem auto minmax(0, 1fr); } }
 
-/* ==========================================================================
+/* ===================================================================
    The assistant, connected: lookups shown as they happen, answers with their
    sources as chips that open them.
    ========================================================================== */
@@ -3196,7 +3196,7 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-req-state .s1-button--icon { width: 1.75rem; height: 1.75rem; }
 .s1-req-state__note { font-size: var(--text-sm); overflow-wrap: anywhere; }
 
-/* ==========================================================================
+/* ===================================================================
    Extraction review: compact value cards (Vivian, 21 Oct). Three short lines
    per card; the selected card opens to its record and actions. A state stripe
    on the left matches the highlight colours on the document.
@@ -3263,7 +3263,7 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-key__top { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); }
 .s1-xr-key__pick { flex: none; }
 
-/* ==========================================================================
+/* ===================================================================
    Methodology review: the stated boundary and methods, accepted or corrected.
    Folding groups, one "Adjusted by verifier" line under each change.
    ========================================================================== */
@@ -3389,6 +3389,9 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 
 /* Icons sized by their box, not by a text size (design standard: three text sizes). */
 .s1-vw-box__icon .s1-vw-ico, .s1-vw-close .s1-vw-ico, .s1-vw-ico.s1-vw-src-empty__icon { width: 1.25rem; height: 1.25rem; }
+
+/* Output: a draft conclusion says why it cannot be issued yet. */
+.s1-out-draftnote { margin: 0 0 var(--sp-3); padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); color: var(--ink); background: var(--state-open-bg); border: var(--hairline-width) solid var(--state-open-line); border-radius: var(--radius-input); }
 
 /* Extraction review: a document opened with no values says so. */
 .s1-xr-unread { margin: var(--sp-3) 0 0; padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); color: var(--ink-2); background: var(--state-open-bg); border: var(--hairline-width) solid var(--state-open-line); border-radius: var(--radius-input); overflow-wrap: anywhere; }
