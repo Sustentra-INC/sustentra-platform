@@ -245,9 +245,11 @@ export interface QualityCheck {
 
 // ---------------------------------------------------------------------------------------
 // Emissions roll-up (backend/app/services/emissions_rollup.py). Numbers are unrounded
-// metric tonnes; null means "not available", never 0.
+// metric tonnes. A category that is not built or has no evidence is null ("not available")
+// and counts as 0 in every total, which lists it under counted_as_zero (Claire, 22 Oct).
 // ---------------------------------------------------------------------------------------
-export type GasGroup = "CO2" | "CH4" | "N2O" | "HFCs" | "PFCs" | "SF6" | "NF3" | "other";
+/** The 7 gases every scope reports; anything else is excluded from the totals. */
+export type GasGroup = "CO2" | "CH4" | "N2O" | "HFCs" | "PFCs" | "SF6" | "NF3";
 
 export type RollupSourceKey =
   | "stationary_combustion"
@@ -293,6 +295,7 @@ export interface GasAmount {
 export interface RollupCategory {
   label: string;
   scope: "scope1" | "scope2";
+  /** Row in "Data from summary documents" (43-51 since Scope 1 NF3 took row 29). */
   workbook_row: number;
   built: boolean;
   backend_categories: Partial<Record<"location" | "market", string>>;
@@ -302,8 +305,10 @@ export interface RollupCategory {
   gaps: { gap: MissingReason; gases: GasGroup[]; affects_total: boolean }[];
   absent_reason: string | null;
   flags: string[];
-  /** Fugitive refrigerants: each line split into gas groups. */
-  gas_split?: Record<string, { groups: Partial<Record<GasGroup, GasAmount>>; flags: string[] }>;
+  /** Fugitive refrigerants: each line split into the 7 gases, and what falls outside them. */
+  gas_split?: Record<string, { groups: Partial<Record<GasGroup, GasAmount>>; flags: string[]; excluded: GasAmount }>;
+  /** Fugitive refrigerants: gases outside the 7 (HFOs, ammonia, a blend's HCFC share), in no total. */
+  excluded?: GasAmount;
 }
 
 export interface RollupTerm {
@@ -315,7 +320,8 @@ export interface RollupTerm {
 }
 
 export interface RollupMissing {
-  source: RollupSourceKey;
+  /** "biogenic_combustion": the biogenic CO2 placeholder, not built yet. */
+  source: RollupSourceKey | "biogenic_combustion";
   reason: MissingReason;
 }
 
@@ -336,9 +342,11 @@ export interface RollupNode {
   /** A partial value that can only grow (no negative contributions). */
   lower_bound: boolean;
   flags: string[];
-  /** Category nodes: the value split into gas groups. */
+  /** Category nodes: all 7 gases, each with its mass and CO2e. */
   gases?: Partial<Record<GasGroup, GasAmount>>;
   basis?: "structural_zero";
+  /** Not built, or no evidence: not available, added as 0 (every node but the biogenic memo). */
+  counted_as_zero?: RollupMissing[];
 }
 
 export interface RollupFinalOutput {
@@ -366,12 +374,15 @@ export interface RollupFinalOutput {
   unit_hint?: "t" | "t CO2e" | null;
 }
 
+/** Steps 1a and 1b run side by side; Step 2 runs after both. The final outputs are a list,
+ *  not a step. */
 export interface RollupStep {
-  key: "step_1a" | "step_1b" | "step_2" | "final_outputs";
+  key: "step_1a" | "step_1b" | "step_2";
   label: string;
   order: number;
-  node_keys?: string[];
-  output_keys?: string[];
+  /** Steps that must finish first. */
+  after: RollupStep["key"][];
+  node_keys: string[];
 }
 
 export interface Rollup {
@@ -410,7 +421,7 @@ export interface VehicleTypeOption {
   last_model_year: number | null;
 }
 
-/** A reported data point in the GHG Required Data workbook (rows 22-50). */
+/** A reported data point in the GHG Required Data workbook (rows 22-38 and 43-51). */
 export interface DataPointOption {
   key: string;
   label: string;

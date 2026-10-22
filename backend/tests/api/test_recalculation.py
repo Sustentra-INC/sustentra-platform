@@ -93,9 +93,9 @@ def test_reference_lists_the_input_choices(act_as) -> None:
     assert len(body["egrid_subregions"]) == 28 and len(body["stationary_fuels"]) == 63
     assert {"key": "scope1_total", "label": "Scope 1 (Total)", "workbook_row": 22, "unit": "t CO2e"} in \
         body["reported_data_points"]
-    assert {"key": "fugitive_total", "label": "Direct emissions from fugitive sources", "workbook_row": 45,
+    assert {"key": "fugitive_total", "label": "Direct emissions from fugitive sources", "workbook_row": 46,
             "unit": "t CO2e", "layer": "scope1", "requirement": "Optional", "check": "recalculated"} in body["data_points"]
-    assert {"key": "purchased_steam_total", "label": "Indirect emissions from purchased steam", "workbook_row": 48,
+    assert {"key": "purchased_steam_total", "label": "Indirect emissions from purchased steam", "workbook_row": 49,
             "unit": "t CO2e", "layer": "scope2", "requirement": "Optional",
             "check": "recalculated"} in body["data_points"]
     assert next(p for p in body["data_points"] if p["key"] == "purchased_cooling_total")["check"] == "not_recalculated"
@@ -104,9 +104,11 @@ def test_reference_lists_the_input_choices(act_as) -> None:
     assert {"vehicle_type": "Industrial/Commercial Equipment", "fuel_type": "Diesel", "on_road": False,
             "by_model_year": False, "first_model_year": None, "last_model_year": None} in body["vehicle_types"]
     layout = body["rollup_layout"]
-    assert (len(layout["sources"]), len(layout["nodes"]), len(layout["final_outputs"])) == (10, 37, 26)
-    assert [step["key"] for step in layout["steps"]] == ["step_1a", "step_1b", "step_2", "final_outputs"]
-    assert any(p["key"] == "purchased_cooling_total" and p["workbook_row"] == 50 for p in body["data_points"])
+    assert (len(layout["sources"]), len(layout["nodes"]), len(layout["final_outputs"])) == (10, 40, 34)
+    assert [step["key"] for step in layout["steps"]] == ["step_1a", "step_1b", "step_2"]  # outputs: a list
+    assert any(p["key"] == "purchased_cooling_total" and p["workbook_row"] == 51 for p in body["data_points"])
+    assert {"key": "scope1_nf3", "label": "Scope 1 NF3", "workbook_row": 29, "unit": "t", "layer": "scope1",
+            "requirement": "Required", "check": "recalculated"} in body["data_points"]
 
 
 def test_engagement_settings_validate_recalculation_inputs() -> None:
@@ -134,16 +136,21 @@ def test_export_is_an_excel_workpaper_of_the_same_numbers(act_as, wired: FakeSto
     assert book.sheetnames == ["Summary", "Final outputs", "Roll-up", "Categories", "Data points", "Working",
                                "Evidence", "Reviewed values", "Requests", "Findings", "Left out"]
     outputs = {row[1]: row for row in book["Final outputs"].iter_rows(min_row=2, values_only=True)}
-    assert len(outputs) == 26  # row 29 twice: location- and market-based
+    assert len(outputs) == 34  # Scope 2 rows 30-37 twice: location- and market-based
     electricity = outputs["Indirect emissions from purchased electricity (location-based)"]
     assert electricity[5] == pytest.approx(1200 * (240.99 + 0.011 * 28 + 0.001 * 265) / 2204.62, rel=1e-3)
     assert outputs["Indirect emissions from purchased cooling"][9] == "Out of scope (not recalculated yet)"
     rollup_lines = [row[1] for row in book["Roll-up"].iter_rows(min_row=2, values_only=True)]
-    assert len(rollup_lines) == 37 and "Scope 1 (Total)" in rollup_lines
+    assert len(rollup_lines) == 40 and "Scope 1 (Total)" in rollup_lines
     categories = {row[0]: row for row in book["Categories"].iter_rows(min_row=2, values_only=True)}
     assert categories["Purchased electricity"][3] == "Calculated" and categories["Process sources"][3] == "Not built yet"
     summary = dict(book["Summary"].iter_rows(min_row=2, values_only=True))
-    assert str(summary["Inventory total, location-based (t CO2e)"]).endswith("(partial)")
+    # Categories not built or without evidence count as 0 (Claire, Q5): the total is complete and
+    # the Roll-up sheet says which were counted as 0.
+    assert not str(summary["Inventory total, location-based (t CO2e)"]).endswith("(partial)")
+    inventory = next(row for row in book["Roll-up"].iter_rows(min_row=2, values_only=True)
+                     if str(row[1]).startswith("Inventory total, location-based"))
+    assert "Process sources: not built yet" in inventory[8]
     location = next(row for row in book["Data points"].iter_rows(values_only=True)
                     if row[1] == "Scope 2 (Total), location-based")
     assert round(location[4], 2) == round(1200 * (240.99 + 0.011 * 28 + 0.001 * 265) / 2204.62, 2)

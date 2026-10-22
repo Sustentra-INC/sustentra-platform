@@ -103,26 +103,28 @@ def _rollup_sheets(book: Workbook, rollup: dict[str, Any]) -> None:
     _sheet(
         book, "Final outputs",
         ["Workbook row", "Data point", "Requirement", "Unit", "Reported", "Recalculated", "Difference",
-         "Difference %", "Within threshold", "Outcome", "Why", "Completeness", "Missing"],
+         "Difference %", "Within threshold", "Outcome", "Why", "Completeness", "Missing", "Counted as 0"],
         [[o.get("workbook_row"), o.get("label"), o.get("requirement"), o.get("unit"), o.get("reported"),
           o.get("recalculated"), o.get("difference"), o.get("difference_pct"),
           {True: "yes", False: "no"}.get(o.get("within_threshold"), ""),
           _STATUS.get(str(o.get("status")), o.get("status")), _REASON.get(str(o.get("reason")), o.get("reason")),
-          _NODE_STATUS.get(str(o.get("completeness")), o.get("completeness")), _missing(o.get("missing"), labels)]
+          _NODE_STATUS.get(str(o.get("completeness")), o.get("completeness")), _missing(o.get("missing"), labels),
+          _missing(o.get("counted_as_zero"), labels)]
          for o in rollup.get("final_outputs") or []],
-        [12, 52, 12, 10, 14, 14, 14, 13, 10, 40, 44, 14, 60],
+        [12, 52, 12, 10, 14, 14, 14, 13, 10, 40, 44, 14, 60, 60],
     )
     nodes = rollup.get("nodes") or {}
     steps = {step.get("key"): step.get("label") for step in rollup.get("steps") or []}
     order = [key for step in rollup.get("steps") or [] for key in step.get("node_keys") or []]
     _sheet(
         book, "Roll-up",
-        ["Step", "Line", "t CO2e", "t of gas", "Status", "Adds up", "Missing", "Notes"],
+        ["Step", "Line", "t CO2e", "t of gas", "Status", "Adds up", "Missing", "Notes", "Counted as 0"],
         [[steps.get(nodes[key].get("step"), nodes[key].get("step")), nodes[key].get("label"), nodes[key].get("co2e_t"),
           nodes[key].get("mass_t"), _NODE_STATUS.get(str(nodes[key].get("status")), nodes[key].get("status")),
-          nodes[key].get("formula"), _missing(nodes[key].get("missing"), labels), ", ".join(nodes[key].get("flags") or [])]
+          nodes[key].get("formula"), _missing(nodes[key].get("missing"), labels), ", ".join(nodes[key].get("flags") or []),
+          _missing(nodes[key].get("counted_as_zero"), labels)]
          for key in order if key in nodes],
-        [40, 52, 14, 12, 14, 52, 60, 40],
+        [40, 52, 14, 12, 14, 52, 60, 40, 60],
     )
     _sheet(
         book, "Categories",
