@@ -85,7 +85,7 @@ def test_steam_and_heat_are_recalculated_with_the_hub_table_7_factor() -> None:
     heating = result["categories"]["purchased_heating_location_based"]["total_co2e"]
     assert result["scope_totals"]["scope2_location"]["total_co2e"] == pytest.approx(expected + heating)
     comparison = next(c for c in result["comparisons"] if c["key"] == "purchased_steam_total")
-    assert comparison["status"] == "within_tolerance" and comparison["workbook_row"] == 48
+    assert comparison["status"] == "within_tolerance" and comparison["workbook_row"] == 49
     rollup = result["rollup"]
     assert rollup["categories"]["purchased_steam"]["status"] == "calculated"
     assert rollup["nodes"]["purchased_heating_total"]["co2e_t"] == pytest.approx(heating)

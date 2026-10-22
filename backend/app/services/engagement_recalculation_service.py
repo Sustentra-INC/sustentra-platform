@@ -71,7 +71,8 @@ BASE_UNIT = {
     fuel_units.MASS: "short_ton",
 }
 
-# Reported data points (workbook "Data from summary documents", with its row numbers).
+# Reported data points (workbook "Data from summary documents", with its row numbers after
+# Claire added Scope 1 NF3 at row 29): the older per-data-point comparison.
 DATA_POINTS: tuple[tuple[str, str, int, str], ...] = (
     ("scope1_total", "Scope 1 (Total)", 22, "t CO2e"),
     ("scope1_co2", "Scope 1 CO2", 23, "t"),
@@ -80,61 +81,39 @@ DATA_POINTS: tuple[tuple[str, str, int, str], ...] = (
     ("scope1_hfcs", "Scope 1 HFCs", 26, "t"),
     ("scope1_pfcs", "Scope 1 PFCs", 27, "t"),
     ("scope1_sf6", "Scope 1 SF6", 28, "t"),
-    ("scope2_location_total", "Scope 2 (Total), location-based", 29, "t CO2e"),
-    ("scope2_market_total", "Scope 2 (Total), market-based", 29, "t CO2e"),
-    ("scope2_co2", "Scope 2 CO2 (location-based)", 30, "t"),
-    ("scope2_ch4", "Scope 2 CH4 (location-based)", 31, "t"),
-    ("scope2_n2o", "Scope 2 N2O (location-based)", 32, "t"),
-    ("biogenic_co2", "CO2 emissions from biogenic combustion", 37, "t CO2e"),
-    ("stationary_combustion_total", "Direct emissions from stationary combustion", 42, "t CO2e"),
-    ("mobile_combustion_total", "Direct emissions from mobile combustion", 43, "t CO2e"),
-    ("fugitive_total", "Direct emissions from fugitive sources", 45, "t CO2e"),
-    ("purchased_electricity_total", "Indirect emissions from purchased electricity (location-based)", 47,
+    ("scope2_location_total", "Scope 2 (Total), location-based", 30, "t CO2e"),
+    ("scope2_market_total", "Scope 2 (Total), market-based", 30, "t CO2e"),
+    ("scope2_co2", "Scope 2 CO2 (location-based)", 31, "t"),
+    ("scope2_ch4", "Scope 2 CH4 (location-based)", 32, "t"),
+    ("scope2_n2o", "Scope 2 N2O (location-based)", 33, "t"),
+    ("biogenic_co2", "CO2 emissions from biogenic combustion", 38, "t CO2e"),
+    ("stationary_combustion_total", "Direct emissions from stationary combustion", 43, "t CO2e"),
+    ("mobile_combustion_total", "Direct emissions from mobile combustion", 44, "t CO2e"),
+    ("fugitive_total", "Direct emissions from fugitive sources", 46, "t CO2e"),
+    ("purchased_electricity_total", "Indirect emissions from purchased electricity (location-based)", 48,
      "t CO2e"),
-    ("purchased_steam_total", "Indirect emissions from purchased steam", 48, "t CO2e"),
-    ("purchased_heating_total", "Indirect emissions from purchased heating", 49, "t CO2e"),
+    ("purchased_steam_total", "Indirect emissions from purchased steam", 49, "t CO2e"),
+    ("purchased_heating_total", "Indirect emissions from purchased heating", 50, "t CO2e"),
 )
 DATA_POINT_KEYS = frozenset(key for key, *_ in DATA_POINTS)
 
-# Every reported data point in the workbook's "Data from summary documents" (rows 22-50),
-# for Setup's in-scope list: (key, label, row, unit, layer, Required/Optional, how it is
-# checked). "recalculated" rows are in DATA_POINTS; the others are listed, not compared.
-DATA_POINT_CATALOGUE: tuple[tuple[str, str, int, str, str, str, str], ...] = (
-    ("scope1_total", "Scope 1 (Total)", 22, "t CO2e", "scope1", "Required", "recalculated"),
-    ("scope1_co2", "Scope 1 CO2", 23, "t", "scope1", "Required", "recalculated"),
-    ("scope1_ch4", "Scope 1 CH4", 24, "t", "scope1", "Required", "recalculated"),
-    ("scope1_n2o", "Scope 1 N2O", 25, "t", "scope1", "Required", "recalculated"),
-    ("scope1_hfcs", "Scope 1 HFCs", 26, "t", "scope1", "Required", "compared_under_fugitive"),
-    ("scope1_pfcs", "Scope 1 PFCs", 27, "t", "scope1", "Required", "compared_under_fugitive"),
-    ("scope1_sf6", "Scope 1 SF6", 28, "t", "scope1", "Required", "compared_under_fugitive"),
-    ("scope2_location_total", "Scope 2 (Total), location-based", 29, "t CO2e", "scope2", "Required", "recalculated"),
-    ("scope2_market_total", "Scope 2 (Total), market-based", 29, "t CO2e", "scope2", "Required", "recalculated"),
-    ("scope2_co2", "Scope 2 CO2 (location-based)", 30, "t", "scope2", "Required", "recalculated"),
-    ("scope2_ch4", "Scope 2 CH4 (location-based)", 31, "t", "scope2", "Required", "recalculated"),
-    ("scope2_n2o", "Scope 2 N2O (location-based)", 32, "t", "scope2", "Required", "recalculated"),
-    ("scope2_hfcs", "Scope 2 HFCs", 33, "t", "scope2", "Required", "not_recalculated"),
-    ("scope2_pfcs", "Scope 2 PFCs", 34, "t", "scope2", "Required", "not_recalculated"),
-    ("scope2_sf6", "Scope 2 SF6", 35, "t", "scope2", "Required", "not_recalculated"),
-    ("scope2_nf3", "Scope 2 NF3", 36, "t", "scope2", "Required", "not_recalculated"),
-    ("biogenic_co2", "CO2 emissions from biogenic combustion", 37, "t CO2e", "scope1", "Required", "recalculated"),
-    ("stationary_combustion_total", "Direct emissions from stationary combustion", 42, "t CO2e", "scope1", "Optional",
-     "recalculated"),
-    ("mobile_combustion_total", "Direct emissions from mobile combustion", 43, "t CO2e", "scope1", "Optional",
-     "recalculated"),
-    ("process_total", "Direct emissions from process sources", 44, "t CO2e", "scope1", "Optional",
-     "not_recalculated"),
-    ("fugitive_total", "Direct emissions from fugitive sources", 45, "t CO2e", "scope1", "Optional", "recalculated"),
-    ("agricultural_total", "Direct emissions from agricultural sources", 46, "t CO2e", "scope1", "Optional",
-     "not_recalculated"),
-    ("purchased_electricity_total", "Indirect emissions from purchased electricity (location-based)", 47, "t CO2e",
-     "scope2", "Optional", "recalculated"),
-    ("purchased_steam_total", "Indirect emissions from purchased steam", 48, "t CO2e", "scope2", "Optional",
-     "recalculated"),
-    ("purchased_heating_total", "Indirect emissions from purchased heating", 49, "t CO2e", "scope2", "Optional",
-     "recalculated"),
-    ("purchased_cooling_total", "Indirect emissions from purchased cooling", 50, "t CO2e", "scope2", "Optional",
-     "not_recalculated"),
-)
+
+def _catalogue() -> tuple[tuple[str, str, int, str, str, str, str], ...]:
+    """Every reported data point, for Setup's in-scope list: (key, label, row, unit, layer,
+    Required/Optional, how it is checked). Built from the roll-up's final outputs, so the two
+    never drift apart."""
+
+    out = []
+    for output in rollup.FINAL_OUTPUTS:
+        node = rollup.NODE_BY_KEY[output.node]
+        out.append((output.key, output.label, output.workbook_row,
+                    "t" if output.default_measure == "mass_t" else "t CO2e",
+                    "scope1" if node.scope == "scope1" else "scope2", output.requirement,
+                    "recalculated" if rollup.output_is_recalculated(output.key) else "not_recalculated"))
+    return tuple(out)
+
+
+DATA_POINT_CATALOGUE: tuple[tuple[str, str, int, str, str, str, str], ...] = _catalogue()
 CATALOGUE_KEYS = frozenset(key for key, *_ in DATA_POINT_CATALOGUE)
 
 
