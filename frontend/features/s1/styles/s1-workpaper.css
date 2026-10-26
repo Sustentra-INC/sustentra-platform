@@ -2891,8 +2891,13 @@ html, body { margin: 0; padding: 0; }
 .s1-setup-add:hover { background: var(--accent-softer); border-color: var(--accent-solid); }
 .s1-setup-add:active { transform: scale(0.98); }
 .s1-setup-add svg { width: 0.95rem; height: 0.95rem; }
+/* Narrow: the name and its remove button share row one; every other field takes a full-width line below.
+   Team rows get the facility rows' divider and tighter in-row gap, so a login reads with its own name, not the next one. */
 @media (max-width: 48rem) {
-  .s1-setup-row, .s1-fac__row, .s1-fac--regions .s1-fac__row { grid-template-columns: 1fr 2.5rem; }
+  .s1-setup-row, .s1-fac__row, .s1-fac--regions .s1-fac__row { grid-template-columns: minmax(0, 1fr) 2.5rem; }
+  .s1-setup-row > .s1-setup-remove, .s1-fac__row > .s1-setup-remove { grid-column: 2; grid-row: 1; }
+  .s1-fac__address, .s1-fac__region, .s1-setup-row__login { grid-column: 1 / -1; }
+  .s1-setup-row:not(.s1-setup-row--head) { row-gap: var(--sp-2); padding-bottom: var(--sp-2); border-bottom: var(--border-hairline); }
   .s1-setup-row--head { display: none; }
 }
 
