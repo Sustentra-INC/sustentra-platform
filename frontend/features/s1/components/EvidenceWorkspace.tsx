@@ -17,6 +17,7 @@ import { qualityIssueLines } from "./QualityChecksPanel";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { formatPeriod } from "../utils/formatPeriod";
+import { UPLOAD_ACCEPT } from "../constants/uploads";
 import type { AskDraft } from "../requests/requestsStore";
 
 /**
@@ -73,6 +74,12 @@ const TYPE_ORDER: string[] = [
 
 const SET_TYPE_OPTIONS = TYPE_ORDER.filter((type) => type !== "Type unresolved");
 
+/** A problem the Evidence banner shows: a plain title saying what didn't work, then the details. */
+export interface WorkspaceProblem {
+  title: string;
+  message: string;
+}
+
 interface EvidenceWorkspaceProps {
   engagement: EngagementConfig;
   evidence: EvidenceItem[];
@@ -94,7 +101,8 @@ interface EvidenceWorkspaceProps {
   typeOptions?: string[];
   /** Data quality checks (duplicates, overlaps, cross-year bills) shown in the Issue column. */
   qualityChecks?: QualityCheck[];
-  backendError?: string | null;
+  /** What didn't work (the title) and the details, e.g. one line per file that wasn't uploaded. */
+  backendError?: WorkspaceProblem | null;
   demoState?: ContainerState;
   auditIntents?: SessionAuditEntry[];
   onAuditIntent?: (intent: SessionAuditEntry) => void;
@@ -359,8 +367,8 @@ export function EvidenceWorkspace({
 
       {backendError ? (
         <div className="s1-system-banner" role="status">
-          <strong>Backend call failed</strong>
-          <span>{backendError}</span>
+          <strong>{backendError.title}</strong>
+          <span>{backendError.message}</span>
         </div>
       ) : null}
 
@@ -1010,6 +1018,7 @@ function FirstDayEmpty({ onUploadFiles, isUploading }: { onUploadFiles?: (files:
           className="s1-file-input"
           type="file"
           multiple
+          accept={UPLOAD_ACCEPT}
           onChange={(e) => {
             if (e.target.files?.length && onUploadFiles) onUploadFiles(e.target.files);
           }}
@@ -1142,7 +1151,9 @@ function issueLines(item: EvidenceItem, all: EvidenceItem[], engagement: Engagem
 
 function periodOutsideYear(item: EvidenceItem, engagement: EngagementConfig): boolean {
   if (item.periodState !== "resolved" || !item.periodStart || !item.periodEnd) return false;
-  return item.periodEnd < engagement.reportingPeriod.start || item.periodStart > engagement.reportingPeriod.end;
+  // A date the engagement has not set yet bounds nothing.
+  const { start, end } = engagement.reportingPeriod;
+  return Boolean((start && item.periodEnd < start) || (end && item.periodStart > end));
 }
 
 function latestAsk(asks: Ask[], documentId: string): Ask | null {

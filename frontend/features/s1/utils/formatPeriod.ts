@@ -44,3 +44,27 @@ export function formatPeriod(start: string | null | undefined, end: string | nul
   }
   return `${ABBR[a.m - 1]} ${a.y} – ${ABBR[b.m - 1]} ${b.y}`;
 }
+
+/** One ISO date as a person reads it, "Oct 8, 2026"; anything else as it was typed. */
+function formatDay(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (!match) return iso;
+  const [y, m, d] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  if (m < 1 || m > 12 || d < 1 || d > 31) return iso;
+  return `${ABBR[m - 1]} ${d}, ${y}`;
+}
+
+/**
+ * The engagement's reporting period, as the dashboard, the engagement bar and the Output
+ * show it: "Oct 8, 2026 – Dec 31, 2026". An engagement is saved as it is filled in, so
+ * either date may not be set yet; the missing one is named in its place ("Oct 8, 2026 –
+ * end date not set"), never shown as "Invalid Date". No middle dot, so it reads as one
+ * item where the dashboard joins it to the regulation with " · ". The Excel workpaper
+ * writes the same words (backend workpaper_export_service.format_reporting_period).
+ */
+export function formatReportingPeriod(start: string | null | undefined, end: string | null | undefined): string {
+  if (start && end) return `${formatDay(start)} – ${formatDay(end)}`;
+  if (start) return `${formatDay(start)} – end date not set`;
+  if (end) return `start date not set – ${formatDay(end)}`;
+  return "Reporting period not set";
+}

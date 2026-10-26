@@ -14,6 +14,8 @@ export interface ValueRecordEntry {
   at: string;
   action: string;
   reason?: string;
+  /** The ask this entry added the value to, so the card can say whether it was sent. */
+  askId?: string;
 }
 
 /** A value drawn on its document in the source pane: clicking it selects the value. A PDF

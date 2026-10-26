@@ -15,6 +15,7 @@ import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig, EvidenceItem, ReviewValue } from "../types";
 import type { Ask } from "../types/requests";
 import type { Finding } from "../types/verification";
+import { formatReportingPeriod } from "../utils/formatPeriod";
 
 /**
  * Output in backend mode: the engagement's real results as a draft working paper, with
@@ -113,7 +114,7 @@ export function BackendOutputScreen({
   const resolvedAsks = asks.filter((a) => a.state === "resolved").length;
   const leftOut = result.excluded ?? [];
   const stillOpen = documentsStillOpen(result);
-  const period = `${engagement.reportingPeriod.start || "?"} to ${engagement.reportingPeriod.end || "?"}`;
+  const period = formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end);
 
   return (
     <section className="s1-content s1-output">

@@ -8,7 +8,7 @@ import {
 } from "../adapters/fieldAdapter";
 import type { EvidenceItem, ExtractedField } from "../types";
 import { HALT_REASONS } from "../constants/copy";
-import { MAX_UPLOAD_BYTES, UPLOAD_TOO_LARGE } from "../constants/uploads";
+import { isReadableUpload, MAX_UPLOAD_BYTES, unreadableUploadMessage, UPLOAD_TOO_LARGE } from "../constants/uploads";
 
 export interface PipelineRunSummary {
   evidence_id: string;
@@ -133,8 +133,17 @@ export class FileTooLargeError extends Error {
   }
 }
 
+/** Thrown before an upload is sent when no parser can read the file (the API would refuse it with a 415). */
+export class UnreadableFileError extends Error {
+  constructor(filename: string) {
+    super(unreadableUploadMessage(filename));
+    this.name = "UnreadableFileError";
+  }
+}
+
 export async function uploadDocument(engagementId: string, file: File): Promise<BackendDocumentLike> {
   // Fail fast instead of sending the bytes only to have the proxy or API refuse them.
+  if (!isReadableUpload(file)) throw new UnreadableFileError(file.name);
   if (file.size > MAX_UPLOAD_BYTES) throw new FileTooLargeError();
   const body = new FormData();
   body.append("file", file);
@@ -155,6 +164,7 @@ export function uploadDocumentWithProgress(
   file: File,
   onProgress: (fraction: number) => void
 ): Promise<BackendDocumentLike> {
+  if (!isReadableUpload(file)) return Promise.reject(new UnreadableFileError(file.name));
   if (file.size > MAX_UPLOAD_BYTES) return Promise.reject(new FileTooLargeError());
   const body = new FormData();
   body.append("file", file);

@@ -1264,7 +1264,7 @@ select:focus-visible,
 .s1-upq__bar { height: 0.5rem; background: var(--sf-sunken); border-radius: var(--radius-chip); overflow: hidden; }
 .s1-upq__fill { height: 100%; background: var(--state-active-fg); border-radius: var(--radius-chip); transition: width 0.25s ease; }
 .s1-upq__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.s1-upq__row { display: grid; grid-template-columns: minmax(0, 1fr) 4.5rem minmax(6rem, 12rem) 5.5rem; align-items: center; gap: var(--sp-3); padding: var(--sp-2) 0; border-top: var(--border-hairline); font-size: var(--text-sm); }
+.s1-upq__row { display: grid; grid-template-columns: minmax(0, 1fr) 4.5rem minmax(6rem, 12rem) 6.5rem; align-items: center; gap: var(--sp-3); padding: var(--sp-2) 0; border-top: var(--border-hairline); font-size: var(--text-sm); }
 .s1-upq__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s1-upq__size { text-align: right; font-variant-numeric: tabular-nums; }
 .s1-upq__track { height: 0.375rem; background: var(--sf-sunken); border-radius: var(--radius-chip); overflow: hidden; }
@@ -1279,13 +1279,14 @@ select:focus-visible,
 @media (prefers-reduced-motion: reduce) { .s1-upq__track-fill.is-reading { animation: none; } .s1-upq__fill, .s1-upq__track-fill { transition: none; } }
 .s1-upq__stage { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .s1-upq__row--done .s1-upq__stage { color: var(--state-resolved-fg, var(--ink-2)); font-weight: var(--weight-strong); }
-.s1-upq__row--failed .s1-upq__stage { color: var(--state-blocking-fg); font-weight: var(--weight-strong); }
+.s1-upq__row--failed .s1-upq__stage,
+.s1-upq__row--not_uploaded .s1-upq__stage { color: var(--state-blocking-fg); font-weight: var(--weight-strong); }
 .s1-upq__error { grid-column: 1 / -1; font-size: var(--text-sm); color: var(--state-blocking-fg); }
 .s1-uph { display: flex; flex-direction: column; gap: var(--sp-2); }
 .s1-uph__title { font-size: var(--text-md); margin: var(--sp-2) 0 0; }
 .s1-uph__file { font-weight: var(--weight-strong); text-align: left; overflow-wrap: anywhere; }
 .s1-uph__fmt, .s1-uph__why { font-size: var(--text-sm); }
-@media (max-width: 48rem) { .s1-upq__row { grid-template-columns: minmax(0, 1fr) 5rem; } .s1-upq__size, .s1-upq__track { display: none; } }
+@media (max-width: 48rem) { .s1-upq__row { grid-template-columns: minmax(0, 1fr) 6.5rem; } .s1-upq__size, .s1-upq__track { display: none; } }
 .s1-upload-screen__hint { font-size: var(--text-sm); }
 
 /* ---- Setup (screen 0) ---- */
@@ -2891,8 +2892,13 @@ html, body { margin: 0; padding: 0; }
 .s1-setup-add:hover { background: var(--accent-softer); border-color: var(--accent-solid); }
 .s1-setup-add:active { transform: scale(0.98); }
 .s1-setup-add svg { width: 0.95rem; height: 0.95rem; }
+/* Narrow: the name and its remove button share row one; every other field takes a full-width line below.
+   Team rows get the facility rows' divider and tighter in-row gap, so a login reads with its own name, not the next one. */
 @media (max-width: 48rem) {
-  .s1-setup-row, .s1-fac__row, .s1-fac--regions .s1-fac__row { grid-template-columns: 1fr 2.5rem; }
+  .s1-setup-row, .s1-fac__row, .s1-fac--regions .s1-fac__row { grid-template-columns: minmax(0, 1fr) 2.5rem; }
+  .s1-setup-row > .s1-setup-remove, .s1-fac__row > .s1-setup-remove { grid-column: 2; grid-row: 1; }
+  .s1-fac__address, .s1-fac__region, .s1-setup-row__login { grid-column: 1 / -1; }
+  .s1-setup-row:not(.s1-setup-row--head) { row-gap: var(--sp-2); padding-bottom: var(--sp-2); border-bottom: var(--border-hairline); }
   .s1-setup-row--head { display: none; }
 }
 
@@ -3211,8 +3217,10 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-card:hover { background: var(--accent-softer); }
 .s1-xr-card.is-sel { background: var(--sf-card); box-shadow: 0 0 0 var(--hairline-width) var(--state-active-fg), 0 0.25rem 0.75rem rgba(40, 40, 112, 0.08); }
 .s1-xr-card:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.s1-xr-card__top { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; font-size: var(--text-sm); }
-.s1-xr-card__top .s1-xr-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: var(--weight-strong); }
+/* The header wraps rather than cut the title: when the title, period and state chip do not fit
+   on one line, the period and chip move to a second line and the title keeps its words. */
+.s1-xr-card__top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--sp-2); min-width: 0; font-size: var(--text-sm); }
+.s1-xr-card__top .s1-xr-what { min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-weight: var(--weight-strong); }
 .s1-xr-period { flex: none; font-size: var(--text-sm); color: var(--ink-3); white-space: nowrap; }
 .s1-xr-badge { flex: none; margin-left: auto; padding: 0 0.375rem; font-size: var(--text-sm); font-weight: var(--weight-strong); border: var(--border-hairline); border-radius: var(--state-chip-radius); white-space: nowrap; }
 .s1-xr-badge--accepted { color: var(--state-resolved-fg); background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
