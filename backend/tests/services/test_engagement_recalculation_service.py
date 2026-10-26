@@ -162,7 +162,7 @@ def test_other_organizations_are_invisible() -> None:
     assert result["categories"]["stationary_combustion"]["total_co2e"] < 100
 
 
-# --- documents read vs documents with reviewed values ------------------------------------------
+# --- documents read vs documents fully reviewed -------------------------------------------------
 def test_documents_reviewed_counts_only_documents_with_nothing_awaiting_review() -> None:
     # As on staging: one electricity bill accepted; two scanned bills and a diesel CSV not reviewed yet.
     store = FakeStore()
@@ -200,7 +200,10 @@ def test_documents_reviewed_is_decided_per_document() -> None:
     region = next(item for item in result["needs_input"] if item["kind"] == "grid_region")
     assert region["key"] == "Facility B" and "document_id" not in region
     assert result["documents_considered"] == 4
-    assert result["documents_reviewed"] == 2  # ELEC-OK and ELEC-B
+    assert result["documents_reviewed"] == 2  # fully reviewed: ELEC-OK and ELEC-B
+    # The partly reviewed CSV is not fully reviewed, yet its reviewed record feeds the totals.
+    [diesel] = result["categories"]["stationary_combustion"]["details"]["inputs"]
+    assert diesel["quantity"] == 100 and [d["document_id"] for d in diesel["documents"]] == ["DIESEL-CSV"]
 
 
 # --- grouping and proration ----------------------------------------------------------------

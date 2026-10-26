@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { apiPath } from "../../../lib/api";
 import {
+  documentsStillOpen,
   formatNumber,
   getRecalculation,
   recalculationMateriality,
@@ -111,6 +112,7 @@ export function BackendOutputScreen({
   const openAsks = asks.filter((a) => a.state === "not_yet_sent" || a.state === "requested").length;
   const resolvedAsks = asks.filter((a) => a.state === "resolved").length;
   const leftOut = result.excluded ?? [];
+  const stillOpen = documentsStillOpen(result);
   const period = `${engagement.reportingPeriod.start || "?"} to ${engagement.reportingPeriod.end || "?"}`;
 
   return (
@@ -214,8 +216,17 @@ export function BackendOutputScreen({
             <h3>Basis of evidence</h3>
             <ul className="s1-out-list">
               <li>
-                <strong>{evidence.length}</strong> documents uploaded, <strong>{result.documents_reviewed ?? result.documents_considered}</strong> with
-                reviewed values
+                <strong>{evidence.length}</strong> documents uploaded,{" "}
+                {result.documents_reviewed === undefined ? (
+                  <>
+                    <strong>{result.documents_considered}</strong> with reviewed values
+                  </>
+                ) : (
+                  <>
+                    <strong>{result.documents_reviewed}</strong> fully reviewed
+                    {stillOpen ? ` (${stillOpen})` : ""}
+                  </>
+                )}
               </li>
               <li>
                 <strong>{reviewed.length}</strong> values reviewed, <strong>{corrected}</strong> corrected or entered by the

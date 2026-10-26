@@ -606,7 +606,8 @@ class EngagementRecalculationService:
                                  "Scope 1 process sources", "Scope 2 cooling"],
             # Documents read: every document whose records fed the recalculation, reviewed or not.
             "documents_considered": len({r.document_id for r in records}),
-            # Of those, the documents whose values are all reviewed and usable (see _documents_reviewed).
+            # Of those, the fully reviewed documents: nothing open on any record (see _documents_reviewed).
+            # A partly reviewed document is not counted here, although its reviewed records feed the totals.
             "documents_reviewed": self._documents_reviewed(records, needs_input, awaiting),
             # Missing months, duplicates, overlapping and cross-year bills (formula library Q-001..Q-005).
             "quality_checks": run_checks([e for r in records if (e := self._evidence_record(r)) is not None], period),
@@ -619,13 +620,18 @@ class EngagementRecalculationService:
     @staticmethod
     def _documents_reviewed(records: list[ReviewedRecord], needs_input: list[dict[str, Any]],
                             awaiting: list[dict[str, Any]]) -> int:
-        """Documents in the recalculation with nothing open on any of their records.
+        """Fully reviewed documents: those in the recalculation with nothing open on any record.
 
         A document counts only when every one of its records is clear: no value awaiting
         review, and no question about one of its records (a reviewed amount that is not a
         usable number, an energy type that is not steam, hot water or chilled water, a
-        refrigerant record that does not add up). Those items name their document_id. A
-        document with one pending record among many reviewed ones is not counted.
+        refrigerant record that does not add up). Those items name their document_id.
+
+        The rule is per document, not per record. A partly reviewed document (one record
+        awaiting review among reviewed ones) is not counted, although its reviewed records
+        already feed the totals; the interface counts it with the documents whose values
+        await review, so the two counts never overlap. That is why the interface and the
+        export call this number "fully reviewed".
 
         Engagement-level questions (eGRID subregion, EPA fuel, refrigerant GWP, steam heat
         content, vehicle groups) ask for the engagement's inputs, not about a document's

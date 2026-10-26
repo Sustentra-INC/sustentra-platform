@@ -219,8 +219,9 @@ export interface Recalculation {
   not_recalculated: string[];
   /** Documents read: every document whose records fed the recalculation, reviewed or not. */
   documents_considered: number;
-  /** Of those, the documents with nothing open on any record (no value awaiting review, no
-   *  question about one of its values). Absent from results computed before it. */
+  /** Of those, the fully reviewed documents: nothing open on any record (no value awaiting
+   *  review, no question about one of its values). A partly reviewed document is not counted,
+   *  although its reviewed values feed the totals. Absent from results computed before it. */
   documents_reviewed?: number;
   /** Missing months, duplicates, overlapping and cross-year bills (formula library checks).
    *  Absent from results computed before the checks. */
@@ -794,22 +795,33 @@ export function recalculationRows(result: Recalculation): VerificationRow[] {
   });
 }
 
-/** "1 document with reviewed values (3 more awaiting review)": the documents the totals come
- *  from, then the documents read whose values are still open. Results computed before
- *  documents_reviewed existed keep the old wording. */
-export function documentsBasis(result: Recalculation): string {
+/** The documents read that are not fully reviewed: "3 more with values awaiting review, 1 more
+ *  needing an input". A document with even one value awaiting review counts here, not as
+ *  fully reviewed, although its reviewed values already feed the totals; so the two counts
+ *  never overlap. Empty when nothing is open, or for results without documents_reviewed. */
+export function documentsStillOpen(result: Recalculation): string {
   const reviewed = result.documents_reviewed;
-  if (reviewed === undefined) return `${result.documents_considered} document(s) with reviewed values`;
+  if (reviewed === undefined) return "";
   const awaiting = new Set(result.awaiting_review.map((a) => a.document_id)).size;
   // Read, nothing awaiting review, but a question about one of its values is open.
   const needInput = Math.max(0, result.documents_considered - reviewed - awaiting);
   const more = reviewed > 0 ? " more" : "";
-  const open = [
-    awaiting ? `${awaiting}${more} awaiting review` : "",
+  return [
+    awaiting ? `${awaiting}${more} with values awaiting review` : "",
     needInput ? `${needInput}${more} needing an input` : "",
-  ].filter(Boolean);
-  return `${reviewed} ${reviewed === 1 ? "document" : "documents"} with reviewed values` +
-    (open.length ? ` (${open.join(", ")})` : "");
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** "1 fully reviewed document (3 more with values awaiting review)": the documents with
+ *  nothing open on any record, then the documents read that are still open. Results computed
+ *  before documents_reviewed existed keep the old wording. */
+export function documentsBasis(result: Recalculation): string {
+  const reviewed = result.documents_reviewed;
+  if (reviewed === undefined) return `${result.documents_considered} document(s) with reviewed values`;
+  const open = documentsStillOpen(result);
+  return `${reviewed} fully reviewed ${reviewed === 1 ? "document" : "documents"}` + (open ? ` (${open})` : "");
 }
 
 /** Materiality on the headline totals only (Scope 1 + Scope 2 location-based), so nothing is

@@ -162,7 +162,7 @@ def test_export_is_an_excel_workpaper_of_the_same_numbers(act_as, wired: FakeSto
         assert client.get("/v1/engagements/ENG-1/export").status_code == 404
 
 
-def test_export_separates_documents_read_from_documents_with_reviewed_values(act_as, wired: FakeStore) -> None:
+def test_export_separates_documents_read_from_documents_fully_reviewed(act_as, wired: FakeStore) -> None:
     import io
 
     from openpyxl import load_workbook
@@ -176,4 +176,4 @@ def test_export_separates_documents_read_from_documents_with_reviewed_values(act
     assert response.status_code == 200
     summary = dict(load_workbook(io.BytesIO(response.content))["Summary"].iter_rows(min_row=2, values_only=True))
     assert summary["Documents read"] == 2
-    assert summary["Documents with reviewed values"] == 1
+    assert summary["Documents fully reviewed"] == 1
