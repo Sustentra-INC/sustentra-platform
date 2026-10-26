@@ -500,16 +500,18 @@ function SendPanel({
   onCopied: () => void;
 }) {
   const year = engagement.reportingPeriod.start.slice(0, 4);
+  // "2025 emissions", or just "emissions" while the reporting period has no start date.
+  const emissions = year ? `${year} emissions` : "emissions";
   const contactFirst = (engagement.clientContact?.name ?? "there").split(" ")[0];
   const verifierName =
     (engagement.engagementTeam ?? []).find((m) => m.login === engagement.signedInLogin)?.name ??
     engagement.signedInName ??
     "the verification team";
   const built = useMemo(() => buildLines(asks), [asks]);
-  const [subject, setSubject] = useState(`${engagement.clientName}: ${year} emissions verification`);
+  const [subject, setSubject] = useState(`${engagement.clientName}: ${emissions} verification`);
   const [body, setBody] = useState(() =>
     assembleMessage(
-      `Hi ${contactFirst},\n\nThanks for the materials so far. To finish verifying ${engagement.clientName}'s ${year} emissions, could you help with the items below?`,
+      `Hi ${contactFirst},\n\nThanks for the materials so far. To finish verifying ${engagement.clientName}'s ${emissions}, could you help with the items below?`,
       `Send these whenever you can, and tell me if anything's unclear.\n\nBest,\n${verifierName}`,
       built
     )

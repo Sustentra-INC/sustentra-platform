@@ -15,6 +15,7 @@ import type { ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
 import type { DashboardFigures } from "../utils/engagementActivity";
+import { formatReportingPeriod } from "../utils/formatPeriod";
 import type { NavKey } from "./S1Chrome";
 
 /**
@@ -46,7 +47,10 @@ export function DashboardScreen({
           <h1>{hasEngagement ? engagement.clientName : "New engagement"}</h1>
           <p className="s1-dash__meta">
             {hasEngagement
-              ? [engagement.regulation ? shortRegulation(engagement.regulation) : null, periodLabel(engagement)]
+              ? [
+                  engagement.regulation ? shortRegulation(engagement.regulation) : null,
+                  formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end),
+                ]
                   .filter(Boolean)
                   .join(" · ")
               : "Set up the engagement to begin"}
@@ -316,10 +320,3 @@ function shortRegulation(regulation: string): string {
   return regulation.split(":")[0];
 }
 
-function periodLabel(engagement: EngagementConfig): string | null {
-  const { start, end } = engagement.reportingPeriod;
-  if (!start) return "Reporting period not set";
-  const format = (iso: string) =>
-    new Date(`${iso}T00:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  return `${format(start)} – ${format(end)}`;
-}
