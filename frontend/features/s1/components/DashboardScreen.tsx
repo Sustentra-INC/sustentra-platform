@@ -8,6 +8,7 @@ import {
   FileQuestion,
   Hourglass,
   ListChecks,
+  PencilLine,
   Scale,
   Send,
   ShieldAlert,
@@ -188,7 +189,10 @@ function buildPhases(hasEngagement: boolean, f: DashboardFigures): Phase[] {
   const assessment: PhaseStatus =
     f.dataPointsCalculated === 0 && !f.coverage?.present
       ? "pending"
-      : f.dataPointsCalculated > 0 && f.dataPointsExamined >= f.dataPointsCalculated && missing === 0
+      : f.dataPointsCalculated > 0 &&
+          f.dataPointsExamined >= f.dataPointsCalculated &&
+          missing === 0 &&
+          !f.reportedTotalsMissing
         ? "done"
         : review === "pending"
           ? "pending"
@@ -241,7 +245,7 @@ interface Attention {
   icon: ReactNode;
   /** How many; the row shows while this is above zero. */
   n: number;
-  /** A row about one thing, such as the reporting period, shows no count. */
+  /** A row whose text says it all, such as the reporting period or the reported totals, shows no count. */
   uncounted?: boolean;
   text: string;
   action: string;
@@ -305,6 +309,16 @@ function attentionItems(f: DashboardFigures): Attention[] {
       text: plural(f.requestsNotSent, "request not sent yet", "requests not sent yet"),
       action: "Requests",
       nav: "requests",
+    },
+    {
+      key: "reported",
+      tone: "open",
+      icon: <PencilLine />,
+      n: f.reportedTotalsMissing ?? 0,
+      uncounted: true,
+      text: plural(f.reportedTotalsMissing ?? 0, "Reported total not entered", "Reported totals not entered"),
+      action: "Results",
+      nav: "results",
     },
     {
       key: "examine",

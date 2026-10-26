@@ -849,6 +849,23 @@ function listed(items: string[], max = 3): string {
 /** The coverage row that says whether the reporting period has both its dates. */
 export const REPORTING_PERIOD_RULE_ID = "COV-PERIOD";
 
+/** The coverage row that says whether the client's reported totals are entered. */
+export const REPORTED_TOTALS_RULE_ID = "COV-REPORTED";
+
+/** The headline totals the recalculation produced, each with a reported total to compare. */
+function headlineTotals(result: Recalculation): RecalcComparison[] {
+  return ["scope1_total", "scope2_location_total", "scope2_market_total"]
+    .map((key) => result.comparisons.find((c) => c.key === key))
+    .filter((c): c is RecalcComparison => !!c && c.status !== "not_in_scope" && c.recalculated !== null);
+}
+
+/** The data points whose reported total is not entered yet, as the reported-totals row lists them. */
+export function missingReportedTotals(result: Recalculation): string[] {
+  return headlineTotals(result)
+    .filter((c) => c.reported === null)
+    .map((c) => c.data_point);
+}
+
 /**
  * Coverage rows that check the method, not the evidence: the reporting period, the GWP
  * basis, the client's reported totals and the reviewer's decisions on documents. Coverage
@@ -859,7 +876,7 @@ export const REPORTING_PERIOD_RULE_ID = "COV-PERIOD";
 export const METHOD_CHECK_RULE_IDS: readonly string[] = [
   REPORTING_PERIOD_RULE_ID,
   "COV-GWP",
-  "COV-REPORTED",
+  REPORTED_TOTALS_RULE_ID,
   "COV-DECISIONS",
 ];
 
@@ -870,7 +887,6 @@ export const METHOD_CHECK_RULE_IDS: readonly string[] = [
  */
 export function coverageFromRecalculation(result: Recalculation): CoverageRule[] {
   const rules: CoverageRule[] = [];
-  const reported = (key: string) => result.comparisons.find((c) => c.key === key);
 
   const fuelRule = (
     ruleId: string,
@@ -981,20 +997,16 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
     });
   }
 
-  const missingReported = ["scope1_total", "scope2_location_total", "scope2_market_total"]
-    .map(reported)
-    .filter((c): c is RecalcComparison => !!c && c.status !== "not_in_scope" && c.recalculated !== null && c.reported === null);
-  const headline = ["scope1_total", "scope2_location_total", "scope2_market_total"].map(reported).filter(
-    (c): c is RecalcComparison => !!c && c.status !== "not_in_scope" && c.recalculated !== null
-  );
+  const headline = headlineTotals(result);
+  const missingReported = missingReportedTotals(result);
   if (headline.length) {
     rules.push({
-      ruleId: "COV-REPORTED",
+      ruleId: REPORTED_TOTALS_RULE_ID,
       assertion: "The client's reported totals are compared with the recalculation at the materiality tolerance",
       appliesTo: headline.map((c) => c.data_point),
       status: missingReported.length ? "inputs_missing" : "inputs_present",
       reason: missingReported.length
-        ? `Reported value not entered for ${listed(missingReported.map((c) => c.data_point))}.`
+        ? `Reported value not entered for ${listed(missingReported)}.`
         : `All entered; tolerance ±${result.tolerance_pct}%.`,
     });
   }

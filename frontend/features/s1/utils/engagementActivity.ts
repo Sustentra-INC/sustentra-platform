@@ -1,4 +1,4 @@
-import { METHOD_CHECK_RULE_IDS, REPORTING_PERIOD_RULE_ID } from "../api/recalculation";
+import { METHOD_CHECK_RULE_IDS } from "../api/recalculation";
 import type { EvidenceItem, ReviewValue } from "../types";
 import type { Ask } from "../types/requests";
 import type { CoverageRule, Examination, Finding } from "../types/verification";
@@ -107,8 +107,16 @@ export interface DashboardFigures {
    * and are not counted here.
    */
   coverage: { present: number; missing: number; notApplicable: number; outOfScope: number } | null;
-  /** The live coverage says the reporting period is missing a date (absent: it is not). */
+  /**
+   * The engagement's reporting period is missing a date. Set by the live dashboard from the
+   * engagement itself, so fixing the period in Setup clears it at once (absent: it is not).
+   */
   reportingPeriodIncomplete?: boolean;
+  /**
+   * How many headline totals have a recalculated value but no reported total to compare it
+   * with. Set by the live dashboard from the recalculation (absent: none).
+   */
+  reportedTotalsMissing?: number;
   dataPointsCalculated: number;
   dataPointsExamined: number;
   findings: number;
@@ -149,9 +157,6 @@ export function dashboardFigures(input: {
           outOfScope: rules.filter((r) => r.status === "out_of_scope").length,
         }
       : null,
-    reportingPeriodIncomplete: Boolean(
-      input.coverage?.some((r) => r.ruleId === REPORTING_PERIOD_RULE_ID && r.status === "inputs_missing")
-    ),
     dataPointsCalculated: calculated.length,
     dataPointsExamined: calculated.filter(
       (id) => input.examinations?.[id] && input.examinations[id].examinationState !== "not_examined"
