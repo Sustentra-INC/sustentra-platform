@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 
 import type { EvidenceItem } from "../types";
-import { MAX_UPLOAD_MB } from "../constants/uploads";
+import { isReadableUpload, MAX_UPLOAD_MB, unreadableUploadMessage, UPLOAD_ACCEPT } from "../constants/uploads";
 
 
 /** One file in the current upload, as the user picked it (backend mode). */
@@ -13,13 +13,28 @@ export interface UploadTask {
   id: string;
   filename: string;
   size: number;
-  /** waiting -> uploading (bytes leave the browser) -> reading (parse, classify, extract) -> done | failed */
-  stage: "waiting" | "uploading" | "reading" | "done" | "failed";
+  /** waiting -> uploading (bytes leave the browser) -> reading (parse, classify, extract) -> done | failed.
+   *  not_uploaded: the file was never stored (a type no parser reads, or the API refused it). */
+  stage: "waiting" | "uploading" | "reading" | "done" | "failed" | "not_uploaded";
   /** Fraction of the file's bytes sent, 0..1 (measured, not estimated). */
   progress: number;
   error?: string;
   /** Set once the server has stored the file. */
   documentId?: string;
+}
+
+/** The tasks for picked files. A file no parser can read is set aside as not uploaded,
+ *  with the reason, and is never sent (the API would refuse it with a 415). */
+export function uploadTasksFor(files: File[], batchId: string): UploadTask[] {
+  return files.map((file, index) => ({
+    id: `${batchId}-${index}`,
+    filename: file.name,
+    size: file.size,
+    progress: 0,
+    ...(isReadableUpload(file)
+      ? { stage: "waiting" as const }
+      : { stage: "not_uploaded" as const, error: unreadableUploadMessage(file.name) }),
+  }));
 }
 
 export interface SampleScript {
@@ -65,6 +80,13 @@ export function UploadDialog({
   const scripting = !!script && script.stage !== "done";
   const busy = scripting || tasks.some((t) => t.stage === "waiting" || t.stage === "uploading" || t.stage === "reading");
   const anything = added.length > 0 || tasks.length > 0;
+  const notUploaded = tasks.filter((t) => t.stage === "not_uploaded").length;
+  const doneHint =
+    notUploaded === 0
+      ? "Done. Each file is a row in Evidence."
+      : notUploaded === tasks.length && added.length === 0
+        ? "Nothing was uploaded."
+        : "Done. Each uploaded file is a row in Evidence.";
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -138,6 +160,7 @@ export function UploadDialog({
               className="s1-file-input"
               type="file"
               multiple
+              accept={UPLOAD_ACCEPT}
               onChange={(e) => {
                 pick(e.target.files);
                 e.target.value = "";
@@ -179,7 +202,7 @@ export function UploadDialog({
 
         {anything && !scripting ? (
           <div className="s1-updlg__foot">
-            <span className="s1-updlg__hint">{busy ? "You can close this; reading carries on." : "Done. Each file is a row in Evidence."}</span>
+            <span className="s1-updlg__hint">{busy ? "You can close this; reading carries on." : doneHint}</span>
             <button
               className="s1-button s1-button--pri"
               type="button"
@@ -208,14 +231,17 @@ function formatSize(bytes: number): string {
  *  measurable progress, so it shows as an in-progress stripe, not a made-up number. */
 function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: EvidenceItem[] }) {
   const byId = new Map(items.map((item) => [item.documentId, item]));
-  const totalBytes = tasks.reduce((sum, t) => sum + t.size, 0);
-  const sentBytes = tasks.reduce(
+  // A file that was not uploaded has no bytes to send, so it is left out of the bar.
+  const sending = tasks.filter((t) => t.stage !== "not_uploaded");
+  const totalBytes = sending.reduce((sum, t) => sum + t.size, 0);
+  const sentBytes = sending.reduce(
     (sum, t) => sum + (t.stage === "waiting" ? 0 : t.stage === "uploading" ? t.size * t.progress : t.size),
     0
   );
   const percent = totalBytes ? Math.round((sentBytes / totalBytes) * 100) : 0;
-  const finished = tasks.filter((t) => t.stage === "done" || t.stage === "failed").length;
+  const finished = tasks.filter((t) => t.stage === "done" || t.stage === "failed" || t.stage === "not_uploaded").length;
   const failed = tasks.filter((t) => t.stage === "failed").length;
+  const notUploaded = tasks.length - sending.length;
   // What reading found, once a file is done: blocked files need the reviewer (e.g. set a type).
   const outcome = (t: UploadTask) => (t.stage === "done" && t.documentId ? byId.get(t.documentId) : undefined);
   const needsYou = tasks.filter((t) => outcome(t)?.processingState === "blocked").length;
@@ -226,11 +252,12 @@ function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: Evidence
       <div className="s1-upq__head">
         <strong>
           {running
-            ? `Uploading ${tasks.length} file${tasks.length === 1 ? "" : "s"} · ${percent}%`
-            : `${tasks.length - failed} of ${tasks.length} file${tasks.length === 1 ? "" : "s"} uploaded and read`}
+            ? `Uploading ${sending.length} file${sending.length === 1 ? "" : "s"} · ${percent}%`
+            : `${tasks.length - failed - notUploaded} of ${tasks.length} file${tasks.length === 1 ? "" : "s"} uploaded and read`}
         </strong>
         <span className="s1-muted">
           {finished} of {tasks.length} done{failed ? ` · ${failed} failed` : ""}
+          {notUploaded ? ` · ${notUploaded} not uploaded` : ""}
           {needsYou ? ` · ${needsYou} need${needsYou === 1 ? "s" : ""} you in Evidence` : ""}
         </span>
       </div>
@@ -252,7 +279,9 @@ function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: Evidence
             <span className="s1-upq__track" aria-hidden>
               <span
                 className={`s1-upq__track-fill${t.stage === "reading" ? " is-reading" : ""}`}
-                style={{ width: `${t.stage === "waiting" ? 0 : t.stage === "uploading" ? Math.round(t.progress * 100) : 100}%` }}
+                style={{
+                  width: `${t.stage === "waiting" || t.stage === "not_uploaded" ? 0 : t.stage === "uploading" ? Math.round(t.progress * 100) : 100}%`,
+                }}
               />
             </span>
             <span className="s1-upq__stage">
@@ -266,7 +295,9 @@ function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: Evidence
                       ? outcome(t)?.processingState === "blocked"
                         ? "Needs you"
                         : "Done"
-                      : "Failed"}
+                      : t.stage === "not_uploaded"
+                        ? "Not uploaded"
+                        : "Failed"}
             </span>
             {t.error ? <span className="s1-upq__error">{t.error}</span> : null}
             {outcome(t)?.processingState === "blocked" ? (

@@ -22,6 +22,7 @@ from backend.app.services.document_content_service import UnreadableContent, Uns
 from backend.app.services.document_file_types import served_type
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
+from backend.app.services.parser_service import ParserService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
 
 router = APIRouter(prefix="/v1", tags=["documents"])
@@ -80,6 +81,20 @@ def _uploader(user: CurrentUser) -> str:
     return user.email
 
 
+def _unreadable_upload_detail(file_name: str) -> str:
+    return (
+        f"{file_name} can't be read here. Upload a PDF, Word (.docx), Excel (.xlsx), CSV or text file, "
+        "or a scan or photo (PNG, JPG or TIFF)."
+    )
+
+
+def _require_readable(file_name: str, mime_type: str | None) -> None:
+    # Same detection the parser runs (extension first, then mime type): a file no parser
+    # can read is refused before anything is stored, so it never becomes blocked evidence.
+    if ParserService.parser_kind(Path(file_name), mime_type) is None:
+        raise HTTPException(status_code=415, detail=_unreadable_upload_detail(file_name))
+
+
 def _require_evidence_slot(evidence_id: str | None, user: CurrentUser) -> None:
     # A client-supplied evidence id attaches the document to EXISTING evidence of the
     # caller's org; anything else (unknown, or another org's) looks like it does not
@@ -132,6 +147,8 @@ async def upload_document(
     _require_evidence_slot(evidence_id, user)
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file name is required.")
+    mime_type = file.content_type or "application/octet-stream"
+    _require_readable(file.filename, mime_type)
     max_bytes = int(request.app.state.max_upload_bytes)  # INFRA-007, set by create_app
     if file.size is not None and file.size > max_bytes:
         raise HTTPException(status_code=413, detail=upload_too_large_detail(max_bytes))
@@ -139,7 +156,6 @@ async def upload_document(
         content = await file.read()
         if len(content) > max_bytes:
             raise HTTPException(status_code=413, detail=upload_too_large_detail(max_bytes))
-        mime_type = file.content_type or "application/octet-stream"
         return _upload_service.upload_document(
             engagement_id=engagement_id,
             file_name=file.filename,

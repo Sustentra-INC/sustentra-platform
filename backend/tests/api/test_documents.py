@@ -119,6 +119,59 @@ def test_upload_records_the_signed_in_uploader(client_context):
     assert response.json()["org_id"] == str(ORG_A)
 
 
+UNREADABLE = (
+    "{name} can't be read here. Upload a PDF, Word (.docx), Excel (.xlsx), CSV or text file, "
+    "or a scan or photo (PNG, JPG or TIFF)."
+)
+
+
+@pytest.mark.parametrize(("name", "mime"), [
+    ("qa_archive.zip", "application/zip"),
+    ("page.html", "text/html"),
+    ("old-bill.doc", "application/msword"),
+    ("legacy.xls", "application/vnd.ms-excel"),
+    ("readings", "application/octet-stream"),
+])
+def test_upload_refuses_a_file_no_parser_can_read(client_context, name: str, mime: str):
+    client = client_context["client"]
+    response = client.post(
+        "/api/v1/engagements/ENG-1/documents/upload",
+        files={"file": (name, b"PK\x03\x04 not readable", mime)},
+        headers={"Origin": "http://localhost:3000"},
+    )
+
+    assert response.status_code == 415
+    assert response.json()["detail"] == UNREADABLE.format(name=name)
+    # Refused before anything is stored: no file on disk and no document in Evidence.
+    storage_root = client_context["storage_service"].storage_root
+    assert not storage_root.exists() or not any(path.is_file() for path in storage_root.rglob("*"))
+    assert client.get("/v1/engagements/ENG-1/documents").json()["items"] == []
+
+
+@pytest.mark.parametrize(("name", "mime"), [
+    ("bill.pdf", "application/pdf"),
+    ("letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ("log.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ("log.xlsm", "application/octet-stream"),
+    ("readings.csv", "text/csv"),
+    ("notes.txt", "text/plain"),
+    ("notes.md", "text/markdown"),
+    ("meter.PNG", "image/png"),
+    ("meter.jpeg", "image/jpeg"),
+    ("scan.tiff", "image/tiff"),
+    ("photo.webp", "image/webp"),
+    # No extension: the mime type decides, as in the parser.
+    ("scan", "image/heic"),
+    ("export", "text/csv; charset=utf-8"),
+])
+def test_upload_accepts_every_file_a_parser_can_read(client_context, name: str, mime: str):
+    response = client_context["client"].post(
+        "/v1/engagements/ENG-1/documents/upload",
+        files={"file": (name, b"bytes", mime)},
+    )
+    assert response.status_code == 200, response.text
+
+
 def test_get_document_returns_uploaded_document(client_context):
     client = client_context["client"]
     created = client.post(

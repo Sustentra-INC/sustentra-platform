@@ -30,11 +30,11 @@ import {
   unmatchedFacilities,
 } from "../utils/documentView";
 import { ExtractionReview } from "../components/ExtractionReview";
-import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
+import { EvidenceWorkspace, type WorkspaceProblem } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
 import { logout } from "../../auth/api";
 import { DashboardScreen } from "../components/DashboardScreen";
-import { UploadDialog, type SampleScript, type UploadTask } from "../components/UploadDialog";
+import { UploadDialog, uploadTasksFor, type SampleScript, type UploadTask } from "../components/UploadDialog";
 import { SetupScreen } from "../components/SetupScreen";
 import { DemoDocument } from "../components/demo/DemoDocument";
 import {
@@ -60,6 +60,7 @@ import { useVerificationStore } from "../verification/verificationStore";
 import { useWorkpaperSync } from "../verification/useWorkpaperSync";
 import { StateIndicator } from "../components/StateIndicator";
 import { EXACT_COPY } from "../constants/copy";
+import { uploadProblemTitle } from "../constants/uploads";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { inScopeFieldPlaceholders } from "../fixtures/scope/inScopeFields";
 import type { EngagementConfig, InScopeField, RecalculationSettings } from "../types";
@@ -119,6 +120,11 @@ function nodeKeyForEvidence(item: EvidenceItem): string {
   return "E"; // multiple / not_facility_scoped -> entity-level
 }
 
+/** Why loading failed, in the API's words when it gave any. */
+function loadFailure(error: unknown): string {
+  return error instanceof Error ? error.message : "Check your connection and reload the page.";
+}
+
 /** A blank engagement — the starting point in backend mode. No templated data;
  *  the user configures it in Setup (or it is created/loaded from the backend). */
 const EMPTY_ENGAGEMENT: EngagementConfig = {
@@ -171,7 +177,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [gridRegions, setGridRegions] = useState<{ code: string; name: string }[] | undefined>(undefined);
   const [dataPoints, setDataPoints] = useState<DataPointOption[]>([]);
   const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
-  const [backendError, setBackendError] = useState<string | null>(null);
+  const [backendError, setBackendError] = useState<WorkspaceProblem | null>(null);
   // Backend mode: a 401 from the API means the session ended (FE-007).
   const [sessionEnded, setSessionEnded] = useState(false);
   const requests = useRequestsStore(dataMode === "backend" ? [] : persisted?.asks ?? seedAsks);
@@ -225,7 +231,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     replaceDocuments: setDocumentDecisions,
     onError: (error) => {
       if (handleSessionEnded(error)) return;
-      setBackendError(`Your last change was not saved. ${userFacingApiError(error)}`);
+      setBackendError({ title: "Your last change wasn't saved", message: userFacingApiError(error) });
     },
   });
   const [engagementSave, setEngagementSave] = useState<SaveState>("idle");
@@ -339,7 +345,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       })
       .catch((error: unknown) => {
         if (handleSessionEnded(error)) return;
-        setBackendError(error instanceof Error ? error.message : "Could not reach the backend API.");
+        setBackendError({ title: "Couldn't load the engagement", message: loadFailure(error) });
         setDemoState("error_degraded");
       });
   }, [dataMode]);
@@ -365,7 +371,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       setDemoState(nextContainerState ?? (workspace.evidence.length === 0 ? "empty_nothing_yet" : "populated"));
     } catch (error) {
       if (handleSessionEnded(error)) return;
-      setBackendError(error instanceof Error ? error.message : "Could not reach the backend API.");
+      setBackendError({ title: "Couldn't load the evidence", message: loadFailure(error) });
       setDemoState("error_degraded");
     }
   }
@@ -577,7 +583,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       await refreshBackendWorkspace("populated");
     } catch (error) {
       if (handleSessionEnded(error)) return;
-      setBackendError(`Could not re-read the document as that type. ${userFacingApiError(error)}`);
+      setBackendError({ title: "Couldn't read the document as that type", message: userFacingApiError(error) });
     } finally {
       setProcessingDocumentIds((current) => current.filter((id) => id !== documentId));
     }
@@ -586,26 +592,24 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   async function handleUploadFiles(files: FileList) {
     if (dataMode !== "backend") return;
     if (!engagement.engagementId) {
-      setBackendError("Create or pick an engagement in Setup before uploading.");
+      setBackendError({ title: "Couldn't upload", message: "Create or pick an engagement in Setup before uploading." });
       return;
     }
     const picked = Array.from(files);
-    const batchId = Date.now().toString(36);
-    const tasks: UploadTask[] = picked.map((file, index) => ({
-      id: `${batchId}-${index}`,
-      filename: file.name,
-      size: file.size,
-      stage: "waiting",
-      progress: 0,
-    }));
+    // A file no parser can read is set aside as not uploaded and never sent.
+    const tasks = uploadTasksFor(picked, Date.now().toString(36));
     const patchTask = (id: string, next: Partial<UploadTask>) =>
       setUploadTasks((current) => current.map((task) => (task.id === id ? { ...task, ...next } : task)));
     setUploadTasks(tasks);
     setIsUploading(true);
     setBackendError(null);
-    const failures: string[] = [];
+    // One line per file for the Evidence banner: not uploaded, then uploaded but not read.
+    const notUploaded = tasks.flatMap((task) => (task.stage === "not_uploaded" && task.error ? [task.error] : []));
+    const notRead: string[] = [];
+    const sending = tasks.some((task) => task.stage === "waiting");
     for (const [index, file] of picked.entries()) {
       const taskId = tasks[index].id;
+      if (tasks[index].stage === "not_uploaded") continue;
       let uploadedId: string | null = null;
       try {
         patchTask(taskId, { stage: "uploading" });
@@ -662,17 +666,21 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           setProcessingDocumentIds((current) => current.filter((item) => item !== id));
           const reason = `Uploaded, but could not be read: ${userFacingApiError(error)}`;
           patchTask(taskId, { stage: "failed", error: reason });
-          failures.push(`${file.name}: ${reason}`);
+          notRead.push(`${file.name}: ${reason}`);
         } else {
-          const reason = `Not uploaded: ${userFacingApiError(error)}`;
-          patchTask(taskId, { stage: "failed", error: reason });
-          failures.push(`${file.name}: ${reason}`);
+          // Not stored: the API's own words say why (its 415 names the file).
+          const reason = userFacingApiError(error);
+          patchTask(taskId, { stage: "not_uploaded", progress: 0, error: reason });
+          notUploaded.push(reason.includes(file.name) ? reason : `${file.name}: ${reason}`);
         }
       }
     }
-    await refreshBackendWorkspace("populated");
-    if (failures.length > 0) {
-      setBackendError(failures.join(" "));
+    if (sending) await refreshBackendWorkspace("populated");
+    if (notUploaded.length > 0 || notRead.length > 0) {
+      setBackendError({
+        title: uploadProblemTitle(notUploaded.length, notRead.length),
+        message: [...notUploaded, ...notRead].join(" "),
+      });
     }
     setIsUploading(false);
   }
@@ -686,7 +694,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       await refreshBackendWorkspace("populated");
     } catch (error) {
       if (handleSessionEnded(error)) return;
-      setBackendError(userFacingApiError(error));
+      setBackendError({ title: "Couldn't read the document", message: userFacingApiError(error) });
       await refreshBackendWorkspace();
     } finally {
       setProcessingDocumentIds((current) => current.filter((id) => id !== documentId));
