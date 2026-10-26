@@ -1142,7 +1142,9 @@ function issueLines(item: EvidenceItem, all: EvidenceItem[], engagement: Engagem
 
 function periodOutsideYear(item: EvidenceItem, engagement: EngagementConfig): boolean {
   if (item.periodState !== "resolved" || !item.periodStart || !item.periodEnd) return false;
-  return item.periodEnd < engagement.reportingPeriod.start || item.periodStart > engagement.reportingPeriod.end;
+  // A date the engagement has not set yet bounds nothing.
+  const { start, end } = engagement.reportingPeriod;
+  return Boolean((start && item.periodEnd < start) || (end && item.periodStart > end));
 }
 
 function latestAsk(asks: Ask[], documentId: string): Ask | null {

@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { EngagementConfig } from "../types";
 import type { ResultLine } from "../types/verificationResults";
 import type { DashboardFigures } from "../utils/engagementActivity";
+import { formatReportingPeriod } from "../utils/formatPeriod";
 import { statementFigures } from "../utils/outputStatement";
 import { formatPercent, formatSignedTonnes, formatTonnes } from "../utils/verificationTable";
 
@@ -34,8 +35,8 @@ export function OutputScreen({
 
   const client = engagement?.clientName ?? "Cascade Provisions Co.";
   const period = engagement
-    ? `${engagement.reportingPeriod.start} to ${engagement.reportingPeriod.end}`
-    : "2025-01-01 to 2025-12-31";
+    ? formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end)
+    : formatReportingPeriod("2025-01-01", "2025-12-31");
   const year = (engagement?.reportingPeriod.start ?? "2025").slice(0, 4);
   const regulation = engagement?.regulation ?? "California Senate Bill 253";
   const boundary = engagement?.boundaryApproach ?? "Operational control";
