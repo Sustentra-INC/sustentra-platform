@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from backend.app.adapters.parsers.textract_parser import TextractParser
@@ -126,6 +128,63 @@ def test_the_split_depends_on_the_text_not_on_the_page_shape(page_px: tuple[int,
 
     assert _parts(_px_words_line("A", SIDE_BY_SIDE_FIELDS_PX, page_px), page_aspect) == SIDE_BY_SIDE_PARTS
     assert _parts(_px_words_line("B", ORDINARY_SPACING_PX, page_px), page_aspect) == ["Natural Gas Usage 32,400 MMBtu"]
+
+
+def _tilted_line(block_id: str, words_px: list[tuple[str, float, float]], page_px: tuple[int, int],
+                 degrees: float) -> list[dict]:
+    """A LINE and its WORDs as Textract reports a photo taken at a slight angle: the words of
+    words_px (16 px tall, top at 60 px) turned by `degrees` about the line's start, rising to the
+    right for a positive angle. Polygon holds each turned box's corners (top-left, top-right,
+    bottom-right, bottom-left) and BoundingBox the upright box around them, as fractions of the
+    page width and height."""
+
+    page_width, page_height = page_px
+    origin_x, origin_y = words_px[0][1], 60.0
+    cos, sin = math.cos(math.radians(degrees)), math.sin(math.radians(degrees))
+
+    def geometry(left: float, right: float) -> dict:
+        corners = [(left, 0.0), (right, 0.0), (right, 16.0), (left, 16.0)]  # along / across the line
+        points = [(origin_x + (u - origin_x) * cos + v * sin, origin_y - (u - origin_x) * sin + v * cos)
+                  for u, v in corners]
+        xs, ys = [x / page_width for x, _ in points], [y / page_height for _, y in points]
+        return {"BoundingBox": {"Left": min(xs), "Top": min(ys), "Width": max(xs) - min(xs), "Height": max(ys) - min(ys)},
+                "Polygon": [{"X": x, "Y": y} for x, y in zip(xs, ys)]}
+
+    word_blocks = [{"Id": f"{block_id}-w{n}", "BlockType": "WORD", "Page": 1, "Text": text,
+                    "Geometry": geometry(left, left + width)} for n, (text, left, width) in enumerate(words_px)]
+    line = _line(block_id, " ".join(w[0] for w in words_px),
+                 geometry(words_px[0][1], words_px[-1][1] + words_px[-1][2]))
+    line["Relationships"] = [{"Type": "CHILD", "Ids": [w["Id"] for w in word_blocks]}]
+    return [line, *word_blocks]
+
+
+TILTS = pytest.mark.parametrize("degrees", [1, 2, -1, -2], ids=["1deg", "2deg", "-1deg", "-2deg"])
+SHAPE_KNOWN = pytest.mark.parametrize("shape_known", [True, False], ids=["page-shape", "character-widths"])
+
+
+@TILTS
+@SHAPE_KNOWN
+def test_a_slightly_tilted_photo_still_splits_side_by_side_fields(degrees: float, shape_known: bool) -> None:
+    blocks = _tilted_line("L", SIDE_BY_SIDE_FIELDS_PX, WIDE_CROP, degrees)
+    # The LINE box of this 534 px line is 25 px tall at 1 degree and 35 px at 2: measured with it,
+    # the 14 px gap is under 0.7 line heights and the two fields stay one line.
+    assert blocks[0]["Geometry"]["BoundingBox"]["Height"] * WIDE_CROP[1] > 1.5 * 16
+
+    assert _parts(blocks, page_aspect=620 / 120 if shape_known else None) == SIDE_BY_SIDE_PARTS
+
+
+@TILTS
+@SHAPE_KNOWN
+def test_a_slightly_tilted_photo_keeps_ordinary_word_spacing_whole(degrees: float, shape_known: bool) -> None:
+    blocks = _tilted_line("L", ORDINARY_SPACING_PX, WIDE_CROP, degrees)
+
+    assert _parts(blocks, page_aspect=620 / 120 if shape_known else None) == ["Natural Gas Usage 32,400 MMBtu"]
+
+
+def test_with_the_page_shape_words_without_height_keep_the_line_whole() -> None:
+    blocks = _words_line("L", [("Total", 0.10, 0.05), ("Service", 0.40, 0.05)], height=0.0)
+
+    assert _parts(blocks, page_aspect=620 / 120) == ["Total Service"]
 
 
 def test_without_the_page_shape_words_without_text_keep_the_line_whole() -> None:

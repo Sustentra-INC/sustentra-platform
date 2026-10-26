@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import math
+import statistics
 from pathlib import Path
 from typing import Any
 
@@ -29,15 +30,18 @@ from backend.app.adapters.parsers.base import (
 
 PARSER_NAME = "textract"
 
-# A gap between two words of a LINE wider than this many line heights splits the line, both
-# measured in pixels. On the regression samples (backend/tests/services/data/textract_regression)
-# ordinary word spacing is at most 0.39 line heights and side-by-side fields sit 0.88 or more
-# apart. On a US-letter page this is where lines already split when the gap (a fraction of the
-# page width) was compared with 0.9 line heights (a fraction of its height): 0.9 x 8.5/11 = 0.7.
+# A gap between two words of a LINE wider than this many text heights splits the line, both
+# measured in pixels. The text height is the median height of the line's WORD boxes, not the
+# LINE box: on a photo taken at a slight angle the LINE box of a wide line is several times
+# taller than its text (tilted 2 degrees, a line 60 text heights long gets a box 3 text heights
+# tall), while a single word's box barely changes. On the regression samples (backend/tests/services/data/textract_regression)
+# ordinary word spacing is at most 0.49 text heights and side-by-side fields sit 0.95 or more
+# apart; 0.7 is midway.
 WIDE_GAP = 0.7
 # When the page's shape is unknown, the gap is measured in the line's average character width
-# instead (same axis as the gap). On the samples ordinary spacing is at most 0.89 characters and
-# side-by-side fields 1.66 or more; a character is about 0.58 line heights, so 1.25 ~ WIDE_GAP.
+# instead (same axis as the gap; from the WORD boxes too). On the samples ordinary spacing is at
+# most 0.89 characters and side-by-side fields 1.66 or more; a character is about 0.59 text
+# heights, so 1.25 ~ WIDE_GAP.
 WIDE_GAP_CHARACTERS = 1.25
 
 
@@ -310,9 +314,9 @@ class TextractParser:
             if child_id in block_map and block_map[child_id].get("BlockType") == "WORD"
         ]
         boxes = [cls._bounding_box(word) for word in words]
-        if line_box is None or line_box["height"] <= 0 or len(words) < 2 or any(b is None for b in boxes):
+        if line_box is None or len(words) < 2 or any(b is None for b in boxes):
             return whole
-        wide_gap = cls._wide_gap(line_box["height"], words, boxes, page_aspect)
+        wide_gap = cls._wide_gap(words, boxes, page_aspect)
         if wide_gap is None:
             return whole
         groups: list[list[int]] = [[0]]
@@ -340,17 +344,18 @@ class TextractParser:
 
     @staticmethod
     def _wide_gap(
-        line_height: float, words: list[dict[str, Any]], boxes: list[dict[str, float] | None],
-        page_aspect: float | None,
+        words: list[dict[str, Any]], boxes: list[dict[str, float] | None], page_aspect: float | None,
     ) -> float | None:
         """How wide a gap between two words must be to split the line, as a fraction of the page
-        width (the unit of the gap). The line height is a fraction of the page height, so it
-        is converted with the page's shape: WIDE_GAP line heights in pixels. Without the shape,
+        width (the unit of the gap). The text height (the median WORD box height, which a slight
+        tilt barely changes, unlike the LINE box) is a fraction of the page height, so it is
+        converted with the page's shape: WIDE_GAP text heights in pixels. Without the shape,
         WIDE_GAP_CHARACTERS times the average character width of the line's words, which is a
         fraction of the page width already. None when neither can be measured."""
 
         if page_aspect is not None and math.isfinite(page_aspect) and page_aspect > 0:
-            return WIDE_GAP * line_height / page_aspect
+            text_height = statistics.median(box["height"] for box in boxes if box)
+            return WIDE_GAP * text_height / page_aspect if text_height > 0 else None
         characters = sum(len(str(word.get("Text") or "")) for word in words)
         word_width = sum(box["width"] for box in boxes if box)
         if characters <= 0 or word_width <= 0:
