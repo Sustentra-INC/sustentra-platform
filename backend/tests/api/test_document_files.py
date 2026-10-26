@@ -52,6 +52,14 @@ def env(tmp_path: Path, act_as) -> Iterator[dict]:
         assert response.status_code == 200, response.text
         return response.json()
 
+    def stored(name: str, body: bytes, mime: str) -> dict:
+        # A file the upload route now refuses (no parser reads it), stored the way older
+        # uploads were, so serving it back is still covered.
+        act_as("org_member", ORG_A)
+        return documents.upload_document(engagement_id="ENG-1", file_name=name, content=body, mime_type=mime,
+                                         document_role="source_evidence", uploaded_by="dev@example.com",
+                                         org_id=str(ORG_A))
+
     def process(document: dict, org=ORG_A, **payload) -> dict:
         act_as("org_member", org)
         response = client.post(f"/v1/documents/{document['document_id']}/pipeline/process", json=payload)
@@ -59,8 +67,8 @@ def env(tmp_path: Path, act_as) -> Iterator[dict]:
         return response.json()
 
     try:
-        yield {"client": client, "act_as": act_as, "upload": upload, "process": process, "storage": storage,
-               "repository": repository, "results": results}
+        yield {"client": client, "act_as": act_as, "upload": upload, "stored": stored, "process": process,
+               "storage": storage, "repository": repository, "results": results}
     finally:
         documents_api.configure_services(upload_service=originals[0], pipeline_service=originals[1],
                                          storage_service=originals[2])
@@ -170,7 +178,7 @@ def test_the_served_type_comes_from_the_bytes_not_the_upload(env: dict) -> None:
     assert download.headers["content-type"] == "application/octet-stream"
     assert download.headers["content-disposition"].startswith("attachment;")
     # A real PDF uploaded as text/html is still served as a PDF.
-    pdf = env["upload"]("x.html", PDF, "text/html")
+    pdf = env["stored"]("x.html", PDF, "text/html")
     assert env["client"].get(url(pdf, "preview")).headers["content-type"] == "application/pdf"
 
 
@@ -181,7 +189,7 @@ def test_the_served_type_comes_from_the_bytes_not_the_upload(env: dict) -> None:
     ("logo.svg", "application/octet-stream"),
 ])
 def test_other_files_download_but_do_not_preview(env: dict, name: str, media: str) -> None:
-    doc = env["upload"](name, b"a,b\n1,2\n", "text/html")
+    doc = env["stored"](name, b"a,b\n1,2\n", "text/html")
     response = env["client"].get(url(doc, "download"))
     assert response.status_code == 200
     assert response.headers["content-type"].split(";")[0] == media

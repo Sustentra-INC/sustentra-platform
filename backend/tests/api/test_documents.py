@@ -11,6 +11,7 @@ from backend.app.main import app
 from backend.app.repositories.document_repository import InMemoryDocumentRepository
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
+from backend.app.services.parser_service import ParserService
 from backend.tests.api.conftest import ORG_A, make_user, seeded_document
 
 
@@ -117,6 +118,82 @@ def test_upload_records_the_signed_in_uploader(client_context):
     assert response.status_code == 200
     assert response.json()["uploaded_by"] == make_user().email
     assert response.json()["org_id"] == str(ORG_A)
+
+
+UNREADABLE = (
+    "{name} can't be read here. Upload a PDF, Word (.docx), Excel (.xlsx), CSV or text file, "
+    "or a scan or photo (PNG, JPG or TIFF)."
+)
+
+
+@pytest.mark.parametrize(("name", "mime"), [
+    ("qa_archive.zip", "application/zip"),
+    ("page.html", "text/html"),
+    ("old-bill.doc", "application/msword"),
+    ("legacy.xls", "application/vnd.ms-excel"),
+    ("readings", "application/octet-stream"),
+    # Images the readers can't open (Textract reads PNG, JPEG and TIFF), even though the
+    # parser would call them images: by extension, then by media type.
+    ("photo.webp", "image/webp"),
+    ("photo.gif", "image/gif"),
+    ("scan.bmp", "image/bmp"),
+    ("photo.webp", "image/png"),
+    ("logo.svg", "image/svg+xml"),
+    ("scan", "image/heic"),
+    ("photo.heic", "image/heic"),
+])
+def test_upload_refuses_a_file_no_parser_can_read(client_context, name: str, mime: str):
+    client = client_context["client"]
+    response = client.post(
+        "/api/v1/engagements/ENG-1/documents/upload",
+        files={"file": (name, b"PK\x03\x04 not readable", mime)},
+        headers={"Origin": "http://localhost:3000"},
+    )
+
+    assert response.status_code == 415
+    assert response.json()["detail"] == UNREADABLE.format(name=name)
+    # Refused before anything is stored: no file on disk and no document in Evidence.
+    storage_root = client_context["storage_service"].storage_root
+    assert not storage_root.exists() or not any(path.is_file() for path in storage_root.rglob("*"))
+    assert client.get("/v1/engagements/ENG-1/documents").json()["items"] == []
+
+
+@pytest.mark.parametrize(("name", "mime"), [
+    ("bill.pdf", "application/pdf"),
+    ("letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ("log.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ("log.xlsm", "application/octet-stream"),
+    ("readings.csv", "text/csv"),
+    ("notes.txt", "text/plain"),
+    ("notes.md", "text/markdown"),
+    ("meter.PNG", "image/png"),
+    ("meter.jpg", "image/jpeg"),
+    ("meter.jpeg", "image/jpeg"),
+    ("scan.tif", "image/tiff"),
+    ("scan.tiff", "image/tiff"),
+    # No extension: the mime type decides, as in the parser.
+    ("scan", "image/png"),
+    ("photo", "image/jpeg"),
+    ("fax", "image/tiff"),
+    ("export", "text/csv; charset=utf-8"),
+])
+def test_upload_accepts_every_file_a_parser_can_read(client_context, name: str, mime: str):
+    response = client_context["client"].post(
+        "/v1/engagements/ENG-1/documents/upload",
+        files={"file": (name, b"bytes", mime)},
+    )
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize(("name", "mime"), [
+    ("photo.webp", "image/webp"),
+    ("photo.gif", None),
+    ("scan.bmp", None),
+    ("scan", "image/heic"),
+])
+def test_stored_images_are_still_detected_as_images_at_parse_time(name: str, mime: str | None):
+    # Only the upload check is narrowed: documents stored before it behave as before.
+    assert ParserService.parser_kind(Path(name), mime) == "image"
 
 
 def test_get_document_returns_uploaded_document(client_context):

@@ -1,4 +1,5 @@
 import { EXACT_COPY } from "../constants/copy";
+import { UPLOAD_ACCEPT } from "../constants/uploads";
 import { expectedDocuments } from "../fixtures/states/empty";
 import type { ContainerState } from "../types";
 
@@ -51,6 +52,7 @@ export function ContainerStateSurface({
               className="s1-file-input"
               type="file"
               multiple
+              accept={UPLOAD_ACCEPT}
               onChange={(event) => {
                 if (event.target.files && event.target.files.length > 0) {
                   onUploadFiles?.(event.target.files);
