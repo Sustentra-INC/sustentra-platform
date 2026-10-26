@@ -7,6 +7,7 @@ same for live and offline Textract payloads.
 
 from __future__ import annotations
 
+import io
 import os
 from pathlib import Path
 from typing import Any, Callable
@@ -21,6 +22,30 @@ from backend.app.adapters.parsers.textract_parser import TextractParser
 PARSER_NAME = "aws_textract"
 
 TextractClientFactory = Callable[..., Any]
+
+# EXIF orientations that store the picture a quarter turn from upright (5-8).
+_QUARTER_TURN_ORIENTATIONS = {5, 6, 7, 8}
+
+
+def image_aspect(document_bytes: bytes) -> float | None:
+    """Width / height in pixels of the image sent to Textract, which its boxes are fractions
+    of. None for bytes that are not an image (a PDF), and for a photo stored a quarter turn
+    from upright: whether Textract applies the EXIF rotation is not documented, so its page
+    could be either way round. The reader then measures in character widths instead."""
+
+    try:
+        from PIL import Image
+
+        with Image.open(io.BytesIO(document_bytes)) as image:  # reads the header, not the pixels
+            width, height = image.size
+            # A PNG's EXIF found only after its pixels would need the whole image decoded: skipped.
+            header_exif = image.format != "PNG" or "exif" in image.info
+            orientation = image.getexif().get(0x0112) if header_exif else None  # EXIF Orientation
+    except Exception:  # noqa: BLE001 - not an image Pillow can read
+        return None
+    if orientation in _QUARTER_TURN_ORIENTATIONS or width <= 0 or height <= 0:
+        return None
+    return width / height
 
 
 class AwsTextractParser:
@@ -77,7 +102,8 @@ class AwsTextractParser:
                 ],
             )
 
-        output = self._normalizer.parse(response, document_id, processing_run_id)
+        output = self._normalizer.parse(response, document_id, processing_run_id,
+                                        page_aspect=image_aspect(document_bytes))
         output["parser_name"] = self.parser_name
         output["parser_output_id"] = (
             f"PO-{self.parser_name}-{document_id}-{processing_run_id}"
