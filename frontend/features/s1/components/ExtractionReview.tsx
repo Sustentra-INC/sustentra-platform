@@ -4,7 +4,8 @@ import { Highlighter, Plus } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
-import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueReviewState } from "../types/review";
+import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
+import type { Ask } from "../types/requests";
 import type { AskDraft } from "../requests/requestsStore";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import type { HighlightEntry } from "./demo/DemoDocument";
@@ -34,7 +35,10 @@ interface ExtractionReviewProps {
    *  a row whose exact document has no extracted value still deep-links to the
    *  right node rather than the first one. */
   initialNodeKey?: string;
-  onSaveAsk: (draft: AskDraft) => void;
+  /** Saves an ask; returns it so the value's record can point at it. */
+  onSaveAsk: (draft: AskDraft) => Ask | void;
+  /** The engagement's asks: a card added to requests says whether its request was sent. */
+  asks?: Ask[];
   onBack: () => void;
   /** Render the real source page for a document (else a facsimile is drawn).
    *  `onPickBox` lets a clicked highlight on the page select its value card (by its id
@@ -72,6 +76,7 @@ const SCOPE_LABEL: Record<ScopePlacement, string> = {
 };
 
 const REVIEW_CAP = 60; // stressor render cap; the count still shows the true total
+const NO_ASKS: Ask[] = [];
 
 export function ExtractionReview({
   engagement,
@@ -82,6 +87,7 @@ export function ExtractionReview({
   initialValueId,
   initialNodeKey,
   onSaveAsk,
+  asks = NO_ASKS,
   onBack,
   renderPage,
   reviewerName = "M. Osei",
@@ -129,6 +135,7 @@ export function ExtractionReview({
   }
 
   const tree = useMemo(() => buildTree(items, engagement), [items, engagement]);
+  const askById = useMemo(() => new Map(asks.map((a) => [a.id, a])), [asks]);
   const nodeValues = useMemo(() => valuesForNode(items, nodeKey), [items, nodeKey]);
   const filtered = nodeValues.filter(
     (v) => (!filter || v.reviewState === filter) && (pageFilter === null || v.page === pageFilter)
@@ -441,17 +448,20 @@ export function ExtractionReview({
   }
 
   function submitAsk(draft: AskDraft) {
-    onSaveAsk(draft);
+    const ask = onSaveAsk(draft);
     if (modalTarget?.fieldKey) {
       const now = new Date().toISOString();
       const ids = new Set(requestIds.length ? requestIds : [modalTarget.fieldKey]);
+      // Nothing is sent yet: the record says the value was added to requests, and points at
+      // the ask so the card can say "requested from client" once the request goes out.
+      const entry: ValueRecordEntry = { kind: "human", actor: reviewerName, at: now, action: "added to requests", ...(ask ? { askId: ask.id } : {}) };
       onValuesChange((cur) =>
         cur.map((x) =>
           ids.has(x.id)
             ? {
                 ...x,
                 reviewState: "requested",
-                record: [...x.record, { kind: "human", actor: reviewerName, at: now, action: "requested from client" }],
+                record: [...x.record, entry],
               }
             : x
         )
@@ -564,7 +574,7 @@ export function ExtractionReview({
                   onClick={() => setFilter((cur) => (cur === k ? null : k))}
                 >
                   <span className="s1-xr-filter__n">{counts[k]}</span>
-                  <span className="s1-xr-filter__label">{reviewStateLabel(k)}</span>
+                  <span className="s1-xr-filter__label">{filterLabel(k)}</span>
                 </button>
               ))}
             </div>
@@ -597,7 +607,7 @@ export function ExtractionReview({
 
           {filtered.length === 0 ? (
             <div className="s1-ws-empty">
-              No values match {pageFilter !== null ? `page ${pageFilter}` : reviewStateLabel(filter ?? "to_review")}.
+              No values match {pageFilter !== null ? `page ${pageFilter}` : filterLabel(filter ?? "to_review")}.
             </div>
           ) : (
             groups.map(({ cards, capped, hidden, ...group }) => {
@@ -658,6 +668,8 @@ export function ExtractionReview({
                     <ValueCard
                       key={vs[0].id}
                       vs={vs}
+                      request={linkedAsk(vs, asks)}
+                      askById={askById}
                       selected={vs.some((x) => x.id === selectedId)}
                       onSelect={() => {
                         if (!vs.some((x) => x.id === selectedId)) selectValue(vs[0]);
@@ -811,7 +823,7 @@ function DocumentKey({ values, highlight }: { values: ReviewValue[]; highlight?:
         <span className="s1-dd-key s1-dd-key--to_review">To review</span>
         <span className="s1-dd-key s1-dd-key--accepted">Accepted</span>
         <span className="s1-dd-key s1-dd-key--corrected">Corrected</span>
-        <span className="s1-dd-key s1-dd-key--requested">Requested</span>
+        <span className="s1-dd-key s1-dd-key--requested">{filterLabel("requested")}</span>
         <span className="s1-dd-key s1-dd-key--missing">Not found</span>
       </div>
     </div>
@@ -822,6 +834,8 @@ function DocumentKey({ values, highlight }: { values: ReviewValue[]; highlight?:
 
 function ValueCard({
   vs,
+  request,
+  askById,
   selected,
   onSelect,
   onAccept,
@@ -830,6 +844,9 @@ function ValueCard({
 }: {
   /** One reading: the values it feeds (two when location- and market-based share it). */
   vs: ReviewValue[];
+  /** The ask the reading was added to, if any (the latest one). */
+  request: Ask | null;
+  askById: Map<string, Ask>;
   selected: boolean;
   onSelect: () => void;
   onAccept: () => void;
@@ -838,6 +855,7 @@ function ValueCard({
 }) {
   const v = vs[0];
   const done = v.reviewState !== "to_review";
+  const stateLabel = valueStateLabel(v.reviewState, request);
   const [editing, setEditing] = useState(false);
   const [draftValue, setDraftValue] = useState(v.value);
   const [draftUnit, setDraftUnit] = useState(v.unit);
@@ -861,7 +879,7 @@ function ValueCard({
       <div className="s1-xr-card__top">
         <span className="s1-xr-what">{v.whatItIs}</span>
         <span className="s1-xr-period">{v.period}</span>
-        {done ? <span className={`s1-xr-badge s1-xr-badge--${v.reviewState}`}>{reviewStateLabel(v.reviewState)}</span> : null}
+        {done ? <span className={`s1-xr-badge s1-xr-badge--${v.reviewState}`}>{stateLabel}</span> : null}
       </div>
       <div className="s1-xr-card__value">
         {v.missing && v.reviewState === "to_review" ? (
@@ -900,7 +918,7 @@ function ValueCard({
                   </span>
                 )}
                 <span className="s1-xr-rec__act">
-                  {r.kind === "machine" ? `System read · ${v.documentType}, page ${v.page}` : `${r.actor} · ${r.action}`}
+                  {r.kind === "machine" ? `System read · ${v.documentType}, page ${v.page}` : `${r.actor} · ${recordAction(r, askById)}`}
                 </span>
                 {r.reason ? <span className="s1-muted"> · {r.reason}</span> : null}
                 <span className="s1-muted s1-xr-rec__at">{formatTime(r.at)}</span>
@@ -940,7 +958,7 @@ function ValueCard({
             </form>
           ) : done ? (
             <>
-              <span className="s1-muted">{reviewStateLabel(v.reviewState)}</span>
+              <span className="s1-muted">{stateLabel}</span>
               <button className="s1-linklike s1-xr-recorrect" type="button" onClick={startEditing}>
                 Correct
               </button>
@@ -1376,6 +1394,47 @@ function distinct(xs: string[]): string[] {
 
 function reviewStateLabel(s: ValueReviewState): string {
   return s === "to_review" ? "To review" : s === "accepted" ? "Accepted" : s === "corrected" ? "Corrected" : "Requested";
+}
+
+/** The filter bar and the document's key. The last bucket holds every value added to
+ *  requests, sent or not, so it says "Requests", not "Requested". */
+function filterLabel(s: ValueReviewState): string {
+  return s === "requested" ? "Requests" : reviewStateLabel(s);
+}
+
+/** The ask a reading was added to: the latest one raised from its card. A follow-up keeps
+ *  the field it came from, so it counts as the reading's latest request. */
+function linkedAsk(vs: ReviewValue[], asks: Ask[]): Ask | null {
+  const ids = new Set(vs.map((v) => v.id));
+  let latest: Ask | null = null;
+  for (const a of asks) {
+    if (a.source.origin !== "review_value" || !a.source.fieldKey || !ids.has(a.source.fieldKey)) continue;
+    if (!latest || a.raisedAt >= latest.raisedAt) latest = a;
+  }
+  return latest;
+}
+
+/** The client was asked once the ask went out in a request, whatever happened to it since. */
+function wasSent(ask: Ask): boolean {
+  return ask.requestNumber != null || ask.history.some((e) => e.kind === "sent");
+}
+
+/** A card's state chip. A value added to requests says where its request stands: the
+ *  client is only "Requested" once the request was sent. */
+function valueStateLabel(state: ValueReviewState, ask: Ask | null): string {
+  if (state !== "requested" || !ask) return reviewStateLabel(state);
+  if (ask.state === "not_yet_sent") return "Request not sent";
+  if (ask.state === "requested") return "Requested";
+  if (ask.state === "resolved") return "Request resolved";
+  return "Request withdrawn";
+}
+
+/** A record line. The entry that added a value to requests reads "requested from client"
+ *  only once its request was sent. */
+function recordAction(r: ValueRecordEntry, askById: Map<string, Ask>): string {
+  const ask = r.askId ? askById.get(r.askId) : undefined;
+  if (!ask) return r.action;
+  return wasSent(ask) ? "requested from client" : "added to requests";
 }
 
 function formatTime(iso: string): string {

@@ -306,7 +306,8 @@ describe("extraction review: compact cards", () => {
       expect.stringMatching(/^\d+To review$/),
       expect.stringMatching(/^\d+Accepted$/),
       expect.stringMatching(/^\d+Corrected$/),
-      expect.stringMatching(/^\d+Requested$/),
+      // Every value added to requests, sent or not: "Requests", not "Requested".
+      expect.stringMatching(/^\d+Requests$/),
     ]);
   });
 });

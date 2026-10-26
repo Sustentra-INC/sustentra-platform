@@ -994,6 +994,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             initialValueId={activeView.valueId}
             initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}
+            asks={requests.asks}
             onBack={() => setActiveView({ name: "evidence" })}
             reviewerName={dataMode === "backend" ? user?.firstName ?? user?.email : undefined}
             allowAddValue={dataMode === "fixture"}
