@@ -3211,8 +3211,10 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-card:hover { background: var(--accent-softer); }
 .s1-xr-card.is-sel { background: var(--sf-card); box-shadow: 0 0 0 var(--hairline-width) var(--state-active-fg), 0 0.25rem 0.75rem rgba(40, 40, 112, 0.08); }
 .s1-xr-card:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.s1-xr-card__top { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; font-size: var(--text-sm); }
-.s1-xr-card__top .s1-xr-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: var(--weight-strong); }
+/* The header wraps rather than cut the title: when the title, period and state chip do not fit
+   on one line, the period and chip move to a second line and the title keeps its words. */
+.s1-xr-card__top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--sp-2); min-width: 0; font-size: var(--text-sm); }
+.s1-xr-card__top .s1-xr-what { min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-weight: var(--weight-strong); }
 .s1-xr-period { flex: none; font-size: var(--text-sm); color: var(--ink-3); white-space: nowrap; }
 .s1-xr-badge { flex: none; margin-left: auto; padding: 0 0.375rem; font-size: var(--text-sm); font-weight: var(--weight-strong); border: var(--border-hairline); border-radius: var(--state-chip-radius); white-space: nowrap; }
 .s1-xr-badge--accepted { color: var(--state-resolved-fg); background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
