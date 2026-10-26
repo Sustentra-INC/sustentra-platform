@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  CalendarRange,
   Check,
   ChevronRight,
   CircleAlert,
@@ -36,6 +37,8 @@ export function DashboardScreen({
   const phases = buildPhases(hasEngagement, figures);
   const coverage = figures.coverage;
   const covered = coverage ? coverage.present + coverage.missing : 0;
+  // Data points once an evidence check is in play; until then, the documents read.
+  const byDataPoint = coverage !== null && covered > 0;
   const reviewable = figures.valuesReviewed + figures.valuesToReview;
   const attention = attentionItems(figures);
 
@@ -73,12 +76,14 @@ export function DashboardScreen({
       <div className="s1-dash__meters">
         <Meter
           label="Evidence obtained"
-          done={coverage ? coverage.present : figures.documentsReadable}
-          total={coverage ? covered : figures.documents}
+          done={byDataPoint ? coverage.present : figures.documentsReadable}
+          total={byDataPoint ? covered : figures.documents}
           detail={
-            coverage
+            byDataPoint
               ? `${coverage.present} of ${covered} in-scope data points have their evidence`
-              : `${figures.documentsReadable} of ${figures.documents} documents read`
+              : figures.documents
+                ? `${figures.documentsReadable} of ${figures.documents} documents read`
+                : "Nothing uploaded yet"
           }
           onClick={go("requests")}
         />
@@ -105,7 +110,7 @@ export function DashboardScreen({
                   <span className="s1-attention__icon" aria-hidden>
                     {item.icon}
                   </span>
-                  <span className="s1-attention__n">{item.n}</span>
+                  <span className="s1-attention__n">{item.uncounted ? null : item.n}</span>
                   <span className="s1-attention__what">{item.text}</span>
                   <span className="s1-attention__go">
                     {item.action}
@@ -234,7 +239,10 @@ interface Attention {
   key: string;
   tone: "blocking" | "open" | "waiting";
   icon: ReactNode;
+  /** How many; the row shows while this is above zero. */
   n: number;
+  /** A row about one thing, such as the reporting period, shows no count. */
+  uncounted?: boolean;
   text: string;
   action: string;
   nav: NavKey;
@@ -251,6 +259,16 @@ function attentionItems(f: DashboardFigures): Attention[] {
       text: plural(f.blockedDocuments, "document can't be read", "documents can't be read"),
       action: "Evidence",
       nav: "evidence",
+    },
+    {
+      key: "period",
+      tone: "open",
+      icon: <CalendarRange />,
+      n: f.reportingPeriodIncomplete ? 1 : 0,
+      uncounted: true,
+      text: "Reporting period needs a start and an end date",
+      action: "Setup",
+      nav: "setup",
     },
     {
       key: "unresolved",

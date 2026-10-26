@@ -1,3 +1,4 @@
+import { METHOD_CHECK_RULE_IDS, REPORTING_PERIOD_RULE_ID } from "../api/recalculation";
 import type { EvidenceItem, ReviewValue } from "../types";
 import type { Ask } from "../types/requests";
 import type { CoverageRule, Examination, Finding } from "../types/verification";
@@ -100,8 +101,14 @@ export interface DashboardFigures {
   requestsAwaitingClient: number;
   requestsResolved: number;
   requestsRaised: number;
-  /** Null until coverage has been checked. */
+  /**
+   * The evidence checks, by status; null until coverage has been checked. Method checks
+   * (reporting period, GWP basis, reported totals, reviewer decisions) are not evidence
+   * and are not counted here.
+   */
   coverage: { present: number; missing: number; notApplicable: number; outOfScope: number } | null;
+  /** The live coverage says the reporting period is missing a date (absent: it is not). */
+  reportingPeriodIncomplete?: boolean;
   dataPointsCalculated: number;
   dataPointsExamined: number;
   findings: number;
@@ -119,7 +126,7 @@ export function dashboardFigures(input: {
 }): DashboardFigures {
   const documents = input.evidence.filter((e) => e.disposition !== "withdrawn");
   const values = input.values.filter((v) => !v.withdrawn);
-  const rules = input.coverage;
+  const rules = input.coverage?.filter((r) => !METHOD_CHECK_RULE_IDS.includes(r.ruleId)) ?? null;
   const calculated = input.calculatedIds ?? [];
   return {
     documents: documents.length,
@@ -142,6 +149,9 @@ export function dashboardFigures(input: {
           outOfScope: rules.filter((r) => r.status === "out_of_scope").length,
         }
       : null,
+    reportingPeriodIncomplete: Boolean(
+      input.coverage?.some((r) => r.ruleId === REPORTING_PERIOD_RULE_ID && r.status === "inputs_missing")
+    ),
     dataPointsCalculated: calculated.length,
     dataPointsExamined: calculated.filter(
       (id) => input.examinations?.[id] && input.examinations[id].examinationState !== "not_examined"

@@ -846,6 +846,23 @@ function listed(items: string[], max = 3): string {
   return unique.length <= max ? unique.join(", ") : `${unique.slice(0, max).join(", ")} and ${unique.length - max} more`;
 }
 
+/** The coverage row that says whether the reporting period has both its dates. */
+export const REPORTING_PERIOD_RULE_ID = "COV-PERIOD";
+
+/**
+ * Coverage rows that check the method, not the evidence: the reporting period, the GWP
+ * basis, the client's reported totals and the reviewer's decisions on documents. Coverage
+ * & requests lists them with the rest; the dashboard leaves them out of its evidence
+ * figures, so a GWP basis never counts as evidence obtained and a missing end date never
+ * counts as a data point missing evidence.
+ */
+export const METHOD_CHECK_RULE_IDS: readonly string[] = [
+  REPORTING_PERIOD_RULE_ID,
+  "COV-GWP",
+  "COV-REPORTED",
+  "COV-DECISIONS",
+];
+
 /**
  * What the recalculation could and could not check, from its own result: which inputs
  * are present, which are missing and why. Nothing here is a guess about rules that did
@@ -996,7 +1013,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
     });
   }
   rules.push({
-    ruleId: "COV-PERIOD",
+    ruleId: REPORTING_PERIOD_RULE_ID,
     assertion: "Bills are counted only for the days inside the reporting period",
     appliesTo: ["All recalculated data points"],
     status: result.reporting_period.start && result.reporting_period.end ? "inputs_present" : "inputs_missing",
