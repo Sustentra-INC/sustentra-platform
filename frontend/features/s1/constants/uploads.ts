@@ -9,10 +9,11 @@ export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 export const UPLOAD_TOO_LARGE = `This file is larger than the ${MAX_UPLOAD_MB} MB upload limit.`;
 
 /**
- * What the workpaper can read: the extensions, then the media types, that a parser
- * accepts (backend/app/services/parser_service.py, `_detect_parser_kind`). The upload
- * route refuses anything else with a 415, so the dialog sets such files aside first.
- * Change both together.
+ * What the workpaper can read: the extensions, then the media types, the upload route
+ * accepts (backend/app/api/documents.py, `_is_readable_upload`, which narrows the parser's
+ * detection in backend/app/services/parser_service.py). Images are only PNG, JPEG and
+ * TIFF, the formats Textract reads, matching the 415's words. The route refuses anything
+ * else with a 415, so the dialog sets such files aside first. Change both together.
  */
 export const READABLE_UPLOAD_EXTENSIONS = [
   ".pdf",
@@ -28,9 +29,6 @@ export const READABLE_UPLOAD_EXTENSIONS = [
   ".jpeg",
   ".tif",
   ".tiff",
-  ".gif",
-  ".bmp",
-  ".webp",
 ] as const;
 
 const READABLE_UPLOAD_TYPES = new Set([
@@ -40,18 +38,28 @@ const READABLE_UPLOAD_TYPES = new Set([
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/png",
+  "image/jpeg",
+  "image/tiff",
 ]);
+
+/**
+ * Image extensions the parser knows but no reader opens. As in the upload route, the
+ * extension decides first, so these are refused whatever their media type says.
+ */
+const UNREADABLE_IMAGE_EXTENSIONS: readonly string[] = [".gif", ".bmp", ".webp"];
 
 /** The file pickers' `accept` list. */
 export const UPLOAD_ACCEPT = READABLE_UPLOAD_EXTENSIONS.join(",");
 
-/** Whether a parser can read this file: by its extension first, then its media type. */
+/** Whether a reader can open this file: by its extension first, then its media type. */
 export function isReadableUpload(file: { name: string; type?: string }): boolean {
   const dot = file.name.lastIndexOf(".");
   const extension = dot > 0 ? file.name.slice(dot).toLowerCase() : ""; // ".pdf" alone has none, as in Python
   if ((READABLE_UPLOAD_EXTENSIONS as readonly string[]).includes(extension)) return true;
+  if (UNREADABLE_IMAGE_EXTENSIONS.includes(extension)) return false;
   const type = (file.type ?? "").split(";")[0].trim().toLowerCase();
-  return READABLE_UPLOAD_TYPES.has(type) || type.startsWith("image/");
+  return READABLE_UPLOAD_TYPES.has(type);
 }
 
 /** The same words as the upload route's 415. */

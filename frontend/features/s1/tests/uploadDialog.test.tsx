@@ -20,7 +20,7 @@ function renderDialog(tasks: UploadTask[]) {
 }
 
 describe("upload: files no parser can read", () => {
-  // The same detection as backend/app/services/parser_service.py: extension, then media type.
+  // The same check as the upload route (backend/app/api/documents.py): extension, then media type.
   it.each([
     ["bill.pdf", ""],
     ["letter.docx", ""],
@@ -30,12 +30,15 @@ describe("upload: files no parser can read", () => {
     ["notes.txt", ""],
     ["notes.md", ""],
     ["meter.PNG", ""],
+    ["meter.jpg", ""],
     ["meter.jpeg", ""],
+    ["scan.tif", ""],
     ["scan.tiff", ""],
-    ["photo.webp", ""],
-    ["scan", "image/heic"],
+    ["scan", "image/png"],
+    ["photo", "image/jpeg"],
+    ["fax", "image/tiff"],
     ["export", "text/csv; charset=utf-8"],
-  ])("reads %s", (name, type) => {
+  ])("reads %s (%s)", (name, type) => {
     expect(isReadableUpload(file(name, type))).toBe(true);
   });
 
@@ -45,7 +48,15 @@ describe("upload: files no parser can read", () => {
     ["old-bill.doc", "application/msword"],
     ["legacy.xls", "application/vnd.ms-excel"],
     ["readings", ""],
-  ])("does not read %s", (name, type) => {
+    // Images Textract can't read (it takes PNG, JPEG and TIFF): by extension, then media type.
+    ["photo.webp", "image/webp"],
+    ["photo.gif", "image/gif"],
+    ["scan.bmp", "image/bmp"],
+    ["photo.webp", "image/png"],
+    ["logo.svg", "image/svg+xml"],
+    ["scan", "image/heic"],
+    ["photo.heic", "image/heic"],
+  ])("does not read %s (%s)", (name, type) => {
     expect(isReadableUpload(file(name, type))).toBe(false);
   });
 
@@ -53,8 +64,20 @@ describe("upload: files no parser can read", () => {
     renderDialog([]);
     const input = document.querySelector('input[type="file"]');
     expect(input).toHaveAttribute("accept", UPLOAD_ACCEPT);
-    expect(UPLOAD_ACCEPT.split(",")).toEqual(expect.arrayContaining([".pdf", ".docx", ".xlsx", ".csv", ".png", ".jpg", ".tiff"]));
-    expect(UPLOAD_ACCEPT).not.toContain(".zip");
+    // The same formats the refusal names: PDF, Word, Excel, CSV, text, and PNG, JPG or TIFF.
+    expect(UPLOAD_ACCEPT.split(",")).toEqual([
+      ".pdf", ".docx", ".xlsx", ".xlsm", ".csv", ".txt", ".md", ".markdown", ".png", ".jpg", ".jpeg", ".tif", ".tiff",
+    ]);
+  });
+
+  it("sets an unsupported image aside before anything is sent", () => {
+    const [webp, png] = uploadTasksFor([file("photo.webp", "image/webp"), file("meter.png", "image/png")], "b1");
+    expect(webp.stage).toBe("not_uploaded");
+    expect(webp.error).toBe(
+      "photo.webp can't be read here. Upload a PDF, Word (.docx), Excel (.xlsx), CSV or text file, " +
+        "or a scan or photo (PNG, JPG or TIFF)."
+    );
+    expect(png.stage).toBe("waiting");
   });
 
   it("sets an unreadable file aside before anything is sent", () => {

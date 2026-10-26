@@ -22,7 +22,7 @@ from backend.app.services.document_content_service import UnreadableContent, Uns
 from backend.app.services.document_file_types import served_type
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
-from backend.app.services.parser_service import ParserService
+from backend.app.services.parser_service import IMAGE_EXTENSIONS, ParserService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
 
 router = APIRouter(prefix="/v1", tags=["documents"])
@@ -81,6 +81,15 @@ def _uploader(user: CurrentUser) -> str:
     return user.email
 
 
+# The images an upload may be: what the readers open (Textract's synchronous API reads PNG,
+# JPEG and TIFF). The parser also calls GIF, BMP, WebP and any other image/* an image, and
+# parse-time detection stays that way so documents already stored behave as before; new
+# uploads are held to this list. Keep in sync with READABLE_UPLOAD_EXTENSIONS and
+# READABLE_UPLOAD_TYPES in frontend/features/s1/constants/uploads.ts, and with the 415 wording.
+UPLOAD_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".tif", ".tiff"})
+UPLOAD_IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/tiff"})
+
+
 def _unreadable_upload_detail(file_name: str) -> str:
     return (
         f"{file_name} can't be read here. Upload a PDF, Word (.docx), Excel (.xlsx), CSV or text file, "
@@ -88,10 +97,23 @@ def _unreadable_upload_detail(file_name: str) -> str:
     )
 
 
+def _is_readable_upload(file_name: str, mime_type: str | None) -> bool:
+    # Same detection the parser runs (extension first, then mime type), narrowed for images
+    # to the formats the readers open.
+    path = Path(file_name)
+    kind = ParserService.parser_kind(path, mime_type)
+    if kind != "image":
+        return kind is not None
+    suffix = path.suffix.lower()
+    if suffix in IMAGE_EXTENSIONS:  # the parser went by the extension
+        return suffix in UPLOAD_IMAGE_EXTENSIONS
+    return (mime_type or "").split(";", 1)[0].strip().lower() in UPLOAD_IMAGE_TYPES
+
+
 def _require_readable(file_name: str, mime_type: str | None) -> None:
-    # Same detection the parser runs (extension first, then mime type): a file no parser
-    # can read is refused before anything is stored, so it never becomes blocked evidence.
-    if ParserService.parser_kind(Path(file_name), mime_type) is None:
+    # A file no reader can open is refused before anything is stored, so it never becomes
+    # blocked evidence.
+    if not _is_readable_upload(file_name, mime_type):
         raise HTTPException(status_code=415, detail=_unreadable_upload_detail(file_name))
 
 

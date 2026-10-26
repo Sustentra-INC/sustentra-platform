@@ -11,6 +11,7 @@ from backend.app.main import app
 from backend.app.repositories.document_repository import InMemoryDocumentRepository
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
+from backend.app.services.parser_service import ParserService
 from backend.tests.api.conftest import ORG_A, make_user, seeded_document
 
 
@@ -131,6 +132,15 @@ UNREADABLE = (
     ("old-bill.doc", "application/msword"),
     ("legacy.xls", "application/vnd.ms-excel"),
     ("readings", "application/octet-stream"),
+    # Images the readers can't open (Textract reads PNG, JPEG and TIFF), even though the
+    # parser would call them images: by extension, then by media type.
+    ("photo.webp", "image/webp"),
+    ("photo.gif", "image/gif"),
+    ("scan.bmp", "image/bmp"),
+    ("photo.webp", "image/png"),
+    ("logo.svg", "image/svg+xml"),
+    ("scan", "image/heic"),
+    ("photo.heic", "image/heic"),
 ])
 def test_upload_refuses_a_file_no_parser_can_read(client_context, name: str, mime: str):
     client = client_context["client"]
@@ -157,11 +167,14 @@ def test_upload_refuses_a_file_no_parser_can_read(client_context, name: str, mim
     ("notes.txt", "text/plain"),
     ("notes.md", "text/markdown"),
     ("meter.PNG", "image/png"),
+    ("meter.jpg", "image/jpeg"),
     ("meter.jpeg", "image/jpeg"),
+    ("scan.tif", "image/tiff"),
     ("scan.tiff", "image/tiff"),
-    ("photo.webp", "image/webp"),
     # No extension: the mime type decides, as in the parser.
-    ("scan", "image/heic"),
+    ("scan", "image/png"),
+    ("photo", "image/jpeg"),
+    ("fax", "image/tiff"),
     ("export", "text/csv; charset=utf-8"),
 ])
 def test_upload_accepts_every_file_a_parser_can_read(client_context, name: str, mime: str):
@@ -170,6 +183,17 @@ def test_upload_accepts_every_file_a_parser_can_read(client_context, name: str, 
         files={"file": (name, b"bytes", mime)},
     )
     assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize(("name", "mime"), [
+    ("photo.webp", "image/webp"),
+    ("photo.gif", None),
+    ("scan.bmp", None),
+    ("scan", "image/heic"),
+])
+def test_stored_images_are_still_detected_as_images_at_parse_time(name: str, mime: str | None):
+    # Only the upload check is narrowed: documents stored before it behave as before.
+    assert ParserService.parser_kind(Path(name), mime) == "image"
 
 
 def test_get_document_returns_uploaded_document(client_context):
