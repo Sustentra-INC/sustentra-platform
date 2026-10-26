@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   coverageFromRecalculation,
+  documentsBasis,
   leftOutMessage,
   recalculationMateriality,
   recalculationRows,
@@ -109,6 +110,41 @@ describe("recalculation → verification rows", () => {
     const row = byKey(recalculationRows(incomplete)).scope2_location_total;
     expect(row.checkOutcome).toBe("could_not_check");
     expect(recalculationMateriality(incomplete).note).toContain("1 item(s) still need");
+  });
+
+  describe("names only the documents with reviewed values", () => {
+    const pending = (document_id: string) => ({
+      document_id, record: `${document_id}.pdf`, canonical_type_id: "CT-S2-ELEC", fields: ["activity_quantity"],
+    });
+    // As on staging: 4 documents read, 1 accepted, 3 still awaiting review (one with two records waiting).
+    const staging: Recalculation = {
+      ...RESULT,
+      documents_considered: 4,
+      documents_reviewed: 1,
+      awaiting_review: [pending("SCAN-1"), pending("SCAN-2"), pending("DIESEL-CSV"), pending("DIESEL-CSV")],
+    };
+
+    it("counts reviewed documents and says how many more await review", () => {
+      const note = recalculationMateriality(staging).note;
+      expect(note).toContain("from 1 document with reviewed values (3 more awaiting review), at AR5 GWPs.");
+      expect(note).not.toContain("4 document");
+    });
+
+    it("uses the plural, and names documents held by a question about their values", () => {
+      expect(documentsBasis({ ...staging, documents_considered: 5, documents_reviewed: 2 }))
+        .toBe("2 documents with reviewed values (3 more awaiting review)");
+      expect(documentsBasis({ ...staging, documents_considered: 6, documents_reviewed: 2 }))
+        .toBe("2 documents with reviewed values (3 more awaiting review, 1 more needing an input)");
+      expect(documentsBasis({ ...staging, documents_considered: 3, documents_reviewed: 0 }))
+        .toBe("0 documents with reviewed values (3 awaiting review)");
+      expect(documentsBasis({ ...staging, documents_considered: 1, documents_reviewed: 1, awaiting_review: [] }))
+        .toBe("1 document with reviewed values");
+    });
+
+    it("keeps the old wording for results without documents_reviewed", () => {
+      expect(RESULT.documents_reviewed).toBeUndefined();
+      expect(recalculationMateriality(RESULT).note).toContain("from 4 document(s) with reviewed values, at AR5 GWPs.");
+    });
   });
 });
 

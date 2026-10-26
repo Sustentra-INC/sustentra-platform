@@ -214,7 +214,7 @@ export function BackendOutputScreen({
             <h3>Basis of evidence</h3>
             <ul className="s1-out-list">
               <li>
-                <strong>{evidence.length}</strong> documents uploaded, <strong>{result.documents_considered}</strong> with
+                <strong>{evidence.length}</strong> documents uploaded, <strong>{result.documents_reviewed ?? result.documents_considered}</strong> with
                 reviewed values
               </li>
               <li>

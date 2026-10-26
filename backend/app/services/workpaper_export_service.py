@@ -177,7 +177,8 @@ def build_workbook(
         ["Scope 2 market-based recalculated (t CO2e)", total("scope2_market")],
         *([["Inventory total, location-based (t CO2e)", node("inventory_location_total")],
            ["Inventory total, market-based (t CO2e)", node("inventory_market_total")]] if rollup else []),
-        ["Documents with reviewed values", recalculation.get("documents_considered")],
+        ["Documents read", recalculation.get("documents_considered")],
+        ["Documents with reviewed values", recalculation.get("documents_reviewed")],
         ["Status", "Draft working paper, not an assurance opinion"],
         ["Exported", f"{datetime.now(UTC):%Y-%m-%d %H:%M} UTC by {exported_by}"],
     ]

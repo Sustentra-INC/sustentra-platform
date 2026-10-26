@@ -604,7 +604,10 @@ class EngagementRecalculationService:
             "excluded": set_aside + self._outside_period(records, period) + not_counted,
             "not_recalculated": ["Scope 1 fugitive sources other than refrigerants and fire suppression",
                                  "Scope 1 process sources", "Scope 2 cooling"],
+            # Documents read: every document whose records fed the recalculation, reviewed or not.
             "documents_considered": len({r.document_id for r in records}),
+            # Of those, the documents whose values are all reviewed and usable (see _documents_reviewed).
+            "documents_reviewed": self._documents_reviewed(records, needs_input, awaiting),
             # Missing months, duplicates, overlapping and cross-year bills (formula library Q-001..Q-005).
             "quality_checks": run_checks([e for r in records if (e := self._evidence_record(r)) is not None], period),
             "rollup": rollup.build_rollup(categories, open_items=open_items, absent=inputs.absent_sources,
@@ -612,6 +615,25 @@ class EngagementRecalculationService:
                                           out_of_scope=not_in_scope, tolerance=tolerance, gwp_set=inputs.gwp_set,
                                           ref=self.reference),
         }
+
+    @staticmethod
+    def _documents_reviewed(records: list[ReviewedRecord], needs_input: list[dict[str, Any]],
+                            awaiting: list[dict[str, Any]]) -> int:
+        """Documents in the recalculation with nothing open on any of their records.
+
+        A document counts only when every one of its records is clear: no value awaiting
+        review, and no question about one of its records (a reviewed amount that is not a
+        usable number, an energy type that is not steam, hot water or chilled water, a
+        refrigerant record that does not add up). Those items name their document_id. A
+        document with one pending record among many reviewed ones is not counted.
+
+        Engagement-level questions (eGRID subregion, EPA fuel, refrigerant GWP, steam heat
+        content, vehicle groups) ask for the engagement's inputs, not about a document's
+        values, and name no document, so they do not un-review one.
+        """
+
+        open_documents = {str(item["document_id"]) for item in awaiting + needs_input if item.get("document_id")}
+        return len({r.document_id for r in records} - open_documents)
 
     @staticmethod
     def _apply_decisions(records: list[ReviewedRecord], decisions: dict[str, dict[str, Any]]
@@ -752,7 +774,7 @@ class EngagementRecalculationService:
             prorate = _proration(record.best("service_period_start"), record.best("service_period_end"), period)
             amount = self._quantity(record, prorate)
             if amount is None:
-                needs_input.append({"kind": "quantity", "key": record.label,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
                                     "message": f"{record.label}: the fuel quantity or its unit is not a usable number."})
                 continue
             quantity, unit = amount
@@ -763,7 +785,7 @@ class EngagementRecalculationService:
             dimension = fuel_units.dimension_of(unit)
             base = BASE_UNIT.get(dimension)
             if base is None:
-                needs_input.append({"kind": "quantity", "key": record.label,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
                                     "message": f"{record.label}: {unit} cannot be used without a heat content."})
                 continue
             entry = totals.setdefault((fuel, base), {"quantity": 0.0, "documents": [], "flags": set()})
@@ -810,7 +832,7 @@ class EngagementRecalculationService:
             prorate = _proration(day, day, period)
             amount = self._quantity(record, prorate)
             if amount is None:
-                needs_input.append({"kind": "quantity", "key": record.label,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
                                     "message": f"{record.label}: the fuel quantity or its unit is not a usable number."})
                 continue
             quantity, unit = amount
@@ -935,7 +957,7 @@ class EngagementRecalculationService:
                 continue
             amount = self._quantity(record, prorate)
             if amount is None or amount[1] not in ("kWh", "MWh"):
-                needs_input.append({"kind": "quantity", "key": record.label,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
                                     "message": f"{record.label}: electricity must be a number in kWh or MWh."})
                 continue
             quantity, unit = amount
@@ -1012,7 +1034,7 @@ class EngagementRecalculationService:
             kind = thermal_kind(record.reviewed("energy_type"))
             if kind is None:
                 needs_input.append({
-                    "kind": "thermal_type", "key": record.label, "category": source,
+                    "kind": "thermal_type", "key": record.label, "document_id": record.document_id, "category": source,
                     "message": f"{record.label}: the energy type '{record.reviewed('energy_type') or ''}' is not "
                     "steam, hot water or chilled water. Correct it in Extraction Review to include this bill.",
                 })
@@ -1033,7 +1055,8 @@ class EngagementRecalculationService:
                 str(record.best("facility_name") or record.best("service_address") or "Unnamed facility").split())
             amount = self._quantity(record, prorate, thermal=True)
             if amount is None:
-                needs_input.append({"kind": "quantity", "key": record.label, "category": source,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
+                                    "category": source,
                                     "message": f"{record.label}: the thermal quantity must be a number with its unit."})
                 continue
             quantity, unit = amount
@@ -1052,7 +1075,8 @@ class EngagementRecalculationService:
             elif fuel_units.dimension_of(unit) == fuel_units.ENERGY:
                 mmbtu = fuel_units.convert_exact(quantity, unit, "MMBtu")
             else:
-                needs_input.append({"kind": "quantity", "key": record.label, "category": source,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
+                                    "category": source,
                                     "message": f"{record.label}: {unit} is not a thermal energy unit."})
                 continue
             entry = totals.setdefault((source, facility), {"mmbtu": 0.0, "documents": []})
@@ -1096,6 +1120,7 @@ class EngagementRecalculationService:
             text = str(record.reviewed("refrigerant_type") or "").strip()
             if not text:
                 needs_input.append({"kind": "refrigerant_record", "key": f"{record.label}:refrigerant_type",
+                                    "document_id": record.document_id,
                                     "message": f"{record.label}: the refrigerant is blank. Enter it in Extraction "
                                                "Review to include this record."})
                 continue
@@ -1114,6 +1139,7 @@ class EngagementRecalculationService:
                 mass = self._mass(record, name)
                 if mass is None:
                     needs_input.append({"kind": "quantity", "key": f"{record.label}:{name}",
+                                        "document_id": record.document_id,
                                         "message": f"{record.label}: the {name.replace('_', ' ')} or its unit "
                                                    "(lb or kg) is not a usable number."})
                     break
@@ -1127,6 +1153,7 @@ class EngagementRecalculationService:
                 if kind == INSTALLATION and amounts["refrigerant_added"] < amounts["equipment_capacity"]:
                     needs_input.append({
                         "kind": "refrigerant_record", "key": f"{record.label}:installation",
+                        "document_id": record.document_id,
                         "message": f"{record.label}: {amounts['refrigerant_added']:g} {unit} charged into new "
                                    f"equipment with a full charge of {amounts['equipment_capacity']:g} {unit}. If it "
                                    "came pre-charged, set the service type to service and the amount to what was "
@@ -1135,6 +1162,7 @@ class EngagementRecalculationService:
                 if kind == DISPOSAL and amounts["refrigerant_recovered"] > amounts["equipment_capacity"]:
                     needs_input.append({
                         "kind": "refrigerant_record", "key": f"{record.label}:disposal",
+                        "document_id": record.document_id,
                         "message": f"{record.label}: {amounts['refrigerant_recovered']:g} {unit} recovered from "
                                    f"equipment with a full charge of {amounts['equipment_capacity']:g} {unit}. "
                                    "Check both amounts in Extraction Review."})

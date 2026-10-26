@@ -217,7 +217,11 @@ export interface Recalculation {
   /** Reviewed records entirely outside the reporting period: listed, never counted. */
   excluded?: ExcludedRecord[];
   not_recalculated: string[];
+  /** Documents read: every document whose records fed the recalculation, reviewed or not. */
   documents_considered: number;
+  /** Of those, the documents with nothing open on any record (no value awaiting review, no
+   *  question about one of its values). Absent from results computed before it. */
+  documents_reviewed?: number;
   /** Missing months, duplicates, overlapping and cross-year bills (formula library checks).
    *  Absent from results computed before the checks. */
   quality_checks?: QualityCheck[];
@@ -790,6 +794,24 @@ export function recalculationRows(result: Recalculation): VerificationRow[] {
   });
 }
 
+/** "1 document with reviewed values (3 more awaiting review)": the documents the totals come
+ *  from, then the documents read whose values are still open. Results computed before
+ *  documents_reviewed existed keep the old wording. */
+export function documentsBasis(result: Recalculation): string {
+  const reviewed = result.documents_reviewed;
+  if (reviewed === undefined) return `${result.documents_considered} document(s) with reviewed values`;
+  const awaiting = new Set(result.awaiting_review.map((a) => a.document_id)).size;
+  // Read, nothing awaiting review, but a question about one of its values is open.
+  const needInput = Math.max(0, result.documents_considered - reviewed - awaiting);
+  const more = reviewed > 0 ? " more" : "";
+  const open = [
+    awaiting ? `${awaiting}${more} awaiting review` : "",
+    needInput ? `${needInput}${more} needing an input` : "",
+  ].filter(Boolean);
+  return `${reviewed} ${reviewed === 1 ? "document" : "documents"} with reviewed values` +
+    (open.length ? ` (${open.join(", ")})` : "");
+}
+
 /** Materiality on the headline totals only (Scope 1 + Scope 2 location-based), so nothing is
  *  counted twice. The total is what was reported; where a total was not entered yet, the
  *  recalculated one stands in (and the label says so) rather than shrinking the threshold. */
@@ -818,7 +840,7 @@ export function recalculationMateriality(result: Recalculation): MaterialityFigu
     uncorrected,
     note:
       `Misstatement is the difference between reported and recalculated Scope 1 and Scope 2 (location-based) ` +
-      `totals, from ${result.documents_considered} document(s) with reviewed values, at ${result.gwp_set} GWPs. ` +
+      `totals, from ${documentsBasis(result)}, at ${result.gwp_set} GWPs. ` +
       (open
         ? `${open} item(s) still need an input or a review, so the conclusion stays provisional.`
         : allReported

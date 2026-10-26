@@ -162,6 +162,47 @@ def test_other_organizations_are_invisible() -> None:
     assert result["categories"]["stationary_combustion"]["total_co2e"] < 100
 
 
+# --- documents read vs documents with reviewed values ------------------------------------------
+def test_documents_reviewed_counts_only_documents_with_nothing_awaiting_review() -> None:
+    # As on staging: one electricity bill accepted; two scanned bills and a diesel CSV not reviewed yet.
+    store = FakeStore()
+    store.add_document("ELEC-OK", "CT-S2-ELEC", [_elec(1200, "Facility A", "Albany, NY")])
+    store.add_document("SCAN-1", "CT-S2-ELEC", [_elec(300, "Facility A", "Albany, NY")], decision=None)
+    store.add_document("SCAN-2", "CT-S2-ELEC", [_elec(400, "Facility A", "Albany, NY")], decision=None)
+    store.add_document("DIESEL-CSV", "CT-S1-FUELQTY",
+                       [_gas(100, "gal", fuel="diesel"), _gas(200, "gal", "2025-02-01", "2025-02-28", "diesel")],
+                       decision=None)
+    result = _service(store).recalculate(_engagement(recalculation={"grid_regions": {"Facility A": "NYUP"}}), _own)
+    assert {item["document_id"] for item in result["awaiting_review"]} == {"SCAN-1", "SCAN-2", "DIESEL-CSV"}
+    assert result["documents_considered"] == 4  # documents read
+    assert result["documents_reviewed"] == 1
+
+
+def test_documents_reviewed_is_decided_per_document() -> None:
+    store = FakeStore()
+    store.add_document("ELEC-OK", "CT-S2-ELEC", [_elec(1200, "Facility A", "Albany, NY")])
+    # A CSV with one record still pending: its other, reviewed record does not make it reviewed.
+    store.add_document("DIESEL-CSV", "CT-S1-FUELQTY",
+                       [_gas(100, "gal", fuel="diesel"), _gas(200, "gal", "2025-02-01", "2025-02-28", "diesel")])
+    store.reviews["DIESEL-CSV"] = [r for r in store.reviews["DIESEL-CSV"] if ":2:" not in r["candidate_id"]]
+    # Reviewed, but the amount is not usable as electricity: a question about this document's value.
+    store.add_document("ELEC-THERM", "CT-S2-ELEC", [{**_elec(50, "Facility A", "Albany, NY"),
+                                                     "activity_quantity": (50, "therm")}])
+    # Reviewed; what is missing is the engagement's eGRID subregion for Facility B, not a review.
+    store.add_document("ELEC-B", "CT-S2-ELEC", [_elec(800, "Facility B", "Philadelphia, PA")])
+    # Withdrawn by the reviewer: not read into the recalculation at all.
+    store.add_document("WITHDRAWN", "CT-S2-ELEC", [_elec(900, "Facility A", "Albany, NY")])
+    result = _service(store).recalculate(_engagement(recalculation={"grid_regions": {"Facility A": "NYUP"}}), _own,
+                                         decisions={"WITHDRAWN": {"disposition": "withdrawn"}})
+    assert [item["document_id"] for item in result["awaiting_review"]] == ["DIESEL-CSV"]
+    quantity = next(item for item in result["needs_input"] if item["kind"] == "quantity")
+    assert quantity["document_id"] == "ELEC-THERM"
+    region = next(item for item in result["needs_input"] if item["kind"] == "grid_region")
+    assert region["key"] == "Facility B" and "document_id" not in region
+    assert result["documents_considered"] == 4
+    assert result["documents_reviewed"] == 2  # ELEC-OK and ELEC-B
+
+
 # --- grouping and proration ----------------------------------------------------------------
 def test_one_total_per_fuel_type_across_bills_and_units() -> None:
     store = FakeStore()
