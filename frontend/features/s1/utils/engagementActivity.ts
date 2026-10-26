@@ -1,3 +1,4 @@
+import { METHOD_CHECK_RULE_IDS } from "../api/recalculation";
 import type { EvidenceItem, ReviewValue } from "../types";
 import type { Ask } from "../types/requests";
 import type { CoverageRule, Examination, Finding } from "../types/verification";
@@ -100,8 +101,22 @@ export interface DashboardFigures {
   requestsAwaitingClient: number;
   requestsResolved: number;
   requestsRaised: number;
-  /** Null until coverage has been checked. */
+  /**
+   * The evidence checks, by status; null until coverage has been checked. Method checks
+   * (reporting period, GWP basis, reported totals, reviewer decisions) are not evidence
+   * and are not counted here.
+   */
   coverage: { present: number; missing: number; notApplicable: number; outOfScope: number } | null;
+  /**
+   * The engagement's reporting period is missing a date. Set by the live dashboard from the
+   * engagement itself, so fixing the period in Setup clears it at once (absent: it is not).
+   */
+  reportingPeriodIncomplete?: boolean;
+  /**
+   * How many headline totals have a recalculated value but no reported total to compare it
+   * with. Set by the live dashboard from the recalculation (absent: none).
+   */
+  reportedTotalsMissing?: number;
   dataPointsCalculated: number;
   dataPointsExamined: number;
   findings: number;
@@ -119,7 +134,7 @@ export function dashboardFigures(input: {
 }): DashboardFigures {
   const documents = input.evidence.filter((e) => e.disposition !== "withdrawn");
   const values = input.values.filter((v) => !v.withdrawn);
-  const rules = input.coverage;
+  const rules = input.coverage?.filter((r) => !METHOD_CHECK_RULE_IDS.includes(r.ruleId)) ?? null;
   const calculated = input.calculatedIds ?? [];
   return {
     documents: documents.length,

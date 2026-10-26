@@ -1,12 +1,14 @@
 "use client";
 
 import {
+  CalendarRange,
   Check,
   ChevronRight,
   CircleAlert,
   FileQuestion,
   Hourglass,
   ListChecks,
+  PencilLine,
   Scale,
   Send,
   ShieldAlert,
@@ -37,6 +39,8 @@ export function DashboardScreen({
   const phases = buildPhases(hasEngagement, figures);
   const coverage = figures.coverage;
   const covered = coverage ? coverage.present + coverage.missing : 0;
+  // Data points once an evidence check is in play; until then, the documents read.
+  const byDataPoint = coverage !== null && covered > 0;
   const reviewable = figures.valuesReviewed + figures.valuesToReview;
   const attention = attentionItems(figures);
 
@@ -77,12 +81,14 @@ export function DashboardScreen({
       <div className="s1-dash__meters">
         <Meter
           label="Evidence obtained"
-          done={coverage ? coverage.present : figures.documentsReadable}
-          total={coverage ? covered : figures.documents}
+          done={byDataPoint ? coverage.present : figures.documentsReadable}
+          total={byDataPoint ? covered : figures.documents}
           detail={
-            coverage
+            byDataPoint
               ? `${coverage.present} of ${covered} in-scope data points have their evidence`
-              : `${figures.documentsReadable} of ${figures.documents} documents read`
+              : figures.documents
+                ? `${figures.documentsReadable} of ${figures.documents} documents read`
+                : "Nothing uploaded yet"
           }
           onClick={go("requests")}
         />
@@ -109,7 +115,7 @@ export function DashboardScreen({
                   <span className="s1-attention__icon" aria-hidden>
                     {item.icon}
                   </span>
-                  <span className="s1-attention__n">{item.n}</span>
+                  <span className="s1-attention__n">{item.uncounted ? null : item.n}</span>
                   <span className="s1-attention__what">{item.text}</span>
                   <span className="s1-attention__go">
                     {item.action}
@@ -187,7 +193,10 @@ function buildPhases(hasEngagement: boolean, f: DashboardFigures): Phase[] {
   const assessment: PhaseStatus =
     f.dataPointsCalculated === 0 && !f.coverage?.present
       ? "pending"
-      : f.dataPointsCalculated > 0 && f.dataPointsExamined >= f.dataPointsCalculated && missing === 0
+      : f.dataPointsCalculated > 0 &&
+          f.dataPointsExamined >= f.dataPointsCalculated &&
+          missing === 0 &&
+          !f.reportedTotalsMissing
         ? "done"
         : review === "pending"
           ? "pending"
@@ -238,7 +247,10 @@ interface Attention {
   key: string;
   tone: "blocking" | "open" | "waiting";
   icon: ReactNode;
+  /** How many; the row shows while this is above zero. */
   n: number;
+  /** A row whose text says it all, such as the reporting period or the reported totals, shows no count. */
+  uncounted?: boolean;
   text: string;
   action: string;
   nav: NavKey;
@@ -255,6 +267,16 @@ function attentionItems(f: DashboardFigures): Attention[] {
       text: plural(f.blockedDocuments, "document can't be read", "documents can't be read"),
       action: "Evidence",
       nav: "evidence",
+    },
+    {
+      key: "period",
+      tone: "open",
+      icon: <CalendarRange />,
+      n: f.reportingPeriodIncomplete ? 1 : 0,
+      uncounted: true,
+      text: "Reporting period needs a start and an end date",
+      action: "Setup",
+      nav: "setup",
     },
     {
       key: "unresolved",
@@ -291,6 +313,16 @@ function attentionItems(f: DashboardFigures): Attention[] {
       text: plural(f.requestsNotSent, "request not sent yet", "requests not sent yet"),
       action: "Requests",
       nav: "requests",
+    },
+    {
+      key: "reported",
+      tone: "open",
+      icon: <PencilLine />,
+      n: f.reportedTotalsMissing ?? 0,
+      uncounted: true,
+      text: plural(f.reportedTotalsMissing ?? 0, "Reported total not entered", "Reported totals not entered"),
+      action: "Results",
+      nav: "results",
     },
     {
       key: "examine",
