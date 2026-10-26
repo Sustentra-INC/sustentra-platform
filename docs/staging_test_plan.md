@@ -5,10 +5,39 @@ one engagement from sign-in to the Excel workpaper. Run it after every cutover o
 candidate, and record the date, the build (`/api/health` → `version`) and the result in the
 release issue.
 
-- **Sample files:** use the ones in `frontend/public/__demo_upload__/` (electricity, steam,
-  fleet fuel card, refrigerant log, diesel CSV, Word bill) and
-  `local-samples/claire-workbook-demo/`.
+- **Sample files:** the ones listed below. They are all in the repository, so every tester
+  uses the same files.
 - **Mark each step** pass, fail (with what you saw), or blocked.
+
+## Sample files
+
+Paths are from the repository root.
+
+| Sample | File |
+|---|---|
+| Text PDF bill (natural gas) | `s1-test-suite/stationary_combustion/documents/SC-01_lakeshore_gas_single_meter_therms.pdf` |
+| Second text PDF (fleet fuel card) | `s1-test-suite/mobile_combustion/documents/MF-01_northline_fleet_card_statement.pdf` |
+| Word bill (natural gas) | `s1-test-suite/raw_documents/docx/EV-NG-2023-001.docx` |
+| CSV log (diesel deliveries) | `parser_reliability_test_set/raw_documents/csv/CSV-DIESEL-001.csv` |
+| Excel log (monthly natural gas use) | `parser_reliability_test_set/raw_documents/excel/XLSX-NG-001.xlsx` |
+| Photo of a bill (electricity) | `backend/tests/services/data/textract_regression/electric_bill_photo.png` |
+| PDF with no text layer (scan) | `s1-test-suite/stationary_combustion/documents/SC-08_scanned_bill_no_text_layer.pdf` |
+
+The SC and MF PDFs can be rebuilt if they go missing:
+`python scripts/generate_stationary_combustion_samples.py` (SC-01, SC-08) and
+`python scripts/generate_mobile_combustion_samples.py` (MF-01).
+
+Files that can't be read aren't kept in the repository. Make them from the repository root
+before step 3 (macOS):
+
+```bash
+mkdir -p /tmp/qa
+zip -j /tmp/qa/qa_archive.zip parser_reliability_test_set/raw_documents/csv/CSV-DIESEL-001.csv
+cp s1-test-suite/raw_documents/docx/EV-NG-2023-001.docx /tmp/qa/old-bill.doc
+cp parser_reliability_test_set/raw_documents/excel/XLSX-NG-001.xlsx /tmp/qa/legacy.xls
+sips -s format gif backend/tests/services/data/textract_regression/electric_bill_photo.png --out /tmp/qa/bill-photo.gif
+sips -s format heic backend/tests/services/data/textract_regression/electric_bill_photo.png --out /tmp/qa/bill-photo.heic
+```
 
 ## 0. Before you start
 
@@ -33,9 +62,13 @@ release issue.
 
 ## 3. Upload
 
-1. Upload one PDF bill: it appears with a reading status, then values.
-2. Upload several at once: a PDF, a Word file, a CSV and a scan or photo.
-3. Upload a file that isn't a document (for example a `.zip`): a clear refusal, no crash.
+1. Upload the text PDF bill: it appears with a reading status, then values.
+2. Upload several at once: the second text PDF, the Word bill, the CSV log, the Excel log,
+   the photo of a bill and the PDF with no text layer.
+3. Drop the five files from `/tmp/qa/` (`.zip`, `.gif`, `.heic`, `.doc`, `.xls`) on the
+   upload dialog; the file picker only offers files that can be read. No crash. Each file is
+   refused before upload and marked "Not uploaded", with a message that names it, for
+   example "old-bill.doc can't be read here." Nothing new appears in Evidence (PR #160).
 4. Upload the same file twice: it is flagged as a duplicate.
 
 ## 4. Evidence
@@ -50,7 +83,9 @@ release issue.
 1. Each value shows its source, and the figure is highlighted on the document.
 2. Accept a value: its state changes and the counts update.
 3. Correct a value with a reason: the new value is used and the old one is kept.
-4. Request a value: it shows up in Requests.
+4. Request a value (Request, then Add to requests): it shows up in Requests, and its card
+   says "Request not sent" until the request is sent. Once you send it (step 6), the card
+   says "Requested" (PR #159).
 5. Reload: every decision is kept.
 
 ## 6. Coverage & requests
