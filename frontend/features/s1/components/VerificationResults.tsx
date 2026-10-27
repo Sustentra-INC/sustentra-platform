@@ -71,6 +71,7 @@ export function VerificationResults({
   boxTotals,
   gasRows,
   basis,
+  onOpenDocument,
 }: {
   rows: VerificationRow[];
   store: VerificationStore;
@@ -88,6 +89,8 @@ export function VerificationResults({
   gasRows?: GasResultRow[];
   /** Live results: what the numbers rest on (documents, GWP basis, materiality), behind the ⓘ. */
   basis?: string;
+  /** Live results: open a reviewed record's document from the Source pane. */
+  onOpenDocument?: (documentId: string) => void;
 }) {
   const [tab, setTab] = useState<"results" | "findings">("results");
   const [findingFor, setFindingFor] = useState<VerificationRow | null>(null);
@@ -128,6 +131,7 @@ export function VerificationResults({
               signedInLogin={signedInLogin}
               boxTotals={boxTotals}
               gasRows={gasRows}
+              onOpenDocument={onOpenDocument}
             />
           ) : (
             <ResultsTab

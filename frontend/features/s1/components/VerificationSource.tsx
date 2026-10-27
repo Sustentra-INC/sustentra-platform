@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import type {
   DocumentSource,
+  EvidenceSource,
   RecordsSource,
   ReferenceSource,
   SourceRef,
@@ -17,7 +18,14 @@ import { formatQuantity } from "../utils/calculationChains";
  * at the cell, line or row it was read from. Same frame as Extraction Review's source
  * pane. An input with no document shows how it was determined instead.
  */
-export function VerificationSource({ source }: { source: SourceRef | null }) {
+export function VerificationSource({
+  source,
+  onOpenDocument,
+}: {
+  source: SourceRef | null;
+  /** Live results: open a reviewed record's document where its values were read. */
+  onOpenDocument?: (documentId: string) => void;
+}) {
   // A document opened from a list of bills keeps the list to go back to.
   const [opened, setOpened] = useState<{ from: RecordsSource; doc: DocumentSource } | null>(null);
   const [shownFor, setShownFor] = useState<SourceRef | null>(source);
@@ -78,7 +86,73 @@ export function VerificationSource({ source }: { source: SourceRef | null }) {
           <p className="s1-vw-basis">{source.text}</p>
         </Frame>
       );
+    case "evidence":
+      return (
+        <Frame
+          icon={Files}
+          title={source.title}
+          meta={`${source.records.length} reviewed ${source.records.length === 1 ? "record" : "records"}`}
+        >
+          <EvidenceView source={source} onOpenDocument={onOpenDocument} />
+        </Frame>
+      );
   }
+}
+
+/**
+ * Live results: the reviewed records an amount is summed from, as the recalculation counted
+ * them (a bill crossing the reporting period counts its share). Each opens in Extraction
+ * review, where the page shows the value it was read from.
+ */
+function EvidenceView({ source, onOpenDocument }: { source: EvidenceSource; onOpenDocument?: (documentId: string) => void }) {
+  const prorated = source.records.some((r) => r.shareInPeriod !== undefined && r.shareInPeriod < 1);
+  return (
+    <div className="s1-vw-records">
+      <table className="s1-vw-records__table">
+        <thead>
+          <tr>
+            <th>Record</th>
+            {prorated ? <th className="s1-vw-num">In period</th> : null}
+            <th className="s1-vw-num">{source.unit}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {source.records.map((record, i) => (
+            <tr key={`${record.documentId}:${i}`}>
+              <td>
+                {onOpenDocument ? (
+                  <button className="s1-vw-input" type="button" onClick={() => onOpenDocument(record.documentId)}>
+                    {record.record}
+                  </button>
+                ) : (
+                  record.record
+                )}
+                {record.serviceType ? <span className="s1-muted"> · {record.serviceType}</span> : null}
+              </td>
+              {prorated ? (
+                <td className="s1-vw-num">
+                  {record.shareInPeriod === undefined ? "" : `${Math.round(record.shareInPeriod * 100)}%`}
+                </td>
+              ) : null}
+              <td className="s1-vw-num">
+                {formatQuantity(record.quantity)}
+                {record.unit !== source.unit ? ` ${record.unit}` : ""}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colSpan={prorated ? 2 : 1}>Total</td>
+            <td className="s1-vw-num">{formatQuantity(source.total)}</td>
+          </tr>
+        </tfoot>
+      </table>
+      {onOpenDocument ? (
+        <p className="s1-muted s1-vw-records__hint">Open a record to see the page and the value it was read from.</p>
+      ) : null}
+    </div>
+  );
 }
 
 function Frame({ icon: Icon, title, meta, children }: { icon: LucideIcon; title: string; meta: string; children: ReactNode }) {

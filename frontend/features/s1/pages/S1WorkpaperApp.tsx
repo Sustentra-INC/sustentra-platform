@@ -932,6 +932,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               store={verification}
               onSaveInputs={saveRecalculationInputs}
               onError={handleSessionEnded}
+              onOpenDocument={openExtraction}
             />
           ) : (
             <VerificationResults

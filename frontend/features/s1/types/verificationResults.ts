@@ -66,7 +66,30 @@ export interface GasResultRow {
 }
 
 /** Where an underlined input opens in the Source pane. */
-export type SourceRef = WorkbookSource | RecordsSource | DocumentSource | ReferenceSource | BasisSource;
+export type SourceRef = WorkbookSource | RecordsSource | DocumentSource | ReferenceSource | BasisSource | EvidenceSource;
+
+/**
+ * Live results: the reviewed records an evidence total is summed from, as the recalculation
+ * lists them. Each record opens in Extraction review, where its page shows the value.
+ */
+export interface EvidenceSource {
+  kind: "evidence";
+  title: string;
+  /** The unit the total is in; a record in another unit shows its own. */
+  unit: string;
+  /** The amount the calculation used: the records' sum after unit conversion. */
+  total: number;
+  records: {
+    documentId: string;
+    record: string;
+    quantity: number;
+    unit: string;
+    /** Below 1 when a bill crossing the reporting period was prorated. */
+    shareInPeriod?: number;
+    /** Refrigerant records: service, installation or disposal. */
+    serviceType?: string;
+  }[];
+}
 
 /** The client's inventory workbook, opened at the cell the value was read from. */
 export interface WorkbookSource {
@@ -158,6 +181,15 @@ export interface FacilityResult {
    * lines are a category, broken down by fuel or refrigerant across all facilities.
    */
   activity?: string;
+  /**
+   * Live results: the cause is the system's (flags and data quality checks), labelled
+   * "Checked by system"; the demo's causes are written for the dataset.
+   */
+  causeBy?: "system";
+  /** Live results, with no reported value to differ from: a note, or something to review. */
+  causeTone?: "note" | "review";
+  /** Live results: one line under the steps, e.g. why the Reported column is empty. */
+  note?: string;
 }
 
 /** One reported line of the inventory (an activity of a box). */
