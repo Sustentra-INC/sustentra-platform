@@ -12,6 +12,7 @@ import type {
   WorkbookSource,
 } from "../types/verificationResults";
 import { formatQuantity } from "../utils/calculationChains";
+import { formatInputQuantity } from "../utils/verificationTable";
 
 /**
  * Verification results, right pane: the document behind an underlined input, opened
@@ -138,7 +139,8 @@ function EvidenceView({ source, onOpenDocument }: { source: EvidenceSource; onOp
               ) : null}
               {amounts ? (
                 <td className="s1-vw-num">
-                  {record.quantity === null ? "" : formatQuantity(record.quantity)}
+                  {/* As precise as the step cell that opened it (the demo's records keep formatQuantity). */}
+                  {record.quantity === null ? "" : formatInputQuantity(record.quantity)}
                   {record.unit !== source.unit ? ` ${record.unit}` : ""}
                 </td>
               ) : null}
@@ -149,7 +151,7 @@ function EvidenceView({ source, onOpenDocument }: { source: EvidenceSource; onOp
           <tfoot>
             <tr>
               <td colSpan={prorated ? 2 : 1}>Total</td>
-              <td className="s1-vw-num">{formatQuantity(source.total)}</td>
+              <td className="s1-vw-num">{formatInputQuantity(source.total)}</td>
             </tr>
           </tfoot>
         ) : null}

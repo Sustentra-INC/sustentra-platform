@@ -303,11 +303,16 @@ function LiveOutputScreen({
 
         <section className="s1-out-section">
           <h3>Conclusion</h3>
+          {statement.materialBoxes.length || statement.openBoxes.length ? <CheckedBySystem /> : null}
           {statement.materialBoxes.length ? (
             <p className="s1-out-draftnote" role="note">
               Draft:{" "}
               {statement.materialBoxes
-                .map((b) => `${b.title} differs from the evidence by ${formatPercent(b.pctMaterial, true)} of its reported total`)
+                .map((b) =>
+                  b.pctMaterial === null
+                    ? `${b.title} is reported as 0 while the evidence gives ${formatSignedTonnes(b.difference)} tCO2e`
+                    : `${b.title} differs from the evidence by ${formatPercent(b.pctMaterial, true)} of its reported total`
+                )
                 .join("; ")}
               , at or above the {threshold} materiality threshold.
             </p>
@@ -325,6 +330,7 @@ function LiveOutputScreen({
 
         <section className="s1-out-section">
           <h3>Recalculated emissions</h3>
+          <CheckedBySystem />
           <div className="s1-out-tiles">
             <BigTile
               label="Total (location-based)"
@@ -341,17 +347,16 @@ function LiveOutputScreen({
             />
             <BigTile
               label="Uncorrected misstatement"
-              value={statement.misstatement === null ? "Not compared" : formatSignedTonnes(statement.misstatement)}
+              value={statement.misstatement === null ? "Not compared yet" : formatSignedTonnes(statement.misstatement)}
               unit={statement.misstatement === null ? "" : "tCO2e"}
               sub={
-                statement.misstatement === null
-                  ? "Needs both reported scope totals"
-                  : [
-                      statement.misstatementPct === null ? "" : `${formatPercent(statement.misstatementPct, true)} of the reported total`,
-                      location.partial ? "partial: open items remain" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")
+                statement.misstatementOpen
+                  ? "Open items remain in Scope 1 or Scope 2 (location-based)"
+                  : statement.misstatement === null
+                    ? "Needs both reported scope totals"
+                    : statement.misstatementPct === null
+                      ? undefined
+                      : `${formatPercent(statement.misstatementPct, true)} of the reported total`
               }
             />
             <BigTile
@@ -406,9 +411,7 @@ function LiveOutputScreen({
             <h3>Differences found</h3>
             {statement.differences.length ? (
               <>
-                <span className="s1-out-by">
-                  <Cpu className="s1-out-by__icon" aria-hidden /> Checked by system
-                </span>
+                <CheckedBySystem />
                 <ul className="s1-out-list">
                   {statement.differences.slice(0, 5).map((d) => (
                     <li key={d.label}>
@@ -416,11 +419,11 @@ function LiveOutputScreen({
                       <span className="s1-out-list__text">
                         {d.label}, {formatSignedTonnes(d.difference)} tCO2e
                         {d.pct === null ? "" : ` (${formatPercent(d.pct, true)})`}
-                        {d.state
-                          ? `: ${d.state.label.toLowerCase()}, so not compared yet`
-                          : d.outcome === "material"
-                            ? `: at or above the ${threshold} materiality threshold`
-                            : ""}
+                        {d.outcome === "material"
+                          ? d.pct === null
+                            ? ": reported as 0"
+                            : `: at or above the ${threshold} materiality threshold`
+                          : `: below the ${threshold} materiality threshold`}
                       </span>
                     </li>
                   ))}
@@ -490,10 +493,23 @@ function LiveOutputScreen({
   );
 }
 
+/** The outcome where the value compares, then any state (None at the client, Partial, Not in scope). */
 function LiveOutcome({ outcome, state }: { outcome: StatementRow["outcome"] | null; state: ResultState | null }) {
-  if (state) return <span className={`s1-state s1-state--${state.tone}`}>{state.label}</span>;
-  if (!outcome) return null;
-  return <span className={`s1-state s1-state--${OUTCOME[outcome].state}`}>{OUTCOME[outcome].label}</span>;
+  return (
+    <span className="s1-out-outcome">
+      {outcome ? <span className={`s1-state s1-state--${OUTCOME[outcome].state}`}>{OUTCOME[outcome].label}</span> : null}
+      {state ? <span className={`s1-state s1-state--${state.tone}`}>{state.label}</span> : null}
+    </span>
+  );
+}
+
+/** Design standard §7: what the system worked out is labelled as the system's. */
+function CheckedBySystem() {
+  return (
+    <span className="s1-out-by">
+      <Cpu className="s1-out-by__icon" aria-hidden /> Checked by system
+    </span>
+  );
 }
 
 function LiveScopeRow({ row }: { row: LiveStatementRow }) {

@@ -119,7 +119,8 @@ function sumOf(facilities: FacilityResult[], pick: (f: FacilityResult) => number
  * which is reported outside the scopes and takes no share.
  */
 export function consolidatedShare(line: ResultLine, facility: FacilityResult): number | null {
-  return line.box === "biogenic" ? null : (facility.consolidatedShare ?? 1);
+  // Live results: the backend applies no boundary share, so none is shown (values count in full).
+  return line.box === "biogenic" || line.noBoundaryShare ? null : (facility.consolidatedShare ?? 1);
 }
 
 /** A facility's value after its consolidated share: what the line adds up. */
@@ -324,6 +325,24 @@ export function formatSignedGasTonnes(value: number): string {
   const text = formatGasTonnes(Math.abs(value));
   if (text === "0.0" || value === 0) return text;
   return `${value > 0 ? "+" : MINUS}${text}`;
+}
+
+/**
+ * Live results: a quantity a calculation step multiplies, or a reviewed record's amount, as
+ * precise as the result it leads to needs, so the step can be re-multiplied by hand to the
+ * result shown (a mass is multiplied by a GWP of up to a few hundred): below 1, four
+ * significant figures ("0.02427", so a small amount never reads as 0.0); from 1 up, two
+ * decimals, or five significant figures where that is more ("1,234.56", "1.2346").
+ * Trailing zeros dropped; negative with a true minus.
+ */
+export function formatInputQuantity(value: number): string {
+  const magnitude = Math.abs(value);
+  const integerDigits = magnitude >= 1 ? Math.floor(Math.log10(magnitude)) + 1 : 0;
+  const text =
+    magnitude !== 0 && magnitude < 1
+      ? magnitude.toLocaleString("en-US", { maximumSignificantDigits: 4 })
+      : magnitude.toLocaleString("en-US", { maximumFractionDigits: Math.max(2, 5 - integerDigits) });
+  return value < 0 && text !== "0" ? `${MINUS}${text}` : text;
 }
 
 /** Coverage line: a whole-number percentage. */

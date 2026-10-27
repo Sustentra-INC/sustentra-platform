@@ -1,7 +1,7 @@
 "use client";
 
 import { InfoTip } from "./InfoTip";
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 
 import type {
   CheckOutcome,
@@ -73,6 +73,7 @@ export function VerificationResults({
   basis,
   onOpenDocument,
   registerFindings = false,
+  liveMateriality,
 }: {
   rows: VerificationRow[];
   store: VerificationStore;
@@ -97,6 +98,8 @@ export function VerificationResults({
    * Output and the Excel export). The demo's cards do not, for now (product, 2026-10-15).
    */
   registerFindings?: boolean;
+  /** Live results: the materiality tolerance as a fraction (0.05), for the % material colours. */
+  liveMateriality?: number;
 }) {
   const [tab, setTab] = useState<"results" | "findings">("results");
   const [findingFor, setFindingFor] = useState<FindingTarget | null>(null);
@@ -139,6 +142,7 @@ export function VerificationResults({
               gasRows={gasRows}
               onOpenDocument={onOpenDocument}
               onRegisterFinding={registerFindings ? setFindingFor : undefined}
+              materiality={liveMateriality}
             />
           ) : (
             <ResultsTab
@@ -599,6 +603,14 @@ function RegisterFindingModal({
   const [sentence, setSentence] = useState("");
   const [cause, setCause] = useState("");
   const [magnitude, setMagnitude] = useState(target.delta ?? "");
+  // Escape cancels the dialog (and only the dialog: the panel behind it stays open).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onCancel();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onCancel]);
   return (
     <div className="s1-modal-scrim" role="presentation" onClick={onCancel}>
       <div className="s1-modal" role="dialog" aria-modal="true" aria-label="Register finding" onClick={(e) => e.stopPropagation()}>

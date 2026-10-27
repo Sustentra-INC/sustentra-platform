@@ -26,8 +26,9 @@ import type {
   ResultState,
   Scope1Category,
 } from "../types/verificationResults";
+import { formatQuantity } from "../utils/calculationChains";
 import type { InventoryTotal } from "../utils/outputStatement";
-import { formatTonnes } from "../utils/verificationTable";
+import { formatGasTonnes, formatInputQuantity, formatPercent, formatTonnes } from "../utils/verificationTable";
 
 /**
  * The engagement's live recalculation (GET /engagements/{id}/recalculation) as the demo's
@@ -309,16 +310,42 @@ function unitText(unit: string): string {
   return unit === "t CO2e" ? "tCO₂e" : chemistry(unit);
 }
 
-/** As the source states it: up to four decimals; a very small value keeps three significant digits. */
-function stepNumber(value: number): string {
+/** A factor as its source prints it: up to four decimals; a very small one keeps three significant digits. */
+function factorNumber(value: number): string {
   return value !== 0 && Math.abs(value) < 0.01
     ? value.toLocaleString("en-US", { maximumSignificantDigits: 3 })
     : value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
+/** A negative value (a refrigerant balance) takes the true minus sign, as the demo's figures do. */
+function minus(text: string): string {
+  return text.replace(/^-/, "−");
+}
+
+/**
+ * A step's result, rounded as the demo card rounds it (utils/calculationChains,
+ * utils/verificationTable): tCO₂e in whole tonnes; tonnes of a gas to one decimal, two
+ * significant figures below 0.1 t; any other quantity whole from 100 up and to one decimal
+ * below, two significant figures for a fraction below 0.1 (0.04 lb never reads "0.0 lb");
+ * a fraction as a percentage to one decimal.
+ */
 function amount(value: number, unit: string): string {
-  if (unit === "fraction") return `${stepNumber(value * 100)}%`;
-  return `${stepNumber(value)} ${unitText(unit)}`.trim();
+  if (unit === "fraction") return formatPercent(value);
+  if (unit === "t CO2e") return `${formatTonnes(value)} tCO₂e`;
+  if (unit === "t") return `${formatGasTonnes(value)} t`;
+  const small = value !== 0 && Math.abs(value) < 0.1 && !Number.isInteger(value);
+  const text = small ? value.toLocaleString("en-US", { maximumSignificantDigits: 2 }) : formatQuantity(value);
+  return `${minus(text)} ${unitText(unit)}`.trim();
+}
+
+/**
+ * A quantity a step multiplies, precise enough that the "how" line re-multiplies by hand to
+ * the result shown (formatInputQuantity: "1,234.56 MWh", "0.02427 t"); a fraction as a
+ * percentage the same way ("30%"). Results keep the demo's rounding (`amount`).
+ */
+function inputAmount(value: number, unit: string): string {
+  if (unit === "fraction") return `${formatInputQuantity(value * 100)}%`;
+  return `${formatInputQuantity(value)} ${unitText(unit)}`.trim();
 }
 
 const GAS_ORDER = ["CO2", "CH4", "N2O"];
@@ -372,15 +399,17 @@ const EVIDENCE_INPUT = /^(fuel|fuel energy|electricity|thermal energy|[PCR]_[A-Z
 const EVIDENCE_SOURCE = /reviewed (record|bill)/i;
 
 function inputCell(name: string, input: RecalcInput, line: RecalcLine, evidence: CategoryInput | undefined): CalcCell {
-  const text = amount(input.value, input.unit);
+  const text = inputAmount(input.value, input.unit);
   if ((input.source && EVIDENCE_SOURCE.test(input.source)) || (!input.source && EVIDENCE_INPUT.test(name))) {
     const records = evidenceOf(evidence, line, name);
     return records ? { text, source: records } : { text };
   }
   if (input.source) {
-    // A factor: cited, not drawn (no endpoint returns the reference table's rows yet).
+    // A factor, printed as its source prints it; cited, not drawn (no endpoint returns the
+    // reference table's rows yet).
+    const printed = `${factorNumber(input.value)} ${unitText(input.unit)}`.trim();
     const [title] = input.source.split(", ");
-    return { text, source: { kind: "basis", title, text: `${chemistry(name)} = ${text}, cited from ${input.source}.` } };
+    return { text: printed, source: { kind: "basis", title, text: `${chemistry(name)} = ${printed}, cited from ${input.source}.` } };
   }
   return { text };
 }
@@ -417,12 +446,12 @@ function stepsOf(category: RecalcCategory, line: RecalcLine, evidence: CategoryI
   const gases = Object.entries(line.mass_t).sort(([a], [b]) => order(a) - order(b));
   const how: CalcCell[] = gases.flatMap(([gas, mass], i) => {
     const gwp = category.gwp[gas];
-    const term: CalcCell[] = [{ text: `${i ? " + " : ""}${chemistry(gas)} ${stepNumber(mass)} t × ` }];
+    const term: CalcCell[] = [{ text: `${i ? " + " : ""}${chemistry(gas)} ${inputAmount(mass, "t")} × ` }];
     term.push(
       gwp
         ? {
-            text: `GWP ${stepNumber(gwp.value)}`,
-            source: { kind: "basis", title: `GWP of ${chemistry(gas)} (${category.gwp_set})`, text: `${stepNumber(gwp.value)}, from ${gwp.source}.` },
+            text: `GWP ${formatQuantity(gwp.value)}`,
+            source: { kind: "basis", title: `GWP of ${chemistry(gas)} (${category.gwp_set})`, text: `${factorNumber(gwp.value)}, from ${gwp.source}.` },
           }
         : { text: "GWP not given" }
     );
@@ -534,8 +563,11 @@ function lineOf(result: Recalculation, spec: LineSpec): ResultLine {
     ...(spec.output ? {} : { reportedNote: "Total only" }),
     recomputed: node.co2e,
     ...(state ? { state } : {}),
-    // Still partial: shown, not compared (the backend never calls a partial value within tolerance).
-    ...(out?.status === "incomplete" ? { inconclusive: true } : {}),
+    // Still partial, or out of scope: shown, not compared. One rule for Results and Output; the
+    // backend never calls a partial value within tolerance, and never judges an out-of-scope one.
+    ...(out?.status === "incomplete" || out?.status === "not_in_scope" ? { inconclusive: true } : {}),
+    // The backend applies no boundary share: no consolidation is shown, not an assumed 100%.
+    noBoundaryShare: true,
   };
 }
 
@@ -597,7 +629,14 @@ function boxTotal(result: Recalculation, spec: (typeof BOX_SPECS)[number]): Resu
   } else if (node.status === "partial") {
     notes.unshift(`Partial: at least ${formatTonnes(node.co2e)} tCO₂e while ${listed(open.map((s) => SOURCE_WORDS[s]))} ${open.length === 1 ? "is" : "are"} open.`);
   }
-  return { reported, recomputed: node.co2e, ...(state ? { state } : {}), ...(notes.length ? { notes } : {}) };
+  return {
+    reported,
+    recomputed: node.co2e,
+    // Red only where the backend finds the difference beyond tolerance (a reported 0 included).
+    material: out?.status === "exceeds_tolerance",
+    ...(state ? { state } : {}),
+    ...(notes.length ? { notes } : {}),
+  };
 }
 
 const BIOGENIC_STATE: ResultState = {
@@ -622,6 +661,8 @@ function biogenic(result: Recalculation): { line: ResultLine; total: ResultBoxTo
       reported,
       recomputed: node.co2e,
       ...(state ? { state } : {}),
+      ...(out?.status === "incomplete" || out?.status === "not_in_scope" ? { inconclusive: true } : {}),
+      noBoundaryShare: true,
     },
     total: { reported, recomputed: node.co2e, ...(state ? { state } : {}) },
   };

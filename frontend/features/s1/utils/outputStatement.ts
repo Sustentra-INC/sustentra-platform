@@ -158,17 +158,19 @@ export interface LiveDifference {
 export interface LiveStatementFigures {
   location: InventoryTotal;
   market: InventoryTotal;
-  /** Recalculated minus reported, location-based; null until both are there. */
+  /** Recalculated minus reported, location-based; null until both are there and both boxes conclude. */
   misstatement: number | null;
   misstatementPct: number | null;
+  /** The inventory is partial, or Scope 1 or Scope 2 (location-based) cannot be compared yet. */
+  misstatementOpen: boolean;
   /** A fraction, e.g. 0.05. */
   materiality: number;
   materialityTonnes: number | null;
   /** What the threshold is a share of: the reported total, or the recalculated one while it is not entered. */
   materialityBase: "reported" | "recalculated" | null;
   rows: LiveStatementRow[];
-  /** Boxes compared at or above materiality. */
-  materialBoxes: { title: string; pctMaterial: number }[];
+  /** Boxes compared at or above materiality; pctMaterial null when the reported total is 0. */
+  materialBoxes: { title: string; pctMaterial: number | null; difference: number }[];
   /** Boxes that cannot be compared yet, with why. */
   openBoxes: { title: string; state: ResultState }[];
   /** Every compared value whose difference does not round to zero, largest first. */
@@ -185,15 +187,34 @@ export function liveStatementFigures(
   tolerancePct: number
 ): LiveStatementFigures {
   const materiality = tolerancePct / 100;
+  // At or above materiality; a reported 0 that the evidence does not match counts as above
+  // it, as the backend calls it (reported_zero).
   const outcome = (difference: number, base: number | null): StatementRow["outcome"] =>
-    !differs(difference) ? "agrees" : base && Math.abs(difference / base) >= materiality ? "material" : "differs";
+    !differs(difference)
+      ? "agrees"
+      : base === 0 || (base !== null && Math.abs(difference / base) >= materiality)
+        ? "material"
+        : "differs";
 
   const rows: LiveStatementRow[] = [];
   const differences: LiveDifference[] = [];
-  const compare = (label: string, reported: number | null, verified: number | null, state: ResultState | null, base: number | null) => {
-    const both = reported !== null && verified !== null;
-    const result = both && !state ? outcome(verified - reported, base ?? reported) : null;
-    if (both && differs(verified - reported)) {
+  /**
+   * The same rule as Verification results: a line compares unless it is `inconclusive`
+   * (still partial, or out of scope); a box unless it has a state. A line's other states
+   * (None at the client, a partial value already beyond its reported one) still compare.
+   * Only what compares, and differs, is a difference found.
+   */
+  const compare = (
+    label: string,
+    reported: number | null,
+    verified: number | null,
+    comparable: boolean,
+    base: number | null,
+    state: ResultState | null
+  ) => {
+    if (reported === null || verified === null || !comparable) return null;
+    const result = outcome(verified - reported, base);
+    if (result !== "agrees") {
       differences.push({ label, difference: verified - reported, pct: reported ? (verified - reported) / reported : null, outcome: result, state });
     }
     return result;
@@ -202,7 +223,13 @@ export function liveStatementFigures(
   for (const key of ["scope1", "scope2_location", "scope2_market"] as const) {
     const total = boxTotals[key];
     const basis = key === "scope2_location" ? "Location-based" : key === "scope2_market" ? "Market-based" : "";
-    for (const line of lines.filter((l) => l.box === key && l.facilities)) {
+    // Lines with values, and lines with only a state (not in scope, no reviewed evidence,
+    // not calculated yet), which keep their row and chip.
+    const own = lines.filter((l) => l.box === key && (l.facilities || l.state));
+    // A line's % material is of its box's reported total, as on Verification results.
+    const rowsReported = own.reduce((sum, l) => sum + (lineReported(l) ?? 0), 0);
+    const boxBase = total?.reported ?? rowsReported;
+    for (const line of own) {
       const label = key === "scope1" ? `Scope 1 · ${(line.category ?? "other").toLowerCase()}` : `Scope 2 · ${line.activity.toLowerCase()}`;
       const reported = lineReported(line);
       const verified = lineRecomputed(line);
@@ -213,7 +240,14 @@ export function liveStatementFigures(
         reported,
         reportedNote: reported === null ? line.reportedNote ?? "Not entered" : null,
         verified,
-        outcome: compare(key === "scope1" ? label : `${label} (${basis.toLowerCase()})`, reported, verified, state, total?.reported ?? null),
+        outcome: compare(
+          key === "scope1" ? label : `${label} (${basis.toLowerCase()})`,
+          reported,
+          verified,
+          !line.inconclusive,
+          reported === 0 ? 0 : boxBase,
+          state
+        ),
         state,
         total: false,
       });
@@ -226,7 +260,7 @@ export function liveStatementFigures(
         reported: total.reported,
         reportedNote: total.reported === null ? "Not entered" : null,
         verified: total.recomputed,
-        outcome: compare(totalLabel, total.reported, total.recomputed, total.state ?? null, total.reported),
+        outcome: compare(totalLabel, total.reported, total.recomputed, !total.state, total.reported, total.state ?? null),
         state: total.state ?? null,
         total: true,
       });
@@ -234,7 +268,10 @@ export function liveStatementFigures(
   }
 
   const { location } = inventory;
-  const misstatement = location.reported !== null && location.recomputed !== null ? location.recomputed - location.reported : null;
+  // Not compared while the inventory is partial or either of its boxes cannot conclude.
+  const misstatementOpen = location.partial || Boolean(boxTotals.scope1?.state) || Boolean(boxTotals.scope2_location?.state);
+  const misstatement =
+    !misstatementOpen && location.reported !== null && location.recomputed !== null ? location.recomputed - location.reported : null;
   const base = location.reported ?? location.recomputed;
   const scopes = (["scope1", "scope2_location", "scope2_market"] as const).map((key) => ({ key, total: boxTotals[key] }));
   return {
@@ -242,14 +279,19 @@ export function liveStatementFigures(
     market: inventory.market,
     misstatement,
     misstatementPct: misstatement !== null && location.reported ? misstatement / location.reported : null,
+    misstatementOpen,
     materiality,
     materialityTonnes: base === null ? null : materiality * base,
     materialityBase: location.reported !== null ? "reported" : location.recomputed !== null ? "recalculated" : null,
     rows,
     materialBoxes: scopes.flatMap(({ key, total }) =>
-      total && !total.state && total.reported && total.recomputed !== null &&
-      Math.abs((total.recomputed - total.reported) / total.reported) >= materiality
-        ? [{ title: BOX_TITLE[key].title, pctMaterial: (total.recomputed - total.reported) / total.reported }]
+      total && !total.state && total.reported !== null && total.recomputed !== null &&
+      outcome(total.recomputed - total.reported, total.reported) === "material"
+        ? [{
+            title: BOX_TITLE[key].title,
+            pctMaterial: total.reported ? (total.recomputed - total.reported) / total.reported : null,
+            difference: total.recomputed - total.reported,
+          }]
         : []
     ),
     openBoxes: scopes.flatMap(({ key, total }) => (total?.state ? [{ title: BOX_TITLE[key].title, state: total.state }] : [])),

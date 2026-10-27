@@ -12,14 +12,20 @@ import { api } from "../../../lib/api";
 import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import type { Recalculation, RecalculationReference } from "../api/recalculation";
 import { BackendVerificationResults, examinerOptions } from "../components/BackendVerificationResults";
+import { VerificationResults } from "../components/VerificationResults";
+import { VerificationSource } from "../components/VerificationSource";
 import { VerificationWorkspace } from "../components/VerificationWorkspace";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { verificationLines } from "../fixtures/verification/resultsDataset";
 import type { EngagementConfig } from "../types";
+import type { EvidenceSource, ResultLine } from "../types/verificationResults";
+import { liveStatementFigures } from "../utils/outputStatement";
 import { buildResultBoxes, examinationKey, lineRecomputed, testedExaminationKeys } from "../utils/verificationTable";
 import { useWorkpaperSync } from "../verification/useWorkpaperSync";
 import { useVerificationStore } from "../verification/verificationStore";
 import liveExample from "./fixtures/recalculationLive.json";
+import probeExample from "./fixtures/recalculationCompareProbes.json";
+import oddExample from "./fixtures/recalculationOddQuantities.json";
 import refrigerantExample from "./fixtures/recalculationRefrigerants.json";
 import workbookExample from "./fixtures/recalculationWorkbookExample.json";
 
@@ -215,12 +221,105 @@ describe("the calculation panel on live data", () => {
     const [gas] = line["s1-stationary"].facilities ?? [];
     expect(gas.steps.map((s) => s.step)).toEqual(["CO₂ (Eq 1)", "CH₄ (Eq 1)", "N₂O (Eq 1)", "Total CO₂e"]);
     expect(text(gas.steps[0].how)).toBe("24,000 mmBtu × 53.06 kg CO₂ per mmBtu");
-    expect(gas.steps[0].recomputed?.text).toBe("1,273.44 t");
     expect(gas.steps.every((s) => s.reported === null)).toBe(true);
     expect(gas.note).toMatch(/only the client's totals are entered/);
+  });
+
+  it("rounds results as the demo card does (whole tCO₂e, gas tonnes to one decimal); factors as printed", () => {
+    const [gas] = line["s1-stationary"].facilities ?? [];
+    expect(gas.steps.map((s) => s.recomputed?.text)).toEqual(["1,273.4 t", "0.024 t", "0.0024 t", "1,275 tCO₂e"]);
     const total = gas.steps[gas.steps.length - 1];
-    expect(total).toMatchObject({ total: true, recomputed: { text: "1,274.748 tCO₂e" } });
+    expect(total.total).toBe(true);
+    // The masses it multiplies are inputs: printed to two decimals, so the line re-multiplies.
     expect(text(total.how)).toBe("CO₂ 1,273.44 t × GWP 1 + CH₄ 0.024 t × GWP 28 + N₂O 0.0024 t × GWP 265");
+    // The electricity factors keep their printed decimals; the quantities read like the demo's.
+    const [facilityA] = line["s2l-electricity"].facilities ?? [];
+    expect(text(facilityA.steps[0].how)).toBe("1,200 MWh × 240.99 lb per MWh");
+    expect(facilityA.steps[0].recomputed?.text).toBe("289,188 lb");
+    expect(text(facilityA.steps[2].how)).toBe("1,200 MWh × 0.011 lb per MWh");
+    expect(facilityA.steps[2].recomputed?.text).toBe("13.2 lb");
+    const [r410a] = line["s1-fugitive"].facilities ?? [];
+    expect(r410a.steps.map((s) => s.recomputed?.text)).toEqual(["40 lb", "0.018 t", "35 tCO₂e"]);
+  });
+
+  /*
+   * recalculationOddQuantities.json is the backend's response for two NYUP electricity bills:
+   * Facility C at a non-round 1,234.56 MWh, and a Kiosk at 40 MWh whose N₂O is 0.04 lb.
+   */
+  const ODD = byId(oddExample as unknown as Recalculation)["s2l-electricity"].facilities ?? [];
+  const facility = (name: string) => ODD.find((f) => f.facility === name)!;
+  const NUMBER = /−?[\d,]*\.?\d+/;
+  const toNumber = (s: string) => Number(s.replace(/,/g, "").replace("−", "-"));
+
+  /**
+   * Re-multiplies a step's "how" line as a reader would, term by term ("1,234.56 MWh × 240.99
+   * lb per MWh"; the Total row's "CO₂ 1,273.44 t × GWP 1 + …"), converting a factor in kg or
+   * g to the result's tonnes, and returns how far it lands from the result shown, against
+   * half a unit of the result's last digit.
+   */
+  function reMultiply(step: { step: string; how: { text: string }[]; recomputed: { text: string } | null }) {
+    const shown = step.recomputed?.text ?? "";
+    const [shownNumber, ...unit] = shown.split(" ");
+    const resultUnit = unit.join(" ");
+    const product = text(step.how)
+      .split(" + ")
+      .reduce(
+        (sum, term) =>
+          sum +
+          term.split(" × ").reduce((p, factor) => {
+            const match = NUMBER.exec(factor.replace(/GWP /, ""));
+            const after = match ? factor.slice(match.index + match[0].length).trim() : "";
+            const scale = resultUnit === "t" && after.startsWith("kg ") ? 1e-3 : resultUnit === "t" && after.startsWith("g ") ? 1e-6 : 1;
+            return p * (match ? toNumber(match[0]) : NaN) * scale;
+          }, 1),
+        0
+      );
+    return {
+      off: Math.abs(product - toNumber(shownNumber)),
+      allowed: 0.5 * 10 ** -(shownNumber.split(".")[1] ?? "").length + 1e-9,
+      label: `${step.step}: ${text(step.how)} = ${shown} (re-multiplied ${product})`,
+    };
+  }
+
+  /** Every step of a card that multiplies (a plain product, or the Total CO₂e row). */
+  const multipliedSteps = (result: Recalculation) =>
+    liveResultsFromRecalculation(result)
+      .lines.flatMap((l) => l.facilities ?? [])
+      .flatMap((f) => f.steps)
+      .filter((s) => / × /.test(text(s.how)) && !/: /.test(text(s.how)));
+
+  it("never rounds a small result to nothing (0.04 lb, not 0.0 lb)", () => {
+    const kiosk = facility("Kiosk");
+    expect(kiosk.steps.map((s) => s.recomputed?.text)).toEqual([
+      "9,640 lb", "4.4 t", "0.4 lb", "0.0002 t", "0.04 lb", "0.000018 t", "4 tCO₂e",
+    ]);
+    expect(text(kiosk.steps[4].how)).toBe("40 MWh × 0.001 lb per MWh");
+    // The next step converts the input as its source prints it.
+    expect(text(kiosk.steps[5].how)).toBe("lb / 2,204.62: emissions 0.04 lb");
+  });
+
+  it("prints the quantities a step multiplies as the source does, so they reproduce the result shown", () => {
+    const c = facility("Facility C");
+    expect(text(c.steps[0].how)).toBe("1,234.56 MWh × 240.99 lb per MWh");
+    expect(c.steps[0].recomputed?.text).toBe("297,517 lb");
+    const multiplied = c.steps.filter((s) => / × /.test(text(s.how)) && !s.total);
+    expect(multiplied.map((s) => s.step)).toEqual(["CO₂ (electricity)", "CH₄ (electricity)", "N₂O (electricity)"]);
+  });
+
+  it("re-multiplies every step and every Total CO₂e row to the result shown, in every fixture", () => {
+    // The R-410A balance: 53.5 lb = 0.024267 t, × 1,924 = 46.7, shown as 47 tCO₂e.
+    const [r410a] = byId(refrigerantExample as unknown as Recalculation)["s1-fugitive"].facilities ?? [];
+    const co2e = r410a.steps.find((s) => s.step === "R-410A in CO₂e")!;
+    expect(text(co2e.how)).toBe("0.02427 t × 1,924");
+    expect(co2e.recomputed?.text).toBe("47 tCO₂e");
+    for (const result of [LIVE, oddExample, refrigerantExample] as unknown as Recalculation[]) {
+      const steps = multipliedSteps(result);
+      expect(steps.some((s) => s.step === "Total CO₂e")).toBe(result !== (refrigerantExample as unknown));
+      for (const step of steps) {
+        const { off, allowed, label } = reMultiply(step);
+        expect(off, label).toBeLessThanOrEqual(allowed);
+      }
+    }
   });
 
   it("links an amount to the reviewed records it is summed from, and a factor or GWP to its citation", () => {
@@ -289,6 +388,176 @@ describe("the calculation panel on live data", () => {
     expect(within(source).getByText("3 reviewed records")).toBeTruthy();
     fireEvent.click(within(source).getByRole("button", { name: "GAS-FEB.pdf" }));
     expect(opened).toEqual(["GAS-FEB"]);
+  });
+});
+
+describe("one compare rule on Verification results and Output", () => {
+  /*
+   * recalculationCompareProbes.json is the backend's response for the mid-review engagement
+   * with three probes: (b) purchased heating confirmed absent ("None at the client") with
+   * 50 t reported; (c) stationary combustion still partial yet already above its reported
+   * 1,000 t; (d) fugitive emissions set out of scope in Setup, with 30 t reported.
+   */
+  const PROBES = probeExample as unknown as Recalculation;
+  const live = liveResultsFromRecalculation(PROBES);
+  const line = Object.fromEntries(live.lines.map((l) => [l.id, l]));
+  const boxes = buildResultBoxes(live.lines, () => false, live.boxTotals);
+  const resultsRow = (id: string) => boxes.flatMap((b) => b.rows).find((r) => r.key === id)!;
+  const output = liveStatementFigures(live.lines, live.boxTotals, live.inventory, PROBES.tolerance_pct);
+  const outputRow = (label: string) => output.rows.find((r) => r.label === label)!;
+  const status = (key: string) => PROBES.rollup?.final_outputs.find((o) => o.key === key)?.status;
+
+  it("(b) compares a source confirmed absent: Results and Output both call 50 t against 0 above materiality", () => {
+    expect(status("purchased_heating_total")).toBe("exceeds_tolerance");
+    expect(line["s2l-heating"]).toMatchObject({ reported: 50, recomputed: 0, state: { label: "None at the client" } });
+    expect(line["s2l-heating"].inconclusive).toBeUndefined();
+    expect(resultsRow("s2l-heating")).toMatchObject({ difference: -50 });
+    expect(Math.abs(resultsRow("s2l-heating").pctMaterial ?? 0)).toBeGreaterThanOrEqual(0.05);
+    expect(outputRow("Scope 2 · heating")).toMatchObject({ outcome: "material", state: { label: "None at the client" } });
+    expect(output.differences.map((d) => d.label)).toContain("Scope 2 · heating (location-based)");
+  });
+
+  it("(c) compares a partial value already beyond its reported one: both screens, above materiality", () => {
+    expect(status("stationary_combustion_total")).toBe("exceeds_tolerance");
+    expect(line["s1-stationary"].inconclusive).toBeUndefined();
+    expect(resultsRow("s1-stationary").difference).toBeCloseTo(274.748, 3);
+    expect(outputRow("Scope 1 · stationary combustion")).toMatchObject({ outcome: "material", state: { label: "Partial · 1 open" } });
+    expect(output.differences.map((d) => d.label)).toContain("Scope 1 · stationary combustion");
+  });
+
+  it("(d) does not compare a data point out of scope, on either screen", () => {
+    expect(status("fugitive_total")).toBe("not_in_scope");
+    expect(line["s1-fugitive"]).toMatchObject({ reported: 30, inconclusive: true, state: { label: "Not in scope" } });
+    expect(resultsRow("s1-fugitive")).toMatchObject({ difference: null, pctDifference: null, pctMaterial: null });
+    expect(outputRow("Scope 1 · fugitive emissions")).toMatchObject({ outcome: null, state: { label: "Not in scope" } });
+    expect(output.differences.map((d) => d.label)).not.toContain("Scope 1 · fugitive emissions");
+    // A box that cannot conclude stays out of Differences found on Output as on Results.
+    expect(output.differences.map((d) => d.label)).not.toContain("Scope 1 total");
+  });
+
+  it("renders (d) with its chip and no difference, and leaves it out of the box's \"differ\" count", () => {
+    const store = renderHook(() => useVerificationStore()).result.current;
+    render(<VerificationWorkspace lines={live.lines} store={store} team={[]} boxTotals={live.boxTotals} materiality={0.05} />);
+    const fugitive = screen.getByRole("button", { name: "R-410A" }).closest("tr")!;
+    expect(fugitive.textContent).toContain("Not in scope");
+    expect(fugitive.querySelector(".s1-vw-delta")).toBeNull();
+    expect(fugitive.className).not.toContain("is-different");
+    // Stationary (c) differs; R-410A (d) does not count.
+    expect(screen.getByRole("button", { name: /^Scope 1/ }).textContent).toContain("3 recomputed lines · 1 differ");
+  });
+});
+
+describe("live % material colours", () => {
+  const facility = (id: string, recomputed: number) => ({ facilityId: id, facility: id, reported: null, recomputed, steps: [], cause: "" });
+  const lines: ResultLine[] = [
+    { id: "s2l-electricity", box: "scope2_location", activity: "Electricity", facilities: [facility("a", 1010)], reported: 1000, recomputed: 1010, noBoundaryShare: true },
+    { id: "s2l-steam", box: "scope2_location", activity: "Steam", facilities: [facility("a", 200)], reported: 100, recomputed: 200, noBoundaryShare: true },
+    { id: "s2m-electricity", box: "scope2_market", activity: "Electricity", facilities: [facility("a", 50)], reported: null, reportedNote: "Total only", recomputed: 50, noBoundaryShare: true },
+  ];
+  const boxTotals = {
+    scope2_location: { reported: 1100, recomputed: 1210, material: true },
+    scope2_market: { reported: 0, recomputed: 50, material: true },
+  };
+
+  function renderBoxes(totals = boxTotals) {
+    const store = renderHook(() => useVerificationStore()).result.current;
+    render(<VerificationWorkspace lines={lines} store={store} team={[]} boxTotals={totals} materiality={0.05} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Scope 2, location-based/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Scope 2, market-based/ }));
+    return within(screen.getByRole("region", { name: "Reported vs recomputed" }));
+  }
+
+  it("reds a % material only at or above materiality, and ambers one below it", () => {
+    const view = renderBoxes();
+    const location = within(view.getByRole("button", { name: /^Scope 2, location-based/ }).closest(".s1-vw-box") as HTMLElement);
+    const materialCell = (name: string) => location.getByRole("button", { name }).closest("tr")!.querySelectorAll("td")[5];
+    expect(materialCell("Electricity").className).toContain("s1-vw-amber"); // +10 of 1,100: +0.9%
+    expect(materialCell("Steam").className).toContain("s1-vw-red"); // +100 of 1,100: +9.1%
+    expect(view.getByRole("button", { name: /^Scope 2, location-based/ }).querySelector(".s1-vw-pill--differs")).toBeTruthy();
+  });
+
+  it("ambers a box the backend keeps within tolerance, though it differs", () => {
+    const view = renderBoxes({ ...boxTotals, scope2_location: { reported: 1100, recomputed: 1130, material: false } });
+    const head = view.getByRole("button", { name: /^Scope 2, location-based/ });
+    expect(head.querySelector(".s1-vw-pill--open")?.textContent).toBe("+2.7% material");
+    expect(head.querySelector(".s1-vw-pill--differs")).toBeNull();
+    expect(view.getByText("+2.7%", { selector: ".s1-vw-box__lines .s1-vw-amber" })).toBeTruthy();
+  });
+
+  it("shows no 0.0% material for a reported 0, and calls it above materiality", () => {
+    const view = renderBoxes();
+    const head = view.getByRole("button", { name: /^Scope 2, market-based/ });
+    expect(head.querySelector(".s1-vw-pill--differs")?.textContent).toBe("Above materiality");
+    expect(head.textContent).not.toMatch(/0\.0%/);
+    const total = view.getByText("Scope 2 market-based total").closest("tr")!;
+    expect(total.textContent).not.toMatch(/%/);
+  });
+});
+
+describe("live calculation cards, Source pane and dialog", () => {
+  const ODD = liveResultsFromRecalculation(oddExample as unknown as Recalculation);
+
+  function openElectricity(onOpenDocument?: (id: string) => void) {
+    const store = renderHook(() => useVerificationStore()).result.current;
+    const view = render(
+      <VerificationResults
+        rows={[]}
+        lines={ODD.lines}
+        boxTotals={ODD.boxTotals}
+        store={store}
+        team={[]}
+        registerFindings
+        onOpenDocument={onOpenDocument}
+        liveMateriality={0.05}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^Scope 2, location-based/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Electricity" }));
+    return { view, panel: screen.getByRole("complementary", { name: "Scope 2, location-based · Electricity" }) };
+  }
+
+  it("invents no consolidation: no Consolidated share column or step on a live card", () => {
+    const { panel } = openElectricity();
+    expect(within(panel).queryByText("Consolidated share")).toBeNull();
+    expect(within(panel).queryByText("Consolidated")).toBeNull();
+    expect(within(panel).queryByText(/consolidated share/)).toBeNull();
+    // The demo keeps its own (its fixture has a boundary share to show).
+    const store = renderHook(() => useVerificationStore()).result.current;
+    render(<VerificationWorkspace lines={verificationLines} store={store} team={[]} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Natural gas" })[0]);
+    expect(screen.getAllByText("Consolidated share").length).toBeGreaterThan(0);
+  });
+
+  it("opens an amount in the Source pane as precisely as its cell: 1,234.56 MWh reads 1,234.56", () => {
+    const { panel } = openElectricity();
+    fireEvent.click(within(panel).getAllByRole("button", { name: "1,234.56 MWh" })[0]);
+    const source = within(panel).getByRole("region", { name: "Source" });
+    expect(within(source).getAllByText("1,234.56")).toHaveLength(2); // the record and the total
+  });
+
+  it("never prints a small reviewed amount as 0.0", () => {
+    const evidence: EvidenceSource = {
+      kind: "evidence", title: "Kiosk · reviewed evidence", unit: "MWh", total: 0.04,
+      records: [{ documentId: "D-1", record: "kiosk.pdf", quantity: 0.04, unit: "MWh" }],
+    };
+    render(<VerificationSource source={evidence} />);
+    expect(screen.getAllByText("0.04")).toHaveLength(2);
+    expect(screen.queryByText(/^0\.0$/)).toBeNull();
+  });
+
+  it("closes the Register finding dialog on Escape, and the panel behind it only on the next Escape", () => {
+    const { panel } = openElectricity();
+    fireEvent.click(within(panel).getByRole("button", { name: "Register finding" }));
+    expect(screen.getByRole("dialog", { name: "Register finding" })).toBeTruthy();
+    act(() => {
+      fireEvent.keyDown(screen.getByPlaceholderText("What is wrong, in plain words"), { key: "Escape" });
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("complementary", { name: "Scope 2, location-based · Electricity" })).toBeTruthy();
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    expect(screen.queryByRole("complementary")).toBeNull();
   });
 });
 
