@@ -13,20 +13,27 @@ workbook that carries a VBA project gets a ``contains_macros`` note.
 
 Legacy file names often lie, so the first bytes decide:
 
-- an OLE2 compound file goes to xlrd, after a structural check (below);
+- an OLE2 compound file goes to xlrd, after its container is checked (``ole.py``: a
+  directory shaped to make xlrd recurse 2^N times, or a sector chain that loops, is refused);
 - a zip is an ``.xlsx`` saved with the wrong name and goes to ``openpyxl``;
 - a bare BIFF2-4 stream (Excel 2.x to 4.0) goes to xlrd;
 - anything else (a web page, XML or text export named ``.xls``) is refused with what to do.
 
 An encrypted workbook (a FILEPASS record, or an encrypted ``.xlsx`` in its OLE wrapper)
-is refused as ``password_protected``. The work is bounded: the file size, the sheets read,
-the rows read per sheet and the cells read are capped, a sheet is loaded only when it is
-read and dropped after, and xlrd's diagnostics are discarded rather than buffered.
+is refused as ``password_protected``.
+
+The work is bounded whatever the file holds. xlrd builds a whole sheet when it loads one
+(every row up to the last one used, each as wide as its last cell), so before a sheet is
+loaded the rows already loaded are counted against ``MAX_XLS_LOADED_ROWS``; sheets whose
+records share or overlap the same data are refused; only filled cells are converted; and
+the parser output's cells, rows, sheets and table slots (padding included) are capped. A
+sheet is dropped once read, and xlrd's diagnostics are discarded rather than buffered.
 """
 
 from __future__ import annotations
 
 import io
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -39,10 +46,12 @@ from backend.app.adapters.parsers.base import (
 from backend.app.adapters.parsers.excel_parser import (
     ExcelParser,
     Sheet,
+    SheetCell,
     _coerce_cell_value,
     _is_blank,
     parser_output_from_sheets,
 )
+from backend.app.adapters.parsers.ole import OleError, read_directory
 
 PARSER_NAME = "xlrd"
 
@@ -54,17 +63,21 @@ _BIFF_BOF_RECORDS = {b"\x09\x00", b"\x09\x02", b"\x09\x04", b"\x09\x08"}
 MAX_XLS_BYTES = 32 * 1024 * 1024  # above the 25 MB upload limit; a larger file is not opened
 MAX_XLS_SHEETS = 100
 MAX_XLS_ROWS_PER_SHEET = 50_000  # BIFF8 itself stops at 65,536
-MAX_XLS_CELLS = 250_000  # non-empty cells read from the whole workbook
+MAX_XLS_LOADED_ROWS = 200_000  # rows xlrd builds, empty ones included, in the whole workbook
+MAX_XLS_TABLE_SLOTS = 2_000_000  # table cells kept, empty padding included
+MAX_XLS_CELLS = 100_000  # non-empty cells read from the whole workbook
 
 # OLE storage and stream names (compared lowercased).
 _VBA_NAMES = {"_vba_project_cur", "_vba_project"}  # Excel keeps its VBA project in _VBA_PROJECT_CUR
 _ENCRYPTED_PACKAGE_NAMES = {"encryptedpackage", "encryptioninfo"}  # a password-protected .xlsx
+_WORKBOOK_STREAMS = {"workbook", "book"}  # the streams xlrd reads, either of which it may fall back to
 
 # xlrd's cell types (xlrd.XL_CELL_*) and error codes (xlrd.error_text_from_code), here so
 # reading a value does not import xlrd.
-_TEXT, _NUMBER, _DATE, _BOOLEAN, _ERROR = 1, 2, 3, 4, 5
+_TEXT, _NUMBER, _DATE, _BOOLEAN, _ERROR, _BLANK = 1, 2, 3, 4, 5, 6
 _ERROR_TEXT = {0x00: "#NULL!", 0x07: "#DIV/0!", 0x0F: "#VALUE!", 0x17: "#REF!", 0x1D: "#NAME?",
                0x24: "#NUM!", 0x2A: "#N/A"}
+_FILLED = re.compile(rb"[^\x00\x06]")  # a cell whose type is neither empty nor blank
 
 NOT_A_LEGACY_WORKBOOK = (
     "This .xls is not an Excel 97-2003 workbook (it looks like a web page or text export). "
@@ -75,6 +88,7 @@ PASSWORD_PROTECTED = (
     "Ask for a copy without a password."
 )
 CONTAINS_MACROS = "The workbook contains macros. They were not run."
+DAMAGED_SHEETS = "Could not read workbook: its sheets share or overlap the same data, so it is damaged."
 
 
 class XlsError(ValueError):
@@ -92,6 +106,15 @@ class _Discard(io.TextIOBase):
 
     def write(self, text: str) -> int:
         return len(text)
+
+
+class XlsBudget:
+    """What reading one workbook may still load. ``stopped`` says where loading stopped."""
+
+    def __init__(self) -> None:
+        self.rows_left = MAX_XLS_LOADED_ROWS
+        self.bytes_read = 0
+        self.stopped: str | None = None
 
 
 def is_zip(path: Path) -> bool:
@@ -135,44 +158,33 @@ def open_xls(path: Path) -> tuple[Any, list[dict[str, str]]]:
         raise XlsError("workbook_load_failed", f"Could not open workbook: {type(exc).__name__}.") from exc
     except Exception as exc:  # noqa: BLE001 - xlrd asserts and indexes freely on damaged files
         raise XlsError("workbook_load_failed", f"Could not open workbook: {type(exc).__name__}.") from exc
+    starts = list(getattr(book, "_sh_abs_posn", []))  # where each sheet's records begin (xlrd 2.0.2)
+    if len(set(starts)) != len(starts):
+        book.release_resources()
+        raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
     return book, notes
 
 
 def _check_ole(data: bytes) -> bool:
-    """Check the OLE2 container before xlrd reads the workbook stream; return whether it
-    holds a VBA project.
+    """Check the OLE2 container before xlrd reads it (``ole.read_directory``: the directory
+    tree and every chain walked once); return whether it holds a VBA project.
 
-    xlrd follows a small stream's chain through the mini-stream allocation table without
-    checking for a loop, so a chain that loops would never end. That chain is walked here
-    first, with a bound. An encrypted ``.xlsx`` (an OLE file holding ``EncryptedPackage``)
-    is password-protected rather than damaged.
+    The workbook streams' chains are checked too: xlrd follows a small stream's chain (an
+    empty one included) through the mini allocation table without a loop check, and falls
+    back from an empty ``Workbook`` to ``Book``. An encrypted ``.xlsx`` (an OLE file holding
+    ``EncryptedPackage``) is password-protected rather than damaged.
     """
 
-    from xlrd import compdoc
-
     try:
-        document = compdoc.CompDoc(data, logfile=_Discard())
-    except Exception as exc:  # noqa: BLE001 - CompDocError, or asserts/recursion on a damaged directory
-        raise XlsError("workbook_load_failed", f"Could not open workbook: {type(exc).__name__}.") from exc
-
-    names = {str(node.name).lower() for node in document.dirlist}
-    if names & _ENCRYPTED_PACKAGE_NAMES:
-        raise XlsError("password_protected", PASSWORD_PROTECTED)
-
-    top_level = [document.dirlist[index] for index in document.dirlist[0].children]
-    for wanted in ("workbook", "book"):  # the streams xlrd looks for, in its order
-        stream = next((node for node in top_level if str(node.name).lower() == wanted), None)
-        if stream is None:
-            continue
-        if stream.etype == 2 and 0 < stream.tot_size < document.min_size_std_stream:
-            mini_table = document.SSAT
-            sector, steps = stream.first_SID, 0
-            while sector >= 0:
-                steps += 1
-                if sector >= len(mini_table) or steps > len(mini_table):
-                    raise XlsError("workbook_load_failed", "Could not open workbook: its sector chain is damaged.")
-                sector = mini_table[sector]
-        break
+        directory = read_directory(data)
+        names = directory.names()
+        if names & _ENCRYPTED_PACKAGE_NAMES:
+            raise XlsError("password_protected", PASSWORD_PROTECTED)
+        for entry in directory.top_level:
+            if entry.kind == 2 and entry.name.lower() in _WORKBOOK_STREAMS:
+                directory.check_chain(entry)
+    except OleError as exc:
+        raise XlsError("workbook_load_failed", f"Could not open workbook: {exc}") from exc
     return bool(names & _VBA_NAMES)
 
 
@@ -205,22 +217,49 @@ def _number(value: Any) -> int | float:
     return value
 
 
-def xls_worksheets(book: Any) -> Iterator[tuple[str, Iterator[list[Any]]]]:
-    """Each worksheet's name and its rows of values (list index = column). A sheet is
-    loaded when its rows are first read and unloaded when they are done."""
+# A row as the readers take it: its filled cells, as (0-based column, value), left to right.
+FilledCells = list[tuple[int, Any]]
+
+
+def xls_worksheets(book: Any, budget: XlsBudget, *, max_columns: int | None = None
+                   ) -> Iterator[tuple[str, Iterator[FilledCells]]]:
+    """Each worksheet's name and its rows, every row (empty ones too) as its filled cells,
+    only the first ``max_columns`` looked at. A sheet is loaded when its rows are first
+    read and unloaded when they are done; once ``budget`` has no rows left, no further
+    sheet is loaded."""
 
     for index, name in enumerate(book.sheet_names()):
-        yield str(name), _worksheet_rows(book, index)
+        yield str(name), _worksheet_rows(book, index, str(name), budget, max_columns)
 
 
-def _worksheet_rows(book: Any, index: int) -> Iterator[list[Any]]:
+def _worksheet_rows(book: Any, index: int, name: str, budget: XlsBudget, max_columns: int | None
+                    ) -> Iterator[FilledCells]:
+    if budget.rows_left <= 0:
+        budget.stopped = budget.stopped or f"before sheet '{name}' ({MAX_XLS_LOADED_ROWS} rows already loaded)"
+        return
     sheet = book.sheet_by_index(index)
     try:
+        starts = getattr(book, "_sh_abs_posn", None)
+        end = getattr(book, "_position", None)  # where xlrd stopped reading this sheet (xlrd 2.0.2)
+        if starts is not None and isinstance(end, int) and index < len(starts):
+            # Sheets that overlap make xlrd read the same records again for each of them.
+            budget.bytes_read += max(0, end - starts[index])
+            if budget.bytes_read > max(int(getattr(book, "stream_len", 0) or 0), 1):
+                raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
+        budget.rows_left -= sheet.nrows
         for row in range(sheet.nrows):
-            yield [
-                xls_cell_value(cell_type, value, book.datemode)
-                for cell_type, value in zip(sheet.row_types(row), sheet.row_values(row))
-            ]
+            types = sheet.row_types(row, 0, max_columns).tobytes()
+            if not _FILLED.search(types):
+                yield []
+                continue
+            values = sheet.row_values(row, 0, max_columns)
+            cells: FilledCells = []
+            for match in _FILLED.finditer(types):
+                column = match.start()
+                value = xls_cell_value(types[column], values[column], book.datemode)
+                if not _is_blank(value):
+                    cells.append((column, value))
+            yield cells
     finally:
         book.unload_sheet(index)
 
@@ -236,13 +275,23 @@ def column_letter(index: int) -> str:
     return letters
 
 
-def _with_coordinates(worksheets: Iterator[tuple[str, Iterator[list[Any]]]]) -> Iterator[Sheet]:
+_NO_CELL: SheetCell = (None, None)
+
+
+def _positional(row: int, cells: FilledCells) -> list[SheetCell]:
+    """A row for the shared builder: list index = column, up to its last filled cell."""
+
+    if not cells:
+        return []
+    slots = [_NO_CELL] * (cells[-1][0] + 1)
+    for column, value in cells:
+        slots[column] = (f"{column_letter(column)}{row + 1}", value)
+    return slots
+
+
+def _with_coordinates(worksheets: Iterator[tuple[str, Iterator[FilledCells]]]) -> Iterator[Sheet]:
     for name, rows in worksheets:
-        yield name, (
-            [(None if _is_blank(value) else f"{column_letter(column)}{row + 1}", value)
-             for column, value in enumerate(values)]
-            for row, values in enumerate(rows)
-        )
+        yield name, (_positional(row, cells) for row, cells in enumerate(rows))
 
 
 class XlsParser:
@@ -264,9 +313,10 @@ class XlsParser:
         except XlsError as exc:
             return self._failed(exc.code, exc.message, document_id, processing_run_id)
 
+        budget = XlsBudget()
         try:
             output = parser_output_from_sheets(
-                _with_coordinates(xls_worksheets(book)),
+                _with_coordinates(xls_worksheets(book, budget)),
                 parser_name=self.parser_name,
                 document_id=document_id,
                 processing_run_id=processing_run_id,
@@ -274,12 +324,22 @@ class XlsParser:
                 max_sheets=MAX_XLS_SHEETS,
                 max_rows_per_sheet=MAX_XLS_ROWS_PER_SHEET,
                 max_cells=MAX_XLS_CELLS,
+                max_table_slots=MAX_XLS_TABLE_SLOTS,
             )
+        except XlsError as exc:
+            return self._failed(exc.code, exc.message, document_id, processing_run_id)
         except Exception as exc:  # noqa: BLE001 - a damaged sheet stream
             return self._failed("workbook_load_failed", f"Could not read workbook: {type(exc).__name__}.",
                                 document_id, processing_run_id)
         finally:
             book.release_resources()
+        if budget.stopped:
+            output["warnings"].append(build_warning(
+                "workbook_truncated",
+                f"The workbook is larger than can be read here. Reading stopped {budget.stopped}.",
+            ))
+            if output["status"] == "parsed":
+                output["status"] = "partial"
         return output
 
     def _failed(self, code: str, message: str, document_id: str, processing_run_id: str) -> dict:

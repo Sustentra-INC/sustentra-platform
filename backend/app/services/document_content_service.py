@@ -26,7 +26,14 @@ from typing import Any
 
 from backend.app.adapters.parsers.docx_parser import DocxError, docx_text
 from backend.app.adapters.parsers.excel_parser import _coerce_cell_value, _is_blank, read_only_workbook
-from backend.app.adapters.parsers.xls_parser import XlsError, is_zip, open_xls, xls_worksheets
+from backend.app.adapters.parsers.xls_parser import (
+    FilledCells,
+    XlsBudget,
+    XlsError,
+    is_zip,
+    open_xls,
+    xls_worksheets,
+)
 from backend.app.services.parser_service import ParserService
 
 MAX_SHEETS = 30
@@ -145,18 +152,25 @@ def _xls_workbook(path: Path, budget: _Budget) -> dict[str, Any]:
         book, _notes = open_xls(path)
     except XlsError as exc:
         raise UnreadableContent(exc.message) from exc
+    loading = XlsBudget()
     try:
-        sheets = ((name, _xls_rows(rows)) for name, rows in xls_worksheets(book))
-        return _sheets(sheets, book.nsheets, budget)
+        # Only the columns the pane draws are looked at, and only filled cells converted.
+        sheets = ((name, _xls_rows(rows)) for name, rows in xls_worksheets(book, loading, max_columns=MAX_COLUMNS))
+        content = _sheets(sheets, book.nsheets, budget)
+    except XlsError as exc:
+        raise UnreadableContent(exc.message) from exc
     except Exception as exc:  # noqa: BLE001 - a damaged sheet stream
         raise UnreadableContent("The workbook could not be opened.") from exc
     finally:
         book.release_resources()
+    if loading.stopped:
+        content["truncated"] = True
+    return content
 
 
-def _xls_rows(rows: Iterator[list[Any]]) -> Iterator[tuple[int | None, dict[int, Any]]]:
-    for number, values in enumerate(rows, start=1):
-        yield number, {column: value for column, value in enumerate(values[:MAX_COLUMNS]) if not _is_blank(value)}
+def _xls_rows(rows: Iterator[FilledCells]) -> Iterator[tuple[int | None, dict[int, Any]]]:
+    for number, cells in enumerate(rows, start=1):
+        yield number, dict(cells)
 
 
 def _decoded(path: Path) -> str:
