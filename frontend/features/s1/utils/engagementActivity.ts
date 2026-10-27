@@ -40,7 +40,9 @@ export function engagementActivity(input: {
   }
   for (const value of input.values) {
     for (const entry of value.record) {
-      if (entry.kind === "human" && entry.at) {
+      // A request's outcome on a card ("Request 3 resolved") is the request's own event, which
+      // its history logs once below: it is not a review, and not one entry per value.
+      if (entry.kind === "human" && entry.at && !entry.outcomeOf) {
         log.push({
           at: entry.at,
           who: entry.actor,

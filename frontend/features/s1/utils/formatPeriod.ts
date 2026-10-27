@@ -83,7 +83,10 @@ export function readablePeriod(period: string): string {
   const range = /^(\d{4}-\d{2}-\d{2}|\?) to (\d{4}-\d{2}-\d{2}|\?)$/.exec(text);
   if (range) {
     const [, start, end] = range;
-    if (start === "?" && end === "?") return period;
+    // Each end is a real calendar date or "?"; a range with any other end ("2025-13-01") is
+    // shown as it was stored.
+    const real = (day: string) => day === "?" || formatPrintedDate(day) !== day;
+    if ((start === "?" && end === "?") || !real(start) || !real(end)) return period;
     if (start === "?") return `start not read – ${formatPrintedDate(end)}`;
     if (end === "?") return `${formatPrintedDate(start)} – end not read`;
     return formatDocumentPeriod(start, end);
