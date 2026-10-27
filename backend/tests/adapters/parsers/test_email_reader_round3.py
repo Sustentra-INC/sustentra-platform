@@ -21,6 +21,7 @@ import pytest
 from backend.app.adapters.parsers import email_reader
 from backend.app.adapters.parsers.email_parser import email_warnings
 from backend.app.adapters.parsers.email_reader import EmailError, read_eml
+from backend.tests.adapters.parsers._timing import budget
 
 HEAD = b"From: a@example.com\r\nSubject: s\r\nMIME-Version: 1.0\r\n"
 ENVELOPED = (b'Content-Type: application/pkcs7-mime; smime-type=enveloped-data; name="smime.p7m"\r\n'
@@ -61,7 +62,7 @@ def test_every_boundary_declaration_shortens_the_line_budget(declare: bytes) -> 
     # first four spellings slipped past it and took 53.7 s on 3.12.
     started = time.perf_counter()
     package = read_eml(raw)
-    assert time.perf_counter() - started < 3
+    assert time.perf_counter() - started < budget(3)
     assert "email_truncated" in {code for code, _ in package.notes}
 
 
@@ -288,7 +289,7 @@ def test_every_stdlib_codec_decodes_adversarial_input_in_linear_time() -> None:
             started = time.perf_counter()
             email_reader._decode_bytes(payload, module)
             elapsed = time.perf_counter() - started
-            assert elapsed < 1, f"{module} on {pattern}: {elapsed:.2f}s"
+            assert elapsed < budget(1), f"{module} on {pattern}: {elapsed:.2f}s"
         timed += 1
     assert timed > 100  # every text codec stdlib ships (121 modules on 3.12)
 

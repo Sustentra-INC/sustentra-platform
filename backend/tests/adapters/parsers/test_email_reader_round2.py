@@ -11,6 +11,7 @@ import pytest
 
 from backend.app.adapters.parsers import email_reader
 from backend.app.adapters.parsers.email_reader import EmailError, read_eml
+from backend.tests.adapters.parsers._timing import budget
 
 HEAD = b"From: a@example.com\r\nSubject: s\r\nMIME-Version: 1.0\r\n"
 
@@ -31,7 +32,7 @@ def test_deep_multipart_nesting_with_many_lines_is_read_fast(depth: int) -> None
     raw += b"Content-Type: text/plain\r\n\r\n" + b"\n" * 990_000
     started = time.perf_counter()
     package = read_eml(raw)
-    assert time.perf_counter() - started < 3
+    assert time.perf_counter() - started < budget(3)
     assert "email_truncated" in {code for code, _ in package.notes}
 
 
@@ -101,7 +102,7 @@ def test_text_lines_are_counted_the_way_they_are_split() -> None:
     # 600k "a\x0c" counted as one "\n"-line, but split into 600k blocks (459 MB).
     started = time.perf_counter()
     body = read_eml(HEAD + b"Content-Type: text/plain\r\n\r\n" + b"a\x0c" * 600_000).body_text
-    assert time.perf_counter() - started < 3
+    assert time.perf_counter() - started < budget(3)
     assert len([line for line in body.splitlines() if line.strip()]) == email_reader.MAX_TEXT_LINES
 
 

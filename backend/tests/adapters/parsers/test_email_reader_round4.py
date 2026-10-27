@@ -19,6 +19,7 @@ import pytest
 from backend.app.adapters.parsers.email_parser import email_text, email_warnings
 from backend.app.adapters.parsers.email_reader import EmailError, read_eml
 from backend.app.services.document_content_service import document_content
+from backend.tests.adapters.parsers._timing import budget
 
 HEAD = b"From: a@example.com\r\nSubject: s\r\nMIME-Version: 1.0\r\n"
 ENVELOPED = (b'Content-Type: application/pkcs7-mime; smime-type=enveloped-data; name="smime.p7m"\r\n'
@@ -73,7 +74,7 @@ def test_a_crafted_encrypted_forward_is_measured_quickly() -> None:
              + b"".join(b"X-H%d: " % index + b"; " * 3000 + b"\r\n" for index in range(600)) + PGP)
     started = time.perf_counter()
     package = read_eml(_mixed(COVER, _forward(inner)))
-    assert time.perf_counter() - started < 0.5
+    assert time.perf_counter() - started < budget(0.5)
     [part] = package.attachments
     assert part.note == "the forwarded message is encrypted"
     # CRLF line ends: header lines are written back with LF, so the size is a little under the source.

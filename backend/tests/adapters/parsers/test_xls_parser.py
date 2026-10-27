@@ -22,6 +22,7 @@ from backend.app.adapters.parsers import xls_parser  # noqa: E402
 from backend.app.adapters.parsers.excel_parser import ExcelParser  # noqa: E402
 from backend.app.adapters.parsers.xls_parser import XlsParser, column_letter, xls_worksheets  # noqa: E402
 from backend.tests.adapters.parsers._parser_output_asserts import assert_parser_output_shape  # noqa: E402
+from backend.tests.adapters.parsers._timing import budget  # noqa: E402
 from backend.tests.adapters.parsers._xls_builder import (  # noqa: E402
     ErrorCell,
     FormulaCell,
@@ -252,7 +253,7 @@ def test_a_looping_sector_chain_is_refused_before_xlrd_follows_it(tmp_path: Path
     path.write_bytes(ole_file({name: body[kind] for name, kind in streams.items()}, loop_mini_chain=looping))
     started = time.perf_counter()
     output = XlsParser().parse(path, "D", "R")
-    assert time.perf_counter() - started < 1
+    assert time.perf_counter() - started < budget(1)
     assert output["status"] == "failed"
     assert output["warnings"][0]["code"] == "workbook_load_failed"
 
@@ -273,7 +274,7 @@ def test_a_directory_shaped_as_a_dag_is_refused_in_time(tmp_path: Path, entries:
     assert "reached twice" in output["warnings"][0]["message"]
     with pytest.raises(UnreadableContent):  # the source pane is refused just as fast
         document_content(path)
-    assert time.perf_counter() - started < 1
+    assert time.perf_counter() - started < budget(1)
 
 
 @pytest.mark.parametrize("damage", ["truncated", "garbage", "no_workbook_stream"])
@@ -355,7 +356,7 @@ def test_wide_sparse_sheets_are_read_in_bounded_time_and_size(tmp_path: Path) ->
     started = time.perf_counter()
     output = XlsParser().parse(path, "D", "R")
     elapsed = time.perf_counter() - started
-    assert elapsed < 3, elapsed
+    assert elapsed < budget(3), elapsed
     assert output["status"] == "partial"
     assert sum(len(row) for table in output["tables"] for row in table["rows"]) <= xls_parser.MAX_XLS_TABLE_SLOTS
     assert "table cells" in output["warnings"][-1]["message"]
@@ -364,7 +365,7 @@ def test_wide_sparse_sheets_are_read_in_bounded_time_and_size(tmp_path: Path) ->
 
     started = time.perf_counter()
     assert document_content(path)["sheets"] == []
-    assert time.perf_counter() - started < 3
+    assert time.perf_counter() - started < budget(3)
 
 
 @pytest.mark.parametrize("overlap_step", [None, 4], ids=["identical_offsets", "distinct_offsets"])
@@ -375,7 +376,7 @@ def test_sheets_that_point_at_the_same_records_are_refused(tmp_path: Path, overl
     path = _xls(tmp_path, {"S": _wide_rows(10_000)}, shared_sheets=99, overlap_step=overlap_step)
     started = time.perf_counter()
     output = XlsParser().parse(path, "D", "R")
-    assert time.perf_counter() - started < 2
+    assert time.perf_counter() - started < budget(2)
     assert (output["status"], output["warnings"][0]["code"]) == ("failed", "workbook_load_failed")
     assert output["warnings"][0]["message"] == xls_parser.DAMAGED_SHEETS
 
@@ -393,7 +394,7 @@ def test_a_sheet_with_an_embedded_block_that_hides_an_overlap_is_refused(tmp_pat
     path.write_bytes(embedded_block_xls(overlap=True))
     started = time.perf_counter()
     output = XlsParser().parse(path, "D", "R")
-    assert time.perf_counter() - started < 2
+    assert time.perf_counter() - started < budget(2)
     assert (output["status"], output["warnings"][0]["message"]) == ("failed", xls_parser.DAMAGED_SHEETS)
 
     from backend.app.services.document_content_service import UnreadableContent, document_content
@@ -407,7 +408,7 @@ def test_a_sheet_with_a_legitimate_embedded_chart_still_parses(tmp_path: Path) -
     path.write_bytes(embedded_block_xls(overlap=False))
     started = time.perf_counter()
     output = XlsParser().parse(path, "D", "R")
-    assert time.perf_counter() - started < 2
+    assert time.perf_counter() - started < budget(2)
     assert output["status"] == "parsed"  # the embedded chart block is read past, both sheets kept
     assert {ref["sheet_name"] for ref in output["source_references"]} == {"A", "B"}
 
@@ -430,7 +431,7 @@ def test_sheets_that_run_past_the_workbook_stream_are_refused(tmp_path: Path, sh
     path.write_bytes(past_the_stream_xls(shape))
     started = time.perf_counter()
     output = XlsParser().parse(path, "D", "R")
-    assert time.perf_counter() - started < 2
+    assert time.perf_counter() - started < budget(2)
     assert_parser_output_shape(output)
     assert (output["status"], output["warnings"][0]["code"], output["warnings"][0]["message"]) == (
         "failed", "workbook_load_failed", xls_parser.DAMAGED_SHEETS)

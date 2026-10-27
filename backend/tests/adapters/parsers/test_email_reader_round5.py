@@ -18,6 +18,7 @@ import pytest
 from backend.app.adapters.parsers.email_parser import EmailParser, email_text, email_warnings
 from backend.app.adapters.parsers.email_reader import read_eml
 from backend.app.services.document_content_service import document_content
+from backend.tests.adapters.parsers._timing import budget
 
 
 def _blocks_and_pane(raw: bytes, tmp_path: Path) -> tuple[list[str], list[str]]:
@@ -298,7 +299,7 @@ def test_a_delivery_status_part_of_blank_lines_is_read_quickly(where: str, blank
     shown = time.perf_counter() - started
 
     # It took 3.5 s (and about 260 MB) each way, in every one of these places.
-    assert parsed < 1.0 and shown < 1.0, (parsed, shown)
+    assert parsed < budget(1.0) and shown < budget(1.0), (parsed, shown)
     assert output["status"] == "parsed"
     assert [block["text"] for block in output["text_blocks"]] == pane == lines
     # One part, not one per blank line: the part budget is not used up.
