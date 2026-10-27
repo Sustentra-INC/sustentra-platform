@@ -94,6 +94,19 @@ def test_an_excel_97_2003_workbook_routes_to_the_xls_parser(tmp_path: Path) -> N
     assert ParserService.parser_kind(Path("export"), "application/vnd.ms-excel; charset=binary") == "xls"
 
 
+def test_an_email_routes_to_the_email_parser(tmp_path: Path) -> None:
+    raw = b"From: billing@acme.example\r\nSubject: February\r\n\r\nTotal Usage: 120 therms\r\n"
+    for name, mime in (("bill.eml", None), ("BILL.EML", None), ("message", "message/rfc822")):
+        path = tmp_path / name
+        path.write_bytes(raw)
+        output = ParserService().parse_document(path, document_id="DOC-1", processing_run_id="RUN-1", mime_type=mime)
+        assert_parser_output_shape(output)
+        assert (output["status"], output["parser_name"]) == ("parsed", "email_parser")
+        assert output["text_blocks"][-1]["text"] == "Total Usage: 120 therms"
+    assert ParserService.parser_kind(Path("bill.eml")) == "email"
+    assert ParserService.parser_kind(Path("bill.msg")) is None  # Outlook's own format: not read yet
+
+
 def test_an_xlsx_with_no_extension_is_read_by_its_media_type(tmp_path: Path) -> None:
     openpyxl = pytest.importorskip("openpyxl")
     workbook = openpyxl.Workbook()

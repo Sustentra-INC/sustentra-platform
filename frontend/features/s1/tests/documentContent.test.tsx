@@ -28,6 +28,9 @@ describe("where a value sits in a file without pages", () => {
     expect(anchorOf("csv", { cell_or_range: "row 2", parser_block_ids: ["csv_parser-r2-b2"] })).toEqual({ kind: "row", row: 2 });
     expect(anchorOf("docx", { parser_block_ids: ["docx_parser-p1-b7", "docx_parser-p1-b6"] })).toEqual({ kind: "line", line: 7 });
     expect(anchorOf("other", { parser_block_ids: ["text_parser-p1-b3"] })).toEqual({ kind: "line", line: 3 });
+    // An email (.eml) is its lines too: headers, message text, attachment names.
+    expect(anchorOf("other", { cell_or_range: "part 2", parser_block_ids: ["email_parser-p1-b5"] }))
+      .toEqual({ kind: "line", line: 5, part: 2 });
     expect(anchorOf("pdf", { parser_block_ids: ["pymupdf-p1-b3"] })).toBeNull(); // a PDF has its box
     expect(anchorOf("xlsx", { sheet_name: "Log", cell_or_range: null })).toBeNull();
   });

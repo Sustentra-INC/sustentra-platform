@@ -26,6 +26,7 @@ export const READABLE_UPLOAD_EXTENSIONS = [
   ".txt",
   ".md",
   ".markdown",
+  ".eml",
   ".png",
   ".jpg",
   ".jpeg",
@@ -41,16 +42,18 @@ export const READABLE_UPLOAD_TYPES: ReadonlySet<string> = new Set([
   "application/vnd.ms-excel",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "message/rfc822",
   "image/png",
   "image/jpeg",
   "image/tiff",
 ]);
 
 /**
- * Image extensions the parser knows but no reader opens. As in the upload route, the
- * extension decides first, so these are refused whatever their media type says.
+ * Extensions refused whatever their media type says, as in the upload route (the extension
+ * decides first): image formats the parser knows but no reader opens, and Outlook messages
+ * (.msg), not read yet even when the browser calls one message/rfc822.
  */
-const UNREADABLE_IMAGE_EXTENSIONS: readonly string[] = [".gif", ".bmp", ".webp"];
+export const UNREADABLE_EXTENSIONS: readonly string[] = [".gif", ".bmp", ".webp", ".msg"];
 
 /** The file pickers' `accept` list. */
 export const UPLOAD_ACCEPT = READABLE_UPLOAD_EXTENSIONS.join(",");
@@ -60,7 +63,7 @@ export function isReadableUpload(file: { name: string; type?: string }): boolean
   const dot = file.name.lastIndexOf(".");
   const extension = dot > 0 ? file.name.slice(dot).toLowerCase() : ""; // ".pdf" alone has none, as in Python
   if ((READABLE_UPLOAD_EXTENSIONS as readonly string[]).includes(extension)) return true;
-  if (UNREADABLE_IMAGE_EXTENSIONS.includes(extension)) return false;
+  if (UNREADABLE_EXTENSIONS.includes(extension)) return false;
   const type = (file.type ?? "").split(";")[0].trim().toLowerCase();
   return READABLE_UPLOAD_TYPES.has(type);
 }
@@ -69,7 +72,7 @@ export function isReadableUpload(file: { name: string; type?: string }): boolean
 export function unreadableUploadMessage(filename: string): string {
   return (
     `${filename} can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, ` +
-    "or a scan or photo (PNG, JPG or TIFF)."
+    "an email (.eml), or a scan or photo (PNG, JPG or TIFF)."
   );
 }
 

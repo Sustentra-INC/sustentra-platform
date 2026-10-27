@@ -155,7 +155,7 @@ export function UploadDialog({
             <span className="s1-updlg__droptext">
               <strong>Drop files here</strong> or <span className="s1-updlg__browse">choose files</span>
             </span>
-            <span className="s1-updlg__hint">PDF, Word, Excel, CSV, scans and photos · up to {MAX_UPLOAD_MB} MB each</span>
+            <span className="s1-updlg__hint">PDF, Word, Excel, CSV, emails, scans and photos · up to {MAX_UPLOAD_MB} MB each</span>
             <input
               className="s1-file-input"
               type="file"

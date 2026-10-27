@@ -1,14 +1,15 @@
-"""The content of an uploaded spreadsheet, CSV or Word/text file, for the source pane.
+"""The content of an uploaded spreadsheet, CSV, Word/text file or email, for the source pane.
 
 A PDF or image is shown as a page picture with the value outlined on it. These files have
 no page, so the pane draws their content instead: a grid for a workbook or CSV, lines for
-Word and text. The numbering is the parsers' own, so an extracted value's source reference
+Word, text and emails. The numbering is the parsers' own, so an extracted value's source reference
 points at the right spot:
 
 - Excel: sheet name and cell ("D2"), as ``openpyxl`` reports them (the ``.xls`` reader
   numbers cells the same way).
 - CSV: the row number in the file, counting blank rows (the CSV parser's ``r<N>``).
-- Word / text: the n-th non-empty line (the text parser's block ``b<N>``).
+- Word / text / email: the n-th non-empty line (the text parser's block ``b<N>``); an email's
+  lines are the email parser's own rendering (headers, message text, attachment names).
 
 The work and the response are bounded whatever the file holds: one budget for all cells
 and characters, a cap on rows scanned (empty ones included) and on line length, and Word
@@ -25,6 +26,8 @@ from pathlib import Path
 from typing import Any
 
 from backend.app.adapters.parsers.docx_parser import DocxError, docx_text
+from backend.app.adapters.parsers.email_parser import email_text, read_email_file
+from backend.app.adapters.parsers.email_reader import EmailError
 from backend.app.adapters.parsers.excel_parser import _coerce_cell_value, _is_blank, read_only_workbook
 from backend.app.adapters.parsers.xls_parser import XlsError, is_zip, open_xls, xls_worksheets
 from backend.app.services.parser_service import ParserService
@@ -211,7 +214,7 @@ def _docx_text_size(path: Path) -> int:
 
 
 def document_content(path: Path, mime_type: str | None = None) -> dict[str, Any]:
-    """The file's content as sheets (Excel, CSV) or lines (Word, text)."""
+    """The file's content as sheets (Excel, CSV) or lines (Word, text, email)."""
 
     kind = ParserService.parser_kind(path, mime_type)
     budget = _Budget()
@@ -230,4 +233,9 @@ def document_content(path: Path, mime_type: str | None = None) -> dict[str, Any]
             raise UnreadableContent(str(exc)) from exc
     if kind == "text":
         return _lines(_decoded(path), budget)
+    if kind == "email":
+        try:
+            return _lines(email_text(read_email_file(path)), budget)
+        except EmailError as exc:
+            raise UnreadableContent(exc.message) from exc
     raise UnsupportedContent("This file is shown as pages, not as content.")
