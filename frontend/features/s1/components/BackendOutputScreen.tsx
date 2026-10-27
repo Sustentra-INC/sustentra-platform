@@ -1,45 +1,29 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { apiPath } from "../../../lib/api";
+import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import {
-  documentsStillOpen,
-  formatNumber,
+  coverageFromRecalculation,
+  documentsBasis,
   getRecalculation,
-  recalculationMateriality,
-  type ComparisonStatus,
   type Recalculation,
 } from "../api/recalculation";
 import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig, EvidenceItem, ReviewValue } from "../types";
 import type { Ask } from "../types/requests";
 import type { Finding } from "../types/verification";
-import { formatReportingPeriod } from "../utils/formatPeriod";
+import { dashboardFigures } from "../utils/engagementActivity";
+import { liveStatementFigures } from "../utils/outputStatement";
+import { OutputScreen, type LiveOutput } from "./OutputScreen";
 
 /**
- * Output in backend mode: the engagement's real results as a draft working paper, with
- * the whole workpaper as an Excel download. Every figure is the recalculation's; nothing
- * is illustrative. It is not an assurance opinion, and says so.
+ * Output in backend mode: the demo's statement (OutputScreen) on the engagement's real
+ * results, from the same live results as Verification results, with the whole workpaper as
+ * an Excel download. Every figure is the recalculation's; nothing is illustrative. It is a
+ * draft working paper, not an assurance opinion, and says so.
  */
-const ROWS: { key: string; label: string }[] = [
-  { key: "stationary_combustion_total", label: "Scope 1 · fuel burned on site" },
-  { key: "mobile_combustion_total", label: "Scope 1 · vehicle fuel" },
-  { key: "fugitive_total", label: "Scope 1 · refrigerants and fire suppression" },
-  { key: "scope1_total", label: "Scope 1 · total" },
-  { key: "scope2_location_total", label: "Scope 2 · purchased electricity, location-based" },
-  { key: "scope2_market_total", label: "Scope 2 · purchased electricity, market-based" },
-];
-
-const OUTCOME: Record<ComparisonStatus, { label: string; role: string }> = {
-  within_tolerance: { label: "Held", role: "resolved" },
-  exceeds_tolerance: { label: "Exception", role: "blocking" },
-  not_reported: { label: "Reported value not entered", role: "unverifiable" },
-  no_evidence: { label: "No reviewed evidence", role: "unverifiable" },
-  not_recalculated: { label: "Not calculated yet", role: "na" },
-  not_in_scope: { label: "Not in scope", role: "na" },
-};
-
 export function BackendOutputScreen({
   engagement,
   evidence,
@@ -76,6 +60,12 @@ export function BackendOutputScreen({
     };
   }, [engagement.engagementId]);
 
+  const current = result && result.engagement_id === engagement.engagementId ? result : null;
+  const output = useMemo(
+    () => (current ? liveOutputFrom(current, values, findings) : null),
+    [current, values, findings]
+  );
+
   if (!engagement.engagementId) {
     return (
       <section className="s1-content s1-output">
@@ -94,7 +84,7 @@ export function BackendOutputScreen({
       </section>
     );
   }
-  if (!result || result.engagement_id !== engagement.engagementId) {
+  if (!current || !output) {
     return (
       <section className="s1-content s1-output">
         <p className="s1-muted">Assembling the results…</p>
@@ -102,179 +92,41 @@ export function BackendOutputScreen({
     );
   }
 
-  const byKey = new Map(result.comparisons.map((c) => [c.key, c]));
-  const materiality = recalculationMateriality(result);
-  const scope1 = result.scope_totals.scope1?.total_co2e ?? null;
-  const location = result.scope_totals.scope2_location?.total_co2e ?? null;
-  const market = result.scope_totals.scope2_market?.total_co2e ?? null;
-  const t = (n: number | null) => (n === null ? "Not calculated" : formatNumber(n));
-  const reviewed = values.filter((v) => v.reviewState === "accepted" || v.reviewState === "corrected");
+  return (
+    <OutputScreen
+      engagement={engagement}
+      lines={output.lines}
+      figures={dashboardFigures({ evidence, values, asks, findings, coverage: coverageFromRecalculation(current) })}
+      live={output.live}
+    />
+  );
+}
+
+/** The live statement and the lines it is built from (the same as Verification results). */
+export function liveOutputFrom(
+  result: Recalculation,
+  values: ReviewValue[],
+  findings: Finding[]
+): { lines: ReturnType<typeof liveResultsFromRecalculation>["lines"]; live: LiveOutput } {
+  const results = liveResultsFromRecalculation(result);
   const corrected = values.filter((v) => v.reviewState === "corrected").length;
-  const openAsks = asks.filter((a) => a.state === "not_yet_sent" || a.state === "requested").length;
-  const resolvedAsks = asks.filter((a) => a.state === "resolved").length;
   const leftOut = result.excluded ?? [];
-  const stillOpen = documentsStillOpen(result);
-  const period = formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end);
-
-  return (
-    <section className="s1-content s1-output">
-      <header className="s1-ws-header">
-        <div className="s1-ws-header__id">
-          <h1>Output</h1>
-          <span className="s1-muted">This engagement&rsquo;s results, from the reviewed evidence.</span>
-        </div>
-        <div className="s1-out-actions">
-          <span className="s1-state s1-state--open s1-out-status">Draft · not issued</span>
-          <a
-            className="s1-button s1-button--pri"
-            href={apiPath(`/engagements/${encodeURIComponent(engagement.engagementId)}/export`)}
-            download
-          >
-            Download workpaper (Excel)
-          </a>
-        </div>
-      </header>
-
-      <article className="s1-out-doc">
-        <div className="s1-out-doc__band">
-          <div className="s1-out-brand">Sustentra</div>
-          <div className="s1-out-eyebrow">Draft working paper · not an assurance opinion</div>
-        </div>
-        <div className="s1-out-titleblock">
-          <h2>{engagement.clientName || engagement.engagementName || "Engagement"}</h2>
-          <p className="s1-muted">Greenhouse gas emissions · Scope 1 and Scope 2 · recalculated from reviewed evidence</p>
-        </div>
-        <dl className="s1-out-meta">
-          <Meta label="Reporting period" value={period} />
-          <Meta label="Regulation" value={engagement.regulation || "Not set in Setup"} />
-          <Meta label="Assurance level" value={engagement.assuranceLevel || "Not set in Setup"} />
-          <Meta label="Methodology" value={engagement.methodology || "GHG Protocol Corporate Standard"} />
-          <Meta label="Emission factors" value="EPA GHG Emission Factors Hub 2025" />
-          <Meta label="GWP basis" value={`${result.gwp_set}${result.gwp_set === "AR5" ? " (EPA Hub Table 11)" : ""}`} />
-        </dl>
-
-        <section className="s1-out-section">
-          <h3>Recalculated emissions</h3>
-          <div className="s1-out-tiles">
-            <Tile label="Scope 1" value={t(scope1)} />
-            <Tile label="Scope 2 (location-based)" value={t(location)} />
-            <Tile label="Scope 2 (market-based)" value={t(market)} />
-            <Tile
-              label="Materiality threshold"
-              value={formatNumber(materiality.total * (materiality.tolerancePct / 100))}
-              sub={`${materiality.tolerancePct}% of ${formatNumber(materiality.total)} t`}
-            />
-          </div>
-          <div className="s1-table-wrap s1-out-tablewrap">
-            <table className="s1-table s1-out-table">
-              <thead>
-                <tr>
-                  <th>Emissions</th>
-                  <th className="s1-out-num">Reported (t CO₂e)</th>
-                  <th className="s1-out-num">Recalculated (t CO₂e)</th>
-                  <th>Outcome</th>
-                </tr>
-              </thead>
-              <tbody>
-                {ROWS.map(({ key, label }) => {
-                  const c = byKey.get(key);
-                  if (!c) return null;
-                  const outcome = c.inputs_incomplete && c.status !== "not_recalculated"
-                    ? { label: "Inputs incomplete", role: "unverifiable" }
-                    : OUTCOME[c.status];
-                  return (
-                    <tr key={key}>
-                      <td>{label}</td>
-                      <td className="s1-out-num">{c.reported === null ? "Not entered" : formatNumber(c.reported)}</td>
-                      <td className="s1-out-num">{c.recalculated === null ? "None" : formatNumber(c.recalculated)}</td>
-                      <td>
-                        <span className={`s1-state s1-state--${outcome.role}`}>{outcome.label}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="s1-out-section s1-out-split">
-          <div>
-            <h3>Findings</h3>
-            {findings.length === 0 ? (
-              <p className="s1-muted">No findings registered.</p>
-            ) : (
-              <ul className="s1-out-list">
-                {findings.map((f) => (
-                  <li key={f.id}>
-                    <span className="s1-state s1-state--open">{f.status}</span> {f.dataPointLabel}: {f.sentence}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div>
-            <h3>Basis of evidence</h3>
-            <ul className="s1-out-list">
-              <li>
-                <strong>{evidence.length}</strong> documents uploaded,{" "}
-                {result.documents_reviewed === undefined ? (
-                  <>
-                    <strong>{result.documents_considered}</strong> with reviewed values
-                  </>
-                ) : (
-                  <>
-                    <strong>{result.documents_reviewed}</strong> fully reviewed
-                    {stillOpen ? ` (${stillOpen})` : ""}
-                  </>
-                )}
-              </li>
-              <li>
-                <strong>{reviewed.length}</strong> values reviewed, <strong>{corrected}</strong> corrected or entered by the
-                reviewer
-              </li>
-              <li>
-                <strong>{openAsks}</strong> requests open, <strong>{resolvedAsks}</strong> resolved
-              </li>
-              <li>
-                <strong>{leftOut.length}</strong> documents or records left out (withdrawn, duplicate, superseded or outside
-                the period)
-              </li>
-              <li>Not calculated yet: {result.not_recalculated.join(", ")}</li>
-            </ul>
-          </div>
-        </section>
-
-        <section className="s1-out-signoff">
-          <div>
-            <div className="s1-out-signoff__name">Not signed</div>
-            <div className="s1-muted">
-              A draft working paper for the verifier. The assurance opinion is issued by the verifier, not by this tool.
-            </div>
-          </div>
-        </section>
-      </article>
-    </section>
-  );
-}
-
-function Meta({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="s1-out-meta__item">
-      <dt className="s1-label">{label}</dt>
-      <dd>{value}</dd>
-    </div>
-  );
-}
-
-function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="s1-out-tile">
-      <div className="s1-out-tile__label">{label}</div>
-      <div className="s1-out-tile__value">
-        {value} <span className="s1-out-tile__unit">t CO₂e</span>
-      </div>
-      {sub ? <div className="s1-out-tile__sub">{sub}</div> : null}
-    </div>
-  );
+  const reviewed = documentsBasis(result);
+  return {
+    lines: results.lines,
+    live: {
+      statement: liveStatementFigures(results.lines, results.boxTotals, results.inventory, result.tolerance_pct),
+      exportHref: apiPath(`/engagements/${encodeURIComponent(result.engagement_id)}/export`),
+      gwpBasis: `${result.gwp_set}${result.gwp_set === "AR5" ? " (EPA Hub Table 11)" : ""}`,
+      findings,
+      basisLines: [
+        `${reviewed[0].toUpperCase()}${reviewed.slice(1)}`,
+        ...(corrected ? [`${corrected} ${corrected === 1 ? "value" : "values"} corrected or entered by the reviewer`] : []),
+        ...(leftOut.length
+          ? [`${leftOut.length} ${leftOut.length === 1 ? "document or record" : "documents or records"} left out (withdrawn, duplicate, superseded or outside the period)`]
+          : []),
+        ...(result.not_recalculated.length ? [`Not calculated yet: ${result.not_recalculated.join(", ")}`] : []),
+      ],
+    },
+  };
 }
