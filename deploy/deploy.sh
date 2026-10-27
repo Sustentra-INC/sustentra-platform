@@ -30,6 +30,29 @@ get_param() {
     --name "/${ENV_NAME}/$1" --query Parameter.Value --output text
 }
 
+# Like get_param, but a parameter that does not exist prints nothing instead of failing
+# (prod has no AI parameters). Any other error (AccessDenied, throttling) still fails the
+# deploy. The value goes to stdout only, for the caller to capture: never log it.
+get_optional_param() {
+  local value err_file
+  err_file=$(mktemp)
+  if value=$(aws ssm get-parameter --region "$AWS_REGION" --with-decryption \
+      --name "/${ENV_NAME}/$1" --query Parameter.Value --output text 2>"$err_file"); then
+    rm -f "$err_file"
+    printf '%s' "$value"
+    return 0
+  fi
+  if grep -q 'ParameterNotFound' "$err_file"; then
+    rm -f "$err_file"
+    return 0
+  fi
+  # stderr: stdout is the caller's captured value.
+  log "reading /${ENV_NAME}/$1 from Parameter Store failed:" >&2
+  cat "$err_file" >&2
+  rm -f "$err_file"
+  return 1
+}
+
 set_tags() {
   sed -i -e "s/^API_TAG=.*/API_TAG=$1/" -e "s/^WEB_TAG=.*/WEB_TAG=$1/" "$APP_DIR/.env"
 }
@@ -47,6 +70,19 @@ SES_FROM_ADDRESS=no-reply@${APP_DOMAIN}
 S1_STORE=${S1_STORE:-jsonl}
 TEXTRACT_ENABLED=${TEXTRACT_ENABLED:-false}
 EOF
+
+  # AI suggestions (docs/backend_services.md). Each line is written only when its
+  # parameter exists; otherwise the app default applies (AI off, no key). The key is a
+  # SecureString: it goes from the variable straight into app.env (0600, umask above),
+  # never to the log. Do not add `set -x` to this script.
+  local pair value
+  for pair in ANTHROPIC_API_KEY=anthropic_api_key AI_SUGGESTIONS_ENABLED=ai_suggestions_enabled \
+      AI_PROVIDER=ai_provider AI_MODEL=ai_model AI_MONTHLY_CAP_USD=ai_monthly_cap_usd; do
+    value=$(get_optional_param "${pair#*=}")
+    if [ -n "$value" ]; then
+      printf '%s=%s\n' "${pair%%=*}" "$value" >> "$APP_DIR/app.env"
+    fi
+  done
 }
 
 release() {
