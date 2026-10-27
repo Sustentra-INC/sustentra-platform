@@ -368,6 +368,17 @@ def test_an_xls_that_cannot_be_read_says_why(env: dict) -> None:
     assert env["client"].get(url(damaged, "content")).status_code == 422
 
 
+def test_an_xls_with_an_invalid_sector_size_is_422_not_500(env: dict) -> None:
+    import struct
+
+    # Sector shift 0/1 used to raise struct.error out of the content route (a 500).
+    for shift in (0, 1):
+        data = bytearray(_xls())
+        data[30:32] = struct.pack("<H", shift)
+        doc = env["upload"](f"bad{shift}.xls", bytes(data), "application/vnd.ms-excel")
+        assert env["client"].get(url(doc, "content")).status_code == 422
+
+
 def test_processing_a_password_protected_workbook_halts_with_what_to_ask_for(env: dict) -> None:
     doc = env["upload"]("locked.xls", _xls(encrypted=True), "application/vnd.ms-excel")
     env["act_as"]("org_member", ORG_A)

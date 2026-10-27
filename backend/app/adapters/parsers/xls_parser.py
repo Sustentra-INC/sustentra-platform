@@ -36,6 +36,7 @@ import io
 import re
 from collections.abc import Iterator
 from pathlib import Path
+from struct import unpack
 from typing import Any
 
 from backend.app.adapters.parsers.base import (
@@ -59,6 +60,7 @@ OLE_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 ZIP_SIGNATURE = b"PK\x03\x04"
 # The BOF record that opens a bare BIFF2, 3, 4 or 5-8 stream.
 _BIFF_BOF_RECORDS = {b"\x09\x00", b"\x09\x02", b"\x09\x04", b"\x09\x08"}
+_XL_EOF = 0x000A  # the BIFF record that ends a substream
 
 MAX_XLS_BYTES = 32 * 1024 * 1024  # above the 25 MB upload limit; a larger file is not opened
 MAX_XLS_SHEETS = 100
@@ -113,7 +115,6 @@ class XlsBudget:
 
     def __init__(self) -> None:
         self.rows_left = MAX_XLS_LOADED_ROWS
-        self.bytes_read = 0
         self.stopped: str | None = None
 
 
@@ -158,11 +159,51 @@ def open_xls(path: Path) -> tuple[Any, list[dict[str, str]]]:
         raise XlsError("workbook_load_failed", f"Could not open workbook: {type(exc).__name__}.") from exc
     except Exception as exc:  # noqa: BLE001 - xlrd asserts and indexes freely on damaged files
         raise XlsError("workbook_load_failed", f"Could not open workbook: {type(exc).__name__}.") from exc
-    starts = list(getattr(book, "_sh_abs_posn", []))  # where each sheet's records begin (xlrd 2.0.2)
-    if len(set(starts)) != len(starts):
+    try:
+        _check_sheet_spans(book)
+    except XlsError:
         book.release_resources()
-        raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
+        raise
     return book, notes
+
+
+def _check_sheet_spans(book: Any) -> None:
+    """Refuse sheets whose record spans overlap, so xlrd cannot be made to read the same
+    records once per sheet. Each sheet's records are walked here, header only (4 bytes, body
+    skipped), from its BOUNDSHEET offset to its EOF. The spans partition the workbook stream
+    when the file is sound, so the total bytes walked are bounded by the stream; a span that
+    overlaps another, or runs past the stream, is damaged.
+
+    This reads only ``mem``, ``base``, ``stream_len`` and ``_sh_abs_posn`` -- set once when the
+    globals are parsed and never reset by a sheet load (unlike ``_position``)."""
+
+    mem = getattr(book, "mem", None)
+    starts = getattr(book, "_sh_abs_posn", None)
+    base = getattr(book, "base", None)
+    stream_len = getattr(book, "stream_len", None)
+    if mem is None or not starts or not isinstance(base, int) or not isinstance(stream_len, int):
+        return  # not the xlrd 2.0.2 layout: leave the row-count cap as the only bound
+    end_bound = min(base + stream_len, len(mem))
+    budget = stream_len + 4 * (len(starts) + 1)  # bytes we may walk: the stream, plus one header per sheet
+    spans: list[tuple[int, int]] = []
+    for start in starts:
+        if not base <= start < end_bound:
+            raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
+        pos = start
+        while pos + 4 <= end_bound:
+            code, length = unpack("<HH", mem[pos:pos + 4])
+            pos += 4 + length
+            budget -= 4 + length
+            if budget < 0 or pos > end_bound:
+                raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
+            if code == _XL_EOF:
+                break
+        spans.append((start, pos))
+    reach = base
+    for start, stop in sorted(spans):
+        if start < reach:  # this sheet begins inside an earlier sheet's records
+            raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
+        reach = stop
 
 
 def _check_ole(data: bytes) -> bool:
@@ -183,8 +224,12 @@ def _check_ole(data: bytes) -> bool:
         for entry in directory.top_level:
             if entry.kind == 2 and entry.name.lower() in _WORKBOOK_STREAMS:
                 directory.check_chain(entry)
+    except XlsError:
+        raise
     except OleError as exc:
         raise XlsError("workbook_load_failed", f"Could not open workbook: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001 - a crafted header can still trip struct/index before a check
+        raise XlsError("workbook_load_failed", f"Could not open workbook: {type(exc).__name__}.") from exc
     return bool(names & _VBA_NAMES)
 
 
@@ -239,13 +284,6 @@ def _worksheet_rows(book: Any, index: int, name: str, budget: XlsBudget, max_col
         return
     sheet = book.sheet_by_index(index)
     try:
-        starts = getattr(book, "_sh_abs_posn", None)
-        end = getattr(book, "_position", None)  # where xlrd stopped reading this sheet (xlrd 2.0.2)
-        if starts is not None and isinstance(end, int) and index < len(starts):
-            # Sheets that overlap make xlrd read the same records again for each of them.
-            budget.bytes_read += max(0, end - starts[index])
-            if budget.bytes_read > max(int(getattr(book, "stream_len", 0) or 0), 1):
-                raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
         budget.rows_left -= sheet.nrows
         for row in range(sheet.nrows):
             types = sheet.row_types(row, 0, max_columns).tobytes()
@@ -257,8 +295,9 @@ def _worksheet_rows(book: Any, index: int, name: str, budget: XlsBudget, max_col
             for match in _FILLED.finditer(types):
                 column = match.start()
                 value = xls_cell_value(types[column], values[column], book.datemode)
-                if not _is_blank(value):
-                    cells.append((column, value))
+                # A whitespace-only text cell is kept in the table row (``openpyxl`` keeps "  "),
+                # but ``_positional`` gives it no coordinate, so it is not a block.
+                cells.append((column, value))
             yield cells
     finally:
         book.unload_sheet(index)
@@ -285,7 +324,8 @@ def _positional(row: int, cells: FilledCells) -> list[SheetCell]:
         return []
     slots = [_NO_CELL] * (cells[-1][0] + 1)
     for column, value in cells:
-        slots[column] = (f"{column_letter(column)}{row + 1}", value)
+        coordinate = None if _is_blank(value) else f"{column_letter(column)}{row + 1}"
+        slots[column] = (coordinate, value)
     return slots
 
 
