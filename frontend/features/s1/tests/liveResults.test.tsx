@@ -12,6 +12,7 @@ import { api } from "../../../lib/api";
 import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import type { Recalculation, RecalculationReference } from "../api/recalculation";
 import { BackendVerificationResults, examinerOptions } from "../components/BackendVerificationResults";
+import { VerificationWorkspace } from "../components/VerificationWorkspace";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { verificationLines } from "../fixtures/verification/resultsDataset";
 import type { EngagementConfig } from "../types";
@@ -19,6 +20,7 @@ import { buildResultBoxes, examinationKey, lineRecomputed, testedExaminationKeys
 import { useWorkpaperSync } from "../verification/useWorkpaperSync";
 import { useVerificationStore } from "../verification/verificationStore";
 import liveExample from "./fixtures/recalculationLive.json";
+import refrigerantExample from "./fixtures/recalculationRefrigerants.json";
 import workbookExample from "./fixtures/recalculationWorkbookExample.json";
 
 /*
@@ -163,6 +165,45 @@ describe("the live recalculation as Verification results lines", () => {
     const fresh = liveResultsFromRecalculation(empty);
     expect(fresh.boxTotals.scope1).toMatchObject({ reported: null, recomputed: null, state: { label: "No reviewed evidence" } });
     expect(fresh.lines.filter((l) => l.facilities !== null)).toEqual([]);
+  });
+});
+
+describe("a refrigerant's material balance in the Source pane", () => {
+  /*
+   * recalculationRefrigerants.json is the backend's response for one R-410A balance with every
+   * term: two service top-ups (P_S 40 + 5.5 lb), a new unit charged with 30 lb of a 25 lb full
+   * charge (P_N, C_N) and a retired unit of 12 lb full charge with 9 lb recovered (C_D, R_D).
+   */
+  const BALANCE = refrigerantExample as unknown as Recalculation;
+
+  it("shows a total only where the records' listed amounts make the term, and it equals the term", () => {
+    const store = renderHook(() => useVerificationStore()).result.current;
+    render(<VerificationWorkspace lines={liveResultsFromRecalculation(BALANCE).lines} store={store} team={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "R-410A" }));
+    const panel = screen.getByRole("complementary", { name: "Scope 1 · R-410A" });
+    const balance = within(panel).getByText("R-410A emitted").closest("tr")!;
+    const terms = within(balance).getAllByRole("button");
+    expect(terms.map((t) => t.textContent)).toEqual(["30 lb", "25 lb", "45.5 lb", "12 lb", "9 lb"]);
+    const shown: Record<string, string | null> = {};
+    for (const term of terms) {
+      fireEvent.click(term);
+      const source = within(panel).getByRole("region", { name: "Source" });
+      const total = source.querySelector("tfoot .s1-vw-num");
+      shown[term.textContent ?? ""] = total?.textContent ?? null;
+      if (total) expect(Number(total.textContent?.replace(/,/g, ""))).toBe(Number(term.textContent?.replace(/[^\d.]/g, "")));
+      else expect(source.querySelector("td.s1-vw-num")).toBeNull(); // no amounts that contradict the term
+    }
+    // P_N, P_S and R_D add up their records; the full charges (C_N, C_D) list the records without amounts.
+    expect(shown).toEqual({ "30 lb": "30", "25 lb": null, "45.5 lb": "45.5", "12 lb": null, "9 lb": "9" });
+  });
+
+  it("names the full-charge records and says where their capacity is read", () => {
+    const [r410a] = byId(BALANCE)["s1-fugitive"].facilities ?? [];
+    const cells = r410a.steps[0].how.filter((c) => c.source);
+    const fullCharge = cells[1].source;
+    expect(fullCharge).toMatchObject({ kind: "evidence", total: null, records: [{ record: "NEW-RTU.pdf", quantity: null }] });
+    expect(fullCharge && "note" in fullCharge ? fullCharge.note : "").toMatch(/equipment capacity/);
+    expect(cells[4].source).toMatchObject({ total: 9, records: [{ record: "RETIRED-RTU.pdf", quantity: 9 }] });
   });
 });
 

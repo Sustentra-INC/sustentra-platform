@@ -1,0 +1,3545 @@
+{
+ "engagement_id": "ENG-1",
+ "gwp_set": "AR5",
+ "reporting_period": {
+  "start": "2025-01-01",
+  "end": "2025-12-31"
+ },
+ "categories": {
+  "stationary_combustion": null,
+  "mobile_combustion": null,
+  "fugitive_refrigerants": {
+   "category": "fugitive_refrigerants",
+   "lines": [
+    {
+     "key": "R-410A",
+     "equations": {
+      "R-410A": "(P_N - C_N) + P_S + (C_D - R_D)"
+     },
+     "mass_t": {
+      "R-410A": 0.024267191795
+     },
+     "steps": [
+      {
+       "label": "R-410A emitted",
+       "formula": "(P_N - C_N) + P_S + (C_D - R_D)",
+       "inputs": {
+        "P_N (charged into new equipment)": {
+         "value": 30.0,
+         "unit": "lb",
+         "source": "4 reviewed record(s)"
+        },
+        "C_N (full charge of new equipment)": {
+         "value": 25.0,
+         "unit": "lb",
+         "source": "4 reviewed record(s)"
+        },
+        "P_S (added when servicing)": {
+         "value": 45.5,
+         "unit": "lb",
+         "source": "4 reviewed record(s)"
+        },
+        "C_D (full charge of retired equipment)": {
+         "value": 12.0,
+         "unit": "lb",
+         "source": "4 reviewed record(s)"
+        },
+        "R_D (recovered from retired equipment)": {
+         "value": 9.0,
+         "unit": "lb",
+         "source": "4 reviewed record(s)"
+        }
+       },
+       "result": 53.5,
+       "result_unit": "lb"
+      },
+      {
+       "label": "R-410A emitted in metric tons",
+       "formula": "lb to metric tons",
+       "inputs": {
+        "mass": {
+         "value": 53.5,
+         "unit": "lb",
+         "source": null
+        }
+       },
+       "result": 0.024267191795,
+       "result_unit": "t"
+      },
+      {
+       "label": "R-410A in CO2e",
+       "formula": "mass x GWP",
+       "inputs": {
+        "mass": {
+         "value": 0.024267191795,
+         "unit": "t",
+         "source": null
+        },
+        "GWP": {
+         "value": 1924.0,
+         "unit": "",
+         "source": "EPA GHG Emission Factors Hub 2025, Table 12, row 575 (IPCC AR5)"
+        }
+       },
+       "result": 46.69007701358,
+       "result_unit": "t CO2e"
+      }
+     ],
+     "flags": [],
+     "biogenic_co2_t": 0.0
+    }
+   ],
+   "total_mass_t": {
+    "R-410A": 0.024267191795
+   },
+   "total_co2e_t": {
+    "R-410A": 46.69007701358
+   },
+   "total_co2e": 46.69007701358,
+   "gwp": {
+    "R-410A": {
+     "value": 1924.0,
+     "source": "EPA GHG Emission Factors Hub 2025, Table 12, row 575 (IPCC AR5)"
+    }
+   },
+   "biogenic_co2_t": 0.0,
+   "steps": [
+    {
+     "label": "Total refrigerant emissions in CO2e",
+     "formula": "sum of each refrigerant's emissions in CO2e",
+     "inputs": {
+      "R-410A": {
+       "value": 46.69007701358,
+       "unit": "t CO2e",
+       "source": null
+      }
+     },
+     "result": 46.69007701358,
+     "result_unit": "t CO2e"
+    }
+   ],
+   "flags": [],
+   "details": {
+    "inputs": [
+     {
+      "fuel": "R-410A",
+      "unit": "lb",
+      "quantity": 53.5,
+      "documents": [
+       {
+        "document_id": "SVC-1",
+        "record": "SVC-1.pdf",
+        "service_type": "service",
+        "quantity": 40.0,
+        "unit": "lb"
+       },
+       {
+        "document_id": "SVC-2",
+        "record": "SVC-2.pdf",
+        "service_type": "service",
+        "quantity": 5.5,
+        "unit": "lb"
+       },
+       {
+        "document_id": "NEW-RTU",
+        "record": "NEW-RTU.pdf",
+        "service_type": "installation",
+        "quantity": 30.0,
+        "unit": "lb"
+       },
+       {
+        "document_id": "RETIRED-RTU",
+        "record": "RETIRED-RTU.pdf",
+        "service_type": "disposal",
+        "quantity": 9.0,
+        "unit": "lb"
+       }
+      ]
+     }
+    ]
+   },
+   "gwp_set": "AR5"
+  },
+  "purchased_electricity_location_based": null,
+  "purchased_electricity_market_based": null
+ },
+ "scope_totals": {
+  "scope1": {
+   "total_co2e": 46.69007701358,
+   "mass_t": {
+    "CO2": 0.0,
+    "CH4": 0.0,
+    "N2O": 0.0
+   },
+   "co2e_t": {
+    "CO2": 0.0,
+    "CH4": 0.0,
+    "N2O": 0.0
+   },
+   "biogenic_co2_t": 0.0,
+   "categories": [
+    "fugitive_refrigerants"
+   ]
+  },
+  "scope2_location": null,
+  "scope2_market": null
+ },
+ "tolerance_pct": 5.0,
+ "comparisons": [
+  {
+   "data_point": "Scope 1 (Total)",
+   "reported": null,
+   "recalculated": 46.69007701358,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "scope1_total",
+   "workbook_row": 22,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 CO2",
+   "reported": null,
+   "recalculated": 0.0,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "scope1_co2",
+   "workbook_row": 23,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 CH4",
+   "reported": null,
+   "recalculated": 0.0,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "scope1_ch4",
+   "workbook_row": 24,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 N2O",
+   "reported": null,
+   "recalculated": 0.0,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "scope1_n2o",
+   "workbook_row": 25,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 HFCs",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_recalculated",
+   "key": "scope1_hfcs",
+   "workbook_row": 26,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 PFCs",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_recalculated",
+   "key": "scope1_pfcs",
+   "workbook_row": 27,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 1 SF6",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_recalculated",
+   "key": "scope1_sf6",
+   "workbook_row": 28,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 2 (Total), location-based",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "no_evidence",
+   "key": "scope2_location_total",
+   "workbook_row": 30,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 2 (Total), market-based",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "no_evidence",
+   "key": "scope2_market_total",
+   "workbook_row": 30,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 2 CO2 (location-based)",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "no_evidence",
+   "key": "scope2_co2",
+   "workbook_row": 31,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 2 CH4 (location-based)",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "no_evidence",
+   "key": "scope2_ch4",
+   "workbook_row": 32,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Scope 2 N2O (location-based)",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "no_evidence",
+   "key": "scope2_n2o",
+   "workbook_row": 33,
+   "unit": "t",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "CO2 emissions from biogenic combustion",
+   "reported": null,
+   "recalculated": 0.0,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "biogenic_co2",
+   "workbook_row": 38,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Direct emissions from stationary combustion",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "no_evidence",
+   "key": "stationary_combustion_total",
+   "workbook_row": 43,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Direct emissions from mobile combustion",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "no_evidence",
+   "key": "mobile_combustion_total",
+   "workbook_row": 44,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Direct emissions from fugitive sources",
+   "reported": null,
+   "recalculated": 46.69007701358,
+   "difference": null,
+   "difference_pct": null,
+   "status": "not_reported",
+   "key": "fugitive_total",
+   "workbook_row": 46,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Indirect emissions from purchased electricity (location-based)",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "no_evidence",
+   "key": "purchased_electricity_total",
+   "workbook_row": 48,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Indirect emissions from purchased steam",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "no_evidence",
+   "key": "purchased_steam_total",
+   "workbook_row": 49,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  },
+  {
+   "data_point": "Indirect emissions from purchased heating",
+   "reported": null,
+   "recalculated": null,
+   "difference": null,
+   "difference_pct": null,
+   "status": "no_evidence",
+   "key": "purchased_heating_total",
+   "workbook_row": 50,
+   "unit": "t CO2e",
+   "inputs_incomplete": false
+  }
+ ],
+ "needs_input": [],
+ "awaiting_review": [],
+ "excluded": [],
+ "not_recalculated": [
+  "Scope 1 fugitive sources other than refrigerants and fire suppression",
+  "Scope 1 process sources",
+  "Scope 2 cooling"
+ ],
+ "documents_considered": 4,
+ "documents_reviewed": 4,
+ "quality_checks": [],
+ "rollup": {
+  "version": 2,
+  "gwp_set": "AR5",
+  "tolerance_pct": 5.0,
+  "gas_groups": [
+   "CO2",
+   "CH4",
+   "N2O",
+   "HFCs",
+   "PFCs",
+   "SF6",
+   "NF3"
+  ],
+  "steps": [
+   {
+    "key": "step_1a",
+    "label": "Step 1a \u00b7 Category results to Scope 1",
+    "order": 1,
+    "after": [],
+    "node_keys": [
+     "stationary_combustion_total",
+     "mobile_combustion_total",
+     "process_total",
+     "fugitive_total",
+     "agricultural_total",
+     "scope1_co2",
+     "scope1_ch4",
+     "scope1_n2o",
+     "scope1_hfcs",
+     "scope1_pfcs",
+     "scope1_sf6",
+     "scope1_nf3",
+     "scope1_total",
+     "biogenic_co2"
+    ]
+   },
+   {
+    "key": "step_1b",
+    "label": "Step 1b \u00b7 Category results to Scope 2 (location-based and market-based)",
+    "order": 2,
+    "after": [],
+    "node_keys": [
+     "purchased_electricity_total",
+     "purchased_steam_total",
+     "purchased_heating_total",
+     "purchased_cooling_total",
+     "scope2_location_total",
+     "scope2_co2",
+     "scope2_ch4",
+     "scope2_n2o",
+     "scope2_hfcs",
+     "scope2_pfcs",
+     "scope2_sf6",
+     "scope2_nf3",
+     "purchased_electricity_market_total",
+     "purchased_steam_market_total",
+     "purchased_heating_market_total",
+     "purchased_cooling_market_total",
+     "scope2_market_total",
+     "scope2_market_co2",
+     "scope2_market_ch4",
+     "scope2_market_n2o",
+     "scope2_market_hfcs",
+     "scope2_market_pfcs",
+     "scope2_market_sf6",
+     "scope2_market_nf3"
+    ]
+   },
+   {
+    "key": "step_2",
+    "label": "Step 2 \u00b7 Inventory totals",
+    "order": 3,
+    "after": [
+     "step_1a",
+     "step_1b"
+    ],
+    "node_keys": [
+     "inventory_location_total",
+     "inventory_market_total"
+    ]
+   }
+  ],
+  "categories": {
+   "stationary_combustion": {
+    "label": "Stationary combustion",
+    "scope": "scope1",
+    "workbook_row": 43,
+    "built": true,
+    "backend_categories": {
+     "location": "stationary_combustion"
+    },
+    "gases": [
+     "CO2",
+     "CH4",
+     "N2O"
+    ],
+    "status": "no_evidence",
+    "open_items": 0,
+    "gaps": [],
+    "absent_reason": null,
+    "flags": []
+   },
+   "mobile_combustion": {
+    "label": "Mobile combustion",
+    "scope": "scope1",
+    "workbook_row": 44,
+    "built": true,
+    "backend_categories": {
+     "location": "mobile_combustion"
+    },
+    "gases": [
+     "CO2",
+     "CH4",
+     "N2O"
+    ],
+    "status": "no_evidence",
+    "open_items": 0,
+    "gaps": [],
+    "absent_reason": null,
+    "flags": []
+   },
+   "process_sources": {
+    "label": "Process sources",
+    "scope": "scope1",
+    "workbook_row": 45,
+    "built": false,
+    "backend_categories": {},
+    "gases": [
+     "CO2",
+     "CH4",
+     "N2O",
+     "HFCs",
+     "PFCs",
+     "SF6",
+     "NF3"
+    ],
+    "status": "not_built",
+    "open_items": 0,
+    "gaps": [],
+    "absent_reason": null,
+    "flags": []
+   },
+   "fugitive_refrigerants": {
+    "label": "Fugitive: refrigeration, AC and fire suppression",
+    "scope": "scope1",
+    "workbook_row": 46,
+    "built": true,
+    "backend_categories": {
+     "location": "fugitive_refrigerants"
+    },
+    "gases": [
+     "CO2",
+     "HFCs",
+     "PFCs",
+     "SF6",
+     "NF3"
+    ],
+    "status": "calculated",
+    "open_items": 0,
+    "gaps": [],
+    "absent_reason": null,
+    "flags": [],
+    "gas_split": {
+     "R-410A": {
+      "groups": {
+       "HFCs": {
+        "mass_t": 0.024267191795,
+        "co2e_t": 46.69007701358
+       }
+      },
+      "flags": [],
+      "excluded": {
+       "mass_t": 0.0,
+       "co2e_t": 0.0
+      }
+     }
+    },
+    "excluded": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   "fugitive_purchased_gases": {
+    "label": "Fugitive: purchased industrial gases",
+    "scope": "scope1",
+    "workbook_row": 46,
+    "built": false,
+    "backend_categories": {},
+    "gases": [
+     "CO2",
+     "CH4",
+     "N2O",
+     "HFCs",
+     "PFCs",
+     "SF6",
+     "NF3"
+    ],
+    "status": "not_built",
+    "open_items": 0,
+    "gaps": [],
+    "absent_reason": null,
+    "flags": []
+   },
+   "agricultural_sources": {
+    "label": "Agricultural sources",
+    "scope": "scope1",
+    "workbook_row": 47,
+    "built": false,
+    "backend_categories": {},
+    "gases": [
+     "CO2",
+     "CH4",
+     "N2O"
+    ],
+    "status": "not_built",
+    "open_items": 0,
+    "gaps": [],
+    "absent_reason": null,
+    "flags": []
+   },
+   "purchased_electricity": {
+    "label": "Purchased electricity",
+    "scope": "scope2",
+    "workbook_row": 48,
+    "built": true,
+    "backend_categories": {
+     "location": "purchased_electricity_location_based",
+     "market": "purchased_electricity_market_based"
+    },
+    "gases": [
+     "CO2",
+     "CH4",
+     "N2O"
+    ],
+    "status": "no_evidence",
+    "open_items": 0,
+    "gaps": [],
+    "absent_reason": null,
+    "flags": []
+   },
+   "purchased_steam": {
+    "label": "Purchased steam",
+    "scope": "scope2",
+    "workbook_row": 49,
+    "built": true,
+    "backend_categories": {
+     "location": "purchased_steam_location_based",
+     "market": "purchased_steam_market_based"
+    },
+    "gases": [
+     "CO2",
+     "CH4",
+     "N2O"
+    ],
+    "status": "no_evidence",
+    "open_items": 0,
+    "gaps": [],
+    "absent_reason": null,
+    "flags": []
+   },
+   "purchased_heating": {
+    "label": "Purchased heating",
+    "scope": "scope2",
+    "workbook_row": 50,
+    "built": true,
+    "backend_categories": {
+     "location": "purchased_heating_location_based",
+     "market": "purchased_heating_market_based"
+    },
+    "gases": [
+     "CO2",
+     "CH4",
+     "N2O"
+    ],
+    "status": "no_evidence",
+    "open_items": 0,
+    "gaps": [],
+    "absent_reason": null,
+    "flags": []
+   },
+   "purchased_cooling": {
+    "label": "Purchased cooling",
+    "scope": "scope2",
+    "workbook_row": 51,
+    "built": false,
+    "backend_categories": {},
+    "gases": [
+     "CO2",
+     "CH4",
+     "N2O"
+    ],
+    "status": "not_built",
+    "open_items": 0,
+    "gaps": [],
+    "absent_reason": null,
+    "flags": []
+   }
+  },
+  "nodes": {
+   "stationary_combustion_total": {
+    "step": "step_1a",
+    "label": "Direct emissions from stationary combustion",
+    "kind": "category",
+    "scope": "scope1",
+    "unit": "t CO2e",
+    "formula": "stationary_combustion",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:stationary_combustion",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     }
+    ]
+   },
+   "mobile_combustion_total": {
+    "step": "step_1a",
+    "label": "Direct emissions from mobile combustion",
+    "kind": "category",
+    "scope": "scope1",
+    "unit": "t CO2e",
+    "formula": "mobile_combustion",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:mobile_combustion",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     }
+    ]
+   },
+   "process_total": {
+    "step": "step_1a",
+    "label": "Direct emissions from process sources",
+    "kind": "category",
+    "scope": "scope1",
+    "unit": "t CO2e",
+    "formula": "process_sources",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:process_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "fugitive_total": {
+    "step": "step_1a",
+    "label": "Direct emissions from fugitive sources",
+    "kind": "category",
+    "scope": "scope1",
+    "unit": "t CO2e",
+    "formula": "fugitive_refrigerants + fugitive_purchased_gases",
+    "co2e_t": 46.69007701358,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:fugitive_refrigerants",
+      "co2e_t": 46.69007701358,
+      "status": "calculated"
+     },
+     {
+      "ref": "category:fugitive_purchased_gases",
+      "co2e_t": null,
+      "status": "not_built",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gases": {
+     "CO2": {
+      "mass_t": 0.0,
+      "co2e_t": 0.0
+     },
+     "CH4": {
+      "mass_t": 0.0,
+      "co2e_t": 0.0
+     },
+     "N2O": {
+      "mass_t": 0.0,
+      "co2e_t": 0.0
+     },
+     "HFCs": {
+      "mass_t": 0.024267191795,
+      "co2e_t": 46.69007701358
+     },
+     "PFCs": {
+      "mass_t": 0.0,
+      "co2e_t": 0.0
+     },
+     "SF6": {
+      "mass_t": 0.0,
+      "co2e_t": 0.0
+     },
+     "NF3": {
+      "mass_t": 0.0,
+      "co2e_t": 0.0
+     }
+    },
+    "counted_as_zero": [
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "agricultural_total": {
+    "step": "step_1a",
+    "label": "Direct emissions from agricultural sources",
+    "kind": "category",
+    "scope": "scope1",
+    "unit": "t CO2e",
+    "formula": "agricultural_sources",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:agricultural_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope1_co2": {
+    "step": "step_1a",
+    "label": "Scope 1 CO2",
+    "kind": "gas",
+    "scope": "scope1",
+    "unit": "t and t CO2e",
+    "formula": "sum of CO2 over Scope 1 sources",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:stationary_combustion",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:mobile_combustion",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:process_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:fugitive_refrigerants",
+      "co2e_t": 0.0,
+      "status": "calculated",
+      "mass_t": 0.0
+     },
+     {
+      "ref": "category:fugitive_purchased_gases",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:agricultural_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "CO2",
+    "mass_t": 0.0,
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     },
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope1_ch4": {
+    "step": "step_1a",
+    "label": "Scope 1 CH4",
+    "kind": "gas",
+    "scope": "scope1",
+    "unit": "t and t CO2e",
+    "formula": "sum of CH4 over Scope 1 sources",
+    "co2e_t": 0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:stationary_combustion",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:mobile_combustion",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:process_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:fugitive_purchased_gases",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:agricultural_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "CH4",
+    "mass_t": 0,
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     },
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope1_n2o": {
+    "step": "step_1a",
+    "label": "Scope 1 N2O",
+    "kind": "gas",
+    "scope": "scope1",
+    "unit": "t and t CO2e",
+    "formula": "sum of N2O over Scope 1 sources",
+    "co2e_t": 0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:stationary_combustion",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:mobile_combustion",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:process_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:fugitive_purchased_gases",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:agricultural_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "N2O",
+    "mass_t": 0,
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     },
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope1_hfcs": {
+    "step": "step_1a",
+    "label": "Scope 1 HFCs",
+    "kind": "gas",
+    "scope": "scope1",
+    "unit": "t and t CO2e",
+    "formula": "sum of HFCs over Scope 1 sources",
+    "co2e_t": 46.69007701358,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:process_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:fugitive_refrigerants",
+      "co2e_t": 46.69007701358,
+      "status": "calculated",
+      "mass_t": 0.024267191795
+     },
+     {
+      "ref": "category:fugitive_purchased_gases",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "HFCs",
+    "mass_t": 0.024267191795,
+    "counted_as_zero": [
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope1_pfcs": {
+    "step": "step_1a",
+    "label": "Scope 1 PFCs",
+    "kind": "gas",
+    "scope": "scope1",
+    "unit": "t and t CO2e",
+    "formula": "sum of PFCs over Scope 1 sources",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:process_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:fugitive_refrigerants",
+      "co2e_t": 0.0,
+      "status": "calculated",
+      "mass_t": 0.0
+     },
+     {
+      "ref": "category:fugitive_purchased_gases",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "PFCs",
+    "mass_t": 0.0,
+    "counted_as_zero": [
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope1_sf6": {
+    "step": "step_1a",
+    "label": "Scope 1 SF6",
+    "kind": "gas",
+    "scope": "scope1",
+    "unit": "t and t CO2e",
+    "formula": "sum of SF6 over Scope 1 sources",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:process_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:fugitive_refrigerants",
+      "co2e_t": 0.0,
+      "status": "calculated",
+      "mass_t": 0.0
+     },
+     {
+      "ref": "category:fugitive_purchased_gases",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "SF6",
+    "mass_t": 0.0,
+    "counted_as_zero": [
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope1_nf3": {
+    "step": "step_1a",
+    "label": "Scope 1 NF3",
+    "kind": "gas",
+    "scope": "scope1",
+    "unit": "t and t CO2e",
+    "formula": "sum of NF3 over Scope 1 sources",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:process_sources",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:fugitive_refrigerants",
+      "co2e_t": 0.0,
+      "status": "calculated",
+      "mass_t": 0.0
+     },
+     {
+      "ref": "category:fugitive_purchased_gases",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "NF3",
+    "mass_t": 0.0,
+    "counted_as_zero": [
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope1_total": {
+    "step": "step_1a",
+    "label": "Scope 1 (Total)",
+    "kind": "total",
+    "scope": "scope1",
+    "unit": "t CO2e",
+    "formula": "stationary_combustion_total + mobile_combustion_total + process_total + fugitive_total + agricultural_total",
+    "co2e_t": 46.69007701358,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "node:stationary_combustion_total",
+      "co2e_t": null,
+      "status": "not_available"
+     },
+     {
+      "ref": "node:mobile_combustion_total",
+      "co2e_t": null,
+      "status": "not_available"
+     },
+     {
+      "ref": "node:process_total",
+      "co2e_t": null,
+      "status": "not_available"
+     },
+     {
+      "ref": "node:fugitive_total",
+      "co2e_t": 46.69007701358,
+      "status": "complete"
+     },
+     {
+      "ref": "node:agricultural_total",
+      "co2e_t": null,
+      "status": "not_available"
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     },
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "biogenic_co2": {
+    "step": "step_1a",
+    "label": "CO2 emissions from biogenic combustion",
+    "kind": "memo",
+    "scope": "scope1",
+    "unit": "t CO2e",
+    "formula": "biogenic CO2 of stationary + mobile combustion (reported separately, in no total; a placeholder until its calculation is agreed)",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [],
+    "missing": [
+     {
+      "source": "biogenic_combustion",
+      "reason": "not_built"
+     }
+    ],
+    "lower_bound": true,
+    "flags": []
+   },
+   "purchased_electricity_total": {
+    "step": "step_1b",
+    "label": "Indirect emissions from purchased electricity (location-based)",
+    "kind": "category",
+    "scope": "scope2_location",
+    "unit": "t CO2e",
+    "formula": "purchased_electricity",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:purchased_electricity",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     }
+    ]
+   },
+   "purchased_steam_total": {
+    "step": "step_1b",
+    "label": "Indirect emissions from purchased steam",
+    "kind": "category",
+    "scope": "scope2_location",
+    "unit": "t CO2e",
+    "formula": "purchased_steam",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:purchased_steam",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     }
+    ]
+   },
+   "purchased_heating_total": {
+    "step": "step_1b",
+    "label": "Indirect emissions from purchased heating",
+    "kind": "category",
+    "scope": "scope2_location",
+    "unit": "t CO2e",
+    "formula": "purchased_heating",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:purchased_heating",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     }
+    ]
+   },
+   "purchased_cooling_total": {
+    "step": "step_1b",
+    "label": "Indirect emissions from purchased cooling",
+    "kind": "category",
+    "scope": "scope2_location",
+    "unit": "t CO2e",
+    "formula": "purchased_cooling",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:purchased_cooling",
+      "co2e_t": null,
+      "status": "not_built",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope2_location_total": {
+    "step": "step_1b",
+    "label": "Scope 2 (Total), location-based",
+    "kind": "total",
+    "scope": "scope2_location",
+    "unit": "t CO2e",
+    "formula": "purchased_electricity_total + purchased_steam_total + purchased_heating_total + purchased_cooling_total",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "node:purchased_electricity_total",
+      "co2e_t": null,
+      "status": "not_available"
+     },
+     {
+      "ref": "node:purchased_steam_total",
+      "co2e_t": null,
+      "status": "not_available"
+     },
+     {
+      "ref": "node:purchased_heating_total",
+      "co2e_t": null,
+      "status": "not_available"
+     },
+     {
+      "ref": "node:purchased_cooling_total",
+      "co2e_t": null,
+      "status": "not_available"
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope2_co2": {
+    "step": "step_1b",
+    "label": "Scope 2 CO2 (location-based)",
+    "kind": "gas",
+    "scope": "scope2_location",
+    "unit": "t and t CO2e",
+    "formula": "sum of CO2 over Scope 2 sources",
+    "co2e_t": 0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:purchased_electricity",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_steam",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_heating",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_cooling",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "CO2",
+    "mass_t": 0,
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope2_ch4": {
+    "step": "step_1b",
+    "label": "Scope 2 CH4 (location-based)",
+    "kind": "gas",
+    "scope": "scope2_location",
+    "unit": "t and t CO2e",
+    "formula": "sum of CH4 over Scope 2 sources",
+    "co2e_t": 0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:purchased_electricity",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_steam",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_heating",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_cooling",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "CH4",
+    "mass_t": 0,
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope2_n2o": {
+    "step": "step_1b",
+    "label": "Scope 2 N2O (location-based)",
+    "kind": "gas",
+    "scope": "scope2_location",
+    "unit": "t and t CO2e",
+    "formula": "sum of N2O over Scope 2 sources",
+    "co2e_t": 0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:purchased_electricity",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_steam",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_heating",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_cooling",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "N2O",
+    "mass_t": 0,
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope2_hfcs": {
+    "step": "step_1b",
+    "label": "Scope 2 HFCs (location-based)",
+    "kind": "gas",
+    "scope": "scope2_location",
+    "unit": "t and t CO2e",
+    "formula": "0: no Scope 2 method emits fluorinated gases",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "HFCs",
+    "mass_t": 0.0,
+    "basis": "structural_zero",
+    "counted_as_zero": []
+   },
+   "scope2_pfcs": {
+    "step": "step_1b",
+    "label": "Scope 2 PFCs (location-based)",
+    "kind": "gas",
+    "scope": "scope2_location",
+    "unit": "t and t CO2e",
+    "formula": "0: no Scope 2 method emits fluorinated gases",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "PFCs",
+    "mass_t": 0.0,
+    "basis": "structural_zero",
+    "counted_as_zero": []
+   },
+   "scope2_sf6": {
+    "step": "step_1b",
+    "label": "Scope 2 SF6 (location-based)",
+    "kind": "gas",
+    "scope": "scope2_location",
+    "unit": "t and t CO2e",
+    "formula": "0: no Scope 2 method emits fluorinated gases",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "SF6",
+    "mass_t": 0.0,
+    "basis": "structural_zero",
+    "counted_as_zero": []
+   },
+   "scope2_nf3": {
+    "step": "step_1b",
+    "label": "Scope 2 NF3 (location-based)",
+    "kind": "gas",
+    "scope": "scope2_location",
+    "unit": "t and t CO2e",
+    "formula": "0: no Scope 2 method emits fluorinated gases",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "NF3",
+    "mass_t": 0.0,
+    "basis": "structural_zero",
+    "counted_as_zero": []
+   },
+   "purchased_electricity_market_total": {
+    "step": "step_1b",
+    "label": "Indirect emissions from purchased electricity (market-based)",
+    "kind": "category",
+    "scope": "scope2_market",
+    "unit": "t CO2e",
+    "formula": "purchased_electricity",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:purchased_electricity",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     }
+    ]
+   },
+   "purchased_steam_market_total": {
+    "step": "step_1b",
+    "label": "Indirect emissions from purchased steam (market-based)",
+    "kind": "category",
+    "scope": "scope2_market",
+    "unit": "t CO2e",
+    "formula": "purchased_steam",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:purchased_steam",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     }
+    ]
+   },
+   "purchased_heating_market_total": {
+    "step": "step_1b",
+    "label": "Indirect emissions from purchased heating (market-based)",
+    "kind": "category",
+    "scope": "scope2_market",
+    "unit": "t CO2e",
+    "formula": "purchased_heating",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:purchased_heating",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     }
+    ]
+   },
+   "purchased_cooling_market_total": {
+    "step": "step_1b",
+    "label": "Indirect emissions from purchased cooling (market-based)",
+    "kind": "category",
+    "scope": "scope2_market",
+    "unit": "t CO2e",
+    "formula": "purchased_cooling",
+    "co2e_t": null,
+    "status": "not_available",
+    "terms": [
+     {
+      "ref": "category:purchased_cooling",
+      "co2e_t": null,
+      "status": "not_built",
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope2_market_total": {
+    "step": "step_1b",
+    "label": "Scope 2 (Total), market-based",
+    "kind": "total",
+    "scope": "scope2_market",
+    "unit": "t CO2e",
+    "formula": "purchased_electricity_market_total + purchased_steam_market_total + purchased_heating_market_total + purchased_cooling_market_total",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "node:purchased_electricity_market_total",
+      "co2e_t": null,
+      "status": "not_available"
+     },
+     {
+      "ref": "node:purchased_steam_market_total",
+      "co2e_t": null,
+      "status": "not_available"
+     },
+     {
+      "ref": "node:purchased_heating_market_total",
+      "co2e_t": null,
+      "status": "not_available"
+     },
+     {
+      "ref": "node:purchased_cooling_market_total",
+      "co2e_t": null,
+      "status": "not_available"
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope2_market_co2": {
+    "step": "step_1b",
+    "label": "Scope 2 CO2 (market-based)",
+    "kind": "gas",
+    "scope": "scope2_market",
+    "unit": "t and t CO2e",
+    "formula": "sum of CO2 over Scope 2 sources",
+    "co2e_t": 0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:purchased_electricity",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_steam",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_heating",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_cooling",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "CO2",
+    "mass_t": 0,
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope2_market_ch4": {
+    "step": "step_1b",
+    "label": "Scope 2 CH4 (market-based)",
+    "kind": "gas",
+    "scope": "scope2_market",
+    "unit": "t and t CO2e",
+    "formula": "sum of CH4 over Scope 2 sources",
+    "co2e_t": 0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:purchased_electricity",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_steam",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_heating",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_cooling",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "CH4",
+    "mass_t": 0,
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope2_market_n2o": {
+    "step": "step_1b",
+    "label": "Scope 2 N2O (market-based)",
+    "kind": "gas",
+    "scope": "scope2_market",
+    "unit": "t and t CO2e",
+    "formula": "sum of N2O over Scope 2 sources",
+    "co2e_t": 0,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "category:purchased_electricity",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_steam",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_heating",
+      "co2e_t": null,
+      "status": "no_evidence",
+      "mass_t": null,
+      "counted_as_zero": true
+     },
+     {
+      "ref": "category:purchased_cooling",
+      "co2e_t": null,
+      "status": "not_built",
+      "mass_t": null,
+      "counted_as_zero": true
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "N2O",
+    "mass_t": 0,
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "scope2_market_hfcs": {
+    "step": "step_1b",
+    "label": "Scope 2 HFCs (market-based)",
+    "kind": "gas",
+    "scope": "scope2_market",
+    "unit": "t and t CO2e",
+    "formula": "0: no Scope 2 method emits fluorinated gases",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "HFCs",
+    "mass_t": 0.0,
+    "basis": "structural_zero",
+    "counted_as_zero": []
+   },
+   "scope2_market_pfcs": {
+    "step": "step_1b",
+    "label": "Scope 2 PFCs (market-based)",
+    "kind": "gas",
+    "scope": "scope2_market",
+    "unit": "t and t CO2e",
+    "formula": "0: no Scope 2 method emits fluorinated gases",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "PFCs",
+    "mass_t": 0.0,
+    "basis": "structural_zero",
+    "counted_as_zero": []
+   },
+   "scope2_market_sf6": {
+    "step": "step_1b",
+    "label": "Scope 2 SF6 (market-based)",
+    "kind": "gas",
+    "scope": "scope2_market",
+    "unit": "t and t CO2e",
+    "formula": "0: no Scope 2 method emits fluorinated gases",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "SF6",
+    "mass_t": 0.0,
+    "basis": "structural_zero",
+    "counted_as_zero": []
+   },
+   "scope2_market_nf3": {
+    "step": "step_1b",
+    "label": "Scope 2 NF3 (market-based)",
+    "kind": "gas",
+    "scope": "scope2_market",
+    "unit": "t and t CO2e",
+    "formula": "0: no Scope 2 method emits fluorinated gases",
+    "co2e_t": 0.0,
+    "status": "complete",
+    "terms": [],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "gas": "NF3",
+    "mass_t": 0.0,
+    "basis": "structural_zero",
+    "counted_as_zero": []
+   },
+   "inventory_location_total": {
+    "step": "step_2",
+    "label": "Inventory total, location-based (Scope 1 + Scope 2)",
+    "kind": "total",
+    "scope": "inventory_location",
+    "unit": "t CO2e",
+    "formula": "scope1_total + scope2_location_total",
+    "co2e_t": 46.69007701358,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "node:scope1_total",
+      "co2e_t": 46.69007701358,
+      "status": "complete"
+     },
+     {
+      "ref": "node:scope2_location_total",
+      "co2e_t": 0.0,
+      "status": "complete"
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     },
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   },
+   "inventory_market_total": {
+    "step": "step_2",
+    "label": "Inventory total, market-based (Scope 1 + Scope 2)",
+    "kind": "total",
+    "scope": "inventory_market",
+    "unit": "t CO2e",
+    "formula": "scope1_total + scope2_market_total",
+    "co2e_t": 46.69007701358,
+    "status": "complete",
+    "terms": [
+     {
+      "ref": "node:scope1_total",
+      "co2e_t": 46.69007701358,
+      "status": "complete"
+     },
+     {
+      "ref": "node:scope2_market_total",
+      "co2e_t": 0.0,
+      "status": "complete"
+     }
+    ],
+    "missing": [],
+    "lower_bound": true,
+    "flags": [],
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     },
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ]
+   }
+  },
+  "final_outputs": [
+   {
+    "key": "scope1_total",
+    "label": "Scope 1 (Total)",
+    "workbook_row": 22,
+    "requirement": "Required",
+    "unit": "t CO2e",
+    "node": "scope1_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 46.69007701358,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     },
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     }
+    ],
+    "flags": []
+   },
+   {
+    "key": "scope1_co2",
+    "label": "Scope 1 CO2",
+    "workbook_row": 23,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope1_co2",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     },
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "scope1_ch4",
+    "label": "Scope 1 CH4",
+    "workbook_row": 24,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope1_ch4",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     },
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0,
+     "co2e_t": 0
+    }
+   },
+   {
+    "key": "scope1_n2o",
+    "label": "Scope 1 N2O",
+    "workbook_row": 25,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope1_n2o",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     },
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0,
+     "co2e_t": 0
+    }
+   },
+   {
+    "key": "scope1_hfcs",
+    "label": "Scope 1 HFCs",
+    "workbook_row": 26,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope1_hfcs",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.024267191795,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.024267191795,
+     "co2e_t": 46.69007701358
+    }
+   },
+   {
+    "key": "scope1_pfcs",
+    "label": "Scope 1 PFCs",
+    "workbook_row": 27,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope1_pfcs",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "scope1_sf6",
+    "label": "Scope 1 SF6",
+    "workbook_row": 28,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope1_sf6",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "scope1_nf3",
+    "label": "Scope 1 NF3",
+    "workbook_row": 29,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope1_nf3",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     },
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "scope2_location_total",
+    "label": "Scope 2 (Total), location-based",
+    "workbook_row": 30,
+    "requirement": "Required",
+    "unit": "t CO2e",
+    "node": "scope2_location_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ],
+    "flags": []
+   },
+   {
+    "key": "scope2_market_total",
+    "label": "Scope 2 (Total), market-based",
+    "workbook_row": 30,
+    "requirement": "Required",
+    "unit": "t CO2e",
+    "node": "scope2_market_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ],
+    "flags": []
+   },
+   {
+    "key": "scope2_co2",
+    "label": "Scope 2 CO2 (location-based)",
+    "workbook_row": 31,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_co2",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0,
+     "co2e_t": 0
+    }
+   },
+   {
+    "key": "scope2_ch4",
+    "label": "Scope 2 CH4 (location-based)",
+    "workbook_row": 32,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_ch4",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0,
+     "co2e_t": 0
+    }
+   },
+   {
+    "key": "scope2_n2o",
+    "label": "Scope 2 N2O (location-based)",
+    "workbook_row": 33,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_n2o",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0,
+     "co2e_t": 0
+    }
+   },
+   {
+    "key": "scope2_hfcs",
+    "label": "Scope 2 HFCs (location-based)",
+    "workbook_row": 34,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_hfcs",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "scope2_pfcs",
+    "label": "Scope 2 PFCs (location-based)",
+    "workbook_row": 35,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_pfcs",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "scope2_sf6",
+    "label": "Scope 2 SF6 (location-based)",
+    "workbook_row": 36,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_sf6",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "scope2_nf3",
+    "label": "Scope 2 NF3 (location-based)",
+    "workbook_row": 37,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_nf3",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "scope2_market_co2",
+    "label": "Scope 2 CO2 (market-based)",
+    "workbook_row": 31,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_market_co2",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0,
+     "co2e_t": 0
+    }
+   },
+   {
+    "key": "scope2_market_ch4",
+    "label": "Scope 2 CH4 (market-based)",
+    "workbook_row": 32,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_market_ch4",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0,
+     "co2e_t": 0
+    }
+   },
+   {
+    "key": "scope2_market_n2o",
+    "label": "Scope 2 N2O (market-based)",
+    "workbook_row": 33,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_market_n2o",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     },
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0,
+     "co2e_t": 0
+    }
+   },
+   {
+    "key": "scope2_market_hfcs",
+    "label": "Scope 2 HFCs (market-based)",
+    "workbook_row": 34,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_market_hfcs",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "scope2_market_pfcs",
+    "label": "Scope 2 PFCs (market-based)",
+    "workbook_row": 35,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_market_pfcs",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "scope2_market_sf6",
+    "label": "Scope 2 SF6 (market-based)",
+    "workbook_row": 36,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_market_sf6",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "scope2_market_nf3",
+    "label": "Scope 2 NF3 (market-based)",
+    "workbook_row": 37,
+    "requirement": "Required",
+    "unit": "t",
+    "node": "scope2_market_nf3",
+    "measure": "mass_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 0.0,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [],
+    "flags": [],
+    "candidates": {
+     "mass_t": 0.0,
+     "co2e_t": 0.0
+    }
+   },
+   {
+    "key": "biogenic_co2",
+    "label": "CO2 emissions from biogenic combustion",
+    "workbook_row": 38,
+    "requirement": "Required",
+    "unit": "t CO2e",
+    "node": "biogenic_co2",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": null,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_recalculated",
+    "reason": "not_built",
+    "completeness": "not_available",
+    "missing": [
+     {
+      "source": "biogenic_combustion",
+      "reason": "not_built"
+     }
+    ],
+    "counted_as_zero": [],
+    "flags": []
+   },
+   {
+    "key": "stationary_combustion_total",
+    "label": "Direct emissions from stationary combustion",
+    "workbook_row": 43,
+    "requirement": "Optional",
+    "unit": "t CO2e",
+    "node": "stationary_combustion_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": null,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "no_evidence",
+    "reason": "no_evidence",
+    "completeness": "not_available",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "stationary_combustion",
+      "reason": "no_evidence"
+     }
+    ],
+    "flags": []
+   },
+   {
+    "key": "mobile_combustion_total",
+    "label": "Direct emissions from mobile combustion",
+    "workbook_row": 44,
+    "requirement": "Optional",
+    "unit": "t CO2e",
+    "node": "mobile_combustion_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": null,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "no_evidence",
+    "reason": "no_evidence",
+    "completeness": "not_available",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "mobile_combustion",
+      "reason": "no_evidence"
+     }
+    ],
+    "flags": []
+   },
+   {
+    "key": "process_total",
+    "label": "Direct emissions from process sources",
+    "workbook_row": 45,
+    "requirement": "Optional",
+    "unit": "t CO2e",
+    "node": "process_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": null,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_recalculated",
+    "reason": "not_built",
+    "completeness": "not_available",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "process_sources",
+      "reason": "not_built"
+     }
+    ],
+    "flags": []
+   },
+   {
+    "key": "fugitive_total",
+    "label": "Direct emissions from fugitive sources",
+    "workbook_row": 46,
+    "requirement": "Optional",
+    "unit": "t CO2e",
+    "node": "fugitive_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": 46.69007701358,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_reported",
+    "reason": null,
+    "completeness": "complete",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "fugitive_purchased_gases",
+      "reason": "not_built"
+     }
+    ],
+    "flags": []
+   },
+   {
+    "key": "agricultural_total",
+    "label": "Direct emissions from agricultural sources",
+    "workbook_row": 47,
+    "requirement": "Optional",
+    "unit": "t CO2e",
+    "node": "agricultural_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": null,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_recalculated",
+    "reason": "not_built",
+    "completeness": "not_available",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "agricultural_sources",
+      "reason": "not_built"
+     }
+    ],
+    "flags": []
+   },
+   {
+    "key": "purchased_electricity_total",
+    "label": "Indirect emissions from purchased electricity (location-based)",
+    "workbook_row": 48,
+    "requirement": "Optional",
+    "unit": "t CO2e",
+    "node": "purchased_electricity_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": null,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "no_evidence",
+    "reason": "no_evidence",
+    "completeness": "not_available",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_electricity",
+      "reason": "no_evidence"
+     }
+    ],
+    "flags": []
+   },
+   {
+    "key": "purchased_steam_total",
+    "label": "Indirect emissions from purchased steam",
+    "workbook_row": 49,
+    "requirement": "Optional",
+    "unit": "t CO2e",
+    "node": "purchased_steam_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": null,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "no_evidence",
+    "reason": "no_evidence",
+    "completeness": "not_available",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_steam",
+      "reason": "no_evidence"
+     }
+    ],
+    "flags": []
+   },
+   {
+    "key": "purchased_heating_total",
+    "label": "Indirect emissions from purchased heating",
+    "workbook_row": 50,
+    "requirement": "Optional",
+    "unit": "t CO2e",
+    "node": "purchased_heating_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": null,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "no_evidence",
+    "reason": "no_evidence",
+    "completeness": "not_available",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_heating",
+      "reason": "no_evidence"
+     }
+    ],
+    "flags": []
+   },
+   {
+    "key": "purchased_cooling_total",
+    "label": "Indirect emissions from purchased cooling",
+    "workbook_row": 51,
+    "requirement": "Optional",
+    "unit": "t CO2e",
+    "node": "purchased_cooling_total",
+    "measure": "co2e_t",
+    "reported": null,
+    "reported_unit": null,
+    "recalculated": null,
+    "difference": null,
+    "difference_pct": null,
+    "tolerance_pct": 5.0,
+    "within_threshold": null,
+    "status": "not_recalculated",
+    "reason": "not_built",
+    "completeness": "not_available",
+    "missing": [],
+    "counted_as_zero": [
+     {
+      "source": "purchased_cooling",
+      "reason": "not_built"
+     }
+    ],
+    "flags": []
+   }
+  ],
+  "checks": [
+   {
+    "key": "scope1_total_equals_gas_sum",
+    "total": 46.69007701358,
+    "sum": 46.69007701358,
+    "ok": true
+   },
+   {
+    "key": "scope2_location_total_equals_gas_sum",
+    "total": 0.0,
+    "sum": 0.0,
+    "ok": true
+   },
+   {
+    "key": "scope2_market_total_equals_gas_sum",
+    "total": 0.0,
+    "sum": 0.0,
+    "ok": true
+   },
+   {
+    "key": "inventory_location_equals_scope_sum",
+    "total": 46.69007701358,
+    "sum": 46.69007701358,
+    "ok": true
+   },
+   {
+    "key": "inventory_market_equals_scope_sum",
+    "total": 46.69007701358,
+    "sum": 46.69007701358,
+    "ok": true
+   },
+   {
+    "key": "fugitive_total_equals_gas_sum",
+    "total": 46.69007701358,
+    "sum": 46.69007701358,
+    "ok": true
+   }
+  ]
+ }
+}

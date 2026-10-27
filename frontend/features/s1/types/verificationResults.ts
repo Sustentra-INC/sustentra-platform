@@ -77,12 +77,19 @@ export interface EvidenceSource {
   title: string;
   /** The unit the total is in; a record in another unit shows its own. */
   unit: string;
-  /** The amount the calculation used: the records' sum after unit conversion. */
-  total: number;
+  /**
+   * The amount the calculation used: the records' sum after unit conversion. null when the
+   * records do not list this amount (a refrigerant's full charge is each record's equipment
+   * capacity, not its listed quantity): then no quantities or total are shown.
+   */
+  total: number | null;
+  /** One line under the list, e.g. where an amount that is not listed is read. */
+  note?: string;
   records: {
     documentId: string;
     record: string;
-    quantity: number;
+    /** null when the list does not show this amount (see `total`). */
+    quantity: number | null;
     unit: string;
     /** Below 1 when a bill crossing the reporting period was prorated. */
     shareInPeriod?: number;
