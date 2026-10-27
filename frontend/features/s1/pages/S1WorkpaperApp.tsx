@@ -13,7 +13,7 @@ import {
   userFacingApiError,
 } from "../api/s1Backend";
 import { ApiError } from "../../../lib/api";
-import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
+import { reviewValuesFromFields, withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import {
   getRecalculation,
   getRecalculationReference,
@@ -732,9 +732,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     };
   }, [dataMode, activeView.name, engagement.engagementId, evidenceSignature]);
   const reviewValuesView = useMemo(() => {
-    if (dataMode !== "backend") return reviewValues;
+    // A card's latest request decides whether it is requested, in the session and after a reload.
+    const settled = withRequestsFromAsks(reviewValues, requests.asks);
+    if (dataMode !== "backend") return settled;
     const byId = new Map(evidenceView.map((item) => [item.documentId, item]));
-    return reviewValues.map((value) => {
+    return settled.map((value) => {
       const item = byId.get(value.documentId);
       if (!item) return value;
       return {
@@ -746,7 +748,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         withdrawnReason: item.disposition === "withdrawn" ? "Document withdrawn; it is left out of the results." : undefined,
       };
     });
-  }, [dataMode, reviewValues, evidenceView]);
+  }, [dataMode, reviewValues, evidenceView, requests.asks]);
   const backendCoverage = useBackendCoverage(
     engagement.engagementId,
     dataMode === "backend" && (activeView.name === "requests" || activeView.name === "coverage"),
