@@ -1,12 +1,20 @@
 "use client";
 
+import { Cpu } from "lucide-react";
 import { useState } from "react";
 
 import type { EngagementConfig } from "../types";
-import type { ResultLine } from "../types/verificationResults";
+import type { Finding } from "../types/verification";
+import type { ResultLine, ResultState } from "../types/verificationResults";
 import type { DashboardFigures } from "../utils/engagementActivity";
 import { formatReportingPeriod } from "../utils/formatPeriod";
-import { statementFigures } from "../utils/outputStatement";
+import {
+  statementFigures,
+  type InventoryTotal,
+  type LiveStatementFigures,
+  type LiveStatementRow,
+  type StatementRow,
+} from "../utils/outputStatement";
 import { formatPercent, formatSignedTonnes, formatTonnes } from "../utils/verificationTable";
 
 /**
@@ -20,18 +28,22 @@ export function OutputScreen({
   engagement,
   lines,
   figures,
+  live,
 }: {
   engagement?: EngagementConfig;
   /** The verification results the statement reports. */
   lines: ResultLine[];
   /** The engagement's counts, for the basis of evidence. */
   figures?: DashboardFigures;
+  /** Backend mode: the statement from the live results, as a draft working paper. */
+  live?: LiveOutput;
 }) {
   const [toast, setToast] = useState<string | null>(null);
   function flash(m: string) {
     setToast(m);
     window.setTimeout(() => setToast(null), 2400);
   }
+  if (live) return <LiveOutputScreen engagement={engagement} figures={figures} live={live} />;
 
   const client = engagement?.clientName ?? "Cascade Provisions Co.";
   const period = engagement
@@ -209,6 +221,293 @@ export function OutputScreen({
 
       {toast ? <div className="s1-ws-toast">{toast}</div> : null}
     </section>
+  );
+}
+
+/** Output in backend mode: what the live statement needs beyond the demo's props. */
+export interface LiveOutput {
+  statement: LiveStatementFigures;
+  /** The whole workpaper as an Excel workbook (the one real export). */
+  exportHref: string;
+  /** "AR5 (EPA Hub Table 11)". */
+  gwpBasis: string;
+  /** The findings the verifier registered. */
+  findings: Finding[];
+  /** More lines for Basis of evidence: fully reviewed documents, records left out, what is not calculated. */
+  basisLines: string[];
+  /** Who prepared the draft: the signed-in person. */
+  preparedBy: string | null;
+}
+
+const NOT_SET = "Not set in Setup";
+
+/**
+ * The demo's statement on live data. Only what exists is shown: the one real export, a
+ * draft band (no opinion is issued here), recalculated rather than verified figures, a
+ * reported value only where one is entered, and states where a total is still open.
+ */
+function LiveOutputScreen({
+  engagement,
+  figures,
+  live,
+}: {
+  engagement?: EngagementConfig;
+  figures?: DashboardFigures;
+  live: LiveOutput;
+}) {
+  const { statement } = live;
+  const client = engagement?.clientName || engagement?.engagementName || "Engagement";
+  const period = engagement ? formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end) : NOT_SET;
+  const team = engagement?.engagementTeam?.map((m) => m.name).filter(Boolean).join(", ");
+  const threshold = formatPercent(statement.materiality);
+  const { location, market } = statement;
+  const reportedSub = (total: InventoryTotal) =>
+    [total.reported === null ? "Reported total not entered" : `Reported ${formatTonnes(total.reported)}`, total.partial ? "partial: at least this" : ""]
+      .filter(Boolean)
+      .join(" · ");
+
+  return (
+    <section className="s1-content s1-output">
+      <header className="s1-ws-header">
+        <div className="s1-ws-header__id">
+          <h1>Output</h1>
+          <span className="s1-muted">The assurance deliverable this engagement produces, from the reviewed evidence.</span>
+        </div>
+        <div className="s1-out-actions">
+          <span className="s1-state s1-state--open s1-out-status">Draft · not issued</span>
+          <a className="s1-button s1-button--pri" href={live.exportHref} download>
+            <CsvIcon /> Download workpaper (Excel)
+          </a>
+        </div>
+      </header>
+
+      <article className="s1-out-doc">
+        <div className="s1-out-doc__band">
+          <div className="s1-out-brand">Sustentra</div>
+          <div className="s1-out-eyebrow">Draft working paper · not an assurance opinion</div>
+        </div>
+
+        <div className="s1-out-titleblock">
+          <h2>{client}</h2>
+          <p className="s1-muted">Greenhouse gas emissions statement · Scope 1 and Scope 2 · recalculated from reviewed evidence</p>
+        </div>
+
+        <dl className="s1-out-meta">
+          <MetaItem label="Reporting period" value={period} />
+          <MetaItem label="Regulation" value={engagement?.regulation || NOT_SET} />
+          <MetaItem label="Assurance level" value={engagement?.assuranceLevel || NOT_SET} />
+          <MetaItem label="Boundary approach" value={engagement?.boundaryApproach || NOT_SET} />
+          <MetaItem label="Methodology" value={engagement?.methodology || "GHG Protocol Corporate Standard"} />
+          <MetaItem label="Emission factors" value="EPA GHG Emission Factors Hub 2025" />
+          <MetaItem label="GWP basis" value={live.gwpBasis} />
+          {team ? <MetaItem label="Engagement team" value={team} /> : null}
+        </dl>
+
+        <section className="s1-out-section">
+          <h3>Conclusion</h3>
+          {statement.materialBoxes.length ? (
+            <p className="s1-out-draftnote" role="note">
+              Draft:{" "}
+              {statement.materialBoxes
+                .map((b) => `${b.title} differs from the evidence by ${formatPercent(b.pctMaterial, true)} of its reported total`)
+                .join("; ")}
+              , at or above the {threshold} materiality threshold.
+            </p>
+          ) : null}
+          {statement.openBoxes.length ? (
+            <p className="s1-out-draftnote" role="note">
+              Not compared yet: {statement.openBoxes.map((b) => `${b.title} (${b.state.label.toLowerCase()})`).join("; ")}.
+            </p>
+          ) : null}
+          <p className="s1-out-lead s1-out-placeholder">
+            The verifier writes the conclusion when the report is issued. Until then this is a draft working paper, not an
+            assurance opinion.
+          </p>
+        </section>
+
+        <section className="s1-out-section">
+          <h3>Recalculated emissions</h3>
+          <div className="s1-out-tiles">
+            <BigTile
+              label="Total (location-based)"
+              value={location.recomputed === null ? "Not available" : formatTonnes(location.recomputed)}
+              unit="tCO2e"
+              tone="accent"
+              sub={reportedSub(location)}
+            />
+            <BigTile
+              label="Total (market-based)"
+              value={market.recomputed === null ? "Not available" : formatTonnes(market.recomputed)}
+              unit="tCO2e"
+              sub={reportedSub(market)}
+            />
+            <BigTile
+              label="Uncorrected misstatement"
+              value={statement.misstatement === null ? "Not compared" : formatSignedTonnes(statement.misstatement)}
+              unit={statement.misstatement === null ? "" : "tCO2e"}
+              sub={
+                statement.misstatement === null
+                  ? "Needs both reported scope totals"
+                  : [
+                      statement.misstatementPct === null ? "" : `${formatPercent(statement.misstatementPct, true)} of the reported total`,
+                      location.partial ? "partial: open items remain" : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+              }
+            />
+            <BigTile
+              label="Materiality threshold"
+              value={threshold.replace("%", "")}
+              unit="%"
+              sub={
+                statement.materialityTonnes === null
+                  ? undefined
+                  : `${formatTonnes(statement.materialityTonnes)} tCO2e${
+                      statement.materialityBase === "recalculated" ? " of the recalculated total" : ""
+                    }`
+              }
+            />
+          </div>
+
+          <div className="s1-table-wrap s1-out-tablewrap">
+            <table className="s1-table s1-out-table">
+              <thead>
+                <tr>
+                  <th>Emissions category</th>
+                  <th>Basis</th>
+                  <th className="s1-out-num">Reported</th>
+                  <th className="s1-out-num">Recalculated</th>
+                  <th>Outcome</th>
+                </tr>
+              </thead>
+              <tbody>
+                {statement.rows.map((row) => (
+                  <LiveScopeRow key={`${row.label}|${row.basis}`} row={row} />
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="s1-out-total">
+                  <td colSpan={2}>Total location-based Scope 1 + Scope 2</td>
+                  <td className="s1-out-num">{location.reported === null ? "Not entered" : formatTonnes(location.reported)}</td>
+                  <td className="s1-out-num">{location.recomputed === null ? "Not available" : formatTonnes(location.recomputed)}</td>
+                  <td>{location.partial ? <span className="s1-state s1-state--open">Partial</span> : null}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <p className="s1-muted s1-out-foot">
+            Figures in tCO2e, as on Verification results: recalculated from reviewed evidence on the EPA GHG Emission Factors
+            Hub 2025. Reported figures are the client&rsquo;s totals entered under Recalculation inputs. Biogenic CO₂ is reported
+            outside the scopes.
+          </p>
+        </section>
+
+        <section className="s1-out-section s1-out-split">
+          <div>
+            <h3>Differences found</h3>
+            {statement.differences.length ? (
+              <>
+                <span className="s1-out-by">
+                  <Cpu className="s1-out-by__icon" aria-hidden /> Checked by system
+                </span>
+                <ul className="s1-out-list">
+                  {statement.differences.slice(0, 5).map((d) => (
+                    <li key={d.label}>
+                      <LiveOutcome outcome={d.outcome} state={d.state} />
+                      <span className="s1-out-list__text">
+                        {d.label}, {formatSignedTonnes(d.difference)} tCO2e
+                        {d.pct === null ? "" : ` (${formatPercent(d.pct, true)})`}
+                        {d.state
+                          ? `: ${d.state.label.toLowerCase()}, so not compared yet`
+                          : d.outcome === "material"
+                            ? `: at or above the ${threshold} materiality threshold`
+                            : ""}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : (
+              <p className="s1-muted">No difference between a reported figure and the evidence yet.</p>
+            )}
+            {live.findings.length ? (
+              <>
+                <h4 className="s1-out-subhead">Findings registered by the verifier</h4>
+                <ul className="s1-out-list">
+                  {live.findings.map((f) => (
+                    <li key={f.id}>
+                      <span className="s1-state s1-state--open">{f.status}</span> {f.dataPointLabel}: {f.sentence}
+                      {f.registeredBy ? <span className="s1-muted"> · {f.registeredBy}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            ) : null}
+          </div>
+          <div>
+            <h3>Basis of evidence</h3>
+            <ul className="s1-out-list">
+              {figures ? (
+                <>
+                  <li>
+                    <strong>{figures.documents}</strong> source documents
+                  </li>
+                  <li>
+                    <strong>{figures.valuesReviewed}</strong> of {figures.valuesReviewed + figures.valuesToReview} values reviewed
+                  </li>
+                  {figures.coverage ? (
+                    <li>
+                      <strong>{figures.coverage.present}</strong> of {figures.coverage.present + figures.coverage.missing} in-scope
+                      data points with their inputs present
+                    </li>
+                  ) : null}
+                  <li>
+                    <strong>{figures.requestsResolved}</strong> of {figures.requestsRaised} requests to the client resolved
+                  </li>
+                </>
+              ) : null}
+              {live.basisLines.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        <section className="s1-out-signoff">
+          <div>
+            <div className="s1-out-signoff__name">{live.preparedBy ? `Prepared by ${live.preparedBy}` : "Not signed"}</div>
+            <div className="s1-muted">
+              Draft working paper for the verifier. The assurance opinion is issued by the verifier, not by this tool.
+            </div>
+          </div>
+          <div className="s1-out-signoff__date">
+            <div className="s1-label">Date of report</div>
+            <div>Not issued</div>
+          </div>
+        </section>
+      </article>
+    </section>
+  );
+}
+
+function LiveOutcome({ outcome, state }: { outcome: StatementRow["outcome"] | null; state: ResultState | null }) {
+  if (state) return <span className={`s1-state s1-state--${state.tone}`}>{state.label}</span>;
+  if (!outcome) return null;
+  return <span className={`s1-state s1-state--${OUTCOME[outcome].state}`}>{OUTCOME[outcome].label}</span>;
+}
+
+function LiveScopeRow({ row }: { row: LiveStatementRow }) {
+  return (
+    <tr className={row.total ? "s1-out-subtotal" : undefined}>
+      <td>{row.label}</td>
+      <td className="s1-muted">{row.basis}</td>
+      <td className="s1-out-num">{row.reported === null ? <span className="s1-muted">{row.reportedNote}</span> : formatTonnes(row.reported)}</td>
+      <td className="s1-out-num">{row.verified === null ? <span className="s1-muted">Not available</span> : formatTonnes(row.verified)}</td>
+      <td>
+        <LiveOutcome outcome={row.outcome} state={row.state} />
+      </td>
+    </tr>
   );
 }
 

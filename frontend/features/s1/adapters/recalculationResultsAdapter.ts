@@ -26,6 +26,7 @@ import type {
   ResultState,
   Scope1Category,
 } from "../types/verificationResults";
+import type { InventoryTotal } from "../utils/outputStatement";
 import { formatTonnes } from "../utils/verificationTable";
 
 /**
@@ -55,6 +56,8 @@ export interface LiveResults {
   lines: ResultLine[];
   boxTotals: Partial<Record<ResultBoxKey, ResultBoxTotal>>;
   gasRows: GasResultRow[];
+  /** Output's inventory totals (Scope 1 + Scope 2), per Scope 2 basis. */
+  inventory: { location: InventoryTotal; market: InventoryTotal };
 }
 
 /* ------------------------------ the result, normalised ------------------------------ */
@@ -666,6 +669,23 @@ function gasRows(result: Recalculation): GasResultRow[] {
 
 /* --------------------------------------------------------------------------------- */
 
+/** Scope 1 + Scope 2 on one basis: the roll-up's Step 2 total, against both reported scope totals. */
+function inventoryTotal(result: Recalculation, basis: "location" | "market"): InventoryTotal {
+  const scope2 = basis === "location" ? "scope2_location_total" : "scope2_market_total";
+  const parts = [outputOf(result, "scope1_total"), outputOf(result, scope2)];
+  const reported = parts.every((p) => p?.reported !== null && p?.reported !== undefined)
+    ? parts.reduce((sum, p) => sum + (p?.reported ?? 0), 0)
+    : null;
+  const node = result.rollup?.nodes[`inventory_${basis}_total`];
+  if (node) return { reported, recomputed: node.co2e_t, partial: node.status === "partial" };
+  const values = parts.map((p) => p?.recalculated ?? null);
+  return {
+    reported,
+    recomputed: values.every((v) => v !== null) ? values.reduce((sum: number, v) => sum + (v ?? 0), 0) : null,
+    partial: parts.some((p) => p?.status === "incomplete"),
+  };
+}
+
 export function liveResultsFromRecalculation(result: Recalculation): LiveResults {
   const bio = biogenic(result);
   const boxTotals: Partial<Record<ResultBoxKey, ResultBoxTotal>> = { biogenic: bio.total };
@@ -674,5 +694,6 @@ export function liveResultsFromRecalculation(result: Recalculation): LiveResults
     lines: [...SPECS.map((spec) => lineOf(result, spec)), bio.line],
     boxTotals,
     gasRows: gasRows(result),
+    inventory: { location: inventoryTotal(result, "location"), market: inventoryTotal(result, "market") },
   };
 }

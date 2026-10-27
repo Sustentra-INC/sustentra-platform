@@ -946,7 +946,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         ) : activeView.name === "output" ? (
           dataMode === "backend" ? (
             <BackendOutputScreen
-              engagement={engagement}
+              engagement={engagementForUser}
               evidence={evidenceView}
               values={reviewValuesView}
               asks={requests.asks}

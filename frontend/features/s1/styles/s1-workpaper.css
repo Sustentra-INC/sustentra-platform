@@ -1911,6 +1911,13 @@ html { font-size: 82%; }
 .s1-out-signoff { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); padding-top: var(--sp-4); border-top: var(--border-hairline); }
 .s1-out-signoff__name { font-size: var(--text-md); font-weight: var(--weight-strong); }
 .s1-out-signoff__date { text-align: right; }
+/* Output in backend mode: the opinion's place until the verifier writes it, scope subtotals, who found a difference */
+.s1-out-placeholder { padding: var(--sp-2) var(--sp-3); color: var(--ink-2); border: var(--hairline-width) dashed var(--line-strong); border-radius: var(--radius-input); }
+.s1-out-table .s1-out-subtotal td { font-weight: var(--weight-strong); color: var(--ink); background: var(--sf-page); }
+.s1-out-by { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-2); }
+.s1-out-by__icon { width: 1em; height: 1em; }
+.s1-out-subhead { margin: var(--sp-3) 0 0; font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-2); }
+.s1-out-list__text { flex: 1 1 8rem; min-width: 0; }
 
 @media (max-width: 48rem) {
   .s1-out-doc { padding: var(--sp-5) var(--sp-4); }
