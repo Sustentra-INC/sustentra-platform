@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 const responses = vi.hoisted(() => ({ byPath: {} as Record<string, unknown> }));
@@ -8,15 +8,19 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
   api: vi.fn((path: string) => Promise.resolve(responses.byPath[path])),
 }));
 
+import { api } from "../../../lib/api";
 import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import type { Recalculation, RecalculationReference } from "../api/recalculation";
 import { BackendVerificationResults, examinerOptions } from "../components/BackendVerificationResults";
+import { VerificationWorkspace } from "../components/VerificationWorkspace";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { verificationLines } from "../fixtures/verification/resultsDataset";
 import type { EngagementConfig } from "../types";
 import { buildResultBoxes, examinationKey, lineRecomputed, testedExaminationKeys } from "../utils/verificationTable";
+import { useWorkpaperSync } from "../verification/useWorkpaperSync";
 import { useVerificationStore } from "../verification/verificationStore";
 import liveExample from "./fixtures/recalculationLive.json";
+import refrigerantExample from "./fixtures/recalculationRefrigerants.json";
 import workbookExample from "./fixtures/recalculationWorkbookExample.json";
 
 /*
@@ -107,6 +111,20 @@ describe("the live recalculation as Verification results lines", () => {
     expect(scope1.rows[1]).toMatchObject({ reported: null, reportedNote: "Not entered", share: null, pctMaterial: null });
   });
 
+  it("does not compare a line whose recalculation is still incomplete, as a box does not", () => {
+    // Stationary combustion: reported 1,250, recalculated 1,274.7 so far, with April's bill awaiting review.
+    expect(LIVE.rollup?.final_outputs.find((o) => o.key === "stationary_combustion_total")?.status).toBe("incomplete");
+    expect(line["s1-stationary"].inconclusive).toBe(true);
+    const [scope1] = buildResultBoxes(lines, () => false, boxTotals);
+    const stationary = scope1.rows.find((r) => r.key === "s1-stationary")!;
+    expect(stationary).toMatchObject({ reported: 1250, difference: null, pctDifference: null, pctMaterial: null, notTested: false });
+    expect(stationary.recomputed).toBeCloseTo(1274.748, 3);
+    // Lines whose data point concludes keep their comparison.
+    expect(line["s2l-electricity"].inconclusive).toBeUndefined();
+    const [, location] = buildResultBoxes(lines, () => false, boxTotals);
+    expect(location.rows.find((r) => r.key === "s2l-electricity")?.difference).toBeCloseTo(0.008, 3);
+  });
+
   it("keys examinations the way the backend stores workpaper items", () => {
     const keys = testedExaminationKeys(lines);
     expect(keys).toContain("vr:s1-stationary:natural-gas");
@@ -147,6 +165,45 @@ describe("the live recalculation as Verification results lines", () => {
     const fresh = liveResultsFromRecalculation(empty);
     expect(fresh.boxTotals.scope1).toMatchObject({ reported: null, recomputed: null, state: { label: "No reviewed evidence" } });
     expect(fresh.lines.filter((l) => l.facilities !== null)).toEqual([]);
+  });
+});
+
+describe("a refrigerant's material balance in the Source pane", () => {
+  /*
+   * recalculationRefrigerants.json is the backend's response for one R-410A balance with every
+   * term: two service top-ups (P_S 40 + 5.5 lb), a new unit charged with 30 lb of a 25 lb full
+   * charge (P_N, C_N) and a retired unit of 12 lb full charge with 9 lb recovered (C_D, R_D).
+   */
+  const BALANCE = refrigerantExample as unknown as Recalculation;
+
+  it("shows a total only where the records' listed amounts make the term, and it equals the term", () => {
+    const store = renderHook(() => useVerificationStore()).result.current;
+    render(<VerificationWorkspace lines={liveResultsFromRecalculation(BALANCE).lines} store={store} team={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "R-410A" }));
+    const panel = screen.getByRole("complementary", { name: "Scope 1 · R-410A" });
+    const balance = within(panel).getByText("R-410A emitted").closest("tr")!;
+    const terms = within(balance).getAllByRole("button");
+    expect(terms.map((t) => t.textContent)).toEqual(["30 lb", "25 lb", "45.5 lb", "12 lb", "9 lb"]);
+    const shown: Record<string, string | null> = {};
+    for (const term of terms) {
+      fireEvent.click(term);
+      const source = within(panel).getByRole("region", { name: "Source" });
+      const total = source.querySelector("tfoot .s1-vw-num");
+      shown[term.textContent ?? ""] = total?.textContent ?? null;
+      if (total) expect(Number(total.textContent?.replace(/,/g, ""))).toBe(Number(term.textContent?.replace(/[^\d.]/g, "")));
+      else expect(source.querySelector("td.s1-vw-num")).toBeNull(); // no amounts that contradict the term
+    }
+    // P_N, P_S and R_D add up their records; the full charges (C_N, C_D) list the records without amounts.
+    expect(shown).toEqual({ "30 lb": "30", "25 lb": null, "45.5 lb": "45.5", "12 lb": null, "9 lb": "9" });
+  });
+
+  it("names the full-charge records and says where their capacity is read", () => {
+    const [r410a] = byId(BALANCE)["s1-fugitive"].facilities ?? [];
+    const cells = r410a.steps[0].how.filter((c) => c.source);
+    const fullCharge = cells[1].source;
+    expect(fullCharge).toMatchObject({ kind: "evidence", total: null, records: [{ record: "NEW-RTU.pdf", quantity: null }] });
+    expect(fullCharge && "note" in fullCharge ? fullCharge.note : "").toMatch(/equipment capacity/);
+    expect(cells[4].source).toMatchObject({ total: 9, records: [{ record: "RETIRED-RTU.pdf", quantity: 9 }] });
   });
 });
 
@@ -263,6 +320,8 @@ const ENGAGEMENT: EngagementConfig = {
   signedInName: "Dana",
 };
 
+const NOOP = () => {};
+
 function renderScreen(engagement: EngagementConfig = ENGAGEMENT) {
   responses.byPath["/engagements/ENG-1/recalculation"] = LIVE;
   responses.byPath["/reference/recalculation"] = REFERENCE;
@@ -280,13 +339,19 @@ describe("Verification results in backend mode", () => {
     expect(screen.getByRole("region", { name: "Recalculation inputs" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Data quality checks" })).toBeTruthy();
     // The legacy table and its Results / Findings switch are gone.
-    expect(screen.queryByText("Register finding")).toBeNull();
     expect(screen.queryByRole("button", { name: /Findings/ })).toBeNull();
 
     const scope1 = within(boxes).getByRole("button", { name: /^Scope 1/ });
     expect(scope1.textContent).toContain("1,600");
     expect(scope1.textContent).toContain("1,412");
     expect(scope1.textContent).toContain("Incomplete");
+    // Stationary is still partial: shown, not compared, so nothing in Scope 1 "differs".
+    expect(scope1.textContent).toContain("3 recomputed lines");
+    expect(scope1.textContent).not.toContain("differ");
+    const stationary = within(boxes).getByRole("button", { name: "Natural Gas" }).closest("tr")!;
+    expect(stationary.className).not.toContain("is-different");
+    expect(stationary.querySelector(".s1-vw-delta")).toBeNull();
+    expect(stationary.textContent).not.toMatch(/\+2\.0%|\+1\.5%/);
     const market = within(boxes).getByRole("button", { name: /^Scope 2, market-based/ });
     expect(market.textContent).toContain("+8.9% material");
     expect(within(boxes).getByRole("button", { name: /^By gas/ }).textContent).toContain("1 of 21 reported values entered");
@@ -307,6 +372,47 @@ describe("Verification results in backend mode", () => {
       examinedBy: "Dana",
       examinedByLogin: "dana@verifier.test",
     });
+  });
+
+  it("registers a finding on a line from its calculation card, as Output and the Excel export list them", async () => {
+    const { store } = renderScreen();
+    fireEvent.click(await screen.findByRole("button", { name: "Diesel Fuel" }));
+    const panel = screen.getByRole("complementary", { name: "Scope 1 · Diesel Fuel" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Register finding" }));
+    const dialog = screen.getByRole("dialog", { name: "Register finding" });
+    expect(within(dialog).getByText("Scope 1 · Mobile combustion · Diesel Fuel")).toBeTruthy();
+    fireEvent.change(within(dialog).getByPlaceholderText("What is wrong, in plain words"), {
+      target: { value: "Fleet CH₄ and N₂O are left out: no vehicle groups." },
+    });
+    fireEvent.change(within(dialog).getByPlaceholderText("e.g. Emission factor mismatch"), { target: { value: "Incomplete inputs" } });
+    act(() => {
+      fireEvent.click(within(dialog).getByRole("button", { name: "Register finding" }));
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(store.current.findings).toEqual([
+      expect.objectContaining({
+        dataPointId: "vr:s1-mobile",
+        dataPointLabel: "Scope 1 · Mobile combustion · Diesel Fuel",
+        sentence: "Fleet CH₄ and N₂O are left out: no vehicle groups.",
+        cause: "Incomplete inputs",
+        status: "Open",
+      }),
+    ]);
+    // The workpaper sync saves it to the backend as a finding item, like every finding.
+    responses.byPath["/engagements/ENG-1/workpaper-items"] = { items: [] };
+    const findings = store.current.findings;
+    renderHook(() =>
+      useWorkpaperSync({
+        enabled: true, engagementId: "ENG-1", asks: [], findings, examinations: {}, documents: {},
+        replaceAsks: NOOP, replaceVerification: NOOP, replaceDocuments: NOOP, onError: NOOP,
+      })
+    );
+    await waitFor(() =>
+      expect(api).toHaveBeenCalledWith(
+        `/engagements/ENG-1/workpaper-items/finding/${findings[0].id}`,
+        expect.objectContaining({ method: "PUT", body: { payload: expect.objectContaining({ dataPointId: "vr:s1-mobile" }) } })
+      )
+    );
   });
 
   it("offers the engagement team as examiners when Setup has one", () => {
