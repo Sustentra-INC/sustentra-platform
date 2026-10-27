@@ -3,6 +3,7 @@ import type { ReviewValue, ScopePlacement, SourceKind } from "../types/review";
 import { resolveCanonicalTypeDisplayName } from "./evidenceAdapter";
 import { anchorOf } from "../utils/sourceAnchor";
 import { decodeReviewCandidateToken } from "./fieldAdapter";
+import { asPrinted, printedUnitsByRecord } from "./printedValue";
 
 /**
  * Extracted fields from the backend (one per candidate) as Extraction Review cards.
@@ -30,6 +31,7 @@ const KEY_FIELDS = new Set([
 export function reviewValuesFromFields(fields: ExtractedField[], evidence: EvidenceItem[]): ReviewValue[] {
   const documents = new Map(evidence.map((item) => [item.documentId, item]));
   const periods = periodsByDocument(fields);
+  const printedUnits = printedUnitsByRecord(fields);
   const seen = new Map<string, number>();
 
   return fields
@@ -100,6 +102,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         rawText: rawValue === null || rawValue === undefined ? null : String(rawValue),
         reviewToken: field.reviewToken,
         missing: field.value === null && field.correctedValue === null,
+        asPrinted: corrected ? undefined : asPrinted(field, candidate, printedUnits),
       } satisfies ReviewValue;
     });
 }
@@ -111,7 +114,8 @@ function fieldNameOf(field: ExtractedField): string | null {
 
 /** "2025-01-01 to 2025-06-30" from a document's service period, or the span of its
  *  transaction or service dates (fuel purchases and refrigerant service have a date,
- *  not a billing period). */
+ *  not a billing period). This is data: a request raised from a card saves it as it is, and
+ *  the screens show it with readablePeriod ("Jan–Jun 2025"). */
 function periodsByDocument(fields: ExtractedField[]): Map<string, string> {
   const found = new Map<string, { start: Set<string>; end: Set<string>; dates: string[] }>();
   for (const field of fields) {

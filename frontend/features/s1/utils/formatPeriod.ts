@@ -45,6 +45,52 @@ export function formatPeriod(start: string | null | undefined, end: string | nul
   return `${ABBR[a.m - 1]} ${a.y} – ${ABBR[b.m - 1]} ${b.y}`;
 }
 
+/** A date read from a client's document, the way a bill prints it: "01 Feb 2025". Anything
+ *  that is not an ISO date comes back as it was read. */
+export function formatPrintedDate(iso: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  if (!match) return iso;
+  const [y, m, d] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  if (m < 1 || m > 12 || d < 1 || d > lastDay(y, m)) return iso;
+  return `${String(d).padStart(2, "0")} ${ABBR[m - 1]} ${y}`;
+}
+
+/**
+ * The period a document covers, as Extraction review heads its cards: "Feb 2025" for a
+ * whole month (the way the demo's bills read), "Q1 2025" or "FY2025" for whole quarters and
+ * years, and the days otherwise: "15 Jan – 14 Feb 2025", "05 Mar 2024".
+ */
+export function formatDocumentPeriod(start: string, end: string): string {
+  const a = parts(start);
+  const b = parts(end);
+  if (!a || !b) return start === end ? formatPrintedDate(start) : `${formatPrintedDate(start)} – ${formatPrintedDate(end)}`;
+  if (a.d === 1 && b.d === lastDay(b.y, b.m) && (a.y < b.y || (a.y === b.y && a.m <= b.m))) {
+    return a.y === b.y && a.m === b.m ? `${ABBR[a.m - 1]} ${a.y}` : formatPeriod(start, end);
+  }
+  if (start === end) return formatPrintedDate(start);
+  const day = (p: { m: number; d: number }) => `${String(p.d).padStart(2, "0")} ${ABBR[p.m - 1]}`;
+  return a.y === b.y ? `${day(a)} – ${day(b)} ${b.y}` : `${day(a)} ${a.y} – ${day(b)} ${b.y}`;
+}
+
+/**
+ * A period kept as data, "2025-02-01 to 2025-02-28" or one ISO date (a review card's period, and
+ * the period saved on a request raised from it), as a person reads it: "Feb 2025",
+ * "15 Jan – 14 Feb 2025", "05 Mar 2024", or "01 Feb 2025 – end not read" when one end is "?".
+ * Anything else ("Aug 2025", "Several service periods") comes back as it is.
+ */
+export function readablePeriod(period: string): string {
+  const text = period.trim();
+  const range = /^(\d{4}-\d{2}-\d{2}|\?) to (\d{4}-\d{2}-\d{2}|\?)$/.exec(text);
+  if (range) {
+    const [, start, end] = range;
+    if (start === "?" && end === "?") return period;
+    if (start === "?") return `start not read – ${formatPrintedDate(end)}`;
+    if (end === "?") return `${formatPrintedDate(start)} – end not read`;
+    return formatDocumentPeriod(start, end);
+  }
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? formatPrintedDate(text) : period;
+}
+
 /** One ISO date as a person reads it, "Oct 8, 2026"; anything else as it was typed. */
 function formatDay(iso: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);

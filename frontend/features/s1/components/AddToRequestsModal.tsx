@@ -6,6 +6,7 @@ import type { EngagementConfig } from "../types";
 import type { AskOrigin, RequestType } from "../types/requests";
 import { REQUEST_TYPES } from "../types/requests";
 import type { AskDraft } from "../requests/requestsStore";
+import { readablePeriod } from "../utils/formatPeriod";
 
 /**
  * The Add to requests window, shared by the Evidence Workspace row and the
@@ -62,7 +63,7 @@ export function AddToRequestsModal({
   const about: [string, string][] = [
     ["Item", target.itemLabel],
     ["Facility", target.facilityName ?? "Not yet known"],
-    ["Period", target.period ?? "Not stated"],
+    ["Period", target.period ? readablePeriod(target.period) : "Not stated"],
     ...(target.sourcePage ? ([["Page", String(target.sourcePage)]] as [string, string][]) : []),
   ];
   const add = () => {

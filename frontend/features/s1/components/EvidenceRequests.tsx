@@ -7,6 +7,7 @@ import type { AskDraft } from "../requests/requestsStore";
 import type { EngagementConfig } from "../types";
 import type { Ask, AskState, RequestType } from "../types/requests";
 import { REQUEST_TYPES } from "../types/requests";
+import { readablePeriod } from "../utils/formatPeriod";
 import type { CoverageRule } from "../types/verification";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
@@ -228,7 +229,7 @@ export function EvidenceRequests({
                           <span>{REQUEST_TYPES.find((t) => t.value === ask.type)?.label}</span>
                           <span>
                             {ask.source.facilityName ?? (ask.source.documentId ? "Facility not yet known" : "Entity-level")}
-                            {ask.source.period ? ` · ${ask.source.period}` : ""}
+                            {ask.source.period ? ` · ${readablePeriod(ask.source.period)}` : ""}
                           </span>
                           {ask.linkedFromAskId ? <span>Follow-up</span> : null}
                         </div>
@@ -616,7 +617,7 @@ function reasonSentence(ask: Ask): string {
   const idx = ask.whatIsNeeded.indexOf(": ");
   const tail = idx >= 0 ? ask.whatIsNeeded.slice(idx + 2).trim() : ask.whatIsNeeded.trim();
   const reason = tail || fallbackByType(ask);
-  const period = ask.source.period && ask.source.period !== "period not yet known" ? ` (${ask.source.period})` : "";
+  const period = ask.source.period && ask.source.period !== "period not yet known" ? ` (${readablePeriod(ask.source.period)})` : "";
   return capitalize(reason.endsWith(".") ? reason.slice(0, -1) : reason) + period + ".";
 }
 

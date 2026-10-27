@@ -96,4 +96,11 @@ export interface ReviewValue {
   reviewToken?: string;
   /** The extractor did not find this value on the document; the reviewer can enter it. */
   missing?: boolean;
+  /**
+   * Backend values: the value as the document prints it, when that reads differently from
+   * `value` ("01 Feb 2025" for 2025-02-01, "182,400" kWh for 182.4 MWh). The card shows it;
+   * `value` and `unit` stay what Accept and Correct record. `converted`: the unit was converted
+   * for the calculation, so the card also shows the value the calculation uses.
+   */
+  asPrinted?: { value: string; unit: string; converted?: boolean };
 }

@@ -3259,6 +3259,8 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-card .s1-xr-val { font-size: var(--text-md); line-height: var(--leading-tight); }
 .s1-xr-card .s1-xr-unit { font-size: var(--text-sm); }
 .s1-xr-card .s1-xr-was { font-size: var(--text-sm); }
+/* A quantity converted for the calculation: the card reads as printed, this line says what is used. */
+.s1-xr-conv { flex-basis: 100%; font-size: var(--text-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .s1-xr-card .s1-xr-missing { font-size: var(--text-sm); }
 .s1-xr-card__scopes { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .s1-xr-card .s1-xr-scope { padding: 0 0.375rem; line-height: 1.5; }

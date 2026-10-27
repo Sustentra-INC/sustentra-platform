@@ -8,6 +8,7 @@ import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntr
 import type { Ask } from "../types/requests";
 import type { AskDraft } from "../requests/requestsStore";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import { readablePeriod } from "../utils/formatPeriod";
 import type { HighlightEntry } from "./demo/DemoDocument";
 
 /**
@@ -276,6 +277,7 @@ export function ExtractionReview({
               originalValue: x.originalValue ?? x.value,
               value: next.value,
               unit: next.unit,
+              asPrinted: undefined,
               record: [
                 ...x.record,
                 {
@@ -382,10 +384,12 @@ export function ExtractionReview({
       facilityName,
       period: v.period,
       sourcePage: v.page,
-      headerLine: `${v.filename} · page ${v.page} · ${v.whatItIs} · ${scope} · ${facLabel} · ${v.period}`,
+      headerLine: `${v.filename} · page ${v.page} · ${v.whatItIs} · ${scope} · ${facLabel} · ${readablePeriod(v.period)}`,
       defaultType: v.requestPreselect ?? "clarify",
       // pre-fill order: document, value, scope, facility, period, then a colon
-      prefill: `${v.filename} · ${v.value} ${v.unit} · ${scope} · ${facLabel} · ${v.period}: `,
+      // The words go to the client: the value as the bill prints it, the period as a person reads it.
+      // The request's own period (above) is saved as data.
+      prefill: `${v.filename} · ${shown(v).value} ${shown(v).unit} · ${scope} · ${facLabel} · ${readablePeriod(v.period)}: `,
     });
   }
 
@@ -410,6 +414,7 @@ export function ExtractionReview({
         page: entry.page,
         missing: false,
         docAnchor: entry.docAnchor,
+        asPrinted: undefined,
         reviewState: "corrected",
         originalValue: "not found",
         record: [...gap.record, { kind: "human", actor: reviewerName, at: now, action: "filled in a value the reading missed", reason: where }],
@@ -432,6 +437,7 @@ export function ExtractionReview({
         docAnchor: entry.docAnchor,
         methodologyFieldId: undefined,
         reviewToken: undefined,
+        asPrinted: undefined,
         reviewState: "corrected",
         originalValue: null,
         record: [{ kind: "human", actor: reviewerName, at: now, action: "added a value the reading missed", reason: where }],
@@ -635,7 +641,7 @@ export function ExtractionReview({
                 <div key={group.key} className="s1-xr-group">
                   <div className="s1-xr-doc">
                     <span className="s1-xr-doc__fn">{group.filename}</span>
-                    <span className="s1-muted">{group.period}</span>
+                    <span className="s1-muted">{readablePeriod(group.period)}</span>
                     {group.values.length > REVIEW_CAP ? (
                       <span className="s1-muted"> · {group.values.length} values from one file</span>
                     ) : null}
@@ -882,7 +888,7 @@ function ValueCard({
     >
       <div className="s1-xr-card__top">
         <span className="s1-xr-what">{v.whatItIs}</span>
-        <span className="s1-xr-period">{v.period}</span>
+        <span className="s1-xr-period">{readablePeriod(v.period)}</span>
         {done ? <span className={`s1-xr-badge s1-xr-badge--${v.reviewState}`}>{stateLabel}</span> : null}
       </div>
       <div className="s1-xr-card__value">
@@ -890,8 +896,14 @@ function ValueCard({
           <span className="s1-xr-missing">Not found on the document</span>
         ) : (
           <>
-            <span className="s1-xr-val">{v.value}</span>
-            {v.unit ? <span className="s1-xr-unit">{v.unit}</span> : null}
+            <span className="s1-xr-val">{shown(v).value}</span>
+            {shown(v).unit ? <span className="s1-xr-unit">{shown(v).unit}</span> : null}
+            {v.asPrinted?.converted ? (
+              <span className="s1-xr-conv">
+                = {v.value}
+                {v.unit ? ` ${v.unit}` : ""}, used in the calculation
+              </span>
+            ) : null}
           </>
         )}
         {v.reviewState === "corrected" ? (
@@ -998,12 +1010,17 @@ function ValueCard({
 
 /* =============================== source pane =============================== */
 
+/** A value as its card shows it: as the document prints it, when the backend says how. */
+function shown(v: ReviewValue): { value: string; unit: string } {
+  return v.asPrinted ?? { value: v.value, unit: v.unit };
+}
+
 /** Every value of a document that has a position on a page, to draw as clickable boxes. */
 function pageMarks(items: ReviewValue[], documentId: string): PageMark[] {
   return items
     .filter((v) => v.documentId === documentId && (v.span || v.anchor) && !v.missing && !v.withdrawn)
     .map((v) => ({ id: v.id, span: v.span ?? null, anchor: v.anchor ?? null, rawText: v.rawText ?? null,
-      label: `${v.whatItIs}: ${v.value}${v.unit ? ` ${v.unit}` : ""}`, reviewState: v.reviewState }));
+      label: `${v.whatItIs}: ${shown(v).value}${shown(v).unit ? ` ${shown(v).unit}` : ""}`, reviewState: v.reviewState }));
 }
 
 /** What a content view (workbook, CSV, Word) needs to select values from the file. */
