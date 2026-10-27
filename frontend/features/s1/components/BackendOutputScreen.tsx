@@ -62,8 +62,8 @@ export function BackendOutputScreen({
 
   const current = result && result.engagement_id === engagement.engagementId ? result : null;
   const output = useMemo(
-    () => (current ? liveOutputFrom(current, engagement, values, findings) : null),
-    [current, engagement, values, findings]
+    () => (current ? liveOutputFrom(current, values, findings) : null),
+    [current, values, findings]
   );
 
   if (!engagement.engagementId) {
@@ -105,7 +105,6 @@ export function BackendOutputScreen({
 /** The live statement and the lines it is built from (the same as Verification results). */
 export function liveOutputFrom(
   result: Recalculation,
-  engagement: EngagementConfig,
   values: ReviewValue[],
   findings: Finding[]
 ): { lines: ReturnType<typeof liveResultsFromRecalculation>["lines"]; live: LiveOutput } {
@@ -128,7 +127,6 @@ export function liveOutputFrom(
           : []),
         ...(result.not_recalculated.length ? [`Not calculated yet: ${result.not_recalculated.join(", ")}`] : []),
       ],
-      preparedBy: engagement.signedInName ?? engagement.signedInLogin ?? null,
     },
   };
 }
