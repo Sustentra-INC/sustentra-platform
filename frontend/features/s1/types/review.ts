@@ -1,8 +1,9 @@
 import type { SourceAnchor } from "../utils/sourceAnchor";
 import type { RequestType } from "./requests";
 
-/** Scope placement of a value. Line 2 of a card never goes blank. */
-export type ScopePlacement = "general" | "scope1" | "scope2_location" | "scope2_market" | "not_placed";
+/** Scope placement of a value. Line 2 of a card never goes blank. `scope2_both`: one reading
+ *  that feeds Scope 2 location- and market-based alike (a backend electricity quantity). */
+export type ScopePlacement = "general" | "scope1" | "scope2_location" | "scope2_market" | "scope2_both" | "not_placed";
 
 export type ValueReviewState = "to_review" | "accepted" | "corrected" | "requested";
 
