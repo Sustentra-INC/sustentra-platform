@@ -379,6 +379,18 @@ def test_an_xls_with_an_invalid_sector_size_is_422_not_500(env: dict) -> None:
         assert env["client"].get(url(doc, "content")).status_code == 422
 
 
+def test_an_xls_whose_sheets_run_past_its_workbook_stream_is_422(env: dict) -> None:
+    from backend.app.adapters.parsers.xls_parser import DAMAGED_SHEETS
+    from backend.tests.adapters.parsers._xls_builder import past_the_stream_xls
+
+    # Sheets starting in the stream's last bytes (same or adjacent offsets), or a sheet with no
+    # EOF before the stream's end, made xlrd read what follows the stream in the file.
+    for shape in ("identical", "adjacent", "no_eof"):
+        doc = env["upload"](f"past_{shape}.xls", past_the_stream_xls(shape), "application/vnd.ms-excel")
+        response = env["client"].get(url(doc, "content"))
+        assert (response.status_code, response.json()["detail"]) == (422, DAMAGED_SHEETS)
+
+
 def test_processing_a_password_protected_workbook_halts_with_what_to_ask_for(env: dict) -> None:
     doc = env["upload"]("locked.xls", _xls(encrypted=True), "application/vnd.ms-excel")
     env["act_as"]("org_member", ORG_A)

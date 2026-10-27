@@ -28,6 +28,7 @@ from backend.tests.adapters.parsers._xls_builder import (  # noqa: E402
     biff_workbook,
     embedded_block_xls,
     ole_file,
+    past_the_stream_xls,
     xls_bytes,
 )
 
@@ -413,6 +414,50 @@ def test_a_sheet_with_a_legitimate_embedded_chart_still_parses(tmp_path: Path) -
     from backend.app.services.document_content_service import document_content
 
     assert {sheet["name"] for sheet in document_content(path)["sheets"]} == {"A", "B"}
+
+
+@pytest.mark.parametrize("shape", ["identical", "adjacent", "no_eof"])
+def test_sheets_that_run_past_the_workbook_stream_are_refused(tmp_path: Path, shape: str) -> None:
+    # The Workbook stream is stored in one piece, so xlrd reads it inside the whole file and
+    # does not stop at its end. 100 sheets starting in the stream's last 1-3 bytes (at the same
+    # offset, or adjacent ones), or one sheet with no EOF before the end, made xlrd read the
+    # records that follow the stream in the file, once per such sheet. Every sheet must now end
+    # on its own EOF inside the stream; the guard refuses these before any sheet is loaded
+    # (xlrd's own errors would read "Could not read workbook: XLRDError.").
+    from backend.app.services.document_content_service import UnreadableContent, document_content
+
+    path = tmp_path / f"past_{shape}.xls"
+    path.write_bytes(past_the_stream_xls(shape))
+    started = time.perf_counter()
+    output = XlsParser().parse(path, "D", "R")
+    assert time.perf_counter() - started < 2
+    assert_parser_output_shape(output)
+    assert (output["status"], output["warnings"][0]["code"], output["warnings"][0]["message"]) == (
+        "failed", "workbook_load_failed", xls_parser.DAMAGED_SHEETS)
+    with pytest.raises(UnreadableContent, match="overlap the same data"):
+        document_content(path)
+
+
+def test_a_sheet_must_end_on_its_own_eof_inside_the_stream() -> None:
+    # Unit check: a sheet whose walk meets the stream's end before its own EOF is refused.
+    tail = b"\x09\x08\x00"  # 3 bytes after the last sheet's EOF, still inside the stream
+    end = 100 + len(_SHEET) + len(tail)
+    for starts in ([100, end - 2, end - 2, end - 2], [100, end - 3, end - 2, end - 1], [100, end - 1]):
+        book = _FakeBook({100: _SHEET + tail})
+        book._sh_abs_posn = starts  # each extra start has no room for a record header: an empty span
+        with pytest.raises(xls_parser.XlsError, match="damaged"):
+            xls_parser._check_sheet_spans(book)
+
+    no_eof = _FakeBook({100: _records((0x0809, b"\x00" * 16), (0x0203, b"\x00" * 14))})
+    with pytest.raises(xls_parser.XlsError, match="damaged"):
+        xls_parser._check_sheet_spans(no_eof)
+
+    # An embedded block's EOF is not the sheet's own: a sheet ending there has none.
+    block_eof_only = _FakeBook({100: _records((0x0809, b"\x00" * 16), (0x0809, b"\x00" * 4), (0x000A, b""))})
+    with pytest.raises(xls_parser.XlsError, match="damaged"):
+        xls_parser._check_sheet_spans(block_eof_only)
+
+    xls_parser._check_sheet_spans(_FakeBook({100: _SHEET}))  # its EOF is the stream's last record: fine
 
 
 def test_the_span_walk_reads_past_an_embedded_block_but_an_inner_eof_still_ends_a_plain_sheet() -> None:

@@ -178,7 +178,15 @@ def _check_sheet_spans(book: Any) -> None:
     The walk mirrors xlrd 2.0.2 ``Sheet.read``: the sheet's own BOF is consumed first; then an
     EOF ends the sheet, while an embedded BOF (any of ``_BOF_CODES``, e.g. an embedded chart)
     makes xlrd consume records up to that block's first EOF and carry on -- so that inner EOF
-    does not end the span. A block without its EOF runs to the end of the stream.
+    does not end the span.
+
+    A sheet must end on its own EOF inside the stream. xlrd does not stop at the stream's end:
+    when the Workbook stream is stored in one piece, its ``mem`` is the whole file and its
+    record reads are not bounded to ``base + stream_len``, so a sheet whose walk meets the
+    stream end first (no room for a record header, e.g. a sheet starting in the stream's last
+    1-3 bytes, or records with no EOF) would be read on from whatever follows the stream in
+    the file -- once per such sheet. Ending each sheet on an EOF inside the stream also makes
+    every span non-empty, so sheets at the same offset overlap and are refused.
 
     This reads only ``mem``, ``base``, ``stream_len``, ``biff_version`` and ``_sh_abs_posn`` --
     set once when the globals are parsed and never reset by a sheet load (unlike ``_position``).
@@ -209,19 +217,27 @@ def _check_sheet_spans(book: Any) -> None:
             raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
         return code, pos
 
+    def sheet_end(start: int) -> int:
+        """Where xlrd stops reading the sheet at ``start``: just after its own EOF."""
+
+        code, pos = next_record(start)  # xlrd's getbof consumes the sheet's own BOF
+        in_block = False  # inside an embedded BOF...EOF block, which xlrd reads to its first EOF
+        while code is not None:
+            code, pos = next_record(pos)
+            if code == _XL_EOF:
+                if not in_block:
+                    return pos
+                in_block = False
+            elif code in _BOF_CODES:
+                in_block = True
+        # The stream ended before the sheet's EOF: xlrd would read on past the stream.
+        raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
+
     spans: list[tuple[int, int]] = []
     for start in starts:
         if not base <= start < end_bound:
             raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
-        _own_bof, pos = next_record(start)  # xlrd's getbof consumes the sheet's own BOF
-        while True:
-            code, pos = next_record(pos)
-            if code is None or code == _XL_EOF:
-                break
-            if code in _BOF_CODES:  # an embedded block: xlrd reads on to its first EOF, then carries on
-                while code is not None and code != _XL_EOF:
-                    code, pos = next_record(pos)
-        spans.append((start, pos))
+        spans.append((start, sheet_end(start)))
     reach = base
     for start, stop in sorted(spans):
         if start < reach:  # this sheet begins inside an earlier sheet's records

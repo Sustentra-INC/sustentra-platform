@@ -242,6 +242,52 @@ def embedded_block_xls(*, overlap: bool) -> bytes:
     return ole_file({"Workbook": head + eof + sheet_a + sheet_b})
 
 
+def past_the_stream_xls(shape: str, *, sheets: int = 100, rows_after: int = 1000) -> bytes:
+    """A workbook whose sheets lead xlrd past the end of its Workbook stream.
+
+    The Workbook stream is a standard stream (over the 4096-byte cutoff) stored in one piece,
+    so xlrd reads it in place inside the whole file, and its record reads do not stop at the
+    stream's end. What follows the stream in the file is records the stream does not hold:
+    ``rows_after`` cells, then an EOF.
+
+    - ``identical``: ``sheets`` more BOUNDSHEETs all point 2 bytes before the stream's end,
+      whose last 2 bytes are a BOF opcode; the BOF's length and body, and the sheet's records,
+      lie after the stream. xlrd reads those records once per sheet.
+    - ``adjacent``: the extra sheets point at the stream's last 1, 2 and 3 bytes in turn.
+    - ``no_eof``: one sheet whose records run to the stream's end with no EOF; xlrd reads
+      the cells after the stream as that sheet's.
+    """
+
+    def number(row: int, value: float) -> bytes:
+        return _record(0x0203, struct.pack("<HHHd", row, 0, 0, value))
+
+    eof = _record(0x000A)
+    filler = _record(0x00EF, bytes(4200))  # keeps the stream over the mini-stream cutoff
+    cells_after = b"".join(number(row, 1000.0 + row) for row in range(1, rows_after + 1)) + eof
+    names = ["S"] if shape == "no_eof" else ["S", *(f"T{k}" for k in range(1, sheets + 1))]
+    head = _bof(0x0005) + _record(0x0042, struct.pack("<H", 1200)) + _xf(0) + _xf(14)
+    first = len(head) + sum(len(_record(0x0085, bytes(6) + _utf16(name, 1))) for name in names) + len(eof)
+    if shape == "no_eof":
+        sheet, tail = _bof(0x0010) + number(0, 450.0) + filler, b""  # the stream ends with no EOF
+        offsets = [first]
+        after = cells_after
+    else:
+        sheet = _bof(0x0010) + number(0, 450.0) + filler + eof
+        tail = b"\x09\x08" if shape == "identical" else b"\x00\x09\x08"  # 0x0809, a BOF opcode
+        end = first + len(sheet) + len(tail)
+        extra = [end - 2] * sheets if shape == "identical" else [end - 1 - k % 3 for k in range(sheets)]
+        offsets = [first, *extra]
+        # The BOF's length (16) and body (a worksheet), then the sheet's records.
+        after = struct.pack("<HHHHHII", 16, 0x0600, 0x0010, 0x0DBB, 0x07CC, 0, 0x06) + cells_after
+    for name, offset in zip(names, offsets):
+        head += _record(0x0085, struct.pack("<IBB", offset, 0, 0) + _utf16(name, 1))
+    stream = head + eof + sheet + tail
+    data = ole_file({"Workbook": stream})
+    stream_end = data.index(stream) + len(stream)
+    data = data[:stream_end] + after
+    return data + bytes(-(len(data) - 512) % 512)  # whole sectors
+
+
 def xls_bytes(sheets: dict[str, list[Any]], *, encrypted: bool = False, macros: bool = False,
               datemode: int = 0, shared_sheets: int = 0, overlap_step: int | None = None) -> bytes:
     """A whole .xls file, as Excel saves one (the Workbook stream at least 4096 bytes)."""
