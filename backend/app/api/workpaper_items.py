@@ -8,11 +8,13 @@ The payload is the frontend's own object (an Ask, a Finding, an Examination); th
 checks its shape and size, not its fields, so the screens can evolve without a
 migration. Another org's engagement answers 404, like every S1 route.
 
+Requests (asks) also have action endpoints that check their state, number them and
+record who acted (``requests.py``, MVP-86). The PUT below still accepts asks until the
+frontend has moved to those endpoints.
+
 No ``from __future__ import annotations``: FastAPI resolves these at runtime.
 """
 
-import json
-import re
 import uuid
 from datetime import datetime
 from typing import Any, Literal
@@ -27,12 +29,11 @@ from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
 from backend.app.services import workpaper_item_service
 from backend.app.services.audit_log import write_audit_event
+from backend.app.services.workpaper_item_service import ITEM_KEY, MAX_PAYLOAD_BYTES
 
 router = APIRouter(prefix="/v1", tags=["workpaper"])
 
 Kind = Literal["ask", "finding", "examination", "document"]
-MAX_PAYLOAD_BYTES = 32 * 1024
-_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._\-]{0,199}$")
 
 
 class WorkpaperItemSave(BaseModel):
@@ -41,7 +42,7 @@ class WorkpaperItemSave(BaseModel):
     @field_validator("payload")
     @classmethod
     def _small_enough(cls, value: dict[str, Any]) -> dict[str, Any]:
-        if len(json.dumps(value)) > MAX_PAYLOAD_BYTES:
+        if workpaper_item_service.payload_size(value) > MAX_PAYLOAD_BYTES:
             raise ValueError(f"must be at most {MAX_PAYLOAD_BYTES // 1024} KB")
         return value
 
@@ -82,7 +83,7 @@ async def save_workpaper_item(
     engagement: dict[str, Any] = Depends(require_open_engagement),
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> WorkpaperItem:
-    if not _KEY.match(item_key):
+    if not ITEM_KEY.match(item_key):
         raise HTTPException(status_code=422, detail="item_key: letters, digits and : . _ - only (max 200).")
     assert user.org_id is not None  # s1_writer excludes provider_admin
     row = await workpaper_item_service.save_item(
