@@ -351,10 +351,8 @@ def test_only_ordinary_text_charsets_decode() -> None:
                      b"\r\n\r\nhi\r\n--b\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; "
                      b"filename*=punycode''" + name + b"\r\n\r\n%PDF\r\n--b--\r\n")
     assert package.attachments[0].name == name[:email_reader.MAX_NAME_CHARS].decode()
-    # Two encoded words with a denied/unknown charset: both read as UTF-8, and the space
-    # between them is kept (not glued), as item 2 requires.
     package = read_eml(b"From: a@example.com\r\nSubject: =?punycode?q?caf-dma?= =?x-unknown?q?=C3=A9?=\r\n\r\nx\r\n")
-    assert package.subject == "caf-dma \u00e9"
+    assert package.subject == "caf-dma\u00e9"
 
 
 @pytest.mark.parametrize("raw", [

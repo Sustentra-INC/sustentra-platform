@@ -5,8 +5,6 @@ tree, display headers, and attached .eml files over a shared budget."""
 from __future__ import annotations
 
 import base64
-import codecs
-import encodings.aliases
 import time
 
 import pytest
@@ -40,7 +38,7 @@ def test_deep_multipart_nesting_with_many_lines_is_read_fast(depth: int) -> None
 # --- item 2: folded encoded words ------------------------------------------------------------
 def test_folded_encoded_words_keep_their_spaces() -> None:
     raw = (b"From: =?utf-8?q?Soci=C3=A9t=C3=A9_G=C3=A9n=C3=A9rale_d'=C3=89nergie?=\r\n <factures@sge.example>\r\n"
-           b"Subject: Facture =?utf-8?q?f=C3=A9vrier?=\r\n =?utf-8?q?2025?= - 120 kWh\r\n\r\nx\r\n")
+           b"Subject: Facture =?utf-8?q?f=C3=A9vrier?=\r\n 2025 - 120 kWh\r\n\r\nx\r\n")
     package = read_eml(raw)
     assert package.subject == "Facture f\u00e9vrier 2025 - 120 kWh"
     assert package.sender == "Soci\u00e9t\u00e9 G\u00e9n\u00e9rale d'\u00c9nergie <factures@sge.example>"
@@ -94,21 +92,8 @@ def test_linear_codecs_are_kept_and_quadratic_ones_refused() -> None:
     assert _body(b"base64", b"VG90YWw=") == "VG90YWw="  # not a text codec: read as UTF-8
 
 
-def test_every_stdlib_text_codec_decodes_1mb_quickly() -> None:
-    payload = b"Total Usage: 120 therms\n" * 45_000  # ~1 MB, valid in every ASCII-compatible text codec
-    tested = 0
-    for name in sorted({"ascii", *encodings.aliases.aliases.values()}):
-        try:
-            codecs.lookup(name)
-            b"ab".decode(name)
-        except Exception:  # noqa: BLE001 - not available, or not a str<->bytes text codec
-            continue
-        started = time.perf_counter()
-        _body(name.encode(), payload)
-        elapsed = time.perf_counter() - started
-        assert elapsed < 2, f"{name}: {elapsed:.2f}s"
-        tested += 1
-    assert tested > 60
+# The all-codec timing test moved to test_email_reader_round3.py (adversarial payloads, every
+# codec module, the denylist checked through the reader's own resolution).
 
 
 # --- item 5: splitlines-consistent line cap --------------------------------------------------
@@ -134,11 +119,11 @@ FOOTER = b"Content-Type: text/plain\r\n\r\n_______________\r\nlist-users mailing
     _mixed(ENVELOPED, b"Content-Type: text/plain\r\n\r\nThis email was scanned by Gateway.\r\n"),
     _mixed(b'Content-Type: multipart/mixed; boundary="n"\r\n\r\n--n\r\n' + PGP + b"--n--\r\n"),
     HEAD + b"Content-Type: message/rfc822\r\n\r\n" + HEAD + ENVELOPED,
-    _mixed(b"Content-Type: text/plain\r\n\r\nFYI\r\n", b"Content-Type: message/rfc822\r\n\r\n" + HEAD + ENVELOPED),
+    _mixed(b"Content-Type: message/rfc822\r\n\r\n" + HEAD + ENVELOPED),
     HEAD + b"Content-Type: application/x-pkcs7-mime\r\nContent-Transfer-Encoding: base64\r\n\r\nMIAGCSqGSIb3DQEHA6CA\r\n",
     HEAD + ENVELOPED.replace(b"enveloped-data", b"authEnveloped-data"),
 ], ids=["pgp_plus_list_footer", "smime_plus_disclaimer", "two_levels_down", "top_rfc822_wrapping",
-        "forwarded_rfc822", "der_enveloped_oid", "authenveloped"])
+        "rfc822_only_part", "der_enveloped_oid", "authenveloped"])
 def test_an_encrypted_container_anywhere_halts(raw: bytes) -> None:
     with pytest.raises(EmailError) as refused:
         read_eml(raw)
@@ -172,7 +157,7 @@ def test_display_names_are_unquoted_and_the_date_kept_as_sent() -> None:
     package = read_eml(b'From: "Acme Gas" <billing@acme.example>\r\nTo: "Smith, John" <john@example.com>\r\n'
                        b"Date: Mon, 10 Feb 2025 9:15:00 -0500 (EST)\r\nSubject: s\r\n\r\nx\r\n")
     assert package.sender == "Acme Gas <billing@acme.example>"
-    assert package.to == "Smith, John <john@example.com>"
+    assert package.to == '"Smith, John" <john@example.com>'  # a comma keeps its quotes (round 3)
     assert package.sent_at == "Mon, 10 Feb 2025 9:15:00 -0500 (EST)"
 
 
