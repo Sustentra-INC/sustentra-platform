@@ -340,13 +340,18 @@ const TERM_SERVICE: Record<string, string> = { P_S: "service", P_N: "installatio
 /** The reviewed records behind an evidence input, for the Source pane. */
 function evidenceOf(input: CategoryInput | undefined, line: RecalcLine, term?: string): EvidenceSource | undefined {
   if (!input?.documents.length) return undefined;
-  const serviceType = term ? TERM_SERVICE[term.slice(0, 3)] : undefined;
+  const termKey = term?.slice(0, 3);
+  const serviceType = termKey ? TERM_SERVICE[termKey] : undefined;
+  // The recalculation lists a refrigerant record's charged (P_N, P_S) or recovered (R_D)
+  // amount; a full charge (C_N, C_D) is the record's equipment capacity, which it does not
+  // list. Those records are shown without amounts rather than with ones that contradict the term.
+  const fullCharge = termKey !== undefined && FULL_CHARGE_TERMS.has(termKey);
   const records = input.documents
     .filter((doc) => !serviceType || !doc.service_type || doc.service_type === serviceType)
     .map((doc) => ({
       documentId: doc.document_id,
       record: doc.record,
-      quantity: doc.quantity,
+      quantity: fullCharge ? null : doc.quantity,
       unit: doc.unit,
       ...(doc.share_in_period !== undefined ? { shareInPeriod: doc.share_in_period } : {}),
       ...(doc.service_type ? { serviceType: doc.service_type } : {}),
@@ -354,9 +359,23 @@ function evidenceOf(input: CategoryInput | undefined, line: RecalcLine, term?: s
   if (!records.length) return undefined;
   const region = input.grid_region ? ` · eGRID ${input.grid_region}` : "";
   // A refrigerant term counts only its own records; a fuel or facility counts them all.
-  const total = serviceType ? records.reduce((sum, r) => sum + (r.unit === input.unit ? r.quantity : 0), 0) : input.quantity;
-  return { kind: "evidence", title: `${line.key} · reviewed evidence${region}`, unit: input.unit, total, records };
+  const total = fullCharge
+    ? null
+    : serviceType
+      ? records.reduce((sum, r) => sum + (r.unit === input.unit ? (r.quantity ?? 0) : 0), 0)
+      : input.quantity;
+  return {
+    kind: "evidence",
+    title: `${line.key} · reviewed evidence${region}`,
+    unit: input.unit,
+    total,
+    ...(fullCharge ? { note: "The full charge is each record's equipment capacity: open a record to see it." } : {}),
+    records,
+  };
 }
+
+/** Material-balance terms that are a full charge (equipment capacity), not a listed amount. */
+const FULL_CHARGE_TERMS = new Set(["C_N", "C_D"]);
 
 /** An input a reviewed record gave (an amount), not a factor or a figure worked out in a step. */
 const EVIDENCE_INPUT = /^(fuel|fuel energy|electricity|thermal energy|[PCR]_[A-Z])/;
@@ -527,6 +546,8 @@ function lineOf(result: Recalculation, spec: LineSpec): ResultLine {
     ...(spec.output ? {} : { reportedNote: "Total only" }),
     recomputed: node.co2e,
     ...(state ? { state } : {}),
+    // Still partial: shown, not compared (the backend never calls a partial value within tolerance).
+    ...(out?.status === "incomplete" ? { inconclusive: true } : {}),
   };
 }
 

@@ -106,6 +106,8 @@ export function VerificationSource({
  */
 function EvidenceView({ source, onOpenDocument }: { source: EvidenceSource; onOpenDocument?: (documentId: string) => void }) {
   const prorated = source.records.some((r) => r.shareInPeriod !== undefined && r.shareInPeriod < 1);
+  // A full charge is not the records' listed amount: then the list names the records only.
+  const amounts = source.total !== null;
   return (
     <div className="s1-vw-records">
       <table className="s1-vw-records__table">
@@ -113,7 +115,7 @@ function EvidenceView({ source, onOpenDocument }: { source: EvidenceSource; onOp
           <tr>
             <th>Record</th>
             {prorated ? <th className="s1-vw-num">In period</th> : null}
-            <th className="s1-vw-num">{source.unit}</th>
+            {amounts ? <th className="s1-vw-num">{source.unit}</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -134,20 +136,25 @@ function EvidenceView({ source, onOpenDocument }: { source: EvidenceSource; onOp
                   {record.shareInPeriod === undefined ? "" : `${Math.round(record.shareInPeriod * 100)}%`}
                 </td>
               ) : null}
-              <td className="s1-vw-num">
-                {formatQuantity(record.quantity)}
-                {record.unit !== source.unit ? ` ${record.unit}` : ""}
-              </td>
+              {amounts ? (
+                <td className="s1-vw-num">
+                  {record.quantity === null ? "" : formatQuantity(record.quantity)}
+                  {record.unit !== source.unit ? ` ${record.unit}` : ""}
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>
-        <tfoot>
-          <tr>
-            <td colSpan={prorated ? 2 : 1}>Total</td>
-            <td className="s1-vw-num">{formatQuantity(source.total)}</td>
-          </tr>
-        </tfoot>
+        {source.total !== null ? (
+          <tfoot>
+            <tr>
+              <td colSpan={prorated ? 2 : 1}>Total</td>
+              <td className="s1-vw-num">{formatQuantity(source.total)}</td>
+            </tr>
+          </tfoot>
+        ) : null}
       </table>
+      {source.note ? <p className="s1-muted s1-vw-records__hint">{source.note}</p> : null}
       {onOpenDocument ? (
         <p className="s1-muted s1-vw-records__hint">Open a record to see the page and the value it was read from.</p>
       ) : null}

@@ -111,6 +111,7 @@ describe("the live statement", () => {
       {
         clientName: "Acme Foods",
         signedInName: "Dana",
+        signedInLogin: "dana@verifier.test",
         boundaryApproach: "Operational control",
         engagementTeam: [{ name: "Dana Reyes", login: "dana@verifier.test" }],
       },
@@ -130,8 +131,11 @@ describe("the live statement", () => {
     expect(screen.getByText("Reported 2,020 · partial: at least this")).toBeTruthy();
     expect(screen.getByText("Checked by system")).toBeTruthy();
     expect(screen.getByText(/April bill missing\./)).toBeTruthy();
-    expect(screen.getByText("Prepared by Dana")).toBeTruthy();
-    expect(screen.getByText("Not issued")).toBeTruthy();
+    // The system drafts the page: no one is named as its preparer, least of all whoever opens it.
+    const signoff = screen.getByText("Not signed").closest("section") as HTMLElement;
+    expect(within(signoff).getByText("Not issued")).toBeTruthy();
+    expect(signoff.textContent).not.toMatch(/Prepared by|Dana|dana@verifier\.test/);
+    expect(screen.queryByText(/dana@verifier\.test/)).toBeNull();
     // None of the demo's hard-coded identity.
     expect(screen.getByRole("heading", { name: "Acme Foods" })).toBeTruthy();
     expect(screen.getByText("Dana Reyes")).toBeTruthy(); // the engagement team, in place of the demo's verifier firm

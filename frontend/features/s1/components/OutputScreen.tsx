@@ -235,8 +235,6 @@ export interface LiveOutput {
   findings: Finding[];
   /** More lines for Basis of evidence: fully reviewed documents, records left out, what is not calculated. */
   basisLines: string[];
-  /** Who prepared the draft: the signed-in person. */
-  preparedBy: string | null;
 }
 
 const NOT_SET = "Not set in Setup";
@@ -476,7 +474,8 @@ function LiveOutputScreen({
 
         <section className="s1-out-signoff">
           <div>
-            <div className="s1-out-signoff__name">{live.preparedBy ? `Prepared by ${live.preparedBy}` : "Not signed"}</div>
+            {/* The system drafts this page; no one has signed it, whoever is viewing it. */}
+            <div className="s1-out-signoff__name">Not signed</div>
             <div className="s1-muted">
               Draft working paper for the verifier. The assurance opinion is issued by the verifier, not by this tool.
             </div>

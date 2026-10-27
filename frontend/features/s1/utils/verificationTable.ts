@@ -159,7 +159,8 @@ function rowOf(line: ResultLine, isExamined: (lineId: string, facilityId: string
     return emptyRow(line.id, line.activity, null, line.state ?? null);
   }
   const recomputed = lineRecomputed(line);
-  const difference = recomputed === null || reported === null ? null : recomputed - reported;
+  // A live line still partial is not compared: no difference, so no % material and no "differ".
+  const difference = recomputed === null || reported === null || line.inconclusive ? null : recomputed - reported;
   return {
     key: line.id,
     line,

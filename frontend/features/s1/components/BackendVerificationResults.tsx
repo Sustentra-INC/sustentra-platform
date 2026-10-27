@@ -151,6 +151,7 @@ export function BackendVerificationResults({
       signedInLogin={engagement.signedInLogin}
       basis={resultsBasis(result)}
       onOpenDocument={onOpenDocument}
+      registerFindings
       inputs={
         <>
           {/* Folded, its count in the header: the boxes lead the page, as in the demo. */}
