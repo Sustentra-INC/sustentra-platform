@@ -30,6 +30,7 @@ from backend.app.services.thermal_extractor import ThermalExtractor
 from backend.app.services.extraction_target_service import ExtractionTargetService
 from backend.app.adapters.parsers.email_parser import PARSER_NAME as EMAIL_PARSER_NAME
 from backend.app.adapters.parsers.email_reader import ENCRYPTED_EMAIL
+from backend.app.adapters.parsers.xls_parser import PASSWORD_PROTECTED
 from backend.app.services.parser_service import ParserService
 from backend.app.services.mobile_combustion_extractor import (
     CANONICAL_TYPE_ID as MOBFUEL_TYPE_ID,
@@ -686,9 +687,7 @@ class PipelineOrchestrationService:
         if "password_protected" in codes:
             if parser_output.get("parser_name") == EMAIL_PARSER_NAME:
                 return {"code": HALT_PASSWORD_PROTECTED, "message": ENCRYPTED_EMAIL}
-            return {"code": HALT_PASSWORD_PROTECTED,
-                    "message": "This file is password-protected, so it could not be read. Ask the client for "
-                               "a copy without a password."}
+            return {"code": HALT_PASSWORD_PROTECTED, "message": PASSWORD_PROTECTED}
         scanned_pdf = "empty_page_text" in codes and parser_output.get("parser_name") in PDF_PARSER_NAMES
         if ("ocr_not_implemented" in codes or scanned_pdf) and not ParserService._textract_enabled():
             return {"code": HALT_OCR_REQUIRED,

@@ -212,8 +212,8 @@ def test_an_encrypted_workbook_is_refused_as_password_protected(tmp_path: Path) 
     output = XlsParser().parse(_xls(tmp_path, {"S": [["Gallons", 450]]}, encrypted=True), "D", "R")
     assert output["status"] == "failed"
     assert [(w["code"], w["message"]) for w in output["warnings"]] == [
-        ("password_protected", "This workbook is password-protected, so it could not be read. "
-                               "Ask for a copy without a password.")]
+        ("password_protected", "This file is password-protected, so it could not be read. "
+                               "Ask the client for a copy without a password.")]
 
 
 def test_an_encrypted_xlsx_in_its_ole_wrapper_is_password_protected(tmp_path: Path) -> None:

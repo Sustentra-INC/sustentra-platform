@@ -392,12 +392,15 @@ def test_an_xls_whose_sheets_run_past_its_workbook_stream_is_422(env: dict) -> N
 
 
 def test_processing_a_password_protected_workbook_halts_with_what_to_ask_for(env: dict) -> None:
+    wording = ("This file is password-protected, so it could not be read. Ask the client for a copy without a "
+               "password.")
     doc = env["upload"]("locked.xls", _xls(encrypted=True), "application/vnd.ms-excel")
     env["act_as"]("org_member", ORG_A)
     response = env["client"].post(url(doc, "pipeline/process"), json={})
-    assert response.status_code == 422
-    assert response.json()["detail"] == (
-        "This file is password-protected, so it could not be read. Ask the client for a copy without a password.")
+    assert (response.status_code, response.json()["detail"]) == (422, wording)
+    # The source pane says the same, in the same words.
+    content = env["client"].get(url(doc, "content"))
+    assert (content.status_code, content.json()["detail"]) == (422, wording)
     result = env["client"].get(url(doc, "extraction-result/latest")).json()
     assert result["items"] == [] and result["status"] == "failed"
 
