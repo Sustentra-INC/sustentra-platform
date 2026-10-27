@@ -20,6 +20,7 @@ import { buildResultBoxes, examinationKey, lineRecomputed, testedExaminationKeys
 import { useWorkpaperSync } from "../verification/useWorkpaperSync";
 import { useVerificationStore } from "../verification/verificationStore";
 import liveExample from "./fixtures/recalculationLive.json";
+import oddExample from "./fixtures/recalculationOddQuantities.json";
 import refrigerantExample from "./fixtures/recalculationRefrigerants.json";
 import workbookExample from "./fixtures/recalculationWorkbookExample.json";
 
@@ -219,12 +220,13 @@ describe("the calculation panel on live data", () => {
     expect(gas.note).toMatch(/only the client's totals are entered/);
   });
 
-  it("uses the demo card's number formats: whole tCO₂e, gas tonnes to one decimal, factors as printed", () => {
+  it("rounds results as the demo card does (whole tCO₂e, gas tonnes to one decimal); factors as printed", () => {
     const [gas] = line["s1-stationary"].facilities ?? [];
     expect(gas.steps.map((s) => s.recomputed?.text)).toEqual(["1,273.4 t", "0.024 t", "0.0024 t", "1,275 tCO₂e"]);
     const total = gas.steps[gas.steps.length - 1];
     expect(total.total).toBe(true);
-    expect(text(total.how)).toBe("CO₂ 1,273.4 t × GWP 1 + CH₄ 0.024 t × GWP 28 + N₂O 0.0024 t × GWP 265");
+    // The masses it multiplies are inputs: printed to two decimals, so the line re-multiplies.
+    expect(text(total.how)).toBe("CO₂ 1,273.44 t × GWP 1 + CH₄ 0.024 t × GWP 28 + N₂O 0.0024 t × GWP 265");
     // The electricity factors keep their printed decimals; the quantities read like the demo's.
     const [facilityA] = line["s2l-electricity"].facilities ?? [];
     expect(text(facilityA.steps[0].how)).toBe("1,200 MWh × 240.99 lb per MWh");
@@ -233,6 +235,44 @@ describe("the calculation panel on live data", () => {
     expect(facilityA.steps[2].recomputed?.text).toBe("13.2 lb");
     const [r410a] = line["s1-fugitive"].facilities ?? [];
     expect(r410a.steps.map((s) => s.recomputed?.text)).toEqual(["40 lb", "0.018 t", "35 tCO₂e"]);
+  });
+
+  /*
+   * recalculationOddQuantities.json is the backend's response for two NYUP electricity bills:
+   * Facility C at a non-round 1,234.56 MWh, and a Kiosk at 40 MWh whose N₂O is 0.04 lb.
+   */
+  const ODD = byId(oddExample as unknown as Recalculation)["s2l-electricity"].facilities ?? [];
+  const facility = (name: string) => ODD.find((f) => f.facility === name)!;
+  const numbers = (cells: { text: string }[]) =>
+    text(cells)
+      .split(" × ")
+      .map((part) => Number(part.replace(/[^\d.]/g, "")));
+
+  it("never rounds a small result to nothing (0.04 lb, not 0.0 lb)", () => {
+    const kiosk = facility("Kiosk");
+    expect(kiosk.steps.map((s) => s.recomputed?.text)).toEqual([
+      "9,640 lb", "4.4 t", "0.4 lb", "0.0002 t", "0.04 lb", "0.000018 t", "4 tCO₂e",
+    ]);
+    expect(text(kiosk.steps[4].how)).toBe("40 MWh × 0.001 lb per MWh");
+    // The next step converts the input as its source prints it.
+    expect(text(kiosk.steps[5].how)).toBe("lb / 2,204.62: emissions 0.04 lb");
+  });
+
+  it("prints the quantities a step multiplies as the source does, so they reproduce the result shown", () => {
+    const c = facility("Facility C");
+    expect(text(c.steps[0].how)).toBe("1,234.56 MWh × 240.99 lb per MWh");
+    expect(c.steps[0].recomputed?.text).toBe("297,517 lb");
+    const multiplied = c.steps.filter((s) => / × /.test(text(s.how)) && !s.total);
+    expect(multiplied.map((s) => s.step)).toEqual(["CO₂ (electricity)", "CH₄ (electricity)", "N₂O (electricity)"]);
+    for (const step of multiplied) {
+      const product = numbers(step.how).reduce((a, b) => a * b, 1);
+      const shown = step.recomputed?.text ?? "";
+      const decimals = (shown.split(" ")[0].split(".")[1] ?? "").length;
+      // Within the shown result's own rounding: half a unit of its last digit.
+      expect(Math.abs(Number(shown.replace(/[^\d.]/g, "")) - product), `${step.step}: ${text(step.how)} = ${shown}`).toBeLessThanOrEqual(
+        0.5 * 10 ** -decimals
+      );
+    }
   });
 
   it("links an amount to the reviewed records it is summed from, and a factor or GWP to its citation", () => {
@@ -274,7 +314,7 @@ describe("the calculation panel on live data", () => {
 
   it("reads a market-based remainder with its coverage as a percentage", () => {
     const [facilityA] = line["s2m-electricity"].facilities ?? [];
-    expect(text(facilityA.steps[0].how)).toBe("electricity (MWh) x (1 - coverage %): electricity 1,200 MWh; coverage 30.0%");
+    expect(text(facilityA.steps[0].how)).toBe("electricity (MWh) x (1 - coverage %): electricity 1,200 MWh; coverage 30%");
   });
 
   it("opens the card with its steps, the system's cause and the records behind an amount", async () => {

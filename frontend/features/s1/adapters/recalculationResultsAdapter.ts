@@ -317,18 +317,42 @@ function factorNumber(value: number): string {
     : value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
+/** A negative value (a refrigerant balance) takes the true minus sign, as the demo's figures do. */
+function minus(text: string): string {
+  return text.replace(/^-/, "−");
+}
+
 /**
- * An amount in the demo card's formats (utils/calculationChains, utils/verificationTable):
- * tCO₂e in whole tonnes; tonnes of a gas to one decimal, two significant figures below
- * 0.1 t; any other quantity whole from 100 up and to one decimal below; a fraction as a
- * percentage to one decimal.
+ * A step's result, rounded as the demo card rounds it (utils/calculationChains,
+ * utils/verificationTable): tCO₂e in whole tonnes; tonnes of a gas to one decimal, two
+ * significant figures below 0.1 t; any other quantity whole from 100 up and to one decimal
+ * below, two significant figures for a fraction below 0.1 (0.04 lb never reads "0.0 lb");
+ * a fraction as a percentage to one decimal.
  */
 function amount(value: number, unit: string): string {
   if (unit === "fraction") return formatPercent(value);
   if (unit === "t CO2e") return `${formatTonnes(value)} tCO₂e`;
   if (unit === "t") return `${formatGasTonnes(value)} t`;
-  // A negative refrigerant balance takes the true minus sign, as the demo's figures do.
-  return `${formatQuantity(value).replace(/^-/, "−")} ${unitText(unit)}`.trim();
+  const small = value !== 0 && Math.abs(value) < 0.1 && !Number.isInteger(value);
+  const text = small ? value.toLocaleString("en-US", { maximumSignificantDigits: 2 }) : formatQuantity(value);
+  return `${minus(text)} ${unitText(unit)}`.trim();
+}
+
+/**
+ * A quantity a step multiplies, as its source prints it, so the "how" line can be
+ * re-multiplied by hand to the result shown: up to two decimals, trailing zeros dropped
+ * ("1,234.56 MWh"); below 0.1, two significant figures ("0.024 t"); a fraction as a
+ * percentage the same way ("30%"). Results keep the demo's rounding (`amount`).
+ */
+function inputAmount(value: number, unit: string): string {
+  const number = (v: number) =>
+    minus(
+      v !== 0 && Math.abs(v) < 0.1
+        ? v.toLocaleString("en-US", { maximumSignificantDigits: 2 })
+        : v.toLocaleString("en-US", { maximumFractionDigits: 2 })
+    );
+  if (unit === "fraction") return `${number(value * 100)}%`;
+  return `${number(value)} ${unitText(unit)}`.trim();
 }
 
 const GAS_ORDER = ["CO2", "CH4", "N2O"];
@@ -382,7 +406,7 @@ const EVIDENCE_INPUT = /^(fuel|fuel energy|electricity|thermal energy|[PCR]_[A-Z
 const EVIDENCE_SOURCE = /reviewed (record|bill)/i;
 
 function inputCell(name: string, input: RecalcInput, line: RecalcLine, evidence: CategoryInput | undefined): CalcCell {
-  const text = amount(input.value, input.unit);
+  const text = inputAmount(input.value, input.unit);
   if ((input.source && EVIDENCE_SOURCE.test(input.source)) || (!input.source && EVIDENCE_INPUT.test(name))) {
     const records = evidenceOf(evidence, line, name);
     return records ? { text, source: records } : { text };
@@ -429,7 +453,7 @@ function stepsOf(category: RecalcCategory, line: RecalcLine, evidence: CategoryI
   const gases = Object.entries(line.mass_t).sort(([a], [b]) => order(a) - order(b));
   const how: CalcCell[] = gases.flatMap(([gas, mass], i) => {
     const gwp = category.gwp[gas];
-    const term: CalcCell[] = [{ text: `${i ? " + " : ""}${chemistry(gas)} ${amount(mass, "t")} × ` }];
+    const term: CalcCell[] = [{ text: `${i ? " + " : ""}${chemistry(gas)} ${inputAmount(mass, "t")} × ` }];
     term.push(
       gwp
         ? {
