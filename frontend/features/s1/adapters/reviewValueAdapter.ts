@@ -3,6 +3,7 @@ import type { ReviewValue, ScopePlacement, SourceKind } from "../types/review";
 import { resolveCanonicalTypeDisplayName } from "./evidenceAdapter";
 import { anchorOf } from "../utils/sourceAnchor";
 import { decodeReviewCandidateToken } from "./fieldAdapter";
+import { formatDocumentPeriod, formatPrintedDate } from "../utils/formatPeriod";
 
 /**
  * Extracted fields from the backend (one per candidate) as Extraction Review cards.
@@ -30,6 +31,7 @@ const KEY_FIELDS = new Set([
 export function reviewValuesFromFields(fields: ExtractedField[], evidence: EvidenceItem[]): ReviewValue[] {
   const documents = new Map(evidence.map((item) => [item.documentId, item]));
   const periods = periodsByDocument(fields);
+  const printedUnits = printedUnitsByRecord(fields);
   const seen = new Map<string, number>();
 
   return fields
@@ -100,6 +102,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         rawText: rawValue === null || rawValue === undefined ? null : String(rawValue),
         reviewToken: field.reviewToken,
         missing: field.value === null && field.correctedValue === null,
+        asPrinted: corrected ? undefined : asPrinted(field, candidate, printedUnits),
       } satisfies ReviewValue;
     });
 }
@@ -109,9 +112,9 @@ function fieldNameOf(field: ExtractedField): string | null {
   return typeof candidate?.field_name === "string" ? candidate.field_name : null;
 }
 
-/** "2025-01-01 to 2025-06-30" from a document's service period, or the span of its
- *  transaction or service dates (fuel purchases and refrigerant service have a date,
- *  not a billing period). */
+/** The period a document covers, as a person reads it ("Feb 2025", "15 Jan – 14 Feb 2025"),
+ *  from its service period, or the span of its transaction or service dates (fuel purchases
+ *  and refrigerant service have a date, not a billing period). Never a raw ISO range. */
 function periodsByDocument(fields: ExtractedField[]): Map<string, string> {
   const found = new Map<string, { start: Set<string>; end: Set<string>; dates: string[] }>();
   for (const field of fields) {
@@ -130,11 +133,21 @@ function periodsByDocument(fields: ExtractedField[]): Map<string, string> {
       if (start.size > 1 || end.size > 1) {
         const first = [...start].sort()[0];
         const last = [...end].sort().at(-1);
-        out.set(documentId, first && last ? `${first} to ${last}` : "Several service periods");
-      } else out.set(documentId, `${[...start][0] ?? "?"} to ${[...end][0] ?? "?"}`);
+        out.set(documentId, first && last ? formatDocumentPeriod(first, last) : "Several service periods");
+      } else {
+        const [first, last] = [[...start][0], [...end][0]];
+        out.set(
+          documentId,
+          first && last
+            ? formatDocumentPeriod(first, last)
+            : first
+              ? `${formatPrintedDate(first)} – end not read`
+              : `start not read – ${formatPrintedDate(last)}`
+        );
+      }
     } else if (dates.length) {
       const sorted = [...dates].sort();
-      out.set(documentId, sorted[0] === sorted.at(-1) ? sorted[0] : `${sorted[0]} to ${sorted.at(-1)}`);
+      out.set(documentId, formatDocumentPeriod(sorted[0], sorted.at(-1) ?? sorted[0]));
     }
   });
   return out;
@@ -151,4 +164,63 @@ function sourceKindOf(format: EvidenceItem["format"] | undefined): SourceKind {
   if (format === "image") return "image";
   if (format === "xlsx" || format === "csv") return "spreadsheet";
   return "text";
+}
+
+/**
+ * The value as the document prints it, for the card, when it reads differently from the value
+ * recorded (`value`, which Accept and Correct send): dates as a bill prints them ("01 Feb
+ * 2025"), quantities with their thousands separators ("1,250.5"), and a quantity converted for
+ * the calculation (kWh read, MWh recorded) as read, "182,400" kWh, with `converted` set so the
+ * card also shows what the calculation uses.
+ */
+function asPrinted(
+  field: ExtractedField,
+  candidate: ReturnType<typeof decodeReviewCandidateToken>,
+  printedUnits: Map<string, string>
+): ReviewValue["asPrinted"] {
+  const value = field.value;
+  if (value === null || !candidate) return undefined;
+  const raw = candidate.raw_value;
+  const converted = (candidate.validation_flags ?? []).includes("unit_converted");
+  if (converted && typeof candidate.normalized_value === "number" && raw !== null && raw !== undefined && NUMBER.test(String(raw).trim())) {
+    const unit = printedUnits.get(recordKeyOf(field.documentId, candidate.candidate_id));
+    if (unit) return { value: grouped(String(raw).trim()), unit, converted: true };
+  }
+  if (converted && typeof candidate.normalized_value === "string" && typeof raw === "string" && raw.trim() && raw.trim() !== value) {
+    return { value: raw.trim(), unit: "", converted: true }; // the unit itself: "kWh" read, MWh recorded
+  }
+  const date = formatPrintedDate(value);
+  if (date !== value) return { value: date, unit: field.unit ?? "" };
+  if (typeof candidate.normalized_value === "number" && NUMBER.test(value) && grouped(value) !== value) {
+    return { value: grouped(value), unit: field.unit ?? "" };
+  }
+  return undefined;
+}
+
+/** A plain number, with or without thousands separators: "182400", "182,400", "-1250.5". */
+const NUMBER = /^-?(\d{1,3}(,\d{3})+|\d+)(\.\d+)?$/;
+
+/** "182400.5" -> "182,400.5"; "182,400" stays as it is. */
+function grouped(text: string): string {
+  const [whole, fraction] = text.replace(/,/g, "").split(".");
+  const sign = whole.startsWith("-") ? "-" : "";
+  const digits = whole.replace("-", "").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `${sign}${digits}${fraction !== undefined ? `.${fraction}` : ""}`;
+}
+
+/** The unit each record of a document printed, from its unit field's text as read ("kWh"). */
+function printedUnitsByRecord(fields: ExtractedField[]): Map<string, string> {
+  const units = new Map<string, string>();
+  for (const field of fields) {
+    if (fieldNameOf(field) !== "activity_unit") continue;
+    const candidate = field.reviewToken ? decodeReviewCandidateToken(field.reviewToken) : null;
+    const raw = candidate?.raw_value;
+    if (typeof raw === "string" && raw.trim()) units.set(recordKeyOf(field.documentId, candidate?.candidate_id), raw.trim());
+  }
+  return units;
+}
+
+/** A document's record: the "::r2" a multi-record candidate id ends with, or the whole document. */
+function recordKeyOf(documentId: string, candidateId: string | undefined): string {
+  return `${documentId}|${/::r\d+$/.exec(candidateId ?? "")?.[0] ?? ""}`;
 }

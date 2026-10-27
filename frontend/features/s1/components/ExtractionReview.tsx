@@ -271,6 +271,7 @@ export function ExtractionReview({
               originalValue: x.originalValue ?? x.value,
               value: next.value,
               unit: next.unit,
+              asPrinted: undefined,
               record: [
                 ...x.record,
                 {
@@ -380,7 +381,7 @@ export function ExtractionReview({
       headerLine: `${v.filename} · page ${v.page} · ${v.whatItIs} · ${scope} · ${facLabel} · ${v.period}`,
       defaultType: v.requestPreselect ?? "clarify",
       // pre-fill order: document, value, scope, facility, period, then a colon
-      prefill: `${v.filename} · ${v.value} ${v.unit} · ${scope} · ${facLabel} · ${v.period}: `,
+      prefill: `${v.filename} · ${shown(v).value} ${shown(v).unit} · ${scope} · ${facLabel} · ${v.period}: `,
     });
   }
 
@@ -405,6 +406,7 @@ export function ExtractionReview({
         page: entry.page,
         missing: false,
         docAnchor: entry.docAnchor,
+        asPrinted: undefined,
         reviewState: "corrected",
         originalValue: "not found",
         record: [...gap.record, { kind: "human", actor: reviewerName, at: now, action: "filled in a value the reading missed", reason: where }],
@@ -427,6 +429,7 @@ export function ExtractionReview({
         docAnchor: entry.docAnchor,
         methodologyFieldId: undefined,
         reviewToken: undefined,
+        asPrinted: undefined,
         reviewState: "corrected",
         originalValue: null,
         record: [{ kind: "human", actor: reviewerName, at: now, action: "added a value the reading missed", reason: where }],
@@ -886,8 +889,14 @@ function ValueCard({
           <span className="s1-xr-missing">Not found on the document</span>
         ) : (
           <>
-            <span className="s1-xr-val">{v.value}</span>
-            {v.unit ? <span className="s1-xr-unit">{v.unit}</span> : null}
+            <span className="s1-xr-val">{shown(v).value}</span>
+            {shown(v).unit ? <span className="s1-xr-unit">{shown(v).unit}</span> : null}
+            {v.asPrinted?.converted ? (
+              <span className="s1-xr-conv">
+                = {v.value}
+                {v.unit ? ` ${v.unit}` : ""}, used in the calculation
+              </span>
+            ) : null}
           </>
         )}
         {v.reviewState === "corrected" ? (
@@ -994,12 +1003,17 @@ function ValueCard({
 
 /* =============================== source pane =============================== */
 
+/** A value as its card shows it: as the document prints it, when the backend says how. */
+function shown(v: ReviewValue): { value: string; unit: string } {
+  return v.asPrinted ?? { value: v.value, unit: v.unit };
+}
+
 /** Every value of a document that has a position on a page, to draw as clickable boxes. */
 function pageMarks(items: ReviewValue[], documentId: string): PageMark[] {
   return items
     .filter((v) => v.documentId === documentId && (v.span || v.anchor) && !v.missing && !v.withdrawn)
     .map((v) => ({ id: v.id, span: v.span ?? null, anchor: v.anchor ?? null, rawText: v.rawText ?? null,
-      label: `${v.whatItIs}: ${v.value}${v.unit ? ` ${v.unit}` : ""}`, reviewState: v.reviewState }));
+      label: `${v.whatItIs}: ${shown(v).value}${shown(v).unit ? ` ${shown(v).unit}` : ""}`, reviewState: v.reviewState }));
 }
 
 /** What a content view (workbook, CSV, Word) needs to select values from the file. */

@@ -37,7 +37,7 @@ describe("extracted fields as review cards", () => {
       [field("transaction_date", "2024-03-05"), field("transaction_date", "2024-03-02"), field("activity_quantity", "42.31")],
       [DOC]
     );
-    expect(cards[0].period).toBe("2024-03-02 to 2024-03-05");
+    expect(cards[0].period).toBe("02 Mar – 05 Mar 2024");
   });
 
   it("shows who reviewed a value and when, and keeps the machine original on a correction", () => {
