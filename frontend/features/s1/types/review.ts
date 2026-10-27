@@ -16,6 +16,8 @@ export interface ValueRecordEntry {
   reason?: string;
   /** The ask this entry added the value to, so the card can say whether it was sent. */
   askId?: string;
+  /** The ask whose outcome (resolved, withdrawn) this entry records. */
+  outcomeOf?: string;
 }
 
 /** A value drawn on its document in the source pane: clicking it selects the value. A PDF

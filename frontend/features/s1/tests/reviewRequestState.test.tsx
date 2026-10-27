@@ -79,8 +79,16 @@ describe("extraction review: a value added to requests", () => {
     act(() => {
       view.live.store!.resolveAsk(ask.id);
     });
-    expect(view.chip()).toBe("Request resolved");
-    expect(view.lines()).toContain("Thanishque · requested from client");
+    // Resolved: the card is back to review, its two values together, and its record says why.
+    expect(view.chip()).toBeUndefined();
+    expect(view.card().className).toContain("s1-xr-card--to_review");
+    expect(view.lines()).toEqual([
+      "System read · Electricity bill, page 1",
+      "Thanishque · requested from client",
+      "M. Osei · Request 1 resolved", // who the requests store records as resolving it
+    ]);
+    expect(within(view.card()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Accept", "Correct", "Request"]);
+    expect(view.filters().at(-1)).toMatch(/^0Requests$/);
   });
 
   it("says a request withdrawn before it was sent never reached the client", () => {
@@ -91,9 +99,16 @@ describe("extraction review: a value added to requests", () => {
     act(() => {
       view.live.store!.withdrawAsk(ask.id, "found on the next bill");
     });
-    expect(view.chip()).toBe("Request withdrawn");
-    expect(view.lines()).toContain("Thanishque · added to requests");
+    // Withdrawn: back to review, so it can be accepted or requested again.
+    expect(view.chip()).toBeUndefined();
+    expect(view.lines()).toEqual([
+      "System read · Electricity bill, page 1",
+      "Thanishque · added to requests",
+      "M. Osei · Request withdrawn",
+    ]);
+    expect(view.card().textContent).toContain("found on the next bill");
     expect(view.card().textContent).not.toContain("requested from client");
+    expect(within(view.card()).getAllByRole("button").map((b) => b.textContent)).toEqual(["Accept", "Correct", "Request"]);
   });
 
   it("follows the latest request raised from the card", () => {

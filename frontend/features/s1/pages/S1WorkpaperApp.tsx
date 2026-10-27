@@ -732,10 +732,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     };
   }, [dataMode, activeView.name, engagement.engagementId, evidenceSignature]);
   const reviewValuesView = useMemo(() => {
-    if (dataMode !== "backend") return reviewValues;
+    // A card's latest request decides whether it is requested, in the session and after a reload.
+    const settled = withRequestsFromAsks(reviewValues, requests.asks);
+    if (dataMode !== "backend") return settled;
     const byId = new Map(evidenceView.map((item) => [item.documentId, item]));
-    // A value added to requests stays requested after a reload: its ask is saved, its state is not.
-    return withRequestsFromAsks(reviewValues, requests.asks).map((value) => {
+    return settled.map((value) => {
       const item = byId.get(value.documentId);
       if (!item) return value;
       return {

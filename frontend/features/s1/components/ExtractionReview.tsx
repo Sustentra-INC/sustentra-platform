@@ -3,6 +3,7 @@
 import { Highlighter, Plus } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import type { EngagementConfig } from "../types";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
 import type { Ask } from "../types/requests";
@@ -99,7 +100,8 @@ export function ExtractionReview({
 }: ExtractionReviewProps) {
   // Review data lives in app state (via onValuesChange); selection below is
   // local, ephemeral UI. So accepts/corrections/requests survive navigation.
-  const items = values;
+  // A card's latest request decides whether it is requested (resolved or withdrawn: back to review).
+  const items = useMemo(() => withRequestsFromAsks(values, asks), [values, asks]);
 
   const initial = useMemo(
     () => resolveInitial(items, initialDocumentId, initialNodeKey, initialValueId),

@@ -102,6 +102,38 @@ describe("asks laid over the backend's values", () => {
     expect(again.record).toEqual(once.record);
   });
 
+  it("puts a value back to review once its latest request is resolved or withdrawn, the outcome on its record", () => {
+    const resolved = ask("ASK-1", "candidate:activity_quantity", {
+      state: "resolved", requestNumber: 3,
+      history: [{ kind: "resolved", actorName: "Claire", actorLogin: "claire", at: "2026-10-23T09:00:00.000Z" }],
+    });
+    const [quantity] = withRequestsFromAsks(loaded(), [resolved]);
+    expect(quantity.reviewState).toBe("to_review");
+    expect(quantity.record.map((r) => [r.actor, r.action])).toEqual([
+      ["Extraction", "extracted"],
+      ["Thanishque", "added to requests"],
+      ["Claire", "Request 3 resolved"],
+    ]);
+    const withdrawn = ask("ASK-1", "candidate:activity_quantity", { state: "withdrawn", withdrawReason: "found on the next bill" });
+    expect(withRequestsFromAsks(loaded(), [withdrawn])[0]).toMatchObject({ reviewState: "to_review" });
+    expect(withRequestsFromAsks(loaded(), [withdrawn])[0].record.at(-1)).toMatchObject({ action: "Request withdrawn", reason: "found on the next bill", outcomeOf: "ASK-1" });
+    // Its latest request decides: a follow-up still open makes it requested again.
+    const followUp = ask("ASK-2", "candidate:activity_quantity", { linkedFromAskId: "ASK-1", raisedAt: "2026-10-24T08:00:00.000Z" });
+    expect(withRequestsFromAsks(loaded(), [resolved, followUp])[0].reviewState).toBe("requested");
+  });
+
+  it("moves every value a request was raised for together, so a two-value card stays one card", () => {
+    const [a, b] = loaded();
+    const added = { kind: "human" as const, actor: "Thanishque", at: "2026-10-22T08:00:00.000Z", action: "added to requests", askId: "ASK-1" };
+    const inSession = [a, b].map((v) => ({ ...v, reviewState: "requested" as const, record: [...v.record, added] }));
+    const resolved = ask("ASK-1", a.id, { state: "resolved", requestNumber: 2 });
+    const out = withRequestsFromAsks(inSession, [resolved]);
+    expect(out.map((v) => v.reviewState)).toEqual(["to_review", "to_review"]);
+    expect(out[1].record.at(-1)).toMatchObject({ action: "Request 2 resolved", outcomeOf: "ASK-1" });
+    // Laid over again, nothing is added twice.
+    expect(withRequestsFromAsks(out, [resolved])).toEqual(out);
+  });
+
   it("ignores asks raised anywhere but a value card", () => {
     const values = loaded();
     const fromDocument = { ...ask("ASK-1", "candidate:activity_quantity"), source: { ...ask("x", "y").source, origin: "workspace_document" as const, fieldKey: "candidate:activity_quantity" } };
@@ -169,5 +201,61 @@ describe("extraction review on staging: a requested value after a reload", () =>
     });
     expect(reloaded.seen().chip).toBe("Requested");
     expect(reloaded.seen().lines).toContain("Thanishque · requested from client");
+  });
+});
+
+describe("extraction review on staging: a request that was resolved or withdrawn", () => {
+  /** Request the quantity and send it; optionally close it; read the card in the session, then
+   *  after a reload. */
+  function requestThenReload(close?: (store: RequestsStore, id: string) => void) {
+    const session = renderStaging([]);
+    fireEvent.click(within(session.card()).getByRole("button", { name: "Request" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to requests" }));
+    const id = session.live.store!.asks[0].id;
+    act(() => {
+      session.live.store!.sendAsks([id]);
+    });
+    if (close) act(() => close(session.live.store!, id));
+    const inSession = session.seen();
+    const saved = session.live.store!.asks;
+    cleanup();
+    return { inSession, reloaded: renderStaging(saved) };
+  }
+
+  it("is back to review once resolved, with Accept and Request, in the session and after a reload", () => {
+    const { inSession, reloaded } = requestThenReload((store, id) => store.resolveAsk(id));
+    expect(inSession).toEqual({
+      chip: undefined,
+      lines: ["System read · Electricity bill, page 1", "Thanishque · requested from client", "Thanishque · Request 1 resolved"],
+      filters: ["2To review", "1Accepted", "0Corrected", "0Requests"],
+      buttons: ["Accept", "Correct", "Request"],
+    });
+    expect(reloaded.seen()).toEqual(inSession);
+
+    // It can be requested again: the new request is the card's latest.
+    fireEvent.click(within(reloaded.card()).getByRole("button", { name: "Request" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to requests" }));
+    expect(reloaded.seen().chip).toBe("Request not sent");
+    expect(reloaded.seen().filters.at(-1)).toBe("1Requests");
+  });
+
+  it("is back to review once withdrawn, in the session and after a reload", () => {
+    const { inSession, reloaded } = requestThenReload((store, id) => store.withdrawAsk(id, "found on the next bill"));
+    expect(inSession).toEqual({
+      chip: undefined,
+      lines: ["System read · Electricity bill, page 1", "Thanishque · requested from client", "Thanishque · Request 1 withdrawn"],
+      filters: ["2To review", "1Accepted", "0Corrected", "0Requests"],
+      buttons: ["Accept", "Correct", "Request"],
+    });
+    expect(reloaded.seen()).toEqual(inSession);
+    expect(reloaded.card().textContent).toContain("found on the next bill");
+  });
+
+  it("stays requested while its request is sent and waiting, in the session and after a reload", () => {
+    const { inSession, reloaded } = requestThenReload();
+    expect(inSession.chip).toBe("Requested");
+    expect(inSession.filters.at(-1)).toBe("1Requests");
+    expect(inSession.buttons).not.toContain("Accept");
+    expect(reloaded.seen()).toEqual(inSession);
   });
 });
