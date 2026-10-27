@@ -87,8 +87,11 @@ def read_directory(data: bytes) -> OleDirectory:
     if len(data) < 512 or data[:8] != SIGNATURE or data[28:30] != b"\xfe\xff":
         raise OleError("Not an OLE2 compound file.")
     shift, mini_shift = struct.unpack("<HH", data[30:34])
-    if shift > 20:  # as xlrd: a preposterous sector size is read as 512
-        shift = 9
+    # Real files use a sector shift of 9 (512 bytes) or 12 (4096), and a mini shift of 6.
+    # A shift under 7 gives a sector too small to hold even one 4-byte entry (shift 0 and 1
+    # give per_sector 0, which would make struct.unpack raise); a huge one is absurd.
+    if not 7 <= shift <= 20 or not 2 <= mini_shift <= shift:
+        raise OleError("The compound file header has an invalid sector size.")
     sector_size = 1 << shift
     (_fat_count, dir_start, _unused, mini_cutoff, mini_fat_start, mini_fat_count, difat_start,
      difat_count) = struct.unpack("<8i", data[44:76])

@@ -6,6 +6,7 @@ format): a BIFF8 workbook in an OLE2 file, the records Excel saves.
 
 from __future__ import annotations
 
+import struct
 import time
 from datetime import datetime
 from datetime import time as clock
@@ -121,6 +122,19 @@ def test_values_come_out_as_openpyxl_gives_them(tmp_path: Path) -> None:
     assert by_cell["D2"] == "True" and by_cell["E2"] == "#DIV/0!" and by_cell["E3"] == "#N/A"
     assert by_cell["G2"] == "08:30:00" and "H3" not in by_cell  # a blank string is no cell
     assert output["tables"][0]["rows"][1][:3] == ["2025-02-10T00:00:00", 28100, 3.25]
+
+
+def test_a_whitespace_only_cell_stays_in_the_table_row_like_xlsx(tmp_path: Path) -> None:
+    # A whitespace-only cell is kept in the table row (so the grid lines up), with the same
+    # value openpyxl keeps, but it is not a traceable block (no coordinate).
+    rows = [["Gallons", "   ", 450]]  # the whitespace sits between two filled cells
+    expected = ExcelParser().parse(_xlsx(tmp_path, {"S": rows}), "DOC-1", "RUN-1")
+    output = XlsParser().parse(_xls(tmp_path, {"S": rows}), "DOC-1", "RUN-1")
+
+    assert output["tables"][0]["rows"] == expected["tables"][0]["rows"] == [["Gallons", "   ", 450]]
+    # The whitespace cell is in neither reader's blocks.
+    assert [b["text"] for b in output["text_blocks"]] == [b["text"] for b in expected["text_blocks"]] == [
+        "Gallons", "450"]
 
 
 def test_a_workbook_in_the_1904_date_system_gives_the_same_dates(tmp_path: Path) -> None:
@@ -319,8 +333,9 @@ def test_each_sheet_is_dropped_once_read(tmp_path: Path) -> None:
         sheets = xls_worksheets(book, xls_parser.XlsBudget())
         name, rows = next(sheets)
         assert not book.sheet_loaded(0)  # nothing is loaded until its rows are read
-        # Only filled cells, by column: empty and whitespace-only cells are left out.
-        assert (name, list(rows)) == ("A", [[(0, "a"), (3, 2)]])
+        # Every cell whose type is not empty, by column: an empty cell is left out, but a
+        # whitespace-only text cell is kept (as openpyxl keeps it in a table row).
+        assert (name, list(rows)) == ("A", [[(0, "a"), (2, "  "), (3, 2)]])
         assert not book.sheet_loaded(0)
         assert [(name, list(rows)) for name, rows in sheets] == [("B", [[], [(1, "b")]])]
     finally:
@@ -350,28 +365,79 @@ def test_wide_sparse_sheets_are_read_in_bounded_time_and_size(tmp_path: Path) ->
     assert time.perf_counter() - started < 3
 
 
-def test_sheets_that_share_their_data_are_refused(tmp_path: Path) -> None:
-    # 100 BOUNDSHEET records all pointing at one 50,000-row sheet made xlrd load it 100 times.
-    path = _xls(tmp_path, {"S": _wide_rows(50_000)}, shared_sheets=99)
+@pytest.mark.parametrize("overlap_step", [None, 4], ids=["identical_offsets", "distinct_offsets"])
+def test_sheets_that_point_at_the_same_records_are_refused(tmp_path: Path, overlap_step) -> None:
+    # 100 BOUNDSHEET records into one 10,000-row sheet, at the same offset or distinct offsets
+    # a few bytes apart, made xlrd read that sheet's records once per sheet (up to 100 times).
+    # The span walk refuses them before any sheet is loaded, whatever the offsets.
+    path = _xls(tmp_path, {"S": _wide_rows(10_000)}, shared_sheets=99, overlap_step=overlap_step)
     started = time.perf_counter()
     output = XlsParser().parse(path, "D", "R")
     assert time.perf_counter() - started < 2
     assert (output["status"], output["warnings"][0]["code"]) == ("failed", "workbook_load_failed")
     assert output["warnings"][0]["message"] == xls_parser.DAMAGED_SHEETS
 
+    from backend.app.services.document_content_service import UnreadableContent, document_content
 
-def test_sheets_that_overlap_are_refused(tmp_path: Path, monkeypatch) -> None:
-    # Overlapping sheets make xlrd read more than the workbook holds: stop at the first one.
-    real_open = xls_parser.open_xls
+    with pytest.raises(UnreadableContent):
+        document_content(path)
 
-    def short_stream(path: Path):
-        book, notes = real_open(path)
-        book.stream_len = 10  # as if the sheets' records added up to more than the stream
-        return book, notes
 
-    monkeypatch.setattr(xls_parser, "open_xls", short_stream)
-    output = XlsParser().parse(_xls(tmp_path, {"A": [["a"]], "B": [["b"]]}), "D", "R")
-    assert (output["status"], output["warnings"][0]["message"]) == ("failed", xls_parser.DAMAGED_SHEETS)
+@pytest.mark.parametrize("shift", [0, 1])
+def test_a_file_with_an_invalid_sector_size_fails_cleanly(tmp_path: Path, shift: int) -> None:
+    # Sector shift 0 or 1 made ole.read_directory raise struct.error, which escaped _check_ole
+    # and open_xls as a 500. It is now a clean workbook_load_failed.
+    data = bytearray(_xls(tmp_path, {"S": [["Gallons", 450]]}).read_bytes())
+    data[30:32] = struct.pack("<H", shift)
+    path = tmp_path / "bad_sector.xls"
+    path.write_bytes(data)
+    output = XlsParser().parse(path, "D", "R")
+    assert_parser_output_shape(output)
+    assert (output["status"], output["warnings"][0]["code"]) == ("failed", "workbook_load_failed")
+
+
+class _FakeBook:
+    """Just the four attributes the span guard reads (xlrd 2.0.2 sets these once)."""
+
+    def __init__(self, records_by_start: dict[int, bytes], base: int = 100, stream_len: int | None = None) -> None:
+        self.base = base
+        parts = {start: data for start, data in records_by_start.items()}
+        end = max((start + len(data) for start, data in parts.items()), default=base)
+        buffer = bytearray(end)
+        for start, data in parts.items():
+            buffer[start:start + len(data)] = data
+        self.mem = bytes(buffer)
+        self.stream_len = end - base if stream_len is None else stream_len
+        self._sh_abs_posn = sorted(parts)
+
+
+def _records(*records: tuple[int, bytes]) -> bytes:
+    return b"".join(struct.pack("<HH", code, len(body)) + body for code, body in records)
+
+
+_EOF = _records((0x000A, b""))
+_SHEET = _records((0x0809, b"\x00" * 16), (0x0203, b"\x00" * 14)) + _EOF  # BOF, a cell, EOF
+
+
+def test_the_span_guard_accepts_sound_sheets_and_refuses_damaged_ones() -> None:
+    from backend.app.adapters.parsers.xls_parser import _check_sheet_spans
+
+    sound = _FakeBook({100: _SHEET, 100 + len(_SHEET): _SHEET})
+    _check_sheet_spans(sound)  # adjacent, non-overlapping: fine
+
+    overlapping = _FakeBook({100: _SHEET, 104: _SHEET})  # second starts inside the first
+    with pytest.raises(xls_parser.XlsError, match="damaged"):
+        _check_sheet_spans(overlapping)
+
+    # A record whose length reaches past the stream end (stream_len shorter than the records).
+    runs_past = _FakeBook({100: _records((0x0809, b"\x00" * 16), (0x0203, b"\x00" * 200))}, stream_len=30)
+    with pytest.raises(xls_parser.XlsError, match="damaged"):
+        _check_sheet_spans(runs_past)
+
+    out_of_range = _FakeBook({100: _SHEET})
+    out_of_range._sh_abs_posn = [100, 99_999]
+    with pytest.raises(xls_parser.XlsError, match="damaged"):
+        _check_sheet_spans(out_of_range)
 
 
 def test_loading_stops_once_enough_rows_are_loaded(tmp_path: Path, monkeypatch) -> None:

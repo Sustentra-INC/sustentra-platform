@@ -43,6 +43,24 @@ def test_a_damaged_container_is_refused(damage, message: str) -> None:
         read_directory(bytes(damage(_file())))
 
 
+@pytest.mark.parametrize("shift", [0, 1, 6, 21])
+def test_an_invalid_sector_size_is_refused_not_a_struct_error(shift: int) -> None:
+    # Shift 0 and 1 give a sector too small to hold one 4-byte entry; at base this raised
+    # struct.error (per_sector 0) and escaped as a 500. Any invalid size is a clean OleError.
+    data = _file()
+    data[30:32] = struct.pack("<H", shift)
+    with pytest.raises(OleError, match="invalid sector size"):
+        read_directory(bytes(data))
+
+
+@pytest.mark.parametrize("mini_shift", [0, 1, 10])
+def test_an_invalid_mini_sector_size_is_refused(mini_shift: int) -> None:
+    data = _file()
+    data[32:34] = struct.pack("<H", mini_shift)  # a sound file uses 6, and never more than the sector shift
+    with pytest.raises(OleError, match="invalid sector size"):
+        read_directory(bytes(data))
+
+
 def test_a_looping_allocation_table_chain_is_refused() -> None:
     data = _file()
     data[68:76] = struct.pack("<ii", 0, 1)  # the DIFAT chain starts at the FAT sector...

@@ -82,9 +82,11 @@ def _cell(row: int, column: int, value: Any, strings: list[str], datemode: int) 
 
 
 def biff_workbook(sheets: dict[str, list[Any]], *, encrypted: bool = False, datemode: int = 0,
-                  pad_to: int = MINI_CUTOFF, shared_sheets: int = 0) -> bytes:
+                  pad_to: int = MINI_CUTOFF, shared_sheets: int = 0, overlap_step: int | None = None) -> bytes:
     """A BIFF8 workbook stream: the globals, then one substream per sheet. ``shared_sheets``
-    adds that many more sheets whose BOUNDSHEET records all point at the first sheet's data."""
+    adds that many more sheets whose BOUNDSHEET records point at the first sheet's data: all
+    at the same offset, or, with ``overlap_step``, at distinct offsets ``first + k*step`` that
+    still fall inside the first sheet's records (distinct but overlapping spans)."""
 
     strings: list[str] = []
     bodies: list[bytes] = []
@@ -111,8 +113,9 @@ def biff_workbook(sheets: dict[str, list[Any]], *, encrypted: bool = False, date
     for name, body in zip(sheets, bodies):
         head += _record(0x0085, struct.pack("<IBB", offset, 0, 0) + _utf16(name, 1))  # BOUNDSHEET
         offset += len(body)
-    for name in shared:
-        head += _record(0x0085, struct.pack("<IBB", first, 0, 0) + _utf16(name, 1))
+    for k, name in enumerate(shared, start=1):
+        at = first + k * overlap_step if overlap_step else first
+        head += _record(0x0085, struct.pack("<IBB", at, 0, 0) + _utf16(name, 1))
     stream = head + sst + _record(0x000A) + b"".join(bodies)
     return stream.ljust(pad_to, b"\x00")
 
@@ -206,9 +209,10 @@ def ole_file(streams: dict[str, bytes], storages: tuple[str, ...] = (), *, loop_
 
 
 def xls_bytes(sheets: dict[str, list[Any]], *, encrypted: bool = False, macros: bool = False,
-              datemode: int = 0, shared_sheets: int = 0) -> bytes:
+              datemode: int = 0, shared_sheets: int = 0, overlap_step: int | None = None) -> bytes:
     """A whole .xls file, as Excel saves one (the Workbook stream at least 4096 bytes)."""
 
     storages = ("_VBA_PROJECT_CUR",) if macros else ()
-    stream = biff_workbook(sheets, encrypted=encrypted, datemode=datemode, shared_sheets=shared_sheets)
+    stream = biff_workbook(sheets, encrypted=encrypted, datemode=datemode, shared_sheets=shared_sheets,
+                           overlap_step=overlap_step)
     return ole_file({"Workbook": stream}, storages)
