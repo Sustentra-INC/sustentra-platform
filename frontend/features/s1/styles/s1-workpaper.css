@@ -1918,6 +1918,7 @@ html { font-size: 82%; }
 .s1-out-by__icon { width: 1em; height: 1em; }
 .s1-out-subhead { margin: var(--sp-3) 0 0; font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-2); }
 .s1-out-list__text { flex: 1 1 8rem; min-width: 0; }
+.s1-out-outcome { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
 
 @media (max-width: 48rem) {
   .s1-out-doc { padding: var(--sp-5) var(--sp-4); }
@@ -2366,6 +2367,10 @@ html, body { margin: 0; padding: 0; }
 .s1-vw-pill { flex: none; padding: var(--state-chip-padding-block) var(--sp-2); font-size: var(--text-sm); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; white-space: nowrap; border: var(--border-hairline); border-radius: var(--state-chip-radius); }
 .s1-vw-pill--differs { color: var(--state-blocking-fg); background: var(--state-blocking-bg); border-color: var(--state-blocking-line); }
 .s1-vw-pill--agrees { color: var(--state-resolved-fg); background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
+/* Live results: a difference below materiality is to review (amber), not blocking (red) */
+.s1-vw-pill--open { color: var(--state-open-fg); background: var(--state-open-bg); border-color: var(--state-open-line); }
+.s1-vw-amber { color: var(--state-open-fg); }
+.s1-vw-table td.s1-vw-amber { color: var(--state-open-fg); font-weight: var(--weight-strong); }
 /* Live results: a state chip with its reason behind the ⓘ, beside a name or under a table */
 .s1-vw-state { display: inline-flex; align-items: center; gap: var(--sp-1); font-style: normal; white-space: nowrap; }
 .s1-vw-named { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }

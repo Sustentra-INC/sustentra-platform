@@ -72,7 +72,8 @@ describe("the live statement", () => {
     expect(statement.location).toMatchObject({ reported: 2020, partial: true });
     expect(statement.location.recomputed).toBeCloseTo(1842.902, 3);
     expect(statement.market).toMatchObject({ reported: 1900, partial: true });
-    expect(statement.misstatement).toBeCloseTo(1842.902 - 2020, 3);
+    // Scope 1 is still incomplete, so the misstatement is not compared yet: no figure.
+    expect(statement).toMatchObject({ misstatement: null, misstatementPct: null, misstatementOpen: true });
     expect(statement.materialityTonnes).toBeCloseTo(101, 6);
     expect(statement.materialityBase).toBe("reported");
   });
@@ -86,19 +87,32 @@ describe("the live statement", () => {
     expect(row["Scope 2 location-based total|"]).toMatchObject({ reported: 420, outcome: "differs" });
     expect(row["Scope 2 · electricity|Market-based"]).toMatchObject({ reported: null, reportedNote: "Total only" });
     expect(row["Scope 2 market-based total|"]).toMatchObject({ reported: 300, outcome: "material" });
-    // Not calculated, not in scope and no-evidence rows have nothing to state.
-    expect(statement.rows.some((r) => r.label.includes("process") || r.label.includes("heating"))).toBe(false);
+    // Rows with only a state keep their row and chip, as on Verification results.
+    expect(row["Scope 1 · process emissions|Process sources"]).toMatchObject({
+      reported: null, verified: null, outcome: null, state: { label: "Not calculated yet" },
+    });
+    expect(row["Scope 1 · agricultural emissions|Agricultural sources"]).toMatchObject({ outcome: null, state: { label: "Not in scope" } });
+    expect(row["Scope 2 · heating|Location-based"]).toMatchObject({ outcome: null, state: { label: "No reviewed evidence" } });
+    expect(row["Scope 2 · cooling|Market-based"]).toMatchObject({ reportedNote: "Total only", state: { label: "Not calculated yet" } });
   });
 
   it("drafts the conclusion from what compares, and names what cannot be compared yet", () => {
-    expect(statement.materialBoxes).toEqual([{ title: "Scope 2, market-based", pctMaterial: expect.closeTo(0.089, 3) }]);
-    expect(statement.openBoxes).toEqual([{ title: "Scope 1", state: expect.objectContaining({ label: "Incomplete" }) }]);
-    expect(statement.differences.map((d) => d.label)).toEqual([
-      "Scope 1 total",
-      "Scope 2 market-based total",
-      "Scope 1 · stationary combustion",
-      "Scope 2 location-based total",
+    expect(statement.materialBoxes).toEqual([
+      { title: "Scope 2, market-based", pctMaterial: expect.closeTo(0.089, 3), difference: expect.closeTo(26.701, 3) },
     ]);
+    expect(statement.openBoxes).toEqual([{ title: "Scope 1", state: expect.objectContaining({ label: "Incomplete" }) }]);
+    // Only what compares is a difference found: not Scope 1 (incomplete), not stationary (still partial).
+    expect(statement.differences.map((d) => [d.label, d.outcome])).toEqual([
+      ["Scope 2 market-based total", "material"],
+      ["Scope 2 location-based total", "differs"],
+    ]);
+  });
+
+  it("calls a reported 0 that the evidence does not match above materiality, as the backend does", () => {
+    const zeroed = { ...live.boxTotals, scope2_market: { ...live.boxTotals.scope2_market!, reported: 0, material: true } };
+    const figures = liveStatementFigures(live.lines, zeroed, live.inventory, LIVE.tolerance_pct);
+    expect(figures.materialBoxes).toContainEqual({ title: "Scope 2, market-based", pctMaterial: null, difference: expect.closeTo(326.701, 3) });
+    expect(figures.rows.find((r) => r.label === "Scope 2 market-based total")?.outcome).toBe("material");
   });
 
   it("renders as the demo's document: draft band, real Excel download, recalculated figures, honest sign-off", async () => {
@@ -129,7 +143,15 @@ describe("the live statement", () => {
     expect(screen.queryByText(/nothing has come to our attention/)).toBeNull();
     expect(screen.getAllByText("1,843")).toHaveLength(2); // the accent tile and the table's footer, whole tonnes
     expect(screen.getByText("Reported 2,020 · partial: at least this")).toBeTruthy();
-    expect(screen.getByText("Checked by system")).toBeTruthy();
+    // The misstatement is not compared while Scope 1 is open: no figure.
+    const tile = screen.getByText("Uncorrected misstatement").closest(".s1-out-tile") as HTMLElement;
+    expect(tile.textContent).toContain("Not compared yet");
+    expect(tile.textContent).not.toMatch(/177|−\d/);
+    // §7: the system's notes, figures and differences are labelled as the system's.
+    for (const heading of ["Conclusion", "Recalculated emissions", "Differences found"]) {
+      const section = screen.getByRole("heading", { name: heading }).parentElement as HTMLElement;
+      expect(within(section).getByText("Checked by system"), heading).toBeTruthy();
+    }
     expect(screen.getByText(/April bill missing\./)).toBeTruthy();
     // The system drafts the page: no one is named as its preparer, least of all whoever opens it.
     const signoff = screen.getByText("Not signed").closest("section") as HTMLElement;

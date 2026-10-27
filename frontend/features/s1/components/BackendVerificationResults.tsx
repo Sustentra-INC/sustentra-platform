@@ -152,6 +152,7 @@ export function BackendVerificationResults({
       basis={resultsBasis(result)}
       onOpenDocument={onOpenDocument}
       registerFindings
+      liveMateriality={result.tolerance_pct / 100}
       inputs={
         <>
           {/* Folded, its count in the header: the boxes lead the page, as in the demo. */}

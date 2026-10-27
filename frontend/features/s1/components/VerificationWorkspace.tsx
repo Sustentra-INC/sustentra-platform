@@ -99,6 +99,7 @@ export function VerificationWorkspace({
   gasRows,
   onOpenDocument,
   onRegisterFinding,
+  materiality,
 }: {
   lines: ResultLine[];
   store: VerificationStore;
@@ -113,6 +114,11 @@ export function VerificationWorkspace({
   onOpenDocument?: (documentId: string) => void;
   /** Live results: each calculation card offers Register finding for its line. */
   onRegisterFinding?: (target: FindingTarget) => void;
+  /**
+   * Live results: the materiality tolerance as a fraction (0.05). A % material turns red only
+   * at or above it, amber below; the demo reds every difference.
+   */
+  materiality?: number;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [source, setSource] = useState<SourceRef | null>(null);
@@ -152,7 +158,8 @@ export function VerificationWorkspace({
   useEffect(() => {
     if (!selectedId) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      // A dialog over the panel (Register finding) takes its own Escape; the panel stays open.
+      if (event.key === "Escape" && !document.querySelector('[aria-modal="true"]')) {
         setSelectedId(null);
         setSource(null);
       }
@@ -178,6 +185,7 @@ export function VerificationWorkspace({
             onToggle={() => toggleBox(box.key)}
             selectedId={selectedId}
             onSelect={select}
+            materiality={materiality}
           />
         ))}
         {gasRows?.length ? <GasPanel rows={gasRows} /> : null}
@@ -226,18 +234,31 @@ function Delta({ value, suffix = "" }: { value: number | null; suffix?: string }
   );
 }
 
+/**
+ * The colour of a % material. The demo reds any difference; live results red one only at or
+ * above materiality (`material`), amber below it, as Output and the page's ⓘ say.
+ */
+function materialTone(difference: number | null, material: boolean | undefined): string {
+  if (!differs(difference)) return "";
+  if (material === undefined) return " s1-vw-red";
+  return material ? " s1-vw-red" : " s1-vw-amber";
+}
+
 function BoxPanel({
   box,
   open,
   onToggle,
   selectedId,
   onSelect,
+  materiality,
 }: {
   box: ResultBox;
   open: boolean;
   onToggle: () => void;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  /** Live results: the tolerance as a fraction (0.05), for each row's % material colour. */
+  materiality?: number;
 }) {
   const Icon = BOX_ICON[box.key];
   const { totals, live } = box;
@@ -247,6 +268,14 @@ function BoxPanel({
   // Live results: the box compares only when both totals are there and nothing holds it open.
   const compared = !live || (live.reported !== null && live.recomputed !== null && !live.state);
   const recomputedRows = reportedRows.filter((r) => !r.notTested).length;
+  // Live: red only where the backend finds the total beyond tolerance; a reported 0 has no %.
+  const boxMaterial = live ? Boolean(live.material) : undefined;
+  const pctShown = !live || totals.pctDifference !== null;
+  const pillTone = !differs(totals.difference)
+    ? " s1-vw-pill--agrees"
+    : boxMaterial === false
+      ? " s1-vw-pill--open"
+      : " s1-vw-pill--differs";
   return (
     <div className={`s1-vw-box s1-vw-tone--${box.key}${open ? " is-open" : ""}`}>
       <button className="s1-vw-box__head" type="button" aria-expanded={open} aria-controls={bodyId} onClick={onToggle}>
@@ -283,8 +312,12 @@ function BoxPanel({
           {compared ? (
             <>
               <Delta value={totals.difference} />
-              <span className={`s1-vw-pill${differs(totals.difference) ? " s1-vw-pill--differs" : " s1-vw-pill--agrees"}`}>
-                {formatPercent(totals.pctMaterial, true)} material
+              <span className={`s1-vw-pill${pillTone}`}>
+                {pctShown
+                  ? `${formatPercent(totals.pctMaterial, true)} material`
+                  : differs(totals.difference)
+                    ? "Above materiality"
+                    : "Agrees"}
               </span>
             </>
           ) : (
@@ -301,7 +334,7 @@ function BoxPanel({
       </button>
       {open ? (
         <div className="s1-vw-box__body" id={bodyId}>
-          <BoxTable box={box} compared={compared} selectedId={selectedId} onSelect={onSelect} />
+          <BoxTable box={box} compared={compared} selectedId={selectedId} onSelect={onSelect} materiality={materiality} />
           <div className="s1-vw-box__lines">
             {live ? (
               <>
@@ -311,10 +344,10 @@ function BoxPanel({
             ) : (
               <span>Coverage: {formatWholePercent(totals.share)}</span>
             )}
-            {compared ? (
+            {compared && pctShown ? (
               <span>
                 Total % material:{" "}
-                <span className={differs(totals.difference) ? "s1-vw-red" : undefined}>
+                <span className={materialTone(totals.difference, boxMaterial).trim() || undefined}>
                   {formatPercent(totals.pctMaterial, true)}
                 </span>
               </span>
@@ -344,12 +377,14 @@ function BoxTable({
   compared,
   selectedId,
   onSelect,
+  materiality,
 }: {
   box: ResultBox;
   /** Whether the totals compare (always in the demo; live, only with both totals and nothing open). */
   compared: boolean;
   selectedId: string | null;
   onSelect: (id: string) => void;
+  materiality?: number;
 }) {
   const scope1 = box.key === "scope1";
   const { totals, live } = box;
@@ -385,7 +420,14 @@ function BoxTable({
             row.notReported ? (
               <UnreportedRow key={row.key} row={row} scope1={scope1} />
             ) : (
-              <ReportedRow key={row.key} row={row} scope1={scope1} selected={row.key === selectedId} onSelect={onSelect} />
+              <ReportedRow
+                key={row.key}
+                row={row}
+                scope1={scope1}
+                selected={row.key === selectedId}
+                onSelect={onSelect}
+                materiality={materiality}
+              />
             )
           )}
           {live ? (
@@ -401,8 +443,9 @@ function BoxTable({
                     <Delta value={totals.difference} />
                   </td>
                   <td className="s1-vw-num">{totals.pctDifference === null ? "" : formatPercent(totals.pctDifference, true)}</td>
-                  <td className={`s1-vw-num${differs(totals.difference) ? " s1-vw-red" : ""}`}>
-                    {formatPercent(totals.pctMaterial, true)}
+                  {/* A reported 0 has no % material (the backend calls any difference from it material). */}
+                  <td className={`s1-vw-num${materialTone(totals.difference, Boolean(live.material))}`}>
+                    {totals.pctDifference === null ? "" : formatPercent(totals.pctMaterial, true)}
                   </td>
                 </>
               ) : (
@@ -452,13 +495,18 @@ function ReportedRow({
   scope1,
   selected,
   onSelect,
+  materiality,
 }: {
   row: ResultRow;
   scope1: boolean;
   selected: boolean;
   onSelect: (id: string) => void;
+  /** Live results: a row's % material is red only at or above it. */
+  materiality?: number;
 }) {
   const select = () => onSelect(row.key);
+  const rowMaterial =
+    materiality === undefined ? undefined : row.pctMaterial !== null && Math.abs(row.pctMaterial) >= materiality;
   const name = (
     <button className="s1-vw-rowbtn" type="button" aria-pressed={selected} onClick={select}>
       {row.activity}
@@ -504,7 +552,7 @@ function ReportedRow({
             <Delta value={row.difference} />
           </td>
           <td className="s1-vw-num">{row.pctDifference === null ? "" : formatPercent(row.pctDifference, true)}</td>
-          <td className={`s1-vw-num${differs(row.difference) ? " s1-vw-red" : ""}`}>
+          <td className={`s1-vw-num${materialTone(row.difference, rowMaterial)}`}>
             {row.pctMaterial === null ? "" : formatPercent(row.pctMaterial, true)}
           </td>
         </>
@@ -652,7 +700,8 @@ function facilityDifference(line: ResultLine, facility: FacilityResult): number 
 
 /** Scope 1 and 2 lines consolidate each facility by its share; biogenic CO₂ does not. */
 function hasShare(line: ResultLine): boolean {
-  return line.box !== "biogenic";
+  // Live results apply no boundary share: no Consolidated share column (see consolidatedShare).
+  return line.box !== "biogenic" && !line.noBoundaryShare;
 }
 
 function CalculationPane({

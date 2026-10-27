@@ -42,6 +42,11 @@ export interface ResultBoxTotal {
   state?: ResultState;
   /** Short lines under the table in place of Coverage, e.g. what the total counts as 0. */
   notes?: string[];
+  /**
+   * The backend finds the difference beyond the materiality tolerance (exceeds_tolerance,
+   * a reported 0 included): the only case the box's % material turns red.
+   */
+  material?: boolean;
 }
 
 /**
@@ -230,4 +235,9 @@ export interface ResultLine {
    * % difference or % material, as a box withholds its comparison for the same reason.
    */
   inconclusive?: boolean;
+  /**
+   * Live results only: the backend applies no boundary share (equity or control), so the
+   * panel shows no Consolidated share column or Consolidated step rather than an assumed 100%.
+   */
+  noBoundaryShare?: boolean;
 }

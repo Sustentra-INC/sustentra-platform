@@ -28,7 +28,7 @@ import type {
 } from "../types/verificationResults";
 import { formatQuantity } from "../utils/calculationChains";
 import type { InventoryTotal } from "../utils/outputStatement";
-import { formatGasTonnes, formatPercent, formatTonnes } from "../utils/verificationTable";
+import { formatGasTonnes, formatInputQuantity, formatPercent, formatTonnes } from "../utils/verificationTable";
 
 /**
  * The engagement's live recalculation (GET /engagements/{id}/recalculation) as the demo's
@@ -339,20 +339,13 @@ function amount(value: number, unit: string): string {
 }
 
 /**
- * A quantity a step multiplies, as its source prints it, so the "how" line can be
- * re-multiplied by hand to the result shown: up to two decimals, trailing zeros dropped
- * ("1,234.56 MWh"); below 0.1, two significant figures ("0.024 t"); a fraction as a
+ * A quantity a step multiplies, precise enough that the "how" line re-multiplies by hand to
+ * the result shown (formatInputQuantity: "1,234.56 MWh", "0.02427 t"); a fraction as a
  * percentage the same way ("30%"). Results keep the demo's rounding (`amount`).
  */
 function inputAmount(value: number, unit: string): string {
-  const number = (v: number) =>
-    minus(
-      v !== 0 && Math.abs(v) < 0.1
-        ? v.toLocaleString("en-US", { maximumSignificantDigits: 2 })
-        : v.toLocaleString("en-US", { maximumFractionDigits: 2 })
-    );
-  if (unit === "fraction") return `${number(value * 100)}%`;
-  return `${number(value)} ${unitText(unit)}`.trim();
+  if (unit === "fraction") return `${formatInputQuantity(value * 100)}%`;
+  return `${formatInputQuantity(value)} ${unitText(unit)}`.trim();
 }
 
 const GAS_ORDER = ["CO2", "CH4", "N2O"];
@@ -570,8 +563,11 @@ function lineOf(result: Recalculation, spec: LineSpec): ResultLine {
     ...(spec.output ? {} : { reportedNote: "Total only" }),
     recomputed: node.co2e,
     ...(state ? { state } : {}),
-    // Still partial: shown, not compared (the backend never calls a partial value within tolerance).
-    ...(out?.status === "incomplete" ? { inconclusive: true } : {}),
+    // Still partial, or out of scope: shown, not compared. One rule for Results and Output; the
+    // backend never calls a partial value within tolerance, and never judges an out-of-scope one.
+    ...(out?.status === "incomplete" || out?.status === "not_in_scope" ? { inconclusive: true } : {}),
+    // The backend applies no boundary share: no consolidation is shown, not an assumed 100%.
+    noBoundaryShare: true,
   };
 }
 
@@ -633,7 +629,14 @@ function boxTotal(result: Recalculation, spec: (typeof BOX_SPECS)[number]): Resu
   } else if (node.status === "partial") {
     notes.unshift(`Partial: at least ${formatTonnes(node.co2e)} tCO₂e while ${listed(open.map((s) => SOURCE_WORDS[s]))} ${open.length === 1 ? "is" : "are"} open.`);
   }
-  return { reported, recomputed: node.co2e, ...(state ? { state } : {}), ...(notes.length ? { notes } : {}) };
+  return {
+    reported,
+    recomputed: node.co2e,
+    // Red only where the backend finds the difference beyond tolerance (a reported 0 included).
+    material: out?.status === "exceeds_tolerance",
+    ...(state ? { state } : {}),
+    ...(notes.length ? { notes } : {}),
+  };
 }
 
 const BIOGENIC_STATE: ResultState = {
@@ -658,6 +661,8 @@ function biogenic(result: Recalculation): { line: ResultLine; total: ResultBoxTo
       reported,
       recomputed: node.co2e,
       ...(state ? { state } : {}),
+      ...(out?.status === "incomplete" || out?.status === "not_in_scope" ? { inconclusive: true } : {}),
+      noBoundaryShare: true,
     },
     total: { reported, recomputed: node.co2e, ...(state ? { state } : {}) },
   };
