@@ -512,6 +512,8 @@ function lineOf(result: Recalculation, spec: LineSpec): ResultLine {
     ...(spec.output ? {} : { reportedNote: "Total only" }),
     recomputed: node.co2e,
     ...(state ? { state } : {}),
+    // Still partial: shown, not compared (the backend never calls a partial value within tolerance).
+    ...(out?.status === "incomplete" ? { inconclusive: true } : {}),
   };
 }
 
