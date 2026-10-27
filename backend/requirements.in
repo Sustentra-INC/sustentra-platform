@@ -14,7 +14,8 @@ asyncpg
 psycopg2-binary
 boto3
 jinja2
-openai
+# Claude (AI suggestions). 2.x sends API version 2026-10-21; [bedrock] = boto3/botocore for AI_PROVIDER=bedrock.
+anthropic[bedrock]>=2.3,<3
 httpx
 tenacity
 python-dotenv

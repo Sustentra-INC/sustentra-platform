@@ -15,6 +15,10 @@ from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "prod"]
+# Who serves Claude: the Anthropic API (ANTHROPIC_API_KEY) or Amazon Bedrock (the
+# instance role, no key). See backend/app/adapters/llm/claude.py.
+AiProvider = Literal["anthropic", "bedrock"]
+AiEffort = Literal["low", "medium", "high"]
 
 
 class Settings(BaseSettings):
@@ -60,10 +64,33 @@ class Settings(BaseSettings):
     # Per-IP limit shared by all /api/v1/auth/* endpoints except /me.
     auth_rate_limit: str = "100/5 minutes"
 
-    @field_validator("allowed_origins_csv")
+    # AI suggestions for documents the system cannot read on its own (docs/backend_services.md).
+    # Off by default. deploy.sh writes ANTHROPIC_API_KEY into app.env only when the
+    # SecureString /<env>/anthropic_api_key exists, so prod (no parameter) has no key.
+    ai_suggestions_enabled: bool = False
+    ai_provider: AiProvider = "anthropic"
+    # Only for AI_PROVIDER=anthropic. Bedrock signs with the instance role instead.
+    anthropic_api_key: SecretStr | None = None
+    # Claude API model id. On Bedrock the adapter adds the "anthropic." prefix. A model the
+    # adapter has no price for is refused (claude.py PRICES), so a switch forces a price check.
+    ai_model: str = "claude-sonnet-5-5"
+    ai_effort: AiEffort = "low"
+    # Per-organization monthly spend cap in USD, checked by the usage ledger (later PR).
+    # The Anthropic Console spend limit is the hard ceiling across all organizations.
+    ai_monthly_cap_usd: float = Field(default=25.0, ge=0)
+
+    @field_validator("allowed_origins_csv", "ai_model")
     @classmethod
     def _strip(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("anthropic_api_key", mode="before")
+    @classmethod
+    def _blank_key_is_no_key(cls, value: object) -> object:
+        # docker-compose.yml passes ANTHROPIC_API_KEY through as "" when it is unset.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @property
     def max_upload_bytes(self) -> int:
