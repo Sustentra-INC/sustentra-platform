@@ -467,21 +467,51 @@ describe("live % material colours", () => {
     return within(screen.getByRole("region", { name: "Reported vs recomputed" }));
   }
 
-  it("reds a % material only at or above materiality, and ambers one below it", () => {
+  it("reds a % material and its difference only above materiality, and ambers them below it", () => {
     const view = renderBoxes();
     const location = within(view.getByRole("button", { name: /^Scope 2, location-based/ }).closest(".s1-vw-box") as HTMLElement);
-    const materialCell = (name: string) => location.getByRole("button", { name }).closest("tr")!.querySelectorAll("td")[5];
-    expect(materialCell("Electricity").className).toContain("s1-vw-amber"); // +10 of 1,100: +0.9%
-    expect(materialCell("Steam").className).toContain("s1-vw-red"); // +100 of 1,100: +9.1%
-    expect(view.getByRole("button", { name: /^Scope 2, location-based/ }).querySelector(".s1-vw-pill--differs")).toBeTruthy();
+    const row = (name: string) => location.getByRole("button", { name }).closest("tr")!;
+    expect(row("Electricity").querySelectorAll("td")[5].className).toContain("s1-vw-amber"); // +10 of 1,100: +0.9%
+    expect(row("Electricity").querySelector(".s1-vw-delta")?.className).toContain("s1-vw-delta--below");
+    expect(row("Steam").querySelectorAll("td")[5].className).toContain("s1-vw-red"); // +100 of 1,100: +9.1%
+    expect(row("Steam").querySelector(".s1-vw-delta")?.className).not.toContain("s1-vw-delta--below");
+    expect(view.getByRole("button", { name: /^Scope 2, location-based/ }).querySelector(".s1-vw-pill--differs")?.textContent).toBe(
+      "+10.0% · above materiality"
+    );
   });
 
-  it("ambers a box the backend keeps within tolerance, though it differs", () => {
+  it("ambers a box the backend keeps within tolerance throughout: header, total row and panel", () => {
     const view = renderBoxes({ ...boxTotals, scope2_location: { reported: 1100, recomputed: 1130, material: false } });
     const head = view.getByRole("button", { name: /^Scope 2, location-based/ });
-    expect(head.querySelector(".s1-vw-pill--open")?.textContent).toBe("+2.7% material");
+    // Not by colour alone: the pill says "below materiality" in words.
+    expect(head.querySelector(".s1-vw-pill--open")?.textContent).toBe("+2.7% · below materiality");
+    expect(head.querySelector(".s1-vw-delta--below")?.textContent).toBe("+30");
     expect(head.querySelector(".s1-vw-pill--differs")).toBeNull();
     expect(view.getByText("+2.7%", { selector: ".s1-vw-box__lines .s1-vw-amber" })).toBeTruthy();
+    const total = view.getByText("Scope 2 location-based total").closest("tr")!;
+    expect(total.querySelector(".s1-vw-delta")?.className).toContain("s1-vw-delta--below");
+    expect(total.querySelectorAll("td")[5].className).toContain("s1-vw-amber");
+    // The panel of a line below materiality: its Difference and total row are amber too.
+    const location = within(head.closest(".s1-vw-box") as HTMLElement);
+    fireEvent.click(location.getByRole("button", { name: "Electricity" }));
+    const panel = screen.getByRole("complementary", { name: "Scope 2, location-based · Electricity" });
+    expect(within(panel).getByText("+10", { selector: "strong" }).className).toBe("s1-vw-amber");
+    expect(panel.querySelector(".s1-vw-total .s1-vw-delta")?.className).toContain("s1-vw-delta--below");
+  });
+
+  it("says a reported-0 line is above materiality on Results, as Output does", () => {
+    const store = renderHook(() => useVerificationStore()).result.current;
+    const zero: ResultLine = {
+      id: "s2l-heating", box: "scope2_location", activity: "Heating", facilities: [facility("a", 20)], reported: 0, recomputed: 20, noBoundaryShare: true,
+    };
+    render(<VerificationWorkspace lines={[...lines, zero]} store={store} team={[]} boxTotals={boxTotals} materiality={0.05} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Scope 2, location-based/ }));
+    const heating = screen.getByRole("button", { name: "Heating" }).closest("tr")!;
+    expect(heating.querySelectorAll("td")[5].textContent).toBe("Above materiality");
+    expect(heating.querySelectorAll("td")[5].className).toContain("s1-vw-red");
+    expect(heating.querySelector(".s1-vw-delta")?.className).not.toContain("s1-vw-delta--below");
+    const output = liveStatementFigures([...lines, zero], boxTotals, INVENTORY, 5);
+    expect(output.rows.find((r) => r.label === "Scope 2 · heating")?.outcome).toBe("material");
   });
 
   it("shows no 0.0% material for a reported 0, and calls it above materiality", () => {
@@ -491,6 +521,42 @@ describe("live % material colours", () => {
     expect(head.textContent).not.toMatch(/0\.0%/);
     const total = view.getByText("Scope 2 market-based total").closest("tr")!;
     expect(total.textContent).not.toMatch(/%/);
+    expect(total.textContent).toContain("Above materiality");
+  });
+});
+
+const INVENTORY = {
+  location: { reported: 1100, recomputed: 1210, partial: false },
+  market: { reported: 0, recomputed: 50, partial: false },
+};
+
+describe("one threshold comparison everywhere: strictly above, as the backend", () => {
+  // Reported 100, recomputed 105, at 5%: exactly at the threshold, so below it (the backend's
+  // exceeds_tolerance is strict, and it keeps this total within tolerance).
+  const lines: ResultLine[] = [
+    {
+      id: "s2l-electricity", box: "scope2_location", activity: "Electricity", noBoundaryShare: true, reported: 100, recomputed: 105,
+      facilities: [{ facilityId: "a", facility: "Plant", reported: null, recomputed: 105, steps: [], cause: "" }],
+    },
+  ];
+  const boxTotals = { scope2_location: { reported: 100, recomputed: 105, material: false } };
+
+  it("calls 5.0% at a 5% threshold below materiality on the pill, the total row, the row and Output", () => {
+    const store = renderHook(() => useVerificationStore()).result.current;
+    render(<VerificationWorkspace lines={lines} store={store} team={[]} boxTotals={boxTotals} materiality={0.05} />);
+    const head = screen.getByRole("button", { name: /^Scope 2, location-based/ });
+    expect(head.querySelector(".s1-vw-pill--open")?.textContent).toBe("+5.0% · below materiality");
+    fireEvent.click(head);
+    const row = screen.getByRole("button", { name: "Electricity" }).closest("tr")!;
+    expect(row.querySelectorAll("td")[5]).toMatchObject({ textContent: "+5.0%", className: "s1-vw-num s1-vw-amber" });
+    const total = screen.getByText("Scope 2 location-based total").closest("tr")!;
+    expect(total.querySelectorAll("td")[5].className).toContain("s1-vw-amber");
+    const output = liveStatementFigures(lines, boxTotals, { location: { reported: 100, recomputed: 105, partial: false }, market: INVENTORY.market }, 5);
+    expect(output.rows.filter((r) => r.basis === "Location-based" || r.total).map((r) => [r.label, r.outcome])).toEqual([
+      ["Scope 2 · electricity", "differs"],
+      ["Scope 2 location-based total", "differs"],
+    ]);
+    expect(output.materialBoxes).toEqual([]);
   });
 });
 
@@ -549,9 +615,16 @@ describe("live calculation cards, Source pane and dialog", () => {
     const { panel } = openElectricity();
     fireEvent.click(within(panel).getByRole("button", { name: "Register finding" }));
     expect(screen.getByRole("dialog", { name: "Register finding" })).toBeTruthy();
+    // The mechanism, not just the outcome: the dialog's Escape never reaches the window, where
+    // the panel listens (in a real browser the dialog is gone before a DOM check could see it).
+    const reachedWindow = vi.fn();
+    window.addEventListener("keydown", reachedWindow);
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
     act(() => {
-      fireEvent.keyDown(screen.getByPlaceholderText("What is wrong, in plain words"), { key: "Escape" });
+      screen.getByPlaceholderText("What is wrong, in plain words").dispatchEvent(escape);
     });
+    window.removeEventListener("keydown", reachedWindow);
+    expect(reachedWindow).not.toHaveBeenCalled();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByRole("complementary", { name: "Scope 2, location-based · Electricity" })).toBeTruthy();
     act(() => {
@@ -622,7 +695,7 @@ describe("Verification results in backend mode", () => {
     expect(stationary.querySelector(".s1-vw-delta")).toBeNull();
     expect(stationary.textContent).not.toMatch(/\+2\.0%|\+1\.5%/);
     const market = within(boxes).getByRole("button", { name: /^Scope 2, market-based/ });
-    expect(market.textContent).toContain("+8.9% material");
+    expect(market.textContent).toContain("+8.9% · above materiality");
     expect(within(boxes).getByRole("button", { name: /^By gas/ }).textContent).toContain("1 of 21 reported values entered");
   });
 

@@ -11,10 +11,16 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import type { Recalculation } from "../api/recalculation";
 import { BackendOutputScreen } from "../components/BackendOutputScreen";
+import { OutputScreen, type LiveOutput } from "../components/OutputScreen";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import type { EngagementConfig, EvidenceItem } from "../types";
 import type { Finding } from "../types/verification";
-import { liveStatementFigures } from "../utils/outputStatement";
+import type { ResultLine } from "../types/verificationResults";
+import { liveStatementFigures, type LiveStatementFigures } from "../utils/outputStatement";
+
+const liveOutput = (statement: LiveStatementFigures): LiveOutput => ({
+  statement, exportHref: "/api/v1/engagements/ENG-1/export", gwpBasis: "AR5", findings: [], basisLines: [],
+});
 import liveExample from "./fixtures/recalculationLive.json";
 import workbookExample from "./fixtures/recalculationWorkbookExample.json";
 
@@ -73,7 +79,11 @@ describe("the live statement", () => {
     expect(statement.location.recomputed).toBeCloseTo(1842.902, 3);
     expect(statement.market).toMatchObject({ reported: 1900, partial: true });
     // Scope 1 is still incomplete, so the misstatement is not compared yet: no figure.
-    expect(statement).toMatchObject({ misstatement: null, misstatementPct: null, misstatementOpen: true });
+    expect(statement).toMatchObject({
+      misstatement: null,
+      misstatementPct: null,
+      misstatementReason: "Open items remain in Scope 1 or Scope 2 (location-based)",
+    });
     expect(statement.materialityTonnes).toBeCloseTo(101, 6);
     expect(statement.materialityBase).toBe("reported");
   });
@@ -113,6 +123,43 @@ describe("the live statement", () => {
     const figures = liveStatementFigures(live.lines, zeroed, live.inventory, LIVE.tolerance_pct);
     expect(figures.materialBoxes).toContainEqual({ title: "Scope 2, market-based", pctMaterial: null, difference: expect.closeTo(326.701, 3) });
     expect(figures.rows.find((r) => r.label === "Scope 2 market-based total")?.outcome).toBe("material");
+    // The Conclusion states the evidence's total unsigned: it is a total, not a difference.
+    render(<OutputScreen lines={live.lines} live={liveOutput(figures)} />);
+    expect(screen.getByText(/Scope 2, market-based is reported as 0 while the evidence gives 327 tCO2e, above the 5\.0%/)).toBeTruthy();
+  });
+
+  it("states a line's difference as a % of the base its outcome is judged on", () => {
+    // Mobile combustion 100 → 110 (+10%) inside a Scope 1 reported at 2,000: +0.5% of Scope 1, below 5%.
+    const mobile: ResultLine = {
+      id: "s1-mobile", box: "scope1", category: "Mobile combustion", activity: "Diesel Fuel", noBoundaryShare: true, reported: 100, recomputed: 110,
+      facilities: [{ facilityId: "diesel", facility: "All facilities", reported: null, recomputed: 110, steps: [], cause: "" }],
+    };
+    const figures = liveStatementFigures(
+      [mobile],
+      { scope1: { reported: 2000, recomputed: 2010, material: false } },
+      { location: { reported: null, recomputed: null, partial: false }, market: { reported: null, recomputed: null, partial: false } },
+      5
+    );
+    expect(figures.differences[0]).toMatchObject({ label: "Scope 1 · mobile combustion", outcome: "differs", pctOf: "Scope 1" });
+    render(<OutputScreen lines={[mobile]} live={liveOutput(figures)} />);
+    expect(
+      screen.getByText("Scope 1 · mobile combustion, +10 tCO2e (+0.5% of Scope 1): below the 5.0% materiality threshold")
+    ).toBeTruthy();
+    expect(screen.queryByText(/\+10\.0%/)).toBeNull();
+  });
+
+  it("names a missing reported total as the reason the misstatement is not compared", () => {
+    const entered = { ...live.boxTotals, scope1: { ...live.boxTotals.scope1!, state: undefined } };
+    const missing = liveStatementFigures(live.lines, entered, {
+      location: { reported: null, recomputed: 1842.9, partial: false },
+      market: { reported: null, recomputed: 1738.5, partial: false },
+    }, 5);
+    expect(missing).toMatchObject({ misstatement: null, misstatementReason: "Reported total not entered" });
+    render(<OutputScreen lines={live.lines} live={liveOutput(missing)} />);
+    const tile = screen.getByText("Uncorrected misstatement").closest(".s1-out-tile") as HTMLElement;
+    expect(tile.textContent).toContain("Not compared yet");
+    expect(tile.textContent).toContain("Reported total not entered");
+    expect(tile.textContent).not.toContain("Open items remain");
   });
 
   it("renders as the demo's document: draft band, real Excel download, recalculated figures, honest sign-off", async () => {

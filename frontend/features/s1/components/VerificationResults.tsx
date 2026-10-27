@@ -603,10 +603,14 @@ function RegisterFindingModal({
   const [sentence, setSentence] = useState("");
   const [cause, setCause] = useState("");
   const [magnitude, setMagnitude] = useState(target.delta ?? "");
-  // Escape cancels the dialog (and only the dialog: the panel behind it stays open).
+  // Escape cancels the dialog, and only the dialog: it stops here, on the document, so the
+  // calculation panel's window listener never sees it. (A DOM check there is not enough: in a
+  // real browser React commits this close in the microtask between the two listeners.)
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      onCancel();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);

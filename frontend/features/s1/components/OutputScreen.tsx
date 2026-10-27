@@ -310,11 +310,11 @@ function LiveOutputScreen({
               {statement.materialBoxes
                 .map((b) =>
                   b.pctMaterial === null
-                    ? `${b.title} is reported as 0 while the evidence gives ${formatSignedTonnes(b.difference)} tCO2e`
+                    ? `${b.title} is reported as 0 while the evidence gives ${formatTonnes(b.difference)} tCO2e`
                     : `${b.title} differs from the evidence by ${formatPercent(b.pctMaterial, true)} of its reported total`
                 )
                 .join("; ")}
-              , at or above the {threshold} materiality threshold.
+              , above the {threshold} materiality threshold.
             </p>
           ) : null}
           {statement.openBoxes.length ? (
@@ -350,13 +350,8 @@ function LiveOutputScreen({
               value={statement.misstatement === null ? "Not compared yet" : formatSignedTonnes(statement.misstatement)}
               unit={statement.misstatement === null ? "" : "tCO2e"}
               sub={
-                statement.misstatementOpen
-                  ? "Open items remain in Scope 1 or Scope 2 (location-based)"
-                  : statement.misstatement === null
-                    ? "Needs both reported scope totals"
-                    : statement.misstatementPct === null
-                      ? undefined
-                      : `${formatPercent(statement.misstatementPct, true)} of the reported total`
+                statement.misstatementReason ??
+                (statement.misstatementPct === null ? undefined : `${formatPercent(statement.misstatementPct, true)} of the reported total`)
               }
             />
             <BigTile
@@ -418,11 +413,12 @@ function LiveOutputScreen({
                       <LiveOutcome outcome={d.outcome} state={d.state} />
                       <span className="s1-out-list__text">
                         {d.label}, {formatSignedTonnes(d.difference)} tCO2e
-                        {d.pct === null ? "" : ` (${formatPercent(d.pct, true)})`}
+                        {/* The % the outcome is judged on: a line's of its box, a total's of itself. */}
+                        {d.pct === null ? "" : ` (${formatPercent(d.pct, true)}${d.pctOf ? ` of ${d.pctOf}` : ""})`}
                         {d.outcome === "material"
                           ? d.pct === null
                             ? ": reported as 0"
-                            : `: at or above the ${threshold} materiality threshold`
+                            : `: above the ${threshold} materiality threshold`
                           : `: below the ${threshold} materiality threshold`}
                       </span>
                     </li>

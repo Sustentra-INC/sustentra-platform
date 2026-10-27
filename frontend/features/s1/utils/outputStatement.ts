@@ -149,8 +149,10 @@ export interface LiveStatementRow {
 export interface LiveDifference {
   label: string;
   difference: number;
-  /** A fraction of the reported value. */
+  /** A fraction of the base the outcome is judged on (null for a reported 0). */
   pct: number | null;
+  /** That base: a line's box ("Scope 1"), whose reported total its % material is of; null for a total's own. */
+  pctOf: string | null;
   outcome: StatementRow["outcome"] | null;
   state: ResultState | null;
 }
@@ -161,8 +163,11 @@ export interface LiveStatementFigures {
   /** Recalculated minus reported, location-based; null until both are there and both boxes conclude. */
   misstatement: number | null;
   misstatementPct: number | null;
-  /** The inventory is partial, or Scope 1 or Scope 2 (location-based) cannot be compared yet. */
-  misstatementOpen: boolean;
+  /**
+   * Why the misstatement is not compared yet ("Reported total not entered", "Open items remain
+   * in Scope 1 or Scope 2 (location-based)"); null when it is.
+   */
+  misstatementReason: string | null;
   /** A fraction, e.g. 0.05. */
   materiality: number;
   materialityTonnes: number | null;
@@ -187,12 +192,12 @@ export function liveStatementFigures(
   tolerancePct: number
 ): LiveStatementFigures {
   const materiality = tolerancePct / 100;
-  // At or above materiality; a reported 0 that the evidence does not match counts as above
-  // it, as the backend calls it (reported_zero).
+  // Strictly above materiality, as the backend judges a total (exceeds_tolerance); a reported 0
+  // that the evidence does not match counts as above it, as the backend calls it (reported_zero).
   const outcome = (difference: number, base: number | null): StatementRow["outcome"] =>
     !differs(difference)
       ? "agrees"
-      : base === 0 || (base !== null && Math.abs(difference / base) >= materiality)
+      : base === 0 || (base !== null && Math.abs(difference / base) > materiality)
         ? "material"
         : "differs";
 
@@ -210,12 +215,16 @@ export function liveStatementFigures(
     verified: number | null,
     comparable: boolean,
     base: number | null,
+    /** What `base` is: a line's box (its % material), or null for a total's own reported value. */
+    pctOf: string | null,
     state: ResultState | null
   ) => {
     if (reported === null || verified === null || !comparable) return null;
     const result = outcome(verified - reported, base);
     if (result !== "agrees") {
-      differences.push({ label, difference: verified - reported, pct: reported ? (verified - reported) / reported : null, outcome: result, state });
+      // The % stated is the one the outcome is judged on, so the line never contradicts itself.
+      const difference = verified - reported;
+      differences.push({ label, difference, pct: base ? difference / base : null, pctOf, outcome: result, state });
     }
     return result;
   };
@@ -246,6 +255,7 @@ export function liveStatementFigures(
           verified,
           !line.inconclusive,
           reported === 0 ? 0 : boxBase,
+          BOX_TITLE[key].title,
           state
         ),
         state,
@@ -260,7 +270,7 @@ export function liveStatementFigures(
         reported: total.reported,
         reportedNote: total.reported === null ? "Not entered" : null,
         verified: total.recomputed,
-        outcome: compare(totalLabel, total.reported, total.recomputed, !total.state, total.reported, total.state ?? null),
+        outcome: compare(totalLabel, total.reported, total.recomputed, !total.state, total.reported, null, total.state ?? null),
         state: total.state ?? null,
         total: true,
       });
@@ -268,10 +278,19 @@ export function liveStatementFigures(
   }
 
   const { location } = inventory;
-  // Not compared while the inventory is partial or either of its boxes cannot conclude.
-  const misstatementOpen = location.partial || Boolean(boxTotals.scope1?.state) || Boolean(boxTotals.scope2_location?.state);
+  // Not compared while a reported scope total is missing, the inventory is partial, or either
+  // of its boxes cannot conclude with its reported total entered; the tile says which.
+  const openBox = [boxTotals.scope1, boxTotals.scope2_location].some((b) => b?.state && b.reported !== null);
+  const reasons = [
+    location.reported === null ? "Reported total not entered" : "",
+    location.recomputed === null ? "Nothing recalculated yet" : "",
+    location.partial || openBox ? "Open items remain in Scope 1 or Scope 2 (location-based)" : "",
+  ].filter(Boolean);
+  const misstatementReason = reasons.length ? reasons.join(" · ") : null;
   const misstatement =
-    !misstatementOpen && location.reported !== null && location.recomputed !== null ? location.recomputed - location.reported : null;
+    misstatementReason === null && location.reported !== null && location.recomputed !== null
+      ? location.recomputed - location.reported
+      : null;
   const base = location.reported ?? location.recomputed;
   const scopes = (["scope1", "scope2_location", "scope2_market"] as const).map((key) => ({ key, total: boxTotals[key] }));
   return {
@@ -279,7 +298,7 @@ export function liveStatementFigures(
     market: inventory.market,
     misstatement,
     misstatementPct: misstatement !== null && location.reported ? misstatement / location.reported : null,
-    misstatementOpen,
+    misstatementReason,
     materiality,
     materialityTonnes: base === null ? null : materiality * base,
     materialityBase: location.reported !== null ? "reported" : location.recomputed !== null ? "recalculated" : null,
