@@ -13,7 +13,7 @@ import {
   userFacingApiError,
 } from "../api/s1Backend";
 import { ApiError } from "../../../lib/api";
-import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
+import { reviewValuesFromFields, withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import {
   getRecalculation,
   getRecalculationReference,
@@ -734,7 +734,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const reviewValuesView = useMemo(() => {
     if (dataMode !== "backend") return reviewValues;
     const byId = new Map(evidenceView.map((item) => [item.documentId, item]));
-    return reviewValues.map((value) => {
+    // A value added to requests stays requested after a reload: its ask is saved, its state is not.
+    return withRequestsFromAsks(reviewValues, requests.asks).map((value) => {
       const item = byId.get(value.documentId);
       if (!item) return value;
       return {
@@ -746,7 +747,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         withdrawnReason: item.disposition === "withdrawn" ? "Document withdrawn; it is left out of the results." : undefined,
       };
     });
-  }, [dataMode, reviewValues, evidenceView]);
+  }, [dataMode, reviewValues, evidenceView, requests.asks]);
   const backendCoverage = useBackendCoverage(
     engagement.engagementId,
     dataMode === "backend" && (activeView.name === "requests" || activeView.name === "coverage"),

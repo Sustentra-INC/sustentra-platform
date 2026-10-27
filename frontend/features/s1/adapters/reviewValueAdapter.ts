@@ -1,5 +1,6 @@
 import type { EvidenceItem, ExtractedField } from "../types";
-import type { ReviewValue, ScopePlacement, SourceKind } from "../types/review";
+import type { ReviewValue, ScopePlacement, SourceKind, ValueRecordEntry } from "../types/review";
+import type { Ask } from "../types/requests";
 import { resolveCanonicalTypeDisplayName } from "./evidenceAdapter";
 import { anchorOf } from "../utils/sourceAnchor";
 import { decodeReviewCandidateToken } from "./fieldAdapter";
@@ -151,4 +152,49 @@ function sourceKindOf(format: EvidenceItem["format"] | undefined): SourceKind {
   if (format === "image") return "image";
   if (format === "xlsx" || format === "csv") return "spreadsheet";
   return "text";
+}
+
+/**
+ * The engagement's asks laid over the backend's values, so a value added to requests is still
+ * requested after a reload. The review API records accepts and corrections only; the ask is
+ * saved with the requests and names the card it was raised from (`source.fieldKey`, the card
+ * id, which is the candidate id and the same on every load).
+ *
+ * A card the reviewer has not decided since reads "requested", like it did before the reload,
+ * and its record gets the line that added it to requests. A card accepted or corrected since
+ * keeps that state, with the line in its record. A follow-up is raised from the request, not
+ * the card, so it adds no line.
+ */
+export function withRequestsFromAsks(values: ReviewValue[], asks: Ask[]): ReviewValue[] {
+  const byCard = new Map<string, Ask[]>();
+  for (const ask of asks) {
+    const card = ask.source.origin === "review_value" ? ask.source.fieldKey : null;
+    if (card) byCard.set(card, [...(byCard.get(card) ?? []), ask]);
+  }
+  if (byCard.size === 0) return values;
+  return values.map((value) => {
+    const linked = byCard.get(value.id);
+    if (!linked) return value;
+    const recorded = new Set(value.record.flatMap((entry) => (entry.askId ? [entry.askId] : [])));
+    const lines: ValueRecordEntry[] = linked
+      .filter((ask) => !ask.linkedFromAskId && !recorded.has(ask.id))
+      .map((ask) => ({ kind: "human", actor: ask.raisedByName, at: ask.raisedAt, action: "added to requests", askId: ask.id }));
+    return {
+      ...value,
+      reviewState: value.reviewState === "to_review" ? "requested" : value.reviewState,
+      record: lines.length ? inTimeOrder([...value.record, ...lines]) : value.record,
+    };
+  });
+}
+
+/** The reading first, then what people did, oldest first (a line with no time stays last). */
+function inTimeOrder(record: ValueRecordEntry[]): ValueRecordEntry[] {
+  const time = (entry: ValueRecordEntry) => {
+    const t = Date.parse(entry.at);
+    return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+  };
+  return [
+    ...record.filter((entry) => entry.kind === "machine"),
+    ...record.filter((entry) => entry.kind !== "machine").sort((a, b) => time(a) - time(b)),
+  ];
 }
