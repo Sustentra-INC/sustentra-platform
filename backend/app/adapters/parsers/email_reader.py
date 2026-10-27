@@ -16,9 +16,10 @@ Nothing is fetched or run, and a crafted file cannot make the work outgrow the f
   Every header is cut to ``MAX_HEADER_CHARS`` as it is read (MIME headers, whose
   parameters are parsed, to ``MAX_MIME_HEADER_CHARS`` and ``MAX_MIME_PARAMS``), and at
   most ``MAX_HEADERS`` are read. Display headers are decoded from that short raw text.
-- Text is decoded only with ordinary text character sets (``_TEXT_CHARSETS``): anything
-  else, such as punycode (quadratic) or an unknown name, is read as UTF-8 with replacement
-  characters. At most ``MAX_BODY_CHARS`` of a body are decoded, at most ``MAX_HTML_CHARS``
+- Text is decoded with any stdlib text codec except the quadratic or non-text ones named in
+  ``_DENY_CODECS`` (punycode, idna, the escape codecs); a denied or unknown charset, or a
+  codec that is not a text encoding, is read as UTF-8 with replacement characters. At most
+  ``MAX_BODY_CHARS`` of a body are decoded, at most ``MAX_HTML_CHARS``
   of HTML are turned into text, and the message text of the whole email (forwarded
   messages included) is cut at ``MAX_TEXT_CHARS`` and ``MAX_TEXT_LINES``.
 - The message text is the plain-text body, else the HTML body turned into text here
@@ -31,21 +32,26 @@ Nothing is fetched or run, and a crafted file cannot make the work outgrow the f
 
 from __future__ import annotations
 
+import base64
 import codecs
 import mimetypes
+import quopri
 import re
 from dataclasses import dataclass, field
 from email._policybase import Compat32
-from email.header import decode_header
 from email.message import EmailMessage, Message
 from email.parser import BytesParser
 from html.parser import HTMLParser
 from typing import cast
+from urllib.parse import unquote_to_bytes
 
 MAX_DEPTH = 3  # forwarded messages read inside one another
 MAX_PARTS = 200  # MIME parts walked in the whole email
 MAX_PART_LINES = 1_000  # lines that could open a MIME part ("--..."), parsed in the whole email
 MAX_LINES = 1_000_000  # lines parsed in the whole email (a 25 MB base64 attachment is about 330,000)
+# The stdlib parser tests every line against the boundary of every enclosing multipart, so its
+# cost is lines x nesting depth. Cap that product: a deeply nested email reads fewer lines.
+MAX_LINE_DEPTH_PRODUCT = 4_000_000
 MAX_HEADERS = 10_000  # headers parsed in the whole email
 MAX_HEADER_CHARS = 8 * 1024  # a header is cut to this as it is read
 MAX_MIME_HEADER_CHARS = 2 * 1024  # Content-* headers, whose parameters are parsed
@@ -61,17 +67,34 @@ OLE_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 _SIGNATURE_TYPES = {"application/pkcs7-signature", "application/x-pkcs7-signature", "application/pgp-signature"}
 _PKCS7_MIME_TYPES = {"application/pkcs7-mime", "application/x-pkcs7-mime"}
 _TNEF_TYPES = {"application/ms-tnef", "application/vnd.ms-tnef"}
-# Character sets text may be decoded with: Python's ordinary text codecs (linear time).
-_TEXT_CHARSETS = frozenset(codecs.lookup(name).name for name in (
-    "utf-8", "ascii", "latin-1", "iso-8859-2", "iso-8859-3", "iso-8859-4", "iso-8859-5", "iso-8859-6",
-    "iso-8859-7", "iso-8859-8", "iso-8859-9", "iso-8859-10", "iso-8859-11", "iso-8859-13", "iso-8859-14",
-    "iso-8859-15", "iso-8859-16", "cp1250", "cp1251", "cp1252", "cp1253", "cp1254", "cp1255", "cp1256",
-    "cp1257", "cp1258", "cp874", "cp437", "cp850", "cp852", "cp866", "koi8-r", "koi8-u", "mac-roman",
-    "utf-16", "utf-16-le", "utf-16-be", "utf-32", "utf-32-le", "utf-32-be", "gb2312", "gbk", "gb18030",
-    "big5", "big5hkscs", "shift_jis", "cp932", "euc-jp", "iso-2022-jp", "euc-kr", "cp949", "iso-2022-kr",
-))
+# Character sets refused: not text at all, or quadratic. Everything else stdlib offers (every
+# ISO-8859, Windows and DOS code page, the CJK codecs, tis-620, mac-*, utf-7, utf-8-sig, ...) is
+# linear and kept; a codec that is not a str<->bytes text encoding raises at decode time and
+# falls back to UTF-8 (see ``_decode_bytes``). punycode and idna are the only quadratic text codecs.
+def _canonical(name: str) -> str | None:
+    try:
+        return codecs.lookup(name).name
+    except LookupError:
+        return None
+
+
+_DENY_CODECS = frozenset(
+    canonical
+    for name in ("punycode", "idna", "unicode_escape", "raw_unicode_escape", "unicode_internal")
+    if (canonical := _canonical(name)) is not None
+)
+# The CMS content-type OIDs (DER: 06 LEN <bytes>) that mark an S/MIME part as *encrypted*, not
+# signed. enveloped-data 1.2.840.113549.1.7.3 and authEnveloped-data 1.2.840.113549.1.9.16.1.23.
+_CMS_ENCRYPTED_OIDS = (
+    bytes.fromhex("06092a864886f70d010703"),
+    bytes.fromhex("060b2a864886f70d010910 0117".replace(" ", "")),
+)
 _PART_LINE = re.compile(rb"(?:\A|(?<=[\r\n]))--")  # every MIME delimiter line starts this way
+_BOUNDARY = re.compile(rb"(?i)\bboundary\b[ \t]*\*?[0-9]*\*?[ \t]*=")  # a multipart boundary declaration
 _SURROGATES = re.compile("[\udc80-\udcff]")  # raw 8-bit bytes the parser kept in a header
+_ENCODED_WORD = re.compile(r"=\?([^?]{1,100})\?([bBqQ])\?([^?]{0,700})\?=")  # RFC 2047
+# How str.splitlines() breaks lines (so our line count matches TextParser and the pane).
+_LINE_BREAK = re.compile("\r\n|[\n\r\v\f\x1c\x1d\x1e\x85  ]")
 
 NOT_AN_EML = ("This file is an Outlook message (.msg), which can't be read here yet. "
               "Upload its attachments on their own instead.")
@@ -190,12 +213,19 @@ def _parse(data: bytes, walk: _Walk) -> EmailMessage:
 
 def _bounded(data: bytes, walk: _Walk) -> bytes:
     """``data`` cut before the line that would take the email over its budget of lines, or
-    of lines that could open a MIME part, so the parser never builds more than that."""
+    of lines that could open a MIME part, so the parser never builds more than that.
+
+    The parser tests every line against the boundary of every enclosing multipart, so its
+    cost is lines x depth. ``data`` declares about one boundary per nesting level, so the
+    line budget for this slice is capped at ``MAX_LINE_DEPTH_PRODUCT / boundaries`` -- a
+    deeply nested email is read for fewer lines, and the product stays bounded."""
 
     end = len(data)
     lines = data.count(b"\n") + data.count(b"\r") - data.count(b"\r\n")
-    if lines > walk.lines_left:
-        end = _after_lines(data, walk.lines_left)
+    boundaries = len(_BOUNDARY.findall(data))
+    line_budget = min(walk.lines_left, MAX_LINE_DEPTH_PRODUCT // max(1, boundaries))
+    if lines > line_budget:
+        end = _after_lines(data, line_budget)
         walk.cut = True
     walk.lines_left = max(0, walk.lines_left - lines)
     found = 0
@@ -249,13 +279,19 @@ def _policy(walk: _Walk) -> Compat32:
 
 
 def _is_encrypted(message: EmailMessage) -> bool:
-    """An encrypted message (at the top, or as its only content): S/MIME enveloped data or
-    a part named smime.p7m, or PGP/MIME (multipart/encrypted)."""
+    """True when an encrypted container appears anywhere in this message's own MIME tree,
+    within the part budget: S/MIME enveloped-data or authEnveloped-data (by ``smime-type`` or
+    by the CMS content-type OID in the first DER bytes), or PGP/MIME (``multipart/encrypted``).
 
-    if _encrypted_part(message):
-        return True
-    if message.get_content_maintype() == "multipart" and _find_body(message) is None:
-        return any(_encrypted_part(part) for part in message.iter_parts())
+    ``message.walk()`` descends into inline ``message/rfc822`` parts, so a forwarded message
+    (or a gateway disclaimer or list footer beside the encrypted part) is covered. An attached
+    ``.eml`` file is not an inline part, so it is handled separately (``_forwarded_file``)."""
+
+    for count, part in enumerate(message.walk()):
+        if count >= MAX_PARTS:
+            break
+        if _encrypted_part(part):
+            return True
     return False
 
 
@@ -263,9 +299,26 @@ def _encrypted_part(part: Message) -> bool:
     content_type = part.get_content_type()
     if content_type == "multipart/encrypted":
         return True
-    if _param(part, "smime-type").lower() in ("signed-data", "certs-only"):
+    if content_type not in _PKCS7_MIME_TYPES and (_filename(part) or "").lower() != "smime.p7m":
         return False
-    return content_type in _PKCS7_MIME_TYPES or (_filename(part) or "").lower() == "smime.p7m"
+    smime_type = _param(part, "smime-type").lower()
+    if smime_type:  # enveloped-data / authEnveloped-data are encrypted; signed-data / certs-only are not
+        return smime_type in ("enveloped-data", "authenveloped-data")
+    return _encrypted_cms(part)  # no smime-type: the DER decides
+
+
+def _encrypted_cms(part: Message) -> bool:
+    """The first DER bytes of a ``pkcs7-mime`` part carry the CMS content-type OID: an
+    enveloped / authEnveloped OID means encrypted, a signed OID (or anything else) does not."""
+
+    try:
+        payload = part.get_payload(decode=True)
+    except Exception:  # noqa: BLE001 - a malformed body
+        return False
+    if not isinstance(payload, bytes):
+        return False
+    head = payload[:64]
+    return any(oid in head for oid in _CMS_ENCRYPTED_OIDS)
 
 
 # --- the message --------------------------------------------------------------------------------
@@ -286,10 +339,10 @@ def _package(message: EmailMessage, *, depth: int, walk: _Walk, path: list[str])
 
 
 def _raw_header(part: Message, name: str) -> str | None:
-    """A header's raw text (already cut while parsing), raw 8-bit bytes read as UTF-8."""
+    """A header's raw value (already cut while parsing), unfolded, raw 8-bit bytes read as text."""
 
     raw = next((value for key, value in part.raw_items() if key.lower() == name.lower()), None)
-    return None if raw is None else _unescaped(str(raw))
+    return None if raw is None else _unfold(_unescaped(str(raw)))
 
 
 def _unescaped(text: str) -> str:
@@ -298,57 +351,138 @@ def _unescaped(text: str) -> str:
     return text
 
 
+def _unfold(text: str) -> str:
+    # Unfold: drop the CR/LF of a folded header, keep the following whitespace. Decoding the
+    # encoded words afterwards (not the raw folded value) keeps the space between two words
+    # ("février 2025", not "février2025") and before a <address>.
+    return text.replace("\r", "").replace("\n", "")
+
+
+def _clip(text: str) -> str:
+    return text if len(text) <= SHOWN_HEADER_CHARS else text[:SHOWN_HEADER_CHARS] + "…"
+
+
 def _header(message: Message, name: str) -> str:
-    """A header as one line of text, RFC 2047 words decoded."""
+    """A header as one line of text: unfolded, RFC 2047 words decoded. Date is kept as sent;
+    an address header's display names are unquoted."""
 
     text = _raw_header(message, name)
     if text is None:
         return ""
-    text = text[:SHOWN_HEADER_CHARS * 4]
+    text = text[:SHOWN_HEADER_CHARS * 8]
+    if name.lower() == "date":  # kept exactly as sent, bar folding and surrounding space
+        return _clip(" ".join(text.split()))
     if "=?" in text:
         text = _decode_words(text)
+    if name.lower() in ("from", "to", "cc"):
+        text = text.replace('"', "")  # drop the transport quotes around a display name
     text = " ".join("".join(ch if ch.isprintable() else " " for ch in text).split())
-    return text if len(text) <= SHOWN_HEADER_CHARS else text[:SHOWN_HEADER_CHARS] + "…"
+    return _clip(text)
 
 
 def _decode_words(text: str) -> str:
-    """RFC 2047 encoded words decoded, each with an ordinary text character set only."""
+    """RFC 2047 encoded words decoded in place, each with a text character set only. Done as a
+    substitution so the text between words (including spaces and backslashes) is left verbatim."""
 
-    try:
-        chunks = decode_header(text)
-    except Exception:  # noqa: BLE001 - a malformed encoded word: keep the raw text
-        return text
-    decoded = []
-    for chunk, charset in chunks:
-        if isinstance(chunk, str):
-            decoded.append(chunk)
-        elif charset:
-            decoded.append(_decode_bytes(chunk, charset))
-        else:
-            decoded.append(chunk.decode("raw-unicode-escape", errors="replace"))
-    return "".join(decoded)
+    def decode(match: re.Match[str]) -> str:
+        charset, encoding, payload = match.group(1), match.group(2).lower(), match.group(3)
+        try:
+            if encoding == "b":
+                raw = base64.b64decode(payload + "=" * (-len(payload) % 4), validate=False)
+            else:  # "q": RFC 2047 quoted-printable, with "_" for space
+                raw = quopri.decodestring(payload.replace("_", " ").encode("latin-1", "replace"))
+        except Exception:  # noqa: BLE001 - a malformed encoded word: keep it as it was written
+            return match.group(0)
+        return _decode_bytes(raw, charset)
+
+    return _ENCODED_WORD.sub(decode, text)
 
 
 def _codec(charset: str | None) -> str:
-    try:
-        name = codecs.lookup(str(charset or "").strip().strip('"')).name
-    except (LookupError, TypeError, ValueError):
-        return "utf-8"
-    return name if name in _TEXT_CHARSETS else "utf-8"
+    label = str(charset or "").strip().strip("'\"").lower()
+    # MIME labels such as "x-mac-cyrillic" (Apple Mail) name a codec Python knows without "x-".
+    for candidate in (label, label[2:] if label.startswith("x-") else None):
+        if not candidate:
+            continue
+        try:
+            name = codecs.lookup(candidate).name
+        except (LookupError, TypeError, ValueError):
+            continue
+        return "utf-8" if name in _DENY_CODECS else name
+    return "utf-8"
 
 
 def _decode_bytes(data: bytes, charset: str | None) -> str:
-    return data.decode(_codec(charset), errors="replace")
+    try:
+        return data.decode(_codec(charset), errors="replace")
+    except (LookupError, ValueError):  # not a str<->bytes text codec (base64, hex, zlib, ...)
+        return data.decode("utf-8", errors="replace")
 
 
 def _param(part: Message, name: str, header: str = "content-type") -> str:
-    try:
-        value = part.get_param(name, None, header)
-    except Exception:  # noqa: BLE001 - a malformed parameter
-        return ""
-    if isinstance(value, tuple):  # RFC 2231: (charset, language, text)
-        value = value[2]
-    return str(value or "")
+    return _params(part, header).get(name.lower(), "")
+
+
+_PARAM_KEY = re.compile(r"^(?P<name>[^*]+?)(?:\*(?P<index>\d+))?(?P<enc>\*)?$")
+
+
+def _split_params(raw: str) -> list[str]:
+    """Split a header value on ``;`` outside double quotes."""
+
+    segments: list[str] = []
+    buffer: list[str] = []
+    quoted = False
+    for char in raw:
+        if char == '"':
+            quoted = not quoted
+        if char == ";" and not quoted:
+            segments.append("".join(buffer))
+            buffer = []
+        else:
+            buffer.append(char)
+    segments.append("".join(buffer))
+    return segments
+
+
+def _params(part: Message, header: str = "content-type") -> dict[str, str]:
+    """The parameters of a ``Content-*`` header, parsed from its raw (unfolded, 8-bit-decoded)
+    value rather than ``get_param``, which under compat32 turns a raw 8-bit value into U+FFFD.
+    Quotes are stripped; RFC 2231 extended values (``name*=charset'lang'pct``) and continuations
+    (``name*0=`` / ``name*1*=``) are joined and percent-decoded with a text character set only."""
+
+    raw = _raw_header(part, header)
+    if raw is None:
+        return {}
+    simple: dict[str, str] = {}
+    continued: dict[str, dict[int, tuple[bool, str]]] = {}
+    for segment in _split_params(raw)[1:]:
+        key, equals, value = segment.partition("=")
+        if not equals:
+            continue
+        key, value = key.strip().lower(), value.strip()
+        if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+            value = value[1:-1]
+        match = _PARAM_KEY.match(key)
+        if not match:
+            continue
+        name, index, encoded = match.group("name"), match.group("index"), bool(match.group("enc"))
+        if index is None and not encoded:
+            simple.setdefault(name, value)
+        else:
+            continued.setdefault(name, {})[int(index) if index else 0] = (encoded, value)
+
+    result = dict(simple)
+    for name, parts in continued.items():
+        charset = "utf-8"
+        pieces: list[str] = []
+        for position, index in enumerate(sorted(parts)):
+            encoded, value = parts[index]
+            if encoded and position == 0 and value.count("'") >= 2:  # charset'lang' prefix
+                charset, _language, value = value.split("'", 2)
+                charset = charset or "utf-8"
+            pieces.append(_decode_bytes(unquote_to_bytes(value), charset) if encoded else value)
+        result.setdefault(name, "".join(pieces))
+    return result
 
 
 def _find_body(message: EmailMessage) -> EmailMessage | None:
@@ -404,18 +538,28 @@ def _body_text(part: Message, walk: _Walk) -> tuple[str, str]:
 
 
 def _within_text_budget(text: str, walk: _Walk) -> str:
-    """The text cut to what is left of the email's message-text budget."""
+    """The text cut to what is left of the email's message-text budget. Lines are counted the
+    way ``str.splitlines`` splits them (on \\x0c, \\u2028 and the rest, not only \\n), so the cap
+    matches the block count the parser and the pane produce."""
 
     if len(text) > walk.text_chars_left:
         text, walk.text_cut = text[:max(0, walk.text_chars_left)], True
-    lines = text.split("\n")
     filled = 0
-    for index, line in enumerate(lines):
-        if line.strip():
+    start = 0
+    cut_at: int | None = None
+    for match in _LINE_BREAK.finditer(text):
+        if text[start:match.start()].strip():
             filled += 1
             if filled > walk.text_lines_left:
-                text, walk.text_cut = "\n".join(lines[:index]).rstrip("\n"), True
+                cut_at = start
                 break
+        start = match.end()
+    if cut_at is None and text[start:].strip():
+        filled += 1
+        if filled > walk.text_lines_left:
+            cut_at = start
+    if cut_at is not None:
+        text, walk.text_cut = text[:cut_at].rstrip("\r\n\v\f\x1c\x1d\x1e\x85  "), True
     walk.text_chars_left -= len(text)
     walk.text_lines_left -= min(filled, walk.text_lines_left)
     return text
@@ -489,23 +633,37 @@ def _forwarded_file(data: bytes, filename: str, package: EmailPackage, *, depth:
     """Read an attached .eml as a forwarded message; False to keep it as a plain attachment.
     The depth and the email's budget are checked before it is parsed."""
 
+    name = _safe_name(filename, "message/rfc822", len(package.attachments) + 1)
     if depth + 1 > MAX_DEPTH:
         package.notes.append(("forwarded_too_deep", f"A message forwarded more than {MAX_DEPTH} levels deep "
-                                                    f"(\"{_safe_name(filename, 'message/rfc822', 0)}\") was not read."))
+                                                    f"(\"{name}\") was not read."))
         return True
     if walk.lines_left <= 0 or walk.part_lines_left <= 0:
         walk.cut = True
         return False
     try:
         inner = _parse(data, walk)
+        readable = bool(inner.keys())
+        encrypted = readable and _is_encrypted(inner)
     except EmailError:
-        raise
+        # The attached message blew the shared header budget, or is damaged. List it, rather
+        # than refuse the whole outer email.
+        _list_not_read(package, name, data, path, "the forwarded message could not be read")
+        return True
     except Exception:  # noqa: BLE001 - not a readable message: keep it as a plain attachment
         return False
-    if not inner.keys():
+    if not readable:
         return False
+    if encrypted:
+        _list_not_read(package, name, data, path, "the forwarded message is encrypted")
+        return True
     _forwarded(inner, package, depth=depth, walk=walk, path=path)
     return True
+
+
+def _list_not_read(package: EmailPackage, name: str, data: bytes, path: list[str], reason: str) -> None:
+    package.attachments.append(EmailPart(name=name, content_type="message/rfc822", data=data,
+                                         path=list(path), note=reason))
 
 
 def _forwarded(inner: EmailMessage, package: EmailPackage, *, depth: int, walk: _Walk, path: list[str]) -> None:
@@ -545,24 +703,14 @@ def _append_text(package: EmailPackage, text: str) -> None:
 
 
 def _filename(part: Message) -> str | None:
-    """The part's file name (Content-Disposition filename, else Content-Type name), RFC 2231
-    and RFC 2047 encodings decoded with ordinary text character sets only."""
+    """The part's file name (Content-Disposition filename, else Content-Type name), parsed from
+    the raw header (so raw 8-bit bytes survive), RFC 2231 and RFC 2047 encodings decoded with a
+    text character set only."""
 
     for header, param in (("content-disposition", "filename"), ("content-type", "name")):
-        try:
-            value = part.get_param(param, None, header)
-        except Exception:  # noqa: BLE001 - a malformed parameter
-            continue
-        if value is None:
-            continue
-        if isinstance(value, tuple):  # RFC 2231: (charset, language, percent-decoded text)
-            charset, _language, text = value
-            name = _decode_bytes(str(text).encode("latin-1", errors="replace"), charset)
-        else:
-            name = _unescaped(str(value))
-            if "=?" in name:
-                name = _decode_words(name)
-        return name
+        name = _params(part, header).get(param)
+        if name:
+            return _decode_words(name) if "=?" in name else name
     return None
 
 

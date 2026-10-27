@@ -265,7 +265,7 @@ def test_lines_are_capped_before_parsing(monkeypatch) -> None:
     # 6 million short lines (12 MB) took 3 s and 860 MB.
     package = _timed(HEAD + b"Content-Type: text/plain\r\n\r\n" + b"a\n" * 6_000_000, 2.0)
     assert {code for code, _ in package.notes} == {"email_truncated", "body_truncated"}
-    assert package.body_text.count("\n") + 1 == email_reader.MAX_TEXT_LINES
+    assert len([line for line in package.body_text.splitlines() if line.strip()]) == email_reader.MAX_TEXT_LINES
 
 
 def test_the_cut_falls_after_a_whole_line_whatever_its_ending() -> None:
@@ -351,15 +351,18 @@ def test_only_ordinary_text_charsets_decode() -> None:
                      b"\r\n\r\nhi\r\n--b\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; "
                      b"filename*=punycode''" + name + b"\r\n\r\n%PDF\r\n--b--\r\n")
     assert package.attachments[0].name == name[:email_reader.MAX_NAME_CHARS].decode()
+    # Two encoded words with a denied/unknown charset: both read as UTF-8, and the space
+    # between them is kept (not glued), as item 2 requires.
     package = read_eml(b"From: a@example.com\r\nSubject: =?punycode?q?caf-dma?= =?x-unknown?q?=C3=A9?=\r\n\r\nx\r\n")
-    assert package.subject == "caf-dma\u00e9"
+    assert package.subject == "caf-dma \u00e9"
 
 
 @pytest.mark.parametrize("raw", [
     HEAD + b'Content-Type: application/pkcs7-mime; smime-type=enveloped-data; name="smime.p7m"\r\n'
     b"Content-Transfer-Encoding: base64\r\n\r\nMIAGCSqGSIb3DQEHA6CAMIACAQAxggE=\r\n",
-    HEAD + b'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: application/octet-stream\r\n'
-    b'Content-Disposition: attachment; filename="smime.p7m"\r\n\r\nMIAGCSqG\r\n--b--\r\n',
+    HEAD + b'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: application/pkcs7-mime\r\n'
+    b'Content-Disposition: attachment; filename="smime.p7m"\r\nContent-Transfer-Encoding: base64\r\n\r\n'
+    b"MIAGCSqGSIb3DQEHA6CAMIACAQAxggE=\r\n--b--\r\n",
     HEAD + b'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="b"\r\n\r\n'
     b"--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n--b\r\n"
     b'Content-Type: application/octet-stream; name="encrypted.asc"\r\n\r\n-----BEGIN PGP MESSAGE-----\r\n'
