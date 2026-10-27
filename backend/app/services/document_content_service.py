@@ -5,7 +5,8 @@ no page, so the pane draws their content instead: a grid for a workbook or CSV, 
 Word and text. The numbering is the parsers' own, so an extracted value's source reference
 points at the right spot:
 
-- Excel: sheet name and cell ("D2"), as ``openpyxl`` reports them.
+- Excel: sheet name and cell ("D2"), as ``openpyxl`` reports them (the ``.xls`` reader
+  numbers cells the same way).
 - CSV: the row number in the file, counting blank rows (the CSV parser's ``r<N>``).
 - Word / text: the n-th non-empty line (the text parser's block ``b<N>``).
 
@@ -18,11 +19,21 @@ from __future__ import annotations
 
 import csv
 import zipfile
+from collections.abc import Iterable, Iterator
+from itertools import islice
 from pathlib import Path
 from typing import Any
 
 from backend.app.adapters.parsers.docx_parser import DocxError, docx_text
-from backend.app.adapters.parsers.excel_parser import _coerce_cell_value
+from backend.app.adapters.parsers.excel_parser import _coerce_cell_value, _is_blank, read_only_workbook
+from backend.app.adapters.parsers.xls_parser import (
+    FilledCells,
+    XlsBudget,
+    XlsError,
+    is_zip,
+    open_xls,
+    xls_worksheets,
+)
 from backend.app.services.parser_service import ParserService
 
 MAX_SHEETS = 30
@@ -71,49 +82,95 @@ def _cell(value: Any) -> str | None:
     return _clip(text, MAX_CELL_CHARS) if text.strip() else None
 
 
-def _workbook(path: Path, budget: _Budget) -> dict[str, Any]:
-    from openpyxl import load_workbook
+# A sheet as the pane reads it: its name, then every row scanned (empty ones included) as
+# the row's number in the workbook and its non-empty values by 0-based column.
+PaneSheet = tuple[str, Iterator[tuple[int | None, dict[int, Any]]]]
 
+
+def _sheets(sheets: Iterable[PaneSheet], sheet_count: int, budget: _Budget) -> dict[str, Any]:
+    drawn: list[dict[str, Any]] = []
+    truncated = sheet_count > MAX_SHEETS
+    for name, scanned_rows in islice(sheets, MAX_SHEETS):
+        rows: list[dict[str, Any]] = []
+        width = 0
+        for scanned, (number, values) in enumerate(scanned_rows, start=1):
+            if scanned > MAX_SCANNED_ROWS:
+                truncated = True
+                break
+            # Placed by the cell's own column, as its "D2" reference says.
+            placed = {column: text for column, value in values.items() if (text := _cell(value)) is not None}
+            if not placed:
+                continue
+            cells = [placed.get(i) for i in range(max(placed) + 1)]
+            if not budget.take(cells):
+                truncated = True
+                break
+            width = max(width, len(cells))
+            rows.append({"number": number, "cells": cells})
+        if rows:
+            drawn.append({"name": name, "columns": width, "rows": rows})
+        if truncated and budget.cells <= 0:
+            break
+    return {"kind": "sheets", "sheets": drawn, "truncated": truncated}
+
+
+def _workbook(path: Path, budget: _Budget) -> dict[str, Any]:
     try:
-        workbook = load_workbook(path, data_only=True, read_only=True)
+        workbook = read_only_workbook(path)
     except Exception as exc:  # noqa: BLE001 - any load failure is "unreadable"
         raise UnreadableContent("The workbook could not be opened.") from exc
-    sheets: list[dict[str, Any]] = []
-    truncated = len(workbook.worksheets) > MAX_SHEETS
     try:
-        for worksheet in workbook.worksheets[:MAX_SHEETS]:
-            # Read only the cells the sheet holds, not its declared (possibly huge) dimension.
-            worksheet.reset_dimensions()
-            rows: list[dict[str, Any]] = []
-            width = 0
-            for scanned, row in enumerate(worksheet.iter_rows(max_col=MAX_COLUMNS), start=1):
-                if scanned > MAX_SCANNED_ROWS:
-                    truncated = True
-                    break
-                placed: dict[int, str] = {}
-                number: int | None = None
-                for cell in row:  # placed by the cell's own column, as its "D2" reference says
-                    text = _cell(_coerce_cell_value(cell.value))
-                    column = getattr(cell, "column", None)
-                    if text is None or not isinstance(column, int):
-                        continue
-                    number = number or getattr(cell, "row", None)
-                    placed[column - 1] = text
-                if not placed:
-                    continue
-                cells = [placed.get(i) for i in range(max(placed) + 1)]
-                if not budget.take(cells):
-                    truncated = True
-                    break
-                width = max(width, len(cells))
-                rows.append({"number": number, "cells": cells})
-            if rows:
-                sheets.append({"name": worksheet.title, "columns": width, "rows": rows})
-            if truncated and budget.cells <= 0:
-                break
+        sheets = ((worksheet.title, _openpyxl_rows(worksheet)) for worksheet in workbook.worksheets)
+        return _sheets(sheets, len(workbook.worksheets), budget)
     finally:
         workbook.close()
-    return {"kind": "sheets", "sheets": sheets, "truncated": truncated}
+
+
+def _openpyxl_rows(worksheet: Any) -> Iterator[tuple[int | None, dict[int, Any]]]:
+    # Read only the cells the sheet holds, not its declared (possibly huge) dimension.
+    worksheet.reset_dimensions()
+    for row in worksheet.iter_rows(max_col=MAX_COLUMNS):
+        number: int | None = None
+        values: dict[int, Any] = {}
+        for cell in row:
+            value = _coerce_cell_value(cell.value)
+            column = getattr(cell, "column", None)
+            if _is_blank(value) or not isinstance(column, int):
+                continue
+            number = number or getattr(cell, "row", None)
+            values[column - 1] = value
+        yield number, values
+
+
+def _xls_workbook(path: Path, budget: _Budget) -> dict[str, Any]:
+    """An Excel 97-2003 workbook, through the parser's own reader. An .xlsx saved with an
+    .xls name is read as an .xlsx, as the parser does."""
+
+    if is_zip(path):
+        return _workbook(path, budget)
+    try:
+        book, _notes = open_xls(path)
+    except XlsError as exc:
+        raise UnreadableContent(exc.message) from exc
+    loading = XlsBudget()
+    try:
+        # Only the columns the pane draws are looked at, and only filled cells converted.
+        sheets = ((name, _xls_rows(rows)) for name, rows in xls_worksheets(book, loading, max_columns=MAX_COLUMNS))
+        content = _sheets(sheets, book.nsheets, budget)
+    except XlsError as exc:
+        raise UnreadableContent(exc.message) from exc
+    except Exception as exc:  # noqa: BLE001 - a damaged sheet stream
+        raise UnreadableContent("The workbook could not be opened.") from exc
+    finally:
+        book.release_resources()
+    if loading.stopped:
+        content["truncated"] = True
+    return content
+
+
+def _xls_rows(rows: Iterator[FilledCells]) -> Iterator[tuple[int | None, dict[int, Any]]]:
+    for number, cells in enumerate(rows, start=1):
+        yield number, dict(cells)
 
 
 def _decoded(path: Path) -> str:
@@ -174,6 +231,8 @@ def document_content(path: Path, mime_type: str | None = None) -> dict[str, Any]
     budget = _Budget()
     if kind == "excel":
         return _workbook(path, budget)
+    if kind == "xls":
+        return _xls_workbook(path, budget)
     if kind == "csv":
         return _csv(path, budget)
     if kind == "docx":

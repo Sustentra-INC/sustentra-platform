@@ -179,7 +179,7 @@ describe("upload size limit (INFRA-007)", () => {
 
 describe("files no parser can read", () => {
   const UNREADABLE =
-    "qa_archive.zip can't be read here. Upload a PDF, Word (.docx), Excel (.xlsx), CSV or text file, " +
+    "qa_archive.zip can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, " +
     "or a scan or photo (PNG, JPG or TIFF).";
 
   it("refuses them without sending anything", async () => {
@@ -209,6 +209,14 @@ describe("halted documents (unreadable / unsupported)", () => {
     const item = mapBackendDocumentToEvidenceItem(failed, run);
     expect(item.processingState).toBe("blocked");
     expect(item.haltReason).toBe("File could not be read.");
+  });
+
+  it("says when a file is password-protected, and what to ask for", () => {
+    const run = { status: "failed", errors: ["Parser stage returned failed status."],
+      halt_reason: { code: "password_protected", message: "This file is password-protected, ..." } };
+    const item = mapBackendDocumentToEvidenceItem(failed, run);
+    expect(item.processingState).toBe("blocked");
+    expect(item.haltReason).toBe("Password-protected: ask the client for a copy without a password.");
   });
 
   it("maps a document whose type was not recognised to choosing its type", () => {

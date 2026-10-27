@@ -10,7 +10,7 @@ import { engagementConfig } from "../fixtures/engagementConfig";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 
 const ZIP_MESSAGE =
-  "qa_archive.zip can't be read here. Upload a PDF, Word (.docx), Excel (.xlsx), CSV or text file, " +
+  "qa_archive.zip can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, " +
   "or a scan or photo (PNG, JPG or TIFF).";
 
 const file = (name: string, type = "") => new File(["x"], name, { type });
@@ -26,6 +26,7 @@ describe("upload: files no parser can read", () => {
     ["letter.docx", ""],
     ["log.xlsx", ""],
     ["log.xlsm", ""],
+    ["legacy.xls", "application/vnd.ms-excel"],
     ["readings.csv", ""],
     ["notes.txt", ""],
     ["notes.md", ""],
@@ -38,6 +39,7 @@ describe("upload: files no parser can read", () => {
     ["photo", "image/jpeg"],
     ["fax", "image/tiff"],
     ["export", "text/csv; charset=utf-8"],
+    ["export", "application/vnd.ms-excel"],
   ])("reads %s (%s)", (name, type) => {
     expect(isReadableUpload(file(name, type))).toBe(true);
   });
@@ -46,7 +48,6 @@ describe("upload: files no parser can read", () => {
     ["qa_archive.zip", "application/zip"],
     ["page.html", "text/html"],
     ["old-bill.doc", "application/msword"],
-    ["legacy.xls", "application/vnd.ms-excel"],
     ["readings", ""],
     // Images Textract can't read (it takes PNG, JPEG and TIFF): by extension, then media type.
     ["photo.webp", "image/webp"],
@@ -66,7 +67,7 @@ describe("upload: files no parser can read", () => {
     expect(input).toHaveAttribute("accept", UPLOAD_ACCEPT);
     // The same formats the refusal names: PDF, Word, Excel, CSV, text, and PNG, JPG or TIFF.
     expect(UPLOAD_ACCEPT.split(",")).toEqual([
-      ".pdf", ".docx", ".xlsx", ".xlsm", ".csv", ".txt", ".md", ".markdown", ".png", ".jpg", ".jpeg", ".tif", ".tiff",
+      ".pdf", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".txt", ".md", ".markdown", ".png", ".jpg", ".jpeg", ".tif", ".tiff",
     ]);
   });
 
@@ -74,7 +75,7 @@ describe("upload: files no parser can read", () => {
     const [webp, png] = uploadTasksFor([file("photo.webp", "image/webp"), file("meter.png", "image/png")], "b1");
     expect(webp.stage).toBe("not_uploaded");
     expect(webp.error).toBe(
-      "photo.webp can't be read here. Upload a PDF, Word (.docx), Excel (.xlsx), CSV or text file, " +
+      "photo.webp can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, " +
         "or a scan or photo (PNG, JPG or TIFF)."
     );
     expect(png.stage).toBe("waiting");

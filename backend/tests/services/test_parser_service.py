@@ -79,6 +79,37 @@ def test_excel_file_routes_to_excel_parser(tmp_path: Path) -> None:
     assert output["parser_name"] == "openpyxl"
 
 
+def test_an_excel_97_2003_workbook_routes_to_the_xls_parser(tmp_path: Path) -> None:
+    from backend.tests.adapters.parsers._xls_builder import xls_bytes
+
+    workbook = xls_bytes({"Log": [["Gallons", 450]]})
+    for name, mime in (("log.xls", None), ("LOG.XLS", None), ("export", "application/vnd.ms-excel")):
+        path = tmp_path / name
+        path.write_bytes(workbook)
+        output = ParserService().parse_document(path, document_id="DOC-1", processing_run_id="RUN-1", mime_type=mime)
+        assert_parser_output_shape(output)
+        assert (output["status"], output["parser_name"]) == ("parsed", "xlrd")
+        assert [block["text"] for block in output["text_blocks"]] == ["Gallons", "450"]
+    assert ParserService.parser_kind(Path("log.xls")) == "xls"
+    assert ParserService.parser_kind(Path("export"), "application/vnd.ms-excel; charset=binary") == "xls"
+
+
+def test_an_xlsx_with_no_extension_is_read_by_its_media_type(tmp_path: Path) -> None:
+    openpyxl = pytest.importorskip("openpyxl")
+    workbook = openpyxl.Workbook()
+    workbook.active["A1"] = "Metric"
+    path = tmp_path / "export"  # openpyxl itself refuses a file name without an Excel extension
+    workbook.save(tmp_path / "export.xlsx")
+    path.write_bytes((tmp_path / "export.xlsx").read_bytes())
+
+    output = ParserService().parse_document(
+        path, document_id="DOC-1", processing_run_id="RUN-1",
+        mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+    assert (output["status"], output["parser_name"]) == ("parsed", "openpyxl")
+
+
 def test_csv_file_routes_to_csv_parser(tmp_path: Path) -> None:
     file_path = tmp_path / "usage.csv"
     file_path.write_text("Month,Usage\nJanuary,32400\n", encoding="utf-8")

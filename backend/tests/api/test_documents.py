@@ -121,7 +121,7 @@ def test_upload_records_the_signed_in_uploader(client_context):
 
 
 UNREADABLE = (
-    "{name} can't be read here. Upload a PDF, Word (.docx), Excel (.xlsx), CSV or text file, "
+    "{name} can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, "
     "or a scan or photo (PNG, JPG or TIFF)."
 )
 
@@ -130,7 +130,6 @@ UNREADABLE = (
     ("qa_archive.zip", "application/zip"),
     ("page.html", "text/html"),
     ("old-bill.doc", "application/msword"),
-    ("legacy.xls", "application/vnd.ms-excel"),
     ("readings", "application/octet-stream"),
     # Images the readers can't open (Textract reads PNG, JPEG and TIFF), even though the
     # parser would call them images: by extension, then by media type.
@@ -163,6 +162,8 @@ def test_upload_refuses_a_file_no_parser_can_read(client_context, name: str, mim
     ("letter.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
     ("log.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
     ("log.xlsm", "application/octet-stream"),
+    ("legacy.xls", "application/vnd.ms-excel"),
+    ("legacy.XLS", "application/octet-stream"),
     ("readings.csv", "text/csv"),
     ("notes.txt", "text/plain"),
     ("notes.md", "text/markdown"),
@@ -176,6 +177,7 @@ def test_upload_refuses_a_file_no_parser_can_read(client_context, name: str, mim
     ("photo", "image/jpeg"),
     ("fax", "image/tiff"),
     ("export", "text/csv; charset=utf-8"),
+    ("export", "application/vnd.ms-excel"),
 ])
 def test_upload_accepts_every_file_a_parser_can_read(client_context, name: str, mime: str):
     response = client_context["client"].post(

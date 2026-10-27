@@ -117,6 +117,7 @@ export function resolveCanonicalTypeDisplayName(
 export function haltReasonFromCode(code: string | null | undefined): string | null {
   if (code === "unreadable_document") return HALT_REASONS.unreadable;
   if (code === "ocr_required") return HALT_REASONS.ocrRequired;
+  if (code === "password_protected") return HALT_REASONS.passwordProtected;
   if (code === "unsupported_document") return HALT_REASONS.typeUnknown;
   return null;
 }
