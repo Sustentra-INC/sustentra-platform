@@ -45,6 +45,7 @@ export function BackendVerificationResults({
   store,
   onSaveInputs,
   onError,
+  onOpenDocument,
 }: {
   engagement: EngagementConfig;
   store: VerificationStore;
@@ -52,6 +53,8 @@ export function BackendVerificationResults({
   onSaveInputs: (next: RecalculationSettings) => Promise<void>;
   /** True when the error was handled (e.g. the session ended). */
   onError: (error: unknown) => boolean;
+  /** Opens a reviewed record's document (Extraction review) from the Source pane. */
+  onOpenDocument?: (documentId: string) => void;
 }) {
   const engagementId = engagement.engagementId;
   const [result, setResult] = useState<Recalculation | null>(null);
@@ -147,6 +150,7 @@ export function BackendVerificationResults({
       team={examinerOptions(engagement)}
       signedInLogin={engagement.signedInLogin}
       basis={resultsBasis(result)}
+      onOpenDocument={onOpenDocument}
       registerFindings
       inputs={
         <>

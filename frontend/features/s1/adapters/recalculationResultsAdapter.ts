@@ -1,17 +1,23 @@
 import {
   describeLeftOut,
+  FLAG_NOTE,
   type CategoryKey,
   type MissingReason,
   type NodeStatus,
   type OutputStatus,
   type RecalcCategory,
+  type RecalcInput,
   type RecalcLine,
+  type RecalcStep,
   type Recalculation,
   type RollupCategory,
   type RollupMissing,
   type RollupSourceKey,
 } from "../api/recalculation";
 import type {
+  CalcCell,
+  CalcStep,
+  EvidenceSource,
   FacilityResult,
   GasResultRow,
   ResultBoxKey,
@@ -34,7 +40,11 @@ import { formatTonnes } from "../utils/verificationTable";
  *  - The client's reported values only per data point of the GHG Required Data workbook
  *    (scope totals, category rows 43-51), typed in under Recalculation inputs: a line's own
  *    `reported`, and each box's reported total. Nothing is reported per fuel or facility, so
- *    those cells stay empty rather than invented.
+ *    those cells stay empty rather than invented, and the card says why.
+ *  - Each panel row's card: the backend's own steps (Recomputed side), its amounts linked to
+ *    the reviewed records they are summed from, its factors and GWPs to their citations, and
+ *    a cause built only from data quality checks and the recalculation's flags, labelled
+ *    "Checked by system".
  *  - What the numbers cannot say (a partial total, no reviewed evidence, not in scope, not
  *    calculated yet) becomes a state with its reason, from the roll-up's per-source status.
  *  - The per-gas data points (rows 23-37) as their own rows, in tonnes of each gas.
@@ -243,36 +253,209 @@ function lineCo2e(category: RecalcCategory, line: RecalcLine, rollup: RollupCate
   return Object.entries(line.mass_t).reduce((sum, [gas, mass]) => sum + mass * (category.gwp[gas]?.value ?? 0), 0);
 }
 
-/** Scope 1: one row per fuel or refrigerant, summed across facilities (the backend's grain). */
-function byFuel(result: Recalculation, key: CategoryKey, source: RollupSourceKey): FacilityResult[] {
+/**
+ * The calculation panel's rows: Scope 1 one per fuel or refrigerant, summed across facilities
+ * (the backend's grain); Scope 2 one per facility, as Setup names it. Each carries the
+ * backend's own steps (the Recomputed side) and what the system found about it.
+ */
+function breakdown(result: Recalculation, key: CategoryKey, source: RollupSourceKey, byFuel: boolean): FacilityResult[] {
   const category = categoryOf(result, key);
   if (!category) return [];
   const ids = uniqueIds(category.lines.map((l) => l.key));
-  return category.lines.map((line, i) => ({
-    facilityId: ids[i],
-    facility: "All facilities",
-    activity: line.key,
-    reported: null,
-    recomputed: lineCo2e(category, line, result.rollup?.categories[source]),
-    steps: [],
-    cause: "",
-  }));
+  return category.lines.map((line, i) => {
+    const co2e = lineCo2e(category, line, result.rollup?.categories[source]);
+    const input = category.details.inputs?.find((item) => item.fuel === line.key);
+    const why = causeOf(result, source, line, input, byFuel ? null : line.key);
+    return {
+      facilityId: ids[i],
+      facility: byFuel ? "All facilities" : line.key,
+      ...(byFuel ? { activity: line.key } : {}),
+      reported: null,
+      recomputed: co2e,
+      steps: stepsOf(category, line, input, co2e),
+      cause: why.cause,
+      causeBy: "system" as const,
+      causeTone: why.tone,
+      note: REPORTED_SIDE_NOTE,
+    };
+  });
 }
 
-/** Scope 2: one row per facility, as Setup names it. */
-function byFacility(result: Recalculation, key: CategoryKey | null, source: RollupSourceKey): FacilityResult[] {
-  const category = key ? categoryOf(result, key) : null;
-  if (!category) return [];
-  const ids = uniqueIds(category.lines.map((l) => l.key));
-  return category.lines.map((line, i) => ({
-    facilityId: ids[i],
-    facility: line.key,
-    reported: null,
-    recomputed: lineCo2e(category, line, result.rollup?.categories[source]),
-    steps: [],
-    cause: "",
-  }));
+/* ---------------------------- the calculation, step by step ---------------------------- */
+
+/** The empty Reported column, said once under the steps. */
+export const REPORTED_SIDE_NOTE =
+  "Reported: only the client's totals are entered (under Recalculation inputs), so its own calculation is not shown step by step.";
+
+type CategoryInput = NonNullable<RecalcCategory["details"]["inputs"]>[number];
+
+const SUBSCRIPT: [RegExp, string][] = [
+  [/\bCO2e\b/g, "CO₂e"],
+  [/\bCO2\b/g, "CO₂"],
+  [/\bCH4\b/g, "CH₄"],
+  [/\bN2O\b/g, "N₂O"],
+  [/\bSF6\b/g, "SF₆"],
+  [/\bNF3\b/g, "NF₃"],
+];
+
+function chemistry(text: string): string {
+  return SUBSCRIPT.reduce((out, [pattern, to]) => out.replace(pattern, to), text);
 }
+
+function unitText(unit: string): string {
+  return unit === "t CO2e" ? "tCO₂e" : chemistry(unit);
+}
+
+/** As the source states it: up to four decimals; a very small value keeps three significant digits. */
+function stepNumber(value: number): string {
+  return value !== 0 && Math.abs(value) < 0.01
+    ? value.toLocaleString("en-US", { maximumSignificantDigits: 3 })
+    : value.toLocaleString("en-US", { maximumFractionDigits: 4 });
+}
+
+function amount(value: number, unit: string): string {
+  if (unit === "fraction") return `${stepNumber(value * 100)}%`;
+  return `${stepNumber(value)} ${unitText(unit)}`.trim();
+}
+
+const GAS_ORDER = ["CO2", "CH4", "N2O"];
+
+/** Which material-balance records feed each refrigerant term. */
+const TERM_SERVICE: Record<string, string> = { P_S: "service", P_N: "installation", C_N: "installation",
+  C_D: "disposal", R_D: "disposal" };
+
+/** The reviewed records behind an evidence input, for the Source pane. */
+function evidenceOf(input: CategoryInput | undefined, line: RecalcLine, term?: string): EvidenceSource | undefined {
+  if (!input?.documents.length) return undefined;
+  const termKey = term?.slice(0, 3);
+  const serviceType = termKey ? TERM_SERVICE[termKey] : undefined;
+  // The recalculation lists a refrigerant record's charged (P_N, P_S) or recovered (R_D)
+  // amount; a full charge (C_N, C_D) is the record's equipment capacity, which it does not
+  // list. Those records are shown without amounts rather than with ones that contradict the term.
+  const fullCharge = termKey !== undefined && FULL_CHARGE_TERMS.has(termKey);
+  const records = input.documents
+    .filter((doc) => !serviceType || !doc.service_type || doc.service_type === serviceType)
+    .map((doc) => ({
+      documentId: doc.document_id,
+      record: doc.record,
+      quantity: fullCharge ? null : doc.quantity,
+      unit: doc.unit,
+      ...(doc.share_in_period !== undefined ? { shareInPeriod: doc.share_in_period } : {}),
+      ...(doc.service_type ? { serviceType: doc.service_type } : {}),
+    }));
+  if (!records.length) return undefined;
+  const region = input.grid_region ? ` · eGRID ${input.grid_region}` : "";
+  // A refrigerant term counts only its own records; a fuel or facility counts them all.
+  const total = fullCharge
+    ? null
+    : serviceType
+      ? records.reduce((sum, r) => sum + (r.unit === input.unit ? (r.quantity ?? 0) : 0), 0)
+      : input.quantity;
+  return {
+    kind: "evidence",
+    title: `${line.key} · reviewed evidence${region}`,
+    unit: input.unit,
+    total,
+    ...(fullCharge ? { note: "The full charge is each record's equipment capacity: open a record to see it." } : {}),
+    records,
+  };
+}
+
+/** Material-balance terms that are a full charge (equipment capacity), not a listed amount. */
+const FULL_CHARGE_TERMS = new Set(["C_N", "C_D"]);
+
+/** An input a reviewed record gave (an amount), not a factor or a figure worked out in a step. */
+const EVIDENCE_INPUT = /^(fuel|fuel energy|electricity|thermal energy|[PCR]_[A-Z])/;
+const EVIDENCE_SOURCE = /reviewed (record|bill)/i;
+
+function inputCell(name: string, input: RecalcInput, line: RecalcLine, evidence: CategoryInput | undefined): CalcCell {
+  const text = amount(input.value, input.unit);
+  if ((input.source && EVIDENCE_SOURCE.test(input.source)) || (!input.source && EVIDENCE_INPUT.test(name))) {
+    const records = evidenceOf(evidence, line, name);
+    return records ? { text, source: records } : { text };
+  }
+  if (input.source) {
+    // A factor: cited, not drawn (no endpoint returns the reference table's rows yet).
+    const [title] = input.source.split(", ");
+    return { text, source: { kind: "basis", title, text: `${chemistry(name)} = ${text}, cited from ${input.source}.` } };
+  }
+  return { text };
+}
+
+/** "Fuel x EF1" with its two inputs reads "10,000 gallon × 10.21 kg CO₂ per gallon"; anything else lists them. */
+function howCells(step: RecalcStep, line: RecalcLine, evidence: CategoryInput | undefined): CalcCell[] {
+  const entries = Object.entries(step.inputs);
+  const operands = step.formula.split(" x ");
+  const simple = operands.every((op) => /^[A-Za-z][\w ]*( \([A-Za-z]+\))?$|^\d+\/\d+$/.test(op.trim()));
+  const cells = entries.map(([name, input]) => inputCell(name, input, line, evidence));
+  if (simple && operands.length > 1 && operands.length === entries.length) {
+    return cells.flatMap((cell, i) => (i ? [{ text: " × " }, cell] : [cell]));
+  }
+  return [
+    { text: `${chemistry(step.formula)}: ` },
+    ...entries.flatMap(([name], i) => [{ text: `${i ? "; " : ""}${chemistry(name)} ` }, cells[i]]),
+  ];
+}
+
+/** The line's steps as the card's rows; the CO₂e total last, with each GWP underlined to its source. */
+function stepsOf(category: RecalcCategory, line: RecalcLine, evidence: CategoryInput | undefined, co2e: number): CalcStep[] {
+  const steps: CalcStep[] = line.steps.map((step) => ({
+    step: chemistry(step.label),
+    how: howCells(step, line, evidence),
+    reported: null,
+    recomputed: { text: amount(step.result, step.result_unit) },
+  }));
+  const last = line.steps[line.steps.length - 1];
+  if (last && last.result_unit === "t CO2e" && Math.abs(last.result - co2e) < 1e-6) {
+    steps[steps.length - 1] = { ...steps[steps.length - 1], total: true };
+    return steps;
+  }
+  const order = (gas: string) => (GAS_ORDER.indexOf(gas) + 1 || GAS_ORDER.length + 1);
+  const gases = Object.entries(line.mass_t).sort(([a], [b]) => order(a) - order(b));
+  const how: CalcCell[] = gases.flatMap(([gas, mass], i) => {
+    const gwp = category.gwp[gas];
+    const term: CalcCell[] = [{ text: `${i ? " + " : ""}${chemistry(gas)} ${stepNumber(mass)} t × ` }];
+    term.push(
+      gwp
+        ? {
+            text: `GWP ${stepNumber(gwp.value)}`,
+            source: { kind: "basis", title: `GWP of ${chemistry(gas)} (${category.gwp_set})`, text: `${stepNumber(gwp.value)}, from ${gwp.source}.` },
+          }
+        : { text: "GWP not given" }
+    );
+    return term;
+  });
+  steps.push({ step: "Total CO₂e", how, reported: null, recomputed: { text: amount(co2e, "t CO2e") }, total: true });
+  return steps;
+}
+
+/** What the system found about one row: data quality signals on its records, then the recalculation's flags. */
+function causeOf(
+  result: Recalculation,
+  source: RollupSourceKey,
+  line: RecalcLine,
+  input: CategoryInput | undefined,
+  facility: string | null
+): { cause: string; tone: "note" | "review" } {
+  const documents = new Set(input?.documents.map((d) => d.document_id) ?? []);
+  const checks = (result.quality_checks ?? []).filter(
+    (q) => q.category === source && q.severity !== "info" && (q.documents.some((d) => documents.has(d)) || q.facility === facility)
+  );
+  const flags = line.flags.map((flag) => FLAG_NOTE[flag]).filter(Boolean);
+  const review = checks.length > 0 || line.flags.some((f) => REVIEW_FLAGS.has(f));
+  const records = new Set(input?.documents.map((d) => d.record) ?? []).size;
+  const parts = [...checks.map((q) => q.message), ...flags];
+  return {
+    cause: parts.length
+      ? parts.join(" ")
+      : `Recalculated from ${records} reviewed ${records === 1 ? "record" : "records"}; no data quality signal.`,
+    tone: review ? "review" : "note",
+  };
+}
+
+/** Flags that ask the reviewer to act, not just say how a value was handled. */
+const REVIEW_FLAGS = new Set(["ch4_n2o_need_vehicle_groups", "negative_refrigerant_emissions", "certificates_exceed_consumption",
+  "service_period_reversed", "no_service_period"]);
 
 interface LineSpec {
   id: string;
@@ -330,11 +513,7 @@ function lineOf(result: Recalculation, spec: LineSpec): ResultLine {
   const node = nodeOf(result, spec.node, spec.categories);
   const state = lineState(result, out, node, spec.sources);
   const [key] = spec.categories;
-  const facilities = !key
-    ? []
-    : spec.box === "scope1"
-      ? byFuel(result, key, spec.sources[0])
-      : byFacility(result, key, spec.sources[0]);
+  const facilities = key ? breakdown(result, key, spec.sources[0], spec.box === "scope1") : [];
   const reported = out ? out.reported : null;
   const activity =
     spec.box === "scope1"

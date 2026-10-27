@@ -12,6 +12,7 @@ import { api } from "../../../lib/api";
 import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import type { Recalculation, RecalculationReference } from "../api/recalculation";
 import { BackendVerificationResults, examinerOptions } from "../components/BackendVerificationResults";
+import { VerificationWorkspace } from "../components/VerificationWorkspace";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { verificationLines } from "../fixtures/verification/resultsDataset";
 import type { EngagementConfig } from "../types";
@@ -19,6 +20,7 @@ import { buildResultBoxes, examinationKey, lineRecomputed, testedExaminationKeys
 import { useWorkpaperSync } from "../verification/useWorkpaperSync";
 import { useVerificationStore } from "../verification/verificationStore";
 import liveExample from "./fixtures/recalculationLive.json";
+import refrigerantExample from "./fixtures/recalculationRefrigerants.json";
 import workbookExample from "./fixtures/recalculationWorkbookExample.json";
 
 /*
@@ -163,6 +165,130 @@ describe("the live recalculation as Verification results lines", () => {
     const fresh = liveResultsFromRecalculation(empty);
     expect(fresh.boxTotals.scope1).toMatchObject({ reported: null, recomputed: null, state: { label: "No reviewed evidence" } });
     expect(fresh.lines.filter((l) => l.facilities !== null)).toEqual([]);
+  });
+});
+
+describe("a refrigerant's material balance in the Source pane", () => {
+  /*
+   * recalculationRefrigerants.json is the backend's response for one R-410A balance with every
+   * term: two service top-ups (P_S 40 + 5.5 lb), a new unit charged with 30 lb of a 25 lb full
+   * charge (P_N, C_N) and a retired unit of 12 lb full charge with 9 lb recovered (C_D, R_D).
+   */
+  const BALANCE = refrigerantExample as unknown as Recalculation;
+
+  it("shows a total only where the records' listed amounts make the term, and it equals the term", () => {
+    const store = renderHook(() => useVerificationStore()).result.current;
+    render(<VerificationWorkspace lines={liveResultsFromRecalculation(BALANCE).lines} store={store} team={[]} />);
+    fireEvent.click(screen.getByRole("button", { name: "R-410A" }));
+    const panel = screen.getByRole("complementary", { name: "Scope 1 · R-410A" });
+    const balance = within(panel).getByText("R-410A emitted").closest("tr")!;
+    const terms = within(balance).getAllByRole("button");
+    expect(terms.map((t) => t.textContent)).toEqual(["30 lb", "25 lb", "45.5 lb", "12 lb", "9 lb"]);
+    const shown: Record<string, string | null> = {};
+    for (const term of terms) {
+      fireEvent.click(term);
+      const source = within(panel).getByRole("region", { name: "Source" });
+      const total = source.querySelector("tfoot .s1-vw-num");
+      shown[term.textContent ?? ""] = total?.textContent ?? null;
+      if (total) expect(Number(total.textContent?.replace(/,/g, ""))).toBe(Number(term.textContent?.replace(/[^\d.]/g, "")));
+      else expect(source.querySelector("td.s1-vw-num")).toBeNull(); // no amounts that contradict the term
+    }
+    // P_N, P_S and R_D add up their records; the full charges (C_N, C_D) list the records without amounts.
+    expect(shown).toEqual({ "30 lb": "30", "25 lb": null, "45.5 lb": "45.5", "12 lb": null, "9 lb": "9" });
+  });
+
+  it("names the full-charge records and says where their capacity is read", () => {
+    const [r410a] = byId(BALANCE)["s1-fugitive"].facilities ?? [];
+    const cells = r410a.steps[0].how.filter((c) => c.source);
+    const fullCharge = cells[1].source;
+    expect(fullCharge).toMatchObject({ kind: "evidence", total: null, records: [{ record: "NEW-RTU.pdf", quantity: null }] });
+    expect(fullCharge && "note" in fullCharge ? fullCharge.note : "").toMatch(/equipment capacity/);
+    expect(cells[4].source).toMatchObject({ total: 9, records: [{ record: "RETIRED-RTU.pdf", quantity: 9 }] });
+  });
+});
+
+describe("the calculation panel on live data", () => {
+  const line = byId(LIVE);
+  const text = (cells: { text: string }[]) => cells.map((c) => c.text).join("");
+
+  it("shows the backend's own steps on the Recomputed side, the client's side honestly empty", () => {
+    const [gas] = line["s1-stationary"].facilities ?? [];
+    expect(gas.steps.map((s) => s.step)).toEqual(["CO₂ (Eq 1)", "CH₄ (Eq 1)", "N₂O (Eq 1)", "Total CO₂e"]);
+    expect(text(gas.steps[0].how)).toBe("24,000 mmBtu × 53.06 kg CO₂ per mmBtu");
+    expect(gas.steps[0].recomputed?.text).toBe("1,273.44 t");
+    expect(gas.steps.every((s) => s.reported === null)).toBe(true);
+    expect(gas.note).toMatch(/only the client's totals are entered/);
+    const total = gas.steps[gas.steps.length - 1];
+    expect(total).toMatchObject({ total: true, recomputed: { text: "1,274.748 tCO₂e" } });
+    expect(text(total.how)).toBe("CO₂ 1,273.44 t × GWP 1 + CH₄ 0.024 t × GWP 28 + N₂O 0.0024 t × GWP 265");
+  });
+
+  it("links an amount to the reviewed records it is summed from, and a factor or GWP to its citation", () => {
+    const [gas] = line["s1-stationary"].facilities ?? [];
+    expect(gas.steps[0].how[0].source).toMatchObject({
+      kind: "evidence",
+      unit: "MMBtu",
+      total: 24000,
+      records: [
+        { documentId: "GAS-JAN", record: "GAS-JAN.pdf", quantity: 9000 },
+        { documentId: "GAS-FEB", quantity: 8000 },
+        { documentId: "GAS-MAR", quantity: 7000 },
+      ],
+    });
+    expect(gas.steps[0].how[2].source).toMatchObject({
+      kind: "basis",
+      title: "EPA GHG Emission Factors Hub 2025",
+      text: "EF = 53.06 kg CO₂ per mmBtu, cited from EPA GHG Emission Factors Hub 2025, Table 1, row 38.",
+    });
+    const gwp = gas.steps[3].how.find((c) => c.text === "GWP 28");
+    expect(gwp?.source).toMatchObject({ kind: "basis", title: "GWP of CH₄ (AR5)" });
+    // A refrigerant's term opens the service records; its CO₂e step is the total.
+    const [r410a] = line["s1-fugitive"].facilities ?? [];
+    expect(r410a.steps[0].how.find((c) => c.source)?.source).toMatchObject({ kind: "evidence", records: [{ serviceType: "service" }] });
+    expect(r410a.steps[r410a.steps.length - 1]).toMatchObject({ step: "R-410A in CO₂e", total: true });
+  });
+
+  it("states causes only from data quality checks and flags, labelled as the system's", () => {
+    const [gas] = line["s1-stationary"].facilities ?? [];
+    expect(gas).toMatchObject({ causeBy: "system", causeTone: "review" });
+    expect(gas.cause).toContain("no bill covers May 2025");
+    expect(gas.cause).toContain("Fuel matched to the EPA fuel automatically.");
+    const [facilityA] = line["s2l-electricity"].facilities ?? [];
+    expect(facilityA).toMatchObject({ causeTone: "note", cause: "Recalculated from 2 reviewed records; no data quality signal." });
+    const [steamB] = line["s2l-steam"].facilities ?? [];
+    expect(steamB.causeTone).toBe("review");
+    expect(steamB.cause).toContain("Facility B purchased steam: no bill covers Apr 2025");
+  });
+
+  it("reads a market-based remainder with its coverage as a percentage", () => {
+    const [facilityA] = line["s2m-electricity"].facilities ?? [];
+    expect(text(facilityA.steps[0].how)).toBe("electricity (MWh) x (1 - coverage %): electricity 1,200 MWh; coverage 30%");
+  });
+
+  it("opens the card with its steps, the system's cause and the records behind an amount", async () => {
+    responses.byPath["/engagements/ENG-1/recalculation"] = LIVE;
+    responses.byPath["/reference/recalculation"] = REFERENCE;
+    const store = renderHook(() => useVerificationStore()).result;
+    const opened: string[] = [];
+    render(
+      <BackendVerificationResults
+        engagement={ENGAGEMENT}
+        store={store.current}
+        onSaveInputs={async () => {}}
+        onError={() => false}
+        onOpenDocument={(id) => opened.push(id)}
+      />
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Natural Gas" }));
+    const panel = screen.getByRole("complementary", { name: "Scope 1 · Natural Gas" });
+    expect(within(panel).getByText("Checked by system")).toBeTruthy();
+    expect(within(panel).getByText(/only the client's totals are entered/)).toBeTruthy();
+    // The CO₂, CH₄ and N₂O steps each read the same fuel energy.
+    fireEvent.click(within(panel).getAllByRole("button", { name: "24,000 mmBtu" })[0]);
+    const source = within(panel).getByRole("region", { name: "Source" });
+    expect(within(source).getByText("3 reviewed records")).toBeTruthy();
+    fireEvent.click(within(source).getByRole("button", { name: "GAS-FEB.pdf" }));
+    expect(opened).toEqual(["GAS-FEB"]);
   });
 });
 

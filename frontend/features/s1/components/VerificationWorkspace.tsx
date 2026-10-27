@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CircleCheck,
   ClipboardCheck,
+  Cpu,
   FileSpreadsheet,
   FileText,
   Files,
@@ -96,6 +97,7 @@ export function VerificationWorkspace({
   signedInLogin,
   boxTotals,
   gasRows,
+  onOpenDocument,
   onRegisterFinding,
 }: {
   lines: ResultLine[];
@@ -107,6 +109,8 @@ export function VerificationWorkspace({
   boxTotals?: Partial<Record<ResultBoxKey, ResultBoxTotal>>;
   /** Live results: the per-gas data points, in a fold of their own under the boxes. */
   gasRows?: GasResultRow[];
+  /** Live results: open a reviewed record's document (in Extraction review). */
+  onOpenDocument?: (documentId: string) => void;
   /** Live results: each calculation card offers Register finding for its line. */
   onRegisterFinding?: (target: FindingTarget) => void;
 }) {
@@ -197,7 +201,7 @@ export function VerificationWorkspace({
             </section>
             <section ref={sourcePane} className="s1-vw-pane s1-vw-pane--source" aria-label="Source">
               <h2 className="s1-vw-pane__title">Source</h2>
-              <VerificationSource source={source} />
+              <VerificationSource source={source} onOpenDocument={onOpenDocument} />
             </section>
           </div>
         </aside>
@@ -834,6 +838,7 @@ const SOURCE_ICON: Record<SourceRef["kind"], LucideIcon> = {
   document: FileText,
   reference: BookOpen,
   basis: Info,
+  evidence: Files,
 };
 
 function Cell({
@@ -940,7 +945,14 @@ function CalculationCard({
   const difference = facilityDifference(line, facility);
   const different = differs(difference);
   const consolidated = consolidatedStep(line, facility);
-  const CauseIcon = different ? TriangleAlert : CircleCheck;
+  // Live results: with no reported value to differ from, the cause is a note or something to review.
+  const CauseIcon = facility.causeTone
+    ? facility.causeTone === "review"
+      ? TriangleAlert
+      : Info
+    : different
+      ? TriangleAlert
+      : CircleCheck;
 
   return (
     <div className="s1-vw-card">
@@ -979,10 +991,24 @@ function CalculationCard({
           </table>
         </div>
       ) : null}
+      {facility.note ? (
+        <p className="s1-vw-card__note">
+          <Info className="s1-vw-ico" aria-hidden />
+          {facility.note}
+        </p>
+      ) : null}
       {facility.cause ? (
-        <p className={`s1-vw-cause${different ? " s1-vw-cause--differs" : " s1-vw-cause--agrees"}`}>
+        <p className={`s1-vw-cause${causeClass(facility, different)}`}>
           <CauseIcon className="s1-vw-ico s1-vw-cause__icon" aria-hidden />
-          <span>{facility.cause}</span>
+          <span>
+            {facility.causeBy === "system" ? (
+              <span className="s1-vw-by">
+                <Cpu className="s1-vw-ico" aria-hidden />
+                Checked by system
+              </span>
+            ) : null}
+            {facility.cause}
+          </span>
         </p>
       ) : null}
       <div className="s1-vw-actions">
@@ -1063,6 +1089,12 @@ function CalculationCard({
       ) : null}
     </div>
   );
+}
+
+function causeClass(facility: FacilityResult, different: boolean): string {
+  if (facility.causeTone === "review") return " s1-vw-cause--differs";
+  if (facility.causeTone === "note") return " s1-vw-cause--note";
+  return different ? " s1-vw-cause--differs" : " s1-vw-cause--agrees";
 }
 
 function initials(name: string): string {

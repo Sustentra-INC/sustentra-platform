@@ -71,6 +71,7 @@ export function VerificationResults({
   boxTotals,
   gasRows,
   basis,
+  onOpenDocument,
   registerFindings = false,
 }: {
   rows: VerificationRow[];
@@ -89,6 +90,8 @@ export function VerificationResults({
   gasRows?: GasResultRow[];
   /** Live results: what the numbers rest on (documents, GWP basis, materiality), behind the ⓘ. */
   basis?: string;
+  /** Live results: open a reviewed record's document from the Source pane. */
+  onOpenDocument?: (documentId: string) => void;
   /**
    * Live results: each calculation card offers Register finding for its line (findings feed
    * Output and the Excel export). The demo's cards do not, for now (product, 2026-10-15).
@@ -134,6 +137,7 @@ export function VerificationResults({
               signedInLogin={signedInLogin}
               boxTotals={boxTotals}
               gasRows={gasRows}
+              onOpenDocument={onOpenDocument}
               onRegisterFinding={registerFindings ? setFindingFor : undefined}
             />
           ) : (

@@ -556,7 +556,7 @@ const FORMULA: Record<CategoryKey, string> = {
   purchased_heating_market_based: `${THERMAL_FORMULA} No supplier factor is read yet, so market-based equals location-based.`,
 };
 
-const FLAG_NOTE: Record<string, string> = {
+export const FLAG_NOTE: Record<string, string> = {
   no_supplier_factor_market_equals_location:
     "No supplier-specific steam or heat factor is read yet, so market-based uses the EPA factor (same as location-based).",
   fuel_auto_matched: "Fuel matched to the EPA fuel automatically.",

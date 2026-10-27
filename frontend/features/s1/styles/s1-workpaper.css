@@ -2476,6 +2476,13 @@ html, body { margin: 0; padding: 0; }
 .s1-vw-cause--differs .s1-vw-cause__icon { color: var(--state-open-fg); }
 .s1-vw-cause--agrees { background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
 .s1-vw-cause--agrees .s1-vw-cause__icon { color: var(--state-resolved-fg); }
+/* Live results: a cause with no reported value to differ from, and who stated it */
+.s1-vw-cause--note { background: var(--sf-page); }
+.s1-vw-cause--note .s1-vw-cause__icon { color: var(--ink-3); }
+.s1-vw-by { display: inline-flex; align-items: center; gap: var(--sp-1); margin-right: var(--sp-2); font-weight: var(--weight-strong); color: var(--ink-2); white-space: nowrap; }
+.s1-vw-card__note { display: flex; gap: var(--sp-2); align-items: flex-start; margin: 0; font-size: var(--text-sm); color: var(--ink-3); }
+.s1-vw-card__note .s1-vw-ico { margin-top: 0.2em; }
+.s1-vw-records__hint { margin: 0; font-size: var(--text-sm); }
 .s1-vw-actions, .s1-vw-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .s1-vw-action { display: inline-flex; align-items: center; gap: var(--sp-1); transition: transform 160ms var(--ease-out); }
 .s1-vw-action:active { transform: scale(0.97); }
