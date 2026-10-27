@@ -11,7 +11,7 @@ import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence"
 
 const ZIP_MESSAGE =
   "qa_archive.zip can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, " +
-  "or a scan or photo (PNG, JPG or TIFF).";
+  "an email (.eml), or a scan or photo (PNG, JPG or TIFF).";
 
 const file = (name: string, type = "") => new File(["x"], name, { type });
 
@@ -30,6 +30,8 @@ describe("upload: files no parser can read", () => {
     ["readings.csv", ""],
     ["notes.txt", ""],
     ["notes.md", ""],
+    ["Fwd March bill.eml", "message/rfc822"],
+    ["Fwd March bill.EML", ""],
     ["meter.PNG", ""],
     ["meter.jpg", ""],
     ["meter.jpeg", ""],
@@ -40,6 +42,7 @@ describe("upload: files no parser can read", () => {
     ["fax", "image/tiff"],
     ["export", "text/csv; charset=utf-8"],
     ["export", "application/vnd.ms-excel"],
+    ["message", "message/rfc822"],
   ])("reads %s (%s)", (name, type) => {
     expect(isReadableUpload(file(name, type))).toBe(true);
   });
@@ -48,6 +51,9 @@ describe("upload: files no parser can read", () => {
     ["qa_archive.zip", "application/zip"],
     ["page.html", "text/html"],
     ["old-bill.doc", "application/msword"],
+    // Outlook's own format is not read yet, whatever media type the browser gives it.
+    ["Fwd March bill.msg", "application/vnd.ms-outlook"],
+    ["Fwd March bill.msg", "message/rfc822"],
     ["readings", ""],
     // Images Textract can't read (it takes PNG, JPEG and TIFF): by extension, then media type.
     ["photo.webp", "image/webp"],
@@ -65,9 +71,10 @@ describe("upload: files no parser can read", () => {
     renderDialog([]);
     const input = document.querySelector('input[type="file"]');
     expect(input).toHaveAttribute("accept", UPLOAD_ACCEPT);
-    // The same formats the refusal names: PDF, Word, Excel, CSV, text, and PNG, JPG or TIFF.
+    // The same formats the refusal names: PDF, Word, Excel, CSV, text, email, and PNG, JPG or TIFF.
     expect(UPLOAD_ACCEPT.split(",")).toEqual([
-      ".pdf", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".txt", ".md", ".markdown", ".png", ".jpg", ".jpeg", ".tif", ".tiff",
+      ".pdf", ".docx", ".xlsx", ".xlsm", ".xls", ".csv", ".txt", ".md", ".markdown", ".eml", ".png", ".jpg", ".jpeg",
+      ".tif", ".tiff",
     ]);
   });
 
@@ -76,7 +83,7 @@ describe("upload: files no parser can read", () => {
     expect(webp.stage).toBe("not_uploaded");
     expect(webp.error).toBe(
       "photo.webp can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, " +
-        "or a scan or photo (PNG, JPG or TIFF)."
+        "an email (.eml), or a scan or photo (PNG, JPG or TIFF)."
     );
     expect(png.stage).toBe("waiting");
   });

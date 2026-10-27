@@ -180,7 +180,7 @@ describe("upload size limit (INFRA-007)", () => {
 describe("files no parser can read", () => {
   const UNREADABLE =
     "qa_archive.zip can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, " +
-    "or a scan or photo (PNG, JPG or TIFF).";
+    "an email (.eml), or a scan or photo (PNG, JPG or TIFF).";
 
   it("refuses them without sending anything", async () => {
     const zip = new File(["PK"], "qa_archive.zip", { type: "application/zip" });

@@ -7,7 +7,7 @@ import type { EvidenceFormat } from "../types/evidence";
  * - cell: an Excel sheet and cell ("2025 log", D2), as row and 0-based column;
  * - row: a CSV row number in the file, with its 0-based column when the extractor recorded
  *   it (cell_or_range "E2"); without one the column is found by the value's text;
- * - line: the n-th non-empty line of a Word or text file, and which part of it ("part 2":
+ * - line: the n-th non-empty line of a Word or text file or an email, and which part of it ("part 2":
  *   lines split on tabs, 2+ spaces or pipes, as the extractor splits them).
  */
 export type SourceAnchor =
@@ -56,7 +56,7 @@ export function anchorOf(format: EvidenceFormat | undefined, reference: Referenc
     return row ? { kind: "row", row: Number(row[1]) } : null;
   }
   if (format === "docx" || format === "other") {
-    const line = /^(?:docx_parser|text_parser)-p1-b(\d+)$/.exec(firstBlock);
+    const line = /^(?:docx_parser|email_parser|text_parser)-p1-b(\d+)$/.exec(firstBlock);
     if (!line) return null;
     const part = /^part (\d+)$/.exec(reference.cell_or_range ?? "");
     return part ? { kind: "line", line: Number(line[1]), part: Number(part[1]) } : { kind: "line", line: Number(line[1]) };

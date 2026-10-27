@@ -3,7 +3,12 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { isReadableUpload, READABLE_UPLOAD_EXTENSIONS, READABLE_UPLOAD_TYPES } from "../constants/uploads";
+import {
+  isReadableUpload,
+  READABLE_UPLOAD_EXTENSIONS,
+  READABLE_UPLOAD_TYPES,
+  UNREADABLE_EXTENSIONS,
+} from "../constants/uploads";
 
 // The upload dialog sets aside what the upload route would refuse, so its lists must be the
 // route's: the parser's routes (backend/app/services/parser_service.py), with images narrowed
@@ -35,6 +40,19 @@ describe("readable uploads: the frontend's lists match the backend's", () => {
     const images = pythonSet(documentsApi, "UPLOAD_IMAGE_EXTENSIONS");
 
     expect([...READABLE_UPLOAD_EXTENSIONS].sort()).toEqual([...documents, ...images].sort());
+  });
+
+  it("refuses by extension exactly what the upload route refuses by extension", () => {
+    // Images the parser knows but no reader opens, and formats not read yet (.msg).
+    const unopenedImages = pythonSet(parserService, "IMAGE_EXTENSIONS").filter(
+      (extension) => !pythonSet(documentsApi, "UPLOAD_IMAGE_EXTENSIONS").includes(extension)
+    );
+    const notYetRead = pythonSet(documentsApi, "NOT_YET_READ_EXTENSIONS");
+
+    expect([...UNREADABLE_EXTENSIONS].sort()).toEqual([...unopenedImages, ...notYetRead].sort());
+    for (const extension of UNREADABLE_EXTENSIONS) {
+      expect(isReadableUpload({ name: `file${extension}`, type: "message/rfc822" })).toBe(false);
+    }
   });
 
   it("accepts exactly the media types the upload route accepts", () => {

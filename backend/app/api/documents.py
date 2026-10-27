@@ -112,12 +112,15 @@ def _uploader(user: CurrentUser) -> str:
 # (frontend/features/s1/tests/uploadTypes.test.ts reads these lists and the parser's).
 UPLOAD_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".tif", ".tiff"})
 UPLOAD_IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/tiff"})
+# Outlook messages are not read yet. The extension decides, whatever the media type: a
+# browser may call a .msg message/rfc822, which would otherwise go to the .eml reader.
+NOT_YET_READ_EXTENSIONS = frozenset({".msg"})
 
 
 def _unreadable_upload_detail(file_name: str) -> str:
     return (
         f"{file_name} can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, "
-        "or a scan or photo (PNG, JPG or TIFF)."
+        "an email (.eml), or a scan or photo (PNG, JPG or TIFF)."
     )
 
 
@@ -125,6 +128,8 @@ def _is_readable_upload(file_name: str, mime_type: str | None) -> bool:
     # Same detection the parser runs (extension first, then mime type), narrowed for images
     # to the formats the readers open.
     path = Path(file_name)
+    if path.suffix.lower() in NOT_YET_READ_EXTENSIONS:
+        return False
     kind = ParserService.parser_kind(path, mime_type)
     if kind != "image":
         return kind is not None

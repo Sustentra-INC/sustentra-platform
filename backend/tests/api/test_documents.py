@@ -122,7 +122,7 @@ def test_upload_records_the_signed_in_uploader(client_context):
 
 UNREADABLE = (
     "{name} can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, "
-    "or a scan or photo (PNG, JPG or TIFF)."
+    "an email (.eml), or a scan or photo (PNG, JPG or TIFF)."
 )
 
 
@@ -130,6 +130,9 @@ UNREADABLE = (
     ("qa_archive.zip", "application/zip"),
     ("page.html", "text/html"),
     ("old-bill.doc", "application/msword"),
+    # Outlook messages are not read yet, whatever media type the browser gives them.
+    ("Fwd March bill.msg", "application/vnd.ms-outlook"),
+    ("Fwd March bill.msg", "message/rfc822"),
     ("readings", "application/octet-stream"),
     # Images the readers can't open (Textract reads PNG, JPEG and TIFF), even though the
     # parser would call them images: by extension, then by media type.
@@ -167,6 +170,8 @@ def test_upload_refuses_a_file_no_parser_can_read(client_context, name: str, mim
     ("readings.csv", "text/csv"),
     ("notes.txt", "text/plain"),
     ("notes.md", "text/markdown"),
+    ("Fwd March bill.eml", "message/rfc822"),
+    ("Fwd March bill.EML", "application/octet-stream"),
     ("meter.PNG", "image/png"),
     ("meter.jpg", "image/jpeg"),
     ("meter.jpeg", "image/jpeg"),
@@ -178,6 +183,7 @@ def test_upload_refuses_a_file_no_parser_can_read(client_context, name: str, mim
     ("fax", "image/tiff"),
     ("export", "text/csv; charset=utf-8"),
     ("export", "application/vnd.ms-excel"),
+    ("message", "message/rfc822"),
 ])
 def test_upload_accepts_every_file_a_parser_can_read(client_context, name: str, mime: str):
     response = client_context["client"].post(

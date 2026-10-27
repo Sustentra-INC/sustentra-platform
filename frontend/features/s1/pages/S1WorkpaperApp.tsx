@@ -1059,10 +1059,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             renderPage={(documentId, span, onPickBox, marks, pick) => {
               const item = evidenceItems.find((e) => e.documentId === documentId);
               const format = item?.format ?? "";
-              // Drawn as content: workbooks, CSVs, Word and plain-text files (not TIFFs and other images).
+              // Drawn as content: workbooks, CSVs, Word and plain-text files, emails (not TIFFs and other images).
               const asContent =
                 ["xlsx", "csv", "docx"].includes(format) ||
-                (format === "other" && /\.(txt|md|markdown)$/i.test(item?.filename ?? ""));
+                (format === "other" && /\.(txt|md|markdown|eml)$/i.test(item?.filename ?? ""));
               const demoValues =
                 dataMode === "fixture" ? reviewValuesView.filter((v) => v.documentId === documentId) : [];
               return demoValues.length ? (

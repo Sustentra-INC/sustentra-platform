@@ -402,6 +402,48 @@ def test_processing_a_password_protected_workbook_halts_with_what_to_ask_for(env
     assert result["items"] == [] and result["status"] == "failed"
 
 
+def test_an_encrypted_email_halts_as_password_protected_with_what_to_do(env: dict) -> None:
+    encrypted = (b'From: a@example.com\r\nSubject: s\r\nContent-Type: application/pkcs7-mime; smime-type=enveloped-data;'
+                 b' name="smime.p7m"\r\nContent-Transfer-Encoding: base64\r\n\r\nMIAGCSqGSIb3DQEHA6CA\r\n')
+    wording = ("This email is encrypted. Ask the client to send it without encryption, or upload its attachments "
+               "on their own.")
+    doc = env["upload"]("locked.eml", encrypted, "message/rfc822")
+    env["act_as"]("org_member", ORG_A)
+    response = env["client"].post(url(doc, "pipeline/process"), json={})
+    assert (response.status_code, response.json()["detail"]) == (422, wording)
+    content = env["client"].get(url(doc, "content"))
+    assert (content.status_code, content.json()["detail"]) == (422, wording)
+
+
+def test_an_email_is_its_lines_numbered_as_the_parser_numbers_them(env: dict) -> None:
+    from email.message import EmailMessage
+
+    message = EmailMessage()
+    message["From"] = "Acme Gas <billing@acme.example>"
+    message["Subject"] = "Your February bill"
+    message.set_content("Fuel Type: Natural Gas\n\nTotal Usage: 120 therms\n")
+    message.add_attachment(b"%PDF", maintype="application", subtype="pdf", filename="bill.pdf")
+    doc = env["upload"]("Fwd February bill.eml", message.as_bytes(), "message/rfc822")
+
+    response = env["client"].get(url(doc, "content"))
+    assert response.status_code == 200 and response.headers["cache-control"] == "private, no-store"
+    lines = ["From: Acme Gas <billing@acme.example>", "Subject: Your February bill", "Fuel Type: Natural Gas",
+             "Total Usage: 120 therms", "Attachments: bill.pdf"]
+    assert response.json() == {"kind": "lines", "lines": lines, "truncated": False}
+
+    # Line n of the pane is the parser's block n.
+    from backend.app.adapters.parsers.email_parser import EmailParser
+
+    stored = env["storage"].resolve_storage_uri(doc["storage_uri"])
+    blocks = EmailParser().parse(stored, document_id="D", processing_run_id="R")["text_blocks"]
+    assert [(b["block_id"], b["text"]) for b in blocks] == [(f"email_parser-p1-b{n}", line)
+                                                            for n, line in enumerate(lines, start=1)]
+
+    renamed_msg = env["upload"]("note.eml", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + bytes(600), "message/rfc822")
+    response = env["client"].get(url(renamed_msg, "content"))
+    assert response.status_code == 422 and "Outlook message (.msg)" in response.json()["detail"]
+
+
 def test_csv_rows_keep_their_line_numbers_and_text_is_its_non_empty_lines(env: dict) -> None:
     csv = env["upload"]("log.csv", b"Date,Gallons\n\n02/10/2025,450\n", "text/csv")
     body = env["client"].get(url(csv, "content")).json()

@@ -105,7 +105,7 @@ const LIVE_BRIEF: Partial<Record<NavKey, { title: string; points: string[] }>> =
   upload: {
     title: "Upload brings the client's documents in.",
     points: [
-      "PDFs, scans and photos, Word (.docx), Excel and CSV files, up to 25 MB each.",
+      "PDFs, scans and photos, Word (.docx), Excel and CSV files, and emails (.eml), up to 25 MB each.",
       "Each file is read and classified (fuel bill, vehicle fuel, electricity bill, refrigerant service record), " +
         "then its values are extracted for review.",
       "A file that needs you (unreadable, or not a supported kind of evidence) says so in the list.",
