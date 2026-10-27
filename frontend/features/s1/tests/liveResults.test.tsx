@@ -1,5 +1,9 @@
 /* @vitest-environment jsdom */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
+import postcss from "postcss";
 import { describe, expect, it, vi } from "vitest";
 
 const responses = vi.hoisted(() => ({ byPath: {} as Record<string, unknown> }));
@@ -11,7 +15,8 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 import { api } from "../../../lib/api";
 import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import type { Recalculation, RecalculationReference } from "../api/recalculation";
-import { BackendVerificationResults, examinerOptions } from "../components/BackendVerificationResults";
+import { BackendVerificationResults, examinerOptions, resultsBasis } from "../components/BackendVerificationResults";
+import { OutputScreen } from "../components/OutputScreen";
 import { VerificationResults } from "../components/VerificationResults";
 import { VerificationSource } from "../components/VerificationSource";
 import { VerificationWorkspace } from "../components/VerificationWorkspace";
@@ -41,6 +46,7 @@ import workbookExample from "./fixtures/recalculationWorkbookExample.json";
  */
 const LIVE = liveExample as unknown as Recalculation;
 const WORKBOOK = workbookExample as unknown as Recalculation;
+const { lines: LIVE_LINES, boxTotals: LIVE_TOTALS } = liveResultsFromRecalculation(LIVE);
 
 const byId = (result: Recalculation) => Object.fromEntries(liveResultsFromRecalculation(result).lines.map((l) => [l.id, l]));
 
@@ -558,6 +564,80 @@ describe("one threshold comparison everywhere: strictly above, as the backend", 
     ]);
     expect(output.materialBoxes).toEqual([]);
   });
+
+  it("judges a row on the same quotient as Output, so exactly-at-threshold floats agree (43 → 50 of 140)", () => {
+    // +7 of a box reported at 140 is exactly 5%. As % difference × share it is 0.05000000000000001.
+    expect((7 / 43) * (43 / 140)).toBeGreaterThan(0.05);
+    const probe: ResultLine[] = [
+      {
+        id: "s2l-electricity", box: "scope2_location", activity: "Electricity", noBoundaryShare: true, reported: 43, recomputed: 50,
+        facilities: [{ facilityId: "a", facility: "Plant", reported: null, recomputed: 50, steps: [], cause: "" }],
+      },
+    ];
+    const totals = { scope2_location: { reported: 140, recomputed: 147, material: false } };
+    const store = renderHook(() => useVerificationStore()).result.current;
+    render(<VerificationWorkspace lines={probe} store={store} team={[]} boxTotals={totals} materiality={0.05} />);
+    const head = screen.getByRole("button", { name: /^Scope 2, location-based/ });
+    expect(head.querySelector(".s1-vw-pill--open")?.textContent).toBe("+5.0% · below materiality");
+    fireEvent.click(head);
+    const row = screen.getByRole("button", { name: "Electricity" }).closest("tr")!;
+    expect(row.querySelectorAll("td")[5]).toMatchObject({ textContent: "+5.0%", className: "s1-vw-num s1-vw-amber" });
+    expect(row.querySelector(".s1-vw-delta")?.className).toContain("s1-vw-delta--below");
+    const output = liveStatementFigures(probe, totals, { location: { reported: 140, recomputed: 147, partial: false }, market: INVENTORY.market }, 5);
+    expect(output.rows.find((r) => r.label === "Scope 2 · electricity")?.outcome).toBe("differs");
+  });
+});
+
+describe("a line in a scope reported as 0", () => {
+  // Electricity 300 → 327 while the Scope 2 (location-based) total is reported as 0.
+  const lines: ResultLine[] = [
+    {
+      id: "s2l-electricity", box: "scope2_location", activity: "Electricity", noBoundaryShare: true, reported: 300, recomputed: 327,
+      facilities: [{ facilityId: "a", facility: "Plant", reported: null, recomputed: 327, steps: [], cause: "" }],
+    },
+  ];
+  const totals = { scope2_location: { reported: 0, recomputed: 327, material: true } };
+
+  it("says the scope total is reported as 0, not the line, on Output; above materiality on both screens", () => {
+    const output = liveStatementFigures(lines, totals, { location: { reported: 0, recomputed: 327, partial: false }, market: INVENTORY.market }, 5);
+    expect(output.differences.find((d) => d.label === "Scope 2 · electricity (location-based)")).toMatchObject({
+      zero: "scope",
+      outcome: "material",
+    });
+    // The total itself is the one reported as 0.
+    expect(output.differences.find((d) => d.label === "Scope 2 location-based total")).toMatchObject({ zero: "self" });
+    render(<OutputScreen lines={lines} live={{ statement: output, exportHref: "#", gwpBasis: "AR5", findings: [], basisLines: [] }} />);
+    expect(
+      screen.getByText("Scope 2 · electricity (location-based), +27 tCO2e: the Scope 2, location-based total is reported as 0")
+    ).toBeTruthy();
+    const store = renderHook(() => useVerificationStore()).result.current;
+    render(<VerificationWorkspace lines={lines} store={store} team={[]} boxTotals={totals} materiality={0.05} />);
+    fireEvent.click(screen.getByRole("button", { name: /^Scope 2, location-based/ }));
+    const row = screen.getByRole("button", { name: "Electricity" }).closest("tr")!;
+    expect(row.querySelectorAll("td")[5]).toMatchObject({ textContent: "Above materiality", className: "s1-vw-num s1-vw-red" });
+  });
+});
+
+describe("the live box head layout", () => {
+  it("wraps the live figures under the name from 64rem to 70rem, where the wider pill row does not fit", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    const wraps: Record<string, string> = {};
+    postcss.parse(css).walkAtRules("media", (media) => {
+      if (media.params !== "(min-width: 64rem) and (max-width: 70rem)") return;
+      media.walkRules((rule) =>
+        rule.walkDecls((d) => {
+          wraps[`${rule.selector} ${d.prop}`] = d.value;
+        })
+      );
+    });
+    expect(wraps).toMatchObject({
+      ".s1-vw-box__head.s1-vw-box__head--live grid-template-columns": "1rem auto minmax(0, 1fr)",
+      ".s1-vw-box__head--live .s1-vw-box__figures grid-column": "1 / -1",
+    });
+    const store = renderHook(() => useVerificationStore()).result.current;
+    render(<VerificationWorkspace lines={LIVE_LINES} store={store} team={[]} boxTotals={LIVE_TOTALS} materiality={0.05} />);
+    expect(screen.getByRole("button", { name: /^Scope 2, market-based/ }).className).toContain("s1-vw-box__head--live");
+  });
 });
 
 describe("live calculation cards, Source pane and dialog", () => {
@@ -755,6 +835,10 @@ describe("Verification results in backend mode", () => {
         expect.objectContaining({ method: "PUT", body: { payload: expect.objectContaining({ dataPointId: "vr:s1-mobile" }) } })
       )
     );
+  });
+
+  it("says in the page's ⓘ that a difference is material above the tolerance, as the backend judges it", () => {
+    expect(resultsBasis(LIVE)).toContain("A difference is material above ±5% of the reported total.");
   });
 
   it("offers the engagement team as examiners when Setup has one", () => {

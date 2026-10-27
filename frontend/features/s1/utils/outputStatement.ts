@@ -153,6 +153,11 @@ export interface LiveDifference {
   pct: number | null;
   /** That base: a line's box ("Scope 1"), whose reported total its % material is of; null for a total's own. */
   pctOf: string | null;
+  /**
+   * Why there is no %: the value itself is reported as 0 ("self"), or the scope total a line
+   * is judged on is ("scope"); null when there is a %.
+   */
+  zero: "self" | "scope" | null;
   outcome: StatementRow["outcome"] | null;
   state: ResultState | null;
 }
@@ -174,7 +179,7 @@ export interface LiveStatementFigures {
   /** What the threshold is a share of: the reported total, or the recalculated one while it is not entered. */
   materialityBase: "reported" | "recalculated" | null;
   rows: LiveStatementRow[];
-  /** Boxes compared at or above materiality; pctMaterial null when the reported total is 0. */
+  /** Boxes compared above materiality (strictly, as the backend); pctMaterial null when the reported total is 0. */
   materialBoxes: { title: string; pctMaterial: number | null; difference: number }[];
   /** Boxes that cannot be compared yet, with why. */
   openBoxes: { title: string; state: ResultState }[];
@@ -224,7 +229,8 @@ export function liveStatementFigures(
     if (result !== "agrees") {
       // The % stated is the one the outcome is judged on, so the line never contradicts itself.
       const difference = verified - reported;
-      differences.push({ label, difference, pct: base ? difference / base : null, pctOf, outcome: result, state });
+      const zero = reported === 0 ? "self" : base === 0 ? "scope" : null;
+      differences.push({ label, difference, pct: base ? difference / base : null, pctOf, zero, outcome: result, state });
     }
     return result;
   };

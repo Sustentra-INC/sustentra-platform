@@ -116,7 +116,7 @@ export function VerificationWorkspace({
   onRegisterFinding?: (target: FindingTarget) => void;
   /**
    * Live results: the materiality tolerance as a fraction (0.05). A % material turns red only
-   * at or above it, amber below; the demo reds every difference.
+   * above it (strictly, as the backend), amber at or below it; the demo reds every difference.
    */
   materiality?: number;
 }) {
@@ -136,8 +136,9 @@ export function VerificationWorkspace({
   );
   const selected = lines.find((line) => line.id === selectedId) ?? null;
   // Live results: the panel's difference takes the tone of the line's row in its box.
-  const selectedRow = selected ? boxes.flatMap((b) => b.rows).find((r) => r.key === selected.id) : undefined;
-  const selectedMaterial = selectedRow ? rowIsMaterial(selectedRow, materiality) : undefined;
+  const selectedBox = selected ? boxes.find((b) => b.key === selected.box) : undefined;
+  const selectedRow = selectedBox?.rows.find((r) => r.key === selected?.id);
+  const selectedMaterial = selectedBox && selectedRow ? rowIsMaterial(selectedRow, materiality, materialBase(selectedBox)) : undefined;
 
   const select = (id: string) => {
     const line = lines.find((l) => l.id === id);
@@ -252,14 +253,21 @@ function materialTone(difference: number | null, material: boolean | undefined):
 }
 
 /**
- * Live results: whether a row's difference is material, judged as the backend judges a total:
- * its % material strictly above the tolerance; a reported 0 the evidence does not match is
- * (the backend's reported_zero). undefined in the demo.
+ * Live results: whether a row's difference is material, judged exactly as Output judges it:
+ * the difference over its box's reported total (`base`), strictly above the tolerance, as the
+ * backend judges a total. (Not % difference × share: that product can land one float step
+ * above the tolerance where the quotient does not.) A reported 0 the evidence does not match,
+ * the row's or its box's, is material (the backend's reported_zero). undefined in the demo.
  */
-function rowIsMaterial(row: ResultRow, materiality: number | undefined): boolean | undefined {
-  if (materiality === undefined) return undefined;
-  if (row.reported === 0) return differs(row.difference);
-  return row.pctMaterial !== null && Math.abs(row.pctMaterial) > materiality;
+function rowIsMaterial(row: ResultRow, materiality: number | undefined, base: number): boolean | undefined {
+  if (materiality === undefined || row.difference === null) return materiality === undefined ? undefined : false;
+  if (row.reported === 0 || base === 0) return differs(row.difference);
+  return Math.abs(row.difference / base) > materiality;
+}
+
+/** Live results: the base a row's materiality is judged on: the box's reported total, else its rows'. */
+function materialBase(box: ResultBox): number {
+  return box.live?.reported ?? box.rows.filter((r) => !r.notReported).reduce((sum, r) => sum + (r.reported ?? 0), 0);
 }
 
 /** Live results: the pill says in words what its colour says (design standard §4). */
@@ -302,7 +310,13 @@ function BoxPanel({
       : " s1-vw-pill--differs";
   return (
     <div className={`s1-vw-box s1-vw-tone--${box.key}${open ? " is-open" : ""}`}>
-      <button className="s1-vw-box__head" type="button" aria-expanded={open} aria-controls={bodyId} onClick={onToggle}>
+      <button
+        className={`s1-vw-box__head${live ? " s1-vw-box__head--live" : ""}`}
+        type="button"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={onToggle}
+      >
         <ChevronRight className="s1-vw-ico s1-vw-box__chev" aria-hidden />
         <span className="s1-vw-box__icon">
           <Icon className="s1-vw-ico" aria-hidden />
@@ -453,6 +467,7 @@ function BoxTable({
                 selected={row.key === selectedId}
                 onSelect={onSelect}
                 materiality={materiality}
+                base={materialBase(box)}
               />
             )
           )}
@@ -526,16 +541,19 @@ function ReportedRow({
   selected,
   onSelect,
   materiality,
+  base = 0,
 }: {
   row: ResultRow;
   scope1: boolean;
   selected: boolean;
   onSelect: (id: string) => void;
-  /** Live results: a row's % material is red only at or above it. */
+  /** Live results: a row's % material is red only above it (strictly, as the backend). */
   materiality?: number;
+  /** Live results: the box's reported total, the base a row's materiality is judged on (as on Output). */
+  base?: number;
 }) {
   const select = () => onSelect(row.key);
-  const rowMaterial = rowIsMaterial(row, materiality);
+  const rowMaterial = rowIsMaterial(row, materiality, base);
   const name = (
     <button className="s1-vw-rowbtn" type="button" aria-pressed={selected} onClick={select}>
       {row.activity}
@@ -584,8 +602,8 @@ function ReportedRow({
           <td className={`s1-vw-num${materialTone(row.difference, rowMaterial)}`}>
             {row.pctMaterial !== null
               ? formatPercent(row.pctMaterial, true)
-              : // Live: a reported 0 the evidence does not match has no %, and is material (as Output says).
-                rowMaterial && row.reported === 0
+              : // Live: against a reported 0 (the row's or its box's) there is no %, and it is material, as Output says.
+                rowMaterial
                 ? "Above materiality"
                 : ""}
           </td>
@@ -653,7 +671,13 @@ function GasPanel({ rows }: { rows: GasResultRow[] }) {
   const groups = [...GAS_GROUPS, ...rows.map((r) => r.group).filter((g) => !GAS_GROUPS.includes(g))];
   return (
     <div className={`s1-vw-box s1-vw-gases${open ? " is-open" : ""}`}>
-      <button className="s1-vw-box__head" type="button" aria-expanded={open} aria-controls="s1-vw-box-gases" onClick={() => setOpen(!open)}>
+      <button
+        className="s1-vw-box__head s1-vw-box__head--live"
+        type="button"
+        aria-expanded={open}
+        aria-controls="s1-vw-box-gases"
+        onClick={() => setOpen(!open)}
+      >
         <ChevronRight className="s1-vw-ico s1-vw-box__chev" aria-hidden />
         <span className="s1-vw-box__icon">
           <FlaskConical className="s1-vw-ico" aria-hidden />

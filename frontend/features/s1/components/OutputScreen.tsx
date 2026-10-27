@@ -415,11 +415,13 @@ function LiveOutputScreen({
                         {d.label}, {formatSignedTonnes(d.difference)} tCO2e
                         {/* The % the outcome is judged on: a line's of its box, a total's of itself. */}
                         {d.pct === null ? "" : ` (${formatPercent(d.pct, true)}${d.pctOf ? ` of ${d.pctOf}` : ""})`}
-                        {d.outcome === "material"
-                          ? d.pct === null
-                            ? ": reported as 0"
-                            : `: above the ${threshold} materiality threshold`
-                          : `: below the ${threshold} materiality threshold`}
+                        {d.zero === "self"
+                          ? ": reported as 0"
+                          : d.zero === "scope"
+                            ? `: the ${d.pctOf} total is reported as 0`
+                            : d.outcome === "material"
+                              ? `: above the ${threshold} materiality threshold`
+                              : `: below the ${threshold} materiality threshold`}
                       </span>
                     </li>
                   ))}
