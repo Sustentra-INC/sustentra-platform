@@ -75,6 +75,31 @@
   --mark-track:     #ECE9E1;
 
 
+  /* --- Highlights on a client's document ---------------------------------
+     A highlighter stroke on each figure read from a document, by its review
+     state: a translucent fill and a darker underline. One set for the demo's
+     drawn documents and for uploaded pages and files, so the key above the
+     value cards means the same in both. The selected figure gets the accent
+     ring with one pulse (--hl-selected-*).
+     ---------------------------------------------------------------------- */
+  --hl-to-review:          rgba(253, 216, 92, 0.55);
+  --hl-to-review-hover:    rgba(253, 216, 92, 0.85);
+  --hl-to-review-stroke:   rgba(212, 160, 20, 0.6);
+  --hl-accepted:           rgba(126, 190, 92, 0.35);
+  --hl-accepted-hover:     rgba(126, 190, 92, 0.55);
+  --hl-accepted-stroke:    rgba(59, 109, 17, 0.5);
+  --hl-corrected:          rgba(110, 168, 230, 0.35);
+  --hl-corrected-hover:    rgba(110, 168, 230, 0.55);
+  --hl-corrected-stroke:   rgba(24, 95, 165, 0.5);
+  --hl-requested:          rgba(160, 170, 185, 0.35);
+  --hl-requested-hover:    rgba(160, 170, 185, 0.55);
+  --hl-requested-stroke:   rgba(78, 93, 108, 0.5);
+  --hl-missing:            rgba(251, 234, 234, 0.9);
+  --hl-selected-halo:      rgba(61, 131, 199, 0.18);
+  --hl-selected-pulse:     rgba(61, 131, 199, 0.45);
+  --hl-selected-pulse-end: rgba(61, 131, 199, 0);
+
+
   /* --- Engagement state --------------------------------------------------
      Six roles. Every status indicator in the product resolves to exactly one
      of these. They are mutually exclusive by construction.

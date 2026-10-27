@@ -6,12 +6,13 @@ import { api, apiPath } from "../../../lib/api";
 import type { PageMark, ReviewSpan } from "../types/review";
 
 /**
- * The uploaded document's page as an image, with the extracted value outlined at the
- * position the extractor recorded. Opens at the value's page; the reviewer can page
- * through the rest. Works the same in every browser (a framed PDF cannot be drawn over).
+ * The uploaded document's page as an image, every value read from it highlighted where the
+ * extractor recorded it, by review state, like the demo's documents. Opens at the selected
+ * value's page; the reviewer can page through the rest. Works the same in every browser (a
+ * framed PDF cannot be drawn over).
  *
- * Every other value read from the page is drawn as a faint box too: clicking one selects
- * that value, so the reviewer can go from the document to the value as well as back.
+ * Clicking a highlight selects its value, so the reviewer can go from the document to the
+ * value as well as back. The selected value's highlight gets the accent ring.
  */
 export function BackendPageView({
   documentId,
@@ -27,7 +28,7 @@ export function BackendPageView({
   const [pages, setPages] = useState<number | null>(null);
   const [page, setPage] = useState(span?.page ?? 1);
   const [failed, setFailed] = useState(false);
-  const mark = useRef<HTMLDivElement | null>(null);
+  const mark = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -44,6 +45,11 @@ export function BackendPageView({
   }, [documentId]);
 
   const onThisPage = span && span.page === page;
+  const boxes = onPickMark ? boxesOnPage(marks, page) : [];
+  const selectedKey = onThisPage ? boxKey(span) : null;
+  const keepMark = (node: HTMLElement | null) => {
+    mark.current = node;
+  };
   const src = apiPath(`/documents/${encodeURIComponent(documentId)}/pages/${page}/image`);
 
   if (failed) {
@@ -134,45 +140,43 @@ export function BackendPageView({
           alt={`Page ${page} of the uploaded document`}
           onLoad={() => mark.current?.scrollIntoView({ block: "center", behavior: "smooth" })}
         />
-        {onPickMark
-          ? boxesOnPage(marks, page).map((group) => {
-              const [first] = group;
-              const labels = group.map((m) => m.label).join(" · ");
-              return (
-                <button
-                  key={first.id}
-                  type="button"
-                  className={`s1-pv__box s1-pv__box--${first.reviewState}`}
-                  style={{
-                    left: `${first.span.x * 100}%`,
-                    top: `${first.span.y * 100}%`,
-                    width: `${first.span.w * 100}%`,
-                    height: `${first.span.h * 100}%`,
-                  }}
-                  title={labels}
-                  aria-label={`Select ${labels}`}
-                  onClick={() => onPickMark(first)}
-                />
-              );
-            })
-          : null}
-        {onThisPage ? (
-          <div
-            ref={mark}
-            className="s1-pv__mark"
-            style={{
-              left: `${span.x * 100}%`,
-              top: `${span.y * 100}%`,
-              width: `${span.w * 100}%`,
-              height: `${span.h * 100}%`,
-            }}
-            aria-label="The extracted value"
-          />
+        {boxes.map((group) => {
+          const [first] = group;
+          const labels = group.map((m) => m.label).join(" · ");
+          const selected = boxKey(first.span) === selectedKey;
+          return (
+            <button
+              key={first.id}
+              ref={selected ? keepMark : undefined}
+              type="button"
+              className={`s1-pv__box s1-pv__box--${first.reviewState}${selected ? " is-sel" : ""}`}
+              style={place(first.span)}
+              title={labels}
+              aria-label={`Select ${labels}`}
+              aria-current={selected || undefined}
+              onClick={() => onPickMark?.(first)}
+            />
+          );
+        })}
+        {/* The selected value has no highlight of its own here (its document was withdrawn, or
+            the page is not interactive): its place is still shown. */}
+        {onThisPage && !boxes.some((group) => boxKey(group[0].span) === selectedKey) ? (
+          <div ref={keepMark} className="s1-pv__box s1-pv__box--alone is-sel" style={place(span)} aria-label="The extracted value" />
         ) : null}
       </div>
       {!span ? <p className="s1-muted s1-pv__note">The value&rsquo;s position was not recorded; check it on the page.</p> : null}
     </div>
   );
+}
+
+/** A box's place on the page, as percentages of the page image. */
+function place(span: ReviewSpan): { left: string; top: string; width: string; height: string } {
+  return { left: `${span.x * 100}%`, top: `${span.y * 100}%`, width: `${span.w * 100}%`, height: `${span.h * 100}%` };
+}
+
+/** One key per position on the page: values read from the same line share it. */
+function boxKey(span: ReviewSpan): string {
+  return [span.x, span.y, span.w, span.h].map((n) => n.toFixed(3)).join("|");
 }
 
 /** The values on one page, one box per position: values read from the same line (an amount
@@ -183,7 +187,7 @@ function boxesOnPage(marks: PageMark[], page: number): (PageMark & { span: Revie
   for (const m of marks) {
     const span = m.span;
     if (!span || span.page !== page) continue;
-    const key = [span.x, span.y, span.w, span.h].map((n) => n.toFixed(3)).join("|");
+    const key = boxKey(span);
     groups.set(key, [...(groups.get(key) ?? []), { ...m, span }]);
   }
   return Array.from(groups.values());

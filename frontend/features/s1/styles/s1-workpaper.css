@@ -1771,14 +1771,46 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-pv__open { margin-left: auto; font-size: var(--text-sm); }
 .s1-pv__page { position: relative; box-sizing: border-box; width: 100%; background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input); overflow: hidden; }
 .s1-pv__img { display: block; width: 100%; height: auto; }
-.s1-pv__mark { position: absolute; box-sizing: content-box; margin: -0.2rem 0 0 -0.2rem; padding: 0.2rem; border: 0.15rem solid var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 45%, transparent); border-radius: 0.2rem; pointer-events: none; }
 .s1-pv__note { font-size: var(--text-sm); margin: 0; }
-/* Every value read from the page: a faint box that selects its value when clicked. */
-/* Exactly the line's box (no padding), so the boxes of neighbouring lines never overlap. */
-.s1-pv__box { position: absolute; box-sizing: border-box; margin: 0; padding: 0; border: 0.08rem dashed var(--state-open-line); border-radius: 0.15rem; background: transparent; cursor: pointer; }
-.s1-pv__box:hover { border-style: solid; border-color: var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 35%, transparent); }
+/* Every value read from the page, highlighted like the demo's documents: a highlighter stroke
+   by review state (the --hl-* tokens; the key above the cards names them). Clicking one selects
+   its value. Exactly the line's box (no padding), so neighbouring lines never overlap; the
+   colour multiplies with the page, so the printed text stays dark under it. The selected
+   value's box gets the accent ring with one pulse, not a colour of its own. */
+.s1-pv__box {
+  position: absolute; box-sizing: border-box; margin: 0; padding: 0; border: 0; border-radius: 0.2rem; cursor: pointer;
+  background: var(--hl-to-review); box-shadow: inset 0 -0.1rem 0 var(--hl-to-review-stroke); mix-blend-mode: multiply;
+  transition: background-color 0.18s ease, box-shadow 0.18s var(--ease-out);
+}
+.s1-pv__box:hover { background: var(--hl-to-review-hover); }
 .s1-pv__box:focus-visible { outline: var(--focus-ring); outline-offset: 0.1rem; }
-.s1-pv__box--accepted, .s1-pv__box--corrected { border-color: var(--state-resolved-line); }
+.s1-pv__box--alone { cursor: default; pointer-events: none; }
+/* A workbook, CSV or Word value: the same stroke on its cell or words. */
+.s1-cv__mark {
+  font: inherit; color: inherit; text-align: inherit; margin: 0; padding: 0 0.15rem; border: 0; border-radius: 0.2rem; cursor: pointer; white-space: inherit;
+  background: var(--hl-to-review); box-shadow: inset 0 -0.1rem 0 var(--hl-to-review-stroke);
+  transition: background-color 0.18s ease, box-shadow 0.18s var(--ease-out);
+}
+.s1-cv__mark:hover { background: var(--hl-to-review-hover); }
+.s1-cv__mark:focus-visible { outline: var(--focus-ring); outline-offset: 0.1rem; }
+.s1-pv__box--accepted, .s1-cv__mark--accepted { background: var(--hl-accepted); box-shadow: inset 0 -0.1rem 0 var(--hl-accepted-stroke); }
+.s1-pv__box--accepted:hover, .s1-cv__mark--accepted:hover { background: var(--hl-accepted-hover); }
+.s1-pv__box--corrected, .s1-cv__mark--corrected { background: var(--hl-corrected); box-shadow: inset 0 -0.1rem 0 var(--hl-corrected-stroke); }
+.s1-pv__box--corrected:hover, .s1-cv__mark--corrected:hover { background: var(--hl-corrected-hover); }
+.s1-pv__box--requested, .s1-cv__mark--requested { background: var(--hl-requested); box-shadow: inset 0 -0.1rem 0 var(--hl-requested-stroke); }
+.s1-pv__box--requested:hover, .s1-cv__mark--requested:hover { background: var(--hl-requested-hover); }
+.s1-pv__box.is-sel, .s1-cv__mark.s1-cv__mark--selected {
+  box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0.45rem var(--hl-selected-halo);
+  animation: s1-hl-pulse 1.4s var(--ease-out) 1;
+}
+@keyframes s1-hl-pulse {
+  0% { box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0 var(--hl-selected-pulse); }
+  70% { box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0.75rem var(--hl-selected-pulse-end); }
+  100% { box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0.45rem var(--hl-selected-halo); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .s1-pv__box, .s1-cv__mark, .s1-pv__box.is-sel, .s1-cv__mark.s1-cv__mark--selected { animation: none; transition: none; }
+}
 /* A workbook, CSV or Word file drawn as its content: each value marked in its cell or line. */
 .s1-cv { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .s1-cv__tabs { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
@@ -1797,12 +1829,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-cv__line { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: var(--sp-2); align-items: baseline; }
 .s1-cv__lineno { justify-self: end; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .s1-cv__text { white-space: pre-wrap; tab-size: 4; overflow-wrap: anywhere; }
-.s1-cv__mark { font: inherit; color: inherit; text-align: inherit; margin: 0; padding: 0 0.15rem; border: 0.08rem dashed var(--state-open-line); border-radius: 0.15rem; background: transparent; cursor: pointer; white-space: inherit; }
-.s1-cv__grid .s1-cv__mark { display: block; width: 100%; height: 100%; min-height: var(--sp-6); padding: 0 var(--sp-2); }
-.s1-cv__mark:hover { border-style: solid; border-color: var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 35%, transparent); }
-.s1-cv__mark:focus-visible { outline: var(--focus-ring); outline-offset: 0.1rem; }
-.s1-cv__mark--accepted, .s1-cv__mark--corrected { border-color: var(--state-resolved-line); }
-.s1-cv__mark--selected, .s1-cv__mark--selected:hover { border: 0.15rem solid var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 70%, transparent); font-weight: var(--weight-strong); }
+.s1-cv__grid .s1-cv__mark { display: block; width: 100%; height: 100%; min-height: var(--sp-6); padding: 0 var(--sp-2); border-radius: 0; }
+/* A cell clips what lies outside it: the selected cell's ring sits inside, without the pulse. */
+.s1-cv__grid .s1-cv__mark.s1-cv__mark--selected { box-shadow: inset 0 0 0 0.15rem var(--accent-solid); animation: none; }
 .s1-cv__note { font-size: var(--text-sm); margin: 0; }
 .s1-xr-pdf-open { display: inline-block; margin-top: var(--sp-2); font-size: var(--text-sm); }
 
