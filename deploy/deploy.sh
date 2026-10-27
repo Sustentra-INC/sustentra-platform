@@ -25,9 +25,22 @@ source "$APP_DIR/.env"
 
 log() { echo "[deploy $(date -u +%H:%M:%S)] $*"; }
 
+# A required parameter: prints its value, or fails when it cannot be read or is empty.
+# Capture it with a plain assignment (`value=$(get_param name)`) so `set -e` stops the
+# deploy: a substitution inside a heredoc or another command's arguments ignores the
+# failure and would write an empty value (DATABASE_URL=). Never log the value.
 get_param() {
-  aws ssm get-parameter --region "$AWS_REGION" --with-decryption \
-    --name "/${ENV_NAME}/$1" --query Parameter.Value --output text
+  local value
+  value=$(aws ssm get-parameter --region "$AWS_REGION" --with-decryption \
+      --name "/${ENV_NAME}/$1" --query Parameter.Value --output text) || {
+    log "reading /${ENV_NAME}/$1 from Parameter Store failed" >&2
+    return 1
+  }
+  if [ -z "$value" ]; then
+    log "/${ENV_NAME}/$1 is empty in Parameter Store" >&2
+    return 1
+  fi
+  printf '%s' "$value"
 }
 
 # Like get_param, but a parameter that does not exist prints nothing instead of failing
@@ -59,13 +72,17 @@ set_tags() {
 
 write_app_env() {
   # Runtime secrets for the api container, refreshed from Parameter Store on every deploy.
+  # Read before writing: a failed read stops the deploy with the previous app.env in place.
+  local db_app_url otp_hmac_secret
+  db_app_url=$(get_param db_app_url)
+  otp_hmac_secret=$(get_param otp_hmac_secret)
   umask 077
   cat > "$APP_DIR/app.env" <<EOF
 ENVIRONMENT=${ENV_NAME}
 ALLOWED_ORIGINS=https://${APP_DOMAIN}
 PUBLIC_BASE_URL=https://${APP_DOMAIN}
-DATABASE_URL=$(get_param db_app_url)
-OTP_HMAC_SECRET=$(get_param otp_hmac_secret)
+DATABASE_URL=${db_app_url}
+OTP_HMAC_SECRET=${otp_hmac_secret}
 SES_FROM_ADDRESS=no-reply@${APP_DOMAIN}
 S1_STORE=${S1_STORE:-jsonl}
 TEXTRACT_ENABLED=${TEXTRACT_ENABLED:-false}
@@ -119,11 +136,14 @@ grep -q "^LOG_GROUP_PREFIX=" "$APP_DIR/.env" || echo "LOG_GROUP_PREFIX=/sustentr
 install -d -m 0750 -o 10001 -g 10001 "$APP_DIR/data"
 
 log "migrations"
+# Plain assignments, so a failed read stops the deploy (see get_param).
+DB_MIGRATION_URL=$(get_param db_migration_url)
+DB_APP_URL=$(get_param db_app_url)
 docker pull --quiet "${API_IMAGE}:${NEW_TAG}" >/dev/null
 docker run --rm --read-only --tmpfs /tmp \
   --log-driver none \
-  -e DATABASE_URL="$(get_param db_migration_url)" \
-  -e APP_DATABASE_URL="$(get_param db_app_url)" \
+  -e DATABASE_URL="$DB_MIGRATION_URL" \
+  -e APP_DATABASE_URL="$DB_APP_URL" \
   -w /app/backend \
   "${API_IMAGE}:${NEW_TAG}" \
   sh -c 'if [ -f alembic.ini ]; then alembic upgrade head; else echo "no alembic.ini yet - skipping migrations"; fi'
