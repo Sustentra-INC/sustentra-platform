@@ -341,6 +341,73 @@ describe("extraction review: the document's key, pinned with the cards", () => {
     expect(seen.at(-1)).toBe(true);
   });
 
+  it("is pinned on staging too, over an uploaded file's page, without the highlight switch", async () => {
+    const { ExtractionReview } = await import("../components/ExtractionReview");
+    const { reviewValuesFromFields } = await import("../adapters/reviewValueAdapter");
+    const { encodeReviewCandidateToken } = await import("../adapters/fieldAdapter");
+    const field = (name: string, value: string | null, region: { x: number; y: number; w: number; h: number } | null) => ({
+      documentId: "DOC-UP",
+      canonicalTypeId: "CT-S2-ELEC",
+      fieldKey: `candidate:${name}`,
+      reviewToken: encodeReviewCandidateToken({ candidate_id: name, evidence_id: "EV-UP", document_id: "DOC-UP", field_name: name, display_label: name, normalized_value: value, unit: null }),
+      fieldLabel: name,
+      value,
+      unit: null,
+      valueProperties: [],
+      fieldState: value === null ? ("missing_requestable" as const) : ("populated" as const),
+      snippet: null,
+      snippetContext: null,
+      location: region ? { kind: "page" as const, page: 1, region } : null,
+      reviewStatus: "unreviewed" as const,
+      correctedValue: null,
+      valueOrigin: "extracted" as const,
+    });
+    const values = reviewValuesFromFields(
+      [
+        field("activity_quantity", "182.4", { x: 0.1, y: 0.4, w: 0.3, h: 0.02 }),
+        field("account_number", "ACC-77", { x: 0.1, y: 0.2, w: 0.3, h: 0.02 }),
+        field("service_period_end", null, null),
+      ],
+      [{ documentId: "DOC-UP", filename: "kent_electric_feb.pdf", format: "pdf", uploadedAt: "2026-10-20T09:00:00Z", detectedType: "Electricity bill" } as never]
+    );
+    const marks: number[] = [];
+    const { rerender } = render(
+      <ExtractionReview
+        engagement={engagementConfig}
+        values={values}
+        onValuesChange={vi.fn()}
+        initialDocumentId="DOC-UP"
+        onSaveAsk={vi.fn()}
+        onBack={vi.fn()}
+        renderPage={(_id, _span, _box, pageMarks) => {
+          marks.push(pageMarks?.length ?? 0);
+          return <div>uploaded page</div>;
+        }}
+      />
+    );
+    const key = screen.getByRole("group", { name: "Highlights on the document" });
+    expect(key.textContent).toContain("2 values read · 1 not found");
+    expect(Array.from(key.querySelectorAll(".s1-dd-key")).map((k) => k.textContent)).toEqual(["To review", "Accepted", "Corrected", "Requests", "Not found"]);
+    // Adding a value is not saved on staging yet: no switch to highlight a figure.
+    expect(within(key).queryByRole("button")).toBeNull();
+    // The page is drawn once per render, with the document's marks.
+    expect(marks.at(-1)).toBe(2);
+
+    // A file the source pane cannot draw (it shows the snippet instead) gets no key.
+    rerender(
+      <ExtractionReview
+        engagement={engagementConfig}
+        values={values}
+        onValuesChange={vi.fn()}
+        initialDocumentId="DOC-UP"
+        onSaveAsk={vi.fn()}
+        onBack={vi.fn()}
+        renderPage={() => null}
+      />
+    );
+    expect(screen.queryByRole("group", { name: "Highlights on the document" })).toBeNull();
+  });
+
   it("is not shown for a page drawn some other way", async () => {
     const { ExtractionReview } = await import("../components/ExtractionReview");
     const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
