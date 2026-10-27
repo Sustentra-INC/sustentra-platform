@@ -208,6 +208,40 @@ def ole_file(streams: dict[str, bytes], storages: tuple[str, ...] = (), *, loop_
     return header + body
 
 
+def embedded_block_xls(*, overlap: bool) -> bytes:
+    """A two-sheet workbook whose first sheet holds an embedded chart block (BOF...EOF).
+
+    The parser must read past that inner EOF to the sheet's real EOF, as xlrd does. With
+    ``overlap=True`` the second sheet's BOUNDSHEET points inside the first sheet's records,
+    after the embedded block's inner EOF but before its real EOF -- a span a reader that
+    stopped at the first EOF would miss. With ``overlap=False`` the second sheet follows the
+    first cleanly (a legitimate embedded chart)."""
+
+    def cell(row: int, value: float) -> bytes:
+        return _record(0x0203, struct.pack("<HHHd", row, 0, 0, value))
+
+    eof = _record(0x000A)
+    embedded = _bof(0x20) + cell(0, 1.0) + eof  # an embedded chart block: BOF(chart) ... EOF
+    own_bof = _bof(0x0010)
+    tail = b"".join(cell(r, 100.0 + r) for r in range(200))
+    sheet_a = own_bof + embedded + tail + eof
+    sheet_b = _bof(0x0010) + cell(0, 450.0) + eof
+
+    globals_head = _bof(0x0005) + _record(0x0042, struct.pack("<H", 1200)) + _xf(0) + _xf(14)
+    one_boundsheet = len(_record(0x0085, struct.pack("<IBB", 0, 0, 0) + _utf16("S", 1)))
+    globals_size = len(globals_head) + 2 * one_boundsheet + len(eof)
+
+    a_start = globals_size
+    if overlap:  # just after the embedded block's inner EOF, at a real record boundary in the tail
+        b_start = a_start + len(own_bof) + len(embedded)
+    else:
+        b_start = a_start + len(sheet_a)
+    head = globals_head
+    for name, offset in (("A", a_start), ("B", b_start)):
+        head += _record(0x0085, struct.pack("<IBB", offset, 0, 0) + _utf16(name, 1))
+    return ole_file({"Workbook": head + eof + sheet_a + sheet_b})
+
+
 def xls_bytes(sheets: dict[str, list[Any]], *, encrypted: bool = False, macros: bool = False,
               datemode: int = 0, shared_sheets: int = 0, overlap_step: int | None = None) -> bytes:
     """A whole .xls file, as Excel saves one (the Workbook stream at least 4096 bytes)."""
