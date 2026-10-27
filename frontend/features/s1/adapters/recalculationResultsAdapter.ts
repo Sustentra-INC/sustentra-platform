@@ -26,8 +26,9 @@ import type {
   ResultState,
   Scope1Category,
 } from "../types/verificationResults";
+import { formatQuantity } from "../utils/calculationChains";
 import type { InventoryTotal } from "../utils/outputStatement";
-import { formatTonnes } from "../utils/verificationTable";
+import { formatGasTonnes, formatPercent, formatTonnes } from "../utils/verificationTable";
 
 /**
  * The engagement's live recalculation (GET /engagements/{id}/recalculation) as the demo's
@@ -309,16 +310,25 @@ function unitText(unit: string): string {
   return unit === "t CO2e" ? "tCO₂e" : chemistry(unit);
 }
 
-/** As the source states it: up to four decimals; a very small value keeps three significant digits. */
-function stepNumber(value: number): string {
+/** A factor as its source prints it: up to four decimals; a very small one keeps three significant digits. */
+function factorNumber(value: number): string {
   return value !== 0 && Math.abs(value) < 0.01
     ? value.toLocaleString("en-US", { maximumSignificantDigits: 3 })
     : value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 }
 
+/**
+ * An amount in the demo card's formats (utils/calculationChains, utils/verificationTable):
+ * tCO₂e in whole tonnes; tonnes of a gas to one decimal, two significant figures below
+ * 0.1 t; any other quantity whole from 100 up and to one decimal below; a fraction as a
+ * percentage to one decimal.
+ */
 function amount(value: number, unit: string): string {
-  if (unit === "fraction") return `${stepNumber(value * 100)}%`;
-  return `${stepNumber(value)} ${unitText(unit)}`.trim();
+  if (unit === "fraction") return formatPercent(value);
+  if (unit === "t CO2e") return `${formatTonnes(value)} tCO₂e`;
+  if (unit === "t") return `${formatGasTonnes(value)} t`;
+  // A negative refrigerant balance takes the true minus sign, as the demo's figures do.
+  return `${formatQuantity(value).replace(/^-/, "−")} ${unitText(unit)}`.trim();
 }
 
 const GAS_ORDER = ["CO2", "CH4", "N2O"];
@@ -359,9 +369,11 @@ function inputCell(name: string, input: RecalcInput, line: RecalcLine, evidence:
     return records ? { text, source: records } : { text };
   }
   if (input.source) {
-    // A factor: cited, not drawn (no endpoint returns the reference table's rows yet).
+    // A factor, printed as its source prints it; cited, not drawn (no endpoint returns the
+    // reference table's rows yet).
+    const printed = `${factorNumber(input.value)} ${unitText(input.unit)}`.trim();
     const [title] = input.source.split(", ");
-    return { text, source: { kind: "basis", title, text: `${chemistry(name)} = ${text}, cited from ${input.source}.` } };
+    return { text: printed, source: { kind: "basis", title, text: `${chemistry(name)} = ${printed}, cited from ${input.source}.` } };
   }
   return { text };
 }
@@ -398,12 +410,12 @@ function stepsOf(category: RecalcCategory, line: RecalcLine, evidence: CategoryI
   const gases = Object.entries(line.mass_t).sort(([a], [b]) => order(a) - order(b));
   const how: CalcCell[] = gases.flatMap(([gas, mass], i) => {
     const gwp = category.gwp[gas];
-    const term: CalcCell[] = [{ text: `${i ? " + " : ""}${chemistry(gas)} ${stepNumber(mass)} t × ` }];
+    const term: CalcCell[] = [{ text: `${i ? " + " : ""}${chemistry(gas)} ${amount(mass, "t")} × ` }];
     term.push(
       gwp
         ? {
-            text: `GWP ${stepNumber(gwp.value)}`,
-            source: { kind: "basis", title: `GWP of ${chemistry(gas)} (${category.gwp_set})`, text: `${stepNumber(gwp.value)}, from ${gwp.source}.` },
+            text: `GWP ${formatQuantity(gwp.value)}`,
+            source: { kind: "basis", title: `GWP of ${chemistry(gas)} (${category.gwp_set})`, text: `${factorNumber(gwp.value)}, from ${gwp.source}.` },
           }
         : { text: "GWP not given" }
     );

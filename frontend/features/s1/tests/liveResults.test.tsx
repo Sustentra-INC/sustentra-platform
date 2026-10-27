@@ -158,12 +158,24 @@ describe("the calculation panel on live data", () => {
     const [gas] = line["s1-stationary"].facilities ?? [];
     expect(gas.steps.map((s) => s.step)).toEqual(["CO₂ (Eq 1)", "CH₄ (Eq 1)", "N₂O (Eq 1)", "Total CO₂e"]);
     expect(text(gas.steps[0].how)).toBe("24,000 mmBtu × 53.06 kg CO₂ per mmBtu");
-    expect(gas.steps[0].recomputed?.text).toBe("1,273.44 t");
     expect(gas.steps.every((s) => s.reported === null)).toBe(true);
     expect(gas.note).toMatch(/only the client's totals are entered/);
+  });
+
+  it("uses the demo card's number formats: whole tCO₂e, gas tonnes to one decimal, factors as printed", () => {
+    const [gas] = line["s1-stationary"].facilities ?? [];
+    expect(gas.steps.map((s) => s.recomputed?.text)).toEqual(["1,273.4 t", "0.024 t", "0.0024 t", "1,275 tCO₂e"]);
     const total = gas.steps[gas.steps.length - 1];
-    expect(total).toMatchObject({ total: true, recomputed: { text: "1,274.748 tCO₂e" } });
-    expect(text(total.how)).toBe("CO₂ 1,273.44 t × GWP 1 + CH₄ 0.024 t × GWP 28 + N₂O 0.0024 t × GWP 265");
+    expect(total.total).toBe(true);
+    expect(text(total.how)).toBe("CO₂ 1,273.4 t × GWP 1 + CH₄ 0.024 t × GWP 28 + N₂O 0.0024 t × GWP 265");
+    // The electricity factors keep their printed decimals; the quantities read like the demo's.
+    const [facilityA] = line["s2l-electricity"].facilities ?? [];
+    expect(text(facilityA.steps[0].how)).toBe("1,200 MWh × 240.99 lb per MWh");
+    expect(facilityA.steps[0].recomputed?.text).toBe("289,188 lb");
+    expect(text(facilityA.steps[2].how)).toBe("1,200 MWh × 0.011 lb per MWh");
+    expect(facilityA.steps[2].recomputed?.text).toBe("13.2 lb");
+    const [r410a] = line["s1-fugitive"].facilities ?? [];
+    expect(r410a.steps.map((s) => s.recomputed?.text)).toEqual(["40 lb", "0.018 t", "35 tCO₂e"]);
   });
 
   it("links an amount to the reviewed records it is summed from, and a factor or GWP to its citation", () => {
@@ -205,7 +217,7 @@ describe("the calculation panel on live data", () => {
 
   it("reads a market-based remainder with its coverage as a percentage", () => {
     const [facilityA] = line["s2m-electricity"].facilities ?? [];
-    expect(text(facilityA.steps[0].how)).toBe("electricity (MWh) x (1 - coverage %): electricity 1,200 MWh; coverage 30%");
+    expect(text(facilityA.steps[0].how)).toBe("electricity (MWh) x (1 - coverage %): electricity 1,200 MWh; coverage 30.0%");
   });
 
   it("opens the card with its steps, the system's cause and the records behind an amount", async () => {

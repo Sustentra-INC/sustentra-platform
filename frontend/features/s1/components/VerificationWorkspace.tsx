@@ -970,10 +970,12 @@ function CalculationCard({
           <CauseIcon className="s1-vw-ico s1-vw-cause__icon" aria-hidden />
           <span>
             {facility.causeBy === "system" ? (
-              <span className="s1-vw-by">
-                <Cpu className="s1-vw-ico" aria-hidden />
-                Checked by system
-              </span>
+              <>
+                <span className="s1-vw-by">
+                  <Cpu className="s1-vw-ico" aria-hidden />
+                  Checked by system
+                </span>{" "}
+              </>
             ) : null}
             {facility.cause}
           </span>
