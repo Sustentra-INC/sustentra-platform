@@ -28,6 +28,8 @@ from backend.app.services.extraction_service import ExtractionService
 from backend.app.services.thermal_extractor import CANONICAL_TYPE_ID as THERMAL_TYPE_ID
 from backend.app.services.thermal_extractor import ThermalExtractor
 from backend.app.services.extraction_target_service import ExtractionTargetService
+from backend.app.adapters.parsers.email_parser import PARSER_NAME as EMAIL_PARSER_NAME
+from backend.app.adapters.parsers.email_reader import ENCRYPTED_EMAIL
 from backend.app.services.parser_service import ParserService
 from backend.app.services.mobile_combustion_extractor import (
     CANONICAL_TYPE_ID as MOBFUEL_TYPE_ID,
@@ -682,6 +684,8 @@ class PipelineOrchestrationService:
         )
         codes = {str(w.get("code")) for w in (parser_output.get("warnings") or []) if isinstance(w, dict)}
         if "password_protected" in codes:
+            if parser_output.get("parser_name") == EMAIL_PARSER_NAME:
+                return {"code": HALT_PASSWORD_PROTECTED, "message": ENCRYPTED_EMAIL}
             return {"code": HALT_PASSWORD_PROTECTED,
                     "message": "This file is password-protected, so it could not be read. Ask the client for "
                                "a copy without a password."}

@@ -3,6 +3,8 @@ attachments. Every message is built here with the standard library."""
 
 from __future__ import annotations
 
+import base64
+import time
 from email.message import EmailMessage
 
 import pytest
@@ -207,24 +209,7 @@ def test_bytes_that_are_not_an_email_are_refused(body: bytes, code: str) -> None
     assert refused.value.code == code
 
 
-def test_a_message_the_modern_policy_trips_over_is_read_leniently(monkeypatch) -> None:
-    calls: list[str] = []
-    original = email_reader._package
-
-    def flaky(message, **kwargs):
-        calls.append(type(message.policy).__name__)
-        if len(calls) == 1:
-            raise ValueError("header parser bug")
-        return original(message, **kwargs)
-
-    monkeypatch.setattr(email_reader, "_package", flaky)
-    raw = b"From: a@example.com\r\nSubject: =?utf-8?q?F=C3=A9vrier?=\r\n\r\nTotal Usage: 120 therms\r\n"
-    package = read_eml(raw)
-    assert calls == ["EmailPolicy", "Compat32"]
-    assert (package.subject, package.body_text) == ("Février", "Total Usage: 120 therms")
-
-
-def test_a_message_neither_policy_reads_is_refused(monkeypatch) -> None:
+def test_a_message_that_cannot_be_read_is_refused_with_what_to_do(monkeypatch) -> None:
     def broken(message, **kwargs):
         raise ValueError("no")
 
@@ -232,6 +217,177 @@ def test_a_message_neither_policy_reads_is_refused(monkeypatch) -> None:
     with pytest.raises(EmailError) as refused:
         read_eml(_message().as_bytes())
     assert refused.value.code == "email_load_failed"
+    assert refused.value.message == email_reader.DAMAGED_EMAIL
+
+
+def test_an_html_body_is_found_next_to_attachments() -> None:
+    # The body search reads headers as text: an HTML body before an attachment is still found.
+    message = _message(body=None)
+    message.set_content("<p>Total Usage: 120 therms</p>", subtype="html")
+    message.add_attachment(b"%PDF", maintype="application", subtype="pdf", filename="bill.pdf")
+    package = read_eml(message.as_bytes())
+    assert (package.body_text, package.body_source) == ("Total Usage: 120 therms", "html")
+    assert [part.name for part in package.attachments] == ["bill.pdf"]
+
+
+def test_a_related_body_follows_its_start_part() -> None:
+    raw = (b'From: a@example.com\r\nSubject: s\r\nContent-Type: multipart/related; boundary="r"; start="<two>"'
+           b'\r\n\r\n--r\r\nContent-Type: text/plain\r\nContent-ID: <one>\r\n\r\nnot this\r\n'
+           b"--r\r\nContent-Type: text/html\r\nContent-ID: <two>\r\n\r\n<p>this one</p>\r\n--r--\r\n")
+    assert read_eml(raw).body_text.startswith("this one")
+
+
+# --- crafted files: each must finish fast (the times before the fix are in the comments) ----------
+HEAD = b"From: a@example.com\r\nTo: b@example.com\r\nSubject: s\r\nMIME-Version: 1.0\r\n"
+
+
+def _many_parts(count: int) -> bytes:
+    body = b"".join(b"--b\r\nContent-Type: text/plain\r\n\r\nx\r\n" for _ in range(count))
+    return HEAD + b'Content-Type: multipart/mixed; boundary="b"\r\n\r\n' + body + b"--b--\r\n"
+
+
+def _timed(data: bytes, seconds: float = 1.0):
+    started = time.perf_counter()
+    try:
+        return read_eml(data)
+    finally:
+        elapsed = time.perf_counter() - started
+        assert elapsed < seconds, f"took {elapsed:.2f} s"
+
+
+def test_a_huge_number_of_parts_is_cut_before_parsing() -> None:
+    # 100,000 parts (3.6 MB) took 8 s: every part was built before the walk's limit applied.
+    package = _timed(_many_parts(100_000))
+    assert {code for code, _ in package.notes} == {"email_parts_limit", "email_truncated"}
+
+
+def test_lines_are_capped_before_parsing(monkeypatch) -> None:
+    # 6 million short lines (12 MB) took 3 s and 860 MB.
+    package = _timed(HEAD + b"Content-Type: text/plain\r\n\r\n" + b"a\n" * 6_000_000, 2.0)
+    assert {code for code, _ in package.notes} == {"email_truncated", "body_truncated"}
+    assert package.body_text.count("\n") + 1 == email_reader.MAX_TEXT_LINES
+
+
+def test_an_attached_email_is_not_parsed_deeper_than_the_depth_limit(monkeypatch) -> None:
+    # Four attached .eml files inside one another, the innermost with many parts: it was
+    # parsed (8.5 s for 100,000 parts) before the depth check threw it away.
+    def attaching(inner: bytes, level: int) -> bytes:
+        return (HEAD + b'Content-Type: multipart/mixed; boundary="o"\r\n\r\n--o\r\nContent-Type: text/plain\r\n'
+                + b"\r\nlevel %d\r\n--o\r\nContent-Type: application/octet-stream\r\n" % level
+                + b'Content-Disposition: attachment; filename="l.eml"\r\nContent-Transfer-Encoding: base64\r\n\r\n'
+                + base64.encodebytes(inner) + b"--o--\r\n")
+
+    deep = _many_parts(20_000)
+    for level in (4, 3, 2, 1):
+        deep = attaching(deep, level)
+    parsed: list[int] = []
+    real_parse = email_reader._parse
+    monkeypatch.setattr(email_reader, "_parse", lambda data, walk: parsed.append(len(data)) or real_parse(data, walk))
+    package = _timed(deep, 3.0)
+    assert len(parsed) == 4  # the email and three attached levels; the fourth is never parsed
+    assert ("forwarded_too_deep", 'A message forwarded more than 3 levels deep ("l.eml") was not read.') in (
+        package.all_notes())
+
+
+def test_attached_emails_share_one_parse_budget() -> None:
+    inner = base64.encodebytes(_many_parts(2_000))
+    attached = b"".join(
+        b'--b\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment; filename="f%d.eml"\r\n'
+        b"Content-Transfer-Encoding: base64\r\n\r\n" % n + inner for n in range(150))
+    raw = HEAD + b'Content-Type: multipart/mixed; boundary="b"\r\n\r\n' + attached + b"--b--\r\n"
+    package = _timed(raw, 2.0)
+    assert "email_truncated" in {code for code, _ in package.all_notes()}
+
+
+@pytest.mark.parametrize("raw", [
+    # Quotes and semicolons in headers made the modern policy's parsers quadratic.
+    HEAD + b"Content-Type: text/plain; a=" + b'"' * 32 * 1024 + b"\r\n\r\nTotal Usage: 120 therms\r\n",  # 25 s
+    HEAD + b"Content-Type: text/plain\r\nContent-Disposition: inline; filename=" + b'"' * 32 * 1024
+    + b"\r\n\r\nTotal Usage: 120 therms\r\n",  # 2.8 s
+    b"From: a@example.com\r\nTo: " + b'"' * 32 * 1024 + b"\r\nSubject: s\r\n\r\nTotal Usage: 120 therms\r\n",  # 9.8 s
+    b"From: a@example.com\r\nTo: " + b'"' * 21 * 1024 + b"\r\nCc: " + b'"' * 21 * 1024 + b"\r\nSubject: "
+    + b'"' * 21 * 1024 + b"\r\n\r\nTotal Usage: 120 therms\r\n",  # 8.5 s
+    HEAD + b'Content-Type: multipart/mixed; a="' + b";" * 1024 * 1024 + b'"; boundary="b"\r\n\r\n'
+    + b"--b\r\nContent-Type: text/plain\r\n\r\nTotal Usage: 120 therms\r\n--b--\r\n",  # never finished
+], ids=["content_type_quotes", "content_disposition_quotes", "to_quotes", "to_cc_subject_quotes",
+        "multipart_semicolons"])
+def test_crafted_headers_are_read_fast(raw: bytes) -> None:
+    package = _timed(raw)
+    if b";;;" in raw:
+        # Cut to its first parameters, the header no longer names its boundary: the parts are
+        # not found, but nothing hangs.
+        assert package.body_text == ""
+    else:
+        assert "Total Usage: 120 therms" in package.body_text
+
+
+def test_html_turned_into_text_has_one_budget_for_the_whole_email(monkeypatch) -> None:
+    # html.parser takes about 1 s per million characters of "<<<<", and each HTML part may be
+    # up to MAX_BODY_CHARS: the email's HTML is converted up to MAX_HTML_CHARS in all.
+    monkeypatch.setattr(email_reader, "MAX_HTML_CHARS", 100_000)
+    parts = b"".join(b"--b\r\nContent-Type: text/html\r\n\r\n<body>" + b"<" * 200_000 + b"\r\n" for _ in range(20))
+    package = _timed(HEAD + b'Content-Type: multipart/mixed; boundary="b"\r\n\r\n' + parts + b"--b--\r\n")
+    assert "body_truncated" in {code for code, _ in package.notes}
+
+
+def test_too_many_headers_are_refused() -> None:
+    with pytest.raises(EmailError) as refused:
+        _timed(b"".join(b"X-%d: y\r\n" % n for n in range(email_reader.MAX_HEADERS + 1)) + b"\r\nbody\r\n")
+    assert refused.value.code == "email_load_failed"
+
+
+def test_only_ordinary_text_charsets_decode() -> None:
+    # Python's punycode codec is quadratic: a 1 MB body took 10 s, a 0.55 MB file name 3 s.
+    body = ("\u00e9" * 300_000).encode("punycode")
+    package = _timed(HEAD + b"Content-Type: text/plain; charset=punycode\r\n\r\n" + body + b"\r\n")
+    assert package.body_text.startswith(body[:20].decode())  # read as UTF-8: the raw digits
+    name = ("\u00e9" * 100_000).encode("punycode")
+    package = _timed(HEAD + b'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: text/plain'
+                     b"\r\n\r\nhi\r\n--b\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; "
+                     b"filename*=punycode''" + name + b"\r\n\r\n%PDF\r\n--b--\r\n")
+    assert package.attachments[0].name == name[:email_reader.MAX_NAME_CHARS].decode()
+    package = read_eml(b"From: a@example.com\r\nSubject: =?punycode?q?caf-dma?= =?x-unknown?q?=C3=A9?=\r\n\r\nx\r\n")
+    assert package.subject == "caf-dma\u00e9"
+
+
+@pytest.mark.parametrize("raw", [
+    HEAD + b'Content-Type: application/pkcs7-mime; smime-type=enveloped-data; name="smime.p7m"\r\n'
+    b"Content-Transfer-Encoding: base64\r\n\r\nMIAGCSqGSIb3DQEHA6CAMIACAQAxggE=\r\n",
+    HEAD + b'Content-Type: multipart/mixed; boundary="b"\r\n\r\n--b\r\nContent-Type: application/octet-stream\r\n'
+    b'Content-Disposition: attachment; filename="smime.p7m"\r\n\r\nMIAGCSqG\r\n--b--\r\n',
+    HEAD + b'Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="b"\r\n\r\n'
+    b"--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n--b\r\n"
+    b'Content-Type: application/octet-stream; name="encrypted.asc"\r\n\r\n-----BEGIN PGP MESSAGE-----\r\n'
+    b"hQEMA\r\n-----END PGP MESSAGE-----\r\n--b--\r\n",
+], ids=["smime_enveloped", "smime_p7m_as_the_body", "pgp_mime"])
+def test_an_encrypted_email_is_refused_as_password_protected(raw: bytes) -> None:
+    with pytest.raises(EmailError) as refused:
+        read_eml(raw)
+    assert (refused.value.code, refused.value.message) == (
+        "password_protected",
+        "This email is encrypted. Ask the client to send it without encryption, or upload its attachments "
+        "on their own.")
+
+
+def test_a_signed_email_or_an_encrypted_attachment_is_still_read() -> None:
+    signed = (HEAD + b'Content-Type: multipart/signed; protocol="application/pkcs7-signature"; boundary="s"\r\n\r\n'
+              b"--s\r\nContent-Type: text/plain\r\n\r\nTotal Usage: 120 therms\r\n--s\r\n"
+              b'Content-Type: application/pkcs7-signature; name="smime.p7s"\r\n\r\nMIAG\r\n--s--\r\n')
+    assert read_eml(signed).body_text == "Total Usage: 120 therms"
+    message = _message()
+    message.add_attachment(b"MIAG", maintype="application", subtype="pkcs7-mime", filename="smime.p7m")
+    assert [part.name for part in read_eml(message.as_bytes()).attachments] == ["smime.p7m"]
+
+
+def test_the_message_text_of_the_whole_email_shares_one_budget(monkeypatch) -> None:
+    monkeypatch.setattr(email_reader, "MAX_TEXT_LINES", 5)
+    inner = _message(subject="inner", body="\n".join(f"inner {n}" for n in range(10)))
+    outer = _message(subject="outer", body="\n".join(f"outer {n}" for n in range(3)))
+    outer.add_attachment(inner)
+    package = read_eml(outer.as_bytes())
+    assert package.body_text == "outer 0\nouter 1\nouter 2"
+    assert package.nested[0].body_text == "inner 0\ninner 1"
+    assert [code for code, _ in package.all_notes()] == ["body_truncated"]
 
 
 def test_deep_mime_nesting_is_refused_not_crashed() -> None:

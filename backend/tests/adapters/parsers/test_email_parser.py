@@ -6,7 +6,7 @@ from __future__ import annotations
 from email.message import EmailMessage
 from pathlib import Path
 
-from backend.app.adapters.parsers import email_parser
+from backend.app.adapters.parsers import email_parser, email_reader
 from backend.app.adapters.parsers.email_parser import EmailParser, email_text, read_email_file
 from backend.tests.adapters.parsers._parser_output_asserts import assert_parser_output_shape
 
@@ -133,3 +133,14 @@ def test_what_is_not_an_email_fails_with_its_reason(tmp_path: Path, monkeypatch)
     monkeypatch.setattr(email_parser, "MAX_EMAIL_BYTES", 10)
     output = EmailParser().parse(_eml(tmp_path, _message()), document_id="D", processing_run_id="R")
     assert (output["status"], output["warnings"][0]["code"]) == ("failed", "file_too_large")
+
+
+def test_an_encrypted_email_fails_as_password_protected(tmp_path: Path) -> None:
+    path = tmp_path / "locked.eml"
+    path.write_bytes(b'From: a@example.com\r\nSubject: s\r\nContent-Type: multipart/encrypted; boundary="b"\r\n\r\n'
+                     b"--b\r\nContent-Type: application/pgp-encrypted\r\n\r\nVersion: 1\r\n--b--\r\n")
+    output = EmailParser().parse(path, document_id="D", processing_run_id="R")
+    assert_parser_output_shape(output)
+    assert output["status"] == "failed"
+    assert output["warnings"] == [{"code": "password_protected", "severity": "error",
+                                   "message": email_reader.ENCRYPTED_EMAIL}]

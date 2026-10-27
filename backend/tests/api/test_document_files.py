@@ -379,6 +379,19 @@ def test_processing_a_password_protected_workbook_halts_with_what_to_ask_for(env
     assert result["items"] == [] and result["status"] == "failed"
 
 
+def test_an_encrypted_email_halts_as_password_protected_with_what_to_do(env: dict) -> None:
+    encrypted = (b'From: a@example.com\r\nSubject: s\r\nContent-Type: application/pkcs7-mime; smime-type=enveloped-data;'
+                 b' name="smime.p7m"\r\nContent-Transfer-Encoding: base64\r\n\r\nMIAGCSqGSIb3DQEHA6CA\r\n')
+    wording = ("This email is encrypted. Ask the client to send it without encryption, or upload its attachments "
+               "on their own.")
+    doc = env["upload"]("locked.eml", encrypted, "message/rfc822")
+    env["act_as"]("org_member", ORG_A)
+    response = env["client"].post(url(doc, "pipeline/process"), json={})
+    assert (response.status_code, response.json()["detail"]) == (422, wording)
+    content = env["client"].get(url(doc, "content"))
+    assert (content.status_code, content.json()["detail"]) == (422, wording)
+
+
 def test_an_email_is_its_lines_numbered_as_the_parser_numbers_them(env: dict) -> None:
     from email.message import EmailMessage
 

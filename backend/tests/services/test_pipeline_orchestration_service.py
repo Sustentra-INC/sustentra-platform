@@ -754,6 +754,12 @@ def test_a_password_protected_file_says_so_and_what_to_ask_for():
         "message": "This file is password-protected, so it could not be read. Ask the client for a copy without "
                    "a password.",
     }
+    encrypted_email = {**locked, "parser_name": "email_parser"}
+    assert PipelineOrchestrationService._unreadable_halt(encrypted_email) == {
+        "code": "password_protected",
+        "message": "This email is encrypted. Ask the client to send it without encryption, or upload its "
+                   "attachments on their own.",
+    }
 
 
 @pytest.mark.parametrize("name", ["XLSX-FUEL-001", "XLSX-MULTI-002"])
