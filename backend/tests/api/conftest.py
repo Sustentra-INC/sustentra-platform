@@ -17,6 +17,7 @@ from backend.app.api.engagements import require_open_engagement
 from backend.app.core.auth import CurrentUser, get_current_user
 from backend.app.main import app
 from backend.app.repositories.document_repository import InMemoryDocumentRepository
+from backend.app.repositories.processing_run_repository import InMemoryProcessingRunRepository
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
 
@@ -109,6 +110,20 @@ def _s1_signed_in(request: pytest.FixtureRequest, tmp_path) -> Iterator[None]:
         documents_api.configure_services(
             upload_service=original[0], pipeline_service=original[1], storage_service=original[2]
         )
+
+
+@pytest.fixture(autouse=True)
+def run_queue() -> Iterator[InMemoryProcessingRunRepository]:
+    """Processing runs (migration 0015) in memory for every API test. S1_PROCESSING is inline
+    by default, so each read through the pipeline routes is recorded as a run here."""
+
+    original = documents_api.current_run_repository()
+    queue = InMemoryProcessingRunRepository()
+    documents_api.configure_services(run_repository=queue)
+    try:
+        yield queue
+    finally:
+        documents_api.configure_services(run_repository=original)
 
 
 @pytest.fixture(autouse=True)
