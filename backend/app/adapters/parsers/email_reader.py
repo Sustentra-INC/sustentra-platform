@@ -32,6 +32,9 @@ Nothing is fetched or run, and a crafted file cannot make the work outgrow the f
 - No message is ever written back with the stdlib generator (``as_bytes``, ``as_string``,
   ``str()``): it folds every header again, which is slow on crafted headers. A forwarded
   message that is listed is put back together from the bytes that were read.
+- A bounce report's ``message/delivery-status`` part is parsed as one piece of text
+  (``_Part``): the stdlib parser builds one message for every blank line in it. Its fields
+  are not shown.
 """
 
 from __future__ import annotations
@@ -76,6 +79,7 @@ OLE_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 _SIGNATURE_TYPES = {"application/pkcs7-signature", "application/x-pkcs7-signature", "application/pgp-signature"}
 _PKCS7_MIME_TYPES = {"application/pkcs7-mime", "application/x-pkcs7-mime"}
 _TNEF_TYPES = {"application/ms-tnef", "application/vnd.ms-tnef"}
+_DELIVERY_STATUS = "message/delivery-status"  # a bounce report's fields (RFC 3464)
 # Character sets refused: not text at all, or quadratic. Everything else stdlib offers (every
 # ISO-8859, Windows and DOS code page, the CJK codecs, tis-620, mac-*, utf-7, utf-8-sig, ...) is
 # linear and kept; a codec that is not a str<->bytes text encoding raises at decode time and
@@ -217,8 +221,27 @@ def read_eml(data: bytes) -> EmailPackage:
 
 
 # --- parsing within bounds ---------------------------------------------------------------------
+class _Part(EmailMessage):
+    """A MIME part as the reader parses it: a ``message/delivery-status`` part reads as
+    ``text/plain``, so the parser keeps it as one piece of text.
+
+    The stdlib parser builds one message for every blank line in such a part (each block of
+    fields is a message of its own): 900,000 blank lines (0.9 MB) took 3.5 s and 260 MB. The
+    reader never shows the fields (``_delivery_status``), as it never did."""
+
+    def get_content_type(self) -> str:
+        content_type = super().get_content_type()
+        return "text/plain" if content_type == _DELIVERY_STATUS else content_type
+
+
+def _delivery_status(part: Message) -> bool:
+    """A bounce report's delivery-status part, by the type it declares (which ``_Part`` hides)."""
+
+    return Message.get_content_type(part) == _DELIVERY_STATUS
+
+
 def _parse(data: bytes, walk: _Walk) -> EmailMessage:
-    return cast(EmailMessage, BytesParser(_class=EmailMessage, policy=_policy(walk)).parsebytes(_bounded(data, walk)))
+    return cast(EmailMessage, BytesParser(_class=_Part, policy=_policy(walk)).parsebytes(_bounded(data, walk)))
 
 
 def _bounded(data: bytes, walk: _Walk) -> bytes:
@@ -674,7 +697,7 @@ def _find_body(message: EmailMessage) -> EmailMessage | None:
     while pending and looked < MAX_PARTS:
         part = pending.pop()
         looked += 1
-        if part.get_content_disposition() == "attachment":
+        if part.get_content_disposition() == "attachment" or _delivery_status(part):
             continue
         maintype, subtype = part.get_content_maintype(), part.get_content_subtype()
         if maintype == "text":
@@ -751,7 +774,7 @@ def _collect(part: EmailMessage, package: EmailPackage, *, body: EmailMessage | 
              path: list[str], in_alternative: bool) -> None:
     """Walk the MIME tree for attachments, forwarded messages and any further message text."""
 
-    if part is body or not walk.take():
+    if part is body or not walk.take() or _delivery_status(part):
         return
     content_type = part.get_content_type()
 
