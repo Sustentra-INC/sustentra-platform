@@ -65,13 +65,15 @@ def parser_output_from_sheets(
     max_sheets: int | None = None,
     max_rows_per_sheet: int | None = None,
     max_cells: int | None = None,
+    max_table_slots: int | None = None,
 ) -> dict:
     """Build a workbook's ``parser_output`` from its sheets.
 
     Every non-empty cell becomes a text block ``<parser>-<sheet>-<coordinate>`` with an
     ``excel_cell`` source reference (sheet name and coordinate), and each sheet with
-    content becomes one table of its rows. With a sheet, row or cell limit, reading stops
-    there and the output is ``partial``, with a ``workbook_truncated`` warning saying where.
+    content becomes one table of its rows. With a limit on sheets, rows per sheet, filled
+    cells or table slots (every cell a table row holds, empty padding included), reading
+    stops there and the output is ``partial``, with a ``workbook_truncated`` warning saying where.
     """
 
     warnings = list(warnings or [])
@@ -79,6 +81,7 @@ def parser_output_from_sheets(
     source_references: list[dict] = []
     tables: list[dict] = []
     cell_counter = 0
+    slots_used = 0
     stopped: list[str] = []
 
     for sheet_index, (sheet_name, rows) in enumerate(sheets, start=1):
@@ -88,11 +91,17 @@ def parser_output_from_sheets(
         table_rows: list[list[Any]] = []
         sheet_has_content = False
         cell_limit_reached = False
+        slot_limit_reached = False
 
         for row_index, row in enumerate(rows):
             if max_rows_per_sheet is not None and row_index >= max_rows_per_sheet:
                 stopped.append(f"after row {max_rows_per_sheet} of sheet '{sheet_name}'")
                 break
+            if max_table_slots is not None:
+                slots_used += len(row)
+                if slots_used > max_table_slots:
+                    slot_limit_reached = True
+                    break
             table_row: list[Any] = []
             for coordinate, value in row:
                 if coordinate is None or _is_blank(value):
@@ -145,6 +154,9 @@ def parser_output_from_sheets(
             )
         if cell_limit_reached:
             stopped.append(f"after {max_cells} filled cells, in sheet '{sheet_name}'")
+            break
+        if slot_limit_reached:
+            stopped.append(f"after {max_table_slots} table cells, in sheet '{sheet_name}'")
             break
 
     if stopped:

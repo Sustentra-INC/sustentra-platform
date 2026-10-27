@@ -81,16 +81,18 @@ def _cell(row: int, column: int, value: Any, strings: list[str], datemode: int) 
     return _record(0x00FD, struct.pack("<HHHI", row, column, 0, strings.index(str(value))))
 
 
-def biff_workbook(sheets: dict[str, list[list[Any]]], *, encrypted: bool = False, datemode: int = 0,
-                  pad_to: int = MINI_CUTOFF) -> bytes:
-    """A BIFF8 workbook stream: the globals, then one substream per sheet."""
+def biff_workbook(sheets: dict[str, list[Any]], *, encrypted: bool = False, datemode: int = 0,
+                  pad_to: int = MINI_CUTOFF, shared_sheets: int = 0) -> bytes:
+    """A BIFF8 workbook stream: the globals, then one substream per sheet. ``shared_sheets``
+    adds that many more sheets whose BOUNDSHEET records all point at the first sheet's data."""
 
     strings: list[str] = []
     bodies: list[bytes] = []
     for rows in sheets.values():
+        # A row is a list of values, or (for sparse sheets) a {column: value} dict.
         cells = b"".join(_cell(r, c, value, strings, datemode) for r, row in enumerate(rows)
-                         for c, value in enumerate(row))
-        width = max((len(row) for row in rows), default=0)
+                         for c, value in (row.items() if isinstance(row, dict) else enumerate(row)))
+        width = max((max(row, default=-1) + 1 if isinstance(row, dict) else len(row) for row in rows), default=0)
         dimensions = _record(0x0200, struct.pack("<IIHHH", 0, len(rows), 0, width, 0))
         bodies.append(_bof(0x0010) + dimensions + cells + _record(0x000A))
 
@@ -102,25 +104,36 @@ def biff_workbook(sheets: dict[str, list[list[Any]]], *, encrypted: bool = False
     head += _xf(0) + _xf(14)  # XF 0 General, XF 1 the built-in date format m/d/yyyy
     sst = _record(0x00FC, struct.pack("<II", len(strings), len(strings))
                   + b"".join(_utf16(text, 2) for text in strings))
-    sheet_records_size = sum(len(_record(0x0085, bytes(6) + _utf16(name, 1))) for name in sheets)
+    shared = [f"Copy {n}" for n in range(1, shared_sheets + 1)]
+    sheet_records_size = sum(len(_record(0x0085, bytes(6) + _utf16(name, 1))) for name in [*sheets, *shared])
     offset = len(head) + sheet_records_size + len(sst) + len(_record(0x000A))
+    first = offset
     for name, body in zip(sheets, bodies):
         head += _record(0x0085, struct.pack("<IBB", offset, 0, 0) + _utf16(name, 1))  # BOUNDSHEET
         offset += len(body)
+    for name in shared:
+        head += _record(0x0085, struct.pack("<IBB", first, 0, 0) + _utf16(name, 1))
     stream = head + sst + _record(0x000A) + b"".join(bodies)
     return stream.ljust(pad_to, b"\x00")
 
 
 # --- OLE2 compound file --------------------------------------------------------------------
-def _dir_entry(name: str, kind: int, start: int, size: int, *, child: int = NOSTREAM, right: int = NOSTREAM) -> bytes:
+def _dir_entry(name: str, kind: int, start: int, size: int, *, child: int = NOSTREAM, right: int = NOSTREAM,
+               left: int = NOSTREAM) -> bytes:
     encoded = (name.encode("utf-16-le") + b"\x00\x00") if name else b""
-    return (encoded.ljust(64, b"\x00") + struct.pack("<HBBIII", len(encoded), kind, 1, NOSTREAM, right, child)
+    return (encoded.ljust(64, b"\x00") + struct.pack("<HBBIII", len(encoded), kind, 1, left, right, child)
             + bytes(16 + 4 + 8 + 8) + struct.pack("<IQ", start, size))
 
 
-def ole_file(streams: dict[str, bytes], storages: tuple[str, ...] = (), *, loop_mini_chain: bool = False) -> bytes:
+def ole_file(streams: dict[str, bytes], storages: tuple[str, ...] = (), *, loop_mini_chain: str | None = None,
+             dag: bool = False) -> bytes:
     """An OLE2 (version 3, 512-byte sectors) file holding ``streams`` and empty ``storages``
-    at the top level. Streams under 4096 bytes live in the mini stream, as Office writes them."""
+    at the top level. Streams under 4096 bytes live in the mini stream, as Office writes them.
+
+    Hostile shapes: ``loop_mini_chain`` names a small stream whose mini-sector chain points
+    back to its start; ``dag`` links every directory entry to the next one as both its left
+    and its right sibling, so a reader without a visited set walks 2^N paths.
+    """
 
     big = {name: data for name, data in streams.items() if len(data) >= MINI_CUTOFF}
     small = {name: data for name, data in streams.items() if len(data) < MINI_CUTOFF}
@@ -134,8 +147,8 @@ def ole_file(streams: dict[str, bytes], storages: tuple[str, ...] = (), *, loop_
         mini_start[name] = first
         mini_fat += list(range(first + 1, first + count)) + [ENDOFCHAIN]
         mini_data += data.ljust(count * MINI_SECTOR, b"\x00")
-    if loop_mini_chain:
-        mini_fat[mini_fat.index(ENDOFCHAIN)] = 0  # the first small stream's chain points back to its start
+        if name == loop_mini_chain:
+            mini_fat[-1] = first  # the chain's last sector points back to its first
 
     names = list(streams) + list(storages)
     dir_sectors = math.ceil((1 + len(names)) / 4)
@@ -166,12 +179,13 @@ def ole_file(streams: dict[str, bytes], storages: tuple[str, ...] = (), *, loop_
     entries = [_dir_entry("Root Entry", 5, mini_stream_start, len(mini_data), child=1 if names else NOSTREAM)]
     for index, name in enumerate(names, start=1):
         right = index + 1 if index < len(names) else NOSTREAM
+        left = right if dag else NOSTREAM
         if name in big:
-            entries.append(_dir_entry(name, 2, big_start[name], len(big[name]), right=right))
+            entries.append(_dir_entry(name, 2, big_start[name], len(big[name]), right=right, left=left))
         elif name in small:
-            entries.append(_dir_entry(name, 2, mini_start[name], len(small[name]), right=right))
+            entries.append(_dir_entry(name, 2, mini_start[name], len(small[name]), right=right, left=left))
         else:
-            entries.append(_dir_entry(name, 1, 0, 0, right=right))
+            entries.append(_dir_entry(name, 1, 0, 0, right=right, left=left))
     while len(entries) % 4:
         entries.append(_dir_entry("", 0, 0, 0))
 
@@ -191,9 +205,10 @@ def ole_file(streams: dict[str, bytes], storages: tuple[str, ...] = (), *, loop_
     return header + body
 
 
-def xls_bytes(sheets: dict[str, list[list[Any]]], *, encrypted: bool = False, macros: bool = False,
-              datemode: int = 0) -> bytes:
+def xls_bytes(sheets: dict[str, list[Any]], *, encrypted: bool = False, macros: bool = False,
+              datemode: int = 0, shared_sheets: int = 0) -> bytes:
     """A whole .xls file, as Excel saves one (the Workbook stream at least 4096 bytes)."""
 
     storages = ("_VBA_PROJECT_CUR",) if macros else ()
-    return ole_file({"Workbook": biff_workbook(sheets, encrypted=encrypted, datemode=datemode)}, storages)
+    stream = biff_workbook(sheets, encrypted=encrypted, datemode=datemode, shared_sheets=shared_sheets)
+    return ole_file({"Workbook": stream}, storages)

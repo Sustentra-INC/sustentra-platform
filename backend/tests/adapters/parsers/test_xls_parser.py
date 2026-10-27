@@ -6,7 +6,9 @@ format): a BIFF8 workbook in an OLE2 file, the records Excel saves.
 
 from __future__ import annotations
 
-from datetime import datetime, time
+import time
+from datetime import datetime
+from datetime import time as clock
 from pathlib import Path
 from typing import Any
 
@@ -106,7 +108,7 @@ def test_an_xls_reads_like_the_same_workbook_saved_as_xlsx(tmp_path: Path, workb
 def test_values_come_out_as_openpyxl_gives_them(tmp_path: Path) -> None:
     rows = [
         ["Delivered", "Gallons", "Price", "Metered", "Check", "Large", "Start", "Note"],
-        [datetime(2025, 2, 10), 28100, 3.25, True, ErrorCell(0x07), 2**40, time(8, 30), "Ünïcødé ✓"],
+        [datetime(2025, 2, 10), 28100, 3.25, True, ErrorCell(0x07), 2**40, clock(8, 30), "Ünïcødé ✓"],
         [datetime(2025, 3, 1, 14, 5), -12, 0.1, False, ErrorCell(0x2A), 1e20, None, "  "],
     ]
     expected = ExcelParser().parse(_xlsx(tmp_path, {"Deliveries": rows}), "DOC-1", "RUN-1")
@@ -215,7 +217,13 @@ def test_macros_are_noted_and_never_run(tmp_path: Path) -> None:
     assert plain["warnings"] == []
 
 
-def test_a_looping_sector_chain_is_refused_before_xlrd_follows_it(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.parametrize("streams, looping", [
+    ({"Workbook": "small"}, "Workbook"),
+    ({"Workbook": "empty"}, "Workbook"),  # an empty stream's chain is followed too
+    ({"Workbook": "empty", "Book": "small"}, "Book"),  # xlrd falls back from an empty Workbook to Book
+], ids=["small_workbook", "empty_workbook", "book_after_empty_workbook"])
+def test_a_looping_sector_chain_is_refused_before_xlrd_follows_it(tmp_path: Path, monkeypatch, streams: dict,
+                                                                  looping: str) -> None:
     # xlrd follows a small stream's mini-sector chain without a loop check: it would never end.
     import xlrd
 
@@ -223,11 +231,33 @@ def test_a_looping_sector_chain_is_refused_before_xlrd_follows_it(tmp_path: Path
         raise AssertionError("xlrd must not read a workbook whose sector chain loops")
 
     monkeypatch.setattr(xlrd, "open_workbook", never)
+    body = {"small": biff_workbook({"S": [["a"] * 40]}, pad_to=0), "empty": b""}
     path = tmp_path / "loop.xls"
-    path.write_bytes(ole_file({"Workbook": biff_workbook({"S": [["a"] * 40]}, pad_to=0)}, loop_mini_chain=True))
+    path.write_bytes(ole_file({name: body[kind] for name, kind in streams.items()}, loop_mini_chain=looping))
+    started = time.perf_counter()
+    output = XlsParser().parse(path, "D", "R")
+    assert time.perf_counter() - started < 1
+    assert output["status"] == "failed"
+    assert output["warnings"][0]["code"] == "workbook_load_failed"
+
+
+@pytest.mark.parametrize("entries", [24, 40])
+def test_a_directory_shaped_as_a_dag_is_refused_in_time(tmp_path: Path, entries: int) -> None:
+    # Every entry is both siblings of the one before: xlrd's recursive tree builder, which
+    # has no visited set, would make 2^N calls (24 entries took 10 s, 40 never finished).
+    from backend.app.services.document_content_service import UnreadableContent, document_content
+
+    path = tmp_path / "dag.xls"
+    path.write_bytes(ole_file({"Workbook": biff_workbook({"S": [["Gallons", 450]]})},
+                              tuple(f"S{n}" for n in range(entries)), dag=True))
+    started = time.perf_counter()
     output = XlsParser().parse(path, "D", "R")
     assert output["status"] == "failed"
     assert output["warnings"][0]["code"] == "workbook_load_failed"
+    assert "reached twice" in output["warnings"][0]["message"]
+    with pytest.raises(UnreadableContent):  # the source pane is refused just as fast
+        document_content(path)
+    assert time.perf_counter() - started < 1
 
 
 @pytest.mark.parametrize("damage", ["truncated", "garbage", "no_workbook_stream"])
@@ -283,17 +313,76 @@ def test_reading_is_bounded(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_each_sheet_is_dropped_once_read(tmp_path: Path) -> None:
-    book, notes = xls_parser.open_xls(_xls(tmp_path, {"A": [["a"]], "B": [["b"]]}))
+    book, notes = xls_parser.open_xls(_xls(tmp_path, {"A": [["a", None, "  ", 2]], "B": [[], [None, "b"]]}))
     try:
         assert notes == []
-        sheets = xls_worksheets(book)
+        sheets = xls_worksheets(book, xls_parser.XlsBudget())
         name, rows = next(sheets)
         assert not book.sheet_loaded(0)  # nothing is loaded until its rows are read
-        assert (name, list(rows)) == ("A", [["a"]])
+        # Only filled cells, by column: empty and whitespace-only cells are left out.
+        assert (name, list(rows)) == ("A", [[(0, "a"), (3, 2)]])
         assert not book.sheet_loaded(0)
-        assert [(name, list(rows)) for name, rows in sheets] == [("B", [["b"]])]
+        assert [(name, list(rows)) for name, rows in sheets] == [("B", [[], [(1, "b")]])]
     finally:
         book.release_resources()
+
+
+def _wide_rows(count: int) -> list[Any]:
+    return [{255: 1.5} for _ in range(count)]  # one number per row, in the last column (IV)
+
+
+def test_wide_sparse_sheets_are_read_in_bounded_time_and_size(tmp_path: Path) -> None:
+    # One number per row in column IV makes every row 256 cells wide: 3 sheets of 20,000 such
+    # rows used to be converted and stored in full (5 x 50,000 took 15 s and 915 MB).
+    path = _xls(tmp_path, {f"S{n}": _wide_rows(20_000) for n in range(3)})
+    started = time.perf_counter()
+    output = XlsParser().parse(path, "D", "R")
+    elapsed = time.perf_counter() - started
+    assert elapsed < 3, elapsed
+    assert output["status"] == "partial"
+    assert sum(len(row) for table in output["tables"] for row in table["rows"]) <= xls_parser.MAX_XLS_TABLE_SLOTS
+    assert "table cells" in output["warnings"][-1]["message"]
+    # The pane looks at its 60 columns only, so it finds these rows empty, and fast.
+    from backend.app.services.document_content_service import document_content
+
+    started = time.perf_counter()
+    assert document_content(path)["sheets"] == []
+    assert time.perf_counter() - started < 3
+
+
+def test_sheets_that_share_their_data_are_refused(tmp_path: Path) -> None:
+    # 100 BOUNDSHEET records all pointing at one 50,000-row sheet made xlrd load it 100 times.
+    path = _xls(tmp_path, {"S": _wide_rows(50_000)}, shared_sheets=99)
+    started = time.perf_counter()
+    output = XlsParser().parse(path, "D", "R")
+    assert time.perf_counter() - started < 2
+    assert (output["status"], output["warnings"][0]["code"]) == ("failed", "workbook_load_failed")
+    assert output["warnings"][0]["message"] == xls_parser.DAMAGED_SHEETS
+
+
+def test_sheets_that_overlap_are_refused(tmp_path: Path, monkeypatch) -> None:
+    # Overlapping sheets make xlrd read more than the workbook holds: stop at the first one.
+    real_open = xls_parser.open_xls
+
+    def short_stream(path: Path):
+        book, notes = real_open(path)
+        book.stream_len = 10  # as if the sheets' records added up to more than the stream
+        return book, notes
+
+    monkeypatch.setattr(xls_parser, "open_xls", short_stream)
+    output = XlsParser().parse(_xls(tmp_path, {"A": [["a"]], "B": [["b"]]}), "D", "R")
+    assert (output["status"], output["warnings"][0]["message"]) == ("failed", xls_parser.DAMAGED_SHEETS)
+
+
+def test_loading_stops_once_enough_rows_are_loaded(tmp_path: Path, monkeypatch) -> None:
+    # xlrd builds every row up to a sheet's last one when it loads it, empty or not.
+    monkeypatch.setattr(xls_parser, "MAX_XLS_LOADED_ROWS", 3)
+    rows: list[Any] = [[], [], ["a"]]
+    output = XlsParser().parse(_xls(tmp_path, {"A": rows, "B": [["b"]], "C": [["c"]]}), "D", "R")
+    assert output["status"] == "partial"
+    assert [(sheet, text) for sheet, _, text, _ in _cells(output)] == [("A", "a")]
+    assert output["warnings"][-1]["message"] == (
+        "The workbook is larger than can be read here. Reading stopped before sheet 'B' (3 rows already loaded).")
 
 
 def test_xlrd_writes_nothing_to_stdout(tmp_path: Path, capsys) -> None:
