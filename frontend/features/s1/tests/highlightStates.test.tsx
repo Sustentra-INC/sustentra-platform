@@ -7,12 +7,17 @@ import { render, screen } from "@testing-library/react";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../lib/api", () => ({
-  api: vi.fn().mockResolvedValue({ pages: 1 }),
+  // A one-page PDF, or a text file of one line for the content view.
+  api: vi.fn((path: string) =>
+    Promise.resolve(path.endsWith("/content") ? { kind: "lines", truncated: false, lines: ["Total kWh Used: 182,400 kWh"] } : { pages: 1 })
+  ),
   apiPath: (path: string) => `/api/v1${path}`,
 }));
 
 import { BackendPageView } from "../components/BackendPageView";
+import { DocumentContentView } from "../components/DocumentContentView";
 import type { PageMark } from "../types/review";
+import { markState } from "../utils/markState";
 
 /**
  * A figure on a client's document is highlighted by its review state, the same way in the
@@ -43,7 +48,7 @@ describe("an uploaded page's highlights", () => {
       "s1-pv__box s1-pv__box--corrected",
       "s1-pv__box s1-pv__box--requested is-sel",
     ]);
-    expect(screen.getByRole("button", { current: true })).toHaveProperty("title", "Utility: Puget Sound Energy");
+    expect(screen.getByRole("button", { current: true })).toHaveProperty("title", "Utility: Puget Sound Energy, requested");
     expect(container.querySelector(".s1-pv__mark")).toBeNull();
   });
 
@@ -51,6 +56,39 @@ describe("an uploaded page's highlights", () => {
     const { container } = render(<BackendPageView documentId="DOC" span={MARKS[0].span} marks={MARKS} />);
     await screen.findByRole("img");
     expect(Array.from(container.querySelectorAll(".s1-pv__box")).map((b) => b.className)).toEqual(["s1-pv__box s1-pv__box--alone is-sel"]);
+  });
+});
+
+describe("a highlight shared by several values", () => {
+  // An amount and its unit read from one line: the amount accepted, the unit still to review.
+  const line = span(0.4);
+  const SHARED: PageMark[] = [
+    { id: "kwh", span: line, anchor: { kind: "line", line: 1 }, rawText: "182,400", label: "Electricity consumed: 182.4 MWh", reviewState: "accepted" },
+    { id: "unit", span: line, anchor: { kind: "line", line: 1 }, rawText: "182,400", label: "Electricity unit: MWh", reviewState: "to_review" },
+  ];
+  const NAME = "Select Electricity consumed: 182.4 MWh, accepted · Electricity unit: MWh, to review";
+
+  it("takes the most urgent state of its values, as the demo's documents do", () => {
+    const of = (...states: PageMark["reviewState"][]) => markState(states.map((reviewState) => ({ reviewState })));
+    expect(of("accepted", "to_review")).toBe("to_review");
+    expect(of("accepted", "corrected", "requested")).toBe("requested");
+    expect(of("accepted", "corrected")).toBe("corrected");
+    expect(of("accepted")).toBe("accepted");
+  });
+
+  it("reads 'to review' on a page, and names each value with its state", async () => {
+    const { container } = render(<BackendPageView documentId="DOC" span={null} marks={SHARED} onPickMark={vi.fn()} />);
+    const box = await screen.findByRole("button", { name: NAME });
+    expect(box.className).toBe("s1-pv__box s1-pv__box--to_review");
+    expect(box.getAttribute("title")).toBe(NAME.replace("Select ", ""));
+    expect(container.querySelectorAll(".s1-pv__box")).toHaveLength(1);
+  });
+
+  it("reads 'to review' in a file's line too, with the same name", async () => {
+    render(<DocumentContentView documentId="DOC" marks={SHARED} selectedId={null} />);
+    const mark = await screen.findByRole("button", { name: NAME });
+    expect(mark.className).toBe("s1-cv__mark s1-cv__mark--to_review");
+    expect(mark.textContent).toBe("182,400");
   });
 });
 

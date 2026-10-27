@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { api, apiPath } from "../../../lib/api";
 import type { PageMark, ReviewSpan } from "../types/review";
+import { markName, markState } from "../utils/markState";
 
 /**
  * The uploaded document's page as an image, every value read from it highlighted where the
@@ -142,17 +143,18 @@ export function BackendPageView({
         />
         {boxes.map((group) => {
           const [first] = group;
-          const labels = group.map((m) => m.label).join(" · ");
+          // Every value on the box, each with its state; the box shows the most urgent one.
+          const name = markName(group);
           const selected = boxKey(first.span) === selectedKey;
           return (
             <button
               key={first.id}
               ref={selected ? keepMark : undefined}
               type="button"
-              className={`s1-pv__box s1-pv__box--${first.reviewState}${selected ? " is-sel" : ""}`}
+              className={`s1-pv__box s1-pv__box--${markState(group)}${selected ? " is-sel" : ""}`}
               style={place(first.span)}
-              title={labels}
-              aria-label={`Select ${labels}`}
+              title={name}
+              aria-label={`Select ${name}`}
               aria-current={selected || undefined}
               onClick={() => onPickMark?.(first)}
             />
