@@ -26,6 +26,7 @@ from backend.tests.adapters.parsers._xls_builder import (  # noqa: E402
     ErrorCell,
     FormulaCell,
     biff_workbook,
+    embedded_block_xls,
     ole_file,
     xls_bytes,
 )
@@ -383,6 +384,70 @@ def test_sheets_that_point_at_the_same_records_are_refused(tmp_path: Path, overl
         document_content(path)
 
 
+def test_a_sheet_with_an_embedded_block_that_hides_an_overlap_is_refused(tmp_path: Path) -> None:
+    # xlrd reads a worksheet past an embedded BOF...EOF block (a chart) to the sheet's real EOF.
+    # A reader that stopped at the embedded block's inner EOF would miss a second sheet whose
+    # records start after it but before the real EOF; the span walk now reads past the block.
+    path = tmp_path / "embed_overlap.xls"
+    path.write_bytes(embedded_block_xls(overlap=True))
+    started = time.perf_counter()
+    output = XlsParser().parse(path, "D", "R")
+    assert time.perf_counter() - started < 2
+    assert (output["status"], output["warnings"][0]["message"]) == ("failed", xls_parser.DAMAGED_SHEETS)
+
+    from backend.app.services.document_content_service import UnreadableContent, document_content
+
+    with pytest.raises(UnreadableContent):
+        document_content(path)
+
+
+def test_a_sheet_with_a_legitimate_embedded_chart_still_parses(tmp_path: Path) -> None:
+    path = tmp_path / "embed_legit.xls"
+    path.write_bytes(embedded_block_xls(overlap=False))
+    started = time.perf_counter()
+    output = XlsParser().parse(path, "D", "R")
+    assert time.perf_counter() - started < 2
+    assert output["status"] == "parsed"  # the embedded chart block is read past, both sheets kept
+    assert {ref["sheet_name"] for ref in output["source_references"]} == {"A", "B"}
+
+    from backend.app.services.document_content_service import document_content
+
+    assert {sheet["name"] for sheet in document_content(path)["sheets"]} == {"A", "B"}
+
+
+def test_the_span_walk_reads_past_an_embedded_block_but_an_inner_eof_still_ends_a_plain_sheet() -> None:
+    # Unit check of the mirror: an embedded BOF...EOF inside sheet A does not end A's span (a
+    # second sheet starting after the block's inner EOF is caught), while a plain sheet still
+    # ends at its own EOF (a second sheet right after is accepted).
+    base = 100
+    own_bof = _records((0x0809, b"\x00" * 16))
+    embedded = _records((0x0809, b"\x00" * 4), (0x000A, b""))  # embedded BOF then its inner EOF
+    filler = _records((0x003C, b"\x00" * 20))
+    sheet_a = own_bof + embedded + filler + _EOF
+    hidden_start = base + len(own_bof) + len(embedded)  # between the inner EOF and the real EOF
+
+    hidden = _FakeBook({base: sheet_a})
+    hidden._sh_abs_posn = [base, hidden_start]
+    with pytest.raises(xls_parser.XlsError, match="damaged"):
+        xls_parser._check_sheet_spans(hidden)
+
+    after = _FakeBook({base: sheet_a, base + len(sheet_a): _SHEET})  # a clean next sheet after the real EOF
+    xls_parser._check_sheet_spans(after)  # accepted
+
+
+def test_the_span_guard_is_skipped_for_biff4w() -> None:
+    # xlrd leaves BIFF4W sheet offsets after the first at -1 and loads them eagerly; the guard
+    # would refuse start < base, so it is skipped for BIFF4W (biff_version 45).
+    book = _FakeBook({100: _SHEET}, biff_version=45)
+    book._sh_abs_posn = [100, -1]  # xlrd's placeholder for later BIFF4W sheets
+    xls_parser._check_sheet_spans(book)  # no raise
+
+    not_biff4w = _FakeBook({100: _SHEET})
+    not_biff4w._sh_abs_posn = [100, -1]
+    with pytest.raises(xls_parser.XlsError, match="damaged"):
+        xls_parser._check_sheet_spans(not_biff4w)
+
+
 @pytest.mark.parametrize("shift", [0, 1])
 def test_a_file_with_an_invalid_sector_size_fails_cleanly(tmp_path: Path, shift: int) -> None:
     # Sector shift 0 or 1 made ole.read_directory raise struct.error, which escaped _check_ole
@@ -399,8 +464,10 @@ def test_a_file_with_an_invalid_sector_size_fails_cleanly(tmp_path: Path, shift:
 class _FakeBook:
     """Just the four attributes the span guard reads (xlrd 2.0.2 sets these once)."""
 
-    def __init__(self, records_by_start: dict[int, bytes], base: int = 100, stream_len: int | None = None) -> None:
+    def __init__(self, records_by_start: dict[int, bytes], base: int = 100, stream_len: int | None = None,
+                 biff_version: int = 80) -> None:
         self.base = base
+        self.biff_version = biff_version
         parts = {start: data for start, data in records_by_start.items()}
         end = max((start + len(data) for start, data in parts.items()), default=base)
         buffer = bytearray(end)

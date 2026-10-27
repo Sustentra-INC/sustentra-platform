@@ -61,6 +61,7 @@ ZIP_SIGNATURE = b"PK\x03\x04"
 # The BOF record that opens a bare BIFF2, 3, 4 or 5-8 stream.
 _BIFF_BOF_RECORDS = {b"\x09\x00", b"\x09\x02", b"\x09\x04", b"\x09\x08"}
 _XL_EOF = 0x000A  # the BIFF record that ends a substream
+_BOF_CODES = (0x0809, 0x0409, 0x0209, 0x0009)  # xlrd's bofcodes (biffh.py)
 
 MAX_XLS_BYTES = 32 * 1024 * 1024  # above the 25 MB upload limit; a larger file is not opened
 MAX_XLS_SHEETS = 100
@@ -174,9 +175,18 @@ def _check_sheet_spans(book: Any) -> None:
     when the file is sound, so the total bytes walked are bounded by the stream; a span that
     overlaps another, or runs past the stream, is damaged.
 
-    This reads only ``mem``, ``base``, ``stream_len`` and ``_sh_abs_posn`` -- set once when the
-    globals are parsed and never reset by a sheet load (unlike ``_position``)."""
+    The walk mirrors xlrd 2.0.2 ``Sheet.read``: the sheet's own BOF is consumed first; then an
+    EOF ends the sheet, while an embedded BOF (any of ``_BOF_CODES``, e.g. an embedded chart)
+    makes xlrd consume records up to that block's first EOF and carry on -- so that inner EOF
+    does not end the span. A block without its EOF runs to the end of the stream.
 
+    This reads only ``mem``, ``base``, ``stream_len``, ``biff_version`` and ``_sh_abs_posn`` --
+    set once when the globals are parsed and never reset by a sheet load (unlike ``_position``).
+    BIFF4W (Excel 4.0 workbooks) is skipped: xlrd leaves every sheet offset after the first at
+    -1 and loads the sheets eagerly while opening, so there is nothing left to guard."""
+
+    if getattr(book, "biff_version", None) == 45:
+        return
     mem = getattr(book, "mem", None)
     starts = getattr(book, "_sh_abs_posn", None)
     base = getattr(book, "base", None)
@@ -185,19 +195,32 @@ def _check_sheet_spans(book: Any) -> None:
         return  # not the xlrd 2.0.2 layout: leave the row-count cap as the only bound
     end_bound = min(base + stream_len, len(mem))
     budget = stream_len + 4 * (len(starts) + 1)  # bytes we may walk: the stream, plus one header per sheet
+
+    def next_record(pos: int) -> tuple[int | None, int]:
+        """The record at ``pos`` (its code, and where the next one starts); None at the end."""
+
+        nonlocal budget
+        if pos + 4 > end_bound:
+            return None, pos
+        code, length = unpack("<HH", mem[pos:pos + 4])
+        budget -= 4 + length
+        pos += 4 + length
+        if budget < 0 or pos > end_bound:
+            raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
+        return code, pos
+
     spans: list[tuple[int, int]] = []
     for start in starts:
         if not base <= start < end_bound:
             raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
-        pos = start
-        while pos + 4 <= end_bound:
-            code, length = unpack("<HH", mem[pos:pos + 4])
-            pos += 4 + length
-            budget -= 4 + length
-            if budget < 0 or pos > end_bound:
-                raise XlsError("workbook_load_failed", DAMAGED_SHEETS)
-            if code == _XL_EOF:
+        _own_bof, pos = next_record(start)  # xlrd's getbof consumes the sheet's own BOF
+        while True:
+            code, pos = next_record(pos)
+            if code is None or code == _XL_EOF:
                 break
+            if code in _BOF_CODES:  # an embedded block: xlrd reads on to its first EOF, then carries on
+                while code is not None and code != _XL_EOF:
+                    code, pos = next_record(pos)
         spans.append((start, pos))
     reach = base
     for start, stop in sorted(spans):
