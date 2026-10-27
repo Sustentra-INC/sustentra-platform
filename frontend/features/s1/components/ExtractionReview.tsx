@@ -72,6 +72,7 @@ const SCOPE_LABEL: Record<ScopePlacement, string> = {
   scope1: "Scope 1",
   scope2_location: "Scope 2 · location-based",
   scope2_market: "Scope 2 · market-based",
+  scope2_both: "Scope 2 · location- and market-based",
   not_placed: "Not placed",
 };
 
@@ -1363,9 +1364,12 @@ function readings(values: ReviewValue[]): ReviewValue[][] {
   return [...map.values()];
 }
 
-/** The scopes a reading feeds, as chips: location- and market-based share one. */
+/** The scopes a reading feeds, as chips: location- and market-based share one, whether they
+ *  come as two values (the demo) or one value placed in both (a backend quantity). */
 function scopeChips(vs: ReviewValue[]): { scope: ScopePlacement; label: string }[] {
-  const scopes = distinct(vs.map((v) => v.scope)) as ScopePlacement[];
+  const scopes = distinct(
+    vs.flatMap((v) => (v.scope === "scope2_both" ? ["scope2_location", "scope2_market"] : [v.scope]))
+  ) as ScopePlacement[];
   if (scopes.includes("scope2_location") && scopes.includes("scope2_market")) {
     return [
       { scope: "scope2_location", label: "Scope 2 · location- and market-based" },

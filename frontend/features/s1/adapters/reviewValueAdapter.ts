@@ -60,7 +60,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         notYetKnown: true,
         period: periods.get(field.documentId) ?? "Period not extracted",
         whatItIs: field.fieldLabel,
-        scope: scopeOf(field.canonicalTypeId),
+        scope: scopeOf(field.canonicalTypeId, fieldNameOf(field)),
         value: (corrected ? field.correctedValue : field.value) ?? "",
         unit: (corrected ? field.correctedUnit ?? field.unit : field.unit) ?? "",
         methodologyFieldId: fieldNameOf(field) ?? undefined,
@@ -140,8 +140,48 @@ function periodsByDocument(fields: ExtractedField[]): Map<string, string> {
   return out;
 }
 
-function scopeOf(canonicalTypeId: string | null): ScopePlacement {
-  if (canonicalTypeId === "CT-S2-ELEC" || canonicalTypeId === "CT-S2-THERMAL") return "scope2_location";
+/** Fields that say whose, where and when a record is: they serve every scope. */
+const GENERAL_FIELDS = new Set([
+  "facility_name",
+  "service_address",
+  "account_number",
+  "supplier_name",
+  "service_period_start",
+  "service_period_end",
+  "transaction_date",
+  "service_date",
+  "merchant_or_supplier",
+  "fueling_location",
+  "vehicle_or_equipment_id",
+  "transaction_id",
+  "equipment_id",
+  "service_provider",
+]);
+
+/** Fields the recalculation turns into emissions: the quantity, its unit, what was burned,
+ *  bought or charged, and (refrigerant) the material balance's terms. */
+const CALCULATION_FIELDS = new Set([
+  "activity_quantity",
+  "activity_unit",
+  "fuel_type",
+  "energy_type",
+  "refrigerant_type",
+  "refrigerant_added",
+  "refrigerant_recovered",
+  "equipment_capacity",
+  "service_type",
+]);
+
+/**
+ * Where a value counts, by its document's type and its field, as the demo places its values:
+ * an electricity or thermal quantity feeds Scope 2 location- and market-based alike (the
+ * recalculation computes both bases from it), a fuel or refrigerant quantity feeds Scope 1, the
+ * fields that say whose, where and when are general, and anything else is not placed.
+ */
+function scopeOf(canonicalTypeId: string | null, fieldName: string | null): ScopePlacement {
+  if (fieldName && GENERAL_FIELDS.has(fieldName)) return "general";
+  if (!fieldName || !CALCULATION_FIELDS.has(fieldName)) return "not_placed";
+  if (canonicalTypeId === "CT-S2-ELEC" || canonicalTypeId === "CT-S2-THERMAL") return "scope2_both";
   if (canonicalTypeId?.startsWith("CT-S1-")) return "scope1";
   return "not_placed";
 }
