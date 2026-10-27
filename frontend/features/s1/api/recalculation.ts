@@ -217,7 +217,12 @@ export interface Recalculation {
   /** Reviewed records entirely outside the reporting period: listed, never counted. */
   excluded?: ExcludedRecord[];
   not_recalculated: string[];
+  /** Documents read: every document whose records fed the recalculation, reviewed or not. */
   documents_considered: number;
+  /** Of those, the fully reviewed documents: nothing open on any record (no value awaiting
+   *  review, no question about one of its values). A partly reviewed document is not counted,
+   *  although its reviewed values feed the totals. Absent from results computed before it. */
+  documents_reviewed?: number;
   /** Missing months, duplicates, overlapping and cross-year bills (formula library checks).
    *  Absent from results computed before the checks. */
   quality_checks?: QualityCheck[];
@@ -790,6 +795,35 @@ export function recalculationRows(result: Recalculation): VerificationRow[] {
   });
 }
 
+/** The documents read that are not fully reviewed: "3 more with values awaiting review, 1 more
+ *  needing an input". A document with even one value awaiting review counts here, not as
+ *  fully reviewed, although its reviewed values already feed the totals; so the two counts
+ *  never overlap. Empty when nothing is open, or for results without documents_reviewed. */
+export function documentsStillOpen(result: Recalculation): string {
+  const reviewed = result.documents_reviewed;
+  if (reviewed === undefined) return "";
+  const awaiting = new Set(result.awaiting_review.map((a) => a.document_id)).size;
+  // Read, nothing awaiting review, but a question about one of its values is open.
+  const needInput = Math.max(0, result.documents_considered - reviewed - awaiting);
+  const more = reviewed > 0 ? " more" : "";
+  return [
+    awaiting ? `${awaiting}${more} with values awaiting review` : "",
+    needInput ? `${needInput}${more} needing an input` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** "1 fully reviewed document (3 more with values awaiting review)": the documents with
+ *  nothing open on any record, then the documents read that are still open. Results computed
+ *  before documents_reviewed existed keep the old wording. */
+export function documentsBasis(result: Recalculation): string {
+  const reviewed = result.documents_reviewed;
+  if (reviewed === undefined) return `${result.documents_considered} document(s) with reviewed values`;
+  const open = documentsStillOpen(result);
+  return `${reviewed} fully reviewed ${reviewed === 1 ? "document" : "documents"}` + (open ? ` (${open})` : "");
+}
+
 /** Materiality on the headline totals only (Scope 1 + Scope 2 location-based), so nothing is
  *  counted twice. The total is what was reported; where a total was not entered yet, the
  *  recalculated one stands in (and the label says so) rather than shrinking the threshold. */
@@ -818,7 +852,7 @@ export function recalculationMateriality(result: Recalculation): MaterialityFigu
     uncorrected,
     note:
       `Misstatement is the difference between reported and recalculated Scope 1 and Scope 2 (location-based) ` +
-      `totals, from ${result.documents_considered} document(s) with reviewed values, at ${result.gwp_set} GWPs. ` +
+      `totals, from ${documentsBasis(result)}, at ${result.gwp_set} GWPs. ` +
       (open
         ? `${open} item(s) still need an input or a review, so the conclusion stays provisional.`
         : allReported
