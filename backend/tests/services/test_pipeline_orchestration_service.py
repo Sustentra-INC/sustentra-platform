@@ -1,5 +1,6 @@
 import copy
 import json
+from pathlib import Path
 
 import pytest
 
@@ -741,3 +742,48 @@ def test_a_photo_or_scan_says_it_needs_ocr_while_textract_is_off(monkeypatch):
     assert PipelineOrchestrationService._unreadable_halt(corrupt)["code"] == "unreadable_document"
     monkeypatch.setenv("TEXTRACT_ENABLED", "true")  # with OCR on, a scan that still fails is unreadable
     assert PipelineOrchestrationService._unreadable_halt(scan)["code"] == "unreadable_document"
+
+
+def test_a_password_protected_file_says_so_and_what_to_ask_for():
+    from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
+
+    locked = {"status": "failed", "parser_name": "xlrd",
+              "warnings": [{"code": "password_protected", "message": "This workbook is password-protected."}]}
+    assert PipelineOrchestrationService._unreadable_halt(locked) == {
+        "code": "password_protected",
+        "message": "This file is password-protected, so it could not be read. Ask the client for a copy without "
+                   "a password.",
+    }
+
+
+@pytest.mark.parametrize("name", ["XLSX-FUEL-001", "XLSX-MULTI-002"])
+def test_an_xls_fuel_log_gives_the_same_values_as_the_same_xlsx(tmp_path, name):
+    # The whole pipeline (targets, extraction, records) on a real fuel log and its .xls twin.
+    from openpyxl import load_workbook
+
+    from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
+    from backend.tests.adapters.parsers._xls_builder import xls_bytes
+
+    xlsx = Path(__file__).resolve().parents[3] / "parser_reliability_test_set" / "raw_documents" / "excel" / f"{name}.xlsx"
+    book = load_workbook(xlsx, data_only=True)
+    xls = tmp_path / f"{name}.xls"
+    xls.write_bytes(xls_bytes({sheet.title: [list(row) for row in sheet.iter_rows(min_row=1, min_col=1, values_only=True)]
+                               for sheet in book.worksheets}))
+
+    def run(path: Path) -> dict:
+        service = PipelineOrchestrationService(pipeline_repository=InMemoryPipelineRunRepository(),
+                                               extraction_result_repository=InMemoryExtractionResultRepository())
+        return service.process_local_document(local_file_path=str(path), engagement_id="ENG-1", document_id="DOC-1",
+                                              evidence_id="EV-1", processing_run_id="RUN-1", persist_run=False,
+                                              canonical_type_id_override="CT-S1-FUELQTY")
+
+    def values(result: dict) -> list[tuple]:
+        return [(item["field_name"], item["normalized_value"], item.get("unit"), item["source_reference"].get("sheet_name"),
+                 item["source_reference"].get("cell_or_range"), item["source_reference"].get("text_snippet"))
+                for item in result["extraction_result"]["items"]]
+
+    expected, actual = run(xlsx), run(xls)
+    assert actual["parser_output"]["parser_name"] == "xlrd"
+    assert actual["pipeline_run"]["status"] == expected["pipeline_run"]["status"] == "completed"
+    assert actual["extraction_result"]["record_count"] == expected["extraction_result"]["record_count"]
+    assert values(expected) and values(actual) == values(expected)

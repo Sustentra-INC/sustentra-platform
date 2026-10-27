@@ -20,6 +20,7 @@ tenacity
 python-dotenv
 pandas
 openpyxl
+xlrd
 pymupdf
 pdfplumber
 pillow

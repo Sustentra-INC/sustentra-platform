@@ -337,6 +337,48 @@ def test_a_workbook_is_its_sheets_with_cell_positions(env: dict) -> None:
     assert notes["rows"] == [{"number": 2, "cells": [None, None, "Generator only"]}]
 
 
+def _xls(**options) -> bytes:
+    from backend.tests.adapters.parsers._xls_builder import xls_bytes
+
+    return xls_bytes({"2025 log": [["Date", "Site", None, "Gallons"], [], ["02/10/2025", "Richmond", None, 450]],
+                      "Notes": [[], [None, None, "Generator only"]]}, **options)
+
+
+def test_an_excel_97_2003_workbook_is_drawn_like_the_same_xlsx(env: dict) -> None:
+    xlsx = env["upload"]("log.xlsx", _xlsx(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    xls = env["upload"]("log.xls", _xls(), "application/vnd.ms-excel")
+    response = env["client"].get(url(xls, "content"))
+    assert response.status_code == 200 and response.headers["cache-control"] == "private, no-store"
+    assert response.json() == env["client"].get(url(xlsx, "content")).json()
+    # An .xlsx saved with an .xls name is still drawn.
+    renamed = env["upload"]("renamed.xls", _xlsx(), "application/vnd.ms-excel")
+    assert env["client"].get(url(renamed, "content")).json()["sheets"][0]["name"] == "2025 log"
+
+
+def test_an_xls_that_cannot_be_read_says_why(env: dict) -> None:
+    from backend.app.adapters.parsers.xls_parser import NOT_A_LEGACY_WORKBOOK, PASSWORD_PROTECTED
+
+    page = env["upload"]("export.xls", b"<html><table><tr><td>450</td></tr></table></html>", "application/vnd.ms-excel")
+    response = env["client"].get(url(page, "content"))
+    assert (response.status_code, response.json()["detail"]) == (422, NOT_A_LEGACY_WORKBOOK)
+    locked = env["upload"]("locked.xls", _xls(encrypted=True), "application/vnd.ms-excel")
+    response = env["client"].get(url(locked, "content"))
+    assert (response.status_code, response.json()["detail"]) == (422, PASSWORD_PROTECTED)
+    damaged = env["upload"]("damaged.xls", _xls()[:700], "application/vnd.ms-excel")
+    assert env["client"].get(url(damaged, "content")).status_code == 422
+
+
+def test_processing_a_password_protected_workbook_halts_with_what_to_ask_for(env: dict) -> None:
+    doc = env["upload"]("locked.xls", _xls(encrypted=True), "application/vnd.ms-excel")
+    env["act_as"]("org_member", ORG_A)
+    response = env["client"].post(url(doc, "pipeline/process"), json={})
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "This file is password-protected, so it could not be read. Ask the client for a copy without a password.")
+    result = env["client"].get(url(doc, "extraction-result/latest")).json()
+    assert result["items"] == [] and result["status"] == "failed"
+
+
 def test_csv_rows_keep_their_line_numbers_and_text_is_its_non_empty_lines(env: dict) -> None:
     csv = env["upload"]("log.csv", b"Date,Gallons\n\n02/10/2025,450\n", "text/csv")
     body = env["client"].get(url(csv, "content")).json()

@@ -55,6 +55,8 @@ CLASSIFIER_TARGET_STATUSES = {"classified", "multi_type_candidate"}
 HALT_UNREADABLE = "unreadable_document"
 # A photo or a scan without a text layer while OCR (Textract) is off: readable once it is on.
 HALT_OCR_REQUIRED = "ocr_required"
+# An encrypted file (a reader said ``password_protected``): readable once a copy without one arrives.
+HALT_PASSWORD_PROTECTED = "password_protected"
 PDF_PARSER_NAMES = {"pymupdf", "pdfplumber", "pdf_parser"}
 HALT_UNSUPPORTED = "unsupported_document"
 LOW_CONFIDENCE_THRESHOLD = 0.5
@@ -679,6 +681,10 @@ class PipelineOrchestrationService:
             "while OCR is off, a password-protected or corrupt file)."
         )
         codes = {str(w.get("code")) for w in (parser_output.get("warnings") or []) if isinstance(w, dict)}
+        if "password_protected" in codes:
+            return {"code": HALT_PASSWORD_PROTECTED,
+                    "message": "This file is password-protected, so it could not be read. Ask the client for "
+                               "a copy without a password."}
         scanned_pdf = "empty_page_text" in codes and parser_output.get("parser_name") in PDF_PARSER_NAMES
         if ("ocr_not_implemented" in codes or scanned_pdf) and not ParserService._textract_enabled():
             return {"code": HALT_OCR_REQUIRED,

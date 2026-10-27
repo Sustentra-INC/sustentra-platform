@@ -1,0 +1,199 @@
+"""Small Excel 97-2003 (.xls) workbooks, written by the tests themselves.
+
+Nothing among the dependencies writes .xls (xlrd only reads it), and a binary fixture
+says nothing about what it holds, so the tests write the format: a BIFF8 workbook stream
+in an OLE2 compound file, with the records Excel saves (shared strings, RK and NUMBER
+numbers, date-formatted numbers, booleans, error cells, formulas with a cached result) and
+the hostile cases the reader must refuse or survive (encryption, a VBA project, a looping
+sector chain, an encrypted .xlsx in its OLE wrapper).
+"""
+
+from __future__ import annotations
+
+import math
+import struct
+from dataclasses import dataclass
+from datetime import date, datetime, time
+from typing import Any
+
+OLE_SIGNATURE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+FREESECT, ENDOFCHAIN, FATSECT, NOSTREAM = 0xFFFFFFFF, 0xFFFFFFFE, 0xFFFFFFFD, 0xFFFFFFFF
+SECTOR, MINI_SECTOR, MINI_CUTOFF = 512, 64, 4096
+
+
+@dataclass(frozen=True)
+class ErrorCell:
+    code: int  # 0x07 is #DIV/0!
+
+
+@dataclass(frozen=True)
+class FormulaCell:
+    cached: float  # the result Excel saved; the formula itself is never evaluated
+
+
+# --- BIFF8 workbook stream -------------------------------------------------------------------
+def _record(record_id: int, data: bytes = b"") -> bytes:
+    assert len(data) <= 8224, "a BIFF8 record holds at most 8224 bytes"
+    return struct.pack("<HH", record_id, len(data)) + data
+
+
+def _bof(substream: int) -> bytes:  # 0x0005 workbook globals, 0x0010 worksheet
+    return _record(0x0809, struct.pack("<HHHHII", 0x0600, substream, 0x0DBB, 0x07CC, 0, 0x06))
+
+
+def _xf(format_index: int) -> bytes:
+    return _record(0x00E0, struct.pack("<HHHBBBBIiH", 0, format_index, 0x0001, 0x20, 0, 0, 0, 0, 0, 0x20C0))
+
+
+def _utf16(text: str, length_bytes: int) -> bytes:
+    encoded = text.encode("utf-16-le")
+    prefix = struct.pack("<B" if length_bytes == 1 else "<H", len(encoded) // 2)
+    return prefix + b"\x01" + encoded  # option flags: 16-bit characters
+
+
+def _serial(value: date | datetime | time, datemode: int) -> float:
+    from openpyxl.utils.datetime import MAC_EPOCH, WINDOWS_EPOCH, to_excel
+
+    return float(to_excel(value, MAC_EPOCH if datemode else WINDOWS_EPOCH))
+
+
+def _cell(row: int, column: int, value: Any, strings: list[str], datemode: int) -> bytes:
+    if value is None:
+        return b""
+    if isinstance(value, ErrorCell):
+        return _record(0x0205, struct.pack("<HHHBB", row, column, 0, value.code, 1))
+    if isinstance(value, bool):
+        return _record(0x0205, struct.pack("<HHHBB", row, column, 0, int(value), 0))
+    if isinstance(value, FormulaCell):  # =1 with a cached (stale) result
+        tokens = b"\x1e" + struct.pack("<H", 1)  # tInt 1
+        return _record(0x0006, struct.pack("<HHHdHI", row, column, 0, value.cached, 0, 0)
+                       + struct.pack("<H", len(tokens)) + tokens)
+    if isinstance(value, (date, datetime, time)):  # XF 1: a date format
+        return _record(0x0203, struct.pack("<HHHd", row, column, 1, _serial(value, datemode)))
+    if isinstance(value, int) and -(2**29) <= value < 2**29:
+        return _record(0x027E, struct.pack("<HHHi", row, column, 0, (value << 2) | 2))  # RK integer
+    if isinstance(value, (int, float)):
+        return _record(0x0203, struct.pack("<HHHd", row, column, 0, float(value)))
+    if value == "":
+        return _record(0x0201, struct.pack("<HHH", row, column, 0))  # BLANK: formatted, no value
+    if str(value) not in strings:
+        strings.append(str(value))
+    return _record(0x00FD, struct.pack("<HHHI", row, column, 0, strings.index(str(value))))
+
+
+def biff_workbook(sheets: dict[str, list[list[Any]]], *, encrypted: bool = False, datemode: int = 0,
+                  pad_to: int = MINI_CUTOFF) -> bytes:
+    """A BIFF8 workbook stream: the globals, then one substream per sheet."""
+
+    strings: list[str] = []
+    bodies: list[bytes] = []
+    for rows in sheets.values():
+        cells = b"".join(_cell(r, c, value, strings, datemode) for r, row in enumerate(rows)
+                         for c, value in enumerate(row))
+        width = max((len(row) for row in rows), default=0)
+        dimensions = _record(0x0200, struct.pack("<IIHHH", 0, len(rows), 0, width, 0))
+        bodies.append(_bof(0x0010) + dimensions + cells + _record(0x000A))
+
+    head = _bof(0x0005)
+    if encrypted:  # FILEPASS, RC4: the records after it would be encrypted
+        head += _record(0x002F, struct.pack("<HHH", 1, 1, 1) + bytes(48))
+    head += _record(0x0042, struct.pack("<H", 1200))  # CODEPAGE: UTF-16
+    head += _record(0x0022, struct.pack("<H", datemode))  # DATEMODE: 0 = 1900, 1 = 1904
+    head += _xf(0) + _xf(14)  # XF 0 General, XF 1 the built-in date format m/d/yyyy
+    sst = _record(0x00FC, struct.pack("<II", len(strings), len(strings))
+                  + b"".join(_utf16(text, 2) for text in strings))
+    sheet_records_size = sum(len(_record(0x0085, bytes(6) + _utf16(name, 1))) for name in sheets)
+    offset = len(head) + sheet_records_size + len(sst) + len(_record(0x000A))
+    for name, body in zip(sheets, bodies):
+        head += _record(0x0085, struct.pack("<IBB", offset, 0, 0) + _utf16(name, 1))  # BOUNDSHEET
+        offset += len(body)
+    stream = head + sst + _record(0x000A) + b"".join(bodies)
+    return stream.ljust(pad_to, b"\x00")
+
+
+# --- OLE2 compound file --------------------------------------------------------------------
+def _dir_entry(name: str, kind: int, start: int, size: int, *, child: int = NOSTREAM, right: int = NOSTREAM) -> bytes:
+    encoded = (name.encode("utf-16-le") + b"\x00\x00") if name else b""
+    return (encoded.ljust(64, b"\x00") + struct.pack("<HBBIII", len(encoded), kind, 1, NOSTREAM, right, child)
+            + bytes(16 + 4 + 8 + 8) + struct.pack("<IQ", start, size))
+
+
+def ole_file(streams: dict[str, bytes], storages: tuple[str, ...] = (), *, loop_mini_chain: bool = False) -> bytes:
+    """An OLE2 (version 3, 512-byte sectors) file holding ``streams`` and empty ``storages``
+    at the top level. Streams under 4096 bytes live in the mini stream, as Office writes them."""
+
+    big = {name: data for name, data in streams.items() if len(data) >= MINI_CUTOFF}
+    small = {name: data for name, data in streams.items() if len(data) < MINI_CUTOFF}
+
+    mini_fat: list[int] = []
+    mini_data = b""
+    mini_start: dict[str, int] = {}
+    for name, data in small.items():
+        count = max(1, math.ceil(len(data) / MINI_SECTOR))
+        first = len(mini_fat)
+        mini_start[name] = first
+        mini_fat += list(range(first + 1, first + count)) + [ENDOFCHAIN]
+        mini_data += data.ljust(count * MINI_SECTOR, b"\x00")
+    if loop_mini_chain:
+        mini_fat[mini_fat.index(ENDOFCHAIN)] = 0  # the first small stream's chain points back to its start
+
+    names = list(streams) + list(storages)
+    dir_sectors = math.ceil((1 + len(names)) / 4)
+    mini_fat_sectors = math.ceil(len(mini_fat) * 4 / SECTOR)
+    mini_stream_sectors = math.ceil(len(mini_data) / SECTOR)
+    big_sectors = {name: math.ceil(len(data) / SECTOR) for name, data in big.items()}
+    rest = dir_sectors + mini_fat_sectors + mini_stream_sectors + sum(big_sectors.values())
+    fat_sectors = 1
+    while fat_sectors * (SECTOR // 4) < fat_sectors + rest:
+        fat_sectors += 1
+    assert fat_sectors <= 109, "no DIFAT sectors in these small files"
+
+    fat: list[int] = [FATSECT] * fat_sectors
+    next_sector = fat_sectors
+
+    def chain(count: int) -> int:
+        nonlocal next_sector
+        first = next_sector
+        fat.extend(list(range(first + 1, first + count)) + [ENDOFCHAIN])
+        next_sector += count
+        return first
+
+    dir_start = chain(dir_sectors)
+    mini_fat_start = chain(mini_fat_sectors) if mini_fat_sectors else ENDOFCHAIN
+    mini_stream_start = chain(mini_stream_sectors) if mini_stream_sectors else ENDOFCHAIN
+    big_start = {name: chain(count) for name, count in big_sectors.items()}
+
+    entries = [_dir_entry("Root Entry", 5, mini_stream_start, len(mini_data), child=1 if names else NOSTREAM)]
+    for index, name in enumerate(names, start=1):
+        right = index + 1 if index < len(names) else NOSTREAM
+        if name in big:
+            entries.append(_dir_entry(name, 2, big_start[name], len(big[name]), right=right))
+        elif name in small:
+            entries.append(_dir_entry(name, 2, mini_start[name], len(small[name]), right=right))
+        else:
+            entries.append(_dir_entry(name, 1, 0, 0, right=right))
+    while len(entries) % 4:
+        entries.append(_dir_entry("", 0, 0, 0))
+
+    header = (OLE_SIGNATURE + bytes(16) + struct.pack("<HHHHH", 0x003E, 0x0003, 0xFFFE, 9, 6) + bytes(6)
+              + struct.pack("<IIIIIIIII", 0, fat_sectors, dir_start, 0, MINI_CUTOFF, mini_fat_start,
+                            mini_fat_sectors, ENDOFCHAIN, 0)
+              + struct.pack("<109I", *(list(range(fat_sectors)) + [FREESECT] * (109 - fat_sectors))))
+    fat += [FREESECT] * (fat_sectors * (SECTOR // 4) - len(fat))
+    body = struct.pack(f"<{len(fat)}I", *fat)
+    body += b"".join(entries)
+    if mini_fat_sectors:
+        padded = mini_fat + [FREESECT] * (mini_fat_sectors * (SECTOR // 4) - len(mini_fat))
+        body += struct.pack(f"<{len(padded)}I", *padded)
+    body += mini_data.ljust(mini_stream_sectors * SECTOR, b"\x00")
+    for name in big:
+        body += big[name].ljust(big_sectors[name] * SECTOR, b"\x00")
+    return header + body
+
+
+def xls_bytes(sheets: dict[str, list[list[Any]]], *, encrypted: bool = False, macros: bool = False,
+              datemode: int = 0) -> bytes:
+    """A whole .xls file, as Excel saves one (the Workbook stream at least 4096 bytes)."""
+
+    storages = ("_VBA_PROJECT_CUR",) if macros else ()
+    return ole_file({"Workbook": biff_workbook(sheets, encrypted=encrypted, datemode=datemode)}, storages)

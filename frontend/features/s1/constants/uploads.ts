@@ -13,13 +13,15 @@ export const UPLOAD_TOO_LARGE = `This file is larger than the ${MAX_UPLOAD_MB} M
  * accepts (backend/app/api/documents.py, `_is_readable_upload`, which narrows the parser's
  * detection in backend/app/services/parser_service.py). Images are only PNG, JPEG and
  * TIFF, the formats Textract reads, matching the 415's words. The route refuses anything
- * else with a 415, so the dialog sets such files aside first. Change both together.
+ * else with a 415, so the dialog sets such files aside first. Change both together:
+ * tests/uploadTypes.test.ts fails when these lists and the backend's drift apart.
  */
 export const READABLE_UPLOAD_EXTENSIONS = [
   ".pdf",
   ".docx",
   ".xlsx",
   ".xlsm",
+  ".xls",
   ".csv",
   ".txt",
   ".md",
@@ -31,11 +33,12 @@ export const READABLE_UPLOAD_EXTENSIONS = [
   ".tiff",
 ] as const;
 
-const READABLE_UPLOAD_TYPES = new Set([
+export const READABLE_UPLOAD_TYPES: ReadonlySet<string> = new Set([
   "text/plain",
   "text/markdown",
   "text/csv",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-excel",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "image/png",
@@ -65,7 +68,7 @@ export function isReadableUpload(file: { name: string; type?: string }): boolean
 /** The same words as the upload route's 415. */
 export function unreadableUploadMessage(filename: string): string {
   return (
-    `${filename} can't be read here. Upload a PDF, Word (.docx), Excel (.xlsx), CSV or text file, ` +
+    `${filename} can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, ` +
     "or a scan or photo (PNG, JPG or TIFF)."
   );
 }

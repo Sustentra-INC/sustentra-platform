@@ -2230,3 +2230,7 @@ wrapt==2.5.0 \
     --hash=sha256:fe09aac4837ec720af606a493e814dcc3f65631984e1b7231b589efcf9917024 \
     --hash=sha256:ff909b934b1958e31784d412abab5cbb0709fdbc01c86f22965e1d15331371ba
     # via deprecated
+xlrd==2.0.2 \
+    --hash=sha256:08b5e25de58f21ce71dc7db3b3b8106c1fa776f3024c54e45b45b374e89234c9 \
+    --hash=sha256:ea762c3d29f4cca48d82df517b6d89fbce4db3107f9d78713e48cd321d5c9aa9
+    # via -r requirements.in

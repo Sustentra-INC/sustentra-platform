@@ -85,14 +85,15 @@ def _uploader(user: CurrentUser) -> str:
 # JPEG and TIFF). The parser also calls GIF, BMP, WebP and any other image/* an image, and
 # parse-time detection stays that way so documents already stored behave as before; new
 # uploads are held to this list. Keep in sync with READABLE_UPLOAD_EXTENSIONS and
-# READABLE_UPLOAD_TYPES in frontend/features/s1/constants/uploads.ts, and with the 415 wording.
+# READABLE_UPLOAD_TYPES in frontend/features/s1/constants/uploads.ts, and with the 415 wording
+# (frontend/features/s1/tests/uploadTypes.test.ts reads these lists and the parser's).
 UPLOAD_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".tif", ".tiff"})
 UPLOAD_IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/tiff"})
 
 
 def _unreadable_upload_detail(file_name: str) -> str:
     return (
-        f"{file_name} can't be read here. Upload a PDF, Word (.docx), Excel (.xlsx), CSV or text file, "
+        f"{file_name} can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, "
         "or a scan or photo (PNG, JPG or TIFF)."
     )
 
