@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, apiPath } from "../../../lib/api";
 import type { PageMark, ReviewSpan } from "../types/review";
 import { markName, markState } from "../utils/markState";
+import { scrollBehavior } from "../utils/motion";
 
 /**
  * The uploaded document's page as an image, every value read from it highlighted where the
@@ -139,7 +140,7 @@ export function BackendPageView({
           className="s1-pv__img"
           src={src}
           alt={`Page ${page} of the uploaded document`}
-          onLoad={() => mark.current?.scrollIntoView({ block: "center", behavior: "smooth" })}
+          onLoad={() => mark.current?.scrollIntoView({ block: "center", behavior: scrollBehavior() })}
         />
         {boxes.map((group) => {
           const [first] = group;
