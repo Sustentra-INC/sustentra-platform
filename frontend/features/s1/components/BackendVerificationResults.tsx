@@ -36,7 +36,7 @@ export function resultsBasis(result: Recalculation): string {
   const open = result.needs_input.length + result.awaiting_review.length;
   return (
     `Recalculated from ${documentsBasis(result)} on the EPA GHG Emission Factors Hub 2025, at ${result.gwp_set} GWPs. ` +
-    `A difference is material at ±${result.tolerance_pct}% of the reported total.` +
+    `A difference is material above ±${result.tolerance_pct}% of the reported total.` +
     (open ? ` ${open} ${open === 1 ? "item still needs" : "items still need"} an input or a review.` : "")
   );
 }

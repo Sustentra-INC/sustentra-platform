@@ -2399,6 +2399,15 @@ html, body { margin: 0; padding: 0; }
 /* Live results: a difference below materiality is to review (amber), not blocking (red) */
 .s1-vw-pill--open { color: var(--state-open-fg); background: var(--state-open-bg); border-color: var(--state-open-line); }
 .s1-vw-amber { color: var(--state-open-fg); }
+.s1-vw-delta--below { color: var(--state-open-fg); background: var(--state-open-bg); }
+/* Live boxes: the pill says above or below materiality in words, so its column is wider. That
+   row fits beside the box name only from 70rem with the sidebar open; from 64rem to 70rem the
+   live figures wrap under the name, as every box's do below 64rem, so nothing is clipped. */
+.s1-vw-box__figures.s1-vw-box__figures--live { grid-template-columns: 5.5rem 1.25rem 5.5rem 4.75rem 13rem 3.5rem; }
+@media (min-width: 64rem) and (max-width: 70rem) {
+  .s1-vw-box__head.s1-vw-box__head--live { grid-template-columns: 1rem auto minmax(0, 1fr); }
+  .s1-vw-box__head--live .s1-vw-box__figures { grid-column: 1 / -1; justify-content: start; }
+}
 .s1-vw-table td.s1-vw-amber { color: var(--state-open-fg); font-weight: var(--weight-strong); }
 /* Live results: a state chip with its reason behind the ⓘ, beside a name or under a table */
 .s1-vw-state { display: inline-flex; align-items: center; gap: var(--sp-1); font-style: normal; white-space: nowrap; }

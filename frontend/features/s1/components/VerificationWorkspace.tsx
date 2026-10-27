@@ -116,7 +116,7 @@ export function VerificationWorkspace({
   onRegisterFinding?: (target: FindingTarget) => void;
   /**
    * Live results: the materiality tolerance as a fraction (0.05). A % material turns red only
-   * at or above it, amber below; the demo reds every difference.
+   * above it (strictly, as the backend), amber at or below it; the demo reds every difference.
    */
   materiality?: number;
 }) {
@@ -135,6 +135,10 @@ export function VerificationWorkspace({
     [lines, store.examinations, boxTotals]
   );
   const selected = lines.find((line) => line.id === selectedId) ?? null;
+  // Live results: the panel's difference takes the tone of the line's row in its box.
+  const selectedBox = selected ? boxes.find((b) => b.key === selected.box) : undefined;
+  const selectedRow = selectedBox?.rows.find((r) => r.key === selected?.id);
+  const selectedMaterial = selectedBox && selectedRow ? rowIsMaterial(selectedRow, materiality, materialBase(selectedBox)) : undefined;
 
   const select = (id: string) => {
     const line = lines.find((l) => l.id === id);
@@ -158,7 +162,8 @@ export function VerificationWorkspace({
   useEffect(() => {
     if (!selectedId) return;
     const onKey = (event: KeyboardEvent) => {
-      // A dialog over the panel (Register finding) takes its own Escape; the panel stays open.
+      // A dialog over the panel takes its own Escape: Register finding stops it on the document
+      // before it reaches this window listener. The check below only covers dialogs that do not.
       if (event.key === "Escape" && !document.querySelector('[aria-modal="true"]')) {
         setSelectedId(null);
         setSource(null);
@@ -205,6 +210,7 @@ export function VerificationWorkspace({
                 onOpenSource={setSource}
                 onClose={close}
                 onRegisterFinding={onRegisterFinding}
+                material={selectedMaterial}
               />
             </section>
             <section ref={sourcePane} className="s1-vw-pane s1-vw-pane--source" aria-label="Source">
@@ -221,12 +227,13 @@ export function VerificationWorkspace({
 /* ================================== boxes ================================== */
 
 /** A difference as a badge: an arrow and the signed tonnes, or a quiet 0. */
-function Delta({ value, suffix = "" }: { value: number | null; suffix?: string }) {
+function Delta({ value, suffix = "", material }: { value: number | null; suffix?: string; material?: boolean }) {
   if (value === null) return null;
   if (!differs(value)) return <span className="s1-vw-delta s1-vw-delta--zero">0{suffix}</span>;
   const Arrow = value > 0 ? ArrowUpRight : ArrowDownRight;
+  // Live results: below materiality the chip is amber (to review), above it red, as the pill.
   return (
-    <span className="s1-vw-delta">
+    <span className={`s1-vw-delta${material === false ? " s1-vw-delta--below" : ""}`}>
       <Arrow className="s1-vw-ico" aria-hidden />
       {formatSignedTonnes(value)}
       {suffix}
@@ -235,13 +242,38 @@ function Delta({ value, suffix = "" }: { value: number | null; suffix?: string }
 }
 
 /**
- * The colour of a % material. The demo reds any difference; live results red one only at or
- * above materiality (`material`), amber below it, as Output and the page's ⓘ say.
+ * The colour of a % material or a difference. The demo reds any difference; live results red
+ * one only above materiality (`material`), amber at or below it, as the backend judges it
+ * (strictly above the tolerance) and as Output and the page's ⓘ say.
  */
 function materialTone(difference: number | null, material: boolean | undefined): string {
   if (!differs(difference)) return "";
   if (material === undefined) return " s1-vw-red";
   return material ? " s1-vw-red" : " s1-vw-amber";
+}
+
+/**
+ * Live results: whether a row's difference is material, judged exactly as Output judges it:
+ * the difference over its box's reported total (`base`), strictly above the tolerance, as the
+ * backend judges a total. (Not % difference × share: that product can land one float step
+ * above the tolerance where the quotient does not.) A reported 0 the evidence does not match,
+ * the row's or its box's, is material (the backend's reported_zero). undefined in the demo.
+ */
+function rowIsMaterial(row: ResultRow, materiality: number | undefined, base: number): boolean | undefined {
+  if (materiality === undefined || row.difference === null) return materiality === undefined ? undefined : false;
+  if (row.reported === 0 || base === 0) return differs(row.difference);
+  return Math.abs(row.difference / base) > materiality;
+}
+
+/** Live results: the base a row's materiality is judged on: the box's reported total, else its rows'. */
+function materialBase(box: ResultBox): number {
+  return box.live?.reported ?? box.rows.filter((r) => !r.notReported).reduce((sum, r) => sum + (r.reported ?? 0), 0);
+}
+
+/** Live results: the pill says in words what its colour says (design standard §4). */
+function livePillText(pct: number, difference: number, material: boolean): string {
+  if (!differs(difference)) return `${formatPercent(pct, true)} · agrees`;
+  return `${formatPercent(pct, true)} · ${material ? "above" : "below"} materiality`;
 }
 
 function BoxPanel({
@@ -278,7 +310,13 @@ function BoxPanel({
       : " s1-vw-pill--differs";
   return (
     <div className={`s1-vw-box s1-vw-tone--${box.key}${open ? " is-open" : ""}`}>
-      <button className="s1-vw-box__head" type="button" aria-expanded={open} aria-controls={bodyId} onClick={onToggle}>
+      <button
+        className={`s1-vw-box__head${live ? " s1-vw-box__head--live" : ""}`}
+        type="button"
+        aria-expanded={open}
+        aria-controls={bodyId}
+        onClick={onToggle}
+      >
         <ChevronRight className="s1-vw-ico s1-vw-box__chev" aria-hidden />
         <span className="s1-vw-box__icon">
           <Icon className="s1-vw-ico" aria-hidden />
@@ -295,7 +333,7 @@ function BoxPanel({
                   }`}
           </span>
         </span>
-        <span className="s1-vw-box__figures">
+        <span className={`s1-vw-box__figures${live ? " s1-vw-box__figures--live" : ""}`}>
           <span className="s1-vw-fig">
             <span className="s1-vw-fig__label">Reported</span>
             <span className="s1-vw-fig__value">
@@ -311,13 +349,15 @@ function BoxPanel({
           </span>
           {compared ? (
             <>
-              <Delta value={totals.difference} />
+              <Delta value={totals.difference} material={boxMaterial} />
               <span className={`s1-vw-pill${pillTone}`}>
-                {pctShown
+                {!live
                   ? `${formatPercent(totals.pctMaterial, true)} material`
-                  : differs(totals.difference)
-                    ? "Above materiality"
-                    : "Agrees"}
+                  : pctShown
+                    ? livePillText(totals.pctMaterial, totals.difference, Boolean(boxMaterial))
+                    : differs(totals.difference)
+                      ? "Above materiality"
+                      : "Agrees"}
               </span>
             </>
           ) : (
@@ -427,6 +467,7 @@ function BoxTable({
                 selected={row.key === selectedId}
                 onSelect={onSelect}
                 materiality={materiality}
+                base={materialBase(box)}
               />
             )
           )}
@@ -440,12 +481,16 @@ function BoxTable({
               {compared ? (
                 <>
                   <td className="s1-vw-num">
-                    <Delta value={totals.difference} />
+                    <Delta value={totals.difference} material={Boolean(live.material)} />
                   </td>
                   <td className="s1-vw-num">{totals.pctDifference === null ? "" : formatPercent(totals.pctDifference, true)}</td>
-                  {/* A reported 0 has no % material (the backend calls any difference from it material). */}
+                  {/* A reported 0 has no % material: the backend calls any difference from it material. */}
                   <td className={`s1-vw-num${materialTone(totals.difference, Boolean(live.material))}`}>
-                    {totals.pctDifference === null ? "" : formatPercent(totals.pctMaterial, true)}
+                    {totals.pctDifference !== null
+                      ? formatPercent(totals.pctMaterial, true)
+                      : differs(totals.difference)
+                        ? "Above materiality"
+                        : ""}
                   </td>
                 </>
               ) : (
@@ -496,17 +541,19 @@ function ReportedRow({
   selected,
   onSelect,
   materiality,
+  base = 0,
 }: {
   row: ResultRow;
   scope1: boolean;
   selected: boolean;
   onSelect: (id: string) => void;
-  /** Live results: a row's % material is red only at or above it. */
+  /** Live results: a row's % material is red only above it (strictly, as the backend). */
   materiality?: number;
+  /** Live results: the box's reported total, the base a row's materiality is judged on (as on Output). */
+  base?: number;
 }) {
   const select = () => onSelect(row.key);
-  const rowMaterial =
-    materiality === undefined ? undefined : row.pctMaterial !== null && Math.abs(row.pctMaterial) >= materiality;
+  const rowMaterial = rowIsMaterial(row, materiality, base);
   const name = (
     <button className="s1-vw-rowbtn" type="button" aria-pressed={selected} onClick={select}>
       {row.activity}
@@ -549,11 +596,16 @@ function ReportedRow({
         <>
           <td className="s1-vw-num">{row.recomputed === null ? "" : formatTonnes(row.recomputed)}</td>
           <td className="s1-vw-num">
-            <Delta value={row.difference} />
+            <Delta value={row.difference} material={rowMaterial} />
           </td>
           <td className="s1-vw-num">{row.pctDifference === null ? "" : formatPercent(row.pctDifference, true)}</td>
           <td className={`s1-vw-num${materialTone(row.difference, rowMaterial)}`}>
-            {row.pctMaterial === null ? "" : formatPercent(row.pctMaterial, true)}
+            {row.pctMaterial !== null
+              ? formatPercent(row.pctMaterial, true)
+              : // Live: against a reported 0 (the row's or its box's) there is no %, and it is material, as Output says.
+                rowMaterial
+                ? "Above materiality"
+                : ""}
           </td>
         </>
       )}
@@ -619,7 +671,13 @@ function GasPanel({ rows }: { rows: GasResultRow[] }) {
   const groups = [...GAS_GROUPS, ...rows.map((r) => r.group).filter((g) => !GAS_GROUPS.includes(g))];
   return (
     <div className={`s1-vw-box s1-vw-gases${open ? " is-open" : ""}`}>
-      <button className="s1-vw-box__head" type="button" aria-expanded={open} aria-controls="s1-vw-box-gases" onClick={() => setOpen(!open)}>
+      <button
+        className="s1-vw-box__head s1-vw-box__head--live"
+        type="button"
+        aria-expanded={open}
+        aria-controls="s1-vw-box-gases"
+        onClick={() => setOpen(!open)}
+      >
         <ChevronRight className="s1-vw-ico s1-vw-box__chev" aria-hidden />
         <span className="s1-vw-box__icon">
           <FlaskConical className="s1-vw-ico" aria-hidden />
@@ -714,6 +772,7 @@ function CalculationPane({
   onOpenSource,
   onClose,
   onRegisterFinding,
+  material,
 }: {
   line: ResultLine;
   store: VerificationStore;
@@ -724,6 +783,8 @@ function CalculationPane({
   onOpenSource: (source: SourceRef) => void;
   onClose: () => void;
   onRegisterFinding?: (target: FindingTarget) => void;
+  /** Live results: whether the line's difference is above materiality (undefined in the demo). */
+  material?: boolean;
 }) {
   const facilities = line.facilities ?? [];
   // The facility that explains the difference opens first; with none, the first one.
@@ -778,7 +839,8 @@ function CalculationPane({
             </span>
             {difference === null ? null : (
               <span>
-                Difference <strong className={differs(difference) ? "s1-vw-red" : undefined}>{formatSignedTonnes(difference)}</strong>
+                Difference{" "}
+                <strong className={materialTone(difference, material).trim() || undefined}>{formatSignedTonnes(difference)}</strong>
               </span>
             )}
           </p>
@@ -871,7 +933,7 @@ function CalculationPane({
               <td className="s1-vw-num">{reportedNote ? <span className="s1-muted">{reportedNote}</span> : formatTonnes(reported)}</td>
               <td className="s1-vw-num">{recomputed === null ? "" : formatTonnes(recomputed)}</td>
               <td className="s1-vw-num">
-                <Delta value={difference} />
+                <Delta value={difference} material={material} />
               </td>
             </tr>
           </tbody>
