@@ -29,12 +29,16 @@ Nothing is fetched or run, and a crafted file cannot make the work outgrow the f
   read. An encrypted email (S/MIME enveloped data, PGP/MIME) is refused as
   ``password_protected``; an encrypted message forwarded as an attachment is listed, not
   read, and the covering email is read.
+- No message is ever written back with the stdlib generator (``as_bytes``, ``as_string``,
+  ``str()``): it folds every header again, which is slow on crafted headers. A forwarded
+  message that is listed is put back together from the bytes that were read.
 """
 
 from __future__ import annotations
 
 import base64
 import codecs
+import io
 import itertools
 import mimetypes
 import quopri
@@ -456,10 +460,14 @@ def _addresses(text: str) -> str:
     """An address header for reading. A quoted display name is unquoted, its quoted pairs
     unescaped (``"John \\"JJ\\" Doe"`` reads ``John "JJ" Doe``) -- unless it holds a comma or a
     semicolon, which would read as the end of an address (``"Doe, Jane" <jane@...>``): that one
-    keeps its quotes. Encoded words are decoded, inside quotes and out, under the same rule."""
+    keeps its quotes, with any quote or backslash inside escaped again, so it still reads as one
+    name (``"Doe, \\"JJ\\" Jane"``). Encoded words are decoded, inside quotes and out, under the
+    same rule."""
 
     def name(content: str) -> str:
-        return f'"{content}"' if "," in content or ";" in content else content
+        if "," in content or ";" in content:
+            return '"' + content.replace("\\", "\\\\").replace('"', '\\"') + '"'
+        return content
 
     pieces: list[str] = []
     position = 0
@@ -860,13 +868,52 @@ def _attached_message(part: Message) -> EmailMessage | None:
     return None
 
 
-def _message_bytes(message: EmailMessage) -> bytes:
-    """A forwarded message as bytes (to list it with its size)."""
+def _message_bytes(message: Message) -> bytes:
+    """A forwarded message as bytes, to list it with its size: every part's headers and body
+    put back together as the parser read them from the file, in one linear pass (headers keep
+    their folding, and are cut as every header is). For a file with LF line ends that is the
+    forwarded message exactly as it was sent.
+
+    The stdlib generator (``as_bytes`` / ``as_string``) is not used: it folds every header
+    again, which takes seconds on a crafted one (runs of ``"; "`` or ``", "``), and it may
+    re-encode a body in the character set the body declares."""
+
+    out = io.BytesIO()  # getvalue() hands over its buffer: no second copy of a large message
+    pending: list[Message | str] = [message]  # what is still to be written, next last
+    while pending:
+        item = pending.pop()
+        if isinstance(item, str):
+            out.write(_source_bytes(item))
+            continue
+        for name, value in item.raw_items():
+            out.write(_source_bytes(f"{name}: {value}\n"))
+        out.write(b"\n")
+        # The payload as parsed: get_payload() would decode raw 8-bit text by its declared charset.
+        payload = getattr(item, "_payload", None)
+        if isinstance(payload, str):
+            out.write(_source_bytes(payload))
+            continue
+        children: list[Message | str] = [child for child in payload or [] if isinstance(child, Message)]
+        if item.get_content_maintype() == "multipart":  # laid out as the parser split it
+            delimiter = f"--{item.get_boundary('')}"
+            layout: list[Message | str] = [] if item.preamble is None else [f"{item.preamble}\n"]
+            for index, child in enumerate(children):
+                layout += [f"{delimiter}\n" if index == 0 else f"\n{delimiter}\n", child]
+            # No epilogue: the line break after the close delimiter belonged to the enclosing one.
+            layout.append(f"\n{delimiter}--" + ("" if item.epilogue is None else f"\n{item.epilogue}"))
+            children = layout
+        pending += reversed(children)
+    return out.getvalue()
+
+
+def _source_bytes(text: str) -> bytes:
+    """Text the parser read back into the file's bytes (it keeps each non-ASCII byte as a
+    surrogate)."""
 
     try:
-        return message.as_bytes()
-    except Exception:  # noqa: BLE001 - a message the generator cannot write back
-        return b""
+        return text.encode("utf-8", "surrogateescape")
+    except UnicodeEncodeError:  # not read from bytes; never expected
+        return text.encode("utf-8", "replace")
 
 
 def _holds(container: EmailMessage, body: EmailMessage | None) -> bool:
