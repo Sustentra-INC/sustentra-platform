@@ -200,10 +200,11 @@ def test_start_and_every_update_are_fenced_to_the_reader_holding_the_run(queue: 
 
     renewed = queue.runs.heartbeat(started, "w1", 600)
     assert renewed is not None and renewed.lease_expires_at > started.lease_expires_at  # type: ignore[operator]
-    failed = queue.runs.finalize_failed(renewed, "w1", "unreadable_document", "This PDF could not be opened.")
+    failed = queue.runs.finalize_failed(renewed, "w1", "unreadable_document", "This PDF could not be opened.",
+                                        "pipeline::EV-DOC-1::halted")
     assert failed is not None
-    assert (failed.status, failed.error_code, failed.error) == (
-        "failed", "unreadable_document", "This PDF could not be opened.")
+    assert (failed.status, failed.error_code, failed.error, failed.pipeline_run_id) == (
+        "failed", "unreadable_document", "This PDF could not be opened.", "pipeline::EV-DOC-1::halted")
     assert failed.completed_at is not None and failed.lease_expires_at is None
     assert queue.runs.finalize_completed(failed, "w1", "P-1") is None  # finished runs stay finished
 

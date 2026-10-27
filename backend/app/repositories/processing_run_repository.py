@@ -146,6 +146,7 @@ _COMPLETED = text(
 )
 _FAILED = text(
     "UPDATE s1_processing_runs SET status = 'failed', error_code = :error_code, error = :error, "
+    "pipeline_run_id = coalesce(:pipeline_run_id, pipeline_run_id), "
     "lease_expires_at = NULL, completed_at = now(), updated_at = now() "
     f"WHERE {_FENCE} RETURNING *"
 )
@@ -252,8 +253,13 @@ class ProcessingRunRepository:
     def finalize_completed(self, run: ProcessingRun, worker_id: str, pipeline_run_id: str) -> ProcessingRun | None:
         return self._one(run, _COMPLETED, worker_id=worker_id, pipeline_run_id=pipeline_run_id)
 
-    def finalize_failed(self, run: ProcessingRun, worker_id: str, error_code: str, error: str) -> ProcessingRun | None:
-        return self._one(run, _FAILED, worker_id=worker_id, error_code=error_code, error=error)
+    def finalize_failed(
+        self, run: ProcessingRun, worker_id: str, error_code: str, error: str, pipeline_run_id: str | None = None
+    ) -> ProcessingRun | None:
+        """Failed, with the message for the user (and the pipeline run, when one recorded the failure)."""
+
+        return self._one(run, _FAILED, worker_id=worker_id, error_code=error_code, error=error,
+                         pipeline_run_id=pipeline_run_id)
 
     def retry_later(
         self, run: ProcessingRun, worker_id: str, delay_seconds: float, error_code: str | None = None
@@ -391,9 +397,14 @@ class InMemoryProcessingRunRepository:
         return self._update(run, worker_id, status="completed", pipeline_run_id=pipeline_run_id, error_code=None,
                             error=None, lease_expires_at=None, completed_at=self._now())
 
-    def finalize_failed(self, run: ProcessingRun, worker_id: str, error_code: str, error: str) -> ProcessingRun | None:
-        return self._update(run, worker_id, status="failed", error_code=error_code, error=error,
-                            lease_expires_at=None, completed_at=self._now())
+    def finalize_failed(
+        self, run: ProcessingRun, worker_id: str, error_code: str, error: str, pipeline_run_id: str | None = None
+    ) -> ProcessingRun | None:
+        with self._lock:
+            current = self._runs.get(run.run_id)
+            recorded = pipeline_run_id or (current.run.pipeline_run_id if current else None)
+            return self._update(run, worker_id, status="failed", error_code=error_code, error=error,
+                                pipeline_run_id=recorded, lease_expires_at=None, completed_at=self._now())
 
     def retry_later(
         self, run: ProcessingRun, worker_id: str, delay_seconds: float, error_code: str | None = None
