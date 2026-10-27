@@ -9,6 +9,7 @@ vi.mock("../../../lib/api", () => ({
 }));
 
 import { api } from "../../../lib/api";
+import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import {
   coverageFromRecalculation,
   METHOD_CHECK_RULE_IDS,
@@ -22,6 +23,7 @@ import { coverageRules } from "../fixtures/verification/coverageRules";
 import type { EngagementConfig } from "../types";
 import type { Examination } from "../types/verification";
 import { dashboardFigures } from "../utils/engagementActivity";
+import { testedExaminationKeys } from "../utils/verificationTable";
 import workbookExample from "./fixtures/recalculationWorkbookExample.json";
 
 /** Claire's workbook example: reviewed gas and electricity bills, reported totals entered. */
@@ -65,12 +67,13 @@ const withoutReported = (...keys: string[]): Recalculation => ({
   ),
 });
 
-/** Every recalculated result examined, so only the reported totals can hold the Assessment step open. */
+/** Every facility row of Verification results examined, so only the reported totals can hold the Assessment step open. */
 const examinedAll = (result: Recalculation): Record<string, Examination> =>
   Object.fromEntries(
-    result.comparisons
-      .filter((c) => c.recalculated !== null && c.status !== "not_in_scope")
-      .map((c) => [`RECALC-${c.key}`, { examinationState: "examined_no_exceptions", nextActionWith: "none" }])
+    testedExaminationKeys(liveResultsFromRecalculation(result).lines).map((key) => [
+      key,
+      { examinationState: "examined_no_exceptions", nextActionWith: "none" },
+    ])
   );
 
 const figuresFor = (coverage: Parameters<typeof dashboardFigures>[0]["coverage"]) =>

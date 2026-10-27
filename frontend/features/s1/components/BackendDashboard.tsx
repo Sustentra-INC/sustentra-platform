@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import {
   coverageFromRecalculation,
   getRecalculation,
@@ -12,6 +13,7 @@ import type { EngagementConfig, EvidenceItem, ReviewValue } from "../types";
 import type { Ask } from "../types/requests";
 import type { Examination, Finding } from "../types/verification";
 import { dashboardFigures } from "../utils/engagementActivity";
+import { testedExaminationKeys } from "../utils/verificationTable";
 import { DashboardScreen } from "./DashboardScreen";
 import type { NavKey } from "./S1Chrome";
 
@@ -60,11 +62,8 @@ export function BackendDashboard({
   const { start, end } = engagement.reportingPeriod;
   const figures = useMemo(() => {
     const current = result && result.engagement_id === engagement.engagementId ? result : null;
-    const calculatedIds = current
-      ? current.comparisons
-          .filter((c) => c.recalculated !== null && c.status !== "not_in_scope")
-          .map((c) => `RECALC-${c.key}`)
-      : [];
+    // The facility rows of Verification results, as its Examined counts key them.
+    const calculatedIds = current ? testedExaminationKeys(liveResultsFromRecalculation(current).lines) : [];
     return {
       ...dashboardFigures({
         evidence,
