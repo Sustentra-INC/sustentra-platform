@@ -11,7 +11,7 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "prod"]
@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     # or "postgres". Set in /opt/sustentra/.env; deploy.sh passes it to the api container.
     s1_store: Literal["jsonl", "postgres+jsonl", "postgres"] = "jsonl"
 
+    # How a document is read once someone asks for it (S1_PROCESSING): "inline" reads it in
+    # that request, as before, and records it as a processing run; "queued" only queues the
+    # run, for the reader process to pick up. Queued needs Postgres-backed stores (refused
+    # with jsonl below). Set in /opt/sustentra/.env like S1_STORE.
+    s1_processing: Literal["inline", "queued"] = "inline"
+
     # Largest S1 document upload, in MB (INFRA-007). deploy/Caddyfile allows the same
     # size on the upload route only (+1 MB for the multipart envelope); the frontend
     # mirrors it in features/s1/constants/uploads.ts.
@@ -64,6 +70,14 @@ class Settings(BaseSettings):
     @classmethod
     def _strip(cls, value: str) -> str:
         return value.strip()
+
+    @model_validator(mode="after")
+    def _queued_reads_need_postgres_stores(self) -> Settings:
+        # With jsonl the files on one server's disk are the only copy of the S1 records, and a
+        # second process (the reader) would append to them as well.
+        if self.s1_processing == "queued" and self.s1_store == "jsonl":
+            raise ValueError("S1_PROCESSING=queued needs S1_STORE=postgres or postgres+jsonl, not jsonl.")
+        return self
 
     @property
     def max_upload_bytes(self) -> int:

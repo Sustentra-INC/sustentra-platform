@@ -27,6 +27,12 @@
       "type": "string",
       "minLength": 1
     },
+    "evidence_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "status": {
       "type": "string",
       "enum": [
@@ -36,8 +42,16 @@
         "failed"
       ]
     },
-    "started_at": {
+    "created_at": {
       "type": "string",
+      "format": "date-time"
+    },
+    "started_at": {
+      "description": "When the document was first picked up; null while the run is still queued.",
+      "type": [
+        "string",
+        "null"
+      ],
       "format": "date-time"
     },
     "completed_at": {
@@ -51,7 +65,42 @@
       "type": "string",
       "minLength": 1
     },
+    "requested_by": {
+      "description": "Email of the user who asked for the document to be read.",
+      "type": "string"
+    },
+    "attempt": {
+      "description": "How many times reading has started (a retry after a problem on our side counts again).",
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "canonical_type_id_override": {
+      "description": "The document type the user chose, when the run reads the document as that type.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "pipeline_run_id": {
+      "description": "The pipeline run the read recorded (set once the run is completed).",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "error_code": {
+      "description": "Why a failed run failed, e.g. unreadable_document, file_missing, worker_error, timed_out.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "error": {
+      "description": "The message shown to the user when the run failed.",
       "type": [
         "string",
         "null"

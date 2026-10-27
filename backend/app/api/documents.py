@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
@@ -17,9 +18,16 @@ from backend.app.api.s1_access import (
 )
 from backend.app.core.auth import CurrentUser
 from backend.app.core.security import upload_too_large_detail
-
+from backend.app.repositories.processing_run_repository import ProcessingRunRepository
 from backend.app.services.document_content_service import UnreadableContent, UnsupportedContent, document_content
 from backend.app.services.document_file_types import served_type
+from backend.app.services.document_processing_service import (
+    STILL_READING_MESSAGE,
+    DocumentProcessingService,
+    Outcome,
+    RunConflict,
+    RunParams,
+)
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
 from backend.app.services.parser_service import IMAGE_EXTENSIONS, ParserService
@@ -30,6 +38,8 @@ router = APIRouter(prefix="/v1", tags=["documents"])
 _upload_service = DocumentUploadService()
 _pipeline_service = PipelineOrchestrationService()
 _storage_service = _upload_service.storage_service
+# The processing-run queue (migration 0015). It lives in Postgres whatever S1_STORE is.
+_run_repository: Any = ProcessingRunRepository()
 
 
 def current_upload_service() -> DocumentUploadService:
@@ -40,14 +50,19 @@ def current_pipeline_service() -> PipelineOrchestrationService:
     return _pipeline_service
 
 
+def current_run_repository() -> Any:
+    return _run_repository
+
+
 def configure_services(
     upload_service: DocumentUploadService | None = None,
     pipeline_service: PipelineOrchestrationService | None = None,
     storage_service: LocalStorageService | None = None,
+    run_repository: Any | None = None,
 ) -> None:
     """Swap module-level services for tests and local wiring."""
 
-    global _upload_service, _pipeline_service, _storage_service
+    global _upload_service, _pipeline_service, _storage_service, _run_repository
     if upload_service is not None:
         _upload_service = upload_service
         if storage_service is None:
@@ -56,6 +71,14 @@ def configure_services(
         _pipeline_service = pipeline_service
     if storage_service is not None:
         _storage_service = storage_service
+    if run_repository is not None:
+        _run_repository = run_repository
+
+
+def processing_service() -> DocumentProcessingService:
+    """The executor of processing runs, over the services in use (so tests' services apply)."""
+
+    return DocumentProcessingService(_run_repository, _upload_service, _pipeline_service, _storage_service)
 
 
 class CreateDocumentRequest(BaseModel):
@@ -388,59 +411,58 @@ def failed_run_error(run: dict) -> HTTPException:
     return HTTPException(status_code=500, detail=run.get("errors") or ["Pipeline run failed."])
 
 
+def processable_document(document_id: str, user: CurrentUser) -> dict:
+    """The document a writer asks to have read: visible to them (404 otherwise), with its
+    file stored in their organization's folder (400 otherwise)."""
+
+    document = require_visible(_upload_service.get_document(document_id), user, "Document not found.")
+    storage_uri = str(document.get("storage_uri"))
+    if not _storage_service.is_owned_by(storage_uri, org_of(user)) or not _storage_service.exists(storage_uri):
+        raise HTTPException(status_code=400, detail="Stored document file is missing.")
+    return document
+
+
+def outcome_response(outcome: Outcome) -> dict:
+    """What POST .../pipeline/process has always answered for a read: the pipeline's result,
+    or 400 (refused input), 404 (document gone), 422 (a halt) and 500 (anything else)."""
+
+    if outcome.status == "completed":
+        return outcome.result
+    if outcome.error_code == "invalid_request":
+        raise HTTPException(status_code=400, detail=outcome.detail or outcome.error)
+    if outcome.error_code == "document_missing":
+        raise HTTPException(status_code=404, detail="Document not found.")
+    if outcome.error_code == "file_missing":
+        raise HTTPException(status_code=400, detail="Stored document file is missing.")
+    if outcome.status == "retry":
+        raise HTTPException(status_code=500, detail=f"Pipeline processing failed: {outcome.detail}")
+    raise failed_run_error(outcome.pipeline_run)
+
+
 @router.post("/documents/{document_id}/pipeline/process")
 def process_uploaded_document(
     document_id: str,
     payload: ProcessUploadedDocumentRequest,
     user: CurrentUser = Depends(s1_writer),
 ) -> dict:
-    document = require_visible(_upload_service.get_document(document_id), user, "Document not found.")
-    org_id = org_of(user)
+    """Read the document now and answer with the pipeline's result. Kept for local tools and
+    tests (POST .../processing-runs is the run-based call); it reads through the same
+    executor, always inline, and the read is recorded as a processing run."""
 
-    storage_uri = document.get("storage_uri")
-    if not _storage_service.is_owned_by(str(storage_uri), org_id):
-        raise HTTPException(status_code=400, detail="Stored document file is missing.")
+    document = processable_document(document_id, user)
+    service = processing_service()
+    params = RunParams(
+        canonical_type_id_override=payload.canonical_type_id_override,
+        include_optional=payload.include_optional,
+        include_deprecated=payload.include_deprecated,
+        persist_run=payload.persist_run,
+    )
     try:
-        local_path = _storage_service.resolve_storage_uri(str(storage_uri))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    if not local_path.exists() or not local_path.is_file():
-        raise HTTPException(status_code=400, detail="Stored document file is missing.")
-
-    try:
-        _upload_service.update_processing_status(document_id, "in_progress")
-    except (KeyError, ValueError) as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    try:
-        result = _pipeline_service.process_local_document(
-            local_file_path=str(local_path),
-            engagement_id=str(document["engagement_id"]),
-            evidence_id=document.get("evidence_id"),
-            document_id=str(document["document_id"]),
-            file_name=document.get("file_name"),
-            mime_type=document.get("mime_type"),
-            canonical_type_id_override=payload.canonical_type_id_override,
-            include_optional=payload.include_optional,
-            include_deprecated=payload.include_deprecated,
-            persist_run=payload.persist_run,
-            org_id=org_id,
-        )
-    except ValueError as exc:
-        _upload_service.update_processing_status(document_id, "failed")
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # pragma: no cover - safety path
-        _upload_service.update_processing_status(document_id, "failed")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Pipeline processing failed: {exc}",
-        ) from exc
-
-    run = result.get("pipeline_run", {})
-    if run.get("status") == "failed":
-        _upload_service.update_processing_status(document_id, "failed")
-        raise failed_run_error(run)
-
-    _upload_service.update_processing_status(document_id, "completed")
-    return result
+        run, _created = service.request(document=document, org_id=org_of(user), requested_by=_uploader(user),
+                                        params=params)
+    except RunConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _run, outcome = service.run_inline(run)
+    if outcome is None:  # another request (or the reader) is reading it right now
+        raise HTTPException(status_code=409, detail=STILL_READING_MESSAGE)
+    return outcome_response(outcome)
