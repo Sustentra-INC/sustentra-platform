@@ -1,26 +1,45 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
 import {
+  documentsBasis,
   getRecalculation,
   getRecalculationReference,
-  recalculationMateriality,
-  recalculationRows,
   type Recalculation,
   type RecalculationReference,
 } from "../api/recalculation";
 import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig, RecalculationSettings } from "../types";
+import type { TeamMember } from "../types/engagement";
 import type { VerificationStore } from "../verification/verificationStore";
 import { QualityChecksPanel } from "./QualityChecksPanel";
 import { RecalculationInputs } from "./RecalculationInputs";
 import { VerificationResults } from "./VerificationResults";
 
 /**
- * Verification results in backend mode: the rows come from the engagement's
- * recalculation (reviewed evidence only), and its inputs are edited above them.
+ * Verification results in backend mode: the demo's boxes and calculation panel, filled from
+ * the engagement's recalculation (reviewed evidence only) by the live results adapter. Its
+ * inputs and data quality checks fold above the boxes.
  */
+
+/** Who can be recorded as examiner: the engagement team, or the signed-in person while Setup has none. */
+export function examinerOptions(engagement: EngagementConfig): TeamMember[] {
+  if (engagement.engagementTeam?.length) return engagement.engagementTeam;
+  const login = engagement.signedInLogin;
+  return login ? [{ name: engagement.signedInName ?? login, login }] : [];
+}
+
+/** What the numbers rest on, for the page's ⓘ. */
+export function resultsBasis(result: Recalculation): string {
+  const open = result.needs_input.length + result.awaiting_review.length;
+  return (
+    `Recalculated from ${documentsBasis(result)} on the EPA GHG Emission Factors Hub 2025, at ${result.gwp_set} GWPs. ` +
+    `A difference is material at ±${result.tolerance_pct}% of the reported total.` +
+    (open ? ` ${open} ${open === 1 ? "item still needs" : "items still need"} an input or a review.` : "")
+  );
+}
 export function BackendVerificationResults({
   engagement,
   store,
@@ -47,6 +66,7 @@ export function BackendVerificationResults({
   useEffect(() => {
     onErrorRef.current = onError;
   });
+  const live = useMemo(() => (result ? liveResultsFromRecalculation(result) : null), [result]);
 
   useEffect(() => {
     if (!engagementId) return;
@@ -109,7 +129,7 @@ export function BackendVerificationResults({
     );
   }
   // A result for the previously picked engagement is never shown for this one.
-  if (!result || !reference || result.engagement_id !== engagementId) {
+  if (!result || !reference || !live || result.engagement_id !== engagementId) {
     return (
       <section className="s1-content s1-vr">
         <p className="s1-muted s1-vr-status">Recalculating from reviewed evidence…</p>
@@ -119,12 +139,18 @@ export function BackendVerificationResults({
 
   return (
     <VerificationResults
-      rows={recalculationRows(result)}
+      rows={[]}
       store={store}
-      materiality={recalculationMateriality(result)}
+      lines={live.lines}
+      boxTotals={live.boxTotals}
+      gasRows={live.gasRows}
+      team={examinerOptions(engagement)}
+      signedInLogin={engagement.signedInLogin}
+      basis={resultsBasis(result)}
       inputs={
         <>
-          {result.quality_checks ? <QualityChecksPanel checks={result.quality_checks} /> : null}
+          {/* Folded, its count in the header: the boxes lead the page, as in the demo. */}
+          {result.quality_checks ? <QualityChecksPanel checks={result.quality_checks} initiallyOpen={false} /> : null}
           <RecalculationInputs
             key={`${engagementId}:${attempt}`}
             result={result}

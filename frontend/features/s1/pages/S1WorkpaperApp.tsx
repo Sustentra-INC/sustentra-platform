@@ -928,7 +928,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         ) : activeView.name === "results" ? (
           dataMode === "backend" ? (
             <BackendVerificationResults
-              engagement={engagement}
+              engagement={engagementForUser}
               store={verification}
               onSaveInputs={saveRecalculationInputs}
               onError={handleSessionEnded}

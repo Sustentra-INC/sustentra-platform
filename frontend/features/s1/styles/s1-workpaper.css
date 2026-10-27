@@ -2359,6 +2359,15 @@ html, body { margin: 0; padding: 0; }
 .s1-vw-pill { flex: none; padding: var(--state-chip-padding-block) var(--sp-2); font-size: var(--text-sm); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; white-space: nowrap; border: var(--border-hairline); border-radius: var(--state-chip-radius); }
 .s1-vw-pill--differs { color: var(--state-blocking-fg); background: var(--state-blocking-bg); border-color: var(--state-blocking-line); }
 .s1-vw-pill--agrees { color: var(--state-resolved-fg); background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
+/* Live results: a state chip with its reason behind the ⓘ, beside a name or under a table */
+.s1-vw-state { display: inline-flex; align-items: center; gap: var(--sp-1); font-style: normal; white-space: nowrap; }
+.s1-vw-named { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
+.s1-vw-row.is-stated td { font-style: normal; }
+.s1-vw-gases { --vw-tone: var(--chart-5); }
+.s1-vw-fig__value { white-space: nowrap; }
+.s1-vw-box__state { grid-column: span 2; justify-self: end; white-space: nowrap; }
+.s1-vw-box__figures .s1-vw-box__meta.s1-vw-box__count { grid-column: 1 / -1; justify-self: end; gap: var(--sp-2); white-space: nowrap; }
+.s1-vw-group td { padding-top: var(--sp-3); font-size: var(--text-sm); font-weight: var(--weight-strong); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-3); background: var(--sf-page); }
 
 /* Tables */
 .s1-vw-table, .s1-vw-steps { width: 100%; border-collapse: collapse; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }

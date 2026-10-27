@@ -13,7 +13,7 @@ import type {
   WorkingSpec,
 } from "../types/verification";
 import type { TeamMember } from "../types/engagement";
-import type { ResultLine } from "../types/verificationResults";
+import type { GasResultRow, ResultBoxKey, ResultBoxTotal, ResultLine } from "../types/verificationResults";
 import type { VerificationStore } from "../verification/verificationStore";
 import { VerificationWorkspace } from "./VerificationWorkspace";
 
@@ -68,6 +68,9 @@ export function VerificationResults({
   lines,
   team = [],
   signedInLogin,
+  boxTotals,
+  gasRows,
+  basis,
 }: {
   rows: VerificationRow[];
   store: VerificationStore;
@@ -79,6 +82,12 @@ export function VerificationResults({
   lines?: ResultLine[];
   team?: TeamMember[];
   signedInLogin?: string;
+  /** Live results: each box's own totals (see VerificationWorkspace). */
+  boxTotals?: Partial<Record<ResultBoxKey, ResultBoxTotal>>;
+  /** Live results: the per-gas data points. */
+  gasRows?: GasResultRow[];
+  /** Live results: what the numbers rest on (documents, GWP basis, materiality), behind the ⓘ. */
+  basis?: string;
 }) {
   const [tab, setTab] = useState<"results" | "findings">("results");
   const [findingFor, setFindingFor] = useState<VerificationRow | null>(null);
@@ -92,6 +101,7 @@ export function VerificationResults({
             {lines
               ? "What the client reported against what the evidence recomputes, down to the input that explains each difference."
               : "Every data point: reported, recomputed, and your position on each."}
+            {basis ? ` ${basis}` : null}
           </InfoTip>
         </div>
         {/* The three-pane page has no Results / Findings switch for now (product, 2026-10-15). */}
@@ -111,7 +121,14 @@ export function VerificationResults({
         <>
           {inputs}
           {lines ? (
-            <VerificationWorkspace lines={lines} store={store} team={team} signedInLogin={signedInLogin} />
+            <VerificationWorkspace
+              lines={lines}
+              store={store}
+              team={team}
+              signedInLogin={signedInLogin}
+              boxTotals={boxTotals}
+              gasRows={gasRows}
+            />
           ) : (
             <ResultsTab
               rows={rows}

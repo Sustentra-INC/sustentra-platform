@@ -23,9 +23,16 @@ const CHECK_NAME: Record<QualityCheck["check"], string> = {
   "N-003": "Service period",
 };
 
-export function QualityChecksPanel({ checks }: { checks: QualityCheck[] }) {
+export function QualityChecksPanel({
+  checks,
+  initiallyOpen,
+}: {
+  checks: QualityCheck[];
+  /** Open at first; by default, when there is something to look at. The header always counts them. */
+  initiallyOpen?: boolean;
+}) {
   const toLookAt = checks.filter((c) => c.severity !== "info").length;
-  const [open, setOpen] = useState(toLookAt > 0);
+  const [open, setOpen] = useState(initiallyOpen ?? toLookAt > 0);
   return (
     <section className="s1-rc s1-qc" aria-label="Data quality checks">
       <button className="s1-rc__head" type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}>

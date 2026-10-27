@@ -162,7 +162,7 @@ function reasonOf(item: { reason?: ExcludedReason }): ExcludedReason {
 }
 
 /** "1 withdrawn by the reviewer, 2 outside the reporting period". */
-function describeLeftOut(items: { reason?: ExcludedReason }[]): string {
+export function describeLeftOut(items: { reason?: ExcludedReason }[]): string {
   const counts = new Map<ExcludedReason, number>();
   items.forEach((item) => counts.set(reasonOf(item), (counts.get(reasonOf(item)) ?? 0) + 1));
   return [...counts].map(([reason, n]) => `${n} ${EXCLUDED_LABEL[reason]}`).join(", ");
@@ -373,6 +373,8 @@ export interface RollupFinalOutput {
   reason: string | null;
   completeness: NodeStatus;
   missing: RollupMissing[];
+  /** Sources not available (not built, no evidence) that the value counts as 0. */
+  counted_as_zero?: RollupMissing[];
   flags: string[];
   /** Per-gas rows: both measures, until the reported unit is known. */
   candidates?: { mass_t: number | null; co2e_t: number | null };
