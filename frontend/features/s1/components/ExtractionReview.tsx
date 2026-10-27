@@ -62,8 +62,9 @@ interface ExtractionReviewProps {
   allowAddValue?: boolean;
   /** A value was added or filled in by the reviewer: the rest of the workspace follows. */
   onValueAdded?: (value: ReviewValue, filled: boolean) => void;
-  /** The document is drawn whole with its values highlighted (the demo's documents): the
-   *  values pane pins its legend and, with allowAddValue, the switch to highlight a figure. */
+  /** The document is drawn whole by the app (the demo's documents): with allowAddValue, the
+   *  key above the cards offers the switch to highlight a figure on it. The key itself shows
+   *  for any document the source pane draws (renderPage), in both data modes. */
   drawnWhole?: (documentId: string) => boolean;
 }
 
@@ -125,13 +126,17 @@ export function ExtractionReview({
   const [modalTarget, setModalTarget] = useState<AddToRequestsTarget | null>(null);
   // The values a request is for: every data point of the reading.
   const [requestIds, setRequestIds] = useState<string[]>([]);
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimer = useRef<number | null>(null);
+  // A toast shows for 2.4 seconds; a new one starts the time again. Kept in state, not a
+  // timer ref, so the page drawn during render (renderPage) can be handed callbacks that flash.
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   function flash(message: string) {
-    setToast(message);
-    if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+    setToast({ message });
   }
 
   const tree = useMemo(() => buildTree(items, engagement), [items, engagement]);
@@ -141,8 +146,7 @@ export function ExtractionReview({
     (v) => (!filter || v.reviewState === filter) && (pageFilter === null || v.page === pageFilter)
   );
   const selected = items.find((v) => v.id === selectedId) ?? null;
-  const keyed = Boolean(selected && drawnWhole?.(selected.documentId));
-  const canHighlight = Boolean(keyed && allowAddValue && selected && !selected.withdrawn);
+  const canHighlight = Boolean(selected && drawnWhole?.(selected.documentId) && allowAddValue && !selected.withdrawn);
   const highlighting = canHighlight && highlightDoc === selected?.documentId;
 
   // Counted by card: values that share one reading are one card.
@@ -482,6 +486,21 @@ export function ExtractionReview({
   });
   const listed = groups.flatMap((g) => g.capped);
 
+  // The selected value's document, drawn with its values marked (the demo's drawing, or the
+  // uploaded file's pages or content). Whenever it is drawn, the key above the cards says what
+  // its marks mean and how many values were read.
+  const realPage =
+    selected && renderPage
+      ? renderPage(selected.documentId, selected.span ?? null, selectByBox, pageMarks(items, selected.documentId), {
+          selectedId: selected.id,
+          onPickAmong: selectAmong,
+          onAddValue: allowAddValue && !selected.withdrawn ? (entry) => addValue(selected, entry) : undefined,
+          highlighting,
+          onHighlightingChange: (on) => setHighlightDoc(on ? selected.documentId : null),
+        })
+      : null;
+  const keyed = Boolean(selected && realPage);
+
   /** ↑ and ↓ move through the cards; the document follows. */
   function onListKey(e: KeyboardEvent<HTMLDivElement>) {
     if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
@@ -692,23 +711,7 @@ export function ExtractionReview({
 
         {/* Source */}
         <aside className="s1-xr-source" aria-label="Source">
-          <SourcePane
-            value={selected}
-            renderPage={renderPage}
-            onPickBox={selectByBox}
-            marks={selected ? pageMarks(items, selected.documentId) : []}
-            pick={
-              selected
-                ? {
-                    selectedId: selected.id,
-                    onPickAmong: selectAmong,
-                    onAddValue: allowAddValue && !selected.withdrawn ? (entry) => addValue(selected, entry) : undefined,
-                    highlighting,
-                    onHighlightingChange: (on) => setHighlightDoc(on ? selected.documentId : null),
-                  }
-                : undefined
-            }
-          />
+          <SourcePane value={selected} realPage={realPage} />
         </aside>
       </div>
 
@@ -721,7 +724,7 @@ export function ExtractionReview({
         />
       ) : null}
 
-      {toast ? <div className="s1-ws-toast">{toast}</div> : null}
+      {toast ? <div className="s1-ws-toast">{toast.message}</div> : null}
     </section>
   );
 }
@@ -1015,16 +1018,11 @@ export interface SourcePick {
 
 function SourcePane({
   value,
-  renderPage,
-  onPickBox,
-  marks,
-  pick,
+  realPage,
 }: {
   value: ReviewValue | null;
-  renderPage?: ExtractionReviewProps["renderPage"];
-  onPickBox?: (box: { x: number; y: number; w: number; h: number }, id?: string) => void;
-  marks?: PageMark[];
-  pick?: SourcePick;
+  /** The value's document as renderPage drew it; null falls back to the snippet. */
+  realPage: ReactNode | null;
 }) {
   // Page state tracked here (hook must run every render); resets when the
   // selected value changes, guarded so it fires once per change.
@@ -1044,7 +1042,6 @@ function SourcePane({
   }
   const page = pageState.id === value.id ? pageState.page : value.page;
   const setPage = (nextPage: number) => setPageState({ id: value.id, page: nextPage });
-  const realPage = renderPage ? renderPage(value.documentId, value.span ?? null, onPickBox, marks, pick) : null;
   const placed = Boolean(value.span || value.anchor);
   return (
     <div className="s1-xr-src">
