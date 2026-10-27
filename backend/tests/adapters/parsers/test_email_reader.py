@@ -268,6 +268,11 @@ def test_lines_are_capped_before_parsing(monkeypatch) -> None:
     assert package.body_text.count("\n") + 1 == email_reader.MAX_TEXT_LINES
 
 
+def test_the_cut_falls_after_a_whole_line_whatever_its_ending() -> None:
+    data = b"a\r\nb\rc\nd"
+    assert [email_reader._after_lines(data, n) for n in (0, 1, 2, 3, 10)] == [0, 3, 5, 7, len(data)]
+
+
 def test_an_attached_email_is_not_parsed_deeper_than_the_depth_limit(monkeypatch) -> None:
     # Four attached .eml files inside one another, the innermost with many parts: it was
     # parsed (8.5 s for 100,000 parts) before the depth check threw it away.
