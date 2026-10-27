@@ -389,9 +389,12 @@ class _HtmlText(HTMLParser):
 def html_to_text(html: str) -> str:
     """The visible text of an HTML body, one line per block and tab-separated table cells."""
 
+    # What comes before <body> is never shown. Starting there also keeps an unclosed <title>
+    # from hiding the whole message (newer Pythons read a title's text up to its end tag).
+    body = re.search(r"<body[\s>/]", html, flags=re.IGNORECASE)
     parser = _HtmlText()
     try:
-        parser.feed(html)
+        parser.feed(html[body.start():] if body else html)
         parser.close()
     except Exception:  # noqa: BLE001 - html.parser is lenient; keep what was read
         pass
