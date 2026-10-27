@@ -15,7 +15,7 @@ import type {
 import type { TeamMember } from "../types/engagement";
 import type { GasResultRow, ResultBoxKey, ResultBoxTotal, ResultLine } from "../types/verificationResults";
 import type { VerificationStore } from "../verification/verificationStore";
-import { VerificationWorkspace } from "./VerificationWorkspace";
+import { VerificationWorkspace, type FindingTarget } from "./VerificationWorkspace";
 
 /**
  * Verification results (screen 6). Two tabs. The workpaper: every data point,
@@ -71,6 +71,7 @@ export function VerificationResults({
   boxTotals,
   gasRows,
   basis,
+  registerFindings = false,
 }: {
   rows: VerificationRow[];
   store: VerificationStore;
@@ -88,9 +89,14 @@ export function VerificationResults({
   gasRows?: GasResultRow[];
   /** Live results: what the numbers rest on (documents, GWP basis, materiality), behind the ⓘ. */
   basis?: string;
+  /**
+   * Live results: each calculation card offers Register finding for its line (findings feed
+   * Output and the Excel export). The demo's cards do not, for now (product, 2026-10-15).
+   */
+  registerFindings?: boolean;
 }) {
   const [tab, setTab] = useState<"results" | "findings">("results");
-  const [findingFor, setFindingFor] = useState<VerificationRow | null>(null);
+  const [findingFor, setFindingFor] = useState<FindingTarget | null>(null);
 
   return (
     <section className="s1-content s1-vr">
@@ -128,13 +134,14 @@ export function VerificationResults({
               signedInLogin={signedInLogin}
               boxTotals={boxTotals}
               gasRows={gasRows}
+              onRegisterFinding={registerFindings ? setFindingFor : undefined}
             />
           ) : (
             <ResultsTab
               rows={rows}
               store={store}
               materiality={materiality ?? materialityFromRows(rows)}
-              onRegister={setFindingFor}
+              onRegister={(row) => setFindingFor({ dataPointId: row.dataPointId, label: rowLabel(row), delta: row.delta })}
             />
           )}
         </>
@@ -144,12 +151,12 @@ export function VerificationResults({
 
       {findingFor ? (
         <RegisterFindingModal
-          row={findingFor}
+          target={findingFor}
           onCancel={() => setFindingFor(null)}
           onRegister={(sentence, cause, magnitude) => {
             store.registerFinding({
               dataPointId: findingFor.dataPointId,
-              dataPointLabel: rowLabel(findingFor),
+              dataPointLabel: findingFor.label,
               sentence,
               cause,
               magnitude,
@@ -576,23 +583,24 @@ function FindingsTab({ store }: { store: VerificationStore }) {
 }
 
 function RegisterFindingModal({
-  row,
+  target,
   onCancel,
   onRegister,
 }: {
-  row: VerificationRow;
+  /** The data point (a legacy row, or a line of the boxes) the finding is about. */
+  target: FindingTarget;
   onCancel: () => void;
   onRegister: (sentence: string, cause: string, magnitude: string) => void;
 }) {
   const [sentence, setSentence] = useState("");
   const [cause, setCause] = useState("");
-  const [magnitude, setMagnitude] = useState(row.delta ?? "");
+  const [magnitude, setMagnitude] = useState(target.delta ?? "");
   return (
     <div className="s1-modal-scrim" role="presentation" onClick={onCancel}>
       <div className="s1-modal" role="dialog" aria-modal="true" aria-label="Register finding" onClick={(e) => e.stopPropagation()}>
         <div className="s1-modal__head">
           <strong>Register finding</strong>
-          <div className="s1-muted">{rowLabel(row)}</div>
+          <div className="s1-muted">{target.label}</div>
         </div>
         <label className="s1-modal__field">
           <span>Finding — in one sentence</span>

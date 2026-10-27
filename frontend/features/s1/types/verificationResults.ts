@@ -185,4 +185,10 @@ export interface ResultLine {
   recomputed?: number | null;
   /** Live results only: what the numbers alone cannot say about this line. */
   state?: ResultState;
+  /**
+   * Live results only: both values are there but the recalculation is still partial
+   * (the data point is "incomplete"), so the line is not compared: no difference,
+   * % difference or % material, as a box withholds its comparison for the same reason.
+   */
+  inconclusive?: boolean;
 }

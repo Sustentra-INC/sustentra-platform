@@ -147,6 +147,7 @@ export function BackendVerificationResults({
       team={examinerOptions(engagement)}
       signedInLogin={engagement.signedInLogin}
       basis={resultsBasis(result)}
+      registerFindings
       inputs={
         <>
           {/* Folded, its count in the header: the boxes lead the page, as in the demo. */}

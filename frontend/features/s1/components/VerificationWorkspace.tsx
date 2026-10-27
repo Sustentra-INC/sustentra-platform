@@ -12,6 +12,7 @@ import {
   FileSpreadsheet,
   FileText,
   Files,
+  Flag,
   Flame,
   FlaskConical,
   Info,
@@ -73,6 +74,14 @@ const BOX_ICON: Record<ResultBoxKey, LucideIcon> = {
   biogenic: Leaf,
 };
 
+/** What a finding is registered against: its data point, how Output lists it, and the difference to prefill. */
+export interface FindingTarget {
+  dataPointId: string;
+  label: string;
+  /** The magnitude to start from ("+25 tCO₂e (+2.0%)"); null when nothing is compared. */
+  delta: string | null;
+}
+
 const BOX_CRUMB: Record<ResultBoxKey, string> = {
   scope1: "Scope 1",
   scope2_location: "Scope 2, location-based",
@@ -87,6 +96,7 @@ export function VerificationWorkspace({
   signedInLogin,
   boxTotals,
   gasRows,
+  onRegisterFinding,
 }: {
   lines: ResultLine[];
   store: VerificationStore;
@@ -97,6 +107,8 @@ export function VerificationWorkspace({
   boxTotals?: Partial<Record<ResultBoxKey, ResultBoxTotal>>;
   /** Live results: the per-gas data points, in a fold of their own under the boxes. */
   gasRows?: GasResultRow[];
+  /** Live results: each calculation card offers Register finding for its line. */
+  onRegisterFinding?: (target: FindingTarget) => void;
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [source, setSource] = useState<SourceRef | null>(null);
@@ -180,6 +192,7 @@ export function VerificationWorkspace({
                 source={source}
                 onOpenSource={setSource}
                 onClose={close}
+                onRegisterFinding={onRegisterFinding}
               />
             </section>
             <section ref={sourcePane} className="s1-vw-pane s1-vw-pane--source" aria-label="Source">
@@ -647,6 +660,7 @@ function CalculationPane({
   source,
   onOpenSource,
   onClose,
+  onRegisterFinding,
 }: {
   line: ResultLine;
   store: VerificationStore;
@@ -656,6 +670,7 @@ function CalculationPane({
   source: SourceRef | null;
   onOpenSource: (source: SourceRef) => void;
   onClose: () => void;
+  onRegisterFinding?: (target: FindingTarget) => void;
 }) {
   const facilities = line.facilities ?? [];
   // The facility that explains the difference opens first; with none, the first one.
@@ -667,11 +682,24 @@ function CalculationPane({
   const reportedNote = ownReported === null && line.reported !== undefined ? line.reportedNote ?? "Not entered" : null;
   const reported = ownReported ?? 0;
   const recomputed = lineRecomputed(line);
-  const difference = recomputed === null || reportedNote ? null : recomputed - reported;
+  // A live line still partial is not compared, here as in its row.
+  const difference = recomputed === null || reportedNote || line.inconclusive ? null : recomputed - reported;
   const crumbs = [BOX_CRUMB[line.box], line.category, line.activity].filter(Boolean) as string[];
   const Icon = BOX_ICON[line.box];
   const share = hasShare(line);
   const columns = share ? 6 : 5;
+  // A finding is about the line (the data point), whichever facility's card it is raised from.
+  const registerFinding = onRegisterFinding
+    ? () =>
+        onRegisterFinding({
+          dataPointId: `vr:${line.id}`,
+          label: crumbs.join(" · "),
+          delta:
+            difference === null
+              ? null
+              : `${formatSignedTonnes(difference)} tCO₂e${reported ? ` (${formatPercent(difference / reported, true)})` : ""}`,
+        })
+    : undefined;
 
   return (
     <div className="s1-vw-calc">
@@ -775,6 +803,7 @@ function CalculationPane({
                           signedInLogin={signedInLogin}
                           source={source}
                           onOpenSource={onOpenSource}
+                          onRegisterFinding={registerFinding}
                         />
                       </td>
                     </tr>
@@ -891,6 +920,7 @@ function CalculationCard({
   signedInLogin,
   source,
   onOpenSource,
+  onRegisterFinding,
 }: {
   line: ResultLine;
   facility: FacilityResult;
@@ -901,6 +931,8 @@ function CalculationCard({
   signedInLogin?: string;
   source: SourceRef | null;
   onOpenSource: (source: SourceRef) => void;
+  /** Live results: register a finding on the card's line. */
+  onRegisterFinding?: () => void;
 }) {
   const [box, setBox] = useState<"examination" | "note" | null>(null);
   const key = examinationKey(line.id, facility.facilityId);
@@ -972,6 +1004,12 @@ function CalculationCard({
           <StickyNote className="s1-vw-ico" aria-hidden />
           Add notes
         </button>
+        {onRegisterFinding ? (
+          <button className="s1-button s1-vw-action" type="button" onClick={onRegisterFinding}>
+            <Flag className="s1-vw-ico" aria-hidden />
+            Register finding
+          </button>
+        ) : null}
         {examined && examination?.examinedBy ? (
           <span className="s1-vw-examined-by">
             <Check className="s1-vw-ico" aria-hidden />
