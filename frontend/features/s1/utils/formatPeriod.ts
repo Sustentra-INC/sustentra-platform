@@ -72,6 +72,25 @@ export function formatDocumentPeriod(start: string, end: string): string {
   return a.y === b.y ? `${day(a)} – ${day(b)} ${b.y}` : `${day(a)} ${a.y} – ${day(b)} ${b.y}`;
 }
 
+/**
+ * A period kept as data, "2025-02-01 to 2025-02-28" or one ISO date (a review card's period, and
+ * the period saved on a request raised from it), as a person reads it: "Feb 2025",
+ * "15 Jan – 14 Feb 2025", "05 Mar 2024", or "01 Feb 2025 – end not read" when one end is "?".
+ * Anything else ("Aug 2025", "Several service periods") comes back as it is.
+ */
+export function readablePeriod(period: string): string {
+  const text = period.trim();
+  const range = /^(\d{4}-\d{2}-\d{2}|\?) to (\d{4}-\d{2}-\d{2}|\?)$/.exec(text);
+  if (range) {
+    const [, start, end] = range;
+    if (start === "?" && end === "?") return period;
+    if (start === "?") return `start not read – ${formatPrintedDate(end)}`;
+    if (end === "?") return `${formatPrintedDate(start)} – end not read`;
+    return formatDocumentPeriod(start, end);
+  }
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? formatPrintedDate(text) : period;
+}
+
 /** One ISO date as a person reads it, "Oct 8, 2026"; anything else as it was typed. */
 function formatDay(iso: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);

@@ -3,7 +3,6 @@ import type { ReviewValue, ScopePlacement, SourceKind } from "../types/review";
 import { resolveCanonicalTypeDisplayName } from "./evidenceAdapter";
 import { anchorOf } from "../utils/sourceAnchor";
 import { decodeReviewCandidateToken } from "./fieldAdapter";
-import { formatDocumentPeriod, formatPrintedDate } from "../utils/formatPeriod";
 import { asPrinted, printedUnitsByRecord } from "./printedValue";
 
 /**
@@ -113,9 +112,10 @@ function fieldNameOf(field: ExtractedField): string | null {
   return typeof candidate?.field_name === "string" ? candidate.field_name : null;
 }
 
-/** The period a document covers, as a person reads it ("Feb 2025", "15 Jan – 14 Feb 2025"),
- *  from its service period, or the span of its transaction or service dates (fuel purchases
- *  and refrigerant service have a date, not a billing period). Never a raw ISO range. */
+/** "2025-01-01 to 2025-06-30" from a document's service period, or the span of its
+ *  transaction or service dates (fuel purchases and refrigerant service have a date,
+ *  not a billing period). This is data: a request raised from a card saves it as it is, and
+ *  the screens show it with readablePeriod ("Jan–Jun 2025"). */
 function periodsByDocument(fields: ExtractedField[]): Map<string, string> {
   const found = new Map<string, { start: Set<string>; end: Set<string>; dates: string[] }>();
   for (const field of fields) {
@@ -134,21 +134,11 @@ function periodsByDocument(fields: ExtractedField[]): Map<string, string> {
       if (start.size > 1 || end.size > 1) {
         const first = [...start].sort()[0];
         const last = [...end].sort().at(-1);
-        out.set(documentId, first && last ? formatDocumentPeriod(first, last) : "Several service periods");
-      } else {
-        const [first, last] = [[...start][0], [...end][0]];
-        out.set(
-          documentId,
-          first && last
-            ? formatDocumentPeriod(first, last)
-            : first
-              ? `${formatPrintedDate(first)} – end not read`
-              : `start not read – ${formatPrintedDate(last)}`
-        );
-      }
+        out.set(documentId, first && last ? `${first} to ${last}` : "Several service periods");
+      } else out.set(documentId, `${[...start][0] ?? "?"} to ${[...end][0] ?? "?"}`);
     } else if (dates.length) {
       const sorted = [...dates].sort();
-      out.set(documentId, formatDocumentPeriod(sorted[0], sorted.at(-1) ?? sorted[0]));
+      out.set(documentId, sorted[0] === sorted.at(-1) ? sorted[0] : `${sorted[0]} to ${sorted.at(-1)}`);
     }
   });
   return out;

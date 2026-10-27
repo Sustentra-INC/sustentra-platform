@@ -8,6 +8,7 @@ import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntr
 import type { Ask } from "../types/requests";
 import type { AskDraft } from "../requests/requestsStore";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import { readablePeriod } from "../utils/formatPeriod";
 import type { HighlightEntry } from "./demo/DemoDocument";
 
 /**
@@ -378,10 +379,12 @@ export function ExtractionReview({
       facilityName,
       period: v.period,
       sourcePage: v.page,
-      headerLine: `${v.filename} · page ${v.page} · ${v.whatItIs} · ${scope} · ${facLabel} · ${v.period}`,
+      headerLine: `${v.filename} · page ${v.page} · ${v.whatItIs} · ${scope} · ${facLabel} · ${readablePeriod(v.period)}`,
       defaultType: v.requestPreselect ?? "clarify",
       // pre-fill order: document, value, scope, facility, period, then a colon
-      prefill: `${v.filename} · ${shown(v).value} ${shown(v).unit} · ${scope} · ${facLabel} · ${v.period}: `,
+      // The words go to the client: the value as the bill prints it, the period as a person reads it.
+      // The request's own period (above) is saved as data.
+      prefill: `${v.filename} · ${shown(v).value} ${shown(v).unit} · ${scope} · ${facLabel} · ${readablePeriod(v.period)}: `,
     });
   }
 
@@ -618,7 +621,7 @@ export function ExtractionReview({
                 <div key={group.key} className="s1-xr-group">
                   <div className="s1-xr-doc">
                     <span className="s1-xr-doc__fn">{group.filename}</span>
-                    <span className="s1-muted">{group.period}</span>
+                    <span className="s1-muted">{readablePeriod(group.period)}</span>
                     {group.values.length > REVIEW_CAP ? (
                       <span className="s1-muted"> · {group.values.length} values from one file</span>
                     ) : null}
@@ -881,7 +884,7 @@ function ValueCard({
     >
       <div className="s1-xr-card__top">
         <span className="s1-xr-what">{v.whatItIs}</span>
-        <span className="s1-xr-period">{v.period}</span>
+        <span className="s1-xr-period">{readablePeriod(v.period)}</span>
         {done ? <span className={`s1-xr-badge s1-xr-badge--${v.reviewState}`}>{stateLabel}</span> : null}
       </div>
       <div className="s1-xr-card__value">
