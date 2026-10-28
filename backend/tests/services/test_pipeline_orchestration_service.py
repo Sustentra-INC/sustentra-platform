@@ -745,15 +745,18 @@ def test_a_photo_or_scan_says_it_needs_ocr_while_textract_is_off(monkeypatch):
 
 
 def test_a_password_protected_file_says_so_and_what_to_ask_for():
+    from backend.app.adapters.parsers.xls_parser import PASSWORD_PROTECTED
     from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
 
     locked = {"status": "failed", "parser_name": "xlrd",
-              "warnings": [{"code": "password_protected", "message": "This workbook is password-protected."}]}
+              "warnings": [{"code": "password_protected", "message": PASSWORD_PROTECTED}]}
+    # The Evidence row's sentence is the source pane's (the reader's own), word for word.
     assert PipelineOrchestrationService._unreadable_halt(locked) == {
         "code": "password_protected",
         "message": "This file is password-protected, so it could not be read. Ask the client for a copy without "
                    "a password.",
     }
+    assert PipelineOrchestrationService._unreadable_halt(locked)["message"] == PASSWORD_PROTECTED
     encrypted_email = {**locked, "parser_name": "email_parser"}
     assert PipelineOrchestrationService._unreadable_halt(encrypted_email) == {
         "code": "password_protected",

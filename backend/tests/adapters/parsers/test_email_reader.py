@@ -11,6 +11,7 @@ import pytest
 
 from backend.app.adapters.parsers import email_reader
 from backend.app.adapters.parsers.email_reader import EmailError, html_to_text, read_eml
+from backend.tests.adapters.parsers._timing import budget
 
 
 def _message(subject: str = "Your February bill", body: str | None = "Total Usage: 120 therms", **headers: str
@@ -252,7 +253,7 @@ def _timed(data: bytes, seconds: float = 1.0):
         return read_eml(data)
     finally:
         elapsed = time.perf_counter() - started
-        assert elapsed < seconds, f"took {elapsed:.2f} s"
+        assert elapsed < budget(seconds), f"took {elapsed:.2f} s"
 
 
 def test_a_huge_number_of_parts_is_cut_before_parsing() -> None:

@@ -86,9 +86,11 @@ NOT_A_LEGACY_WORKBOOK = (
     "This .xls is not an Excel 97-2003 workbook (it looks like a web page or text export). "
     "Open it in Excel and save it as .xlsx, or export it as CSV."
 )
+# Also the Evidence row's halt for a password-protected file (pipeline_orchestration_service),
+# so the row and the source pane say the same thing.
 PASSWORD_PROTECTED = (
-    "This workbook is password-protected, so it could not be read. "
-    "Ask for a copy without a password."
+    "This file is password-protected, so it could not be read. "
+    "Ask the client for a copy without a password."
 )
 CONTAINS_MACROS = "The workbook contains macros. They were not run."
 DAMAGED_SHEETS = "Could not read workbook: its sheets share or overlap the same data, so it is damaged."
