@@ -142,8 +142,10 @@ def test_numbering_continues_after_requests_numbered_in_the_browser() -> None:
     legacy = {"id": "ASK-old", "type": "clarify", "whatIsNeeded": "Confirm the unit", "state": "requested",
               "requestNumber": 7, "lineNumber": 1, "source": SOURCE, "raisedByName": "Ann",
               "raisedByLogin": "ann", "raisedAt": "2026-10-12T22:00:00.000Z", "history": []}
-    saved = call("PUT", f"{BASE}/{engagement['id']}/workpaper-items/ask/ASK-old", body={"payload": legacy})
-    assert saved.status_code == 200, saved.text
+    asyncio.run(_admin(
+        "INSERT INTO workpaper_items (org_id, engagement_id, kind, item_key, payload, created_by, updated_by) "
+        "VALUES ($1, $2, 'ask', 'ASK-old', $3::jsonb, $4, $4)",
+        engagement["org_id"], engagement["id"], json.dumps(legacy), A_MEMBER))
     raise_request(engagement["id"])
     assert send(engagement["id"], ["ASK-1"]).json()["requestNumber"] == 8
     resolved = act(engagement["id"], "ASK-old", "resolve", {})
