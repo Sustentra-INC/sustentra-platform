@@ -138,10 +138,11 @@ class EmailPart:
     content_id: str | None = None
     path: list[str] = field(default_factory=list)  # the forwarded messages it sits in, outermost first
     note: str | None = None  # why it could not be read even as an attachment
+    declared_size: int | None = None  # the size the message states, for a part listed without its bytes
 
     @property
     def size(self) -> int:
-        return len(self.data)
+        return len(self.data) if self.data else (self.declared_size or 0)
 
 
 @dataclass
@@ -209,6 +210,13 @@ def read_eml(data: bytes) -> EmailPackage:
         raise EmailError("email_load_failed", DAMAGED_EMAIL) from exc
     except Exception as exc:  # noqa: BLE001 - a malformed message the parser or our walk trips over
         raise EmailError("email_load_failed", DAMAGED_EMAIL) from exc
+    _closing_notes(package, walk)
+    return package
+
+
+def _closing_notes(package: EmailPackage, walk: _Walk) -> None:
+    """What the read left out, said once at the end (the .eml and .msg readers share it)."""
+
     if walk.stopped:
         package.notes.append(("email_parts_limit", f"The email has more than {MAX_PARTS} parts; "
                                                    "only the first ones were read."))
@@ -217,7 +225,6 @@ def read_eml(data: bytes) -> EmailPackage:
                                                  "only its beginning was read."))
     if walk.text_cut:
         package.notes.append(("body_truncated", "The message text is very long; only its beginning was read."))
-    return package
 
 
 # --- parsing within bounds ---------------------------------------------------------------------
@@ -461,6 +468,35 @@ def _clip(text: str) -> str:
     return text if len(text) <= SHOWN_HEADER_CHARS else text[:SHOWN_HEADER_CHARS] + "…"
 
 
+def header_text(text: str) -> str:
+    """A header value as one short line: control characters become spaces, white space is
+    collapsed, and the line is cut at ``SHOWN_HEADER_CHARS``."""
+
+    return _clip(" ".join("".join(ch if ch.isprintable() else " " for ch in text).split()))
+
+
+def _quote_name(name: str) -> str:
+    """A display name for an address line: one that holds a comma or a semicolon would read as
+    the end of an address, so it keeps its quotes, with any quote or backslash inside escaped."""
+
+    if "," in name or ";" in name:
+        return '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return name
+
+
+def mailbox(name: str, address: str) -> str:
+    """One address for reading, named as ``_addresses`` names them: ``Name <address>``; the
+    address alone when the name is empty or is the address; the name alone when there is no
+    address."""
+
+    name, address = name.strip(), address.strip()
+    if not address:
+        return _quote_name(name)
+    if not name or name == address:
+        return address
+    return f"{_quote_name(name)} <{address}>"
+
+
 def _header(message: Message, name: str) -> str:
     """A header as one line of text: unfolded, RFC 2047 words decoded. Date is kept as sent;
     in an address header, display names lose their transport quotes (see ``_addresses``)."""
@@ -475,8 +511,7 @@ def _header(message: Message, name: str) -> str:
         text = _addresses(text)
     elif "=?" in text:
         text = _decode_words(text)
-    text = " ".join("".join(ch if ch.isprintable() else " " for ch in text).split())
-    return _clip(text)
+    return header_text(text)
 
 
 def _addresses(text: str) -> str:
@@ -487,11 +522,7 @@ def _addresses(text: str) -> str:
     name (``"Doe, \\"JJ\\" Jane"``). Encoded words are decoded, inside quotes and out, under the
     same rule."""
 
-    def name(content: str) -> str:
-        if "," in content or ";" in content:
-            return '"' + content.replace("\\", "\\\\").replace('"', '\\"') + '"'
-        return content
-
+    name = _quote_name
     pieces: list[str] = []
     position = 0
     while (start := text.find('"', position)) >= 0:
@@ -593,6 +624,27 @@ def _codec(charset: str | None) -> str:
             continue
         return "utf-8" if name in _DENY_CODECS else name
     return "utf-8"
+
+
+# Windows code pages that Python names otherwise than "cp<n>" (PidTagMessageCodepage and
+# PidTagInternetCodepage hold a Windows code page number).
+_CODEPAGE_CODECS = {
+    65001: "utf-8", 20127: "ascii", 28603: "iso8859-13", 28605: "iso8859-15",
+    50220: "iso2022_jp", 50221: "iso2022_jp", 50222: "iso2022_jp", 51932: "euc_jp", 51949: "euc_kr",
+    54936: "gb18030", 936: "gbk", 20866: "koi8_r", 21866: "koi8_u", 10000: "mac_roman",
+    **{28590 + n: f"iso8859-{n}" for n in range(1, 10)},  # 28591-28599: ISO 8859-1 to -9
+}
+
+
+def codepage_codec(codepage: int | None) -> str:
+    """The codec for a MAPI code page number (an Outlook message's 8-bit text). Unlike ``_codec``,
+    which reads an unknown charset as UTF-8, an absent or unknown code page, or one whose codec is
+    denied (``_DENY_CODECS``), reads as Windows-1252, what Outlook itself assumes."""
+
+    if codepage is None:
+        return "cp1252"
+    canonical = _canonical(_CODEPAGE_CODECS.get(codepage, f"cp{codepage}"))
+    return "cp1252" if canonical is None or canonical in _DENY_CODECS else canonical
 
 
 def _decode_bytes(data: bytes, charset: str | None) -> str:
@@ -842,8 +894,7 @@ def _forwarded_file(data: bytes, filename: str, package: EmailPackage, *, depth:
 
     name = _safe_name(filename, "message/rfc822", len(package.attachments) + 1)
     if depth + 1 > MAX_DEPTH:
-        package.notes.append(("forwarded_too_deep", f"A message forwarded more than {MAX_DEPTH} levels deep "
-                                                    f"(\"{name}\") was not read."))
+        package.notes.append(too_deep_note(name))
         return True
     if walk.lines_left <= 0 or walk.part_lines_left <= 0:
         walk.cut = True
@@ -868,6 +919,10 @@ def _forwarded_file(data: bytes, filename: str, package: EmailPackage, *, depth:
     return True
 
 
+def too_deep_note(name: str) -> tuple[str, str]:
+    return ("forwarded_too_deep", f"A message forwarded more than {MAX_DEPTH} levels deep (\"{name}\") was not read.")
+
+
 def _list_not_read(package: EmailPackage, name: str, data: bytes, path: list[str], reason: str) -> None:
     package.attachments.append(EmailPart(name=name, content_type="message/rfc822", data=data,
                                          path=list(path), note=reason))
@@ -876,8 +931,7 @@ def _list_not_read(package: EmailPackage, name: str, data: bytes, path: list[str
 def _forwarded(inner: EmailMessage, package: EmailPackage, *, depth: int, walk: _Walk, path: list[str]) -> None:
     subject = _header(inner, "Subject") or "Forwarded message"
     if depth + 1 > MAX_DEPTH:
-        package.notes.append(("forwarded_too_deep", f"A message forwarded more than {MAX_DEPTH} levels deep "
-                                                    f"(\"{subject}\") was not read."))
+        package.notes.append(too_deep_note(subject))
         return
     package.nested.append(_package(inner, depth=depth + 1, walk=walk, path=[*path, subject]))
 
