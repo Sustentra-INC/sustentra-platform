@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { EngagementConfig } from "../types";
 import type { AskOrigin, RequestType } from "../types/requests";
 import { REQUEST_TYPES } from "../types/requests";
+import { problemText, settle, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 import { readablePeriod } from "../utils/formatPeriod";
 
@@ -36,11 +37,15 @@ export function AddToRequestsModal({
   engagement,
   onCancel,
   onAdd,
+  serverRecordsActor = false,
 }: {
   target: AddToRequestsTarget;
   engagement: EngagementConfig;
   onCancel: () => void;
-  onAdd: (draft: AskDraft) => void;
+  /** May answer after the server has: the window waits, and keeps its text if the save fails. */
+  onAdd: (draft: AskDraft) => MaybePromise<unknown>;
+  /** The server records the signed-in user as the person who raised it, so no one is picked here. */
+  serverRecordsActor?: boolean;
 }) {
   const [type, setType] = useState<RequestType>(target.defaultType);
   const [whatIsNeeded, setWhatIsNeeded] = useState(target.prefill);
@@ -51,6 +56,8 @@ export function AddToRequestsModal({
     : null;
   const signed = team.find((m) => m.login === engagement.signedInLogin) ?? me ?? team[0] ?? { name: "You", login: "you" };
   const [raisedBy, setRaisedBy] = useState(signed.login);
+  const [pending, setPending] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -67,8 +74,9 @@ export function AddToRequestsModal({
     ...(target.sourcePage ? ([["Page", String(target.sourcePage)]] as [string, string][]) : []),
   ];
   const add = () => {
-    const chosen = (team.length ? team : [signed]).find((m) => m.login === raisedBy) ?? signed;
-    onAdd({
+    if (pending) return;
+    const chosen = serverRecordsActor ? signed : ((team.length ? team : [signed]).find((m) => m.login === raisedBy) ?? signed);
+    const draft: AskDraft = {
       origin: target.origin,
       documentId: target.documentId ?? null,
       fieldKey: target.fieldKey ?? null,
@@ -81,7 +89,17 @@ export function AddToRequestsModal({
       whatIsNeeded,
       raisedByName: chosen.name,
       raisedByLogin: chosen.login,
-    });
+    };
+    setPending(true);
+    setProblem(null);
+    settle(
+      () => onAdd(draft),
+      () => setPending(false),
+      (e) => {
+        setPending(false);
+        setProblem(problemText(e));
+      }
+    );
   };
 
   return (
@@ -129,16 +147,18 @@ export function AddToRequestsModal({
                 ))}
               </select>
             </label>
-            <label className="s1-modal__field">
-              <span>Raised by</span>
-              <select value={raisedBy} onChange={(e) => setRaisedBy(e.target.value)}>
-                {(team.length ? team : [signed]).map((m) => (
-                  <option key={m.login} value={m.login}>
-                    {m.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {serverRecordsActor ? null : (
+              <label className="s1-modal__field">
+                <span>Raised by</span>
+                <select value={raisedBy} onChange={(e) => setRaisedBy(e.target.value)}>
+                  {(team.length ? team : [signed]).map((m) => (
+                    <option key={m.login} value={m.login}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
 
           <label className="s1-modal__field">
@@ -146,13 +166,19 @@ export function AddToRequestsModal({
             <textarea autoFocus rows={4} value={whatIsNeeded} onChange={(e) => setWhatIsNeeded(e.target.value)} />
           </label>
 
+          {problem ? (
+            <p className="s1-system-banner" role="alert">
+              {problem}
+            </p>
+          ) : null}
+
           <div className="s1-atr__foot">
             <p className="s1-muted s1-modal__note">Saved to Evidence requests as not yet sent. Nothing is emailed from here.</p>
             <div className="s1-modal__actions">
               <button className="s1-button" type="button" onClick={onCancel}>
                 Cancel
               </button>
-              <button className="s1-button s1-button--pri" type="submit" disabled={!whatIsNeeded.trim()}>
+              <button className="s1-button s1-button--pri" type="submit" disabled={!whatIsNeeded.trim() || pending}>
                 Add to requests
               </button>
             </div>

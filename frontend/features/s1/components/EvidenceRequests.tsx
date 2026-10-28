@@ -3,7 +3,9 @@
 import { ArrowRight, ListChecks, Send } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
+import { andThen, NOT_SAVED_TITLE, problemText, settle, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
+import { whoActed } from "../requests/whoActed";
 import type { EngagementConfig } from "../types";
 import type { Ask, AskState, RequestType } from "../types/requests";
 import { REQUEST_TYPES } from "../types/requests";
@@ -49,6 +51,7 @@ export function EvidenceRequests({
   onEdit,
   onRaiseFollowUp,
   onOpenSource,
+  serverRecordsActor = false,
 }: {
   engagement: EngagementConfig;
   asks: Ask[];
@@ -57,14 +60,18 @@ export function EvidenceRequests({
   /** Values read but not yet accepted or corrected: coverage counts only reviewed ones. */
   valuesToReview?: number;
   onReview?: () => void;
-  /** Raise a request from a check that is missing its inputs. */
-  onSaveAsk: (draft: AskDraft) => void;
-  onSend: (askIds: string[], lineNumbers: Record<string, number>) => number;
-  onResolve: (askId: string, resolution: { link?: string | null; note?: string | null }) => void;
-  onWithdraw: (askId: string, reason: string) => void;
-  onEdit: (askId: string, whatIsNeeded: string) => void;
-  onRaiseFollowUp: (fromAsk: Ask) => void;
+  /** Raise a request from a check that is missing its inputs. The changes below may answer at
+   *  once (the demo) or after the server has: the screen waits, and says so if one fails. */
+  onSaveAsk: (draft: AskDraft) => MaybePromise<unknown>;
+  onSend: (askIds: string[], lineNumbers: Record<string, number>) => MaybePromise<number>;
+  onResolve: (askId: string, resolution: { link?: string | null; note?: string | null }) => MaybePromise<void>;
+  onWithdraw: (askId: string, reason: string) => MaybePromise<void>;
+  onEdit: (askId: string, whatIsNeeded: string) => MaybePromise<void>;
+  onRaiseFollowUp: (fromAsk: Ask) => MaybePromise<unknown>;
   onOpenSource: (ask: Ask) => void;
+  /** The server records who raised, sent, resolved or withdrew a request: the window does not ask,
+   *  and each row says who took its latest step. */
+  serverRecordsActor?: boolean;
 }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [stateFilter, setStateFilter] = useState<AskState | null>(null);
@@ -77,11 +84,36 @@ export function EvidenceRequests({
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [requestRule, setRequestRule] = useState<CoverageRule | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // A change that did not go through, and the requests with a change on its way.
+  const [problem, setProblem] = useState<string | null>(null);
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
+  // The send window keeps its own, because it covers the page.
+  const [sendProblem, setSendProblem] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
 
   const flash = (m: string) => {
     setToast(m);
     window.setTimeout(() => setToast(null), 2400);
   };
+  const showProblem = (error: unknown) => setProblem(problemText(error));
+
+  /** Runs a change on one request: it is pending until the server answers, and a failure goes to the banner. */
+  function changeRequest<T>(id: string, run: () => MaybePromise<T>, onDone: (value: T) => void) {
+    const release = () => setPendingIds((cur) => cur.filter((x) => x !== id));
+    setProblem(null);
+    setPendingIds((cur) => [...cur, id]);
+    settle(
+      run,
+      (value) => {
+        release();
+        onDone(value);
+      },
+      (error) => {
+        release();
+        showProblem(error);
+      }
+    );
+  }
 
   const counts = useMemo(() => {
     const c = { not_yet_sent: 0, requested: 0, resolved: 0, withdrawn: 0 };
@@ -123,6 +155,13 @@ export function EvidenceRequests({
           </InfoTip>
         </div>
       </header>
+
+      {problem ? (
+        <div className="s1-system-banner" role="alert">
+          <strong>{NOT_SAVED_TITLE}</strong>
+          <span>{problem}</span>
+        </div>
+      ) : null}
 
       {valuesToReview > 0 ? (
         <button className="s1-cr-review" type="button" onClick={onReview}>
@@ -172,7 +211,10 @@ export function EvidenceRequests({
             className="s1-button s1-button--pri s1-cr-send"
             type="button"
             disabled={selectedSendable.length === 0}
-            onClick={() => setPanelOpen(true)}
+            onClick={() => {
+              setSendProblem(null);
+              setPanelOpen(true);
+            }}
           >
             <Send aria-hidden />
             Send{selectedSendable.length ? ` (${selectedSendable.length})` : ""}
@@ -239,7 +281,19 @@ export function EvidenceRequests({
                           <input
                             className="s1-inline-input"
                             defaultValue={ask.whatIsNeeded}
-                            onBlur={(e) => e.target.value !== ask.whatIsNeeded && onEdit(ask.id, e.target.value)}
+                            onBlur={(e) => {
+                              const input = e.currentTarget;
+                              if (input.value === ask.whatIsNeeded) return;
+                              setProblem(null);
+                              settle(
+                                () => onEdit(ask.id, input.value),
+                                () => {},
+                                (error) => {
+                                  input.value = ask.whatIsNeeded;
+                                  showProblem(error);
+                                }
+                              );
+                            }}
                             aria-label="What is needed"
                           />
                         ) : (
@@ -252,6 +306,7 @@ export function EvidenceRequests({
                           menuOpen={menuFor === ask.id}
                           onMenuChange={(open) => setMenuFor(open ? ask.id : null)}
                           recordOpen={expanded.includes(ask.id)}
+                          serverRecordsActor={serverRecordsActor}
                           onResolveOpen={() => {
                             setResolveFor(ask.id);
                             setWithdrawFor(null);
@@ -260,7 +315,10 @@ export function EvidenceRequests({
                             setWithdrawFor(ask.id);
                             setResolveFor(null);
                           }}
-                          onFollowUp={() => onRaiseFollowUp(ask)}
+                          onFollowUp={() => {
+                            setProblem(null);
+                            settle(() => onRaiseFollowUp(ask), () => {}, showProblem);
+                          }}
                           onExpand={() =>
                             setExpanded((cur) => (cur.includes(ask.id) ? cur.filter((x) => x !== ask.id) : [...cur, ask.id]))
                           }
@@ -272,12 +330,18 @@ export function EvidenceRequests({
                       <tr className="s1-req-subrow">
                         <td colSpan={4}>
                           <ResolveBox
+                            pending={pendingIds.includes(ask.id)}
                             onCancel={() => setResolveFor(null)}
-                            onResolve={(link, note) => {
-                              onResolve(ask.id, { link, note });
-                              setResolveFor(null);
-                              flash(`Resolved: ${ask.source.itemLabel}`);
-                            }}
+                            onResolve={(link, note) =>
+                              changeRequest(
+                                ask.id,
+                                () => onResolve(ask.id, { link, note }),
+                                () => {
+                                  setResolveFor((cur) => (cur === ask.id ? null : cur));
+                                  flash(`Resolved: ${ask.source.itemLabel}`);
+                                }
+                              )
+                            }
                           />
                         </td>
                       </tr>
@@ -287,12 +351,18 @@ export function EvidenceRequests({
                       <tr className="s1-req-subrow">
                         <td colSpan={4}>
                           <WithdrawBox
+                            pending={pendingIds.includes(ask.id)}
                             onCancel={() => setWithdrawFor(null)}
-                            onWithdraw={(reason) => {
-                              onWithdraw(ask.id, reason);
-                              setWithdrawFor(null);
-                              flash("Withdrawn");
-                            }}
+                            onWithdraw={(reason) =>
+                              changeRequest(
+                                ask.id,
+                                () => onWithdraw(ask.id, reason),
+                                () => {
+                                  setWithdrawFor((cur) => (cur === ask.id ? null : cur));
+                                  flash("Withdrawn");
+                                }
+                              )
+                            }
                           />
                         </td>
                       </tr>
@@ -318,10 +388,13 @@ export function EvidenceRequests({
           target={coverageTarget(requestRule, engagement)}
           engagement={engagement}
           onCancel={() => setRequestRule(null)}
+          serverRecordsActor={serverRecordsActor}
           onAdd={(draft) => {
-            onSaveAsk(draft);
-            setRequestRule(null);
-            flash("Added to requests, not sent yet");
+            setProblem(null);
+            return andThen(onSaveAsk(draft), () => {
+              setRequestRule(null);
+              flash("Added to requests, not sent yet");
+            });
           }}
         />
       ) : null}
@@ -330,12 +403,28 @@ export function EvidenceRequests({
         <SendPanel
           engagement={engagement}
           asks={selectedAsks}
-          onClose={() => setPanelOpen(false)}
-          onMarkSent={(orderedIds, lineNumbers) => {
-            const n = onSend(orderedIds, lineNumbers);
-            setSelected([]);
+          problem={sendProblem}
+          pending={sending}
+          onClose={() => {
+            setSendProblem(null);
             setPanelOpen(false);
-            flash(`Sent as request ${n}`);
+          }}
+          onMarkSent={(orderedIds, lineNumbers) => {
+            setSendProblem(null);
+            setSending(true);
+            settle(
+              () => onSend(orderedIds, lineNumbers),
+              (n) => {
+                setSending(false);
+                setSelected([]);
+                setPanelOpen(false);
+                flash(`Sent as request ${n}`);
+              },
+              (error) => {
+                setSending(false);
+                setSendProblem(problemText(error));
+              }
+            );
           }}
           onCopied={() => flash("Message copied")}
         />
@@ -373,6 +462,7 @@ function StateCell({
   menuOpen,
   onMenuChange,
   recordOpen,
+  serverRecordsActor,
   onResolveOpen,
   onWithdrawOpen,
   onFollowUp,
@@ -382,6 +472,7 @@ function StateCell({
   menuOpen: boolean;
   onMenuChange: (open: boolean) => void;
   recordOpen: boolean;
+  serverRecordsActor: boolean;
   onResolveOpen: () => void;
   onWithdrawOpen: () => void;
   onFollowUp: () => void;
@@ -392,6 +483,7 @@ function StateCell({
     ...(ask.state === "resolved" ? [{ label: "Raise follow-up", action: onFollowUp }] : []),
     { label: recordOpen ? "Hide history" : "History", action: onExpand },
   ];
+  const acted = serverRecordsActor ? whoActed(ask) : null;
   return (
     <div className="s1-req-state">
       <div className="s1-req-state__row">
@@ -408,6 +500,12 @@ function StateCell({
           <ActionMenu label={`Actions for ${ask.source.itemLabel}`} entries={entries} isOpen={menuOpen} onOpenChange={onMenuChange} />
         </span>
       </div>
+      {acted ? (
+        <div className="s1-muted s1-req-state__note">
+          {acted.label}
+          {acted.at ? ` · ${formatActedAt(acted.at)}` : ""}
+        </div>
+      ) : null}
       {ask.state === "resolved" && ask.resolution?.link ? (
         <div className="s1-muted s1-req-state__note">answered by {ask.resolution.link}</div>
       ) : null}
@@ -416,7 +514,15 @@ function StateCell({
   );
 }
 
-function ResolveBox({ onCancel, onResolve }: { onCancel: () => void; onResolve: (link: string | null, note: string | null) => void }) {
+function ResolveBox({
+  pending,
+  onCancel,
+  onResolve,
+}: {
+  pending: boolean;
+  onCancel: () => void;
+  onResolve: (link: string | null, note: string | null) => void;
+}) {
   const [link, setLink] = useState("");
   const [note, setNote] = useState("");
   return (
@@ -431,7 +537,7 @@ function ResolveBox({ onCancel, onResolve }: { onCancel: () => void; onResolve: 
         <input value={note} onChange={(e) => setNote(e.target.value)} />
       </label>
       <div className="s1-modal__actions">
-        <button className="s1-button" type="button" onClick={() => onResolve(link.trim() || null, note.trim() || null)}>
+        <button className="s1-button" type="button" disabled={pending} onClick={() => onResolve(link.trim() || null, note.trim() || null)}>
           Resolve
         </button>
         <button className="s1-button" type="button" onClick={onCancel}>
@@ -442,7 +548,15 @@ function ResolveBox({ onCancel, onResolve }: { onCancel: () => void; onResolve: 
   );
 }
 
-function WithdrawBox({ onCancel, onWithdraw }: { onCancel: () => void; onWithdraw: (reason: string) => void }) {
+function WithdrawBox({
+  pending,
+  onCancel,
+  onWithdraw,
+}: {
+  pending: boolean;
+  onCancel: () => void;
+  onWithdraw: (reason: string) => void;
+}) {
   const [reason, setReason] = useState("");
   return (
     <div className="s1-req-box">
@@ -452,7 +566,7 @@ function WithdrawBox({ onCancel, onWithdraw }: { onCancel: () => void; onWithdra
         <input value={reason} onChange={(e) => setReason(e.target.value)} />
       </label>
       <div className="s1-modal__actions">
-        <button className="s1-button" type="button" disabled={!reason.trim()} onClick={() => onWithdraw(reason.trim())}>
+        <button className="s1-button" type="button" disabled={!reason.trim() || pending} onClick={() => onWithdraw(reason.trim())}>
           Withdraw
         </button>
         <button className="s1-button" type="button" onClick={onCancel}>
@@ -490,12 +604,17 @@ function AskRecord({ ask }: { ask: Ask }) {
 function SendPanel({
   engagement,
   asks,
+  problem,
+  pending,
   onClose,
   onMarkSent,
   onCopied,
 }: {
   engagement: EngagementConfig;
   asks: Ask[];
+  /** Why the last try at marking these sent did not go through. */
+  problem: string | null;
+  pending: boolean;
   onClose: () => void;
   onMarkSent: (orderedIds: string[], lineNumbers: Record<string, number>) => void;
   onCopied: () => void;
@@ -543,6 +662,12 @@ function SendPanel({
           <span>Message</span>
           <textarea className="s1-req-message" rows={12} value={body} onChange={(e) => setBody(e.target.value)} />
         </label>
+        {problem ? (
+          <div className="s1-system-banner" role="alert">
+            <strong>{NOT_SAVED_TITLE}</strong>
+            <span>{problem}</span>
+          </div>
+        ) : null}
         <div className="s1-modal__actions">
           <button
             className="s1-button"
@@ -559,7 +684,7 @@ function SendPanel({
           >
             Open in mail
           </a>
-          <button className="s1-button s1-button--pri" type="button" onClick={() => onMarkSent(orderedIds, lineNumbers)}>
+          <button className="s1-button s1-button--pri" type="button" disabled={pending} onClick={() => onMarkSent(orderedIds, lineNumbers)}>
             Mark as sent
           </button>
         </div>
@@ -660,6 +785,19 @@ function dedupe(xs: string[]): string[] {
 }
 function capitalize(s: string): string {
   return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+/** When a request's latest step happened, for the line saying who took it: the year only when it is not this one. */
+function formatActedAt(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const thisYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleString(undefined, {
+    ...(thisYear ? {} : { year: "numeric" }),
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 function formatDate(iso: string): string {
   const d = new Date(iso);

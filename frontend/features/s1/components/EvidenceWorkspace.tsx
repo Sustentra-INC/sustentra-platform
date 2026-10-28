@@ -18,6 +18,7 @@ import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { formatPeriod } from "../utils/formatPeriod";
 import { UPLOAD_ACCEPT } from "../constants/uploads";
+import { andThen, NOT_SAVED_TITLE, problemText, settle, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 
 /**
@@ -84,8 +85,11 @@ interface EvidenceWorkspaceProps {
   engagement: EngagementConfig;
   evidence: EvidenceItem[];
   asks: Ask[];
-  onSaveAsk: (draft: AskDraft) => void;
-  onResolveAsk?: (askId: string) => void;
+  /** Either may answer after the server has: the window waits, and says so if the change fails. */
+  onSaveAsk: (draft: AskDraft) => MaybePromise<unknown>;
+  onResolveAsk?: (askId: string) => MaybePromise<void>;
+  /** The server records who raised a request: the Add to requests window does not ask. */
+  serverRecordsActor?: boolean;
   /** Lifts manual edits (set type/facility, note, withdraw, mark relationship)
    *  to app state so they survive navigation. Same pattern as the other stores. */
   onEvidenceChange: (updater: (cur: EvidenceItem[]) => EvidenceItem[]) => void;
@@ -117,6 +121,7 @@ export function EvidenceWorkspace({
   asks,
   onSaveAsk,
   onResolveAsk,
+  serverRecordsActor = false,
   onEvidenceChange,
   onOpenExtraction,
   onOpenRequests,
@@ -157,6 +162,8 @@ export function EvidenceWorkspace({
   const [noteDraft, setNoteDraft] = useState("");
   const [modalDoc, setModalDoc] = useState<EvidenceItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // A change to a request that did not go through (resolving the request a file answers).
+  const [actionProblem, setActionProblem] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
 
   function flash(message: string) {
@@ -305,9 +312,15 @@ export function EvidenceWorkspace({
       flash("No open request on this file to resolve");
       return;
     }
-    onResolveAsk?.(ask.id);
-    record("answers_request", documentId, `request ${ask.requestNumber}`, "resolved");
-    flash(`Resolved request ${ask.requestNumber}`);
+    setActionProblem(null);
+    settle(
+      () => onResolveAsk?.(ask.id),
+      () => {
+        record("answers_request", documentId, `request ${ask.requestNumber}`, "resolved");
+        flash(`Resolved request ${ask.requestNumber}`);
+      },
+      (error) => setActionProblem(problemText(error))
+    );
   }
 
   function withdraw(documentId: string) {
@@ -325,9 +338,10 @@ export function EvidenceWorkspace({
   }
 
   function submitAsk(draft: AskDraft) {
-    onSaveAsk(draft);
-    setModalDoc(null);
-    flash("Added to requests · not yet sent");
+    return andThen(onSaveAsk(draft), () => {
+      setModalDoc(null);
+      flash("Added to requests · not yet sent");
+    });
   }
 
   const showEmpty = activeCount === 0;
@@ -369,6 +383,13 @@ export function EvidenceWorkspace({
         <div className="s1-system-banner" role="status">
           <strong>{backendError.title}</strong>
           <span>{backendError.message}</span>
+        </div>
+      ) : null}
+
+      {actionProblem ? (
+        <div className="s1-system-banner" role="alert">
+          <strong>{NOT_SAVED_TITLE}</strong>
+          <span>{actionProblem}</span>
         </div>
       ) : null}
 
@@ -562,6 +583,7 @@ export function EvidenceWorkspace({
           engagement={engagement}
           onCancel={() => setModalDoc(null)}
           onAdd={submitAsk}
+          serverRecordsActor={serverRecordsActor}
         />
       ) : null}
 
