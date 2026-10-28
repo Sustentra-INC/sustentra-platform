@@ -86,6 +86,11 @@ export interface EvidenceItem {
   arrivedSinceLastVisit?: boolean;
   /** For "partially extracted": the required fields the extractor did not find. */
   missingFields?: string[];
+  /**
+   * Backend mode only: the document is waiting to be read or being read, so the row says
+   * "Reading…". Set while its processing run is active; never stored.
+   */
+  reading?: "queued" | "in_progress";
 }
 
 /**

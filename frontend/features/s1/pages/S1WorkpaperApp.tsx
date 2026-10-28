@@ -6,13 +6,15 @@ import {
   getSignedInUser,
   isSessionEnded,
   listWorkspaceEvidence,
-  processDocument,
   signInAgainPath,
   submitFieldReview,
   uploadDocumentWithProgress,
   userFacingApiError,
 } from "../api/s1Backend";
 import { ApiError } from "../../../lib/api";
+import { isActiveRun, readFailureMessage, requestRead, type ProcessingRunView } from "../api/processingRuns";
+import { useProcessingRuns } from "../hooks/useProcessingRuns";
+import { readAfterUpload, withReadingState } from "../utils/readingState";
 import { reviewValuesFromFields, withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import {
   getRecalculation,
@@ -112,6 +114,15 @@ type ActiveView =
   | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string; valueId?: string }
   | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
 
+/** The files of the upload in progress (or just finished): the lines the Evidence banner lists,
+ *  and the documents whose reads may still fail after the upload dialog has moved on. */
+interface UploadBatch {
+  notUploaded: string[];
+  notRead: string[];
+  /** File name by document id, for the files that were stored. */
+  names: Map<string, string>;
+}
+
 /** Facility->type (or entity/not-yet-known) node a Workspace row maps into. */
 function nodeKeyForEvidence(item: EvidenceItem): string {
   const type = item.detectedType ?? "Type unresolved";
@@ -176,7 +187,6 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [documentDecisions, setDocumentDecisions] = useState<Record<string, DocumentDecision>>({});
   const [gridRegions, setGridRegions] = useState<{ code: string; name: string }[] | undefined>(undefined);
   const [dataPoints, setDataPoints] = useState<DataPointOption[]>([]);
-  const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
   const [backendError, setBackendError] = useState<WorkspaceProblem | null>(null);
   // Backend mode: a 401 from the API means the session ended (FE-007).
   const [sessionEnded, setSessionEnded] = useState(false);
@@ -375,6 +385,59 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       setDemoState("error_degraded");
     }
   }
+
+  // Backend mode: reads run in the background. The runs say which documents are still being
+  // read, and the page hears when a read finishes. Fixture mode never fetches or schedules.
+  const uploadBatch = useRef<UploadBatch>({ notUploaded: [], notRead: [], names: new Map() });
+  // Reads a reviewer asked for (setting a document's type), by run id, with the banner title to
+  // use if one fails after the request has answered.
+  const rereadRuns = useRef(new Map<string, string>());
+
+  /** The Evidence banner for an upload batch: the files that weren't uploaded or weren't read.
+   *  `refreshBackendWorkspace` clears the banner as it starts, so this is set after a refresh. */
+  function showUploadProblems(batch: UploadBatch) {
+    if (batch.notUploaded.length === 0 && batch.notRead.length === 0) return;
+    setBackendError({
+      title: uploadProblemTitle(batch.notUploaded.length, batch.notRead.length),
+      message: [...batch.notUploaded, ...batch.notRead].join(" "),
+    });
+  }
+
+  /** Reads that were queued have finished: settle the upload dialog's rows, load what the reads
+   *  produced once, then tell what failed. */
+  function handleReadsFinished(runs: ProcessingRunView[]) {
+    const batch = uploadBatch.current;
+    let problem: WorkspaceProblem | null = null;
+    for (const run of runs) {
+      const rereadTitle = rereadRuns.current.get(run.run_id);
+      if (rereadTitle !== undefined) {
+        rereadRuns.current.delete(run.run_id);
+        if (run.status === "failed") problem = { title: rereadTitle, message: readFailureMessage(run) };
+        continue;
+      }
+      const name = batch.names.get(run.document_id);
+      if (name === undefined) continue;
+      const patch: Partial<UploadTask> =
+        run.status === "completed"
+          ? { stage: "done" }
+          : { stage: "failed", error: `Uploaded, but could not be read: ${readFailureMessage(run)}` };
+      setUploadTasks((current) =>
+        current.map((task) => (task.documentId === run.document_id ? { ...task, ...patch } : task))
+      );
+      if (patch.stage === "failed") batch.notRead.push(`${name}: ${patch.error}`);
+    }
+    void refreshBackendWorkspace("populated").then(() => {
+      if (problem) setBackendError(problem);
+      else showUploadProblems(batch);
+    });
+  }
+
+  const reads = useProcessingRuns({
+    enabled: dataMode === "backend",
+    engagementId: engagement.engagementId,
+    onFinished: handleReadsFinished,
+    onError: handleSessionEnded,
+  });
 
   function selectEngagement(id: string) {
     const row = engagements?.find((item) => item.id === id);
@@ -576,16 +639,22 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     for (const { documentId, typeId } of retype) void rereadAs(documentId, typeId);
   }
 
+  /** Ask for a document to be read as a type the reviewer set. A read that is only queued is
+   *  followed by the runs hook; its failure is told when it finishes (handleReadsFinished). */
   async function rereadAs(documentId: string, typeId: string) {
-    setProcessingDocumentIds((current) => [...new Set([...current, documentId])]);
+    const title = "Couldn't read the document as that type";
     try {
-      await processDocument(documentId, typeId);
+      const run = await requestRead(documentId, typeId);
+      if (isActiveRun(run)) {
+        rereadRuns.current.set(run.run_id, title);
+        reads.track(run);
+        return;
+      }
       await refreshBackendWorkspace("populated");
+      if (run.status === "failed") setBackendError({ title, message: readFailureMessage(run) });
     } catch (error) {
       if (handleSessionEnded(error)) return;
-      setBackendError({ title: "Couldn't read the document as that type", message: userFacingApiError(error) });
-    } finally {
-      setProcessingDocumentIds((current) => current.filter((id) => id !== documentId));
+      setBackendError({ title, message: userFacingApiError(error) });
     }
   }
 
@@ -603,9 +672,14 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setUploadTasks(tasks);
     setIsUploading(true);
     setBackendError(null);
-    // One line per file for the Evidence banner: not uploaded, then uploaded but not read.
-    const notUploaded = tasks.flatMap((task) => (task.stage === "not_uploaded" && task.error ? [task.error] : []));
-    const notRead: string[] = [];
+    // One line per file for the Evidence banner: not uploaded, then uploaded but not read. Reads
+    // that fail after the upload has moved on (queued reads) are added by handleReadsFinished.
+    const batch: UploadBatch = {
+      notUploaded: tasks.flatMap((task) => (task.stage === "not_uploaded" && task.error ? [task.error] : [])),
+      notRead: [],
+      names: new Map(),
+    };
+    uploadBatch.current = batch;
     const sending = tasks.some((task) => task.stage === "waiting");
     for (const [index, file] of picked.entries()) {
       const taskId = tasks[index].id;
@@ -617,6 +691,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           patchTask(taskId, { progress: fraction })
         );
         uploadedId = document.document_id;
+        batch.names.set(document.document_id, file.name);
         patchTask(taskId, { stage: "reading", progress: 1, documentId: document.document_id });
         setEvidenceItems((current) => [
           {
@@ -651,53 +726,57 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           ...current.filter((item) => item.documentId !== document.document_id),
         ]);
         setDemoState("populated");
-        setProcessingDocumentIds((current) => [...current, document.document_id]);
-        await processDocument(document.document_id);
-        setProcessingDocumentIds((current) => current.filter((id) => id !== document.document_id));
-        patchTask(taskId, { stage: "done" });
+        // Queued, the read is only started: the runs hook follows it and the next file goes up.
+        // Inline, this waits for the read itself. The task already says Reading… until it ends.
+        const start = await readAfterUpload(document);
+        if (start.kind === "reading") {
+          reads.track(start.run);
+        } else if (start.kind === "done") {
+          patchTask(taskId, { stage: "done" });
+        } else {
+          patchTask(taskId, { stage: "failed", error: start.reason });
+          batch.notRead.push(`${file.name}: ${start.reason}`);
+        }
       } catch (error) {
         if (handleSessionEnded(error)) {
           setIsUploading(false);
           return;
         }
         if (uploadedId) {
-          // Uploaded, but processing stopped (e.g. unreadable file): the row shows why.
-          const id = uploadedId;
-          setProcessingDocumentIds((current) => current.filter((item) => item !== id));
+          // Uploaded, but asking for the read failed: the row and the banner say why.
           const reason = `Uploaded, but could not be read: ${userFacingApiError(error)}`;
           patchTask(taskId, { stage: "failed", error: reason });
-          notRead.push(`${file.name}: ${reason}`);
+          batch.notRead.push(`${file.name}: ${reason}`);
         } else {
           // Not stored: the API's own words say why (its 415 names the file).
           const reason = userFacingApiError(error);
           patchTask(taskId, { stage: "not_uploaded", progress: 0, error: reason });
-          notUploaded.push(reason.includes(file.name) ? reason : `${file.name}: ${reason}`);
+          batch.notUploaded.push(reason.includes(file.name) ? reason : `${file.name}: ${reason}`);
         }
       }
     }
     if (sending) await refreshBackendWorkspace("populated");
-    if (notUploaded.length > 0 || notRead.length > 0) {
-      setBackendError({
-        title: uploadProblemTitle(notUploaded.length, notRead.length),
-        message: [...notUploaded, ...notRead].join(" "),
-      });
-    }
+    showUploadProblems(batch);
     setIsUploading(false);
   }
 
   async function handleProcessDocument(documentId: string) {
     if (dataMode !== "backend") return;
     setBackendError(null);
-    setProcessingDocumentIds((current) => [...new Set([...current, documentId])]);
+    const title = "Couldn't read the document";
     try {
-      await processDocument(documentId);
+      const run = await requestRead(documentId);
+      if (isActiveRun(run)) {
+        rereadRuns.current.set(run.run_id, title);
+        reads.track(run);
+        return;
+      }
       await refreshBackendWorkspace("populated");
+      if (run.status === "failed") setBackendError({ title, message: readFailureMessage(run) });
     } catch (error) {
       if (handleSessionEnded(error)) return;
-      setBackendError({ title: "Couldn't read the document", message: userFacingApiError(error) });
       await refreshBackendWorkspace();
-    } finally {
-      setProcessingDocumentIds((current) => current.filter((id) => id !== documentId));
+      setBackendError({ title, message: userFacingApiError(error) });
     }
   }
 
@@ -706,9 +785,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const evidenceView = useMemo(
     () =>
       dataMode === "backend"
-        ? applyDocumentView(evidenceItems, facts, documentDecisions, engagement.facilities)
+        ? withReadingState(applyDocumentView(evidenceItems, facts, documentDecisions, engagement.facilities), reads.runs)
         : evidenceItems,
-    [dataMode, evidenceItems, facts, documentDecisions, engagement.facilities]
+    [dataMode, evidenceItems, facts, documentDecisions, engagement.facilities, reads.runs]
   );
   // The data quality checks behind the Evidence screen's Issue column (backend mode), fetched
   // again when the documents or the reviewer's decisions change.

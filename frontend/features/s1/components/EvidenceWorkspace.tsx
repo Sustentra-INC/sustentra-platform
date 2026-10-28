@@ -1093,6 +1093,7 @@ function sortDocs(items: EvidenceItem[]): EvidenceItem[] {
 
 function needsYou(item: EvidenceItem): boolean {
   if (item.disposition !== "active") return false;
+  if (item.reading) return false;
   if (item.processingState === "blocked") return true;
   if (item.detectedType == null || item.typeReviewBand === "cannot_determine" || item.typeReviewBand === "needs_review")
     return true;
@@ -1105,6 +1106,8 @@ function needsYou(item: EvidenceItem): boolean {
 
 function processingDisplay(item: EvidenceItem): { role: string; label: string; sub: string | null } {
   if (item.disposition === "withdrawn") return { role: "na", label: "Withdrawn", sub: null };
+  if (item.reading)
+    return { role: "active", label: "Reading…", sub: item.reading === "queued" ? "Waiting to be read" : null };
   if (item.processingState === "blocked") return { role: "blocking", label: "Blocked", sub: item.haltReason };
   if (
     item.processingState === "extracted" &&

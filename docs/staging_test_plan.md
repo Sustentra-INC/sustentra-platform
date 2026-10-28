@@ -62,7 +62,9 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 
 ## 3. Upload
 
-1. Upload the text PDF bill: it appears with a reading status, then values.
+1. Upload the text PDF bill: it appears with a reading status (with S1_PROCESSING=queued: the
+   upload finishes at once and the row says Reading… until the values appear, without a
+   reload), then values.
 2. Upload several at once: the second text PDF, the Word bill, the CSV log, the Excel log,
    the photo of a bill and the PDF with no text layer.
 3. Drop the five files from `/tmp/qa/` (`.zip`, `.gif`, `.heic`, `.doc`, `.xls`) on the
