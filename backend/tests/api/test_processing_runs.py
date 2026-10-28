@@ -17,6 +17,7 @@ from backend.app.api import documents as documents_api
 from backend.app.api import processing_runs as processing_runs_api
 from backend.app.core.config import Settings
 from backend.app.main import app
+from backend.app.observability import JsonFormatter
 from backend.app.repositories.document_repository import InMemoryDocumentRepository
 from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
 from backend.app.repositories.pipeline_repository import InMemoryPipelineRunRepository
@@ -269,3 +270,56 @@ def test_queued_reads_need_postgres_backed_stores() -> None:
     assert Settings(s1_processing="queued", s1_store="postgres").s1_processing == "queued"
     with pytest.raises(ValidationError, match="S1_PROCESSING=queued needs S1_STORE"):
         Settings(s1_processing="queued", s1_store="jsonl")
+
+
+# --- uploads in queued mode: the upload asks for the first read ------------------------------
+
+@pytest.fixture
+def queued_uploads(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = Settings(s1_processing="queued", s1_store="postgres+jsonl", git_sha="abc1234")
+    monkeypatch.setattr(documents_api, "get_settings", lambda: settings)
+    monkeypatch.setattr(processing_runs_api, "get_settings", lambda: settings)
+
+
+def test_a_queued_upload_answers_with_its_queued_run(env: dict, queued_uploads: None) -> None:
+    doc = env["upload"]()
+    assert doc["processing_status"] == "queued"
+    run = assert_contract(doc["processing_run"])
+    assert (run["status"], run["attempt"], run["document_id"], run["pipeline_version"]) == (
+        "queued", 0, doc["document_id"], "abc1234")
+    assert env["pipeline_runs"].list_all() == []  # nothing was read
+    listed = env["client"].get("/v1/engagements/ENG-1/processing-runs").json()["items"]
+    assert [item["run_id"] for item in listed] == [run["run_id"]]
+    assert env["status_of"](doc) == "queued"
+
+
+def test_asking_to_read_a_queued_upload_returns_its_run(env: dict, queued_uploads: None) -> None:
+    doc = env["upload"]()
+    response = env["client"].post(runs_url(doc), json={})
+    assert (response.status_code, response.json()["run_id"]) == (202, doc["processing_run"]["run_id"])
+
+
+def test_an_inline_upload_is_unchanged(env: dict) -> None:
+    doc = env["upload"]()
+    assert "processing_run" not in doc
+    assert doc["processing_status"] == "not_started"
+    assert env["queue"].latest_per_document("ENG-1") == []
+
+
+def test_an_upload_still_succeeds_when_its_read_cannot_be_queued(
+    env: dict, queued_uploads: None, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    def queue_is_down(**_kwargs: Any) -> None:
+        raise RuntimeError("db gone")
+
+    monkeypatch.setattr(env["queue"], "enqueue", queue_is_down)
+    doc = env["upload"]()
+    assert "processing_run" not in doc
+    assert doc["processing_status"] == "not_started"
+    [record] = [r for r in caplog.records if r.getMessage() == "upload_read_not_queued"]
+    assert (record.name, record.levelname, record.document_id) == (
+        "sustentra.processing", "ERROR", doc["document_id"])
+    assert (record.error_type, record.exc_info) == ("RuntimeError", None)  # the type only, no traceback
+    line = JsonFormatter().format(record)  # the line the JSON log handler writes
+    assert json.loads(line)["error_type"] == "RuntimeError"
+    assert "db gone" not in record.getMessage() and "db gone" not in line
