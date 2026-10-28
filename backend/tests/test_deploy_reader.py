@@ -139,6 +139,13 @@ def test_deploy_refuses_queued_without_postgres_stores(
     assert result.stdout == ""  # the refusal is on stderr, so a caller capturing stdout never sees it
 
 
+def _env_text(env_lines: list[str]) -> str:
+    """The host's /opt/sustentra/.env for a case: the required variables plus the case's own lines."""
+
+    required = ["API_IMAGE=x", "WEB_IMAGE=x", "APP_DOMAIN=x", "AWS_REGION=us-east-1", "ECR_REGISTRY=x"]
+    return "\n".join([*required, *env_lines]) + "\n"
+
+
 def _run_whole_script(tmp_path: Path, env_lines: list[str]) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
     """Run a copy of deploy.sh (APP_DIR pointed at tmp_path) to its first outside call.
 
@@ -149,10 +156,7 @@ def _run_whole_script(tmp_path: Path, env_lines: list[str]) -> tuple[subprocess.
 
     app_dir = tmp_path / "app"
     app_dir.mkdir()
-    (app_dir / ".env").write_text(
-        "\n".join(["API_IMAGE=x", "WEB_IMAGE=x", "APP_DOMAIN=x", "AWS_REGION=us-east-1", "ECR_REGISTRY=x", *env_lines])
-        + "\n"
-    )
+    (app_dir / ".env").write_text(_env_text(env_lines))
     script = tmp_path / "deploy.sh"
     script.write_text(DEPLOY_SCRIPT.read_text().replace("APP_DIR=/opt/sustentra\n", f"APP_DIR={app_dir}\n", 1))
     assert str(app_dir) in script.read_text()
@@ -187,7 +191,8 @@ def test_a_bad_processing_mode_stops_the_deploy_before_anything_is_touched(tmp_p
     assert "S1_PROCESSING" in result.stderr
     assert not calls.exists()  # no aws, no docker, no install: nothing pulled, restarted or written
     assert not (app_dir / "app.env").exists()
-    assert "API_TAG" not in (app_dir / ".env").read_text()
+    # The deploy would append LOG_GROUP_PREFIX (and rewrite the tags) in .env: it is as it was.
+    assert (app_dir / ".env").read_text() == _env_text(env_lines)
 
 
 @pytest.mark.parametrize(

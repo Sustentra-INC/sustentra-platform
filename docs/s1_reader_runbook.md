@@ -69,7 +69,10 @@ Log lines carry ids, codes, counts and durations, never a file name or document 
    container is `healthy`. It tries for about 150 seconds; the reader's first health check
    comes about 15 seconds after it starts.
 5. If that fails, it prints the last 50 log lines of all four services and redeploys the
-   previous tag, as before.
+   previous tag, as before. That rollback only exists when the tag changed: it does not
+   rewrite `app.env`, so it cannot undo a setting. A redeploy of the current tag (as in
+   the switches below) has no earlier release: `deploy.sh` logs
+   `nothing to roll back to; <tag> left running` and exits 1.
 
 **A rollback to an image from before the reader existed** (the first failed deploy in an
 environment after the reader was added): the previous image has no reader process, and the
@@ -98,17 +101,24 @@ aws ssm start-session --region us-east-1 --target "$ID"
 dc() { sudo docker compose -f /opt/sustentra/docker-compose.prod.yml --env-file /opt/sustentra/.env "$@"; }
 sudo grep -E '^(S1_STORE|S1_PROCESSING|API_TAG)=' /opt/sustentra/.env   # S1_STORE=postgres+jsonl (or postgres); S1_PROCESSING absent or inline
 dc ps reader                                                             # State: Up ... (healthy)
-dc logs --tail 5 reader                                                  # a "reader_started" line
+dc logs reader | grep reader_started                                     # a "reader_started" line
 
 sudo sed -i 's/^S1_PROCESSING=.*/S1_PROCESSING=queued/' /opt/sustentra/.env
 sudo grep -q '^S1_PROCESSING=' /opt/sustentra/.env || echo 'S1_PROCESSING=queued' | sudo tee -a /opt/sustentra/.env
 
-# Redeploy the current tag: writes S1_PROCESSING into app.env, restarts api + reader, health-checks, rolls back on failure
+# Redeploy the current tag: writes S1_PROCESSING into app.env, restarts api + reader, health-checks.
+# The tag is unchanged, so a failure is NOT rolled back: follow "Roll back to inline" below.
 cd /opt/sustentra && sudo ./deploy.sh staging "$(sudo grep '^API_TAG=' /opt/sustentra/.env | cut -d= -f2)"
 #   (or from your machine: gh workflow run deploy.yml --repo Sustentra-INC/sustentra-platform --ref staging -f image_tag=<API_TAG>)
 
 dc exec api python -m backend.app.cli show-settings | grep -E '"s1_(store|processing)"'   # "s1_processing": "queued"
 ```
+
+**If `deploy.sh` exits 1 (the reader or the api is not healthy), the switch has not been
+reverted.** Redeploying the current tag leaves nothing to roll back to: `deploy.sh` logs
+`nothing to roll back to; <tag> left running` and stops, and it has already written
+`S1_PROCESSING=queued` into `app.env`. Staging is then in queued mode, and uploads wait at
+Reading… if the reader is down. Follow **Roll back to inline** below at once.
 
 Staging stays on `S1_STORE=postgres+jsonl` for this switch, so that one thing changes at a
 time. The JSONL mirror appends, and two containers appending lines over 8 KB at the same
@@ -141,6 +151,9 @@ dc exec api python -m backend.app.cli show-settings | grep '"s1_processing"'   #
 
 - Uploads read inline again. Runs that are still queued are read by the reader, which stays
   active while `S1_STORE` is postgres-backed.
+- **If this redeploy also exits 1** because the reader is not healthy, inline is still in
+  effect: `deploy.sh` writes `app.env` and restarts the containers before it health-checks.
+  Confirm with the `show-settings` line, then deal with the reader as below.
 - **If the reader itself misbehaves,** run `dc stop reader`. That lasts until the next deploy.
   A document left at Reading… is then read inline when its type is set again in Evidence.
 - **To remove the reader completely,** revert the merge that added it on `staging` with a PR;

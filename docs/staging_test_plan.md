@@ -46,8 +46,8 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
    the cutover (`docs/s1_store_cutover.md`).
 3. `grep S1_PROCESSING /opt/sustentra/.env` shows `queued`, `inline`, or nothing (which is
    `inline`); the steps below say where they differ. With `dc` as defined in
-   `docs/s1_reader_runbook.md`, `dc ps reader` shows `(healthy)` and `dc logs --tail 5 reader`
-   has a `reader_started` line with `"s1_store": "postgres+jsonl"`.
+   `docs/s1_reader_runbook.md`, `dc ps reader` shows `(healthy)` and
+   `dc logs reader | grep reader_started` has a line with `"s1_store": "postgres+jsonl"`.
 
 ## 1. Sign in and session
 
