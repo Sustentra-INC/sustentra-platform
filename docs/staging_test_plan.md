@@ -87,15 +87,19 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 3. Correct a value with a reason: the new value is used and the old one is kept.
 4. Request a value (Request, then Add to requests): it shows up in Requests, and its card
    says "Request not sent" until the request is sent. Once you send it (step 6), the card
-   says "Requested" (PR #159).
+   says "Requested" (PR #159). Add to requests has no Raised by field.
 5. Reload: every decision is kept.
 
 ## 6. Coverage & requests
 
 1. Missing data points show up as "Inputs missing", with a Request button.
 2. Create a request, edit it, send it: it gets a request number and the state "Requested".
+   Each row says who took its latest step and when, for example "Sent by <your name> · <time>".
 3. Resolve one request; withdraw another with a reason.
 4. Reload: states and numbers are kept.
+5. Edit the text of a sent request from a second tab: you see "Request N was already sent, so
+   its text can't change. Withdraw it and add a new request instead." and the row shows its real
+   state.
 
 ## 7. Verification results
 

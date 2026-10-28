@@ -8,15 +8,15 @@ import type { Ask } from "../types/requests";
 import type { Examination, Finding } from "../types/verification";
 
 /**
- * Keeps the verifier's requests, findings and examination states in the backend:
- * loads them when an engagement opens, then saves exactly the items that changed.
- * Nothing is saved for an engagement until its own items have loaded, so one
- * engagement's work can never be written into another.
+ * Keeps the verifier's findings, examination states and document decisions in the backend:
+ * loads them (and the engagement's requests) when an engagement opens, then saves exactly the
+ * items that changed. Requests are loaded here but never saved here: the server's request
+ * actions are the only way they change. Nothing is saved for an engagement until its own items
+ * have loaded, so one engagement's work can never be written into another.
  */
 export function useWorkpaperSync({
   enabled,
   engagementId,
-  asks,
   findings,
   examinations,
   documents,
@@ -27,7 +27,6 @@ export function useWorkpaperSync({
 }: {
   enabled: boolean;
   engagementId: string;
-  asks: Ask[];
   findings: Finding[];
   examinations: Record<string, Examination>;
   documents: Record<string, DocumentDecision>;
@@ -52,7 +51,7 @@ export function useWorkpaperSync({
       .then((loaded) => {
         if (!live) return;
         const snapshot = new Map<string, string>();
-        for (const [kind, id, payload] of entries(loaded.asks, loaded.findings, loaded.examinations, loaded.documents)) {
+        for (const [kind, id, payload] of entries(loaded.findings, loaded.examinations, loaded.documents)) {
           snapshot.set(`${kind}|${id}`, JSON.stringify(payload));
         }
         saved.current = snapshot;
@@ -71,7 +70,7 @@ export function useWorkpaperSync({
 
   useEffect(() => {
     if (!enabled || !engagementId || readyFor !== engagementId) return;
-    for (const [kind, id, payload] of entries(asks, findings, examinations, documents)) {
+    for (const [kind, id, payload] of entries(findings, examinations, documents)) {
       const key = `${kind}|${id}`;
       const json = JSON.stringify(payload);
       if (saved.current.get(key) === json) continue;
@@ -81,19 +80,17 @@ export function useWorkpaperSync({
         onErrorRef.current(error);
       });
     }
-  }, [enabled, engagementId, readyFor, asks, findings, examinations, documents]);
+  }, [enabled, engagementId, readyFor, findings, examinations, documents]);
 
   return { loaded: !enabled || readyFor === engagementId };
 }
 
 function entries(
-  asks: Ask[],
   findings: Finding[],
   examinations: Record<string, Examination>,
   documents: Record<string, DocumentDecision>
 ): [WorkpaperKind, string, object][] {
   return [
-    ...asks.map((ask): [WorkpaperKind, string, object] => ["ask", ask.id, ask]),
     ...findings.map((finding): [WorkpaperKind, string, object] => ["finding", finding.id, finding]),
     ...Object.entries(examinations).map(
       ([dataPointId, examination]): [WorkpaperKind, string, object] => [
