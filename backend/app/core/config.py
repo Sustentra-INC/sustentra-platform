@@ -58,6 +58,18 @@ class Settings(BaseSettings):
     # with jsonl below). Set in /opt/sustentra/.env like S1_STORE.
     s1_processing: Literal["inline", "queued"] = "inline"
 
+    # The reader process (backend/app/workers/processing_reader.py) that reads the queued
+    # processing runs. It claims a run with a lease of S1_READER_LEASE_SECONDS and renews it
+    # every S1_READER_HEARTBEAT_SECONDS (at most a third of the lease); a run whose lease runs
+    # out is queued again by any reader. A read longer than S1_READER_MAX_RUN_SECONDS ends the
+    # process (the container restarts). On SIGTERM a read gets S1_READER_SHUTDOWN_GRACE_SECONDS
+    # to finish before the run is put back; keep the container's stop_grace_period above it.
+    s1_reader_poll_seconds: float = Field(default=2.0, ge=0.5, le=60)
+    s1_reader_lease_seconds: int = Field(default=120, ge=30, le=3600)
+    s1_reader_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
+    s1_reader_max_run_seconds: int = Field(default=900, ge=60, le=7200)
+    s1_reader_shutdown_grace_seconds: int = Field(default=45, ge=0, le=300)
+
     # Largest S1 document upload, in MB (INFRA-007). deploy/Caddyfile allows the same
     # size on the upload route only (+1 MB for the multipart envelope); the frontend
     # mirrors it in features/s1/constants/uploads.ts.
@@ -104,6 +116,13 @@ class Settings(BaseSettings):
         # second process (the reader) would append to them as well.
         if self.s1_processing == "queued" and self.s1_store == "jsonl":
             raise ValueError("S1_PROCESSING=queued needs S1_STORE=postgres or postgres+jsonl, not jsonl.")
+        return self
+
+    @model_validator(mode="after")
+    def _reader_heartbeat_fits_the_lease(self) -> Settings:
+        # Two missed heartbeats must still leave the lease alive.
+        if self.s1_reader_heartbeat_seconds * 3 > self.s1_reader_lease_seconds:
+            raise ValueError("S1_READER_HEARTBEAT_SECONDS must be at most a third of S1_READER_LEASE_SECONDS.")
         return self
 
     @property
