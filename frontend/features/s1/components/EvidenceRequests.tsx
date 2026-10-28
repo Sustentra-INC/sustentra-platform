@@ -3,7 +3,7 @@
 import { ArrowRight, ListChecks, Send } from "lucide-react";
 import { Fragment, useMemo, useState } from "react";
 
-import { andThen, NOT_SAVED_TITLE, problemText, settle, type MaybePromise } from "../requests/maybePromise";
+import { andThen, NOT_SAVED_TITLE, problemText, settle, useStillOpen, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 import { whoActed } from "../requests/whoActed";
 import type { EngagementConfig } from "../types";
@@ -77,7 +77,8 @@ export function EvidenceRequests({
   const [stateFilter, setStateFilter] = useState<AskState | null>(null);
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<string[]>([]);
-  const [panelOpen, setPanelOpen] = useState(false);
+  // The send window, as one opening of it: a new object each time it opens.
+  const [sendWindow, setSendWindow] = useState<object | null>(null);
   const [resolveFor, setResolveFor] = useState<string | null>(null);
   const [withdrawFor, setWithdrawFor] = useState<string | null>(null);
   // One row menu open at a time.
@@ -96,6 +97,8 @@ export function EvidenceRequests({
     window.setTimeout(() => setToast(null), 2400);
   };
   const showProblem = (error: unknown) => setProblem(problemText(error));
+  const requestRuleOpen = useStillOpen(requestRule);
+  const sendWindowOpen = useStillOpen(sendWindow);
 
   /** Runs a change on one request: it is pending until the server answers, and a failure goes to the banner. */
   function changeRequest<T>(id: string, run: () => MaybePromise<T>, onDone: (value: T) => void) {
@@ -213,7 +216,7 @@ export function EvidenceRequests({
             disabled={selectedSendable.length === 0}
             onClick={() => {
               setSendProblem(null);
-              setPanelOpen(true);
+              setSendWindow({});
             }}
           >
             <Send aria-hidden />
@@ -390,8 +393,11 @@ export function EvidenceRequests({
           onCancel={() => setRequestRule(null)}
           serverRecordsActor={serverRecordsActor}
           onAdd={(draft) => {
+            const mine = requestRule;
             setProblem(null);
             return andThen(onSaveAsk(draft), () => {
+              // A window opened since is not this one: leave it, and say nothing of it.
+              if (!requestRuleOpen(mine)) return;
               setRequestRule(null);
               flash("Added to requests, not sent yet");
             });
@@ -399,7 +405,7 @@ export function EvidenceRequests({
         />
       ) : null}
 
-      {panelOpen ? (
+      {sendWindow ? (
         <SendPanel
           engagement={engagement}
           asks={selectedAsks}
@@ -407,17 +413,21 @@ export function EvidenceRequests({
           pending={sending}
           onClose={() => {
             setSendProblem(null);
-            setPanelOpen(false);
+            setSendWindow(null);
           }}
           onMarkSent={(orderedIds, lineNumbers) => {
+            const mine = sendWindow;
             setSendProblem(null);
             setSending(true);
             settle(
               () => onSend(orderedIds, lineNumbers),
               (n) => {
                 setSending(false);
-                setSelected([]);
-                setPanelOpen(false);
+                // Closed and opened again since: that window and its selection are not this send's.
+                if (sendWindowOpen(mine)) {
+                  setSelected([]);
+                  setSendWindow(null);
+                }
                 flash(`Sent as request ${n}`);
               },
               (error) => {

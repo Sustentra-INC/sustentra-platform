@@ -7,7 +7,7 @@ import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import type { EngagementConfig } from "../types";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
 import type { Ask } from "../types/requests";
-import { andThen, type MaybePromise } from "../requests/maybePromise";
+import { andThen, useStillOpen, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { readablePeriod } from "../utils/formatPeriod";
@@ -136,6 +136,7 @@ export function ExtractionReview({
   const [modalTarget, setModalTarget] = useState<AddToRequestsTarget | null>(null);
   // The values a request is for: every data point of the reading.
   const [requestIds, setRequestIds] = useState<string[]>([]);
+  const modalTargetOpen = useStillOpen(modalTarget);
   // A toast shows for 2.4 seconds; a new one starts the time again. Kept in state, not a
   // timer ref, so the page drawn during render (renderPage) can be handed callbacks that flash.
   const [toast, setToast] = useState<{ message: string } | null>(null);
@@ -467,6 +468,7 @@ export function ExtractionReview({
   }
 
   function submitAsk(draft: AskDraft) {
+    const mine = modalTarget;
     return andThen(onSaveAsk(draft), (ask) => {
       if (modalTarget?.fieldKey) {
         const now = new Date().toISOString();
@@ -488,6 +490,9 @@ export function ExtractionReview({
           )
         );
       }
+      // The values above are this ask's. A window opened since is not this one: leave it, and
+      // say nothing of it.
+      if (!modalTargetOpen(mine)) return;
       setModalTarget(null);
       flash("Added to requests · not yet sent");
     });

@@ -67,6 +67,22 @@ function renderRequests(props: Partial<ComponentProps<typeof EvidenceRequests>> 
 const rowOf = (label: string) => screen.getByRole("button", { name: label }).closest("tr") as HTMLElement;
 const openBox = () => document.querySelector(".s1-req-box") as HTMLElement | null;
 
+/** A second request that is out, so two rows can have a box open one after the other. */
+const SECOND = "second_scan.pdf";
+const secondRequested: Ask = {
+  ...seedAsks[0],
+  id: "ASK-SEED-4",
+  requestNumber: 2,
+  source: { ...seedAsks[0].source, documentId: "DOC-SECOND", itemLabel: SECOND },
+};
+/** A second request that is not yet sent. */
+const OCTOBER = "kent_gas_oct_2025.pdf";
+const secondUnsent: Ask = {
+  ...seedAsks[1],
+  id: "ASK-SEED-3",
+  source: { ...seedAsks[1].source, documentId: "DOC-OCT", itemLabel: OCTOBER },
+};
+
 function openResolve(label = SCAN) {
   fireEvent.click(within(rowOf(label)).getByRole("button", { name: "Resolve" }));
   return within(openBox()!).getByRole("button", { name: "Resolve" });
@@ -206,6 +222,30 @@ describe("the Add to requests window: who raised it", () => {
     expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ raisedByName: "Claire Ng", raisedByLogin: "cng" }));
   });
 
+  it("cannot be closed while the save is on its way, and can again once it has failed", async () => {
+    const saving = deferred<unknown>();
+    const onCancel = vi.fn();
+    render(<AddToRequestsModal target={target} engagement={engagementConfig} onCancel={onCancel} onAdd={() => saving.promise} />);
+    const scrim = screen.getByRole("dialog").parentElement!;
+    fireEvent.click(screen.getByRole("button", { name: "Add to requests" }));
+
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(scrim);
+    expect(onCancel).not.toHaveBeenCalled();
+
+    await act(async () => saving.reject(new Error("Nope.")));
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(scrim);
+    expect(onCancel).toHaveBeenCalledTimes(4);
+  });
+
   it("waits for the save: the button is off while it is pending, and the window stays after a failure", async () => {
     const saving = deferred<unknown>();
     const onAdd = vi.fn(() => saving.promise);
@@ -271,6 +311,39 @@ describe("Coverage & requests waits for the server", () => {
     expect(screen.getByText("Withdrawn")).toBeInTheDocument();
   });
 
+  it("does not close the resolve box of another request when an earlier resolve answers late", async () => {
+    const first = deferred();
+    const onResolve = vi.fn(() => first.promise);
+    renderRequests({ onResolve }, [seedAsks[0], secondRequested]);
+    fireEvent.click(openResolve(SCAN));
+    expect(onResolve).toHaveBeenCalledTimes(1);
+
+    // The person moves on to the other request while the first is on its way.
+    openResolve(SECOND);
+    expect(openBox()).not.toBeNull();
+
+    await act(async () => first.resolve());
+    expect(openBox()).not.toBeNull();
+    expect(screen.getByText(`Resolved: ${SCAN}`)).toBeInTheDocument();
+    expect(onResolve).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not close the withdraw box of another request when an earlier withdraw answers late", async () => {
+    const first = deferred();
+    const onWithdraw = vi.fn(() => first.promise);
+    renderRequests({ onWithdraw }, [seedAsks[0], secondRequested]);
+    fireEvent.click(openWithdraw("sent in error", SCAN));
+    expect(onWithdraw).toHaveBeenCalledTimes(1);
+
+    openWithdraw("also sent in error", SECOND);
+    expect(openBox()).not.toBeNull();
+
+    await act(async () => first.resolve());
+    expect(openBox()).not.toBeNull();
+    expect(within(openBox()!).getByLabelText("Reason (required)")).toHaveValue("also sent in error");
+    expect(screen.getByText("Withdrawn")).toBeInTheDocument();
+  });
+
   it("puts the text back and says why when an edit fails", async () => {
     const saving = deferred();
     const onEdit = vi.fn(() => saving.promise);
@@ -320,6 +393,41 @@ describe("Coverage & requests waits for the server", () => {
     expect(screen.getByText("Sent as request 4")).toBeInTheDocument();
   });
 
+  it("does not close a send window opened since, or clear its selection, when an earlier send answers late", async () => {
+    const sending = deferred<number>();
+    const onSend = vi.fn(() => sending.promise);
+    renderRequests({ onSend }, [seedAsks[0], seedAsks[1], secondUnsent]);
+    const first = openSend(KENT);
+    fireEvent.click(within(first).getByRole("button", { name: "Mark as sent" }));
+    expect(onSend).toHaveBeenCalledTimes(1);
+
+    // Close that window, choose the other request, and open the window again.
+    fireEvent.click(first.parentElement!);
+    fireEvent.click(screen.getByRole("checkbox", { name: `Select ${KENT}` }));
+    fireEvent.click(screen.getByRole("checkbox", { name: `Select ${OCTOBER}` }));
+    fireEvent.click(screen.getByRole("button", { name: /^Send \(1\)/ }));
+    expect(screen.getByRole("dialog", { name: "Send requests" })).toBeInTheDocument();
+
+    await act(async () => sending.resolve(7));
+    expect(screen.getByRole("dialog", { name: "Send requests" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: `Select ${OCTOBER}` })).toBeChecked();
+    // The first send did go through, and the toast says which request it became.
+    expect(screen.getByText("Sent as request 7")).toBeInTheDocument();
+  });
+
+  it("does not clear a selection made after the send window was closed, when the send answers late", async () => {
+    const sending = deferred<number>();
+    renderRequests({ onSend: vi.fn(() => sending.promise) }, [seedAsks[0], seedAsks[1], secondUnsent]);
+    const panel = openSend(KENT);
+    fireEvent.click(within(panel).getByRole("button", { name: "Mark as sent" }));
+    fireEvent.click(panel.parentElement!);
+    expect(screen.queryByRole("dialog", { name: "Send requests" })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: `Select ${OCTOBER}` }));
+
+    await act(async () => sending.resolve(7));
+    expect(screen.getByRole("checkbox", { name: `Select ${OCTOBER}` })).toBeChecked();
+  });
+
   it("does not carry a send failure into the next time the panel opens", async () => {
     renderRequests({ onSend: vi.fn(() => Promise.reject(new Error("Nope."))) });
     const panel = openSend();
@@ -364,6 +472,43 @@ describe("Coverage & requests waits for the server", () => {
       await act(async () => saving.resolve());
       expect(screen.queryByRole("dialog", { name: "Add to requests" })).toBeNull();
       expect(screen.getByText("Added to requests, not sent yet")).toBeInTheDocument();
+    });
+
+    it("stays open, and is not submitted twice, when it is closed while the save is on its way", async () => {
+      const saving = deferred();
+      const onSaveAsk = vi.fn(() => saving.promise);
+      renderRequests({ onSaveAsk }, []);
+      const modal = addFromCheck();
+      fireEvent.click(within(modal).getByRole("button", { name: "Add to requests" }));
+
+      fireEvent.click(within(modal).getByRole("button", { name: "Cancel" }));
+      fireEvent.keyDown(window, { key: "Escape" });
+      fireEvent.click(modal.parentElement!);
+      expect(screen.getByRole("dialog", { name: "Add to requests" })).toBe(modal);
+      fireEvent.submit(within(modal).getByRole("button", { name: "Add to requests" }).closest("form")!);
+      expect(onSaveAsk).toHaveBeenCalledTimes(1);
+
+      await act(async () => saving.resolve());
+      expect(screen.queryByRole("dialog", { name: "Add to requests" })).toBeNull();
+      expect(screen.getByText("Added to requests, not sent yet")).toBeInTheDocument();
+    });
+
+    it("does not close, or toast over, a window opened since an earlier save was started", async () => {
+      const saving = deferred();
+      const onSaveAsk = vi.fn(() => saving.promise);
+      renderRequests({ onSaveAsk }, []);
+      const modal = addFromCheck();
+      fireEvent.click(within(modal).getByRole("button", { name: "Add to requests" }));
+
+      // The window cannot be closed by hand now, so the next check is asked for from behind it.
+      fireEvent.click(screen.getAllByRole("button", { name: /^Request$/ })[1]);
+      fireEvent.change(within(modal).getByLabelText("What is needed"), { target: { value: "Typed for the second check." } });
+
+      await act(async () => saving.resolve());
+      expect(screen.getByRole("dialog", { name: "Add to requests" })).toBeInTheDocument();
+      expect(within(modal).getByLabelText("What is needed")).toHaveValue("Typed for the second check.");
+      expect(screen.queryByText("Added to requests, not sent yet")).toBeNull();
+      expect(onSaveAsk).toHaveBeenCalledTimes(1);
     });
 
     it("stays open with the message and the typed text when the save fails", async () => {
@@ -511,8 +656,10 @@ describe("Evidence waits for the server", () => {
     fireEvent.click(screen.getAllByRole("button", { expanded: false }).find((b) => b.textContent?.startsWith("Electricity bill"))!);
   }
 
-  const menuAction = (name: string) => {
-    fireEvent.click(screen.getByRole("button", { name: `Actions for ${bill.filename}` }));
+  const otherBill = manufacturerEvidence.find((e) => e.detectedType === "Electricity bill" && e.disposition === "active" && e !== bill)!;
+
+  const menuAction = (name: string, filename = bill.filename) => {
+    fireEvent.click(screen.getByRole("button", { name: `Actions for ${filename}` }));
     fireEvent.click(within(screen.getByRole("menu")).getByRole("menuitem", { name }));
   };
 
@@ -573,6 +720,39 @@ describe("Evidence waits for the server", () => {
     expect(screen.queryByText("Added to requests · not yet sent")).toBeNull();
   });
 
+  it("cannot close the Add to requests window while the save is on its way", async () => {
+    const saving = deferred();
+    const onSaveAsk = vi.fn(() => saving.promise);
+    renderEvidence({ onSaveAsk });
+    menuAction("Add to requests");
+    const modal = screen.getByRole("dialog", { name: "Add to requests" });
+    fireEvent.click(within(modal).getByRole("button", { name: "Add to requests" }));
+
+    fireEvent.click(within(modal).getByRole("button", { name: "Cancel" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(modal.parentElement!);
+    expect(screen.getByRole("dialog", { name: "Add to requests" })).toBe(modal);
+    await act(async () => saving.resolve());
+    expect(screen.queryByRole("dialog", { name: "Add to requests" })).toBeNull();
+  });
+
+  it("does not close, or toast over, a window opened since an earlier save was started", async () => {
+    const saving = deferred();
+    renderEvidence({ onSaveAsk: vi.fn(() => saving.promise) });
+    menuAction("Add to requests");
+    const modal = screen.getByRole("dialog", { name: "Add to requests" });
+    fireEvent.click(within(modal).getByRole("button", { name: "Add to requests" }));
+
+    // The window cannot be closed by hand now, so the next file's is asked for from behind it.
+    menuAction("Add to requests", otherBill.filename);
+    fireEvent.change(within(modal).getByLabelText("What is needed"), { target: { value: "Typed for the second file." } });
+
+    await act(async () => saving.resolve());
+    expect(screen.getByRole("dialog", { name: "Add to requests" })).toBeInTheDocument();
+    expect(within(modal).getByLabelText("What is needed")).toHaveValue("Typed for the second file.");
+    expect(screen.queryByText("Added to requests · not yet sent")).toBeNull();
+  });
+
   it("closes the Add to requests window and toasts once the server has saved it, without asking who raised it", async () => {
     const saving = deferred();
     const onSaveAsk = vi.fn(() => saving.promise);
@@ -598,7 +778,7 @@ describe("Extraction review waits for the server", () => {
     ...over,
   });
 
-  function renderReview(onSaveAsk: ComponentProps<typeof ExtractionReview>["onSaveAsk"], serverRecordsActor = false) {
+  function renderReview(onSaveAsk: ComponentProps<typeof ExtractionReview>["onSaveAsk"], serverRecordsActor = false, documentId = DOC) {
     const live: { values: ReviewValue[] } = { values: manufacturerValues };
     function Harness() {
       const [values, setValues] = useState(manufacturerValues);
@@ -608,7 +788,7 @@ describe("Extraction review waits for the server", () => {
           engagement={engagementConfig}
           values={values}
           onValuesChange={setValues}
-          initialDocumentId={DOC}
+          initialDocumentId={documentId}
           onSaveAsk={onSaveAsk}
           serverRecordsActor={serverRecordsActor}
           onBack={vi.fn()}
@@ -622,7 +802,10 @@ describe("Extraction review waits for the server", () => {
       live,
       chip: () => card().querySelector(".s1-xr-badge")?.textContent,
       lines: () => Array.from(card().querySelectorAll(".s1-xr-rec__act")).map((n) => n.textContent),
-      states: () => live.values.filter((v) => v.documentId === DOC).map((v) => v.reviewState),
+      states: () => live.values.filter((v) => v.documentId === documentId).map((v) => v.reviewState),
+      stateOf: (valueId: string) => live.values.find((v) => v.id === valueId)!.reviewState,
+      cards: () => Array.from(container.querySelectorAll<HTMLElement>(".s1-xr-card")),
+      selected: card,
       openWindow: () => {
         fireEvent.click(within(card()).getByRole("button", { name: "Request" }));
         return screen.getByRole("dialog", { name: "Add to requests" });
@@ -634,13 +817,14 @@ describe("Extraction review waits for the server", () => {
     const view = renderReview(() => Promise.reject(new Error("This engagement is archived, so its requests can't change.")));
     const before = view.states();
     expect(before.every((s) => s === "to_review")).toBe(true);
+    const chipBefore = view.chip();
 
     const modal = view.openWindow();
     fireEvent.click(within(modal).getByRole("button", { name: "Add to requests" }));
 
     expect(await within(modal).findByRole("alert")).toHaveTextContent("This engagement is archived, so its requests can't change.");
     expect(screen.getByRole("dialog", { name: "Add to requests" })).toBe(modal);
-    expect(view.chip()).not.toBe("Request not sent");
+    expect(view.chip()).toBe(chipBefore);
     expect(view.states()).toEqual(before);
     expect(screen.queryByText("Added to requests · not yet sent")).toBeNull();
   });
@@ -657,6 +841,44 @@ describe("Extraction review waits for the server", () => {
     expect(view.states().every((s) => s === "requested")).toBe(true);
     expect(screen.queryByRole("dialog", { name: "Add to requests" })).toBeNull();
     expect(screen.getByText("Added to requests · not yet sent")).toBeInTheDocument();
+  });
+
+  it("cannot close the window while the save is on its way", async () => {
+    const saving = deferred<Ask>();
+    const view = renderReview(() => saving.promise);
+    const modal = view.openWindow();
+    fireEvent.click(within(modal).getByRole("button", { name: "Add to requests" }));
+
+    fireEvent.click(within(modal).getByRole("button", { name: "Cancel" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(modal.parentElement!);
+    expect(screen.getByRole("dialog", { name: "Add to requests" })).toBe(modal);
+
+    await act(async () => saving.resolve(raised()));
+    expect(screen.queryByRole("dialog", { name: "Add to requests" })).toBeNull();
+  });
+
+  it("marks the first card requested but leaves a window opened since alone, when its save answers late", async () => {
+    const GAS = "DOC-tualatin-gas-jan";
+    const saving = deferred<Ask>();
+    const view = renderReview(() => saving.promise, false, GAS);
+    const firstId = view.selected().dataset.valueId!;
+    const modal = view.openWindow();
+    fireEvent.click(within(modal).getByRole("button", { name: "Add to requests" }));
+
+    // The window cannot be closed by hand now, so another card's is asked for from behind it.
+    const other = view.cards().find((card) => card.dataset.valueId !== firstId)!;
+    const otherId = other.dataset.valueId!;
+    fireEvent.click(other);
+    fireEvent.click(within(view.selected()).getByRole("button", { name: "Request" }));
+    fireEvent.change(within(modal).getByLabelText("What is needed"), { target: { value: "Typed for the other card." } });
+
+    await act(async () => saving.resolve(raised({ source: { ...raised().source, documentId: GAS, fieldKey: firstId } })));
+    expect(view.stateOf(firstId)).toBe("requested");
+    expect(view.stateOf(otherId)).toBe("to_review");
+    expect(screen.getByRole("dialog", { name: "Add to requests" })).toBeInTheDocument();
+    expect(within(modal).getByLabelText("What is needed")).toHaveValue("Typed for the other card.");
+    expect(screen.queryByText("Added to requests · not yet sent")).toBeNull();
   });
 
   it("names the person and the time the server recorded, with serverRecordsActor", async () => {

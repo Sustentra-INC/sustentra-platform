@@ -59,13 +59,19 @@ export function AddToRequestsModal({
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
+  // While the save is on its way the window cannot be closed: an answer that came back to a
+  // closed window would have nowhere to go, and a window opened in its place could be submitted twice.
+  const close = () => {
+    if (!pending) onCancel();
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCancel();
+      if (e.key === "Escape" && !pending) onCancel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
+  }, [onCancel, pending]);
 
   const about: [string, string][] = [
     ["Item", target.itemLabel],
@@ -103,7 +109,7 @@ export function AddToRequestsModal({
   };
 
   return (
-    <div className="s1-modal-scrim" role="presentation" onClick={onCancel}>
+    <div className="s1-modal-scrim" role="presentation" onClick={close}>
       <div
         className="s1-modal s1-atr"
         role="dialog"
@@ -115,7 +121,7 @@ export function AddToRequestsModal({
           <h2 id="s1-atr-title" className="s1-atr__title">
             Add to requests
           </h2>
-          <button className="s1-atr__close" type="button" aria-label="Close" onClick={onCancel}>
+          <button className="s1-atr__close" type="button" aria-label="Close" disabled={pending} onClick={close}>
             ×
           </button>
         </div>
@@ -175,7 +181,7 @@ export function AddToRequestsModal({
           <div className="s1-atr__foot">
             <p className="s1-muted s1-modal__note">Saved to Evidence requests as not yet sent. Nothing is emailed from here.</p>
             <div className="s1-modal__actions">
-              <button className="s1-button" type="button" onClick={onCancel}>
+              <button className="s1-button" type="button" disabled={pending} onClick={close}>
                 Cancel
               </button>
               <button className="s1-button s1-button--pri" type="submit" disabled={!whatIsNeeded.trim() || pending}>

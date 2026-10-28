@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+
 /**
  * The request screens take callbacks that answer at once (the fixture store) or after the
  * server has answered (the backend store). These helpers let one component code handle both:
@@ -38,4 +40,15 @@ export function andThen<T, U>(value: MaybePromise<T>, fn: (value: T) => U): Mayb
 /** What to tell the person: the error's own sentence when it has one. */
 export function problemText(error: unknown): string {
   return error instanceof Error && error.message ? error.message : NOT_SAVED_TEXT;
+}
+
+/** For an answer that comes back later: is the window it was for still the one that is open?
+ *  Ask with the window as it was when the change started (`const mine = open;`), and act on the
+ *  screen only when this says yes. With a plain value the answer is at once, and it always is. */
+export function useStillOpen<T>(open: T): (was: T) => boolean {
+  const current = useRef(open);
+  useEffect(() => {
+    current.current = open;
+  }, [open]);
+  return (was) => current.current === was;
 }

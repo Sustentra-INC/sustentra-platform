@@ -18,7 +18,7 @@ import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { formatPeriod } from "../utils/formatPeriod";
 import { UPLOAD_ACCEPT } from "../constants/uploads";
-import { andThen, NOT_SAVED_TITLE, problemText, settle, type MaybePromise } from "../requests/maybePromise";
+import { andThen, NOT_SAVED_TITLE, problemText, settle, useStillOpen, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 
 /**
@@ -164,6 +164,7 @@ export function EvidenceWorkspace({
   const [toast, setToast] = useState<string | null>(null);
   // A change to a request that did not go through (resolving the request a file answers).
   const [actionProblem, setActionProblem] = useState<string | null>(null);
+  const modalDocOpen = useStillOpen(modalDoc);
   const toastTimer = useRef<number | null>(null);
 
   function flash(message: string) {
@@ -338,7 +339,10 @@ export function EvidenceWorkspace({
   }
 
   function submitAsk(draft: AskDraft) {
+    const mine = modalDoc;
     return andThen(onSaveAsk(draft), () => {
+      // A window opened since is not this one: leave it, and say nothing of it.
+      if (!modalDocOpen(mine)) return;
       setModalDoc(null);
       flash("Added to requests · not yet sent");
     });
