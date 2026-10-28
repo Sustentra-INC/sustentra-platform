@@ -47,12 +47,13 @@ export function requestRead(documentId: string, canonicalTypeIdOverride?: string
   });
 }
 
-/** Each document's latest run in the engagement: the one call the workspace polls. */
+/** Each document's latest run in the engagement: the one call the workspace polls. A body
+ *  without a list of runs counts as no runs. */
 export async function listProcessingRuns(engagementId: string): Promise<ProcessingRunView[]> {
-  const result = await api<{ items: ProcessingRunView[] }>(
+  const result = await api<{ items?: ProcessingRunView[] } | null>(
     `/engagements/${encodeURIComponent(engagementId)}/processing-runs`
   );
-  return result.items;
+  return Array.isArray(result?.items) ? result.items : [];
 }
 
 /** What to tell the user about a failed run (same wording as a failed read in the request). */

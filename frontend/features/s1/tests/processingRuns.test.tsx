@@ -88,6 +88,17 @@ describe("processing runs client", () => {
     expect(items.map((item) => item.run_id)).toEqual(["RUN-1", "RUN-2"]);
   });
 
+  it("treats a body without a list of runs as no runs", async () => {
+    fetchMock
+      .mockResolvedValueOnce(json(200, { engagement_id: "ENG-1" }))
+      .mockResolvedValueOnce(json(200, { engagement_id: "ENG-1", items: null }))
+      .mockResolvedValueOnce(json(200, null));
+
+    await expect(listProcessingRuns("ENG-1")).resolves.toEqual([]);
+    await expect(listProcessingRuns("ENG-1")).resolves.toEqual([]);
+    await expect(listProcessingRuns("ENG-1")).resolves.toEqual([]);
+  });
+
   it("tells queued and in-progress runs from finished ones", () => {
     expect(isActiveRun(queued)).toBe(true);
     expect(isActiveRun(inProgress)).toBe(true);
@@ -304,6 +315,106 @@ describe("useProcessingRuns", () => {
     release(listOf(completed));
     await advance(0);
     expect(onFinished).toHaveBeenCalledWith([completed]);
+  });
+
+  it("does not fetch again when a run is tracked while a fetch is pending", async () => {
+    let release: (response: Response) => void = () => {};
+    serve((n) => (n === 0 ? listOf() : new Promise<Response>((resolve) => (release = resolve))));
+    const { result } = mount();
+    await advance(0);
+    act(() => result.current.track(queued));
+    await advance(2000);
+    expect(fetchedAt).toEqual([0, 2000]); // the poll is now pending
+
+    act(() => result.current.track(run({ run_id: "RUN-2", document_id: "DOC-2" })));
+
+    expect(vi.getTimerCount()).toBe(0); // nothing was scheduled behind the pending fetch
+    await advance(30_000);
+    expect(fetchedAt).toEqual([0, 2000]);
+
+    release(listOf(completed));
+    await advance(0);
+    expect(onFinished).toHaveBeenCalledWith([completed]);
+    await advance(2000); // DOC-2 is still being read: the next poll comes 2 s after the answer
+    expect(fetchedAt).toEqual([0, 2000, 34_000]);
+  });
+
+  it("does not fetch again when the tab shows while a fetch is pending", async () => {
+    let visibility: DocumentVisibilityState = "hidden";
+    Object.defineProperty(document, "visibilityState", { configurable: true, get: () => visibility });
+    try {
+      let release: (response: Response) => void = () => {};
+      serve((n) => (n === 0 ? listOf() : new Promise<Response>((resolve) => (release = resolve))));
+      const { result } = mount();
+      await advance(0);
+      act(() => result.current.track(queued));
+      await advance(HIDDEN_MS);
+      expect(fetchedAt).toEqual([0, HIDDEN_MS]); // the poll is now pending
+
+      visibility = "visible";
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      await advance(30_000);
+
+      expect(fetchedAt).toEqual([0, HIDDEN_MS]);
+      release(listOf(completed));
+      await advance(0);
+      expect(onFinished).toHaveBeenCalledWith([completed]);
+    } finally {
+      delete (document as unknown as Record<string, unknown>).visibilityState;
+    }
+  });
+
+  it("keeps polling when a response has no list of runs", async () => {
+    serve((n) => (n === 1 ? json(200, { engagement_id: "ENG-1" }) : listOf(n === 0 ? inProgress : completed)));
+    const { result } = mount();
+
+    await advance(10_000);
+
+    expect(fetchedAt).toEqual([0, 2000, 4000]);
+    expect(onError).not.toHaveBeenCalled();
+    expect(onFinished).toHaveBeenCalledTimes(1);
+    expect(onFinished).toHaveBeenCalledWith([completed]);
+    expect(result.current.runs["DOC-1"]).toEqual(completed);
+  });
+
+  it("keeps polling, with the error delay, when onError throws", async () => {
+    onError.mockImplementation(() => {
+      throw new Error("the page could not take the error");
+    });
+    serve((n) => (n === 3 ? listOf(completed) : n === 0 ? listOf(inProgress) : json(500, { detail: "Server error." })));
+    mount();
+
+    await advance(30_000);
+
+    // 0 ok, 2 s fails -> +4 s fails -> +8 s ok.
+    expect(fetchedAt).toEqual([0, 2000, 6000, 14_000]);
+    expect(onError).toHaveBeenCalledTimes(2);
+    expect(onFinished).toHaveBeenCalledWith([completed]);
+  });
+
+  it("keeps polling, with the error delay, when onFinished throws", async () => {
+    const other = run({ run_id: "RUN-2", document_id: "DOC-2" });
+    const otherDone = { ...other, status: "completed" as const };
+    onFinished.mockImplementationOnce(() => {
+      throw new Error("the page could not take the finished run");
+    });
+    serve((n) => (n === 0 ? listOf() : n === 1 ? listOf(completed, other) : listOf(completed, otherDone)));
+    const { result } = mount();
+    await advance(0);
+    act(() => {
+      result.current.track(queued);
+      result.current.track(other);
+    });
+
+    await advance(10_000);
+
+    // 0 ok, 2 s ok but onFinished threw -> the next poll waits 4 s, not 2 s.
+    expect(fetchedAt).toEqual([0, 2000, 6000]);
+    expect(onFinished).toHaveBeenCalledTimes(2);
+    expect(onFinished.mock.calls[1][0]).toEqual([otherDone]);
+    expect(result.current.readingIds).toEqual([]);
   });
 
   it("retries a failed poll after 4 s, then 8 s, and a success starts the delay over", async () => {
