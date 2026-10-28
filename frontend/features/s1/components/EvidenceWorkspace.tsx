@@ -193,7 +193,7 @@ export function EvidenceWorkspace({
     () => ({
       needs: active.filter(needsYou).length,
       arrived: active.filter((i) => i.arrivedSinceLastVisit).length,
-      blocked: active.filter((i) => i.processingState === "blocked").length,
+      blocked: active.filter(isBlocked).length,
     }),
     [active]
   );
@@ -213,7 +213,7 @@ export function EvidenceWorkspace({
       }
       if (headerFilter === "needs" && !needsYou(item)) return false;
       if (headerFilter === "arrived" && !item.arrivedSinceLastVisit) return false;
-      if (headerFilter === "blocked" && item.processingState !== "blocked") return false;
+      if (headerFilter === "blocked" && !isBlocked(item)) return false;
       return true;
     });
   }, [items, facilityFilter, headerFilter]);
@@ -855,7 +855,7 @@ function statusMix(items: EvidenceItem[]): Array<{ role: string; label: string; 
   };
   for (const item of items) {
     if (item.disposition === "withdrawn") bump("na");
-    else if (item.processingState === "blocked") bump("blocking");
+    else if (isBlocked(item)) bump("blocking");
     else if (needsYou(item)) bump("open");
     else if (item.processingState === "extracted") bump("resolved");
     else bump("active");
@@ -1091,6 +1091,12 @@ function sortDocs(items: EvidenceItem[]): EvidenceItem[] {
   return [...items].sort((a, b) => (a.periodStart ?? "").localeCompare(b.periodStart ?? ""));
 }
 
+/** Blocked, and not being read again: a row that is being read says so, and its earlier failure
+ *  is not shown or counted until the read ends. */
+function isBlocked(item: EvidenceItem): boolean {
+  return item.processingState === "blocked" && !item.reading;
+}
+
 function needsYou(item: EvidenceItem): boolean {
   if (item.disposition !== "active") return false;
   if (item.reading) return false;
@@ -1130,7 +1136,7 @@ function processingDisplay(item: EvidenceItem): { role: string; label: string; s
 function issueLines(item: EvidenceItem, all: EvidenceItem[], engagement: EngagementConfig): string[] {
   if (item.disposition === "withdrawn") return [];
   const lines: string[] = [];
-  if (item.processingState === "blocked" && item.haltReason) lines.push(item.haltReason);
+  if (isBlocked(item) && item.haltReason) lines.push(item.haltReason);
   if (
     item.processingState === "extracted" &&
     item.fieldsExpectedDisplay != null &&

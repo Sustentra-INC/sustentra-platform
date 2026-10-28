@@ -267,11 +267,47 @@ describe("Evidence screen: a document being read", () => {
     expect(screen.queryByText("Waiting to be read")).toBeNull();
   });
 
-  it("says Reading…, not Blocked, while a blocked document is read again", () => {
-    const blocked = uploadedRow({ processingState: "blocked", haltReason: HALT_REASONS.unreadable, reading: "in_progress" });
-    const { container } = renderWorkspace([blocked]);
+  it("shows a blocked document that is read again as being read, not as blocked", () => {
+    const again = uploadedRow({
+      processingState: "blocked",
+      haltReason: HALT_REASONS.unreadable,
+      reading: "in_progress",
+    });
+    const { container } = renderWorkspace([again]);
 
-    expect(container.querySelector("tbody .s1-state")).toHaveTextContent(/^Reading…$/);
+    // The row: only Reading…, with none of the earlier failure.
+    expect(statusCell(container)).toHaveTextContent(/^Reading…$/);
+    expect(screen.queryByText(HALT_REASONS.unreadable)).toBeNull();
+    // The group's mix and the header count it as being read, not as blocked.
+    expect(container.querySelector(".s1-ws-gr__mix")).toHaveTextContent(/^1 extracting$/);
+    expect(container.querySelector(".s1-ws-count--blocking")).toHaveTextContent(/^0Blocked$/);
+  });
+
+  it("keeps a blocked document that is not being read blocked, and leaves one being read out of the filter", () => {
+    const stuck = uploadedRow({
+      documentId: "DOC-1",
+      filename: "stuck.pdf",
+      processingState: "blocked",
+      haltReason: HALT_REASONS.unreadable,
+    });
+    const again = uploadedRow({
+      documentId: "DOC-2",
+      filename: "again.pdf",
+      processingState: "blocked",
+      haltReason: HALT_REASONS.unreadable,
+      reading: "queued",
+    });
+    const { container } = renderWorkspace([stuck, again]);
+
+    expect(container.querySelector(".s1-ws-count--blocking")).toHaveTextContent(/^1Blocked$/);
+    expect(container.querySelector(".s1-ws-gr__mix")).toHaveTextContent("1 blocked");
+    expect(container.querySelector(".s1-ws-gr__mix")).toHaveTextContent("1 extracting");
+    expect(screen.getAllByText(HALT_REASONS.unreadable)).toHaveLength(1); // stuck.pdf's, not again.pdf's
+
+    fireEvent.click(container.querySelector(".s1-ws-count--blocking") as HTMLElement);
+
+    const shown = [...container.querySelectorAll(".s1-doc-link")].map((link) => link.textContent);
+    expect(shown).toEqual(["stuck.pdf"]);
   });
 
   it("does not count a document being read among those that need you", () => {
