@@ -94,3 +94,38 @@ services:
       - /tmp
     expose:
       - "8000"
+
+  # Reads the queued processing runs (S1_PROCESSING=queued). Runs the api image with the
+  # api's settings. Active whenever S1_STORE is postgres-backed; under jsonl it idles and
+  # stays healthy. Logs to the api's group (the container name is the stream), so no new
+  # log group is needed.
+  reader:
+    <<: *hardening
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION}
+        awslogs-group: ${LOG_GROUP_PREFIX:-/sustentra/prod}/api
+        tag: "{{.Name}}"
+    image: ${API_IMAGE:?}:${API_TAG:-latest}
+    command: ["python", "-m", "backend.app.workers.processing_reader"]
+    init: true
+    environment:
+      AWS_REGION: ${AWS_REGION}
+    env_file:
+      - app.env
+    volumes:
+      # JSONL mirror under S1_STORE=postgres+jsonl.
+      - /opt/sustentra/data:/app/data
+    tmpfs:
+      # File cache and the alive file the health check reads.
+      - /tmp
+    # Longer than S1_READER_SHUTDOWN_GRACE_SECONDS (45): a read gets its grace before the kill.
+    stop_grace_period: 60s
+    mem_limit: 768m
+    healthcheck:
+      test: ["CMD", "python", "-m", "backend.app.workers.reader_health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 3

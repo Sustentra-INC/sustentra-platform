@@ -44,6 +44,10 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 1. `https://staging.sustentra.com/api/health` shows `"status":"ok"` and the commit you expect.
 2. On the staging host, `grep S1_STORE /opt/sustentra/.env` shows `postgres+jsonl`, after
    the cutover (`docs/s1_store_cutover.md`).
+3. `grep S1_PROCESSING /opt/sustentra/.env` shows `queued`, `inline`, or nothing (which is
+   `inline`); the steps below say where they differ. With `dc` as defined in
+   `docs/s1_reader_runbook.md`, `dc ps reader` shows `(healthy)` and
+   `dc logs reader | grep reader_started` has a line with `"s1_store": "postgres+jsonl"`.
 
 ## 1. Sign in and session
 
