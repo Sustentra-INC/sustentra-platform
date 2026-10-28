@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from backend.app.api.s1_access import (
     visible,
 )
 from backend.app.core.auth import CurrentUser
+from backend.app.core.config import get_settings
 from backend.app.core.security import upload_too_large_detail
 from backend.app.repositories.processing_run_repository import ProcessingRunRepository
 from backend.app.services.document_content_service import UnreadableContent, UnsupportedContent, document_content
@@ -32,6 +34,8 @@ from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
 from backend.app.services.parser_service import IMAGE_EXTENSIONS, ParserService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
+
+logger = logging.getLogger("sustentra.processing")
 
 router = APIRouter(prefix="/v1", tags=["documents"])
 
@@ -182,6 +186,24 @@ def create_document(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _queue_first_read(document: dict, user: CurrentUser) -> dict:
+    """Queued mode: the upload asks for the first read and answers at once with the queued run.
+    If the run can't be queued, the upload still succeeds and the client asks for the read."""
+    from backend.app.api.processing_runs import run_view  # processing_runs imports this module
+
+    service = processing_service()
+    try:
+        run, created = service.request(document=document, org_id=org_of(user),
+                                       requested_by=_uploader(user), params=RunParams())
+        if created:
+            service.mark_queued(run)
+        view = run_view(run)
+    except Exception:
+        logger.exception("upload_read_not_queued", extra={"document_id": document.get("document_id")})
+        return document
+    return {**document, "processing_status": "queued", "processing_run": view}
+
+
 @router.post("/engagements/{engagement_id}/documents/upload")
 async def upload_document(
     request: Request,
@@ -207,7 +229,7 @@ async def upload_document(
         content = await file.read()
         if len(content) > max_bytes:
             raise HTTPException(status_code=413, detail=upload_too_large_detail(max_bytes))
-        return _upload_service.upload_document(
+        document = _upload_service.upload_document(
             engagement_id=engagement_id,
             file_name=file.filename,
             content=content,
@@ -220,6 +242,7 @@ async def upload_document(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _queue_first_read(document, user) if get_settings().s1_processing == "queued" else document
 
 
 @router.get("/engagements/{engagement_id}/documents")

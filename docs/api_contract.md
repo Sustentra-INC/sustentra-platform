@@ -11,6 +11,20 @@ Fetch engagement metadata and summary counts.
 ### POST /v1/engagements/{engagement_id}/documents
 Register an uploaded document for processing.
 
+### POST /v1/engagements/{engagement_id}/documents/upload
+Upload a file and register it as a document (multipart: `file`, `document_role`, and optionally
+`evidence_id` and `document_type`). Answers with the document; what it carries depends on `S1_PROCESSING`:
+
+- `S1_PROCESSING=inline` (the default): 200 with the document, `processing_status` `not_started`, and no
+  `processing_run` key. The read is asked for separately (`POST /v1/documents/{document_id}/processing-runs`).
+- `S1_PROCESSING=queued`: 200 with the document, `processing_status` `queued`, and `processing_run`: the run the
+  upload queued for the first read (`status` `queued`, `attempt` 0, as `GET /v1/processing-runs/{run_id}` returns it).
+- If that run can't be queued, the upload still succeeds: 200 with the document as in inline mode. The server logs
+  `upload_read_not_queued` on `sustentra.processing` with the document id, and the client asks for the read itself
+  with `POST /v1/documents/{document_id}/processing-runs`.
+
+Refusals are unchanged: 400, 404 (unknown evidence), 413 (file over the size limit) and 415 (a file type no reader opens).
+
 ### GET /v1/engagements/{engagement_id}/documents
 List documents under an engagement.
 
