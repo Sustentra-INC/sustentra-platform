@@ -7,6 +7,7 @@ import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import type { EngagementConfig } from "../types";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
 import type { Ask } from "../types/requests";
+import { andThen, useStillOpen, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { readablePeriod } from "../utils/formatPeriod";
@@ -37,8 +38,12 @@ interface ExtractionReviewProps {
    *  a row whose exact document has no extracted value still deep-links to the
    *  right node rather than the first one. */
   initialNodeKey?: string;
-  /** Saves an ask; returns it so the value's record can point at it. */
-  onSaveAsk: (draft: AskDraft) => Ask | void;
+  /** Saves an ask; returns it so the value's record can point at it. It may answer after the
+   *  server has: the value turns "requested" only once the save has gone through. */
+  onSaveAsk: (draft: AskDraft) => MaybePromise<Ask | void>;
+  /** The server records who raised a request: the Add to requests window does not ask, and the
+   *  value's record names the person the server named. */
+  serverRecordsActor?: boolean;
   /** The engagement's asks: a card added to requests says whether its request was sent. */
   asks?: Ask[];
   onBack: () => void;
@@ -91,6 +96,7 @@ export function ExtractionReview({
   initialValueId,
   initialNodeKey,
   onSaveAsk,
+  serverRecordsActor = false,
   asks = NO_ASKS,
   onBack,
   renderPage,
@@ -130,6 +136,7 @@ export function ExtractionReview({
   const [modalTarget, setModalTarget] = useState<AddToRequestsTarget | null>(null);
   // The values a request is for: every data point of the reading.
   const [requestIds, setRequestIds] = useState<string[]>([]);
+  const modalTargetOpen = useStillOpen(modalTarget);
   // A toast shows for 2.4 seconds; a new one starts the time again. Kept in state, not a
   // timer ref, so the page drawn during render (renderPage) can be handed callbacks that flash.
   const [toast, setToast] = useState<{ message: string } | null>(null);
@@ -461,27 +468,34 @@ export function ExtractionReview({
   }
 
   function submitAsk(draft: AskDraft) {
-    const ask = onSaveAsk(draft);
-    if (modalTarget?.fieldKey) {
-      const now = new Date().toISOString();
-      const ids = new Set(requestIds.length ? requestIds : [modalTarget.fieldKey]);
-      // Nothing is sent yet: the record says the value was added to requests, and points at
-      // the ask so the card can say "requested from client" once the request goes out.
-      const entry: ValueRecordEntry = { kind: "human", actor: reviewerName, at: now, action: "added to requests", ...(ask ? { askId: ask.id } : {}) };
-      onValuesChange((cur) =>
-        cur.map((x) =>
-          ids.has(x.id)
-            ? {
-                ...x,
-                reviewState: "requested",
-                record: [...x.record, entry],
-              }
-            : x
-        )
-      );
-    }
-    setModalTarget(null);
-    flash("Added to requests · not yet sent");
+    const mine = modalTarget;
+    return andThen(onSaveAsk(draft), (ask) => {
+      if (modalTarget?.fieldKey) {
+        const now = new Date().toISOString();
+        const ids = new Set(requestIds.length ? requestIds : [modalTarget.fieldKey]);
+        // Nothing is sent yet: the record says the value was added to requests, and points at
+        // the ask so the card can say "requested from client" once the request goes out. When the
+        // server saved the ask, the record names the person and the time it recorded.
+        const recorded = serverRecordsActor && ask ? { actor: ask.raisedByName, at: ask.raisedAt } : { actor: reviewerName, at: now };
+        const entry: ValueRecordEntry = { kind: "human", ...recorded, action: "added to requests", ...(ask ? { askId: ask.id } : {}) };
+        onValuesChange((cur) =>
+          cur.map((x) =>
+            ids.has(x.id)
+              ? {
+                  ...x,
+                  reviewState: "requested",
+                  record: [...x.record, entry],
+                }
+              : x
+          )
+        );
+      }
+      // The values above are this ask's. A window opened since is not this one: leave it, and
+      // say nothing of it.
+      if (!modalTargetOpen(mine)) return;
+      setModalTarget(null);
+      flash("Added to requests · not yet sent");
+    });
   }
 
   // The cards as listed, so arrow keys can move through them.
@@ -730,6 +744,7 @@ export function ExtractionReview({
           engagement={engagement}
           onCancel={() => setModalTarget(null)}
           onAdd={submitAsk}
+          serverRecordsActor={serverRecordsActor}
         />
       ) : null}
 

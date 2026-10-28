@@ -230,7 +230,7 @@ export function requestActionMessage(error: unknown, action: RequestAction): str
   if (status === 409) {
     if (sentence === ARCHIVED_DETAIL) return ARCHIVED;
     if (sentence === DUPLICATE_DETAIL) return ALREADY_ADDED;
-    return sentence ?? NOT_SAVED;
+    return sentence ?? NOT_VALID;
   }
   if (status === 404) {
     // The send endpoint names the request it could not find; the others answer "Request not found."
@@ -238,5 +238,7 @@ export function requestActionMessage(error: unknown, action: RequestAction): str
     return REQUEST_GONE;
   }
   if (status === 422) return sentence ?? validationMessage(error);
-  return NOT_SAVED;
+  // Any other answer (400, 405, 413, 429 ...): the server replied, so the connection is not the
+  // problem, and the change did not go through as sent.
+  return status >= 400 ? NOT_VALID : NOT_SAVED;
 }
