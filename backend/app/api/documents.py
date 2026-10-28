@@ -198,8 +198,12 @@ def _queue_first_read(document: dict, user: CurrentUser) -> dict:
         if created:
             service.mark_queued(run)
         view = run_view(run)
-    except Exception:
-        logger.exception("upload_read_not_queued", extra={"document_id": document.get("document_id")})
+    except Exception as exc:
+        # The type only, never the text or a traceback: SQL errors carry their parameters (the uploader's email).
+        logger.error(
+            "upload_read_not_queued",
+            extra={"document_id": document.get("document_id"), "error_type": type(exc).__name__},
+        )
         return document
     return {**document, "processing_status": "queued", "processing_run": view}
 

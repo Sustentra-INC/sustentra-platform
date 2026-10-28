@@ -17,6 +17,7 @@ from backend.app.api import documents as documents_api
 from backend.app.api import processing_runs as processing_runs_api
 from backend.app.core.config import Settings
 from backend.app.main import app
+from backend.app.observability import JsonFormatter
 from backend.app.repositories.document_repository import InMemoryDocumentRepository
 from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
 from backend.app.repositories.pipeline_repository import InMemoryPipelineRunRepository
@@ -316,4 +317,9 @@ def test_an_upload_still_succeeds_when_its_read_cannot_be_queued(
     assert "processing_run" not in doc
     assert doc["processing_status"] == "not_started"
     [record] = [r for r in caplog.records if r.getMessage() == "upload_read_not_queued"]
-    assert (record.name, record.document_id) == ("sustentra.processing", doc["document_id"])
+    assert (record.name, record.levelname, record.document_id) == (
+        "sustentra.processing", "ERROR", doc["document_id"])
+    assert (record.error_type, record.exc_info) == ("RuntimeError", None)  # the type only, no traceback
+    line = JsonFormatter().format(record)  # the line the JSON log handler writes
+    assert json.loads(line)["error_type"] == "RuntimeError"
+    assert "db gone" not in record.getMessage() and "db gone" not in line
