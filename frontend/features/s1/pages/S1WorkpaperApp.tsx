@@ -82,6 +82,8 @@ import {
   saveEngagement,
   type BackendEngagement,
 } from "../api/engagements";
+import { andThen } from "../requests/maybePromise";
+import { useBackendRequestsStore } from "../requests/backendRequestsStore";
 import { useRequestsStore } from "../requests/requestsStore";
 import type {
   ContainerState,
@@ -180,7 +182,6 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [backendError, setBackendError] = useState<WorkspaceProblem | null>(null);
   // Backend mode: a 401 from the API means the session ended (FE-007).
   const [sessionEnded, setSessionEnded] = useState(false);
-  const requests = useRequestsStore(dataMode === "backend" ? [] : persisted?.asks ?? seedAsks);
   const verification = useVerificationStore(
     persisted?.examinations ?? (dataMode === "fixture" ? seedExaminations : {}),
     persisted?.findings ?? [],
@@ -218,11 +219,21 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     };
   }, [dataMode]);
 
-  // Requests, findings and examination states are saved per engagement (backend mode).
+  // Requests: the demo keeps them in the browser; with the backend every change goes to the server's
+  // request actions and the screens show what it answers. Both hooks run (hooks cannot be skipped);
+  // only the one for this mode is used.
+  const fixtureRequests = useRequestsStore(dataMode === "backend" ? [] : persisted?.asks ?? seedAsks);
+  const backendRequests = useBackendRequestsStore({
+    engagementId: engagement.engagementId,
+    onSessionEnded: handleSessionEnded,
+  });
+  const requests = dataMode === "backend" ? backendRequests : fixtureRequests;
+
+  // Findings and examination states are saved per engagement (backend mode). Requests are not:
+  // the server's request actions keep them.
   useWorkpaperSync({
     enabled: dataMode === "backend",
     engagementId: engagement.engagementId,
-    asks: requests.asks,
     findings: verification.findings,
     examinations: verification.examinations,
     documents: documentDecisions,
@@ -533,7 +544,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   // Follow-up: a problem that came back becomes a new ask linked to the old one.
   function raiseFollowUp(fromAsk: (typeof requests.asks)[number]) {
-    requests.saveAsk({
+    return requests.saveAsk({
       origin: fromAsk.source.origin,
       documentId: fromAsk.source.documentId ?? null,
       fieldKey: fromAsk.source.fieldKey ?? null,
@@ -910,12 +921,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               if (next) openExtraction(next.documentId);
             }}
             onSaveAsk={requests.saveAsk}
-            onSend={(ids, lineNumbers) => requests.sendAsks(ids, lineNumbers).requestNumber}
+            onSend={(ids, lineNumbers) => andThen(requests.sendAsks(ids, lineNumbers), (sent) => sent.requestNumber)}
             onResolve={requests.resolveAsk}
             onWithdraw={requests.withdrawAsk}
             onEdit={requests.editAsk}
             onRaiseFollowUp={raiseFollowUp}
             onOpenSource={(ask) => ask.source.documentId && openExtraction(ask.source.documentId)}
+            serverRecordsActor={dataMode === "backend"}
           />
         ) : activeView.name === "methodology" ? (
           // Demo only for now: the backend does not read the methodology from the report yet.
@@ -993,6 +1005,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             writesEnabled
             typeOptions={dataMode === "backend" ? Object.keys(BACKEND_TYPE_IDS) : undefined}
             qualityChecks={qualityChecks}
+            serverRecordsActor={dataMode === "backend"}
           />
         ) : activeView.name === "extraction" ? (
           <ExtractionReview
@@ -1006,6 +1019,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}
             asks={requests.asks}
+            serverRecordsActor={dataMode === "backend"}
             onBack={() => setActiveView({ name: "evidence" })}
             reviewerName={dataMode === "backend" ? user?.firstName ?? user?.email : undefined}
             allowAddValue={dataMode === "fixture"}

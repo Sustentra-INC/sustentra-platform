@@ -428,6 +428,24 @@ describe("Coverage & requests waits for the server", () => {
     expect(screen.getByRole("checkbox", { name: `Select ${OCTOBER}` })).toBeChecked();
   });
 
+  it("takes what was sent out of the selection when the send answers after its window was closed", async () => {
+    const sending = deferred<number>();
+    renderRequests({ onSend: vi.fn(() => sending.promise) }, [seedAsks[0], seedAsks[1], secondUnsent]);
+    const panel = openSend(KENT);
+    fireEvent.click(within(panel).getByRole("button", { name: "Mark as sent" }));
+    fireEvent.click(panel.parentElement!);
+    expect(screen.queryByRole("dialog", { name: "Send requests" })).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: `Select ${OCTOBER}` }));
+    expect(screen.getByRole("checkbox", { name: `Select ${KENT}` })).toBeChecked();
+
+    await act(async () => sending.resolve(7));
+
+    // Only what was sent is let go: the choice made for another send stays.
+    expect(screen.getByRole("checkbox", { name: `Select ${KENT}` })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: `Select ${OCTOBER}` })).toBeChecked();
+    expect(screen.getByText("Sent as request 7")).toBeInTheDocument();
+  });
+
   it("does not carry a send failure into the next time the panel opens", async () => {
     renderRequests({ onSend: vi.fn(() => Promise.reject(new Error("Nope."))) });
     const panel = openSend();

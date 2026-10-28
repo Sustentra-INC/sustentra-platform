@@ -99,14 +99,21 @@ const base = (engagementId: string) => `/engagements/${encodeURIComponent(engage
 const one = (engagementId: string, askId: string) =>
   `${base(engagementId)}/requests/${encodeURIComponent(workpaperKey(askId))}`;
 
+// Each action takes an optional `signal`, so a caller can stop waiting for an answer that never comes.
+
 /** Raise a request (201). It starts not yet sent, raised by the signed-in user. */
-export function createRequest(engagementId: string, body: CreateRequestBody): Promise<Ask> {
-  return api<Ask>(`${base(engagementId)}/requests`, { method: "POST", body });
+export function createRequest(engagementId: string, body: CreateRequestBody, signal?: AbortSignal): Promise<Ask> {
+  return api<Ask>(`${base(engagementId)}/requests`, { method: "POST", body, signal });
 }
 
 /** Change a request's text while it is not yet sent. */
-export function editRequest(engagementId: string, askId: string, whatIsNeeded: string): Promise<Ask> {
-  return api<Ask>(one(engagementId, askId), { method: "PATCH", body: { whatIsNeeded } });
+export function editRequest(
+  engagementId: string,
+  askId: string,
+  whatIsNeeded: string,
+  signal?: AbortSignal
+): Promise<Ask> {
+  return api<Ask>(one(engagementId, askId), { method: "PATCH", body: { whatIsNeeded }, signal });
 }
 
 /** Send requests together as one numbered request. `lineNumbers` lets several lines
@@ -114,31 +121,41 @@ export function editRequest(engagementId: string, askId: string, whatIsNeeded: s
 export function sendRequests(
   engagementId: string,
   askIds: string[],
-  lineNumbers?: Record<string, number>
+  lineNumbers?: Record<string, number>,
+  signal?: AbortSignal
 ): Promise<SentRequest> {
   const body: { askIds: string[]; lineNumbers?: Record<string, number> } = { askIds };
   if (lineNumbers && Object.keys(lineNumbers).length > 0) body.lineNumbers = lineNumbers;
-  return api<SentRequest>(`${base(engagementId)}/requests/send`, { method: "POST", body });
+  return api<SentRequest>(`${base(engagementId)}/requests/send`, { method: "POST", body, signal });
 }
 
 export function resolveRequest(
   engagementId: string,
   askId: string,
-  resolution?: { link?: string | null; note?: string | null }
+  resolution?: { link?: string | null; note?: string | null },
+  signal?: AbortSignal
 ): Promise<Ask> {
   return api<Ask>(`${one(engagementId, askId)}/resolve`, {
     method: "POST",
     body: { link: resolution?.link || null, note: resolution?.note || null },
+    signal,
   });
 }
 
-export function withdrawRequest(engagementId: string, askId: string, reason: string): Promise<Ask> {
-  return api<Ask>(`${one(engagementId, askId)}/withdraw`, { method: "POST", body: { reason } });
+export function withdrawRequest(
+  engagementId: string,
+  askId: string,
+  reason: string,
+  signal?: AbortSignal
+): Promise<Ask> {
+  return api<Ask>(`${one(engagementId, askId)}/withdraw`, { method: "POST", body: { reason }, signal });
 }
 
 /** The engagement's requests, as the server stores them. */
-export async function loadAsks(engagementId: string): Promise<Ask[]> {
-  const { items } = await api<{ items: WorkpaperItem[] }>(`${base(engagementId)}/workpaper-items?kind=ask`);
+export async function loadAsks(engagementId: string, signal?: AbortSignal): Promise<Ask[]> {
+  const { items } = await api<{ items: WorkpaperItem[] }>(`${base(engagementId)}/workpaper-items?kind=ask`, {
+    signal,
+  });
   return items.map((item) => item.payload as unknown as Ask);
 }
 
@@ -161,7 +178,8 @@ const ARCHIVED = "This engagement is archived, so its requests can't change.";
 const ALREADY_ADDED = "This request was already added. The list now shows it.";
 const REQUEST_GONE = "This request is no longer in this engagement. The list now shows the current requests.";
 const NOT_ALLOWED = "Your role can view requests but not change them.";
-const SESSION_ENDED = "Your session ended. Sign in again to continue.";
+/** What the person reads when the session has ended. */
+export const SESSION_ENDED = "Your session ended. Sign in again to continue.";
 const NOT_VALID =
   "This change couldn't be saved because some of its details aren't valid. Reload the page and try again.";
 const NOT_SAVED = "The change wasn't saved. Check your connection and try again.";
