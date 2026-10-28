@@ -1,8 +1,10 @@
 /**
  * The ask / request model shared by Evidence Workspace, Extraction Review and
- * Evidence Requests (screen 4). Every write goes through one persist function
- * (see `features/s1/requests/requestsStore.ts`) so the backend swap is a single
- * change. There is no backend for these objects yet — fixture mode only.
+ * Evidence Requests (screen 4). In fixture mode every write goes through one persist
+ * function (see `features/s1/requests/requestsStore.ts`). With the backend, requests are
+ * stored through the action endpoints (create, edit, send, resolve and withdraw; see
+ * `features/s1/api/requests.ts`), and the server records the signed-in user as the person
+ * who acted.
  */
 
 export type RequestType =
@@ -45,6 +47,8 @@ export interface AskEvent {
   kind: "raised" | "edited" | "sent" | "resolved" | "withdrawn";
   actorName: string;
   actorLogin: string;
+  /** The signed-in user's id. Set by the server; fixture-mode events have none. */
+  actorUserId?: string;
   at: string;
   detail?: string;
 }
