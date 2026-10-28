@@ -5,6 +5,8 @@ already recorded."""
 from __future__ import annotations
 
 import copy
+import json
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,6 +14,7 @@ from typing import Any
 
 import pytest
 
+from backend.app.observability import JsonFormatter
 from backend.app.repositories.document_repository import InMemoryDocumentRepository
 from backend.app.repositories.processing_run_repository import InMemoryProcessingRunRepository, ProcessingRun
 from backend.app.services.document_processing_service import (
@@ -174,6 +177,26 @@ def test_a_problem_on_our_side_is_retried_with_backoff_then_fails(tmp_path: Path
     last = world.service.finish(run, world.service.execute(run), retry=True)
     assert (last.status, last.error_code, last.error) == ("failed", "worker_error", WORKER_ERROR_MESSAGE)
     assert world.status() == "failed"
+
+
+def test_a_problem_on_our_side_is_logged_by_type_only(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    # A database error's message and traceback embed the statement's parameters (emails, file names).
+    message = "connection lost [parameters: ('reader@example.com', 'bill.txt')]"
+    world = make_world(tmp_path, FakePipeline(RuntimeError(message)))
+    run = world.claimed()
+
+    with caplog.at_level(logging.INFO, logger="sustentra.processing"):
+        outcome = world.service.execute(run)
+
+    assert outcome.status == "retry"
+    [record] = [r for r in caplog.records if r.name == "sustentra.processing"]
+    assert record.exc_info is None
+    assert record.error_type == "RuntimeError"
+    assert (record.document_id, record.run_id) == (run.document_id, run.run_id)
+    line = JsonFormatter().format(record)
+    assert json.loads(line)["error_type"] == "RuntimeError"
+    for leaked in (message, "reader@example.com", "bill.txt", "Traceback", "connection lost"):
+        assert leaked not in line
 
 
 def test_inline_a_problem_on_our_side_fails_at_once(tmp_path: Path) -> None:

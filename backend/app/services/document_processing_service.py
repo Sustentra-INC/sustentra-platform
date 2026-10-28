@@ -205,7 +205,9 @@ class DocumentProcessingService:
         except ValueError as exc:
             return Outcome("failed", error_code="invalid_request", error=str(exc), detail=str(exc))
         except Exception as exc:
-            logger.exception("Reading document %s failed (processing run %s)", run.document_id, run.run_id)
+            # The type only: a traceback or message can carry SQL parameters (emails) and file names.
+            logger.error("Reading a document failed", extra={
+                "document_id": run.document_id, "run_id": run.run_id, "error_type": type(exc).__name__})
             return Outcome("retry", error_code="worker_error", error=WORKER_ERROR_MESSAGE, detail=str(exc))
         return _from_pipeline_result(result)
 
