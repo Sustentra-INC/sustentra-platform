@@ -1,6 +1,7 @@
 import type { EvidenceItem } from "../types";
 import { apiPath } from "../../../lib/api";
 import { HALT_REASONS } from "../constants/copy";
+import type { ProcessingRunView } from "../api/processingRuns";
 
 export interface BackendDocumentLike {
   document_id: string;
@@ -10,6 +11,8 @@ export interface BackendDocumentLike {
   uploaded_at: string;
   processing_status: string;
   evidence_id?: string | null;
+  /** The read the upload queued, when the API runs reads in the background. */
+  processing_run?: ProcessingRunView | null;
 }
 
 export function mapBackendDocumentToEvidenceItem(
