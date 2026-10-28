@@ -27,6 +27,11 @@ TOP_HEADER, EMBEDDED_HEADER, CHILD_HEADER = 32, 24, 8  # [MS-OXMSG] 2.4.1: prope
 FILETIME_EPOCH = datetime(1601, 1, 1, tzinfo=UTC)  # [MS-DTYP] 2.3.3
 PROPERTIES = "__properties_version1.0"  # [MS-OXMSG] 2.2.1
 METHOD_BY_VALUE, METHOD_EMBEDDED_MESSAGE = 1, 5  # [MS-OXCMSG] 2.2.2.9 PidTagAttachMethod
+# DER object identifiers of the CMS content types ([RFC 5652] 3: a ContentInfo is a SEQUENCE that opens
+# with its content type; 12.1 and [RFC 5083] 2.1 give the arcs), as tag 06, length, content.
+OID_SIGNED_DATA = "06092a864886f70d010702"  # 1.2.840.113549.1.7.2
+OID_ENVELOPED_DATA = "06092a864886f70d010703"  # 1.2.840.113549.1.7.3
+OID_AUTH_ENVELOPED_DATA = "060b2a864886f70d0109100117"  # 1.2.840.113549.1.9.16.1.23
 
 
 @dataclass
@@ -76,6 +81,13 @@ class Message:
     # Properties written as given, by full tag (id << 16 | type): a fixed-size type is held in the
     # property stream (8 bytes, padded), any other in a stream of its own.
     extra: dict[int, bytes] = field(default_factory=dict)
+
+
+def cms(oid: str, *, before: int = 0, after: int = 100) -> bytes:
+    """The start of an S/MIME attachment (``smime.p7m``): a BER SEQUENCE of indefinite length, the
+    content-type ``oid`` (hex, one of ``OID_*``) ``before`` filler bytes in, then ``after`` more."""
+
+    return bytes.fromhex("3080") + bytes(before) + bytes.fromhex(oid) + bytes.fromhex("a080") + bytes(after)
 
 
 def filetime(moment: datetime) -> int:

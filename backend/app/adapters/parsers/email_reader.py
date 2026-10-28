@@ -194,24 +194,34 @@ def read_eml(data: bytes) -> EmailPackage:
     """Read an RFC 822 message. Raises ``EmailError`` when the bytes are not an email, or
     are an encrypted one."""
 
+    walk = _Walk()
+    package = read_eml_within(data, walk, depth=0, path=[])
+    _closing_notes(package, walk)
+    return package
+
+
+def read_eml_within(data: bytes, walk: _Walk, *, depth: int, path: list[str]) -> EmailPackage:
+    """Read an RFC 822 message that is part of a larger email (the MIME text a .msg holds for a
+    clear-signed message), under that email's ``walk``: the same budgets of parts, lines and
+    text, and the forwarded levels counted from ``depth``. The notes about what the budgets cut
+    are left to whoever owns the ``walk`` (``_closing_notes``). Raises ``EmailError`` as
+    ``read_eml`` does."""
+
     if data.startswith(OLE_SIGNATURE):
         raise EmailError("not_an_eml", NOT_AN_EML)
-    walk = _Walk()
     try:
         message = _parse(data, walk)
         if not message.keys():
             raise EmailError("not_an_email", "This file is not an email: it has no headers (From, To, Subject).")
         if _is_encrypted(message):
             raise EmailError("password_protected", ENCRYPTED_EMAIL)
-        package = _package(message, depth=0, walk=walk, path=[])
+        return _package(message, depth=depth, walk=walk, path=list(path))
     except EmailError:
         raise
     except RecursionError as exc:
         raise EmailError("email_load_failed", DAMAGED_EMAIL) from exc
     except Exception as exc:  # noqa: BLE001 - a malformed message the parser or our walk trips over
         raise EmailError("email_load_failed", DAMAGED_EMAIL) from exc
-    _closing_notes(package, walk)
-    return package
 
 
 def _closing_notes(package: EmailPackage, walk: _Walk) -> None:
