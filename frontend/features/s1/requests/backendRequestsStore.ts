@@ -96,6 +96,11 @@ export function useBackendRequestsStore({
 
   const replaceAsks = useCallback((next: Ask[]) => setAsks(next), []);
 
+  // A create that got no answer, and the id it was sent with. The server may have made the request
+  // before the connection failed, so the same draft sent again keeps the id: the server then answers
+  // "already added" instead of making a second request.
+  const unanswered = useRef<{ key: string; id: string } | null>(null);
+
   /** One action on the server. It acts on the engagement open when it was called, adds the asks the
    *  server returned (only while that engagement is still the open one), and turns a failure into
    *  a RequestActionError whose message is the sentence to show. */
@@ -137,8 +142,21 @@ export function useBackendRequestsStore({
 
   const saveAsk = useCallback(
     (draft: AskDraft): Promise<Ask> => {
-      const body = requestBodyFromDraft(newId(), draft);
-      return perform("create", (id, signal) => createRequest(id, body, signal), (ask) => [ask]);
+      // The same draft in the same engagement, as it would be sent.
+      const key = `${currentEngagement.current}|${JSON.stringify(requestBodyFromDraft("", draft))}`;
+      const id = unanswered.current?.key === key ? unanswered.current.id : newId();
+      const body = requestBodyFromDraft(id, draft);
+      return perform("create", (engagement, signal) => createRequest(engagement, body, signal), (ask) => [ask]).then(
+        (ask) => {
+          unanswered.current = null;
+          return ask;
+        },
+        (error: unknown) => {
+          // No answer (status null) leaves it open whether the request was made; any answer settles it.
+          unanswered.current = error instanceof RequestActionError && error.status === null ? { key, id } : null;
+          throw error;
+        }
+      );
     },
     [perform]
   );

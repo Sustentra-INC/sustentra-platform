@@ -109,14 +109,16 @@ const lastCall = () => {
 };
 
 /** A fetch that never answers, and gives up when its signal aborts, as a real one does. */
+const neverAnswers = (init: RequestInit) =>
+  new Promise<Response>((_resolve, reject) => {
+    init.signal?.addEventListener("abort", () => reject(new DOMException("The operation was aborted.", "AbortError")));
+  });
 function hang() {
-  fetchMock.mockImplementation(
-    (_url: string, init: RequestInit) =>
-      new Promise((_resolve, reject) => {
-        init.signal?.addEventListener("abort", () => reject(new DOMException("The operation was aborted.", "AbortError")));
-      })
-  );
+  fetchMock.mockImplementation((_url: string, init: RequestInit) => neverAnswers(init));
 }
+
+/** The id the nth call to fetch carried in its body. */
+const idSent = (call: number) => JSON.parse(String((fetchMock.mock.calls[call][1] as RequestInit).body)).id as string;
 
 describe("saveAsk", () => {
   it("posts what a person writes, and holds the ask the server made, raised by the signed-in user", async () => {
@@ -582,6 +584,115 @@ describe("a call that never answers", () => {
     expect(markSent).toBeEnabled();
     expect(within(panel).getByRole("alert")).toHaveTextContent(NOT_SAVED);
     expect(screen.getByRole("dialog", { name: "Send requests" })).toBe(panel);
+  });
+});
+
+describe("raising a request again after a try that got no answer", () => {
+  const DUPLICATE = "A request with this id already exists.";
+  const ALREADY_ADDED = "This request was already added. The list now shows it.";
+
+  /** Raise `draft`, let the limit pass, and return what came of it. */
+  async function timeOut(result: { current: { saveAsk(draft: AskDraft): Promise<Ask> } }, what: AskDraft = draft) {
+    const failed = result.current.saveAsk(what).catch((error: unknown) => error);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
+    });
+    return failed;
+  }
+
+  it("sends the same id again, so a request the server did make is answered as already added", async () => {
+    vi.useFakeTimers();
+    const made = serverAsk({ id: "ASK-MADE" });
+    let posts = 0;
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+      if (init.method !== "POST") {
+        return json({ items: [{ kind: "ask", item_key: made.id, payload: made, created_at: "", updated_at: "" }] });
+      }
+      posts += 1;
+      return posts === 1 ? neverAnswers(init) : json({ detail: DUPLICATE }, 409);
+    });
+    const { result } = renderStore();
+
+    await expect(timeOut(result)).resolves.toMatchObject({ message: NOT_SAVED, status: null });
+    await act(async () => {
+      await expect(result.current.saveAsk(draft)).rejects.toMatchObject({ message: ALREADY_ADDED, status: 409 });
+    });
+
+    expect(idSent(1)).toBe(idSent(0));
+    expect(lastCall().url).toBe("/api/v1/engagements/ENG-1/workpaper-items?kind=ask");
+    expect(result.current.asks).toEqual([made]);
+  });
+
+  it("makes the request once on the second try when the first never reached the server, then goes back to new ids", async () => {
+    vi.useFakeTimers();
+    let posts = 0;
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+      posts += 1;
+      return posts === 1 ? neverAnswers(init) : json(serverAsk({ id: idSent(posts - 1) }), 201);
+    });
+    const { result } = renderStore();
+
+    await timeOut(result);
+    await act(async () => {
+      await result.current.saveAsk(draft);
+    });
+    expect(idSent(1)).toBe(idSent(0));
+    expect(result.current.asks).toEqual([serverAsk({ id: idSent(0) })]);
+
+    await act(async () => {
+      await result.current.saveAsk(draft);
+    });
+    expect(idSent(2)).not.toBe(idSent(0));
+    expect(result.current.asks).toHaveLength(2);
+  });
+
+  it("keeps the id through more than one try with no answer", async () => {
+    vi.useFakeTimers();
+    hang();
+    const { result } = renderStore();
+    await timeOut(result);
+    await timeOut(result);
+    expect(idSent(1)).toBe(idSent(0));
+  });
+
+  it("makes a new id after the server answered, or for a different request", async () => {
+    vi.useFakeTimers();
+    let posts = 0;
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+      posts += 1;
+      if (posts === 1) return json({ detail: "Boom." }, 500);
+      return posts === 2 ? neverAnswers(init) : json(serverAsk({ id: idSent(posts - 1) }), 201);
+    });
+    const { result } = renderStore();
+
+    // An answer, even a failure, settles that the request was not made: the next try is a new one.
+    await act(async () => {
+      await expect(result.current.saveAsk(draft)).rejects.toMatchObject({ status: 500 });
+    });
+    await timeOut(result);
+    expect(idSent(1)).not.toBe(idSent(0));
+
+    // Another request is not a retry of the one that got no answer.
+    await act(async () => {
+      await result.current.saveAsk({ ...draft, whatIsNeeded: "Send the February bill." });
+    });
+    expect(idSent(2)).not.toBe(idSent(1));
+  });
+
+  it("does not reuse the id in another engagement", async () => {
+    vi.useFakeTimers();
+    let posts = 0;
+    fetchMock.mockImplementation((_url: string, init: RequestInit) => {
+      posts += 1;
+      return posts === 1 ? neverAnswers(init) : json(serverAsk({ id: idSent(posts - 1) }), 201);
+    });
+    const { result, rerender } = renderStore({ engagementId: "ENG-1" });
+    await timeOut(result);
+    rerender({ engagementId: "ENG-2" });
+    await act(async () => {
+      await result.current.saveAsk(draft);
+    });
+    expect(idSent(1)).not.toBe(idSent(0));
   });
 });
 

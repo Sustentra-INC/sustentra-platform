@@ -185,6 +185,24 @@ describe("fixture timing is unchanged", () => {
   });
 });
 
+describe("fixture selection after a send is unchanged", () => {
+  it("clears every selection when the send window is still open, including one a search is hiding", () => {
+    renderRequests({}, [seedAsks[0], seedAsks[1], secondUnsent]);
+    fireEvent.click(screen.getByRole("checkbox", { name: `Select ${KENT}` }));
+    // Search for the other request: Kent stays selected but is out of sight, so it is not sent.
+    fireEvent.change(screen.getByLabelText("Search requests"), { target: { value: "oct" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: `Select ${OCTOBER}` }));
+    fireEvent.click(screen.getByRole("button", { name: /^Send \(1\)/ }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Send requests" })).getByRole("button", { name: "Mark as sent" }));
+    expect(screen.queryByRole("dialog", { name: "Send requests" })).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Search requests"), { target: { value: "" } });
+    expect(screen.getByRole("checkbox", { name: `Select ${KENT}` })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: `Select ${OCTOBER}` })).not.toBeChecked();
+    expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  });
+});
+
 describe("the Add to requests window: who raised it", () => {
   const target: AddToRequestsTarget = {
     origin: "workspace_document",

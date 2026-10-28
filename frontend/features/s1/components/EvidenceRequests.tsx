@@ -423,10 +423,14 @@ export function EvidenceRequests({
               () => onSend(orderedIds, lineNumbers),
               (n) => {
                 setSending(false);
-                // What was sent is no longer selected, whether or not its window is still open. A window
-                // opened since, and what was chosen for it, are not this send's: they stay.
-                setSelected((cur) => cur.filter((id) => !orderedIds.includes(id)));
-                if (sendWindowOpen(mine)) setSendWindow(null);
+                if (sendWindowOpen(mine)) {
+                  setSelected([]);
+                  setSendWindow(null);
+                } else {
+                  // Closed since (or opened again): what was chosen for another window is not this
+                  // send's and stays, but what was sent is no longer selected.
+                  setSelected((cur) => cur.filter((id) => !orderedIds.includes(id)));
+                }
                 flash(`Sent as request ${n}`);
               },
               (error) => {
