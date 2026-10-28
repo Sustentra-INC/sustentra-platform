@@ -335,6 +335,62 @@ def test_xls_directory_reading_is_unchanged() -> None:
     assert read_directory(ole_tree(TREE)).base == 512 and correct.base == 4096
 
 
+# --- headers the format does not allow -------------------------------------------------------------------
+# [MS-CFB] 2.2 fixes the sector shift (9 or 12), the mini sector shift (6) and the mini stream cutoff
+# (4096). read_directory accepts a wider range, as xlrd does, so OleFile checks them itself: a 4-byte
+# mini sector with a cutoff that sends every stream there made one 15 MiB stream in a 31 MiB file cost
+# 4 million steps and about 800 MB; a sector shift of 7 with MS-CFB addressing puts sector 0 inside the header.
+FORBIDDEN_SIZES = [
+    ("sector_shift_7", 30, "<H", 7), ("sector_shift_8", 30, "<H", 8), ("sector_shift_10", 30, "<H", 10),
+    ("sector_shift_20", 30, "<H", 20), ("mini_shift_2", 32, "<H", 2), ("mini_shift_5", 32, "<H", 5),
+    ("mini_shift_7", 32, "<H", 7), ("cutoff_0", 56, "<i", 0), ("cutoff_4095", 56, "<i", 4095),
+    ("cutoff_4097", 56, "<i", 4097), ("cutoff_huge", 56, "<i", 0x7FFFFFFF), ("cutoff_negative", 56, "<i", -1),
+]
+
+
+@pytest.mark.parametrize("shift", [9, 12])
+@pytest.mark.parametrize("label, offset, fmt, value", FORBIDDEN_SIZES, ids=[row[0] for row in FORBIDDEN_SIZES])
+def test_a_header_the_format_does_not_allow_is_refused(monkeypatch: pytest.MonkeyPatch, shift: int, label: str,
+                                                       offset: int, fmt: str, value: int) -> None:
+    patched = bytearray(ole_tree(TREE, sector_shift=shift))
+    patched[offset:offset + struct.calcsize(fmt)] = struct.pack(fmt, value)
+
+    def never(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("the header must be refused before the directory is read")
+
+    monkeypatch.setattr(ole, "read_directory", never)
+    with pytest.raises(OleError, match="sizes the format does not allow"):
+        OleFile(bytes(patched))
+
+
+def test_the_crafted_files_of_the_review_are_refused_at_the_header() -> None:
+    # Version 4, 4-byte mini sectors and a cutoff that sends every stream to the mini stream
+    # (the shape that made one read allocate 26 times the file); and a 128-byte sector file.
+    mini = bytearray(ole_tree(TREE, sector_shift=12))
+    mini[32:34] = struct.pack("<H", 2)
+    mini[56:60] = struct.pack("<i", 0x7FFFFFFF)
+    small_sectors = bytearray(ole_tree(TREE))
+    small_sectors[30:32] = struct.pack("<H", 7)
+    for crafted in (mini, small_sectors):
+        with pytest.raises(OleError, match="sizes the format does not allow"):
+            OleFile(bytes(crafted))
+
+
+def test_xls_still_reads_the_sizes_the_stream_reader_refuses() -> None:
+    # read_directory(data) is the .xls path and keeps accepting what xlrd accepts.
+    data = bytearray(ole_tree(TREE))
+    data[56:60] = struct.pack("<i", 0x7FFFFFFF)  # a cutoff that is not 4096
+    assert [entry.name for entry in read_directory(bytes(data)).top_level] == ["Big", "Small", "Store"]
+    with pytest.raises(OleError, match="sizes the format does not allow"):
+        OleFile(bytes(data))
+
+
+def test_something_that_is_not_a_compound_file_is_refused_in_read_directorys_words() -> None:
+    for junk in (b"", b"x" * 600, b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + bytes(100)):
+        with pytest.raises(OleError, match="Not an OLE2 compound file"):
+            OleFile(junk)
+
+
 # --- bounded work ------------------------------------------------------------------------------------
 @pytest.fixture(scope="module")
 def many_big_streams() -> bytes:
@@ -360,6 +416,37 @@ def test_reading_every_stream_takes_memory_bounded_by_the_file(many_big_streams:
     finally:
         tracemalloc.stop()
     assert peak < 1.5 * len(many_big_streams), peak  # the streams cached, and a sector's worth of joining
+
+
+@pytest.fixture(scope="module")
+def large_mini_stream() -> bytes:
+    # The worst case the format allows: a 28 MB mini stream (7,000 streams of 4,000 bytes, the largest
+    # that stays under the cutoff), 441,000 mini sectors, in a 31 MB version 4 file.
+    return ole_tree({f"S{n:04d}": bytes([n % 251]) * 4000 for n in range(7000)}, sector_shift=12)
+
+
+def test_reading_every_small_stream_of_a_large_mini_stream_is_bounded_by_the_file(large_mini_stream: bytes) -> None:
+    started = time.perf_counter()
+    opened = OleFile(large_mini_stream)
+    read = [opened.read(entry) for entry in opened.children(_root(opened))]
+    assert time.perf_counter() - started < budget(1)  # about 0.15 s without coverage
+    assert _root(opened).size > 28_000_000 and len(read) == 7000
+    assert all(content == bytes([n % 251]) * 4000 for n, content in enumerate(read))
+
+
+def test_reading_every_small_stream_of_a_large_mini_stream_takes_memory_bounded_by_the_file(
+        large_mini_stream: bytes) -> None:
+    # Measured 3.1 times the file: the mini stream (0.9), the streams cached (0.9), the mini FAT as
+    # Python integers (0.5), and the claimed sets and the directory. Nothing is held per read beyond that.
+    tracemalloc.start()
+    try:
+        opened = OleFile(large_mini_stream)
+        for entry in opened.children(_root(opened)):
+            opened.read(entry)
+        peak = tracemalloc.get_traced_memory()[1]
+    finally:
+        tracemalloc.stop()
+    assert peak < 4 * len(large_mini_stream), peak / len(large_mini_stream)
 
 
 def test_thousands_of_entries_sharing_one_start_are_refused_in_time() -> None:

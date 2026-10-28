@@ -199,6 +199,24 @@ def read_directory(data: bytes, *, cfb: bool = False) -> OleDirectory:
 
 
 _SHARED = "Two streams share the same sectors."
+_SECTOR_SHIFTS = (9, 12)  # [MS-CFB] 2.2: version 3 files have 512-byte sectors, version 4 files 4096-byte ones
+_MINI_SHIFT, _MINI_CUTOFF = 6, 4096  # [MS-CFB] 2.2: 64-byte mini sectors; streams under 4096 bytes are in the mini stream
+
+
+def _check_sizes(data: bytes) -> None:
+    """Refuse a header that sets sizes MS-CFB 2.2 fixes. ``read_directory`` accepts a wider range
+    because xlrd does (``.xls`` is unchanged), but a reader that allocates per sector must not:
+    with 4-byte mini sectors and a cutoff that sends every stream there, one 15 MiB stream in a
+    31 MiB file costs 4 million steps and about 800 MB; with a sector shift of 7 and ``cfb=True``
+    the first sectors lie inside the header. A header that is not a compound file's at all is left
+    for ``read_directory`` to refuse in its own words."""
+
+    if len(data) < 512 or data[:8] != SIGNATURE or data[28:30] != b"\xfe\xff":
+        return
+    shift, mini_shift = struct.unpack("<HH", data[30:34])
+    (cutoff,) = struct.unpack("<i", data[56:60])
+    if shift not in _SECTOR_SHIFTS or mini_shift != _MINI_SHIFT or cutoff != _MINI_CUTOFF:
+        raise OleError("The compound file header has sizes the format does not allow.")
 
 
 class OleFile:
@@ -214,6 +232,7 @@ class OleFile:
     """
 
     def __init__(self, data: bytes) -> None:
+        _check_sizes(data)
         self._data = data
         self._view = memoryview(data)
         self.directory = read_directory(data, cfb=True)
@@ -293,18 +312,14 @@ class OleFile:
         directory = self.directory
         sector_size, fat, count = directory.sector_size, directory.fat, -(-size // directory.sector_size)
         walked: list[int] = []
-        seen: set[int] = set()
         sector = start
         while True:
             if sector < 0:
                 raise OleError("A stream's sector chain is truncated.")
             if sector >= directory.sector_count:
                 raise OleError("A stream's sector chain leaves the file.")
-            if sector in seen:
-                raise OleError("A stream's sector chain loops.")
-            if sector in self._claimed:
-                raise OleError(_SHARED)
-            seen.add(sector)
+            if sector in self._claimed:  # this walk's own sector again is a loop, anyone else's is shared
+                raise OleError("A stream's sector chain loops." if sector in set(walked) else _SHARED)
             self._claimed.add(sector)
             walked.append(sector)
             if len(walked) == count:
@@ -342,18 +357,14 @@ class OleFile:
         step, mini_fat = self.directory.mini_sector_size, self.directory.mini_fat
         count = -(-size // step)
         walked: list[int] = []
-        seen: set[int] = set()
         sector = start
         while True:
             if sector < 0:
                 raise OleError("A stream's sector chain is truncated.")
             if (sector + 1) * step > len(container):
                 raise OleError("A stream's sector chain leaves the mini stream.")
-            if sector in seen:
-                raise OleError("A stream's sector chain loops.")
             if sector in self._mini_claimed:
-                raise OleError(_SHARED)
-            seen.add(sector)
+                raise OleError("A stream's sector chain loops." if sector in set(walked) else _SHARED)
             self._mini_claimed.add(sector)
             walked.append(sector)
             if len(walked) == count:
