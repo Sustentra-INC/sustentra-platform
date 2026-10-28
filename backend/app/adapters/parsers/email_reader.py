@@ -20,8 +20,10 @@ Nothing is fetched or run, and a crafted file cannot make the work outgrow the f
   ``_DENY_CODECS`` (punycode, idna, the escape codecs); a denied or unknown charset, or a
   codec that is not a text encoding, is read as UTF-8 with replacement characters. At most
   ``MAX_BODY_CHARS`` of a body are decoded, at most ``MAX_HTML_CHARS``
-  of HTML are turned into text, and the message text of the whole email (forwarded
-  messages included) is cut at ``MAX_TEXT_CHARS`` and ``MAX_TEXT_LINES``.
+  of HTML are turned into text (``html.parser`` is shown no more than ``MAX_TAG_CHARS`` of
+  a tag at a time, since its memory for a tag grows with the tag's attributes), and the
+  message text of the whole email (forwarded messages included) is cut at
+  ``MAX_TEXT_CHARS`` and ``MAX_TEXT_LINES``.
 - The message text is the plain-text body, else the HTML body turned into text here
   (scripts, styles and the head dropped, table cells tab-separated; no image, link or
   stylesheet is ever loaded).
@@ -71,6 +73,10 @@ MAX_MIME_PARAMS = 32
 MAX_BODY_CHARS = 2_000_000  # decoded from one body
 MAX_TEXT_CHARS = 1_000_000  # message text kept for the whole email
 MAX_HTML_CHARS = 1_000_000  # HTML turned into text for the whole email (about 1 s at worst)
+# html.parser matches a whole tag with one regex whose backtracking state grows with the tag's attributes
+# (about 350 bytes each: 500,000 of them, which fit in 1 MB, peaked at 346 MB) and with the spaces in it.
+# It is shown no more than this much of a tag at a time (see ``_HtmlText``), which keeps that under 2 MB.
+MAX_TAG_CHARS = 8 * 1024
 MAX_TEXT_LINES = 10_000
 MAX_NAME_CHARS = 120
 SHOWN_HEADER_CHARS = 1_000
@@ -1039,9 +1045,22 @@ def _safe_name(raw: str | None, content_type: str, index: int) -> str:
     return name
 
 
+_TAG_NAME = re.compile(r"[a-zA-Z][^\t\n\r\f />]*")  # how html.parser names a tag
+_END_TAG_OPEN = re.compile(r"</[a-zA-Z]")
+
+
 class _HtmlText(HTMLParser):
     """HTML as text: block elements end lines, table cells are separated by tabs, and
-    nothing outside the visible text is kept."""
+    nothing outside the visible text is kept.
+
+    No attribute is ever read, yet ``html.parser`` matches a whole tag at once with a regex whose
+    backtracking state grows with its attributes (about 350 bytes each) and with the spaces in
+    it: ``<a b b b ...>`` with 500,000 attributes, which fits in 1 MB, peaked at 346 MB
+    (``MAX_HTML_CHARS`` bounds the time, not that). Dropping the attributes after the match would
+    not help, so a start or end tag is parsed from a window of its first ``MAX_TAG_CHARS``
+    characters, which holds any real tag. A tag that does not end within the window is a crafted
+    one, or carries something big (a ``data:`` URI): it is ended at the next ``>`` and handled as
+    the same tag without attributes (a tag cut off by the end of the data is left to the stdlib)."""
 
     _SKIP = {"script", "style", "head", "title", "noscript", "template", "svg"}
     _BLOCK = {"p", "div", "br", "tr", "li", "ul", "ol", "table", "h1", "h2", "h3", "h4", "h5", "h6", "hr",
@@ -1052,6 +1071,44 @@ class _HtmlText(HTMLParser):
         self.out: list[str] = []
         self.skip = 0
         self.pre = 0
+
+    def parse_starttag(self, i: int) -> int:
+        return self._parse_tag(i, super().parse_starttag, closing=False)
+
+    def parse_endtag(self, i: int) -> int:
+        if not _END_TAG_OPEN.match(self.rawdata, i):  # "</>" or a bogus comment: no tag regex involved
+            return super().parse_endtag(i)
+        return self._parse_tag(i, super().parse_endtag, closing=True)
+
+    def _parse_tag(self, i: int, parse: Callable[[int], int], closing: bool) -> int:
+        """``parse`` (a stdlib tag method) for the tag at ``i``: its end, or -1 when the data ends
+        inside it, as the stdlib returns them."""
+
+        data = self.rawdata
+        if len(data) - i <= MAX_TAG_CHARS:
+            return parse(i)
+        self.rawdata = data[i:i + MAX_TAG_CHARS]
+        try:
+            end = parse(0)
+        finally:
+            self.rawdata = data
+        if end >= 0:
+            return i + end
+        close = data.find(">", i + MAX_TAG_CHARS)
+        if close < 0:
+            return -1  # unclosed: left to the stdlib's way with a tag cut off by the end of the data
+        named = _TAG_NAME.match(data, i + (2 if closing else 1), i + MAX_TAG_CHARS)
+        tag = named.group().lower() if named else ""
+        if closing:
+            self.handle_endtag(tag)
+            self.clear_cdata_mode()
+        elif data[close - 1] == "/":
+            self.handle_startendtag(tag, [])
+        else:
+            self.handle_starttag(tag, [])
+            if tag in self.CDATA_CONTENT_ELEMENTS:  # <script> and <style> text is not markup
+                self.set_cdata_mode(tag)
+        return close + 1
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         if tag == "body":
