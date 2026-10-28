@@ -278,8 +278,12 @@ describe("requestActionMessage", () => {
     ["502", new ApiError(502, "Request failed (502)", null, null), "send", "Something went wrong on our side, so the requests weren't marked sent. Try again; if it happens again, tell us."],
     ["a lost connection", new TypeError("Failed to fetch"), "create", "The change wasn't saved. Check your connection and try again."],
     ["something else", "boom", "edit", "The change wasn't saved. Check your connection and try again."],
-    ["409 with no detail", new ApiError(409, "Request failed (409)", null, null), "edit", "The change wasn't saved. Check your connection and try again."],
-    ["a status we do not name", failure(429, "Too many requests."), "create", "The change wasn't saved. Check your connection and try again."],
+    // The server answered, so the connection is not the problem: these never say "Check your connection".
+    ["409 with no detail", new ApiError(409, "Request failed (409)", null, null), "edit", NOT_VALID],
+    ["409 a list", failure(409, [{ loc: ["body"], msg: "x", type: "x" }]), "edit", NOT_VALID],
+    ["a status we do not name", failure(429, "Too many requests."), "create", NOT_VALID],
+    ["400 with no detail", new ApiError(400, "Request failed (400)", null, null), "resolve", NOT_VALID],
+    ["413", new ApiError(413, "Request failed (413)", null, null), "create", NOT_VALID],
   ];
 
   it.each(rows)("%s", (_name, error, action, message) => {
