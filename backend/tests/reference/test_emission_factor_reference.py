@@ -70,8 +70,12 @@ def test_gwp_sets(ref) -> None:
     assert [ref.gwp(g, "AR6").value for g in ("CO2", "CH4", "N2O")] == [1, 27.0, 273]
     with pytest.raises(EmissionFactorNotFoundError):
         ref.gwp("SF6", "AR6")  # the AR6 library set covers combustion gases only
+    assert [ref.gwp(g, "AR4").value for g in ("CO2", "CH4", "N2O")] == [1, 25, 298]
+    assert "AR4 WG1 Table 2.14" in ref.gwp("CH4", "AR4").source
     with pytest.raises(EmissionFactorNotFoundError):
-        ref.gwp("CH4", "AR4")
+        ref.gwp("SF6", "AR4")  # no AR4 values for the fluorinated gases: the reviewer enters them
+    with pytest.raises(EmissionFactorNotFoundError):
+        ref.gwp("CH4", "AR3")
 
 
 def test_unknown_lookups_raise_instead_of_guessing(ref) -> None:
