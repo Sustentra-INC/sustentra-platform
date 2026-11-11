@@ -89,6 +89,8 @@ export interface EvidenceTree {
   };
   /** Vehicle groups from Setup: the anchors a mobile line can sit on. */
   vehicle_groups?: { anchor_id: string; label: string; fuel: string }[];
+  /** The anchor id a contractual line uses (its anchor_kind is "company"). */
+  anchors_for_contractual?: string;
   facilities: { facility_id: string; name: string; address?: string }[];
   lines: CalculationLine[];
   /** Withdrawn, duplicate or superseded documents: filed nowhere. */
@@ -100,7 +102,7 @@ export type CoverageStatus = "counted" | "counted_in_part" | "not_reviewed" | "n
 export interface LineSchedule {
   line: CalculationLine;
   reporting_period: { start: string | null; end: string | null };
-  coverage: { month: string; status: CoverageStatus; quantity: number | null; unit: string | null; document_ids: string[] }[];
+  coverage: { month: string; status: CoverageStatus; quantity: number | null; unit: string | null; document_ids: string[]; flags?: string[] }[];
   identifiers: { label: string; value: string; documents_with: number; documents_total: number }[];
   values: ScheduleValue[];
   history: { at: string; text: string }[];

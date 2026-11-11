@@ -712,7 +712,7 @@ function NewLineDialog({
   const mobile = category === "mobile";
   // Mobile lines sit on the vehicle groups from Setup (the server names their ids); the rest on facilities.
   const anchors = company
-    ? [{ id: "company", label: "Company-wide" }]
+    ? [{ id: tree.anchors_for_contractual ?? "company", label: "Company-wide" }]
     : mobile
       ? (tree.vehicle_groups ?? []).map((g) => ({ id: g.anchor_id, label: g.label }))
       : engagement.facilities.map((f) => ({ id: f.facilityId, label: f.name }));

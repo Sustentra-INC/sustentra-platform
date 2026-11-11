@@ -144,7 +144,10 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
                 const body = (
                   <>
                     <span className="s1-sch-month__name">{monthName(m.month)}</span>
-                    <span className="s1-sch-month__status">{STATUS_TEXT[m.status]}</span>
+                    <span className="s1-sch-month__status">
+                      {STATUS_TEXT[m.status]}
+                      {m.flags?.includes("unconverted") ? " · units differ" : ""}
+                    </span>
                     {m.quantity !== null ? (
                       <span className="s1-sch-month__qty">
                         {formatQuantity(m.quantity)} {m.unit ?? ""}
