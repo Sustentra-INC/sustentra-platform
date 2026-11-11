@@ -31,6 +31,20 @@ from backend.app.services.reviewed_evidence import (
 
 IDENTIFIERS = (("Facility", "facility_name"), ("Service address", "service_address"),
                ("Account number", "account_number"), ("Meter number", "meter_number"))
+# The schedule's optional columns, in order: (key, label, extracted field name). A column shows
+# only when a row on the line has a value. No extractor produces these fields yet (a column
+# appears as soon as one does).
+EXTRA_COLUMNS = (("heat_content", "Heat content (HHV)", "heat_content"),
+                 ("carbon_content", "Carbon content", "carbon_content"),
+                 ("vehicle_type", "Vehicle type", "vehicle_type"),
+                 ("model_year", "Model year", "model_year"),
+                 ("on_or_non_road", "On-road or non-road", "on_or_non_road"),
+                 ("distance", "Distance", "distance"))
+THERMAL_LEVEL2 = tuple(level2 for level2, _ in cl.THERMAL_LEVEL2.values())
+ACTIVITY_NOTES = {
+    "stationary": "fuel quantity combusted", "biogenic": "fuel quantity combusted",
+    "mobile": "fuel use quantity", "fugitive": "refrigerant quantity added or recovered",
+}
 VERBS = {"accepted": "accepted", "edited": "edited", "rejected": "rejected",
          "needs_more_evidence": "asked for more evidence on"}
 
@@ -249,19 +263,22 @@ class EvidenceTreeService:
         on_line = [(doc, [doc.records[i] for i in sorted(slot.records)])
                    for doc in loaded.docs for slot in doc.slots if slot.target == key]
         values: list[dict[str, Any]] = []
+        rows: list[dict[str, Any]] = []
         covered: list[cl.Covered] = []
         history: list[dict[str, Any]] = []
         for doc, records in on_line:
             for record in records:
                 name = cl.quantity_field(record)
                 item = record.fields.get(name) if name else None
+                start, end = cl.record_period(record)
                 if item is None:
+                    rows.append(self._row_of(doc, record, None, None, None, (start, end), name_of))
                     continue
                 thermal = record.canonical_type_id == THERMAL
                 unit_text = item.unit or record.best("activity_unit")
                 unit = (fuel_units.canonical_unit(str(unit_text), thermal) or str(unit_text)) if unit_text else None
                 shown = item.value if item.status in REVIEWED else item.extracted
-                start, end = cl.record_period(record)
+                rows.append(self._row_of(doc, record, item, shown, unit, (start, end), name_of))
                 accepted = item.status in REVIEWED
                 covered.append(cl.Covered(start, end, to_number(shown), unit, accepted, doc.document_id))
                 who = name_of(item.reviewer) if item.reviewer else None
@@ -291,6 +308,7 @@ class EvidenceTreeService:
                         f"{name_of(login) if login else 'A reviewer'} {verb} {amount} from "
                         f"{doc.document.get('file_name')}" + (f", page {page}" if page else ""))})
         values.sort(key=lambda v: (v["service_period_start"] or "9999", str(v["file_name"] or "")))
+        rows.sort(key=lambda r: (r["date"]["start"] or "9999", str(r["file_name"] or ""), r["record_key"]))
         extracted = [d.extracted_at for d, _ in on_line if d.extracted_at]
         if values:
             history.append({"at": max(extracted) if extracted else None,
@@ -302,9 +320,98 @@ class EvidenceTreeService:
             "reporting_period": {"start": _iso(loaded.period[0]), "end": _iso(loaded.period[1])},
             "coverage": cl.month_coverage(loaded.period, covered),
             "identifiers": self._identifiers(on_line),
+            "identifier_groups": self._identifier_groups(on_line, loaded.facilities, decisions or {}),
             "values": values,
+            "rows": rows,
+            "columns": self._columns(rows),
+            "activity_quantity_note": self._activity_note(line),
             "history": history,
         }
+
+    @staticmethod
+    def _row_of(doc: DocState, record: ReviewedRecord, item: Any, shown: Any, unit: str | None,
+                period: tuple[date | None, date | None], name_of: Callable[[str], str]) -> dict[str, Any]:
+        """One record of the line as a schedule row: every extracted value, accepted or not."""
+
+        start, end = period
+        accepted = item is not None and item.status in REVIEWED
+        cells: dict[str, dict[str, Any]] = {}
+        for key, _, field_name in EXTRA_COLUMNS:
+            extra = record.fields.get(field_name)
+            value = (extra.value if extra.status in REVIEWED else extra.extracted) if extra is not None else None
+            if extra is not None and value not in (None, ""):
+                cells[key] = {"value": value, "unit": extra.unit}
+        index = record.record_index
+        return {
+            "record_key": f"{doc.document_id}:{0 if index is None else index}", "record_index": index,
+            "accepted": accepted,
+            "decision": "not_reviewed" if item is None or item.status == "unreviewed" else item.status,
+            "date": {"start": _iso(start), "end": _iso(end),
+                     "days": (end - start).days + 1 if start and end and end >= start else None,
+                     "label": cl.date_label(record.canonical_type_id)},
+            "activity_quantity": {"value": shown, "unit": unit},
+            "cells": cells,
+            "saved_by": ({"name": name_of(item.reviewer), "at": _iso(item.reviewed_at)}
+                         if accepted and item.reviewer else None),
+            "document_id": doc.document_id, "file_name": doc.document.get("file_name"),
+            "page": (item.source_reference or {}).get("page_number") if item is not None else None,
+            "candidate_id": item.candidate_id if item is not None else None,
+        }
+
+    @staticmethod
+    def _columns(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        columns = [{"key": "date", "label": "Date", "unit_in_cells": True},
+                   {"key": "activity_quantity", "label": "Activity quantity", "unit_in_cells": True}]
+        columns.extend({"key": key, "label": label, "unit_in_cells": True}
+                       for key, label, _ in EXTRA_COLUMNS if any(key in row["cells"] for row in rows))
+        return columns
+
+    @staticmethod
+    def _activity_note(line: cl.CalculationLine) -> str | None:
+        if line.category == "purchased_energy":
+            what: str | None = ("thermal energy purchased" if line.level2 in THERMAL_LEVEL2
+                                else "electricity quantity purchased")
+        else:
+            what = ACTIVITY_NOTES.get(line.category)
+        return f"Activity quantity: {what}" if what else None
+
+    @staticmethod
+    def _identifier_groups(on_line: list[tuple[DocState, list[ReviewedRecord]]], facilities: list[dict[str, Any]],
+                           decisions: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+        """Each identifier with its documents grouped by value, and the documents without it."""
+
+        out: list[dict[str, Any]] = []
+        for label, field_name in IDENTIFIERS:
+            is_facility = field_name == "facility_name"
+            groups: dict[str, dict[str, dict[str, Any]]] = {}
+            for doc, records in on_line:
+                for record in records:
+                    how: str | None = None
+                    if is_facility:
+                        found = cl.facility_match(facilities, decisions, doc.document_id, record)
+                        text, how = (str(found[0].get("name")), found[1]) if found else ("", None)
+                    else:
+                        raw = record.best(field_name)
+                        text = " ".join(str(raw).split()) if raw not in (None, "") else ""
+                    if not text:
+                        continue
+                    entry = {"document_id": doc.document_id, "file_name": doc.document.get("file_name")}
+                    if is_facility:
+                        entry["matched_by"] = how
+                    groups.setdefault(text, {}).setdefault(doc.document_id, entry)
+            with_value = {d for docs in groups.values() for d in docs}
+            item: dict[str, Any] = {
+                "label": label,
+                "values": [{"value": value, "documents": sorted(docs.values(), key=lambda d: str(d["file_name"]))}
+                           for value, docs in sorted(groups.items())],
+                "not_found": [{"document_id": d.document_id, "file_name": d.document.get("file_name")}
+                              for d, _ in on_line if d.document_id not in with_value],
+                "documents_with": len(with_value), "documents_total": len(on_line),
+            }
+            if is_facility:
+                item["matched_by"] = sorted({str(d["matched_by"]) for g in groups.values() for d in g.values()})
+            out.append(item)
+        return out
 
     @staticmethod
     def _identifiers(on_line: list[tuple[DocState, list[ReviewedRecord]]]) -> list[dict[str, Any]]:
