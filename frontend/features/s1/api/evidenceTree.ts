@@ -106,6 +106,56 @@ export interface LineSchedule {
   identifiers: { label: string; value: string; documents_with: number; documents_total: number }[];
   values: ScheduleValue[];
   history: { at: string; text: string }[];
+  /** Schedule v2: one row per record, accepted or not. Absent on an older server. */
+  rows?: ScheduleRow[];
+  /** The ordered column set; Date and Activity quantity first, then only the extras the line has. */
+  columns?: ScheduleColumn[];
+  activity_quantity_note?: string | null;
+  identifier_groups?: IdentifierGroup[];
+}
+
+export interface ScheduleColumn {
+  key: string;
+  label: string;
+  unit_in_cells: boolean;
+}
+
+export interface ScheduleCell {
+  value: string | number | null;
+  unit?: string | null;
+}
+
+export interface ScheduleRow {
+  record_key: string;
+  record_index?: number;
+  accepted: boolean;
+  /** Absent on an older server; then `accepted` decides. */
+  decision?: "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited";
+  /** `days` is counted by the server; the page never works it out. */
+  date: { start: string | null; end: string | null; days: number | null; label: string };
+  activity_quantity: { value: number | string | null; unit: string | null };
+  cells: Record<string, ScheduleCell>;
+  saved_by: { name: string; at: string | null } | null;
+  document_id: string;
+  file_name: string;
+  page: number | null;
+  candidate_id: string | null;
+}
+
+export interface IdentifierDocument {
+  document_id: string;
+  file_name: string;
+  matched_by?: string;
+}
+
+export interface IdentifierGroup {
+  label: string;
+  values: { value: string; documents: IdentifierDocument[] }[];
+  not_found: IdentifierDocument[];
+  documents_with: number;
+  documents_total: number;
+  /** Facility only: how the match was made. */
+  matched_by?: string[];
 }
 
 export interface ScheduleValue {
