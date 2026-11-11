@@ -28,7 +28,7 @@ from backend.app.domain import fuel_units
 from backend.app.domain.refrigerants import find_refrigerant
 from backend.app.reference.emission_factor_loader import EmissionFactorReference
 from backend.app.services import emissions_calculator as calc
-from backend.app.services.engagement_recalculation_service import (
+from backend.app.services.reviewed_evidence import (
     ELECTRICITY,
     MOBILE,
     REFRIGERANT,
@@ -36,9 +36,9 @@ from backend.app.services.engagement_recalculation_service import (
     STATIONARY,
     THERMAL,
     ReviewedRecord,
-    _date,
     resolve_fuel_name,
     resolve_setup_facility,
+    to_date,
 )
 from backend.app.services.refrigerant_extractor import DISPOSAL, service_type_of
 from backend.app.services.thermal_extractor import thermal_kind
@@ -164,6 +164,39 @@ def vehicle_group_anchors(groups: list[dict[str, Any]]) -> list[tuple[str, dict[
 _LINE_FIELDS = {"key", "scope", "category", "level2", "level2_label", "anchor_kind", "anchor_id", "label"}
 
 
+def _normalize_entry(entry: Any) -> dict[str, Any]:
+    """One evidenceLines entry checked and completed; ValueError (a message for the user) otherwise."""
+
+    if not isinstance(entry, dict) or set(entry) - _LINE_FIELDS:
+        raise ValueError(f"each line takes only: {', '.join(sorted(_LINE_FIELDS))}")
+    for name in ("category", "level2_label", "anchor_kind", "label"):
+        if not isinstance(entry.get(name), str) or not entry[name].strip():
+            raise ValueError(f"each line needs {name}")
+    category, kind = entry["category"], entry["anchor_kind"]
+    if category not in CATEGORY_SCOPE:
+        raise ValueError(f"category must be one of: {', '.join(CATEGORY_SCOPE)}")
+    scope = entry.get("scope", CATEGORY_SCOPE[category])
+    if scope != CATEGORY_SCOPE[category]:
+        raise ValueError(f"{category} belongs to scope {CATEGORY_SCOPE[category]}")
+    if kind not in ANCHOR_KINDS:
+        raise ValueError(f"anchor_kind must be one of: {', '.join(ANCHOR_KINDS)}")
+    if len(entry["label"]) > MAX_LABEL or len(entry["level2_label"]) > MAX_LABEL:
+        raise ValueError(f"labels must be at most {MAX_LABEL} characters")
+    anchor_id = entry.get("anchor_id") or (COMPANY_ANCHOR if kind == "company" else None)
+    if not isinstance(anchor_id, str) or not anchor_id.strip():
+        raise ValueError("each facility or vehicle group line needs anchor_id")
+    level2 = entry.get("level2") or slug(entry["level2_label"])
+    if not isinstance(level2, str) or not level2.strip():
+        raise ValueError("each line needs level2")
+    key = line_key(scope, category, level2, kind, anchor_id)
+    if entry.get("key") not in (None, key):
+        raise ValueError(f"key must be {key}")
+    return {"key": key, "scope": scope, "category": category, "level2": slug(level2),
+            "level2_label": entry["level2_label"].strip(), "anchor_kind": kind,
+            "anchor_id": COMPANY_ANCHOR if kind == "company" else anchor_id.strip(),
+            "label": entry["label"].strip()}
+
+
 def normalize_evidence_lines(value: Any) -> list[dict[str, Any]]:
     """settings["evidenceLines"] checked and completed; ValueError (a message for the user) otherwise.
 
@@ -177,49 +210,28 @@ def normalize_evidence_lines(value: Any) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
     for entry in value:
-        if not isinstance(entry, dict) or set(entry) - _LINE_FIELDS:
-            raise ValueError(f"each line takes only: {', '.join(sorted(_LINE_FIELDS))}")
-        for name in ("category", "level2_label", "anchor_kind", "label"):
-            if not isinstance(entry.get(name), str) or not entry[name].strip():
-                raise ValueError(f"each line needs {name}")
-        category, kind = entry["category"], entry["anchor_kind"]
-        if category not in CATEGORY_SCOPE:
-            raise ValueError(f"category must be one of: {', '.join(CATEGORY_SCOPE)}")
-        scope = entry.get("scope", CATEGORY_SCOPE[category])
-        if scope != CATEGORY_SCOPE[category]:
-            raise ValueError(f"{category} belongs to scope {CATEGORY_SCOPE[category]}")
-        if kind not in ANCHOR_KINDS:
-            raise ValueError(f"anchor_kind must be one of: {', '.join(ANCHOR_KINDS)}")
-        if len(entry["label"]) > MAX_LABEL or len(entry["level2_label"]) > MAX_LABEL:
-            raise ValueError(f"labels must be at most {MAX_LABEL} characters")
-        anchor_id = entry.get("anchor_id") or (COMPANY_ANCHOR if kind == "company" else None)
-        if not isinstance(anchor_id, str) or not anchor_id.strip():
-            raise ValueError("each facility or vehicle group line needs anchor_id")
-        level2 = entry.get("level2") or slug(entry["level2_label"])
-        if not isinstance(level2, str) or not level2.strip():
-            raise ValueError("each line needs level2")
-        key = line_key(scope, category, level2, kind, anchor_id)
-        if entry.get("key") not in (None, key):
-            raise ValueError(f"key must be {key}")
-        if key in seen:
-            raise ValueError(f"line {key} is listed twice")
-        seen.add(key)
-        out.append({"key": key, "scope": scope, "category": category, "level2": slug(level2),
-                    "level2_label": entry["level2_label"].strip(), "anchor_kind": kind,
-                    "anchor_id": COMPANY_ANCHOR if kind == "company" else anchor_id.strip(),
-                    "label": entry["label"].strip()})
+        normal = _normalize_entry(entry)
+        if normal["key"] in seen:
+            raise ValueError(f"line {normal['key']} is listed twice")
+        seen.add(normal["key"])
+        out.append(normal)
     return out
 
 
 def user_lines(settings: dict[str, Any] | None) -> list[CalculationLine]:
-    """The lines reviewers created (stored data that fails the check is skipped, not fatal)."""
+    """The lines reviewers created. Stored data is trusted less than a request: an entry that
+    fails the check (or repeats a key) is skipped, the others stay."""
 
-    try:
-        entries = normalize_evidence_lines((settings or {}).get("evidenceLines") or [])
-    except ValueError:
-        return []
-    return [make_line(e["category"], e["level2"], e["level2_label"], e["anchor_kind"], e["anchor_id"], e["label"],
-                      created_by_user=True) for e in entries]
+    raw = (settings or {}).get("evidenceLines")
+    lines: dict[str, CalculationLine] = {}
+    for entry in raw[:MAX_EVIDENCE_LINES] if isinstance(raw, list) else []:
+        try:
+            e = _normalize_entry(entry)
+        except ValueError:
+            continue
+        lines.setdefault(e["key"], make_line(e["category"], e["level2"], e["level2_label"], e["anchor_kind"],
+                                             e["anchor_id"], e["label"], created_by_user=True))
+    return list(lines.values())
 
 
 # --- where a record belongs by default ------------------------------------------------------
@@ -347,11 +359,21 @@ def document_slots(canonical_type_id: str | None, placements: list[RecordPlaceme
     return list(slots.values()) or [Slot(SUPPORTING_UNASSIGNED)]
 
 
-def apply_placements(slots: list[Slot], overrides: Any) -> list[Slot]:
-    """The reviewer's moves, in order: each ``{"from", "to"}`` moves the document's slot named
-    ``from`` to ``to`` (one placement at a time, its records with it). A move whose ``from`` the
-    document is no longer in is ignored; a move onto a place the document already has merges."""
+def _effective(slot: Slot, known_lines: set[str]) -> str:
+    """Where a slot shows: a slot on a line that does not exist shows as unassigned supporting evidence."""
 
+    return slot.target if slot.target in FIXED_TARGETS or slot.target in known_lines else SUPPORTING_UNASSIGNED
+
+
+def apply_placements(slots: list[Slot], overrides: Any, known_lines: set[str] | None = None) -> list[Slot]:
+    """The reviewer's moves, in order: each ``{"from", "to"}`` moves the document's placement
+    named ``from`` to ``to`` (its records with it). ``from`` is what the row showed
+    (``DocRow.placement_from``): a line key, a block, or ``supporting:unassigned``, which also
+    covers placements on a line that no longer exists (given ``known_lines``). A move whose
+    ``from`` the document no longer has is ignored; a move onto a place the document already
+    has merges the two."""
+
+    known = known_lines if known_lines is not None else {s.target for s in slots} - FIXED_TARGETS
     out = [Slot(s.target, set(s.records), list(s.flags)) for s in slots]
     for move in overrides if isinstance(overrides, list) else []:
         if not isinstance(move, dict):
@@ -359,15 +381,17 @@ def apply_placements(slots: list[Slot], overrides: Any) -> list[Slot]:
         source, target = move.get("from"), move.get("to")
         if not isinstance(source, str) or not isinstance(target, str) or source == target:
             continue
-        moving = next((s for s in out if s.target == source), None)
-        if moving is None:
+        moving = [s for s in out if _effective(s, known) == source]
+        if not moving:
             continue
-        existing = next((s for s in out if s.target == target), None)
-        if existing is None:
-            moving.target = target
+        stay = [s for s in out if s not in moving]
+        records = {r for s in moving for r in s.records}
+        existing = next((s for s in stay if _effective(s, known) == target), None)
+        if existing is not None:
+            existing.records |= records
+            out = stay
         else:
-            existing.records |= moving.records
-            out.remove(moving)
+            out = [*stay, Slot(target, records)]
     return out
 
 
@@ -389,6 +413,20 @@ def merge_slots(slots: list[Slot]) -> list[Slot]:
         into.records |= slot.records
         into.flags = sorted({*into.flags, *slot.flags})
     return list(merged.values())
+
+
+def file_documents(documents: Iterable[tuple[str, str | None, list[RecordPlacement]]],
+                   decisions: dict[str, dict[str, Any]], known_lines: set[str]) -> dict[str, list[Slot]]:
+    """Where each document is filed: ``(document id, canonical type id, its records' default
+    placements)`` in, the effective slots out (default slots, then the reviewer's ``placements``
+    from the document decision, then unknown lines to unassigned, one slot per place)."""
+
+    out: dict[str, list[Slot]] = {}
+    for document_id, canonical_type_id, placements in documents:
+        default = document_slots(canonical_type_id, placements)
+        moved = apply_placements(default, (decisions.get(document_id) or {}).get("placements"), known_lines)
+        out[document_id] = merge_slots([resolve_target(slot, known_lines) for slot in moved])
+    return out
 
 
 # --- numbers of a set of records ------------------------------------------------------------
@@ -416,12 +454,12 @@ def with_percentage(counts: dict[str, Any]) -> dict[str, Any]:
 # --- what a record says about its period and quantity ---------------------------------------
 def record_period(record: ReviewedRecord) -> tuple[date | None, date | None]:
     if record.canonical_type_id == MOBILE:
-        day = _date(record.best("transaction_date"))
+        day = to_date(record.best("transaction_date"))
         return day, day
     if record.canonical_type_id == REFRIGERANT:
-        day = _date(record.best("service_date"))
+        day = to_date(record.best("service_date"))
         return day, day
-    start, end = _date(record.best("service_period_start")), _date(record.best("service_period_end"))
+    start, end = to_date(record.best("service_period_start")), to_date(record.best("service_period_end"))
     return start or end, end or start
 
 
@@ -468,6 +506,7 @@ def month_coverage(period: tuple[date | None, date | None], values: list[Covered
             dated.append((start, end, v))
     first: date
     last: date
+    clip = period[0] is not None and period[1] is not None
     if period[0] is not None and period[1] is not None:
         first, last = period[0], period[1]
     elif dated:
@@ -480,9 +519,11 @@ def month_coverage(period: tuple[date | None, date | None], values: list[Covered
         month_start = date(year, month, 1)
         month_end = (date(year + (month == 12), month % 12 + 1, 1)) - timedelta(days=1)
         all_days = {month_start + timedelta(days=i) for i in range((month_end - month_start).days + 1)}
+        if clip:  # the first and last month count only the days inside the reporting period
+            all_days = {d for d in all_days if first <= d <= last}
         counted: set[date] = set()
         present: set[date] = set()
-        quantity, documents = 0.0, []
+        quantity, has_quantity, unconverted, documents = 0.0, False, False, []
         for start, end, value in dated:
             span = {start + timedelta(days=i) for i in range((end - start).days + 1)}
             overlap = span & all_days
@@ -496,13 +537,13 @@ def month_coverage(period: tuple[date | None, date | None], values: list[Covered
                 if value.quantity is not None:
                     share = value.quantity * len(overlap) / len(span)
                     if value.unit == unit or not unit or not value.unit:
-                        quantity += share
+                        quantity, has_quantity = quantity + share, True
                     else:
                         try:
-                            quantity += fuel_units.convert_exact(share, value.unit, unit)
-                        except ValueError:  # another dimension: it is covered but cannot be summed
-                            pass
-        if counted >= all_days:
+                            quantity, has_quantity = quantity + fuel_units.convert_exact(share, value.unit, unit), True
+                        except ValueError:  # another dimension: covered, but it cannot be added to the rest
+                            unconverted = True
+        if counted >= all_days and not unconverted:
             status = "counted"
         elif counted:
             status = "counted_in_part"
@@ -511,6 +552,7 @@ def month_coverage(period: tuple[date | None, date | None], values: list[Covered
         else:
             status = "no_document"
         out.append({"month": f"{year:04d}-{month:02d}", "status": status,
-                    "quantity": round(quantity, 4) if counted else None, "unit": unit if counted else None,
-                    "document_ids": documents})
+                    "quantity": round(quantity, 4) if counted and has_quantity else None,
+                    "unit": unit if counted and has_quantity else None, "document_ids": documents,
+                    "flags": ["unconverted"] if unconverted else []})
     return out

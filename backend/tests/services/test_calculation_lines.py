@@ -435,7 +435,7 @@ def test_schedule_coverage_for_a_bill_spanning_two_months() -> None:
     assert months["2025-02"]["quantity"] == pytest.approx(310 * 15 / 31, abs=1e-3)
     # March: only the unreviewed bill covers it
     assert months["2025-03"] == {"month": "2025-03", "status": "not_reviewed", "quantity": None, "unit": None,
-                                 "document_ids": ["BILL-B"]}
+                                 "document_ids": ["BILL-B"], "flags": []}
 
 
 def test_schedule_marks_months_with_no_document() -> None:
@@ -510,3 +510,193 @@ def test_coverage_without_a_reporting_period_spans_the_values() -> None:
                              [cl.Covered(None, None, 5.0, "gal", True, "D2"),
                               cl.Covered(date(2025, 1, 9), date(2025, 1, 2), 5.0, "gal", True, "D3")])[0][
         "status"] == "no_document"
+
+
+# --- fix round 1 --------------------------------------------------------------------------------
+def _rows(tree: dict, target: str) -> list[dict]:
+    blocks = tree["blocks"]
+    if target == cl.SUPPORTING_UNASSIGNED:
+        return blocks["supporting"]["unassigned"]
+    return [d for scope in blocks["supporting"]["scopes"] for c in scope["categories"] for lv in c["level2s"]
+            for ln in lv["lines"] if ln["line"]["key"] == target for d in ln["documents"]]
+
+
+def test_a_document_moved_to_a_deleted_line_can_be_moved_back_out() -> None:
+    gone = "s1:stationary:propane:fac-kc01"
+    moves = [{"from": GAS_KC, "to": gone}]
+    tree = _tree(_gas_store(), {"G1": {"placements": moves}})
+    row = next(d for d in tree["blocks"]["supporting"]["unassigned"] if d["document_id"] == "G1")
+    assert row["flags"] == ["unknown_line"] and row["placement_from"] == cl.SUPPORTING_UNASSIGNED
+    moves.append({"from": row["placement_from"], "to": GAS_STL})  # what the UI sends next
+    tree = _tree(_gas_store(), {"G1": {"placements": moves}})
+    assert _lines_with_docs(tree)[GAS_STL] == ["G1"]
+    assert "G1" not in [d["document_id"] for d in tree["blocks"]["supporting"]["unassigned"]]
+    assert _rows(tree, GAS_STL)[0]["placement_from"] == GAS_STL and _rows(tree, GAS_STL)[0]["flags"] == []
+
+
+def test_a_document_with_a_real_unassigned_placement_and_an_unknown_line_placement() -> None:
+    store = FakeStore()
+    store.add_document("MIX", "CT-S1-FUELQTY", [_gas(), _gas(plant="Unknown Site")])
+    gone = "s1:stationary:propane:fac-kc01"
+    moves: list[dict] = [{"from": GAS_KC, "to": gone}]
+    tree = _tree(store, {"MIX": {"placements": moves}})
+    rows = tree["blocks"]["supporting"]["unassigned"]
+    assert [(r["document_id"], r["values"], r["flags"], r["placement_from"]) for r in rows] == [
+        ("MIX", 12, ["unknown_line"], cl.SUPPORTING_UNASSIGNED)]  # one row: both records
+    moves.append({"from": cl.SUPPORTING_UNASSIGNED, "to": GAS_STL})
+    tree = _tree(store, {"MIX": {"placements": moves}})
+    assert tree["blocks"]["supporting"]["unassigned"] == []
+    assert _rows(tree, GAS_STL)[0]["values"] == 12
+
+
+def test_file_documents_is_the_one_pure_filing_function() -> None:
+    kc = cl.RecordPlacement("stationary", "natural-gas", "Natural Gas", "facility", "fac-kc01")
+    nothing = cl.RecordPlacement("stationary")
+    filed = cl.file_documents(
+        [("A", "CT-S1-FUELQTY", [kc, nothing]), ("B", None, []), ("C", "CT-GHG-WORKBOOK", [])],
+        {"A": {"placements": [{"from": GAS_KC, "to": "s1:stationary:coal:fac-x"}]}}, {GAS_KC})
+    assert [(s.target, sorted(s.records), s.flags) for s in filed["A"]] == [
+        (cl.SUPPORTING_UNASSIGNED, [0, 1], ["unknown_line"])]
+    assert [s.target for s in filed["B"]] == [cl.BLOCK_UNASSIGNED] and [s.target for s in filed["C"]] == [cl.BLOCK_SUMMARY]
+
+
+def test_recalculation_service_and_evidence_modules_have_no_import_cycle() -> None:
+    import subprocess
+    import sys
+
+    code = "import backend.app.services.calculation_lines as c, sys; " \
+           "assert 'backend.app.services.engagement_recalculation_service' not in sys.modules"
+    assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
+
+
+def test_stored_lines_skip_only_the_invalid_entry() -> None:
+    good = {"category": "stationary", "level2_label": "Propane", "anchor_kind": "facility", "anchor_id": "fac-kc01",
+            "label": "Propane at KC"}
+    lines = cl.user_lines({"evidenceLines": [{"category": "nonsense"}, good, "junk", dict(good)]})
+    assert [ln.key for ln in lines] == ["s1:stationary:propane:fac-kc01"]
+    assert cl.user_lines({"evidenceLines": "nope"}) == [] and cl.user_lines(None) == []
+
+
+def test_placement_follows_the_reviewed_fuel_not_the_extracted_one() -> None:
+    store = FakeStore()
+    store.add_document("G1", "CT-S1-FUELQTY", [_gas(fuel="natural_gas")])
+    store.reviews["G1"] = [{**r, "decision": "edited", "reviewed_value": "kerosene"}
+                           if r["candidate_id"].endswith("fuel_type") else r for r in store.reviews["G1"]]
+    tree = _tree(store)
+    assert _lines_with_docs(tree) == {"s1:stationary:kerosene:fac-kc01": ["G1"]}
+
+
+def test_a_field_without_a_candidate_id_has_none_not_the_text_none() -> None:
+    from backend.app.services.reviewed_evidence import group_reviewed_records
+
+    items = [{"field_name": "fuel_type", "normalized_value": "x", "unit": None, "record_index": None}]
+    record = group_reviewed_records({"document_id": "D"}, "CT-S1-FUELQTY", items, {})[0]
+    assert record.fields["fuel_type"].candidate_id is None
+
+
+def test_coverage_clips_to_the_reporting_period() -> None:
+    from datetime import date
+
+    value = cl.Covered(date(2025, 1, 10), date(2025, 2, 5), 27.0, "gal", True, "D1")
+    months = cl.month_coverage((date(2025, 1, 10), date(2025, 2, 5)), [value])
+    assert [(m["month"], m["status"]) for m in months] == [("2025-01", "counted"), ("2025-02", "counted")]
+    assert sum(m["quantity"] for m in months) == pytest.approx(27.0)
+
+
+def test_a_value_in_a_unit_that_cannot_be_added_is_not_counted_in_full() -> None:
+    from datetime import date
+
+    values = [cl.Covered(date(2025, 1, 1), date(2025, 1, 31), 10.0, "gal", True, "D1"),
+              cl.Covered(date(2025, 1, 1), date(2025, 1, 31), 5.0, "MWh", True, "D2")]
+    month = cl.month_coverage((date(2025, 1, 1), date(2025, 1, 31)), values)[0]
+    assert (month["status"], month["flags"], month["quantity"], month["unit"]) == (
+        "counted_in_part", ["unconverted"], 10.0, "gal")
+    assert month["document_ids"] == ["D1", "D2"]
+
+
+def test_a_counted_month_with_no_numeric_quantity_reports_null() -> None:
+    from datetime import date
+
+    month = cl.month_coverage((date(2025, 1, 1), date(2025, 1, 31)),
+                              [cl.Covered(date(2025, 1, 1), date(2025, 1, 31), None, None, True, "D1")])[0]
+    assert (month["status"], month["quantity"], month["unit"], month["flags"]) == ("counted", None, None, [])
+
+
+def test_history_lists_every_decision_on_a_value() -> None:
+    store = FakeStore()
+    store.add_document("BILL-A", "CT-S1-FUELQTY", [_gas(310, "2025-01-16", "2025-02-15")], decision=None)
+    qty = "BILL-A:1:activity_quantity"
+    store.reviews["BILL-A"] = [
+        {"candidate_id": qty, "decision": "accepted", "org_id": ORG, "reviewed_value": 310, "reviewed_unit": "MMBtu",
+         "reviewer_id": "ana@example.com", "reviewed_at": "2025-04-01T10:00:00Z"},
+        {"candidate_id": qty, "decision": "edited", "org_id": ORG, "reviewed_value": 300, "reviewed_unit": "MMBtu",
+         "reviewer_id": "bo@example.com", "reviewed_at": "2025-04-02T10:00:00Z"},
+    ]
+    schedule = _tree_service(store).schedule(_engagement(), _own, GAS_KC)
+    assert schedule is not None
+    assert [h["text"] for h in schedule["history"][:2]] == [
+        "bo@example.com edited 300 MMBtu from BILL-A.pdf, page 1",
+        "ana@example.com accepted 310 MMBtu from BILL-A.pdf, page 1"]
+    assert schedule["values"][0]["decision"] == "edited" and schedule["values"][0]["quantity"] == 300
+
+
+def test_tree_lists_vehicle_groups_with_the_anchor_ids_lines_use() -> None:
+    groups = [_group("Diesel Fuel", "Delivery trucks"), _group("Diesel Fuel", "Delivery trucks"),
+              _group("Motor Gasoline", "Pickups")]
+    tree = _tree(FakeStore(), recalculation={"vehicle_groups": groups})
+    assert tree["vehicle_groups"] == [
+        {"anchor_id": "vg-delivery-trucks", "label": "Delivery trucks", "fuel": "Diesel Fuel"},
+        {"anchor_id": "vg-delivery-trucks-2", "label": "Delivery trucks", "fuel": "Diesel Fuel"},
+        {"anchor_id": "vg-pickups", "label": "Pickups", "fuel": "Motor Gasoline"}]
+    assert tree["anchors_for_contractual"] == "company"
+    # a client builds a mobile line from them and the server accepts it
+    entry = {"category": "mobile", "level2_label": "Diesel Fuel", "anchor_kind": "vehicle_group",
+             "anchor_id": tree["vehicle_groups"][0]["anchor_id"], "label": "Delivery trucks, diesel"}
+    assert cl.normalize_evidence_lines([entry])[0]["key"] == "s1:mobile:diesel-fuel:vg-delivery-trucks"
+
+
+# --- counts at every level and the facility filter ----------------------------------------------
+def _counts_store() -> FakeStore:
+    store = FakeStore()
+    store.add_document("BILL", "CT-S2-ELEC", [_elec(10, "Kansas City Plant"), _elec(20, "St Louis Plant")])
+    store.add_document("G1", "CT-S1-FUELQTY", [_gas()])
+    store.add_document("G2", "CT-S1-FUELQTY", [_gas(plant="St Louis Plant")], decision="rejected")
+    store.add_document("WB", "CT-GHG-WORKBOOK", [{"reported_total": (500, "t")}], decision=None)
+    store.documents.append({"document_id": "NEW", "engagement_id": "ENG-1", "org_id": ORG, "file_name": "n.pdf",
+                            "processing_status": "queued"})
+    return store
+
+
+def test_counts_at_every_level_never_double_count_a_document_in_two_places() -> None:
+    tree = _tree(_counts_store())
+    blocks = tree["blocks"]
+    assert blocks["summary_counts"] == {"documents": 1, "values": 1, "accepted": 0, "to_review": 1, "issues": 0,
+                                        "pct_accepted": 0.0}
+    assert blocks["unassigned_counts"]["documents"] == 1 and blocks["unassigned_counts"]["values"] == 0
+    assert blocks["supporting"]["unassigned_counts"]["documents"] == 0
+    scopes = {s["scope"]: s for s in blocks["supporting"]["scopes"]}
+    # BILL sits on two lines (one per facility): one document, 12 values (6 per record)
+    assert scopes["s2"]["counts"] == {"documents": 1, "values": 12, "accepted": 12, "to_review": 0, "issues": 0,
+                                      "pct_accepted": 100.0}
+    assert scopes["s1"]["counts"] == {"documents": 2, "values": 12, "accepted": 6, "to_review": 0, "issues": 6,
+                                      "pct_accepted": 50.0}
+    assert scopes["biogenic"]["counts"]["documents"] == 0
+
+
+def test_the_facility_filter_shows_one_facility_and_recomputes_counts() -> None:
+    service = _tree_service(_counts_store())
+    tree = service.tree(_engagement(), _own, None, "fac-stl2")
+    assert {ln["key"] for ln in tree["lines"]} == {GAS_STL, ELEC_STL}
+    assert _lines_with_docs(tree) == {GAS_STL: ["G2"], ELEC_STL: ["BILL"]}
+    scopes = {s["scope"]: s for s in tree["blocks"]["supporting"]["scopes"]}
+    assert scopes["s1"]["counts"] == {"documents": 1, "values": 6, "accepted": 0, "to_review": 0, "issues": 6,
+                                      "pct_accepted": 0.0}  # issues are kept
+    assert scopes["s2"]["counts"]["values"] == 6 and scopes["s2"]["counts"]["documents"] == 1
+    # blocks follow their rows' facility: the workbook and the unread file match no facility
+    assert tree["blocks"]["summary"] == [] and tree["blocks"]["unassigned"] == []
+    assert tree["blocks"]["summary_counts"]["documents"] == 0
+    assert [f["facility_id"] for f in tree["facilities"]] == ["fac-kc01", "fac-stl2"]  # not filtered
+    nothing = service.tree(_engagement(), _own, None, "fac-nowhere")
+    assert nothing["lines"] == [] and _lines_with_docs(nothing) == {}
+    unfiltered = service.tree(_engagement(), _own, None, None)
+    assert len(unfiltered["lines"]) == 4 and len(unfiltered["blocks"]["summary"]) == 1

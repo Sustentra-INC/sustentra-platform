@@ -68,25 +68,29 @@ Persist reviewer decision for a candidate field.
 ### GET /v1/engagements/{engagement_id}/approved-evidence
 Return evidence records and approved fields only.
 
-### GET /v1/engagements/{engagement_id}/evidence-tree
+### GET /v1/engagements/{engagement_id}/evidence-tree[?facility_id=<id>]
 Every document of the engagement filed into the Evidence page's tree (reader; another org's
 engagement is 404). Nothing is stored by this route.
 
 ```
-{ blocks: { summary: [DocRow],                       // Block 1: summary documents and workbook
-            unassigned: [DocRow],                    // Block 2: no document type yet
-            supporting: { scopes: [{scope, label,    // Block 3, scopes s1 / s2 / biogenic
+{ blocks: { summary: [DocRow], summary_counts: counts,     // Block 1: summary documents and workbook
+            unassigned: [DocRow], unassigned_counts: counts, // Block 2: no document type yet
+            supporting: { scopes: [{scope, label, counts,    // Block 3, scopes s1 / s2 / biogenic
                           categories: [{category, label, counts,
                             level2s: [{level2, label, counts,
                               lines: [{line: CalculationLine, counts, documents: [DocRow]}]}]}]}],
-                          unassigned: [DocRow] } },
+                          unassigned: [DocRow], unassigned_counts: counts } },
   facilities: [{facility_id, name, address}],        // the engagement's Setup facilities
   lines: [CalculationLine],                          // system lines, then reviewers' own
+  vehicle_groups: [{anchor_id, label, fuel}],        // settings.recalculation.vehicle_groups, with the
+                                                     // anchor_id a mobile line (anchor_kind "vehicle_group") uses
+  anchors_for_contractual: "company",                // a contractual line uses anchor_kind "company", this anchor_id
   set_aside: [{document_id, file_name, reason}] }    // withdrawn / duplicate / superseded: not filed
 counts  = {documents, values, accepted, to_review, issues, pct_accepted}
 DocRow  = {document_id, file_name, period_start, period_end, facility_id, facility_name,
            processing_status, detected_type, also_in: [lineKey], values, accepted,
-           flags: []}   // "unknown_line": it was moved to a line that no longer exists
+           placement_from,   // send this as a move's "from" to move this row
+           flags: []}        // "unknown_line": it was moved to a line that no longer exists
 ```
 
 `CalculationLine = {key, scope, category, level2, level2_label, anchor_kind
@@ -94,7 +98,15 @@ DocRow  = {document_id, file_name, period_start, period_end, facility_id, facili
 created_by_user}`. The key is `<scope>:<category>:<level2-slug>:<anchor-slug>` (for example
 `s1:stationary:natural-gas:fac-kc01`) and is built only by `calculation_lines.line_key`.
 A document whose records map to several lines is listed under each, with only that line's
-values counted. Categories (fixed): stationary, mobile, fugitive, process (Scope 1);
+values counted. Every `counts` (block, scope, category, level 2, line) is computed by the server:
+`documents` is distinct documents, and values are counted once per record however many places show
+it, so nothing is double-counted; the client never adds counts up.
+
+`?facility_id=<facility_id>` shows only placements at that Setup facility: rows whose `facility_id`
+matches and lines whose `facility_id` matches (vehicle-group and company lines have none, so they are
+left out), at every level, and all counts (including `issues`) are recomputed for that view.
+`facilities`, `vehicle_groups` and `set_aside` are not filtered. A row's `facility_id` is its line's
+facility, else the Setup facility of the records shown (null when none matches). Categories (fixed): stationary, mobile, fugitive, process (Scope 1);
 purchased_energy, contractual (Scope 2); biogenic.
 
 Where a record goes by default: the canonical type gives the category (a biomass fuel goes to
@@ -109,11 +121,17 @@ group for mobile) exists (`created_by_user: false`).
 **Moving documents.** Moves are stored in the document's workpaper item (kind `document`,
 key = document id) under `payload.placements`: `[{"from": <line key | "block:summary" |
 "block:unassigned" | "supporting:unassigned">, "to": <line key | the same fixed names>}]`,
-applied in order to the default placements, one placement at a time. A move whose `from` the
-document no longer has is ignored. A move to a line that does not exist files the document under
+applied in order to the default placements, one placement at a time. Send the row's
+`placement_from` as `from`: a document filed under "Unassigned supporting evidence" because its
+line was deleted has `placement_from: "supporting:unassigned"`, and a move from that moves every
+placement shown there. A move whose `from` the document no longer has is ignored. A move to a line that does not exist files the document under
 "Unassigned supporting evidence" with the flag `unknown_line`. The PUT replaces the whole payload:
 **read the item, merge `placements` into it, keep every other key** (`facilityId`, `disposition`,
 `relationships`, ...).
+
+**Settings are replaced whole.** PATCH `/v1/engagements/{id}` replaces `settings` as a whole, so a
+client that changes any setting must send `evidenceLines` back too (read it, change it, send it all),
+or the reviewers' lines are lost.
 
 **Reviewers' own lines** are saved in `settings.evidenceLines` through PATCH
 `/v1/engagements/{id}`: `[{key?, scope?, category, level2?, level2_label, anchor_kind,
@@ -129,7 +147,7 @@ for another org's engagement).
 ```
 { line: CalculationLine, reporting_period: {start, end},
   coverage: [{month: "YYYY-MM", status: "counted" | "counted_in_part" | "not_reviewed" | "no_document",
-              quantity, unit, document_ids}],
+              quantity, unit, document_ids, flags: []}],   // flags: "unconverted"
   identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter
   values: [{service_period_start, service_period_end, days, quantity, unit, document_id, file_name,
             page, candidate_id, decided_by, decided_at, decision}],
@@ -138,7 +156,9 @@ for another org's engagement).
 
 A month is `counted` when accepted values cover all its days, `counted_in_part` when they cover
 some, `not_reviewed` when a document covers it but no accepted value does, and `no_document`
-otherwise; a value's quantity is spread evenly over its service period. `decided_by` is the
+otherwise; the first and last month count only days inside the reporting period. A value's quantity is
+spread evenly over its service period; a month with a value in a unit that cannot be added to the rest is
+`counted_in_part` with the flag `unconverted`, and a month with no numeric quantity has `quantity: null`. `decided_by` is the
 reviewer's name (their login when no name is on file).
 
 ## Contract Source

@@ -17,7 +17,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,12 +75,13 @@ def system_line_keys(engagement: dict[str, Any], visible: Callable[[dict], bool]
 @router.get("/engagements/{engagement_id}/evidence-tree")
 async def get_evidence_tree(
     engagement_id: str,
+    facility_id: str | None = Query(None, max_length=200, description="show only this Setup facility"),
     user: CurrentUser = Depends(s1_reader),
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict:
     engagement = await _visible(db, engagement_id, user)
     decisions = await document_decisions(db, engagement)
-    return _service().tree(engagement, lambda record: can_see(record, user), decisions)
+    return _service().tree(engagement, lambda record: can_see(record, user), decisions, facility_id)
 
 
 @router.get("/engagements/{engagement_id}/calculation-lines/{line_key}/schedule")

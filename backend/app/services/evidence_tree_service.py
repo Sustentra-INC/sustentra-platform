@@ -15,18 +15,18 @@ from typing import Any
 from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorReference, default_emission_factor_reference
 from backend.app.services import calculation_lines as cl
-from backend.app.services.engagement_recalculation_service import (
+from backend.app.services.engagement_recalculation_service import parse_inputs, setup_facilities
+from backend.app.services.reviewed_evidence import (
     REVIEWED,
     THERMAL,
     ReviewedRecord,
-    _date,
-    _number,
+    all_decisions,
     group_reviewed_records,
     latest_decisions,
-    parse_inputs,
     set_aside_reason,
-    setup_facilities,
     superseded_ids,
+    to_date,
+    to_number,
 )
 
 IDENTIFIERS = (("Facility", "facility_name"), ("Service address", "service_address"),
@@ -43,6 +43,7 @@ class DocState:
     extracted_at: str | None
     records: list[ReviewedRecord]
     slots: list[cl.Slot] = field(default_factory=list)
+    facility_ids: list[str | None] = field(default_factory=list)  # the Setup facility of each record
 
 
 @dataclass
@@ -53,6 +54,7 @@ class Loaded:
     lines: list[cl.CalculationLine]
     facilities: list[dict[str, Any]]
     period: tuple[date | None, date | None]
+    vehicle_groups: list[dict[str, Any]] = field(default_factory=list)
 
 
 def _iso(value: Any) -> str | None:
@@ -101,8 +103,9 @@ class EvidenceTreeService:
             results = [r for r in self._pipeline.list_extraction_results_by_document(document_id) if can_see(r)]
             latest = results[-1] if results else {}
             canonical = str(latest.get("canonical_type_id") or "") or None
-            by_candidate = latest_decisions(d for d in self._reviews.list_by_document(document_id) if can_see(d))
-            records = group_reviewed_records(document, canonical or "", latest.get("items") or [], by_candidate)
+            reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
+            records = group_reviewed_records(document, canonical or "", latest.get("items") or [],
+                                             latest_decisions(reviews), all_decisions(reviews))
             docs.append(DocState(document, document_id, canonical, _iso(latest.get("created_at")), records))
         placements = {
             id(record): cl.place_record(record, ref=self.reference, facilities=facilities, decisions=decisions,
@@ -112,12 +115,15 @@ class EvidenceTreeService:
         system = cl.default_lines(placements.values(), facilities, inputs.vehicle_groups)
         lines = cl.merge_lines(system, cl.user_lines(settings))
         known = {line.key for line in lines}
+        filed = cl.file_documents(
+            [(doc.document_id, doc.canonical_type_id, [placements[id(r)] for r in doc.records]) for doc in docs],
+            decisions, known)
         for doc in docs:
-            default = cl.document_slots(doc.canonical_type_id, [placements[id(r)] for r in doc.records])
-            moved = cl.apply_placements(default, (decisions.get(doc.document_id) or {}).get("placements"))
-            doc.slots = cl.merge_slots([cl.resolve_target(slot, known) for slot in moved])
-        period = (_date(engagement.get("reporting_period_start")), _date(engagement.get("reporting_period_end")))
-        return Loaded(docs, set_aside, system, lines, facilities, period)
+            doc.slots = filed[doc.document_id]
+            doc.facility_ids = [cl.facility_anchor_id(f) if (f := placements[id(r)].facility) else None
+                                for r in doc.records]
+        period = (to_date(engagement.get("reporting_period_start")), to_date(engagement.get("reporting_period_end")))
+        return Loaded(docs, set_aside, system, lines, facilities, period, inputs.vehicle_groups)
 
     def system_line_keys(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
                          decisions: dict[str, dict[str, Any]] | None = None) -> set[str]:
@@ -125,28 +131,41 @@ class EvidenceTreeService:
 
     # ------------------------------------------------------------------------------------
     def tree(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
-             decisions: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
+             decisions: dict[str, dict[str, Any]] | None = None, facility_id: str | None = None) -> dict[str, Any]:
+        """The tree. With ``facility_id`` every level shows only placements at that Setup facility
+        (rows whose ``facility_id`` and lines whose ``facility_id`` match) and every count is
+        recomputed for that view."""
+
         loaded = self.load(engagement, can_see, decisions)
         by_key = {line.key: line for line in loaded.lines}
+        shown_lines = [ln for ln in loaded.lines if facility_id is None or ln.facility_id == facility_id]
         facility_names = {cl.facility_anchor_id(f): str(f.get("name")) for f in loaded.facilities}
         rows: dict[str, list[tuple[dict[str, Any], DocState, cl.Slot]]] = {}
         for doc in loaded.docs:
             for slot in doc.slots:
                 row = self._row(doc, slot, by_key, facility_names)
-                rows.setdefault(slot.target, []).append((row, doc, slot))
+                if facility_id is None or row["facility_id"] == facility_id:
+                    rows.setdefault(slot.target, []).append((row, doc, slot))
 
         def documents(target: str) -> list[dict[str, Any]]:
             return sorted((r for r, _, _ in rows.get(target, [])),
                           key=lambda r: (r["period_start"] or "9999", str(r["file_name"] or "")))
 
+        by_id = {d.document_id: d for d in loaded.docs}
+
         def counts_of(targets: list[str]) -> dict[str, Any]:
-            total = {"values": 0, "accepted": 0, "to_review": 0, "issues": 0}
+            """Documents distinct; values once per (document, record), however many places show them."""
+
+            seen: set[tuple[str, int]] = set()
             ids: set[str] = set()
             for target in targets:
                 for _, doc, slot in rows.get(target, []):
                     ids.add(doc.document_id)
-                    for name, number in cl.tally(doc.records[i] for i in sorted(slot.records)).items():
-                        total[name] += number
+                    seen |= {(doc.document_id, i) for i in slot.records}
+            total = {"values": 0, "accepted": 0, "to_review": 0, "issues": 0}
+            for document_id, index in seen:
+                for name, number in cl.tally([by_id[document_id].records[index]]).items():
+                    total[name] += number
             return cl.with_percentage({"documents": len(ids), **total})
 
         scopes = []
@@ -155,7 +174,7 @@ class EvidenceTreeService:
             for category, label, owner in cl.CATEGORIES:
                 if owner != scope:
                     continue
-                in_category = [ln for ln in loaded.lines if ln.category == category]
+                in_category = [ln for ln in shown_lines if ln.category == category]
                 level2s: dict[str, dict[str, Any]] = {}
                 for line in in_category:
                     level2 = level2s.setdefault(line.level2, {"level2": line.level2, "label": line.level2_label,
@@ -168,16 +187,24 @@ class EvidenceTreeService:
                     "category": category, "label": label, "counts": counts_of([ln.key for ln in in_category]),
                     "level2s": [{k: level2[k] for k in ("level2", "label", "counts", "lines")}
                                 for level2 in level2s.values()]})
-            scopes.append({"scope": scope, "label": scope_label, "categories": categories})
+            in_scope = [ln.key for ln in shown_lines if cl.CATEGORY_SCOPE[ln.category] == scope]
+            scopes.append({"scope": scope, "label": scope_label, "categories": categories,
+                           "counts": counts_of(in_scope)})
         return {
             "blocks": {
-                "summary": documents(cl.BLOCK_SUMMARY),
-                "unassigned": documents(cl.BLOCK_UNASSIGNED),
-                "supporting": {"scopes": scopes, "unassigned": documents(cl.SUPPORTING_UNASSIGNED)},
+                "summary": documents(cl.BLOCK_SUMMARY), "summary_counts": counts_of([cl.BLOCK_SUMMARY]),
+                "unassigned": documents(cl.BLOCK_UNASSIGNED), "unassigned_counts": counts_of([cl.BLOCK_UNASSIGNED]),
+                "supporting": {"scopes": scopes, "unassigned": documents(cl.SUPPORTING_UNASSIGNED),
+                               "unassigned_counts": counts_of([cl.SUPPORTING_UNASSIGNED])},
             },
             "facilities": [{"facility_id": cl.facility_anchor_id(f), "name": f.get("name"),
                             "address": f.get("address")} for f in loaded.facilities],
-            "lines": [line.to_dict() for line in loaded.lines],
+            "lines": [line.to_dict() for line in shown_lines],
+            # the ids a client uses to create a mobile line (anchor_kind "vehicle_group"), built here
+            "vehicle_groups": [{"anchor_id": anchor_id, "label": cl.vehicle_group_label(group),
+                                "fuel": group.get("fuel")}
+                               for anchor_id, group in cl.vehicle_group_anchors(loaded.vehicle_groups)],
+            "anchors_for_contractual": cl.COMPANY_ANCHOR,  # contractual lines: anchor_kind "company"
             "set_aside": loaded.set_aside,
         }
 
@@ -189,10 +216,11 @@ class EvidenceTreeService:
         ends = [p[1] for p in periods if p[1]]
         line = lines.get(slot.target)
         facility_id = line.facility_id if line else None
+        if facility_id is None:  # blocks and unassigned: the Setup facility of the shown records, if any
+            facility_id = next((doc.facility_ids[i] for i in sorted(slot.records) if doc.facility_ids[i]), None)
         facility_name = facility_names.get(facility_id) if facility_id else None
         if facility_id is None and records:
-            first = records[0]
-            name = first.best("facility_name")
+            name = records[0].best("facility_name")
             facility_name = " ".join(str(name).split()) if name else None
         counts = cl.tally(records)
         return {
@@ -204,6 +232,8 @@ class EvidenceTreeService:
             "detected_type": cl.type_name(doc.canonical_type_id),
             "also_in": [s.target for s in doc.slots if s.target != slot.target and s.target in lines],
             "values": counts["values"], "accepted": counts["accepted"], "flags": list(slot.flags),
+            # what the UI sends as a move's "from" to move this row
+            "placement_from": slot.target,
         }
 
     # ------------------------------------------------------------------------------------
@@ -233,7 +263,7 @@ class EvidenceTreeService:
                 shown = item.value if item.status in REVIEWED else item.extracted
                 start, end = cl.record_period(record)
                 accepted = item.status in REVIEWED
-                covered.append(cl.Covered(start, end, _number(shown), unit, accepted, doc.document_id))
+                covered.append(cl.Covered(start, end, to_number(shown), unit, accepted, doc.document_id))
                 who = name_of(item.reviewer) if item.reviewer else None
                 page = (item.source_reference or {}).get("page_number")
                 decision = item.status if item.status != "unreviewed" else "not_reviewed"
@@ -244,10 +274,21 @@ class EvidenceTreeService:
                     "file_name": doc.document.get("file_name"), "page": page, "candidate_id": item.candidate_id,
                     "decided_by": who, "decided_at": _iso(item.reviewed_at), "decision": decision,
                 })
-                if item.status in VERBS:
-                    amount = f"{shown} {unit}".strip() if shown is not None else "a value"
-                    history.append({"at": _iso(item.reviewed_at), "text": (
-                        f"{who or 'A reviewer'} {VERBS[item.status]} {amount} from "
+                # every decision on this value, not only the latest
+                past = item.history or ([{"decision": item.status, "reviewer_id": item.reviewer,
+                                          "reviewed_at": item.reviewed_at, "reviewed_value": item.value,
+                                          "reviewed_unit": item.unit}] if item.status in VERBS else [])
+                for entry in past:
+                    verb = VERBS.get(str(entry.get("decision")))
+                    if verb is None:
+                        continue
+                    reviewed = str(entry.get("decision")) in REVIEWED
+                    number = entry.get("reviewed_value") if reviewed else item.extracted
+                    entry_unit = entry.get("reviewed_unit") or unit if reviewed else unit
+                    amount = f"{number} {entry_unit or ''}".strip() if number is not None else "a value"
+                    login = entry.get("reviewer_id")
+                    history.append({"at": _iso(entry.get("reviewed_at")), "text": (
+                        f"{name_of(login) if login else 'A reviewer'} {verb} {amount} from "
                         f"{doc.document.get('file_name')}" + (f", page {page}" if page else ""))})
         values.sort(key=lambda v: (v["service_period_start"] or "9999", str(v["file_name"] or "")))
         extracted = [d.extracted_at for d, _ in on_line if d.extracted_at]
