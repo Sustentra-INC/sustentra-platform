@@ -151,8 +151,30 @@ for another org's engagement).
   identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter
   values: [{service_period_start, service_period_end, days, quantity, unit, document_id, file_name,
             page, candidate_id, decided_by, decided_at, decision}],
-  history: [{at, text}] }                                            // newest first
+  history: [{at, text}],                                             // newest first
+  // schedule v2 (Claire's supporting-schedule spec); the keys above are unchanged
+  rows: [{record_key, record_index, accepted,        // one row per record (document + period + meter)
+          date: {start, end, days, label},           // label: "Service period" | "Transaction date" | "Service date"
+          activity_quantity: {value, unit},          // the extracted value; the reviewed value once accepted
+          cells: {<column_key>: {value, unit}},      // only the extra columns this row has a value for
+          saved_by: {name, at} | null,               // who accepted or edited the quantity; null when not reviewed
+          document_id, file_name, page, candidate_id}],
+  columns: [{key, label, unit_in_cells: true}],      // date, activity_quantity, then (only when a row has a value,
+                                                     // accepted or not) heat_content, carbon_content,
+                                                     // vehicle_type, model_year, on_or_non_road, distance
+  activity_quantity_note: string | null,             // "Activity quantity: fuel quantity combusted" ...
+  identifier_groups: [{label, values: [{value, documents: [{document_id, file_name, matched_by?}]}],
+                       not_found: [{document_id, file_name}], documents_with, documents_total,
+                       matched_by?: [string]}] }     // matched_by on Facility only
 ```
+
+`rows` lists every extracted record on the line, accepted or not. A row with `accepted: false` is present
+but flagged; only accepted values feed the calculation, as before. The extra columns read the extracted
+fields `heat_content`, `carbon_content`, `vehicle_type`, `model_year`, `on_or_non_road` and `distance`;
+no extractor produces them yet, so today a line shows only Date and Activity quantity. `identifier_groups`
+group the line's documents by identifier value; `not_found` holds documents without the identifier.
+Facility is the Setup facility, and `matched_by` says how: "Chosen by the reviewer", "Facility name in
+Setup" or "Service address in Setup". `identifiers` (one entry per value) is kept for older clients.
 
 A month is `counted` when accepted values cover all its days, `counted_in_part` when they cover
 some, `not_reviewed` when a document covers it but no accepted value does, and `no_document`

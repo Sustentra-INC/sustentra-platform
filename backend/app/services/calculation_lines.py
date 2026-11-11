@@ -36,6 +36,7 @@ from backend.app.services.reviewed_evidence import (
     STATIONARY,
     THERMAL,
     ReviewedRecord,
+    match_facility,
     resolve_fuel_name,
     resolve_setup_facility,
     to_date,
@@ -461,6 +462,29 @@ def record_period(record: ReviewedRecord) -> tuple[date | None, date | None]:
         return day, day
     start, end = to_date(record.best("service_period_start")), to_date(record.best("service_period_end"))
     return start or end, end or start
+
+
+def date_label(canonical_type_id: str | None) -> str:
+    """What the document calls its date: a bill's service period, a fuel purchase's
+    transaction date, a service visit's service date."""
+
+    return {MOBILE: "Transaction date", REFRIGERANT: "Service date"}.get(canonical_type_id or "", "Service period")
+
+
+def facility_match(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
+                   record: ReviewedRecord) -> tuple[dict[str, Any], str] | None:
+    """The Setup facility of a record and how it was matched: the reviewer's choice, the
+    facility name, or the service address; None when nothing matches."""
+
+    chosen = (decisions.get(document_id) or {}).get("facilityId")
+    for facility in facilities:
+        if chosen and facility.get("facilityId") == chosen:
+            return facility, "Chosen by the reviewer"
+    if (found := match_facility(record.best("facility_name"), None, facilities)) is not None:
+        return found, "Facility name in Setup"
+    if (found := match_facility(None, record.best("service_address"), facilities)) is not None:
+        return found, "Service address in Setup"
+    return None
 
 
 def quantity_field(record: ReviewedRecord) -> str | None:
