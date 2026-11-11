@@ -63,18 +63,22 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
 
 - `GET` (s1_reader; a provider_admin reads) answers
   `{"fields": [record...], "catalog": [def...], "groups": [{group, label}], "row_groups": [...], "ai": {...}}`.
-  - `record`: `{field_id, suggestion, decision, history}`, and `user_added` (boolean; only rows the reviewer added can be deleted).
+  - `record`: `{field_id, suggestion, decision, history}`, and `user_added` (boolean; only rows the reviewer added can be deleted). A catalog def's `user_added` is the same
+    flag as its record's. Reverting a reviewer-added row restores its blank value; at most 200 rows can be added
+    per engagement (409 with a sentence). `GET .../workpaper-items?kind=methodology` lists the same record shape
+    and skips removed rows.
     `suggestion` is `null` or `{value, quote, document_id, file_name, source_reference, origin: "ai", model,
     request_id, suggested_at}`. `decision` is `null` (pending) or `{status: pending|accepted|edited|rejected,
     value, reason?, by: {name, login}, at}`; a rejected decision has `value: null`. `history` is
-    `[{at, by, action, from?, to?}]`, `action` one of accept, edit, reject, revert, add_row, remove_row.
+    `[{at, by, action, to?}]` (the newest 50 events, fewer if the record would pass 32 KB; the audit log keeps the
+    full trail), `action` one of accept, edit, reject, revert, add_row, remove_row.
   - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp, allowed?, parts?, user_added}`, in page order: the fixed
     fields (reporting_period, consolidation_approach, `category:{scope1|location|market|biogenic}:...`,
     `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`), then the rows the
     reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (with `allowed_labels.set`),
     `{operational_control}` for an entity. `parts` (entity, factor, gwp only) lists the value's editors,
     `[{key, label, kind: text|list|percent|enum, allowed?}]`, so a blank new row can be drawn.
-  - Values by kind: text is a string (at most 4000 characters); enum one of `allowed`; gwp `{set, horizon}`;
+  - Values by kind: text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
   - `ai`: `{enabled, reason_code, reason, provider, model, month_spend_usd, cap_usd}`. `enabled` is true when

@@ -123,7 +123,8 @@ def test_accept_with_nothing_to_take_is_refused_and_a_current_value_is_taken() -
         m.accept(row, entity, ACTOR, NOW)  # type: ignore[arg-type]
     filled = m.edit(row, entity, {**m.blank_value("entity:abcd1234"), "name": "Co"}, ACTOR, NOW)  # type: ignore[arg-type]
     reverted = m.revert(filled, entity, ACTOR, NOW)  # type: ignore[arg-type]
-    assert reverted["decision"]["status"] == "pending" and reverted["decision"]["value"] is None
+    assert reverted["decision"]["status"] == "pending"
+    assert reverted["decision"]["value"] == m.blank_value("entity:abcd1234")  # an added row goes back to blank
 
 
 def test_edit_works_from_any_state_and_history_keeps_from_and_to() -> None:
@@ -132,8 +133,9 @@ def test_edit_works_from_any_state_and_history_keeps_from_and_to() -> None:
     first = m.edit(record, f, "Equity Share", ACTOR, NOW)
     second = m.edit(first, f, "Financial Control", ACTOR, NOW)
     assert second["decision"]["status"] == "edited" and second["decision"]["value"] == "Financial Control"
-    assert [(h["action"], h.get("from"), h.get("to")) for h in second["history"]] == [
-        ("edit", None, "Equity Share"), ("edit", "Equity Share", "Financial Control")]
+    assert [(h["action"], h.get("to")) for h in second["history"]] == [
+        ("edit", "Equity Share"), ("edit", "Financial Control")]
+    assert all("from" not in h for h in second["history"])
     rejected = m.reject(m.new_record("exclusion:inventory"), field("exclusion:inventory"), " not in report ", ACTOR, NOW)
     after = m.edit(rejected, field("exclusion:inventory"), "Backup generators", ACTOR, NOW)
     assert after["decision"]["status"] == "edited" and "reason" not in after["decision"]
@@ -164,7 +166,6 @@ def test_revert_returns_to_pending_and_is_refused_when_already_pending() -> None
     reverted = m.revert(edited, f, ACTOR, NOW)
     assert m.status_of(reverted) == "pending" and reverted["decision"]["value"] is None
     assert [h["action"] for h in reverted["history"]] == ["edit", "revert"]
-    assert reverted["history"][-1]["from"] == "Activity x factor"
     assert m.status_of(m.new_record("gwp")) == "pending"
 
 
