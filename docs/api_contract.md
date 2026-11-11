@@ -68,6 +68,79 @@ Persist reviewer decision for a candidate field.
 ### GET /v1/engagements/{engagement_id}/approved-evidence
 Return evidence records and approved fields only.
 
+### GET /v1/engagements/{engagement_id}/evidence-tree
+Every document of the engagement filed into the Evidence page's tree (reader; another org's
+engagement is 404). Nothing is stored by this route.
+
+```
+{ blocks: { summary: [DocRow],                       // Block 1: summary documents and workbook
+            unassigned: [DocRow],                    // Block 2: no document type yet
+            supporting: { scopes: [{scope, label,    // Block 3, scopes s1 / s2 / biogenic
+                          categories: [{category, label, counts,
+                            level2s: [{level2, label, counts,
+                              lines: [{line: CalculationLine, counts, documents: [DocRow]}]}]}]}],
+                          unassigned: [DocRow] } },
+  facilities: [{facility_id, name, address}],        // the engagement's Setup facilities
+  lines: [CalculationLine],                          // system lines, then reviewers' own
+  set_aside: [{document_id, file_name, reason}] }    // withdrawn / duplicate / superseded: not filed
+counts  = {documents, values, accepted, to_review, issues, pct_accepted}
+DocRow  = {document_id, file_name, period_start, period_end, facility_id, facility_name,
+           processing_status, detected_type, also_in: [lineKey], values, accepted,
+           flags: []}   // "unknown_line": it was moved to a line that no longer exists
+```
+
+`CalculationLine = {key, scope, category, level2, level2_label, anchor_kind
+("facility" | "vehicle_group" | "company"), anchor_id, label, facility_id | null,
+created_by_user}`. The key is `<scope>:<category>:<level2-slug>:<anchor-slug>` (for example
+`s1:stationary:natural-gas:fac-kc01`) and is built only by `calculation_lines.line_key`.
+A document whose records map to several lines is listed under each, with only that line's
+values counted. Categories (fixed): stationary, mobile, fugitive, process (Scope 1);
+purchased_energy, contractual (Scope 2); biogenic.
+
+Where a record goes by default: the canonical type gives the category (a biomass fuel goes to
+biogenic); the level 2 is the EPA fuel the recalculation resolves, electricity, steam /
+heating / cooling, or the refrigerant; the anchor is the document decision's `facilityId`, else
+the Setup facility matched by name or address (mobile: the one vehicle group that uses the
+fuel). A record with a category but no level 2 or anchor, or a type with no line, is filed
+under "Unassigned supporting evidence". Summary types (`calculation_lines.SUMMARY_TYPES`) go
+to Block 1. For every level 2 that has a record, one line per Setup facility (per vehicle
+group for mobile) exists (`created_by_user: false`).
+
+**Moving documents.** Moves are stored in the document's workpaper item (kind `document`,
+key = document id) under `payload.placements`: `[{"from": <line key | "block:summary" |
+"block:unassigned" | "supporting:unassigned">, "to": <line key | the same fixed names>}]`,
+applied in order to the default placements, one placement at a time. A move whose `from` the
+document no longer has is ignored. A move to a line that does not exist files the document under
+"Unassigned supporting evidence" with the flag `unknown_line`. The PUT replaces the whole payload:
+**read the item, merge `placements` into it, keep every other key** (`facilityId`, `disposition`,
+`relationships`, ...).
+
+**Reviewers' own lines** are saved in `settings.evidenceLines` through PATCH
+`/v1/engagements/{id}`: `[{key?, scope?, category, level2?, level2_label, anchor_kind,
+anchor_id?, label}]` (at most 200; labels at most 120 characters; `category` one of the fixed
+list). The server fills in `key` (and `level2`, the slug of `level2_label`); a `key` that is
+given must equal `line_key(...)`. A line the system already creates is refused with 422 (the
+system's lines are not stored here and cannot be deleted).
+
+### GET /v1/engagements/{engagement_id}/calculation-lines/{line_key}/schedule
+One calculation line's schedule (reader; 404 with a plain message for an unknown line key, and
+for another org's engagement).
+
+```
+{ line: CalculationLine, reporting_period: {start, end},
+  coverage: [{month: "YYYY-MM", status: "counted" | "counted_in_part" | "not_reviewed" | "no_document",
+              quantity, unit, document_ids}],
+  identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter
+  values: [{service_period_start, service_period_end, days, quantity, unit, document_id, file_name,
+            page, candidate_id, decided_by, decided_at, decision}],
+  history: [{at, text}] }                                            // newest first
+```
+
+A month is `counted` when accepted values cover all its days, `counted_in_part` when they cover
+some, `not_reviewed` when a document covers it but no accepted value does, and `no_document`
+otherwise; a value's quantity is spread evenly over its service period. `decided_by` is the
+reviewer's name (their login when no name is on file).
+
 ## Contract Source
 
 JSON schema contracts are versioned in `contracts/` and should be treated as API truth for request/response payload shape.

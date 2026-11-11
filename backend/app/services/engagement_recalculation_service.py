@@ -293,6 +293,42 @@ def match_facility(name: Any, address: Any, facilities: list[dict[str, Any]]) ->
     return None
 
 
+def resolve_fuel_name(ref: EmissionFactorReference, kind: str, code: str, quantity_unit: str | None,
+                      fuel_choices: dict[str, str]) -> tuple[str | None, list[str]]:
+    """The EPA fuel name for an extracted fuel code (kind: "stationary" or "mobile") and the
+    flags that say how it was found; None when only the reviewer can choose it."""
+
+    chosen = fuel_choices.get(f"{kind}:{code}")
+    names = ref.stationary_fuel_types() if kind == "stationary" else [r["fuel_type"] for r in ref.data["mobile_co2"]]
+    lower = {n.lower(): n for n in names}
+    if chosen and chosen.lower() in lower:
+        return lower[chosen.lower()], ["fuel_chosen_by_reviewer"]
+    if code.lower() in lower:  # reviewer typed an EPA name while editing
+        return lower[code.lower()], []
+    auto = (STATIONARY_AUTO if kind == "stationary" else MOBILE_AUTO).get(code)
+    if kind == "stationary" and code == "propane" and quantity_unit:
+        dimension = fuel_units.dimension_of(quantity_unit)
+        auto = {fuel_units.LIQUID_VOLUME: "Propane", fuel_units.GAS_VOLUME: "Propane Gas"}.get(dimension)
+    if auto:
+        flags = ["fuel_auto_matched"]
+        if code == "diesel" and kind == "stationary":
+            flags.append("diesel_matched_to_distillate_fuel_oil_no_2")
+        return auto, flags
+    return None, []
+
+
+def resolve_setup_facility(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]],
+                           document_id: str, facility_name: Any, address: Any) -> dict[str, Any] | None:
+    """The reviewer's facility for a document, else a clear name/address match."""
+
+    chosen = (decisions.get(document_id) or {}).get("facilityId")
+    if chosen:
+        for facility in facilities:
+            if facility.get("facilityId") == chosen:
+                return facility
+    return match_facility(facility_name, address, facilities)
+
+
 def validate_facilities(value: Any) -> None:
     """Raise ValueError when Setup facilities are malformed or name an unknown eGRID subregion."""
 
@@ -326,6 +362,9 @@ class ReviewedField:
     status: str  # accepted | edited | rejected | needs_more_evidence | unreviewed
     value: Any  # the value to use: reviewed value, else None
     source_reference: dict[str, Any] | None
+    candidate_id: str | None = None
+    reviewer: str | None = None  # the latest decision's reviewer (login) and time, when there is one
+    reviewed_at: Any = None
 
 
 @dataclass
@@ -356,6 +395,61 @@ class ReviewedRecord:
     def unit_of(self, name: str) -> str | None:
         item = self.fields.get(name)
         return item.unit if item is not None else None
+
+
+def latest_decisions(decisions: Any) -> dict[str, dict]:
+    """The latest review decision per candidate id (later entries win)."""
+
+    return {str(d.get("candidate_id")): d for d in decisions}
+
+
+def group_reviewed_records(document: dict[str, Any], canonical_type_id: str, items: list[dict[str, Any]],
+                           decisions: dict[str, dict]) -> list[ReviewedRecord]:
+    """One document's extracted items grouped into records (by ``record_index``), each field
+    carrying its latest review decision."""
+
+    document_id = str(document.get("document_id"))
+    grouped: dict[int | None, dict[str, ReviewedField]] = {}
+    for item in items:
+        review = decisions.get(str(item.get("candidate_id")))
+        status = str(review.get("decision")) if review else "unreviewed"
+        value = None
+        unit = item.get("unit")
+        if review and status in REVIEWED:
+            value = review.get("reviewed_value")
+            unit = review.get("reviewed_unit") or unit
+        grouped.setdefault(item.get("record_index"), {})[str(item.get("field_name"))] = ReviewedField(
+            name=str(item.get("field_name")), extracted=item.get("normalized_value"), unit=unit,
+            status=status, value=value, source_reference=item.get("source_reference"),
+            candidate_id=str(item.get("candidate_id")), reviewer=review.get("reviewer_id") if review else None,
+            reviewed_at=review.get("reviewed_at") if review else None)
+    return [ReviewedRecord(document_id, document.get("file_name"), canonical_type_id, record_index, fields)
+            for record_index, fields in grouped.items()]
+
+
+def superseded_ids(decisions: dict[str, dict[str, Any]]) -> set[str]:
+    """Documents another document's decision says it supersedes."""
+
+    return {
+        str(rel.get("otherDocumentId"))
+        for decision in decisions.values()
+        for rel in decision.get("relationships") or []
+        if isinstance(rel, dict) and rel.get("kind") == "supersedes"
+    }
+
+
+def set_aside_reason(decisions: dict[str, dict[str, Any]], document_id: str, superseded: set[str]) -> str | None:
+    """Why the reviewer's decisions leave a document out (withdrawn, duplicate, superseded), else None."""
+
+    decision = decisions.get(document_id) or {}
+    relationships = [r for r in decision.get("relationships") or [] if isinstance(r, dict)]
+    if decision.get("disposition") == "withdrawn":
+        return "withdrawn"
+    if any(r.get("kind") == "duplicate" for r in relationships):
+        return "duplicate"
+    if document_id in superseded:
+        return "superseded"
+    return None
 
 
 def rollup_category(canonical_type_id: str, energy_type: Any = None) -> str | None:
@@ -484,25 +578,8 @@ class EngagementRecalculationService:
             canonical_type_id = str(latest.get("canonical_type_id") or "")
             if canonical_type_id not in RECALCULATED_TYPES:
                 continue
-            decisions: dict[str, dict] = {}
-            for decision in self._reviews.list_by_document(document_id):
-                if can_see(decision):
-                    decisions[str(decision.get("candidate_id"))] = decision  # latest wins
-            grouped: dict[int | None, dict[str, ReviewedField]] = {}
-            for item in latest.get("items") or []:
-                review = decisions.get(str(item.get("candidate_id")))
-                status = str(review.get("decision")) if review else "unreviewed"
-                value = None
-                unit = item.get("unit")
-                if review and status in REVIEWED:
-                    value = review.get("reviewed_value")
-                    unit = review.get("reviewed_unit") or unit
-                grouped.setdefault(item.get("record_index"), {})[str(item.get("field_name"))] = ReviewedField(
-                    name=str(item.get("field_name")), extracted=item.get("normalized_value"), unit=unit,
-                    status=status, value=value, source_reference=item.get("source_reference"))
-            for record_index, fields in grouped.items():
-                records.append(ReviewedRecord(document_id, document.get("file_name"), canonical_type_id,
-                                              record_index, fields))
+            decisions = latest_decisions(d for d in self._reviews.list_by_document(document_id) if can_see(d))
+            records.extend(group_reviewed_records(document, canonical_type_id, latest.get("items") or [], decisions))
         return records
 
     # ---------------------------------------------------------------------------------
@@ -647,24 +724,12 @@ class EngagementRecalculationService:
         """Leave out documents the reviewer withdrew, marked as a duplicate, or replaced
         with a superseding one; list them (once per document) with the reason."""
 
-        superseded = {
-            str(rel.get("otherDocumentId"))
-            for decision in decisions.values()
-            for rel in decision.get("relationships") or []
-            if isinstance(rel, dict) and rel.get("kind") == "supersedes"
-        }
+        superseded = superseded_ids(decisions)
         keep: list[ReviewedRecord] = []
         set_aside: dict[str, dict[str, Any]] = {}
         for record in records:
-            decision = decisions.get(record.document_id) or {}
-            relationships = [r for r in decision.get("relationships") or [] if isinstance(r, dict)]
-            if decision.get("disposition") == "withdrawn":
-                reason = "withdrawn"
-            elif any(r.get("kind") == "duplicate" for r in relationships):
-                reason = "duplicate"
-            elif record.document_id in superseded:
-                reason = "superseded"
-            else:
+            reason = set_aside_reason(decisions, record.document_id, superseded)
+            if reason is None:
                 keep.append(record)
                 continue
             set_aside.setdefault(record.document_id, {
@@ -702,24 +767,9 @@ class EngagementRecalculationService:
                      needs_input: list[dict[str, Any]]) -> tuple[str | None, list[str]]:
         """EPA fuel name for an extracted fuel code, or None with a needs_input entry."""
 
-        ref = self.reference
-        chosen = inputs.fuel_choices.get(f"{kind}:{code}")
-        names = ref.stationary_fuel_types() if kind == "stationary" else [r["fuel_type"] for r in ref.data["mobile_co2"]]
-        lower = {n.lower(): n for n in names}
-        if chosen:
-            if chosen.lower() in lower:
-                return lower[chosen.lower()], ["fuel_chosen_by_reviewer"]
-        if code.lower() in lower:  # reviewer typed an EPA name while editing
-            return lower[code.lower()], []
-        auto = (STATIONARY_AUTO if kind == "stationary" else MOBILE_AUTO).get(code)
-        if kind == "stationary" and code == "propane" and quantity_unit:
-            dimension = fuel_units.dimension_of(quantity_unit)
-            auto = {fuel_units.LIQUID_VOLUME: "Propane", fuel_units.GAS_VOLUME: "Propane Gas"}.get(dimension)
-        if auto:
-            flags = ["fuel_auto_matched"]
-            if code == "diesel" and kind == "stationary":
-                flags.append("diesel_matched_to_distillate_fuel_oil_no_2")
-            return auto, flags
+        name, flags = resolve_fuel_name(self.reference, kind, code, quantity_unit, inputs.fuel_choices)
+        if name is not None:
+            return name, flags
         key = f"{kind}:{code}"
         if not any(item.get("key") == key for item in needs_input):
             needs_input.append({
@@ -1269,13 +1319,8 @@ class EngagementRecalculationService:
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""
 
-        facilities = self._facilities
-        chosen = (self._decisions.get(record.document_id) or {}).get("facilityId")
-        if chosen:
-            for facility in facilities:
-                if facility.get("facilityId") == chosen:
-                    return facility
-        return match_facility(record.best("facility_name"), record.best("service_address"), facilities)
+        return resolve_setup_facility(self._facilities, self._decisions, record.document_id,
+                                      record.best("facility_name"), record.best("service_address"))
 
     # =================================================================================
     # Totals and comparison
