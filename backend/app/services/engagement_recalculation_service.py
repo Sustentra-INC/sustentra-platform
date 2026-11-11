@@ -567,7 +567,7 @@ class EngagementRecalculationService:
         try:
             built = recalculation_lines.build(
                 self.reference, self._ledger, records, inputs, engagement.get("settings") or {}, decisions,
-                tolerance, {k: v > 0 for k, v in open_items.items()})
+                tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities)
         except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
             log.warning("calculation lines failed: %s", type(exc).__name__)
             built = recalculation_lines.Built(needs_input=[{

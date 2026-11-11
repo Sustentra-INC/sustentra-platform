@@ -177,45 +177,63 @@ calculation_lines: [{
   level2, level2_key, label,                                  // label: facility or vehicle group
   facility_id, consolidated_share_pct,                        // facility lines only take consolidated_shares; others 100
   method: {route, equations: {CO2, CH4, N2O}},                // e.g. "Eq. 1", "Eq. 4" (on-road), "Eq. 5" (non-road)
-  step1: {rows: [{period_start, period_end, document_id, evidence_code, file_name, candidate_id,
-                  review: "accepted"|"edited", quantity, unit, share_in_period, counted_quantity}],
+  step1: {rows: [{period_start, period_end, document_id, evidence_code: null, file_name, candidate_id,
+                  review: "accepted"|"edited", quantity, unit, share_in_period, counted_quantity,
+                  counted_in_base}],                          // counted_in_base: counted_quantity in total.unit
           total: {quantity, unit}},                           // the rows' unit, or the base unit when they mix
-  step2: {from_unit, to_unit, factor, result: {quantity, unit}, distance: null},   // factor 1 when no conversion
+  step2: {from_unit, to_unit, factor, source, result: {quantity, unit},   // factor 1 when no conversion
+          distance: null | {quantity, unit: "mi", source},    // on-road mobile: an input, not a conversion
+          implied_fuel_economy: null | {value, unit: "mi/gal", role: "reasonableness_check"}},
   step3: {gases: [{gas, activity: {value, unit}, ef: {value, unit, source}, unit_conversion, mass_t,
-                   gwp: {value, source}, co2e_t,
-                   company_co2e_t?, difference_t?}]},         // the last two only when `company` exists
+                   gwp: {value, source}, co2e_t, biogenic,
+                   company_co2e_t?, difference_to_company_t?}]},   // the last two only when `company` exists
   results: {mass_t: {CO2, CH4, N2O}, gas_co2e_t: {...}, sum_co2e_t, total_co2e_t /* sum x share */,
-            biogenic_co2_t, company_total_co2e_t?, difference_t?, company_gas_co2e_t?},
-  company: null | {activity: {quantity, unit}, step2, step3, results},
+            biogenic_co2_t, company_total_co2e_t?, company_gas_co2e_t?, difference_to_company_t?},
+  company: null | {activity: {quantity, unit}, step2, step3, results},   // step3 mirrors step3 above
   reported_total_co2e_t: number|null, difference_t: number|null /* recomputed - reported */,
-  difference_pct_of_base: number|null, status: "within"|"above"|"not_reported", flags: [...]}]
+  difference_pct_of_base: number|null, status: "within"|"above"|"not_reported",
+  inputs_incomplete: boolean, flags: [...]}]
 ```
 
 - `unit_conversion` multiplies activity x factor into metric tons (kg 0.001, g 0.000001, lb 1/2,204.62).
-- `evidence_code` is the document id (the id the app uses for a document); `file_name` is its name.
+- `evidence_code` is `null`: the app has no evidence codes for documents yet; use `document_id` and `file_name`.
 - `step2.source` cites the unit conversion (`"fuel_units conversion table"`), `null` when the factor is 1.
-- `step2.distance` is `null` except for an on-road mobile line:
-  `{fuel_economy: {value, unit: "mi/gal", source}, result: {quantity, unit: "mi"}}`. No fuel economy is
-  read from a document; the value is the one the vehicle group's distance and the fuel on the line imply.
-- `difference_pct_of_base` is on the percent scale (4.6 means 4.6%); `company.step3` has the shape of `step3`.
-- `status` and `difference_pct_of_base` use the existing comparison rule: the line's difference against
-  the reported total of its data point (`settings.recalculation.reported` for stationary, mobile or
-  purchased electricity when the company reported it, else the line's own `reported_lines` value),
-  within the engagement's materiality tolerance.
-- A biomass fuel sits on a `biogenic` line: it shows `results.biogenic_co2_t` (CO2 is `0` in
-  `mass_t`, as in the category) and its CH4 and N2O, which count toward the stationary or mobile category
-  through `counts_toward`.
+- `step2.distance` is `null` except on an on-road mobile line: the distance the vehicle group states
+  ("Vehicle group distance entered under Recalculation inputs"), an input and not a conversion.
+  `step2.implied_fuel_economy` is that distance over the fuel on the line, a reasonableness check only;
+  it is `null` when the line holds only part of the fuel or the fuel is shared by several groups.
+- `difference_pct_of_base` is on the percent scale (4.6 means 4.6%). `status` and `difference_pct_of_base`
+  use the existing comparison rule with the line's own `reported_lines` value as the base: the line's
+  recomputed total against it, within the engagement's materiality tolerance. A line with no
+  `reported_lines` value is `not_reported`.
+- `inputs_incomplete` is true while the line's category (stationary, mobile, purchased electricity) has
+  open `needs_input` or `awaiting_review` items, as the comparisons mark a partial total.
+- `difference_to_company_t` is recomputed minus company, per gas row and in `results` (both with the share
+  applied in `results`); `difference_t` stays recomputed minus reported.
+- A biomass fuel sits on a `biogenic` line (scope `biogenic`). Its CO2 row has `biogenic: true`, `mass_t`
+  the biogenic CO2 and `co2e_t` 0; `results.biogenic_co2_t` carries it and `results.mass_t.CO2` is 0, as in
+  the category. On both sides the Step 3 `co2e_t` values add up to `results.sum_co2e_t`. Its CH4 and N2O
+  count toward the stationary or mobile category through `counts_toward`.
 - Mobile: CO2 from the fuel (Eq. 1) follows the records placed on the line; CH4 and N2O come from the
   vehicle group (distance, Eq. 4 on-road; fuel, Eq. 5 non-road). A group's line exists whenever its
   fuel has reviewed records.
-- When a fuel has several vehicle groups its records cannot pick one, and a record with no facility
-  match has no line: they are listed in `calculation_unplaced` (same shape as a line, `key: null`,
-  `reason`, `target`, no company side), never dropped. Lines plus unplaced add up to the category.
-- `calculation_line_inputs`: `{consolidated_shares, unknown_line_keys: [{setting, key}]}`; a key in
-  `reported_lines` or `reported_activity` that matches no line is allowed and listed here.
-- A company activity that cannot be converted (unknown unit, other kind of unit, a line that mixes
-  units) adds a `needs_input` item `{kind: "company_activity", key: <line key>, message}`. It changes
-  no recalculated number or status.
+- A company figure (`reported_lines` or `reported_activity`) for a known line (system or in
+  `evidenceLines`) or for a key that names a Setup facility or vehicle group with a fuel the calculator
+  knows, but that has no evidence, gives a line of zero with the company side and the flag `no_evidence`
+  (`difference_t` is minus the reported value).
+- A record with no line is listed in `calculation_unplaced` (same shape as a line, `key: null`, `target`,
+  no company side), never dropped. `reason` is one of: `unknown_line` (filed on a line that no longer
+  exists), `moved_to_another_place` (a reviewer filed it elsewhere), `fuel_shared_by_vehicle_groups`
+  (mobile fuel used by two or more groups), `no_vehicle_group` (mobile fuel no group uses),
+  `no_facility_match` (no Setup facility matches), `no_calculation_line`. Lines plus unplaced add up to the
+  category on `sum_co2e_t`; a consolidated share below 100% scales `total_co2e_t` only.
+- `calculation_line_inputs`: `{consolidated_shares, unknown_line_keys: [{setting, key}],
+  unknown_facility_ids}`. A key that matches no line and names no facility or vehicle group is allowed
+  and listed here, as is a `consolidated_shares` facility id that is not in Setup.
+- A company activity that cannot be converted or run (unknown unit, other kind of unit, a line that mixes
+  units) adds a `needs_input` item `{kind: "company_activity", key: <line key>, message}`. If the lines
+  cannot be built at all, one item `{kind: "calculation_lines"}` is added and the three keys are empty.
+  Neither changes a recalculated number or status.
 
 Every `flags` code a line can carry:
 
@@ -233,6 +251,8 @@ Every `flags` code a line can carry:
 | `ch4_n2o_need_vehicle_groups` | Mobile fuel with no usable vehicle group: CH4 and N2O are not calculated. |
 | `mixed_units_or_fuels` | The line mixes units or fuels; Step 2 shows the first, Step 3 lists every run. |
 | `company_ch4_n2o_use_vehicle_group` | Mobile company side: CH4 and N2O still come from the vehicle group. |
+| `no_evidence` | The company gave figures for this line but no reviewed record is on it. |
+| `calculation_failed` | A calculator run for this line failed; the line shows what could be calculated. |
 
 New optional settings under `settings.recalculation` (validated on PATCH, 422 with a message):
 

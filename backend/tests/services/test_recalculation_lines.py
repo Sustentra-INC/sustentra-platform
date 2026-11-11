@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from backend.app.services.recalculation_lines import DISTANCE_SOURCE
 from backend.app.services.engagement_recalculation_service import (
     EngagementRecalculationService,
     validate_recalculation_settings,
@@ -83,7 +84,7 @@ def test_company_side_runs_its_activity_through_the_same_steps() -> None:
     assert kc["reported_total_co2e_t"] == 3300
     assert kc["difference_t"] == pytest.approx(kc["results"]["total_co2e_t"] - 3300)
     row = next(g for g in kc["step3"]["gases"] if g["gas"] == "CO2")
-    assert row["company_co2e_t"] == pytest.approx(3448.9) and row["difference_t"] == pytest.approx(0, abs=1e-9)
+    assert row["company_co2e_t"] == pytest.approx(3448.9) and row["difference_to_company_t"] == pytest.approx(0, abs=1e-9)
     assert kc["results"]["company_total_co2e_t"] == pytest.approx(company["results"]["total_co2e_t"])
     assert result["needs_input"] == []
     # A line with no company figures has no company side.
@@ -228,9 +229,8 @@ def test_a_mobile_fuel_with_one_vehicle_group_is_one_line() -> None:
     assert by_gas["CO2"]["activity"] == {"value": 1000, "unit": "gal"}
     assert by_gas["CH4"]["activity"] == {"value": 10000, "unit": "mi"}  # distance, Eq 4
     assert line["method"]["equations"] == {"CO2": "Eq. 1", "CH4": "Eq. 4", "N2O": "Eq. 4"}
-    distance = line["step2"]["distance"]
-    assert (distance["fuel_economy"]["value"], distance["fuel_economy"]["unit"]) == (10, "mi/gal")
-    assert distance["result"] == {"quantity": 10000, "unit": "mi"}
+    assert line["step2"]["distance"] == {"quantity": 10000, "unit": "mi", "source": DISTANCE_SOURCE}
+    assert line["step2"]["implied_fuel_economy"] == {"value": 10, "unit": "mi/gal", "role": "reasonableness_check"}
     assert line["step2"]["source"] is None  # gal needs no conversion
     assert _by_key(_run(_gas_store()))[GAS_KC]["step2"]["distance"] is None
     category = result["categories"]["mobile_combustion"]
