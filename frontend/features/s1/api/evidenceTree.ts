@@ -106,12 +106,12 @@ export interface LineSchedule {
   identifiers: { label: string; value: string; documents_with: number; documents_total: number }[];
   values: ScheduleValue[];
   history: { at: string; text: string }[];
-  /** Schedule v2: one row per record, accepted or not. Absent on an older server. */
-  rows?: ScheduleRow[];
+  /** Schedule v2: one row per record, accepted or not. */
+  rows: ScheduleRow[];
   /** The ordered column set; Date and Activity quantity first, then only the extras the line has. */
-  columns?: ScheduleColumn[];
+  columns: ScheduleColumn[];
   activity_quantity_note?: string | null;
-  identifier_groups?: IdentifierGroup[];
+  identifier_groups: IdentifierGroup[];
 }
 
 export interface ScheduleColumn {

@@ -607,9 +607,46 @@ describe("the supporting schedule", () => {
     expect(jan).not.toHaveTextContent("Not reviewed");
     expect(feb).toHaveTextContent("Not reviewed");
     expect(feb).toHaveTextContent("1.03 MMBtu/Mcf");
-    expect(mar).toHaveTextContent("03/05/25 · 1 day");
+    expect(mar).toHaveTextContent("03/05/25");
+    expect(mar).not.toHaveTextContent("1 day");
     expect(mar).toHaveTextContent("Rejected");
     expect(within(table).queryByRole("textbox")).toBeNull();
+  });
+
+  it("shows the server's numbers as given, marks edited rows, labels the date and aligns text left", async () => {
+    const one = SCHEDULE.rows[0];
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        columns: [
+          ...SCHEDULE.columns,
+          { key: "model_year", label: "Model year", unit_in_cells: false },
+          { key: "vehicle_type", label: "Vehicle type", unit_in_cells: false },
+        ],
+        rows: [
+          {
+            ...one,
+            decision: "edited",
+            cells: { model_year: { value: 2019 }, heat_content: { value: 1.0312345, unit: "MMBtu/Mcf" }, vehicle_type: { value: "Van" } },
+          },
+        ],
+        identifier_groups: [{ ...SCHEDULE.identifier_groups[0], values: [{ value: " ", documents: [] }] }],
+      },
+    };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const table = screen.getByRole("table");
+    expect(within(table).getByRole("columnheader", { name: "Service period" })).toBeInTheDocument();
+    const [, row] = within(table).getAllByRole("row");
+    expect(row).toHaveTextContent("2019");
+    expect(row).not.toHaveTextContent("2,019");
+    expect(row).toHaveTextContent("1.0312345 MMBtu/Mcf");
+    expect(row).toHaveTextContent("Edited");
+    expect(row).not.toHaveClass("s1-sch-row--pending");
+    expect(within(table).getByRole("columnheader", { name: "Vehicle type" })).not.toHaveClass("s1-num");
+    expect(within(table).getByRole("columnheader", { name: "Model year" })).toHaveClass("s1-num");
+    fireEvent.click(screen.getByRole("button", { name: /Account number/ }));
+    expect(screen.getAllByText(/Not found/).length).toBeGreaterThan(0);
   });
 
   it("groups an identifier's documents by value, with Not found, and opens each document", async () => {
@@ -653,6 +690,15 @@ describe("the supporting schedule", () => {
     expect(props.onOpenCalculationLine).toHaveBeenCalledWith(KENT.key);
     fireEvent.click(screen.getAllByRole("button", { name: /Back to Evidence|^Evidence$/ })[0]);
     expect(props.onBack).toHaveBeenCalled();
+  });
+
+  it("shows the load error, not an empty schedule, when the v2 fields are missing", async () => {
+    const old: Partial<LineSchedule> = { ...SCHEDULE };
+    delete old.rows;
+    mocks.byPath = { [SCHEDULE_PATH]: old as LineSchedule };
+    renderSchedule();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load this schedule");
+    expect(screen.queryByText("No values have been extracted on this line yet.")).toBeNull();
   });
 
   it("says what went wrong when the schedule does not load", async () => {

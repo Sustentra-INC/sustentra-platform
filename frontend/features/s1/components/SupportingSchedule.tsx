@@ -61,6 +61,11 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
     getLineSchedule(engagementId, lineKey)
       .then((next) => {
         if (!live) return;
+        // The API and web deploy together: a response without the v2 fields is a failed load, not an empty schedule.
+        if (!Array.isArray(next.rows) || !Array.isArray(next.columns) || !Array.isArray(next.identifier_groups)) {
+          setProblem("The schedule came back incomplete. Try again in a moment.");
+          return;
+        }
         setSchedule(next);
         setProblem(null);
       })
@@ -101,9 +106,16 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
 
   const { line } = schedule;
   const year = reportingYear(schedule.reporting_period);
-  const rows = schedule.rows ?? [];
-  const columns = schedule.columns ?? [];
-  const groups = schedule.identifier_groups ?? [];
+  const { rows, columns, identifier_groups: groups } = schedule;
+  // Numbers are right-aligned; text (vehicle type, on/off road) and dates are left-aligned.
+  const isNumeric = (key: string) =>
+    key !== "date" && rows.every((r) => {
+      const v = key === "activity_quantity" ? r.activity_quantity.value : r.cells[key]?.value;
+      return v === null || v === undefined || typeof v === "number";
+    });
+  // The date header follows the documents: one label when they all agree, else the column's own.
+  const dateLabels = new Set(rows.map((r) => r.date.label).filter(Boolean));
+  const headerLabel = (c: { key: string; label: string }) => (c.key === "date" && dateLabels.size === 1 ? [...dateLabels][0] : c.label);
   const fileNames = new Map<string, string>([...schedule.values, ...rows].map((v) => [v.document_id, v.file_name]));
   const crumbs = [SCOPE_LABELS[line.scope] ?? line.scope, CATEGORY_LABELS[line.category] ?? line.category, line.level2_label, line.label];
 
@@ -230,8 +242,8 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
               <thead>
                 <tr>
                   {columns.map((c) => (
-                    <th key={c.key} className={c.key === "date" ? "" : "s1-num"}>
-                      {c.label}
+                    <th key={c.key} className={isNumeric(c.key) ? "s1-num" : ""}>
+                      {headerLabel(c)}
                     </th>
                   ))}
                   <th>Saved by</th>
@@ -240,9 +252,9 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.record_key} className={rowFlag(r) ? "s1-sch-row--pending" : ""}>
+                  <tr key={r.record_key} className={isPending(r) ? "s1-sch-row--pending" : ""}>
                     {columns.map((c) => (
-                      <td key={c.key} className={c.key === "date" ? "" : "s1-num"}>
+                      <td key={c.key} className={isNumeric(c.key) ? "s1-num" : ""}>
                         {c.key === "date" ? (
                           <>
                             {formatSpan(r.date)}
@@ -318,12 +330,13 @@ function formatSpan(d: ScheduleRow["date"]): string {
   const from = d.start ?? d.end;
   if (!from) return "";
   const range = d.end && d.start && d.end !== d.start ? `${formatDate(d.start)} – ${formatDate(d.end)}` : formatDate(from);
-  return d.days ? `${range} · ${d.days} ${d.days === 1 ? "day" : "days"}` : range;
+  return d.days && range.includes(" – ") ? `${range} · ${d.days} ${d.days === 1 ? "day" : "days"}` : range;
 }
 
 function formatValue(c: ScheduleCell): string {
   if (c.value === null || c.value === undefined || c.value === "") return "";
-  const v = typeof c.value === "number" ? formatQuantity(c.value) : c.value;
+  // Shown as the server sent it: the page never rounds or regroups a number.
+  const v = String(c.value);
   return c.unit ? `${v} ${c.unit}` : v;
 }
 
@@ -332,12 +345,18 @@ function cellText(key: string, r: ScheduleRow): string {
   return cell ? formatValue(cell) : "";
 }
 
-/** The word shown on a row that is not counted; null for accepted or edited rows. */
+/** A row that is not counted: greyed, with a word. */
+function isPending(r: ScheduleRow): boolean {
+  return !r.accepted;
+}
+
+/** The word on a row: why it is not counted, or "Edited" for a corrected value; null for plain accepted rows. */
 function rowFlag(r: ScheduleRow): string | null {
   switch (r.decision) {
     case "accepted":
-    case "edited":
       return null;
+    case "edited":
+      return "Edited";
     case "rejected":
       return "Rejected";
     case "needs_more_evidence":
@@ -369,7 +388,7 @@ function formatQuantity(n: number): string {
 function IdentifierItem({ group, onOpenDocument }: { group: IdentifierGroup; onOpenDocument: (documentId: string) => void }) {
   const [open, setOpen] = useState(false);
   const all = group.documents_with === group.documents_total;
-  const summary = group.values.length > 1 ? `${group.values.length} values` : (group.values[0]?.value ?? "Not found");
+  const summary = group.values.length > 1 ? `${group.values.length} values` : (group.values[0]?.value.trim() || "Not found");
   const count = (n: number) => `${n} ${n === 1 ? "document" : "documents"}`;
   const docLink = (d: { document_id: string; file_name: string }) => (
     <button key={d.document_id} className="s1-linklike" type="button" aria-label={`Open ${d.file_name}`} onClick={() => onOpenDocument(d.document_id)}>
@@ -392,7 +411,7 @@ function IdentifierItem({ group, onOpenDocument }: { group: IdentifierGroup; onO
           {group.values.map((v) => (
             <li key={v.value}>
               <span className="s1-sch-ids__gname">
-                {v.value} · {count(v.documents.length)}
+                {v.value.trim() ? v.value : "Not found"} · {count(v.documents.length)}
               </span>
               <span className="s1-sch-ids__docs">{v.documents.map(docLink)}</span>
             </li>
