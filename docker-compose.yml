@@ -52,6 +52,10 @@ services:
       SES_FROM_ADDRESS: no-reply@localhost
       SMTP_HOST: mailpit
       SMTP_PORT: "1025"
+      # AI suggestions stay off unless you export these (docs/backend_services.md).
+      AI_SUGGESTIONS_ENABLED: ${AI_SUGGESTIONS_ENABLED:-false}
+      AI_PROVIDER: ${AI_PROVIDER:-anthropic}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       PYTHONPATH: /app
     command: >
       sh -c "cd /app/backend

@@ -28,6 +28,9 @@ from backend.app.services.extraction_service import ExtractionService
 from backend.app.services.thermal_extractor import CANONICAL_TYPE_ID as THERMAL_TYPE_ID
 from backend.app.services.thermal_extractor import ThermalExtractor
 from backend.app.services.extraction_target_service import ExtractionTargetService
+from backend.app.adapters.parsers.email_parser import PARSER_NAME as EMAIL_PARSER_NAME
+from backend.app.adapters.parsers.email_reader import ENCRYPTED_EMAIL
+from backend.app.adapters.parsers.xls_parser import PASSWORD_PROTECTED
 from backend.app.services.parser_service import ParserService
 from backend.app.services.mobile_combustion_extractor import (
     CANONICAL_TYPE_ID as MOBFUEL_TYPE_ID,
@@ -55,6 +58,8 @@ CLASSIFIER_TARGET_STATUSES = {"classified", "multi_type_candidate"}
 HALT_UNREADABLE = "unreadable_document"
 # A photo or a scan without a text layer while OCR (Textract) is off: readable once it is on.
 HALT_OCR_REQUIRED = "ocr_required"
+# An encrypted file (a reader said ``password_protected``): readable once a copy without one arrives.
+HALT_PASSWORD_PROTECTED = "password_protected"
 PDF_PARSER_NAMES = {"pymupdf", "pdfplumber", "pdf_parser"}
 HALT_UNSUPPORTED = "unsupported_document"
 LOW_CONFIDENCE_THRESHOLD = 0.5
@@ -679,6 +684,10 @@ class PipelineOrchestrationService:
             "while OCR is off, a password-protected or corrupt file)."
         )
         codes = {str(w.get("code")) for w in (parser_output.get("warnings") or []) if isinstance(w, dict)}
+        if "password_protected" in codes:
+            if parser_output.get("parser_name") == EMAIL_PARSER_NAME:
+                return {"code": HALT_PASSWORD_PROTECTED, "message": ENCRYPTED_EMAIL}
+            return {"code": HALT_PASSWORD_PROTECTED, "message": PASSWORD_PROTECTED}
         scanned_pdf = "empty_page_text" in codes and parser_output.get("parser_name") in PDF_PARSER_NAMES
         if ("ocr_not_implemented" in codes or scanned_pdf) and not ParserService._textract_enabled():
             return {"code": HALT_OCR_REQUIRED,

@@ -11,10 +11,14 @@ from functools import lru_cache
 from typing import Literal
 from urllib.parse import urlsplit
 
-from pydantic import Field, SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Environment = Literal["local", "test", "staging", "prod"]
+# Who serves Claude: the Anthropic API (ANTHROPIC_API_KEY) or Amazon Bedrock (the
+# instance role, no key). See backend/app/adapters/llm/claude.py.
+AiProvider = Literal["anthropic", "bedrock"]
+AiEffort = Literal["low", "medium", "high"]
 
 
 class Settings(BaseSettings):
@@ -48,6 +52,24 @@ class Settings(BaseSettings):
     # or "postgres". Set in /opt/sustentra/.env; deploy.sh passes it to the api container.
     s1_store: Literal["jsonl", "postgres+jsonl", "postgres"] = "jsonl"
 
+    # How a document is read once someone asks for it (S1_PROCESSING): "inline" reads it in
+    # that request, as before, and records it as a processing run; "queued" only queues the
+    # run, for the reader process to pick up. Queued needs Postgres-backed stores (refused
+    # with jsonl below). Set in /opt/sustentra/.env like S1_STORE.
+    s1_processing: Literal["inline", "queued"] = "inline"
+
+    # The reader process (backend/app/workers/processing_reader.py) that reads the queued
+    # processing runs. It claims a run with a lease of S1_READER_LEASE_SECONDS and renews it
+    # every S1_READER_HEARTBEAT_SECONDS (at most a third of the lease); a run whose lease runs
+    # out is queued again by any reader. A read longer than S1_READER_MAX_RUN_SECONDS ends the
+    # process (the container restarts). On SIGTERM a read gets S1_READER_SHUTDOWN_GRACE_SECONDS
+    # to finish before the run is put back; keep the container's stop_grace_period above it.
+    s1_reader_poll_seconds: float = Field(default=2.0, ge=0.5, le=60)
+    s1_reader_lease_seconds: int = Field(default=120, ge=30, le=3600)
+    s1_reader_heartbeat_seconds: int = Field(default=30, ge=5, le=600)
+    s1_reader_max_run_seconds: int = Field(default=900, ge=60, le=7200)
+    s1_reader_shutdown_grace_seconds: int = Field(default=45, ge=0, le=300)
+
     # Largest S1 document upload, in MB (INFRA-007). deploy/Caddyfile allows the same
     # size on the upload route only (+1 MB for the multipart envelope); the frontend
     # mirrors it in features/s1/constants/uploads.ts.
@@ -60,10 +82,58 @@ class Settings(BaseSettings):
     # Per-IP limit shared by all /api/v1/auth/* endpoints except /me.
     auth_rate_limit: str = "100/5 minutes"
 
-    @field_validator("allowed_origins_csv")
+    # AI suggestions for documents the system cannot read on its own (docs/backend_services.md).
+    # Off by default. deploy.sh writes ANTHROPIC_API_KEY into app.env only when the
+    # SecureString /<env>/anthropic_api_key exists, so prod (no parameter) has no key.
+    ai_suggestions_enabled: bool = False
+    ai_provider: AiProvider = "anthropic"
+    # Only for AI_PROVIDER=anthropic. Bedrock signs with the instance role instead.
+    anthropic_api_key: SecretStr | None = None
+    # Claude API model id. On Bedrock the adapter adds the "anthropic." prefix. A model the
+    # adapter has no price for is refused (claude.py PRICES), so a switch forces a price check.
+    ai_model: str = "claude-sonnet-5-5"
+    # Only for AI_PROVIDER=bedrock: the full Bedrock model id, sent as given. Unset, the
+    # adapter sends "anthropic." + AI_MODEL. Prices still come from AI_MODEL.
+    ai_bedrock_model_id: str | None = None
+    ai_effort: AiEffort = "low"
+    # Per-organization monthly spend cap in USD, checked by the usage ledger (later PR).
+    # The Anthropic Console spend limit is the hard ceiling across all organizations.
+    ai_monthly_cap_usd: float = Field(default=25.0, ge=0)
+
+    @field_validator("allowed_origins_csv", "ai_model")
     @classmethod
     def _strip(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("ai_bedrock_model_id", mode="before")
+    @classmethod
+    def _blank_bedrock_id_is_unset(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value.strip() if isinstance(value, str) else value
+
+    @field_validator("anthropic_api_key", mode="before")
+    @classmethod
+    def _blank_key_is_no_key(cls, value: object) -> object:
+        # docker-compose.yml passes ANTHROPIC_API_KEY through as "" when it is unset.
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @model_validator(mode="after")
+    def _queued_reads_need_postgres_stores(self) -> Settings:
+        # With jsonl the files on one server's disk are the only copy of the S1 records, and a
+        # second process (the reader) would append to them as well.
+        if self.s1_processing == "queued" and self.s1_store == "jsonl":
+            raise ValueError("S1_PROCESSING=queued needs S1_STORE=postgres or postgres+jsonl, not jsonl.")
+        return self
+
+    @model_validator(mode="after")
+    def _reader_heartbeat_fits_the_lease(self) -> Settings:
+        # Two missed heartbeats must still leave the lease alive.
+        if self.s1_reader_heartbeat_seconds * 3 > self.s1_reader_lease_seconds:
+            raise ValueError("S1_READER_HEARTBEAT_SECONDS must be at most a third of S1_READER_LEASE_SECONDS.")
+        return self
 
     @property
     def max_upload_bytes(self) -> int:

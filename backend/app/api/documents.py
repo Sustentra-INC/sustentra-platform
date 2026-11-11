@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response
@@ -16,19 +18,32 @@ from backend.app.api.s1_access import (
     visible,
 )
 from backend.app.core.auth import CurrentUser
+from backend.app.core.config import get_settings
 from backend.app.core.security import upload_too_large_detail
-
+from backend.app.repositories.processing_run_repository import ProcessingRunRepository
 from backend.app.services.document_content_service import UnreadableContent, UnsupportedContent, document_content
 from backend.app.services.document_file_types import served_type
+from backend.app.services.document_processing_service import (
+    STILL_READING_MESSAGE,
+    DocumentProcessingService,
+    Outcome,
+    RunConflict,
+    RunParams,
+)
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
+from backend.app.services.parser_service import IMAGE_EXTENSIONS, ParserService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
+
+logger = logging.getLogger("sustentra.processing")
 
 router = APIRouter(prefix="/v1", tags=["documents"])
 
 _upload_service = DocumentUploadService()
 _pipeline_service = PipelineOrchestrationService()
 _storage_service = _upload_service.storage_service
+# The processing-run queue (migration 0015). It lives in Postgres whatever S1_STORE is.
+_run_repository: Any = ProcessingRunRepository()
 
 
 def current_upload_service() -> DocumentUploadService:
@@ -39,14 +54,19 @@ def current_pipeline_service() -> PipelineOrchestrationService:
     return _pipeline_service
 
 
+def current_run_repository() -> Any:
+    return _run_repository
+
+
 def configure_services(
     upload_service: DocumentUploadService | None = None,
     pipeline_service: PipelineOrchestrationService | None = None,
     storage_service: LocalStorageService | None = None,
+    run_repository: Any | None = None,
 ) -> None:
     """Swap module-level services for tests and local wiring."""
 
-    global _upload_service, _pipeline_service, _storage_service
+    global _upload_service, _pipeline_service, _storage_service, _run_repository
     if upload_service is not None:
         _upload_service = upload_service
         if storage_service is None:
@@ -55,6 +75,14 @@ def configure_services(
         _pipeline_service = pipeline_service
     if storage_service is not None:
         _storage_service = storage_service
+    if run_repository is not None:
+        _run_repository = run_repository
+
+
+def processing_service() -> DocumentProcessingService:
+    """The executor of processing runs, over the services in use (so tests' services apply)."""
+
+    return DocumentProcessingService(_run_repository, _upload_service, _pipeline_service, _storage_service)
 
 
 class CreateDocumentRequest(BaseModel):
@@ -78,6 +106,48 @@ class ProcessUploadedDocumentRequest(BaseModel):
 
 def _uploader(user: CurrentUser) -> str:
     return user.email
+
+
+# The images an upload may be: what the readers open (Textract's synchronous API reads PNG,
+# JPEG and TIFF). The parser also calls GIF, BMP, WebP and any other image/* an image, and
+# parse-time detection stays that way so documents already stored behave as before; new
+# uploads are held to this list. Keep in sync with READABLE_UPLOAD_EXTENSIONS and
+# READABLE_UPLOAD_TYPES in frontend/features/s1/constants/uploads.ts, and with the 415 wording
+# (frontend/features/s1/tests/uploadTypes.test.ts reads these lists and the parser's).
+UPLOAD_IMAGE_EXTENSIONS = frozenset({".png", ".jpg", ".jpeg", ".tif", ".tiff"})
+UPLOAD_IMAGE_TYPES = frozenset({"image/png", "image/jpeg", "image/tiff"})
+# Outlook messages are not read yet. The extension decides, whatever the media type: a
+# browser may call a .msg message/rfc822, which would otherwise go to the .eml reader.
+NOT_YET_READ_EXTENSIONS = frozenset({".msg"})
+
+
+def _unreadable_upload_detail(file_name: str) -> str:
+    return (
+        f"{file_name} can't be read here. Upload a PDF, Word (.docx), Excel (.xls or .xlsx), CSV or text file, "
+        "an email (.eml), or a scan or photo (PNG, JPG or TIFF)."
+    )
+
+
+def _is_readable_upload(file_name: str, mime_type: str | None) -> bool:
+    # Same detection the parser runs (extension first, then mime type), narrowed for images
+    # to the formats the readers open.
+    path = Path(file_name)
+    if path.suffix.lower() in NOT_YET_READ_EXTENSIONS:
+        return False
+    kind = ParserService.parser_kind(path, mime_type)
+    if kind != "image":
+        return kind is not None
+    suffix = path.suffix.lower()
+    if suffix in IMAGE_EXTENSIONS:  # the parser went by the extension
+        return suffix in UPLOAD_IMAGE_EXTENSIONS
+    return (mime_type or "").split(";", 1)[0].strip().lower() in UPLOAD_IMAGE_TYPES
+
+
+def _require_readable(file_name: str, mime_type: str | None) -> None:
+    # A file no reader can open is refused before anything is stored, so it never becomes
+    # blocked evidence.
+    if not _is_readable_upload(file_name, mime_type):
+        raise HTTPException(status_code=415, detail=_unreadable_upload_detail(file_name))
 
 
 def _require_evidence_slot(evidence_id: str | None, user: CurrentUser) -> None:
@@ -116,6 +186,28 @@ def create_document(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _queue_first_read(document: dict, user: CurrentUser) -> dict:
+    """Queued mode: the upload asks for the first read and answers at once with the queued run.
+    If the run can't be queued, the upload still succeeds and the client asks for the read."""
+    from backend.app.api.processing_runs import run_view  # processing_runs imports this module
+
+    service = processing_service()
+    try:
+        run, created = service.request(document=document, org_id=org_of(user),
+                                       requested_by=_uploader(user), params=RunParams())
+        if created:
+            service.mark_queued(run)
+        view = run_view(run)
+    except Exception as exc:
+        # The type only, never the text or a traceback: SQL errors carry their parameters (the uploader's email).
+        logger.error(
+            "upload_read_not_queued",
+            extra={"document_id": document.get("document_id"), "error_type": type(exc).__name__},
+        )
+        return document
+    return {**document, "processing_status": "queued", "processing_run": view}
+
+
 @router.post("/engagements/{engagement_id}/documents/upload")
 async def upload_document(
     request: Request,
@@ -132,6 +224,8 @@ async def upload_document(
     _require_evidence_slot(evidence_id, user)
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file name is required.")
+    mime_type = file.content_type or "application/octet-stream"
+    _require_readable(file.filename, mime_type)
     max_bytes = int(request.app.state.max_upload_bytes)  # INFRA-007, set by create_app
     if file.size is not None and file.size > max_bytes:
         raise HTTPException(status_code=413, detail=upload_too_large_detail(max_bytes))
@@ -139,8 +233,7 @@ async def upload_document(
         content = await file.read()
         if len(content) > max_bytes:
             raise HTTPException(status_code=413, detail=upload_too_large_detail(max_bytes))
-        mime_type = file.content_type or "application/octet-stream"
-        return _upload_service.upload_document(
+        document = _upload_service.upload_document(
             engagement_id=engagement_id,
             file_name=file.filename,
             content=content,
@@ -153,6 +246,7 @@ async def upload_document(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return _queue_first_read(document, user) if get_settings().s1_processing == "queued" else document
 
 
 @router.get("/engagements/{engagement_id}/documents")
@@ -350,59 +444,58 @@ def failed_run_error(run: dict) -> HTTPException:
     return HTTPException(status_code=500, detail=run.get("errors") or ["Pipeline run failed."])
 
 
+def processable_document(document_id: str, user: CurrentUser) -> dict:
+    """The document a writer asks to have read: visible to them (404 otherwise), with its
+    file stored in their organization's folder (400 otherwise)."""
+
+    document = require_visible(_upload_service.get_document(document_id), user, "Document not found.")
+    storage_uri = str(document.get("storage_uri"))
+    if not _storage_service.is_owned_by(storage_uri, org_of(user)) or not _storage_service.exists(storage_uri):
+        raise HTTPException(status_code=400, detail="Stored document file is missing.")
+    return document
+
+
+def outcome_response(outcome: Outcome) -> dict:
+    """What POST .../pipeline/process has always answered for a read: the pipeline's result,
+    or 400 (refused input), 404 (document gone), 422 (a halt) and 500 (anything else)."""
+
+    if outcome.status == "completed":
+        return outcome.result
+    if outcome.error_code == "invalid_request":
+        raise HTTPException(status_code=400, detail=outcome.detail or outcome.error)
+    if outcome.error_code == "document_missing":
+        raise HTTPException(status_code=404, detail="Document not found.")
+    if outcome.error_code == "file_missing":
+        raise HTTPException(status_code=400, detail="Stored document file is missing.")
+    if outcome.status == "retry":
+        raise HTTPException(status_code=500, detail=f"Pipeline processing failed: {outcome.detail}")
+    raise failed_run_error(outcome.pipeline_run)
+
+
 @router.post("/documents/{document_id}/pipeline/process")
 def process_uploaded_document(
     document_id: str,
     payload: ProcessUploadedDocumentRequest,
     user: CurrentUser = Depends(s1_writer),
 ) -> dict:
-    document = require_visible(_upload_service.get_document(document_id), user, "Document not found.")
-    org_id = org_of(user)
+    """Read the document now and answer with the pipeline's result. Kept for local tools and
+    tests (POST .../processing-runs is the run-based call); it reads through the same
+    executor, always inline, and the read is recorded as a processing run."""
 
-    storage_uri = document.get("storage_uri")
-    if not _storage_service.is_owned_by(str(storage_uri), org_id):
-        raise HTTPException(status_code=400, detail="Stored document file is missing.")
+    document = processable_document(document_id, user)
+    service = processing_service()
+    params = RunParams(
+        canonical_type_id_override=payload.canonical_type_id_override,
+        include_optional=payload.include_optional,
+        include_deprecated=payload.include_deprecated,
+        persist_run=payload.persist_run,
+    )
     try:
-        local_path = _storage_service.resolve_storage_uri(str(storage_uri))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    if not local_path.exists() or not local_path.is_file():
-        raise HTTPException(status_code=400, detail="Stored document file is missing.")
-
-    try:
-        _upload_service.update_processing_status(document_id, "in_progress")
-    except (KeyError, ValueError) as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    try:
-        result = _pipeline_service.process_local_document(
-            local_file_path=str(local_path),
-            engagement_id=str(document["engagement_id"]),
-            evidence_id=document.get("evidence_id"),
-            document_id=str(document["document_id"]),
-            file_name=document.get("file_name"),
-            mime_type=document.get("mime_type"),
-            canonical_type_id_override=payload.canonical_type_id_override,
-            include_optional=payload.include_optional,
-            include_deprecated=payload.include_deprecated,
-            persist_run=payload.persist_run,
-            org_id=org_id,
-        )
-    except ValueError as exc:
-        _upload_service.update_processing_status(document_id, "failed")
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:  # pragma: no cover - safety path
-        _upload_service.update_processing_status(document_id, "failed")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Pipeline processing failed: {exc}",
-        ) from exc
-
-    run = result.get("pipeline_run", {})
-    if run.get("status") == "failed":
-        _upload_service.update_processing_status(document_id, "failed")
-        raise failed_run_error(run)
-
-    _upload_service.update_processing_status(document_id, "completed")
-    return result
+        run, _created = service.request(document=document, org_id=org_of(user), requested_by=_uploader(user),
+                                        params=params)
+    except RunConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    _run, outcome = service.run_inline(run)
+    if outcome is None:  # another request (or the reader) is reading it right now
+        raise HTTPException(status_code=409, detail=STILL_READING_MESSAGE)
+    return outcome_response(outcome)

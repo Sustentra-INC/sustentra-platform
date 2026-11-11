@@ -266,6 +266,7 @@ export function SetupScreen({
               <div className="s1-fac__row" key={f.facilityId}>
                 <input aria-label="Facility name" value={f.name} onChange={(e) => renameFacility(f.facilityId, e.target.value)} />
                 <input
+                  className="s1-fac__address"
                   aria-label="Street address"
                   placeholder="e.g. 15 State Street, Albany, NY"
                   value={f.address ?? ""}
@@ -273,6 +274,7 @@ export function SetupScreen({
                 />
                 {gridRegions ? (
                   <select
+                    className="s1-fac__region"
                     aria-label="Grid region"
                     value={f.gridRegion ?? ""}
                     onChange={(e) => patchFacility(f.facilityId, { gridRegion: e.target.value || undefined })}
@@ -373,7 +375,7 @@ export function SetupScreen({
               />
               <input
                 aria-label="Login"
-                className="s1-num"
+                className="s1-num s1-setup-row__login"
                 value={m.login}
                 onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, login: e.target.value } : t)))}
               />

@@ -17,6 +17,8 @@ import { qualityIssueLines } from "./QualityChecksPanel";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { formatPeriod } from "../utils/formatPeriod";
+import { UPLOAD_ACCEPT } from "../constants/uploads";
+import { andThen, NOT_SAVED_TITLE, problemText, settle, useStillOpen, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 
 /**
@@ -73,12 +75,21 @@ const TYPE_ORDER: string[] = [
 
 const SET_TYPE_OPTIONS = TYPE_ORDER.filter((type) => type !== "Type unresolved");
 
+/** A problem the Evidence banner shows: a plain title saying what didn't work, then the details. */
+export interface WorkspaceProblem {
+  title: string;
+  message: string;
+}
+
 interface EvidenceWorkspaceProps {
   engagement: EngagementConfig;
   evidence: EvidenceItem[];
   asks: Ask[];
-  onSaveAsk: (draft: AskDraft) => void;
-  onResolveAsk?: (askId: string) => void;
+  /** Either may answer after the server has: the window waits, and says so if the change fails. */
+  onSaveAsk: (draft: AskDraft) => MaybePromise<unknown>;
+  onResolveAsk?: (askId: string) => MaybePromise<void>;
+  /** The server records who raised a request: the Add to requests window does not ask. */
+  serverRecordsActor?: boolean;
   /** Lifts manual edits (set type/facility, note, withdraw, mark relationship)
    *  to app state so they survive navigation. Same pattern as the other stores. */
   onEvidenceChange: (updater: (cur: EvidenceItem[]) => EvidenceItem[]) => void;
@@ -94,7 +105,8 @@ interface EvidenceWorkspaceProps {
   typeOptions?: string[];
   /** Data quality checks (duplicates, overlaps, cross-year bills) shown in the Issue column. */
   qualityChecks?: QualityCheck[];
-  backendError?: string | null;
+  /** What didn't work (the title) and the details, e.g. one line per file that wasn't uploaded. */
+  backendError?: WorkspaceProblem | null;
   demoState?: ContainerState;
   auditIntents?: SessionAuditEntry[];
   onAuditIntent?: (intent: SessionAuditEntry) => void;
@@ -109,6 +121,7 @@ export function EvidenceWorkspace({
   asks,
   onSaveAsk,
   onResolveAsk,
+  serverRecordsActor = false,
   onEvidenceChange,
   onOpenExtraction,
   onOpenRequests,
@@ -149,6 +162,9 @@ export function EvidenceWorkspace({
   const [noteDraft, setNoteDraft] = useState("");
   const [modalDoc, setModalDoc] = useState<EvidenceItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // A change to a request that did not go through (resolving the request a file answers).
+  const [actionProblem, setActionProblem] = useState<string | null>(null);
+  const modalDocOpen = useStillOpen(modalDoc);
   const toastTimer = useRef<number | null>(null);
 
   function flash(message: string) {
@@ -185,7 +201,7 @@ export function EvidenceWorkspace({
     () => ({
       needs: active.filter(needsYou).length,
       arrived: active.filter((i) => i.arrivedSinceLastVisit).length,
-      blocked: active.filter((i) => i.processingState === "blocked").length,
+      blocked: active.filter(isBlocked).length,
     }),
     [active]
   );
@@ -205,7 +221,7 @@ export function EvidenceWorkspace({
       }
       if (headerFilter === "needs" && !needsYou(item)) return false;
       if (headerFilter === "arrived" && !item.arrivedSinceLastVisit) return false;
-      if (headerFilter === "blocked" && item.processingState !== "blocked") return false;
+      if (headerFilter === "blocked" && !isBlocked(item)) return false;
       return true;
     });
   }, [items, facilityFilter, headerFilter]);
@@ -297,9 +313,15 @@ export function EvidenceWorkspace({
       flash("No open request on this file to resolve");
       return;
     }
-    onResolveAsk?.(ask.id);
-    record("answers_request", documentId, `request ${ask.requestNumber}`, "resolved");
-    flash(`Resolved request ${ask.requestNumber}`);
+    setActionProblem(null);
+    settle(
+      () => onResolveAsk?.(ask.id),
+      () => {
+        record("answers_request", documentId, `request ${ask.requestNumber}`, "resolved");
+        flash(`Resolved request ${ask.requestNumber}`);
+      },
+      (error) => setActionProblem(problemText(error))
+    );
   }
 
   function withdraw(documentId: string) {
@@ -317,9 +339,13 @@ export function EvidenceWorkspace({
   }
 
   function submitAsk(draft: AskDraft) {
-    onSaveAsk(draft);
-    setModalDoc(null);
-    flash("Added to requests · not yet sent");
+    const mine = modalDoc;
+    return andThen(onSaveAsk(draft), () => {
+      // A window opened since is not this one: leave it, and say nothing of it.
+      if (!modalDocOpen(mine)) return;
+      setModalDoc(null);
+      flash("Added to requests · not yet sent");
+    });
   }
 
   const showEmpty = activeCount === 0;
@@ -359,8 +385,15 @@ export function EvidenceWorkspace({
 
       {backendError ? (
         <div className="s1-system-banner" role="status">
-          <strong>Backend call failed</strong>
-          <span>{backendError}</span>
+          <strong>{backendError.title}</strong>
+          <span>{backendError.message}</span>
+        </div>
+      ) : null}
+
+      {actionProblem ? (
+        <div className="s1-system-banner" role="alert">
+          <strong>{NOT_SAVED_TITLE}</strong>
+          <span>{actionProblem}</span>
         </div>
       ) : null}
 
@@ -554,6 +587,7 @@ export function EvidenceWorkspace({
           engagement={engagement}
           onCancel={() => setModalDoc(null)}
           onAdd={submitAsk}
+          serverRecordsActor={serverRecordsActor}
         />
       ) : null}
 
@@ -847,7 +881,7 @@ function statusMix(items: EvidenceItem[]): Array<{ role: string; label: string; 
   };
   for (const item of items) {
     if (item.disposition === "withdrawn") bump("na");
-    else if (item.processingState === "blocked") bump("blocking");
+    else if (isBlocked(item)) bump("blocking");
     else if (needsYou(item)) bump("open");
     else if (item.processingState === "extracted") bump("resolved");
     else bump("active");
@@ -1010,6 +1044,7 @@ function FirstDayEmpty({ onUploadFiles, isUploading }: { onUploadFiles?: (files:
           className="s1-file-input"
           type="file"
           multiple
+          accept={UPLOAD_ACCEPT}
           onChange={(e) => {
             if (e.target.files?.length && onUploadFiles) onUploadFiles(e.target.files);
           }}
@@ -1082,8 +1117,15 @@ function sortDocs(items: EvidenceItem[]): EvidenceItem[] {
   return [...items].sort((a, b) => (a.periodStart ?? "").localeCompare(b.periodStart ?? ""));
 }
 
+/** Blocked, and not being read again: a row that is being read says so, and its earlier failure
+ *  is not shown or counted until the read ends. */
+function isBlocked(item: EvidenceItem): boolean {
+  return item.processingState === "blocked" && !item.reading;
+}
+
 function needsYou(item: EvidenceItem): boolean {
   if (item.disposition !== "active") return false;
+  if (item.reading) return false;
   if (item.processingState === "blocked") return true;
   if (item.detectedType == null || item.typeReviewBand === "cannot_determine" || item.typeReviewBand === "needs_review")
     return true;
@@ -1096,6 +1138,8 @@ function needsYou(item: EvidenceItem): boolean {
 
 function processingDisplay(item: EvidenceItem): { role: string; label: string; sub: string | null } {
   if (item.disposition === "withdrawn") return { role: "na", label: "Withdrawn", sub: null };
+  if (item.reading)
+    return { role: "active", label: "Reading…", sub: item.reading === "queued" ? "Waiting to be read" : null };
   if (item.processingState === "blocked") return { role: "blocking", label: "Blocked", sub: item.haltReason };
   if (
     item.processingState === "extracted" &&
@@ -1118,7 +1162,7 @@ function processingDisplay(item: EvidenceItem): { role: string; label: string; s
 function issueLines(item: EvidenceItem, all: EvidenceItem[], engagement: EngagementConfig): string[] {
   if (item.disposition === "withdrawn") return [];
   const lines: string[] = [];
-  if (item.processingState === "blocked" && item.haltReason) lines.push(item.haltReason);
+  if (isBlocked(item) && item.haltReason) lines.push(item.haltReason);
   if (
     item.processingState === "extracted" &&
     item.fieldsExpectedDisplay != null &&
@@ -1142,7 +1186,9 @@ function issueLines(item: EvidenceItem, all: EvidenceItem[], engagement: Engagem
 
 function periodOutsideYear(item: EvidenceItem, engagement: EngagementConfig): boolean {
   if (item.periodState !== "resolved" || !item.periodStart || !item.periodEnd) return false;
-  return item.periodEnd < engagement.reportingPeriod.start || item.periodStart > engagement.reportingPeriod.end;
+  // A date the engagement has not set yet bounds nothing.
+  const { start, end } = engagement.reportingPeriod;
+  return Boolean((start && item.periodEnd < start) || (end && item.periodStart > end));
 }
 
 function latestAsk(asks: Ask[], documentId: string): Ask | null {

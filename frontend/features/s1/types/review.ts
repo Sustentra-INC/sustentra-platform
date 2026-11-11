@@ -1,8 +1,9 @@
 import type { SourceAnchor } from "../utils/sourceAnchor";
 import type { RequestType } from "./requests";
 
-/** Scope placement of a value. Line 2 of a card never goes blank. */
-export type ScopePlacement = "general" | "scope1" | "scope2_location" | "scope2_market" | "not_placed";
+/** Scope placement of a value. Line 2 of a card never goes blank. `scope2_both`: one reading
+ *  that feeds Scope 2 location- and market-based alike (a backend electricity quantity). */
+export type ScopePlacement = "general" | "scope1" | "scope2_location" | "scope2_market" | "scope2_both" | "not_placed";
 
 export type ValueReviewState = "to_review" | "accepted" | "corrected" | "requested";
 
@@ -14,6 +15,10 @@ export interface ValueRecordEntry {
   at: string;
   action: string;
   reason?: string;
+  /** The ask this entry added the value to, so the card can say whether it was sent. */
+  askId?: string;
+  /** The ask whose outcome (resolved, withdrawn) this entry records. */
+  outcomeOf?: string;
 }
 
 /** A value drawn on its document in the source pane: clicking it selects the value. A PDF
@@ -93,4 +98,11 @@ export interface ReviewValue {
   reviewToken?: string;
   /** The extractor did not find this value on the document; the reviewer can enter it. */
   missing?: boolean;
+  /**
+   * Backend values: the value as the document prints it, when that reads differently from
+   * `value` ("01 Feb 2025" for 2025-02-01, "182,400" kWh for 182.4 MWh). The card shows it;
+   * `value` and `unit` stay what Accept and Correct record. `converted`: the unit was converted
+   * for the calculation, so the card also shows the value the calculation uses.
+   */
+  asPrinted?: { value: string; unit: string; converted?: boolean };
 }

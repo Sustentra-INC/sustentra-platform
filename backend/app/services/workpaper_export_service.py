@@ -10,7 +10,8 @@ Findings, Left out.
 from __future__ import annotations
 
 import io
-from datetime import UTC, datetime
+import re
+from datetime import UTC, date, datetime
 from typing import Any
 
 from openpyxl import Workbook
@@ -90,6 +91,38 @@ def _when(value: Any) -> str:
     return str(value or "")[:19].replace("T", " ")
 
 
+_MONTH_ABBR = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_ISO_DAY = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
+
+
+def _day(value: Any) -> str:
+    """One date as a person reads it, "Oct 8, 2026" (en-US); anything else as it was given."""
+    if isinstance(value, date):
+        return f"{_MONTH_ABBR[value.month - 1]} {value.day}, {value.year}"
+    text = str(value)
+    match = _ISO_DAY.match(text)
+    if not match:
+        return text
+    year, month, day = (int(part) for part in match.groups())
+    if not 1 <= month <= 12 or not 1 <= day <= 31:
+        return text
+    return f"{_MONTH_ABBR[month - 1]} {day}, {year}"
+
+
+def format_reporting_period(start: Any, end: Any) -> str:
+    """The reporting period in the words the Output screen uses (frontend formatReportingPeriod),
+    so the screen and its download agree: "Oct 8, 2026 – Dec 31, 2026", or the missing date
+    named in its place while the engagement is still being set up."""
+
+    if start and end:
+        return f"{_day(start)} – {_day(end)}"
+    if start:
+        return f"{_day(start)} – end date not set"
+    if end:
+        return f"start date not set – {_day(end)}"
+    return "Reporting period not set"
+
+
 def _missing(items: list[dict[str, Any]] | None, labels: dict[str, str]) -> str:
     return "; ".join(f"{labels.get(m.get('source', ''), m.get('source'))}: "
                      f"{_MISSING.get(str(m.get('reason')), m.get('reason'))}" for m in items or [])
@@ -103,26 +136,28 @@ def _rollup_sheets(book: Workbook, rollup: dict[str, Any]) -> None:
     _sheet(
         book, "Final outputs",
         ["Workbook row", "Data point", "Requirement", "Unit", "Reported", "Recalculated", "Difference",
-         "Difference %", "Within threshold", "Outcome", "Why", "Completeness", "Missing"],
+         "Difference %", "Within threshold", "Outcome", "Why", "Completeness", "Missing", "Counted as 0"],
         [[o.get("workbook_row"), o.get("label"), o.get("requirement"), o.get("unit"), o.get("reported"),
           o.get("recalculated"), o.get("difference"), o.get("difference_pct"),
           {True: "yes", False: "no"}.get(o.get("within_threshold"), ""),
           _STATUS.get(str(o.get("status")), o.get("status")), _REASON.get(str(o.get("reason")), o.get("reason")),
-          _NODE_STATUS.get(str(o.get("completeness")), o.get("completeness")), _missing(o.get("missing"), labels)]
+          _NODE_STATUS.get(str(o.get("completeness")), o.get("completeness")), _missing(o.get("missing"), labels),
+          _missing(o.get("counted_as_zero"), labels)]
          for o in rollup.get("final_outputs") or []],
-        [12, 52, 12, 10, 14, 14, 14, 13, 10, 40, 44, 14, 60],
+        [12, 52, 12, 10, 14, 14, 14, 13, 10, 40, 44, 14, 60, 60],
     )
     nodes = rollup.get("nodes") or {}
     steps = {step.get("key"): step.get("label") for step in rollup.get("steps") or []}
     order = [key for step in rollup.get("steps") or [] for key in step.get("node_keys") or []]
     _sheet(
         book, "Roll-up",
-        ["Step", "Line", "t CO2e", "t of gas", "Status", "Adds up", "Missing", "Notes"],
+        ["Step", "Line", "t CO2e", "t of gas", "Status", "Adds up", "Missing", "Notes", "Counted as 0"],
         [[steps.get(nodes[key].get("step"), nodes[key].get("step")), nodes[key].get("label"), nodes[key].get("co2e_t"),
           nodes[key].get("mass_t"), _NODE_STATUS.get(str(nodes[key].get("status")), nodes[key].get("status")),
-          nodes[key].get("formula"), _missing(nodes[key].get("missing"), labels), ", ".join(nodes[key].get("flags") or [])]
+          nodes[key].get("formula"), _missing(nodes[key].get("missing"), labels), ", ".join(nodes[key].get("flags") or []),
+          _missing(nodes[key].get("counted_as_zero"), labels)]
          for key in order if key in nodes],
-        [40, 52, 14, 12, 14, 52, 60, 40],
+        [40, 52, 14, 12, 14, 52, 60, 40, 60],
     )
     _sheet(
         book, "Categories",
@@ -161,8 +196,8 @@ def build_workbook(
     summary: list[list[Any]] = [
         ["Engagement", engagement.get("name")],
         ["Company", engagement.get("client_name")],
-        ["Reporting period", f"{engagement.get('reporting_period_start') or '?'} to "
-                             f"{engagement.get('reporting_period_end') or '?'}"],
+        ["Reporting period", format_reporting_period(engagement.get("reporting_period_start"),
+                                                     engagement.get("reporting_period_end"))],
         ["Regulation", settings.get("regulation")],
         ["Assurance level", settings.get("assuranceLevel")],
         ["Assurance standard", settings.get("assuranceStandard")],
@@ -175,7 +210,8 @@ def build_workbook(
         ["Scope 2 market-based recalculated (t CO2e)", total("scope2_market")],
         *([["Inventory total, location-based (t CO2e)", node("inventory_location_total")],
            ["Inventory total, market-based (t CO2e)", node("inventory_market_total")]] if rollup else []),
-        ["Documents with reviewed values", recalculation.get("documents_considered")],
+        ["Documents read", recalculation.get("documents_considered")],
+        ["Documents fully reviewed", recalculation.get("documents_reviewed")],
         ["Status", "Draft working paper, not an assurance opinion"],
         ["Exported", f"{datetime.now(UTC):%Y-%m-%d %H:%M} UTC by {exported_by}"],
     ]

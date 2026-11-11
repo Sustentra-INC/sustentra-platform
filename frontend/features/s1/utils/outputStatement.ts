@@ -1,5 +1,13 @@
-import type { ResultLine } from "../types/verificationResults";
-import { buildResultBoxes, differs, facilityRecomputed, facilityReported, lineRecomputed, lineReported } from "./verificationTable";
+import type { ResultBoxKey, ResultBoxTotal, ResultLine, ResultState } from "../types/verificationResults";
+import {
+  buildResultBoxes,
+  differs,
+  facilityRecomputed,
+  facilityReported,
+  lineRecomputed,
+  lineReported,
+  RESULT_BOXES,
+} from "./verificationTable";
 
 /**
  * The statement on Output, from the same results as Verification results: what the client
@@ -103,5 +111,215 @@ export function statementFigures(lines: ResultLine[], materialityThreshold?: str
       .filter((b) => Math.abs(b.totals.pctMaterial) >= materiality)
       .map((b) => ({ title: b.title, pctMaterial: b.totals.pctMaterial })),
     findings,
+  };
+}
+
+/* ------------------------------ the live statement ------------------------------ */
+
+/**
+ * Output in backend mode: the same statement from the live results (Verification results'
+ * lines and box totals), where a reported value may be missing and a total may still be
+ * partial. Nothing is filled in: a missing value stays missing, and a state says why.
+ */
+
+/** An inventory total (Scope 1 + Scope 2 on one basis). */
+export interface InventoryTotal {
+  /** Both reported scope totals added; null while either is not entered. */
+  reported: number | null;
+  /** The roll-up's inventory total; null when not available. */
+  recomputed: number | null;
+  /** Open work remains, so the recalculated total is a lower bound. */
+  partial: boolean;
+}
+
+export interface LiveStatementRow {
+  label: string;
+  basis: string;
+  reported: number | null;
+  /** Why there is no reported value: "Not entered", "Total only". */
+  reportedNote: string | null;
+  verified: number | null;
+  /** null when a state stands instead (partial, no evidence) or a value is missing. */
+  outcome: StatementRow["outcome"] | null;
+  state: ResultState | null;
+  /** A scope total. */
+  total: boolean;
+}
+
+export interface LiveDifference {
+  label: string;
+  difference: number;
+  /** A fraction of the base the outcome is judged on (null for a reported 0). */
+  pct: number | null;
+  /** That base: a line's box ("Scope 1"), whose reported total its % material is of; null for a total's own. */
+  pctOf: string | null;
+  /**
+   * Why there is no %: the value itself is reported as 0 ("self"), or the scope total a line
+   * is judged on is ("scope"); null when there is a %.
+   */
+  zero: "self" | "scope" | null;
+  outcome: StatementRow["outcome"] | null;
+  state: ResultState | null;
+}
+
+export interface LiveStatementFigures {
+  location: InventoryTotal;
+  market: InventoryTotal;
+  /** Recalculated minus reported, location-based; null until both are there and both boxes conclude. */
+  misstatement: number | null;
+  misstatementPct: number | null;
+  /**
+   * Why the misstatement is not compared yet ("Reported total not entered", "Open items remain
+   * in Scope 1 or Scope 2 (location-based)"); null when it is.
+   */
+  misstatementReason: string | null;
+  /** A fraction, e.g. 0.05. */
+  materiality: number;
+  materialityTonnes: number | null;
+  /** What the threshold is a share of: the reported total, or the recalculated one while it is not entered. */
+  materialityBase: "reported" | "recalculated" | null;
+  rows: LiveStatementRow[];
+  /** Boxes compared above materiality (strictly, as the backend); pctMaterial null when the reported total is 0. */
+  materialBoxes: { title: string; pctMaterial: number | null; difference: number }[];
+  /** Boxes that cannot be compared yet, with why. */
+  openBoxes: { title: string; state: ResultState }[];
+  /** Every compared value whose difference does not round to zero, largest first. */
+  differences: LiveDifference[];
+}
+
+const BOX_TITLE = Object.fromEntries(RESULT_BOXES.map((b) => [b.key, b])) as Record<ResultBoxKey, (typeof RESULT_BOXES)[number]>;
+
+export function liveStatementFigures(
+  lines: ResultLine[],
+  boxTotals: Partial<Record<ResultBoxKey, ResultBoxTotal>>,
+  inventory: { location: InventoryTotal; market: InventoryTotal },
+  /** The engagement's tolerance, a percentage (5 for ±5%). */
+  tolerancePct: number
+): LiveStatementFigures {
+  const materiality = tolerancePct / 100;
+  // Strictly above materiality, as the backend judges a total (exceeds_tolerance); a reported 0
+  // that the evidence does not match counts as above it, as the backend calls it (reported_zero).
+  const outcome = (difference: number, base: number | null): StatementRow["outcome"] =>
+    !differs(difference)
+      ? "agrees"
+      : base === 0 || (base !== null && Math.abs(difference / base) > materiality)
+        ? "material"
+        : "differs";
+
+  const rows: LiveStatementRow[] = [];
+  const differences: LiveDifference[] = [];
+  /**
+   * The same rule as Verification results: a line compares unless it is `inconclusive`
+   * (still partial, or out of scope); a box unless it has a state. A line's other states
+   * (None at the client, a partial value already beyond its reported one) still compare.
+   * Only what compares, and differs, is a difference found.
+   */
+  const compare = (
+    label: string,
+    reported: number | null,
+    verified: number | null,
+    comparable: boolean,
+    base: number | null,
+    /** What `base` is: a line's box (its % material), or null for a total's own reported value. */
+    pctOf: string | null,
+    state: ResultState | null
+  ) => {
+    if (reported === null || verified === null || !comparable) return null;
+    const result = outcome(verified - reported, base);
+    if (result !== "agrees") {
+      // The % stated is the one the outcome is judged on, so the line never contradicts itself.
+      const difference = verified - reported;
+      const zero = reported === 0 ? "self" : base === 0 ? "scope" : null;
+      differences.push({ label, difference, pct: base ? difference / base : null, pctOf, zero, outcome: result, state });
+    }
+    return result;
+  };
+
+  for (const key of ["scope1", "scope2_location", "scope2_market"] as const) {
+    const total = boxTotals[key];
+    const basis = key === "scope2_location" ? "Location-based" : key === "scope2_market" ? "Market-based" : "";
+    // Lines with values, and lines with only a state (not in scope, no reviewed evidence,
+    // not calculated yet), which keep their row and chip.
+    const own = lines.filter((l) => l.box === key && (l.facilities || l.state));
+    // A line's % material is of its box's reported total, as on Verification results.
+    const rowsReported = own.reduce((sum, l) => sum + (lineReported(l) ?? 0), 0);
+    const boxBase = total?.reported ?? rowsReported;
+    for (const line of own) {
+      const label = key === "scope1" ? `Scope 1 · ${(line.category ?? "other").toLowerCase()}` : `Scope 2 · ${line.activity.toLowerCase()}`;
+      const reported = lineReported(line);
+      const verified = lineRecomputed(line);
+      const state = line.state ?? null;
+      rows.push({
+        label,
+        basis: key === "scope1" ? line.activity : basis,
+        reported,
+        reportedNote: reported === null ? line.reportedNote ?? "Not entered" : null,
+        verified,
+        outcome: compare(
+          key === "scope1" ? label : `${label} (${basis.toLowerCase()})`,
+          reported,
+          verified,
+          !line.inconclusive,
+          reported === 0 ? 0 : boxBase,
+          BOX_TITLE[key].title,
+          state
+        ),
+        state,
+        total: false,
+      });
+    }
+    if (total) {
+      const { totalLabel } = BOX_TITLE[key];
+      rows.push({
+        label: totalLabel,
+        basis: "",
+        reported: total.reported,
+        reportedNote: total.reported === null ? "Not entered" : null,
+        verified: total.recomputed,
+        outcome: compare(totalLabel, total.reported, total.recomputed, !total.state, total.reported, null, total.state ?? null),
+        state: total.state ?? null,
+        total: true,
+      });
+    }
+  }
+
+  const { location } = inventory;
+  // Not compared while a reported scope total is missing, the inventory is partial, or either
+  // of its boxes cannot conclude with its reported total entered; the tile says which.
+  const openBox = [boxTotals.scope1, boxTotals.scope2_location].some((b) => b?.state && b.reported !== null);
+  const reasons = [
+    location.reported === null ? "Reported total not entered" : "",
+    location.recomputed === null ? "Nothing recalculated yet" : "",
+    location.partial || openBox ? "Open items remain in Scope 1 or Scope 2 (location-based)" : "",
+  ].filter(Boolean);
+  const misstatementReason = reasons.length ? reasons.join(" · ") : null;
+  const misstatement =
+    misstatementReason === null && location.reported !== null && location.recomputed !== null
+      ? location.recomputed - location.reported
+      : null;
+  const base = location.reported ?? location.recomputed;
+  const scopes = (["scope1", "scope2_location", "scope2_market"] as const).map((key) => ({ key, total: boxTotals[key] }));
+  return {
+    location,
+    market: inventory.market,
+    misstatement,
+    misstatementPct: misstatement !== null && location.reported ? misstatement / location.reported : null,
+    misstatementReason,
+    materiality,
+    materialityTonnes: base === null ? null : materiality * base,
+    materialityBase: location.reported !== null ? "reported" : location.recomputed !== null ? "recalculated" : null,
+    rows,
+    materialBoxes: scopes.flatMap(({ key, total }) =>
+      total && !total.state && total.reported !== null && total.recomputed !== null &&
+      outcome(total.recomputed - total.reported, total.reported) === "material"
+        ? [{
+            title: BOX_TITLE[key].title,
+            pctMaterial: total.reported ? (total.recomputed - total.reported) / total.reported : null,
+            difference: total.recomputed - total.reported,
+          }]
+        : []
+    ),
+    openBoxes: scopes.flatMap(({ key, total }) => (total?.state ? [{ title: BOX_TITLE[key].title, state: total.state }] : [])),
+    differences: differences.sort((a, b) => Math.abs(b.difference) - Math.abs(a.difference)),
   };
 }

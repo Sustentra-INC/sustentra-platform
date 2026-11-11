@@ -1,5 +1,6 @@
 import copy
 import json
+from pathlib import Path
 
 import pytest
 
@@ -741,3 +742,96 @@ def test_a_photo_or_scan_says_it_needs_ocr_while_textract_is_off(monkeypatch):
     assert PipelineOrchestrationService._unreadable_halt(corrupt)["code"] == "unreadable_document"
     monkeypatch.setenv("TEXTRACT_ENABLED", "true")  # with OCR on, a scan that still fails is unreadable
     assert PipelineOrchestrationService._unreadable_halt(scan)["code"] == "unreadable_document"
+
+
+def test_a_password_protected_file_says_so_and_what_to_ask_for():
+    from backend.app.adapters.parsers.xls_parser import PASSWORD_PROTECTED
+    from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
+
+    locked = {"status": "failed", "parser_name": "xlrd",
+              "warnings": [{"code": "password_protected", "message": PASSWORD_PROTECTED}]}
+    # The Evidence row's sentence is the source pane's (the reader's own), word for word.
+    assert PipelineOrchestrationService._unreadable_halt(locked) == {
+        "code": "password_protected",
+        "message": "This file is password-protected, so it could not be read. Ask the client for a copy without "
+                   "a password.",
+    }
+    assert PipelineOrchestrationService._unreadable_halt(locked)["message"] == PASSWORD_PROTECTED
+    encrypted_email = {**locked, "parser_name": "email_parser"}
+    assert PipelineOrchestrationService._unreadable_halt(encrypted_email) == {
+        "code": "password_protected",
+        "message": "This email is encrypted. Ask the client to send it without encryption, or upload its "
+                   "attachments on their own.",
+    }
+
+
+@pytest.mark.parametrize("name", ["XLSX-FUEL-001", "XLSX-MULTI-002"])
+def test_an_xls_fuel_log_gives_the_same_values_as_the_same_xlsx(tmp_path, name):
+    # The whole pipeline (targets, extraction, records) on a real fuel log and its .xls twin.
+    from openpyxl import load_workbook
+
+    from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
+    from backend.tests.adapters.parsers._xls_builder import xls_bytes
+
+    xlsx = Path(__file__).resolve().parents[3] / "parser_reliability_test_set" / "raw_documents" / "excel" / f"{name}.xlsx"
+    book = load_workbook(xlsx, data_only=True)
+    xls = tmp_path / f"{name}.xls"
+    xls.write_bytes(xls_bytes({sheet.title: [list(row) for row in sheet.iter_rows(min_row=1, min_col=1, values_only=True)]
+                               for sheet in book.worksheets}))
+
+    def run(path: Path) -> dict:
+        service = PipelineOrchestrationService(pipeline_repository=InMemoryPipelineRunRepository(),
+                                               extraction_result_repository=InMemoryExtractionResultRepository())
+        return service.process_local_document(local_file_path=str(path), engagement_id="ENG-1", document_id="DOC-1",
+                                              evidence_id="EV-1", processing_run_id="RUN-1", persist_run=False,
+                                              canonical_type_id_override="CT-S1-FUELQTY")
+
+    def values(result: dict) -> list[tuple]:
+        return [(item["field_name"], item["normalized_value"], item.get("unit"), item["source_reference"].get("sheet_name"),
+                 item["source_reference"].get("cell_or_range"), item["source_reference"].get("text_snippet"))
+                for item in result["extraction_result"]["items"]]
+
+    expected, actual = run(xlsx), run(xls)
+    assert actual["parser_output"]["parser_name"] == "xlrd"
+    assert actual["pipeline_run"]["status"] == expected["pipeline_run"]["status"] == "completed"
+    assert actual["extraction_result"]["record_count"] == expected["extraction_result"]["record_count"]
+    assert values(expected) and values(actual) == values(expected)
+
+
+def test_an_emailed_bill_gives_the_same_values_as_the_same_text_file(tmp_path):
+    # The message text goes through the pipeline like a text file; each value points at its line.
+    from email.message import EmailMessage
+
+    from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
+
+    text_file = Path(_write_temp_text_file(tmp_path))
+    message = EmailMessage()
+    message["From"] = "Demo Utility <billing@demo.example>"
+    message["Subject"] = "Your October statement"
+    message.set_content(text_file.read_text(encoding="utf-8"))
+    message.add_attachment(b"%PDF", maintype="application", subtype="pdf", filename="statement.pdf")
+    eml = tmp_path / "statement.eml"
+    eml.write_bytes(message.as_bytes())
+
+    def run(path: Path) -> dict:
+        service = PipelineOrchestrationService(pipeline_repository=InMemoryPipelineRunRepository(),
+                                               extraction_result_repository=InMemoryExtractionResultRepository())
+        return service.process_local_document(local_file_path=str(path), engagement_id="ENG-1", document_id="DOC-1",
+                                              evidence_id="EV-1", processing_run_id="RUN-1", persist_run=False,
+                                              canonical_type_id_override="CT-S1-FUELQTY")
+
+    def values(result: dict) -> list[tuple]:
+        return [(item["field_name"], item["normalized_value"], item.get("unit"),
+                 item["source_reference"].get("text_snippet")) for item in result["extraction_result"]["items"]]
+
+    expected, actual = run(text_file), run(eml)
+    assert actual["parser_output"]["parser_name"] == "email_parser"
+    assert actual["pipeline_run"]["status"] == expected["pipeline_run"]["status"] == "completed"
+    assert values(expected) and values(actual) == values(expected)
+    lines = {block["block_id"]: block["text"] for block in actual["parser_output"]["text_blocks"]}
+    found = [item for item in actual["extraction_result"]["items"] if item["source_reference"]["parser_block_ids"]]
+    assert found
+    for item in found:
+        block_id = item["source_reference"]["parser_block_ids"][0]
+        assert block_id.startswith("email_parser-p1-b")
+        assert item["source_reference"]["text_snippet"] in lines[block_id]

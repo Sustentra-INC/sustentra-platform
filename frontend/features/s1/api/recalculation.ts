@@ -162,7 +162,7 @@ function reasonOf(item: { reason?: ExcludedReason }): ExcludedReason {
 }
 
 /** "1 withdrawn by the reviewer, 2 outside the reporting period". */
-function describeLeftOut(items: { reason?: ExcludedReason }[]): string {
+export function describeLeftOut(items: { reason?: ExcludedReason }[]): string {
   const counts = new Map<ExcludedReason, number>();
   items.forEach((item) => counts.set(reasonOf(item), (counts.get(reasonOf(item)) ?? 0) + 1));
   return [...counts].map(([reason, n]) => `${n} ${EXCLUDED_LABEL[reason]}`).join(", ");
@@ -217,7 +217,12 @@ export interface Recalculation {
   /** Reviewed records entirely outside the reporting period: listed, never counted. */
   excluded?: ExcludedRecord[];
   not_recalculated: string[];
+  /** Documents read: every document whose records fed the recalculation, reviewed or not. */
   documents_considered: number;
+  /** Of those, the fully reviewed documents: nothing open on any record (no value awaiting
+   *  review, no question about one of its values). A partly reviewed document is not counted,
+   *  although its reviewed values feed the totals. Absent from results computed before it. */
+  documents_reviewed?: number;
   /** Missing months, duplicates, overlapping and cross-year bills (formula library checks).
    *  Absent from results computed before the checks. */
   quality_checks?: QualityCheck[];
@@ -245,9 +250,11 @@ export interface QualityCheck {
 
 // ---------------------------------------------------------------------------------------
 // Emissions roll-up (backend/app/services/emissions_rollup.py). Numbers are unrounded
-// metric tonnes; null means "not available", never 0.
+// metric tonnes. A category that is not built or has no evidence is null ("not available")
+// and counts as 0 in every total, which lists it under counted_as_zero (Claire, 22 Oct).
 // ---------------------------------------------------------------------------------------
-export type GasGroup = "CO2" | "CH4" | "N2O" | "HFCs" | "PFCs" | "SF6" | "NF3" | "other";
+/** The 7 gases every scope reports; anything else is excluded from the totals. */
+export type GasGroup = "CO2" | "CH4" | "N2O" | "HFCs" | "PFCs" | "SF6" | "NF3";
 
 export type RollupSourceKey =
   | "stationary_combustion"
@@ -293,6 +300,7 @@ export interface GasAmount {
 export interface RollupCategory {
   label: string;
   scope: "scope1" | "scope2";
+  /** Row in "Data from summary documents" (43-51 since Scope 1 NF3 took row 29). */
   workbook_row: number;
   built: boolean;
   backend_categories: Partial<Record<"location" | "market", string>>;
@@ -302,8 +310,10 @@ export interface RollupCategory {
   gaps: { gap: MissingReason; gases: GasGroup[]; affects_total: boolean }[];
   absent_reason: string | null;
   flags: string[];
-  /** Fugitive refrigerants: each line split into gas groups. */
-  gas_split?: Record<string, { groups: Partial<Record<GasGroup, GasAmount>>; flags: string[] }>;
+  /** Fugitive refrigerants: each line split into the 7 gases, and what falls outside them. */
+  gas_split?: Record<string, { groups: Partial<Record<GasGroup, GasAmount>>; flags: string[]; excluded: GasAmount }>;
+  /** Fugitive refrigerants: gases outside the 7 (HFOs, ammonia, a blend's HCFC share), in no total. */
+  excluded?: GasAmount;
 }
 
 export interface RollupTerm {
@@ -315,7 +325,8 @@ export interface RollupTerm {
 }
 
 export interface RollupMissing {
-  source: RollupSourceKey;
+  /** "biogenic_combustion": the biogenic CO2 placeholder, not built yet. */
+  source: RollupSourceKey | "biogenic_combustion";
   reason: MissingReason;
 }
 
@@ -336,9 +347,11 @@ export interface RollupNode {
   /** A partial value that can only grow (no negative contributions). */
   lower_bound: boolean;
   flags: string[];
-  /** Category nodes: the value split into gas groups. */
+  /** Category nodes: all 7 gases, each with its mass and CO2e. */
   gases?: Partial<Record<GasGroup, GasAmount>>;
   basis?: "structural_zero";
+  /** Not built, or no evidence: not available, added as 0 (every node but the biogenic memo). */
+  counted_as_zero?: RollupMissing[];
 }
 
 export interface RollupFinalOutput {
@@ -360,18 +373,23 @@ export interface RollupFinalOutput {
   reason: string | null;
   completeness: NodeStatus;
   missing: RollupMissing[];
+  /** Sources not available (not built, no evidence) that the value counts as 0. */
+  counted_as_zero?: RollupMissing[];
   flags: string[];
   /** Per-gas rows: both measures, until the reported unit is known. */
   candidates?: { mass_t: number | null; co2e_t: number | null };
   unit_hint?: "t" | "t CO2e" | null;
 }
 
+/** Steps 1a and 1b run side by side; Step 2 runs after both. The final outputs are a list,
+ *  not a step. */
 export interface RollupStep {
-  key: "step_1a" | "step_1b" | "step_2" | "final_outputs";
+  key: "step_1a" | "step_1b" | "step_2";
   label: string;
   order: number;
-  node_keys?: string[];
-  output_keys?: string[];
+  /** Steps that must finish first. */
+  after: RollupStep["key"][];
+  node_keys: string[];
 }
 
 export interface Rollup {
@@ -410,7 +428,7 @@ export interface VehicleTypeOption {
   last_model_year: number | null;
 }
 
-/** A reported data point in the GHG Required Data workbook (rows 22-50). */
+/** A reported data point in the GHG Required Data workbook (rows 22-38 and 43-51). */
 export interface DataPointOption {
   key: string;
   label: string;
@@ -538,7 +556,7 @@ const FORMULA: Record<CategoryKey, string> = {
   purchased_heating_market_based: `${THERMAL_FORMULA} No supplier factor is read yet, so market-based equals location-based.`,
 };
 
-const FLAG_NOTE: Record<string, string> = {
+export const FLAG_NOTE: Record<string, string> = {
   no_supplier_factor_market_equals_location:
     "No supplier-specific steam or heat factor is read yet, so market-based uses the EPA factor (same as location-based).",
   fuel_auto_matched: "Fuel matched to the EPA fuel automatically.",
@@ -779,6 +797,35 @@ export function recalculationRows(result: Recalculation): VerificationRow[] {
   });
 }
 
+/** The documents read that are not fully reviewed: "3 more with values awaiting review, 1 more
+ *  needing an input". A document with even one value awaiting review counts here, not as
+ *  fully reviewed, although its reviewed values already feed the totals; so the two counts
+ *  never overlap. Empty when nothing is open, or for results without documents_reviewed. */
+export function documentsStillOpen(result: Recalculation): string {
+  const reviewed = result.documents_reviewed;
+  if (reviewed === undefined) return "";
+  const awaiting = new Set(result.awaiting_review.map((a) => a.document_id)).size;
+  // Read, nothing awaiting review, but a question about one of its values is open.
+  const needInput = Math.max(0, result.documents_considered - reviewed - awaiting);
+  const more = reviewed > 0 ? " more" : "";
+  return [
+    awaiting ? `${awaiting}${more} with values awaiting review` : "",
+    needInput ? `${needInput}${more} needing an input` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
+/** "1 fully reviewed document (3 more with values awaiting review)": the documents with
+ *  nothing open on any record, then the documents read that are still open. Results computed
+ *  before documents_reviewed existed keep the old wording. */
+export function documentsBasis(result: Recalculation): string {
+  const reviewed = result.documents_reviewed;
+  if (reviewed === undefined) return `${result.documents_considered} document(s) with reviewed values`;
+  const open = documentsStillOpen(result);
+  return `${reviewed} fully reviewed ${reviewed === 1 ? "document" : "documents"}` + (open ? ` (${open})` : "");
+}
+
 /** Materiality on the headline totals only (Scope 1 + Scope 2 location-based), so nothing is
  *  counted twice. The total is what was reported; where a total was not entered yet, the
  *  recalculated one stands in (and the label says so) rather than shrinking the threshold. */
@@ -807,7 +854,7 @@ export function recalculationMateriality(result: Recalculation): MaterialityFigu
     uncorrected,
     note:
       `Misstatement is the difference between reported and recalculated Scope 1 and Scope 2 (location-based) ` +
-      `totals, from ${result.documents_considered} document(s) with reviewed values, at ${result.gwp_set} GWPs. ` +
+      `totals, from ${documentsBasis(result)}, at ${result.gwp_set} GWPs. ` +
       (open
         ? `${open} item(s) still need an input or a review, so the conclusion stays provisional.`
         : allReported
@@ -835,6 +882,40 @@ function listed(items: string[], max = 3): string {
   return unique.length <= max ? unique.join(", ") : `${unique.slice(0, max).join(", ")} and ${unique.length - max} more`;
 }
 
+/** The coverage row that says whether the reporting period has both its dates. */
+export const REPORTING_PERIOD_RULE_ID = "COV-PERIOD";
+
+/** The coverage row that says whether the client's reported totals are entered. */
+export const REPORTED_TOTALS_RULE_ID = "COV-REPORTED";
+
+/** The headline totals the recalculation produced, each with a reported total to compare. */
+function headlineTotals(result: Recalculation): RecalcComparison[] {
+  return ["scope1_total", "scope2_location_total", "scope2_market_total"]
+    .map((key) => result.comparisons.find((c) => c.key === key))
+    .filter((c): c is RecalcComparison => !!c && c.status !== "not_in_scope" && c.recalculated !== null);
+}
+
+/** The data points whose reported total is not entered yet, as the reported-totals row lists them. */
+export function missingReportedTotals(result: Recalculation): string[] {
+  return headlineTotals(result)
+    .filter((c) => c.reported === null)
+    .map((c) => c.data_point);
+}
+
+/**
+ * Coverage rows that check the method, not the evidence: the reporting period, the GWP
+ * basis, the client's reported totals and the reviewer's decisions on documents. Coverage
+ * & requests lists them with the rest; the dashboard leaves them out of its evidence
+ * figures, so a GWP basis never counts as evidence obtained and a missing end date never
+ * counts as a data point missing evidence.
+ */
+export const METHOD_CHECK_RULE_IDS: readonly string[] = [
+  REPORTING_PERIOD_RULE_ID,
+  "COV-GWP",
+  REPORTED_TOTALS_RULE_ID,
+  "COV-DECISIONS",
+];
+
 /**
  * What the recalculation could and could not check, from its own result: which inputs
  * are present, which are missing and why. Nothing here is a guess about rules that did
@@ -842,7 +923,6 @@ function listed(items: string[], max = 3): string {
  */
 export function coverageFromRecalculation(result: Recalculation): CoverageRule[] {
   const rules: CoverageRule[] = [];
-  const reported = (key: string) => result.comparisons.find((c) => c.key === key);
 
   const fuelRule = (
     ruleId: string,
@@ -953,20 +1033,16 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
     });
   }
 
-  const missingReported = ["scope1_total", "scope2_location_total", "scope2_market_total"]
-    .map(reported)
-    .filter((c): c is RecalcComparison => !!c && c.status !== "not_in_scope" && c.recalculated !== null && c.reported === null);
-  const headline = ["scope1_total", "scope2_location_total", "scope2_market_total"].map(reported).filter(
-    (c): c is RecalcComparison => !!c && c.status !== "not_in_scope" && c.recalculated !== null
-  );
+  const headline = headlineTotals(result);
+  const missingReported = missingReportedTotals(result);
   if (headline.length) {
     rules.push({
-      ruleId: "COV-REPORTED",
+      ruleId: REPORTED_TOTALS_RULE_ID,
       assertion: "The client's reported totals are compared with the recalculation at the materiality tolerance",
       appliesTo: headline.map((c) => c.data_point),
       status: missingReported.length ? "inputs_missing" : "inputs_present",
       reason: missingReported.length
-        ? `Reported value not entered for ${listed(missingReported.map((c) => c.data_point))}.`
+        ? `Reported value not entered for ${listed(missingReported)}.`
         : `All entered; tolerance ±${result.tolerance_pct}%.`,
     });
   }
@@ -985,7 +1061,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
     });
   }
   rules.push({
-    ruleId: "COV-PERIOD",
+    ruleId: REPORTING_PERIOD_RULE_ID,
     assertion: "Bills are counted only for the days inside the reporting period",
     appliesTo: ["All recalculated data points"],
     status: result.reporting_period.start && result.reporting_period.end ? "inputs_present" : "inputs_missing",

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
+import { formatReportingPeriod } from "../utils/formatPeriod";
 import { AssistantWidget, type AssistantConnection } from "./AssistantWidget";
 
 export type NavKey =
@@ -236,7 +237,10 @@ function ContextBar({
       {expanded ? (
         <div className="s1-ctx__details">
           <CtxItem label="Engagement ID" value={engagement.engagementId} />
-          <CtxItem label="Reporting period" value={`${engagement.reportingPeriod.start} to ${engagement.reportingPeriod.end}`} />
+          <CtxItem
+            label="Reporting period"
+            value={formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end)}
+          />
           <CtxItem label="Regulation" value={engagement.regulation} />
           <CtxItem label="Assurance level" value={engagement.assuranceLevel} />
           <CtxItem label="Boundary approach" value={engagement.boundaryApproach} />

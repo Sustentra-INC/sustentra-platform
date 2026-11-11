@@ -11,6 +11,8 @@ back to Textract block ids. If no usable JSON is provided it returns a
 from __future__ import annotations
 
 import json
+import math
+import statistics
 from pathlib import Path
 from typing import Any
 
@@ -28,8 +30,19 @@ from backend.app.adapters.parsers.base import (
 
 PARSER_NAME = "textract"
 
-# A gap between two words of a LINE wider than this many line heights splits the line.
-WIDE_GAP = 0.9
+# A gap between two words of a LINE wider than this many text heights splits the line, both
+# measured in pixels. The text height is the median height of the line's WORD boxes, not the
+# LINE box: on a photo taken at a slight angle the LINE box of a wide line is several times
+# taller than its text (tilted 2 degrees, a line 60 text heights long gets a box 3 text heights
+# tall), while a single word's box barely changes. On the regression samples (backend/tests/services/data/textract_regression)
+# ordinary word spacing is at most 0.49 text heights and side-by-side fields sit 0.95 or more
+# apart; 0.7 is midway.
+WIDE_GAP = 0.7
+# When the page's shape is unknown, the gap is measured in the line's average character width
+# instead (same axis as the gap; from the WORD boxes too). On the samples ordinary spacing is at
+# most 0.89 characters and side-by-side fields 1.66 or more; a character is about 0.59 text
+# heights, so 1.25 ~ WIDE_GAP.
+WIDE_GAP_CHARACTERS = 1.25
 
 
 class TextractParser:
@@ -43,7 +56,11 @@ class TextractParser:
         textract_source: dict[str, Any] | str | Path,
         document_id: str,
         processing_run_id: str,
+        page_aspect: float | None = None,
     ) -> dict:
+        """``page_aspect`` is the width / height of the page image Textract read, when known;
+        Textract boxes are fractions of that width (left, width) and height (top, height)."""
+
         payload, load_warning = self._load_payload(textract_source)
         if load_warning is not None:
             return build_failed_parser_output(
@@ -88,7 +105,7 @@ class TextractParser:
             pages.setdefault(page_number, "")
             pages[page_number] = (pages[page_number] + "\n" + text).strip() if pages[page_number] else text
 
-            for block_id, part_text, bounding_box in self._line_parts(block, block_map):
+            for block_id, part_text, bounding_box in self._line_parts(block, block_map, page_aspect):
                 source_reference_id = f"SRC-{self.parser_name}-{block_id}"
                 source_references.append(
                     build_source_reference(
@@ -282,12 +299,10 @@ class TextractParser:
 
     @classmethod
     def _line_parts(
-        cls, line: dict[str, Any], block_map: dict[str, Any]
+        cls, line: dict[str, Any], block_map: dict[str, Any], page_aspect: float | None = None
     ) -> list[tuple[Any, str, dict[str, float] | None]]:
-        """(block id, text, box) for each part of a LINE, split where the gap between two
-        words is wider than WIDE_GAP line heights. Ordinary word spacing on scanned bills
-        is under half a line height; side-by-side fields sit more than a line height apart.
-        A line without WORD geometry stays whole."""
+        """(block id, text, box) for each part of a LINE, split where two words are far apart
+        (see _wide_gap). A line without WORD geometry stays whole."""
 
         whole = [(line.get("Id"), line.get("Text", "") or "", cls._bounding_box(line))]
         line_box = cls._bounding_box(line)
@@ -299,14 +314,17 @@ class TextractParser:
             if child_id in block_map and block_map[child_id].get("BlockType") == "WORD"
         ]
         boxes = [cls._bounding_box(word) for word in words]
-        if line_box is None or line_box["height"] <= 0 or len(words) < 2 or any(b is None for b in boxes):
+        if line_box is None or len(words) < 2 or any(b is None for b in boxes):
+            return whole
+        wide_gap = cls._wide_gap(words, boxes, page_aspect)
+        if wide_gap is None:
             return whole
         groups: list[list[int]] = [[0]]
         for i in range(1, len(words)):
             previous, current = boxes[groups[-1][-1]], boxes[i]
             assert previous is not None and current is not None
             gap = current["left"] - (previous["left"] + previous["width"])
-            if gap > WIDE_GAP * line_box["height"]:
+            if gap > wide_gap:
                 groups.append([i])
             else:
                 groups[-1].append(i)
@@ -323,6 +341,26 @@ class TextractParser:
             parts.append((f"{line.get('Id')}#{n}", text,
                           {"left": left, "top": top, "width": right - left, "height": bottom - top}))
         return parts
+
+    @staticmethod
+    def _wide_gap(
+        words: list[dict[str, Any]], boxes: list[dict[str, float] | None], page_aspect: float | None,
+    ) -> float | None:
+        """How wide a gap between two words must be to split the line, as a fraction of the page
+        width (the unit of the gap). The text height (the median WORD box height, which a slight
+        tilt barely changes, unlike the LINE box) is a fraction of the page height, so it is
+        converted with the page's shape: WIDE_GAP text heights in pixels. Without the shape,
+        WIDE_GAP_CHARACTERS times the average character width of the line's words, which is a
+        fraction of the page width already. None when neither can be measured."""
+
+        if page_aspect is not None and math.isfinite(page_aspect) and page_aspect > 0:
+            text_height = statistics.median(box["height"] for box in boxes if box)
+            return WIDE_GAP * text_height / page_aspect if text_height > 0 else None
+        characters = sum(len(str(word.get("Text") or "")) for word in words)
+        word_width = sum(box["width"] for box in boxes if box)
+        if characters <= 0 or word_width <= 0:
+            return None
+        return WIDE_GAP_CHARACTERS * word_width / characters
 
     @staticmethod
     def _bounding_box(block: dict) -> dict[str, float] | None:

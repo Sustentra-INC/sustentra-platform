@@ -113,7 +113,7 @@ def test_workbook_example_end_to_end_location_and_market_based() -> None:
     comparisons = _by_key(result)
     assert comparisons["scope2_location_total"]["status"] == "within_tolerance"
     assert comparisons["scope2_market_total"]["status"] == "within_tolerance"
-    assert comparisons["scope2_location_total"]["workbook_row"] == 29
+    assert comparisons["scope2_location_total"]["workbook_row"] == 30
     assert result["needs_input"] == [] and result["awaiting_review"] == []
     # Each facility's MWh names the reviewed bills it came from.
     facility_a = next(i for i in location["details"]["inputs"] if i["fuel"] == "Facility A")
@@ -160,6 +160,50 @@ def test_other_organizations_are_invisible() -> None:
     result = _service(store).recalculate(_engagement(), _own)
     assert result["documents_considered"] == 1
     assert result["categories"]["stationary_combustion"]["total_co2e"] < 100
+
+
+# --- documents read vs documents fully reviewed -------------------------------------------------
+def test_documents_reviewed_counts_only_documents_with_nothing_awaiting_review() -> None:
+    # As on staging: one electricity bill accepted; two scanned bills and a diesel CSV not reviewed yet.
+    store = FakeStore()
+    store.add_document("ELEC-OK", "CT-S2-ELEC", [_elec(1200, "Facility A", "Albany, NY")])
+    store.add_document("SCAN-1", "CT-S2-ELEC", [_elec(300, "Facility A", "Albany, NY")], decision=None)
+    store.add_document("SCAN-2", "CT-S2-ELEC", [_elec(400, "Facility A", "Albany, NY")], decision=None)
+    store.add_document("DIESEL-CSV", "CT-S1-FUELQTY",
+                       [_gas(100, "gal", fuel="diesel"), _gas(200, "gal", "2025-02-01", "2025-02-28", "diesel")],
+                       decision=None)
+    result = _service(store).recalculate(_engagement(recalculation={"grid_regions": {"Facility A": "NYUP"}}), _own)
+    assert {item["document_id"] for item in result["awaiting_review"]} == {"SCAN-1", "SCAN-2", "DIESEL-CSV"}
+    assert result["documents_considered"] == 4  # documents read
+    assert result["documents_reviewed"] == 1
+
+
+def test_documents_reviewed_is_decided_per_document() -> None:
+    store = FakeStore()
+    store.add_document("ELEC-OK", "CT-S2-ELEC", [_elec(1200, "Facility A", "Albany, NY")])
+    # A CSV with one record still pending: its other, reviewed record does not make it reviewed.
+    store.add_document("DIESEL-CSV", "CT-S1-FUELQTY",
+                       [_gas(100, "gal", fuel="diesel"), _gas(200, "gal", "2025-02-01", "2025-02-28", "diesel")])
+    store.reviews["DIESEL-CSV"] = [r for r in store.reviews["DIESEL-CSV"] if ":2:" not in r["candidate_id"]]
+    # Reviewed, but the amount is not usable as electricity: a question about this document's value.
+    store.add_document("ELEC-THERM", "CT-S2-ELEC", [{**_elec(50, "Facility A", "Albany, NY"),
+                                                     "activity_quantity": (50, "therm")}])
+    # Reviewed; what is missing is the engagement's eGRID subregion for Facility B, not a review.
+    store.add_document("ELEC-B", "CT-S2-ELEC", [_elec(800, "Facility B", "Philadelphia, PA")])
+    # Withdrawn by the reviewer: not read into the recalculation at all.
+    store.add_document("WITHDRAWN", "CT-S2-ELEC", [_elec(900, "Facility A", "Albany, NY")])
+    result = _service(store).recalculate(_engagement(recalculation={"grid_regions": {"Facility A": "NYUP"}}), _own,
+                                         decisions={"WITHDRAWN": {"disposition": "withdrawn"}})
+    assert [item["document_id"] for item in result["awaiting_review"]] == ["DIESEL-CSV"]
+    quantity = next(item for item in result["needs_input"] if item["kind"] == "quantity")
+    assert quantity["document_id"] == "ELEC-THERM"
+    region = next(item for item in result["needs_input"] if item["kind"] == "grid_region")
+    assert region["key"] == "Facility B" and "document_id" not in region
+    assert result["documents_considered"] == 4
+    assert result["documents_reviewed"] == 2  # fully reviewed: ELEC-OK and ELEC-B
+    # The partly reviewed CSV is not fully reviewed, yet its reviewed record feeds the totals.
+    [diesel] = result["categories"]["stationary_combustion"]["details"]["inputs"]
+    assert diesel["quantity"] == 100 and [d["document_id"] for d in diesel["documents"]] == ["DIESEL-CSV"]
 
 
 # --- grouping and proration ----------------------------------------------------------------
@@ -364,7 +408,7 @@ def test_refrigerants_follow_the_simplified_material_balance_per_gas() -> None:
     # Fugitive emissions are part of Scope 1 and have their own reported data point (row 45).
     assert result["scope_totals"]["scope1"]["total_co2e"] == pytest.approx(expected)
     fugitive_row = _by_key(result)["fugitive_total"]
-    assert fugitive_row["recalculated"] == pytest.approx(expected) and fugitive_row["workbook_row"] == 45
+    assert fugitive_row["recalculated"] == pytest.approx(expected) and fugitive_row["workbook_row"] == 46
     assert result["needs_input"] == [] and result["awaiting_review"] == []
 
 
@@ -605,7 +649,10 @@ def test_roll_up_agrees_with_the_legacy_comparisons() -> None:
     assert nodes["scope1_total"]["co2e_t"] == pytest.approx(result["scope_totals"]["scope1"]["total_co2e"])
     assert nodes["inventory_location_total"]["co2e_t"] == pytest.approx(
         result["scope_totals"]["scope1"]["total_co2e"] + result["scope_totals"]["scope2_location"]["total_co2e"])
-    assert nodes["scope1_total"]["status"] == "partial"  # mobile has no evidence; process etc. not built
+    # Mobile has no evidence and process etc. aren't built: counted as 0, so the total is complete
+    # and names them (Claire, Q5).
+    assert nodes["scope1_total"]["status"] == "complete"
+    assert {m["source"] for m in nodes["scope1_total"]["counted_as_zero"]} >= {"mobile_combustion", "process_sources"}
 
 
 def test_absent_sources_complete_the_totals() -> None:

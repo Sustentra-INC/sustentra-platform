@@ -2,11 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { coverageFromRecalculation, getRecalculation, type Recalculation } from "../api/recalculation";
+import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAdapter";
+import {
+  coverageFromRecalculation,
+  getRecalculation,
+  missingReportedTotals,
+  type Recalculation,
+} from "../api/recalculation";
 import type { EngagementConfig, EvidenceItem, ReviewValue } from "../types";
 import type { Ask } from "../types/requests";
 import type { Examination, Finding } from "../types/verification";
 import { dashboardFigures } from "../utils/engagementActivity";
+import { testedExaminationKeys } from "../utils/verificationTable";
 import { DashboardScreen } from "./DashboardScreen";
 import type { NavKey } from "./S1Chrome";
 
@@ -52,23 +59,27 @@ export function BackendDashboard({
     };
   }, [engagement.engagementId, reviewedCount, evidence.length]);
 
+  const { start, end } = engagement.reportingPeriod;
   const figures = useMemo(() => {
     const current = result && result.engagement_id === engagement.engagementId ? result : null;
-    const calculatedIds = current
-      ? current.comparisons
-          .filter((c) => c.recalculated !== null && c.status !== "not_in_scope")
-          .map((c) => `RECALC-${c.key}`)
-      : [];
-    return dashboardFigures({
-      evidence,
-      values,
-      asks,
-      findings,
-      examinations,
-      coverage: current ? coverageFromRecalculation(current) : null,
-      calculatedIds,
-    });
-  }, [result, engagement.engagementId, values, evidence, asks, findings, examinations]);
+    // The facility rows of Verification results, as its Examined counts key them.
+    const calculatedIds = current ? testedExaminationKeys(liveResultsFromRecalculation(current).lines) : [];
+    return {
+      ...dashboardFigures({
+        evidence,
+        values,
+        asks,
+        findings,
+        examinations,
+        coverage: current ? coverageFromRecalculation(current) : null,
+        calculatedIds,
+      }),
+      // From the engagement, not the recalculation: that may be fetched before a Setup
+      // save lands, and the row should clear as soon as the period has both dates.
+      reportingPeriodIncomplete: Boolean(engagement.engagementId) && (!start || !end),
+      reportedTotalsMissing: current ? missingReportedTotals(current).length : 0,
+    };
+  }, [result, engagement.engagementId, start, end, values, evidence, asks, findings, examinations]);
 
   return (
     <DashboardScreen engagement={engagement} figures={figures} onNavigate={onNavigate} />

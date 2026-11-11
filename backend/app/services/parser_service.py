@@ -6,7 +6,8 @@ normalized ``parser_output``-shaped dictionary conforming to
 
 Scope for runtime v0:
     * detection by file extension and/or mime type
-    * text / Word / Excel / CSV / PDF parsing and an explicit image stub
+    * text / Word / Excel (.xlsx and 97-2003 .xls) / CSV / PDF / email (.eml) parsing and an
+      explicit image stub
     * optional live Textract when ``TEXTRACT_ENABLED`` is true: images, and only the
       PDF pages without a text layer (rendered, one synchronous call per page)
     * Textract JSON normalization via an explicit method
@@ -29,15 +30,19 @@ from backend.app.adapters.parsers.csv_parser import CsvParser
 from backend.app.adapters.parsers.excel_parser import ExcelParser
 from backend.app.adapters.parsers.image_parser import ImageParser
 from backend.app.adapters.parsers.docx_parser import DocxParser
+from backend.app.adapters.parsers.email_parser import EmailParser
 from backend.app.adapters.parsers.pdf_parser import PdfParser
 from backend.app.adapters.parsers.text_parser import TextParser
 from backend.app.adapters.parsers.textract_parser import TextractParser
+from backend.app.adapters.parsers.xls_parser import XlsParser
 
 TEXT_EXTENSIONS = {".txt", ".md", ".markdown"}
 CSV_EXTENSIONS = {".csv"}
 EXCEL_EXTENSIONS = {".xlsx", ".xlsm"}
+LEGACY_EXCEL_EXTENSIONS = {".xls"}  # Excel 97-2003 (BIFF)
 PDF_EXTENSIONS = {".pdf"}
 DOCX_EXTENSIONS = {".docx"}
+EMAIL_EXTENSIONS = {".eml"}  # the message text; attachments are listed, not read
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".gif", ".bmp", ".webp"}
 
 MIME_TYPE_ROUTES = {
@@ -45,8 +50,10 @@ MIME_TYPE_ROUTES = {
     "text/markdown": "text",
     "text/csv": "csv",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "excel",
+    "application/vnd.ms-excel": "xls",
     "application/pdf": "pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
+    "message/rfc822": "email",
 }
 
 
@@ -64,8 +71,10 @@ class ParserService:
         self._text_parser = TextParser()
         self._csv_parser = CsvParser()
         self._excel_parser = ExcelParser()
+        self._xls_parser = XlsParser(self._excel_parser)
         self._pdf_parser = PdfParser()
         self._docx_parser = DocxParser()
+        self._email_parser = EmailParser()
         self._image_parser = ImageParser()
         self._textract_parser = TextractParser()
         self._live_textract_parser = live_textract_parser or AwsTextractParser()
@@ -94,10 +103,14 @@ class ParserService:
             return self._text_parser.parse(path, document_id, processing_run_id)
         if parser_kind == "docx":
             return self._docx_parser.parse(path, document_id, processing_run_id)
+        if parser_kind == "email":
+            return self._email_parser.parse(path, document_id, processing_run_id)
         if parser_kind == "csv":
             return self._csv_parser.parse(path, document_id, processing_run_id)
         if parser_kind == "excel":
             return self._excel_parser.parse(path, document_id, processing_run_id)
+        if parser_kind == "xls":
+            return self._xls_parser.parse(path, document_id, processing_run_id)
         if parser_kind == "image" and self._textract_enabled():
             return self._live_textract_parser.parse(path, document_id, processing_run_id)
         if parser_kind == "pdf":
@@ -194,7 +207,7 @@ class ParserService:
 
     @staticmethod
     def parser_kind(path: Path, mime_type: str | None = None) -> str | None:
-        """Which parser reads this file ("pdf", "excel", "csv", "docx", "text", "image")."""
+        """Which parser reads this file ("pdf", "excel", "xls", "csv", "docx", "email", "text", "image")."""
 
         return ParserService._detect_parser_kind(path, mime_type)
 
@@ -209,10 +222,14 @@ class ParserService:
             return "csv"
         if suffix in EXCEL_EXTENSIONS:
             return "excel"
+        if suffix in LEGACY_EXCEL_EXTENSIONS:
+            return "xls"
         if suffix in PDF_EXTENSIONS:
             return "pdf"
         if suffix in DOCX_EXTENSIONS:
             return "docx"
+        if suffix in EMAIL_EXTENSIONS:
+            return "email"
         if suffix in IMAGE_EXTENSIONS:
             return "image"
 

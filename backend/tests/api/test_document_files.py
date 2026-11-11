@@ -52,6 +52,14 @@ def env(tmp_path: Path, act_as) -> Iterator[dict]:
         assert response.status_code == 200, response.text
         return response.json()
 
+    def stored(name: str, body: bytes, mime: str) -> dict:
+        # A file the upload route now refuses (no parser reads it), stored the way older
+        # uploads were, so serving it back is still covered.
+        act_as("org_member", ORG_A)
+        return documents.upload_document(engagement_id="ENG-1", file_name=name, content=body, mime_type=mime,
+                                         document_role="source_evidence", uploaded_by="dev@example.com",
+                                         org_id=str(ORG_A))
+
     def process(document: dict, org=ORG_A, **payload) -> dict:
         act_as("org_member", org)
         response = client.post(f"/v1/documents/{document['document_id']}/pipeline/process", json=payload)
@@ -59,8 +67,8 @@ def env(tmp_path: Path, act_as) -> Iterator[dict]:
         return response.json()
 
     try:
-        yield {"client": client, "act_as": act_as, "upload": upload, "process": process, "storage": storage,
-               "repository": repository, "results": results}
+        yield {"client": client, "act_as": act_as, "upload": upload, "stored": stored, "process": process,
+               "storage": storage, "repository": repository, "results": results}
     finally:
         documents_api.configure_services(upload_service=originals[0], pipeline_service=originals[1],
                                          storage_service=originals[2])
@@ -170,7 +178,7 @@ def test_the_served_type_comes_from_the_bytes_not_the_upload(env: dict) -> None:
     assert download.headers["content-type"] == "application/octet-stream"
     assert download.headers["content-disposition"].startswith("attachment;")
     # A real PDF uploaded as text/html is still served as a PDF.
-    pdf = env["upload"]("x.html", PDF, "text/html")
+    pdf = env["stored"]("x.html", PDF, "text/html")
     assert env["client"].get(url(pdf, "preview")).headers["content-type"] == "application/pdf"
 
 
@@ -181,7 +189,7 @@ def test_the_served_type_comes_from_the_bytes_not_the_upload(env: dict) -> None:
     ("logo.svg", "application/octet-stream"),
 ])
 def test_other_files_download_but_do_not_preview(env: dict, name: str, media: str) -> None:
-    doc = env["upload"](name, b"a,b\n1,2\n", "text/html")
+    doc = env["stored"](name, b"a,b\n1,2\n", "text/html")
     response = env["client"].get(url(doc, "download"))
     assert response.status_code == 200
     assert response.headers["content-type"].split(";")[0] == media
@@ -327,6 +335,116 @@ def test_a_workbook_is_its_sheets_with_cell_positions(env: dict) -> None:
     assert log["rows"] == [{"number": 1, "cells": ["Date", "Site", None, "Gallons"]},
                            {"number": 3, "cells": ["02/10/2025", "Richmond", None, "450"]}]
     assert notes["rows"] == [{"number": 2, "cells": [None, None, "Generator only"]}]
+
+
+def _xls(**options) -> bytes:
+    from backend.tests.adapters.parsers._xls_builder import xls_bytes
+
+    return xls_bytes({"2025 log": [["Date", "Site", None, "Gallons"], [], ["02/10/2025", "Richmond", None, 450]],
+                      "Notes": [[], [None, None, "Generator only"]]}, **options)
+
+
+def test_an_excel_97_2003_workbook_is_drawn_like_the_same_xlsx(env: dict) -> None:
+    xlsx = env["upload"]("log.xlsx", _xlsx(), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    xls = env["upload"]("log.xls", _xls(), "application/vnd.ms-excel")
+    response = env["client"].get(url(xls, "content"))
+    assert response.status_code == 200 and response.headers["cache-control"] == "private, no-store"
+    assert response.json() == env["client"].get(url(xlsx, "content")).json()
+    # An .xlsx saved with an .xls name is still drawn.
+    renamed = env["upload"]("renamed.xls", _xlsx(), "application/vnd.ms-excel")
+    assert env["client"].get(url(renamed, "content")).json()["sheets"][0]["name"] == "2025 log"
+
+
+def test_an_xls_that_cannot_be_read_says_why(env: dict) -> None:
+    from backend.app.adapters.parsers.xls_parser import NOT_A_LEGACY_WORKBOOK, PASSWORD_PROTECTED
+
+    page = env["upload"]("export.xls", b"<html><table><tr><td>450</td></tr></table></html>", "application/vnd.ms-excel")
+    response = env["client"].get(url(page, "content"))
+    assert (response.status_code, response.json()["detail"]) == (422, NOT_A_LEGACY_WORKBOOK)
+    locked = env["upload"]("locked.xls", _xls(encrypted=True), "application/vnd.ms-excel")
+    response = env["client"].get(url(locked, "content"))
+    assert (response.status_code, response.json()["detail"]) == (422, PASSWORD_PROTECTED)
+    damaged = env["upload"]("damaged.xls", _xls()[:700], "application/vnd.ms-excel")
+    assert env["client"].get(url(damaged, "content")).status_code == 422
+
+
+def test_an_xls_with_an_invalid_sector_size_is_422_not_500(env: dict) -> None:
+    import struct
+
+    # Sector shift 0/1 used to raise struct.error out of the content route (a 500).
+    for shift in (0, 1):
+        data = bytearray(_xls())
+        data[30:32] = struct.pack("<H", shift)
+        doc = env["upload"](f"bad{shift}.xls", bytes(data), "application/vnd.ms-excel")
+        assert env["client"].get(url(doc, "content")).status_code == 422
+
+
+def test_an_xls_whose_sheets_run_past_its_workbook_stream_is_422(env: dict) -> None:
+    from backend.app.adapters.parsers.xls_parser import DAMAGED_SHEETS
+    from backend.tests.adapters.parsers._xls_builder import past_the_stream_xls
+
+    # Sheets starting in the stream's last bytes (same or adjacent offsets), or a sheet with no
+    # EOF before the stream's end, made xlrd read what follows the stream in the file.
+    for shape in ("identical", "adjacent", "no_eof"):
+        doc = env["upload"](f"past_{shape}.xls", past_the_stream_xls(shape), "application/vnd.ms-excel")
+        response = env["client"].get(url(doc, "content"))
+        assert (response.status_code, response.json()["detail"]) == (422, DAMAGED_SHEETS)
+
+
+def test_processing_a_password_protected_workbook_halts_with_what_to_ask_for(env: dict) -> None:
+    wording = ("This file is password-protected, so it could not be read. Ask the client for a copy without a "
+               "password.")
+    doc = env["upload"]("locked.xls", _xls(encrypted=True), "application/vnd.ms-excel")
+    env["act_as"]("org_member", ORG_A)
+    response = env["client"].post(url(doc, "pipeline/process"), json={})
+    assert (response.status_code, response.json()["detail"]) == (422, wording)
+    # The source pane says the same, in the same words.
+    content = env["client"].get(url(doc, "content"))
+    assert (content.status_code, content.json()["detail"]) == (422, wording)
+    result = env["client"].get(url(doc, "extraction-result/latest")).json()
+    assert result["items"] == [] and result["status"] == "failed"
+
+
+def test_an_encrypted_email_halts_as_password_protected_with_what_to_do(env: dict) -> None:
+    encrypted = (b'From: a@example.com\r\nSubject: s\r\nContent-Type: application/pkcs7-mime; smime-type=enveloped-data;'
+                 b' name="smime.p7m"\r\nContent-Transfer-Encoding: base64\r\n\r\nMIAGCSqGSIb3DQEHA6CA\r\n')
+    wording = ("This email is encrypted. Ask the client to send it without encryption, or upload its attachments "
+               "on their own.")
+    doc = env["upload"]("locked.eml", encrypted, "message/rfc822")
+    env["act_as"]("org_member", ORG_A)
+    response = env["client"].post(url(doc, "pipeline/process"), json={})
+    assert (response.status_code, response.json()["detail"]) == (422, wording)
+    content = env["client"].get(url(doc, "content"))
+    assert (content.status_code, content.json()["detail"]) == (422, wording)
+
+
+def test_an_email_is_its_lines_numbered_as_the_parser_numbers_them(env: dict) -> None:
+    from email.message import EmailMessage
+
+    message = EmailMessage()
+    message["From"] = "Acme Gas <billing@acme.example>"
+    message["Subject"] = "Your February bill"
+    message.set_content("Fuel Type: Natural Gas\n\nTotal Usage: 120 therms\n")
+    message.add_attachment(b"%PDF", maintype="application", subtype="pdf", filename="bill.pdf")
+    doc = env["upload"]("Fwd February bill.eml", message.as_bytes(), "message/rfc822")
+
+    response = env["client"].get(url(doc, "content"))
+    assert response.status_code == 200 and response.headers["cache-control"] == "private, no-store"
+    lines = ["From: Acme Gas <billing@acme.example>", "Subject: Your February bill", "Fuel Type: Natural Gas",
+             "Total Usage: 120 therms", "Attachments: bill.pdf"]
+    assert response.json() == {"kind": "lines", "lines": lines, "truncated": False}
+
+    # Line n of the pane is the parser's block n.
+    from backend.app.adapters.parsers.email_parser import EmailParser
+
+    stored = env["storage"].resolve_storage_uri(doc["storage_uri"])
+    blocks = EmailParser().parse(stored, document_id="D", processing_run_id="R")["text_blocks"]
+    assert [(b["block_id"], b["text"]) for b in blocks] == [(f"email_parser-p1-b{n}", line)
+                                                            for n, line in enumerate(lines, start=1)]
+
+    renamed_msg = env["upload"]("note.eml", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + bytes(600), "message/rfc822")
+    response = env["client"].get(url(renamed_msg, "content"))
+    assert response.status_code == 422 and "Outlook message (.msg)" in response.json()["detail"]
 
 
 def test_csv_rows_keep_their_line_numbers_and_text_is_its_non_empty_lines(env: dict) -> None:

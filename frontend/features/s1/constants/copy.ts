@@ -3,6 +3,7 @@ export const HALT_REASONS = {
   unreadable: "File could not be read.",
   ocrFailed: "Text could not be extracted. Request a better scan, or enter values manually.",
   ocrRequired: "Photo or scan: its text is read once OCR is switched on. Ask for a text PDF meanwhile.",
+  passwordProtected: "Password-protected: ask the client for a copy without a password.",
   noTemplate: "No extraction template exists for this document type.",
   typeUnknown: "Document type not recognised. Choose its type on Evidence and it is read again.",
   multiFacility: "Multi-facility document · splitting is not supported in V1.",

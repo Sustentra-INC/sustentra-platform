@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { api, apiPath } from "../../../lib/api";
 import type { PageMark } from "../types/review";
+import { markName, markState } from "../utils/markState";
+import { scrollBehavior } from "../utils/motion";
 import { columnLetter, findTokens, lineParts, sameText } from "../utils/sourceAnchor";
 
 /**
@@ -118,14 +120,15 @@ export function DocumentContentView({
     for (const entry of spots.values()) if (selectedId && entry.ids.includes(selectedId)) return entry.spot;
     return null;
   }, [spots, selectedId]);
-  const stateOf = (ids: string[]) => marks.find((m) => m.id === ids[0])?.reviewState ?? "to_review";
-  const labelOf = (ids: string[]) =>
-    ids.map((id) => marks.find((m) => m.id === id)?.label).filter(Boolean).join(" · ");
+  // A spot holding several values shows the most urgent state, and names each value with its own.
+  const marksOf = (ids: string[]) => ids.flatMap((id) => marks.filter((m) => m.id === id));
+  const stateOf = (ids: string[]) => markState(marksOf(ids));
+  const labelOf = (ids: string[]) => markName(marksOf(ids));
 
   // The selected value's sheet opens unless the reviewer picked another tab for it.
   const sheet = (sheetChoice.forId === selectedId ? sheetChoice.sheet : null) ?? selectedSpot?.sheet ?? 0;
   useEffect(() => {
-    selectedRef.current?.scrollIntoView({ block: "center", inline: "nearest", behavior: "smooth" });
+    selectedRef.current?.scrollIntoView({ block: "center", inline: "nearest", behavior: scrollBehavior() });
   }, [selectedSpot, content, sheet]);
 
   if (failed) {

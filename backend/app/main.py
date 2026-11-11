@@ -16,6 +16,7 @@ from .api import (
     pipeline,
     processing_runs,
     recalculation,
+    requests,
     workpaper_items,
     reviews,
 )
@@ -41,6 +42,7 @@ S1_ROUTERS = (
     reviews.router,
     recalculation.router,
     workpaper_items.router,
+    requests.router,
     assistant.router,
 )
 # The S1 routes are also mounted at root /v1/* for local development and existing

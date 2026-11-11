@@ -3,10 +3,14 @@
 import { Highlighter, Plus } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
+import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import type { EngagementConfig } from "../types";
-import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueReviewState } from "../types/review";
+import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
+import type { Ask } from "../types/requests";
+import { andThen, useStillOpen, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import { readablePeriod } from "../utils/formatPeriod";
 import type { HighlightEntry } from "./demo/DemoDocument";
 
 /**
@@ -34,7 +38,14 @@ interface ExtractionReviewProps {
    *  a row whose exact document has no extracted value still deep-links to the
    *  right node rather than the first one. */
   initialNodeKey?: string;
-  onSaveAsk: (draft: AskDraft) => void;
+  /** Saves an ask; returns it so the value's record can point at it. It may answer after the
+   *  server has: the value turns "requested" only once the save has gone through. */
+  onSaveAsk: (draft: AskDraft) => MaybePromise<Ask | void>;
+  /** The server records who raised a request: the Add to requests window does not ask, and the
+   *  value's record names the person the server named. */
+  serverRecordsActor?: boolean;
+  /** The engagement's asks: a card added to requests says whether its request was sent. */
+  asks?: Ask[];
   onBack: () => void;
   /** Render the real source page for a document (else a facsimile is drawn).
    *  `onPickBox` lets a clicked highlight on the page select its value card (by its id
@@ -58,8 +69,9 @@ interface ExtractionReviewProps {
   allowAddValue?: boolean;
   /** A value was added or filled in by the reviewer: the rest of the workspace follows. */
   onValueAdded?: (value: ReviewValue, filled: boolean) => void;
-  /** The document is drawn whole with its values highlighted (the demo's documents): the
-   *  values pane pins its legend and, with allowAddValue, the switch to highlight a figure. */
+  /** The document is drawn whole by the app (the demo's documents): with allowAddValue, the
+   *  key above the cards offers the switch to highlight a figure on it. The key itself shows
+   *  for any document the source pane draws (renderPage), in both data modes. */
   drawnWhole?: (documentId: string) => boolean;
 }
 
@@ -68,10 +80,12 @@ const SCOPE_LABEL: Record<ScopePlacement, string> = {
   scope1: "Scope 1",
   scope2_location: "Scope 2 · location-based",
   scope2_market: "Scope 2 · market-based",
+  scope2_both: "Scope 2 · location- and market-based",
   not_placed: "Not placed",
 };
 
 const REVIEW_CAP = 60; // stressor render cap; the count still shows the true total
+const NO_ASKS: Ask[] = [];
 
 export function ExtractionReview({
   engagement,
@@ -82,6 +96,8 @@ export function ExtractionReview({
   initialValueId,
   initialNodeKey,
   onSaveAsk,
+  serverRecordsActor = false,
+  asks = NO_ASKS,
   onBack,
   renderPage,
   reviewerName = "M. Osei",
@@ -93,7 +109,8 @@ export function ExtractionReview({
 }: ExtractionReviewProps) {
   // Review data lives in app state (via onValuesChange); selection below is
   // local, ephemeral UI. So accepts/corrections/requests survive navigation.
-  const items = values;
+  // A card's latest request decides whether it is requested (resolved or withdrawn: back to review).
+  const items = useMemo(() => withRequestsFromAsks(values, asks), [values, asks]);
 
   const initial = useMemo(
     () => resolveInitial(items, initialDocumentId, initialNodeKey, initialValueId),
@@ -119,23 +136,28 @@ export function ExtractionReview({
   const [modalTarget, setModalTarget] = useState<AddToRequestsTarget | null>(null);
   // The values a request is for: every data point of the reading.
   const [requestIds, setRequestIds] = useState<string[]>([]);
-  const [toast, setToast] = useState<string | null>(null);
-  const toastTimer = useRef<number | null>(null);
+  const modalTargetOpen = useStillOpen(modalTarget);
+  // A toast shows for 2.4 seconds; a new one starts the time again. Kept in state, not a
+  // timer ref, so the page drawn during render (renderPage) can be handed callbacks that flash.
+  const [toast, setToast] = useState<{ message: string } | null>(null);
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 2400);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
 
   function flash(message: string) {
-    setToast(message);
-    if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+    setToast({ message });
   }
 
   const tree = useMemo(() => buildTree(items, engagement), [items, engagement]);
+  const askById = useMemo(() => new Map(asks.map((a) => [a.id, a])), [asks]);
   const nodeValues = useMemo(() => valuesForNode(items, nodeKey), [items, nodeKey]);
   const filtered = nodeValues.filter(
     (v) => (!filter || v.reviewState === filter) && (pageFilter === null || v.page === pageFilter)
   );
   const selected = items.find((v) => v.id === selectedId) ?? null;
-  const keyed = Boolean(selected && drawnWhole?.(selected.documentId));
-  const canHighlight = Boolean(keyed && allowAddValue && selected && !selected.withdrawn);
+  const canHighlight = Boolean(selected && drawnWhole?.(selected.documentId) && allowAddValue && !selected.withdrawn);
   const highlighting = canHighlight && highlightDoc === selected?.documentId;
 
   // Counted by card: values that share one reading are one card.
@@ -264,6 +286,7 @@ export function ExtractionReview({
               originalValue: x.originalValue ?? x.value,
               value: next.value,
               unit: next.unit,
+              asPrinted: undefined,
               record: [
                 ...x.record,
                 {
@@ -370,10 +393,12 @@ export function ExtractionReview({
       facilityName,
       period: v.period,
       sourcePage: v.page,
-      headerLine: `${v.filename} · page ${v.page} · ${v.whatItIs} · ${scope} · ${facLabel} · ${v.period}`,
+      headerLine: `${v.filename} · page ${v.page} · ${v.whatItIs} · ${scope} · ${facLabel} · ${readablePeriod(v.period)}`,
       defaultType: v.requestPreselect ?? "clarify",
       // pre-fill order: document, value, scope, facility, period, then a colon
-      prefill: `${v.filename} · ${v.value} ${v.unit} · ${scope} · ${facLabel} · ${v.period}: `,
+      // The words go to the client: the value as the bill prints it, the period as a person reads it.
+      // The request's own period (above) is saved as data.
+      prefill: `${v.filename} · ${shown(v).value} ${shown(v).unit} · ${scope} · ${facLabel} · ${readablePeriod(v.period)}: `,
     });
   }
 
@@ -398,6 +423,7 @@ export function ExtractionReview({
         page: entry.page,
         missing: false,
         docAnchor: entry.docAnchor,
+        asPrinted: undefined,
         reviewState: "corrected",
         originalValue: "not found",
         record: [...gap.record, { kind: "human", actor: reviewerName, at: now, action: "filled in a value the reading missed", reason: where }],
@@ -420,6 +446,7 @@ export function ExtractionReview({
         docAnchor: entry.docAnchor,
         methodologyFieldId: undefined,
         reviewToken: undefined,
+        asPrinted: undefined,
         reviewState: "corrected",
         originalValue: null,
         record: [{ kind: "human", actor: reviewerName, at: now, action: "added a value the reading missed", reason: where }],
@@ -441,24 +468,34 @@ export function ExtractionReview({
   }
 
   function submitAsk(draft: AskDraft) {
-    onSaveAsk(draft);
-    if (modalTarget?.fieldKey) {
-      const now = new Date().toISOString();
-      const ids = new Set(requestIds.length ? requestIds : [modalTarget.fieldKey]);
-      onValuesChange((cur) =>
-        cur.map((x) =>
-          ids.has(x.id)
-            ? {
-                ...x,
-                reviewState: "requested",
-                record: [...x.record, { kind: "human", actor: reviewerName, at: now, action: "requested from client" }],
-              }
-            : x
-        )
-      );
-    }
-    setModalTarget(null);
-    flash("Added to requests · not yet sent");
+    const mine = modalTarget;
+    return andThen(onSaveAsk(draft), (ask) => {
+      if (modalTarget?.fieldKey) {
+        const now = new Date().toISOString();
+        const ids = new Set(requestIds.length ? requestIds : [modalTarget.fieldKey]);
+        // Nothing is sent yet: the record says the value was added to requests, and points at
+        // the ask so the card can say "requested from client" once the request goes out. When the
+        // server saved the ask, the record names the person and the time it recorded.
+        const recorded = serverRecordsActor && ask ? { actor: ask.raisedByName, at: ask.raisedAt } : { actor: reviewerName, at: now };
+        const entry: ValueRecordEntry = { kind: "human", ...recorded, action: "added to requests", ...(ask ? { askId: ask.id } : {}) };
+        onValuesChange((cur) =>
+          cur.map((x) =>
+            ids.has(x.id)
+              ? {
+                  ...x,
+                  reviewState: "requested",
+                  record: [...x.record, entry],
+                }
+              : x
+          )
+        );
+      }
+      // The values above are this ask's. A window opened since is not this one: leave it, and
+      // say nothing of it.
+      if (!modalTargetOpen(mine)) return;
+      setModalTarget(null);
+      flash("Added to requests · not yet sent");
+    });
   }
 
   // The cards as listed, so arrow keys can move through them.
@@ -471,6 +508,21 @@ export function ExtractionReview({
     return { ...group, cards, capped, hidden: Math.max(cards.length - capped.length, 0) };
   });
   const listed = groups.flatMap((g) => g.capped);
+
+  // The selected value's document, drawn with its values marked (the demo's drawing, or the
+  // uploaded file's pages or content). Whenever it is drawn, the key above the cards says what
+  // its marks mean and how many values were read.
+  const realPage =
+    selected && renderPage
+      ? renderPage(selected.documentId, selected.span ?? null, selectByBox, pageMarks(items, selected.documentId), {
+          selectedId: selected.id,
+          onPickAmong: selectAmong,
+          onAddValue: allowAddValue && !selected.withdrawn ? (entry) => addValue(selected, entry) : undefined,
+          highlighting,
+          onHighlightingChange: (on) => setHighlightDoc(on ? selected.documentId : null),
+        })
+      : null;
+  const keyed = Boolean(selected && realPage);
 
   /** ↑ and ↓ move through the cards; the document follows. */
   function onListKey(e: KeyboardEvent<HTMLDivElement>) {
@@ -564,7 +616,7 @@ export function ExtractionReview({
                   onClick={() => setFilter((cur) => (cur === k ? null : k))}
                 >
                   <span className="s1-xr-filter__n">{counts[k]}</span>
-                  <span className="s1-xr-filter__label">{reviewStateLabel(k)}</span>
+                  <span className="s1-xr-filter__label">{filterLabel(k)}</span>
                 </button>
               ))}
             </div>
@@ -597,7 +649,7 @@ export function ExtractionReview({
 
           {filtered.length === 0 ? (
             <div className="s1-ws-empty">
-              No values match {pageFilter !== null ? `page ${pageFilter}` : reviewStateLabel(filter ?? "to_review")}.
+              No values match {pageFilter !== null ? `page ${pageFilter}` : filterLabel(filter ?? "to_review")}.
             </div>
           ) : (
             groups.map(({ cards, capped, hidden, ...group }) => {
@@ -605,7 +657,7 @@ export function ExtractionReview({
                 <div key={group.key} className="s1-xr-group">
                   <div className="s1-xr-doc">
                     <span className="s1-xr-doc__fn">{group.filename}</span>
-                    <span className="s1-muted">{group.period}</span>
+                    <span className="s1-muted">{readablePeriod(group.period)}</span>
                     {group.values.length > REVIEW_CAP ? (
                       <span className="s1-muted"> · {group.values.length} values from one file</span>
                     ) : null}
@@ -658,6 +710,8 @@ export function ExtractionReview({
                     <ValueCard
                       key={vs[0].id}
                       vs={vs}
+                      request={linkedAsk(vs, asks)}
+                      askById={askById}
                       selected={vs.some((x) => x.id === selectedId)}
                       onSelect={() => {
                         if (!vs.some((x) => x.id === selectedId)) selectValue(vs[0]);
@@ -680,23 +734,7 @@ export function ExtractionReview({
 
         {/* Source */}
         <aside className="s1-xr-source" aria-label="Source">
-          <SourcePane
-            value={selected}
-            renderPage={renderPage}
-            onPickBox={selectByBox}
-            marks={selected ? pageMarks(items, selected.documentId) : []}
-            pick={
-              selected
-                ? {
-                    selectedId: selected.id,
-                    onPickAmong: selectAmong,
-                    onAddValue: allowAddValue && !selected.withdrawn ? (entry) => addValue(selected, entry) : undefined,
-                    highlighting,
-                    onHighlightingChange: (on) => setHighlightDoc(on ? selected.documentId : null),
-                  }
-                : undefined
-            }
-          />
+          <SourcePane value={selected} realPage={realPage} />
         </aside>
       </div>
 
@@ -706,10 +744,11 @@ export function ExtractionReview({
           engagement={engagement}
           onCancel={() => setModalTarget(null)}
           onAdd={submitAsk}
+          serverRecordsActor={serverRecordsActor}
         />
       ) : null}
 
-      {toast ? <div className="s1-ws-toast">{toast}</div> : null}
+      {toast ? <div className="s1-ws-toast">{toast.message}</div> : null}
     </section>
   );
 }
@@ -811,7 +850,7 @@ function DocumentKey({ values, highlight }: { values: ReviewValue[]; highlight?:
         <span className="s1-dd-key s1-dd-key--to_review">To review</span>
         <span className="s1-dd-key s1-dd-key--accepted">Accepted</span>
         <span className="s1-dd-key s1-dd-key--corrected">Corrected</span>
-        <span className="s1-dd-key s1-dd-key--requested">Requested</span>
+        <span className="s1-dd-key s1-dd-key--requested">{filterLabel("requested")}</span>
         <span className="s1-dd-key s1-dd-key--missing">Not found</span>
       </div>
     </div>
@@ -822,6 +861,8 @@ function DocumentKey({ values, highlight }: { values: ReviewValue[]; highlight?:
 
 function ValueCard({
   vs,
+  request,
+  askById,
   selected,
   onSelect,
   onAccept,
@@ -830,6 +871,9 @@ function ValueCard({
 }: {
   /** One reading: the values it feeds (two when location- and market-based share it). */
   vs: ReviewValue[];
+  /** The ask the reading was added to, if any (the latest one). */
+  request: Ask | null;
+  askById: Map<string, Ask>;
   selected: boolean;
   onSelect: () => void;
   onAccept: () => void;
@@ -838,6 +882,7 @@ function ValueCard({
 }) {
   const v = vs[0];
   const done = v.reviewState !== "to_review";
+  const stateLabel = valueStateLabel(v.reviewState, request);
   const [editing, setEditing] = useState(false);
   const [draftValue, setDraftValue] = useState(v.value);
   const [draftUnit, setDraftUnit] = useState(v.unit);
@@ -860,16 +905,22 @@ function ValueCard({
     >
       <div className="s1-xr-card__top">
         <span className="s1-xr-what">{v.whatItIs}</span>
-        <span className="s1-xr-period">{v.period}</span>
-        {done ? <span className={`s1-xr-badge s1-xr-badge--${v.reviewState}`}>{reviewStateLabel(v.reviewState)}</span> : null}
+        <span className="s1-xr-period">{readablePeriod(v.period)}</span>
+        {done ? <span className={`s1-xr-badge s1-xr-badge--${v.reviewState}`}>{stateLabel}</span> : null}
       </div>
       <div className="s1-xr-card__value">
         {v.missing && v.reviewState === "to_review" ? (
           <span className="s1-xr-missing">Not found on the document</span>
         ) : (
           <>
-            <span className="s1-xr-val">{v.value}</span>
-            {v.unit ? <span className="s1-xr-unit">{v.unit}</span> : null}
+            <span className="s1-xr-val">{shown(v).value}</span>
+            {shown(v).unit ? <span className="s1-xr-unit">{shown(v).unit}</span> : null}
+            {v.asPrinted?.converted ? (
+              <span className="s1-xr-conv">
+                = {v.value}
+                {v.unit ? ` ${v.unit}` : ""}, used in the calculation
+              </span>
+            ) : null}
           </>
         )}
         {v.reviewState === "corrected" ? (
@@ -900,7 +951,7 @@ function ValueCard({
                   </span>
                 )}
                 <span className="s1-xr-rec__act">
-                  {r.kind === "machine" ? `System read · ${v.documentType}, page ${v.page}` : `${r.actor} · ${r.action}`}
+                  {r.kind === "machine" ? `System read · ${v.documentType}, page ${v.page}` : `${r.actor} · ${recordAction(r, askById)}`}
                 </span>
                 {r.reason ? <span className="s1-muted"> · {r.reason}</span> : null}
                 <span className="s1-muted s1-xr-rec__at">{formatTime(r.at)}</span>
@@ -940,7 +991,7 @@ function ValueCard({
             </form>
           ) : done ? (
             <>
-              <span className="s1-muted">{reviewStateLabel(v.reviewState)}</span>
+              <span className="s1-muted">{stateLabel}</span>
               <button className="s1-linklike s1-xr-recorrect" type="button" onClick={startEditing}>
                 Correct
               </button>
@@ -976,12 +1027,17 @@ function ValueCard({
 
 /* =============================== source pane =============================== */
 
+/** A value as its card shows it: as the document prints it, when the backend says how. */
+function shown(v: ReviewValue): { value: string; unit: string } {
+  return v.asPrinted ?? { value: v.value, unit: v.unit };
+}
+
 /** Every value of a document that has a position on a page, to draw as clickable boxes. */
 function pageMarks(items: ReviewValue[], documentId: string): PageMark[] {
   return items
     .filter((v) => v.documentId === documentId && (v.span || v.anchor) && !v.missing && !v.withdrawn)
     .map((v) => ({ id: v.id, span: v.span ?? null, anchor: v.anchor ?? null, rawText: v.rawText ?? null,
-      label: `${v.whatItIs}: ${v.value}${v.unit ? ` ${v.unit}` : ""}`, reviewState: v.reviewState }));
+      label: `${v.whatItIs}: ${shown(v).value}${shown(v).unit ? ` ${shown(v).unit}` : ""}`, reviewState: v.reviewState }));
 }
 
 /** What a content view (workbook, CSV, Word) needs to select values from the file. */
@@ -997,16 +1053,11 @@ export interface SourcePick {
 
 function SourcePane({
   value,
-  renderPage,
-  onPickBox,
-  marks,
-  pick,
+  realPage,
 }: {
   value: ReviewValue | null;
-  renderPage?: ExtractionReviewProps["renderPage"];
-  onPickBox?: (box: { x: number; y: number; w: number; h: number }, id?: string) => void;
-  marks?: PageMark[];
-  pick?: SourcePick;
+  /** The value's document as renderPage drew it; null falls back to the snippet. */
+  realPage: ReactNode | null;
 }) {
   // Page state tracked here (hook must run every render); resets when the
   // selected value changes, guarded so it fires once per change.
@@ -1026,7 +1077,6 @@ function SourcePane({
   }
   const page = pageState.id === value.id ? pageState.page : value.page;
   const setPage = (nextPage: number) => setPageState({ id: value.id, page: nextPage });
-  const realPage = renderPage ? renderPage(value.documentId, value.span ?? null, onPickBox, marks, pick) : null;
   const placed = Boolean(value.span || value.anchor);
   return (
     <div className="s1-xr-src">
@@ -1345,9 +1395,12 @@ function readings(values: ReviewValue[]): ReviewValue[][] {
   return [...map.values()];
 }
 
-/** The scopes a reading feeds, as chips: location- and market-based share one. */
+/** The scopes a reading feeds, as chips: location- and market-based share one, whether they
+ *  come as two values (the demo) or one value placed in both (a backend quantity). */
 function scopeChips(vs: ReviewValue[]): { scope: ScopePlacement; label: string }[] {
-  const scopes = distinct(vs.map((v) => v.scope)) as ScopePlacement[];
+  const scopes = distinct(
+    vs.flatMap((v) => (v.scope === "scope2_both" ? ["scope2_location", "scope2_market"] : [v.scope]))
+  ) as ScopePlacement[];
   if (scopes.includes("scope2_location") && scopes.includes("scope2_market")) {
     return [
       { scope: "scope2_location", label: "Scope 2 · location- and market-based" },
@@ -1376,6 +1429,47 @@ function distinct(xs: string[]): string[] {
 
 function reviewStateLabel(s: ValueReviewState): string {
   return s === "to_review" ? "To review" : s === "accepted" ? "Accepted" : s === "corrected" ? "Corrected" : "Requested";
+}
+
+/** The filter bar and the document's key. The last bucket holds every value added to
+ *  requests, sent or not, so it says "Requests", not "Requested". */
+function filterLabel(s: ValueReviewState): string {
+  return s === "requested" ? "Requests" : reviewStateLabel(s);
+}
+
+/** The ask a reading was added to: the latest one raised from its card. A follow-up keeps
+ *  the field it came from, so it counts as the reading's latest request. */
+function linkedAsk(vs: ReviewValue[], asks: Ask[]): Ask | null {
+  const ids = new Set(vs.map((v) => v.id));
+  let latest: Ask | null = null;
+  for (const a of asks) {
+    if (a.source.origin !== "review_value" || !a.source.fieldKey || !ids.has(a.source.fieldKey)) continue;
+    if (!latest || a.raisedAt >= latest.raisedAt) latest = a;
+  }
+  return latest;
+}
+
+/** The client was asked once the ask went out in a request, whatever happened to it since. */
+function wasSent(ask: Ask): boolean {
+  return ask.requestNumber != null || ask.history.some((e) => e.kind === "sent");
+}
+
+/** A card's state chip. A value added to requests says where its request stands: the
+ *  client is only "Requested" once the request was sent. */
+function valueStateLabel(state: ValueReviewState, ask: Ask | null): string {
+  if (state !== "requested" || !ask) return reviewStateLabel(state);
+  if (ask.state === "not_yet_sent") return "Request not sent";
+  if (ask.state === "requested") return "Requested";
+  if (ask.state === "resolved") return "Request resolved";
+  return "Request withdrawn";
+}
+
+/** A record line. The entry that added a value to requests reads "requested from client"
+ *  only once its request was sent. */
+function recordAction(r: ValueRecordEntry, askById: Map<string, Ask>): string {
+  const ask = r.askId ? askById.get(r.askId) : undefined;
+  if (!ask) return r.action;
+  return wasSent(ask) ? "requested from client" : "added to requests";
 }
 
 function formatTime(iso: string): string {

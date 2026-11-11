@@ -679,7 +679,7 @@ class ExtractionCandidateService:
             if page is not None and block.get("page_number") not in (page, None):
                 continue
             text = self._squash(block.get("text") or "")
-            if not any(self._has_token(text, needle) for needle in needles):
+            if not any(self.has_token(text, needle) for needle in needles):
                 continue
             resolved = self._resolve_source_reference(parser_output, block.get("source_reference_id"))
             if sheet is not None and (resolved or {}).get("sheet_name") not in (sheet, None):
@@ -705,9 +705,12 @@ class ExtractionCandidateService:
         return located
 
     @staticmethod
-    def _has_token(text: str, needle: str) -> bool:
+    def has_token(text: str, needle: str) -> bool:
         """``needle`` in ``text`` as a whole token: not inside a longer number or word, and not
-        part of "1,200" or "12.5". Commas between digits are ignored on both sides."""
+        part of "1,200" or "12.5". Commas between digits are ignored on both sides.
+
+        Both are expected lowercased. Public: the AI locator (ai_locator.py) holds an
+        AI-suggested value to the same rule."""
 
         pattern = r"(?<![0-9a-z.])(?<!\d,)" + re.escape(needle) + r"(?![0-9a-z])(?![.,]\d)"
         return bool(re.search(pattern, text) or re.search(pattern, re.sub(r"(?<=\d),(?=\d)", "", text)))

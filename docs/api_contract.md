@@ -11,6 +11,20 @@ Fetch engagement metadata and summary counts.
 ### POST /v1/engagements/{engagement_id}/documents
 Register an uploaded document for processing.
 
+### POST /v1/engagements/{engagement_id}/documents/upload
+Upload a file and register it as a document (multipart: `file`, `document_role`, and optionally
+`evidence_id` and `document_type`). Answers with the document; what it carries depends on `S1_PROCESSING`:
+
+- `S1_PROCESSING=inline` (the default): 200 with the document, `processing_status` `not_started`, and no
+  `processing_run` key. The read is asked for separately (`POST /v1/documents/{document_id}/processing-runs`).
+- `S1_PROCESSING=queued`: 200 with the document, `processing_status` `queued`, and `processing_run`: the run the
+  upload queued for the first read (`status` `queued`, `attempt` 0, as `GET /v1/processing-runs/{run_id}` returns it).
+- If that run can't be queued, the upload still succeeds: 200 with the document as in inline mode. The server logs
+  `upload_read_not_queued` on `sustentra.processing` with the document id, and the client asks for the read itself
+  with `POST /v1/documents/{document_id}/processing-runs`.
+
+Refusals are unchanged: 400, 404 (unknown evidence), 413 (file over the size limit) and 415 (a file type no reader opens).
+
 ### GET /v1/engagements/{engagement_id}/documents
 List documents under an engagement.
 
@@ -18,10 +32,29 @@ List documents under an engagement.
 Get one document record and processing status.
 
 ### POST /v1/documents/{document_id}/processing-runs
-Start a processing run for extraction pipeline execution.
+Ask for the document to be read (org_admin / org_member). Body, all optional:
+`{"canonical_type_id_override": null, "include_optional": true, "include_deprecated": false}`.
+Returns a ProcessingRun (`contracts/processing_run.schema.json`):
+
+- `S1_PROCESSING=inline` (the default): the document is read in this request; 200 with the
+  finished run (`completed`, or `failed` with `error_code` and the user-facing `error`).
+- `S1_PROCESSING=queued`: the run is only queued; 202 with `status: "queued"`, and the
+  document's `processing_status` becomes `queued`.
+- A document has one active (queued or in_progress) run at a time: asking again returns that
+  run (202); asking for a different type while it is active is a 409.
+- 404 for a document of another organization, 400 when its stored file is missing, 403 for
+  provider_admin.
 
 ### GET /v1/processing-runs/{run_id}
-Get processing run status and metadata.
+One processing run; 404 when it belongs to another organization.
+
+### GET /v1/engagements/{engagement_id}/processing-runs
+`{"engagement_id", "items"}`: each document's latest run in the engagement. The call to poll
+while reads are queued or in progress.
+
+### POST /v1/documents/{document_id}/pipeline/process
+Older call: reads the document now, through the same executor (recorded as a processing run),
+and answers with the pipeline's result, or 400 / 404 / 409 / 422 / 500.
 
 ### GET /v1/engagements/{engagement_id}/evidence
 List evidence entities produced under the engagement.

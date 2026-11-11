@@ -6,14 +6,16 @@ import {
   getSignedInUser,
   isSessionEnded,
   listWorkspaceEvidence,
-  processDocument,
   signInAgainPath,
   submitFieldReview,
   uploadDocumentWithProgress,
   userFacingApiError,
 } from "../api/s1Backend";
 import { ApiError } from "../../../lib/api";
-import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
+import { isActiveRun, readFailureMessage, requestRead, type ProcessingRunView } from "../api/processingRuns";
+import { useProcessingRuns } from "../hooks/useProcessingRuns";
+import { readAfterUpload, withReadingState } from "../utils/readingState";
+import { reviewValuesFromFields, withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import {
   getRecalculation,
   getRecalculationReference,
@@ -30,11 +32,11 @@ import {
   unmatchedFacilities,
 } from "../utils/documentView";
 import { ExtractionReview } from "../components/ExtractionReview";
-import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
+import { EvidenceWorkspace, type WorkspaceProblem } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
 import { logout } from "../../auth/api";
 import { DashboardScreen } from "../components/DashboardScreen";
-import { UploadDialog, type SampleScript, type UploadTask } from "../components/UploadDialog";
+import { UploadDialog, uploadTasksFor, type SampleScript, type UploadTask } from "../components/UploadDialog";
 import { SetupScreen } from "../components/SetupScreen";
 import { DemoDocument } from "../components/demo/DemoDocument";
 import {
@@ -60,6 +62,7 @@ import { useVerificationStore } from "../verification/verificationStore";
 import { useWorkpaperSync } from "../verification/useWorkpaperSync";
 import { StateIndicator } from "../components/StateIndicator";
 import { EXACT_COPY } from "../constants/copy";
+import { uploadProblemTitle } from "../constants/uploads";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { inScopeFieldPlaceholders } from "../fixtures/scope/inScopeFields";
 import type { EngagementConfig, InScopeField, RecalculationSettings } from "../types";
@@ -81,6 +84,8 @@ import {
   saveEngagement,
   type BackendEngagement,
 } from "../api/engagements";
+import { andThen } from "../requests/maybePromise";
+import { useBackendRequestsStore } from "../requests/backendRequestsStore";
 import { useRequestsStore } from "../requests/requestsStore";
 import type {
   ContainerState,
@@ -111,12 +116,26 @@ type ActiveView =
   | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string; valueId?: string }
   | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
 
+/** The files of the upload in progress (or just finished): the lines the Evidence banner lists,
+ *  and the documents whose reads may still fail after the upload dialog has moved on. */
+interface UploadBatch {
+  notUploaded: string[];
+  notRead: string[];
+  /** File name by document id, for the files that were stored. */
+  names: Map<string, string>;
+}
+
 /** Facility->type (or entity/not-yet-known) node a Workspace row maps into. */
 function nodeKeyForEvidence(item: EvidenceItem): string {
   const type = item.detectedType ?? "Type unresolved";
   if (item.facilityState === "resolved" && item.facilityId) return `F:${item.facilityId}|T:${type}`;
   if (item.facilityState === "unresolved") return "N";
   return "E"; // multiple / not_facility_scoped -> entity-level
+}
+
+/** Why loading failed, in the API's words when it gave any. */
+function loadFailure(error: unknown): string {
+  return error instanceof Error ? error.message : "Check your connection and reload the page.";
 }
 
 /** A blank engagement — the starting point in backend mode. No templated data;
@@ -170,11 +189,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [documentDecisions, setDocumentDecisions] = useState<Record<string, DocumentDecision>>({});
   const [gridRegions, setGridRegions] = useState<{ code: string; name: string }[] | undefined>(undefined);
   const [dataPoints, setDataPoints] = useState<DataPointOption[]>([]);
-  const [processingDocumentIds, setProcessingDocumentIds] = useState<string[]>([]);
-  const [backendError, setBackendError] = useState<string | null>(null);
+  const [backendError, setBackendError] = useState<WorkspaceProblem | null>(null);
   // Backend mode: a 401 from the API means the session ended (FE-007).
   const [sessionEnded, setSessionEnded] = useState(false);
-  const requests = useRequestsStore(dataMode === "backend" ? [] : persisted?.asks ?? seedAsks);
   const verification = useVerificationStore(
     persisted?.examinations ?? (dataMode === "fixture" ? seedExaminations : {}),
     persisted?.findings ?? [],
@@ -212,11 +229,21 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     };
   }, [dataMode]);
 
-  // Requests, findings and examination states are saved per engagement (backend mode).
+  // Requests: the demo keeps them in the browser; with the backend every change goes to the server's
+  // request actions and the screens show what it answers. Both hooks run (hooks cannot be skipped);
+  // only the one for this mode is used.
+  const fixtureRequests = useRequestsStore(dataMode === "backend" ? [] : persisted?.asks ?? seedAsks);
+  const backendRequests = useBackendRequestsStore({
+    engagementId: engagement.engagementId,
+    onSessionEnded: handleSessionEnded,
+  });
+  const requests = dataMode === "backend" ? backendRequests : fixtureRequests;
+
+  // Findings and examination states are saved per engagement (backend mode). Requests are not:
+  // the server's request actions keep them.
   useWorkpaperSync({
     enabled: dataMode === "backend",
     engagementId: engagement.engagementId,
-    asks: requests.asks,
     findings: verification.findings,
     examinations: verification.examinations,
     documents: documentDecisions,
@@ -225,7 +252,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     replaceDocuments: setDocumentDecisions,
     onError: (error) => {
       if (handleSessionEnded(error)) return;
-      setBackendError(`Your last change was not saved. ${userFacingApiError(error)}`);
+      setBackendError({ title: "Your last change wasn't saved", message: userFacingApiError(error) });
     },
   });
   const [engagementSave, setEngagementSave] = useState<SaveState>("idle");
@@ -339,7 +366,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       })
       .catch((error: unknown) => {
         if (handleSessionEnded(error)) return;
-        setBackendError(error instanceof Error ? error.message : "Could not reach the backend API.");
+        setBackendError({ title: "Couldn't load the engagement", message: loadFailure(error) });
         setDemoState("error_degraded");
       });
   }, [dataMode]);
@@ -365,10 +392,63 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       setDemoState(nextContainerState ?? (workspace.evidence.length === 0 ? "empty_nothing_yet" : "populated"));
     } catch (error) {
       if (handleSessionEnded(error)) return;
-      setBackendError(error instanceof Error ? error.message : "Could not reach the backend API.");
+      setBackendError({ title: "Couldn't load the evidence", message: loadFailure(error) });
       setDemoState("error_degraded");
     }
   }
+
+  // Backend mode: reads run in the background. The runs say which documents are still being
+  // read, and the page hears when a read finishes. Fixture mode never fetches or schedules.
+  const uploadBatch = useRef<UploadBatch>({ notUploaded: [], notRead: [], names: new Map() });
+  // Reads a reviewer asked for (setting a document's type), by run id, with the banner title to
+  // use if one fails after the request has answered.
+  const rereadRuns = useRef(new Map<string, string>());
+
+  /** The Evidence banner for an upload batch: the files that weren't uploaded or weren't read.
+   *  `refreshBackendWorkspace` clears the banner as it starts, so this is set after a refresh. */
+  function showUploadProblems(batch: UploadBatch) {
+    if (batch.notUploaded.length === 0 && batch.notRead.length === 0) return;
+    setBackendError({
+      title: uploadProblemTitle(batch.notUploaded.length, batch.notRead.length),
+      message: [...batch.notUploaded, ...batch.notRead].join(" "),
+    });
+  }
+
+  /** Reads that were queued have finished: settle the upload dialog's rows, load what the reads
+   *  produced once, then tell what failed. */
+  function handleReadsFinished(runs: ProcessingRunView[]) {
+    const batch = uploadBatch.current;
+    let problem: WorkspaceProblem | null = null;
+    for (const run of runs) {
+      const rereadTitle = rereadRuns.current.get(run.run_id);
+      if (rereadTitle !== undefined) {
+        rereadRuns.current.delete(run.run_id);
+        if (run.status === "failed") problem = { title: rereadTitle, message: readFailureMessage(run) };
+        continue;
+      }
+      const name = batch.names.get(run.document_id);
+      if (name === undefined) continue;
+      const patch: Partial<UploadTask> =
+        run.status === "completed"
+          ? { stage: "done" }
+          : { stage: "failed", error: `Uploaded, but could not be read: ${readFailureMessage(run)}` };
+      setUploadTasks((current) =>
+        current.map((task) => (task.documentId === run.document_id ? { ...task, ...patch } : task))
+      );
+      if (patch.stage === "failed") batch.notRead.push(`${name}: ${patch.error}`);
+    }
+    void refreshBackendWorkspace("populated").then(() => {
+      if (problem) setBackendError(problem);
+      else showUploadProblems(batch);
+    });
+  }
+
+  const reads = useProcessingRuns({
+    enabled: dataMode === "backend",
+    engagementId: engagement.engagementId,
+    onFinished: handleReadsFinished,
+    onError: handleSessionEnded,
+  });
 
   function selectEngagement(id: string) {
     const row = engagements?.find((item) => item.id === id);
@@ -527,7 +607,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   // Follow-up: a problem that came back becomes a new ask linked to the old one.
   function raiseFollowUp(fromAsk: (typeof requests.asks)[number]) {
-    requests.saveAsk({
+    return requests.saveAsk({
       origin: fromAsk.source.origin,
       documentId: fromAsk.source.documentId ?? null,
       fieldKey: fromAsk.source.fieldKey ?? null,
@@ -570,42 +650,51 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     for (const { documentId, typeId } of retype) void rereadAs(documentId, typeId);
   }
 
+  /** Ask for a document to be read as a type the reviewer set. A read that is only queued is
+   *  followed by the runs hook; its failure is told when it finishes (handleReadsFinished). */
   async function rereadAs(documentId: string, typeId: string) {
-    setProcessingDocumentIds((current) => [...new Set([...current, documentId])]);
+    const title = "Couldn't read the document as that type";
     try {
-      await processDocument(documentId, typeId);
+      const run = await requestRead(documentId, typeId);
+      if (isActiveRun(run)) {
+        rereadRuns.current.set(run.run_id, title);
+        reads.track(run);
+        return;
+      }
       await refreshBackendWorkspace("populated");
+      if (run.status === "failed") setBackendError({ title, message: readFailureMessage(run) });
     } catch (error) {
       if (handleSessionEnded(error)) return;
-      setBackendError(`Could not re-read the document as that type. ${userFacingApiError(error)}`);
-    } finally {
-      setProcessingDocumentIds((current) => current.filter((id) => id !== documentId));
+      setBackendError({ title, message: userFacingApiError(error) });
     }
   }
 
   async function handleUploadFiles(files: FileList) {
     if (dataMode !== "backend") return;
     if (!engagement.engagementId) {
-      setBackendError("Create or pick an engagement in Setup before uploading.");
+      setBackendError({ title: "Couldn't upload", message: "Create or pick an engagement in Setup before uploading." });
       return;
     }
     const picked = Array.from(files);
-    const batchId = Date.now().toString(36);
-    const tasks: UploadTask[] = picked.map((file, index) => ({
-      id: `${batchId}-${index}`,
-      filename: file.name,
-      size: file.size,
-      stage: "waiting",
-      progress: 0,
-    }));
+    // A file no parser can read is set aside as not uploaded and never sent.
+    const tasks = uploadTasksFor(picked, Date.now().toString(36));
     const patchTask = (id: string, next: Partial<UploadTask>) =>
       setUploadTasks((current) => current.map((task) => (task.id === id ? { ...task, ...next } : task)));
     setUploadTasks(tasks);
     setIsUploading(true);
     setBackendError(null);
-    const failures: string[] = [];
+    // One line per file for the Evidence banner: not uploaded, then uploaded but not read. Reads
+    // that fail after the upload has moved on (queued reads) are added by handleReadsFinished.
+    const batch: UploadBatch = {
+      notUploaded: tasks.flatMap((task) => (task.stage === "not_uploaded" && task.error ? [task.error] : [])),
+      notRead: [],
+      names: new Map(),
+    };
+    uploadBatch.current = batch;
+    const sending = tasks.some((task) => task.stage === "waiting");
     for (const [index, file] of picked.entries()) {
       const taskId = tasks[index].id;
+      if (tasks[index].stage === "not_uploaded") continue;
       let uploadedId: string | null = null;
       try {
         patchTask(taskId, { stage: "uploading" });
@@ -613,6 +702,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           patchTask(taskId, { progress: fraction })
         );
         uploadedId = document.document_id;
+        batch.names.set(document.document_id, file.name);
         patchTask(taskId, { stage: "reading", progress: 1, documentId: document.document_id });
         setEvidenceItems((current) => [
           {
@@ -647,49 +737,57 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           ...current.filter((item) => item.documentId !== document.document_id),
         ]);
         setDemoState("populated");
-        setProcessingDocumentIds((current) => [...current, document.document_id]);
-        await processDocument(document.document_id);
-        setProcessingDocumentIds((current) => current.filter((id) => id !== document.document_id));
-        patchTask(taskId, { stage: "done" });
+        // Queued, the read is only started: the runs hook follows it and the next file goes up.
+        // Inline, this waits for the read itself. The task already says Reading… until it ends.
+        const start = await readAfterUpload(document);
+        if (start.kind === "reading") {
+          reads.track(start.run);
+        } else if (start.kind === "done") {
+          patchTask(taskId, { stage: "done" });
+        } else {
+          patchTask(taskId, { stage: "failed", error: start.reason });
+          batch.notRead.push(`${file.name}: ${start.reason}`);
+        }
       } catch (error) {
         if (handleSessionEnded(error)) {
           setIsUploading(false);
           return;
         }
         if (uploadedId) {
-          // Uploaded, but processing stopped (e.g. unreadable file): the row shows why.
-          const id = uploadedId;
-          setProcessingDocumentIds((current) => current.filter((item) => item !== id));
+          // Uploaded, but asking for the read failed: the row and the banner say why.
           const reason = `Uploaded, but could not be read: ${userFacingApiError(error)}`;
           patchTask(taskId, { stage: "failed", error: reason });
-          failures.push(`${file.name}: ${reason}`);
+          batch.notRead.push(`${file.name}: ${reason}`);
         } else {
-          const reason = `Not uploaded: ${userFacingApiError(error)}`;
-          patchTask(taskId, { stage: "failed", error: reason });
-          failures.push(`${file.name}: ${reason}`);
+          // Not stored: the API's own words say why (its 415 names the file).
+          const reason = userFacingApiError(error);
+          patchTask(taskId, { stage: "not_uploaded", progress: 0, error: reason });
+          batch.notUploaded.push(reason.includes(file.name) ? reason : `${file.name}: ${reason}`);
         }
       }
     }
-    await refreshBackendWorkspace("populated");
-    if (failures.length > 0) {
-      setBackendError(failures.join(" "));
-    }
+    if (sending) await refreshBackendWorkspace("populated");
+    showUploadProblems(batch);
     setIsUploading(false);
   }
 
   async function handleProcessDocument(documentId: string) {
     if (dataMode !== "backend") return;
     setBackendError(null);
-    setProcessingDocumentIds((current) => [...new Set([...current, documentId])]);
+    const title = "Couldn't read the document";
     try {
-      await processDocument(documentId);
+      const run = await requestRead(documentId);
+      if (isActiveRun(run)) {
+        rereadRuns.current.set(run.run_id, title);
+        reads.track(run);
+        return;
+      }
       await refreshBackendWorkspace("populated");
+      if (run.status === "failed") setBackendError({ title, message: readFailureMessage(run) });
     } catch (error) {
       if (handleSessionEnded(error)) return;
-      setBackendError(userFacingApiError(error));
       await refreshBackendWorkspace();
-    } finally {
-      setProcessingDocumentIds((current) => current.filter((id) => id !== documentId));
+      setBackendError({ title, message: userFacingApiError(error) });
     }
   }
 
@@ -698,9 +796,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const evidenceView = useMemo(
     () =>
       dataMode === "backend"
-        ? applyDocumentView(evidenceItems, facts, documentDecisions, engagement.facilities)
+        ? withReadingState(applyDocumentView(evidenceItems, facts, documentDecisions, engagement.facilities), reads.runs)
         : evidenceItems,
-    [dataMode, evidenceItems, facts, documentDecisions, engagement.facilities]
+    [dataMode, evidenceItems, facts, documentDecisions, engagement.facilities, reads.runs]
   );
   // The data quality checks behind the Evidence screen's Issue column (backend mode), fetched
   // again when the documents or the reviewer's decisions change.
@@ -724,9 +822,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     };
   }, [dataMode, activeView.name, engagement.engagementId, evidenceSignature]);
   const reviewValuesView = useMemo(() => {
-    if (dataMode !== "backend") return reviewValues;
+    // A card's latest request decides whether it is requested, in the session and after a reload.
+    const settled = withRequestsFromAsks(reviewValues, requests.asks);
+    if (dataMode !== "backend") return settled;
     const byId = new Map(evidenceView.map((item) => [item.documentId, item]));
-    return reviewValues.map((value) => {
+    return settled.map((value) => {
       const item = byId.get(value.documentId);
       if (!item) return value;
       return {
@@ -738,7 +838,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         withdrawnReason: item.disposition === "withdrawn" ? "Document withdrawn; it is left out of the results." : undefined,
       };
     });
-  }, [dataMode, reviewValues, evidenceView]);
+  }, [dataMode, reviewValues, evidenceView, requests.asks]);
   const backendCoverage = useBackendCoverage(
     engagement.engagementId,
     dataMode === "backend" && (activeView.name === "requests" || activeView.name === "coverage"),
@@ -900,12 +1000,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               if (next) openExtraction(next.documentId);
             }}
             onSaveAsk={requests.saveAsk}
-            onSend={(ids, lineNumbers) => requests.sendAsks(ids, lineNumbers).requestNumber}
+            onSend={(ids, lineNumbers) => andThen(requests.sendAsks(ids, lineNumbers), (sent) => sent.requestNumber)}
             onResolve={requests.resolveAsk}
             onWithdraw={requests.withdrawAsk}
             onEdit={requests.editAsk}
             onRaiseFollowUp={raiseFollowUp}
             onOpenSource={(ask) => ask.source.documentId && openExtraction(ask.source.documentId)}
+            serverRecordsActor={dataMode === "backend"}
           />
         ) : activeView.name === "methodology" ? (
           // Demo only for now: the backend does not read the methodology from the report yet.
@@ -920,10 +1021,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         ) : activeView.name === "results" ? (
           dataMode === "backend" ? (
             <BackendVerificationResults
-              engagement={engagement}
+              engagement={engagementForUser}
               store={verification}
               onSaveInputs={saveRecalculationInputs}
               onError={handleSessionEnded}
+              onOpenDocument={openExtraction}
             />
           ) : (
             <VerificationResults
@@ -982,6 +1084,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             writesEnabled
             typeOptions={dataMode === "backend" ? Object.keys(BACKEND_TYPE_IDS) : undefined}
             qualityChecks={qualityChecks}
+            serverRecordsActor={dataMode === "backend"}
           />
         ) : activeView.name === "extraction" ? (
           <ExtractionReview
@@ -994,6 +1097,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             initialValueId={activeView.valueId}
             initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}
+            asks={requests.asks}
+            serverRecordsActor={dataMode === "backend"}
             onBack={() => setActiveView({ name: "evidence" })}
             reviewerName={dataMode === "backend" ? user?.firstName ?? user?.email : undefined}
             allowAddValue={dataMode === "fixture"}
@@ -1047,10 +1152,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             renderPage={(documentId, span, onPickBox, marks, pick) => {
               const item = evidenceItems.find((e) => e.documentId === documentId);
               const format = item?.format ?? "";
-              // Drawn as content: workbooks, CSVs, Word and plain-text files (not TIFFs and other images).
+              // Drawn as content: workbooks, CSVs, Word and plain-text files, emails (not TIFFs and other images).
               const asContent =
                 ["xlsx", "csv", "docx"].includes(format) ||
-                (format === "other" && /\.(txt|md|markdown)$/i.test(item?.filename ?? ""));
+                (format === "other" && /\.(txt|md|markdown|eml)$/i.test(item?.filename ?? ""));
               const demoValues =
                 dataMode === "fixture" ? reviewValuesView.filter((v) => v.documentId === documentId) : [];
               return demoValues.length ? (

@@ -1132,7 +1132,7 @@ select:focus-visible,
 .s1-modal__head { display: flex; flex-direction: column; gap: var(--sp-1); }
 .s1-modal__field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); }
 .s1-modal__field select, .s1-modal__field textarea {
-  font: inherit; font-size: var(--text-md); color: var(--ink);
+  font: inherit; font-size: var(--text-sm); color: var(--ink);
   background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input);
   padding: var(--sp-2);
 }
@@ -1264,7 +1264,7 @@ select:focus-visible,
 .s1-upq__bar { height: 0.5rem; background: var(--sf-sunken); border-radius: var(--radius-chip); overflow: hidden; }
 .s1-upq__fill { height: 100%; background: var(--state-active-fg); border-radius: var(--radius-chip); transition: width 0.25s ease; }
 .s1-upq__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
-.s1-upq__row { display: grid; grid-template-columns: minmax(0, 1fr) 4.5rem minmax(6rem, 12rem) 5.5rem; align-items: center; gap: var(--sp-3); padding: var(--sp-2) 0; border-top: var(--border-hairline); font-size: var(--text-sm); }
+.s1-upq__row { display: grid; grid-template-columns: minmax(0, 1fr) 4.5rem minmax(6rem, 12rem) 6.5rem; align-items: center; gap: var(--sp-3); padding: var(--sp-2) 0; border-top: var(--border-hairline); font-size: var(--text-sm); }
 .s1-upq__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s1-upq__size { text-align: right; font-variant-numeric: tabular-nums; }
 .s1-upq__track { height: 0.375rem; background: var(--sf-sunken); border-radius: var(--radius-chip); overflow: hidden; }
@@ -1279,13 +1279,14 @@ select:focus-visible,
 @media (prefers-reduced-motion: reduce) { .s1-upq__track-fill.is-reading { animation: none; } .s1-upq__fill, .s1-upq__track-fill { transition: none; } }
 .s1-upq__stage { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
 .s1-upq__row--done .s1-upq__stage { color: var(--state-resolved-fg, var(--ink-2)); font-weight: var(--weight-strong); }
-.s1-upq__row--failed .s1-upq__stage { color: var(--state-blocking-fg); font-weight: var(--weight-strong); }
+.s1-upq__row--failed .s1-upq__stage,
+.s1-upq__row--not_uploaded .s1-upq__stage { color: var(--state-blocking-fg); font-weight: var(--weight-strong); }
 .s1-upq__error { grid-column: 1 / -1; font-size: var(--text-sm); color: var(--state-blocking-fg); }
 .s1-uph { display: flex; flex-direction: column; gap: var(--sp-2); }
 .s1-uph__title { font-size: var(--text-md); margin: var(--sp-2) 0 0; }
 .s1-uph__file { font-weight: var(--weight-strong); text-align: left; overflow-wrap: anywhere; }
 .s1-uph__fmt, .s1-uph__why { font-size: var(--text-sm); }
-@media (max-width: 48rem) { .s1-upq__row { grid-template-columns: minmax(0, 1fr) 5rem; } .s1-upq__size, .s1-upq__track { display: none; } }
+@media (max-width: 48rem) { .s1-upq__row { grid-template-columns: minmax(0, 1fr) 6.5rem; } .s1-upq__size, .s1-upq__track { display: none; } }
 .s1-upload-screen__hint { font-size: var(--text-sm); }
 
 /* ---- Setup (screen 0) ---- */
@@ -1298,7 +1299,7 @@ select:focus-visible,
 .s1-setup-field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); color: var(--ink-2); }
 .s1-setup-inline { display: flex; gap: var(--sp-2); }
 .s1-setup-field input, .s1-setup-field select, .s1-setup-row input {
-  font: inherit; font-size: var(--text-md); color: var(--ink);
+  font: inherit; font-size: var(--text-sm); color: var(--ink);
   background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-2);
 }
 .s1-setup-list { display: flex; flex-direction: column; gap: var(--sp-2); }
@@ -1356,7 +1357,7 @@ select:focus-visible,
 .s1-signin__title { font-size: var(--text-lg); font-weight: var(--weight-strong); margin: var(--sp-3) 0 0; }
 .s1-signin__sub { margin: 0 0 var(--sp-2); color: var(--ink-3); font-size: var(--text-sm); }
 .s1-signin__field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); color: var(--ink-2); }
-.s1-signin__field input { font: inherit; font-size: var(--text-md); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-2) var(--sp-3); }
+.s1-signin__field input { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-2) var(--sp-3); }
 .s1-signin__submit { margin-top: var(--sp-2); font: inherit; font-size: var(--text-md); font-weight: var(--weight-strong); cursor: pointer; color: var(--sf-card); background: var(--state-active-fg); border: var(--hairline-width) solid var(--state-active-fg); border-radius: var(--radius-input); padding: var(--sp-2) var(--sp-3); }
 .s1-signin__submit:hover { filter: brightness(1.05); }
 .s1-signin__foot { display: flex; align-items: center; justify-content: space-between; font-size: var(--text-sm); color: var(--ink-3); margin-top: var(--sp-1); }
@@ -1462,7 +1463,7 @@ select:focus-visible,
 .s1-xr-edit { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-2); width: 100%; }
 .s1-xr-edit__field { display: flex; flex-direction: column; gap: 0.15rem; font-size: var(--text-sm); color: var(--ink-3); flex: 1 1 7rem; min-width: 0; }
 .s1-xr-edit__field--unit { flex: 0 1 6rem; }
-.s1-xr-edit__field input { font: inherit; font-size: var(--text-md); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); min-width: 0; width: 100%; }
+.s1-xr-edit__field input { font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-page); border: var(--border-hairline); border-radius: var(--radius-input); padding: var(--sp-1) var(--sp-2); min-width: 0; width: 100%; }
 .s1-xr-edit__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .s1-xr-acceptall { margin-left: auto; }
 .s1-xr-doc { flex-wrap: wrap; }
@@ -1770,14 +1771,46 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-pv__open { margin-left: auto; font-size: var(--text-sm); }
 .s1-pv__page { position: relative; box-sizing: border-box; width: 100%; background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input); overflow: hidden; }
 .s1-pv__img { display: block; width: 100%; height: auto; }
-.s1-pv__mark { position: absolute; box-sizing: content-box; margin: -0.2rem 0 0 -0.2rem; padding: 0.2rem; border: 0.15rem solid var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 45%, transparent); border-radius: 0.2rem; pointer-events: none; }
 .s1-pv__note { font-size: var(--text-sm); margin: 0; }
-/* Every value read from the page: a faint box that selects its value when clicked. */
-/* Exactly the line's box (no padding), so the boxes of neighbouring lines never overlap. */
-.s1-pv__box { position: absolute; box-sizing: border-box; margin: 0; padding: 0; border: 0.08rem dashed var(--state-open-line); border-radius: 0.15rem; background: transparent; cursor: pointer; }
-.s1-pv__box:hover { border-style: solid; border-color: var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 35%, transparent); }
+/* Every value read from the page, highlighted like the demo's documents: a highlighter stroke
+   by review state (the --hl-* tokens; the key above the cards names them). Clicking one selects
+   its value. Exactly the line's box (no padding), so neighbouring lines never overlap; the
+   colour multiplies with the page, so the printed text stays dark under it. The selected
+   value's box gets the accent ring with one pulse, not a colour of its own. */
+.s1-pv__box {
+  position: absolute; box-sizing: border-box; margin: 0; padding: 0; border: 0; border-radius: 0.2rem; cursor: pointer;
+  background: var(--hl-to-review); box-shadow: inset 0 -0.1rem 0 var(--hl-to-review-stroke); mix-blend-mode: multiply;
+  transition: background-color 0.18s ease, box-shadow 0.18s var(--ease-out);
+}
+.s1-pv__box:hover { background: var(--hl-to-review-hover); }
 .s1-pv__box:focus-visible { outline: var(--focus-ring); outline-offset: 0.1rem; }
-.s1-pv__box--accepted, .s1-pv__box--corrected { border-color: var(--state-resolved-line); }
+.s1-pv__box--alone { cursor: default; pointer-events: none; }
+/* A workbook, CSV or Word value: the same stroke on its cell or words. */
+.s1-cv__mark {
+  font: inherit; color: inherit; text-align: inherit; margin: 0; padding: 0 0.15rem; border: 0; border-radius: 0.2rem; cursor: pointer; white-space: inherit;
+  background: var(--hl-to-review); box-shadow: inset 0 -0.1rem 0 var(--hl-to-review-stroke);
+  transition: background-color 0.18s ease, box-shadow 0.18s var(--ease-out);
+}
+.s1-cv__mark:hover { background: var(--hl-to-review-hover); }
+.s1-cv__mark:focus-visible { outline: var(--focus-ring); outline-offset: 0.1rem; }
+.s1-pv__box--accepted, .s1-cv__mark--accepted { background: var(--hl-accepted); box-shadow: inset 0 -0.1rem 0 var(--hl-accepted-stroke); }
+.s1-pv__box--accepted:hover, .s1-cv__mark--accepted:hover { background: var(--hl-accepted-hover); }
+.s1-pv__box--corrected, .s1-cv__mark--corrected { background: var(--hl-corrected); box-shadow: inset 0 -0.1rem 0 var(--hl-corrected-stroke); }
+.s1-pv__box--corrected:hover, .s1-cv__mark--corrected:hover { background: var(--hl-corrected-hover); }
+.s1-pv__box--requested, .s1-cv__mark--requested { background: var(--hl-requested); box-shadow: inset 0 -0.1rem 0 var(--hl-requested-stroke); }
+.s1-pv__box--requested:hover, .s1-cv__mark--requested:hover { background: var(--hl-requested-hover); }
+.s1-pv__box.is-sel, .s1-cv__mark.s1-cv__mark--selected {
+  box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0.45rem var(--hl-selected-halo);
+  animation: s1-hl-pulse 1.4s var(--ease-out) 1;
+}
+@keyframes s1-hl-pulse {
+  0% { box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0 var(--hl-selected-pulse); }
+  70% { box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0.75rem var(--hl-selected-pulse-end); }
+  100% { box-shadow: 0 0 0 0.15rem var(--accent-solid), 0 0 0 0.45rem var(--hl-selected-halo); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .s1-pv__box, .s1-cv__mark, .s1-pv__box.is-sel, .s1-cv__mark.s1-cv__mark--selected { animation: none; transition: none; }
+}
 /* A workbook, CSV or Word file drawn as its content: each value marked in its cell or line. */
 .s1-cv { display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
 .s1-cv__tabs { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
@@ -1796,12 +1829,9 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-cv__line { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); gap: var(--sp-2); align-items: baseline; }
 .s1-cv__lineno { justify-self: end; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
 .s1-cv__text { white-space: pre-wrap; tab-size: 4; overflow-wrap: anywhere; }
-.s1-cv__mark { font: inherit; color: inherit; text-align: inherit; margin: 0; padding: 0 0.15rem; border: 0.08rem dashed var(--state-open-line); border-radius: 0.15rem; background: transparent; cursor: pointer; white-space: inherit; }
-.s1-cv__grid .s1-cv__mark { display: block; width: 100%; height: 100%; min-height: var(--sp-6); padding: 0 var(--sp-2); }
-.s1-cv__mark:hover { border-style: solid; border-color: var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 35%, transparent); }
-.s1-cv__mark:focus-visible { outline: var(--focus-ring); outline-offset: 0.1rem; }
-.s1-cv__mark--accepted, .s1-cv__mark--corrected { border-color: var(--state-resolved-line); }
-.s1-cv__mark--selected, .s1-cv__mark--selected:hover { border: 0.15rem solid var(--state-open-fg); background: color-mix(in srgb, var(--state-open-bg) 70%, transparent); font-weight: var(--weight-strong); }
+.s1-cv__grid .s1-cv__mark { display: block; width: 100%; height: 100%; min-height: var(--sp-6); padding: 0 var(--sp-2); border-radius: 0; }
+/* A cell clips what lies outside it: the selected cell's ring sits inside, without the pulse. */
+.s1-cv__grid .s1-cv__mark.s1-cv__mark--selected { box-shadow: inset 0 0 0 0.15rem var(--accent-solid); animation: none; }
 .s1-cv__note { font-size: var(--text-sm); margin: 0; }
 .s1-xr-pdf-open { display: inline-block; margin-top: var(--sp-2); font-size: var(--text-sm); }
 
@@ -1910,6 +1940,14 @@ html { font-size: 82%; }
 .s1-out-signoff { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-4); padding-top: var(--sp-4); border-top: var(--border-hairline); }
 .s1-out-signoff__name { font-size: var(--text-md); font-weight: var(--weight-strong); }
 .s1-out-signoff__date { text-align: right; }
+/* Output in backend mode: the opinion's place until the verifier writes it, scope subtotals, who found a difference */
+.s1-out-placeholder { padding: var(--sp-2) var(--sp-3); color: var(--ink-2); border: var(--hairline-width) dashed var(--line-strong); border-radius: var(--radius-input); }
+.s1-out-table .s1-out-subtotal td { font-weight: var(--weight-strong); color: var(--ink); background: var(--sf-page); }
+.s1-out-by { display: inline-flex; align-items: center; gap: var(--sp-1); font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-2); }
+.s1-out-by__icon { width: 1em; height: 1em; }
+.s1-out-subhead { margin: var(--sp-3) 0 0; font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-2); }
+.s1-out-list__text { flex: 1 1 8rem; min-width: 0; }
+.s1-out-outcome { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1); }
 
 @media (max-width: 48rem) {
   .s1-out-doc { padding: var(--sp-5) var(--sp-4); }
@@ -2358,6 +2396,28 @@ html, body { margin: 0; padding: 0; }
 .s1-vw-pill { flex: none; padding: var(--state-chip-padding-block) var(--sp-2); font-size: var(--text-sm); font-weight: var(--weight-strong); font-variant-numeric: tabular-nums; white-space: nowrap; border: var(--border-hairline); border-radius: var(--state-chip-radius); }
 .s1-vw-pill--differs { color: var(--state-blocking-fg); background: var(--state-blocking-bg); border-color: var(--state-blocking-line); }
 .s1-vw-pill--agrees { color: var(--state-resolved-fg); background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
+/* Live results: a difference below materiality is to review (amber), not blocking (red) */
+.s1-vw-pill--open { color: var(--state-open-fg); background: var(--state-open-bg); border-color: var(--state-open-line); }
+.s1-vw-amber { color: var(--state-open-fg); }
+.s1-vw-delta--below { color: var(--state-open-fg); background: var(--state-open-bg); }
+/* Live boxes: the pill says above or below materiality in words, so its column is wider. That
+   row fits beside the box name only from 70rem with the sidebar open; from 64rem to 70rem the
+   live figures wrap under the name, as every box's do below 64rem, so nothing is clipped. */
+.s1-vw-box__figures.s1-vw-box__figures--live { grid-template-columns: 5.5rem 1.25rem 5.5rem 4.75rem 13rem 3.5rem; }
+@media (min-width: 64rem) and (max-width: 70rem) {
+  .s1-vw-box__head.s1-vw-box__head--live { grid-template-columns: 1rem auto minmax(0, 1fr); }
+  .s1-vw-box__head--live .s1-vw-box__figures { grid-column: 1 / -1; justify-content: start; }
+}
+.s1-vw-table td.s1-vw-amber { color: var(--state-open-fg); font-weight: var(--weight-strong); }
+/* Live results: a state chip with its reason behind the ⓘ, beside a name or under a table */
+.s1-vw-state { display: inline-flex; align-items: center; gap: var(--sp-1); font-style: normal; white-space: nowrap; }
+.s1-vw-named { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); }
+.s1-vw-row.is-stated td { font-style: normal; }
+.s1-vw-gases { --vw-tone: var(--chart-5); }
+.s1-vw-fig__value { white-space: nowrap; }
+.s1-vw-box__state { grid-column: span 2; justify-self: end; white-space: nowrap; }
+.s1-vw-box__figures .s1-vw-box__meta.s1-vw-box__count { grid-column: 1 / -1; justify-self: end; gap: var(--sp-2); white-space: nowrap; }
+.s1-vw-group td { padding-top: var(--sp-3); font-size: var(--text-sm); font-weight: var(--weight-strong); letter-spacing: 0.03em; text-transform: uppercase; color: var(--ink-3); background: var(--sf-page); }
 
 /* Tables */
 .s1-vw-table, .s1-vw-steps { width: 100%; border-collapse: collapse; font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
@@ -2437,6 +2497,13 @@ html, body { margin: 0; padding: 0; }
 .s1-vw-cause--differs .s1-vw-cause__icon { color: var(--state-open-fg); }
 .s1-vw-cause--agrees { background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
 .s1-vw-cause--agrees .s1-vw-cause__icon { color: var(--state-resolved-fg); }
+/* Live results: a cause with no reported value to differ from, and who stated it */
+.s1-vw-cause--note { background: var(--sf-page); }
+.s1-vw-cause--note .s1-vw-cause__icon { color: var(--ink-3); }
+.s1-vw-by { display: inline-flex; align-items: center; gap: var(--sp-1); margin-right: var(--sp-2); font-weight: var(--weight-strong); color: var(--ink-2); white-space: nowrap; }
+.s1-vw-card__note { display: flex; gap: var(--sp-2); align-items: flex-start; margin: 0; font-size: var(--text-sm); color: var(--ink-3); }
+.s1-vw-card__note .s1-vw-ico { margin-top: 0.2em; }
+.s1-vw-records__hint { margin: 0; font-size: var(--text-sm); }
 .s1-vw-actions, .s1-vw-form-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .s1-vw-action { display: inline-flex; align-items: center; gap: var(--sp-1); transition: transform 160ms var(--ease-out); }
 .s1-vw-action:active { transform: scale(0.97); }
@@ -2860,9 +2927,9 @@ html, body { margin: 0; padding: 0; }
    ========================================================================== */
 .s1-setup-card h2 { display: inline-flex; align-items: center; gap: var(--sp-1); }
 .s1-setup-field input, .s1-setup-field select, .s1-setup-row input, .s1-fac__row input, .s1-fac__row select {
-  box-sizing: border-box; height: 2.5rem; width: 100%;
+  box-sizing: border-box; height: 2.25rem; width: 100%;
   background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input);
-  padding: 0 var(--sp-3); font: inherit; font-size: var(--text-md); color: var(--ink);
+  padding: 0 var(--sp-3); font: inherit; font-size: var(--text-sm); color: var(--ink);
 }
 .s1-setup-row input:focus, .s1-fac__row input:focus, .s1-fac__row select:focus { outline: var(--focus-ring); outline-offset: 0; border-color: var(--accent-solid); }
 .s1-setup-inline > input { flex: 1; min-width: 0; }
@@ -2891,8 +2958,13 @@ html, body { margin: 0; padding: 0; }
 .s1-setup-add:hover { background: var(--accent-softer); border-color: var(--accent-solid); }
 .s1-setup-add:active { transform: scale(0.98); }
 .s1-setup-add svg { width: 0.95rem; height: 0.95rem; }
+/* Narrow: the name and its remove button share row one; every other field takes a full-width line below.
+   Team rows get the facility rows' divider and tighter in-row gap, so a login reads with its own name, not the next one. */
 @media (max-width: 48rem) {
-  .s1-setup-row, .s1-fac__row, .s1-fac--regions .s1-fac__row { grid-template-columns: 1fr 2.5rem; }
+  .s1-setup-row, .s1-fac__row, .s1-fac--regions .s1-fac__row { grid-template-columns: minmax(0, 1fr) 2.5rem; }
+  .s1-setup-row > .s1-setup-remove, .s1-fac__row > .s1-setup-remove { grid-column: 2; grid-row: 1; }
+  .s1-fac__address, .s1-fac__region, .s1-setup-row__login { grid-column: 1 / -1; }
+  .s1-setup-row:not(.s1-setup-row--head) { row-gap: var(--sp-2); padding-bottom: var(--sp-2); border-bottom: var(--border-hairline); }
   .s1-setup-row--head { display: none; }
 }
 
@@ -3024,7 +3096,7 @@ textarea.s1-req-message { width: 100%; box-sizing: border-box; font-variant-nume
 .s1-xr-addform__title { font-size: var(--text-sm); color: var(--ink-2); overflow-wrap: anywhere; }
 .s1-xr-addform label { display: flex; flex-direction: column; gap: 0.125rem; font-size: var(--text-sm); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.04em; }
 .s1-xr-addform input {
-  box-sizing: border-box; width: 100%; min-width: 0; height: 2.25rem; padding: 0 var(--sp-2); font: inherit; font-size: var(--text-md); text-transform: none; letter-spacing: normal;
+  box-sizing: border-box; width: 100%; min-width: 0; height: 2.25rem; padding: 0 var(--sp-2); font: inherit; font-size: var(--text-sm); text-transform: none; letter-spacing: normal;
   color: var(--ink); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input);
 }
 .s1-xr-addform input:focus { outline: var(--focus-ring); outline-offset: 0; border-color: var(--accent-solid); }
@@ -3211,8 +3283,10 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-card:hover { background: var(--accent-softer); }
 .s1-xr-card.is-sel { background: var(--sf-card); box-shadow: 0 0 0 var(--hairline-width) var(--state-active-fg), 0 0.25rem 0.75rem rgba(40, 40, 112, 0.08); }
 .s1-xr-card:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.s1-xr-card__top { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; font-size: var(--text-sm); }
-.s1-xr-card__top .s1-xr-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: var(--weight-strong); }
+/* The header wraps rather than cut the title: when the title, period and state chip do not fit
+   on one line, the period and chip move to a second line and the title keeps its words. */
+.s1-xr-card__top { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--sp-2); min-width: 0; font-size: var(--text-sm); }
+.s1-xr-card__top .s1-xr-what { min-width: 0; overflow-wrap: anywhere; color: var(--ink); font-weight: var(--weight-strong); }
 .s1-xr-period { flex: none; font-size: var(--text-sm); color: var(--ink-3); white-space: nowrap; }
 .s1-xr-badge { flex: none; margin-left: auto; padding: 0 0.375rem; font-size: var(--text-sm); font-weight: var(--weight-strong); border: var(--border-hairline); border-radius: var(--state-chip-radius); white-space: nowrap; }
 .s1-xr-badge--accepted { color: var(--state-resolved-fg); background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
@@ -3222,6 +3296,8 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-xr-card .s1-xr-val { font-size: var(--text-md); line-height: var(--leading-tight); }
 .s1-xr-card .s1-xr-unit { font-size: var(--text-sm); }
 .s1-xr-card .s1-xr-was { font-size: var(--text-sm); }
+/* A quantity converted for the calculation: the card reads as printed, this line says what is used. */
+.s1-xr-conv { flex-basis: 100%; font-size: var(--text-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .s1-xr-card .s1-xr-missing { font-size: var(--text-sm); }
 .s1-xr-card__scopes { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
 .s1-xr-card .s1-xr-scope { padding: 0 0.375rem; line-height: 1.5; }
@@ -3278,13 +3354,13 @@ button.s1-ai__ref:active { transform: scale(0.97); }
 .s1-mr-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 
 /* Fields */
-.s1-mr-input { box-sizing: border-box; width: 100%; min-height: 2.25rem; padding: 0.375rem var(--sp-2); font: inherit; font-size: var(--text-md); color: var(--ink); background: var(--sf-card); border: var(--hairline-width) solid var(--line-strong); border-radius: var(--radius-input); }
+.s1-mr-input { box-sizing: border-box; width: 100%; min-height: 2.25rem; padding: 0.375rem var(--sp-2); font: inherit; font-size: var(--text-sm); color: var(--ink); background: var(--sf-card); border: var(--hairline-width) solid var(--line-strong); border-radius: var(--radius-input); }
 .s1-mr-input:focus { outline: var(--focus-ring); outline-offset: 0; }
 textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-mr-input--period { width: 17.5rem; }
 .s1-mr-input--pct { width: 4.5rem; font-variant-numeric: tabular-nums; }
 .s1-mr-pct { display: inline-flex; align-items: center; gap: 0.375rem; color: var(--ink-2); }
-.s1-mr-select { min-height: 2.25rem; max-width: 10rem; font-size: var(--text-md); color: var(--ink); background-color: var(--sf-card); border: var(--hairline-width) solid var(--line-strong); border-radius: var(--radius-input); }
+.s1-mr-select { min-height: 2.25rem; max-width: 10rem; font-size: var(--text-sm); color: var(--ink); background-color: var(--sf-card); border: var(--hairline-width) solid var(--line-strong); border-radius: var(--radius-input); }
 .s1-mr-select--wide { width: 17.5rem; max-width: 100%; min-height: 2.5rem; }
 .s1-mr-select--fill { max-width: none; }
 

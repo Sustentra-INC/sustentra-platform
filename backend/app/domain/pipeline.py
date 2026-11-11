@@ -25,7 +25,7 @@ class PipelineStageStatuses(BaseModel):
 class HaltReason(BaseModel):
     """Why the pipeline stopped before producing reviewable candidates."""
 
-    code: str  # unreadable_document | unsupported_document
+    code: str  # unreadable_document | ocr_required | password_protected | unsupported_document
     message: str
 
 

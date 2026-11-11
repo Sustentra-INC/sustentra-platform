@@ -71,7 +71,8 @@ BASE_UNIT = {
     fuel_units.MASS: "short_ton",
 }
 
-# Reported data points (workbook "Data from summary documents", with its row numbers).
+# Reported data points (workbook "Data from summary documents", with its row numbers after
+# Claire added Scope 1 NF3 at row 29): the older per-data-point comparison.
 DATA_POINTS: tuple[tuple[str, str, int, str], ...] = (
     ("scope1_total", "Scope 1 (Total)", 22, "t CO2e"),
     ("scope1_co2", "Scope 1 CO2", 23, "t"),
@@ -80,61 +81,39 @@ DATA_POINTS: tuple[tuple[str, str, int, str], ...] = (
     ("scope1_hfcs", "Scope 1 HFCs", 26, "t"),
     ("scope1_pfcs", "Scope 1 PFCs", 27, "t"),
     ("scope1_sf6", "Scope 1 SF6", 28, "t"),
-    ("scope2_location_total", "Scope 2 (Total), location-based", 29, "t CO2e"),
-    ("scope2_market_total", "Scope 2 (Total), market-based", 29, "t CO2e"),
-    ("scope2_co2", "Scope 2 CO2 (location-based)", 30, "t"),
-    ("scope2_ch4", "Scope 2 CH4 (location-based)", 31, "t"),
-    ("scope2_n2o", "Scope 2 N2O (location-based)", 32, "t"),
-    ("biogenic_co2", "CO2 emissions from biogenic combustion", 37, "t CO2e"),
-    ("stationary_combustion_total", "Direct emissions from stationary combustion", 42, "t CO2e"),
-    ("mobile_combustion_total", "Direct emissions from mobile combustion", 43, "t CO2e"),
-    ("fugitive_total", "Direct emissions from fugitive sources", 45, "t CO2e"),
-    ("purchased_electricity_total", "Indirect emissions from purchased electricity (location-based)", 47,
+    ("scope2_location_total", "Scope 2 (Total), location-based", 30, "t CO2e"),
+    ("scope2_market_total", "Scope 2 (Total), market-based", 30, "t CO2e"),
+    ("scope2_co2", "Scope 2 CO2 (location-based)", 31, "t"),
+    ("scope2_ch4", "Scope 2 CH4 (location-based)", 32, "t"),
+    ("scope2_n2o", "Scope 2 N2O (location-based)", 33, "t"),
+    ("biogenic_co2", "CO2 emissions from biogenic combustion", 38, "t CO2e"),
+    ("stationary_combustion_total", "Direct emissions from stationary combustion", 43, "t CO2e"),
+    ("mobile_combustion_total", "Direct emissions from mobile combustion", 44, "t CO2e"),
+    ("fugitive_total", "Direct emissions from fugitive sources", 46, "t CO2e"),
+    ("purchased_electricity_total", "Indirect emissions from purchased electricity (location-based)", 48,
      "t CO2e"),
-    ("purchased_steam_total", "Indirect emissions from purchased steam", 48, "t CO2e"),
-    ("purchased_heating_total", "Indirect emissions from purchased heating", 49, "t CO2e"),
+    ("purchased_steam_total", "Indirect emissions from purchased steam", 49, "t CO2e"),
+    ("purchased_heating_total", "Indirect emissions from purchased heating", 50, "t CO2e"),
 )
 DATA_POINT_KEYS = frozenset(key for key, *_ in DATA_POINTS)
 
-# Every reported data point in the workbook's "Data from summary documents" (rows 22-50),
-# for Setup's in-scope list: (key, label, row, unit, layer, Required/Optional, how it is
-# checked). "recalculated" rows are in DATA_POINTS; the others are listed, not compared.
-DATA_POINT_CATALOGUE: tuple[tuple[str, str, int, str, str, str, str], ...] = (
-    ("scope1_total", "Scope 1 (Total)", 22, "t CO2e", "scope1", "Required", "recalculated"),
-    ("scope1_co2", "Scope 1 CO2", 23, "t", "scope1", "Required", "recalculated"),
-    ("scope1_ch4", "Scope 1 CH4", 24, "t", "scope1", "Required", "recalculated"),
-    ("scope1_n2o", "Scope 1 N2O", 25, "t", "scope1", "Required", "recalculated"),
-    ("scope1_hfcs", "Scope 1 HFCs", 26, "t", "scope1", "Required", "compared_under_fugitive"),
-    ("scope1_pfcs", "Scope 1 PFCs", 27, "t", "scope1", "Required", "compared_under_fugitive"),
-    ("scope1_sf6", "Scope 1 SF6", 28, "t", "scope1", "Required", "compared_under_fugitive"),
-    ("scope2_location_total", "Scope 2 (Total), location-based", 29, "t CO2e", "scope2", "Required", "recalculated"),
-    ("scope2_market_total", "Scope 2 (Total), market-based", 29, "t CO2e", "scope2", "Required", "recalculated"),
-    ("scope2_co2", "Scope 2 CO2 (location-based)", 30, "t", "scope2", "Required", "recalculated"),
-    ("scope2_ch4", "Scope 2 CH4 (location-based)", 31, "t", "scope2", "Required", "recalculated"),
-    ("scope2_n2o", "Scope 2 N2O (location-based)", 32, "t", "scope2", "Required", "recalculated"),
-    ("scope2_hfcs", "Scope 2 HFCs", 33, "t", "scope2", "Required", "not_recalculated"),
-    ("scope2_pfcs", "Scope 2 PFCs", 34, "t", "scope2", "Required", "not_recalculated"),
-    ("scope2_sf6", "Scope 2 SF6", 35, "t", "scope2", "Required", "not_recalculated"),
-    ("scope2_nf3", "Scope 2 NF3", 36, "t", "scope2", "Required", "not_recalculated"),
-    ("biogenic_co2", "CO2 emissions from biogenic combustion", 37, "t CO2e", "scope1", "Required", "recalculated"),
-    ("stationary_combustion_total", "Direct emissions from stationary combustion", 42, "t CO2e", "scope1", "Optional",
-     "recalculated"),
-    ("mobile_combustion_total", "Direct emissions from mobile combustion", 43, "t CO2e", "scope1", "Optional",
-     "recalculated"),
-    ("process_total", "Direct emissions from process sources", 44, "t CO2e", "scope1", "Optional",
-     "not_recalculated"),
-    ("fugitive_total", "Direct emissions from fugitive sources", 45, "t CO2e", "scope1", "Optional", "recalculated"),
-    ("agricultural_total", "Direct emissions from agricultural sources", 46, "t CO2e", "scope1", "Optional",
-     "not_recalculated"),
-    ("purchased_electricity_total", "Indirect emissions from purchased electricity (location-based)", 47, "t CO2e",
-     "scope2", "Optional", "recalculated"),
-    ("purchased_steam_total", "Indirect emissions from purchased steam", 48, "t CO2e", "scope2", "Optional",
-     "recalculated"),
-    ("purchased_heating_total", "Indirect emissions from purchased heating", 49, "t CO2e", "scope2", "Optional",
-     "recalculated"),
-    ("purchased_cooling_total", "Indirect emissions from purchased cooling", 50, "t CO2e", "scope2", "Optional",
-     "not_recalculated"),
-)
+
+def _catalogue() -> tuple[tuple[str, str, int, str, str, str, str], ...]:
+    """Every reported data point, for Setup's in-scope list: (key, label, row, unit, layer,
+    Required/Optional, how it is checked). Built from the roll-up's final outputs, so the two
+    never drift apart."""
+
+    out = []
+    for output in rollup.FINAL_OUTPUTS:
+        node = rollup.NODE_BY_KEY[output.node]
+        out.append((output.key, output.label, output.workbook_row,
+                    "t" if output.default_measure == "mass_t" else "t CO2e",
+                    "scope1" if node.scope == "scope1" else "scope2", output.requirement,
+                    "recalculated" if rollup.output_is_recalculated(output.key) else "not_recalculated"))
+    return tuple(out)
+
+
+DATA_POINT_CATALOGUE: tuple[tuple[str, str, int, str, str, str, str], ...] = _catalogue()
 CATALOGUE_KEYS = frozenset(key for key, *_ in DATA_POINT_CATALOGUE)
 
 
@@ -625,7 +604,11 @@ class EngagementRecalculationService:
             "excluded": set_aside + self._outside_period(records, period) + not_counted,
             "not_recalculated": ["Scope 1 fugitive sources other than refrigerants and fire suppression",
                                  "Scope 1 process sources", "Scope 2 cooling"],
+            # Documents read: every document whose records fed the recalculation, reviewed or not.
             "documents_considered": len({r.document_id for r in records}),
+            # Of those, the fully reviewed documents: nothing open on any record (see _documents_reviewed).
+            # A partly reviewed document is not counted here, although its reviewed records feed the totals.
+            "documents_reviewed": self._documents_reviewed(records, needs_input, awaiting),
             # Missing months, duplicates, overlapping and cross-year bills (formula library Q-001..Q-005).
             "quality_checks": run_checks([e for r in records if (e := self._evidence_record(r)) is not None], period),
             "rollup": rollup.build_rollup(categories, open_items=open_items, absent=inputs.absent_sources,
@@ -633,6 +616,30 @@ class EngagementRecalculationService:
                                           out_of_scope=not_in_scope, tolerance=tolerance, gwp_set=inputs.gwp_set,
                                           ref=self.reference),
         }
+
+    @staticmethod
+    def _documents_reviewed(records: list[ReviewedRecord], needs_input: list[dict[str, Any]],
+                            awaiting: list[dict[str, Any]]) -> int:
+        """Fully reviewed documents: those in the recalculation with nothing open on any record.
+
+        A document counts only when every one of its records is clear: no value awaiting
+        review, and no question about one of its records (a reviewed amount that is not a
+        usable number, an energy type that is not steam, hot water or chilled water, a
+        refrigerant record that does not add up). Those items name their document_id.
+
+        The rule is per document, not per record. A partly reviewed document (one record
+        awaiting review among reviewed ones) is not counted, although its reviewed records
+        already feed the totals; the interface counts it with the documents whose values
+        await review, so the two counts never overlap. That is why the interface and the
+        export call this number "fully reviewed".
+
+        Engagement-level questions (eGRID subregion, EPA fuel, refrigerant GWP, steam heat
+        content, vehicle groups) ask for the engagement's inputs, not about a document's
+        values, and name no document, so they do not un-review one.
+        """
+
+        open_documents = {str(item["document_id"]) for item in awaiting + needs_input if item.get("document_id")}
+        return len({r.document_id for r in records} - open_documents)
 
     @staticmethod
     def _apply_decisions(records: list[ReviewedRecord], decisions: dict[str, dict[str, Any]]
@@ -773,7 +780,7 @@ class EngagementRecalculationService:
             prorate = _proration(record.best("service_period_start"), record.best("service_period_end"), period)
             amount = self._quantity(record, prorate)
             if amount is None:
-                needs_input.append({"kind": "quantity", "key": record.label,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
                                     "message": f"{record.label}: the fuel quantity or its unit is not a usable number."})
                 continue
             quantity, unit = amount
@@ -784,7 +791,7 @@ class EngagementRecalculationService:
             dimension = fuel_units.dimension_of(unit)
             base = BASE_UNIT.get(dimension)
             if base is None:
-                needs_input.append({"kind": "quantity", "key": record.label,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
                                     "message": f"{record.label}: {unit} cannot be used without a heat content."})
                 continue
             entry = totals.setdefault((fuel, base), {"quantity": 0.0, "documents": [], "flags": set()})
@@ -831,7 +838,7 @@ class EngagementRecalculationService:
             prorate = _proration(day, day, period)
             amount = self._quantity(record, prorate)
             if amount is None:
-                needs_input.append({"kind": "quantity", "key": record.label,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
                                     "message": f"{record.label}: the fuel quantity or its unit is not a usable number."})
                 continue
             quantity, unit = amount
@@ -956,7 +963,7 @@ class EngagementRecalculationService:
                 continue
             amount = self._quantity(record, prorate)
             if amount is None or amount[1] not in ("kWh", "MWh"):
-                needs_input.append({"kind": "quantity", "key": record.label,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
                                     "message": f"{record.label}: electricity must be a number in kWh or MWh."})
                 continue
             quantity, unit = amount
@@ -1033,7 +1040,7 @@ class EngagementRecalculationService:
             kind = thermal_kind(record.reviewed("energy_type"))
             if kind is None:
                 needs_input.append({
-                    "kind": "thermal_type", "key": record.label, "category": source,
+                    "kind": "thermal_type", "key": record.label, "document_id": record.document_id, "category": source,
                     "message": f"{record.label}: the energy type '{record.reviewed('energy_type') or ''}' is not "
                     "steam, hot water or chilled water. Correct it in Extraction Review to include this bill.",
                 })
@@ -1054,7 +1061,8 @@ class EngagementRecalculationService:
                 str(record.best("facility_name") or record.best("service_address") or "Unnamed facility").split())
             amount = self._quantity(record, prorate, thermal=True)
             if amount is None:
-                needs_input.append({"kind": "quantity", "key": record.label, "category": source,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
+                                    "category": source,
                                     "message": f"{record.label}: the thermal quantity must be a number with its unit."})
                 continue
             quantity, unit = amount
@@ -1073,7 +1081,8 @@ class EngagementRecalculationService:
             elif fuel_units.dimension_of(unit) == fuel_units.ENERGY:
                 mmbtu = fuel_units.convert_exact(quantity, unit, "MMBtu")
             else:
-                needs_input.append({"kind": "quantity", "key": record.label, "category": source,
+                needs_input.append({"kind": "quantity", "key": record.label, "document_id": record.document_id,
+                                    "category": source,
                                     "message": f"{record.label}: {unit} is not a thermal energy unit."})
                 continue
             entry = totals.setdefault((source, facility), {"mmbtu": 0.0, "documents": []})
@@ -1117,6 +1126,7 @@ class EngagementRecalculationService:
             text = str(record.reviewed("refrigerant_type") or "").strip()
             if not text:
                 needs_input.append({"kind": "refrigerant_record", "key": f"{record.label}:refrigerant_type",
+                                    "document_id": record.document_id,
                                     "message": f"{record.label}: the refrigerant is blank. Enter it in Extraction "
                                                "Review to include this record."})
                 continue
@@ -1135,6 +1145,7 @@ class EngagementRecalculationService:
                 mass = self._mass(record, name)
                 if mass is None:
                     needs_input.append({"kind": "quantity", "key": f"{record.label}:{name}",
+                                        "document_id": record.document_id,
                                         "message": f"{record.label}: the {name.replace('_', ' ')} or its unit "
                                                    "(lb or kg) is not a usable number."})
                     break
@@ -1148,6 +1159,7 @@ class EngagementRecalculationService:
                 if kind == INSTALLATION and amounts["refrigerant_added"] < amounts["equipment_capacity"]:
                     needs_input.append({
                         "kind": "refrigerant_record", "key": f"{record.label}:installation",
+                        "document_id": record.document_id,
                         "message": f"{record.label}: {amounts['refrigerant_added']:g} {unit} charged into new "
                                    f"equipment with a full charge of {amounts['equipment_capacity']:g} {unit}. If it "
                                    "came pre-charged, set the service type to service and the amount to what was "
@@ -1156,6 +1168,7 @@ class EngagementRecalculationService:
                 if kind == DISPOSAL and amounts["refrigerant_recovered"] > amounts["equipment_capacity"]:
                     needs_input.append({
                         "kind": "refrigerant_record", "key": f"{record.label}:disposal",
+                        "document_id": record.document_id,
                         "message": f"{record.label}: {amounts['refrigerant_recovered']:g} {unit} recovered from "
                                    f"equipment with a full charge of {amounts['equipment_capacity']:g} {unit}. "
                                    "Check both amounts in Extraction Review."})

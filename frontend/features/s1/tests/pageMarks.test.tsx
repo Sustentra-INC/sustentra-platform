@@ -31,8 +31,9 @@ describe("document to value", () => {
     render(<BackendPageView documentId="DOC" span={MARKS[1].span} marks={MARKS} onPickMark={onPickMark} />);
     const boxes = await screen.findAllByRole("button", { name: /^Select / });
     expect(boxes.map((b) => b.getAttribute("aria-label"))).toEqual([
-      "Select Activity quantity: 700,000 kWh · Activity unit: kWh", // one box for one line
-      "Select Service period start: 2025-01-01",
+      // One box for one line; the name says each value's state, not the colour alone.
+      "Select Activity quantity: 700,000 kWh, to review · Activity unit: kWh, to review",
+      "Select Service period start: 2025-01-01, accepted",
     ]); // the page-2 value is not drawn on page 1
     fireEvent.click(boxes[0]);
     expect(onPickMark).toHaveBeenCalledWith(MARKS[0]);

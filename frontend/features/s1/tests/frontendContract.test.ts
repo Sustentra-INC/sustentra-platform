@@ -46,6 +46,20 @@ describe("frontend contract checks", () => {
     expect(css).not.toContain("--text-xs");
   });
 
+  // docs/design_standard.md, section 2: the text in a field is smaller than the section title above it.
+  it("sets the text in form fields at the small size", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    const field = /(^|[\s,>+~(])(input|select|textarea)\b|[-_](input|select)\b/;
+    const offenders: string[] = [];
+    postcss.parse(css).walkRules((rule) => {
+      if (!field.test(rule.selector)) return;
+      rule.walkDecls("font-size", (d) => {
+        if (d.value !== "var(--text-sm)" && d.value !== "inherit") offenders.push(`${rule.selector} { font-size: ${d.value} }`);
+      });
+    });
+    expect(offenders).toEqual([]);
+  });
+
   // docs/design_standard.md, section 4: text reads at 4.5:1 or better on every surface it sits on.
   it("keeps text colours legible on every surface (WCAG AA, 4.5:1)", () => {
     const tokens = readFileSync(join(process.cwd(), "features", "s1", "styles", "sustentra-tokens.css"), "utf8");

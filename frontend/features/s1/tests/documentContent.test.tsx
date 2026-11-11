@@ -28,6 +28,9 @@ describe("where a value sits in a file without pages", () => {
     expect(anchorOf("csv", { cell_or_range: "row 2", parser_block_ids: ["csv_parser-r2-b2"] })).toEqual({ kind: "row", row: 2 });
     expect(anchorOf("docx", { parser_block_ids: ["docx_parser-p1-b7", "docx_parser-p1-b6"] })).toEqual({ kind: "line", line: 7 });
     expect(anchorOf("other", { parser_block_ids: ["text_parser-p1-b3"] })).toEqual({ kind: "line", line: 3 });
+    // An email (.eml) is its lines too: headers, message text, attachment names.
+    expect(anchorOf("other", { cell_or_range: "part 2", parser_block_ids: ["email_parser-p1-b5"] }))
+      .toEqual({ kind: "line", line: 5, part: 2 });
     expect(anchorOf("pdf", { parser_block_ids: ["pymupdf-p1-b3"] })).toBeNull(); // a PDF has its box
     expect(anchorOf("xlsx", { sheet_name: "Log", cell_or_range: null })).toBeNull();
   });
@@ -67,15 +70,15 @@ describe("the file drawn with its values marked", () => {
         )}
       />
     );
-    const quantity = await screen.findByRole("button", { name: "Select quantity" });
+    const quantity = await screen.findByRole("button", { name: "Select quantity, to review" });
     expect(quantity.textContent).toBe("96,000");
     expect(quantity.className).toContain("s1-cv__mark--selected");
     // The unit is the "kWh" after the amount, not the word in the label "Total kWh Used".
-    const unit = screen.getByRole("button", { name: "Select unit" });
+    const unit = screen.getByRole("button", { name: "Select unit, to review" });
     expect(unit.textContent).toBe("kWh");
     expect(unit.parentElement?.textContent).toBe("Total kWh Used\t96,000 kWh");
     expect(unit.previousSibling?.textContent).toBe(" ");
-    fireEvent.click(screen.getByRole("button", { name: "Select start · end" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select start, to review · end, to review" }));
     expect(onPickAmong).toHaveBeenCalledWith(["start", "end"]);
   });
 
@@ -99,7 +102,7 @@ describe("the file drawn with its values marked", () => {
         marks={marks(["gallons", { kind: "cell", sheet: "2025 log", row: 3, column: 3 }, "450"])}
       />
     );
-    const cell = await screen.findByRole("button", { name: "Select gallons" });
+    const cell = await screen.findByRole("button", { name: "Select gallons, to review" });
     expect(cell.textContent).toBe("450");
     expect(screen.getByRole("tab", { name: "2025 log" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["", "A", "B", "C", "D"]);
@@ -120,9 +123,9 @@ describe("the file drawn with its values marked", () => {
         marks={marks(["fuel", { kind: "row", row: 2 }, "Diesel"], ["site", { kind: "row", row: 2 }, "Richmond"])}
       />
     );
-    expect((await screen.findByRole("button", { name: "Select fuel" })).textContent).toBe("Diesel");
+    expect((await screen.findByRole("button", { name: "Select fuel, to review" })).textContent).toBe("Diesel");
     // Not in any single cell: the row number is the mark.
-    expect(screen.getByRole("button", { name: "Select site" }).textContent).toBe("2");
+    expect(screen.getByRole("button", { name: "Select site, to review" }).textContent).toBe("2");
   });
 
   it("says when the file cannot be shown", async () => {
@@ -216,8 +219,8 @@ describe("review findings: the right spot, every time", () => {
         )}
       />
     );
-    expect((await screen.findByRole("button", { name: "Select recovered · recovered-old" })).textContent).toBe("0");
-    expect(screen.getByRole("button", { name: "Select added-ambiguous" }).textContent).toBe("3"); // the row number
+    expect((await screen.findByRole("button", { name: "Select recovered, to review · recovered-old, to review" })).textContent).toBe("0");
+    expect(screen.getByRole("button", { name: "Select added-ambiguous, to review" }).textContent).toBe("3"); // the row number
   });
 
   it("marks a unit after the label, and in the part of the line the extractor read", async () => {
@@ -237,11 +240,11 @@ describe("review findings: the right spot, every time", () => {
         )}
       />
     );
-    const colon = await screen.findByRole("button", { name: "Select unit-colon" });
+    const colon = await screen.findByRole("button", { name: "Select unit-colon, to review" });
     expect(colon.previousSibling?.textContent).toBe("Total kWh Used: 96,000 ");
-    expect(screen.getByRole("button", { name: "Select unit-tabs" }).previousSibling?.textContent)
+    expect(screen.getByRole("button", { name: "Select unit-tabs, to review" }).previousSibling?.textContent)
       .toBe("Meter M-1\tTotal kWh Used\t96,000 ");
-    expect(screen.getByRole("button", { name: "Select account" }).textContent).toBe("KGE-7781-B");
+    expect(screen.getByRole("button", { name: "Select account, to review" }).textContent).toBe("KGE-7781-B");
   });
 
   it("keeps every other value on a line marked when one value's text is not on it", async () => {
@@ -255,10 +258,10 @@ describe("review findings: the right spot, every time", () => {
         marks={marks(["card", { kind: "line", line: 1 }, "****1182"], ["qty", { kind: "line", line: 1, part: 4 }, "12.4"])}
       />
     );
-    const card = await screen.findByRole("button", { name: "Select card" });
+    const card = await screen.findByRole("button", { name: "Select card, to review" });
     expect(card.textContent).toBe("1"); // on the line number
     expect(card.className).toContain("s1-cv__mark--selected");
-    fireEvent.click(screen.getByRole("button", { name: "Select qty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select qty, to review" }));
     expect(onPickAmong).toHaveBeenCalledWith(["qty"]);
   });
 
@@ -270,7 +273,7 @@ describe("review findings: the right spot, every time", () => {
     const valueMarks = marks(["x", { kind: "cell", sheet: "Log", row: 1, column: 0 }, "450"],
       ["y", { kind: "cell", sheet: "Notes", row: 1, column: 0 }, "memo"]);
     const view = render(<DocumentContentView documentId="DOC" selectedId="x" marks={valueMarks} />);
-    await screen.findByRole("button", { name: "Select x" });
+    await screen.findByRole("button", { name: "Select x, to review" });
     fireEvent.click(screen.getByRole("tab", { name: "Notes" }));
     view.rerender(<DocumentContentView documentId="DOC" selectedId="y" marks={valueMarks} />);
     view.rerender(<DocumentContentView documentId="DOC" selectedId="x" marks={valueMarks} />);
