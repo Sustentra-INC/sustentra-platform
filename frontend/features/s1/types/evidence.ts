@@ -109,4 +109,7 @@ export interface DocumentDecision {
   detectedType?: string | null;
   /** The reviewer confirmed the type (the one set, or the machine's as it stood). */
   typeConfirmed?: boolean;
+  /** Moves of this document between calculation lines and blocks, applied in order to where the
+   *  backend first placed it. Saved with the rest of this payload, which must be merged, not replaced. */
+  placements?: { from: string; to: string }[];
 }

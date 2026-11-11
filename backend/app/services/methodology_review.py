@@ -61,6 +61,15 @@ MAX_FACILITIES = 20
 MAX_FACILITY = 100
 MAX_HISTORY = 50
 MAX_ADDED_ROWS = 200
+MAX_SUGGESTION_BYTES = 8 * 1024
+MAX_QUOTE = 1000
+# What a suggestion may carry: key -> longest text. Anything else is dropped.
+_SUGGESTION_TEXT = {"quote": MAX_QUOTE, "document_id": 100, "file_name": 255, "model": 100, "request_id": 100,
+                    "origin": 20, "suggested_at": 40}
+# source_reference keeps the keys of contracts/source_reference.schema.json that are plain text or a page.
+_SOURCE_REFERENCE_TEXT = ("source_reference_id", "document_id", "sheet_name", "cell_or_range", "text_snippet",
+                          "source_kind")
+MAX_SOURCE_REFERENCE_TEXT = 200
 # Sizes are bounded so a record always fits MAX_PAYLOAD_BYTES (32 KB, counted in UTF-8): in the
 # worst case a decision and a suggestion each hold at most about 9 KB, a quote about 4 KB, and
 # the history is trimmed (oldest events first) to whatever room is left, so a field can never
@@ -210,6 +219,10 @@ def _text(field: Mapping[str, Any], value: Any, *, required: bool = False, limit
         raise _fail(field, f"{name} must be text.")
     if "\x00" in value:
         raise _fail(field, f"{name} can't contain a null character.")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise _fail(field, f"{name} contains a character that can't be saved.") from None
     clean = value.strip()
     if required and not clean:
         raise _fail(field, f"{name} can't be blank.")
@@ -383,7 +396,43 @@ def with_suggestion(record: Mapping[str, Any], field: Mapping[str, Any], suggest
     cleaned); the decision and history stay as they are."""
 
     out = copy.deepcopy(dict(record))
-    out["suggestion"] = {**suggestion, "value": validate_value(field, suggestion["value"])}
+    out["suggestion"] = bound_suggestion(field, suggestion)
+    return out
+
+
+def _clip(value: Any, limit: int) -> str | None:
+    """Text cut to ``limit`` characters, without null characters or lone surrogates."""
+
+    if not isinstance(value, str):
+        return None
+    return value.replace("\x00", "").encode("utf-8", "replace").decode("utf-8")[:limit]
+
+
+def bound_suggestion(field: Mapping[str, Any], suggestion: Mapping[str, Any]) -> dict[str, Any]:
+    """The suggestion with a validated value and every other part bounded: the quote is cut to
+    MAX_QUOTE characters (``quote_truncated: true``), the other texts to their limits, the
+    source reference to the contract's plain keys, and unknown keys are dropped. MethodologyInvalid
+    if the result is still over MAX_SUGGESTION_BYTES."""
+
+    out: dict[str, Any] = {"value": validate_value(field, suggestion["value"])}
+    for key, limit in _SUGGESTION_TEXT.items():
+        if key in suggestion:
+            raw = suggestion[key]
+            out[key] = _clip(raw, limit)
+            if key == "quote" and isinstance(raw, str) and len(raw) > limit:
+                out["quote_truncated"] = True
+    reference = suggestion.get("source_reference")
+    if isinstance(reference, Mapping):
+        kept: dict[str, Any] = {k: _clip(reference[k], MAX_SOURCE_REFERENCE_TEXT)
+                                for k in _SOURCE_REFERENCE_TEXT if isinstance(reference.get(k), str)}
+        page = reference.get("page_number")
+        if isinstance(page, int) and not isinstance(page, bool):
+            kept["page_number"] = page
+        out["source_reference"] = kept
+    elif "source_reference" in suggestion:
+        out["source_reference"] = _clip(reference, MAX_SOURCE_REFERENCE_TEXT)
+    if payload_size(out) > MAX_SUGGESTION_BYTES:
+        raise MethodologyInvalid(f"The suggestion for '{field['label']}' is too long to record.")
     return out
 
 

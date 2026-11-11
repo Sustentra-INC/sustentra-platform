@@ -39,6 +39,8 @@ export const SETTINGS_KEYS = [
   // Not a Setup field, but PATCH replaces `settings`, so it must round-trip or a Setup save wipes it.
   "recalculation",
   "outOfScopeDataPoints",
+  // Added in Evidence; PATCH replaces `settings`, so a Setup save must send it back.
+  "evidenceLines",
 ] as const satisfies readonly (keyof EngagementConfig)[];
 
 export interface EngagementPayload {
