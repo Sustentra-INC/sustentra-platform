@@ -15,11 +15,19 @@ export type AuditIntentAction =
   | "correct_value_machine"
   | "correct_value_human"
   | "enter_value"
-  | "re_extract";
+  | "re_extract"
+  | "move_placement"
+  | "create_line"
+  | "create_fuel"
+  | "rename_line"
+  | "delete_line";
 
 export interface AuditIntent {
   action: AuditIntentAction;
+  /** The document the change is on; empty for a change to a calculation line. */
   documentId: string;
+  /** The calculation line a change is on (Evidence tree), named as the reviewer sees it. */
+  lineLabel?: string;
   fieldKey?: string;
   oldValue?: string | number | boolean | null;
   newValue?: string | number | boolean | null;

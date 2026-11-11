@@ -405,6 +405,9 @@ async function openEvidence() {
   await settle();
   fireEvent.click(sidebarItem("Evidence"));
   await settle();
+  // These tests are about the table by document type (the tree has its own tests).
+  fireEvent.click(screen.getByRole("button", { name: "By document type" }));
+  await settle();
 }
 
 /** The sidebar's destinations (the page has other buttons with the same words). */

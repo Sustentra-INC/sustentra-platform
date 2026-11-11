@@ -1,3 +1,5 @@
+import type { EvidenceLineSetting } from "../api/evidenceTree";
+
 export interface Actor {
   id: string;
   name: string;
@@ -71,6 +73,8 @@ export interface EngagementConfig {
   recalculation?: RecalculationSettings;
   /** Workbook data point keys the engagement does not cover (set in Setup's in-scope list). */
   outOfScopeDataPoints?: string[];
+  /** Calculation lines a reviewer added in Evidence (the system's own lines are not stored). */
+  evidenceLines?: EvidenceLineSetting[];
 }
 
 /** A renewable energy certificate applied to the market-based Scope 2 total. */
