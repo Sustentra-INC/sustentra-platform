@@ -298,6 +298,20 @@ def place_record(record: ReviewedRecord, *, ref: EmissionFactorReference, facili
     return RecordPlacement(None)
 
 
+def vehicle_group_line(category: str, level2: str, level2_label: str, anchor_id: str,
+                       group: dict[str, Any]) -> CalculationLine:
+    """The system line of one vehicle group for one fuel: the one constructor ``default_lines``
+    and the recalculation both use, so their keys are the same."""
+
+    return make_line(category, level2, level2_label, "vehicle_group", anchor_id,
+                     f"{level2_label}, {vehicle_group_label(group)}", created_by_user=False)
+
+
+def facility_line(category: str, level2: str, level2_label: str, facility: dict[str, Any]) -> CalculationLine:
+    return make_line(category, level2, level2_label, "facility", facility_anchor_id(facility),
+                     f"{level2_label}, {facility.get('name')}", created_by_user=False)
+
+
 def default_lines(placements: Iterable[RecordPlacement], facilities: list[dict[str, Any]],
                   vehicle_groups: list[dict[str, Any]]) -> list[CalculationLine]:
     """The system lines: for each level 2 that has at least one record, one line per Setup
@@ -310,14 +324,12 @@ def default_lines(placements: Iterable[RecordPlacement], facilities: list[dict[s
         assert category and level2 and level2_label  # filtered above
         if anchor_kind == "facility":
             for facility in facilities:
-                line = make_line(category, level2, level2_label, "facility", facility_anchor_id(facility),
-                                 f"{level2_label}, {facility.get('name')}", created_by_user=False)
+                line = facility_line(category, level2, level2_label, facility)
                 lines.setdefault(line.key, line)
         elif anchor_kind == "vehicle_group":
             for anchor_id, group in vehicle_group_anchors(vehicle_groups):
                 if str(group.get("fuel", "")).strip().lower() == level2_label.lower():
-                    line = make_line(category, level2, level2_label, "vehicle_group", anchor_id,
-                                     f"{level2_label}, {vehicle_group_label(group)}", created_by_user=False)
+                    line = vehicle_group_line(category, level2, level2_label, anchor_id, group)
                     lines.setdefault(line.key, line)
     return list(lines.values())
 
