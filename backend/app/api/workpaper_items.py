@@ -9,8 +9,8 @@ checks its shape and size, not its fields, so the screens can evolve without a
 migration. Another org's engagement answers 404, like every S1 route.
 
 Requests (asks) also have action endpoints that check their state, number them and
-record who acted (``requests.py``, MVP-86). The PUT below still accepts asks until the
-frontend has moved to those endpoints.
+record who acted (``requests.py``, MVP-86). Asks are refused here (409): they change
+only through the request actions.
 
 No ``from __future__ import annotations``: FastAPI resolves these at runtime.
 """
@@ -34,6 +34,8 @@ from backend.app.services.workpaper_item_service import ITEM_KEY, MAX_PAYLOAD_BY
 router = APIRouter(prefix="/v1", tags=["workpaper"])
 
 Kind = Literal["ask", "finding", "examination", "document"]
+
+ASKS_HAVE_ACTIONS = "Requests are saved through their own actions now. Reload the page to continue."
 
 
 class WorkpaperItemSave(BaseModel):
@@ -83,6 +85,8 @@ async def save_workpaper_item(
     engagement: dict[str, Any] = Depends(require_open_engagement),
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> WorkpaperItem:
+    if kind == "ask":
+        raise HTTPException(status_code=409, detail=ASKS_HAVE_ACTIONS)
     if not ITEM_KEY.match(item_key):
         raise HTTPException(status_code=422, detail="item_key: letters, digits and : . _ - only (max 200).")
     assert user.org_id is not None  # s1_writer excludes provider_admin
