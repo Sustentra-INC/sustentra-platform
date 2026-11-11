@@ -16,15 +16,18 @@ import { createPortal } from "react-dom";
 import type {
   CalcGas,
   CalcLineGas,
+  CalcLineInputs,
   CalcLineResults,
   CalcLineStatus,
   CalcLineStep2,
+  CalcUnplaced,
+  CalcUnplacedReason,
   CalculationLine,
   RecalcComparison,
 } from "../api/recalculation";
 import type { RecalculationSettings } from "../types";
 import type { TeamMember } from "../types/engagement";
-import { differs, examinationKey, formatGasTonnes, formatInputQuantity, formatSignedGasTonnes } from "../utils/verificationTable";
+import { differs, examinationKey, formatGasTonnes, formatInputQuantity, formatPercent, formatSignedGasTonnes } from "../utils/verificationTable";
 import type { VerificationStore } from "../verification/verificationStore";
 import { InfoTip } from "./InfoTip";
 import { AddNote, RecordExamination, formatWhen } from "./VerificationWorkspace";
@@ -89,10 +92,30 @@ export function unitsFor(unit: string): string[] {
 
 /** Plain sentences for the flags the backend raises; a code not listed here is not shown. */
 const FLAG_TEXT: Record<string, string> = {
-  reported_not_entered: "No company total is entered for this line.",
-  unknown_line_key: "Company figures name a line this engagement does not have.",
-  company_activity_missing: "No company activity is entered, so the company side is not computed.",
-  partial_period: "Some months of the period have no reviewed evidence.",
+  fuel_chosen_by_reviewer: "The EPA fuel is the one the reviewer chose.",
+  fuel_auto_matched: "The EPA fuel was matched from the extracted fuel code, with no choice made.",
+  diesel_matched_to_distillate_fuel_oil_no_2: "Diesel was matched to Distillate Fuel Oil No. 2.",
+  prorated_to_reporting_period: "A record runs past the reporting period, so only its share inside counts.",
+  no_reporting_period: "The engagement has no reporting period, so records count in full.",
+  no_service_period: "A record has no service period, so it counts in full.",
+  service_period_reversed: "A record's service period ends before it starts, so it counts in full.",
+  unit_converted: "The quantity was converted to the factor's unit (Step 2).",
+  biogenic_co2_reported_separately: "Biomass fuel: its CO₂ is biogenic and is reported separately, not in this line's CO₂e.",
+  ch4_n2o_need_vehicle_groups: "No usable vehicle group, so CH₄ and N₂O are not calculated.",
+  mixed_units_or_fuels: "This line mixes units or fuels: Step 2 shows the first, Step 3 lists every run.",
+  company_ch4_n2o_use_vehicle_group: "On the company side, CH₄ and N₂O still come from the vehicle group.",
+  no_evidence: "The company gave figures for this line, but no reviewed record is on it.",
+  calculation_failed: "A calculation for this line failed. It shows what could be calculated.",
+};
+
+/** Why a record sits on no calculation line, in plain words. */
+const UNPLACED_TEXT: Record<CalcUnplacedReason, string> = {
+  unknown_line: "Filed on a line that no longer exists.",
+  moved_to_another_place: "A reviewer filed it somewhere else.",
+  fuel_shared_by_vehicle_groups: "Two or more vehicle groups use this fuel, so it can't go on one.",
+  no_vehicle_group: "No vehicle group uses this fuel. Add one under Recalculation inputs.",
+  no_facility_match: "No facility in Setup matches it.",
+  no_calculation_line: "It has no calculation line.",
 };
 
 const qty = formatInputQuantity;
@@ -101,7 +124,8 @@ function factorText(value: number): string {
   return value === 1 ? "×1" : `×${qty(value)}`;
 }
 
-function period(start: string, end: string): string {
+function period(start: string | null, end: string | null): string {
+  if (!start || !end) return start ?? end ?? "No service period";
   return start === end ? start : `${start} to ${end}`;
 }
 
@@ -126,12 +150,28 @@ function percentText(value: number): string {
 }
 
 /** A difference with its status word: red above tolerance, amber within, always with the word. */
-function DiffChip({ value, status, pct }: { value: number | null; status: CalcLineStatus | null; pct?: number | null }) {
+function DiffChip({
+  value,
+  status,
+  pct,
+  incomplete,
+}: {
+  value: number | null;
+  status: CalcLineStatus | null;
+  pct?: number | null;
+  incomplete?: boolean;
+}) {
+  const open = incomplete ? " · inputs incomplete" : "";
   if (value === null) {
-    return <span className="s1-muted">{status ? STATUS_WORD[status] : "Not compared"}</span>;
+    return (
+      <span className="s1-muted">
+        {status ? STATUS_WORD[status] : "Not compared"}
+        {open}
+      </span>
+    );
   }
   const Arrow = value > 0 ? ArrowUpRight : ArrowDownRight;
-  const word = status ? ` · ${STATUS_WORD[status]}` : "";
+  const word = `${status ? ` · ${STATUS_WORD[status]}` : ""}${open}`;
   const quiet = !differs(value);
   return (
     <span className={`s1-vw-delta${quiet ? " s1-vw-delta--zero" : status === "above" ? "" : " s1-vw-delta--below"}`}>
@@ -209,13 +249,18 @@ function GasTable({ line }: { line: CalculationLine }) {
         <SourceNote label={`${qty(g.ef.value)} ${g.ef.unit}`} source={g.ef.source} />
       </td>
       <td className="s1-vw-num">{factorText(g.unit_conversion)}</td>
-      <td className="s1-vw-num">{formatGasTonnes(g.mass_t)}</td>
+      <td className="s1-vw-num">
+        {formatGasTonnes(g.mass_t)}
+        {g.biogenic ? <span className="s1-muted"> biogenic CO₂ (reported separately)</span> : null}
+      </td>
       <td className="s1-vw-num">
         <SourceNote label={`×${qty(g.gwp.value)}`} source={g.gwp.source} />
       </td>
       <td className="s1-vw-num">{formatGasTonnes(g.co2e_t)}</td>
       <td className="s1-vw-num">
-        {side === "Recomputed" && g.difference_t !== null && g.difference_t !== undefined ? formatSignedGasTonnes(g.difference_t) : ""}
+        {side === "Recomputed" && g.difference_to_company_t !== null && g.difference_to_company_t !== undefined
+          ? formatSignedGasTonnes(g.difference_to_company_t)
+          : ""}
       </td>
     </tr>
   );
@@ -232,7 +277,7 @@ function GasTable({ line }: { line: CalculationLine }) {
             <th className="s1-vw-num">= Mass (t)</th>
             <th className="s1-vw-num">× GWP</th>
             <th className="s1-vw-num">= CO₂e (t)</th>
-            <th className="s1-vw-num">Difference</th>
+            <th className="s1-vw-num">Difference to company</th>
           </tr>
         </thead>
         <tbody>
@@ -271,7 +316,9 @@ function ResultsTable({ line }: { line: CalculationLine }) {
           </tr>
         </thead>
         <tbody>
-          {GASES.map((gas) => row(`${GAS_LABEL[gas]} (t)`, (r) => r.mass_t[gas]))}
+          {GASES.map((gas) => row(`${GAS_LABEL[gas]} mass (t)`, (r) => r.mass_t[gas]))}
+          {line.results.biogenic_co2_t !== 0 ? row("Biogenic CO₂ (t), reported separately", (r) => r.biogenic_co2_t) : null}
+          {GASES.map((gas) => row(`${GAS_LABEL[gas]} as CO₂e (t)`, (r) => r.gas_co2e_t[gas]))}
           {row("CO₂e, sum of gases (t)", (r) => r.sum_co2e_t)}
           <tr>
             <td>× Consolidated share</td>
@@ -280,6 +327,14 @@ function ResultsTable({ line }: { line: CalculationLine }) {
             </td>
           </tr>
           {row("Total CO₂e (t)", (r) => r.total_co2e_t, true)}
+          {line.results.difference_to_company_t !== null && line.results.difference_to_company_t !== undefined ? (
+            <tr>
+              <td>Difference to company (t)</td>
+              <td className="s1-vw-num" colSpan={2}>
+                {formatSignedGasTonnes(line.results.difference_to_company_t)}
+              </td>
+            </tr>
+          ) : null}
         </tbody>
       </table>
     </div>
@@ -294,7 +349,7 @@ function Step2Table({ line }: { line: CalculationLine }) {
         {s.from_unit} → {s.to_unit}
       </td>
       <td className="s1-vw-num">
-        {s.factor === 1 ? "×1" : <SourceNote label={factorText(s.factor)} source={s.source ?? "The platform's fixed unit conversion table."} />}
+        {s.factor === 1 ? "×1" : <SourceNote label={factorText(s.factor)} source={s.source ?? "Unit conversion table."} />}
       </td>
       <td className="s1-vw-num">
         {qty(s.result.quantity)} {s.result.unit}
@@ -302,6 +357,7 @@ function Step2Table({ line }: { line: CalculationLine }) {
     </tr>
   );
   const distance = line.step2.distance;
+  const implied = line.step2.implied_fuel_economy;
   return (
     <div className="s1-vw-scroll">
       <table className="s1-vw-steps">
@@ -318,15 +374,23 @@ function Step2Table({ line }: { line: CalculationLine }) {
           {convert("Recomputed", line.step2)}
           {distance ? (
             <tr>
-              <td>Recomputed, distance</td>
-              <td>
-                {line.step2.result.unit} → {distance.result.unit}
+              <td>Distance (input)</td>
+              <td>{distance.unit}</td>
+              <td className="s1-vw-num">
+                <SourceNote label="Entered" source={distance.source} />
               </td>
               <td className="s1-vw-num">
-                <SourceNote label={`× ${qty(distance.fuel_economy.value)} ${distance.fuel_economy.unit}`} source={distance.fuel_economy.source} />
+                {qty(distance.quantity)} {distance.unit}
               </td>
+            </tr>
+          ) : null}
+          {implied ? (
+            <tr>
+              <td>Implied fuel economy (reasonableness check)</td>
+              <td>{implied.unit}</td>
+              <td />
               <td className="s1-vw-num">
-                {qty(distance.result.quantity)} {distance.result.unit}
+                {qty(implied.value)} {implied.unit}
               </td>
             </tr>
           ) : null}
@@ -338,6 +402,8 @@ function Step2Table({ line }: { line: CalculationLine }) {
 
 function Step1Table({ line, onOpenDocument }: { line: CalculationLine; onOpenDocument?: (documentId: string, valueId?: string) => void }) {
   const total = line.step1.total;
+  // Months counted in another unit than the total show their amount in the total's unit too.
+  const mixed = line.step1.rows.some((r) => r.unit !== total.unit);
   return (
     <div className="s1-vw-scroll">
       <table className="s1-vw-steps">
@@ -349,6 +415,7 @@ function Step1Table({ line, onOpenDocument }: { line: CalculationLine; onOpenDoc
             <th className="s1-vw-num">Quantity</th>
             <th className="s1-vw-num">Share in period</th>
             <th className="s1-vw-num">Counted</th>
+            {mixed ? <th className="s1-vw-num">In {total.unit}</th> : null}
           </tr>
         </thead>
         <tbody>
@@ -356,33 +423,37 @@ function Step1Table({ line, onOpenDocument }: { line: CalculationLine; onOpenDoc
             <tr key={`${r.document_id}:${r.candidate_id}`}>
               <td>{period(r.period_start, r.period_end)}</td>
               <td>
-                {r.evidence_code ? <span className="s1-muted">{r.evidence_code} · </span> : null}
-                {onOpenDocument ? (
+                                {onOpenDocument ? (
                   <button className="s1-cp-src" type="button" onClick={() => onOpenDocument(r.document_id, r.candidate_id)}>
-                    {r.file_name}
+                    {r.file_name ?? r.document_id}
                   </button>
                 ) : (
-                  r.file_name
+                  (r.file_name ?? r.document_id)
                 )}
               </td>
               <td>{r.review === "edited" ? "Edited by reviewer" : "Accepted"}</td>
               <td className="s1-vw-num">
-                {qty(r.quantity)} {r.unit}
+                {r.quantity === null ? <span className="s1-muted">No quantity</span> : `${qty(r.quantity)} ${r.unit}`}
               </td>
-              <td className="s1-vw-num">{r.share_in_period === 1 ? "All" : `${qty(r.share_in_period * 100)}%`}</td>
+              <td className="s1-vw-num">{r.share_in_period === 1 ? "All" : formatPercent(r.share_in_period)}</td>
               <td className="s1-vw-num">
                 {qty(r.counted_quantity)} {r.unit}
               </td>
+              {mixed ? (
+                <td className="s1-vw-num">
+                  {qty(r.counted_in_base)} {total.unit}
+                </td>
+              ) : null}
             </tr>
           ))}
           <tr className="s1-vw-steps__total">
-            <td colSpan={5}>Recomputed total</td>
+            <td colSpan={mixed ? 6 : 5}>Recomputed total</td>
             <td className="s1-vw-num">
               {qty(total.quantity)} {total.unit}
             </td>
           </tr>
           <tr>
-            <td colSpan={5}>Company reported</td>
+            <td colSpan={mixed ? 6 : 5}>Company reported</td>
             <td className="s1-vw-num">
               {line.company ? `${qty(line.company.activity.quantity)} ${line.company.activity.unit}` : <span className="s1-muted">Not entered</span>}
             </td>
@@ -393,14 +464,34 @@ function Step1Table({ line, onOpenDocument }: { line: CalculationLine; onOpenDoc
   );
 }
 
+/** An unplaced item's flag sentences. A fuel shared by vehicle groups says so already, so the no-group flag is left out. */
+function unplacedFlags(u: CalcUnplaced): string[] {
+  return u.flags
+    .filter((f) => !(f === "ch4_n2o_need_vehicle_groups" && u.reason === "fuel_shared_by_vehicle_groups"))
+    .map((f) => FLAG_TEXT[f])
+    .filter(Boolean);
+}
+
+/** Plain warnings for company figures and shares that match nothing in this engagement. */
+function warnings(inputs: CalcLineInputs | undefined): string[] {
+  if (!inputs) return [];
+  const what: Record<string, string> = { reported_lines: "company total", reported_activity: "company activity" };
+  return [
+    ...inputs.unknown_line_keys.map((u) => `A ${what[u.setting] ?? "company figure"} is entered for "${u.key}", which matches no calculation line, so it is not used.`),
+    ...inputs.unknown_facility_ids.map((id) => `A consolidated share is set for facility "${id}", which is not in Setup, so it is not used.`),
+  ];
+}
+
 /** "Edit company figures": the company's total and annual activity for one line. Stays open until the save resolves. */
 function CompanyForm({
   line,
+  inputs,
   settings,
   onSave,
   onCancel,
 }: {
   line: CalculationLine;
+  inputs?: CalcLineInputs;
   settings: RecalculationSettings;
   /** Resolves to an error message, or null when saved. */
   onSave: (next: RecalculationSettings) => Promise<string | null>;
@@ -459,6 +550,11 @@ function CompanyForm({
           </select>
         </label>
       </div>
+      {warnings(inputs).map((message) => (
+        <p key={message} className="s1-muted" role="note">
+          {message}
+        </p>
+      ))}
       {errors.map((message) => (
         <p key={message} className="s1-vw-red" role="alert">
           {message}
@@ -487,8 +583,10 @@ function LineDetail({
   signedInLogin,
   onOpenDocument,
   onOpenEvidence,
+  inputs,
 }: {
   line: CalculationLine;
+  inputs?: CalcLineInputs;
   settings: RecalculationSettings;
   gwpSet: string;
   onSave: (next: RecalculationSettings) => Promise<string | null>;
@@ -629,6 +727,7 @@ function LineDetail({
       {box === "company" ? (
         <CompanyForm
           line={line}
+          inputs={inputs}
           settings={settings}
           onCancel={() => setBox(null)}
           onSave={async (next) => {
@@ -668,8 +767,14 @@ export function CalculationPanels({
   onOpenDocument,
   focusLineKey,
   onOpenEvidence,
+  unplaced = [],
+  inputs,
 }: {
   lines: CalculationLine[];
+  /** Records on no line, per panel as "Not on a calculation line". */
+  unplaced?: CalcUnplaced[];
+  /** Company figures and shares that match nothing, shown as warnings by the company form. */
+  inputs?: CalcLineInputs;
   /** The recalculation's comparisons: each panel's Reported, Recomputed, Difference and status. */
   comparisons: RecalcComparison[];
   gwpSet: string;
@@ -685,8 +790,9 @@ export function CalculationPanels({
   /** Shows "Open in Evidence" on each line when given. */
   onOpenEvidence?: (lineKey: string) => void;
 }) {
-  const energyTypes = [...new Set(lines.filter((l) => l.category === "purchased_energy").map((l) => l.level2))];
-  const panels = [...FIXED_PANELS, ...energyTypes.map(energyPanel)].filter((p) => lines.some((l) => belongs(l, p)));
+  const energyTypes = [...new Set([...lines, ...unplaced].filter((l) => l.counts_toward === "purchased_energy").map((l) => l.level2))];
+  const panels = [...FIXED_PANELS, ...energyTypes.map(energyPanel)].filter((p) => [...lines, ...unplaced].some((l) => belongs(l, p)));
+  const [unplacedOpen, setUnplacedOpen] = useState<string | null>(null);
   const focused = lines.find((l) => l.key === focusLineKey);
   const panelOf = (line: CalculationLine | undefined) => panels.find((p) => line && belongs(line, p))?.id ?? null;
   const [openPanel, setOpenPanel] = useState<string | null>(panelOf(focused) ?? panels[0]?.id ?? null);
@@ -711,7 +817,10 @@ export function CalculationPanels({
   return (
     <section className="s1-cp" aria-label="Calculation by line">
       {panels.map((panel) => {
-        const panelLines = lines.filter((l) => belongs(l, panel));
+        // Biogenic lines sit in the panel they count toward, after the others, under their own heading.
+        const own = lines.filter((l) => belongs(l, panel));
+        const panelLines = [...own.filter((l) => l.category !== "biogenic"), ...own.filter((l) => l.category === "biogenic")];
+        const panelUnplaced = unplaced.filter((u) => belongs(u, panel));
         const head = comparisons.find((c) => c.key === panel.comparisonKey);
         const status = comparisonStatus(head);
         const reported = head?.reported ?? null;
@@ -760,11 +869,17 @@ export function CalculationPanels({
                       </tr>
                     </thead>
                     <tbody>
-                      {panelLines.map((line) => {
+                      {panelLines.map((line, index) => {
+                        const firstBiogenic = line.category === "biogenic" && panelLines.findIndex((l) => l.category === "biogenic") === index;
                         const isOpen = openLine === line.key;
                         const examined = Boolean(store.examinations[examinationKey("calc", line.key)]?.examinedBy);
                         return (
                           <Fragment key={line.key}>
+                            {firstBiogenic ? (
+                              <tr className="s1-vw-group">
+                                <td colSpan={7}>Biogenic CO₂, reported separately</td>
+                              </tr>
+                            ) : null}
                             <tr className={`s1-vw-row${isOpen ? " is-selected" : ""}`} ref={line.key === focusLineKey ? focusRef : undefined}>
                               <td>{line.level2}</td>
                               <td>
@@ -778,7 +893,7 @@ export function CalculationPanels({
                               </td>
                               <td className="s1-vw-num">{formatGasTonnes(line.results.total_co2e_t)}</td>
                               <td className="s1-vw-num">
-                                <DiffChip value={line.difference_t} status={line.status} pct={line.difference_pct_of_base} />
+                                <DiffChip value={line.difference_t} status={line.status} pct={line.difference_pct_of_base} incomplete={line.inputs_incomplete} />
                               </td>
                               <td className={`s1-vw-examined${examined ? " is-done" : ""}`}>
                                 {examined ? (
@@ -804,6 +919,7 @@ export function CalculationPanels({
                                     signedInLogin={signedInLogin}
                                     onOpenDocument={onOpenDocument}
                                     onOpenEvidence={onOpenEvidence}
+                                    inputs={inputs}
                                   />
                                 </td>
                               </tr>
@@ -811,6 +927,37 @@ export function CalculationPanels({
                           </Fragment>
                         );
                       })}
+                      {panelUnplaced.length ? (
+                        <>
+                          <tr className="s1-vw-group">
+                            <td colSpan={7}>
+                              <button
+                                className="s1-vw-rowbtn"
+                                type="button"
+                                aria-expanded={unplacedOpen === panel.id}
+                                onClick={() => setUnplacedOpen(unplacedOpen === panel.id ? null : panel.id)}
+                              >
+                                Not on a calculation line · {panelUnplaced.length}
+                              </button>
+                            </td>
+                          </tr>
+                          {unplacedOpen === panel.id
+                            ? panelUnplaced.map((u, i) => (
+                                <tr key={`${u.reason}:${u.level2}:${u.label}:${i}`}>
+                                  <td>{u.level2}</td>
+                                  <td>
+                                    {u.label} <span className="s1-muted">· {[UNPLACED_TEXT[u.reason], ...unplacedFlags(u)].join(" ")}</span>
+                                  </td>
+                                  <td />
+                                  <td />
+                                  <td className="s1-vw-num">{formatGasTonnes(u.results.total_co2e_t)}</td>
+                                  <td />
+                                  <td />
+                                </tr>
+                              ))
+                            : null}
+                        </>
+                      ) : null}
                       <tr className="s1-vw-total">
                         <td colSpan={3}>Total</td>
                         <td className="s1-vw-num">{reported === null ? "" : formatGasTonnes(reported)}</td>
@@ -832,6 +979,6 @@ export function CalculationPanels({
   );
 }
 
-function belongs(line: CalculationLine, panel: PanelDef): boolean {
-  return line.category === panel.category && (panel.level2 === undefined || line.level2 === panel.level2);
+function belongs(line: { counts_toward: string; level2: string }, panel: PanelDef): boolean {
+  return line.counts_toward === panel.category && (panel.level2 === undefined || line.level2 === panel.level2);
 }

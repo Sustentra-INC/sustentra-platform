@@ -16,6 +16,7 @@ import type { EngagementConfig } from "../types";
 import { examinationKey } from "../utils/verificationTable";
 import { useVerificationStore } from "../verification/verificationStore";
 import calcLines from "./fixtures/calculationLines.json";
+import unplacedExample from "./fixtures/calculationUnplaced.json";
 import liveExample from "./fixtures/recalculationLive.json";
 
 /*
@@ -27,7 +28,7 @@ const LINES = calcLines as unknown as CalculationLine[];
 const STATIONARY = "s1:stationary:natural-gas:fac-kc01";
 const ELECTRICITY = "s2:purchased_energy:electricity:fac-kc01";
 
-const RESULT = { ...(liveExample as unknown as Recalculation), engagement_id: "ENG-1", calculation_lines: LINES } as Recalculation;
+const RESULT = { ...(liveExample as unknown as Recalculation), engagement_id: "ENG-1", calculation_lines: LINES, ...unplacedExample } as unknown as Recalculation;
 const REFERENCE: RecalculationReference = {
   dataset: "EPA GHG Emission Factors Hub 2025",
   gwp_sets: ["AR4", "AR5", "AR6"],
@@ -96,7 +97,8 @@ describe("calculation panels in Verification results", () => {
     // Step 1: periods, evidence and the total; the company side is its annual figure.
     let tab = screen.getByRole("tabpanel");
     expect(within(tab).getByText("2025-01-01 to 2025-01-31")).toBeTruthy();
-    expect(within(tab).getByText("EV-001 ·")).toBeTruthy();
+    // Evidence codes do not exist yet: the file name is the evidence.
+    expect(within(tab).queryByText(/EV-/)).toBeNull();
     expect(within(tab).getByText("Edited by reviewer")).toBeTruthy();
     expect(within(tab).getByText("650,000 therms")).toBeTruthy();
 
@@ -250,19 +252,83 @@ describe("calculation panels in Verification results", () => {
     expect(screen.getByRole("group", { name: "Company figures · Kent Cannery" })).toBeTruthy();
   });
 
-  it("shows the mobile fuel-to-distance conversion as its own row, with the fuel economy's source", async () => {
+  it("shows the mobile distance as an input with its source, and the implied fuel economy as a check", async () => {
     renderScreen();
     fireEvent.click(await panel(/Scope 1 › Mobile combustion/));
     fireEvent.click(screen.getByRole("button", { name: "Diesel trucks · gal" }));
     fireEvent.click(screen.getByRole("tab", { name: /Step 2/ }));
     const tab = screen.getByRole("tabpanel");
-    const row = within(tab).getByText("Recomputed, distance").closest("tr")!;
-    expect(row.textContent).toContain("gal → mi");
+    const row = within(tab).getByText("Distance (input)").closest("tr")!;
     expect(row.textContent).toContain("90,000 mi");
-    fireEvent.click(within(row).getByRole("button", { name: /7\.5 mi\/gal/ }));
-    expect(screen.getByText(/EPA Table 2 default fuel economy/)).toBeTruthy();
+    fireEvent.click(within(row).getByRole("button", { name: "Entered" }));
+    expect(screen.getByText(/Vehicle group distance entered under Recalculation inputs/)).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(screen.queryByText(/EPA Table 2 default fuel economy/)).toBeNull();
+    expect(screen.queryByText(/Vehicle group distance entered/)).toBeNull();
+    expect(within(tab).getByText("Implied fuel economy (reasonableness check)").closest("tr")!.textContent).toContain("7.5 mi/gal");
+    expect(within(tab).queryByText(/Recomputed, distance/)).toBeNull();
+  });
+
+  it("hides the implied fuel economy and the distance when the backend gives none", async () => {
+    const lines = LINES.map((l) => (l.key.startsWith("s1:mobile") ? { ...l, step2: { ...l.step2, distance: null, implied_fuel_economy: null } } : l));
+    responses.byPath["/engagements/ENG-1/recalculation"] = { ...RESULT, calculation_lines: lines };
+    responses.byPath["/reference/recalculation"] = REFERENCE;
+    const store = renderHook(() => useVerificationStore()).result;
+    render(<BackendVerificationResults engagement={ENGAGEMENT} store={store.current} onSaveInputs={async () => {}} onError={() => false} />);
+    fireEvent.click(await panel(/Scope 1 › Mobile combustion/));
+    fireEvent.click(screen.getByRole("button", { name: "Diesel trucks · gal" }));
+    fireEvent.click(screen.getByRole("tab", { name: /Step 2/ }));
+    const tab = screen.getByRole("tabpanel");
+    expect(within(tab).queryByText(/Implied fuel economy/)).toBeNull();
+    expect(within(tab).queryByText("Distance (input)")).toBeNull();
+  });
+
+  it("keeps a biogenic line inside the panel it counts toward, with its CO₂ labelled", async () => {
+    renderScreen();
+    await panel(/Scope 1 › Stationary combustion/);
+    const region = screen.getByRole("region", { name: "Calculation by line" });
+    expect(within(region).getByText("Biogenic CO₂, reported separately")).toBeTruthy();
+    fireEvent.click(within(region).getByRole("button", { name: "Biomass boiler · MMBtu" }));
+    // A line with no file name shows its document id; a flag it knows is a sentence.
+    expect(within(screen.getByRole("tabpanel")).getByText("WOOD-JAN")).toBeTruthy();
+    expect(screen.getByText(/CO₂ is biogenic and is reported separately/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /Step 3/ }));
+    const co2 = within(screen.getByRole("tabpanel")).getAllByText(/^CO₂/)[0].closest("tr")!;
+    expect(co2.textContent).toContain("46.9");
+    expect(co2.textContent).toContain("biogenic CO₂ (reported separately)");
+    fireEvent.click(screen.getByRole("tab", { name: "Results" }));
+    expect(within(screen.getByRole("tabpanel")).getByText("Biogenic CO₂ (t), reported separately")).toBeTruthy();
+  });
+
+  it("lists records on no line per panel, with each reason in plain words", async () => {
+    renderScreen();
+    await panel(/Scope 1 › Stationary combustion/);
+    const region = screen.getByRole("region", { name: "Calculation by line" });
+    expect(within(region).queryByText(/No facility in Setup matches it/)).toBeNull();
+    fireEvent.click(within(region).getByRole("button", { name: "Not on a calculation line · 1" }));
+    const row = within(region).getByText("Old boiler house").closest("tr")!;
+    expect(row.textContent).toContain("No facility in Setup matches it.");
+    expect(row.textContent).toContain("12.5");
+    // The mobile panel has its own: a fuel two vehicle groups use.
+    fireEvent.click(within(region).getByRole("button", { name: /Scope 1 › Mobile combustion/ }));
+    fireEvent.click(within(region).getByRole("button", { name: "Not on a calculation line · 1" }));
+    expect(within(region).getByText(/Two or more vehicle groups use this fuel/)).toBeTruthy();
+    // The shared-fuel reason already says why: the no-group flag is not repeated beside it.
+    expect(within(region).queryByText(/No usable vehicle group/)).toBeNull();
+  });
+
+  it("warns by the company form about figures and shares that match nothing, and says why a line is incomplete", async () => {
+    renderScreen();
+    await panel(/Scope 1 › Stationary combustion/);
+    const row = screen.getByRole("button", { name: "Kent Cannery · MMBtu" }).closest("tr")!;
+    expect(row.textContent).toContain("inputs incomplete");
+    fireEvent.click(screen.getByRole("button", { name: "Kent Cannery · MMBtu" }));
+    // A code the page has no sentence for is not shown; a known one is.
+    expect(screen.queryByText(/mystery_code/)).toBeNull();
+    expect(screen.getByText(/converted to the factor/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Edit company figures" }));
+    const form = screen.getByRole("group", { name: "Company figures · Kent Cannery" });
+    expect(within(form).getByText(/company total is entered for "s1:stationary:natural-gas:fac-gone"/)).toBeTruthy();
+    expect(within(form).getByText(/consolidated share is set for facility "fac-missing"/)).toBeTruthy();
   });
 
   it("says each status in words, taken from the backend and not worked out here", async () => {

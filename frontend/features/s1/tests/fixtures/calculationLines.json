@@ -28,7 +28,8 @@
           "unit": "MMBtu",
           "share_in_period": 1,
           "counted_quantity": 30000,
-          "evidence_code": "EV-001"
+          "evidence_code": null,
+          "counted_in_base": 30000
         },
         {
           "period_start": "2025-02-01",
@@ -41,7 +42,8 @@
           "unit": "MMBtu",
           "share_in_period": 1,
           "counted_quantity": 35000,
-          "evidence_code": "EV-002"
+          "evidence_code": null,
+          "counted_in_base": 35000
         }
       ],
       "total": {
@@ -56,7 +58,10 @@
       "result": {
         "quantity": 65000,
         "unit": "MMBtu"
-      }
+      },
+      "source": null,
+      "distance": null,
+      "implied_fuel_economy": null
     },
     "step3": {
       "gases": [
@@ -78,8 +83,9 @@
             "source": "IPCC AR5"
           },
           "co2e_t": 3448.9,
+          "biogenic": false,
           "company_co2e_t": 3448.9,
-          "difference_t": 0
+          "difference_to_company_t": 0
         },
         {
           "gas": "CH4",
@@ -99,8 +105,9 @@
             "source": "IPCC AR5"
           },
           "co2e_t": 1.82,
+          "biogenic": false,
           "company_co2e_t": 1.82,
-          "difference_t": 0
+          "difference_to_company_t": 0
         },
         {
           "gas": "N2O",
@@ -120,8 +127,9 @@
             "source": "IPCC AR5"
           },
           "co2e_t": 1.7225,
+          "biogenic": false,
           "company_co2e_t": 1.7225,
-          "difference_t": 0
+          "difference_to_company_t": 0
         }
       ]
     },
@@ -132,7 +140,20 @@
         "N2O": 0.0065
       },
       "sum_co2e_t": 3452.4425,
-      "total_co2e_t": 3452.4425
+      "total_co2e_t": 3452.4425,
+      "gas_co2e_t": {
+        "CO2": 3448.9,
+        "CH4": 1.82,
+        "N2O": 1.7225
+      },
+      "biogenic_co2_t": 0,
+      "company_total_co2e_t": 3452.4425,
+      "company_gas_co2e_t": {
+        "CO2": 3448.9,
+        "CH4": 1.82,
+        "N2O": 1.7225
+      },
+      "difference_to_company_t": 0
     },
     "company": {
       "activity": {
@@ -146,7 +167,10 @@
         "result": {
           "quantity": 65000,
           "unit": "MMBtu"
-        }
+        },
+        "source": "fuel_units conversion table",
+        "distance": null,
+        "implied_fuel_economy": null
       },
       "step3": {
         "gases": [
@@ -167,7 +191,8 @@
               "value": 1,
               "source": "IPCC AR5"
             },
-            "co2e_t": 3448.9
+            "co2e_t": 3448.9,
+            "biogenic": false
           },
           {
             "gas": "CH4",
@@ -186,7 +211,8 @@
               "value": 28,
               "source": "IPCC AR5"
             },
-            "co2e_t": 1.82
+            "co2e_t": 1.82,
+            "biogenic": false
           },
           {
             "gas": "N2O",
@@ -205,7 +231,8 @@
               "value": 265,
               "source": "IPCC AR5"
             },
-            "co2e_t": 1.7225
+            "co2e_t": 1.7225,
+            "biogenic": false
           }
         ]
       },
@@ -216,14 +243,167 @@
           "N2O": 0.0065
         },
         "sum_co2e_t": 3452.4425,
-        "total_co2e_t": 3452.4425
+        "total_co2e_t": 3452.4425,
+        "gas_co2e_t": {
+          "CO2": 3448.9,
+          "CH4": 1.82,
+          "N2O": 1.7225
+        },
+        "biogenic_co2_t": 0
       }
     },
     "reported_total_co2e_t": 3300,
     "difference_t": 152.4425,
-    "flags": [],
+    "flags": [
+      "unit_converted",
+      "mystery_code"
+    ],
     "status": "above",
-    "difference_pct_of_base": 4.6
+    "difference_pct_of_base": 4.6,
+    "level2_key": "natural-gas",
+    "counts_toward": "stationary",
+    "inputs_incomplete": true
+  },
+  {
+    "key": "s1:biogenic:wood-chips:fac-kc01",
+    "scope": "biogenic",
+    "category": "biogenic",
+    "level2": "Wood chips",
+    "label": "Biomass boiler",
+    "facility_id": "fac-kc01",
+    "consolidated_share_pct": 100,
+    "method": {
+      "route": "Energy content × per-MMBtu factor (Eq. 1)",
+      "equations": {
+        "CO2": "Eq. 1",
+        "CH4": "Eq. 8",
+        "N2O": "Eq. 8"
+      }
+    },
+    "step1": {
+      "rows": [
+        {
+          "period_start": "2025-01-01",
+          "period_end": "2025-01-31",
+          "document_id": "WOOD-JAN",
+          "file_name": null,
+          "candidate_id": "cand-wood",
+          "review": "accepted",
+          "quantity": 500,
+          "unit": "MMBtu",
+          "share_in_period": 1,
+          "counted_quantity": 500,
+          "evidence_code": null,
+          "counted_in_base": 500
+        }
+      ],
+      "total": {
+        "quantity": 500,
+        "unit": "MMBtu"
+      }
+    },
+    "step2": {
+      "from_unit": "MMBtu",
+      "to_unit": "MMBtu",
+      "factor": 1,
+      "result": {
+        "quantity": 500,
+        "unit": "MMBtu"
+      },
+      "source": null,
+      "distance": null,
+      "implied_fuel_economy": null
+    },
+    "step3": {
+      "gases": [
+        {
+          "gas": "CO2",
+          "activity": {
+            "value": 500,
+            "unit": "MMBtu"
+          },
+          "ef": {
+            "value": 93.8,
+            "unit": "kg CO₂/MMBtu",
+            "source": "EPA GHG Emission Factors Hub 2025, Table 1"
+          },
+          "unit_conversion": 0.001,
+          "mass_t": 46.9,
+          "gwp": {
+            "value": 1,
+            "source": "IPCC AR5"
+          },
+          "co2e_t": 0,
+          "biogenic": true
+        },
+        {
+          "gas": "CH4",
+          "activity": {
+            "value": 500,
+            "unit": "MMBtu"
+          },
+          "ef": {
+            "value": 0.0072,
+            "unit": "kg CH₄/MMBtu",
+            "source": "EPA GHG Emission Factors Hub 2025, Table 3"
+          },
+          "unit_conversion": 0.001,
+          "mass_t": 0.0036,
+          "gwp": {
+            "value": 28,
+            "source": "IPCC AR5"
+          },
+          "co2e_t": 0.1008,
+          "biogenic": false
+        },
+        {
+          "gas": "N2O",
+          "activity": {
+            "value": 500,
+            "unit": "MMBtu"
+          },
+          "ef": {
+            "value": 0.0036,
+            "unit": "kg N₂O/MMBtu",
+            "source": "EPA GHG Emission Factors Hub 2025, Table 3"
+          },
+          "unit_conversion": 0.001,
+          "mass_t": 0.0018,
+          "gwp": {
+            "value": 265,
+            "source": "IPCC AR5"
+          },
+          "co2e_t": 0.477,
+          "biogenic": false
+        }
+      ]
+    },
+    "results": {
+      "mass_t": {
+        "CO2": 0,
+        "CH4": 0.0036,
+        "N2O": 0.0018
+      },
+      "gas_co2e_t": {
+        "CO2": 0,
+        "CH4": 0.1008,
+        "N2O": 0.477
+      },
+      "sum_co2e_t": 0.5778,
+      "total_co2e_t": 0.5778,
+      "biogenic_co2_t": 46.9
+    },
+    "company": null,
+    "reported_total_co2e_t": null,
+    "difference_t": null,
+    "flags": [
+      "biogenic_co2_reported_separately"
+    ],
+    "status": "not_reported",
+    "difference_pct_of_base": null,
+    "level2_key": "wood-chips",
+    "counts_toward": "stationary",
+    "inputs_incomplete": false
   },
   {
     "key": "s1:mobile:diesel-fuel:vg-diesel-trucks",
@@ -254,7 +434,8 @@
           "unit": "gal",
           "share_in_period": 1,
           "counted_quantity": 12000,
-          "evidence_code": "EV-010"
+          "evidence_code": null,
+          "counted_in_base": 12000
         }
       ],
       "total": {
@@ -271,15 +452,15 @@
         "unit": "gal"
       },
       "distance": {
-        "fuel_economy": {
-          "value": 7.5,
-          "unit": "mi/gal",
-          "source": "EPA Table 2 default fuel economy for heavy-duty diesel trucks"
-        },
-        "result": {
-          "quantity": 90000,
-          "unit": "mi"
-        }
+        "quantity": 90000,
+        "unit": "mi",
+        "source": "Vehicle group distance entered under Recalculation inputs"
+      },
+      "source": null,
+      "implied_fuel_economy": {
+        "value": 7.5,
+        "unit": "mi/gal",
+        "role": "reasonableness_check"
       }
     },
     "step3": {
@@ -302,8 +483,7 @@
             "source": "IPCC AR5"
           },
           "co2e_t": 122.52,
-          "company_co2e_t": null,
-          "difference_t": null
+          "biogenic": false
         },
         {
           "gas": "CH4",
@@ -323,8 +503,7 @@
             "source": "IPCC AR5"
           },
           "co2e_t": 0.012852,
-          "company_co2e_t": null,
-          "difference_t": null
+          "biogenic": false
         },
         {
           "gas": "N2O",
@@ -344,8 +523,7 @@
             "source": "IPCC AR5"
           },
           "co2e_t": 0.11448,
-          "company_co2e_t": null,
-          "difference_t": null
+          "biogenic": false
         }
       ]
     },
@@ -356,14 +534,23 @@
         "N2O": 0.000432
       },
       "sum_co2e_t": 122.647332,
-      "total_co2e_t": 122.647332
+      "total_co2e_t": 122.647332,
+      "gas_co2e_t": {
+        "CO2": 122.52,
+        "CH4": 0.012852,
+        "N2O": 0.11448
+      },
+      "biogenic_co2_t": 0
     },
     "company": null,
     "reported_total_co2e_t": null,
     "difference_t": null,
     "flags": [],
     "status": "not_reported",
-    "difference_pct_of_base": null
+    "difference_pct_of_base": null,
+    "level2_key": "diesel-fuel",
+    "counts_toward": "mobile",
+    "inputs_incomplete": false
   },
   {
     "key": "s2:purchased_energy:electricity:fac-kc01",
@@ -394,7 +581,8 @@
           "unit": "MWh",
           "share_in_period": 1,
           "counted_quantity": 1000,
-          "evidence_code": "EV-020"
+          "evidence_code": null,
+          "counted_in_base": 1000
         }
       ],
       "total": {
@@ -409,7 +597,10 @@
       "result": {
         "quantity": 1000,
         "unit": "MWh"
-      }
+      },
+      "source": null,
+      "distance": null,
+      "implied_fuel_economy": null
     },
     "step3": {
       "gases": [
@@ -431,8 +622,7 @@
             "source": "IPCC AR5"
           },
           "co2e_t": 362.8736,
-          "company_co2e_t": null,
-          "difference_t": null
+          "biogenic": false
         },
         {
           "gas": "CH4",
@@ -452,8 +642,7 @@
             "source": "IPCC AR5"
           },
           "co2e_t": 0.6350288,
-          "company_co2e_t": null,
-          "difference_t": null
+          "biogenic": false
         },
         {
           "gas": "N2O",
@@ -473,8 +662,7 @@
             "source": "IPCC AR5"
           },
           "co2e_t": 1.2020188,
-          "company_co2e_t": null,
-          "difference_t": null
+          "biogenic": false
         }
       ]
     },
@@ -485,13 +673,22 @@
         "N2O": 0.00453592
       },
       "sum_co2e_t": 364.7106476,
-      "total_co2e_t": 218.82638856
+      "total_co2e_t": 218.82638856,
+      "gas_co2e_t": {
+        "CO2": 362.8736,
+        "CH4": 0.6350288,
+        "N2O": 1.2020188
+      },
+      "biogenic_co2_t": 0
     },
     "company": null,
     "reported_total_co2e_t": 215,
     "difference_t": 3.82638856,
     "flags": [],
     "status": "within",
-    "difference_pct_of_base": 1.8
+    "difference_pct_of_base": 1.8,
+    "level2_key": "electricity",
+    "counts_toward": "purchased_energy",
+    "inputs_incomplete": false
   }
 ]

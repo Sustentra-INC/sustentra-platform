@@ -112,7 +112,9 @@ export interface RecalcNeedsInput {
     | "vehicle_group"
     | "refrigerant_record"
     | "steam_heat_content"
-    | "thermal_type";
+    | "thermal_type"
+    | "company_activity"
+    | "calculation_lines";
   key: string;
   message: string;
   options?: string[];
@@ -202,7 +204,10 @@ type LaterCategory =
   | "purchased_heating_location_based"
   | "purchased_heating_market_based";
 
-/** The gas equations of one calculation line (Task 2 of the calculation-lines plan). */
+/**
+ * Calculation lines (backend/app/services/recalculation_lines.py; docs/api_contract.md, "calculation
+ * lines"). Every number and status is the backend's: the frontend only formats and lays them out.
+ */
 export type CalcGas = "CO2" | "CH4" | "N2O";
 
 export interface CalcQuantity {
@@ -215,20 +220,19 @@ export interface CalcLineStep2 {
   to_unit: string;
   /** 1 when the unit needs no conversion. */
   factor: number;
+  /** Cites the unit conversion; null when the factor is 1. */
+  source: string | null;
   result: CalcQuantity;
-  /** Where the conversion factor comes from, when the backend says. */
-  source?: string;
-  /** Mobile on-road: the fuel converted to distance with a fuel economy. */
-  distance?: { fuel_economy: { value: number; unit: string; source: string }; result: CalcQuantity } | null;
+  /** On-road mobile: the distance the vehicle group states (an input, not a conversion). */
+  distance: { quantity: number; unit: string; source: string } | null;
+  /** That distance over the fuel on the line: a reasonableness check only; null when it can't be judged. */
+  implied_fuel_economy: { value: number; unit: string; role: "reasonableness_check" } | null;
 }
 
 /** The backend's verdict on a line's difference against the tolerance. */
 export type CalcLineStatus = "within" | "above" | "not_reported";
 
 export interface CalcLineGas {
-  /** Company CO2e for this gas, and the difference to the recomputed one (t). */
-  company_co2e_t?: number | null;
-  difference_t?: number | null;
   gas: CalcGas;
   activity: { value: number; unit: string };
   ef: { value: number; unit: string; source: string };
@@ -236,27 +240,41 @@ export interface CalcLineGas {
   mass_t: number;
   gwp: { value: number; source: string };
   co2e_t: number;
+  /** Biomass fuel CO2: mass_t is biogenic CO2 and co2e_t is 0. */
+  biogenic: boolean;
+  /** Only when the line has a company side. */
+  company_co2e_t?: number | null;
+  difference_to_company_t?: number | null;
 }
 
 export interface CalcLineResults {
   mass_t: Record<CalcGas, number>;
+  gas_co2e_t: Record<CalcGas, number>;
   sum_co2e_t: number;
+  /** Sum times the consolidated share. */
   total_co2e_t: number;
+  biogenic_co2_t: number;
+  company_total_co2e_t?: number | null;
+  company_gas_co2e_t?: Record<CalcGas, number> | null;
+  difference_to_company_t?: number | null;
 }
 
 export interface CalcLineStep1Row {
-  period_start: string;
-  period_end: string;
+  period_start: string | null;
+  period_end: string | null;
   document_id: string;
-  file_name: string;
+  /** Always null for now: the app has no evidence codes for documents. */
+  evidence_code: string | null;
+  file_name: string | null;
   candidate_id: string;
-  /** The evidence code of the document (for example EV-007), shown before its file name. */
-  evidence_code?: string;
   review: "accepted" | "edited";
-  quantity: number;
+  /** Null for a month with no numeric quantity. */
+  quantity: number | null;
   unit: string;
   share_in_period: number;
   counted_quantity: number;
+  /** counted_quantity in the line's total unit. */
+  counted_in_base: number;
 }
 
 /** The company's side of a line: its annual activity run through the same steps and factors. */
@@ -267,13 +285,18 @@ export interface CalcLineCompany {
   results: CalcLineResults;
 }
 
+export type CalcCountsToward = "stationary" | "mobile" | "purchased_energy";
+
 /** One calculation line: a facility's (or vehicle group's) fuel, substance or energy. */
 export interface CalculationLine {
   key: string;
-  scope: string;
-  /** "stationary" | "mobile" | "purchased_energy" for the panels; others are ignored. */
-  category: string;
+  scope: "s1" | "s2" | "biogenic";
+  category: CalcCountsToward | "biogenic";
+  /** The category total this line rolls into (a biogenic line counts toward stationary or mobile). */
+  counts_toward: CalcCountsToward;
   level2: string;
+  level2_key: string;
+  /** The facility or vehicle group. */
   label: string;
   facility_id: string | null;
   consolidated_share_pct: number;
@@ -289,7 +312,32 @@ export interface CalculationLine {
   status: CalcLineStatus;
   /** The difference as a percentage of the reported base (for example 4.6). */
   difference_pct_of_base: number | null;
+  /** The line's category still has open needs_input or awaiting_review items. */
+  inputs_incomplete: boolean;
   flags: string[];
+}
+
+export type CalcUnplacedReason =
+  | "unknown_line"
+  | "moved_to_another_place"
+  | "fuel_shared_by_vehicle_groups"
+  | "no_vehicle_group"
+  | "no_facility_match"
+  | "no_calculation_line";
+
+/** Records on no calculation line: reported on their own, never dropped. */
+export type CalcUnplaced = Omit<CalculationLine, "key" | "company"> & {
+  key: null;
+  company: null;
+  reason: CalcUnplacedReason;
+  target: string | null;
+};
+
+/** Company figures and shares that match nothing, to warn about. */
+export interface CalcLineInputs {
+  consolidated_shares: Record<string, number>;
+  unknown_line_keys: { setting: string; key: string }[];
+  unknown_facility_ids: string[];
 }
 
 export interface Recalculation {
@@ -321,6 +369,9 @@ export interface Recalculation {
   rollup?: Rollup;
   /** Per-line calculations behind stationary, mobile and electricity. Absent from older results. */
   calculation_lines?: CalculationLine[];
+  /** Records on no calculation line, with why. */
+  calculation_unplaced?: CalcUnplaced[];
+  calculation_line_inputs?: CalcLineInputs;
 }
 
 /** A data quality signal for the reviewer (backend/app/services/data_quality_checks.py):

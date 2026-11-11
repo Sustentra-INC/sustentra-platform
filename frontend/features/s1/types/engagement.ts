@@ -81,7 +81,7 @@ export interface RecalculationCertificate {
 
 /** Stored by the API under settings.recalculation; the backend validates every value. */
 export interface RecalculationSettings {
-  /** "AR4", "AR5" (default) or "AR6". */
+  /** One set per engagement: "AR4", "AR5" (default) or "AR6". */
   gwp_set?: string;
   /** Facility name (as on the bill) to eGRID subregion, e.g. { "Facility A": "NYUP" }. */
   grid_regions?: Record<string, string>;

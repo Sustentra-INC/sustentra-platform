@@ -169,6 +169,8 @@ export function BackendVerificationResults({
         result.calculation_lines?.length ? (
           <CalculationPanels
             lines={result.calculation_lines}
+            unplaced={result.calculation_unplaced}
+            inputs={result.calculation_line_inputs}
             comparisons={result.comparisons}
             gwpSet={result.gwp_set}
             settings={engagement.recalculation ?? {}}
