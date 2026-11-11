@@ -15,7 +15,12 @@ export type AuditIntentAction =
   | "correct_value_machine"
   | "correct_value_human"
   | "enter_value"
-  | "re_extract";
+  | "re_extract"
+  | "move_placement"
+  | "create_line"
+  | "create_fuel"
+  | "rename_line"
+  | "delete_line";
 
 export interface AuditIntent {
   action: AuditIntentAction;

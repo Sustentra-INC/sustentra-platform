@@ -35,7 +35,7 @@ export function useWorkpaperSync({
   replaceDocuments: (documents: Record<string, DocumentDecision>) => void;
   /** Called with the failure; the item is retried on its next change. */
   onError: (error: unknown) => void;
-}): { loaded: boolean } {
+}): { loaded: boolean; markSaved: (kind: WorkpaperKind, id: string, payload: object) => void } {
   // What the backend holds, per "kind|id", as JSON: an item is saved only when it differs.
   const saved = useRef<Map<string, string>>(new Map());
   const [readyFor, setReadyFor] = useState<string | null>(null);
@@ -82,7 +82,12 @@ export function useWorkpaperSync({
     }
   }, [enabled, engagementId, readyFor, findings, examinations, documents]);
 
-  return { loaded: !enabled || readyFor === engagementId };
+  /** Tells the hook a caller already saved this item, so the next change check does not save it again. */
+  const markSaved = (kind: WorkpaperKind, id: string, payload: object) => {
+    saved.current.set(`${kind}|${id}`, JSON.stringify(payload));
+  };
+
+  return { loaded: !enabled || readyFor === engagementId, markSaved };
 }
 
 function entries(

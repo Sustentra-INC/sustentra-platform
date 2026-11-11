@@ -16,6 +16,7 @@ import type { QualityCheck } from "../api/recalculation";
 import { qualityIssueLines } from "./QualityChecksPanel";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import { EvidenceTree, type EvidenceTreeProps } from "./EvidenceTree";
 import { formatPeriod } from "../utils/formatPeriod";
 import { UPLOAD_ACCEPT } from "../constants/uploads";
 import { andThen, NOT_SAVED_TITLE, problemText, settle, useStillOpen, type MaybePromise } from "../requests/maybePromise";
@@ -110,6 +111,11 @@ interface EvidenceWorkspaceProps {
   demoState?: ContainerState;
   auditIntents?: SessionAuditEntry[];
   onAuditIntent?: (intent: SessionAuditEntry) => void;
+  /** Backend mode: shows the calculation-line tree instead of the grouping by document type. */
+  tree?: Pick<
+    EvidenceTreeProps,
+    "openIds" | "onOpenIdsChange" | "onOpenSchedule" | "onMovePlacement" | "onSaveLines" | "onError"
+  >;
 }
 
 type FacilityFilter = string | "multiple" | "none" | "unknown" | null;
@@ -136,12 +142,15 @@ export function EvidenceWorkspace({
   demoState,
   auditIntents = [],
   onAuditIntent,
+  tree,
 }: EvidenceWorkspaceProps) {
   // Evidence data lives in app state (via onEvidenceChange); filters/menus below
   // are local, ephemeral UI. So manual edits survive navigation.
   const items = evidence;
   const [facilityFilter, setFacilityFilter] = useState<FacilityFilter>(null);
   const [headerFilter, setHeaderFilter] = useState<HeaderFilter>(null);
+  // Backend mode: the calculation-line tree, or the table by document type (set type, facility, notes).
+  const [view, setView] = useState<"lines" | "types">("lines");
   // Bird's-eye by default: every type starts folded to its summary bar.
   const [openTypes, setOpenTypes] = useState<Set<string>>(new Set());
   const toggleType = (t: string) =>
@@ -228,6 +237,15 @@ export function EvidenceWorkspace({
 
   const groups = useMemo(() => groupByType(filtered), [filtered]);
   const hasFilter = facilityFilter !== null || headerFilter !== null;
+  // The tree is loaded by the backend; the page's filters only say which documents it shows.
+  const visibleDocumentIds = useMemo(
+    () => (hasFilter ? new Set(filtered.map((i) => i.documentId)) : null),
+    [hasFilter, filtered]
+  );
+  const treeReloadKey = useMemo(
+    () => items.map((i) => `${i.documentId}:${i.processingState}:${i.disposition}`).join("|"),
+    [items]
+  );
   const activeCount = active.length;
 
   // --- writes (all real, recorded via audit intents) ---
@@ -397,6 +415,17 @@ export function EvidenceWorkspace({
         </div>
       ) : null}
 
+      {tree ? (
+        <div className="s1-ws-factabs" role="group" aria-label="Group documents">
+          <button className={`s1-ws-factab${view === "lines" ? " is-on" : ""}`} type="button" aria-pressed={view === "lines"} onClick={() => setView("lines")}>
+            By calculation line
+          </button>
+          <button className={`s1-ws-factab${view === "types" ? " is-on" : ""}`} type="button" aria-pressed={view === "types"} onClick={() => setView("types")}>
+            By document type
+          </button>
+        </div>
+      ) : null}
+
       {showEmpty ? (
         <FirstDayEmpty onUploadFiles={onUploadFiles} isUploading={isUploading} />
       ) : (
@@ -409,7 +438,22 @@ export function EvidenceWorkspace({
             onSelect={(f) => setFacilityFilter((cur) => (cur === f ? null : f))}
           />
 
-          {showFilteredEmpty ? (
+          {tree && view === "lines" ? (
+            <EvidenceTree
+              {...tree}
+              engagement={engagement}
+              reloadKey={treeReloadKey}
+              visibleDocumentIds={visibleDocumentIds}
+              onClearFilter={() => {
+                setFacilityFilter(null);
+                setHeaderFilter(null);
+              }}
+              onOpenExtraction={onOpenExtraction}
+              onOpenSetup={onOpenSetup}
+              onAudit={(intent) => onAuditIntent?.(intent)}
+              writesEnabled={writesEnabled}
+            />
+          ) : showFilteredEmpty ? (
             <div className="s1-ws-empty" role="status">
               <p>No files match {describeFilter(facilityFilter, headerFilter, engagement)}.</p>
               <button

@@ -116,11 +116,29 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 1. Export the Excel workpaper. It opens. The roll-up shows mass per gas and CO₂e per
    category, with a "Counted as 0" column. The totals match Verification results.
 
-## 9. Access between organizations
+## 11. Evidence tree and supporting schedule
+
+Needs the evidence-tree API (feat/evidence-tree-api) deployed.
+
+1. Open Evidence: Summary documents, Unassigned documents and Supporting evidence (Scope 1,
+   Scope 2) show with document counts and % accepted. What you open stays open after a visit
+   to a document or a schedule and back.
+2. Choose a facility: only its documents remain, in every category. Switch to "By document
+   type": today's table (set type, facility, notes) is still there.
+3. Open a line's schedule icon: coverage by month, source identifiers, accepted values and the
+   line history show. Click a month: its document opens. Click a value's document icon: the
+   review opens at that value. Back returns to the tree as you left it.
+4. Document menu, "Move to…": move one document to another line. A move that touches a line asks
+   "This changes the calculation for …". Reload: the move is kept; the Activity log lists it.
+5. "+ New calculation line in <fuel>" and "+ New fuel": the line appears tagged "Added by a
+   reviewer"; rename it, then delete it: its documents land in Unassigned supporting evidence.
+   A Setup save afterwards does not remove the line.
+
+## 12. Access between organizations
 
 1. A second organization's user can't see this engagement: its URL answers "not found".
 2. A provider admin can read it but can't upload or review.
 
-## 10. After a redeploy
+## 13. After a redeploy
 
-1. Redeploy the same build, or wait for the next one. Everything from steps 2–8 is still there.
+1. Redeploy the same build, or wait for the next one. Everything from steps 2–8 and 11 is still there.
