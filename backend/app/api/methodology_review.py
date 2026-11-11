@@ -23,6 +23,7 @@ No ``from __future__ import annotations``: FastAPI resolves these at runtime.
 from collections.abc import Iterator
 from contextlib import contextmanager
 import asyncio
+from collections import Counter
 import logging
 import time
 from datetime import UTC, datetime
@@ -323,26 +324,31 @@ _FAILED = {
 
 
 async def _store(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser,
-                 verified: list[prefill.Verified]) -> tuple[int, int]:
+                 verified: list[prefill.Verified], dropped: Counter[str]) -> tuple[int, int]:
     """Put each verified suggestion on its field's record: (suggested, kept_reviewer_decision).
     A field the reviewer has decided is left alone. An entity or factor source already on the
-    page (suggested or decided) is not added again; a new one becomes a new row."""
+    page (suggested or decided) is not added again; a new one becomes a new row. A value the
+    store refuses (too long for the record) is counted in ``dropped`` as invalid_value."""
 
     suggested = kept = 0
     fixed = {v.field_id: v for v in verified if v.field_id}
-    for field_id in fixed:  # a record for each, so it can be locked and updated
+    for field_id in fixed:  # a record for each, so it can be locked and its state read
         await workpaper_item_service.insert_item(
             db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind=KIND, item_key=field_id,
             payload=rules.new_record(field_id), user_id=user.id)
-    found = {row["item_key"]: row["payload"] for row in await workpaper_item_service.get_items(
+    locked = {row["item_key"]: row["payload"] for row in await workpaper_item_service.get_items(
         db, engagement["id"], KIND, list(fixed), for_update=True)}
     for field_id, item in fixed.items():
-        record = found[field_id]
-        if rules.status_of(record) != rules.PENDING:
+        if rules.status_of(locked[field_id]) != rules.PENDING:
             kept += 1
             continue
-        await _save(db, engagement, field_id, {**record, "suggestion": item.suggestion}, user)
-        suggested += 1
+        try:
+            saved = await rules.save_suggestion(db, org_id=engagement["org_id"], engagement_id=engagement["id"],
+                                                field_id=field_id, suggestion=item.suggestion, user_id=user.id)
+        except MethodologyInvalid:
+            dropped["invalid_value"] += 1
+            continue
+        suggested += 1 if saved is not None else 0
     existing = [row for row in await workpaper_item_service.list_items(db, engagement["id"], KIND)
                 if rules.row_field(row["item_key"]) is not None and not row["payload"].get("removed")]
     for item in (v for v in verified if v.row_group):
@@ -354,7 +360,15 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser
                              (row["payload"].get("decision") or {}).get("value"))) for row in existing):
             continue
         field_id = rules.new_row_id(group)
-        record = {**rules.new_record(field_id), "suggestion": item.suggestion}
+        field = rules.row_field(field_id)
+        assert field is not None
+        try:  # a row Claude found: user_added stays false, so only a reviewer-made row can be removed
+            record = rules.with_suggestion(rules.new_record(field_id), field, item.suggestion)
+            if workpaper_item_service.payload_size(record) > MAX_PAYLOAD_BYTES:
+                raise MethodologyInvalid("too long")
+        except MethodologyInvalid:
+            dropped["invalid_value"] += 1
+            continue
         await workpaper_item_service.insert_item(
             db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind=KIND, item_key=field_id,
             payload=record, user_id=user.id)
@@ -418,7 +432,7 @@ async def prefill_methodology(
         return JSONResponse(status_code=409, content={"detail": _FAILED.get(reply.outcome, _FAILED["invalid"])})
     verified, dropped = prefill.verify(reply.output, documents, model=reply.model, request_id=reply.request_id,
                                        now_iso=stamp(_now()))
-    suggested, kept = await _store(db, engagement, user, verified)
+    suggested, kept = await _store(db, engagement, user, verified, dropped)
     await _audit_prefill(db, request, user, engagement, {
         "outcome": "ok", "documents": len(documents), "suggested": suggested, "dropped": sum(dropped.values()),
         "kept_reviewer_decision": kept, "cost_usd": cost_usd})

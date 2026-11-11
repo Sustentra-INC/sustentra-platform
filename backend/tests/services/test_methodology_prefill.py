@@ -218,3 +218,24 @@ def test_row_values_match_by_name_or_by_database_and_edition() -> None:
     assert mp.same_row_value("factor:scope1", {"database": "EPA", "edition": "2024"}, {"database": "epa", "edition": "2024"})
     assert not mp.same_row_value("factor:scope1", {"database": "EPA", "edition": "2024"}, {"database": "EPA", "edition": "2023"})
     assert not mp.same_row_value("entities", None, {"name": "A"})
+
+
+def test_a_long_quote_is_cut_for_storage_only_after_it_was_found_whole() -> None:
+    long_line = "We consolidate our emissions using the operational control approach. " * 30
+    kept, dropped = check(answer(choices=[{"field_id": "consolidation_approach", "value": "Operational Control",
+                                           **cite("L1", long_line.strip())}]), [doc([(1, long_line)])])
+    assert not dropped
+    suggestion = kept[0].suggestion
+    assert len(suggestion["quote"]) == mp.MAX_STORED_QUOTE and suggestion["quote_truncated"] is True
+    short, _ = check(answer(choices=[{"field_id": "consolidation_approach", "value": "Operational Control",
+                                      **cite("L2", "operational control approach")}]))
+    assert "quote_truncated" not in short[0].suggestion
+
+
+def test_values_over_the_store_limits_are_invalid() -> None:
+    entity = {"name": "Acme Foods Kent LLC", "facilities": [f"F{i}" for i in range(21)], "equity_share_pct": 51,
+              "financial_control": 51, "operational_control": "Yes",
+              **cite("L4", "equity share 51%, financial control 51%")}
+    kept, dropped = check(answer(texts=[{"field_id": "reporting_period", "value": "x" * 2001, **cite("L3", "Reporting period")}],
+                                 entities=[entity]))
+    assert kept == [] and dict(dropped) == {"invalid_value": 2}

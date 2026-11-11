@@ -44,6 +44,7 @@ MAX_DOCUMENTS = 5
 MAX_LINES = 1_500
 MAX_CHARS = 150_000
 MAX_OUTPUT_TOKENS = 8_000
+MAX_STORED_QUOTE = 1_000
 
 NO_DOCUMENTS = "Upload the company's GHG inventory report, boundary statement or methodology document first."
 
@@ -276,10 +277,14 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             if field_id in seen:  # a second answer for one field: the first stands, not counted
                 return
             seen.add(field_id)
-        kept.append(Verified(field_id, row_group, {
-            "value": value, "quote": item.quote.strip(), "document_id": document.document_id,
+        quote = item.quote.strip()
+        stored: dict[str, Any] = {
+            "value": value, "quote": quote, "document_id": document.document_id,
             "file_name": document.file_name, "source_reference": line.source_reference, "origin": "ai",
-            "model": model, "request_id": request_id, "suggested_at": now_iso}))
+            "model": model, "request_id": request_id, "suggested_at": now_iso}
+        if len(quote) > MAX_STORED_QUOTE:  # cut only now that the whole quote was found on the line
+            stored["quote"], stored["quote_truncated"] = quote[:MAX_STORED_QUOTE], True
+        kept.append(Verified(field_id, row_group, stored))
 
     def checked(field_id: str, value: Any) -> Any | None:
         definition = rules.catalog_field(field_id)

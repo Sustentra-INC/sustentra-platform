@@ -102,7 +102,8 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   `{suggested, dropped: {reason: count}, kept_reviewer_decision, documents_read: [{document_id, file_name,
   truncated}], cost_usd, model}`.
   - Claude only suggests: each kept suggestion is written to the field's record `suggestion` (the shape above;
-    `source_reference` is the parser's reference for the quoted line) and nothing else changes. Fields the
+    `source_reference` is the parser's reference for the quoted line; a quote over 1,000 characters is stored cut
+    with `quote_truncated: true`, after it was verified whole) and nothing else changes. Fields the
     reviewer has decided (accepted, edited, rejected) are left alone and counted in `kept_reviewer_decision`;
     a pending field's older suggestion is replaced. An entity or factor source Claude finds becomes a new
     record under a server-made id with `user_added: false`, unless a row with the same name (entity) or the
