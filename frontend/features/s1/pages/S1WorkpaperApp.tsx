@@ -100,6 +100,7 @@ import { dashboardFigures, engagementActivity } from "../utils/engagementActivit
 import { ActivityDrawer } from "../components/ActivityDrawer";
 import { useBackendCoverage } from "../components/useBackendCoverage";
 import { testedExaminationKeys } from "../utils/verificationTable";
+import { BackendMethodologyReview } from "../components/BackendMethodologyReview";
 import { MethodologyReview } from "../components/MethodologyReview";
 import { emptyMethodologyReview, methodologyStated } from "../fixtures/methodology/methodologyReview";
 import type { MethodologyState } from "../types/methodology";
@@ -263,6 +264,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   );
   // Methodology review (demo): the verifier's acceptances and changes to the stated methodology.
   const [methodology, setMethodology] = useState<MethodologyState>(() => persisted?.methodology ?? emptyMethodologyReview());
+  // Backend mode: the methodology decisions' history, for the activity log.
+  const [methodologyActivity, setMethodologyActivity] = useState<{ at: string; who: string; what: string }[]>([]);
 
   // Demo-only: snapshot fixture state to localStorage so a refresh keeps it.
   useEffect(() => {
@@ -921,7 +924,6 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         current={navCurrent}
         onNavigate={onNavigate}
         onReset={dataMode === "fixture" ? resetDemo : undefined}
-        hiddenNav={dataMode === "backend" ? ["methodology"] : undefined}
         onOpenActivity={() => setActivityOpen(true)}
         assistant={assistantData ? { data: assistantData, onOpenDocument: openExtraction, onNavigate } : undefined}
         onOpenGlossary={() =>
@@ -1009,15 +1011,21 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             serverRecordsActor={dataMode === "backend"}
           />
         ) : activeView.name === "methodology" ? (
-          // Demo only for now: the backend does not read the methodology from the report yet.
-          dataMode === "fixture" ? (
+          dataMode === "backend" ? (
+            <BackendMethodologyReview
+              engagementId={engagement.engagementId}
+              onOpenDocument={openExtraction}
+              onError={handleSessionEnded}
+              onActivity={setMethodologyActivity}
+            />
+          ) : (
             <MethodologyReview
               stated={methodologyStated}
               review={methodology}
               onChange={setMethodology}
               verifier={engagement.engagementTeam?.find((m) => m.login === engagement.signedInLogin)?.name ?? DEMO_ACTOR ?? "Verifier"}
             />
-          ) : null
+          )
         ) : activeView.name === "results" ? (
           dataMode === "backend" ? (
             <BackendVerificationResults
@@ -1218,7 +1226,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               asks: requests.asks,
               findings: verification.findings,
               intents: auditIntents,
-              methodology: dataMode === "fixture" ? methodology.log : undefined,
+              methodology: dataMode === "fixture" ? methodology.log : methodologyActivity,
             })}
             onClose={() => setActivityOpen(false)}
           />

@@ -3454,3 +3454,20 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-xr-unread { margin: var(--sp-3) 0 0; padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); color: var(--ink-2); background: var(--state-open-bg); border: var(--hairline-width) solid var(--state-open-line); border-radius: var(--radius-input); overflow-wrap: anywhere; }
 .s1-xr-unread strong { color: var(--ink); }
 
+
+/* Methodology review on real data */
+.s1-mb { display: flex; flex-direction: column; gap: var(--sp-4); }
+.s1-mb-top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-4); justify-content: space-between; }
+.s1-mb-ai { font-size: var(--text-sm); color: var(--state-open-fg); }
+.s1-mb-confirm, .s1-mb-result, .s1-mb-notice { margin: 0; padding: var(--sp-3) var(--sp-4); border: var(--border-hairline); border-radius: var(--radius-card); background: var(--sf-card); font-size: var(--text-md); color: var(--ink); }
+.s1-mb-notice { color: var(--state-blocking-fg); }
+.s1-mb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.s1-mb-row { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-5); border-bottom: var(--hairline-width) solid var(--mr-row-line); }
+.s1-mb-row:last-child { border-bottom: 0; }
+.s1-mb-main, .s1-mb-suggest, .s1-mb-edit { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
+.s1-mb-status { font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-2); }
+.s1-mb-row[data-status="accepted"] .s1-mb-status, .s1-mb-row[data-status="edited"] .s1-mb-status { color: var(--state-resolved-fg); }
+.s1-mb-row[data-status="rejected"] .s1-mb-status { color: var(--state-blocking-fg); }
+.s1-mb-chip { font-size: var(--text-sm); color: var(--state-active-fg); background: var(--state-active-bg); border: var(--hairline-width) solid var(--state-active-line); border-radius: var(--radius-chip); padding: 0 var(--sp-2); }
+.s1-mb-quote { font-size: var(--text-sm); color: var(--ink-2); }
+.s1-mb-part { display: flex; flex-direction: column; gap: var(--sp-1); }
