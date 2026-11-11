@@ -27,7 +27,7 @@ from backend.app.api.engagements import _visible, require_open_engagement
 from backend.app.api.s1_access import s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
-from backend.app.services import workpaper_item_service
+from backend.app.services import methodology_review, workpaper_item_service
 from backend.app.services.audit_log import write_audit_event
 from backend.app.services.workpaper_item_service import ITEM_KEY, MAX_PAYLOAD_BYTES
 
@@ -70,7 +70,14 @@ async def list_workpaper_items(
 ) -> WorkpaperItemList:
     engagement = await _visible(db, engagement_id, user)
     rows = await workpaper_item_service.list_items(db, engagement["id"], kind)
-    return WorkpaperItemList(items=[WorkpaperItem(**row) for row in rows])
+    items = []
+    for row in rows:
+        if row["kind"] == "methodology":  # same shape as the review's GET; removed rows are not listed
+            if row["payload"].get("removed"):
+                continue
+            row = {**row, "payload": methodology_review.public(row["payload"])}
+        items.append(WorkpaperItem(**row))
+    return WorkpaperItemList(items=items)
 
 
 @router.put("/engagements/{engagement_id}/workpaper-items/{kind}/{item_key}", response_model=WorkpaperItem)

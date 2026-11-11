@@ -147,6 +147,7 @@ async def get_methodology_review(
     for key, record in stored.items():  # rows the reviewer added, oldest first
         definition = rules.row_field(key)
         if definition is not None and not record.get("removed"):
+            definition["user_added"] = bool(record.get("user_added"))  # the record's flag is the truth
             fields.append(rules.public(record))
             catalog.append(definition)
     return {
@@ -185,6 +186,13 @@ async def add_row(
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict[str, Any]:
     field_id = rules.new_row_id(body.group)
+    added = [r for r in await workpaper_item_service.list_items(db, engagement["id"], KIND)
+             if r["payload"].get("user_added")]
+    if len(added) >= rules.MAX_ADDED_ROWS:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This engagement already has the most rows a reviewer can add ({rules.MAX_ADDED_ROWS}). "
+                   "Edit an existing row instead.")
     record = rules.new_row(field_id, actor_of(user), _now())
     row = await workpaper_item_service.insert_item(
         db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind=KIND, item_key=field_id,
@@ -192,7 +200,7 @@ async def add_row(
     if row is None:  # a random id colliding: not expected
         raise HTTPException(status_code=409, detail="The row could not be added. Try again.")
     await _audit(db, request, user, engagement, field_id, "add_row", rules.PENDING)
-    return {**rules.public(row["payload"]), "field": rules.row_field(field_id)}
+    return {**rules.public(row["payload"]), "field": {**(rules.row_field(field_id) or {}), "user_added": True}}
 
 
 @router.post("/engagements/{engagement_id}/methodology-review/{field_id}/accept", response_model=dict[str, Any])

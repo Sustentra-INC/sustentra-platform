@@ -76,9 +76,9 @@ async def save_item(
 
 
 def payload_size(payload: dict[str, Any]) -> int:
-    """The payload's size as MAX_PAYLOAD_BYTES counts it."""
+    """The payload's size as MAX_PAYLOAD_BYTES counts it: UTF-8 bytes, as it is stored."""
 
-    return len(json.dumps(payload))
+    return len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
 
 
 async def get_items(
