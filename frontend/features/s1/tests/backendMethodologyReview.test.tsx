@@ -14,7 +14,7 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 }));
 
 import { api, ApiError } from "../../../lib/api";
-import { BackendMethodologyReview, aiStatusWords, statusWord } from "../components/BackendMethodologyReview";
+import { BackendMethodologyReview, aiStatusWords, dropReasonWords, statusWord } from "../components/BackendMethodologyReview";
 
 const BASE = "/engagements/e1/methodology-review";
 const by = { name: "M. Osei", login: "mosei" };
@@ -206,7 +206,7 @@ describe("Methodology review on real data", () => {
     await open();
     mock.fail.prefillResult = {
       suggested: 4,
-      dropped: { quote_not_found: 2, some_new_reason: 1 },
+      dropped: { quote_not_on_document: 2, some_new_reason: 1 },
       kept_reviewer_decision: 1,
       documents_read: [{ document_id: "d1", file_name: "GHG report.pdf", truncated: true }],
       cost_usd: 0.0312,
@@ -218,11 +218,26 @@ describe("Methodology review on real data", () => {
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
     const summary = await screen.findByRole("status");
     await waitFor(() => expect(summary.textContent).toMatch(/4 suggested, 3 dropped/));
-    expect(summary.textContent).toContain("2: the quote was not on the document");
+    expect(summary.textContent).toContain("2: Quote not found in the document");
+    expect(summary.textContent).toContain("1 field kept your decision");
     expect(summary.textContent).toContain("1: some new reason");
     expect(summary.textContent).toContain("GHG report.pdf (only the start was read)");
     expect(summary.textContent).toContain("Cost $0.03");
     expect(calls()).toContainEqual([`${BASE}/prefill`, expect.objectContaining({ method: "POST" })]);
+  });
+
+  it("words every drop code M2 sends", () => {
+    const words: Record<string, string> = {
+      empty_value: "No value given",
+      unknown_line: "Cited a line that isn't in the document",
+      quote_not_on_document: "Quote not found in the document",
+      ambiguous_quote: "Quote appears in more than one place",
+      value_not_in_quote: "Value isn't in the quoted text",
+      unknown_document: "Cited a document that wasn't read",
+      invalid_value: "Value isn't one of the allowed options",
+      unknown_field: "Not a methodology field",
+    };
+    for (const [code, text] of Object.entries(words)) expect(dropReasonWords(code)).toBe(text);
   });
 
   it("shows Claude's refusal sentence from the prefill", async () => {

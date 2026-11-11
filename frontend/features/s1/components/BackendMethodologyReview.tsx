@@ -32,13 +32,14 @@ const STATUS_WORD: Record<string, string> = { pending: "Pending", accepted: "Acc
 
 /** Plain words for why a suggestion batch was dropped; an unknown code shows as its own words. */
 const DROP_REASON: Record<string, string> = {
-  quote_not_found: "the quote was not on the document",
-  line_not_found: "the cited line did not exist",
-  value_not_in_quote: "the number was not in the quote",
-  not_in_catalog: "the value was not an allowed one",
-  unknown_field: "the field is not one we review",
-  document_not_found: "the document was not one it was given",
-  kept_reviewer_decision: "a reviewer had already decided",
+  empty_value: "No value given",
+  unknown_line: "Cited a line that isn't in the document",
+  quote_not_on_document: "Quote not found in the document",
+  ambiguous_quote: "Quote appears in more than one place",
+  value_not_in_quote: "Value isn't in the quoted text",
+  unknown_document: "Cited a document that wasn't read",
+  invalid_value: "Value isn't one of the allowed options",
+  unknown_field: "Not a methodology field",
 };
 
 /** Button words for the row groups the API lists (it gives codes only); any other code gets a general label. */
@@ -441,7 +442,10 @@ export function BackendMethodologyReview({
           {droppedEntries.length
             ? `, ${droppedEntries.reduce((n, [, c]) => n + c, 0)} dropped (${droppedEntries.map(([code, n]) => `${n}: ${dropReasonWords(code)}`).join("; ")})`
             : ", none dropped"}
-          {result.kept_reviewer_decision ? `, ${result.kept_reviewer_decision} left alone because you had decided` : ""}. Read {suggestedDocs.length}{" "}
+          {result.kept_reviewer_decision
+            ? `, ${result.kept_reviewer_decision} ${result.kept_reviewer_decision === 1 ? "field kept" : "fields kept"} your decision`
+            : ""}
+          . Read {suggestedDocs.length}{" "}
           {suggestedDocs.length === 1 ? "document" : "documents"}: {suggestedDocs.map((d) => d.file_name + (d.truncated ? " (only the start was read)" : "")).join(", ")}. Cost ${result.cost_usd.toFixed(2)}.
         </p>
       ) : null}
