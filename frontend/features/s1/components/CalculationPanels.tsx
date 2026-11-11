@@ -11,49 +11,89 @@ import {
   StickyNote,
 } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 
-import type { CalcGas, CalcLineGas, CalcLineResults, CalcLineStep2, CalculationLine } from "../api/recalculation";
+import type {
+  CalcGas,
+  CalcLineGas,
+  CalcLineResults,
+  CalcLineStatus,
+  CalcLineStep2,
+  CalculationLine,
+  RecalcComparison,
+} from "../api/recalculation";
 import type { RecalculationSettings } from "../types";
 import type { TeamMember } from "../types/engagement";
-import type { ResultLine } from "../types/verificationResults";
-import {
-  differs,
-  examinationKey,
-  formatGasTonnes,
-  formatInputQuantity,
-  formatSignedGasTonnes,
-  lineRecomputed,
-  lineReported,
-} from "../utils/verificationTable";
+import { differs, examinationKey, formatGasTonnes, formatInputQuantity, formatSignedGasTonnes } from "../utils/verificationTable";
 import type { VerificationStore } from "../verification/verificationStore";
 import { InfoTip } from "./InfoTip";
 import { AddNote, RecordExamination, formatWhen } from "./VerificationWorkspace";
 
 /**
  * Per-line calculation panels in Verification results (backend mode). One panel per category
- * (stationary, mobile, purchased electricity); a line opens to its steps as tabs, one at a time.
- * Every number is the backend's (`calculation_lines`): this file only formats and lays them out.
+ * (stationary, mobile, and each purchased energy type); a line opens to its steps as tabs, one at
+ * a time. Every number and every status is the backend's (`calculation_lines`, `comparisons`):
+ * this file only formats and lays them out.
  */
 
-interface CategoryDef {
+interface PanelDef {
   id: string;
-  /** The live results line whose totals head the panel. */
-  resultLineId: string;
   title: string;
+  /** The `comparisons` key whose figures head the panel. */
+  comparisonKey: string;
+  category: string;
+  /** For purchased energy, the level 2 name the panel holds. */
+  level2?: string;
   /** What the second column of the lines table holds. */
   anchor: string;
+  firstColumn: string;
 }
 
-const CATEGORIES: CategoryDef[] = [
-  { id: "stationary", resultLineId: "s1-stationary", title: "Scope 1 › Stationary combustion", anchor: "Facility" },
-  { id: "mobile", resultLineId: "s1-mobile", title: "Scope 1 › Mobile combustion", anchor: "Vehicle group" },
-  { id: "purchased_energy", resultLineId: "s2l-electricity", title: "Scope 2 › Purchased electricity", anchor: "Facility" },
+const FIXED_PANELS: PanelDef[] = [
+  { id: "stationary", title: "Scope 1 › Stationary combustion", comparisonKey: "stationary_combustion_total", category: "stationary", anchor: "Facility", firstColumn: "Fuel" },
+  { id: "mobile", title: "Scope 1 › Mobile combustion", comparisonKey: "mobile_combustion_total", category: "mobile", anchor: "Vehicle group", firstColumn: "Fuel" },
 ];
+
+/** One Scope 2 panel per energy type present, named from the line's level 2. */
+function energyPanel(level2: string): PanelDef {
+  const word = level2.trim().toLowerCase();
+  return {
+    id: `purchased_energy:${word}`,
+    title: `Scope 2 › Purchased ${word}`,
+    comparisonKey: `purchased_${word}_total`,
+    category: "purchased_energy",
+    level2,
+    anchor: "Facility",
+    firstColumn: "Energy",
+  };
+}
 
 const GAS_LABEL: Record<CalcGas, string> = { CO2: "CO₂", CH4: "CH₄", N2O: "N₂O" };
 const GASES: CalcGas[] = ["CO2", "CH4", "N2O"];
 const GWP_SETS = ["AR4", "AR5", "AR6"];
 const STEPS = ["Step 1 · Activity", "Step 2 · Unit", "Step 3 · Gases", "Results"] as const;
+
+/** The units the backend converts, by dimension: a company's activity unit is picked from its line's. */
+const UNIT_GROUPS: string[][] = [
+  ["therm", "MMBtu", "Dth", "ccf", "Mcf", "scf"],
+  ["gal", "L", "bbl"],
+  ["kWh", "MWh"],
+  ["kg", "lb", "short_ton", "metric_ton"],
+];
+
+export function unitsFor(unit: string): string[] {
+  const lower = unit.toLowerCase();
+  const group = UNIT_GROUPS.find((g) => g.some((u) => u.toLowerCase() === lower));
+  return group ?? [unit];
+}
+
+/** Plain sentences for the flags the backend raises; a code not listed here is not shown. */
+const FLAG_TEXT: Record<string, string> = {
+  reported_not_entered: "No company total is entered for this line.",
+  unknown_line_key: "Company figures name a line this engagement does not have.",
+  company_activity_missing: "No company activity is entered, so the company side is not computed.",
+  partial_period: "Some months of the period have no reviewed evidence.",
+};
 
 const qty = formatInputQuantity;
 
@@ -65,78 +105,146 @@ function period(start: string, end: string): string {
   return start === end ? start : `${start} to ${end}`;
 }
 
-/** The tone of a difference: material is red, below tolerance amber, none quiet. */
-function tone(difference: number | null, reported: number | null, tolerancePct: number): "zero" | "material" | "below" {
-  if (difference === null || !differs(difference)) return "zero";
-  if (!reported) return "material";
-  return Math.abs(difference) > (Math.abs(reported) * tolerancePct) / 100 ? "material" : "below";
+/** The word that goes with a status, so colour is never the only signal. */
+const STATUS_WORD: Record<CalcLineStatus, string> = {
+  above: "above tolerance",
+  within: "within tolerance",
+  not_reported: "not reported",
+};
+
+function comparisonStatus(c: RecalcComparison | undefined): CalcLineStatus | null {
+  if (!c) return null;
+  if (c.status === "exceeds_tolerance") return "above";
+  if (c.status === "within_tolerance") return "within";
+  if (c.status === "not_reported") return "not_reported";
+  return null;
 }
 
-function DiffChip({ value, reported, tolerancePct }: { value: number | null; reported: number | null; tolerancePct: number }) {
-  if (value === null) return <span className="s1-muted">Not compared</span>;
-  const t = tone(value, reported, tolerancePct);
-  if (t === "zero") return <span className="s1-vw-delta s1-vw-delta--zero">0</span>;
+function percentText(value: number): string {
+  const text = `${Math.abs(value).toFixed(1)}%`;
+  return value === 0 ? text : `${value > 0 ? "+" : "−"}${text}`;
+}
+
+/** A difference with its status word: red above tolerance, amber within, always with the word. */
+function DiffChip({ value, status, pct }: { value: number | null; status: CalcLineStatus | null; pct?: number | null }) {
+  if (value === null) {
+    return <span className="s1-muted">{status ? STATUS_WORD[status] : "Not compared"}</span>;
+  }
   const Arrow = value > 0 ? ArrowUpRight : ArrowDownRight;
+  const word = status ? ` · ${STATUS_WORD[status]}` : "";
+  const quiet = !differs(value);
   return (
-    <span className={`s1-vw-delta${t === "below" ? " s1-vw-delta--below" : ""}`}>
-      <Arrow className="s1-vw-ico" aria-hidden />
-      {formatSignedGasTonnes(value)}
+    <span className={`s1-vw-delta${quiet ? " s1-vw-delta--zero" : status === "above" ? "" : " s1-vw-delta--below"}`}>
+      {quiet ? null : <Arrow className="s1-vw-ico" aria-hidden />}
+      {quiet ? "0" : formatSignedGasTonnes(value)}
+      {pct !== null && pct !== undefined && !quiet ? ` (${percentText(pct)})` : ""}
+      {word}
     </span>
   );
 }
 
+/** A dotted-underlined figure that opens its source citation beside it. Closes on Escape or a click elsewhere. */
 function SourceNote({ label, source }: { label: string; source: string }) {
-  const [open, setOpen] = useState(false);
+  const [at, setAt] = useState<{ top: number; left: number } | null>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!at) return;
+    const close = () => setAt(null);
+    const onDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (!button.current?.contains(target) && !pop.current?.contains(target)) close();
+    };
+    const onKey = (e: globalThis.KeyboardEvent) => e.key === "Escape" && close();
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [at]);
+
+  function toggle() {
+    if (at) return setAt(null);
+    const rect = button.current?.getBoundingClientRect();
+    setAt({ top: rect ? rect.bottom + window.scrollY : 0, left: rect ? rect.left + window.scrollX : 0 });
+  }
+
   return (
-    <span className="s1-cp-src-wrap" onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
-      <button className="s1-cp-src" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
+    <>
+      <button ref={button} className="s1-cp-src" type="button" aria-expanded={Boolean(at)} onClick={toggle}>
         {label}
       </button>
-      {open ? (
-        <span className="s1-cp-pop" role="note">
-          Source: {source}
-        </span>
-      ) : null}
-    </span>
+      {at
+        ? createPortal(
+            <span ref={pop} className="s1-cp-pop" role="note" style={{ top: at.top, left: at.left }}>
+              Source: {source}
+            </span>,
+            document.body
+          )
+        : null}
+    </>
   );
 }
 
-function GasTable({ gases, equations }: { gases: CalcLineGas[]; equations: CalculationLine["method"]["equations"] }) {
+function GasTable({ line }: { line: CalculationLine }) {
+  const equations = line.method.equations;
+  const company = line.company?.step3.gases;
+  const row = (g: CalcLineGas, side: "Company" | "Recomputed", span: number | null) => (
+    <tr key={`${g.gas}:${side}`} className={side === "Recomputed" ? "s1-cp-gas__last" : undefined}>
+      {span ? (
+        <td rowSpan={span}>
+          {GAS_LABEL[g.gas]}
+          {equations[g.gas] ? <span className="s1-muted"> · {equations[g.gas]}</span> : null}
+        </td>
+      ) : null}
+      <td>{side}</td>
+      <td className="s1-vw-num">
+        {qty(g.activity.value)} {g.activity.unit}
+      </td>
+      <td className="s1-vw-num">
+        <SourceNote label={`${qty(g.ef.value)} ${g.ef.unit}`} source={g.ef.source} />
+      </td>
+      <td className="s1-vw-num">{factorText(g.unit_conversion)}</td>
+      <td className="s1-vw-num">{formatGasTonnes(g.mass_t)}</td>
+      <td className="s1-vw-num">
+        <SourceNote label={`×${qty(g.gwp.value)}`} source={g.gwp.source} />
+      </td>
+      <td className="s1-vw-num">{formatGasTonnes(g.co2e_t)}</td>
+      <td className="s1-vw-num">
+        {side === "Recomputed" && g.difference_t !== null && g.difference_t !== undefined ? formatSignedGasTonnes(g.difference_t) : ""}
+      </td>
+    </tr>
+  );
   return (
     <div className="s1-vw-scroll">
       <table className="s1-vw-steps s1-cp-gas">
         <thead>
           <tr>
             <th>Gas</th>
+            <th>Side</th>
             <th className="s1-vw-num">Activity</th>
             <th className="s1-vw-num">× Emission factor</th>
             <th className="s1-vw-num">× Unit conversion</th>
             <th className="s1-vw-num">= Mass (t)</th>
             <th className="s1-vw-num">× GWP</th>
             <th className="s1-vw-num">= CO₂e (t)</th>
+            <th className="s1-vw-num">Difference</th>
           </tr>
         </thead>
         <tbody>
-          {gases.map((g) => (
-            <tr key={g.gas}>
-              <td>
-                {GAS_LABEL[g.gas]}
-                {equations[g.gas] ? <span className="s1-muted"> · {equations[g.gas]}</span> : null}
-              </td>
-              <td className="s1-vw-num">
-                {qty(g.activity.value)} {g.activity.unit}
-              </td>
-              <td className="s1-vw-num">
-                <SourceNote label={`${qty(g.ef.value)} ${g.ef.unit}`} source={g.ef.source} />
-              </td>
-              <td className="s1-vw-num">{factorText(g.unit_conversion)}</td>
-              <td className="s1-vw-num">{formatGasTonnes(g.mass_t)}</td>
-              <td className="s1-vw-num">
-                <SourceNote label={`×${qty(g.gwp.value)}`} source={g.gwp.source} />
-              </td>
-              <td className="s1-vw-num">{formatGasTonnes(g.co2e_t)}</td>
-            </tr>
-          ))}
+          {line.step3.gases.map((g) => {
+            const theirs = company?.find((c) => c.gas === g.gas);
+            return (
+              <Fragment key={g.gas}>
+                {theirs ? row(theirs, "Company", 2) : null}
+                {row(g, "Recomputed", theirs ? null : 1)}
+              </Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -179,18 +287,21 @@ function ResultsTable({ line }: { line: CalculationLine }) {
 }
 
 function Step2Table({ line }: { line: CalculationLine }) {
-  const row = (label: string, s: CalcLineStep2) => (
-    <tr>
+  const convert = (label: string, s: CalcLineStep2) => (
+    <tr key={label}>
       <td>{label}</td>
       <td>
         {s.from_unit} → {s.to_unit}
       </td>
-      <td className="s1-vw-num">{factorText(s.factor)}</td>
+      <td className="s1-vw-num">
+        {s.factor === 1 ? "×1" : <SourceNote label={factorText(s.factor)} source={s.source ?? "The platform's fixed unit conversion table."} />}
+      </td>
       <td className="s1-vw-num">
         {qty(s.result.quantity)} {s.result.unit}
       </td>
     </tr>
   );
+  const distance = line.step2.distance;
   return (
     <div className="s1-vw-scroll">
       <table className="s1-vw-steps">
@@ -203,8 +314,22 @@ function Step2Table({ line }: { line: CalculationLine }) {
           </tr>
         </thead>
         <tbody>
-          {line.company ? row("Company", line.company.step2) : null}
-          {row("Recomputed", line.step2)}
+          {line.company ? convert("Company", line.company.step2) : null}
+          {convert("Recomputed", line.step2)}
+          {distance ? (
+            <tr>
+              <td>Recomputed, distance</td>
+              <td>
+                {line.step2.result.unit} → {distance.result.unit}
+              </td>
+              <td className="s1-vw-num">
+                <SourceNote label={`× ${qty(distance.fuel_economy.value)} ${distance.fuel_economy.unit}`} source={distance.fuel_economy.source} />
+              </td>
+              <td className="s1-vw-num">
+                {qty(distance.result.quantity)} {distance.result.unit}
+              </td>
+            </tr>
+          ) : null}
         </tbody>
       </table>
     </div>
@@ -231,6 +356,7 @@ function Step1Table({ line, onOpenDocument }: { line: CalculationLine; onOpenDoc
             <tr key={`${r.document_id}:${r.candidate_id}`}>
               <td>{period(r.period_start, r.period_end)}</td>
               <td>
+                {r.evidence_code ? <span className="s1-muted">{r.evidence_code} · </span> : null}
                 {onOpenDocument ? (
                   <button className="s1-cp-src" type="button" onClick={() => onOpenDocument(r.document_id, r.candidate_id)}>
                     {r.file_name}
@@ -267,18 +393,17 @@ function Step1Table({ line, onOpenDocument }: { line: CalculationLine; onOpenDoc
   );
 }
 
-/** "Edit company figures": the company's total and annual activity for one line. */
+/** "Edit company figures": the company's total and annual activity for one line. Stays open until the save resolves. */
 function CompanyForm({
   line,
   settings,
-  saving,
   onSave,
   onCancel,
 }: {
   line: CalculationLine;
   settings: RecalculationSettings;
-  saving: boolean;
-  onSave: (next: RecalculationSettings) => void;
+  /** Resolves to an error message, or null when saved. */
+  onSave: (next: RecalculationSettings) => Promise<string | null>;
   onCancel: () => void;
 }) {
   const current = settings.reported_activity?.[line.key];
@@ -286,15 +411,17 @@ function CompanyForm({
   const [activity, setActivity] = useState(current?.quantity.toString() ?? "");
   const [unit, setUnit] = useState(current?.unit ?? line.step1.total.unit);
   const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const units = unitsFor(line.step1.total.unit);
+  const options = units.includes(unit) ? units : [unit, ...units];
 
   const number = (text: string) => (text.trim() === "" ? null : Number(text.replace(/,/g, "")));
-  function submit() {
+  async function submit() {
     const found: string[] = [];
     const t = number(total);
     const a = number(activity);
     if (t !== null && (!Number.isFinite(t) || t < 0)) found.push("Enter the company's total as a number, 0 or more, in tonnes CO₂e.");
     if (a !== null && (!Number.isFinite(a) || a < 0)) found.push("Enter the company's activity as a number, 0 or more.");
-    if (a !== null && !unit.trim()) found.push("Enter the unit the company reported its activity in, for example therms.");
     setErrors(found);
     if (found.length) return;
     const lines = { ...(settings.reported_lines ?? {}) };
@@ -302,8 +429,11 @@ function CompanyForm({
     if (t === null) delete lines[line.key];
     else lines[line.key] = t;
     if (a === null) delete acts[line.key];
-    else acts[line.key] = { quantity: a, unit: unit.trim() };
-    onSave({ ...settings, reported_lines: lines, reported_activity: acts });
+    else acts[line.key] = { quantity: a, unit };
+    setSaving(true);
+    const failure = await onSave({ ...settings, reported_lines: lines, reported_activity: acts });
+    setSaving(false);
+    if (failure) setErrors([failure]);
   }
 
   return (
@@ -320,7 +450,13 @@ function CompanyForm({
         </label>
         <label className="s1-vw-field">
           <span>Activity unit</span>
-          <input value={unit} onChange={(e) => setUnit(e.target.value)} />
+          <select value={unit} onChange={(e) => setUnit(e.target.value)}>
+            {options.map((u) => (
+              <option key={u} value={u}>
+                {u}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
       {errors.map((message) => (
@@ -332,7 +468,7 @@ function CompanyForm({
         <button className="s1-button" type="button" onClick={onCancel}>
           Cancel
         </button>
-        <button className="s1-button s1-button--pri" type="button" disabled={saving} onClick={submit}>
+        <button className="s1-button s1-button--pri" type="button" disabled={saving} onClick={() => void submit()}>
           {saving ? "Saving…" : "Save company figures"}
         </button>
       </div>
@@ -345,8 +481,6 @@ function LineDetail({
   line,
   settings,
   gwpSet,
-  saving,
-  saveError,
   onSave,
   store,
   team,
@@ -357,9 +491,7 @@ function LineDetail({
   line: CalculationLine;
   settings: RecalculationSettings;
   gwpSet: string;
-  saving: boolean;
-  saveError: string | null;
-  onSave: (next: RecalculationSettings) => void;
+  onSave: (next: RecalculationSettings) => Promise<string | null>;
   store: VerificationStore;
   team: TeamMember[];
   signedInLogin?: string;
@@ -368,11 +500,14 @@ function LineDetail({
 }) {
   const [step, setStep] = useState(0);
   const [box, setBox] = useState<"examination" | "note" | "company" | null>(null);
+  const [gwpSaving, setGwpSaving] = useState(false);
+  const [gwpError, setGwpError] = useState<string | null>(null);
   const key = examinationKey("calc", line.key);
   const examination = store.examinations[key];
   const examined = Boolean(examination?.examinedBy);
   const title = `${line.label} · ${line.level2}`;
   const ids = `s1-cp-${line.key}`;
+  const flags = line.flags.map((f) => FLAG_TEXT[f]).filter(Boolean);
 
   function onTabKey(event: KeyboardEvent<HTMLButtonElement>) {
     const move = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
@@ -381,11 +516,18 @@ function LineDetail({
     setStep((step + move + STEPS.length) % STEPS.length);
   }
 
+  async function changeGwp(value: string) {
+    setGwpSaving(true);
+    setGwpError(null);
+    setGwpError(await onSave({ ...settings, gwp_set: value }));
+    setGwpSaving(false);
+  }
+
   return (
     <div className="s1-cp-detail">
       <p className="s1-cp-route">
         {line.method.route}
-        {line.flags.length ? <span className="s1-muted"> · {line.flags.join(", ")}</span> : null}
+        {flags.length ? <span className="s1-muted"> · {flags.join(" ")}</span> : null}
       </p>
       <div className="s1-cp-tabs" role="tablist" aria-label={`Steps · ${line.label}`}>
         {STEPS.map((name, i) => (
@@ -412,7 +554,7 @@ function LineDetail({
           <>
             <div className="s1-cp-gwp">
               <label htmlFor={`${ids}-gwp`}>GWP set</label>
-              <select id={`${ids}-gwp`} value={gwpSet} disabled={saving} onChange={(e) => onSave({ ...settings, gwp_set: e.target.value })}>
+              <select id={`${ids}-gwp`} value={gwpSet} disabled={gwpSaving} onChange={(e) => void changeGwp(e.target.value)}>
                 {GWP_SETS.map((g) => (
                   <option key={g} value={g}>
                     {g}
@@ -420,14 +562,13 @@ function LineDetail({
                 ))}
               </select>
               <InfoTip label="GWP set">One set applies to the whole engagement. Changing it recalculates every line.</InfoTip>
+              {gwpError ? (
+                <span className="s1-vw-red" role="alert">
+                  {gwpError}
+                </span>
+              ) : null}
             </div>
-            <GasTable gases={line.step3.gases} equations={line.method.equations} />
-            {line.company ? (
-              <>
-                <div className="s1-vw-label">Company side</div>
-                <GasTable gases={line.company.step3.gases} equations={line.method.equations} />
-              </>
-            ) : null}
+            <GasTable line={line} />
           </>
         ) : null}
         {step === 3 ? <ResultsTable line={line} /> : null}
@@ -458,11 +599,6 @@ function LineDetail({
           </span>
         ) : null}
       </div>
-      {saveError ? (
-        <p className="s1-vw-red" role="alert">
-          {saveError}
-        </p>
-      ) : null}
       {box === "examination" ? (
         <RecordExamination
           title={title}
@@ -494,11 +630,11 @@ function LineDetail({
         <CompanyForm
           line={line}
           settings={settings}
-          saving={saving}
           onCancel={() => setBox(null)}
-          onSave={(next) => {
-            onSave(next);
-            setBox(null);
+          onSave={async (next) => {
+            const failure = await onSave(next);
+            if (!failure) setBox(null);
+            return failure;
           }}
         />
       ) : null}
@@ -522,12 +658,9 @@ function LineDetail({
 
 export function CalculationPanels({
   lines,
-  resultLines,
-  tolerancePct,
+  comparisons,
   gwpSet,
   settings,
-  saving,
-  saveError,
   onSave,
   store,
   team,
@@ -537,15 +670,12 @@ export function CalculationPanels({
   onOpenEvidence,
 }: {
   lines: CalculationLine[];
-  /** The live results lines: their totals head each panel, so no total is summed here. */
-  resultLines: ResultLine[];
-  tolerancePct: number;
+  /** The recalculation's comparisons: each panel's Reported, Recomputed, Difference and status. */
+  comparisons: RecalcComparison[];
   gwpSet: string;
   settings: RecalculationSettings;
-  saving: boolean;
-  saveError: string | null;
-  /** Saves settings.recalculation through the existing save path (which refetches). */
-  onSave: (next: RecalculationSettings) => void;
+  /** Saves settings.recalculation through the existing save path (which refetches); resolves to an error message or null. */
+  onSave: (next: RecalculationSettings) => Promise<string | null>;
   store: VerificationStore;
   team: TeamMember[];
   signedInLogin?: string;
@@ -555,9 +685,11 @@ export function CalculationPanels({
   /** Shows "Open in Evidence" on each line when given. */
   onOpenEvidence?: (lineKey: string) => void;
 }) {
-  const present = CATEGORIES.filter((c) => lines.some((l) => l.category === c.id));
+  const energyTypes = [...new Set(lines.filter((l) => l.category === "purchased_energy").map((l) => l.level2))];
+  const panels = [...FIXED_PANELS, ...energyTypes.map(energyPanel)].filter((p) => lines.some((l) => belongs(l, p)));
   const focused = lines.find((l) => l.key === focusLineKey);
-  const [openCategory, setOpenCategory] = useState<string | null>(focused?.category ?? present[0]?.id ?? null);
+  const panelOf = (line: CalculationLine | undefined) => panels.find((p) => line && belongs(line, p))?.id ?? null;
+  const [openPanel, setOpenPanel] = useState<string | null>(panelOf(focused) ?? panels[0]?.id ?? null);
   const [openLine, setOpenLine] = useState<string | null>(focused?.key ?? null);
   const focusRef = useRef<HTMLTableRowElement | null>(null);
 
@@ -566,7 +698,7 @@ export function CalculationPanels({
   if (focusLineKey !== seenFocus) {
     setSeenFocus(focusLineKey);
     if (focused) {
-      setOpenCategory(focused.category);
+      setOpenPanel(panelOf(focused));
       setOpenLine(focused.key);
     }
   }
@@ -574,28 +706,29 @@ export function CalculationPanels({
     if (openLine && openLine === focusLineKey) focusRef.current?.scrollIntoView?.({ block: "nearest" });
   }, [openLine, focusLineKey]);
 
-  if (!present.length) return null;
+  if (!panels.length) return null;
 
   return (
     <section className="s1-cp" aria-label="Calculation by line">
-      {present.map((cat) => {
-        const catLines = lines.filter((l) => l.category === cat.id);
-        const head = resultLines.find((r) => r.id === cat.resultLineId);
-        const reported = head ? lineReported(head) : null;
-        const recomputed = head ? lineRecomputed(head) : null;
-        const difference = reported !== null && recomputed !== null ? recomputed - reported : null;
-        const open = openCategory === cat.id;
+      {panels.map((panel) => {
+        const panelLines = lines.filter((l) => belongs(l, panel));
+        const head = comparisons.find((c) => c.key === panel.comparisonKey);
+        const status = comparisonStatus(head);
+        const reported = head?.reported ?? null;
+        const recomputed = head?.recalculated ?? null;
+        const difference = head?.difference ?? null;
+        const open = openPanel === panel.id;
         return (
-          <div key={cat.id} className={`s1-vw-box s1-cp-cat${open ? " is-open" : ""}`}>
+          <div key={panel.id} className={`s1-vw-box s1-cp-cat${open ? " is-open" : ""}`}>
             <button
               className="s1-cp-head"
               type="button"
               aria-expanded={open}
-              aria-controls={`s1-cp-cat-${cat.id}`}
-              onClick={() => setOpenCategory(open ? null : cat.id)}
+              aria-controls={`s1-cp-cat-${panel.id}`}
+              onClick={() => setOpenPanel(open ? null : panel.id)}
             >
               <ChevronRight className="s1-vw-ico s1-vw-box__chev" aria-hidden />
-              <span className="s1-vw-box__title">{cat.title}</span>
+              <span className="s1-vw-box__title">{panel.title}</span>
               <span className="s1-cp-figures">
                 <span>
                   <span className="s1-muted">Reported </span>
@@ -607,19 +740,19 @@ export function CalculationPanels({
                 </span>
                 <span>
                   <span className="s1-muted">Difference </span>
-                  <DiffChip value={difference} reported={reported} tolerancePct={tolerancePct} />
+                  <DiffChip value={difference} status={status} />
                 </span>
               </span>
             </button>
             {open ? (
-              <div className="s1-vw-box__body" id={`s1-cp-cat-${cat.id}`}>
+              <div className="s1-vw-box__body" id={`s1-cp-cat-${panel.id}`}>
                 <div className="s1-vw-scroll s1-cp-scroll">
                   <table className="s1-vw-table s1-cp-lines">
                     <thead>
                       <tr>
-                        <th>{cat.id === "purchased_energy" ? "Energy" : "Fuel"}</th>
-                        <th>{cat.anchor} · unit</th>
-                        <th className="s1-vw-num">Share</th>
+                        <th>{panel.firstColumn}</th>
+                        <th>{panel.anchor} · unit</th>
+                        <th className="s1-vw-num">Consolidated share</th>
                         <th className="s1-vw-num">Reported (t CO₂e)</th>
                         <th className="s1-vw-num">Recomputed (t CO₂e)</th>
                         <th className="s1-vw-num">Difference</th>
@@ -627,7 +760,7 @@ export function CalculationPanels({
                       </tr>
                     </thead>
                     <tbody>
-                      {catLines.map((line) => {
+                      {panelLines.map((line) => {
                         const isOpen = openLine === line.key;
                         const examined = Boolean(store.examinations[examinationKey("calc", line.key)]?.examinedBy);
                         return (
@@ -635,12 +768,7 @@ export function CalculationPanels({
                             <tr className={`s1-vw-row${isOpen ? " is-selected" : ""}`} ref={line.key === focusLineKey ? focusRef : undefined}>
                               <td>{line.level2}</td>
                               <td>
-                                <button
-                                  className="s1-vw-rowbtn"
-                                  type="button"
-                                  aria-expanded={isOpen}
-                                  onClick={() => setOpenLine(isOpen ? null : line.key)}
-                                >
+                                <button className="s1-vw-rowbtn" type="button" aria-expanded={isOpen} onClick={() => setOpenLine(isOpen ? null : line.key)}>
                                   {line.label} · {line.step1.total.unit}
                                 </button>
                               </td>
@@ -650,7 +778,7 @@ export function CalculationPanels({
                               </td>
                               <td className="s1-vw-num">{formatGasTonnes(line.results.total_co2e_t)}</td>
                               <td className="s1-vw-num">
-                                <DiffChip value={line.difference_t} reported={line.reported_total_co2e_t} tolerancePct={tolerancePct} />
+                                <DiffChip value={line.difference_t} status={line.status} pct={line.difference_pct_of_base} />
                               </td>
                               <td className={`s1-vw-examined${examined ? " is-done" : ""}`}>
                                 {examined ? (
@@ -670,8 +798,6 @@ export function CalculationPanels({
                                     line={line}
                                     settings={settings}
                                     gwpSet={gwpSet}
-                                    saving={saving}
-                                    saveError={saveError}
                                     onSave={onSave}
                                     store={store}
                                     team={team}
@@ -690,7 +816,7 @@ export function CalculationPanels({
                         <td className="s1-vw-num">{reported === null ? "" : formatGasTonnes(reported)}</td>
                         <td className="s1-vw-num">{recomputed === null ? "" : formatGasTonnes(recomputed)}</td>
                         <td className="s1-vw-num">
-                          <DiffChip value={difference} reported={reported} tolerancePct={tolerancePct} />
+                          <DiffChip value={difference} status={status} />
                         </td>
                         <td />
                       </tr>
@@ -704,4 +830,8 @@ export function CalculationPanels({
       })}
     </section>
   );
+}
+
+function belongs(line: CalculationLine, panel: PanelDef): boolean {
+  return line.category === panel.category && (panel.level2 === undefined || line.level2 === panel.level2);
 }

@@ -97,14 +97,19 @@ export function BackendVerificationResults({
     };
   }, [engagementId, attempt]);
 
-  async function save(next: RecalculationSettings) {
+  /** Saves and refetches. Resolves to the error message, or null when saved (or the session ended). */
+  async function save(next: RecalculationSettings, { quiet = false }: { quiet?: boolean } = {}): Promise<string | null> {
     setSaving(true);
     setSaveError(null);
     try {
       await onSaveInputs(next);
       setAttempt((n) => n + 1);
+      return null;
     } catch (error) {
-      if (!onErrorRef.current(error)) setSaveError(`Not saved. ${userFacingApiError(error)}`);
+      if (onErrorRef.current(error)) return null;
+      const message = `Not saved. ${userFacingApiError(error)}`;
+      if (!quiet) setSaveError(message);
+      return message;
     } finally {
       setSaving(false);
     }
@@ -164,13 +169,10 @@ export function BackendVerificationResults({
         result.calculation_lines?.length ? (
           <CalculationPanels
             lines={result.calculation_lines}
-            resultLines={live.lines}
-            tolerancePct={result.tolerance_pct}
+            comparisons={result.comparisons}
             gwpSet={result.gwp_set}
             settings={engagement.recalculation ?? {}}
-            saving={saving}
-            saveError={saveError}
-            onSave={(next) => void save(next)}
+            onSave={(next) => save(next, { quiet: true })}
             store={store}
             team={examinerOptions(engagement)}
             signedInLogin={engagement.signedInLogin}

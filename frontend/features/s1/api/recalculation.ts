@@ -216,9 +216,19 @@ export interface CalcLineStep2 {
   /** 1 when the unit needs no conversion. */
   factor: number;
   result: CalcQuantity;
+  /** Where the conversion factor comes from, when the backend says. */
+  source?: string;
+  /** Mobile on-road: the fuel converted to distance with a fuel economy. */
+  distance?: { fuel_economy: { value: number; unit: string; source: string }; result: CalcQuantity } | null;
 }
 
+/** The backend's verdict on a line's difference against the tolerance. */
+export type CalcLineStatus = "within" | "above" | "not_reported";
+
 export interface CalcLineGas {
+  /** Company CO2e for this gas, and the difference to the recomputed one (t). */
+  company_co2e_t?: number | null;
+  difference_t?: number | null;
   gas: CalcGas;
   activity: { value: number; unit: string };
   ef: { value: number; unit: string; source: string };
@@ -240,6 +250,8 @@ export interface CalcLineStep1Row {
   document_id: string;
   file_name: string;
   candidate_id: string;
+  /** The evidence code of the document (for example EV-007), shown before its file name. */
+  evidence_code?: string;
   review: "accepted" | "edited";
   quantity: number;
   unit: string;
@@ -273,6 +285,10 @@ export interface CalculationLine {
   company: CalcLineCompany | null;
   reported_total_co2e_t: number | null;
   difference_t: number | null;
+  /** The backend's verdict on `difference_t`; the frontend applies no tolerance of its own. */
+  status: CalcLineStatus;
+  /** The difference as a percentage of the reported base (for example 4.6). */
+  difference_pct_of_base: number | null;
   flags: string[];
 }
 

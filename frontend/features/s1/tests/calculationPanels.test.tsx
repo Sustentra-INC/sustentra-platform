@@ -25,7 +25,6 @@ import liveExample from "./fixtures/recalculationLive.json";
  */
 const LINES = calcLines as unknown as CalculationLine[];
 const STATIONARY = "s1:stationary:natural-gas:fac-kc01";
-const MOBILE = "s1:mobile:diesel-fuel:vg-diesel-trucks";
 const ELECTRICITY = "s2:purchased_energy:electricity:fac-kc01";
 
 const RESULT = { ...(liveExample as unknown as Recalculation), engagement_id: "ENG-1", calculation_lines: LINES } as Recalculation;
@@ -76,13 +75,14 @@ describe("calculation panels in Verification results", () => {
     // The header takes its figures from the live results line, not a sum made here.
     expect(head.textContent).toContain("1,250.0");
     expect(head.textContent).toContain("1,274.7");
+    expect(head.textContent).toContain("+24.7 · within tolerance");
     const region = screen.getByRole("region", { name: "Calculation by line" });
     const row = within(region).getByRole("button", { name: "Kent Cannery · MMBtu" }).closest("tr")!;
     expect(row.textContent).toContain("Natural gas");
     expect(row.textContent).toContain("100%");
     expect(row.textContent).toContain("3,300.0");
     expect(row.textContent).toContain("3,452.4");
-    expect(row.textContent).toContain("+152.4");
+    expect(row.textContent).toContain("+152.4 (+4.6%) · above tolerance");
     expect(row.textContent).toContain("Not examined");
     expect(within(region).getByText("Total").closest("tr")).toBeTruthy();
   });
@@ -96,6 +96,7 @@ describe("calculation panels in Verification results", () => {
     // Step 1: periods, evidence and the total; the company side is its annual figure.
     let tab = screen.getByRole("tabpanel");
     expect(within(tab).getByText("2025-01-01 to 2025-01-31")).toBeTruthy();
+    expect(within(tab).getByText("EV-001 ·")).toBeTruthy();
     expect(within(tab).getByText("Edited by reviewer")).toBeTruthy();
     expect(within(tab).getByText("650,000 therms")).toBeTruthy();
 
@@ -115,7 +116,8 @@ describe("calculation panels in Verification results", () => {
     expect(co2.textContent).toContain("53.06 kg CO₂/MMBtu");
     expect(co2.textContent).toContain("×0.001");
     expect(co2.textContent).toContain("3,448.9");
-    expect(within(tab).getAllByRole("row").length).toBeGreaterThanOrEqual(1 + 3);
+    // Two rows per gas, Company then Recomputed, in the one table.
+    expect(within(tab).getAllByRole("row").map((r) => r.textContent).filter((x) => /Company|Recomputed/.test(x ?? ""))).toHaveLength(6);
 
     // Results: sum, share and total.
     fireEvent.click(screen.getByRole("tab", { name: "Results" }));
@@ -164,12 +166,15 @@ describe("calculation panels in Verification results", () => {
 
     fireEvent.change(within(form).getByLabelText("Company total (t CO₂e)"), { target: { value: "3,300" } });
     fireEvent.change(within(form).getByLabelText("Company annual activity"), { target: { value: "650000" } });
-    fireEvent.change(within(form).getByLabelText("Activity unit"), { target: { value: "therms" } });
+    // The unit is a pick list of the units for the line's dimension.
+    const units = within(within(form).getByLabelText("Activity unit")).getAllByRole("option").map((o) => o.textContent);
+    expect(units).toEqual(["therm", "MMBtu", "Dth", "ccf", "Mcf", "scf"]);
+    fireEvent.change(within(form).getByLabelText("Activity unit"), { target: { value: "therm" } });
     fireEvent.click(within(form).getByRole("button", { name: "Save company figures" }));
     await waitFor(() => expect(saved).toHaveLength(1));
     expect(saved[0]).toMatchObject({
       reported_lines: { [STATIONARY]: 3300 },
-      reported_activity: { [STATIONARY]: { quantity: 650000, unit: "therms" } },
+      reported_activity: { [STATIONARY]: { quantity: 650000, unit: "therm" } },
     });
   });
 
@@ -212,6 +217,8 @@ describe("calculation panels in Verification results", () => {
     const row = screen.getByRole("button", { name: "Kent Cannery · MWh" }).closest("tr")!;
     expect(row.textContent).toContain("60%");
     expect(row.textContent).toContain("218.8");
+    expect(row.textContent).toContain("+3.8 (+1.8%) · within tolerance");
+    expect(screen.getAllByText("Consolidated share").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Kent Cannery · MWh" }));
     fireEvent.click(screen.getByRole("tab", { name: "Results" }));
     expect(within(screen.getByRole("tabpanel")).getByText("× Consolidated share").closest("tr")!.textContent).toContain("60%");
@@ -225,7 +232,63 @@ describe("calculation panels in Verification results", () => {
     expect(row.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(screen.getByRole("button", { name: "Open in Evidence" }));
     expect(opened).toEqual([ELECTRICITY]);
-    expect(MOBILE).toContain("mobile");
+  });
+
+  it("keeps the company form open with the error when the save fails", async () => {
+    renderScreen({
+      onSaveInputs: async () => {
+        throw new Error("boom");
+      },
+    });
+    await panel(/Scope 1 › Stationary combustion/);
+    fireEvent.click(screen.getByRole("button", { name: "Kent Cannery · MMBtu" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit company figures" }));
+    const form = screen.getByRole("group", { name: "Company figures · Kent Cannery" });
+    fireEvent.change(within(form).getByLabelText("Company total (t CO₂e)"), { target: { value: "3300" } });
+    fireEvent.click(within(form).getByRole("button", { name: "Save company figures" }));
+    expect((await within(form).findByRole("alert")).textContent).toContain("Not saved.");
+    expect(screen.getByRole("group", { name: "Company figures · Kent Cannery" })).toBeTruthy();
+  });
+
+  it("shows the mobile fuel-to-distance conversion as its own row, with the fuel economy's source", async () => {
+    renderScreen();
+    fireEvent.click(await panel(/Scope 1 › Mobile combustion/));
+    fireEvent.click(screen.getByRole("button", { name: "Diesel trucks · gal" }));
+    fireEvent.click(screen.getByRole("tab", { name: /Step 2/ }));
+    const tab = screen.getByRole("tabpanel");
+    const row = within(tab).getByText("Recomputed, distance").closest("tr")!;
+    expect(row.textContent).toContain("gal → mi");
+    expect(row.textContent).toContain("90,000 mi");
+    fireEvent.click(within(row).getByRole("button", { name: /7\.5 mi\/gal/ }));
+    expect(screen.getByText(/EPA Table 2 default fuel economy/)).toBeTruthy();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByText(/EPA Table 2 default fuel economy/)).toBeNull();
+  });
+
+  it("says each status in words, taken from the backend and not worked out here", async () => {
+    // A line the backend calls within tolerance stays within, however large its difference looks.
+    const lines = LINES.map((l) => (l.key === STATIONARY ? { ...l, status: "within" as const } : l));
+    responses.byPath["/engagements/ENG-1/recalculation"] = { ...RESULT, calculation_lines: lines };
+    responses.byPath["/reference/recalculation"] = REFERENCE;
+    const store = renderHook(() => useVerificationStore()).result;
+    render(<BackendVerificationResults engagement={ENGAGEMENT} store={store.current} onSaveInputs={async () => {}} onError={() => false} />);
+    const region = await screen.findByRole("region", { name: "Calculation by line" });
+    const row = within(region).getByRole("button", { name: "Kent Cannery · MMBtu" }).closest("tr")!;
+    expect(row.textContent).toContain("within tolerance");
+    expect(row.textContent).not.toContain("above tolerance");
+    fireEvent.click(within(region).getByRole("button", { name: /Scope 1 › Mobile combustion/ }));
+    expect(within(region).getByRole("button", { name: "Diesel trucks · gal" }).closest("tr")!.textContent).toContain("not reported");
+  });
+
+  it("still renders the boxes, gas panel and finding registration beside the panels", async () => {
+    renderScreen();
+    const boxes = await screen.findByRole("region", { name: "Reported vs recomputed" });
+    expect(within(boxes).getByRole("button", { name: /^Scope 1/ })).toBeTruthy();
+    expect(within(boxes).getByRole("button", { name: /By gas/ })).toBeTruthy();
+    fireEvent.click(within(boxes).getByRole("button", { name: "Natural Gas" }));
+    const card = screen.getByRole("complementary", { name: "Scope 1 · Natural Gas" });
+    expect(within(card).getByRole("button", { name: "Register finding" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Calculation by line" })).toBeTruthy();
   });
 
   it("leaves the page as it was when the response carries no calculation lines", async () => {
