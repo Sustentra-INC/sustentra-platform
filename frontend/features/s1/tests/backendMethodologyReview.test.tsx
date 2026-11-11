@@ -14,38 +14,73 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 }));
 
 import { api, ApiError } from "../../../lib/api";
-import type { MethodologyReviewData } from "../api/methodologyReview";
 import { BackendMethodologyReview, aiStatusWords, statusWord } from "../components/BackendMethodologyReview";
 
 const BASE = "/engagements/e1/methodology-review";
 const by = { name: "M. Osei", login: "mosei" };
 
-function fixture(ai: Partial<MethodologyReviewData["ai"]> = {}): Record<string, unknown> {
+/** The API's GET answer (docs/api_contract.md), field ids and all. */
+function fixture(ai: Record<string, unknown> = {}): Record<string, unknown> {
+  const def = { group_label: "x", user_added: false };
   return {
-    ai: { enabled: true, provider: "anthropic", model: "m", month_spend_usd: 1, cap_usd: 50, reason_if_off: null, ...ai },
+    ai: { enabled: true, reason_code: null, reason: null, ...ai },
+    groups: [
+      { group: "boundary", label: "Organizational boundary" },
+      { group: "gwp", label: "GWP factors source" },
+      { group: "factors", label: "Emission factors source" },
+    ],
+    row_groups: ["entities", "factor:scope1", "factor:scope2"],
     catalog: [
-      { field_id: "consolidation_approach", group: "boundary", label: "Consolidation approach", kind: "enum", allowed: ["Equity Share", "Financial Control", "Operational Control"] },
-      { field_id: "reporting_period", group: "boundary", label: "Reporting period", kind: "text" },
-      { field_id: "gwp", group: "methods", label: "GWP", kind: "gwp", allowed: { set: ["AR4", "AR5", "AR6"], horizon: ["100-year", "20-year"] } },
-      { field_id: "factor:scope1:r1", group: "factors", label: "Scope 1 factor row 1", kind: "factor" },
-      { field_id: "weird", group: "boundary", label: "Brand new field", kind: "hologram" },
+      { ...def, field_id: "consolidation_approach", group: "boundary", label: "Consolidation approach", kind: "enum", allowed: ["Equity Share", "Financial Control", "Operational Control"] },
+      { ...def, field_id: "reporting_period", group: "boundary", label: "Reporting period", kind: "text" },
+      {
+        ...def,
+        field_id: "gwp",
+        group: "gwp",
+        label: "GWP",
+        kind: "gwp",
+        allowed: { set: ["AR4", "AR5", "AR6"], horizon: ["100-year", "20-year"] },
+        allowed_labels: { set: { AR5: "AR5 (IPCC Fifth Assessment)" } },
+        parts: [
+          { key: "set", label: "Set", kind: "enum" },
+          { key: "horizon", label: "Horizon", kind: "enum" },
+        ],
+      },
+      {
+        ...def,
+        field_id: "entity:abc123",
+        group: "boundary",
+        label: "Entity row",
+        kind: "entity",
+        user_added: true,
+        parts: [
+          { key: "name", label: "Name", kind: "text" },
+          { key: "facilities", label: "Facilities", kind: "list" },
+          { key: "equity_share_pct", label: "Equity share", kind: "percent" },
+        ],
+      },
+      { ...def, field_id: "factor:scope1:r1", group: "factors", label: "Scope 1 factor row 1", kind: "factor", user_added: true },
+      { ...def, field_id: "weird", group: "boundary", label: "Brand new field", kind: "hologram" },
     ],
     fields: [
       {
         field_id: "consolidation_approach",
+        user_added: false,
         suggestion: { value: "Operational Control", quote: "We use the operational control approach.", document_id: "d1", file_name: "GHG report.pdf", source_reference: "page 4", origin: "ai", model: "m", request_id: "r", suggested_at: "2026-11-01T10:00:00Z" },
         decision: null,
         history: [],
       },
       {
         field_id: "reporting_period",
+        user_added: false,
         suggestion: null,
         decision: { status: "edited", value: "FY2025", by, at: "2026-11-02T10:00:00Z" },
         history: [{ at: "2026-11-02T10:00:00Z", by, action: "edit" }],
       },
-      { field_id: "gwp", suggestion: null, decision: null, history: [] },
-      { field_id: "factor:scope1:r1", suggestion: null, decision: null, history: [{ at: "2026-11-03T10:00:00Z", by, action: "add_row" }] },
-      { field_id: "weird", suggestion: null, decision: { status: "frobnicated", value: "x", by, at: "2026-11-02T10:00:00Z" }, history: [] },
+      { field_id: "gwp", user_added: false, suggestion: null, decision: { status: "rejected", value: null, reason: "Wrong set", by, at: "2026-11-02T10:00:00Z" }, history: [] },
+      { field_id: "entity:abc123", user_added: true, suggestion: null, decision: null, history: [{ at: "2026-11-03T10:00:00Z", by, action: "add_row" }] },
+      { field_id: "factor:scope1:r1", user_added: true, suggestion: null, decision: null, history: [{ at: "2026-11-03T10:00:00Z", by, action: "add_row" }] },
+      { field_id: "weird", user_added: false, suggestion: null, decision: { status: "frobnicated", value: "x", by, at: "2026-11-02T10:00:00Z" }, history: [] },
     ],
   };
 }
@@ -67,8 +102,9 @@ beforeEach(() => {
 });
 
 describe("Methodology review on real data", () => {
-  it("renders each field with value, suggestion chip, quote, status word and who decided", async () => {
+  it("renders the API's group headings, then each field with value, suggestion chip, quote, status word and who decided", async () => {
     const { onOpenDocument, onActivity } = await open();
+    expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Organizational boundary", "GWP factors source", "Emission factors source"]);
     const approach = row("Consolidation approach");
     expect(within(approach).getByText("Suggested by Claude")).toBeTruthy();
     expect(within(approach).getByText("We use the operational control approach.")).toBeTruthy();
@@ -80,13 +116,30 @@ describe("Methodology review on real data", () => {
     expect(within(period).getByText("FY2025")).toBeTruthy();
     expect(within(period).getByText("Edited")).toBeTruthy();
     expect(within(period).getByText(/M\. Osei/)).toBeTruthy();
-    expect(onActivity).toHaveBeenCalledWith([expect.objectContaining({ who: "M. Osei", what: expect.stringContaining("Reporting period") }), expect.objectContaining({ what: expect.stringContaining("add row") })]);
+    const gwp = row("GWP");
+    expect(within(gwp).getByText("Rejected")).toBeTruthy();
+    expect(within(gwp).getByText("Reason: Wrong set")).toBeTruthy();
+    expect(onActivity).toHaveBeenCalledWith(expect.arrayContaining([expect.objectContaining({ who: "M. Osei", what: expect.stringContaining("Reporting period") })]));
+  });
+
+  it("shows Accept and Reject only on a pending field, Revert only on a decided one, Edit always", async () => {
+    await open();
+    const pending = row("Consolidation approach");
+    expect(within(pending).getByRole("button", { name: /^Accept:/ })).toBeTruthy();
+    expect(within(pending).getByRole("button", { name: /^Reject:/ })).toBeTruthy();
+    expect(within(pending).queryByRole("button", { name: /^Revert:/ })).toBeNull();
+    for (const label of ["Reporting period", "GWP"]) {
+      const decided = row(label);
+      expect(within(decided).queryByRole("button", { name: /^Accept:/ })).toBeNull();
+      expect(within(decided).queryByRole("button", { name: /^Reject:/ })).toBeNull();
+      expect(within(decided).getByRole("button", { name: /^Revert:/ })).toBeTruthy();
+      expect(within(decided).getByRole("button", { name: /^Edit:/ })).toBeTruthy();
+    }
   });
 
   it("accepts, rejects with a reason, edits with an allowed value and reverts, sending no actor", async () => {
     await open();
-    const approach = row("Consolidation approach");
-    fireEvent.click(within(approach).getByRole("button", { name: "Accept: Consolidation approach" }));
+    fireEvent.click(within(row("Consolidation approach")).getByRole("button", { name: "Accept: Consolidation approach" }));
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/consolidation_approach/accept`, expect.objectContaining({ method: "POST", body: {} })]));
 
     fireEvent.click(within(row("Consolidation approach")).getByRole("button", { name: "Reject: Consolidation approach" }));
@@ -107,17 +160,33 @@ describe("Methodology review on real data", () => {
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/reporting_period/revert`, expect.objectContaining({ method: "POST" })]));
   });
 
-  it("edits a multi-part value from the catalog's allowed values per part", async () => {
+  it("builds a multi-part editor from the catalog's parts, with display names for allowed values", async () => {
     await open();
     fireEvent.click(within(row("GWP")).getByRole("button", { name: "Edit: GWP" }));
-    // No stated value to start from: the parts come from the catalog.
-    fireEvent.change(screen.getByLabelText("GWP: Set"), { target: { value: "AR6" } });
+    const set = screen.getByLabelText("GWP: Set") as HTMLSelectElement;
+    expect(Array.from(set.options).map((o) => o.textContent)).toEqual(["Choose", "AR4", "AR5 (IPCC Fifth Assessment)", "AR6"]);
+    fireEvent.change(set, { target: { value: "AR6" } });
     fireEvent.change(screen.getByLabelText("GWP: Horizon"), { target: { value: "100-year" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/gwp/edit`, expect.objectContaining({ body: { value: { set: "AR6", horizon: "100-year" } } })]));
   });
 
-  it("adds a factor row, and removes only user-added rows", async () => {
+  it("edits a blank new entity row from its parts, typing the list and the percent", async () => {
+    await open();
+    fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
+    fireEvent.change(screen.getByLabelText("Entity row: Name"), { target: { value: "Acme Ltd" } });
+    fireEvent.change(screen.getByLabelText("Entity row: Facilities"), { target: { value: "North plant, South plant" } });
+    fireEvent.change(screen.getByLabelText("Entity row: Equity share"), { target: { value: "60" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls()).toContainEqual([
+        `${BASE}/entity%3Aabc123/edit`,
+        expect.objectContaining({ body: { value: { name: "Acme Ltd", facilities: ["North plant", "South plant"], equity_share_pct: 60 } } }),
+      ])
+    );
+  });
+
+  it("adds a row for each row group the API lists, and removes only rows the reviewer added", async () => {
     await open();
     fireEvent.click(screen.getByRole("button", { name: "Add Scope 1 factor row" }));
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/rows`, expect.objectContaining({ body: { group: "factor:scope1" } })]));
@@ -165,23 +234,29 @@ describe("Methodology review on real data", () => {
   });
 
   it.each([
-    [{ enabled: false, reason_if_off: "switch_off" }, "Off: an administrator turns it on"],
-    [{ enabled: true, month_spend_usd: 50, cap_usd: 50 }, "Monthly limit reached"],
-    [{ enabled: false, reason_if_off: "no_documents" }, "No report documents yet"],
-    [{ enabled: false, reason_if_off: "not_built" }, "AI suggestions are not available"],
-  ])("states the AI status in words and disables the button: %j", async (ai, words) => {
-    await open(vi.fn(), fixture(ai));
-    expect(screen.getByText(words)).toBeTruthy();
+    ["off", "Off: an administrator turns it on."],
+    ["cap_reached", "Monthly limit reached."],
+    ["no_documents", "No report documents yet."],
+    ["not_built", "Suggestions are not built yet."],
+    ["a_code_from_the_future", "Some other sentence."],
+  ])("states the AI status with the server's sentence and disables the button: %s", async (code, reason) => {
+    await open(vi.fn(), fixture({ enabled: false, reason_code: code, reason }));
+    expect(screen.getByText(reason)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Read the client's reports with Claude" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("enables the button when the AI is on", async () => {
+    await open();
+    expect((screen.getByRole("button", { name: "Read the client's reports with Claude" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(aiStatusWords({ enabled: true, reason_code: null, reason: null })).toBeNull();
   });
 
   it("copes with a status or field kind it does not know", async () => {
     await open();
     expect(statusWord("frobnicated")).toBe("Status unknown");
-    expect(aiStatusWords({ enabled: false, reason_if_off: "zzz" }, null)).toBe("AI suggestions are not available");
     const weird = row("Brand new field");
     expect(within(weird).getByText("Status unknown")).toBeTruthy();
-    // The row still offers the actions; the server decides what is allowed.
+    // The row still offers Edit and Revert; the server decides what is allowed.
     expect(within(weird).getByRole("button", { name: "Edit: Brand new field" })).toBeTruthy();
   });
 });

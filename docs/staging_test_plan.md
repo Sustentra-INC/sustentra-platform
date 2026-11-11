@@ -116,6 +116,24 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 1. Export the Excel workpaper. It opens. The roll-up shows mass per gas and CO₂e per
    category, with a "Counted as 0" column. The totals match Verification results.
 
+## 8a. Methodology review
+
+1. Open Methodology review in the left navigation. Fields are grouped under the headings the
+   server gives; each shows "Not set" and "Pending" until you act.
+2. With AI suggestions off, the button "Read the client's reports with Claude" is disabled and
+   the page says why in a sentence (for example that an administrator turns it on).
+3. With them on and a report document uploaded, press the button. It names what Claude will read
+   and says suggestions need review; confirm. A summary shows N suggested, M dropped with the
+   reasons, the documents read and the cost.
+4. A suggested field shows "Suggested by Claude", the quote, and the document name. Click the
+   name: the document opens in Extraction review.
+5. Accept one suggestion, Edit another (enum fields offer only the allowed values), Reject a third
+   with a reason (it is required). Each field then shows its status, who decided and when.
+6. Revert a decided field: it returns to Pending. Accept and Reject appear only on pending fields.
+7. Add an entity and a factor row; edit them; Remove row appears only on rows you added.
+8. Open the activity log: your decisions are listed. Reload: everything is kept.
+9. A reader (not a writer) cannot change anything: actions answer with a sentence, not an error page.
+
 ## 9. Access between organizations
 
 1. A second organization's user can't see this engagement: its URL answers "not found".

@@ -18,7 +18,6 @@ import {
   type MethodologyReviewData,
   type MethodologyValue,
   type PrefillResult,
-  type RowGroup,
 } from "../api/methodologyReview";
 import { InfoTip } from "./InfoTip";
 
@@ -42,6 +41,13 @@ const DROP_REASON: Record<string, string> = {
   kept_reviewer_decision: "a reviewer had already decided",
 };
 
+/** Button words for the row groups the API lists (it gives codes only); any other code gets a general label. */
+const ADD_ROW_LABEL: Record<string, string> = {
+  entities: "Add entity",
+  "factor:scope1": "Add Scope 1 factor row",
+  "factor:scope2": "Add Scope 2 factor row",
+};
+
 export function statusWord(status: string | undefined | null): string {
   if (!status) return "Pending";
   return STATUS_WORD[status] ?? "Status unknown";
@@ -51,19 +57,10 @@ export function dropReasonWords(code: string): string {
   return DROP_REASON[code] ?? code.replaceAll("_", " ");
 }
 
-/** The AI switch in words, or null when Claude can be asked. An unknown reason code gets a general sentence. */
-export function aiStatusWords(ai: AiStatus, hasDocuments: boolean | null): string | null {
-  if (!ai.enabled) {
-    const reason = (ai.reason_if_off ?? "").toLowerCase();
-    if (/cap|limit|spend/.test(reason)) return "Monthly limit reached";
-    if (/document/.test(reason)) return "No report documents yet";
-    if (/off|disabled|switch|admin|flag/.test(reason)) return "Off: an administrator turns it on";
-    if (reason.includes(" ")) return ai.reason_if_off ?? null;
-    return "AI suggestions are not available";
-  }
-  if (ai.cap_usd != null && ai.month_spend_usd != null && ai.month_spend_usd >= ai.cap_usd) return "Monthly limit reached";
-  if (hasDocuments === false) return "No report documents yet";
-  return null;
+/** Null when Claude can be asked; otherwise the server's sentence for why not. */
+export function aiStatusWords(ai: AiStatus): string | null {
+  if (ai.enabled && ai.reason_code === null) return null;
+  return ai.reason ?? "AI suggestions are not available";
 }
 
 function valueText(value: MethodologyValue | undefined): string {
@@ -77,11 +74,6 @@ function valueText(value: MethodologyValue | undefined): string {
   }
   return String(value);
 }
-
-const humanise = (text: string) => {
-  const spaced = text.replaceAll(/[_:]/g, " ").trim();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-};
 
 function when(iso: string): string {
   const d = new Date(iso);
@@ -100,18 +92,10 @@ export function methodologyActivityFrom(data: MethodologyReviewData): { at: stri
   );
 }
 
-function isUserAdded(def: CatalogField, record: MethodologyRecord): boolean {
-  if (def.userAdded) return true;
-  return !record.suggestion && /add/i.test(record.history[0]?.action ?? "");
-}
+/** The label an allowed value shows as, where the catalog gives one. */
+const optionLabel = (def: CatalogField, key: string | null, value: string) => (key ? def.allowedLabels?.[key]?.[value] : undefined) ?? value;
 
-const ROW_GROUPS: { prefix: string; group: RowGroup; label: string }[] = [
-  { prefix: "entity:", group: "entities", label: "Add entity" },
-  { prefix: "factor:scope1:", group: "factor:scope1", label: "Add Scope 1 factor row" },
-  { prefix: "factor:scope2:", group: "factor:scope2", label: "Add Scope 2 factor row" },
-];
-
-/** Editor for one field: an enum select, a text field, or a field per part of a multi-part value. */
+/** Editor for one field: an enum select, a text field, or one editor per part, as the catalog's parts say. */
 function ValueEditor({
   def,
   start,
@@ -125,34 +109,32 @@ function ValueEditor({
   onCancel: () => void;
   busy: boolean;
 }) {
-  const parts = start !== null && typeof start === "object" && !Array.isArray(start) ? start : null;
-  const allowedMap = def.allowed && !Array.isArray(def.allowed) ? def.allowed : null;
-  const keys = parts ? Array.from(new Set([...Object.keys(parts), ...Object.keys(allowedMap ?? {})])) : [];
+  const parts = def.parts ?? null;
+  const current = start !== null && typeof start === "object" && !Array.isArray(start) ? start : {};
   const [draft, setDraft] = useState<Record<string, string>>(() =>
-    Object.fromEntries(keys.map((k) => [k, valueText(parts?.[k] as MethodologyValue)]))
+    Object.fromEntries((parts ?? []).map((p) => [p.key, valueText(current[p.key] as MethodologyValue)]))
   );
   const [single, setSingle] = useState(valueText(start));
 
   function save() {
     if (!parts) return onSave(single);
     const out: Record<string, MethodologyValue> = {};
-    for (const k of keys) {
-      const original = parts[k];
-      const text = draft[k] ?? "";
-      if (Array.isArray(original)) out[k] = text.split(",").map((s) => s.trim()).filter(Boolean);
-      else if (typeof original === "number") out[k] = text.trim() === "" ? null : Number(text);
-      else out[k] = text;
+    for (const p of parts) {
+      const text = draft[p.key] ?? "";
+      if (p.kind === "list") out[p.key] = text.split(",").map((s) => s.trim()).filter(Boolean);
+      else if (p.kind === "percent") out[p.key] = text.trim() === "" ? null : Number(text);
+      else out[p.key] = text;
     }
     onSave(out);
   }
 
-  const control = (label: string, value: string, set: (v: string) => void, options?: string[]) =>
+  const control = (label: string, value: string, set: (v: string) => void, options: string[] | undefined, key: string | null) =>
     options ? (
       <select className="s1-mr-select" aria-label={label} value={value} onChange={(e) => set(e.target.value)}>
         <option value="">Choose</option>
         {options.map((o) => (
           <option key={o} value={o}>
-            {o}
+            {optionLabel(def, key, o)}
           </option>
         ))}
       </select>
@@ -163,13 +145,16 @@ function ValueEditor({
   return (
     <div className="s1-mb-edit">
       {parts
-        ? keys.map((k) => (
-            <label key={k} className="s1-mb-part">
-              <span className="s1-mr-muted">{humanise(k)}</span>
-              {control(`${def.label}: ${humanise(k)}`, draft[k] ?? "", (v) => setDraft((d) => ({ ...d, [k]: v })), allowedMap?.[k])}
-            </label>
-          ))
-        : control(`Value: ${def.label}`, single, setSingle, Array.isArray(def.allowed) ? def.allowed : undefined)}
+        ? parts.map((p) => {
+            const options = p.allowed ?? (def.allowed && !Array.isArray(def.allowed) ? def.allowed[p.key] : undefined);
+            return (
+              <label key={p.key} className="s1-mb-part">
+                <span className="s1-mr-muted">{p.label}</span>
+                {control(`${def.label}: ${p.label}`, draft[p.key] ?? "", (v) => setDraft((d) => ({ ...d, [p.key]: v })), options, p.key)}
+              </label>
+            );
+          })
+        : control(`Value: ${def.label}`, single, setSingle, Array.isArray(def.allowed) ? def.allowed : undefined, null)}
       <span className="s1-mr-actions">
         <button type="button" className="s1-button s1-button--compact s1-button--pri" disabled={busy} onClick={save}>
           Save
@@ -201,6 +186,7 @@ function FieldRow({
   const [reason, setReason] = useState("");
   const { suggestion, decision } = record;
   const status = decision?.status ?? "pending";
+  const pendingStatus = status === "pending";
   const decided = status === "accepted" || status === "edited";
   const current = decided ? valueText(decision?.value) : "";
   const finish = (run: () => Promise<unknown>) => {
@@ -213,7 +199,7 @@ function FieldRow({
     <li className="s1-mb-row" data-status={status}>
       <div className="s1-mb-main">
         <span className="s1-mr-label">{def.label}</span>
-        <span className="s1-mr-value">{current || <span className="s1-mr-none">{status === "rejected" ? "Rejected" : "Not set"}</span>}</span>
+        <span className="s1-mr-value">{current || <span className="s1-mr-none">{status === "rejected" ? "Rejected, no value" : "Not set"}</span>}</span>
         <span className="s1-mb-status">{statusWord(status)}</span>
         {decision && status !== "pending" ? (
           <span className="s1-mr-muted">
@@ -269,27 +255,31 @@ function FieldRow({
         </div>
       ) : (
         <span className="s1-mr-actions">
-          <button
-            type="button"
-            className="s1-button s1-button--compact"
-            disabled={busy || (!suggestion && !decided)}
-            aria-label={`Accept: ${def.label}`}
-            onClick={() => finish(() => acceptField(engagementId, def.fieldId))}
-          >
-            Accept
-          </button>
+          {pendingStatus ? (
+            <button
+              type="button"
+              className="s1-button s1-button--compact"
+              disabled={busy || !suggestion}
+              aria-label={`Accept: ${def.label}`}
+              onClick={() => finish(() => acceptField(engagementId, def.fieldId))}
+            >
+              Accept
+            </button>
+          ) : null}
           <button type="button" className="s1-button s1-button--compact" disabled={busy} aria-label={`Edit: ${def.label}`} onClick={() => setMode("edit")}>
             Edit
           </button>
-          <button type="button" className="s1-button s1-button--compact" disabled={busy} aria-label={`Reject: ${def.label}`} onClick={() => setMode("reject")}>
-            Reject
-          </button>
-          {decision && status !== "pending" ? (
+          {pendingStatus ? (
+            <button type="button" className="s1-button s1-button--compact" disabled={busy} aria-label={`Reject: ${def.label}`} onClick={() => setMode("reject")}>
+              Reject
+            </button>
+          ) : null}
+          {!pendingStatus ? (
             <button type="button" className="s1-mr-link" disabled={busy} aria-label={`Revert: ${def.label}`} onClick={() => finish(() => revertField(engagementId, def.fieldId))}>
               Revert
             </button>
           ) : null}
-          {isUserAdded(def, record) ? (
+          {record.userAdded ? (
             <button type="button" className="s1-mr-link" disabled={busy} aria-label={`Remove row: ${def.label}`} onClick={() => finish(() => removeRow(engagementId, def.fieldId))}>
               Remove row
             </button>
@@ -383,14 +373,14 @@ export function BackendMethodologyReview({
   }
 
   const records = useMemo(() => new Map((data?.fields ?? []).map((r) => [r.fieldId, r])), [data]);
-  const groups = useMemo(() => {
-    const out = new Map<string, CatalogField[]>();
-    for (const def of data?.catalog ?? []) {
-      if (!records.has(def.fieldId)) continue;
-      out.set(def.group, [...(out.get(def.group) ?? []), def]);
-    }
-    return Array.from(out.entries());
-  }, [data, records]);
+  // Headings and their order come from the API's groups; rows come in catalog order.
+  const groups = useMemo(
+    () =>
+      (data?.groups ?? [])
+        .map((g) => ({ ...g, defs: (data?.catalog ?? []).filter((d) => d.group === g.group && records.has(d.fieldId)) }))
+        .filter((g) => g.defs.length > 0),
+    [data, records]
+  );
 
   if (!data) {
     return (
@@ -401,7 +391,7 @@ export function BackendMethodologyReview({
   }
 
   const suggestedDocs = result?.documents_read ?? [];
-  const aiOff = aiStatusWords(data.ai, null);
+  const aiOff = aiStatusWords(data.ai);
   const droppedEntries = result ? Object.entries(result.dropped).filter(([, n]) => n > 0) : [];
   const pending = data.fields.filter((r) => r.suggestion && (!r.decision || r.decision.status === "pending")).length;
 
@@ -456,26 +446,28 @@ export function BackendMethodologyReview({
         </p>
       ) : null}
 
-      {groups.map(([group, defs]) => {
-        const adders = ROW_GROUPS.filter((g) => defs.some((d) => d.fieldId.startsWith(g.prefix)));
-        return (
-          <section key={group} className="s1-mr-card">
-            <div className="s1-mr-card__head">
-              <h3 className="s1-mr-card__title">{humanise(group)}</h3>
-              {adders.map((g) => (
-                <button key={g.group} type="button" className="s1-button s1-button--compact" disabled={busy} onClick={() => void act(() => addRow(engagementId, g.group))}>
-                  {g.label}
-                </button>
-              ))}
-            </div>
-              <ul className="s1-mb-list">
-                {defs.map((def) => (
-                  <FieldRow key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
-                ))}
-              </ul>
-          </section>
-        );
-      })}
+      {data.rowGroups.length ? (
+        <span className="s1-mr-actions">
+          {data.rowGroups.map((rowGroup) => (
+            <button key={rowGroup} type="button" className="s1-button s1-button--compact" disabled={busy} onClick={() => void act(() => addRow(engagementId, rowGroup))}>
+              {ADD_ROW_LABEL[rowGroup] ?? "Add row"}
+            </button>
+          ))}
+        </span>
+      ) : null}
+
+      {groups.map(({ group, label, defs }) => (
+        <section key={group} className="s1-mr-card">
+          <div className="s1-mr-card__head">
+            <h3 className="s1-mr-card__title">{label}</h3>
+          </div>
+          <ul className="s1-mb-list">
+            {defs.map((def) => (
+              <FieldRow key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
+            ))}
+          </ul>
+        </section>
+      ))}
     </section>
   );
 }

@@ -1,22 +1,34 @@
 import { api } from "../../../lib/api";
 
 /**
- * Methodology review in the backend (GET and POST /engagements/{id}/methodology-review).
- * One record per decision field; the catalog, with the allowed values, comes from the
- * API, so nothing here lists a field or a vocabulary. Who decided and when is recorded
- * by the server: no body below carries a name, a login or a time.
+ * Methodology review in the backend (docs/api_contract.md, "Methodology review"). One record
+ * per decision field; the catalog, with the allowed values and the editors of each value,
+ * comes from the API, so nothing here lists a field or a vocabulary. Who decided and when
+ * is recorded by the server: no body below carries a name, a login or a time.
  */
 
 export type MethodologyValue = string | number | boolean | null | string[] | { [key: string]: MethodologyValue };
 
+export interface FieldPart {
+  key: string;
+  label: string;
+  kind: "text" | "list" | "percent" | "enum" | string;
+  allowed?: string[];
+}
+
 export interface CatalogField {
   fieldId: string;
   group: string;
+  groupLabel: string;
   label: string;
-  kind: string;
-  /** An enum's values, or for a field of several parts the values of each part. */
+  kind: "text" | "enum" | "entity" | "factor" | "gwp" | string;
+  /** An enum's values; for gwp `{set, horizon}`; for an entity `{operational_control}`. */
   allowed?: string[] | Record<string, string[]>;
-  userAdded?: boolean;
+  /** Display names of allowed values, e.g. `{set: {AR5: "..."}}` for gwp. */
+  allowedLabels?: Record<string, Record<string, string>>;
+  /** The value's editors (entity, factor, gwp), so a blank row can be drawn. */
+  parts?: FieldPart[];
+  userAdded: boolean;
 }
 
 export interface MethodologySuggestion {
@@ -32,7 +44,8 @@ export interface MethodologySuggestion {
 }
 
 export interface MethodologyDecision {
-  status: string;
+  status: "pending" | "accepted" | "edited" | "rejected" | string;
+  /** null when rejected. */
   value: MethodologyValue;
   reason?: string | null;
   by: { name: string; login: string };
@@ -41,23 +54,38 @@ export interface MethodologyDecision {
 
 export interface MethodologyRecord {
   fieldId: string;
+  /** Only rows the reviewer added can be removed. */
+  userAdded: boolean;
   suggestion: MethodologySuggestion | null;
   decision: MethodologyDecision | null;
-  history: { at: string; by: { name: string; login: string }; action: string; from?: unknown; to?: unknown }[];
+  history: {
+    at: string;
+    by: { name: string; login: string };
+    action: "accept" | "edit" | "reject" | "revert" | "add_row" | "remove_row" | string;
+    from?: unknown;
+    to?: unknown;
+  }[];
 }
+
+export type AiReasonCode = "off" | "not_configured" | "cap_reached" | "no_documents" | "not_built";
 
 export interface AiStatus {
   enabled: boolean;
+  /** null when Claude can be asked; a code this screen does not know still shows `reason`. */
+  reason_code: AiReasonCode | string | null;
+  /** The sentence to show. */
+  reason: string | null;
   provider?: string | null;
   model?: string | null;
   month_spend_usd?: number | null;
   cap_usd?: number | null;
-  reason_if_off?: string | null;
 }
 
 export interface MethodologyReviewData {
   fields: MethodologyRecord[];
   catalog: CatalogField[];
+  groups: { group: string; label: string }[];
+  rowGroups: string[];
   ai: AiStatus;
 }
 
@@ -70,22 +98,29 @@ export interface PrefillResult {
   model: string;
 }
 
-export type RowGroup = "entities" | "factor:scope1" | "factor:scope2";
-
 const base = (engagementId: string) => `/engagements/${encodeURIComponent(engagementId)}/methodology-review`;
 const field = (engagementId: string, fieldId: string) => `${base(engagementId)}/${encodeURIComponent(fieldId)}`;
 
-type Wire<T> = Omit<T, "fieldId"> & { field_id: string };
+type WireRecord = { field_id: string; user_added?: boolean } & Omit<MethodologyRecord, "fieldId" | "userAdded">;
+type WireDef = { field_id: string; group_label: string; allowed_labels?: CatalogField["allowedLabels"]; user_added?: boolean } & Omit<
+  CatalogField,
+  "fieldId" | "groupLabel" | "allowedLabels" | "userAdded"
+>;
+
+function readRecord({ field_id, user_added, ...rest }: WireRecord): MethodologyRecord {
+  return { ...rest, fieldId: field_id, userAdded: Boolean(user_added) };
+}
+
+function readDef({ field_id, group_label, allowed_labels, user_added, ...rest }: WireDef): CatalogField {
+  return { ...rest, fieldId: field_id, groupLabel: group_label, allowedLabels: allowed_labels, userAdded: Boolean(user_added) };
+}
 
 /** The server names a field `field_id`; the screen reads it as `fieldId`, the methodology review's own id (not an extraction field). */
 export async function getMethodologyReview(engagementId: string): Promise<MethodologyReviewData> {
-  const wire = await api<{ fields: Wire<MethodologyRecord>[]; catalog: (Wire<CatalogField> & { user_added?: boolean })[]; ai: AiStatus }>(base(engagementId));
-  const rename = <T extends { field_id: string }>({ field_id, ...rest }: T) => ({ ...rest, fieldId: field_id });
-  return {
-    ai: wire.ai,
-    catalog: wire.catalog.map((c) => ({ ...rename(c), userAdded: c.user_added })) as unknown as CatalogField[],
-    fields: wire.fields.map(rename) as unknown as MethodologyRecord[],
-  };
+  const wire = await api<{ fields: WireRecord[]; catalog: WireDef[]; groups: { group: string; label: string }[]; row_groups: string[]; ai: AiStatus }>(
+    base(engagementId)
+  );
+  return { ai: wire.ai, groups: wire.groups, rowGroups: wire.row_groups, catalog: wire.catalog.map(readDef), fields: wire.fields.map(readRecord) };
 }
 
 export const acceptField = (engagementId: string, fieldId: string) =>
@@ -100,7 +135,8 @@ export const rejectField = (engagementId: string, fieldId: string, reason: strin
 export const revertField = (engagementId: string, fieldId: string) =>
   api<unknown>(`${field(engagementId, fieldId)}/revert`, { method: "POST", body: {} });
 
-export const addRow = (engagementId: string, group: RowGroup) =>
+/** `group` is one of the GET's `row_groups`. */
+export const addRow = (engagementId: string, group: string) =>
   api<unknown>(`${base(engagementId)}/rows`, { method: "POST", body: { group } });
 
 export const removeRow = (engagementId: string, fieldId: string) =>
