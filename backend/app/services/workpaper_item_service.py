@@ -13,7 +13,7 @@ from sqlalchemy import Text, bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 
-KINDS = ("ask", "finding", "examination", "document")
+KINDS = ("ask", "finding", "examination", "document", "methodology")
 # An item's key (a request's id, a finding's id ...): it appears in URLs.
 ITEM_KEY = re.compile(r"^[A-Za-z0-9][A-Za-z0-9:._\-]{0,199}$")
 MAX_PAYLOAD_BYTES = 32 * 1024

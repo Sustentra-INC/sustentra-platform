@@ -13,6 +13,7 @@ from .api import (
     engagements,
     evidence,
     methodology,
+    methodology_review,
     pipeline,
     processing_runs,
     recalculation,
@@ -43,6 +44,7 @@ S1_ROUTERS = (
     recalculation.router,
     workpaper_items.router,
     requests.router,
+    methodology_review.router,
     assistant.router,
 )
 # The S1 routes are also mounted at root /v1/* for local development and existing

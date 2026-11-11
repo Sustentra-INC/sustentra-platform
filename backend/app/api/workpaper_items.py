@@ -33,7 +33,7 @@ from backend.app.services.workpaper_item_service import ITEM_KEY, MAX_PAYLOAD_BY
 
 router = APIRouter(prefix="/v1", tags=["workpaper"])
 
-Kind = Literal["ask", "finding", "examination", "document"]
+Kind = Literal["ask", "finding", "examination", "document", "methodology"]
 
 
 class WorkpaperItemSave(BaseModel):
@@ -83,6 +83,8 @@ async def save_workpaper_item(
     engagement: dict[str, Any] = Depends(require_open_engagement),
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> WorkpaperItem:
+    if kind == "methodology":  # decisions are recorded by the review actions, which name who acted
+        raise HTTPException(status_code=422, detail="Methodology decisions are changed through the methodology review actions.")
     if not ITEM_KEY.match(item_key):
         raise HTTPException(status_code=422, detail="item_key: letters, digits and : . _ - only (max 200).")
     assert user.org_id is not None  # s1_writer excludes provider_admin
