@@ -99,6 +99,7 @@ import type { SessionAuditEntry } from "../utils/auditIntent";
 import { dashboardFigures, engagementActivity } from "../utils/engagementActivity";
 import { SupportingSchedule } from "../components/SupportingSchedule";
 import { saveDocumentPlacement, type EvidenceLineSetting, type Placement } from "../api/evidenceTree";
+import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
 import { ActivityDrawer } from "../components/ActivityDrawer";
 import { useBackendCoverage } from "../components/useBackendCoverage";
 import { testedExaminationKeys } from "../utils/verificationTable";
@@ -113,7 +114,8 @@ type ActiveView =
   | { name: "requests" }
   | { name: "coverage" }
   | { name: "methodology" }
-  | { name: "results" }
+  /** `lineKey` opens Verification with that calculation line expanded (Evidence's "Open calculation line"). */
+  | { name: "results"; lineKey?: string }
   | { name: "output" }
   | { name: "schedule"; lineKey: string }
   | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string; valueId?: string }
@@ -1066,6 +1068,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               onSaveInputs={saveRecalculationInputs}
               onError={handleSessionEnded}
               onOpenDocument={openExtraction}
+              focusLineKey={activeView.lineKey}
+              onOpenEvidence={(key) => setActiveView(scheduleViewForLine(key))}
             />
           ) : (
             <VerificationResults
@@ -1149,8 +1153,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             lineKey={activeView.lineKey}
             onBack={() => setActiveView({ name: "evidence" })}
             onOpenDocument={openExtraction}
-            // Task 5 makes this focus the line on Verification results.
-            onOpenCalculationLine={() => setActiveView({ name: "results" })}
+            onOpenCalculationLine={(key) => setActiveView(resultsViewForLine(key))}
             onError={handleSessionEnded}
           />
         ) : activeView.name === "extraction" ? (
