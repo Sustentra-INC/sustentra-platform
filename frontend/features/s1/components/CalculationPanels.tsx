@@ -281,10 +281,10 @@ function GasTable({ line }: { line: CalculationLine }) {
           </tr>
         </thead>
         <tbody>
-          {line.step3.gases.map((g) => {
+          {line.step3.gases.map((g, index) => {
             const theirs = company?.find((c) => c.gas === g.gas);
             return (
-              <Fragment key={g.gas}>
+              <Fragment key={`${g.gas}:${index}`}>
                 {theirs ? row(theirs, "Company", 2) : null}
                 {row(g, "Recomputed", theirs ? null : 1)}
               </Fragment>
@@ -419,12 +419,12 @@ function Step1Table({ line, onOpenDocument }: { line: CalculationLine; onOpenDoc
           </tr>
         </thead>
         <tbody>
-          {line.step1.rows.map((r) => (
-            <tr key={`${r.document_id}:${r.candidate_id}`}>
+          {line.step1.rows.map((r, index) => (
+            <tr key={`${r.document_id}:${index}`}>
               <td>{period(r.period_start, r.period_end)}</td>
               <td>
                                 {onOpenDocument ? (
-                  <button className="s1-cp-src" type="button" onClick={() => onOpenDocument(r.document_id, r.candidate_id)}>
+                  <button className="s1-cp-src" type="button" onClick={() => onOpenDocument(r.document_id, r.candidate_id ?? undefined)}>
                     {r.file_name ?? r.document_id}
                   </button>
                 ) : (
@@ -441,7 +441,7 @@ function Step1Table({ line, onOpenDocument }: { line: CalculationLine; onOpenDoc
               </td>
               {mixed ? (
                 <td className="s1-vw-num">
-                  {qty(r.counted_in_base)} {total.unit}
+                  {r.counted_in_base === null ? <span className="s1-muted">Not convertible</span> : `${qty(r.counted_in_base)} ${total.unit}`}
                 </td>
               ) : null}
             </tr>
@@ -849,7 +849,7 @@ export function CalculationPanels({
                 </span>
                 <span>
                   <span className="s1-muted">Difference </span>
-                  <DiffChip value={difference} status={status} />
+                  <DiffChip value={difference} status={status} incomplete={head?.inputs_incomplete} />
                 </span>
               </span>
             </button>
@@ -950,7 +950,12 @@ export function CalculationPanels({
                                   </td>
                                   <td />
                                   <td />
-                                  <td className="s1-vw-num">{formatGasTonnes(u.results.total_co2e_t)}</td>
+                                  <td className="s1-vw-num">
+                                    {formatGasTonnes(u.results.total_co2e_t)}
+                                    {u.results.biogenic_co2_t ? (
+                                      <span className="s1-muted"> + {formatGasTonnes(u.results.biogenic_co2_t)} t biogenic CO₂, reported separately</span>
+                                    ) : null}
+                                  </td>
                                   <td />
                                   <td />
                                 </tr>
@@ -963,10 +968,17 @@ export function CalculationPanels({
                         <td className="s1-vw-num">{reported === null ? "" : formatGasTonnes(reported)}</td>
                         <td className="s1-vw-num">{recomputed === null ? "" : formatGasTonnes(recomputed)}</td>
                         <td className="s1-vw-num">
-                          <DiffChip value={difference} status={status} />
+                          <DiffChip value={difference} status={status} incomplete={head?.inputs_incomplete} />
                         </td>
                         <td />
                       </tr>
+                      {panelLines.some((l) => l.consolidated_share_pct < 100) ? (
+                        <tr>
+                          <td colSpan={7} className="s1-muted">
+                            Totals shown after consolidated share; the category total reconciles before share.
+                          </td>
+                        </tr>
+                      ) : null}
                     </tbody>
                   </table>
                 </div>

@@ -357,6 +357,51 @@ describe("calculation panels in Verification results", () => {
     expect(screen.getByRole("region", { name: "Calculation by line" })).toBeTruthy();
   });
 
+  it("says Not convertible for a record whose unit can't be converted, and copes with no candidate id", async () => {
+    const lines = LINES.map((l) =>
+      l.key === STATIONARY
+        ? {
+            ...l,
+            step1: {
+              ...l.step1,
+              rows: l.step1.rows.map((r, i) => (i === 1 ? { ...r, unit: "widgets", candidate_id: null, counted_in_base: null } : r)),
+            },
+          }
+        : l
+    );
+    const opened: [string, string | undefined][] = [];
+    responses.byPath["/engagements/ENG-1/recalculation"] = { ...RESULT, calculation_lines: lines };
+    responses.byPath["/reference/recalculation"] = REFERENCE;
+    const store = renderHook(() => useVerificationStore()).result;
+    render(
+      <BackendVerificationResults
+        engagement={ENGAGEMENT}
+        store={store.current}
+        onSaveInputs={async () => {}}
+        onError={() => false}
+        onOpenDocument={(id, valueId) => opened.push([id, valueId])}
+      />
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Kent Cannery · MMBtu" }));
+    const tab = screen.getByRole("tabpanel");
+    expect(within(tab).getByText("Not convertible")).toBeTruthy();
+    fireEvent.click(within(tab).getByRole("button", { name: "GAS-FEB.pdf" }));
+    expect(opened).toEqual([["GAS-FEB", undefined]]);
+  });
+
+  it("notes that totals are after consolidated share only where a share is below 100%, and marks a header's open inputs", async () => {
+    const comparisons = RESULT.comparisons.map((c) => (c.key === "stationary_combustion_total" ? { ...c, inputs_incomplete: true } : c));
+    responses.byPath["/engagements/ENG-1/recalculation"] = { ...RESULT, comparisons };
+    responses.byPath["/reference/recalculation"] = REFERENCE;
+    const store = renderHook(() => useVerificationStore()).result;
+    render(<BackendVerificationResults engagement={ENGAGEMENT} store={store.current} onSaveInputs={async () => {}} onError={() => false} />);
+    const head = await panel(/Scope 1 › Stationary combustion/);
+    expect(head.textContent).toContain("inputs incomplete");
+    expect(screen.queryByText(/Totals shown after consolidated share/)).toBeNull();
+    fireEvent.click(within(screen.getByRole("region", { name: "Calculation by line" })).getByRole("button", { name: /Scope 2 › Purchased electricity/ }));
+    expect(screen.getByText(/Totals shown after consolidated share; the category total reconciles before share\./)).toBeTruthy();
+  });
+
   it("leaves the page as it was when the response carries no calculation lines", async () => {
     responses.byPath["/engagements/ENG-1/recalculation"] = { ...RESULT, calculation_lines: undefined };
     responses.byPath["/reference/recalculation"] = REFERENCE;

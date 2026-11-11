@@ -115,8 +115,9 @@ export interface RecalcNeedsInput {
     | "thermal_type"
     | "company_activity"
     | "calculation_lines";
-  key: string;
-  message: string;
+  /** Absent on a calculation_lines item (the lines could not be built at all). */
+  key?: string;
+  message?: string;
   options?: string[];
   /** The roll-up source the question holds open (absent from older results). */
   category?: RollupSourceKey;
@@ -266,15 +267,15 @@ export interface CalcLineStep1Row {
   /** Always null for now: the app has no evidence codes for documents. */
   evidence_code: string | null;
   file_name: string | null;
-  candidate_id: string;
+  candidate_id: string | null;
   review: "accepted" | "edited";
   /** Null for a month with no numeric quantity. */
   quantity: number | null;
   unit: string;
   share_in_period: number;
   counted_quantity: number;
-  /** counted_quantity in the line's total unit. */
-  counted_in_base: number;
+  /** counted_quantity in the line's total unit; null when the record's unit can't be converted. */
+  counted_in_base: number | null;
 }
 
 /** The company's side of a line: its annual activity run through the same steps and factors. */
@@ -1077,7 +1078,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
   ) => {
     const waiting = awaitingFor(result, typeId);
     const choices = result.needs_input.filter(
-      (n) => n.key.startsWith(`${kind}:`) || (kind === "mobile" && (n.kind === "mobile" || n.kind === "vehicle_group"))
+      (n) => (n.key ?? "").startsWith(`${kind}:`) || (kind === "mobile" && (n.kind === "mobile" || n.kind === "vehicle_group"))
     );
     if (waiting.length || choices.length) {
       const parts = [
@@ -1140,7 +1141,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
       appliesTo: elecAppliesTo,
       status: "inputs_missing",
       reason: [
-        regions.length ? `Grid region not chosen for ${listed(regions.map((r) => r.key))}` : "",
+        regions.length ? `Grid region not chosen for ${listed(regions.map((r) => r.key ?? ""))}` : "",
         elecWaiting.length ? `${elecWaiting.length} bill(s) awaiting review (${listed(elecWaiting)})` : "",
       ].filter(Boolean).join(". "),
     });
@@ -1250,7 +1251,7 @@ function refrigerantRule(result: Recalculation): CoverageRule {
   const category = result.categories.fugitive_refrigerants ?? null;
   const waiting = awaitingFor(result, "CT-S1-REFRSVC");
   const gwps = result.needs_input.filter((n) => n.kind === "refrigerant_gwp");
-  const amounts = result.needs_input.filter((n) => n.kind === "quantity" && /refrigerant|equipment_capacity/.test(n.key));
+  const amounts = result.needs_input.filter((n) => n.kind === "quantity" && /refrigerant|equipment_capacity/.test(n.key ?? ""));
   const hcfcs = (result.excluded ?? []).filter((e) => reasonOf(e) === "montreal_protocol_gas");
   const hcfcNote = hcfcs.length
     ? ` ${hcfcs.length} record(s) of CFCs or HCFCs (${listed(hcfcs.map((e) => e.gas ?? e.record))}) are listed but not counted in Scope 1.`
@@ -1262,7 +1263,7 @@ function refrigerantRule(result: Recalculation): CoverageRule {
       reason: [
         category ? `Recalculated so far: ${category.lines.map((l) => l.key).join(", ")}` : "",
         waiting.length ? `${waiting.length} record(s) awaiting review (${listed(waiting)})` : "",
-        gwps.length ? `GWP needed for ${listed(gwps.map((g) => g.key))} (not in the EPA Hub)` : "",
+        gwps.length ? `GWP needed for ${listed(gwps.map((g) => g.key ?? ""))} (not in the EPA Hub)` : "",
         amounts.length ? amounts.map((a) => a.message).join(" ") : "",
       ].filter(Boolean).join(". ") + "." + hcfcNote,
     };
