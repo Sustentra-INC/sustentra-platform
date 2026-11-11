@@ -202,6 +202,80 @@ type LaterCategory =
   | "purchased_heating_location_based"
   | "purchased_heating_market_based";
 
+/** The gas equations of one calculation line (Task 2 of the calculation-lines plan). */
+export type CalcGas = "CO2" | "CH4" | "N2O";
+
+export interface CalcQuantity {
+  quantity: number;
+  unit: string;
+}
+
+export interface CalcLineStep2 {
+  from_unit: string;
+  to_unit: string;
+  /** 1 when the unit needs no conversion. */
+  factor: number;
+  result: CalcQuantity;
+}
+
+export interface CalcLineGas {
+  gas: CalcGas;
+  activity: { value: number; unit: string };
+  ef: { value: number; unit: string; source: string };
+  unit_conversion: number;
+  mass_t: number;
+  gwp: { value: number; source: string };
+  co2e_t: number;
+}
+
+export interface CalcLineResults {
+  mass_t: Record<CalcGas, number>;
+  sum_co2e_t: number;
+  total_co2e_t: number;
+}
+
+export interface CalcLineStep1Row {
+  period_start: string;
+  period_end: string;
+  document_id: string;
+  file_name: string;
+  candidate_id: string;
+  review: "accepted" | "edited";
+  quantity: number;
+  unit: string;
+  share_in_period: number;
+  counted_quantity: number;
+}
+
+/** The company's side of a line: its annual activity run through the same steps and factors. */
+export interface CalcLineCompany {
+  activity: CalcQuantity;
+  step2: CalcLineStep2;
+  step3: { gases: CalcLineGas[] };
+  results: CalcLineResults;
+}
+
+/** One calculation line: a facility's (or vehicle group's) fuel, substance or energy. */
+export interface CalculationLine {
+  key: string;
+  scope: string;
+  /** "stationary" | "mobile" | "purchased_energy" for the panels; others are ignored. */
+  category: string;
+  level2: string;
+  label: string;
+  facility_id: string | null;
+  consolidated_share_pct: number;
+  method: { route: string; equations: Partial<Record<CalcGas, string>> };
+  step1: { rows: CalcLineStep1Row[]; total: CalcQuantity };
+  step2: CalcLineStep2;
+  step3: { gases: CalcLineGas[] };
+  results: CalcLineResults;
+  company: CalcLineCompany | null;
+  reported_total_co2e_t: number | null;
+  difference_t: number | null;
+  flags: string[];
+}
+
 export interface Recalculation {
   engagement_id: string;
   gwp_set: string;
@@ -229,6 +303,8 @@ export interface Recalculation {
   /** Category results to Scope 1, Scope 2 and inventory totals, then the final outputs.
    *  Absent from results computed before the roll-up; fall back to `comparisons`. */
   rollup?: Rollup;
+  /** Per-line calculations behind stationary, mobile and electricity. Absent from older results. */
+  calculation_lines?: CalculationLine[];
 }
 
 /** A data quality signal for the reviewer (backend/app/services/data_quality_checks.py):

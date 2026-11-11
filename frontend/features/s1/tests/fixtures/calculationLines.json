@@ -1,0 +1,101 @@
+[
+  {
+    "key": "s1:stationary:natural-gas:fac-kc01",
+    "scope": "s1",
+    "category": "stationary",
+    "level2": "Natural gas",
+    "label": "Kent Cannery",
+    "facility_id": "fac-kc01",
+    "consolidated_share_pct": 100,
+    "method": { "route": "Energy content × per-MMBtu factor (Eq. 1)", "equations": { "CO2": "Eq. 1", "CH4": "Eq. 8", "N2O": "Eq. 8" } },
+    "step1": {
+      "rows": [
+        { "period_start": "2025-01-01", "period_end": "2025-01-31", "document_id": "GAS-JAN", "file_name": "GAS-JAN.pdf", "candidate_id": "cand-jan", "review": "accepted", "quantity": 30000, "unit": "MMBtu", "share_in_period": 1, "counted_quantity": 30000 },
+        { "period_start": "2025-02-01", "period_end": "2025-02-28", "document_id": "GAS-FEB", "file_name": "GAS-FEB.pdf", "candidate_id": "cand-feb", "review": "edited", "quantity": 35000, "unit": "MMBtu", "share_in_period": 1, "counted_quantity": 35000 }
+      ],
+      "total": { "quantity": 65000, "unit": "MMBtu" }
+    },
+    "step2": { "from_unit": "MMBtu", "to_unit": "MMBtu", "factor": 1, "result": { "quantity": 65000, "unit": "MMBtu" } },
+    "step3": {
+      "gases": [
+        { "gas": "CO2", "activity": { "value": 65000, "unit": "MMBtu" }, "ef": { "value": 53.06, "unit": "kg CO₂/MMBtu", "source": "EPA GHG Emission Factors Hub 2025, Table 1" }, "unit_conversion": 0.001, "mass_t": 3448.9, "gwp": { "value": 1, "source": "IPCC AR5" }, "co2e_t": 3448.9 },
+        { "gas": "CH4", "activity": { "value": 65000, "unit": "MMBtu" }, "ef": { "value": 0.001, "unit": "kg CH₄/MMBtu", "source": "EPA GHG Emission Factors Hub 2025, Table 3" }, "unit_conversion": 0.001, "mass_t": 0.065, "gwp": { "value": 28, "source": "IPCC AR5" }, "co2e_t": 1.82 },
+        { "gas": "N2O", "activity": { "value": 65000, "unit": "MMBtu" }, "ef": { "value": 0.0001, "unit": "kg N₂O/MMBtu", "source": "EPA GHG Emission Factors Hub 2025, Table 3" }, "unit_conversion": 0.001, "mass_t": 0.0065, "gwp": { "value": 265, "source": "IPCC AR5" }, "co2e_t": 1.7225 }
+      ]
+    },
+    "results": { "mass_t": { "CO2": 3448.9, "CH4": 0.065, "N2O": 0.0065 }, "sum_co2e_t": 3452.4425, "total_co2e_t": 3452.4425 },
+    "company": {
+      "activity": { "quantity": 650000, "unit": "therms" },
+      "step2": { "from_unit": "therms", "to_unit": "MMBtu", "factor": 0.1, "result": { "quantity": 65000, "unit": "MMBtu" } },
+      "step3": {
+        "gases": [
+          { "gas": "CO2", "activity": { "value": 65000, "unit": "MMBtu" }, "ef": { "value": 53.06, "unit": "kg CO₂/MMBtu", "source": "EPA GHG Emission Factors Hub 2025, Table 1" }, "unit_conversion": 0.001, "mass_t": 3448.9, "gwp": { "value": 1, "source": "IPCC AR5" }, "co2e_t": 3448.9 },
+          { "gas": "CH4", "activity": { "value": 65000, "unit": "MMBtu" }, "ef": { "value": 0.001, "unit": "kg CH₄/MMBtu", "source": "EPA GHG Emission Factors Hub 2025, Table 3" }, "unit_conversion": 0.001, "mass_t": 0.065, "gwp": { "value": 28, "source": "IPCC AR5" }, "co2e_t": 1.82 },
+          { "gas": "N2O", "activity": { "value": 65000, "unit": "MMBtu" }, "ef": { "value": 0.0001, "unit": "kg N₂O/MMBtu", "source": "EPA GHG Emission Factors Hub 2025, Table 3" }, "unit_conversion": 0.001, "mass_t": 0.0065, "gwp": { "value": 265, "source": "IPCC AR5" }, "co2e_t": 1.7225 }
+        ]
+      },
+      "results": { "mass_t": { "CO2": 3448.9, "CH4": 0.065, "N2O": 0.0065 }, "sum_co2e_t": 3452.4425, "total_co2e_t": 3452.4425 }
+    },
+    "reported_total_co2e_t": 3300,
+    "difference_t": 152.4425,
+    "flags": []
+  },
+  {
+    "key": "s1:mobile:diesel-fuel:vg-diesel-trucks",
+    "scope": "s1",
+    "category": "mobile",
+    "level2": "Diesel Fuel",
+    "label": "Diesel trucks",
+    "facility_id": null,
+    "consolidated_share_pct": 100,
+    "method": { "route": "Fuel × CO₂ factor (Eq. 1); distance × CH₄ and N₂O factors (Eq. 4, on-road)", "equations": { "CO2": "Eq. 1", "CH4": "Eq. 4", "N2O": "Eq. 4" } },
+    "step1": {
+      "rows": [
+        { "period_start": "2025-01-01", "period_end": "2025-12-31", "document_id": "FUEL-2025", "file_name": "FUEL-2025.pdf", "candidate_id": "cand-fuel", "review": "accepted", "quantity": 12000, "unit": "gal", "share_in_period": 1, "counted_quantity": 12000 }
+      ],
+      "total": { "quantity": 12000, "unit": "gal" }
+    },
+    "step2": { "from_unit": "gal", "to_unit": "gal", "factor": 1, "result": { "quantity": 12000, "unit": "gal" } },
+    "step3": {
+      "gases": [
+        { "gas": "CO2", "activity": { "value": 12000, "unit": "gal" }, "ef": { "value": 10.21, "unit": "kg CO₂/gal", "source": "EPA GHG Emission Factors Hub 2025, Table 2" }, "unit_conversion": 0.001, "mass_t": 122.52, "gwp": { "value": 1, "source": "IPCC AR5" }, "co2e_t": 122.52 },
+        { "gas": "CH4", "activity": { "value": 90000, "unit": "mi" }, "ef": { "value": 0.0051, "unit": "g CH₄/mi", "source": "EPA GHG Emission Factors Hub 2025, Table 5" }, "unit_conversion": 0.000001, "mass_t": 0.000459, "gwp": { "value": 28, "source": "IPCC AR5" }, "co2e_t": 0.012852 },
+        { "gas": "N2O", "activity": { "value": 90000, "unit": "mi" }, "ef": { "value": 0.0048, "unit": "g N₂O/mi", "source": "EPA GHG Emission Factors Hub 2025, Table 5" }, "unit_conversion": 0.000001, "mass_t": 0.000432, "gwp": { "value": 265, "source": "IPCC AR5" }, "co2e_t": 0.11448 }
+      ]
+    },
+    "results": { "mass_t": { "CO2": 122.52, "CH4": 0.000459, "N2O": 0.000432 }, "sum_co2e_t": 122.647332, "total_co2e_t": 122.647332 },
+    "company": null,
+    "reported_total_co2e_t": null,
+    "difference_t": null,
+    "flags": []
+  },
+  {
+    "key": "s2:purchased_energy:electricity:fac-kc01",
+    "scope": "s2",
+    "category": "purchased_energy",
+    "level2": "Electricity",
+    "label": "Kent Cannery",
+    "facility_id": "fac-kc01",
+    "consolidated_share_pct": 60,
+    "method": { "route": "MWh × eGRID lb/MWh factor", "equations": { "CO2": "Eq. 5", "CH4": "Eq. 5", "N2O": "Eq. 5" } },
+    "step1": {
+      "rows": [
+        { "period_start": "2025-01-01", "period_end": "2025-12-31", "document_id": "ELEC-2025", "file_name": "ELEC-2025.pdf", "candidate_id": "cand-elec", "review": "accepted", "quantity": 1000, "unit": "MWh", "share_in_period": 1, "counted_quantity": 1000 }
+      ],
+      "total": { "quantity": 1000, "unit": "MWh" }
+    },
+    "step2": { "from_unit": "MWh", "to_unit": "MWh", "factor": 1, "result": { "quantity": 1000, "unit": "MWh" } },
+    "step3": {
+      "gases": [
+        { "gas": "CO2", "activity": { "value": 1000, "unit": "MWh" }, "ef": { "value": 800, "unit": "lb CO₂/MWh", "source": "eGRID2023, subregion NYUP" }, "unit_conversion": 0.000453592, "mass_t": 362.8736, "gwp": { "value": 1, "source": "IPCC AR5" }, "co2e_t": 362.8736 },
+        { "gas": "CH4", "activity": { "value": 1000, "unit": "MWh" }, "ef": { "value": 0.05, "unit": "lb CH₄/MWh", "source": "eGRID2023, subregion NYUP" }, "unit_conversion": 0.000453592, "mass_t": 0.0226796, "gwp": { "value": 28, "source": "IPCC AR5" }, "co2e_t": 0.6350288 },
+        { "gas": "N2O", "activity": { "value": 1000, "unit": "MWh" }, "ef": { "value": 0.01, "unit": "lb N₂O/MWh", "source": "eGRID2023, subregion NYUP" }, "unit_conversion": 0.000453592, "mass_t": 0.00453592, "gwp": { "value": 265, "source": "IPCC AR5" }, "co2e_t": 1.2020188 }
+      ]
+    },
+    "results": { "mass_t": { "CO2": 362.8736, "CH4": 0.0226796, "N2O": 0.00453592 }, "sum_co2e_t": 364.7106476, "total_co2e_t": 218.82638856 },
+    "company": null,
+    "reported_total_co2e_t": 200,
+    "difference_t": 18.82638856,
+    "flags": []
+  }
+]

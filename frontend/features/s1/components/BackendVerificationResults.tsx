@@ -14,6 +14,7 @@ import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig, RecalculationSettings } from "../types";
 import type { TeamMember } from "../types/engagement";
 import type { VerificationStore } from "../verification/verificationStore";
+import { CalculationPanels } from "./CalculationPanels";
 import { QualityChecksPanel } from "./QualityChecksPanel";
 import { RecalculationInputs } from "./RecalculationInputs";
 import { VerificationResults } from "./VerificationResults";
@@ -46,6 +47,8 @@ export function BackendVerificationResults({
   onSaveInputs,
   onError,
   onOpenDocument,
+  focusLineKey,
+  onOpenEvidence,
 }: {
   engagement: EngagementConfig;
   store: VerificationStore;
@@ -54,7 +57,11 @@ export function BackendVerificationResults({
   /** True when the error was handled (e.g. the session ended). */
   onError: (error: unknown) => boolean;
   /** Opens a reviewed record's document (Extraction review) from the Source pane. */
-  onOpenDocument?: (documentId: string) => void;
+  onOpenDocument?: (documentId: string, valueId?: string) => void;
+  /** Opens the calculation panel holding this line key, with the line expanded (Evidence links here). */
+  focusLineKey?: string;
+  /** Shows "Open in Evidence" on each line; called with the line key. */
+  onOpenEvidence?: (lineKey: string) => void;
 }) {
   const engagementId = engagement.engagementId;
   const [result, setResult] = useState<Recalculation | null>(null);
@@ -153,6 +160,26 @@ export function BackendVerificationResults({
       onOpenDocument={onOpenDocument}
       registerFindings
       liveMateriality={result.tolerance_pct / 100}
+      panels={
+        result.calculation_lines?.length ? (
+          <CalculationPanels
+            lines={result.calculation_lines}
+            resultLines={live.lines}
+            tolerancePct={result.tolerance_pct}
+            gwpSet={result.gwp_set}
+            settings={engagement.recalculation ?? {}}
+            saving={saving}
+            saveError={saveError}
+            onSave={(next) => void save(next)}
+            store={store}
+            team={examinerOptions(engagement)}
+            signedInLogin={engagement.signedInLogin}
+            onOpenDocument={onOpenDocument}
+            focusLineKey={focusLineKey}
+            onOpenEvidence={onOpenEvidence}
+          />
+        ) : null
+      }
       inputs={
         <>
           {/* Folded, its count in the header: the boxes lead the page, as in the demo. */}

@@ -111,7 +111,8 @@ type ActiveView =
   | { name: "requests" }
   | { name: "coverage" }
   | { name: "methodology" }
-  | { name: "results" }
+  /** `lineKey` opens Verification with that calculation line expanded (Evidence's "Open calculation line"). */
+  | { name: "results"; lineKey?: string }
   | { name: "output" }
   | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string; valueId?: string }
   | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
@@ -1026,6 +1027,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               onSaveInputs={saveRecalculationInputs}
               onError={handleSessionEnded}
               onOpenDocument={openExtraction}
+              focusLineKey={activeView.lineKey}
             />
           ) : (
             <VerificationResults
