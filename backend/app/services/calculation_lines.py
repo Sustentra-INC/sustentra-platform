@@ -381,12 +381,12 @@ def apply_placements(slots: list[Slot], overrides: Any, known_lines: set[str] | 
         source, target = move.get("from"), move.get("to")
         if not isinstance(source, str) or not isinstance(target, str) or source == target:
             continue
-        moving = [s for s in out if _effective(s, known) == source]
+        moving = [s for s in out if s.target == source or _effective(s, known) == source]
         if not moving:
             continue
         stay = [s for s in out if s not in moving]
         records = {r for s in moving for r in s.records}
-        existing = next((s for s in stay if _effective(s, known) == target), None)
+        existing = next((s for s in stay if s.target == target or _effective(s, known) == target), None)
         if existing is not None:
             existing.records |= records
             out = stay
