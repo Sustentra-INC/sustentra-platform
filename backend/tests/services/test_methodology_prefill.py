@@ -225,11 +225,13 @@ def test_a_long_quote_is_cut_for_storage_only_after_it_was_found_whole() -> None
     kept, dropped = check(answer(choices=[{"field_id": "consolidation_approach", "value": "Operational Control",
                                            **cite("L1", long_line.strip())}]), [doc([(1, long_line)])])
     assert not dropped
-    suggestion = kept[0].suggestion
-    assert len(suggestion["quote"]) == mp.MAX_STORED_QUOTE and suggestion["quote_truncated"] is True
-    short, _ = check(answer(choices=[{"field_id": "consolidation_approach", "value": "Operational Control",
-                                      **cite("L2", "operational control approach")}]))
-    assert "quote_truncated" not in short[0].suggestion
+    assert len(kept[0].suggestion["quote"]) > 1000  # verified whole; the store bounds it
+    from backend.app.services import methodology_review as rules
+
+    field = rules.catalog_field("consolidation_approach")
+    assert field is not None
+    stored = rules.with_suggestion(rules.new_record("consolidation_approach"), field, kept[0].suggestion)["suggestion"]
+    assert len(stored["quote"]) == 1000 and stored["quote_truncated"] is True
 
 
 def test_values_over_the_store_limits_are_invalid() -> None:
