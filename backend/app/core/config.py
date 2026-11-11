@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     # Claude API model id. On Bedrock the adapter adds the "anthropic." prefix. A model the
     # adapter has no price for is refused (claude.py PRICES), so a switch forces a price check.
     ai_model: str = "claude-sonnet-5-5"
+    # Only for AI_PROVIDER=bedrock: the full Bedrock model id, sent as given. Unset, the
+    # adapter sends "anthropic." + AI_MODEL. Prices still come from AI_MODEL.
+    ai_bedrock_model_id: str | None = None
     ai_effort: AiEffort = "low"
     # Per-organization monthly spend cap in USD, checked by the usage ledger (later PR).
     # The Anthropic Console spend limit is the hard ceiling across all organizations.
@@ -101,6 +104,13 @@ class Settings(BaseSettings):
     @classmethod
     def _strip(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("ai_bedrock_model_id", mode="before")
+    @classmethod
+    def _blank_bedrock_id_is_unset(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value.strip() if isinstance(value, str) else value
 
     @field_validator("anthropic_api_key", mode="before")
     @classmethod

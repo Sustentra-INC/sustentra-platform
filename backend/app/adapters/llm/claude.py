@@ -4,8 +4,10 @@ Nothing calls this yet. Later PRs build prompts on top of ``ClaudeClient`` and i
 fake one in tests; no test talks to the network.
 
 * Provider (``AI_PROVIDER``): ``anthropic`` uses ``ANTHROPIC_API_KEY``; ``bedrock`` signs
-  with the instance role in ``AWS_REGION`` and needs no key (not yet tried against live
-  Bedrock, and the app-host role has no Bedrock permission today).
+  with the instance role in ``AWS_REGION`` and needs no key. It uses the Bedrock Mantle
+  endpoint (``bedrock-mantle`` SigV4, IAM ``bedrock-mantle:CreateInference``), where the
+  model id is ``anthropic.<claude-api-id>`` (no cross-region ``us.`` profile). Not yet
+  tried live. ``AI_BEDROCK_MODEL_ID`` replaces the derived id verbatim when set.
 * One call shape, ``structured()``: one request whose reply must match a pydantic model
   (structured outputs, ``output_config.format``). ``stop_reason`` is checked before the
   content is read, so a refusal or a cut-off reply gives no output, never a partial one.
@@ -191,8 +193,17 @@ SdkClient = anthropic.Anthropic | anthropic.AnthropicBedrockMantle
 class SdkClaude:
     """``ClaudeClient`` over the official ``anthropic`` SDK (Claude API or Bedrock)."""
 
-    def __init__(self, sdk: SdkClient, *, provider: AiProvider, model: str, effort: AiEffort) -> None:
+    def __init__(
+        self,
+        sdk: SdkClient,
+        *,
+        provider: AiProvider,
+        model: str,
+        effort: AiEffort,
+        bedrock_model_id: str | None = None,
+    ) -> None:
         self._model = canonical_model(model)
+        self._bedrock_model_id = bedrock_model_id
         price_for(self._model)  # refuse a model we cannot price
         self._sdk = sdk
         self._provider: AiProvider = provider
@@ -233,7 +244,10 @@ class SdkClaude:
         return _reply(response, output_type, requested_model=self._model)
 
     def _request_model(self) -> str:
-        return BEDROCK_MODEL_PREFIX + self._model if self._provider == "bedrock" else self._model
+        if self._provider != "bedrock":
+            return self._model
+        # The override is sent as given; prices and cost stay keyed by the Claude API id.
+        return self._bedrock_model_id or BEDROCK_MODEL_PREFIX + self._model
 
 
 def build_sdk_client(settings: Settings) -> SdkClient:
@@ -267,7 +281,11 @@ def get_claude(settings: Settings | None = None) -> ClaudeClient | None:
     if settings.ai_provider == "anthropic" and settings.anthropic_api_key is None:
         return None
     return SdkClaude(
-        build_sdk_client(settings), provider=settings.ai_provider, model=settings.ai_model, effort=settings.ai_effort
+        build_sdk_client(settings),
+        provider=settings.ai_provider,
+        model=settings.ai_model,
+        effort=settings.ai_effort,
+        bedrock_model_id=settings.ai_bedrock_model_id,
     )
 
 
