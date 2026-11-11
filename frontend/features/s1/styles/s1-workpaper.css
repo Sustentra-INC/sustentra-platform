@@ -3454,6 +3454,31 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-xr-unread { margin: var(--sp-3) 0 0; padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); color: var(--ink-2); background: var(--state-open-bg); border: var(--hairline-width) solid var(--state-open-line); border-radius: var(--radius-input); overflow-wrap: anywhere; }
 .s1-xr-unread strong { color: var(--ink); }
 
+/* Calculation panels (Verification results, backend mode): one fold per category, steps as tabs. */
+.s1-cp { display: flex; flex-direction: column; gap: var(--sp-3); }
+.s1-cp-cat { --vw-tone: var(--chart-3); }
+.s1-cp-head { display: grid; grid-template-columns: auto minmax(10rem, 1fr) auto; align-items: center; gap: var(--sp-3); width: 100%; padding: var(--sp-3) var(--sp-4); font: inherit; text-align: left; color: var(--ink); background: var(--sf-card); border: 0; cursor: pointer; }
+.s1-cp-head:focus-visible { outline: var(--focus-ring); outline-offset: calc(-1 * var(--focus-offset)); }
+.s1-cp-cat.is-open .s1-cp-head { border-bottom: var(--border-hairline); }
+.s1-cp-cat.is-open .s1-vw-box__chev { transform: rotate(90deg); }
+.s1-cp-figures { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sp-2) var(--sp-4); font-size: var(--text-sm); font-variant-numeric: tabular-nums; }
+.s1-cp-scroll { max-height: 32rem; overflow: auto; }
+.s1-cp-lines th { position: sticky; top: 0; z-index: 1; background: var(--sf-card); }
+.s1-cp-expanded > td { padding: 0; background: var(--sf-page); }
+.s1-cp-detail { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
+.s1-cp-route { margin: 0; color: var(--ink-2); }
+.s1-cp-tabs { display: flex; flex-wrap: wrap; gap: var(--sp-1); border-bottom: var(--border-hairline); }
+.s1-cp-tab { padding: var(--sp-2) var(--sp-3); font: inherit; font-size: var(--text-sm); color: var(--ink-3); background: none; border: 0; border-bottom: var(--active-row-marker-width) solid transparent; cursor: pointer; }
+.s1-cp-tab.is-on { font-weight: var(--weight-strong); color: var(--ink); border-bottom-color: var(--accent); }
+.s1-cp-tab:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-cp-tabpanel { display: flex; flex-direction: column; gap: var(--sp-3); }
+.s1-cp-gwp { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-sm); color: var(--ink-3); }
+.s1-cp-fields { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
+.s1-cp-src-wrap { position: relative; display: inline-block; }
+.s1-cp-src { padding: 0; font: inherit; color: inherit; background: none; border: 0; border-bottom: var(--hairline-width) dotted var(--ink-3); cursor: pointer; font-variant-numeric: tabular-nums; }
+.s1-cp-src:hover { color: var(--accent); border-bottom-color: var(--accent); }
+.s1-cp-src:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-cp-pop { position: absolute; right: 0; top: 100%; z-index: 2; min-width: 14rem; max-width: 22rem; padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); text-align: left; white-space: normal; color: var(--ink); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input); }
 
 /* Evidence tree (backend mode): Scope > Category > fuel > calculation line, folds that stay where you left them. */
 .s1-et { display: flex; flex-direction: column; gap: var(--sp-2); }
