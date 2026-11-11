@@ -474,7 +474,8 @@ def date_label(canonical_type_id: str | None) -> str:
 def facility_match(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
                    record: ReviewedRecord) -> tuple[dict[str, Any], str] | None:
     """The Setup facility of a record and how it was matched: the reviewer's choice, the
-    facility name, or the service address; None when nothing matches."""
+    facility name, or the service address; None when nothing matches. Same order as
+    ``resolve_setup_facility`` (reviewer's choice, then name, then address), plus the reason."""
 
     chosen = (decisions.get(document_id) or {}).get("facilityId")
     for facility in facilities:

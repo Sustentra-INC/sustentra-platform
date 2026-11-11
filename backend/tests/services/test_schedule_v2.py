@@ -15,7 +15,7 @@ from backend.tests.services.test_calculation_lines import (
     _schedule_store,
     _tree_service,
 )
-from backend.tests.services.test_engagement_recalculation_service import FakeStore, _own
+from backend.tests.services.test_engagement_recalculation_service import ORG, FakeStore, _own
 
 
 def _schedule(store: FakeStore, key: str = GAS_KC, decisions: dict | None = None, **kwargs):  # type: ignore[no-untyped-def]
@@ -129,6 +129,34 @@ def test_facility_group_says_how_the_match_was_made() -> None:
     assert how == {"BY-NAME": "Facility name in Setup", "BY-ADDRESS": "Service address in Setup",
                    "BY-CHOICE": "Chosen by the reviewer"}
     assert facility["matched_by"] == ["Chosen by the reviewer", "Facility name in Setup", "Service address in Setup"]
+
+
+def _decided(decision: str | None, **extra: object) -> FakeStore:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(310)], decision=None)
+    if decision:
+        store.reviews["A"] = [{"candidate_id": "A:1:activity_quantity", "decision": decision, "org_id": ORG,
+                               "reviewer_id": "ana@example.com", "reviewed_at": "2025-04-02T10:00:00Z", **extra}]
+    return store
+
+
+def test_an_edited_quantity_shows_the_reviewed_value() -> None:
+    row = _schedule(_decided("edited", reviewed_value=999, reviewed_unit="MMBtu"))["rows"][0]
+    assert row["activity_quantity"] == {"value": 999, "unit": "MMBtu"}
+    assert row["accepted"] is True and row["decision"] == "edited"
+    assert row["saved_by"] == {"name": "ana@example.com", "at": "2025-04-02T10:00:00Z"}
+
+
+def test_a_rejected_quantity_is_flagged_and_unsaved() -> None:
+    row = _schedule(_decided("rejected"))["rows"][0]
+    assert row["accepted"] is False and row["decision"] == "rejected" and row["saved_by"] is None
+    assert row["activity_quantity"]["value"] == 310
+
+
+def test_row_decision_values() -> None:
+    assert _schedule(_decided("accepted", reviewed_value=310))["rows"][0]["decision"] == "accepted"
+    assert _schedule(_decided("needs_more_evidence"))["rows"][0]["decision"] == "needs_more_evidence"
+    assert _schedule(_decided(None))["rows"][0]["decision"] == "not_reviewed"
 
 
 def test_an_empty_line_has_the_two_fixed_columns_and_no_rows() -> None:

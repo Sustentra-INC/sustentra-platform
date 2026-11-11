@@ -40,7 +40,7 @@ EXTRA_COLUMNS = (("heat_content", "Heat content (HHV)", "heat_content"),
                  ("model_year", "Model year", "model_year"),
                  ("on_or_non_road", "On-road or non-road", "on_or_non_road"),
                  ("distance", "Distance", "distance"))
-THERMAL_LEVEL2 = ("steam", "heating", "cooling")
+THERMAL_LEVEL2 = tuple(level2 for level2, _ in cl.THERMAL_LEVEL2.values())
 ACTIVITY_NOTES = {
     "stationary": "fuel quantity combusted", "biogenic": "fuel quantity combusted",
     "mobile": "fuel use quantity", "fugitive": "refrigerant quantity added or recovered",
@@ -345,6 +345,7 @@ class EvidenceTreeService:
         return {
             "record_key": f"{doc.document_id}:{0 if index is None else index}", "record_index": index,
             "accepted": accepted,
+            "decision": "not_reviewed" if item is None or item.status == "unreviewed" else item.status,
             "date": {"start": _iso(start), "end": _iso(end),
                      "days": (end - start).days + 1 if start and end and end >= start else None,
                      "label": cl.date_label(record.canonical_type_id)},

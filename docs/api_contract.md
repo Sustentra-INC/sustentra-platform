@@ -154,6 +154,9 @@ for another org's engagement).
   history: [{at, text}],                                             // newest first
   // schedule v2 (Claire's supporting-schedule spec); the keys above are unchanged
   rows: [{record_key, record_index, accepted,        // one row per record (document + period + meter)
+          decision,                                  // "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited"
+                                                     // (accepted is true for accepted and edited)
+                                                     // record_key is opaque: use it as an id, never parse it
           date: {start, end, days, label},           // label: "Service period" | "Transaction date" | "Service date"
           activity_quantity: {value, unit},          // the extracted value; the reviewed value once accepted
           cells: {<column_key>: {value, unit}},      // only the extra columns this row has a value for
