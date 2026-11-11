@@ -36,6 +36,7 @@ from backend.app.services.reviewed_evidence import (
     STATIONARY,
     THERMAL,
     ReviewedRecord,
+    match_facility,
     resolve_fuel_name,
     resolve_setup_facility,
     to_date,
@@ -298,6 +299,20 @@ def place_record(record: ReviewedRecord, *, ref: EmissionFactorReference, facili
     return RecordPlacement(None)
 
 
+def vehicle_group_line(category: str, level2: str, level2_label: str, anchor_id: str,
+                       group: dict[str, Any]) -> CalculationLine:
+    """The system line of one vehicle group for one fuel: the one constructor ``default_lines``
+    and the recalculation both use, so their keys are the same."""
+
+    return make_line(category, level2, level2_label, "vehicle_group", anchor_id,
+                     f"{level2_label}, {vehicle_group_label(group)}", created_by_user=False)
+
+
+def facility_line(category: str, level2: str, level2_label: str, facility: dict[str, Any]) -> CalculationLine:
+    return make_line(category, level2, level2_label, "facility", facility_anchor_id(facility),
+                     f"{level2_label}, {facility.get('name')}", created_by_user=False)
+
+
 def default_lines(placements: Iterable[RecordPlacement], facilities: list[dict[str, Any]],
                   vehicle_groups: list[dict[str, Any]]) -> list[CalculationLine]:
     """The system lines: for each level 2 that has at least one record, one line per Setup
@@ -310,14 +325,12 @@ def default_lines(placements: Iterable[RecordPlacement], facilities: list[dict[s
         assert category and level2 and level2_label  # filtered above
         if anchor_kind == "facility":
             for facility in facilities:
-                line = make_line(category, level2, level2_label, "facility", facility_anchor_id(facility),
-                                 f"{level2_label}, {facility.get('name')}", created_by_user=False)
+                line = facility_line(category, level2, level2_label, facility)
                 lines.setdefault(line.key, line)
         elif anchor_kind == "vehicle_group":
             for anchor_id, group in vehicle_group_anchors(vehicle_groups):
                 if str(group.get("fuel", "")).strip().lower() == level2_label.lower():
-                    line = make_line(category, level2, level2_label, "vehicle_group", anchor_id,
-                                     f"{level2_label}, {vehicle_group_label(group)}", created_by_user=False)
+                    line = vehicle_group_line(category, level2, level2_label, anchor_id, group)
                     lines.setdefault(line.key, line)
     return list(lines.values())
 
@@ -461,6 +474,30 @@ def record_period(record: ReviewedRecord) -> tuple[date | None, date | None]:
         return day, day
     start, end = to_date(record.best("service_period_start")), to_date(record.best("service_period_end"))
     return start or end, end or start
+
+
+def date_label(canonical_type_id: str | None) -> str:
+    """What the document calls its date: a bill's service period, a fuel purchase's
+    transaction date, a service visit's service date."""
+
+    return {MOBILE: "Transaction date", REFRIGERANT: "Service date"}.get(canonical_type_id or "", "Service period")
+
+
+def facility_match(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
+                   record: ReviewedRecord) -> tuple[dict[str, Any], str] | None:
+    """The Setup facility of a record and how it was matched: the reviewer's choice, the
+    facility name, or the service address; None when nothing matches. Same order as
+    ``resolve_setup_facility`` (reviewer's choice, then name, then address), plus the reason."""
+
+    chosen = (decisions.get(document_id) or {}).get("facilityId")
+    for facility in facilities:
+        if chosen and facility.get("facilityId") == chosen:
+            return facility, "Chosen by the reviewer"
+    if (found := match_facility(record.best("facility_name"), None, facilities)) is not None:
+        return found, "Facility name in Setup"
+    if (found := match_facility(None, record.best("service_address"), facilities)) is not None:
+        return found, "Service address in Setup"
+    return None
 
 
 def quantity_field(record: ReviewedRecord) -> str | None:

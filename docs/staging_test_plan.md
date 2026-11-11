@@ -111,6 +111,19 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 2. Enter a reported value: the difference and "% of materiality" update.
 3. Open a line: the calculation steps and the factors with their sources are shown.
 
+### 7a. Calculation panels (stationary, mobile, electricity)
+
+1. Under the boxes, "Scope 1 › Stationary combustion" (and Mobile, and Scope 2 › Purchased
+   electricity) show Reported, Recomputed and Difference. One panel is open at a time.
+2. Open a line: Step 1 to 3 and Results are tabs. Step 3 lists one row per gas.
+3. Change the GWP set above Step 3 to AR6: it saves, the page reloads, and only GWP-dependent
+   numbers change.
+4. "Edit company figures": enter the company's annual activity (for example 650,000 therms) and
+   total. A non-number answers in words. After saving, the Company side fills in.
+5. Click a document name in Step 1: Extraction review opens at that value. Click a factor: its
+   source shows.
+6. Record an examination and add a note on a line. Reload: both are still there.
+
 ## 8. Output
 
 1. Export the Excel workpaper. It opens. The roll-up shows mass per gas and CO₂e per

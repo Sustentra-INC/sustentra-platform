@@ -299,7 +299,7 @@ def test_comparison_uses_the_engagement_materiality_threshold() -> None:
 
 def test_settings_validation() -> None:
     validate_recalculation_settings({"gwp_set": "AR6", "reported": {"scope1_total": 1.0}})
-    for bad in ({"gwp_set": "AR4"}, {"surprise": 1}, {"reported": {"not_a_point": 1}},
+    for bad in ({"gwp_set": "AR3"}, {"surprise": 1}, {"reported": {"not_a_point": 1}},
                 {"certificates": [{"mwh": -1}]}, {"grid_regions": {"A": 1}}):
         with pytest.raises(ValueError):
             validate_recalculation_settings(bad)

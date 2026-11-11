@@ -44,7 +44,8 @@ export function RecalculationInputs({
   const [steamText, setSteamText] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(settings.steam_heat_content ?? {}).map(([site, value]) => [site, String(value)]))
   );
-  const asks = result.needs_input;
+  // A calculation_lines item has no key or message: the questions below are the keyed ones.
+  const asks = result.needs_input.map((a) => ({ ...a, key: a.key ?? "", message: a.message ?? (a.kind === "calculation_lines" ? "The per-line calculations could not be built. The totals are not affected." : "") }));
   const [open, setOpen] = useState(asks.length > 0);
 
   const facilities = Array.from(

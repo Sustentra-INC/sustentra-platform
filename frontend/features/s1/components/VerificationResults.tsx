@@ -74,6 +74,7 @@ export function VerificationResults({
   onOpenDocument,
   registerFindings = false,
   liveMateriality,
+  panels,
 }: {
   rows: VerificationRow[];
   store: VerificationStore;
@@ -100,6 +101,8 @@ export function VerificationResults({
   registerFindings?: boolean;
   /** Live results: the materiality tolerance as a fraction (0.05), for the % material colours. */
   liveMateriality?: number;
+  /** Live results: the per-line calculation panels, under the boxes. */
+  panels?: ReactNode;
 }) {
   const [tab, setTab] = useState<"results" | "findings">("results");
   const [findingFor, setFindingFor] = useState<FindingTarget | null>(null);
@@ -152,6 +155,7 @@ export function VerificationResults({
               onRegister={(row) => setFindingFor({ dataPointId: row.dataPointId, label: rowLabel(row), delta: row.delta })}
             />
           )}
+          {panels}
         </>
       ) : (
         <FindingsTab store={store} />

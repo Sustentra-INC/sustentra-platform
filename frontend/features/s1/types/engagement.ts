@@ -85,7 +85,7 @@ export interface RecalculationCertificate {
 
 /** Stored by the API under settings.recalculation; the backend validates every value. */
 export interface RecalculationSettings {
-  /** "AR5" (default) or "AR6". */
+  /** One set per engagement: "AR4", "AR5" (default) or "AR6". */
   gwp_set?: string;
   /** Facility name (as on the bill) to eGRID subregion, e.g. { "Facility A": "NYUP" }. */
   grid_regions?: Record<string, string>;
@@ -104,6 +104,12 @@ export interface RecalculationSettings {
   reported_units?: Record<string, "t" | "t CO2e">;
   /** Facility to the heat content (Btu per lb) of the steam it buys, for steam billed by weight. */
   steam_heat_content?: Record<string, number>;
+  /** Calculation line key to the company's reported total for it (t CO2e). */
+  reported_lines?: Record<string, number>;
+  /** Calculation line key to the company's annual activity, which the company side is computed from. */
+  reported_activity?: Record<string, { quantity: number; unit: string }>;
+  /** Facility id to its consolidated share, 0 to 100 (default 100). */
+  consolidated_shares?: Record<string, number>;
 }
 
 /** One vehicle group: on-road by distance (and model year where the factor needs it),
