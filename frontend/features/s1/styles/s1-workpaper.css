@@ -3461,7 +3461,7 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-et-node { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); }
 .s1-et-node .s1-et-node { border-radius: 0; border-width: var(--hairline-width) 0 0 0; }
 .s1-et-head {
-  display: grid; grid-template-columns: minmax(12rem, 1fr) 7rem minmax(6rem, 10rem) 7.5rem 4.5rem;
+  display: grid; grid-template-columns: minmax(12rem, 1fr) 7rem minmax(6rem, 10rem) 7.5rem 5.5rem;
   align-items: center; gap: var(--sp-3); padding-inline-end: var(--sp-3);
 }
 .s1-et-toggle {
@@ -3557,3 +3557,14 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-sch-history ul { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-3) 0 0; padding: 0; list-style: none; }
 @media (max-width: 64rem) { .s1-sch-top { grid-template-columns: 1fr; } }
 .s1-chip { display: inline-block; padding: 0 var(--sp-2); font-size: var(--text-sm); font-weight: var(--weight-regular); color: var(--ink-2); background: var(--sf-sunken); border: var(--border-hairline); border-radius: var(--radius-chip); white-space: nowrap; }
+.s1-icon-tile {
+  display: inline-grid; place-items: center; width: 2.25rem; height: 2.25rem; padding: 0; color: var(--brand-ink);
+  background: var(--accent-softer); border: var(--border-hairline); border-color: var(--accent-line); border-radius: var(--radius-card); cursor: pointer;
+}
+.s1-icon-tile svg { width: 1.25rem; height: 1.25rem; }
+.s1-icon-tile:hover { background: var(--accent-soft); }
+.s1-icon-tile:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-et-bar { align-items: center; justify-content: space-between; }
+.s1-et-bar__fold { display: inline-flex; gap: var(--sp-4); }
+.s1-et-facility { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--ink-3); font-size: var(--text-sm); }
+.s1-sch-month__docs { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); }

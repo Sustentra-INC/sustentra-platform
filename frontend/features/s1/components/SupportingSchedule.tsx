@@ -4,6 +4,7 @@ import { FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { getLineSchedule, type CoverageStatus, type LineSchedule } from "../api/evidenceTree";
+import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { userFacingApiError } from "../api/s1Backend";
 import { ContainerStateSurface } from "./ContainerStateSurface";
 
@@ -100,6 +101,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
 
   const { line } = schedule;
   const year = reportingYear(schedule.reporting_period);
+  const fileNames = new Map(schedule.values.map((v) => [v.document_id, v.file_name]));
   const crumbs = [SCOPE_LABELS[line.scope] ?? line.scope, CATEGORY_LABELS[line.category] ?? line.category, line.level2_label, line.label];
 
   return (
@@ -118,9 +120,8 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
             ))}
           </nav>
           <p className="s1-sch-eyebrow">Supporting schedule</p>
-          <h1>
-            {line.label} · {line.level2_label}
-          </h1>
+          {/* "<Line> · <Level 2>", unless the server's label already names the fuel. */}
+          <h1>{line.label.toLowerCase().includes(line.level2_label.toLowerCase()) ? line.label : `${line.label} · ${line.level2_label}`}</h1>
           {year ? <p className="s1-muted">Reporting year {year}</p> : null}
         </div>
         <div className="s1-sch-head__actions">
@@ -151,9 +152,28 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
                     ) : null}
                   </>
                 );
+                const cls = `s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`;
                 return (
                   <li key={m.month}>
-                    {doc ? (
+                    {m.document_ids.length > 1 ? (
+                      // Several documents cover the month: each one opens from a short list.
+                      <div className={cls}>
+                        {body}
+                        <span className="s1-sch-month__docs">
+                          {m.document_ids.map((id, i) => (
+                            <button
+                              key={id}
+                              className="s1-linklike"
+                              type="button"
+                              aria-label={`${monthName(m.month)}: open ${fileNames.get(id) ?? `document ${i + 1}`}`}
+                              onClick={() => onOpenDocument(id)}
+                            >
+                              {fileNames.get(id) ?? `Document ${i + 1}`}
+                            </button>
+                          ))}
+                        </span>
+                      </div>
+                    ) : doc ? (
                       <button
                         className={`s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`}
                         type="button"
@@ -235,7 +255,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
                         type="button"
                         aria-label={`Open ${v.file_name}${v.page ? `, page ${v.page}` : ""} at this value`}
                         title={v.file_name}
-                        onClick={() => onOpenDocument(v.document_id, v.candidate_id ?? undefined)}
+                        onClick={() => onOpenDocument(v.document_id, v.candidate_id ? resolveFieldKey({ candidateId: v.candidate_id, backendFieldId: "" }) : undefined)}
                       >
                         <FileText aria-hidden />
                       </button>
@@ -271,11 +291,8 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
 /* =============================== helpers =============================== */
 
 function reportingYear(period: LineSchedule["reporting_period"]): string | null {
-  if (!period) return null;
-  const start = typeof period === "string" ? period : period.start;
-  const end = typeof period === "string" ? null : period.end;
-  const a = start?.slice(0, 4);
-  const b = end?.slice(0, 4);
+  const a = period.start?.slice(0, 4);
+  const b = period.end?.slice(0, 4);
   if (!a) return null;
   return b && b !== a ? `${a} to ${b}` : a;
 }

@@ -177,6 +177,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   // Which rows of the Evidence tree are open (null: the default). Kept here so it survives a visit
   // to a document or a schedule.
   const [evidenceTreeOpen, setEvidenceTreeOpen] = useState<string[] | null>(null);
+  const [evidenceGrouping, setEvidenceGrouping] = useState<"lines" | "types">("lines");
+  const [evidenceFacility, setEvidenceFacility] = useState<string | null>(null);
   const [auditIntents, setAuditIntents] = useState<SessionAuditEntry[]>([]);
   const [demoState, setDemoState] = useState<ContainerState>(dataMode === "backend" ? "loading" : "populated");
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>(
@@ -193,6 +195,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   // saved decisions per document, laid over the machine's view of the evidence.
   const [workspaceFields, setWorkspaceFields] = useState<ExtractedField[]>([]);
   const [documentDecisions, setDocumentDecisions] = useState<Record<string, DocumentDecision>>({});
+  const decisionsRef = useRef(documentDecisions);
+  useEffect(() => {
+    decisionsRef.current = documentDecisions;
+  });
   const [gridRegions, setGridRegions] = useState<{ code: string; name: string }[] | undefined>(undefined);
   const [dataPoints, setDataPoints] = useState<DataPointOption[]>([]);
   const [backendError, setBackendError] = useState<WorkspaceProblem | null>(null);
@@ -461,6 +467,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     if (!row) return;
     flushEngagementSave();
     setEngagement(engagementFromBackend(row));
+    setEvidenceFacility(null);
+    setEvidenceTreeOpen(null);
     rememberEngagement(row.id);
     setEngagementSave("idle");
     setDemoState("loading");
@@ -550,7 +558,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   async function moveDocumentPlacement(documentId: string, move: Placement) {
     // Until the saved decisions have loaded, a save here could overwrite one the page has not seen.
     if (!workpaper.loaded) throw new Error("Your saved work is still loading. Try again in a moment.");
-    const saved = await saveDocumentPlacement(engagement.engagementId, documentDecisions[documentId], documentId, move);
+    // A save of this document that is already on its way finishes first; the decision is then read
+    // as it stands, so the move is merged into the latest payload.
+    await workpaper.whenSaved("document", documentId);
+    const saved = await saveDocumentPlacement(engagement.engagementId, decisionsRef.current[documentId], documentId, move);
     workpaper.markSaved("document", documentId, saved);
     setDocumentDecisions((cur) => ({ ...cur, [documentId]: saved }));
   }
@@ -1108,6 +1119,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               dataMode === "backend"
                 ? {
                     openIds: evidenceTreeOpen,
+                    view: evidenceGrouping,
+                    onViewChange: setEvidenceGrouping,
+                    facilityId: evidenceFacility,
+                    onFacilityChange: setEvidenceFacility,
                     onOpenIdsChange: setEvidenceTreeOpen,
                     onOpenSchedule: (lineKey) => setActiveView({ name: "schedule", lineKey }),
                     onMovePlacement: moveDocumentPlacement,

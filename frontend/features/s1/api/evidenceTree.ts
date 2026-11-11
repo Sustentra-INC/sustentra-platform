@@ -75,15 +75,20 @@ export interface TreeCategory {
 export interface TreeScope {
   scope: string;
   label: string;
+  counts?: TreeCounts;
   categories: TreeCategory[];
 }
 
 export interface EvidenceTree {
   blocks: {
     summary: TreeDocRow[];
+    summary_counts?: TreeCounts;
     unassigned: TreeDocRow[];
-    supporting: { scopes: TreeScope[]; unassigned: TreeDocRow[] };
+    unassigned_counts?: TreeCounts;
+    supporting: { scopes: TreeScope[]; unassigned: TreeDocRow[]; unassigned_counts?: TreeCounts };
   };
+  /** Vehicle groups from Setup: the anchors a mobile line can sit on. */
+  vehicle_groups?: { anchor_id: string; label: string; fuel: string }[];
   facilities: { facility_id: string; name: string; address?: string }[];
   lines: CalculationLine[];
   /** Withdrawn, duplicate or superseded documents: filed nowhere. */
@@ -94,7 +99,7 @@ export type CoverageStatus = "counted" | "counted_in_part" | "not_reviewed" | "n
 
 export interface LineSchedule {
   line: CalculationLine;
-  reporting_period: { start: string | null; end: string | null } | string | null;
+  reporting_period: { start: string | null; end: string | null };
   coverage: { month: string; status: CoverageStatus; quantity: number | null; unit: string | null; document_ids: string[] }[];
   identifiers: { label: string; value: string; documents_with: number; documents_total: number }[];
   values: ScheduleValue[];
@@ -139,8 +144,10 @@ export const BLOCK_SUMMARY = "block:summary";
 export const BLOCK_UNASSIGNED = "block:unassigned";
 export const SUPPORTING_UNASSIGNED = "supporting:unassigned";
 
-export function getEvidenceTree(engagementId: string): Promise<EvidenceTree> {
-  return api<EvidenceTree>(`/engagements/${encodeURIComponent(engagementId)}/evidence-tree`);
+/** The tree; with a facility, only what belongs to it, recounted by the server. */
+export function getEvidenceTree(engagementId: string, facilityId?: string | null): Promise<EvidenceTree> {
+  const query = facilityId ? `?facility_id=${encodeURIComponent(facilityId)}` : "";
+  return api<EvidenceTree>(`/engagements/${encodeURIComponent(engagementId)}/evidence-tree${query}`);
 }
 
 export function getLineSchedule(engagementId: string, lineKey: string): Promise<LineSchedule> {
@@ -149,18 +156,14 @@ export function getLineSchedule(engagementId: string, lineKey: string): Promise<
   );
 }
 
-/** Lowercase letters, digits and hyphens: the slug the line key is built from. */
-export function slug(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+/** Whether a saved `evidenceLines` entry is the line the tree shows. The server fills in every key. */
+export function isSameLine(entry: EvidenceLineSetting, line: CalculationLine): boolean {
+  return entry.key === line.key;
 }
 
-/** Whether a saved `evidenceLines` entry is the line the tree shows (by key, else by its parts). */
-export function isSameLine(entry: EvidenceLineSetting, line: CalculationLine): boolean {
-  if (entry.key) return entry.key === line.key;
-  return entry.category === line.category && slug(entry.level2_label) === line.level2 && entry.anchor_id === line.anchor_id;
+/** What to call a line: its label, with the fuel in front unless the label already names it. */
+export function lineTitle(line: CalculationLine): string {
+  return line.label.toLowerCase().includes(line.level2_label.toLowerCase()) ? line.label : `${line.level2_label} · ${line.label}`;
 }
 
 /**

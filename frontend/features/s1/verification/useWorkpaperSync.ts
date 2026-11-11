@@ -35,9 +35,15 @@ export function useWorkpaperSync({
   replaceDocuments: (documents: Record<string, DocumentDecision>) => void;
   /** Called with the failure; the item is retried on its next change. */
   onError: (error: unknown) => void;
-}): { loaded: boolean; markSaved: (kind: WorkpaperKind, id: string, payload: object) => void } {
+}): {
+  loaded: boolean;
+  markSaved: (kind: WorkpaperKind, id: string, payload: object) => void;
+  whenSaved: (kind: WorkpaperKind, id: string) => Promise<void>;
+} {
   // What the backend holds, per "kind|id", as JSON: an item is saved only when it differs.
   const saved = useRef<Map<string, string>>(new Map());
+  // Saves on their way, per item: a caller that saves an item itself waits for its own item's first.
+  const inflight = useRef<Map<string, Promise<void>>>(new Map());
   const [readyFor, setReadyFor] = useState<string | null>(null);
   const onErrorRef = useRef(onError);
   useEffect(() => {
@@ -75,10 +81,16 @@ export function useWorkpaperSync({
       const json = JSON.stringify(payload);
       if (saved.current.get(key) === json) continue;
       saved.current.set(key, json);
-      saveWorkpaperItem(engagementId, kind, id, payload).catch((error: unknown) => {
-        saved.current.delete(key); // not saved: try again on the next change
-        onErrorRef.current(error);
-      });
+      const request = saveWorkpaperItem(engagementId, kind, id, payload)
+        .then(() => undefined)
+        .catch((error: unknown) => {
+          saved.current.delete(key); // not saved: try again on the next change
+          onErrorRef.current(error);
+        })
+        .finally(() => {
+          if (inflight.current.get(key) === request) inflight.current.delete(key);
+        });
+      inflight.current.set(key, request);
     }
   }, [enabled, engagementId, readyFor, findings, examinations, documents]);
 
@@ -87,7 +99,10 @@ export function useWorkpaperSync({
     saved.current.set(`${kind}|${id}`, JSON.stringify(payload));
   };
 
-  return { loaded: !enabled || readyFor === engagementId, markSaved };
+  /** Resolves once any save of this item that is on its way has finished. */
+  const whenSaved = (kind: WorkpaperKind, id: string): Promise<void> => inflight.current.get(`${kind}|${id}`) ?? Promise.resolve();
+
+  return { loaded: !enabled || readyFor === engagementId, markSaved, whenSaved };
 }
 
 function entries(

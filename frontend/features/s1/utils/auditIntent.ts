@@ -24,7 +24,10 @@ export type AuditIntentAction =
 
 export interface AuditIntent {
   action: AuditIntentAction;
+  /** The document the change is on; empty for a change to a calculation line. */
   documentId: string;
+  /** The calculation line a change is on (Evidence tree), named as the reviewer sees it. */
+  lineLabel?: string;
   fieldKey?: string;
   oldValue?: string | number | boolean | null;
   newValue?: string | number | boolean | null;

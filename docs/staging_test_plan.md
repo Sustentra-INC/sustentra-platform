@@ -116,7 +116,7 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 1. Export the Excel workpaper. It opens. The roll-up shows mass per gas and CO₂e per
    category, with a "Counted as 0" column. The totals match Verification results.
 
-## 11. Evidence tree and supporting schedule
+## 9. Evidence tree and supporting schedule
 
 Needs the evidence-tree API (feat/evidence-tree-api) deployed.
 
@@ -134,11 +134,11 @@ Needs the evidence-tree API (feat/evidence-tree-api) deployed.
    reviewer"; rename it, then delete it: its documents land in Unassigned supporting evidence.
    A Setup save afterwards does not remove the line.
 
-## 12. Access between organizations
+## 10. Access between organizations
 
 1. A second organization's user can't see this engagement: its URL answers "not found".
 2. A provider admin can read it but can't upload or review.
 
-## 13. After a redeploy
+## 11. After a redeploy
 
-1. Redeploy the same build, or wait for the next one. Everything from steps 2–8 and 11 is still there.
+1. Redeploy the same build, or wait for the next one. Everything from steps 2–9 is still there.
