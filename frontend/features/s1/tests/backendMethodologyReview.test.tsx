@@ -195,6 +195,28 @@ describe("Methodology review on real data", () => {
     await waitFor(() => expect(calls()).toContainEqual([`${BASE}/factor%3Ascope1%3Ar1`, expect.objectContaining({ method: "DELETE" })]));
   });
 
+  it("limits what can be typed as the server does: text length, 20 facility names of 100 characters", async () => {
+    await open();
+    fireEvent.click(within(row("Reporting period")).getByRole("button", { name: "Edit: Reporting period" }));
+    expect((screen.getByLabelText("Value: Reporting period") as HTMLInputElement).maxLength).toBe(2000);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
+    expect((screen.getByLabelText("Entity row: Name") as HTMLInputElement).maxLength).toBe(2000);
+    const many = Array.from({ length: 21 }, (_, i) => `Plant ${i}`).join(", ");
+    fireEvent.change(screen.getByLabelText("Entity row: Facilities"), { target: { value: many } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Facilities: at most 20 names of 100 characters each.");
+    expect(calls().some(([p]) => String(p).includes("/edit"))).toBe(false);
+  });
+
+  it("shows the sentence when adding a row is refused", async () => {
+    await open();
+    mock.fail[`POST ${BASE}/rows`] = new ApiError(409, "This engagement already has 200 rows.", null, null);
+    fireEvent.click(screen.getByRole("button", { name: "Add entity" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("This engagement already has 200 rows.");
+  });
+
   it("shows a refusal's sentence", async () => {
     await open();
     mock.fail[`POST ${BASE}/consolidation_approach/accept`] = new ApiError(409, "The engagement is archived.", null, null);

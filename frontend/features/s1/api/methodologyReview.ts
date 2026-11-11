@@ -62,7 +62,6 @@ export interface MethodologyRecord {
     at: string;
     by: { name: string; login: string };
     action: "accept" | "edit" | "reject" | "revert" | "add_row" | "remove_row" | string;
-    from?: unknown;
     to?: unknown;
   }[];
 }

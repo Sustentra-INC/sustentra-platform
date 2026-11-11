@@ -93,6 +93,11 @@ export function methodologyActivityFrom(data: MethodologyReviewData): { at: stri
   );
 }
 
+// The server's limits on what a reviewer can type (docs/api_contract.md).
+const TEXT_MAX = 2000;
+const LIST_MAX_ITEMS = 20;
+const LIST_ITEM_MAX = 100;
+
 /** The label an allowed value shows as, where the catalog gives one. */
 const optionLabel = (def: CatalogField, key: string | null, value: string) => (key ? def.allowedLabels?.[key]?.[value] : undefined) ?? value;
 
@@ -117,12 +122,21 @@ function ValueEditor({
   );
   const [single, setSingle] = useState(valueText(start));
 
+  const [problem, setProblem] = useState<string | null>(null);
+
   function save() {
+    setProblem(null);
     if (!parts) return onSave(single);
     const out: Record<string, MethodologyValue> = {};
     for (const p of parts) {
       const text = draft[p.key] ?? "";
-      if (p.kind === "list") out[p.key] = text.split(",").map((s) => s.trim()).filter(Boolean);
+      if (p.kind === "list") {
+        const names = text.split(",").map((s) => s.trim()).filter(Boolean);
+        if (names.length > LIST_MAX_ITEMS || names.some((n) => n.length > LIST_ITEM_MAX)) {
+          return setProblem(`${p.label}: at most ${LIST_MAX_ITEMS} names of ${LIST_ITEM_MAX} characters each.`);
+        }
+        out[p.key] = names;
+      }
       else if (p.kind === "percent") out[p.key] = text.trim() === "" ? null : Number(text);
       else out[p.key] = text;
     }
@@ -140,7 +154,7 @@ function ValueEditor({
         ))}
       </select>
     ) : (
-      <input className="s1-mr-input" aria-label={label} value={value} onChange={(e) => set(e.target.value)} />
+      <input className="s1-mr-input" aria-label={label} maxLength={TEXT_MAX} value={value} onChange={(e) => set(e.target.value)} />
     );
 
   return (
@@ -157,6 +171,7 @@ function ValueEditor({
           })
         : control(`Value: ${def.label}`, single, setSingle, Array.isArray(def.allowed) ? def.allowed : undefined, null)}
       <span className="s1-mr-actions">
+        {problem ? <span className="s1-mb-notice" role="alert">{problem}</span> : null}
         <button type="button" className="s1-button s1-button--compact s1-button--pri" disabled={busy} onClick={save}>
           Save
         </button>
