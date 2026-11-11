@@ -700,3 +700,14 @@ def test_the_facility_filter_shows_one_facility_and_recomputes_counts() -> None:
     assert nothing["lines"] == [] and _lines_with_docs(nothing) == {}
     unfiltered = service.tree(_engagement(), _own, None, None)
     assert len(unfiltered["lines"]) == 4 and len(unfiltered["blocks"]["summary"]) == 1
+
+
+def test_a_stored_chain_through_a_line_that_was_since_deleted_still_lands_on_the_final_line() -> None:
+    gone = "s1:stationary:propane:fac-kc01"
+    moves = [{"from": GAS_KC, "to": gone}, {"from": gone, "to": GAS_STL}]
+    slots = cl.apply_placements([cl.Slot(GAS_KC, {0})], moves, {GAS_KC, GAS_STL})
+    assert [(s.target, s.records) for s in slots] == [(GAS_STL, {0})]
+    filed = cl.file_documents([("D", "CT-S1-FUELQTY", [cl.RecordPlacement("stationary", "natural-gas", "Natural Gas",
+                                                                          "facility", "fac-kc01")])],
+                              {"D": {"placements": moves}}, {GAS_KC, GAS_STL})
+    assert [s.target for s in filed["D"]] == [GAS_STL]

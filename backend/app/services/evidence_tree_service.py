@@ -284,7 +284,7 @@ class EvidenceTreeService:
                         continue
                     reviewed = str(entry.get("decision")) in REVIEWED
                     number = entry.get("reviewed_value") if reviewed else item.extracted
-                    entry_unit = entry.get("reviewed_unit") or unit if reviewed else unit
+                    entry_unit = (entry.get("reviewed_unit") or unit) if reviewed else unit
                     amount = f"{number} {entry_unit or ''}".strip() if number is not None else "a value"
                     login = entry.get("reviewer_id")
                     history.append({"at": _iso(entry.get("reviewed_at")), "text": (
