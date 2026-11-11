@@ -20,6 +20,8 @@ engagement:
 
 from __future__ import annotations
 
+import logging
+import math
 import re
 from collections import Counter
 from collections.abc import Callable
@@ -39,7 +41,10 @@ from backend.app.reference.emission_factor_loader import (
 )
 from backend.app.services import emissions_calculator as calc
 from backend.app.services import emissions_rollup as rollup
+from backend.app.services import recalculation_lines
+from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.data_quality_checks import EvidenceRecord, run_checks
+from backend.app.services.calculation_lines import LINE_KEY
 from backend.app.services.reviewed_evidence import (  # noqa: F401 - re-exported: callers import them here
     STATIONARY,
     MOBILE,
@@ -64,18 +69,13 @@ from backend.app.services.reviewed_evidence import (  # noqa: F401 - re-exported
 from backend.app.services.refrigerant_extractor import DISPOSAL, INSTALLATION, service_type_of
 from backend.app.services.thermal_extractor import thermal_kind
 
+log = logging.getLogger(__name__)
+
 RECALCULATED_TYPES = (STATIONARY, MOBILE, ELECTRICITY, REFRIGERANT, THERMAL)
 # A thermal bill's energy type -> its roll-up source (workbook rows 48, 49, 50).
 THERMAL_SOURCE = {"steam": "purchased_steam", "hot_water": "purchased_heating", "chilled_water": "purchased_cooling"}
 STEAM_BTU_PER_LB_RANGE = (500.0, 1600.0)  # saturated and superheated steam, as delivered
 
-# Base unit per dimension used to sum quantities of one fuel across bills.
-BASE_UNIT = {
-    fuel_units.ENERGY: "MMBtu",
-    fuel_units.GAS_VOLUME: "scf",
-    fuel_units.LIQUID_VOLUME: "gal",
-    fuel_units.MASS: "short_ton",
-}
 
 # Reported data points (workbook "Data from summary documents", with its row numbers after
 # Claire added Scope 1 NF3 at row 29): the older per-data-point comparison.
@@ -158,6 +158,11 @@ class RecalculationInputs:
     reported_units: dict[str, str] = field(default_factory=dict)
     # Facility -> heat content of the steam it buys (Btu per lb), for steam billed by weight.
     steam_heat_content: dict[str, float] = field(default_factory=dict)
+    # Calculation lines: the company's total per line (t CO2e), its annual activity per line
+    # ({quantity, unit}), and the share of each facility consolidated (0-100, default 100).
+    reported_lines: dict[str, float] = field(default_factory=dict)
+    reported_activity: dict[str, dict[str, Any]] = field(default_factory=dict)
+    consolidated_shares: dict[str, float] = field(default_factory=dict)
 
 
 def validate_recalculation_settings(value: Any) -> None:
@@ -167,7 +172,8 @@ def validate_recalculation_settings(value: Any) -> None:
         raise ValueError("recalculation must be an object")
     unknown = set(value) - {"gwp_set", "grid_regions", "fuel_choices", "certificates", "reported",
                             "refrigerant_gwps", "vehicle_groups", "absent_sources", "reported_units",
-                            "steam_heat_content"}
+                            "steam_heat_content", "reported_lines", "reported_activity",
+                            "consolidated_shares"}
     if unknown:
         raise ValueError(f"unknown recalculation settings: {', '.join(sorted(unknown))}")
     if "gwp_set" in value and value["gwp_set"] not in GWP_SETS:
@@ -211,6 +217,7 @@ def validate_recalculation_settings(value: Any) -> None:
             isinstance(k, str) and isinstance(v, (int, float)) and not isinstance(v, bool) and low <= v <= high
             for k, v in steam.items()):
         raise ValueError(f"steam_heat_content maps each facility to Btu per lb between {low:.0f} and {high:.0f}")
+    _validate_line_inputs(value)
     units = value.get("reported_units", {})
     if not isinstance(units, dict):
         raise ValueError("reported_units must be an object")
@@ -219,6 +226,38 @@ def validate_recalculation_settings(value: Any) -> None:
             raise ValueError(f"reported_units does not apply to {key}")
         if unit not in ("t", "t CO2e"):
             raise ValueError(f"reported_units {key} must be t or t CO2e")
+
+
+def _plain_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
+
+def _line_key(value: Any) -> bool:
+    return isinstance(value, str) and LINE_KEY.fullmatch(value) is not None
+
+
+def _validate_line_inputs(value: dict[str, Any]) -> None:
+    """reported_lines, reported_activity and consolidated_shares (keys are line keys or facility
+    ids; a key that matches nothing is allowed and flagged in the results)."""
+
+    lines = value.get("reported_lines", {})
+    if not isinstance(lines, dict) or len(lines) > 500 or not all(
+            _line_key(k) and _plain_number(v) and v >= 0 for k, v in lines.items()):
+        raise ValueError("reported_lines maps each line key (as the Evidence tree shows it) to the company's "
+                         "total in t CO2e (0 or more)")
+    activity = value.get("reported_activity", {})
+    if not isinstance(activity, dict) or len(activity) > 500:
+        raise ValueError("reported_activity maps each line key to {quantity, unit}")
+    for key, item in activity.items():
+        if (not _line_key(key) or not isinstance(item, dict)
+                or set(item) - {"quantity", "unit"} or not _plain_number(item.get("quantity"))
+                or item["quantity"] < 0 or not isinstance(item.get("unit"), str) or not item["unit"].strip()
+                or len(item["unit"]) > 40):
+            raise ValueError(f"reported_activity {key!r} needs a quantity of 0 or more and a unit")
+    shares = value.get("consolidated_shares", {})
+    if not isinstance(shares, dict) or len(shares) > 500 or not all(
+            isinstance(k, str) and k.strip() and _plain_number(v) and 0 <= v <= 100 for k, v in shares.items()):
+        raise ValueError("consolidated_shares maps each facility to a percentage from 0 to 100")
 
 
 VEHICLE_GROUP_KEYS = {"fuel", "vehicle_type", "factor_fuel_type", "on_road", "model_year", "distance",
@@ -272,6 +311,9 @@ def parse_inputs(settings: dict[str, Any] | None) -> RecalculationInputs:
         absent_sources={k: str(v) for k, v in (raw.get("absent_sources") or {}).items()},
         reported_units={k: str(v) for k, v in (raw.get("reported_units") or {}).items()},
         steam_heat_content={k: float(v) for k, v in (raw.get("steam_heat_content") or {}).items()},
+        reported_lines={k: float(v) for k, v in (raw.get("reported_lines") or {}).items()},
+        reported_activity={k: dict(v) for k, v in (raw.get("reported_activity") or {}).items()},
+        consolidated_shares={k: float(v) for k, v in (raw.get("consolidated_shares") or {}).items()},
     )
 
 
@@ -346,6 +388,8 @@ class EngagementRecalculationService:
         # Set per recalculation: the engagement's Setup facilities and document decisions.
         self._facilities: list[dict[str, Any]] = []
         self._decisions: dict[str, dict[str, Any]] = {}
+        # Set per recalculation, for the calculation lines.
+        self._ledger = Ledger()
 
     @property
     def reference(self) -> EmissionFactorReference:
@@ -421,6 +465,7 @@ class EngagementRecalculationService:
         records, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
         self._facilities = setup_facilities(engagement.get("settings"))
         self._decisions = decisions
+        self._ledger = Ledger()
 
         needs_input: list[dict[str, Any]] = []
         awaiting: list[dict[str, Any]] = []
@@ -493,7 +538,7 @@ class EngagementRecalculationService:
         tolerance = materiality_tolerance(engagement.get("settings"))
         not_in_scope = out_of_scope(engagement.get("settings"))
         open_items = Counter(str(item.get("category")) for item in needs_input + awaiting)
-        return {
+        response = {
             "engagement_id": engagement_id,
             "gwp_set": inputs.gwp_set,
             "reporting_period": {"start": period[0].isoformat() if period[0] else None,
@@ -519,6 +564,21 @@ class EngagementRecalculationService:
                                           out_of_scope=not_in_scope, tolerance=tolerance, gwp_set=inputs.gwp_set,
                                           ref=self.reference),
         }
+        try:
+            built = recalculation_lines.build(
+                self.reference, self._ledger, records, inputs, engagement.get("settings") or {}, decisions,
+                tolerance, {k: v > 0 for k, v in open_items.items()})
+        except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
+            log.warning("calculation lines failed: %s", type(exc).__name__)
+            built = recalculation_lines.Built(needs_input=[{
+                "kind": "calculation_lines", "key": "calculation_lines",
+                "message": "The calculation lines could not be built. The totals above are unaffected; "
+                           "try again, and report it if it persists."}])
+        response.update(calculation_lines=built.lines, calculation_unplaced=built.unplaced,
+                        calculation_line_inputs=built.inputs)
+        # Problems with the company's own figures never change a recalculated number or its status.
+        response["needs_input"] = [*needs_input, *built.needs_input]
+        return response
 
     @staticmethod
     def _documents_reviewed(records: list[ReviewedRecord], needs_input: list[dict[str, Any]],
@@ -675,6 +735,10 @@ class EngagementRecalculationService:
             entry["documents"].append({"document_id": record.document_id, "record": record.label,
                                        "quantity": quantity, "unit": unit, "share_in_period": prorate[0]})
             entry["flags"].update(flags + ([prorate[1]] if prorate[1] else []))
+            entry.setdefault("ledger", []).append(Contribution(
+                "stationary", record, (fuel, base), _number(record.reviewed("activity_quantity")) or 0.0, quantity,
+                unit, prorate[0], record.best("service_period_start"), record.best("service_period_end"),
+                sorted(flags + ([prorate[1]] if prorate[1] else []))))
         if not totals:
             return None
         usable: dict[tuple[str, str], dict[str, Any]] = {}
@@ -689,13 +753,16 @@ class EngagementRecalculationService:
         if not usable:
             return None
         totals = usable
+        for entry in totals.values():
+            self._ledger.contributions.extend(entry.get("ledger", []))
         fuels = [calc.StationaryFuel(fuel, calc.Measure(entry["quantity"], base,
                                                         f"{len(entry['documents'])} reviewed record(s)"))
                  for (fuel, base), entry in totals.items()]
         result = calc.stationary_combustion(fuels, self.reference, gwp_set=inputs.gwp_set)
         for line, entry in zip(result.lines, totals.values()):
             line.flags.extend(sorted(entry["flags"]))
-        result.details["inputs"] = [{"fuel": fuel, "unit": base, **{k: v for k, v in e.items() if k != "flags"}}
+        result.details["inputs"] = [{"fuel": fuel, "unit": base,
+                                     **{k: v for k, v in e.items() if k not in ("flags", "ledger")}}
                                     for (fuel, base), e in totals.items()]
         result.flags = sorted({*result.flags, *(f for line in result.lines for f in line.flags)})
         return result
@@ -729,6 +796,9 @@ class EngagementRecalculationService:
             entry["documents"].append({"document_id": record.document_id, "record": record.label,
                                        "quantity": quantity, "unit": unit})
             entry["flags"].update(flags)
+            entry.setdefault("ledger", []).append(Contribution(
+                "mobile", record, (fuel, base), _number(record.reviewed("activity_quantity")) or 0.0, quantity, unit,
+                prorate[0], day, day, sorted(flags + ([prorate[1]] if prorate[1] else []))))
         lines = {fuel.lower() for fuel, _ in totals}
         for group in inputs.vehicle_groups:  # a group for a fuel with no reviewed records adds nothing
             fuel_name = str(group.get("fuel", "")).strip()
@@ -741,25 +811,37 @@ class EngagementRecalculationService:
         if not totals:
             return None
         fuels = []
+        indexed_groups: dict[tuple[str, str], list[tuple[int, calc.VehicleGroup]]] = {}
         for (fuel, base), entry in totals.items():
             measure = calc.Measure(entry["quantity"], base, f"{len(entry['documents'])} reviewed record(s)")
-            groups, group_flags = self._vehicle_groups(fuel, measure, inputs, needs_input)
+            indexed, group_flags = self._indexed_vehicle_groups(fuel, measure, inputs, needs_input)
+            indexed_groups[(fuel, base)] = indexed
             entry["flags"].update(group_flags)
-            fuels.append(calc.MobileFuel(fuel, measure, vehicle_groups=groups))
+            fuels.append(calc.MobileFuel(fuel, measure, vehicle_groups=[group for _, group in indexed]))
         try:
             result = calc.mobile_combustion(fuels, self.reference, gwp_set=inputs.gwp_set)
         except (calc.CalculationError, EmissionFactorNotFoundError) as exc:
             needs_input.append({"kind": "mobile", "key": "mobile_combustion", "message": str(exc)})
             return None
+        self._ledger.mobile_groups = indexed_groups
+        for entry in totals.values():
+            self._ledger.contributions.extend(entry.get("ledger", []))
         for line, entry in zip(result.lines, totals.values()):
             line.flags.extend(sorted(entry["flags"]))
-        result.details["inputs"] = [{"fuel": fuel, "unit": base, **{k: v for k, v in e.items() if k != "flags"}}
+        result.details["inputs"] = [{"fuel": fuel, "unit": base,
+                                     **{k: v for k, v in e.items() if k not in ("flags", "ledger")}}
                                     for (fuel, base), e in totals.items()]
         result.flags = sorted({*result.flags, *(f for line in result.lines for f in line.flags)})
         return result
 
     def _vehicle_groups(self, fuel: str, fuel_total: calc.Measure, inputs: RecalculationInputs,
                         needs_input: list[dict[str, Any]]) -> tuple[list[calc.VehicleGroup], list[str]]:
+        indexed, flags = self._indexed_vehicle_groups(fuel, fuel_total, inputs, needs_input)
+        return [group for _, group in indexed], flags
+
+    def _indexed_vehicle_groups(self, fuel: str, fuel_total: calc.Measure, inputs: RecalculationInputs,
+                                needs_input: list[dict[str, Any]]
+                                ) -> tuple[list[tuple[int, calc.VehicleGroup]], list[str]]:
         """The reviewer's vehicle groups for one fuel, checked against the EPA tables.
 
         On-road groups need distance (Eq 4) and, where the factor depends on it, a model
@@ -768,12 +850,13 @@ class EngagementRecalculationService:
         used all of it. A group that cannot be used is asked about and left out.
         """
 
-        mine = [g for g in inputs.vehicle_groups if str(g.get("fuel", "")).strip().lower() == fuel.lower()]
+        mine = [(i, g) for i, g in enumerate(inputs.vehicle_groups)
+                if str(g.get("fuel", "")).strip().lower() == fuel.lower()]
         types = {(t["vehicle_type"].lower(), t["fuel_type"].lower(), t["on_road"]): t
                  for t in self.reference.vehicle_types()}
-        groups: list[calc.VehicleGroup] = []
+        groups: list[tuple[int, calc.VehicleGroup]] = []
         flags: list[str] = []
-        for index, group in enumerate(mine, start=1):
+        for index, (settings_index, group) in enumerate(mine, start=1):
             label = str(group.get("label") or f"{group['vehicle_type']} ({group['factor_fuel_type']})")
             key = f"{fuel}|{index}"
 
@@ -805,8 +888,9 @@ class EngagementRecalculationService:
                         year = first
                         flags.append("model_year_older_than_table")
                 unit = "km" if group.get("distance_unit") == "km" else "mi"
-                groups.append(calc.VehicleGroup(known["vehicle_type"], known["fuel_type"], True, year,
-                                                distance=calc.Measure(float(group["distance"]), unit, source)))
+                groups.append((settings_index, calc.VehicleGroup(
+                    known["vehicle_type"], known["fuel_type"], True, year,
+                    distance=calc.Measure(float(group["distance"]), unit, source))))
             else:
                 quantity = group.get("fuel_quantity")
                 if quantity is None:
@@ -819,8 +903,8 @@ class EngagementRecalculationService:
                     measure = calc.Measure(fuel_total.value, fuel_total.unit, "all of this fuel (its only group)")
                 else:
                     measure = calc.Measure(float(quantity), "L" if group.get("fuel_unit") == "L" else "gal", source)
-                groups.append(calc.VehicleGroup(known["vehicle_type"], known["fuel_type"], False,
-                                                fuel_quantity=measure))
+                groups.append((settings_index, calc.VehicleGroup(
+                    known["vehicle_type"], known["fuel_type"], False, fuel_quantity=measure)))
         return groups, flags
 
     # =================================================================================
@@ -853,6 +937,10 @@ class EngagementRecalculationService:
             entry["mwh"] += mwh
             entry["documents"].append({"document_id": record.document_id, "record": record.label,
                                        "quantity": quantity, "unit": unit, "share_in_period": prorate[0]})
+            entry.setdefault("ledger", []).append(Contribution(
+                "electricity", record, (key,), _number(record.reviewed("activity_quantity")) or 0.0, quantity, unit,
+                prorate[0], record.best("service_period_start"), record.best("service_period_end"),
+                [prorate[1]] if prorate[1] else []))
         out: list[calc.FacilityElectricity] = []
         for key, entry in facilities.items():
             # A choice on the results screen wins, then the facility's region from Setup, then
@@ -884,6 +972,8 @@ class EngagementRecalculationService:
                         r["egrid_subregion"] for r in self.reference.egrid_subregions()],
                 })
                 continue
+            self._ledger.regions[key] = region
+            self._ledger.contributions.extend(entry.get("ledger", []))
             if region_sources is not None:
                 region_sources[key] = source
             if bills is not None:
