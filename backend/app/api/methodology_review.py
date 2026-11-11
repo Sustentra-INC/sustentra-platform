@@ -186,6 +186,7 @@ async def add_row(
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict[str, Any]:
     field_id = rules.new_row_id(body.group)
+    # Removed rows count on purpose: it bounds the rows an engagement can ever hold.
     added = [r for r in await workpaper_item_service.list_items(db, engagement["id"], KIND)
              if r["payload"].get("user_added")]
     if len(added) >= rules.MAX_ADDED_ROWS:
