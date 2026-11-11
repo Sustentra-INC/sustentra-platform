@@ -141,6 +141,91 @@ some, `not_reviewed` when a document covers it but no accepted value does, and `
 otherwise; a value's quantity is spread evenly over its service period. `decided_by` is the
 reviewer's name (their login when no name is on file).
 
+### GET /v1/engagements/{engagement_id}/recalculation: calculation lines
+
+Every existing key and value is unchanged. Three keys are added, all computed by the backend
+(the frontend only formats): `calculation_lines`, `calculation_unplaced`, `calculation_line_inputs`.
+A line is the Evidence tree's line (same `key`, from `calculation_lines.line_key`): stationary fuel
+x facility, mobile fuel x vehicle group, purchased electricity (location-based) x facility. The same
+accepted, prorated records the categories counted are re-added per line and run through the same
+calculator and factors, so the lines add up to the category.
+
+```
+calculation_lines: [{
+  key, scope: "s1"|"s2"|"biogenic", category: "stationary"|"mobile"|"purchased_energy"|"biogenic",
+  counts_toward: "stationary"|"mobile"|"purchased_energy",   // the category total this line rolls into
+  level2, level2_key, label,                                  // label: facility or vehicle group
+  facility_id, consolidated_share_pct,                        // facility lines only take consolidated_shares; others 100
+  method: {route, equations: {CO2, CH4, N2O}},                // e.g. "Eq. 1", "Eq. 4" (on-road), "Eq. 5" (non-road)
+  step1: {rows: [{period_start, period_end, document_id, evidence_code, file_name, candidate_id,
+                  review: "accepted"|"edited", quantity, unit, share_in_period, counted_quantity}],
+          total: {quantity, unit}},                           // the rows' unit, or the base unit when they mix
+  step2: {from_unit, to_unit, factor, result: {quantity, unit}, distance: null},   // factor 1 when no conversion
+  step3: {gases: [{gas, activity: {value, unit}, ef: {value, unit, source}, unit_conversion, mass_t,
+                   gwp: {value, source}, co2e_t,
+                   company_co2e_t?, difference_t?}]},         // the last two only when `company` exists
+  results: {mass_t: {CO2, CH4, N2O}, gas_co2e_t: {...}, sum_co2e_t, total_co2e_t /* sum x share */,
+            biogenic_co2_t, company_total_co2e_t?, difference_t?, company_gas_co2e_t?},
+  company: null | {activity: {quantity, unit}, step2, step3, results},
+  reported_total_co2e_t: number|null, difference_t: number|null /* recomputed - reported */,
+  difference_pct_of_base: number|null, status: "within"|"above"|"not_reported", flags: [...]}]
+```
+
+- `unit_conversion` multiplies activity x factor into metric tons (kg 0.001, g 0.000001, lb 1/2,204.62).
+- `evidence_code` is the document id (the id the app uses for a document); `file_name` is its name.
+- `step2.source` cites the unit conversion (`"fuel_units conversion table"`), `null` when the factor is 1.
+- `step2.distance` is `null` except for an on-road mobile line:
+  `{fuel_economy: {value, unit: "mi/gal", source}, result: {quantity, unit: "mi"}}`. No fuel economy is
+  read from a document; the value is the one the vehicle group's distance and the fuel on the line imply.
+- `difference_pct_of_base` is on the percent scale (4.6 means 4.6%); `company.step3` has the shape of `step3`.
+- `status` and `difference_pct_of_base` use the existing comparison rule: the line's difference against
+  the reported total of its data point (`settings.recalculation.reported` for stationary, mobile or
+  purchased electricity when the company reported it, else the line's own `reported_lines` value),
+  within the engagement's materiality tolerance.
+- A biomass fuel sits on a `biogenic` line: it shows `results.biogenic_co2_t` (CO2 is `0` in
+  `mass_t`, as in the category) and its CH4 and N2O, which count toward the stationary or mobile category
+  through `counts_toward`.
+- Mobile: CO2 from the fuel (Eq. 1) follows the records placed on the line; CH4 and N2O come from the
+  vehicle group (distance, Eq. 4 on-road; fuel, Eq. 5 non-road). A group's line exists whenever its
+  fuel has reviewed records.
+- When a fuel has several vehicle groups its records cannot pick one, and a record with no facility
+  match has no line: they are listed in `calculation_unplaced` (same shape as a line, `key: null`,
+  `reason`, `target`, no company side), never dropped. Lines plus unplaced add up to the category.
+- `calculation_line_inputs`: `{consolidated_shares, unknown_line_keys: [{setting, key}]}`; a key in
+  `reported_lines` or `reported_activity` that matches no line is allowed and listed here.
+- A company activity that cannot be converted (unknown unit, other kind of unit, a line that mixes
+  units) adds a `needs_input` item `{kind: "company_activity", key: <line key>, message}`. It changes
+  no recalculated number or status.
+
+Every `flags` code a line can carry:
+
+| Code | Meaning |
+| --- | --- |
+| `fuel_chosen_by_reviewer` | The EPA fuel is the one the reviewer chose for this fuel code. |
+| `fuel_auto_matched` | The EPA fuel was matched from the extracted fuel code without a choice. |
+| `diesel_matched_to_distillate_fuel_oil_no_2` | Stationary diesel was matched to Distillate Fuel Oil No. 2. |
+| `prorated_to_reporting_period` | A record's service period runs past the reporting period; only its share inside counts. |
+| `no_reporting_period` | The engagement has no reporting period, so records count in full. |
+| `no_service_period` | A record has no service period, so it counts in full. |
+| `service_period_reversed` | A record's service period ends before it starts, so it counts in full. |
+| `unit_converted` | The quantity was converted to the factor's unit (Step 2). |
+| `biogenic_co2_reported_separately` | Biomass fuel: its CO2 is biogenic and is not in the line's CO2e. |
+| `ch4_n2o_need_vehicle_groups` | Mobile fuel with no usable vehicle group: CH4 and N2O are not calculated. |
+| `mixed_units_or_fuels` | The line mixes units or fuels; Step 2 shows the first, Step 3 lists every run. |
+| `company_ch4_n2o_use_vehicle_group` | Mobile company side: CH4 and N2O still come from the vehicle group. |
+
+New optional settings under `settings.recalculation` (validated on PATCH, 422 with a message):
+
+```
+reported_lines:       {<line key>: number >= 0}                      // company total, t CO2e
+reported_activity:    {<line key>: {quantity >= 0, unit: text}}      // company annual activity; drives `company`
+consolidated_shares:  {<facility id>: 0..100}                        // default 100
+gwp_set:              "AR4" | "AR5" (default) | "AR6"                // one set per engagement; the response says which
+```
+
+AR4 (IPCC AR4 WG1 Table 2.14: CO2 1, CH4 25, N2O 298) has no HFC, PFC, SF6 or NF3 values, like AR6:
+a refrigerant gas needs `refrigerant_gwps` under AR4 (an open `needs_input` item says so).
+
 ## Contract Source
 
 JSON schema contracts are versioned in `contracts/` and should be treated as API truth for request/response payload shape.
