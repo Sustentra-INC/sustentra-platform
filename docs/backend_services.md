@@ -53,6 +53,7 @@ Claude yet, and the feature is off everywhere.
 | `AI_PROVIDER` | `anthropic` | `anthropic` (Claude API, needs the key) or `bedrock` (instance role, no key). |
 | `ANTHROPIC_API_KEY` | none | Claude API key. A `SecretStr`: `show-settings` prints `**********`. |
 | `AI_MODEL` | `claude-sonnet-5-5` | Claude API model id; on Bedrock the adapter adds `anthropic.`. |
+| `AI_BEDROCK_MODEL_ID` | none | Bedrock only: full model id, sent as given. Unset, the adapter sends `anthropic.` + `AI_MODEL`. Prices stay keyed by `AI_MODEL`. |
 | `AI_EFFORT` | `low` | `low`, `medium` or `high`. |
 | `AI_MONTHLY_CAP_USD` | `25` | Per-organization monthly cap (enforced by the usage ledger, a later PR). |
 
@@ -70,7 +71,7 @@ Claude yet, and the feature is off everywhere.
    logger at INFO, because at DEBUG the SDK logs whole request bodies.
 
 The optional String parameters `/<env>/ai_suggestions_enabled`, `/<env>/ai_provider`,
-`/<env>/ai_model` and `/<env>/ai_monthly_cap_usd` are written to `app.env` the same way,
+`/<env>/ai_model`, `/<env>/ai_bedrock_model_id` and `/<env>/ai_monthly_cap_usd` are written to `app.env` the same way,
 when they exist.
 
 ### Runbook
@@ -90,7 +91,32 @@ when they exist.
   `"anthropic_api_key": "**********"` when the key is set.
 - **Remove the key.** `aws ssm delete-parameter --region us-east-1 --name
   /staging/anthropic_api_key`, then redeploy. Revoke it in the Anthropic Console too.
-- **Bedrock instead.** Set `/staging/ai_provider` to `bedrock` and redeploy. Not yet tried
-  live: the app-host role (`infra/iam_app_host.tf`) has no Bedrock permission yet, and the
-  model must be enabled for the account.
+- **Bedrock instead.** Not yet tried live. The adapter uses the Bedrock Mantle endpoint
+  (`bedrock-mantle.<region>.api.aws`, SigV4 service `bedrock-mantle`), which takes model ids
+  like `anthropic.claude-sonnet-5-5` (no cross-region `us.` profile) and is authorized by
+  `bedrock-mantle:CreateInference`, granted to the app-host role in `infra/iam_app_host.tf`
+  (resource `*` until the model-ARN format is documented). See
+  [Claude in Amazon Bedrock](https://platform.claude.com/docs/en/build-with-claude/claude-in-amazon-bedrock).
+  No server-side refusal fallback on Bedrock.
+  1. **First use (once per account).** An admin sends one message to the chosen Claude model
+     in the Bedrock console playground in us-east-1. Anthropic models ask for a one-time
+     use-case form on first invoke; the old model-access page is retired.
+  2. **Apply the IAM change.** Run the terraform-apply workflow for staging.
+  3. **Switch.** `aws ssm put-parameter --region us-east-1 --overwrite --name
+     /staging/ai_provider --type String --value bedrock`; optionally set
+     `/staging/ai_model` and `/staging/ai_bedrock_model_id`; then redeploy.
+  4. **Smoke check.** On the host, in `/opt/sustentra`, one real call (a few tokens):
+
+     ```bash
+     docker compose -f docker-compose.prod.yml --env-file .env exec api python -c "
+     from pydantic import BaseModel
+     from backend.app.adapters.llm.claude import get_claude
+     class Pong(BaseModel):
+         word: str
+     c = get_claude()
+     r = c.structured(system='Reply with JSON.', content='Set word to pong.', output_type=Pong, max_tokens=200)
+     print(c.provider, c.model, r.outcome, r.output, r.cost_microusd)"
+     ```
+
+     Expect `bedrock ... ok word='pong'`. `AccessDeniedException` means step 1 or 2 is missing.
 - Prod has no AI parameters, so AI stays off there.

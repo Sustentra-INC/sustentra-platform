@@ -113,7 +113,8 @@ EOF
   # never to the log. Do not add `set -x` to this script.
   local pair value
   for pair in ANTHROPIC_API_KEY=anthropic_api_key AI_SUGGESTIONS_ENABLED=ai_suggestions_enabled \
-      AI_PROVIDER=ai_provider AI_MODEL=ai_model AI_MONTHLY_CAP_USD=ai_monthly_cap_usd; do
+      AI_PROVIDER=ai_provider AI_MODEL=ai_model AI_BEDROCK_MODEL_ID=ai_bedrock_model_id \
+      AI_MONTHLY_CAP_USD=ai_monthly_cap_usd; do
     value=$(get_optional_param "${pair#*=}")
     if [ -n "$value" ]; then
       printf '%s=%s\n' "${pair%%=*}" "$value" >> "$APP_DIR/app.env"
