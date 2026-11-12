@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import text
+from sqlalchemy import Connection, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.adapters.llm.claude import StructuredReply
@@ -66,9 +66,25 @@ async def record(
     reply: StructuredReply,
     user_id: uuid.UUID | None,
 ) -> None:
-    await db.execute(_INSERT, {
+    await db.execute(_INSERT, _row(org_id, engagement_id, feature, provider, reply, user_id))
+
+
+def _row(org_id: uuid.UUID, engagement_id: uuid.UUID | None, feature: str, provider: str, reply: StructuredReply,
+         user_id: uuid.UUID | None) -> dict[str, object]:
+    return {
         "org_id": org_id, "engagement_id": engagement_id, "feature": feature, "model": reply.model,
         "provider": provider, "request_id": reply.request_id, "outcome": reply.outcome,
         "input_tokens": reply.usage.prompt_tokens, "output_tokens": reply.usage.output_tokens,
         "cost_microusd": reply.cost_microusd or 0, "created_by": user_id,
-    })
+    }
+
+
+# The same two statements for the synchronous S1 pipeline (its stores use ``tenant_transaction``).
+
+def month_spend_microusd_sync(conn: Connection, org_id: uuid.UUID) -> int:
+    return int(conn.execute(_MONTH_SPEND, {"org_id": org_id}).scalar_one())
+
+
+def record_sync(conn: Connection, *, org_id: uuid.UUID, engagement_id: uuid.UUID | None, feature: str, provider: str,
+                reply: StructuredReply, user_id: uuid.UUID | None) -> None:
+    conn.execute(_INSERT, _row(org_id, engagement_id, feature, provider, reply, user_id))

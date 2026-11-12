@@ -52,6 +52,15 @@ Returns a ProcessingRun (`contracts/processing_run.schema.json`):
 - 404 for a document of another organization, 400 when its stored file is missing, 403 for
   provider_admin.
 
+Pipeline runs (`contracts/pipeline_run.schema.json`, as read from `/pipeline/evidence/{id}/latest-run`)
+have `canonical_type_source` of `classifier`, `content_check`, `override`, `ai` or `none`.
+`ai` means Claude named the type from pages 1-2 and the reviewer must confirm it. An optional
+`ai_routing` object (`canonical_type_id`, `quote`, `line`, `reason_code`, `page_number`,
+`used`, `disagrees`, `review_required`) is present only when Claude was asked and its quote was
+verified on the document; `used: false, disagrees: true` means it only disagreed with the
+rules (the type is unchanged). `warnings` may carry `ai_type_disagrees`, `ai_unavailable` and
+`ai_routing_ignored: <reason>`.
+
 ### GET /v1/processing-runs/{run_id}
 One processing run; 404 when it belongs to another organization.
 
