@@ -487,24 +487,80 @@ const SCHEDULE: LineSchedule = {
     { month: "2025-03", status: "not_reviewed", quantity: null, unit: null, document_ids: ["mar", "jan"] },
     { month: "2025-04", status: "no_document", quantity: null, unit: null, document_ids: [] },
   ],
-  identifiers: [
-    { label: "Account number", value: "88-1", documents_with: 11, documents_total: 11 },
-    { label: "Meter number", value: "M-7", documents_with: 9, documents_total: 11 },
-  ],
-  values: [
+  identifiers: [],
+  values: [],
+  rows: [
     {
-      service_period_start: "2025-01-01",
-      service_period_end: "2025-01-31",
-      days: 31,
-      quantity: 120,
-      unit: "therm",
+      record_key: "k1",
+      accepted: true,
+      decision: "accepted",
+      date: { start: "2025-01-01", end: "2025-01-31", days: 31, label: "Service period" },
+      activity_quantity: { value: 120, unit: "therm" },
+      cells: {},
+      saved_by: { name: "M. Osei", at: "2025-03-02T10:00:00Z" },
       document_id: "jan",
       file_name: "jan.pdf",
       page: 2,
       candidate_id: "cand-1",
-      decided_by: "M. Osei",
-      decided_at: "2025-03-02T10:00:00Z",
-      decision: "accepted",
+    },
+    {
+      record_key: "k2",
+      accepted: false,
+      decision: "not_reviewed",
+      date: { start: "2025-02-01", end: "2025-02-28", days: 28, label: "Service period" },
+      activity_quantity: { value: 99, unit: "therm" },
+      cells: { heat_content: { value: 1.03, unit: "MMBtu/Mcf" } },
+      saved_by: null,
+      document_id: "feb",
+      file_name: "feb.pdf",
+      page: 1,
+      candidate_id: "cand-2",
+    },
+    {
+      record_key: "k3",
+      accepted: false,
+      decision: "rejected",
+      date: { start: "2025-03-05", end: "2025-03-05", days: 1, label: "Service date" },
+      activity_quantity: { value: 5, unit: "therm" },
+      cells: {},
+      saved_by: null,
+      document_id: "mar",
+      file_name: "mar.pdf",
+      page: null,
+      candidate_id: null,
+    },
+  ],
+  columns: [
+    { key: "date", label: "Date", unit_in_cells: true },
+    { key: "activity_quantity", label: "Activity quantity", unit_in_cells: true },
+    { key: "heat_content", label: "Heat content (HHV)", unit_in_cells: true },
+  ],
+  activity_quantity_note: "Activity quantity: fuel quantity combusted",
+  identifier_groups: [
+    {
+      label: "Account number",
+      values: [{ value: "88-1", documents: [{ document_id: "jan", file_name: "jan.pdf" }] }],
+      not_found: [],
+      documents_with: 11,
+      documents_total: 11,
+    },
+    {
+      label: "Meter number",
+      values: [
+        { value: "M-7", documents: [{ document_id: "jan", file_name: "jan.pdf" }] },
+        { value: "M-8", documents: [{ document_id: "feb", file_name: "feb.pdf" }] },
+      ],
+      not_found: [{ document_id: "mar", file_name: "mar.pdf" }],
+      documents_with: 2,
+      documents_total: 3,
+    },
+    {
+      label: "Facility",
+      values: [{ value: "Kent", documents: [{ document_id: "jan", file_name: "jan.pdf" }] }],
+      not_found: [],
+      documents_with: 3,
+      documents_total: 3,
+      matched_by: ["Service address in Setup"],
     },
   ],
   history: [{ at: "2025-03-02T10:00:00Z", text: "M. Osei accepted 120 therm from jan.pdf, page 2" }],
@@ -532,10 +588,77 @@ describe("the supporting schedule", () => {
     // Every status has a word, not only a colour.
     const legend = screen.getByRole("list", { name: "Legend" });
     for (const word of ["Counted", "Counted in part", "Not reviewed", "No document"]) expect(within(legend).getByText(word)).toBeInTheDocument();
-    expect(screen.getByText("11/11 documents")).toBeInTheDocument();
-    expect(screen.getByText("9/11 documents · not on all")).toBeInTheDocument();
-    expect(screen.getByText("Accepted by M. Osei · Mar 2, 2025")).toBeInTheDocument();
+    expect(screen.getByText("11 of 11 documents")).toBeInTheDocument();
+    expect(screen.getByText("2 of 3 documents")).toBeInTheDocument();
+    expect(screen.getByText("Activity quantity: fuel quantity combusted")).toBeInTheDocument();
+    expect(screen.getByText("Matched by: Service address in Setup")).toBeInTheDocument();
     expect(screen.getByText(/M\. Osei accepted 120 therm from jan\.pdf, page 2/)).toBeInTheDocument();
+  });
+
+  it("shows one row per record with units, MM/DD/YY dates, server day counts and a word for each unreviewed row", async () => {
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Date", "Activity quantity", "Heat content (HHV)", "Saved by", "Document"]);
+    const [, jan, feb, mar] = within(table).getAllByRole("row");
+    expect(jan).toHaveTextContent("01/01/25 – 01/31/25 · 31 days");
+    expect(jan).toHaveTextContent("120 therm");
+    expect(jan).toHaveTextContent("Saved by M. Osei · 03/02/25");
+    expect(jan).not.toHaveTextContent("Not reviewed");
+    expect(feb).toHaveTextContent("Not reviewed");
+    expect(feb).toHaveTextContent("1.03 MMBtu/Mcf");
+    expect(mar).toHaveTextContent("03/05/25");
+    expect(mar).not.toHaveTextContent("1 day");
+    expect(mar).toHaveTextContent("Rejected");
+    expect(within(table).queryByRole("textbox")).toBeNull();
+  });
+
+  it("shows the server's numbers as given, marks edited rows, labels the date and aligns text left", async () => {
+    const one = SCHEDULE.rows[0];
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        columns: [
+          ...SCHEDULE.columns,
+          { key: "model_year", label: "Model year", unit_in_cells: false },
+          { key: "vehicle_type", label: "Vehicle type", unit_in_cells: false },
+        ],
+        rows: [
+          {
+            ...one,
+            decision: "edited",
+            cells: { model_year: { value: 2019 }, heat_content: { value: 1.0312345, unit: "MMBtu/Mcf" }, vehicle_type: { value: "Van" } },
+          },
+        ],
+        identifier_groups: [{ ...SCHEDULE.identifier_groups[0], values: [{ value: " ", documents: [] }] }],
+      },
+    };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const table = screen.getByRole("table");
+    expect(within(table).getByRole("columnheader", { name: "Service period" })).toBeInTheDocument();
+    const [, row] = within(table).getAllByRole("row");
+    expect(row).toHaveTextContent("2019");
+    expect(row).not.toHaveTextContent("2,019");
+    expect(row).toHaveTextContent("1.0312345 MMBtu/Mcf");
+    expect(row).toHaveTextContent("Edited");
+    expect(row).not.toHaveClass("s1-sch-row--pending");
+    expect(within(table).getByRole("columnheader", { name: "Vehicle type" })).not.toHaveClass("s1-num");
+    expect(within(table).getByRole("columnheader", { name: "Model year" })).toHaveClass("s1-num");
+    fireEvent.click(screen.getByRole("button", { name: /Account number/ }));
+    expect(screen.getAllByText(/Not found/).length).toBeGreaterThan(0);
+  });
+
+  it("groups an identifier's documents by value, with Not found, and opens each document", async () => {
+    const props = renderSchedule();
+    const toggle = await screen.findByRole("button", { name: /Meter number/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByText("M-8 · 1 document")).toBeInTheDocument();
+    expect(screen.getByText("Not found · 1 document")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "Open mar.pdf" })[0]);
+    expect(props.onOpenDocument).toHaveBeenCalledWith("mar");
   });
 
   it("opens a month's document when the month is clicked", async () => {
@@ -549,7 +672,7 @@ describe("the supporting schedule", () => {
   it("lists every document of a month that has several", async () => {
     const props = renderSchedule();
     await screen.findByRole("heading", { name: "Kent · Natural gas" });
-    fireEvent.click(screen.getByRole("button", { name: "Mar 2025: open document 1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mar 2025: open mar.pdf" }));
     expect(props.onOpenDocument).toHaveBeenCalledWith("mar");
     fireEvent.click(screen.getByRole("button", { name: "Mar 2025: open jan.pdf" }));
     expect(props.onOpenDocument).toHaveBeenCalledWith("jan");
@@ -567,6 +690,15 @@ describe("the supporting schedule", () => {
     expect(props.onOpenCalculationLine).toHaveBeenCalledWith(KENT.key);
     fireEvent.click(screen.getAllByRole("button", { name: /Back to Evidence|^Evidence$/ })[0]);
     expect(props.onBack).toHaveBeenCalled();
+  });
+
+  it("shows the load error, not an empty schedule, when the v2 fields are missing", async () => {
+    const old: Partial<LineSchedule> = { ...SCHEDULE };
+    delete old.rows;
+    mocks.byPath = { [SCHEDULE_PATH]: old as LineSchedule };
+    renderSchedule();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load this schedule");
+    expect(screen.queryByText("No values have been extracted on this line yet.")).toBeNull();
   });
 
   it("says what went wrong when the schedule does not load", async () => {
