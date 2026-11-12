@@ -400,7 +400,7 @@ function IdentifierItem({ group, onOpenDocument }: { group: IdentifierGroup; onO
       <button className="s1-sch-ids__toggle" type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
         {open ? <ChevronDown aria-hidden /> : <ChevronRight aria-hidden />}
         <span className="s1-sch-ids__label">{group.label}</span>
-        <span className="s1-sch-ids__value">{summary}</span>
+        <span className={`s1-sch-ids__value${summary.length <= 24 ? " s1-sch-ids__value--short" : ""}`}>{summary}</span>
         <span className="s1-sch-ids__n">
           {group.documents_with} of {group.documents_total} documents
         </span>
