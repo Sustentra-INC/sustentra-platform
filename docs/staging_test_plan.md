@@ -110,6 +110,23 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 6. Each call is one `ai_usage` row with feature `routing`; the Methodology review page's
    month spend includes it.
 
+### 5b. Claude reading (needs `AI_SUGGESTIONS_ENABLED=true` and the key)
+
+1. Upload a utility bill the rules read only partly (for example one with no account number
+   label the rules know). In Extraction review the missing value has a card with "Suggested by
+   Claude", the quoted line and its page; the page opens with the box on that line.
+2. The card is "to review": it is not accepted for you. Recalculate before accepting: the value
+   changes no number. Accept it: it is used.
+3. A value the rules read and Claude read differently shows "Claude read a different value
+   here" with Claude's value and quote; the rules' value is still the one on the card.
+4. A long document (more than 5 pages) is read in windows: the run's warnings say how many
+   windows were read and the cost; one above 50 pages says which pages were not read.
+5. Each window is one `ai_usage` row with feature `extraction`. Inline mode reads at most 2
+   windows. "Accept all" skips Claude's readings: the note says "n suggested by Claude need
+   individual review". A multi-record fuel log is not read (warning `multi_record_document`).
+6. Switch AI off and upload the same bill: the cards are exactly as before, with no Claude chips
+   and no `ai_*` warnings.
+
 ## 6. Coverage & requests
 
 1. Missing data points show up as "Inputs missing", with a Request button.

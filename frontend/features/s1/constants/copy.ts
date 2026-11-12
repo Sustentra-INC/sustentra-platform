@@ -18,6 +18,18 @@ export const AI_TYPE = {
     `The rules chose ${rulesType}, but Claude read the first pages as ${claudeType}. The type was not changed.`,
 } as const;
 
+/** Claude's reading of a value (backend services/ai_extraction.py). */
+export const AI_VALUE = {
+  suggested: "Suggested by Claude",
+  suggestedHelp: "Claude read this where the rules found nothing. Check it against the page, then accept or correct it.",
+  conflict: "Claude read two different values here",
+  conflictHelp: "Claude read another value for this field elsewhere in the document. Check the page.",
+  disagrees: "Claude read a different value here",
+  disagreesHelp: "The rules read the value above and kept it. Claude read another: check the page.",
+  readBy: "Read by Claude",
+  needIndividual: (n: number) => `${n} suggested by Claude need individual review`,
+} as const;
+
 export const EXACT_COPY = {
   noEvidenceYet: "No evidence yet",
   noDocumentsMatch: "No documents match this filter",

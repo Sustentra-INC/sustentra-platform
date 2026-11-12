@@ -144,8 +144,9 @@ class DbLedger:
     """``ai_usage`` through the S1 stores' sync engine: one short ``tenant_transaction`` per call,
     in the organization's RLS scope, so no connection is held while Claude answers."""
 
-    def __init__(self, engine: Engine | None = None) -> None:
+    def __init__(self, engine: Engine | None = None, feature: str = FEATURE) -> None:
         self._engine = engine  # None: the app's own sync engine
+        self._feature = feature  # the ai_usage feature the rows are written under
 
     def month_spend_microusd(self, org_id: uuid.UUID) -> int:
         with tenant_transaction(S1Scope.tenant(org_id), self._engine) as conn:
@@ -154,7 +155,7 @@ class DbLedger:
     def record(self, *, org_id: uuid.UUID, engagement_id: uuid.UUID | None, provider: str,
                reply: StructuredReply[Any]) -> None:
         with tenant_transaction(S1Scope.tenant(org_id), self._engine) as conn:
-            ai_usage.record_sync(conn, org_id=org_id, engagement_id=engagement_id, feature=FEATURE,
+            ai_usage.record_sync(conn, org_id=org_id, engagement_id=engagement_id, feature=self._feature,
                                  provider=provider, reply=reply, user_id=None)
 
 

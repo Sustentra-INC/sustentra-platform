@@ -383,6 +383,12 @@ def _proration(start: Any, end: Any, period: tuple[date | None, date | None]) ->
 # =========================================================================================
 # Service
 # =========================================================================================
+def _suggested(item: dict[str, Any]) -> bool:
+    """A value Claude read (flag ai_suggested): the workpaper says so and keeps it out of "values extracted"."""
+
+    return "ai_suggested" in (item.get("validation_flags") or [])
+
+
 class EngagementRecalculationService:
     def __init__(self, upload_service: Any, pipeline_service: Any, review_service: Any,
                  reference: EmissionFactorReference | None = None) -> None:
@@ -419,7 +425,8 @@ class EngagementRecalculationService:
                 "document_id": document_id, "file_name": document.get("file_name"),
                 "uploaded_at": document.get("uploaded_at"), "uploaded_by": document.get("uploaded_by"),
                 "canonical_type_id": latest.get("canonical_type_id"),
-                "candidate_count": len(latest.get("items") or []),
+                "candidate_count": sum(1 for i in latest.get("items") or [] if not _suggested(i)),
+                "suggested_count": sum(1 for i in latest.get("items") or [] if _suggested(i)),
             })
             decisions: dict[str, dict] = {}
             for decision in self._reviews.list_by_document(document_id):
@@ -431,7 +438,9 @@ class EngagementRecalculationService:
                     "file_name": document.get("file_name"), "record_index": item.get("record_index"),
                     "field": item.get("display_label") or item.get("field_name"),
                     "extracted": item.get("normalized_value"), "unit": item.get("unit"),
-                    "decision": review.get("decision") or "not reviewed",
+                    "decision": review.get("decision")
+                    or ("Suggested by Claude (not reviewed)" if _suggested(item) else "not reviewed"),
+                    "suggested_by_claude": _suggested(item),
                     "reviewed_value": review.get("reviewed_value"),
                     "reviewed_unit": review.get("reviewed_unit"),
                     "reviewer": review.get("reviewer_id"), "reviewed_at": review.get("reviewed_at"),

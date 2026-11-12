@@ -12,6 +12,12 @@ export interface BackendExtractionCandidateLike {
   unit: string | null;
   confidence?: number | null;
   validation_flags?: string[] | null;
+  /** With the flag ai_disagrees: what Claude read where the rules read another value (read-only). */
+  ai_alternative?: {
+    value: string | number | boolean | null;
+    unit: string | null;
+    source_reference?: { text_snippet?: string | null; page_number?: number | null } | null;
+  } | null;
   source_reference?: {
     text_snippet?: string | null;
     page_number?: number | null;
@@ -46,6 +52,7 @@ export function mapBackendCandidateToExtractedField(
     value,
     unit: candidate.unit,
     valueProperties: mapValidationFlags(candidate.validation_flags),
+    aiAlternative: mapAiAlternative(candidate),
     fieldState: value === null ? "missing_requestable" : "populated",
     snippet: candidate.source_reference?.text_snippet ?? null,
     snippetContext: candidate.source_reference?.text_snippet ?? null,
@@ -103,8 +110,27 @@ export function decodeReviewCandidateToken(token: string): BackendExtractionCand
   }
 }
 
+function mapAiAlternative(candidate: BackendExtractionCandidateLike): ExtractedField["aiAlternative"] {
+  const alt = candidate.ai_alternative;
+  if (!alt || !(candidate.validation_flags ?? []).includes("ai_disagrees")) return undefined;
+  return {
+    value: alt.value === null || alt.value === undefined ? null : String(alt.value),
+    unit: alt.unit ?? null,
+    quote: alt.source_reference?.text_snippet ?? null,
+    page: typeof alt.source_reference?.page_number === "number" ? alt.source_reference.page_number : null,
+  };
+}
+
 function mapValidationFlags(flags?: string[] | null): ValueProperty[] {
-  const allowed: ValueProperty[] = ["estimated_read", "unit_missing", "unit_ambiguous", "format_mismatch"];
+  const allowed: ValueProperty[] = [
+    "estimated_read",
+    "unit_missing",
+    "unit_ambiguous",
+    "format_mismatch",
+    "ai_suggested",
+    "ai_disagrees",
+    "ai_conflict",
+  ];
   return (flags ?? []).filter((flag): flag is ValueProperty =>
     allowed.includes(flag as ValueProperty)
   );

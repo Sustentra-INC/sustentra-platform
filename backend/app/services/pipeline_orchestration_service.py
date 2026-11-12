@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, cast
@@ -17,6 +18,7 @@ from backend.app.domain.pipeline import (
 )
 from backend.app.repositories import s1_stores
 from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
+from backend.app.services.ai_extraction import AiExtraction
 from backend.app.services.ai_routing import AiRouting, RoutingResult
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
 from backend.app.services.classification_service import ClassificationService
@@ -100,9 +102,12 @@ class PipelineOrchestrationService:
         clock: Callable[[], str] | None = None,
         id_factory: Callable[[str, str], str] | None = None,
         ai_routing: Any | None = None,
+        ai_extraction: Any | None = None,
     ) -> None:
         # Claude routing (system 1): a no-op unless AI_SUGGESTIONS_ENABLED and the gate allow it.
         self._ai_routing = ai_routing or AiRouting()
+        # Claude reading (system 2): fills what the rule extractors missed; a no-op unless the gate allows it.
+        self._ai_extraction = ai_extraction or AiExtraction()
         self._parser_service = parser_service or ParserService()
         self._classification_service = classification_service or ClassificationService()
 
@@ -175,6 +180,7 @@ class PipelineOrchestrationService:
         resolved_pipeline_run_id = self._id_factory("pipeline", resolved_evidence_id)
         resolved_file_name = file_name or path.name
 
+        started = time.monotonic()
         created_at = self._clock()
         stage_statuses = PipelineStageStatuses()
         warnings: list[str] = []
@@ -532,6 +538,22 @@ class PipelineOrchestrationService:
                     stage_statuses.candidate_generation = "skipped"
                     overall_status = "partial"
                     warnings.append(halt_reason["message"])
+                else:
+                    assist = self._ai_extraction.assist(
+                        parser_output=parser_output,
+                        extraction_result=extraction_result,
+                        extraction_targets=extraction_targets,
+                        canonical_type_id=canonical_type_id,
+                        file_name=resolved_file_name,
+                        org_id=org_id,
+                        engagement_id=engagement_id,
+                        started=started,
+                        gap_targets=lambda: self._get_target_service().get_targets_for_canonical_type(
+                            canonical_type_id, include_deprecated=include_deprecated, include_ai_only=True
+                        ),
+                    )
+                    extraction_result = assist.result
+                    warnings.extend(assist.warnings)
             else:
                 stage_statuses.candidate_generation = "skipped"
                 overall_status = "partial"

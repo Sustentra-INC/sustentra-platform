@@ -6,6 +6,8 @@ import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, typ
 import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import type { EngagementConfig, EvidenceItem } from "../types";
 import { AiTypeNote } from "./AiTypeNote";
+import { AiValueNote } from "./AiValueNote";
+import { AI_VALUE } from "../constants/copy";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
 import type { Ask } from "../types/requests";
 import { andThen, useStillOpen, type MaybePromise } from "../requests/maybePromise";
@@ -318,7 +320,7 @@ export function ExtractionReview({
   function acceptAll(documentId: string) {
     // Values not found on the document need the reviewer to enter them; they are never "accepted".
     const pending = items.filter(
-      (x) => x.documentId === documentId && x.reviewState === "to_review" && !x.withdrawn && !x.missing
+      (x) => x.documentId === documentId && x.reviewState === "to_review" && !x.withdrawn && !x.missing && !needsOwnAccept(x)
     );
     if (pending.length === 0) return;
     const now = new Date().toISOString();
@@ -669,13 +671,21 @@ export function ExtractionReview({
                     {(() => {
                       const docId = group.values[0]?.documentId;
                       // Counted by card, like the list: one reading is one accept.
-                      const left = readings(
-                        items.filter((x) => x.documentId === docId && x.reviewState === "to_review" && !x.withdrawn && !x.missing)
-                      ).length;
-                      return left > 1 && docId ? (
-                        <button className="s1-button s1-button--compact s1-xr-acceptall" type="button" onClick={() => acceptAll(docId)}>
-                          Accept all {left}
-                        </button>
+                      const open = items.filter(
+                        (x) => x.documentId === docId && x.reviewState === "to_review" && !x.withdrawn && !x.missing
+                      );
+                      const left = readings(open.filter((x) => !needsOwnAccept(x))).length;
+                      // Claude's readings (and both sides of a conflict) are accepted one by one, against the page.
+                      const skipped = readings(open.filter(needsOwnAccept)).length;
+                      return docId ? (
+                        <>
+                          {left > 1 ? (
+                            <button className="s1-button s1-button--compact s1-xr-acceptall" type="button" onClick={() => acceptAll(docId)}>
+                              Accept all {left}
+                            </button>
+                          ) : null}
+                          {skipped > 0 ? <span className="s1-muted">{AI_VALUE.needIndividual(skipped)}</span> : null}
+                        </>
                       ) : null;
                     })()}
                   </div>
@@ -934,6 +944,7 @@ function ValueCard({
           </span>
         ) : null}
       </div>
+      <AiValueNote value={v} />
       <div className="s1-xr-card__scopes">
         {scopeChips(vs).map((chip) => (
           <span key={chip.label} className={`s1-xr-scope s1-xr-scope--${chip.scope}`}>
@@ -956,7 +967,7 @@ function ValueCard({
                   </span>
                 )}
                 <span className="s1-xr-rec__act">
-                  {r.kind === "machine" ? `System read · ${v.documentType}, page ${v.page}` : `${r.actor} · ${recordAction(r, askById)}`}
+                  {r.kind === "machine" ? `${v.ai?.suggested ? AI_VALUE.readBy : "System read"} · ${v.documentType}, page ${v.page}` : `${r.actor} · ${recordAction(r, askById)}`}
                 </span>
                 {r.reason ? <span className="s1-muted"> · {r.reason}</span> : null}
                 <span className="s1-muted s1-xr-rec__at">{formatTime(r.at)}</span>
@@ -1046,6 +1057,11 @@ function pageMarks(items: ReviewValue[], documentId: string): PageMark[] {
 }
 
 /** What a content view (workbook, CSV, Word) needs to select values from the file. */
+/** A value Claude read (or one of two it read for a field) is never swept in by "Accept all". */
+function needsOwnAccept(v: ReviewValue): boolean {
+  return Boolean(v.ai?.suggested || v.ai?.conflict);
+}
+
 export interface SourcePick {
   selectedId: string;
   onPickAmong: (ids: string[]) => void;

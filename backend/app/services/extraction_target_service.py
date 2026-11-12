@@ -12,7 +12,7 @@ only configuration/target metadata, never extracted values.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from backend.app.reference.extraction_config_loader import (
     ExtractionConfig,
@@ -71,12 +71,16 @@ class ExtractionTargetService:
         canonical_type_id: str,
         include_optional: bool = True,
         include_deprecated: bool = False,
+        include_ai_only: bool = False,
     ) -> list[dict]:
-        """Return ordered target dicts for a single canonical type."""
+        """Return ordered target dicts for a single canonical type. ``ai_only`` targets (known-gap
+        fields only Claude reads) are left out unless asked for, so rule extraction never sees them."""
 
         matches = self._by_canonical_type.get(canonical_type_id, [])
         selected: list[ExtractionConfig] = []
         for config in matches:
+            if config.ai_only and not include_ai_only:
+                continue
             if not include_deprecated and config.population_status in _EXCLUDED_BY_DEFAULT_POPULATION:
                 continue
             if not include_optional and config.required_status == "optional":
@@ -153,9 +157,11 @@ class ExtractionTargetService:
 
     @staticmethod
     def _to_target(config: ExtractionConfig) -> dict:
-        target = {
+        target: dict[str, Any] = {
             "target_id": f"target::{config.canonical_type_id}::{config.field_id}",
         }
         for field in _TARGET_FIELDS:
             target[field] = getattr(config, field)
+        if config.ai_only:
+            target["ai_only"] = True
         return target
