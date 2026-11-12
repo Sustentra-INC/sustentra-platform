@@ -25,6 +25,7 @@ describe("Claude's type suggestion", () => {
     const html = renderToStaticMarkup(<AiTypeNote item={item} />);
     expect(html).toContain("Type suggested by Claude, please confirm");
     expect(html).toContain("Refrigerant charge log");
+    expect(html).not.toMatch(/CT-/);
   });
 
   it("says in words that Claude disagreed, and leaves the type as the rules set it", () => {
@@ -34,7 +35,10 @@ describe("Claude's type suggestion", () => {
       ai_routing: { ...routing, used: false, disagrees: true },
     });
     expect(item.typeReviewBand).toBe("auto_accepted");
-    expect(renderToStaticMarkup(<AiTypeNote item={item} />)).toContain("The type was not changed");
+    const html = renderToStaticMarkup(<AiTypeNote item={item} />);
+    expect(html).toContain("The type was not changed");
+    expect(html).toContain("Refrigerant service record");
+    expect(html).not.toMatch(/CT-/);
   });
 
   it("shows nothing for a document Claude did not read", () => {

@@ -93,7 +93,8 @@ export function mapBackendDocumentToEvidenceItem(
           aiType: {
             quote: routing.quote,
             page: routing.page_number ?? null,
-            typeId: routing.canonical_type_id,
+            typeName:
+              resolveCanonicalTypeDisplayName({ canonical_type_id: routing.canonical_type_id }) ?? "another type",
             used: routing.used,
             disagrees: Boolean(routing.disagrees),
           },

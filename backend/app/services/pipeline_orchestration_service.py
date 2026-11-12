@@ -956,7 +956,7 @@ class PipelineOrchestrationService:
 
     @staticmethod
     def _routing_warnings(result: RoutingResult) -> list[str]:
-        if result.status == "unavailable" and result.warning:
+        if result.status in ("unavailable", "off") and result.warning:
             return [result.warning]
         if result.status == "ignored":
             return [f"ai_routing_ignored: {result.ignored_reason}"]
