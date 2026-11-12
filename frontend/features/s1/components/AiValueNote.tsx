@@ -9,7 +9,7 @@ import { StateIndicator } from "./StateIndicator";
  * pre-accepted. Where the rules read a value and Claude read another, the card says so with
  * Claude's value and quote. The chips are the existing state chips.
  */
-export function AiValueNote({ value }: { value: Pick<ReviewValue, "ai" | "snippet" | "page" | "reviewState"> }) {
+export function AiValueNote({ value }: { value: Pick<ReviewValue, "ai" | "snippet" | "page" | "reviewState" | "sourceKind"> }) {
   const ai = value.ai;
   if (!ai) return null;
   const suggested = ai.suggested && value.reviewState === "to_review";
@@ -26,7 +26,7 @@ export function AiValueNote({ value }: { value: Pick<ReviewValue, "ai" | "snippe
           />
           {value.snippet ? (
             <div>
-              “{value.snippet}” · page {value.page}
+              “{value.snippet}”{value.sourceKind === "pdf" || value.sourceKind === "image" ? ` · page ${value.page}` : ""}
             </div>
           ) : null}
         </>

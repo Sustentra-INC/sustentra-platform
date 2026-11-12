@@ -123,6 +123,8 @@ Claude yet, and the feature is off everywhere.
 | `S1_AI_ROUTING_SHADOW` | `false` | Claude routing also reads documents the rules placed confidently, and may only add the warning `ai_type_disagrees`. One call per document; needs `AI_SUGGESTIONS_ENABLED`. |
 | `AI_WINDOW_PAGES` | `5` | Claude reading: pages per window (one page of overlap between windows). |
 | `AI_MAX_WINDOWS` | `10` | Claude reading: windows per document; the pages left out are the warning `ai_pages_skipped`. |
+| `AI_INLINE_MAX_WINDOWS` | `2` | Claude reading in inline mode (inside the upload request): at most this many windows. |
+| `AI_INLINE_BUDGET_SECONDS` | `60` | Inline mode: no window starts after this many seconds. |
 | `AI_MONTHLY_CAP_USD` | `25` | Per-organization monthly cap (UTC calendar month; enforced before each call against the `ai_usage` ledger, which records every call; used by Methodology review prefill). |
 
 ### Claude routing (document type)
@@ -175,8 +177,12 @@ only suggests.
   calculation, never planned for the rule extractors: `get_targets_for_canonical_type` leaves
   them out unless `include_ai_only=True`). When a call is made anyway, the rule-read
   document-level fields are included as read-only cross-checks. Candidates of a layout
-  extractor's records (`record_index`) are not filled and no record is created. Nothing is asked
-  when nothing is missing and the type has no known-gap field.
+  extractor's records: a document with exactly one record is filled inside that record (the new
+  candidate takes its `record_index`); a document with several records is not read at all and is
+  counted as dropped `multi_record_document`. No record is ever created. Nothing is asked when
+  nothing is missing and the type has no known-gap field. With AI on, every document of a type
+  with a known-gap field (fuel, mobile fuel, electricity, thermal) is read in full, up to the
+  window limit.
 - **Verify.** `ai_locator.locate` (quote on the cited parser line, value printed in the quote as
   a whole token), the value must be a bare number for numeric fields, and the unit must be in
   the field's allowed list (for `activity_unit`, the value is the unit). Dropped and counted by
@@ -195,6 +201,18 @@ only suggests.
   neither the recalculation, the evidence tree nor the Coverage page can read it until a
   reviewer accepts or corrects it (an accept records the candidate's value as the reviewed
   value, as for any value).
+- **Time.** Queued mode: windows as above, none starts after 80% of `S1_READER_MAX_RUN_SECONDS`.
+  Inline mode: at most `AI_INLINE_MAX_WINDOWS` (2) windows, none after `AI_INLINE_BUDGET_SECONDS`
+  (60 s). In both, a window starts only if one call's worst case (`REQUEST_TIMEOUT_S` x
+  (`MAX_RETRIES` + 1) = 180 s) still ends before `S1_READER_MAX_RUN_SECONDS`; otherwise
+  `ai_time_budget`. A reader run that overruns is killed and retried, and the retry reads (and
+  pays for) the windows again; accepted for now.
+- **Conflicts and the calculation.** When several candidates share a field (`ai_conflict`), the
+  one with an accepted or edited decision counts, so a rejected sibling never hides an accepted
+  value; two accepted with different values leave the field unreviewed.
+- **Workpaper.** The "Reviewed values" sheet labels an unreviewed Claude reading "Suggested by
+  Claude (not reviewed)"; the Evidence sheet's "Values extracted" leaves them out and, when Claude
+  read anything, shows them in a "Suggested by Claude" column.
 - **Gate, ledger, warnings.** As routing: `AI_SUGGESTIONS_ENABLED`, a client, `cap_reached`
   (checked before each window against the month's spend plus what this run has spent). One
   `ai_usage` row per call, feature `extraction`, no user; a call that raises has no row. Any

@@ -27,6 +27,7 @@ export const AI_VALUE = {
   disagrees: "Claude read a different value here",
   disagreesHelp: "The rules read the value above and kept it. Claude read another: check the page.",
   readBy: "Read by Claude",
+  needIndividual: (n: number) => `${n} suggested by Claude need individual review`,
 } as const;
 
 export const EXACT_COPY = {

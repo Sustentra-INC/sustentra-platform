@@ -52,8 +52,12 @@ BILL = [
 
 
 def settings(**over: Any) -> Settings:
+    """Queued mode by default (the brief's windows and budget); ``s1_processing="inline"`` for the inline limits."""
+
+    mode = over.pop("s1_processing", "queued")
     values: dict[str, Any] = {"ai_suggestions_enabled": True, "ai_monthly_cap_usd": 1.0, **over}
-    return Settings(environment="test", git_sha="t", ALLOWED_ORIGINS="https://app.sustentra.test", **values)  # type: ignore[call-arg]
+    built = Settings(environment="test", git_sha="t", ALLOWED_ORIGINS="https://app.sustentra.test", **values)  # type: ignore[call-arg]
+    return built.model_copy(update={"s1_processing": mode})  # skips the queued-needs-postgres check
 
 
 def parsed(lines: list[tuple[int, str]] = BILL) -> dict[str, Any]:
@@ -299,19 +303,44 @@ def test_conflicting_values_from_different_windows_are_kept_as_two_flagged_candi
 
 def test_the_run_stops_early_at_eighty_percent_of_the_reader_time() -> None:
     now = [0.0]
-    claude = FakeClaude([], on_call=lambda index: now.__setitem__(0, 49.0))  # the first window takes 49 s
+    claude = FakeClaude([], on_call=lambda index: now.__setitem__(0, 801.0))  # the first window takes 801 s
     outcome, ledger = assist(claude, [candidate("account_number")], clock=lambda: now[0], started=0.0,
-                             s1_reader_max_run_seconds=60, ai_window_pages=1)
-    assert len(claude.calls) == 1 and len(ledger.rows) == 1  # 80% of 60 s is 48 s
+                             s1_reader_max_run_seconds=1000, ai_window_pages=1)
+    assert len(claude.calls) == 1 and len(ledger.rows) == 1  # 80% of 1000 s is 800 s
     stop = next(w for w in outcome.warnings if w.startswith("ai_time_budget"))
     assert "stopped after 1 of 3 windows" in stop and "pages 2-3 not read" in stop
 
 
 def test_the_budget_counts_from_the_start_of_the_run() -> None:
     claude = FakeClaude([])
-    outcome, _ = assist(claude, [candidate("account_number")], clock=lambda: 100.0, started=0.0,
-                        s1_reader_max_run_seconds=60)
+    outcome, _ = assist(claude, [candidate("account_number")], clock=lambda: 1000.0, started=0.0,
+                        s1_reader_max_run_seconds=1200)
     assert claude.calls == [] and any(w.startswith("ai_time_budget") for w in outcome.warnings)
+
+
+def test_a_window_starts_only_if_a_calls_worst_case_still_ends_in_time() -> None:
+    """One call can take a timeout and a retry (180 s): at 10 s with 100 s left, no window starts."""
+    assert ai_extraction.CALL_WORST_CASE_S == 180
+    claude = FakeClaude([])
+    outcome, ledger = assist(claude, [candidate("account_number")], clock=lambda: 10.0, started=0.0,
+                             s1_reader_max_run_seconds=100)
+    assert claude.calls == [] and ledger.rows == [] and any(w.startswith("ai_time_budget") for w in outcome.warnings)
+    claude = FakeClaude([])
+    assist(claude, [candidate("account_number")], clock=lambda: 10.0, started=0.0, s1_reader_max_run_seconds=900)
+    assert len(claude.calls) == 1  # 10 + 180 <= 900
+
+
+def test_inline_mode_reads_at_most_two_windows_inside_sixty_seconds() -> None:
+    lines = [(page, f"page {page} text") for page in range(1, 13)]
+    claude = FakeClaude([])
+    outcome, _ = assist(claude, [candidate("account_number")], lines=lines, s1_processing="inline")
+    assert len(claude.calls) == 2 and any(w.startswith("ai_pages_skipped") for w in outcome.warnings)
+    claude = FakeClaude([])
+    outcome, _ = assist(claude, [candidate("account_number")], s1_processing="inline", clock=lambda: 61.0, started=0.0)
+    assert claude.calls == [] and any(w.startswith("ai_time_budget") for w in outcome.warnings)
+    claude = FakeClaude([])  # queued keeps the brief's ten windows
+    assist(claude, [candidate("account_number")], lines=lines, ai_window_pages=1)
+    assert len(claude.calls) == 10
 
 
 # --- the gate -----------------------------------------------------------------------------------
@@ -610,3 +639,91 @@ def test_merged_candidates_still_match_the_candidate_contract() -> None:
     for item in outcome.result["items"]:
         jsonschema.validate(item, schema)
     assert any("ai_alternative" in i for i in outcome.result["items"])
+
+
+# --- records, conflicts, the workpaper ------------------------------------------------------------
+
+def _record_items(store: FakeStore, document_id: str) -> list[dict[str, Any]]:
+    return copy.deepcopy(store.results[document_id][0]["items"])
+
+
+def test_a_multi_record_document_is_not_filled_and_creates_no_record() -> None:
+    store = FakeStore()
+    store.add_document("LOG", "CT-S1-FUELQTY", [_gas(1000), _gas(2000)])  # two records, all reviewed
+    before = _service(store).recalculate(_engagement(), _own)
+    items = _record_items(store, "LOG")
+    assert {i["record_index"] for i in items} == {1, 2}
+    claude = FakeClaude([read("meter_number", "MTR-4471", "Meter Number MTR-4471", "L4")])
+    outcome, ledger = assist(claude, items, gap=[METER], targets=[target("fuel_type", "Fuel type")])
+    assert claude.calls == [] and ledger.rows == []  # nothing is read: no cost either
+    assert outcome.result["items"] == items and outcome.dropped == {"multi_record_document": 1}
+    assert any("dropped 1 (multi_record_document 1)" in w for w in outcome.warnings)
+    store.results["LOG"][0]["items"] = outcome.result["items"]
+    after = _service(store).recalculate(_engagement(), _own)
+    assert after["awaiting_review"] == before["awaiting_review"] == []  # nothing new to review
+    assert after["documents_reviewed"] == before["documents_reviewed"]
+    assert len({i["record_index"] for i in outcome.result["items"]}) == 2  # the record count is unchanged
+
+
+def test_a_document_with_exactly_one_record_is_filled_inside_that_record() -> None:
+    items = [candidate("account_number", record_index=1), candidate("fuel_type", "natural_gas", record_index=1)]
+    claude = FakeClaude([read("account_number", "5521-8890", "Account Number 5521-8890", "L2"),
+                         read("meter_number", "MTR-4471", "Meter Number MTR-4471", "L4")])
+    outcome, _ = assist(claude, items, gap=[METER])
+    added = [i for i in outcome.result["items"] if i["field_name"] == "meter_number"][0]
+    assert added["record_index"] == 1 and added["candidate_id"].endswith("::meter_number::r1")
+    filled = [i for i in outcome.result["items"] if i["field_name"] == "account_number"][0]
+    assert filled["normalized_value"] == "5521-8890"
+    assert {i["record_index"] for i in outcome.result["items"]} == {1}
+
+
+def _conflict_store(base_decision: str, sibling_decision: str | None, base: float = 5000, sibling: float = 6000) -> FakeStore:
+    store = FakeStore()
+    store.add_document("GAS-C", "CT-S1-FUELQTY", [_gas(base)])
+    items = store.results["GAS-C"][0]["items"]
+    quantity = next(i for i in items if i["field_name"] == "activity_quantity")
+    quantity["validation_flags"] = ["ai_suggested", "ai_conflict"]
+    twin = {**quantity, "candidate_id": quantity["candidate_id"] + "::ai2", "normalized_value": sibling}
+    items.append(twin)
+    reviews = [r for r in store.reviews["GAS-C"] if not r["candidate_id"].endswith("activity_quantity")]
+    for item, decision, value in ((quantity, base_decision, base), (twin, sibling_decision, sibling)):
+        if decision:
+            reviews.append({"candidate_id": item["candidate_id"], "decision": decision, "org_id": "org-a",
+                            "reviewed_value": value if decision == "accepted" else None,
+                            "reviewed_unit": "MMBtu" if decision == "accepted" else None})
+    store.reviews["GAS-C"] = reviews
+    return store
+
+
+def test_a_rejected_conflict_sibling_never_hides_an_accepted_value() -> None:
+    result_ = _service(_conflict_store("accepted", "rejected")).recalculate(_engagement(), _own)
+    assert result_["categories"]["stationary_combustion"]["lines"][0]["mass_t"]["CO2"] == pytest.approx(5000 * 53.06 / 1000)
+    result_ = _service(_conflict_store("rejected", "accepted")).recalculate(_engagement(), _own)  # and the other way round
+    assert result_["categories"]["stationary_combustion"]["lines"][0]["mass_t"]["CO2"] == pytest.approx(6000 * 53.06 / 1000)
+
+
+def test_two_accepted_conflicting_values_leave_the_field_unreviewed() -> None:
+    result_ = _service(_conflict_store("accepted", "accepted")).recalculate(_engagement(), _own)
+    assert result_["categories"]["stationary_combustion"] is None
+    assert [(i["document_id"], i["fields"]) for i in result_["awaiting_review"]] == [("GAS-C", ["activity_quantity"])]
+    same = _service(_conflict_store("accepted", "accepted", sibling=5000)).recalculate(_engagement(), _own)
+    assert same["categories"]["stationary_combustion"] is not None  # the same value twice is not a conflict
+
+
+def test_the_workpaper_labels_claudes_unreviewed_readings_and_counts_them_apart() -> None:
+    register = _service(_ai_gas_store(None)).evidence_register("ENG-1", _own)
+    (document,) = register["documents"]
+    assert document["suggested_count"] == 2 and document["candidate_count"] == 4
+    labels = {v["field"]: v["decision"] for v in register["values"]}
+    assert labels["activity_quantity"] == "Suggested by Claude (not reviewed)"
+    assert labels["fuel_type"] == "accepted"
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from backend.app.services.workpaper_export_service import build_workbook
+
+    content = build_workbook(engagement={"name": "E", "client_name": "C", "settings": {}}, recalculation={},
+                             register=register, items=[], exported_by="m@x.test")
+    rows = list(load_workbook(BytesIO(content))["Evidence"].iter_rows(values_only=True))
+    assert tuple(rows[0][-2:]) == ("Values extracted", "Suggested by Claude") and tuple(rows[1][-2:]) == (4, 2)

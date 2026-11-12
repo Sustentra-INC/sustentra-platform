@@ -117,6 +117,11 @@ class Settings(BaseSettings):
     # S1_READER_MAX_RUN_SECONDS. Needs AI_SUGGESTIONS_ENABLED.
     ai_window_pages: int = Field(default=5, ge=1, le=20)
     ai_max_windows: int = Field(default=10, ge=1, le=100)
+    # Inline mode (S1_PROCESSING=inline) reads inside the upload request: at most this many windows,
+    # and no window starts after this many seconds. Queued mode keeps AI_MAX_WINDOWS and 80% of
+    # S1_READER_MAX_RUN_SECONDS.
+    ai_inline_max_windows: int = Field(default=2, ge=1, le=10)
+    ai_inline_budget_seconds: int = Field(default=60, ge=10, le=600)
 
     @field_validator("allowed_origins_csv", "ai_model")
     @classmethod

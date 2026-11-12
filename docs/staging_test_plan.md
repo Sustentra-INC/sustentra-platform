@@ -121,7 +121,9 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
    here" with Claude's value and quote; the rules' value is still the one on the card.
 4. A long document (more than 5 pages) is read in windows: the run's warnings say how many
    windows were read and the cost; one above 50 pages says which pages were not read.
-5. Each window is one `ai_usage` row with feature `extraction`.
+5. Each window is one `ai_usage` row with feature `extraction`. Inline mode reads at most 2
+   windows. "Accept all" skips Claude's readings: the note says "n suggested by Claude need
+   individual review". A multi-record fuel log is not read (warning `multi_record_document`).
 6. Switch AI off and upload the same bill: the cards are exactly as before, with no Claude chips
    and no `ai_*` warnings.
 

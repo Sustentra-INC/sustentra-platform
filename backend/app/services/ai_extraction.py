@@ -49,7 +49,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, create_model
 
-from backend.app.adapters.llm.claude import ClaudeClient
+from backend.app.adapters.llm.claude import MAX_RETRIES, REQUEST_TIMEOUT_S, ClaudeClient
 from backend.app.core.config import Settings, get_settings
 from backend.app.services import ai_usage
 from backend.app.services.ai_locator import (
@@ -73,6 +73,9 @@ MAX_WINDOW_LINES = 1_500
 MAX_WINDOW_CHARS = 150_000
 UNPAGED_PART_LINES = 100  # a workbook or CSV has no pages: its lines are cut into parts of this size
 BUDGET_FRACTION = 0.8
+# The longest one call can take (a timeout, then one retry): a window starts only if it can end in time.
+CALL_WORST_CASE_S = REQUEST_TIMEOUT_S * (MAX_RETRIES + 1)
+MULTI_RECORD = "multi_record_document"
 MAX_CONFIDENCE = 0.6
 NUMERIC_TYPES = {"number", "integer", "quantity", "percentage", "currency"}
 
@@ -148,18 +151,25 @@ Fields to read
 """
 
 
+def records_of(items: Sequence[Mapping[str, Any]]) -> list[int]:
+    """The record numbers of a layout extractor's candidates (empty: a single-record document)."""
+
+    return sorted({int(i["record_index"]) for i in items if i.get("record_index") is not None})
+
+
 def ask_fields(items: Sequence[Mapping[str, Any]], targets: Sequence[Mapping[str, Any]],
-               gap_targets: Sequence[Mapping[str, Any]]) -> list[AskField]:
+               gap_targets: Sequence[Mapping[str, Any]], record: int | None = None) -> list[AskField]:
     """The fields to ask for, or none when there is nothing missing and no known-gap field to add.
 
-    Document-level candidates only: a candidate of a record (``record_index``) is the layout
-    extractor's and no new record is created here. The rule-read document-level fields are
-    included as ``check`` fields only when a call is made anyway."""
+    Only the candidates of ``record`` (None: the document's own) are looked at: a document with
+    several records is not filled at all (the caller drops it as ``multi_record_document``), and no
+    record is ever created. The rule-read fields are included as ``check`` fields only when a call
+    is made anyway."""
 
     by_field = {str(t.get("field_id")): t for t in targets}
     document_level: dict[str, Mapping[str, Any]] = {}
     for item in items:
-        if item.get("record_index") is None:
+        if item.get("record_index") == record:
             document_level.setdefault(str(item.get("field_name")), item)
     asked: list[AskField] = []
     checks: list[AskField] = []
@@ -371,7 +381,7 @@ def _candidate_id(base: str, extra: int) -> str:
 
 
 def merge(extraction_result: Mapping[str, Any], found: Mapping[str, list[Verified]],
-          by_name: Mapping[str, AskField]) -> tuple[dict[str, Any], Counter[str]]:
+          by_name: Mapping[str, AskField], record: int | None = None) -> tuple[dict[str, Any], Counter[str]]:
     """The extraction result with the verified values merged in (the input is not modified), and a
     count of what was done: suggested, disagrees, conflicts."""
 
@@ -389,7 +399,7 @@ def merge(extraction_result: Mapping[str, Any], found: Mapping[str, list[Verifie
                    same_value(value.normalized, d.normalized, value.unit, d.unit) for d in distinct):
                 continue
             distinct.append(value)
-        existing = next((i for i in items if i.get("field_name") == name and i.get("record_index") is None), None)
+        existing = next((i for i in items if i.get("field_name") == name and i.get("record_index") == record), None)
         if field_.role == "check":
             assert existing is not None
             if not any(same_value(existing.get("normalized_value"), d.normalized, existing.get("unit"), d.unit)
@@ -408,9 +418,13 @@ def merge(extraction_result: Mapping[str, Any], found: Mapping[str, list[Verifie
                 candidate["validation_flags"] = [f for f in candidate.get("validation_flags", [])
                                                  if f != "field_not_found"] + flags
             else:
-                candidate = {"candidate_id": _candidate_id(f"candidate::{evidence_id}::{document_id}::{name}", index),
+                suffix = "" if record is None else f"::r{record}"
+                candidate = {"candidate_id": _candidate_id(f"candidate::{evidence_id}::{document_id}::{name}{suffix}",
+                                                           index),
                              "evidence_id": evidence_id, "document_id": document_id, "field_name": name,
                              "display_label": field_.label, "validation_flags": flags}
+                if record is not None:
+                    candidate["record_index"] = record
                 appended.append(candidate)
             candidate.update(raw_value=value.raw, normalized_value=value.normalized, unit=value.unit,
                              confidence=value.confidence, source_reference=value.source_reference)
@@ -476,7 +490,19 @@ class AiExtraction:
         if client is None or not lines:
             return AssistOutcome(extraction_result)
         items: list[dict[str, Any]] = list(extraction_result.get("items") or [])
-        asked = ask_fields(items, targets, [t for t in gap_targets() if t.get("ai_only")])
+        gaps = [t for t in gap_targets() if t.get("ai_only")]
+        records = records_of(items)
+        if len(records) > 1:  # several records: no document-level field is filled and no record is created
+            skipped_fields = [f for f in ask_fields([{**i, "record_index": None} for i in items], targets, gaps)
+                              if f.role != "check"]
+            if not skipped_fields:
+                return AssistOutcome(extraction_result)
+            n = len(skipped_fields)
+            logger.info("ai extraction: not read, records=%d dropped=%d", len(records), n)
+            return AssistOutcome(extraction_result, [_summary(Counter(), Counter({MULTI_RECORD: n}), 0, 0, 0, 0)],
+                                 dropped={MULTI_RECORD: n})
+        record = records[0] if records else None
+        asked = ask_fields(items, targets, gaps, record)
         if not asked:
             return AssistOutcome(extraction_result)
         ledger = self._ledger or DbLedger(feature=FEATURE)
@@ -486,11 +512,13 @@ class AiExtraction:
                                                      "reached, so the values were not read by Claude."])
 
         units = page_units(lines)
-        windows, skipped = make_windows(units, settings.ai_window_pages, settings.ai_max_windows)
+        inline = settings.s1_processing == "inline"
+        max_windows = min(settings.ai_max_windows, settings.ai_inline_max_windows) if inline else settings.ai_max_windows
+        windows, skipped = make_windows(units, settings.ai_window_pages, max_windows)
         warnings: list[str] = []
         if skipped:
             warnings.append(f"ai_pages_skipped: {describe(skipped)} were not read by Claude "
-                            f"(at most {settings.ai_max_windows} windows).")
+                            f"(at most {max_windows} windows).")
         by_name = {f.name: f for f in asked}
         system, output_type = system_prompt(asked), reading_output(tuple(by_name))
         header = document_header(canonical_type_id, file_name, items)
@@ -501,12 +529,17 @@ class AiExtraction:
             parser = confidences.get(line.block_id)
             return MAX_CONFIDENCE if parser is None else min(MAX_CONFIDENCE, float(parser))
 
-        deadline = started + BUDGET_FRACTION * settings.s1_reader_max_run_seconds
+        # No window starts after ``stop_starting`` (inline: a short budget inside the request; queued: 80% of
+        # the reader's run), and none starts unless a call's worst case still ends before ``hard_limit``.
+        hard_limit = started + settings.s1_reader_max_run_seconds
+        stop_starting = started + (settings.ai_inline_budget_seconds if inline
+                                   else BUDGET_FRACTION * settings.s1_reader_max_run_seconds)
         found: dict[str, list[Verified]] = {}
         dropped: Counter[str] = Counter()
         cost = cut = read = 0
         for index, window in enumerate(windows, start=1):
-            if self._clock() >= deadline:
+            now = self._clock()
+            if now >= stop_starting or now + CALL_WORST_CASE_S > hard_limit:
                 left = [u for w in windows[index - 1:] for u in w]
                 warnings.append(f"ai_time_budget: stopped after {read} of {len(windows)} windows; "
                                 f"{describe(_not_read(left, windows[:index - 1]))} not read.")
@@ -544,7 +577,7 @@ class AiExtraction:
                 else:
                     found.setdefault(verdict.field.name, []).append(verdict)
 
-        result, counts = merge(extraction_result, found, by_name) if found else (extraction_result, Counter())
+        result, counts = merge(extraction_result, found, by_name, record) if found else (extraction_result, Counter())
         if read:
             warnings.append(_summary(counts, dropped, cost, read, len(windows), cut))
         logger.info("ai extraction: suggested=%d disagrees=%d conflicts=%d dropped=%d windows=%d cost_microusd=%d",

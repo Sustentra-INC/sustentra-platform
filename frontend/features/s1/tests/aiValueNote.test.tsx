@@ -5,6 +5,7 @@ import { mapBackendCandidateToExtractedField, type BackendExtractionCandidateLik
 import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
 import { AiValueNote } from "../components/AiValueNote";
 import { STATE_ROLE_BY_PAIR } from "../constants/stateIndicators";
+import type { EvidenceItem } from "../types";
 
 const candidate = (over: Partial<BackendExtractionCandidateLike>): BackendExtractionCandidateLike => ({
   candidate_id: "candidate::EV-1::DOC-1::account_number",
@@ -21,8 +22,9 @@ const candidate = (over: Partial<BackendExtractionCandidateLike>): BackendExtrac
   ...over,
 });
 
+const pdf = { documentId: "DOC-1", filename: "bill.pdf", format: "pdf" } as unknown as EvidenceItem;
 const cardOf = (c: BackendExtractionCandidateLike) =>
-  reviewValuesFromFields([mapBackendCandidateToExtractedField(c, "CT-S2-ELEC")], [])[0];
+  reviewValuesFromFields([mapBackendCandidateToExtractedField(c, "CT-S2-ELEC")], [pdf])[0];
 
 describe("Claude's readings on the review cards", () => {
   it("maps the three flags and never pre-accepts a suggested value", () => {
@@ -73,6 +75,11 @@ describe("Claude's readings on the review cards", () => {
     expect(html).toContain("Supplier Meridian Power &amp; Light");
     expect(html).toContain("page 1");
     expect(html).not.toContain("Suggested by Claude");
+  });
+
+  it("names no page for a workbook or CSV reading", () => {
+    const card = { ...cardOf(candidate({ validation_flags: ["ai_suggested"] })), sourceKind: "spreadsheet" as const };
+    expect(renderToStaticMarkup(<AiValueNote value={card} />)).not.toContain("· page");
   });
 
   it("shows nothing for a value Claude did not touch, or once the reviewer has accepted it", () => {

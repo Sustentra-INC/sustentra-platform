@@ -131,6 +131,9 @@ class ReviewedField:
     reviewer: str | None = None  # the latest decision's reviewer (login) and time, when there is one
     reviewed_at: Any = None
     history: list[dict[str, Any]] = field(default_factory=list)  # every decision on it, oldest first
+    # Claude read two different values for this field (ai_conflict) and the reviewer accepted both:
+    # the field counts as unreviewed until one of them is rejected.
+    conflict: bool = False
 
 
 @dataclass
@@ -185,7 +188,7 @@ def group_reviewed_records(document: dict[str, Any], canonical_type_id: str, ite
     carrying its latest review decision (and, given ``history``, every decision on it)."""
 
     document_id = str(document.get("document_id"))
-    grouped: dict[int | None, dict[str, ReviewedField]] = {}
+    candidates: dict[int | None, dict[str, list[ReviewedField]]] = {}
     for item in items:
         review = decisions.get(str(item.get("candidate_id")))
         status = str(review.get("decision")) if review else "unreviewed"
@@ -199,15 +202,35 @@ def group_reviewed_records(document: dict[str, Any], canonical_type_id: str, ite
             # Claude's suggestion is not evidence until a reviewer accepts or edits it: nothing
             # downstream (best(), unit_of(), the calculation) may read it before then.
             extracted, unit = None, None
-        grouped.setdefault(item.get("record_index"), {})[str(item.get("field_name"))] = ReviewedField(
+        candidates.setdefault(item.get("record_index"), {}).setdefault(str(item.get("field_name")), []).append(ReviewedField(
             name=str(item.get("field_name")), extracted=extracted, unit=unit,
             status=status, value=value, source_reference=item.get("source_reference"),
             candidate_id=None if item.get("candidate_id") is None else str(item.get("candidate_id")),
             reviewer=review.get("reviewer_id") if review else None,
             reviewed_at=review.get("reviewed_at") if review else None,
-            history=list((history or {}).get(str(item.get("candidate_id")), [])))
+            history=list((history or {}).get(str(item.get("candidate_id")), []))))
+    grouped = {record: {name: _one_field(same) for name, same in fields.items()}
+               for record, fields in candidates.items()}
     return [ReviewedRecord(document_id, document.get("file_name"), canonical_type_id, record_index, fields)
             for record_index, fields in grouped.items()]
+
+
+def _one_field(same: list[ReviewedField]) -> ReviewedField:
+    """The field of several candidates that share it (Claude's ai_conflict gives a field two).
+    The one with an accepted or edited decision counts, so a rejected sibling never hides an
+    accepted value; two reviewed with different values leave the field unreviewed (``conflict``).
+    With none reviewed, the last one stands, as before."""
+
+    if len(same) == 1:
+        return same[0]
+    reviewed = [f for f in same if f.status in REVIEWED]
+    if not reviewed:
+        return same[-1]
+    first = reviewed[0]
+    if all(f.value == first.value and f.unit == first.unit for f in reviewed):
+        return reviewed[-1]
+    return ReviewedField(name=first.name, extracted=None, unit=None, status="unreviewed", value=None,
+                         source_reference=first.source_reference, candidate_id=first.candidate_id, conflict=True)
 
 
 def superseded_ids(decisions: dict[str, dict[str, Any]]) -> set[str]:
