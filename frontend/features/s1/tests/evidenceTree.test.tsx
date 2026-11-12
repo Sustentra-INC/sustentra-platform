@@ -716,6 +716,21 @@ describe("the supporting schedule", () => {
     expect(props.onOpenCalculationLine).not.toHaveBeenCalled();
   });
 
+  it("uses neutral copy for an empty line that is not calculated, and says Rejected for a rejected field", async () => {
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, calculated: false, rows: [], coverage: [], values: [] } };
+    const { unmount } = render(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />);
+    expect(await screen.findByText("No calculation for this line yet.")).toBeInTheDocument();
+    expect(screen.queryByText(/waiting for review/)).toBeNull();
+    unmount();
+    const [first] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: { ...SCHEDULE, calculated: false, rows: [{ ...first, accepted: false, decision: "awaiting_other_fields", rejected_fields: ["Fuel type"], waiting_on: [] }] },
+    };
+    renderSchedule();
+    expect(await screen.findByText("Rejected: Fuel type")).toBeInTheDocument();
+    expect(screen.queryByText(/Waiting on/)).toBeNull();
+  });
+
   it("shows the load error, not an empty schedule, when the v2 fields are missing", async () => {
     const old: Partial<LineSchedule> = { ...SCHEDULE };
     delete old.rows;

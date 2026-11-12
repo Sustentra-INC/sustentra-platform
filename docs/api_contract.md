@@ -200,6 +200,7 @@ for another org's engagement).
                                                      // (accepted is true for accepted and edited, and only when the
                                                      // record is not in the recalculation's awaiting_review)
           waiting_on: [string],                      // labels of those fields ("Fuel type"); [] otherwise
+          rejected_fields: [string],                 // labels of other required fields the reviewer rejected
                                                      // record_key is opaque: use it as an id, never parse it
           date: {start, end, days, label},           // label: "Service period" | "Transaction date" | "Service date"
           activity_quantity: {value, unit},          // the extracted value; the reviewed value once accepted

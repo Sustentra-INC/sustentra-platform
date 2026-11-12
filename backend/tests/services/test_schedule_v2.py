@@ -190,6 +190,16 @@ def test_an_accepted_quantity_with_an_unreviewed_fuel_type_does_not_count() -> N
     assert schedule["calculated"] is False
 
 
+def test_a_rejected_other_field_is_listed_as_rejected_not_waiting() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(212, "2025-03-14", "2025-03-14")])
+    store.reviews["A"] = [{**r, "decision": "rejected", "reviewed_value": None, "reviewed_unit": None}
+                          if r["candidate_id"].endswith(":fuel_type") else r for r in store.reviews["A"]]
+    row = _schedule(store)["rows"][0]
+    assert row["accepted"] is False and row["decision"] == "awaiting_other_fields"
+    assert row["rejected_fields"] == ["Fuel type"] and row["waiting_on"] == []
+
+
 def test_the_coverage_month_follows_the_same_rule() -> None:
     months = {m["month"]: m for m in _schedule(_fuel_unreviewed())["coverage"]}
     assert months["2025-03"]["status"] == "not_reviewed" and months["2025-03"]["quantity"] is None

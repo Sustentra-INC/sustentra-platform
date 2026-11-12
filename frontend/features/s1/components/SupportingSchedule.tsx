@@ -144,7 +144,11 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
             ‹ Back to Evidence
           </button>
           {schedule.calculated === false ? (
-            <p className="s1-muted s1-sch-notcalc">Not calculated yet: values on this line are waiting for review.</p>
+            <p className="s1-muted s1-sch-notcalc">
+              {rows.some((r) => r.waiting_on?.length || r.rejected_fields?.length)
+                ? "Not calculated yet: values on this line are waiting for review."
+                : "No calculation for this line yet."}
+            </p>
           ) : (
             <button className="s1-button s1-button--pri" type="button" onClick={() => onOpenCalculationLine(line.key)}>
               Open calculation line ›
@@ -369,7 +373,12 @@ function rowFlag(r: ScheduleRow): string | null {
     case "not_reviewed":
       return "Not reviewed";
     case "awaiting_other_fields":
-      return `Waiting on: ${r.waiting_on?.join(", ") || "other fields"}`;
+      return [
+        r.rejected_fields?.length ? `Rejected: ${r.rejected_fields.join(", ")}` : "",
+        r.waiting_on?.length || !r.rejected_fields?.length ? `Waiting on: ${r.waiting_on?.join(", ") || "other fields"}` : "",
+      ]
+        .filter(Boolean)
+        .join(" · ");
     default:
       return r.accepted ? null : "Not reviewed";
   }

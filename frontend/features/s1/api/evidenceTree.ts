@@ -135,6 +135,8 @@ export interface ScheduleRow {
   decision?: "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited" | "awaiting_other_fields";
   /** Labels of the record's other fields the recalculation still waits on (decision awaiting_other_fields). */
   waiting_on?: string[];
+  /** Labels of other fields the reviewer rejected, so the record is not calculated. */
+  rejected_fields?: string[];
   /** `days` is counted by the server; the page never works it out. */
   date: { start: string | null; end: string | null; days: number | null; label: string };
   activity_quantity: { value: number | string | null; unit: string | null };

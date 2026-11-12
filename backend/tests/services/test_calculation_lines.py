@@ -475,7 +475,8 @@ def test_schedule_values_and_history_newest_first_with_names() -> None:
     assert values["BILL-A"] | {"candidate_id": None} == {
         "service_period_start": "2025-01-16", "service_period_end": "2025-02-15", "days": 31, "quantity": 310,
         "unit": "MMBtu", "document_id": "BILL-A", "file_name": "BILL-A.pdf", "page": 1, "candidate_id": None,
-        "decided_by": "Ana Reyes", "decided_at": "2025-04-02T10:00:00Z", "decision": "accepted", "waiting_on": []}
+        "decided_by": "Ana Reyes", "decided_at": "2025-04-02T10:00:00Z", "decision": "accepted", "waiting_on": [],
+        "rejected_fields": []}
     assert values["BILL-A"]["candidate_id"] == "BILL-A:1:activity_quantity"
     assert values["BILL-C"]["quantity"] == 150 and values["BILL-C"]["decision"] == "edited"
     assert values["BILL-C"]["decided_by"] == "bo@example.com"  # no name on file: the login
