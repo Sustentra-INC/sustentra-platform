@@ -30,7 +30,7 @@ describe("Claude's readings on the review cards", () => {
       const field = mapBackendCandidateToExtractedField(candidate({ validation_flags: [flag] }), "CT-S2-ELEC");
       expect(field.valueProperties).toContain(flag);
       expect(field.reviewStatus).toBe("unreviewed");
-      expect(STATE_ROLE_BY_PAIR.valueProperty[flag]).toBe("open");
+      expect(STATE_ROLE_BY_PAIR.valueProperty?.[flag]).toBe("open");
     }
     const card = cardOf(candidate({ validation_flags: ["ai_suggested"] }));
     expect(card.reviewState).toBe("to_review"); // needs review
