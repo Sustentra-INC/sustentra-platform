@@ -1,6 +1,8 @@
 /* @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -187,6 +189,23 @@ describe("the Evidence tree", () => {
     expect(screen.getByText("Added by a reviewer")).toBeInTheDocument();
     expect(screen.getByText(/Also in Electricity · Kent/)).toBeInTheDocument();
     expect(screen.getByText("Set aside")).toBeInTheDocument();
+  });
+
+  it("draws no bar segment for a zero count, so an empty row shows no coloured stubs", async () => {
+    render(<Harness />);
+    await screen.findByText("Summary documents and workbook");
+    const bars = Array.from(document.querySelectorAll(".s1-et-bar-track"));
+    expect(bars.length).toBeGreaterThan(0);
+    for (const bar of bars) {
+      for (const seg of Array.from(bar.querySelectorAll(".s1-ws-gr__seg")) as HTMLElement[]) {
+        expect(Number(seg.style.flexGrow)).toBeGreaterThan(0);
+      }
+    }
+    // Purchased energy has 0 accepted values and no issues: only its to-review segment may exist.
+    const energy = screen.getByText("Purchased energy").closest("section") as HTMLElement;
+    expect(energy.querySelector(".s1-et-bar-track .s1-ws-gr__seg--open")).not.toBeNull();
+    expect(energy.querySelector(".s1-et-bar-track .s1-ws-gr__seg--resolved")).toBeNull();
+    expect(energy.querySelector(".s1-et-bar-track .s1-ws-gr__seg--blocking")).toBeNull();
   });
 
   it("opens a document in the extraction review", async () => {
@@ -659,6 +678,16 @@ describe("the supporting schedule", () => {
     expect(screen.getByText("Not found · 1 document")).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: "Open mar.pdf" })[0]);
     expect(props.onOpenDocument).toHaveBeenCalledWith("mar");
+  });
+
+  it("keeps a short identifier summary on one line, so it never breaks mid-word", async () => {
+    renderSchedule();
+    const toggle = await screen.findByRole("button", { name: /Meter number/ });
+    const value = toggle.querySelector(".s1-sch-ids__value") as HTMLElement;
+    expect(value.className).toContain("s1-sch-ids__value--short");
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    expect(css).toMatch(/\.s1-sch-ids__value--short\s*\{[^}]*white-space:\s*nowrap/);
+    expect(css).not.toMatch(/\.s1-sch-ids__value\s*\{[^}]*overflow-wrap:\s*anywhere/);
   });
 
   it("opens a month's document when the month is clicked", async () => {
