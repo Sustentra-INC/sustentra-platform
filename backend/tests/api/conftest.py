@@ -12,10 +12,12 @@ from collections.abc import Callable, Iterator
 
 import pytest
 
+from backend.app.api import document_batches as batches_api
 from backend.app.api import documents as documents_api
 from backend.app.api.engagements import require_open_engagement
 from backend.app.core.auth import CurrentUser, get_current_user
 from backend.app.main import app
+from backend.app.repositories.document_batch_repository import InMemoryDocumentBatchRepository
 from backend.app.repositories.document_repository import InMemoryDocumentRepository
 from backend.app.repositories.document_chunk_repository import InMemoryDocumentChunkRepository
 from backend.app.repositories.processing_run_repository import InMemoryProcessingRunRepository
@@ -126,6 +128,19 @@ def run_queue() -> Iterator[InMemoryProcessingRunRepository]:
         yield queue
     finally:
         documents_api.configure_services(run_repository=original, chunk_repository=original_chunks)
+
+
+@pytest.fixture(autouse=True)
+def document_batches() -> Iterator[InMemoryDocumentBatchRepository]:
+    """Document batches (migration 0019) in memory for every API test."""
+
+    original = batches_api.current_batch_repository()
+    batches = InMemoryDocumentBatchRepository()
+    batches_api.configure_batch_repository(batches)
+    try:
+        yield batches
+    finally:
+        batches_api.configure_batch_repository(original)
 
 
 @pytest.fixture(autouse=True)

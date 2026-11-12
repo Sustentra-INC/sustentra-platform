@@ -1289,6 +1289,19 @@ select:focus-visible,
 @media (max-width: 48rem) { .s1-upq__row { grid-template-columns: minmax(0, 1fr) 6.5rem; } .s1-upq__size, .s1-upq__track { display: none; } }
 .s1-upload-screen__hint { font-size: var(--text-sm); }
 
+/* Upload: one compact table for a batch of files, read as they are processed. */
+.s1-batch { display: flex; flex-direction: column; gap: var(--sp-2); padding: var(--sp-3) var(--sp-4); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); }
+.s1-batch__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-2) var(--sp-4); font-variant-numeric: tabular-nums; }
+.s1-batch__table { width: 100%; border-collapse: collapse; font-size: var(--text-sm); }
+.s1-batch__table th { text-align: left; font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.03em; padding: var(--sp-1) var(--sp-2); }
+.s1-batch__table td { padding: var(--sp-2); border-top: var(--border-hairline); vertical-align: middle; }
+.s1-batch__file { display: flex; flex-direction: column; gap: var(--sp-1); overflow-wrap: anywhere; }
+.s1-batch__file .s1-linklike { text-align: left; color: var(--accent); }
+.s1-batch__note { color: var(--ink-2); }
+.s1-batch__notice { margin: 0; font-size: var(--text-sm); }
+.s1-batch__progress { margin-left: var(--sp-2); }
+.s1-batch__table th.s1-batch__num, .s1-batch__table td.s1-batch__num { text-align: right; font-variant-numeric: tabular-nums; }
+
 /* ---- Setup (screen 0) ---- */
 .s1-setup { display: flex; flex-direction: column; gap: var(--sp-4); }
 .s1-setup-card { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); padding: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-3); }

@@ -79,6 +79,17 @@ range, attempt, status and error code only (`chunks_planned`, `document_chunk_cl
 `chunk_finished`, `document_chunk_done`, `chunks_assembled`, `document_too_long`,
 `document_chunks_requeued`).
 
+## Document batches (migration 0019)
+
+Files dropped together are one batch: `POST /v1/engagements/{id}/document-batches` makes it and uploads
+carry its `batch_id`; `GET .../document-batches/{batch_id}` reports each document's status, chunk
+progress, type, halt sentence and records found, with totals (`api/document_batches.py`, contract in
+`api_contract.md`). `s1_document_batches` (id, org_id, engagement_id, created_by, created_at, label) has
+RLS like the other s1 tables and is never updated or deleted by the app; `s1_documents.batch_id` is a
+nullable filter column that must equal the record's own `batch_id`. The batch table lives in Postgres
+whatever `S1_STORE` is, like the run queue. The view reads the latest run of each document, its chunk
+summary and its pipeline run; it adds no new queue or state of its own.
+
 ## AI suggestions (Claude)
 
 AI suggests a type or values for documents the system cannot read on its own; a person
