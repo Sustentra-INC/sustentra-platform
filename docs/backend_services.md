@@ -55,7 +55,36 @@ Claude yet, and the feature is off everywhere.
 | `AI_MODEL` | `claude-sonnet-5-5` | Claude API model id; on Bedrock the adapter adds `anthropic.`. |
 | `AI_BEDROCK_MODEL_ID` | none | Bedrock only: full model id, sent as given. Unset, the adapter sends `anthropic.` + `AI_MODEL`. Prices stay keyed by `AI_MODEL`. |
 | `AI_EFFORT` | `low` | `low`, `medium` or `high`. |
+| `S1_AI_ROUTING_SHADOW` | `false` | Claude routing also reads documents the rules placed confidently, and may only add the warning `ai_type_disagrees`. One call per document; needs `AI_SUGGESTIONS_ENABLED`. |
 | `AI_MONTHLY_CAP_USD` | `25` | Per-organization monthly cap (UTC calendar month; enforced before each call against the `ai_usage` ledger, which records every call; used by Methodology review prefill). |
+
+### Claude routing (document type)
+
+`services/ai_routing.py`, called by `PipelineOrchestrationService` right after the rule
+classifier. Claude reads pages 1-2 (at most 200 lines and 12,000 characters, from
+`ai_locator.document_lines`) and answers one `structured()` call:
+`{canonical_type_id (the vocabulary's ids + "none"), quote, line, reason_code (title | header_terms | table_headers | other)}`.
+
+- Runs when the classifier status is `unclassified` or `low_confidence` and the content-check
+  accept path did not take the document. A type that has extraction targets is used with
+  `canonical_type_source = "ai"` and `review_required`; the pipeline run carries
+  `ai_routing` (quote, line, page from the parser, reason code). Extraction proceeds; the
+  reviewer confirms or changes the type with the existing control.
+- With `S1_AI_ROUTING_SHADOW` on, a confidently classified document is also read; a
+  different answer only adds the warning `ai_type_disagrees` (both ids) and an `ai_routing`
+  with `used: false`. The type never changes.
+- A reviewer's override wins and Claude is not called.
+- The quote must locate on the parser's lines (`locate_quote`). Otherwise the answer is
+  ignored and counted: warning `ai_routing_ignored: <reason>` (`quote_not_on_document`,
+  `unknown_line`, `ambiguous_quote`, `no_targets`). The page never comes from the model.
+- Gate as prefill: `AI_SUGGESTIONS_ENABLED`, a client from `get_claude()`, and
+  `ai_usage.cap_reached`. Every call that returns a reply is recorded in `ai_usage`
+  (feature `routing`, no user) in its own short transaction after the call; no connection is
+  held while Claude answers. A failed call (network, refusal, bad reply) adds the warning
+  `ai_unavailable` and the run goes on as without AI. AI off: the run is byte-identical.
+- The cap is checked without the per-org advisory lock: documents are read concurrently by
+  several readers, and the lock is released before the call anyway, so it would only drop
+  routing at random. A burst can overshoot the cap by a few calls of well under a cent each.
 
 ### How the key reaches the api container (staging)
 

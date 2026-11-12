@@ -1,6 +1,6 @@
 import type { EvidenceItem } from "../types";
 import { apiPath } from "../../../lib/api";
-import { HALT_REASONS } from "../constants/copy";
+import { AI_TYPE, HALT_REASONS } from "../constants/copy";
 import type { ProcessingRunView } from "../api/processingRuns";
 
 export interface BackendDocumentLike {
@@ -30,9 +30,21 @@ export function mapBackendDocumentToEvidenceItem(
     errors?: string[] | null;
     /** Why the pipeline stopped before reviewable candidates (unreadable / unsupported). */
     halt_reason?: { code?: string | null; message?: string | null } | null;
+    /** "ai" when Claude set the type, which the reviewer confirms. */
+    canonical_type_source?: string | null;
+    /** What Claude cited for the type (present when it set it, or disagreed with the rules). */
+    ai_routing?: {
+      canonical_type_id: string;
+      quote: string;
+      page_number?: number | null;
+      used: boolean;
+      disagrees?: boolean;
+    } | null;
   } | null
 ): EvidenceItem {
   const hasType = Boolean(summary?.canonical_type_id);
+  const routing = summary?.ai_routing ?? null;
+  const aiSetType = hasType && summary?.canonical_type_source === "ai" && routing?.used === true;
   const summaryWarnings = summary?.warnings ?? [];
   const noExtractionTargets =
     summary?.status === "partial" &&
@@ -73,8 +85,19 @@ export function mapBackendDocumentToEvidenceItem(
           })
         : null,
     detectedType: resolveCanonicalTypeDisplayName(summary),
-    typeReviewBand: hasType ? "auto_accepted" : null,
-    typeReviewReason: hasType ? null : null,
+    typeReviewBand: aiSetType ? "needs_review" : hasType ? "auto_accepted" : null,
+    typeReviewReason: aiSetType ? AI_TYPE.suggested : null,
+    ...(routing && (aiSetType || routing.disagrees)
+      ? {
+          aiType: {
+            quote: routing.quote,
+            page: routing.page_number ?? null,
+            typeId: routing.canonical_type_id,
+            used: routing.used,
+            disagrees: Boolean(routing.disagrees),
+          },
+        }
+      : {}),
     facilityState: "unresolved",
     facilityId: null,
     facilityName: null,

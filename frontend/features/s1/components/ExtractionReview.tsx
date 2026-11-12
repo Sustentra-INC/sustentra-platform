@@ -4,7 +4,8 @@ import { Highlighter, Plus } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
-import type { EngagementConfig } from "../types";
+import type { EngagementConfig, EvidenceItem } from "../types";
+import { AiTypeNote } from "./AiTypeNote";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
 import type { Ask } from "../types/requests";
 import { andThen, useStillOpen, type MaybePromise } from "../requests/maybePromise";
@@ -32,6 +33,8 @@ interface ExtractionReviewProps {
   initialDocumentId?: string | null;
   /** The opened document's file name, said when no value was read from it. */
   initialDocumentName?: string;
+  /** The opened document's evidence row: its header says when Claude suggested the type. */
+  typeItem?: EvidenceItem;
   /** Open with this value selected (a link from the assistant). */
   initialValueId?: string;
   /** Facility->type (or entity/not-yet-known) node the clicked row maps to, so
@@ -93,6 +96,7 @@ export function ExtractionReview({
   onValuesChange,
   initialDocumentId,
   initialDocumentName,
+  typeItem,
   initialValueId,
   initialNodeKey,
   onSaveAsk,
@@ -606,6 +610,7 @@ export function ExtractionReview({
                 </button>
               ) : null}
             </div>
+            {typeItem ? <AiTypeNote item={typeItem} /> : null}
             <div className="s1-xr-filters" role="group" aria-label="Show cards by review state">
               {(["to_review", "accepted", "corrected", "requested"] as ValueReviewState[]).map((k) => (
                 <button

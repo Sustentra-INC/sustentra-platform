@@ -10,6 +10,13 @@ export const HALT_REASONS = {
   pipeline: "Processing failed. Retry available.",
 } as const;
 
+/** Claude's reading of a document's type (backend services/ai_routing.py). */
+export const AI_TYPE = {
+  suggested: "Type suggested by Claude, please confirm",
+  disagreesOn: (rulesType: string, claudeType: string) =>
+    `The rules chose ${rulesType}, but Claude read the first pages as ${claudeType}. The type was not changed.`,
+} as const;
+
 export const EXACT_COPY = {
   noEvidenceYet: "No evidence yet",
   noDocumentsMatch: "No documents match this filter",

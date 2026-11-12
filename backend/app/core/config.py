@@ -99,6 +99,10 @@ class Settings(BaseSettings):
     # Per-organization monthly spend cap in USD, checked against the usage ledger (ai_usage) before each call.
     # The Anthropic Console spend limit is the hard ceiling across all organizations.
     ai_monthly_cap_usd: float = Field(default=25.0, ge=0)
+    # Claude routing (services/ai_routing.py): a document the rule classifier places confidently
+    # is also shown to Claude, which may only add the warning ai_type_disagrees, never change the
+    # type. Off by default; it costs one call per document. Needs AI_SUGGESTIONS_ENABLED.
+    s1_ai_routing_shadow: bool = False
 
     @field_validator("allowed_origins_csv", "ai_model")
     @classmethod

@@ -94,6 +94,22 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
    says "Requested" (PR #159). Add to requests has no Raised by field.
 5. Reload: every decision is kept.
 
+### 5a. Claude routing (needs `AI_SUGGESTIONS_ENABLED=true` and the key)
+
+1. Upload a document the rules cannot place (for example a refrigerant top-up log with an
+   unusual title). Evidence shows its type with "Type suggested by Claude, please confirm"
+   and the words Claude cited; Extraction review shows the same line in its header, and
+   extraction ran.
+2. Choose another type in the type control: the suggestion note goes away and the document
+   is read again as that type.
+3. Choose a type before reading (override): Claude is not called (no new `routing` row in
+   `ai_usage`).
+4. With `S1_AI_ROUTING_SHADOW=true`, upload a normal fuel bill: its type is unchanged. If
+   Claude disagrees, the row says so in words.
+5. Switch AI off: the same documents read exactly as before, with no Claude lines.
+6. Each call is one `ai_usage` row with feature `routing`; the Methodology review page's
+   month spend includes it.
+
 ## 6. Coverage & requests
 
 1. Missing data points show up as "Inputs missing", with a Request button.

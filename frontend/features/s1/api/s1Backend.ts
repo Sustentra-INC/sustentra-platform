@@ -21,6 +21,17 @@ export interface PipelineRunSummary {
   warnings?: string[];
   errors?: string[];
   halt_reason?: { code: string; message: string } | null;
+  canonical_type_source?: string | null;
+  ai_routing?: {
+    canonical_type_id: string;
+    quote: string;
+    line: string;
+    reason_code: string;
+    page_number?: number | null;
+    used: boolean;
+    disagrees?: boolean;
+    review_required?: boolean;
+  } | null;
 }
 
 export interface BackendExtractionResult {

@@ -12,7 +12,7 @@ PipelineStageStatus = Literal[
     "partial",
     "failed",
 ]
-CanonicalTypeSource = Literal["classifier", "content_check", "override", "none"]
+CanonicalTypeSource = Literal["classifier", "content_check", "override", "ai", "none"]
 
 
 class PipelineStageStatuses(BaseModel):
@@ -27,6 +27,20 @@ class HaltReason(BaseModel):
 
     code: str  # unreadable_document | ocr_required | password_protected | unsupported_document
     message: str
+
+
+class AiRoutingRecord(BaseModel):
+    """What Claude said about the document's type. ``used``: it set the type (source "ai"),
+    otherwise it only disagreed with the rules (shadow mode) and changed nothing."""
+
+    canonical_type_id: str
+    quote: str
+    line: str
+    reason_code: str
+    page_number: int | None = None
+    used: bool
+    disagrees: bool = False
+    review_required: bool = True
 
 
 class PipelineRun(BaseModel):
@@ -50,6 +64,8 @@ class PipelineRun(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
     halt_reason: HaltReason | None = None
+    # Claude's suggested type, with its quote (services/ai_routing.py). Absent unless Claude was asked.
+    ai_routing: AiRoutingRecord | None = None
     # Owning organization (SEC-001). None = recorded before org scoping; only a
     # provider_admin can see such records until they are claimed (cli claim-s1-data).
     org_id: str | None = None

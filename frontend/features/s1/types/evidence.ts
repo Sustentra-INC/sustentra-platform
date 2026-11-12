@@ -35,6 +35,16 @@ export interface NoteEntry {
   text: string;
 }
 
+export interface AiTypeReading {
+  /** The words Claude cited, printed on the document. */
+  quote: string;
+  page: number | null;
+  /** The type Claude named (its id). */
+  typeId: string;
+  used: boolean;
+  disagrees: boolean;
+}
+
 export interface EvidenceItem {
   documentId: string;
   filename: string;
@@ -51,6 +61,8 @@ export interface EvidenceItem {
   typeReviewReason: string | null;
   /** The reviewer chose or confirmed this type, so it is no longer the machine's guess. */
   typeConfirmed?: boolean;
+  /** Claude's reading of the type: it set the type (`used`, to confirm) or only disagreed with the rules. */
+  aiType?: AiTypeReading;
   facilityState: FacilityState;
   facilityId: string | null;
   facilityName: string | null;
