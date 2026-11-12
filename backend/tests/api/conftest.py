@@ -132,7 +132,7 @@ def run_queue() -> Iterator[InMemoryProcessingRunRepository]:
 
 @pytest.fixture(autouse=True)
 def document_batches() -> Iterator[InMemoryDocumentBatchRepository]:
-    """Document batches (migration 0018) in memory for every API test."""
+    """Document batches (migration 0019) in memory for every API test."""
 
     original = batches_api.current_batch_repository()
     batches = InMemoryDocumentBatchRepository()

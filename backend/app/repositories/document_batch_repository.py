@@ -1,4 +1,4 @@
-"""S1 document batches (migration 0018): files uploaded together share a batch.
+"""S1 document batches (migration 0019): files uploaded together share a batch.
 
 Two implementations with the same interface:
 

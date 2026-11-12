@@ -37,8 +37,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 BACKEND = Path(__file__).resolve().parents[2]
-ORG_A = uuid.UUID("aaaaaaaa-0000-0000-0000-0000000018a1")
-ORG_B = uuid.UUID("bbbbbbbb-0000-0000-0000-0000000018b2")
+ORG_A = uuid.UUID("aaaaaaaa-0000-0000-0000-0000000019a1")
+ORG_B = uuid.UUID("bbbbbbbb-0000-0000-0000-0000000019b2")
 
 
 def admin(sql: str, *args: Any) -> list[Any]:
@@ -132,10 +132,10 @@ def test_the_batch_id_column_must_equal_the_records(engine: Engine) -> None:
               "VALUES ('bad', 'B1', '{\"document_id\": \"bad\", \"batch_id\": \"B2\"}'::jsonb)")
 
 
-def test_0018_down_and_up() -> None:
+def test_0019_down_and_up() -> None:
     try:
         assert admin("SELECT 1 FROM pg_class WHERE relname = 's1_document_batches'")
-        alembic("downgrade", "0017_s1_document_chunks")
+        alembic("downgrade", "0018_s1_document_chunks")
         assert not admin("SELECT 1 FROM pg_class WHERE relname = 's1_document_batches'")
         assert not admin("SELECT 1 FROM information_schema.columns "
                          "WHERE table_name = 's1_documents' AND column_name = 'batch_id'")

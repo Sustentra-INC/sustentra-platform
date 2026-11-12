@@ -8,8 +8,8 @@
   columns of 0013 it must equal the record's own ``batch_id`` (a CHECK), so a query on the column
   and the record the API returns cannot disagree. Documents uploaded before this have none.
 
-Revision ID: 0018_s1_document_batches
-Revises: 0017_s1_document_chunks
+Revision ID: 0019_s1_document_batches
+Revises: 0018_s1_document_chunks
 Create Date: 2026-11-12
 """
 
@@ -21,8 +21,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0018_s1_document_batches"
-down_revision: str | None = "0017_s1_document_chunks"
+revision: str = "0019_s1_document_batches"
+down_revision: str | None = "0018_s1_document_chunks"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

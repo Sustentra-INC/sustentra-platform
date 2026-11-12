@@ -79,7 +79,7 @@ range, attempt, status and error code only (`chunks_planned`, `document_chunk_cl
 `chunk_finished`, `document_chunk_done`, `chunks_assembled`, `document_too_long`,
 `document_chunks_requeued`).
 
-## Document batches (migration 0018)
+## Document batches (migration 0019)
 
 Files dropped together are one batch: `POST /v1/engagements/{id}/document-batches` makes it and uploads
 carry its `batch_id`; `GET .../document-batches/{batch_id}` reports each document's status, chunk

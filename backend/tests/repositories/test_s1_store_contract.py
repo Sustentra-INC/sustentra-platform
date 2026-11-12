@@ -309,5 +309,5 @@ def test_the_filter_columns_match_migration_0013() -> None:
     migration = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(migration)
     expected = {table: columns for table, (columns, _indexes) in migration.TABLES.items()}
-    expected["s1_documents"] = (*expected["s1_documents"], "batch_id")  # added by migration 0018
+    expected["s1_documents"] = (*expected["s1_documents"], "batch_id")  # added by migration 0019
     assert expected == COLUMNS
