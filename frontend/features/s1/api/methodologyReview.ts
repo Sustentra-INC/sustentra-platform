@@ -37,6 +37,8 @@ export interface MethodologySuggestion {
   document_id: string;
   file_name: string;
   source_reference: string | null;
+  /** True when the stored quote was cut at 1,000 characters (it was verified whole). */
+  quote_truncated?: boolean;
   origin: string;
   model: string;
   request_id: string;
@@ -66,7 +68,7 @@ export interface MethodologyRecord {
   }[];
 }
 
-export type AiReasonCode = "off" | "not_configured" | "cap_reached" | "no_documents" | "not_built";
+export type AiReasonCode = "off" | "not_configured" | "cap_reached" | "no_documents";
 
 export interface AiStatus {
   enabled: boolean;

@@ -102,6 +102,13 @@ beforeEach(() => {
 });
 
 describe("Methodology review on real data", () => {
+  it("says so when a stored quote was cut", async () => {
+    const data = fixture() as { fields: { field_id: string; suggestion: Record<string, unknown> }[] };
+    data.fields[0].suggestion.quote_truncated = true;
+    await open(vi.fn(), data);
+    expect(within(row("Consolidation approach")).getByText("(quote shortened)")).toBeTruthy();
+  });
+
   it("renders the API's group headings, then each field with value, suggestion chip, quote, status word and who decided", async () => {
     const { onOpenDocument, onActivity } = await open();
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Organizational boundary", "GWP factors source", "Emission factors source"]);
@@ -240,11 +247,11 @@ describe("Methodology review on real data", () => {
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
     const summary = await screen.findByRole("status");
     await waitFor(() => expect(summary.textContent).toMatch(/4 suggested, 3 dropped/));
-    expect(summary.textContent).toContain("2: Quote not found in the document");
+    expect(summary.textContent).toContain("2: Quote not found in the document, or shorter than 8 characters");
     expect(summary.textContent).toContain("1 field kept your decision");
     expect(summary.textContent).toContain("1: some new reason");
     expect(summary.textContent).toContain("GHG report.pdf (only the start was read)");
-    expect(summary.textContent).toContain("Cost $0.03");
+    expect(summary.textContent).toContain("Cost $0.03 (m)");
     expect(calls()).toContainEqual([`${BASE}/prefill`, expect.objectContaining({ method: "POST" })]);
   });
 
@@ -252,7 +259,7 @@ describe("Methodology review on real data", () => {
     const words: Record<string, string> = {
       empty_value: "No value given",
       unknown_line: "Cited a line that isn't in the document",
-      quote_not_on_document: "Quote not found in the document",
+      quote_not_on_document: "Quote not found in the document, or shorter than 8 characters",
       ambiguous_quote: "Quote appears in more than one place",
       value_not_in_quote: "Value isn't in the quoted text",
       unknown_document: "Cited a document that wasn't read",
@@ -271,10 +278,51 @@ describe("Methodology review on real data", () => {
   });
 
   it.each([
+    "Claude is switched off. An administrator turns it on.",
+    "Claude is not set up for this workspace.",
+    "The monthly limit for Claude is reached.",
+    "Upload the company's GHG inventory report, boundary statement or methodology document first.",
+    "Claude is already reading reports for your organization. Try again in a minute.",
+    "Claude's answer could not be used. Nothing was kept.",
+  ])("shows the 409 sentence as the server words it: %s", async (sentence) => {
+    await open();
+    mock.fail[`POST ${BASE}/prefill`] = new ApiError(409, sentence, null, null);
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(sentence);
+  });
+
+  it.each([
+    "Claude could not be reached. Try again in a moment.",
+    "Claude's suggestions could not be saved. Nothing was kept.",
+  ])("shows the 502 sentence: %s", async (sentence) => {
+    await open();
+    mock.fail[`POST ${BASE}/prefill`] = new ApiError(502, sentence, null, null);
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
+    expect((await screen.findByRole("alert")).textContent).toBe(sentence);
+  });
+
+  it("disables the prefill button while a request is in flight and sends one request", async () => {
+    await open();
+    let finish: (v: unknown) => void = () => {};
+    mock.fail.prefillResult = new Promise((resolve) => (finish = resolve));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    const confirm = screen.getByRole("button", { name: "Read the reports" });
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+    const button = await screen.findByRole("button", { name: "Reading the reports…" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(calls().filter(([p]) => String(p).endsWith("/prefill"))).toHaveLength(1);
+    finish({ suggested: 0, dropped: {}, kept_reviewer_decision: 0, documents_read: [], cost_usd: 0, model: "m" });
+    await waitFor(() => expect((screen.getByRole("button", { name: "Read the client's reports with Claude" }) as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it.each([
     ["off", "Off: an administrator turns it on."],
     ["cap_reached", "Monthly limit reached."],
     ["no_documents", "No report documents yet."],
-    ["not_built", "Suggestions are not built yet."],
+    ["not_configured", "Claude is not set up for this workspace."],
     ["a_code_from_the_future", "Some other sentence."],
   ])("states the AI status with the server's sentence and disables the button: %s", async (code, reason) => {
     await open(vi.fn(), fixture({ enabled: false, reason_code: code, reason }));

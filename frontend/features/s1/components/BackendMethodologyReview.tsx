@@ -34,7 +34,7 @@ const STATUS_WORD: Record<string, string> = { pending: "Pending", accepted: "Acc
 const DROP_REASON: Record<string, string> = {
   empty_value: "No value given",
   unknown_line: "Cited a line that isn't in the document",
-  quote_not_on_document: "Quote not found in the document",
+  quote_not_on_document: "Quote not found in the document, or shorter than 8 characters",
   ambiguous_quote: "Quote appears in more than one place",
   value_not_in_quote: "Value isn't in the quoted text",
   unknown_document: "Cited a document that wasn't read",
@@ -230,6 +230,7 @@ function FieldRow({
           <span className="s1-chip s1-mb-chip">Suggested by Claude</span>
           <span className="s1-mr-value">{valueText(suggestion.value)}</span>
           <q className="s1-mb-quote">{suggestion.quote}</q>
+          {suggestion.quote_truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
           <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(suggestion.document_id)}>
             {suggestion.file_name}
             {suggestion.source_reference ? `, ${suggestion.source_reference}` : ""}
@@ -322,6 +323,8 @@ export function BackendMethodologyReview({
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [prefilling, setPrefilling] = useState(false);
+  const prefillRunning = useRef(false);
   const [result, setResult] = useState<PrefillResult | null>(null);
 
   const load = useCallback(async () => {
@@ -375,7 +378,10 @@ export function BackendMethodologyReview({
   }
 
   async function runPrefill() {
+    if (prefillRunning.current) return;
+    prefillRunning.current = true;
     setConfirming(false);
+    setPrefilling(true);
     setBusy(true);
     setNotice(null);
     try {
@@ -384,6 +390,8 @@ export function BackendMethodologyReview({
     } catch (error) {
       if (!onError?.(error)) setNotice(userFacingApiError(error));
     } finally {
+      prefillRunning.current = false;
+      setPrefilling(false);
       setBusy(false);
     }
   }
@@ -422,8 +430,8 @@ export function BackendMethodologyReview({
         </h2>
         <span className="s1-mr-muted">{pending} suggested, waiting for review</span>
         <span className="s1-mr-actions">
-          <button type="button" className="s1-button s1-button--pri" disabled={busy || aiOff !== null} onClick={() => setConfirming(true)}>
-            Read the client&apos;s reports with Claude
+          <button type="button" className="s1-button s1-button--pri" disabled={busy || prefilling || aiOff !== null} onClick={() => setConfirming(true)}>
+            {prefilling ? "Reading the reports…" : "Read the client's reports with Claude"}
           </button>
           {aiOff ? <span className="s1-mb-ai">{aiOff}</span> : null}
         </span>
@@ -435,7 +443,7 @@ export function BackendMethodologyReview({
             Claude will read this engagement&apos;s report documents (the GHG inventory report, boundary statement and methodology documents, up to five) and suggest values with quotes. Suggestions need your review before they count.
           </p>
           <span className="s1-mr-actions">
-            <button type="button" className="s1-button s1-button--pri" onClick={() => void runPrefill()}>
+            <button type="button" className="s1-button s1-button--pri" disabled={prefilling} onClick={() => void runPrefill()}>
               Read the reports
             </button>
             <button type="button" className="s1-button" onClick={() => setConfirming(false)}>
@@ -461,7 +469,7 @@ export function BackendMethodologyReview({
             ? `, ${result.kept_reviewer_decision} ${result.kept_reviewer_decision === 1 ? "field kept" : "fields kept"} your decision`
             : ""}
           . Read {suggestedDocs.length}{" "}
-          {suggestedDocs.length === 1 ? "document" : "documents"}: {suggestedDocs.map((d) => d.file_name + (d.truncated ? " (only the start was read)" : "")).join(", ")}. Cost ${result.cost_usd.toFixed(2)}.
+          {suggestedDocs.length === 1 ? "document" : "documents"}: {suggestedDocs.map((d) => d.file_name + (d.truncated ? " (only the start was read)" : "")).join(", ")}. Cost ${result.cost_usd.toFixed(result.cost_usd < 0.01 ? 4 : 2)} ({result.model}).
         </p>
       ) : null}
 
