@@ -97,6 +97,9 @@ import type {
 } from "../types";
 import type { SessionAuditEntry } from "../utils/auditIntent";
 import { dashboardFigures, engagementActivity } from "../utils/engagementActivity";
+import { SupportingSchedule } from "../components/SupportingSchedule";
+import { saveDocumentPlacement, type EvidenceLineSetting, type Placement } from "../api/evidenceTree";
+import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
 import { ActivityDrawer } from "../components/ActivityDrawer";
 import { useBackendCoverage } from "../components/useBackendCoverage";
 import { testedExaminationKeys } from "../utils/verificationTable";
@@ -112,8 +115,10 @@ type ActiveView =
   | { name: "requests" }
   | { name: "coverage" }
   | { name: "methodology" }
-  | { name: "results" }
+  /** `lineKey` opens Verification with that calculation line expanded (Evidence's "Open calculation line"). */
+  | { name: "results"; lineKey?: string }
   | { name: "output" }
+  | { name: "schedule"; lineKey: string }
   | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string; valueId?: string }
   | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
 
@@ -172,6 +177,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     () => false
   );
   const [activeView, setActiveView] = useState<ActiveView>({ name: "dashboard" });
+  // Which rows of the Evidence tree are open (null: the default). Kept here so it survives a visit
+  // to a document or a schedule.
+  const [evidenceTreeOpen, setEvidenceTreeOpen] = useState<string[] | null>(null);
+  const [evidenceGrouping, setEvidenceGrouping] = useState<"lines" | "types">("lines");
+  const [evidenceFacility, setEvidenceFacility] = useState<string | null>(null);
   const [auditIntents, setAuditIntents] = useState<SessionAuditEntry[]>([]);
   const [demoState, setDemoState] = useState<ContainerState>(dataMode === "backend" ? "loading" : "populated");
   const [evidenceItems, setEvidenceItems] = useState<EvidenceItem[]>(
@@ -188,6 +198,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   // saved decisions per document, laid over the machine's view of the evidence.
   const [workspaceFields, setWorkspaceFields] = useState<ExtractedField[]>([]);
   const [documentDecisions, setDocumentDecisions] = useState<Record<string, DocumentDecision>>({});
+  const decisionsRef = useRef(documentDecisions);
+  useEffect(() => {
+    decisionsRef.current = documentDecisions;
+  });
   const [gridRegions, setGridRegions] = useState<{ code: string; name: string }[] | undefined>(undefined);
   const [dataPoints, setDataPoints] = useState<DataPointOption[]>([]);
   const [backendError, setBackendError] = useState<WorkspaceProblem | null>(null);
@@ -242,7 +256,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   // Findings and examination states are saved per engagement (backend mode). Requests are not:
   // the server's request actions keep them.
-  useWorkpaperSync({
+  const workpaper = useWorkpaperSync({
     enabled: dataMode === "backend",
     engagementId: engagement.engagementId,
     findings: verification.findings,
@@ -458,6 +472,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     if (!row) return;
     flushEngagementSave();
     setEngagement(engagementFromBackend(row));
+    setEvidenceFacility(null);
+    setEvidenceTreeOpen(null);
     rememberEngagement(row.id);
     setEngagementSave("idle");
     setDemoState("loading");
@@ -530,6 +546,31 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setEngagement(next);
   }
 
+  /** Saves the lines a reviewer added in Evidence, folding in any Setup edit still waiting to save.
+   *  Rejects with the server's message (for example, a line the system already has). */
+  async function saveEvidenceLines(evidenceLines: EvidenceLineSetting[]) {
+    if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+    saveTimer.current = null;
+    const base = pendingSave.current ?? engagement;
+    pendingSave.current = null;
+    const next = { ...base, evidenceLines };
+    const row = await saveEngagement(next);
+    setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
+    setEngagement(engagementFromBackend(row));
+  }
+
+  /** Moves one placement of a document: the document's saved decision is merged, not replaced. */
+  async function moveDocumentPlacement(documentId: string, move: Placement) {
+    // Until the saved decisions have loaded, a save here could overwrite one the page has not seen.
+    if (!workpaper.loaded) throw new Error("Your saved work is still loading. Try again in a moment.");
+    // A save of this document that is already on its way finishes first; the decision is then read
+    // as it stands, so the move is merged into the latest payload.
+    await workpaper.whenSaved("document", documentId);
+    const saved = await saveDocumentPlacement(engagement.engagementId, decisionsRef.current[documentId], documentId, move);
+    workpaper.markSaved("document", documentId, saved);
+    setDocumentDecisions((cur) => ({ ...cur, [documentId]: saved }));
+  }
+
   function changeEngagement(next: EngagementConfig) {
     setEngagement(next);
     if (dataMode !== "backend" || !next.engagementId) return;
@@ -594,6 +635,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     methodology: "methodology",
     results: "results",
     output: "output",
+    schedule: "evidence",
   };
   const navCurrent: NavKey = NAV_FOR_VIEW[activeView.name] ?? "evidence";
   function onNavigate(key: NavKey) {
@@ -1034,6 +1076,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               onSaveInputs={saveRecalculationInputs}
               onError={handleSessionEnded}
               onOpenDocument={openExtraction}
+              focusLineKey={activeView.lineKey}
+              onOpenEvidence={(key) => setActiveView(scheduleViewForLine(key))}
             />
           ) : (
             <VerificationResults
@@ -1082,6 +1126,23 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onAuditIntent={addAuditIntent}
             demoState={demoState}
             onOpenExtraction={openExtraction}
+            onOpenSetup={() => setActiveView({ name: "setup" })}
+            tree={
+              dataMode === "backend"
+                ? {
+                    openIds: evidenceTreeOpen,
+                    view: evidenceGrouping,
+                    onViewChange: setEvidenceGrouping,
+                    facilityId: evidenceFacility,
+                    onFacilityChange: setEvidenceFacility,
+                    onOpenIdsChange: setEvidenceTreeOpen,
+                    onOpenSchedule: (lineKey) => setActiveView({ name: "schedule", lineKey }),
+                    onMovePlacement: moveDocumentPlacement,
+                    onSaveLines: saveEvidenceLines,
+                    onError: handleSessionEnded,
+                  }
+                : undefined
+            }
             onUploadFiles={(files) => {
               setUploadOpen(true);
               uploadFiles(files);
@@ -1093,6 +1154,15 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             typeOptions={dataMode === "backend" ? Object.keys(BACKEND_TYPE_IDS) : undefined}
             qualityChecks={qualityChecks}
             serverRecordsActor={dataMode === "backend"}
+          />
+        ) : activeView.name === "schedule" ? (
+          <SupportingSchedule
+            engagementId={engagement.engagementId}
+            lineKey={activeView.lineKey}
+            onBack={() => setActiveView({ name: "evidence" })}
+            onOpenDocument={openExtraction}
+            onOpenCalculationLine={(key) => setActiveView(resultsViewForLine(key))}
+            onError={handleSessionEnded}
           />
         ) : activeView.name === "extraction" ? (
           <ExtractionReview

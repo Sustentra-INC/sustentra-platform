@@ -1,0 +1,322 @@
+{
+  "calculation_unplaced": [
+    {
+      "key": null,
+      "scope": "s1",
+      "category": "stationary",
+      "level2": "Natural gas",
+      "label": "Old boiler house",
+      "facility_id": "fac-kc01",
+      "consolidated_share_pct": 100,
+      "method": {
+        "route": "Energy content × per-MMBtu factor (Eq. 1)",
+        "equations": {
+          "CO2": "Eq. 1",
+          "CH4": "Eq. 8",
+          "N2O": "Eq. 8"
+        }
+      },
+      "step1": {
+        "rows": [
+          {
+            "period_start": "2025-01-01",
+            "period_end": "2025-01-31",
+            "document_id": "GAS-JAN",
+            "file_name": "GAS-JAN.pdf",
+            "candidate_id": "cand-jan",
+            "review": "accepted",
+            "quantity": 30000,
+            "unit": "MMBtu",
+            "share_in_period": 1,
+            "counted_quantity": 30000,
+            "evidence_code": null,
+            "counted_in_base": 30000
+          },
+          {
+            "period_start": "2025-02-01",
+            "period_end": "2025-02-28",
+            "document_id": "GAS-FEB",
+            "file_name": "GAS-FEB.pdf",
+            "candidate_id": "cand-feb",
+            "review": "edited",
+            "quantity": 35000,
+            "unit": "MMBtu",
+            "share_in_period": 1,
+            "counted_quantity": 35000,
+            "evidence_code": null,
+            "counted_in_base": 35000
+          }
+        ],
+        "total": {
+          "quantity": 65000,
+          "unit": "MMBtu"
+        }
+      },
+      "step2": {
+        "from_unit": "MMBtu",
+        "to_unit": "MMBtu",
+        "factor": 1,
+        "result": {
+          "quantity": 65000,
+          "unit": "MMBtu"
+        },
+        "source": null,
+        "distance": null,
+        "implied_fuel_economy": null
+      },
+      "step3": {
+        "gases": [
+          {
+            "gas": "CO2",
+            "activity": {
+              "value": 65000,
+              "unit": "MMBtu"
+            },
+            "ef": {
+              "value": 53.06,
+              "unit": "kg CO₂/MMBtu",
+              "source": "EPA GHG Emission Factors Hub 2025, Table 1"
+            },
+            "unit_conversion": 0.001,
+            "mass_t": 3448.9,
+            "gwp": {
+              "value": 1,
+              "source": "IPCC AR5"
+            },
+            "co2e_t": 3448.9,
+            "biogenic": false
+          },
+          {
+            "gas": "CH4",
+            "activity": {
+              "value": 65000,
+              "unit": "MMBtu"
+            },
+            "ef": {
+              "value": 0.001,
+              "unit": "kg CH₄/MMBtu",
+              "source": "EPA GHG Emission Factors Hub 2025, Table 3"
+            },
+            "unit_conversion": 0.001,
+            "mass_t": 0.065,
+            "gwp": {
+              "value": 28,
+              "source": "IPCC AR5"
+            },
+            "co2e_t": 1.82,
+            "biogenic": false
+          },
+          {
+            "gas": "N2O",
+            "activity": {
+              "value": 65000,
+              "unit": "MMBtu"
+            },
+            "ef": {
+              "value": 0.0001,
+              "unit": "kg N₂O/MMBtu",
+              "source": "EPA GHG Emission Factors Hub 2025, Table 3"
+            },
+            "unit_conversion": 0.001,
+            "mass_t": 0.0065,
+            "gwp": {
+              "value": 265,
+              "source": "IPCC AR5"
+            },
+            "co2e_t": 1.7225,
+            "biogenic": false
+          }
+        ]
+      },
+      "results": {
+        "mass_t": {
+          "CO2": 3448.9,
+          "CH4": 0.065,
+          "N2O": 0.0065
+        },
+        "sum_co2e_t": 12.5,
+        "total_co2e_t": 12.5,
+        "gas_co2e_t": {
+          "CO2": 3448.9,
+          "CH4": 1.82,
+          "N2O": 1.7225
+        },
+        "biogenic_co2_t": 0
+      },
+      "company": null,
+      "reported_total_co2e_t": null,
+      "difference_t": null,
+      "flags": [],
+      "status": "not_reported",
+      "difference_pct_of_base": null,
+      "level2_key": "natural-gas",
+      "counts_toward": "stationary",
+      "inputs_incomplete": true,
+      "reason": "no_facility_match",
+      "target": null
+    },
+    {
+      "key": null,
+      "scope": "s1",
+      "category": "mobile",
+      "level2": "Diesel Fuel",
+      "label": "Diesel Fuel",
+      "facility_id": null,
+      "consolidated_share_pct": 100,
+      "method": {
+        "route": "Fuel × CO₂ factor (Eq. 1); distance × CH₄ and N₂O factors (Eq. 4, on-road)",
+        "equations": {
+          "CO2": "Eq. 1",
+          "CH4": "Eq. 4",
+          "N2O": "Eq. 4"
+        }
+      },
+      "step1": {
+        "rows": [
+          {
+            "period_start": "2025-01-01",
+            "period_end": "2025-12-31",
+            "document_id": "FUEL-2025",
+            "file_name": "FUEL-2025.pdf",
+            "candidate_id": "cand-fuel",
+            "review": "accepted",
+            "quantity": 12000,
+            "unit": "gal",
+            "share_in_period": 1,
+            "counted_quantity": 12000,
+            "evidence_code": null,
+            "counted_in_base": 12000
+          }
+        ],
+        "total": {
+          "quantity": 12000,
+          "unit": "gal"
+        }
+      },
+      "step2": {
+        "from_unit": "gal",
+        "to_unit": "gal",
+        "factor": 1,
+        "result": {
+          "quantity": 12000,
+          "unit": "gal"
+        },
+        "distance": {
+          "quantity": 90000,
+          "unit": "mi",
+          "source": "Vehicle group distance entered under Recalculation inputs"
+        },
+        "source": null,
+        "implied_fuel_economy": {
+          "value": 7.5,
+          "unit": "mi/gal",
+          "role": "reasonableness_check"
+        }
+      },
+      "step3": {
+        "gases": [
+          {
+            "gas": "CO2",
+            "activity": {
+              "value": 12000,
+              "unit": "gal"
+            },
+            "ef": {
+              "value": 10.21,
+              "unit": "kg CO₂/gal",
+              "source": "EPA GHG Emission Factors Hub 2025, Table 2"
+            },
+            "unit_conversion": 0.001,
+            "mass_t": 122.52,
+            "gwp": {
+              "value": 1,
+              "source": "IPCC AR5"
+            },
+            "co2e_t": 122.52,
+            "biogenic": false
+          },
+          {
+            "gas": "CH4",
+            "activity": {
+              "value": 90000,
+              "unit": "mi"
+            },
+            "ef": {
+              "value": 0.0051,
+              "unit": "g CH₄/mi",
+              "source": "EPA GHG Emission Factors Hub 2025, Table 5"
+            },
+            "unit_conversion": 0.000001,
+            "mass_t": 0.000459,
+            "gwp": {
+              "value": 28,
+              "source": "IPCC AR5"
+            },
+            "co2e_t": 0.012852,
+            "biogenic": false
+          },
+          {
+            "gas": "N2O",
+            "activity": {
+              "value": 90000,
+              "unit": "mi"
+            },
+            "ef": {
+              "value": 0.0048,
+              "unit": "g N₂O/mi",
+              "source": "EPA GHG Emission Factors Hub 2025, Table 5"
+            },
+            "unit_conversion": 0.000001,
+            "mass_t": 0.000432,
+            "gwp": {
+              "value": 265,
+              "source": "IPCC AR5"
+            },
+            "co2e_t": 0.11448,
+            "biogenic": false
+          }
+        ]
+      },
+      "results": {
+        "mass_t": {
+          "CO2": 122.52,
+          "CH4": 0.000459,
+          "N2O": 0.000432
+        },
+        "sum_co2e_t": 4.25,
+        "total_co2e_t": 4.25,
+        "gas_co2e_t": {
+          "CO2": 122.52,
+          "CH4": 0.012852,
+          "N2O": 0.11448
+        },
+        "biogenic_co2_t": 0
+      },
+      "company": null,
+      "reported_total_co2e_t": null,
+      "difference_t": null,
+      "flags": [
+        "ch4_n2o_need_vehicle_groups"
+      ],
+      "status": "not_reported",
+      "difference_pct_of_base": null,
+      "level2_key": "diesel-fuel",
+      "counts_toward": "mobile",
+      "inputs_incomplete": false,
+      "reason": "fuel_shared_by_vehicle_groups",
+      "target": null
+    }
+  ],
+  "calculation_line_inputs": {
+    "consolidated_shares": {},
+    "unknown_line_keys": [
+      {
+        "setting": "reported_lines",
+        "key": "s1:stationary:natural-gas:fac-gone"
+      }
+    ],
+    "unknown_facility_ids": [
+      "fac-missing"
+    ]
+  }
+}

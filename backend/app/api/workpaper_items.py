@@ -27,13 +27,13 @@ from backend.app.api.engagements import _visible, require_open_engagement
 from backend.app.api.s1_access import s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
-from backend.app.services import workpaper_item_service
+from backend.app.services import methodology_review, workpaper_item_service
 from backend.app.services.audit_log import write_audit_event
 from backend.app.services.workpaper_item_service import ITEM_KEY, MAX_PAYLOAD_BYTES
 
 router = APIRouter(prefix="/v1", tags=["workpaper"])
 
-Kind = Literal["ask", "finding", "examination", "document"]
+Kind = Literal["ask", "finding", "examination", "document", "methodology"]
 
 
 class WorkpaperItemSave(BaseModel):
@@ -70,7 +70,14 @@ async def list_workpaper_items(
 ) -> WorkpaperItemList:
     engagement = await _visible(db, engagement_id, user)
     rows = await workpaper_item_service.list_items(db, engagement["id"], kind)
-    return WorkpaperItemList(items=[WorkpaperItem(**row) for row in rows])
+    items = []
+    for row in rows:
+        if row["kind"] == "methodology":  # same shape as the review's GET; removed rows are not listed
+            if row["payload"].get("removed"):
+                continue
+            row = {**row, "payload": methodology_review.public(row["payload"])}
+        items.append(WorkpaperItem(**row))
+    return WorkpaperItemList(items=items)
 
 
 @router.put("/engagements/{engagement_id}/workpaper-items/{kind}/{item_key}", response_model=WorkpaperItem)
@@ -83,6 +90,8 @@ async def save_workpaper_item(
     engagement: dict[str, Any] = Depends(require_open_engagement),
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> WorkpaperItem:
+    if kind == "methodology":  # decisions are recorded by the review actions, which name who acted
+        raise HTTPException(status_code=422, detail="Methodology decisions are changed through the methodology review actions.")
     if not ITEM_KEY.match(item_key):
         raise HTTPException(status_code=422, detail="item_key: letters, digits and : . _ - only (max 200).")
     assert user.org_id is not None  # s1_writer excludes provider_admin

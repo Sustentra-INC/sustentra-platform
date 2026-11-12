@@ -183,6 +183,19 @@ describe("recalculation inputs panel", () => {
     });
   });
 
+  it("never says Complete beside values awaiting review: the badge only reports the entered inputs", () => {
+    const result: Recalculation = {
+      ...RESULT,
+      needs_input: [],
+      awaiting_review: [{ document_id: "D1", record: "d1.csv (record 1)", canonical_type_id: "CT-S1-FUELQTY", fields: ["fuel_type"] }],
+    } as unknown as Recalculation;
+    render(<RecalculationInputs result={result} reference={REFERENCE} settings={{}} saving={false} error={null} onSave={vi.fn()} />);
+    const head = screen.getByRole("button", { name: /Recalculation inputs/ });
+    expect(head.textContent).toContain("Inputs entered");
+    expect(head.textContent).toContain("1 awaiting review");
+    expect(head.textContent).not.toContain("Complete");
+  });
+
   it("will not save a reported value that is not a number", () => {
     render(
       <RecalculationInputs result={RESULT} reference={REFERENCE} settings={{}} saving={false} error={null} onSave={vi.fn()} />
@@ -230,6 +243,41 @@ describe("materiality and coverage when inputs are partial", () => {
     expect(rules["COV-S1-MOBILE"].reason).toContain("1 outside the reporting period");
     const mobileRow = byKey(recalculationRows(outside)).mobile_combustion_total;
     expect(mobileRow.recomputeReason).toBe("its records are left out (see why)");
+  });
+
+  describe("copy: counts agree with their nouns", () => {
+    const wait = (record: string, type: string) => ({ document_id: record, record, canonical_type_id: type, fields: ["fuel_type"] });
+    const rulesFor = (over: Partial<Recalculation>) =>
+      Object.fromEntries(coverageFromRecalculation({ ...RESULT, ...over }).map((r) => [r.ruleId, r]));
+
+    it("says '1 record awaiting review' and '4 records awaiting review'", () => {
+      const one = rulesFor({ awaiting_review: [wait("a.csv (record 1)", "CT-S1-FUELQTY")] });
+      expect(one["COV-S1-STATIONARY"].reason).toContain("1 record awaiting review");
+      const four = rulesFor({ awaiting_review: ["1", "2", "3", "4"].map((n) => wait(`a.csv (record ${n})`, "CT-S1-FUELQTY")) });
+      expect(four["COV-S1-STATIONARY"].reason).toContain("4 records awaiting review");
+      expect(four["COV-S1-STATIONARY"].reason).not.toContain("(s)");
+    });
+
+    it("says '1 bill awaiting review' and '2 bills awaiting review'", () => {
+      const one = rulesFor({ awaiting_review: [wait("jan.pdf", "CT-S2-ELEC")] });
+      expect(one["COV-S2-LOCATION"].reason).toContain("1 bill awaiting review");
+      const two = rulesFor({ awaiting_review: [wait("jan.pdf", "CT-S2-ELEC"), wait("feb.pdf", "CT-S2-ELEC")] });
+      expect(two["COV-S2-LOCATION"].reason).toContain("2 bills awaiting review");
+      expect(two["COV-S2-LOCATION"].reason).not.toContain("(s)");
+    });
+
+    it("agrees the verb for records outside the reporting period", () => {
+      const out = (n: number) =>
+        rulesFor({ excluded: Array.from({ length: n }, (_, i) => ({ document_id: `d${i}`, record: `d${i}.pdf`, canonical_type_id: "CT-S1-MOBFUEL", period: "2024-03-02" })) });
+      expect(out(1)["COV-PERIOD"].reason).toContain("1 record falls entirely outside it and is not counted");
+      expect(out(2)["COV-PERIOD"].reason).toContain("2 records fall entirely outside it and are not counted");
+    });
+
+    it("words an item that is not recalculated without a verb that must agree", () => {
+      const rules = coverageFromRecalculation({ ...RESULT, not_recalculated: ["Scope 2 cooling", "Scope 1 process sources"] });
+      const assertions = rules.filter((r) => r.ruleId.startsWith("COV-NOT-")).map((r) => r.assertion);
+      expect(assertions).toEqual(["Recalculating Scope 2 cooling", "Recalculating Scope 1 process sources"]);
+    });
   });
 
   it("says which documents the reviewer left out and why", () => {
