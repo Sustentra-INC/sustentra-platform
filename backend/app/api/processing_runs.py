@@ -5,7 +5,9 @@
   document is read in this request and the finished run comes back (200); with queued the
   run is only queued (202). Asking again while a run is active returns that run (202);
   asking for a different type while it is active is a 409.
-* GET /processing-runs/{run_id}: one run (404 for another organization's).
+* GET /processing-runs/{run_id}: one run (404 for another organization's). A large PDF read in
+  page chunks has status ``waiting_on_chunks`` while they are read and carries
+  ``chunks: {total, completed, failed, failed_pages}``.
 * GET /engagements/{id}/processing-runs: each document's latest run, the one call the
   workspace polls while reads are in flight.
 """
@@ -22,6 +24,7 @@ from backend.app.api import documents as documents_api
 from backend.app.api.s1_access import can_see, org_of, s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.config import get_settings
+from backend.app.repositories.document_chunk_repository import ChunkSummary
 from backend.app.repositories.processing_run_repository import ProcessingRun
 from backend.app.services.document_processing_service import RunConflict, RunParams
 
@@ -38,10 +41,11 @@ def _iso(value: datetime | None) -> str | None:
     return value.isoformat() if value is not None else None
 
 
-def run_view(run: ProcessingRun) -> dict[str, Any]:
-    """A run as the API returns it (ProcessingRun in contracts/processing_run.schema.json)."""
+def run_view(run: ProcessingRun, chunks: ChunkSummary | None = None) -> dict[str, Any]:
+    """A run as the API returns it (ProcessingRun in contracts/processing_run.schema.json).
+    ``chunks``: the run's page chunks, when it was read in chunks."""
 
-    return {
+    view: dict[str, Any] = {
         "run_id": run.run_id,
         "document_id": run.document_id,
         "engagement_id": run.engagement_id,
@@ -59,6 +63,17 @@ def run_view(run: ProcessingRun) -> dict[str, Any]:
         "error_code": run.error_code,
         "error": run.error,
     }
+    if chunks is not None:
+        view["chunks"] = {"total": chunks.total, "completed": chunks.completed, "failed": chunks.failed,
+                          "failed_pages": chunks.failed_pages}
+    return view
+
+
+def run_views(runs: list[ProcessingRun]) -> list[dict[str, Any]]:
+    """The runs as the API returns them, with their chunk summaries (one query for all)."""
+
+    summaries = documents_api.current_chunk_repository().summaries([run.run_id for run in runs])
+    return [run_view(run, summaries.get(run.run_id)) for run in runs]
 
 
 def _visible(run: ProcessingRun, user: CurrentUser) -> bool:
@@ -99,7 +114,7 @@ def start_processing_run(
             return run_view(finished)
         run = finished
     response.status_code = 202
-    return run_view(run)
+    return run_view(run) if created else run_views([run])[0]
 
 
 @router.get("/processing-runs/{run_id}")
@@ -107,10 +122,10 @@ def get_processing_run(run_id: str, user: CurrentUser = Depends(s1_reader)) -> d
     run = documents_api.current_run_repository().get(run_id)
     if run is None or not _visible(run, user):
         raise HTTPException(status_code=404, detail="Processing run not found.")
-    return run_view(run)
+    return run_views([run])[0]
 
 
 @router.get("/engagements/{engagement_id}/processing-runs")
 def list_processing_runs(engagement_id: str, user: CurrentUser = Depends(s1_reader)) -> dict[str, Any]:
     runs = documents_api.current_run_repository().latest_per_document(engagement_id)
-    return {"engagement_id": engagement_id, "items": [run_view(run) for run in runs if _visible(run, user)]}
+    return {"engagement_id": engagement_id, "items": run_views([run for run in runs if _visible(run, user)])}

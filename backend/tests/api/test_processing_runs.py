@@ -323,3 +323,33 @@ def test_an_upload_still_succeeds_when_its_read_cannot_be_queued(
     line = JsonFormatter().format(record)  # the line the JSON log handler writes
     assert json.loads(line)["error_type"] == "RuntimeError"
     assert "db gone" not in record.getMessage() and "db gone" not in line
+
+
+# --- a large PDF read in page chunks ----------------------------------------------------------
+
+def test_a_run_waiting_on_its_chunks_reports_them_until_it_ends(env: dict, queued: None) -> None:
+    doc = env["upload"]()
+    client, queue = env["client"], env["queue"]
+    created = client.post(runs_url(doc), json={}).json()
+    assert "chunks" not in assert_contract(created)  # a run that is not chunked has none
+
+    chunks = documents_api.current_chunk_repository()
+    claimed = queue.claim("reader:1", 60)
+    assert claimed is not None and chunks.plan(claimed, "reader:1", [(1, 10), (11, 20), (21, 25)])
+    first = chunks.claim("reader:1", 60)
+    assert first is not None
+    chunks.finalize_completed(first, "reader:1", {"status": "parsed"})
+    second = chunks.claim("reader:1", 60)
+    assert second is not None
+    chunks.finalize_failed(second, "reader:1", "chunk_error")
+
+    run = assert_contract(client.get(f"/v1/processing-runs/{created['run_id']}").json())
+    assert run["status"] == "waiting_on_chunks"
+    assert run["chunks"] == {"total": 3, "completed": 1, "failed": 1, "failed_pages": [[11, 20]]}
+    listed = client.get("/v1/engagements/ENG-1/processing-runs").json()["items"]
+    assert [assert_contract(item)["chunks"] for item in listed] == [run["chunks"]]
+    again = client.post(runs_url(doc), json={})  # asking again returns the run being read, with its chunks
+    assert again.status_code == 202 and again.json()["chunks"] == run["chunks"]
+
+    env["act_as"]("org_member", ORG_B)  # another organization still gets 404, not the chunk counts
+    assert client.get(f"/v1/processing-runs/{created['run_id']}").status_code == 404

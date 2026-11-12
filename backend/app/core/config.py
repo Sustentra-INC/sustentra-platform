@@ -70,6 +70,15 @@ class Settings(BaseSettings):
     s1_reader_max_run_seconds: int = Field(default=900, ge=60, le=7200)
     s1_reader_shutdown_grace_seconds: int = Field(default=45, ge=0, le=300)
 
+    # Page chunks (queued mode only). A PDF with more than S1_CHUNK_THRESHOLD_PAGES pages is read
+    # in chunks of S1_CHUNK_PAGES pages, each its own job on the queue; a chunk that fails is
+    # retried up to S1_CHUNK_MAX_ATTEMPTS times. A document longer than S1_MAX_DOCUMENT_PAGES
+    # is not read (the run is partial, halt document_too_long). The 50-page OCR cap applies per chunk.
+    s1_chunk_threshold_pages: int = Field(default=20, ge=1, le=1000)
+    s1_chunk_pages: int = Field(default=10, ge=1, le=100)
+    s1_chunk_max_attempts: int = Field(default=3, ge=1, le=10)
+    s1_max_document_pages: int = Field(default=500, ge=1, le=5000)
+
     # Largest S1 document upload, in MB (INFRA-007). deploy/Caddyfile allows the same
     # size on the upload route only (+1 MB for the multipart envelope); the frontend
     # mirrors it in features/s1/constants/uploads.ts.

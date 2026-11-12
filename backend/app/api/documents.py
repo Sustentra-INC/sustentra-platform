@@ -20,6 +20,7 @@ from backend.app.api.s1_access import (
 from backend.app.core.auth import CurrentUser
 from backend.app.core.config import get_settings
 from backend.app.core.security import upload_too_large_detail
+from backend.app.repositories.document_chunk_repository import DocumentChunkRepository
 from backend.app.repositories.processing_run_repository import ProcessingRunRepository
 from backend.app.services.document_content_service import UnreadableContent, UnsupportedContent, document_content
 from backend.app.services.document_file_types import served_type
@@ -44,6 +45,8 @@ _pipeline_service = PipelineOrchestrationService()
 _storage_service = _upload_service.storage_service
 # The processing-run queue (migration 0015). It lives in Postgres whatever S1_STORE is.
 _run_repository: Any = ProcessingRunRepository()
+# The page chunks of the runs of large PDFs (migration 0018), read for the status of a run.
+_chunk_repository: Any = DocumentChunkRepository()
 
 
 def current_upload_service() -> DocumentUploadService:
@@ -58,15 +61,20 @@ def current_run_repository() -> Any:
     return _run_repository
 
 
+def current_chunk_repository() -> Any:
+    return _chunk_repository
+
+
 def configure_services(
     upload_service: DocumentUploadService | None = None,
     pipeline_service: PipelineOrchestrationService | None = None,
     storage_service: LocalStorageService | None = None,
     run_repository: Any | None = None,
+    chunk_repository: Any | None = None,
 ) -> None:
     """Swap module-level services for tests and local wiring."""
 
-    global _upload_service, _pipeline_service, _storage_service, _run_repository
+    global _upload_service, _pipeline_service, _storage_service, _run_repository, _chunk_repository
     if upload_service is not None:
         _upload_service = upload_service
         if storage_service is None:
@@ -77,6 +85,8 @@ def configure_services(
         _storage_service = storage_service
     if run_repository is not None:
         _run_repository = run_repository
+    if chunk_repository is not None:
+        _chunk_repository = chunk_repository
 
 
 def processing_service() -> DocumentProcessingService:

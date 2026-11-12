@@ -40,8 +40,11 @@ Returns a ProcessingRun (`contracts/processing_run.schema.json`):
   finished run (`completed`, or `failed` with `error_code` and the user-facing `error`).
 - `S1_PROCESSING=queued`: the run is only queued; 202 with `status: "queued"`, and the
   document's `processing_status` becomes `queued`.
-- A document has one active (queued or in_progress) run at a time: asking again returns that
-  run (202); asking for a different type while it is active is a 409.
+- A document has one active (queued, in_progress or waiting_on_chunks) run at a time: asking
+  again returns that run (202); asking for a different type while it is active is a 409.
+- A large PDF in queued mode (more than `S1_CHUNK_THRESHOLD_PAGES`, 20) is read in page
+  chunks: its run is `waiting_on_chunks` while the chunks are read, then `queued` again for
+  assembly, then `completed`. See "Page chunks" below.
 - 404 for a document of another organization, 400 when its stored file is missing, 403 for
   provider_admin.
 
@@ -56,6 +59,24 @@ rules (the type is unchanged). `warnings` may carry `ai_type_disagrees`, `ai_una
 
 ### GET /v1/processing-runs/{run_id}
 One processing run; 404 when it belongs to another organization.
+
+#### Page chunks
+A run that was split into page chunks carries (from `waiting_on_chunks` on, and after it ends)
+`chunks: {total, completed, failed, failed_pages}`. `failed_pages` is `[[from, to], ...]`, the
+1-based inclusive page ranges of chunks that failed after `S1_CHUNK_MAX_ATTEMPTS` (3) tries,
+plus one `[n, n]` for each page Textract could not read in a chunk that was kept on its last
+attempt (`failed` counts failed chunks only).
+A run that was not chunked has no `chunks` key. The same object is on each item of
+`GET /v1/engagements/{engagement_id}/processing-runs`.
+
+How the read ends for a chunked document:
+- Every chunk read: the run is `completed` and its pipeline run is read as for any document.
+- A chunk failed, or Textract could not read some pages: the run is still `completed` (the read
+  ended), but its pipeline run is `partial` with a warning starting `pages_unread:` that lists the page ranges, and the
+  values on those pages are missing. It never looks complete.
+- More than `S1_MAX_DOCUMENT_PAGES` (500) pages: nothing is read; the pipeline run is `partial`
+  with `halt_reason: {code: "document_too_long", message}` (the message says how many pages
+  and to split the file).
 
 ### GET /v1/engagements/{engagement_id}/processing-runs
 `{"engagement_id", "items"}`: each document's latest run in the engagement. The call to poll

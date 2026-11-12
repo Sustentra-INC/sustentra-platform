@@ -145,6 +145,25 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 1. Export the Excel workpaper. It opens. The roll-up shows mass per gas and CO₂e per
    category, with a "Counted as 0" column. The totals match Verification results.
 
+## 8a. Methodology review
+
+1. Open Methodology review in the left navigation. Fields are grouped under the headings the
+   server gives; each shows "Not set" and "Pending" until you act.
+2. With AI suggestions off, the button "Read the client's reports with Claude" is disabled and
+   the page says why in a sentence (for example that an administrator turns it on).
+3. With them on and a report document uploaded, press the button. It names what Claude will read
+   and says suggestions need review; confirm. A summary shows N suggested, M dropped with the
+   reasons, the documents read and the cost.
+4. A suggested field shows "Suggested by Claude", the quote, and the document name. Click the
+   name: the document opens in Extraction review.
+5. Accept one suggestion, Edit another (enum fields offer only the allowed values), Reject a third
+   with a reason (it is required). Each field then shows its status, who decided and when.
+6. Revert a decided field: it returns to Pending. Accept and Reject appear only on pending fields.
+7. Add an entity and a factor row; edit them; Remove row appears only on rows you added.
+8. Open the activity log: your decisions are listed. Reload: everything is kept.
+9. A reader (not a writer) cannot change anything: actions answer with a sentence, not an error page.
+
+
 ## 9. Evidence tree and supporting schedule
 
 Needs the evidence-tree API (feat/evidence-tree-api) deployed.
@@ -175,6 +194,28 @@ Needs the evidence-tree API (feat/evidence-tree-api) deployed.
 1. A second organization's user can't see this engagement: its URL answers "not found".
 2. A provider admin can read it but can't upload or review.
 
-## 11. After a redeploy
+## 11. Large PDFs in page chunks
+
+Needs `S1_PROCESSING=queued`, the reader running, and Textract on for the scanned file. Page
+chunking applies to PDFs over 20 pages; a PDF of 20 pages or fewer reads as before.
+
+1. Upload a text PDF of 25 pages (a bill on page 1). Evidence shows "Reading…". It finishes
+   with the same values as a one-page bill, each with its page number. Nothing says pages were missed.
+2. Upload a scanned PDF of about 60 pages. It reads in chunks: while it does, the run
+   (`GET /v1/processing-runs/{id}`) is `waiting_on_chunks` with `chunks.completed` growing
+   toward `chunks.total` (6). The value found on a late page opens that page in the review, not page 1.
+3. While a chunked read is going, restart the reader container. The read finishes anyway
+   (chunks it held come back once their lease runs out, about two minutes).
+4. Make Textract fail for the reader (for example remove its Textract permission for a few
+   minutes) while a scanned PDF is read, then restore it. Each chunk is tried 3 times (30 s, then
+   120 s apart). The run ends `completed` but its pipeline run is `partial` with a "pages_unread"
+   warning naming the pages Textract could not read. `chunks.failed_pages` lists them (one page
+   each for pages that failed OCR, the whole range for a chunk that failed outright), and Evidence
+   shows "Partly read: Pages ... could not be read". The values from other pages are there to review.
+5. Upload a PDF of more than 500 pages. It is not read: Evidence shows it as Blocked with the
+   sentence "This document has N pages, more than the 500 we read in one document. Split it...".
+6. A 10-page PDF and a Word file read exactly as before (no `chunks` key on their runs).
+
+## 12. After a redeploy
 
 1. Redeploy the same build, or wait for the next one. Everything from steps 2–9 is still there.
