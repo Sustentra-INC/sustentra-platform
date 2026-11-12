@@ -42,6 +42,15 @@ const DROP_REASON: Record<string, string> = {
   unknown_field: "Not a methodology field",
 };
 
+const ACTION_WORD: Record<string, string> = {
+  accept: "Accepted",
+  edit: "Edited",
+  reject: "Rejected",
+  revert: "Reverted",
+  add_row: "Row added",
+  remove_row: "Row removed",
+};
+
 /** Button words for the row groups the API lists (it gives codes only); any other code gets a general label. */
 const ADD_ROW_LABEL: Record<string, string> = {
   entities: "Add entity",
@@ -84,13 +93,16 @@ function when(iso: string): string {
 /** The change-log lines for the activity drawer, from every field's history. */
 export function methodologyActivityFrom(data: MethodologyReviewData): { at: string; who: string; what: string }[] {
   const label = new Map(data.catalog.map((f) => [f.fieldId, f.label]));
-  return data.fields.flatMap((record) =>
-    record.history.map((h) => ({
+  return data.fields.flatMap((record) => {
+    const name = label.get(record.fieldId) ?? record.fieldId;
+    const entries = record.history.map((h) => ({
       at: h.at,
       who: h.by?.name ?? "Reviewer",
-      what: `${h.action.replaceAll("_", " ")} on methodology: ${label.get(record.fieldId) ?? record.fieldId}`,
-    }))
-  );
+      what: `${ACTION_WORD[h.action] ?? h.action.replaceAll("_", " ")} on methodology: ${name}`,
+    }));
+    if (record.suggestion) entries.push({ at: record.suggestion.suggested_at, who: "Claude", what: `Suggested by Claude on methodology: ${name}` });
+    return entries;
+  });
 }
 
 // The server's limits on what a reviewer can type (docs/api_contract.md).
@@ -137,7 +149,11 @@ function ValueEditor({
         }
         out[p.key] = names;
       }
-      else if (p.kind === "percent") out[p.key] = text.trim() === "" ? null : Number(text);
+      else if (p.kind === "percent") {
+        const t = text.trim();
+        if (t !== "" && !Number.isFinite(Number(t))) return setProblem(`${p.label}: enter a number from 0 to 100.`);
+        out[p.key] = t === "" ? null : Number(t);
+      }
       else out[p.key] = text;
     }
     onSave(out);
@@ -371,7 +387,10 @@ export function BackendMethodologyReview({
       await run();
       await load();
     } catch (error) {
-      if (!onError?.(error)) setNotice(userFacingApiError(error));
+      if (!onError?.(error)) {
+        setNotice(userFacingApiError(error));
+        await load();
+      }
     } finally {
       setBusy(false);
     }
@@ -440,7 +459,7 @@ export function BackendMethodologyReview({
       {confirming ? (
         <div className="s1-mb-confirm" role="alertdialog" aria-label="Read the client's reports">
           <p>
-            Claude will read this engagement&apos;s report documents (the GHG inventory report, boundary statement and methodology documents, up to five) and suggest values with quotes. Suggestions need your review before they count.
+            Claude will read this engagement&apos;s report documents (the GHG inventory report, boundary statement and methodology documents, up to five) and suggest values with quotes. Suggestions need your review before they count. The result will list the documents it read.
           </p>
           <span className="s1-mr-actions">
             <button type="button" className="s1-button s1-button--pri" disabled={prefilling} onClick={() => void runPrefill()}>
@@ -463,7 +482,7 @@ export function BackendMethodologyReview({
         <p className="s1-mb-result" role="status">
           {result.suggested} suggested
           {droppedEntries.length
-            ? `, ${droppedEntries.reduce((n, [, c]) => n + c, 0)} dropped (${droppedEntries.map(([code, n]) => `${n}: ${dropReasonWords(code)}`).join("; ")})`
+            ? `, dropped: ${droppedEntries.map(([code, n]) => `${n}: ${dropReasonWords(code)}`).join("; ")}`
             : ", none dropped"}
           {result.kept_reviewer_decision
             ? `, ${result.kept_reviewer_decision} ${result.kept_reviewer_decision === 1 ? "field kept" : "fields kept"} your decision`

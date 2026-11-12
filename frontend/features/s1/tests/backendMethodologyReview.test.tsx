@@ -102,6 +102,39 @@ beforeEach(() => {
 });
 
 describe("Methodology review on real data", () => {
+  it("tells the reviewer the result lists the documents read", async () => {
+    await open();
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    expect(screen.getByRole("alertdialog").textContent).toMatch(/list the documents it read/);
+  });
+
+  it("words activity actions and adds Claude's suggestion", async () => {
+    const { onActivity } = await open();
+    const whats = (onActivity.mock.calls[0][0] as { what: string }[]).map((e) => e.what);
+    expect(whats).toContain("Edited on methodology: Reporting period");
+    expect(whats).toContain("Suggested by Claude on methodology: Consolidation approach");
+  });
+
+  it("does not send a non-numeric percent", async () => {
+    await open();
+    const r = row("Entity row");
+    fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
+    fireEvent.change(within(r).getByLabelText("Entity row: Equity share"), { target: { value: "abc" } });
+    fireEvent.click(within(r).getByRole("button", { name: "Save" }));
+    expect(within(r).getByRole("alert").textContent).toMatch(/enter a number/);
+    expect(calls()).toHaveLength(0);
+  });
+
+  it("reloads the review after a refused action", async () => {
+    await open();
+    mock.fail[`POST ${BASE}/consolidation_approach/accept`] = new ApiError(409, "Already decided.", null, null);
+    const gets = () => vi.mocked(api).mock.calls.filter(([p, o]) => p === BASE && !o).length;
+    const before = gets();
+    fireEvent.click(screen.getByRole("button", { name: "Accept: Consolidation approach" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Already decided.");
+    await waitFor(() => expect(gets()).toBe(before + 1));
+  });
+
   it("says so when a stored quote was cut", async () => {
     const data = fixture() as { fields: { field_id: string; suggestion: Record<string, unknown> }[] };
     data.fields[0].suggestion.quote_truncated = true;
@@ -246,7 +279,7 @@ describe("Methodology review on real data", () => {
     expect(screen.getByRole("alertdialog").textContent).toMatch(/Suggestions need your review/);
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
     const summary = await screen.findByRole("status");
-    await waitFor(() => expect(summary.textContent).toMatch(/4 suggested, 3 dropped/));
+    await waitFor(() => expect(summary.textContent).toMatch(/4 suggested, dropped: 2: /));
     expect(summary.textContent).toContain("2: Quote not found in the document, or shorter than 8 characters");
     expect(summary.textContent).toContain("1 field kept your decision");
     expect(summary.textContent).toContain("1: some new reason");
