@@ -303,3 +303,45 @@ def test_thermal_extractor_reads_the_same_one_line_layout() -> None:
     assert fields["service_period_start"]["normalized_value"] == "2025-05-01"
     assert fields["service_period_end"]["normalized_value"] == "2025-05-31"
     assert fields["supplier_name"]["normalized_value"] == "Metro District Energy"
+
+
+@pytest.mark.parametrize("title", ["Gas Usage Summary", "Fuel Oil Delivery Record", "Customer Services Overview",
+                                   "Energy Usage Report"])
+def test_a_document_title_as_first_line_is_not_a_supplier(targets: list[dict], title: str) -> None:
+    fields = _by_field(ElectricityExtractor().extract(
+        _ocr_blocks((title, 0.05, 0.03), (OCR_LINE, 0.2, 0.012)), targets, "EV-1").candidates)
+    assert fields["supplier_name"]["raw_value"] is None
+
+
+@pytest.mark.parametrize("name", ["City Water Department", "Pacific Electric", "City Water & Power"])
+def test_a_first_line_ending_in_an_organization_word_is_the_supplier(targets: list[dict], name: str) -> None:
+    fields = _by_field(ElectricityExtractor().extract(
+        _ocr_blocks((name, 0.05, 0.03), (OCR_LINE, 0.2, 0.012)), targets, "EV-1").candidates)
+    assert fields["supplier_name"]["normalized_value"] == name
+
+
+def test_an_inline_text_value_ends_at_a_column_gap(targets: list[dict]) -> None:
+    # OCR keeps the column gap as a run of spaces; the facility must not swallow the next columns
+    for line in ("Site: Main Plant  Meter No 123  Rate Class: GS-2 Usage",
+                 "Total kWh Used: 41,200 kWh   Site: Main Plant  Meter No 123  Rate Class: GS-2 Usage"):
+        fields = _by_field(ElectricityExtractor().extract(
+            _ocr_blocks(("City Water & Power", 0.05, 0.03), (line, 0.2, 0.012), ("Total kWh Used: 41,200 kWh", 0.3, 0.012)),
+            targets, "EV-1").candidates)
+        assert fields["facility_name"]["normalized_value"] == "Main Plant", line
+
+
+def test_a_clean_period_cell_beats_a_stray_mid_cell_delivery_date(targets: list[dict]) -> None:
+    fields = _by_field(ElectricityExtractor().extract(
+        _ocr_blocks(("City Water & Power", 0.05, 0.03), ("Total kWh Used: 41,200 kWh", 0.15, 0.012),
+                    ("Service Period: 05/01/2025 to 05/31/2025", 0.2, 0.012),
+                    ("Remarks: see Delivery date: 04/02/2025 for details", 0.3, 0.012)), targets, "EV-1").candidates)
+    assert fields["service_period_start"]["normalized_value"] == "2025-05-01"
+    assert fields["service_period_end"]["normalized_value"] == "2025-05-31"
+
+
+def test_a_mid_cell_to_or_from_with_a_colon_needs_a_date(targets: list[dict]) -> None:
+    line = "Total kWh Used: 41,200 kWh   Reply to: billing office   Moved from: 12 Elm St"
+    fields = _by_field(ElectricityExtractor().extract(
+        _ocr_blocks(("City Water & Power", 0.05, 0.03), (line, 0.2, 0.012)), targets, "EV-1").candidates)
+    assert fields["service_period_start"]["raw_value"] is None
+    assert fields["service_period_end"]["raw_value"] is None
