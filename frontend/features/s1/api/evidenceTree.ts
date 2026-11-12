@@ -101,8 +101,10 @@ export type CoverageStatus = "counted" | "counted_in_part" | "not_reviewed" | "n
 
 export interface LineSchedule {
   line: CalculationLine;
+  /** True when the recalculation has this line. Absent on an older server (then treated as true). */
+  calculated?: boolean;
   reporting_period: { start: string | null; end: string | null };
-  coverage: { month: string; status: CoverageStatus; quantity: number | null; unit: string | null; document_ids: string[]; flags?: string[] }[];
+  coverage: { month: string; status: CoverageStatus; quantity: number | null; unit: string | null; document_ids: string[]; flags?: string[]; waiting_on?: string[] }[];
   identifiers: { label: string; value: string; documents_with: number; documents_total: number }[];
   values: ScheduleValue[];
   history: { at: string; text: string }[];
@@ -130,7 +132,11 @@ export interface ScheduleRow {
   record_index?: number;
   accepted: boolean;
   /** Absent on an older server; then `accepted` decides. */
-  decision?: "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited";
+  decision?: "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited" | "awaiting_other_fields";
+  /** Labels of the record's other fields the recalculation still waits on (decision awaiting_other_fields). */
+  waiting_on?: string[];
+  /** Labels of other fields the reviewer rejected, so the record is not calculated. */
+  rejected_fields?: string[];
   /** `days` is counted by the server; the page never works it out. */
   date: { start: string | null; end: string | null; days: number | null; label: string };
   activity_quantity: { value: number | string | null; unit: string | null };

@@ -184,16 +184,23 @@ for another org's engagement).
 
 ```
 { line: CalculationLine, reporting_period: {start, end},
+  calculated: bool,                                  // true when the recalculation has this line in calculation_lines
   coverage: [{month: "YYYY-MM", status: "counted" | "counted_in_part" | "not_reviewed" | "no_document",
-              quantity, unit, document_ids, flags: []}],   // flags: "unconverted"
+              quantity, unit, document_ids, flags: [],     // flags: "unconverted"
+              waiting_on: [string]}],                      // field labels the recalculation still awaits
   identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter
   values: [{service_period_start, service_period_end, days, quantity, unit, document_id, file_name,
-            page, candidate_id, decided_by, decided_at, decision}],
+            page, candidate_id, decided_by, decided_at, decision, waiting_on: [string]}],
   history: [{at, text}],                                             // newest first
   // schedule v2 (Claire's supporting-schedule spec); the keys above are unchanged
   rows: [{record_key, record_index, accepted,        // one row per record (document + period + meter)
           decision,                                  // "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited"
-                                                     // (accepted is true for accepted and edited)
+                                                     // | "awaiting_other_fields" (quantity reviewed, but the
+                                                     // recalculation still awaits other fields of the record)
+                                                     // (accepted is true for accepted and edited, and only when the
+                                                     // record is not in the recalculation's awaiting_review)
+          waiting_on: [string],                      // labels of those fields ("Fuel type"); [] otherwise
+          rejected_fields: [string],                 // labels of other required fields the reviewer rejected
                                                      // record_key is opaque: use it as an id, never parse it
           date: {start, end, days, label},           // label: "Service period" | "Transaction date" | "Service date"
           activity_quantity: {value, unit},          // the extracted value; the reviewed value once accepted
@@ -216,6 +223,13 @@ no extractor produces them yet, so today a line shows only Date and Activity qua
 group the line's documents by identifier value; `not_found` holds documents without the identifier.
 Facility is the Setup facility, and `matched_by` says how: "Chosen by the reviewer", "Facility name in
 Setup" or "Service address in Setup". `identifiers` (one entry per value) is kept for older clients.
+
+A row counts (`accepted` true) only when its record is not in the recalculation's `awaiting_review`. When
+the quantity is reviewed but another required field is not (for example `fuel_type`), the row has
+`decision: "awaiting_other_fields"`, `accepted: false`, and `waiting_on` lists the field labels. `calculated`
+is false when the line has no entry in the recalculation's `calculation_lines`; the page then shows
+"Not calculated yet" instead of a link to the calculation. Months follow the same rule: a value awaiting
+other fields does not count, and the month lists its labels in `waiting_on`.
 
 A month is `counted` when accepted values cover all its days, `counted_in_part` when they cover
 some, `not_reviewed` when a document covers it but no accepted value does, and `no_document`
