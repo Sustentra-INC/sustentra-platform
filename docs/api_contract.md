@@ -107,15 +107,23 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     reviewer has decided (accepted, edited, rejected) are left alone and counted in `kept_reviewer_decision`;
     a pending field's older suggestion is replaced. An entity or factor source Claude finds becomes a new
     record under a server-made id with `user_added: false`, unless a row with the same name (entity) or the
-    same database and edition (factor) is already on the page.
-  - A suggestion is kept only if its quote is printed on the cited line of the cited document and, for
-    percentages and a factor edition with digits, the number is printed in the quote. `dropped` keys are
+    same database and edition (factor) is already on the page or earlier in the same reply. Documents the
+    reviewer set aside (withdrawn, duplicate, superseded) are not read.
+  - A suggestion is kept only if its quote (at least 8 characters) is printed on the cited line of the cited
+    document and, for percentages and a factor edition with digits, the number is printed in the quote; for
+    the consolidation approach and the GWP set the quote must also name the choice (for example "operational
+    control", "AR5" or "Fifth Assessment"). A too-short quote counts as `quote_not_on_document`. `dropped` keys are
     exactly: `empty_value`, `unknown_line`, `quote_not_on_document`, `ambiguous_quote`, `value_not_in_quote`
     (from the locator), `unknown_document`, `invalid_value` (failed the field's validation) and `unknown_field`.
   - 409 with a sentence in `detail`: switched off, not configured, over the monthly limit (the `ai.reason`
     sentences), no documents ("Upload the company's GHG inventory report, boundary statement or methodology
-    document first."), documents unreadable, or Claude refused or its answer was cut short or unusable (nothing
-    is kept). 502 when Claude could not be reached.
+    document first."), a prefill already running for the organization, documents unreadable, or Claude refused or its answer was cut short or unusable (nothing
+    is kept). 502 when Claude could not be reached, or when its answer could not be saved (the call is still
+    recorded in the ledger; nothing was kept).
+  - The call is made with no database transaction open; the ledger row is committed first, in its own
+    transaction, then the suggestions and the audit event in another. The cap is exact within one app
+    process (one prefill per organization at a time); across processes it can be passed by at most one
+    in-flight call per process.
   - Every call that was made is one row in `ai_usage` (outcome, tokens, cost, request id), refused or invalid
     ones included; a refused call before the request is not. One `methodology_prefill` audit event with outcome,
     counts and cost only.

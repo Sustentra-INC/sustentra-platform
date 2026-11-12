@@ -36,6 +36,7 @@ from backend.app.services.ai_locator import (
     value_in_quote,
 )
 from backend.app.services.calculation_lines import SUMMARY_TYPES
+from backend.app.services.reviewed_evidence import set_aside_reason, superseded_ids
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ MAX_DOCUMENTS = 5
 MAX_LINES = 1_500
 MAX_CHARS = 150_000
 MAX_OUTPUT_TOKENS = 8_000
+MIN_QUOTE = 8  # characters
 NO_DOCUMENTS = "Upload the company's GHG inventory report, boundary statement or methodology document first."
 
 # --- the reply's schema ----------------------------------------------------------------------
@@ -100,6 +102,13 @@ class PrefillOutput(_Strict):
     factors: list[FactorSuggestion]
 
 
+# What a quote must say for a choice to be tied to it (compared after ``norm``).
+_CHOICE_TERMS = {"Equity Share": ("equity share", "equity"), "Financial Control": ("financial control",),
+                 "Operational Control": ("operational control",)}
+_GWP_TERMS = {"AR4": ("ar4", "fourth assessment"), "AR5": ("ar5", "fifth assessment"),
+              "AR6": ("ar6", "sixth assessment")}
+
+
 SYSTEM_PROMPT = """\
 You help an assurance reviewer fill in the Methodology review of a greenhouse gas (GHG) inventory.
 You are given documents the company prepared (inventory reports, boundary statements, methodology
@@ -115,6 +124,8 @@ Rules
 - Every suggestion must cite one document and one line, and quote the words on that line that
   support it, copied exactly. The quote must be short (one sentence or less) and printed on the
   cited line. A suggestion whose quote cannot be found on that line is discarded.
+- For consolidation_approach and the GWP set, the quote must itself name the choice (for example
+  "operational control", or "AR5" / "Fifth Assessment"); at least 8 characters.
 - Cite documents by their alias (D1, D2, ...) and lines by their alias (L1, L2, ...), as shown.
 
 What the items mean
@@ -169,13 +180,20 @@ class PrefillDocument:
 
 
 def candidate_documents(upload_service: Any, pipeline_service: Any, engagement_id: str,
-                        can_see: Callable[[dict[str, Any]], bool]) -> list[dict[str, Any]]:
+                        can_see: Callable[[dict[str, Any]], bool],
+                        decisions: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """The engagement's visible documents whose latest extraction result is a client-prepared
-    summary type (``calculation_lines.SUMMARY_TYPES``), in upload order."""
+    summary type (``calculation_lines.SUMMARY_TYPES``), in upload order. Documents the reviewer
+    set aside (withdrawn, duplicate, superseded: ``decisions`` as the evidence tree reads them)
+    are left out, as they are of the evidence."""
 
+    decisions = decisions or {}
+    superseded = superseded_ids(decisions)
     found = []
     for document in upload_service.list_documents(engagement_id):
         if not can_see(document):
+            continue
+        if set_aside_reason(decisions, str(document["document_id"]), superseded) is not None:
             continue
         results = [r for r in pipeline_service.list_extraction_results_by_document(str(document["document_id"]))
                    if can_see(r)]
@@ -193,8 +211,8 @@ def read_documents(candidates: Sequence[dict[str, Any]], *, storage: Any, parser
 
     documents: list[PrefillDocument] = []
     lines_left, chars_left = MAX_LINES, MAX_CHARS
-    for index, document in enumerate(candidates):
-        if index >= MAX_DOCUMENTS:
+    for document in candidates:
+        if len(documents) >= MAX_DOCUMENTS:  # documents read, so an unreadable file does not use a place
             break
         lines = _parse(document, storage, parser)
         if lines is None:
@@ -258,17 +276,22 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     seen: set[str] = set()
 
     def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
-             numbers: Sequence[float] = (), words: Sequence[str] = ()) -> None:
+             numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = ()) -> None:
         document = by_alias.get(item.document.strip().upper())
         if document is None:
             dropped["unknown_document"] += 1
+            return
+        if len(item.quote.strip()) < MIN_QUOTE:  # too short to show anything
+            dropped["quote_not_on_document"] += 1
             return
         line = locate_quote(item.quote, item.line, document.lines)
         if isinstance(line, NotLocated):
             dropped[line.reason] += 1
             return
-        if any(not value_in_quote(_fmt(n), item.quote) for n in numbers) or any(
-                not value_in_quote(w, item.quote) for w in words):
+        quote_text = norm(item.quote)
+        if (any(not value_in_quote(_fmt(n), item.quote) for n in numbers)
+                or any(not value_in_quote(w, item.quote) for w in words)
+                or (terms and not any(term in quote_text for term in terms))):
             dropped["value_not_in_quote"] += 1
             return
         if field_id is not None:
@@ -295,7 +318,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     for choice in output.choices:
         value = checked(choice.field_id, choice.value)
         if value is not None:
-            keep(choice, value, choice.field_id, None)
+            keep(choice, value, choice.field_id, None, terms=_CHOICE_TERMS.get(str(value), ()) if choice.field_id == "consolidation_approach" else ())
     for text in output.texts:
         if not norm(text.value):
             dropped["empty_value"] += 1
@@ -306,7 +329,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     for gwp in output.gwp:
         value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon})
         if value is not None:
-            keep(gwp, value, "gwp", None)
+            keep(gwp, value, "gwp", None, terms=_GWP_TERMS[gwp.set])
     for entity in output.entities:
         definition = rules.row_field("entity:aaaa")
         assert definition is not None

@@ -48,12 +48,12 @@ def cap_reached(spent_microusd: int, cap_usd: float) -> bool:
     return spent_microusd >= round(cap_usd * MICRO)
 
 
-async def lock_org(db: AsyncSession, org_id: uuid.UUID) -> None:
-    """Serialize the organization's Claude calls until the transaction ends, so two requests
-    cannot both pass the cap check and so a double click makes one call, not two."""
+async def try_lock_org(db: AsyncSession, org_id: uuid.UUID) -> bool:
+    """Try to take the organization's prefill advisory lock until this transaction ends. False
+    when another transaction holds it (a prefill is deciding right now); never waits."""
 
-    await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
-                     {"key": f"ai_usage:{org_id}"})
+    return bool((await db.execute(text("SELECT pg_try_advisory_xact_lock(hashtextextended(:key, 0))"),
+                                  {"key": f"ai_usage:{org_id}"})).scalar_one())
 
 
 async def record(

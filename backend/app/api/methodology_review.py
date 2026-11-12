@@ -20,8 +20,8 @@ engagement answers 404, a provider_admin 403 and an archived engagement 409.
 No ``from __future__ import annotations``: FastAPI resolves these at runtime.
 """
 
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Iterator
+from contextlib import asynccontextmanager, contextmanager
 import asyncio
 from collections import Counter
 import logging
@@ -32,15 +32,16 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.app.adapters.llm.claude import AiNotConfiguredError, ClaudeClient, get_claude
 from backend.app.api import documents as documents_api
 from backend.app.api.engagements import _visible, require_open_engagement
+from backend.app.api.evidence_tree import document_decisions
 from backend.app.api.s1_access import can_see, s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.config import Settings, get_settings
-from backend.app.core.db import get_db_session
+from backend.app.core.db import get_db_session, get_sessionmaker_dependency, set_tenant
 from backend.app.services import ai_usage
 from backend.app.services import methodology_prefill as prefill
 from backend.app.services import methodology_review as rules
@@ -113,10 +114,12 @@ def _gate(settings: Settings, spent_microusd: int, candidates: list[dict[str, An
     return None, None
 
 
-def _candidates(engagement: dict[str, Any], user: CurrentUser) -> list[dict[str, Any]]:
+async def _candidates(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser) -> list[dict[str, Any]]:
+    """The documents Claude would read: summary documents the reviewer has not set aside."""
+
     return prefill.candidate_documents(
         documents_api.current_upload_service(), documents_api.current_pipeline_service(),
-        str(engagement["id"]), lambda record: can_see(record, user))
+        str(engagement["id"]), lambda record: can_see(record, user), await document_decisions(db, engagement))
 
 
 async def ai_status(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser,
@@ -125,7 +128,8 @@ async def ai_status(db: AsyncSession, engagement: dict[str, Any], user: CurrentU
 
     settings = settings or get_settings()
     spent = await ai_usage.month_spend_microusd(db, engagement["org_id"])
-    code, reason = _gate(settings, spent, _candidates(engagement, user) if settings.ai_suggestions_enabled else [])
+    candidates = await _candidates(db, engagement, user) if settings.ai_suggestions_enabled else []
+    code, reason = _gate(settings, spent, candidates)
     return {"enabled": code is None, "reason_code": code, "reason": reason, "provider": settings.ai_provider,
             "model": settings.ai_model, "month_spend_usd": round(spent / ai_usage.MICRO, 2),
             "cap_usd": settings.ai_monthly_cap_usd}
@@ -328,8 +332,9 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser
                  verified: list[prefill.Verified], dropped: Counter[str]) -> tuple[int, int]:
     """Put each verified suggestion on its field's record: (suggested, kept_reviewer_decision).
     A field the reviewer has decided is left alone. An entity or factor source already on the
-    page (suggested or decided) is not added again; a new one becomes a new row. A value the
-    store refuses (too long for the record) is counted in ``dropped`` as invalid_value."""
+    page (suggested or decided), or already added by an earlier suggestion of this same reply, is
+    not added again; a new one becomes a new row. A value the store refuses (too long for the
+    record) is counted in ``dropped`` as invalid_value."""
 
     suggested = kept = 0
     fixed = {v.field_id: v for v in verified if v.field_id}
@@ -370,10 +375,12 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser
         except MethodologyInvalid:
             dropped["invalid_value"] += 1
             continue
-        await workpaper_item_service.insert_item(
+        row = await workpaper_item_service.insert_item(
             db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind=KIND, item_key=field_id,
             payload=record, user_id=user.id)
-        suggested += 1
+        if row is not None:  # None: the random id collided; not expected
+            existing.append({"item_key": field_id, "payload": record})  # so a repeat in this reply is skipped
+            suggested += 1
     return suggested, kept
 
 
@@ -387,25 +394,76 @@ async def _audit_prefill(db: AsyncSession, request: Request, user: CurrentUser, 
         user_agent=request.headers.get("user-agent"), metadata=metadata)  # counts and cost only
 
 
+@asynccontextmanager
+async def _short_transaction(sessions: async_sessionmaker[AsyncSession], org_id: Any) -> AsyncIterator[AsyncSession]:
+    """Its own short transaction in the organization's RLS scope, committed on exit."""
+
+    async with sessions() as session, session.begin():
+        await set_tenant(session, org_id)
+        yield session
+
+
+# Organizations with a prefill running in this process. One call per organization at a time:
+# a double click answers 409 instead of a second billed call, and the cap check below always
+# sees the spend of the call before it.
+_RUNNING: set[str] = set()
+_BUSY = "Suggestions are already being prepared for this organization. Try again in a minute."
+_NOT_SAVED = ("Claude answered, but its suggestions could not be saved, so none were kept. "
+              "The call was recorded. Try again.")
+
+
 @router.post("/engagements/{engagement_id}/methodology-review/prefill", response_model=dict[str, Any])
 async def prefill_methodology(
     request: Request,
     user: CurrentUser = Depends(s1_writer),
     engagement: dict[str, Any] = Depends(require_open_engagement),
     db: AsyncSession = Depends(get_db_session, scope="function"),
+    sessions: async_sessionmaker[AsyncSession] = Depends(get_sessionmaker_dependency),
 ) -> Any:
     """Ask Claude to propose values from the client's summary documents (one call, synchronous).
-    Answers 409 with a sentence when it is switched off, over the monthly limit, has no documents
-    to read or Claude declines; a call that was made is recorded in the usage ledger even then."""
+
+    Three short steps, never holding a database connection while documents are parsed or Claude
+    answers (up to 90 s):
+
+    1. Gate, in the request's transaction (committed before the slow part): the organization's
+       advisory lock is only *tried* (``pg_try_advisory_xact_lock``; held means another prefill is
+       deciding right now: 409), then the switch, the client, this month's spend against the cap and
+       the documents are checked.
+    2. Read the documents and make the one Claude call, with no transaction open.
+    3. Record the call in the ledger in its own committed transaction (a call that was made is
+       always recorded, whatever happens next), then verify and store the suggestions and write the
+       audit event in a second one; if that fails, nothing is kept and the answer is a 502 sentence.
+
+    Cap, race safety: this process runs one prefill per organization at a time (``_RUNNING``) and
+    re-reads the spend after the previous call's ledger row, so the cap is exact within a process.
+    Across several app processes two calls could be in flight together, so the cap can be passed by
+    at most one call per process, never more. Answers 409 with a sentence when it is switched off,
+    over the monthly limit, has no documents, is already running, or Claude declines.
+    """
 
     settings, org_id = get_settings(), engagement["org_id"]
-    await ai_usage.lock_org(db, org_id)  # one call at a time per organization, until this commits
-    candidates = _candidates(engagement, user)
+    if str(org_id) in _RUNNING:
+        raise HTTPException(status_code=409, detail=_BUSY)
+    _RUNNING.add(str(org_id))
+    try:
+        return await _prefill(request, user, engagement, db, sessions, settings)
+    finally:
+        _RUNNING.discard(str(org_id))
+
+
+async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, Any], db: AsyncSession,
+                   sessions: async_sessionmaker[AsyncSession], settings: Settings) -> Any:
+    org_id = engagement["org_id"]
+    if not await ai_usage.try_lock_org(db, org_id):
+        raise HTTPException(status_code=409, detail=_BUSY)
+    candidates = await _candidates(db, engagement, user)
     code, reason = _gate(settings, await ai_usage.month_spend_microusd(db, org_id), candidates)
     if code is not None:
         raise HTTPException(status_code=409, detail=reason)
     client = new_client(settings)
     assert client is not None
+    await db.commit()  # releases the connection and the lock before the slow part
+
     documents = await asyncio.to_thread(
         prefill.read_documents, candidates, storage=documents_api.current_upload_service().storage_service,
         parser=ParserService())
@@ -420,22 +478,35 @@ async def prefill_methodology(
     except Exception as exc:  # network, auth, rate limit: no usage to record; the type only is logged
         logger.warning("methodology prefill: Claude call failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=502, detail="Claude could not be reached. Try again in a moment.") from exc
-    await ai_usage.record(db, org_id=org_id, engagement_id=engagement["id"], feature=prefill.FEATURE,
-                          provider=client.provider, reply=reply, user_id=user.id)
     cost_usd = round((reply.cost_microusd or 0) / ai_usage.MICRO, 6)
-    read = [{"document_id": d.document_id, "file_name": d.file_name, "truncated": d.truncated} for d in documents]
+    ok = reply.outcome == "ok" and reply.output is not None
+    async with _short_transaction(sessions, org_id) as ledger:  # committed whatever happens next
+        await ai_usage.record(ledger, org_id=org_id, engagement_id=engagement["id"], feature=prefill.FEATURE,
+                              provider=client.provider, reply=reply, user_id=user.id)
+        if not ok:
+            await _audit_prefill(ledger, request, user, engagement, {
+                "outcome": reply.outcome, "documents": len(documents), "cost_usd": cost_usd})
     logger.info("methodology prefill: outcome=%s documents=%d cost_microusd=%s duration_ms=%d", reply.outcome,
                 len(documents), reply.cost_microusd, int((time.monotonic() - started) * 1000))
-    if reply.outcome != "ok" or reply.output is None:
-        await _audit_prefill(db, request, user, engagement, {
-            "outcome": reply.outcome, "documents": len(documents), "cost_usd": cost_usd})
-        # Returned, not raised, so the ledger row and the audit event are committed.
+    if not ok or reply.output is None:
         return JSONResponse(status_code=409, content={"detail": _FAILED.get(reply.outcome, _FAILED["invalid"])})
-    verified, dropped = prefill.verify(reply.output, documents, model=reply.model, request_id=reply.request_id,
-                                       now_iso=stamp(_now()))
-    suggested, kept = await _store(db, engagement, user, verified, dropped)
-    await _audit_prefill(db, request, user, engagement, {
-        "outcome": "ok", "documents": len(documents), "suggested": suggested, "dropped": sum(dropped.values()),
-        "kept_reviewer_decision": kept, "cost_usd": cost_usd})
+    try:
+        verified, dropped = prefill.verify(reply.output, documents, model=reply.model, request_id=reply.request_id,
+                                           now_iso=stamp(_now()))
+        async with _short_transaction(sessions, org_id) as work:
+            suggested, kept = await _store(work, engagement, user, verified, dropped)
+            await _audit_prefill(work, request, user, engagement, {
+                "outcome": "ok", "documents": len(documents), "suggested": suggested,
+                "dropped": sum(dropped.values()), "kept_reviewer_decision": kept, "cost_usd": cost_usd})
+    except Exception as exc:  # the call is already recorded; keep nothing and say so
+        logger.error("methodology prefill: suggestions not saved (%s)", type(exc).__name__)
+        try:
+            async with _short_transaction(sessions, org_id) as failed:
+                await _audit_prefill(failed, request, user, engagement, {
+                    "outcome": "not_saved", "documents": len(documents), "cost_usd": cost_usd})
+        except Exception as audit_exc:  # best effort
+            logger.error("methodology prefill: audit not written (%s)", type(audit_exc).__name__)
+        return JSONResponse(status_code=502, content={"detail": _NOT_SAVED})
+    read = [{"document_id": d.document_id, "file_name": d.file_name, "truncated": d.truncated} for d in documents]
     return {"suggested": suggested, "dropped": dict(dropped), "kept_reviewer_decision": kept,
             "documents_read": read, "cost_usd": cost_usd, "model": reply.model}

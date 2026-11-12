@@ -65,12 +65,19 @@ class FakeClaude:
                                request_id="req-9", stop_reason="refusal" if self.outcome == "refused" else "end_turn")
 
 
+def _async_candidates(found: list[dict[str, Any]]) -> Any:
+    async def candidates(db: Any, engagement: Any, user: Any) -> list[dict[str, Any]]:
+        return found
+
+    return candidates
+
+
 @pytest.fixture
 def claude(monkeypatch: pytest.MonkeyPatch) -> FakeClaude:
     fake = FakeClaude()
     monkeypatch.setattr(api, "get_settings", lambda: ON)
     monkeypatch.setattr(api, "new_client", lambda settings: fake)
-    monkeypatch.setattr(api, "_candidates", lambda engagement, user: [{"document_id": "DOC-1"}])
+    monkeypatch.setattr(api, "_candidates", _async_candidates([{"document_id": "DOC-1"}]))
     monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT)])
     return fake
 
@@ -136,11 +143,11 @@ def test_a_reviewers_decision_is_never_overwritten(claude: FakeClaude) -> None:
 def test_a_second_run_replaces_pending_suggestions_and_does_not_repeat_rows(claude: FakeClaude) -> None:
     eid = create()["id"]
     prefill(eid)
-    claude.output = {**GOOD, "choices": [{"field_id": "consolidation_approach", "value": "Financial Control",
-                                          **cite("L2", "operational control approach")}]}
+    claude.output = {**GOOD, "choices": [{"field_id": "category:scope1:stationary", "value": "No",
+                                          **cite("L5", "stationary combustion is included")}]}
     body = prefill(eid).json()
     assert body["suggested"] == 2 and body["dropped"] == {}  # the choice and the text; both rows already there
-    assert record(eid, "consolidation_approach")["suggestion"]["value"] == "Financial Control"
+    assert record(eid, "category:scope1:stationary")["suggestion"]["value"] == "No"
     rows = [f for f in review(eid).json()["fields"] if f["field_id"].startswith(("entity:", "factor:"))]
     assert len(rows) == 2 and len(ledger()) == 2
 
@@ -183,11 +190,11 @@ def test_off_and_unconfigured_refuse_without_a_call(claude: FakeClaude, monkeypa
 
 def test_no_documents_refuses_with_the_upload_sentence(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
     eid = create()["id"]
-    monkeypatch.setattr(api, "_candidates", lambda engagement, user: [])
+    monkeypatch.setattr(api, "_candidates", _async_candidates([]))
     refused = prefill(eid)
     assert refused.status_code == 409 and refused.json()["detail"] == mp.NO_DOCUMENTS
     assert review(eid).json()["ai"]["reason_code"] == "no_documents"
-    monkeypatch.setattr(api, "_candidates", lambda engagement, user: [{"document_id": "DOC-1"}])
+    monkeypatch.setattr(api, "_candidates", _async_candidates([{"document_id": "DOC-1"}]))
     monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [])
     assert "could not be read" in prefill(eid).json()["detail"]
     assert claude.calls == [] and ledger() == []
@@ -250,6 +257,43 @@ def test_access_rules(claude: FakeClaude) -> None:
     assert prefill(eid).status_code == 409
     assert claude.calls == [] and ledger() == []
     assert review(eid, "provider").status_code == 200  # a provider can read the status
+
+
+def test_the_same_entity_twice_in_one_reply_makes_one_row(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    claude.output = {**GOOD, "entities": GOOD["entities"] * 2, "factors": GOOD["factors"] * 2}
+    assert prefill(eid).json()["suggested"] == 5  # 3 fixed fields + 1 entity + 1 factor source
+    rows = [f for f in review(eid).json()["fields"] if f["field_id"].startswith(("entity:", "factor:"))]
+    assert len(rows) == 2
+
+
+def test_a_prefill_already_running_for_the_org_is_refused(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    org = asyncio.run(_admin("SELECT org_id FROM engagements WHERE id = $1::uuid", eid))[0]["org_id"]
+    api._RUNNING.add(str(org))
+    try:
+        refused = prefill(eid)
+    finally:
+        api._RUNNING.discard(str(org))
+    assert refused.status_code == 409 and "already being prepared" in refused.json()["detail"]
+    assert claude.calls == [] and ledger() == []
+    assert prefill(eid).status_code == 200  # and it is free again afterwards
+
+
+def test_the_ledger_row_survives_a_failure_while_saving(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+
+    async def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("database trouble with private text")
+
+    monkeypatch.setattr(api, "_store", boom)
+    response = prefill(eid)
+    assert response.status_code == 502 and "could not be saved" in response.json()["detail"]
+    assert "private text" not in response.text
+    [row] = ledger()
+    assert row["outcome"] == "ok" and row["cost_microusd"] == COST
+    assert json.loads(prefill_events()[0]["metadata"])["outcome"] == "not_saved"
+    assert all(f["suggestion"] is None for f in review(eid).json()["fields"])
 
 
 def test_the_ledger_is_append_only_for_the_app() -> None:
