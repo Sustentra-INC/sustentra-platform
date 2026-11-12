@@ -1,4 +1,4 @@
-"""S1 document chunks (migration 0017): the page chunks of a large PDF, read as jobs on the queue.
+"""S1 document chunks (migration 0018): the page chunks of a large PDF, read as jobs on the queue.
 
 A processing run for a PDF over the chunk threshold is split into chunks (``plan``): the run
 is parked in ``waiting_on_chunks`` and one row per block of pages is queued. Readers claim
@@ -15,7 +15,7 @@ Which organization a call works in is as for runs: ``plan`` and the reads of one
 use the bound S1 scope; the updates of one chunk (``heartbeat``, ``finalize_*``, ``retry_later``,
 ``release``) run in the chunk's own organization and are fenced on (``worker_id``,
 ``in_progress``), returning ``None`` once the chunk is no longer the caller's; ``claim`` and
-``requeue_expired`` serve every organization through the SECURITY DEFINER functions of 0017.
+``requeue_expired`` serve every organization through the SECURITY DEFINER functions of 0018.
 """
 
 from __future__ import annotations

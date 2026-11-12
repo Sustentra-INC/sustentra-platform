@@ -1,4 +1,4 @@
-"""Page chunks (migration 0017) end to end against in-memory stores and real PDFs: the split, the
+"""Page chunks (migration 0018) end to end against in-memory stores and real PDFs: the split, the
 chunk queue (claim order, retry, backoff, lease), assembly in page order with the real page
 numbers, partial runs for pages that could not be read, the document page cap, and that inline
 mode and small documents read exactly as before. The Postgres side is in tests/db/test_document_chunks_db.py.

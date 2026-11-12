@@ -1,4 +1,4 @@
-"""Migration 0017 (s1_document_chunks, the waiting_on_chunks run status) up and down.
+"""Migration 0018 (s1_document_chunks, the waiting_on_chunks run status) up and down.
 
 Runs alembic against TEST_DATABASE_URL and always leaves the database at head.
 """
@@ -25,8 +25,8 @@ pytestmark = pytest.mark.skipif(
 )
 
 BACKEND = Path(__file__).resolve().parents[2]
-ORG = uuid.UUID("aaaaaaaa-0000-0000-0000-000000001717")
-NEW = "0017_s1_document_chunks"
+ORG = uuid.UUID("aaaaaaaa-0000-0000-0000-000000001817")
+NEW = "0018_s1_document_chunks"
 
 
 def alembic(*args: str) -> None:
@@ -59,17 +59,17 @@ def _active_index() -> str:
     return fetch("SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_s1_processing_runs_active'")[0]["indexdef"]
 
 
-def test_0017_down_and_up_returns_a_parked_run_to_the_queue() -> None:
+def test_0018_down_and_up_returns_a_parked_run_to_the_queue() -> None:
     try:
         assert _state() == (True, 3)
         assert fetch("SELECT version_num FROM alembic_version")[0]["version_num"] == NEW
         fetch("TRUNCATE s1_processing_runs")
         fetch("TRUNCATE users, organizations CASCADE")
-        fetch("INSERT INTO organizations (id, name, slug) VALUES ($1, 'Org', 'mig-0017')", ORG)
+        fetch("INSERT INTO organizations (id, name, slug) VALUES ($1, 'Org', 'mig-0018')", ORG)
         fetch("INSERT INTO s1_processing_runs (run_id, org_id, engagement_id, document_id, requested_by, status) "
               "VALUES ('parked', $1, 'E', 'D', 'r', 'waiting_on_chunks')", ORG)
 
-        alembic("downgrade", "0016")
+        alembic("downgrade", "0017")
 
         assert _state() == (False, 0)
         assert fetch("SELECT status FROM s1_processing_runs WHERE run_id = 'parked'")[0]["status"] == "queued"

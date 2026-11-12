@@ -22,8 +22,8 @@ chunks and carries on with classification and extraction as for any document.
 
 Downgrade: parked runs go back to queued (they are read whole again) and the table goes.
 
-Revision ID: 0017_s1_document_chunks
-Revises: 0016
+Revision ID: 0018_s1_document_chunks
+Revises: 0017
 Create Date: 2026-11-12
 """
 
@@ -35,8 +35,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision: str = "0017_s1_document_chunks"
-down_revision: str | None = "0016"
+revision: str = "0018_s1_document_chunks"
+down_revision: str | None = "0017"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
