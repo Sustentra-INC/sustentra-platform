@@ -172,6 +172,21 @@ chunking applies to PDFs over 20 pages; a PDF of 20 pages or fewer reads as befo
    "document_too_long" and a sentence asking for smaller files.
 6. A 10-page PDF and a Word file read exactly as before (no `chunks` key on their runs).
 
-## 12. After a redeploy
+## 12. Uploading several files at once
+
+Needs `S1_PROCESSING=queued` and the reader running.
+
+1. In Upload, drop five files together: two small bills, a 25-page PDF, a scan, and a Word file. A table
+   "Reading this batch" appears under the upload bars, one row per file, with the totals above it.
+2. Rows go Waiting, then Reading, then Done. The 25-page PDF shows "n of m parts read" while it reads.
+   The table refreshes about every 3 seconds, and stops (check the network tab) once every row is done,
+   partly read or couldn't read.
+3. A file that can't be read says why in a sentence under its name; a row with a read file shows its type and
+   the number of records found. Click a read file's name: its extraction review opens.
+4. Drop a single file: no batch table (it is uploaded as before).
+5. With a second organization's batch id, `GET .../document-batches/{id}` as the first one answers 404, and an
+   upload with that `batch_id` answers 404 and stores nothing.
+
+## 13. After a redeploy
 
 1. Redeploy the same build, or wait for the next one. Everything from steps 2–9 is still there.

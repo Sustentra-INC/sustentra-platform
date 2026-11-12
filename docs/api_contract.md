@@ -13,7 +13,7 @@ Register an uploaded document for processing.
 
 ### POST /v1/engagements/{engagement_id}/documents/upload
 Upload a file and register it as a document (multipart: `file`, `document_role`, and optionally
-`evidence_id` and `document_type`). Answers with the document; what it carries depends on `S1_PROCESSING`:
+`evidence_id`, `document_type` and `batch_id`). Answers with the document; what it carries depends on `S1_PROCESSING`:
 
 - `S1_PROCESSING=inline` (the default): 200 with the document, `processing_status` `not_started`, and no
   `processing_run` key. The read is asked for separately (`POST /v1/documents/{document_id}/processing-runs`).
@@ -22,6 +22,10 @@ Upload a file and register it as a document (multipart: `file`, `document_role`,
 - If that run can't be queued, the upload still succeeds: 200 with the document as in inline mode. The server logs
   `upload_read_not_queued` on `sustentra.processing` with the document id, and the client asks for the read itself
   with `POST /v1/documents/{document_id}/processing-runs`.
+
+`batch_id` (optional) puts the document in a batch made with `POST .../document-batches`. A batch that does not
+exist, is another organization's, or belongs to another engagement is a 404 ("Batch not found."), and nothing is
+stored. The document then carries `batch_id`; without one it is `null`.
 
 Refusals are unchanged: 400, 404 (unknown evidence), 413 (file over the size limit) and 415 (a file type no reader opens).
 
@@ -66,6 +70,26 @@ How the read ends for a chunked document:
 - More than `S1_MAX_DOCUMENT_PAGES` (500) pages: nothing is read; the pipeline run is `partial`
   with `halt_reason: {code: "document_too_long", message}` (the message says how many pages
   and to split the file).
+
+### POST /v1/engagements/{engagement_id}/document-batches
+Writers only (`org_admin`, `org_member`), on an active engagement. Optional body `{"label"}`. Answers 201 with
+`{"batch_id", "engagement_id", "label", "created_at"}`. Files uploaded together carry the `batch_id`.
+
+### GET /v1/engagements/{engagement_id}/document-batches/{batch_id}
+How reading a batch stands. 404 for a batch that does not exist, is another organization's or another
+engagement's. Answers:
+
+- `items`: one per document of the batch, in upload order: `document_id`, `file_name`, `status`, `chunks`
+  (`{total, completed, failed, failed_pages}` for a PDF read in page chunks, else `null`), `canonical_type_id`
+  (`null` until classified), `halt_reason` (a sentence saying why it was not read in full, else `null`) and
+  `records_found`.
+- `status` is `queued` (no reader has it yet), `reading` (being read, or its chunks are, or it waits to be
+  assembled), `done`, `partial` (read, but its pipeline run is partial: pages that failed, or nothing to
+  review) or `failed`.
+- `halt_reason` is the pipeline's halt message; for a failed run without one, the run's own error; for a
+  partial run read in chunks, "Pages 11-20 could not be read."
+- `totals`: `{queued, reading, done, partial, failed}`.
+- `complete`: `true` when nothing is queued or reading. Clients poll (every 3 s) until it is `true`.
 
 ### GET /v1/engagements/{engagement_id}/processing-runs
 `{"engagement_id", "items"}`: each document's latest run in the engagement. The call to poll

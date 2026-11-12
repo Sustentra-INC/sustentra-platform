@@ -46,6 +46,7 @@ class DocumentUploadService:
         evidence_id: str | None = None,
         document_type: str | None = None,
         org_id: str | None = None,
+        batch_id: str | None = None,
     ) -> dict:
         self._require_non_empty(engagement_id, "engagement_id")
         self._require_non_empty(file_name, "file_name")
@@ -78,6 +79,7 @@ class DocumentUploadService:
             uploaded_at=self._clock(),
             processing_status="not_started",
             org_id=org_id,
+            batch_id=batch_id,
         )
         return self._document_repository.save(model.model_dump())
 
@@ -128,6 +130,10 @@ class DocumentUploadService:
     def list_documents(self, engagement_id: str) -> list[dict]:
         self._require_non_empty(engagement_id, "engagement_id")
         return self._document_repository.list_by_engagement(engagement_id)
+
+    def list_documents_by_batch(self, batch_id: str) -> list[dict]:
+        self._require_non_empty(batch_id, "batch_id")
+        return self._document_repository.list_by_batch(batch_id)
 
     def list_documents_by_evidence(self, evidence_id: str) -> list[dict]:
         self._require_non_empty(evidence_id, "evidence_id")

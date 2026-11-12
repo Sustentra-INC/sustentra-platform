@@ -227,11 +227,16 @@ async def upload_document(
     uploaded_by: str | None = Form(None),  # ignored: the signed-in user uploads (SEC-001)
     evidence_id: str | None = Form(None),
     document_type: str | None = Form(None),
+    batch_id: str | None = Form(None),
     user: CurrentUser = Depends(s1_writer),
     engagement: dict = Depends(require_open_engagement),
 ) -> dict:
     org_id = org_of(user)
     _require_evidence_slot(evidence_id, user)
+    if batch_id:  # one of several files uploaded together: the batch must be this engagement's
+        from backend.app.api.document_batches import require_batch  # it imports this module
+
+        require_batch(batch_id, engagement_id, user)
     if not file.filename:
         raise HTTPException(status_code=400, detail="Uploaded file name is required.")
     mime_type = file.content_type or "application/octet-stream"
@@ -253,6 +258,7 @@ async def upload_document(
             evidence_id=evidence_id,
             document_type=document_type,
             org_id=org_id,
+            batch_id=batch_id or None,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

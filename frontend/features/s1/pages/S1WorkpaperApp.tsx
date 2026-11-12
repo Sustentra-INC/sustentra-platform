@@ -14,6 +14,8 @@ import {
 import { ApiError } from "../../../lib/api";
 import { isActiveRun, readFailureMessage, requestRead, type ProcessingRunView } from "../api/processingRuns";
 import { useProcessingRuns } from "../hooks/useProcessingRuns";
+import { createDocumentBatch } from "../api/documentBatches";
+import { useBatchProgress } from "../hooks/useBatchProgress";
 import { readAfterUpload, withReadingState } from "../utils/readingState";
 import { reviewValuesFromFields, withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import {
@@ -193,6 +195,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   );
   const [isUploading, setIsUploading] = useState(false);
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
+  // The batch of the upload in progress (several files dropped together): its progress table.
+  const [uploadBatchId, setUploadBatchId] = useState<string | null>(null);
   // Backend mode: every extracted field (facts about each document) and the reviewer's
   // saved decisions per document, laid over the machine's view of the evidence.
   const [workspaceFields, setWorkspaceFields] = useState<ExtractedField[]>([]);
@@ -461,6 +465,14 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     enabled: dataMode === "backend",
     engagementId: engagement.engagementId,
     onFinished: handleReadsFinished,
+    onError: handleSessionEnded,
+  });
+
+  const batchView = useBatchProgress({
+    enabled: dataMode === "backend",
+    engagementId: engagement.engagementId,
+    batchId: uploadBatchId,
+    uploading: isUploading,
     onError: handleSessionEnded,
   });
 
@@ -734,6 +746,21 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     };
     uploadBatch.current = batch;
     const sending = tasks.some((task) => task.stage === "waiting");
+    // Several files at once are one batch with one progress table. A batch that can't be made
+    // is not worth stopping the upload for: the files go up without one.
+    let batchId: string | undefined;
+    setUploadBatchId(null);
+    if (tasks.filter((task) => task.stage === "waiting").length > 1) {
+      try {
+        batchId = await createDocumentBatch(engagement.engagementId);
+        setUploadBatchId(batchId);
+      } catch (error) {
+        if (handleSessionEnded(error)) {
+          setIsUploading(false);
+          return;
+        }
+      }
+    }
     for (const [index, file] of picked.entries()) {
       const taskId = tasks[index].id;
       if (tasks[index].stage === "not_uploaded") continue;
@@ -741,7 +768,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       try {
         patchTask(taskId, { stage: "uploading" });
         const document = await uploadDocumentWithProgress(engagement.engagementId, file, (fraction) =>
-          patchTask(taskId, { progress: fraction })
+          patchTask(taskId, { progress: fraction }),
+          batchId
         );
         uploadedId = document.document_id;
         batch.names.set(document.document_id, file.name);
@@ -1277,6 +1305,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             batch={dataMode === "backend" ? [] : sessionUploadItems}
             tasks={dataMode === "backend" ? uploadTasks : undefined}
             items={dataMode === "backend" ? evidenceItems : undefined}
+            batchProgress={dataMode === "backend" ? batchView : null}
+            onOpenDocument={(documentId) => {
+              setUploadOpen(false);
+              openExtraction(documentId);
+            }}
             onOpenWorkspace={() => setActiveView({ name: "evidence" })}
           />
         ) : null}

@@ -62,7 +62,8 @@ def _active_index() -> str:
 def test_0017_down_and_up_returns_a_parked_run_to_the_queue() -> None:
     try:
         assert _state() == (True, 3)
-        assert fetch("SELECT version_num FROM alembic_version")[0]["version_num"] == NEW
+        # At or past 0017: later migrations (0018 batches) sit on top of it.
+        assert fetch("SELECT version_num FROM alembic_version")[0]["version_num"] in (NEW, "0018_s1_document_batches")
         fetch("TRUNCATE s1_processing_runs")
         fetch("TRUNCATE users, organizations CASCADE")
         fetch("INSERT INTO organizations (id, name, slug) VALUES ($1, 'Org', 'mig-0017')", ORG)

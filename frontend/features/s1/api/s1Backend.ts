@@ -162,13 +162,16 @@ export async function uploadDocument(engagementId: string, file: File): Promise<
 export function uploadDocumentWithProgress(
   engagementId: string,
   file: File,
-  onProgress: (fraction: number) => void
+  onProgress: (fraction: number) => void,
+  /** The batch this file is uploaded in with others (see api/documentBatches.ts). */
+  batchId?: string
 ): Promise<BackendDocumentLike> {
   if (!isReadableUpload(file)) return Promise.reject(new UnreadableFileError(file.name));
   if (file.size > MAX_UPLOAD_BYTES) return Promise.reject(new FileTooLargeError());
   const body = new FormData();
   body.append("file", file);
   body.append("document_role", "source_evidence");
+  if (batchId) body.append("batch_id", batchId);
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();

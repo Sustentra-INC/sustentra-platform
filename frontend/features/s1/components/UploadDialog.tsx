@@ -4,7 +4,9 @@ import { CloudUpload, X } from "lucide-react";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 
+import type { BatchView } from "../api/documentBatches";
 import type { EvidenceItem } from "../types";
+import { BatchProgress } from "./BatchProgress";
 import { isReadableUpload, MAX_UPLOAD_MB, unreadableUploadMessage, UPLOAD_ACCEPT } from "../constants/uploads";
 
 
@@ -59,6 +61,8 @@ export function UploadDialog({
   batch,
   tasks = [],
   items = [],
+  batchProgress = null,
+  onOpenDocument,
   onOpenWorkspace,
 }: {
   onClose: () => void;
@@ -72,6 +76,10 @@ export function UploadDialog({
   tasks?: UploadTask[];
   /** Backend mode: the engagement's documents, to show what reading found. */
   items?: EvidenceItem[];
+  /** Backend mode: how reading the files dropped together stands, when they were uploaded as a batch. */
+  batchProgress?: BatchView | null;
+  /** Open a read file's extraction review. */
+  onOpenDocument?: (documentId: string) => void;
   onOpenWorkspace: () => void;
 }) {
   const [drag, setDrag] = useState(false);
@@ -185,6 +193,10 @@ export function UploadDialog({
         ) : null}
 
         {tasks.length > 0 ? <UploadProgress tasks={tasks} items={items} /> : null}
+
+        {batchProgress && batchProgress.items.length > 0 && onOpenDocument ? (
+          <BatchProgress batch={batchProgress} onOpenDocument={onOpenDocument} />
+        ) : null}
 
         {added.length > 0 && !script ? (
           <ul className="s1-updlg__list" aria-live="polite">
