@@ -8,6 +8,7 @@ export const HALT_REASONS = {
   typeUnknown: "Document type not recognised. Choose its type on Evidence and it is read again.",
   multiFacility: "Multi-facility document · splitting is not supported in V1.",
   pipeline: "Processing failed. Retry available.",
+  documentTooLong: "Too many pages to read in one file. Split it into smaller files and upload them separately.",
 } as const;
 
 export const EXACT_COPY = {

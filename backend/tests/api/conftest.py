@@ -17,6 +17,7 @@ from backend.app.api.engagements import require_open_engagement
 from backend.app.core.auth import CurrentUser, get_current_user
 from backend.app.main import app
 from backend.app.repositories.document_repository import InMemoryDocumentRepository
+from backend.app.repositories.document_chunk_repository import InMemoryDocumentChunkRepository
 from backend.app.repositories.processing_run_repository import InMemoryProcessingRunRepository
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.local_storage_service import LocalStorageService
@@ -118,12 +119,13 @@ def run_queue() -> Iterator[InMemoryProcessingRunRepository]:
     by default, so each read through the pipeline routes is recorded as a run here."""
 
     original = documents_api.current_run_repository()
+    original_chunks = documents_api.current_chunk_repository()
     queue = InMemoryProcessingRunRepository()
-    documents_api.configure_services(run_repository=queue)
+    documents_api.configure_services(run_repository=queue, chunk_repository=InMemoryDocumentChunkRepository(queue))
     try:
         yield queue
     finally:
-        documents_api.configure_services(run_repository=original)
+        documents_api.configure_services(run_repository=original, chunk_repository=original_chunks)
 
 
 @pytest.fixture(autouse=True)

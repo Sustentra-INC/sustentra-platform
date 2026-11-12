@@ -178,6 +178,28 @@ Needs the evidence-tree API (feat/evidence-tree-api) deployed.
 1. A second organization's user can't see this engagement: its URL answers "not found".
 2. A provider admin can read it but can't upload or review.
 
-## 11. After a redeploy
+## 11. Large PDFs in page chunks
+
+Needs `S1_PROCESSING=queued`, the reader running, and Textract on for the scanned file. Page
+chunking applies to PDFs over 20 pages; a PDF of 20 pages or fewer reads as before.
+
+1. Upload a text PDF of 25 pages (a bill on page 1). Evidence shows "Reading…". It finishes
+   with the same values as a one-page bill, each with its page number. Nothing says pages were missed.
+2. Upload a scanned PDF of about 60 pages. It reads in chunks: while it does, the run
+   (`GET /v1/processing-runs/{id}`) is `waiting_on_chunks` with `chunks.completed` growing
+   toward `chunks.total` (6). The value found on a late page opens that page in the review, not page 1.
+3. While a chunked read is going, restart the reader container. The read finishes anyway
+   (chunks it held come back once their lease runs out, about two minutes).
+4. Make Textract fail for the reader (for example remove its Textract permission for a few
+   minutes) while a scanned PDF is read, then restore it. Each chunk is tried 3 times (30 s, then
+   120 s apart). The run ends `completed` but its pipeline run is `partial` with a "pages_unread"
+   warning naming the pages Textract could not read. `chunks.failed_pages` lists them (one page
+   each for pages that failed OCR, the whole range for a chunk that failed outright), and Evidence
+   shows "Partly read: Pages ... could not be read". The values from other pages are there to review.
+5. Upload a PDF of more than 500 pages. It is not read: Evidence shows it as Blocked with the
+   sentence "This document has N pages, more than the 500 we read in one document. Split it...".
+6. A 10-page PDF and a Word file read exactly as before (no `chunks` key on their runs).
+
+## 12. After a redeploy
 
 1. Redeploy the same build, or wait for the next one. Everything from steps 2–9 is still there.

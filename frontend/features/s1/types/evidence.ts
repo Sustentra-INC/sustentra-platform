@@ -46,6 +46,8 @@ export interface EvidenceItem {
   disposition: EvidenceDisposition;
   processingState: ProcessingState;
   haltReason: string | null;
+  /** Page ranges (as the server wrote them) a chunked read could not read; the values on them are missing. */
+  unreadPages?: string | null;
   detectedType: string | null;
   typeReviewBand: TypeReviewBand;
   typeReviewReason: string | null;
