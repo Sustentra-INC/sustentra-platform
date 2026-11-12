@@ -333,7 +333,7 @@ def test_no_client_no_organization_or_a_reached_cap_means_no_call() -> None:
     assert assist(None, [candidate("account_number")])[0].warnings == []
     claude = FakeClaude([read("account_number", "5521-8890", "Account Number 5521-8890", "L2")])
     outcome, ledger = assist(claude, [candidate("account_number")], ledger=FakeLedger(spent=1_000_000))
-    assert claude.calls == [] and ledger.rows == [] and outcome.warnings == []
+    assert claude.calls == [] and ledger.rows == [] and [w[:15] for w in outcome.warnings] == ["ai_cap_reached:"]
     service = AiExtraction(settings=settings(), client_factory=lambda s: claude, ledger=FakeLedger())
     outcome = service.assist(parser_output=parsed(), extraction_result=result(candidate("account_number")),
                              extraction_targets=TARGETS, canonical_type_id=TYPE, file_name="f", org_id=None,
@@ -346,7 +346,7 @@ def test_the_cap_is_checked_before_each_window_against_what_this_run_spent() -> 
     outcome, ledger = assist(claude, [candidate("account_number")], ledger=FakeLedger(spent=996_500),
                              ai_window_pages=1)
     assert len(claude.calls) == 1 and len(ledger.rows) == 1
-    assert any(w.startswith("ai_unavailable") and "cap" in w for w in outcome.warnings)
+    assert any(w.startswith("ai_cap_reached") for w in outcome.warnings)
 
 
 def test_a_call_that_raises_is_a_warning_has_no_ledger_row_and_keeps_earlier_windows() -> None:

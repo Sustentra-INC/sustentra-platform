@@ -1196,6 +1196,8 @@ function processingDisplay(item: EvidenceItem): { role: string; label: string; s
   if (item.reading)
     return { role: "active", label: "Reading…", sub: item.reading === "queued" ? "Waiting to be read" : null };
   if (item.processingState === "blocked") return { role: "blocking", label: "Blocked", sub: item.haltReason };
+  if (item.processingState === "extracted" && item.unreadPages)
+    return { role: "open", label: "Partly read", sub: `Pages ${item.unreadPages} could not be read` };
   if (
     item.processingState === "extracted" &&
     item.fieldsExpectedDisplay != null &&

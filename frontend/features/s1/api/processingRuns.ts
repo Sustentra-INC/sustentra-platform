@@ -8,7 +8,15 @@ import { userFacingApiError } from "./s1Backend";
  * the engagement's runs until it finishes.
  */
 
-export type ProcessingRunStatus = "queued" | "in_progress" | "completed" | "failed";
+export type ProcessingRunStatus = "queued" | "in_progress" | "waiting_on_chunks" | "completed" | "failed";
+
+/** A large PDF read in page chunks: how far the chunks are, and the pages of the failed ones. */
+export interface ProcessingRunChunks {
+  total: number;
+  completed: number;
+  failed: number;
+  failed_pages: [number, number][];
+}
 
 export interface ProcessingRunView {
   run_id: string;
@@ -27,6 +35,7 @@ export interface ProcessingRunView {
   pipeline_run_id?: string | null;
   error_code?: string | null;
   error: string | null;
+  chunks?: ProcessingRunChunks;
 }
 
 /** Shown when a read failed without a sentence of its own. */
@@ -34,7 +43,7 @@ export const READ_FAILED_ON_OUR_SIDE = "Reading failed on our side. Try again; i
 
 /** A run that is waiting to be read or being read now. */
 export function isActiveRun(run: Pick<ProcessingRunView, "status">): boolean {
-  return run.status === "queued" || run.status === "in_progress";
+  return run.status === "queued" || run.status === "in_progress" || run.status === "waiting_on_chunks";
 }
 
 /** Ask for a document to be read. With a type, it is read as that type instead of the

@@ -35,6 +35,7 @@ from backend.app.services.extraction_target_service import ExtractionTargetServi
 from backend.app.adapters.parsers.email_parser import PARSER_NAME as EMAIL_PARSER_NAME
 from backend.app.adapters.parsers.email_reader import ENCRYPTED_EMAIL
 from backend.app.adapters.parsers.xls_parser import PASSWORD_PROTECTED
+from backend.app.services.document_chunk_service import pages_unread_message
 from backend.app.services.parser_service import ParserService
 from backend.app.services.mobile_combustion_extractor import (
     CANONICAL_TYPE_ID as MOBFUEL_TYPE_ID,
@@ -151,7 +152,20 @@ class PipelineOrchestrationService:
         include_deprecated: bool = False,
         persist_run: bool = True,
         org_id: str | None = None,
+        prebuilt_parser_output: dict | None = None,
+        unread_pages: list[tuple[int, int]] | None = None,
+        halt_override: dict[str, str] | None = None,
     ) -> dict:
+        """Read a stored file: parse, classify, plan targets, extract, record the run.
+
+        The last three are for documents read in page chunks (queued mode), and are ``None``
+        otherwise, which reads exactly as before. ``prebuilt_parser_output``: the merged output of the
+        chunks, used instead of parsing the file. ``unread_pages``: page ranges no chunk could
+        read; the run is then ``partial`` with a ``pages_unread`` warning, never ``completed``.
+        ``halt_override``: stop before parsing, with this halt (the document is too long): a
+        ``partial`` run with no candidates.
+        """
+
         path = Path(local_file_path)
         if not path.exists() or not path.is_file():
             raise ValueError(f"local_file_path does not exist or is not a file: {local_file_path}")
@@ -190,14 +204,57 @@ class PipelineOrchestrationService:
         ai_routing: dict[str, Any] | None = None
 
         try:
-            parser_output = self._parser_service.parse_document(
-                file_path=str(path),
-                document_id=resolved_document_id,
-                processing_run_id=resolved_processing_run_id,
-                mime_type=mime_type,
-            )
+            if halt_override is not None:
+                stage_statuses.parse = "skipped"
+                stage_statuses.classify = "skipped"
+                stage_statuses.target_plan = "skipped"
+                stage_statuses.candidate_generation = "skipped"
+                warnings.append(halt_override["message"])
+                run = self._build_pipeline_run(
+                    pipeline_run_id=resolved_pipeline_run_id,
+                    engagement_id=engagement_id,
+                    evidence_id=resolved_evidence_id,
+                    document_id=resolved_document_id,
+                    processing_run_id=resolved_processing_run_id,
+                    status="partial",
+                    stage_statuses=stage_statuses,
+                    input_file_name=resolved_file_name,
+                    canonical_type_id=None,
+                    canonical_type_source="none",
+                    classification_status=None,
+                    parser_status=None,
+                    extraction_targets=[],
+                    extraction_result=extraction_result,
+                    warnings=warnings,
+                    errors=errors,
+                    created_at=created_at,
+                    completed_at=self._clock(),
+                    halt_reason=halt_override,
+                )
+                saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
+                return {
+                    "pipeline_run": saved_run,
+                    "parser_output": parser_output,
+                    "classification_result": classification_result,
+                    "extraction_targets": extraction_targets,
+                    "extraction_result": extraction_result,
+                }
+
+            if prebuilt_parser_output is not None:
+                parser_output = prebuilt_parser_output
+            else:
+                parser_output = self._parser_service.parse_document(
+                    file_path=str(path),
+                    document_id=resolved_document_id,
+                    processing_run_id=resolved_processing_run_id,
+                    mime_type=mime_type,
+                )
             parser_status = str(parser_output.get("status") or "") or None
             stage_statuses.parse = self._parser_stage_status(parser_status)
+            if unread_pages:
+                warnings.append(
+                    "pages_unread: " + pages_unread_message(unread_pages)
+                )
 
             if parser_status == "failed" or (parser_status == "empty" and not canonical_type_id_override):
                 halt_reason = self._unreadable_halt(parser_output)
@@ -475,7 +532,7 @@ class PipelineOrchestrationService:
                     }
                 )
                 stage_statuses.candidate_generation = "completed"
-                overall_status = "completed"
+                overall_status = "partial" if unread_pages else "completed"
                 if extraction_result.get("halt_reason"):
                     halt_reason = dict(extraction_result["halt_reason"])
                     stage_statuses.candidate_generation = "skipped"
@@ -921,7 +978,7 @@ class PipelineOrchestrationService:
 
     @staticmethod
     def _routing_warnings(result: RoutingResult) -> list[str]:
-        if result.status == "unavailable" and result.warning:
+        if result.status in ("unavailable", "off") and result.warning:
             return [result.warning]
         if result.status == "ignored":
             return [f"ai_routing_ignored: {result.ignored_reason}"]

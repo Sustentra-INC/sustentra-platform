@@ -261,3 +261,27 @@ def test_a_page_the_model_names_is_never_used() -> None:
     """The model has no page field: an extra key is refused by the strict schema."""
     with pytest.raises(ValueError):
         ai_routing.routing_output().model_validate({**said("none", ""), "page_number": 7})
+
+
+def test_a_reached_cap_is_a_warning_not_a_silent_skip(tmp_path: Any) -> None:
+    routing, _ = router(FakeClaude(said("none", "", "")), FakeLedger(spent=1_000_000))
+    run = read(pipeline(routing), tmp_path)
+    assert any(w.startswith("ai_cap_reached") for w in run["warnings"])
+
+
+def test_a_chunked_run_is_routed_on_the_merged_output_and_skipped_when_pages_1_2_are_unread(tmp_path: Any) -> None:
+    """Chunked reads pass the merged parser output (and the page ranges no chunk could read)."""
+    claude = FakeClaude(said("CT-S1-REFRSVC", "Refrigerant charge log and top-up record"))
+    routing, ledger = router(claude)
+    service = pipeline(routing)
+    run = service.process_local_document(
+        local_file_path=_write_temp_text_file(tmp_path), engagement_id="ENG-1", org_id=ORG, persist_run=False,
+        prebuilt_parser_output=parsed(LETTER))["pipeline_run"]
+    assert run["canonical_type_source"] == "ai" and len(ledger.rows) == 1
+    # Pages 1-2 were not read (chunk 1 failed): the merged output has only later pages, so no call is made.
+    claude2 = FakeClaude(said("CT-S1-REFRSVC", "Page three is never shown to Claude"))
+    routing, ledger = router(claude2)
+    run = pipeline(routing).process_local_document(
+        local_file_path=_write_temp_text_file(tmp_path), engagement_id="ENG-1", org_id=ORG, persist_run=False,
+        prebuilt_parser_output=parsed([(3, "Page three is never shown to Claude")]), unread_pages=[(1, 2)])["pipeline_run"]
+    assert claude2.calls == [] and ledger.rows == [] and run["canonical_type_source"] == "none"

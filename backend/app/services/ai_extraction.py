@@ -61,7 +61,7 @@ from backend.app.services.ai_locator import (
     locate,
     norm,
 )
-from backend.app.services.ai_routing import UNAVAILABLE, DbLedger, Ledger, new_client
+from backend.app.services.ai_routing import CAP_REACHED, UNAVAILABLE, DbLedger, Ledger, new_client
 from backend.app.services.extraction_candidate_service import ExtractionCandidateService
 
 logger = logging.getLogger(__name__)
@@ -479,10 +479,11 @@ class AiExtraction:
         asked = ask_fields(items, targets, [t for t in gap_targets() if t.get("ai_only")])
         if not asked:
             return AssistOutcome(extraction_result)
-        ledger = self._ledger or DbLedger(settings, feature=FEATURE)
+        ledger = self._ledger or DbLedger(feature=FEATURE)
         spent = ledger.month_spend_microusd(org_id)
         if ai_usage.cap_reached(spent, settings.ai_monthly_cap_usd):
-            return AssistOutcome(extraction_result)
+            return AssistOutcome(extraction_result, [f"{CAP_REACHED}: this month's limit on Claude suggestions is "
+                                                     "reached, so the values were not read by Claude."])
 
         units = page_units(lines)
         windows, skipped = make_windows(units, settings.ai_window_pages, settings.ai_max_windows)
@@ -511,8 +512,8 @@ class AiExtraction:
                                 f"{describe(_not_read(left, windows[:index - 1]))} not read.")
                 break
             if ai_usage.cap_reached(spent + cost, settings.ai_monthly_cap_usd):
-                warnings.append(f"{UNAVAILABLE}: the monthly Claude cap was reached after {read} of "
-                                f"{len(windows)} windows.")
+                warnings.append(f"{CAP_REACHED}: this month's limit on Claude suggestions was reached after "
+                                f"{read} of {len(windows)} windows.")
                 break
             window_lines = [line for unit in window for line in unit.lines]
             content, cut_here = render_window(header, f"Window {index} of {len(windows)}: {describe(window)}",

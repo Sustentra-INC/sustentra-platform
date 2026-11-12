@@ -23,7 +23,7 @@ export function AiTypeNote({ item }: { item: Pick<EvidenceItem, "aiType" | "dete
   if (!ai.disagrees) return null;
   return (
     <div className="s1-muted" data-testid="ai-type-note">
-      {AI_TYPE.disagreesOn(item.detectedType ?? "an unknown type", ai.typeId)}
+      {AI_TYPE.disagreesOn(item.detectedType ?? "an unknown type", ai.typeName)}
       <div>
         “{ai.quote}”{ai.page != null ? ` · page ${ai.page}` : ""}
       </div>

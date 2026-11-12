@@ -13,7 +13,9 @@ import uuid
 from typing import Any
 
 import pytest
+from sqlalchemy import create_engine
 
+from backend.app.core.db import to_sync_url
 from backend.app.services.ai_extraction import AiExtraction
 from backend.app.services.ai_routing import DbLedger
 from backend.tests.services.test_ai_extraction import (
@@ -41,6 +43,7 @@ pytestmark = pytest.mark.skipif(
 ORG = uuid.UUID(ORG_TEXT)
 OTHER = uuid.UUID("bbbbbbbb-0000-0000-0000-0000000000c4")
 ENGAGEMENT = uuid.UUID("cccccccc-0000-0000-0000-0000000000c4")
+ENGINE = create_engine(to_sync_url(APP_URL)) if APP_URL else None
 
 
 async def _admin(sql: str, *args: Any) -> Any:
@@ -61,7 +64,7 @@ def orgs() -> None:
 
 def run(claude: FakeClaude, cap: float = 1.0, **over: Any) -> Any:
     chosen = settings(database_url=APP_URL, ai_monthly_cap_usd=cap, **over)
-    service = AiExtraction(settings=chosen, client_factory=lambda s: claude, ledger=DbLedger(chosen, feature="extraction"))
+    service = AiExtraction(settings=chosen, client_factory=lambda s: claude, ledger=DbLedger(ENGINE, feature="extraction"))
     return service.assist(parser_output=parsed(BILL), extraction_result=result(candidate("account_number")),
                           extraction_targets=TARGETS, canonical_type_id=TYPE, file_name="f.pdf", org_id=ORG_TEXT,
                           engagement_id=str(ENGAGEMENT))

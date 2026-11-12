@@ -16,33 +16,29 @@ ledger (feature ``routing``) in its own short transaction, after the call; no da
 connection is held while Claude answers. Any failure becomes a warning (``ai_unavailable``)
 and the pipeline goes on as it would without AI.
 
-The pipeline is synchronous and runs in a request thread or the reader thread, so the async
-ledger functions are driven on a private event loop with a short-lived, unpooled engine
-(asyncpg connections belong to the loop that opened them).
+The pipeline is synchronous and runs in a request thread or the reader thread, so the ledger
+uses the S1 stores' sync engine (``core.db.tenant_transaction``) with ai_usage's sync helpers.
 
 No prompt, document text, quote or reply is logged: only ids, codes, counts, cost and duration.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 import uuid
 from collections.abc import Callable, Sequence
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any, Literal, Protocol
 
+from sqlalchemy import Engine
 from pydantic import BaseModel, ConfigDict, create_model
-from sqlalchemy.ext.asyncio import create_async_engine
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.pool import NullPool
 
 from backend.app.adapters.llm.claude import AiNotConfiguredError, ClaudeClient, StructuredReply, get_claude
 from backend.app.core.config import Settings, get_settings
-from backend.app.core.db import runtime_database_url, set_tenant, to_async_url
+from backend.app.core.db import tenant_transaction
+from backend.app.core.s1_scope import S1Scope
 from backend.app.reference.vocabulary_loader import load_default_vocabulary_library
 from backend.app.services import ai_usage
 from backend.app.services.ai_locator import DocumentLine, NotLocated, document_lines, locate_quote
@@ -57,6 +53,7 @@ MAX_OUTPUT_TOKENS = 600
 MIN_QUOTE = 8  # characters
 NONE_ID = "none"
 UNAVAILABLE = "ai_unavailable"
+CAP_REACHED = "ai_cap_reached"
 
 ReasonCode = Literal["title", "header_terms", "table_headers", "other"]
 
@@ -143,40 +140,23 @@ class Ledger(Protocol):
                reply: StructuredReply[Any]) -> None: ...
 
 
-def _run(coro: Any) -> Any:
-    """Drive a coroutine from synchronous code, on a loop of its own (a thread, in case this
-    thread already has a running loop)."""
-
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(asyncio.run, coro).result()
-
-
 class DbLedger:
-    """``ai_usage`` through the app's database, one short transaction per call, in the
-    organization's RLS scope. The engine is unpooled and disposed after each use."""
+    """``ai_usage`` through the S1 stores' sync engine: one short ``tenant_transaction`` per call,
+    in the organization's RLS scope, so no connection is held while Claude answers."""
 
-    def __init__(self, settings: Settings | None = None, feature: str = FEATURE) -> None:
-        self._settings = settings
+    def __init__(self, engine: Engine | None = None, feature: str = FEATURE) -> None:
+        self._engine = engine  # None: the app's own sync engine
         self._feature = feature  # the ai_usage feature the rows are written under
 
-    async def _transaction(self, org_id: uuid.UUID, work: Callable[[AsyncSession], Any]) -> Any:
-        engine = create_async_engine(to_async_url(runtime_database_url(self._settings or get_settings())),
-                                     poolclass=NullPool)
-        try:
-            async with AsyncSession(engine, expire_on_commit=False, autoflush=False) as session, session.begin():
-                await set_tenant(session, org_id)
-                return await work(session)
-        finally:
-            await engine.dispose()
-
     def month_spend_microusd(self, org_id: uuid.UUID) -> int:
-        return int(_run(self._transaction(org_id, lambda db: ai_usage.month_spend_microusd(db, org_id))))
+        with tenant_transaction(S1Scope.tenant(org_id), self._engine) as conn:
+            return ai_usage.month_spend_microusd_sync(conn, org_id)
 
     def record(self, *, org_id: uuid.UUID, engagement_id: uuid.UUID | None, provider: str,
                reply: StructuredReply[Any]) -> None:
-        _run(self._transaction(org_id, lambda db: ai_usage.record(
-            db, org_id=org_id, engagement_id=engagement_id, feature=self._feature, provider=provider, reply=reply,
-            user_id=None)))
+        with tenant_transaction(S1Scope.tenant(org_id), self._engine) as conn:
+            ai_usage.record_sync(conn, org_id=org_id, engagement_id=engagement_id, feature=self._feature,
+                                 provider=provider, reply=reply, user_id=None)
 
 
 # --- the service ------------------------------------------------------------------------------
@@ -249,7 +229,7 @@ class AiRouting:
     def _suggest(self, settings: Settings, parser_output: dict[str, Any], org_id_text: str, engagement_id: str,
                  has_targets: Callable[[str], bool]) -> RoutingResult:
         org_id = uuid.UUID(org_id_text)
-        ledger = self._ledger or DbLedger(settings)
+        ledger = self._ledger or DbLedger()
         client = self._client_factory(settings)
         if client is None:
             return RoutingResult("off")
@@ -258,7 +238,7 @@ class AiRouting:
             return RoutingResult("off")
         # The cap check: its own short transaction, closed before the call.
         if ai_usage.cap_reached(ledger.month_spend_microusd(org_id), settings.ai_monthly_cap_usd):
-            return RoutingResult("off")
+            return RoutingResult("off", warning=f"{CAP_REACHED}: this month's limit on Claude suggestions is reached, so the type was not read by Claude.")
 
         started = time.monotonic()
         try:

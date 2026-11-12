@@ -14,7 +14,10 @@ from typing import Any
 
 import pytest
 
+from sqlalchemy import create_engine
+
 from backend.app.core.config import Settings
+from backend.app.core.db import to_sync_url
 from backend.app.services.ai_routing import AiRouting, DbLedger
 from backend.tests.services.test_ai_routing import ORG as ORG_TEXT
 from backend.tests.services.test_ai_routing import FakeClaude, parsed, said
@@ -28,6 +31,7 @@ pytestmark = pytest.mark.skipif(
     not (ADMIN_URL and APP_URL), reason="TEST_DATABASE_URL / TEST_APP_DATABASE_URL not set"
 )
 
+ENGINE = create_engine(to_sync_url(APP_URL)) if APP_URL else None
 ORG = uuid.UUID(ORG_TEXT)
 OTHER = uuid.UUID("bbbbbbbb-0000-0000-0000-0000000000c3")
 ENGAGEMENT = uuid.UUID("cccccccc-0000-0000-0000-0000000000c3")
@@ -55,19 +59,20 @@ def settings(cap: float = 1.0) -> Settings:
 
 
 class WatchingClaude(FakeClaude):
-    """Looks for an open database connection of the app while it 'answers'."""
+    """Looks for a connection of the app in a transaction (or running a statement) while it
+    'answers'. A pooled connection sitting idle is not held by anyone."""
 
     open_connections: list[int]
 
     def structured(self, **kwargs: Any) -> Any:
-        rows = asyncio.run(_admin("SELECT count(*) AS n FROM pg_stat_activity WHERE usename = 'app_user'"))
+        rows = asyncio.run(_admin("SELECT count(*) AS n FROM pg_stat_activity WHERE usename = 'app_user' AND state <> 'idle'"))
         self.open_connections = [rows[0]["n"]]
         return super().structured(**kwargs)
 
 
 def ask(claude: FakeClaude, cap: float = 1.0) -> Any:
     chosen = settings(cap)
-    routing = AiRouting(settings=chosen, client_factory=lambda s: claude, ledger=DbLedger(chosen))
+    routing = AiRouting(settings=chosen, client_factory=lambda s: claude, ledger=DbLedger(ENGINE))
     return routing.suggest(parsed(), org_id=ORG_TEXT, engagement_id=str(ENGAGEMENT), has_targets=lambda t: True)
 
 

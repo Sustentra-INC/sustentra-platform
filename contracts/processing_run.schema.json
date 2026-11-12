@@ -38,6 +38,7 @@
       "enum": [
         "queued",
         "in_progress",
+        "waiting_on_chunks",
         "completed",
         "failed"
       ]
@@ -105,6 +106,43 @@
         "string",
         "null"
       ]
+    },
+    "chunks": {
+      "description": "Only for a PDF read in page chunks (waiting_on_chunks, then until the run ends): how many chunks there are, how many are done or failed, and the page ranges of the failed ones (a failed chunk leaves its pages unread).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total",
+        "completed",
+        "failed",
+        "failed_pages"
+      ],
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "completed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_pages": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        }
+      }
     }
   }
 }

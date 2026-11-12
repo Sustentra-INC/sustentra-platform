@@ -38,10 +38,20 @@ class PdfParser:
 
     parser_version = PARSER_RUNTIME_VERSION
 
-    def parse(self, file_path: str | Path, document_id: str, processing_run_id: str) -> dict:
-        path = Path(file_path)
+    def parse(
+        self,
+        file_path: str | Path,
+        document_id: str,
+        processing_run_id: str,
+        page_range: tuple[int, int] | None = None,
+    ) -> dict:
+        """``page_range``: read only these pages (1-based, inclusive); their page numbers in the
+        output are the document's own. ``None``: the whole document."""
 
-        page_texts, page_lines, parser_name, load_error = self._extract_page_texts(path)
+        path = Path(file_path)
+        first_page = page_range[0] if page_range else 1
+
+        page_texts, page_lines, parser_name, load_error = self._extract_page_texts(path, page_range)
 
         if load_error is not None:
             return build_failed_parser_output(
@@ -72,7 +82,7 @@ class PdfParser:
         block_counter = 0
         pages_with_text = 0
 
-        for page_number, page_text in enumerate(page_texts, start=1):
+        for page_number, page_text in enumerate(page_texts, start=first_page):
             normalized_text = page_text or ""
             pages.append({"page_number": page_number, "text": normalized_text})
 
@@ -86,7 +96,8 @@ class PdfParser:
                 continue
 
             pages_with_text += 1
-            lines = page_lines[page_number - 1] if page_number - 1 < len(page_lines) else []
+            index = page_number - first_page
+            lines = page_lines[index] if index < len(page_lines) else []
             if lines:
                 for line_text, bounding_box in lines:
                     block_counter += 1
@@ -158,7 +169,7 @@ class PdfParser:
         )
 
     def _extract_page_texts(
-        self, path: Path
+        self, path: Path, pages: tuple[int, int] | None = None
     ) -> tuple[list[str], list[list[PageLine]], str, dict[str, str] | None]:
         """Return (page_texts, page_lines, parser_name, load_error_warning_or_None).
 
@@ -176,7 +187,9 @@ class PdfParser:
                 page_texts: list[str] = []
                 page_lines: list[list[PageLine]] = []
                 with fitz.open(path) as document:
-                    for page in document:
+                    first, last = (pages[0] - 1, min(pages[1], document.page_count)) if pages else (0, document.page_count)
+                    for number in range(first, last):
+                        page = document[number]
                         page_texts.append(page.get_text() or "")
                         page_lines.append(self._page_lines(page))
                 return page_texts, page_lines, PARSER_NAME_PYMUPDF, None
@@ -201,7 +214,8 @@ class PdfParser:
             try:
                 page_texts = []
                 with pdfplumber.open(path) as document:
-                    for page in document.pages:
+                    wanted = document.pages[pages[0] - 1:pages[1]] if pages else document.pages
+                    for page in wanted:
                         page_texts.append(page.extract_text() or "")
                 return page_texts, [], PARSER_NAME_PDFPLUMBER, None
             except Exception as exc:  # noqa: BLE001 - normalize any parse failure

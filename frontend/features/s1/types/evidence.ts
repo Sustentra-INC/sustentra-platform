@@ -39,8 +39,8 @@ export interface AiTypeReading {
   /** The words Claude cited, printed on the document. */
   quote: string;
   page: number | null;
-  /** The type Claude named (its id). */
-  typeId: string;
+  /** The type Claude named, as its display name (never the id). */
+  typeName: string;
   used: boolean;
   disagrees: boolean;
 }
@@ -56,6 +56,8 @@ export interface EvidenceItem {
   disposition: EvidenceDisposition;
   processingState: ProcessingState;
   haltReason: string | null;
+  /** Page ranges (as the server wrote them) a chunked read could not read; the values on them are missing. */
+  unreadPages?: string | null;
   detectedType: string | null;
   typeReviewBand: TypeReviewBand;
   typeReviewReason: string | null;

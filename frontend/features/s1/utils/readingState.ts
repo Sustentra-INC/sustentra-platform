@@ -17,9 +17,10 @@ export function withReadingState(items: EvidenceItem[], runs: Record<string, Pro
   const next = items.map((item) => {
     const run = runs[item.documentId];
     if (!run) return item;
-    if (run.status === "queued" || run.status === "in_progress") {
+    if (isActiveRun(run)) {
       changed = true;
-      return { ...item, reading: run.status };
+      const reading: "queued" | "in_progress" = run.status === "queued" ? "queued" : "in_progress";
+      return { ...item, reading };
     }
     if (
       item.processingState === "blocked" &&
