@@ -15,7 +15,11 @@ from typing import Any
 from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorReference, default_emission_factor_reference
 from backend.app.services import calculation_lines as cl
-from backend.app.services.engagement_recalculation_service import parse_inputs, setup_facilities
+from backend.app.services.engagement_recalculation_service import (
+    EngagementRecalculationService,
+    parse_inputs,
+    setup_facilities,
+)
 from backend.app.services.reviewed_evidence import (
     REVIEWED,
     THERMAL,
@@ -45,6 +49,11 @@ ACTIVITY_NOTES = {
     "stationary": "fuel quantity combusted", "biogenic": "fuel quantity combusted",
     "mobile": "fuel use quantity", "fugitive": "refrigerant quantity added or recovered",
 }
+# Plain labels for the fields a record can still be waiting on (the recalculation's awaiting_review).
+FIELD_LABELS = {"fuel_type": "Fuel type", "activity_quantity": "Activity quantity", "energy_type": "Energy type",
+                "refrigerant_type": "Refrigerant type", "refrigerant_added": "Refrigerant added",
+                "equipment_capacity": "Equipment capacity", "refrigerant_recovered": "Refrigerant recovered",
+                "service_type": "Service type"}
 VERBS = {"accepted": "accepted", "edited": "edited", "rejected": "rejected",
          "needs_more_evidence": "asked for more evidence on"}
 
@@ -260,6 +269,13 @@ class EvidenceTreeService:
         line = next((ln for ln in loaded.lines if ln.key == key), None)
         if line is None:
             return None
+        # The recalculation decides what counts: a record it lists as awaiting review does not, and
+        # the line is calculated only when the recalculation has it.
+        recalculation = EngagementRecalculationService(
+            self._upload, self._pipeline, self._reviews, self._reference).recalculate(engagement, can_see, decisions)
+        waiting_by_record = {(str(a["document_id"]), str(a["record"])): list(a["fields"])
+                             for a in recalculation["awaiting_review"]}
+        calculated = key in {str(ln["key"]) for ln in recalculation["calculation_lines"]}
         on_line = [(doc, [doc.records[i] for i in sorted(slot.records)])
                    for doc in loaded.docs for slot in doc.slots if slot.target == key]
         values: list[dict[str, Any]] = []
@@ -271,25 +287,32 @@ class EvidenceTreeService:
                 name = cl.quantity_field(record)
                 item = record.fields.get(name) if name else None
                 start, end = cl.record_period(record)
+                waiting = [FIELD_LABELS.get(f, f.replace("_", " ").capitalize())
+                           for f in waiting_by_record.get((doc.document_id, record.label), []) if f != name]
                 if item is None:
-                    rows.append(self._row_of(doc, record, None, None, None, (start, end), name_of))
+                    rows.append(self._row_of(doc, record, None, None, None, (start, end), name_of, []))
                     continue
                 thermal = record.canonical_type_id == THERMAL
                 unit_text = item.unit or record.best("activity_unit")
                 unit = (fuel_units.canonical_unit(str(unit_text), thermal) or str(unit_text)) if unit_text else None
                 shown = item.value if item.status in REVIEWED else item.extracted
-                rows.append(self._row_of(doc, record, item, shown, unit, (start, end), name_of))
-                accepted = item.status in REVIEWED
-                covered.append(cl.Covered(start, end, to_number(shown), unit, accepted, doc.document_id))
+                reviewed = item.status in REVIEWED
+                waiting = waiting if reviewed else []
+                rows.append(self._row_of(doc, record, item, shown, unit, (start, end), name_of, waiting))
+                covered.append(cl.Covered(start, end, to_number(shown), unit, reviewed and not waiting,
+                                          doc.document_id, tuple(waiting)))
                 who = name_of(item.reviewer) if item.reviewer else None
                 page = (item.source_reference or {}).get("page_number")
                 decision = item.status if item.status != "unreviewed" else "not_reviewed"
+                if waiting:
+                    decision = "awaiting_other_fields"
                 values.append({
                     "service_period_start": _iso(start), "service_period_end": _iso(end),
                     "days": (end - start).days + 1 if start and end and end >= start else None,
                     "quantity": shown, "unit": unit, "document_id": doc.document_id,
                     "file_name": doc.document.get("file_name"), "page": page, "candidate_id": item.candidate_id,
                     "decided_by": who, "decided_at": _iso(item.reviewed_at), "decision": decision,
+                    "waiting_on": waiting,
                 })
                 # every decision on this value, not only the latest
                 past = item.history or ([{"decision": item.status, "reviewer_id": item.reviewer,
@@ -317,6 +340,7 @@ class EvidenceTreeService:
         history.sort(key=lambda h: h["at"] or "", reverse=True)
         return {
             "line": line.to_dict(),
+            "calculated": calculated,
             "reporting_period": {"start": _iso(loaded.period[0]), "end": _iso(loaded.period[1])},
             "coverage": cl.month_coverage(loaded.period, covered),
             "identifiers": self._identifiers(on_line),
@@ -330,11 +354,15 @@ class EvidenceTreeService:
 
     @staticmethod
     def _row_of(doc: DocState, record: ReviewedRecord, item: Any, shown: Any, unit: str | None,
-                period: tuple[date | None, date | None], name_of: Callable[[str], str]) -> dict[str, Any]:
-        """One record of the line as a schedule row: every extracted value, accepted or not."""
+                period: tuple[date | None, date | None], name_of: Callable[[str], str],
+                waiting: list[str]) -> dict[str, Any]:
+        """One record of the line as a schedule row: every extracted value, accepted or not.
+        ``waiting``: labels of the record's other required fields the recalculation still awaits
+        (only for a reviewed quantity); such a row does not count."""
 
         start, end = period
-        accepted = item is not None and item.status in REVIEWED
+        reviewed = item is not None and item.status in REVIEWED
+        accepted = reviewed and not waiting
         cells: dict[str, dict[str, Any]] = {}
         for key, _, field_name in EXTRA_COLUMNS:
             extra = record.fields.get(field_name)
@@ -345,14 +373,16 @@ class EvidenceTreeService:
         return {
             "record_key": f"{doc.document_id}:{0 if index is None else index}", "record_index": index,
             "accepted": accepted,
-            "decision": "not_reviewed" if item is None or item.status == "unreviewed" else item.status,
+            "decision": ("awaiting_other_fields" if waiting else
+                         "not_reviewed" if item is None or item.status == "unreviewed" else item.status),
+            "waiting_on": waiting,
             "date": {"start": _iso(start), "end": _iso(end),
                      "days": (end - start).days + 1 if start and end and end >= start else None,
                      "label": cl.date_label(record.canonical_type_id)},
             "activity_quantity": {"value": shown, "unit": unit},
             "cells": cells,
             "saved_by": ({"name": name_of(item.reviewer), "at": _iso(item.reviewed_at)}
-                         if accepted and item.reviewer else None),
+                         if reviewed and item.reviewer else None),
             "document_id": doc.document_id, "file_name": doc.document.get("file_name"),
             "page": (item.source_reference or {}).get("page_number") if item is not None else None,
             "candidate_id": item.candidate_id if item is not None else None,

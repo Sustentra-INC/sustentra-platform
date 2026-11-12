@@ -136,7 +136,9 @@ def _decided(decision: str | None, **extra: object) -> FakeStore:
     store.add_document("A", "CT-S1-FUELQTY", [_gas(310)], decision=None)
     if decision:
         store.reviews["A"] = [{"candidate_id": "A:1:activity_quantity", "decision": decision, "org_id": ORG,
-                               "reviewer_id": "ana@example.com", "reviewed_at": "2025-04-02T10:00:00Z", **extra}]
+                               "reviewer_id": "ana@example.com", "reviewed_at": "2025-04-02T10:00:00Z", **extra},
+                              {"candidate_id": "A:1:fuel_type", "decision": "accepted", "org_id": ORG,
+                               "reviewed_value": "natural_gas"}]
     return store
 
 
@@ -167,3 +169,40 @@ def test_an_empty_line_has_the_two_fixed_columns_and_no_rows() -> None:
     assert [c["key"] for c in schedule["columns"]] == ["date", "activity_quantity"]
     assert schedule["activity_quantity_note"] == "Activity quantity: fuel quantity combusted"
     assert all(g["values"] == [] and g["documents_total"] == 0 for g in schedule["identifier_groups"])
+
+
+def _fuel_unreviewed() -> FakeStore:
+    """A quantity that is accepted while the record's fuel type is not."""
+
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(212, "2025-03-14", "2025-03-14")])
+    store.reviews["A"] = [r for r in store.reviews["A"] if not r["candidate_id"].endswith(":fuel_type")]
+    return store
+
+
+def test_an_accepted_quantity_with_an_unreviewed_fuel_type_does_not_count() -> None:
+    schedule = _schedule(_fuel_unreviewed())
+    row = schedule["rows"][0]
+    assert row["accepted"] is False and row["decision"] == "awaiting_other_fields"
+    assert row["waiting_on"] == ["Fuel type"]
+    assert schedule["values"][0]["decision"] == "awaiting_other_fields"
+    assert schedule["values"][0]["waiting_on"] == ["Fuel type"]
+    assert schedule["calculated"] is False
+
+
+def test_the_coverage_month_follows_the_same_rule() -> None:
+    months = {m["month"]: m for m in _schedule(_fuel_unreviewed())["coverage"]}
+    assert months["2025-03"]["status"] == "not_reviewed" and months["2025-03"]["quantity"] is None
+    assert months["2025-03"]["waiting_on"] == ["Fuel type"]
+    assert months["2025-01"]["waiting_on"] == []
+
+
+def test_a_fully_reviewed_record_counts_and_the_line_is_calculated() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(212, "2025-03-14", "2025-03-14")])
+    schedule = _schedule(store)
+    row = schedule["rows"][0]
+    assert row["accepted"] is True and row["decision"] == "accepted" and row["waiting_on"] == []
+    assert schedule["calculated"] is True
+    month = {m["month"]: m for m in schedule["coverage"]}["2025-03"]
+    assert month["status"] == "counted_in_part" and month["waiting_on"] == []

@@ -692,6 +692,30 @@ describe("the supporting schedule", () => {
     expect(props.onBack).toHaveBeenCalled();
   });
 
+  it("says what a row and a month are waiting on, and replaces the button when the line is not calculated", async () => {
+    const [first, second, third] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        calculated: false,
+        coverage: [
+          { month: "2025-03", status: "not_reviewed", quantity: null, unit: null, document_ids: ["mar"], waiting_on: ["Fuel type"] },
+        ],
+        rows: [
+          { ...first, accepted: false, decision: "awaiting_other_fields", waiting_on: ["Fuel type"] },
+          second,
+          third,
+        ],
+      },
+    };
+    const props = renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    expect(screen.getAllByText("Waiting on: Fuel type")).toHaveLength(2); // the month and the row
+    expect(screen.getByText("Not calculated yet: values on this line are waiting for review.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open calculation line ›" })).toBeNull();
+    expect(props.onOpenCalculationLine).not.toHaveBeenCalled();
+  });
+
   it("shows the load error, not an empty schedule, when the v2 fields are missing", async () => {
     const old: Partial<LineSchedule> = { ...SCHEDULE };
     delete old.rows;

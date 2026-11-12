@@ -3559,7 +3559,7 @@ button.s1-sch-month { cursor: pointer; }
 button.s1-sch-month:hover { border-color: var(--accent); }
 button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .s1-sch-month__name { font-weight: var(--weight-strong); }
-.s1-sch-month__status, .s1-sch-month__qty { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.s1-sch-month__status, .s1-sch-month__qty, .s1-sch-month__waiting { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .s1-sch-month--resolved { background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
 .s1-sch-month--active { background: var(--state-active-bg); border-color: var(--state-active-line); }
 .s1-sch-month--open { background: var(--state-open-bg); border-color: var(--state-open-line); }

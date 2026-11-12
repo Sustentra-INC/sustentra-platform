@@ -183,6 +183,19 @@ describe("recalculation inputs panel", () => {
     });
   });
 
+  it("never says Complete beside values awaiting review: the badge only reports the entered inputs", () => {
+    const result: Recalculation = {
+      ...RESULT,
+      needs_input: [],
+      awaiting_review: [{ document_id: "D1", record: "d1.csv (record 1)", canonical_type_id: "CT-S1-FUELQTY", fields: ["fuel_type"] }],
+    } as unknown as Recalculation;
+    render(<RecalculationInputs result={result} reference={REFERENCE} settings={{}} saving={false} error={null} onSave={vi.fn()} />);
+    const head = screen.getByRole("button", { name: /Recalculation inputs/ });
+    expect(head.textContent).toContain("Inputs entered");
+    expect(head.textContent).toContain("1 awaiting review");
+    expect(head.textContent).not.toContain("Complete");
+  });
+
   it("will not save a reported value that is not a number", () => {
     render(
       <RecalculationInputs result={RESULT} reference={REFERENCE} settings={{}} saving={false} error={null} onSave={vi.fn()} />

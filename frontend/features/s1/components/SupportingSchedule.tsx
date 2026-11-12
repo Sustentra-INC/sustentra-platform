@@ -143,9 +143,13 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
           <button className="s1-linklike" type="button" onClick={onBack}>
             ‹ Back to Evidence
           </button>
-          <button className="s1-button s1-button--pri" type="button" onClick={() => onOpenCalculationLine(line.key)}>
-            Open calculation line ›
-          </button>
+          {schedule.calculated === false ? (
+            <p className="s1-muted s1-sch-notcalc">Not calculated yet: values on this line are waiting for review.</p>
+          ) : (
+            <button className="s1-button s1-button--pri" type="button" onClick={() => onOpenCalculationLine(line.key)}>
+              Open calculation line ›
+            </button>
+          )}
         </div>
       </header>
 
@@ -163,6 +167,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
                       {STATUS_TEXT[m.status]}
                       {m.flags?.includes("unconverted") ? " · units differ" : ""}
                     </span>
+                    {m.waiting_on?.length ? <span className="s1-sch-month__waiting">Waiting on: {m.waiting_on.join(", ")}</span> : null}
                     {m.quantity !== null ? (
                       <span className="s1-sch-month__qty">
                         {formatQuantity(m.quantity)} {m.unit ?? ""}
@@ -363,6 +368,8 @@ function rowFlag(r: ScheduleRow): string | null {
       return "Needs more evidence";
     case "not_reviewed":
       return "Not reviewed";
+    case "awaiting_other_fields":
+      return `Waiting on: ${r.waiting_on?.join(", ") || "other fields"}`;
     default:
       return r.accepted ? null : "Not reviewed";
   }
