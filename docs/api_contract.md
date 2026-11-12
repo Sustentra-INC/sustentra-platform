@@ -81,8 +81,11 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   - Values by kind: text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
-  - `ai`: `{enabled, reason_code, reason}`: `reason_code` is `off`, `not_configured`, `cap_reached`, `no_documents`, `not_built` or
-    `null` and `reason` a sentence; until suggestions are built it is `not_built`. Later also provider, model, month spend and cap.
+  - `ai`: `{enabled, reason_code, reason, provider, model, month_spend_usd, cap_usd}`. `enabled` is true when
+    Claude can be asked now; otherwise `reason_code` is `off` (AI_SUGGESTIONS_ENABLED is false), `not_configured`
+    (no Claude client: no key or Bedrock region), `cap_reached` (this organization's spend this UTC month is at
+    or over AI_MONTHLY_CAP_USD) or `no_documents` (no document whose latest type is a client-prepared summary
+    type), and `reason` is the sentence to show; both are `null` when enabled. Checked in that order.
 - `POST .../{field_id}/accept` takes the suggestion's value, or the value already set. `POST .../{field_id}/edit`
   `{value}`. `POST .../{field_id}/reject` `{reason}` (required, at most 500 characters). `POST
   .../{field_id}/revert` returns to pending. Each answers the updated record. Accept and reject only work from
@@ -93,6 +96,37 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   state does not allow is 409 and bad input 422, both with a sentence in `detail`; an unknown field is 404.
   Bodies forbid unknown fields; who acted and when come from the session. Each action writes one
   `methodology_decision` audit event with the field id, action and status only.
+- `POST .../prefill` (s1_writer, open engagement, no body) asks Claude to propose values from the engagement's
+  client-prepared summary documents (latest type in `calculation_lines.SUMMARY_TYPES`; at most 5 documents,
+  1,500 lines and 150,000 characters, taken in document order). One synchronous call. Answers
+  `{suggested, dropped: {reason: count}, kept_reviewer_decision, documents_read: [{document_id, file_name,
+  truncated}], cost_usd, model}`.
+  - Claude only suggests: each kept suggestion is written to the field's record `suggestion` (the shape above;
+    `source_reference` is the parser's reference for the quoted line; a quote over 1,000 characters is stored cut
+    with `quote_truncated: true`, after it was verified whole) and nothing else changes. Fields the
+    reviewer has decided (accepted, edited, rejected) are left alone and counted in `kept_reviewer_decision`;
+    a pending field's older suggestion is replaced. An entity or factor source Claude finds becomes a new
+    record under a server-made id with `user_added: false`, unless a row with the same name (entity) or the
+    same database and edition (factor) is already on the page or earlier in the same reply. Documents the
+    reviewer set aside (withdrawn, duplicate, superseded) are not read.
+  - A suggestion is kept only if its quote (at least 8 characters) is printed on the cited line of the cited
+    document and, for percentages and a factor edition with digits, the number is printed in the quote; for
+    the consolidation approach and the GWP set the quote must also name the choice (for example "operational
+    control", "AR5" or "Fifth Assessment"). A too-short quote counts as `quote_not_on_document`. `dropped` keys are
+    exactly: `empty_value`, `unknown_line`, `quote_not_on_document`, `ambiguous_quote`, `value_not_in_quote`
+    (from the locator), `unknown_document`, `invalid_value` (failed the field's validation) and `unknown_field`.
+  - 409 with a sentence in `detail`: switched off, not configured, over the monthly limit (the `ai.reason`
+    sentences), no documents ("Upload the company's GHG inventory report, boundary statement or methodology
+    document first."), a prefill already running for the organization, documents unreadable, or Claude refused or its answer was cut short or unusable (nothing
+    is kept). 502 when Claude could not be reached, or when its answer could not be saved (the call is still
+    recorded in the ledger; nothing was kept).
+  - The call is made with no database transaction open; the ledger row is committed first, in its own
+    transaction, then the suggestions and the audit event in another. The cap is exact within one app
+    process (one prefill per organization at a time); across processes it can be passed by at most one
+    in-flight call per process.
+  - Every call that was made is one row in `ai_usage` (outcome, tokens, cost, request id), refused or invalid
+    ones included; a refused call before the request is not. One `methodology_prefill` audit event with outcome,
+    counts and cost only.
 
 ### GET /v1/engagements/{engagement_id}/evidence
 List evidence entities produced under the engagement.
