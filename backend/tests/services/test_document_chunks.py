@@ -6,7 +6,6 @@ mode and small documents read exactly as before. The Postgres side is in tests/d
 
 from __future__ import annotations
 
-import copy
 import logging
 import threading
 import time
@@ -529,6 +528,56 @@ def test_two_readers_ending_the_last_chunks_at_once_wake_the_run_once(world: Wor
     assert world.runs.claim("reader:b", 60) is None  # one run to read, not two
 
 
+# --- pages Textract could not read -------------------------------------------------------------
+
+class OcrFailingParser(FlakyParser):
+    """Every chunk read succeeds, except that page 13 of the file failed OCR (Textract was down)."""
+
+    def parse_document(self, **kwargs: Any) -> dict:
+        output = super().parse_document(**kwargs)
+        pages = kwargs.get("pages")
+        if pages is not None and pages[0] <= 13 <= pages[1]:
+            output["warnings"].append({"code": "ocr_page_failed", "severity": "warning",
+                                       "message": "Page 13 has no text layer and Textract could not read it."})
+        return output
+
+
+def test_pages_textract_failed_on_are_unread_even_though_their_chunk_was_kept(world: World) -> None:
+    run = world.queue(25)
+    world.reader.run_once()
+    flaky = OcrFailingParser()
+    world.reader._chunk_service._parser = flaky  # type: ignore[attr-defined]
+
+    for _ in range(40):
+        if world.run(run.run_id).status != "waiting_on_chunks":
+            break
+        if world.reader.run_once() is None:
+            world.clock.advance(150)  # past the backoff of the chunk being tried again
+    world.reader.run_once()  # assembly
+
+    chunk = world.chunk_rows(run)[1]
+    assert (chunk.status, chunk.attempts, chunk.error_code) == ("completed", 3, "ocr_page_failed")
+    summary = world.chunks.summaries([run.run_id])[run.run_id]
+    assert (summary.completed, summary.failed, summary.failed_pages) == (3, 0, [[13, 13]])
+    recorded = world.pipeline_run(run)
+    assert recorded["status"] == "partial"
+    assert [w for w in recorded["warnings"] if w.startswith("pages_unread")] == [
+        "pages_unread: Pages 13 could not be read, so any values on them are missing."]
+    assert recorded["candidate_count"] > 0  # the rest of the document is still read
+
+
+def test_a_chunk_whose_ocr_failure_clears_on_retry_leaves_nothing_unread(world: World) -> None:
+    run = world.queue(25)
+    world.reader.run_once()
+    flaky = OcrFailingParser()
+    world.reader._chunk_service._parser = flaky  # type: ignore[attr-defined]
+    first = world.reader.run_once()  # chunk 0: pages 1-10, fine
+    assert isinstance(first, DocumentChunk) and first.error_code is None
+    retried = world.reader.run_once()  # chunk 1: Textract failed on page 13: tried again, not kept
+    assert isinstance(retried, DocumentChunk) and (retried.status, retried.error_code) == ("queued", "ocr_page_failed")
+    assert world.chunks.summaries([run.run_id])[run.run_id].failed_pages == []
+
+
 # --- the reader's supervision of a chunk ---------------------------------------------------------
 
 def test_the_lease_of_a_chunk_is_renewed_while_it_is_read(tmp_path: Path) -> None:
@@ -604,20 +653,37 @@ def test_inline_mode_reads_a_large_pdf_exactly_as_before(tmp_path: Path) -> None
     assert isinstance(finished, ProcessingRun) and finished.status == "completed"
     assert off.chunk_rows(run) == [] and off.parser.calls == []
 
-    document = off.uploads.get_document(run.document_id)
-    direct = PipelineOrchestrationService(pipeline_repository=InMemoryPipelineRunRepository(),
-                                          extraction_result_repository=InMemoryExtractionResultRepository())
-    expected = direct.process_local_document(
-        local_file_path=str(off.uploads.storage_service.resolve_storage_uri(document["storage_uri"])),
-        engagement_id="ENG-1", evidence_id=document["evidence_id"], document_id=document["document_id"],
-        processing_run_id=run.run_id, file_name="big.pdf", mime_type="application/pdf", org_id=ORG)
 
-    def stable(pipeline_run: dict) -> dict:
-        skipped = {"pipeline_run_id", "created_at", "completed_at"}
-        return {k: v for k, v in copy.deepcopy(pipeline_run).items() if k not in skipped}
+GOLDEN = Path(__file__).parent / "data" / "inline_golden.json"
+FIXTURES = Path(__file__).resolve().parents[3] / "parser_reliability_test_set" / "raw_documents" / "pdf"
 
-    assert stable(off.pipeline_run(run)) == stable(expected["pipeline_run"])
-    assert off.items(run) == expected["extraction_result"]["items"]
+
+@pytest.mark.parametrize("name", ["PDF-NG-001.pdf", "PDF-BLR-001.pdf"])
+def test_the_inline_pipeline_gives_what_it_gave_before_chunking_existed(name: str) -> None:
+    """Golden: ``data/inline_golden.json`` was recorded by running the pipeline on these existing
+    fixtures at origin/staging, before this change (ids and timestamps removed). Nothing in it
+    may move: parser output, the pipeline run and every extracted value."""
+
+    import json
+
+    skipped = {"pipeline_run_id", "created_at", "completed_at", "parser_output_id"}
+
+    def strip(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {k: strip(v) for k, v in value.items() if k not in skipped}
+        if isinstance(value, list):
+            return [strip(v) for v in value]
+        return value
+
+    pipeline = PipelineOrchestrationService(pipeline_repository=InMemoryPipelineRunRepository(),
+                                            extraction_result_repository=InMemoryExtractionResultRepository())
+    result = pipeline.process_local_document(
+        local_file_path=str(FIXTURES / name), engagement_id="ENG-GOLDEN", evidence_id="EV-" + name,
+        document_id="DOC-" + name, processing_run_id="RUN-" + name, mime_type="application/pdf", org_id=None)
+
+    got = strip({"pipeline_run": result["pipeline_run"], "parser_output": result["parser_output"],
+                 "items": result["extraction_result"]["items"]})
+    assert json.loads(json.dumps(got, sort_keys=True)) == json.loads(GOLDEN.read_text())[name]
 
 
 def test_the_pipeline_is_unchanged_without_the_chunk_arguments(tmp_path: Path) -> None:

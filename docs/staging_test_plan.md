@@ -164,12 +164,14 @@ chunking applies to PDFs over 20 pages; a PDF of 20 pages or fewer reads as befo
    toward `chunks.total` (6). The value found on a late page opens that page in the review, not page 1.
 3. While a chunked read is going, restart the reader container. The read finishes anyway
    (chunks it held come back once their lease runs out, about two minutes).
-4. Make one chunk fail (for example block Textract for the reader for a minute, then restore it).
-   The run ends `completed` but its pipeline run is `partial`, with a "pages_unread" warning
-   naming the page range, and `chunks.failed_pages` lists it. The values from other pages
-   are still there to review.
-5. Upload a PDF of more than 500 pages. It is not read: the document is marked partial with
-   "document_too_long" and a sentence asking for smaller files.
+4. Make Textract fail for the reader (for example remove its Textract permission for a few
+   minutes) while a scanned PDF is read, then restore it. Each chunk is tried 3 times (30 s, then
+   120 s apart). The run ends `completed` but its pipeline run is `partial` with a "pages_unread"
+   warning naming the pages Textract could not read. `chunks.failed_pages` lists them (one page
+   each for pages that failed OCR, the whole range for a chunk that failed outright), and Evidence
+   shows "Partly read: Pages ... could not be read". The values from other pages are there to review.
+5. Upload a PDF of more than 500 pages. It is not read: Evidence shows it as Blocked with the
+   sentence "This document has N pages, more than the 500 we read in one document. Split it...".
 6. A 10-page PDF and a Word file read exactly as before (no `chunks` key on their runs).
 
 ## 12. After a redeploy

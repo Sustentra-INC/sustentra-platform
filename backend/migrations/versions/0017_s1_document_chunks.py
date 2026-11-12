@@ -235,6 +235,7 @@ def upgrade() -> None:
              WHERE r.status = 'waiting_on_chunks'
                AND NOT EXISTS (SELECT 1 FROM {TABLE} c
                                 WHERE c.run_id = r.run_id AND c.status IN ('queued', 'in_progress'))
+             ORDER BY r.run_id
           LOOP
             PERFORM s1_wake_parent_run(parked);
           END LOOP;

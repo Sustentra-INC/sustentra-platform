@@ -54,14 +54,16 @@ One processing run; 404 when it belongs to another organization.
 #### Page chunks
 A run that was split into page chunks carries (from `waiting_on_chunks` on, and after it ends)
 `chunks: {total, completed, failed, failed_pages}`. `failed_pages` is `[[from, to], ...]`, the
-1-based inclusive page ranges of chunks that failed after `S1_CHUNK_MAX_ATTEMPTS` (3) tries.
+1-based inclusive page ranges of chunks that failed after `S1_CHUNK_MAX_ATTEMPTS` (3) tries,
+plus one `[n, n]` for each page Textract could not read in a chunk that was kept on its last
+attempt (`failed` counts failed chunks only).
 A run that was not chunked has no `chunks` key. The same object is on each item of
 `GET /v1/engagements/{engagement_id}/processing-runs`.
 
 How the read ends for a chunked document:
 - Every chunk read: the run is `completed` and its pipeline run is read as for any document.
-- A chunk failed: the run is still `completed` (the read ended), but its pipeline run is
-  `partial` with a warning starting `pages_unread:` that lists the page ranges, and the
+- A chunk failed, or Textract could not read some pages: the run is still `completed` (the read
+  ended), but its pipeline run is `partial` with a warning starting `pages_unread:` that lists the page ranges, and the
   values on those pages are missing. It never looks complete.
 - More than `S1_MAX_DOCUMENT_PAGES` (500) pages: nothing is read; the pipeline run is `partial`
   with `halt_reason: {code: "document_too_long", message}` (the message says how many pages

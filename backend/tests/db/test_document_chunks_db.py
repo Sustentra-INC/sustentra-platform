@@ -188,8 +188,10 @@ def test_chunks_are_claimed_across_organizations_oldest_first_and_recorded_in_th
     first = claimed[0]
     assert first is not None and first.org_id == str(ORG_A)
     done = queue.chunks.finalize_completed(first, "reader:1", {"status": "parsed", "pages": []})
-    assert done is not None and (done.status, done.worker_id, done.parser_output) == (
-        "completed", None, {"status": "parsed", "pages": []})
+    assert done is not None and (done.status, done.worker_id) == ("completed", None)
+    with scoped(S1Scope.tenant(ORG_A)):
+        stored = {c.id: c.parser_output for c in queue.chunks.list_for_run(run_a.run_id)}
+    assert stored[first.id] == {"status": "parsed", "pages": []}
 
 
 def test_two_readers_claim_different_chunks(queue: Queue, engine: Engine) -> None:
