@@ -155,8 +155,9 @@ class DbLedger:
     """``ai_usage`` through the app's database, one short transaction per call, in the
     organization's RLS scope. The engine is unpooled and disposed after each use."""
 
-    def __init__(self, settings: Settings | None = None) -> None:
+    def __init__(self, settings: Settings | None = None, feature: str = FEATURE) -> None:
         self._settings = settings
+        self._feature = feature  # the ai_usage feature the rows are written under
 
     async def _transaction(self, org_id: uuid.UUID, work: Callable[[AsyncSession], Any]) -> Any:
         engine = create_async_engine(to_async_url(runtime_database_url(self._settings or get_settings())),
@@ -174,7 +175,7 @@ class DbLedger:
     def record(self, *, org_id: uuid.UUID, engagement_id: uuid.UUID | None, provider: str,
                reply: StructuredReply[Any]) -> None:
         _run(self._transaction(org_id, lambda db: ai_usage.record(
-            db, org_id=org_id, engagement_id=engagement_id, feature=FEATURE, provider=provider, reply=reply,
+            db, org_id=org_id, engagement_id=engagement_id, feature=self._feature, provider=provider, reply=reply,
             user_id=None)))
 
 

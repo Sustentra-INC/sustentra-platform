@@ -6,6 +6,8 @@ import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, typ
 import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import type { EngagementConfig, EvidenceItem } from "../types";
 import { AiTypeNote } from "./AiTypeNote";
+import { AiValueNote } from "./AiValueNote";
+import { AI_VALUE } from "../constants/copy";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
 import type { Ask } from "../types/requests";
 import { andThen, useStillOpen, type MaybePromise } from "../requests/maybePromise";
@@ -934,6 +936,7 @@ function ValueCard({
           </span>
         ) : null}
       </div>
+      <AiValueNote value={v} />
       <div className="s1-xr-card__scopes">
         {scopeChips(vs).map((chip) => (
           <span key={chip.label} className={`s1-xr-scope s1-xr-scope--${chip.scope}`}>
@@ -956,7 +959,7 @@ function ValueCard({
                   </span>
                 )}
                 <span className="s1-xr-rec__act">
-                  {r.kind === "machine" ? `System read · ${v.documentType}, page ${v.page}` : `${r.actor} · ${recordAction(r, askById)}`}
+                  {r.kind === "machine" ? `${v.ai?.suggested ? AI_VALUE.readBy : "System read"} · ${v.documentType}, page ${v.page}` : `${r.actor} · ${recordAction(r, askById)}`}
                 </span>
                 {r.reason ? <span className="s1-muted"> · {r.reason}</span> : null}
                 <span className="s1-muted s1-xr-rec__at">{formatTime(r.at)}</span>

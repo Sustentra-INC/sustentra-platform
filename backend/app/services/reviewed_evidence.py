@@ -22,6 +22,7 @@ ELECTRICITY = "CT-S2-ELEC"
 REFRIGERANT = "CT-S1-REFRSVC"
 THERMAL = "CT-S2-THERMAL"
 REVIEWED = ("accepted", "edited")
+AI_SUGGESTED = "ai_suggested"  # validation flag of a value Claude read (services/ai_extraction.py)
 
 # Unambiguous extractor fuel codes -> EPA names. Everything else asks the reviewer.
 STATIONARY_AUTO = {"natural_gas": "Natural Gas", "kerosene": "Kerosene", "diesel": "Distillate Fuel Oil No. 2"}
@@ -189,12 +190,17 @@ def group_reviewed_records(document: dict[str, Any], canonical_type_id: str, ite
         review = decisions.get(str(item.get("candidate_id")))
         status = str(review.get("decision")) if review else "unreviewed"
         value = None
+        extracted = item.get("normalized_value")
         unit = item.get("unit")
         if review and status in REVIEWED:
             value = review.get("reviewed_value")
             unit = review.get("reviewed_unit") or unit
+        elif AI_SUGGESTED in (item.get("validation_flags") or []):
+            # Claude's suggestion is not evidence until a reviewer accepts or edits it: nothing
+            # downstream (best(), unit_of(), the calculation) may read it before then.
+            extracted, unit = None, None
         grouped.setdefault(item.get("record_index"), {})[str(item.get("field_name"))] = ReviewedField(
-            name=str(item.get("field_name")), extracted=item.get("normalized_value"), unit=unit,
+            name=str(item.get("field_name")), extracted=extracted, unit=unit,
             status=status, value=value, source_reference=item.get("source_reference"),
             candidate_id=None if item.get("candidate_id") is None else str(item.get("candidate_id")),
             reviewer=review.get("reviewer_id") if review else None,

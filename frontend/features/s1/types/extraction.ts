@@ -23,6 +23,8 @@ export interface ExtractedField {
   value: string | null;
   unit: string | null;
   valueProperties: ValueProperty[];
+  /** Flag ai_disagrees: what Claude read where the rules read the value above (the value is unchanged). */
+  aiAlternative?: { value: string | null; unit: string | null; quote: string | null; page: number | null };
   fieldState: FieldState;
   snippet: string | null;
   snippetContext: string | null;

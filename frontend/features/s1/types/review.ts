@@ -105,4 +105,14 @@ export interface ReviewValue {
    * for the calculation, so the card also shows the value the calculation uses.
    */
   asPrinted?: { value: string; unit: string; converted?: boolean };
+  /**
+   * Claude read this value (backend services/ai_extraction.py). `suggested`: Claude read it where the
+   * rules found nothing, so it is never pre-accepted and needs a reviewer. `conflict`: Claude read
+   * another, different value elsewhere. `disagrees`: the rules read this value and Claude read another.
+   */
+  ai?: {
+    suggested?: boolean;
+    conflict?: boolean;
+    disagrees?: { value: string; unit: string; quote: string; page: number | null };
+  };
 }

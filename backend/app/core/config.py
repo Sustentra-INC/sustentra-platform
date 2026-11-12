@@ -103,6 +103,11 @@ class Settings(BaseSettings):
     # is also shown to Claude, which may only add the warning ai_type_disagrees, never change the
     # type. Off by default; it costs one call per document. Needs AI_SUGGESTIONS_ENABLED.
     s1_ai_routing_shadow: bool = False
+    # Claude reading (services/ai_extraction.py): the document is read in windows of AI_WINDOW_PAGES
+    # pages (one page of overlap), at most AI_MAX_WINDOWS windows, in sequence, stopping at 80% of
+    # S1_READER_MAX_RUN_SECONDS. Needs AI_SUGGESTIONS_ENABLED.
+    ai_window_pages: int = Field(default=5, ge=1, le=20)
+    ai_max_windows: int = Field(default=10, ge=1, le=100)
 
     @field_validator("allowed_origins_csv", "ai_model")
     @classmethod

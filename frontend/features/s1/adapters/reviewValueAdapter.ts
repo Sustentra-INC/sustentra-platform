@@ -72,7 +72,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         record: [
           {
             kind: "machine",
-            actor: "Extraction",
+            actor: field.valueProperties.includes("ai_suggested") ? "Claude" : "Extraction",
             at: document?.uploadedAt ?? "",
             action: field.value === null ? "did not find this on the document" : field.snippet ? `read "${field.snippet}"` : "extracted",
           },
@@ -104,8 +104,23 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         reviewToken: field.reviewToken,
         missing: field.value === null && field.correctedValue === null,
         asPrinted: corrected ? undefined : asPrinted(field, candidate, printedUnits),
+        ai: aiOf(field),
       } satisfies ReviewValue;
     });
+}
+
+/** Claude's part in a value, from the flags the backend set; undefined when it read nothing here. */
+function aiOf(field: ExtractedField): ReviewValue["ai"] {
+  const flags = field.valueProperties;
+  const alt = field.aiAlternative;
+  const suggested = flags.includes("ai_suggested");
+  const conflict = flags.includes("ai_conflict");
+  const disagrees =
+    flags.includes("ai_disagrees") && alt && alt.value !== null
+      ? { value: alt.value, unit: alt.unit ?? "", quote: alt.quote ?? "", page: alt.page }
+      : undefined;
+  if (!suggested && !conflict && !disagrees) return undefined;
+  return { ...(suggested ? { suggested } : {}), ...(conflict ? { conflict } : {}), ...(disagrees ? { disagrees } : {}) };
 }
 
 function fieldNameOf(field: ExtractedField): string | null {

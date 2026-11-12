@@ -54,6 +54,15 @@ verified on the document; `used: false, disagrees: true` means it only disagreed
 rules (the type is unchanged). `warnings` may carry `ai_type_disagrees`, `ai_unavailable` and
 `ai_routing_ignored: <reason>`.
 
+Extraction candidates (`contracts/extraction_candidate.schema.json`) may carry the
+`validation_flags` `ai_suggested` (Claude read the value where the rules found nothing; confidence
+at most 0.6; the reviewer must accept or correct it, and the calculation does not read it until
+then), `ai_disagrees` (the rules read the value; Claude read another, in the optional
+`ai_alternative {value, unit, source_reference}`; the value is unchanged) and `ai_conflict`
+(Claude read two different values for the field; each is a candidate). `warnings` may carry
+`ai_extraction: ...` (counts, dropped reasons, cost), `ai_pages_skipped` and `ai_time_budget`.
+Extraction config rows may set `ai_only` (read by Claude only).
+
 ### GET /v1/processing-runs/{run_id}
 One processing run; 404 when it belongs to another organization.
 
