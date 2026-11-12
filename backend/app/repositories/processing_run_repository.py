@@ -3,7 +3,7 @@
 A run is one request to read a document. It is ``queued`` when asked for, ``in_progress``
 once something claims it (with a worker id and a lease that the reader renews), and then
 ``completed`` (with the pipeline run it produced) or ``failed`` (with a message for the user).
-A large PDF is read in page chunks (migration 0017, ``document_chunk_repository``): its run is
+A large PDF is read in page chunks (migration 0018, ``document_chunk_repository``): its run is
 parked in ``waiting_on_chunks`` (no worker, no lease) until the chunks are done, then queued
 again to be assembled. A document has at most one active (queued, in_progress or
 waiting_on_chunks) run.

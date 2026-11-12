@@ -1,4 +1,4 @@
-"""Migration 0017 on the real database, as ``app_user``: the chunk table isolated per organization
+"""Migration 0018 on the real database, as ``app_user``: the chunk table isolated per organization
 by RLS, the claim and requeue functions, the run's new ``waiting_on_chunks`` status inside the
 one-active-run index, a parked run woken exactly once (also under concurrency), and the reader
 reading a large PDF through chunks on the real queue.
@@ -188,8 +188,10 @@ def test_chunks_are_claimed_across_organizations_oldest_first_and_recorded_in_th
     first = claimed[0]
     assert first is not None and first.org_id == str(ORG_A)
     done = queue.chunks.finalize_completed(first, "reader:1", {"status": "parsed", "pages": []})
-    assert done is not None and (done.status, done.worker_id, done.parser_output) == (
-        "completed", None, {"status": "parsed", "pages": []})
+    assert done is not None and (done.status, done.worker_id) == ("completed", None)
+    with scoped(S1Scope.tenant(ORG_A)):
+        stored = {c.id: c.parser_output for c in queue.chunks.list_for_run(run_a.run_id)}
+    assert stored[first.id] == {"status": "parsed", "pages": []}
 
 
 def test_two_readers_claim_different_chunks(queue: Queue, engine: Engine) -> None:
@@ -258,6 +260,25 @@ def test_the_last_chunk_to_fail_for_good_wakes_the_run_and_the_summary_names_its
     with scoped(S1Scope.tenant(ORG_A)):
         summary = queue.chunks.summaries([parked.run_id])[parked.run_id]
     assert (summary.total, summary.completed, summary.failed, summary.failed_pages) == (3, 2, 1, [[11, 20]])
+
+
+def test_summaries_list_the_pages_textract_failed_on_in_a_kept_chunk(queue: Queue) -> None:
+    parked = queue.parked_run(ORG_A, "DOC-A", [(1, 10), (11, 20), (21, 25)])
+    claimed = [queue.chunks.claim("reader:1", 60) for _ in range(3)]
+    assert all(claimed) and claimed[0] and claimed[1] and claimed[2]
+    ocr = {"status": "partial", "warnings": [
+        {"code": "ocr_page_failed", "severity": "warning", "message": "Page 13 has no text layer and Textract could not read it."},
+        {"code": "ocr_page_failed", "severity": "warning", "message": "Page 12 has no text layer and Textract could not read it."},
+        {"code": "ocr_applied", "severity": "info", "message": "Page 14 was read."}]}
+    queue.chunks.finalize_completed(claimed[0], "reader:1", {"status": "parsed", "warnings": []})
+    queue.chunks.finalize_completed(claimed[1], "reader:1", ocr, "ocr_page_failed")
+    queue.chunks.finalize_failed(claimed[2], "reader:1", "chunk_error")
+
+    with scoped(S1Scope.tenant(ORG_A)):
+        summary = queue.chunks.summaries([parked.run_id])[parked.run_id]
+
+    assert (summary.total, summary.completed, summary.failed) == (3, 2, 1)
+    assert summary.failed_pages == [[12, 12], [13, 13], [21, 25]]
 
 
 def test_expired_chunks_are_requeued_then_failed_after_their_last_attempt_and_wake_the_run(queue: Queue) -> None:

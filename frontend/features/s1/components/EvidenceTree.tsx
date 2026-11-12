@@ -514,9 +514,10 @@ function Fold({
               {counts.documents} {counts.documents === 1 ? "document" : "documents"}
             </span>
             <span className="s1-ws-gr__bar s1-et-bar-track" aria-hidden>
-              <span className="s1-ws-gr__seg s1-ws-gr__seg--resolved" style={{ flexGrow: counts.accepted }} />
-              <span className="s1-ws-gr__seg s1-ws-gr__seg--open" style={{ flexGrow: counts.to_review }} />
-              <span className="s1-ws-gr__seg s1-ws-gr__seg--blocking" style={{ flexGrow: counts.issues }} />
+              {/* A zero count draws nothing: a segment keeps a minimum width, so it would show as a stub. */}
+              {counts.accepted > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--resolved" style={{ flexGrow: counts.accepted }} /> : null}
+              {counts.to_review > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--open" style={{ flexGrow: counts.to_review }} /> : null}
+              {counts.issues > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--blocking" style={{ flexGrow: counts.issues }} /> : null}
             </span>
             <span
               className="s1-ws-gr__pct"

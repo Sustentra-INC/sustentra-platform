@@ -699,3 +699,12 @@ def test_quality_checks_name_the_documents_a_reviewer_should_look_at() -> None:
     # Marking the copy as a duplicate takes it out of the numbers and out of the checks.
     decided = _service(store).recalculate(_engagement(), _own, decisions={"GAS-JAN-COPY": {"relationships": [{"kind": "duplicate", "otherDocumentId": "GAS-JAN"}]}})
     assert not any(c["check"] == "Q-003" for c in decided["quality_checks"])
+
+
+def test_reviewed_count_agrees_with_its_noun():
+    from backend.app.services.engagement_recalculation_service import _reviewed_count
+
+    assert _reviewed_count(1, "bill") == "1 reviewed bill"
+    assert _reviewed_count(2, "bill") == "2 reviewed bills"
+    assert _reviewed_count(1, "record") == "1 reviewed record"
+    assert _reviewed_count(3, "record") == "3 reviewed records"

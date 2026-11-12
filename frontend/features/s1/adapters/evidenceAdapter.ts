@@ -38,7 +38,8 @@ export function mapBackendDocumentToEvidenceItem(
     summary?.status === "partial" &&
     Number(summary?.candidate_count ?? 0) === 0 &&
     Number(summary?.target_count ?? 0) === 0;
-  const halt = haltReasonFromCode(summary?.halt_reason?.code);
+  const halt = haltReasonFromCode(summary?.halt_reason?.code, summary?.halt_reason?.message);
+  const unreadPages = unreadPagesFromWarnings(summaryWarnings);
   const processingState =
     document.processing_status === "failed" || halt
       ? "blocked"
@@ -89,6 +90,7 @@ export function mapBackendDocumentToEvidenceItem(
     relationships: [],
     reviewArea: null,
     note: null,
+    unreadPages,
   };
 }
 
@@ -116,8 +118,19 @@ export function resolveCanonicalTypeDisplayName(
   return CANONICAL_TYPE_DISPLAY_NAMES[canonicalTypeId] ?? "Unmapped document type";
 }
 
+/** The page ranges a chunked read could not read, as the server wrote them ("11-20, 51"), from the
+ *  pipeline run's `pages_unread: Pages <ranges> could not be read...` warning. No arithmetic here. */
+export function unreadPagesFromWarnings(warnings: string[]): string | null {
+  for (const warning of warnings) {
+    const match = /^pages_unread: Pages (.+?) could not be read/.exec(warning);
+    if (match) return match[1];
+  }
+  return null;
+}
+
 /** The pipeline's structured halt (pipeline_run.halt_reason.code), when it gives one. */
-export function haltReasonFromCode(code: string | null | undefined): string | null {
+export function haltReasonFromCode(code: string | null | undefined, message?: string | null): string | null {
+  if (code === "document_too_long") return message?.trim() || HALT_REASONS.documentTooLong;
   if (code === "unreadable_document") return HALT_REASONS.unreadable;
   if (code === "ocr_required") return HALT_REASONS.ocrRequired;
   if (code === "password_protected") return HALT_REASONS.passwordProtected;

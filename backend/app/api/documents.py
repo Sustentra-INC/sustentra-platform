@@ -45,7 +45,7 @@ _pipeline_service = PipelineOrchestrationService()
 _storage_service = _upload_service.storage_service
 # The processing-run queue (migration 0015). It lives in Postgres whatever S1_STORE is.
 _run_repository: Any = ProcessingRunRepository()
-# The page chunks of the runs of large PDFs (migration 0017), read for the status of a run.
+# The page chunks of the runs of large PDFs (migration 0018), read for the status of a run.
 _chunk_repository: Any = DocumentChunkRepository()
 
 

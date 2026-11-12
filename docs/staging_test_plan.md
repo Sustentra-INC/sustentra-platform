@@ -129,6 +129,25 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 1. Export the Excel workpaper. It opens. The roll-up shows mass per gas and CO₂e per
    category, with a "Counted as 0" column. The totals match Verification results.
 
+## 8a. Methodology review
+
+1. Open Methodology review in the left navigation. Fields are grouped under the headings the
+   server gives; each shows "Not set" and "Pending" until you act.
+2. With AI suggestions off, the button "Read the client's reports with Claude" is disabled and
+   the page says why in a sentence (for example that an administrator turns it on).
+3. With them on and a report document uploaded, press the button. It names what Claude will read
+   and says suggestions need review; confirm. A summary shows N suggested, M dropped with the
+   reasons, the documents read and the cost.
+4. A suggested field shows "Suggested by Claude", the quote, and the document name. Click the
+   name: the document opens in Extraction review.
+5. Accept one suggestion, Edit another (enum fields offer only the allowed values), Reject a third
+   with a reason (it is required). Each field then shows its status, who decided and when.
+6. Revert a decided field: it returns to Pending. Accept and Reject appear only on pending fields.
+7. Add an entity and a factor row; edit them; Remove row appears only on rows you added.
+8. Open the activity log: your decisions are listed. Reload: everything is kept.
+9. A reader (not a writer) cannot change anything: actions answer with a sentence, not an error page.
+
+
 ## 9. Evidence tree and supporting schedule
 
 Needs the evidence-tree API (feat/evidence-tree-api) deployed.
@@ -141,6 +160,13 @@ Needs the evidence-tree API (feat/evidence-tree-api) deployed.
 3. Open a line's schedule icon: coverage by month, source identifiers, accepted values and the
    line history show. Click a month: its document opens. Click a value's document icon: the
    review opens at that value. Back returns to the tree as you left it.
+   Schedule v2 (needs feat/schedule-v2-api): the values table has one row per record, with the
+   unit in each cell, dates as MM/DD/YY and spans as "start – end · N days". A value not yet
+   accepted is grey and says "Not reviewed" (or "Rejected" / "Needs more evidence"). "Saved by
+   <name> · <date>" is grey at the row end. A grey note names the activity quantity. Each
+   identifier says "n of N documents"; click it to group the documents by value, with a "Not
+   found" group, and open any of them. Facility says how it was matched. Nothing on the page
+   can be edited.
 4. Document menu, "Move to…": move one document to another line. A move that touches a line asks
    "This changes the calculation for …". Reload: the move is kept; the Activity log lists it.
 5. "+ New calculation line in <fuel>" and "+ New fuel": the line appears tagged "Added by a
@@ -164,12 +190,14 @@ chunking applies to PDFs over 20 pages; a PDF of 20 pages or fewer reads as befo
    toward `chunks.total` (6). The value found on a late page opens that page in the review, not page 1.
 3. While a chunked read is going, restart the reader container. The read finishes anyway
    (chunks it held come back once their lease runs out, about two minutes).
-4. Make one chunk fail (for example block Textract for the reader for a minute, then restore it).
-   The run ends `completed` but its pipeline run is `partial`, with a "pages_unread" warning
-   naming the page range, and `chunks.failed_pages` lists it. The values from other pages
-   are still there to review.
-5. Upload a PDF of more than 500 pages. It is not read: the document is marked partial with
-   "document_too_long" and a sentence asking for smaller files.
+4. Make Textract fail for the reader (for example remove its Textract permission for a few
+   minutes) while a scanned PDF is read, then restore it. Each chunk is tried 3 times (30 s, then
+   120 s apart). The run ends `completed` but its pipeline run is `partial` with a "pages_unread"
+   warning naming the pages Textract could not read. `chunks.failed_pages` lists them (one page
+   each for pages that failed OCR, the whole range for a chunk that failed outright), and Evidence
+   shows "Partly read: Pages ... could not be read". The values from other pages are there to review.
+5. Upload a PDF of more than 500 pages. It is not read: Evidence shows it as Blocked with the
+   sentence "This document has N pages, more than the 500 we read in one document. Split it...".
 6. A 10-page PDF and a Word file read exactly as before (no `chunks` key on their runs).
 
 ## 12. Uploading several files at once

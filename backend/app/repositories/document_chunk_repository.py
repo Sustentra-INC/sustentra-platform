@@ -1,4 +1,4 @@
-"""S1 document chunks (migration 0017): the page chunks of a large PDF, read as jobs on the queue.
+"""S1 document chunks (migration 0018): the page chunks of a large PDF, read as jobs on the queue.
 
 A processing run for a PDF over the chunk threshold is split into chunks (``plan``): the run
 is parked in ``waiting_on_chunks`` and one row per block of pages is queued. Readers claim
@@ -15,12 +15,13 @@ Which organization a call works in is as for runs: ``plan`` and the reads of one
 use the bound S1 scope; the updates of one chunk (``heartbeat``, ``finalize_*``, ``retry_later``,
 ``release``) run in the chunk's own organization and are fenced on (``worker_id``,
 ``in_progress``), returning ``None`` once the chunk is no longer the caller's; ``claim`` and
-``requeue_expired`` serve every organization through the SECURITY DEFINER functions of 0017.
+``requeue_expired`` serve every organization through the SECURITY DEFINER functions of 0018.
 """
 
 from __future__ import annotations
 
 import json
+import re
 import threading
 import uuid
 from collections.abc import Callable
@@ -37,6 +38,16 @@ from backend.app.core.s1_scope import S1Scope, current_scope
 from backend.app.repositories.processing_run_repository import ProcessingRun
 
 UNFINISHED = ("queued", "in_progress")
+# A chunk kept on its last attempt although Textract failed on some of its pages: it is completed
+# (with the pages that did read), carries this error_code, and its failed pages count as unread.
+OCR_PAGE_FAILED = "ocr_page_failed"
+_OCR_PAGE = re.compile(r"^Page (\d+) has no text layer")
+
+
+def ocr_failed_pages(messages: list[str]) -> list[int]:
+    """Page numbers named by the parser's ``ocr_page_failed`` warning messages."""
+
+    return [int(m.group(1)) for text in messages if (m := _OCR_PAGE.match(text))]
 DEFAULT_CHUNK_MAX_ATTEMPTS = 3
 
 
@@ -90,15 +101,19 @@ def _chunk(row: Any) -> DocumentChunk:
     values["org_id"] = str(values["org_id"])
     output = values.get("parser_output")
     values["parser_output"] = json.loads(output) if isinstance(output, str) else output
+    values.setdefault("parser_output", None)  # not selected by the update that finishes a chunk
     return DocumentChunk(**{name: values[name] for name in _FIELDS})
 
 
-def _summary(rows: list[tuple[int, int, int, str]]) -> ChunkSummary:
-    """``rows``: (chunk_index, page_from, page_to, status)."""
+def _summary(rows: list[tuple[int, int, int, str, list[int]]]) -> ChunkSummary:
+    """``rows``: (chunk_index, page_from, page_to, status, pages Textract failed on).
+    ``failed`` counts failed chunks; ``failed_pages`` also lists single pages that failed OCR."""
 
     ordered = sorted(rows)
-    failed = [[page_from, page_to] for _, page_from, page_to, status in ordered if status == "failed"]
-    return ChunkSummary(len(ordered), sum(1 for row in ordered if row[3] == "completed"), len(failed), failed)
+    failed = [[a, b] for _, a, b, status, _ in ordered if status == "failed"]
+    ocr = [[n, n] for _, _, _, status, pages in ordered if status == "completed" for n in sorted(pages)]
+    return ChunkSummary(len(ordered), sum(1 for row in ordered if row[3] == "completed"), len(failed),
+                        sorted(failed + ocr))
 
 
 # --- Postgres -------------------------------------------------------------------------------
@@ -119,9 +134,13 @@ _INSERT = text(
     "ON CONFLICT (run_id, chunk_index) DO NOTHING"
 )
 _FOR_RUN = text(f"SELECT {_COLUMNS} FROM s1_document_chunks WHERE run_id = :run_id ORDER BY chunk_index")
+_NO_OUTPUT = _COLUMNS.replace(", parser_output", "")
 _FOR_RUNS = text(
-    "SELECT run_id, chunk_index, page_from, page_to, status FROM s1_document_chunks "
-    "WHERE run_id = ANY(:run_ids)"
+    "SELECT run_id, chunk_index, page_from, page_to, status, "
+    "CASE WHEN error_code = 'ocr_page_failed' AND status = 'completed' THEN "
+    "(SELECT coalesce(jsonb_agg(w->>'message'), '[]'::jsonb) FROM jsonb_array_elements(parser_output->'warnings') w "
+    "WHERE w->>'code' = 'ocr_page_failed') END AS ocr_messages "
+    "FROM s1_document_chunks WHERE run_id = ANY(:run_ids)"
 )
 _CLAIM = text("SELECT * FROM claim_s1_document_chunk(:worker_id, :lease_seconds)")
 _REQUEUE_EXPIRED = text("SELECT * FROM requeue_expired_s1_document_chunks()")
@@ -130,8 +149,8 @@ _HEARTBEAT = text(
 )
 _COMPLETED = text(
     "UPDATE s1_document_chunks SET status = 'completed', parser_output = CAST(:output AS jsonb), "
-    "error_code = NULL, worker_id = NULL, lease_expires_at = NULL, updated_at = now() "
-    f"WHERE {_FENCE} RETURNING *"
+    "error_code = :error_code, worker_id = NULL, lease_expires_at = NULL, updated_at = now() "
+    f"WHERE {_FENCE} RETURNING {_NO_OUTPUT}"  # the output is already known to the caller: not sent back
 )
 _FAILED = text(
     "UPDATE s1_document_chunks SET status = 'failed', error_code = :error_code, worker_id = NULL, "
@@ -194,9 +213,12 @@ class DocumentChunkRepository:
             return {}
         with self._bound() as connection:
             rows = connection.execute(_FOR_RUNS, {"run_ids": list(run_ids)}).all()
-        by_run: dict[str, list[tuple[int, int, int, str]]] = {}
+        by_run: dict[str, list[tuple[int, int, int, str, list[int]]]] = {}
         for row in rows:
-            by_run.setdefault(row.run_id, []).append((row.chunk_index, row.page_from, row.page_to, row.status))
+            messages = row.ocr_messages
+            messages = json.loads(messages) if isinstance(messages, str) else (messages or [])
+            by_run.setdefault(row.run_id, []).append(
+                (row.chunk_index, row.page_from, row.page_to, row.status, ocr_failed_pages(messages)))
         return {run_id: _summary(items) for run_id, items in by_run.items()}
 
     def claim(self, worker_id: str, lease_seconds: int) -> DocumentChunk | None:
@@ -218,9 +240,10 @@ class DocumentChunkRepository:
     def heartbeat(self, chunk: DocumentChunk, worker_id: str, lease_seconds: int) -> DocumentChunk | None:
         return self._one(chunk, _HEARTBEAT, worker_id=worker_id, lease_seconds=lease_seconds)
 
-    def finalize_completed(self, chunk: DocumentChunk, worker_id: str,
-                           parser_output: dict[str, Any]) -> DocumentChunk | None:
-        return self._one(chunk, _COMPLETED, wake=True, worker_id=worker_id, output=json.dumps(parser_output))
+    def finalize_completed(self, chunk: DocumentChunk, worker_id: str, parser_output: dict[str, Any],
+                           error_code: str | None = None) -> DocumentChunk | None:
+        return self._one(chunk, _COMPLETED, wake=True, worker_id=worker_id, output=json.dumps(parser_output),
+                         error_code=error_code)
 
     def finalize_failed(self, chunk: DocumentChunk, worker_id: str, error_code: str) -> DocumentChunk | None:
         return self._one(chunk, _FAILED, wake=True, worker_id=worker_id, error_code=error_code)
@@ -241,6 +264,13 @@ class DocumentChunkRepository:
         with self._db().begin() as connection:
             rows = connection.execute(_REQUEUE_EXPIRED).all()
         return [ExpiredChunk(row.id, row.run_id, str(row.org_id), row.document_id, row.status) for row in rows]
+
+
+def _ocr_pages_of(chunk: DocumentChunk) -> list[int]:
+    if chunk.status != "completed" or chunk.error_code != OCR_PAGE_FAILED:
+        return []
+    warnings = (chunk.parser_output or {}).get("warnings") or []
+    return ocr_failed_pages([str(w.get("message")) for w in warnings if w.get("code") == OCR_PAGE_FAILED])
 
 
 # --- in memory ------------------------------------------------------------------------------
@@ -296,8 +326,8 @@ class InMemoryDocumentChunkRepository:
         with self._lock:
             result: dict[str, ChunkSummary] = {}
             for run_id in run_ids:
-                rows = [(c.chunk_index, c.page_from, c.page_to, c.status) for c in self._chunks.values()
-                        if c.run_id == run_id]
+                rows = [(c.chunk_index, c.page_from, c.page_to, c.status, _ocr_pages_of(c))
+                        for c in self._chunks.values() if c.run_id == run_id]
                 if rows:
                     result[run_id] = _summary(rows)
             return result
@@ -318,11 +348,11 @@ class InMemoryDocumentChunkRepository:
         with self._lock:
             return self._update(chunk, worker_id, lease_expires_at=self._now() + timedelta(seconds=lease_seconds))
 
-    def finalize_completed(self, chunk: DocumentChunk, worker_id: str,
-                           parser_output: dict[str, Any]) -> DocumentChunk | None:
+    def finalize_completed(self, chunk: DocumentChunk, worker_id: str, parser_output: dict[str, Any],
+                           error_code: str | None = None) -> DocumentChunk | None:
         with self._lock:
             done = self._update(chunk, worker_id, status="completed", parser_output=json.loads(json.dumps(parser_output)),
-                                error_code=None, worker_id=None, lease_expires_at=None)
+                                error_code=error_code, worker_id=None, lease_expires_at=None)
             if done is not None:
                 self._wake(chunk.run_id)
             return done

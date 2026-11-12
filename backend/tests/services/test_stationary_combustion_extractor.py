@@ -526,3 +526,19 @@ def test_a_scanned_bills_wrapped_values_are_read_from_textract() -> None:
     assert (values["service_period_start"], values["service_period_end"]) == ("2023-01-01", "2023-01-31")
     boxed = [i for i in result["items"] if i["normalized_value"] is not None]
     assert all(i["source_reference"]["bounding_box"] for i in boxed)  # every value can be highlighted on the scan
+
+
+def test_labels_after_other_text_in_a_cell_are_read(targets: list[dict]) -> None:
+    # OCR joins a row into one line; the labels are not at the start of the cell
+    line = ("Fuel Type: Natural Gas   Total Usage: 1,200 therms   Account Number: NG-4471   "
+            "Billing Period: 03/01/2025 to 03/31/2025")
+    blocks = [("Riverside Gas Company", 0.05, 0.03), (line, 0.2, 0.012)]
+    output = {"document_id": "DOC-OCR", "pages": [], "tables": [], "key_value_pairs": [], "source_references": [],
+              "text_blocks": [{"block_id": f"b{i}", "page_number": 1, "text": t, "confidence": 98.0,
+                               "bounding_box": {"left": 0.1, "top": top, "width": 0.7, "height": h},
+                               "source_reference_id": None} for i, (t, top, h) in enumerate(blocks)]}
+    fields = _by_field(StationaryCombustionExtractor().extract(output, targets, "EV-1").candidates)
+    assert fields["account_number"]["normalized_value"] == "NG-4471"
+    assert fields["service_period_start"]["normalized_value"] == "2025-03-01"
+    assert fields["service_period_end"]["normalized_value"] == "2025-03-31"
+    assert fields["supplier_name"]["normalized_value"] == "Riverside Gas Company"

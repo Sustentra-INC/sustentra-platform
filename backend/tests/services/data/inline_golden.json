@@ -1,0 +1,1299 @@
+{
+ "PDF-BLR-001.pdf": {
+  "items": [],
+  "parser_output": {
+   "document_id": "DOC-PDF-BLR-001.pdf",
+   "key_value_pairs": [],
+   "pages": [
+    {
+     "page_number": 1,
+     "text": "BLR-003 Monthly Fuel Consumption Record\nDocument ID: EV-BLR003-2023-009\nFacility: Anheuser-Busch Baldwinsville Brewery\nReporting Month: September\nFuel Type\nQuantity\nUnit\nSolid Biomass Residue\n490\nshort tons\n"
+    }
+   ],
+   "parser_name": "pymupdf",
+   "parser_version": "v0",
+   "processing_run_id": "RUN-PDF-BLR-001.pdf",
+   "raw_artifact_uri": null,
+   "source_references": [
+    {
+     "bounding_box": {
+      "height": 0.031295,
+      "width": 0.616059,
+      "x": 0.191971,
+      "y": 0.062803
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-BLR-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b1"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-1",
+     "text_snippet": "BLR-003 Monthly Fuel Consumption Record"
+    },
+    {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.26518,
+      "x": 0.083333,
+      "y": 0.119003
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-BLR-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b2"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-2",
+     "text_snippet": "Document ID: EV-BLR003-2023-009"
+    },
+    {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.343219,
+      "x": 0.083333,
+      "y": 0.14678
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-BLR-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b3"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-3",
+     "text_snippet": "Facility: Anheuser-Busch Baldwinsville Brewery"
+    },
+    {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.209788,
+      "x": 0.083333,
+      "y": 0.174558
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-BLR-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b4"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-4",
+     "text_snippet": "Reporting Month: September"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013909,
+      "width": 0.06102,
+      "x": 0.357987,
+      "y": 0.211414
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-BLR-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b5"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-5",
+     "text_snippet": "Fuel Type"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013909,
+      "width": 0.05302,
+      "x": 0.511987,
+      "y": 0.211414
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-BLR-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b6"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-6",
+     "text_snippet": "Quantity"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013909,
+      "width": 0.025412,
+      "x": 0.584614,
+      "y": 0.211414
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-BLR-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b7"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-7",
+     "text_snippet": "Unit"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.134392,
+      "x": 0.357987,
+      "y": 0.234091
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-BLR-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b8"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-8",
+     "text_snippet": "Solid Biomass Residue"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.021804,
+      "x": 0.511987,
+      "y": 0.234091
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-BLR-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b9"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-9",
+     "text_snippet": "490"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.057399,
+      "x": 0.584614,
+      "y": 0.234091
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-BLR-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b10"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-10",
+     "text_snippet": "short tons"
+    }
+   ],
+   "status": "parsed",
+   "tables": [],
+   "text_blocks": [
+    {
+     "block_id": "pymupdf-p1-b1",
+     "bounding_box": {
+      "height": 0.031295,
+      "left": 0.191971,
+      "top": 0.062803,
+      "width": 0.616059
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-1",
+     "text": "BLR-003 Monthly Fuel Consumption Record"
+    },
+    {
+     "block_id": "pymupdf-p1-b2",
+     "bounding_box": {
+      "height": 0.017348,
+      "left": 0.083333,
+      "top": 0.119003,
+      "width": 0.26518
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-2",
+     "text": "Document ID: EV-BLR003-2023-009"
+    },
+    {
+     "block_id": "pymupdf-p1-b3",
+     "bounding_box": {
+      "height": 0.017348,
+      "left": 0.083333,
+      "top": 0.14678,
+      "width": 0.343219
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-3",
+     "text": "Facility: Anheuser-Busch Baldwinsville Brewery"
+    },
+    {
+     "block_id": "pymupdf-p1-b4",
+     "bounding_box": {
+      "height": 0.017348,
+      "left": 0.083333,
+      "top": 0.174558,
+      "width": 0.209788
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-4",
+     "text": "Reporting Month: September"
+    },
+    {
+     "block_id": "pymupdf-p1-b5",
+     "bounding_box": {
+      "height": 0.013909,
+      "left": 0.357987,
+      "top": 0.211414,
+      "width": 0.06102
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-5",
+     "text": "Fuel Type"
+    },
+    {
+     "block_id": "pymupdf-p1-b6",
+     "bounding_box": {
+      "height": 0.013909,
+      "left": 0.511987,
+      "top": 0.211414,
+      "width": 0.05302
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-6",
+     "text": "Quantity"
+    },
+    {
+     "block_id": "pymupdf-p1-b7",
+     "bounding_box": {
+      "height": 0.013909,
+      "left": 0.584614,
+      "top": 0.211414,
+      "width": 0.025412
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-7",
+     "text": "Unit"
+    },
+    {
+     "block_id": "pymupdf-p1-b8",
+     "bounding_box": {
+      "height": 0.013879,
+      "left": 0.357987,
+      "top": 0.234091,
+      "width": 0.134392
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-8",
+     "text": "Solid Biomass Residue"
+    },
+    {
+     "block_id": "pymupdf-p1-b9",
+     "bounding_box": {
+      "height": 0.013879,
+      "left": 0.511987,
+      "top": 0.234091,
+      "width": 0.021804
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-9",
+     "text": "490"
+    },
+    {
+     "block_id": "pymupdf-p1-b10",
+     "bounding_box": {
+      "height": 0.013879,
+      "left": 0.584614,
+      "top": 0.234091,
+      "width": 0.057399
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-10",
+     "text": "short tons"
+    }
+   ],
+   "warnings": []
+  },
+  "pipeline_run": {
+   "artifacts": {
+    "approved_evidence_id": null,
+    "candidate_output_path": null,
+    "parser_output_path": null
+   },
+   "candidate_count": 0,
+   "canonical_type_id": null,
+   "canonical_type_source": "none",
+   "classification_status": "low_confidence",
+   "document_id": "DOC-PDF-BLR-001.pdf",
+   "engagement_id": "ENG-GOLDEN",
+   "errors": [],
+   "evidence_id": "EV-PDF-BLR-001.pdf",
+   "found_candidate_count": 0,
+   "halt_reason": {
+    "code": "unsupported_document",
+    "message": "Unsupported document type: the closest match was CT-S2-ELEC with confidence 0.50, below the 0.55 needed to extract automatically. Set the document type manually if it is a supported type. It names a fuel but nothing says whether it was burned in vehicles or on site."
+   },
+   "input_file_name": "PDF-BLR-001.pdf",
+   "low_confidence_candidate_count": 0,
+   "missing_candidate_count": 0,
+   "org_id": null,
+   "parser_status": "parsed",
+   "processing_run_id": "RUN-PDF-BLR-001.pdf",
+   "stage_statuses": {
+    "candidate_generation": "skipped",
+    "classify": "completed",
+    "parse": "completed",
+    "target_plan": "skipped"
+   },
+   "status": "partial",
+   "target_count": 0,
+   "warnings": [
+    "No confident canonical_type_id available; target planning and candidate generation were skipped.",
+    "Unsupported document type: the closest match was CT-S2-ELEC with confidence 0.50, below the 0.55 needed to extract automatically. Set the document type manually if it is a supported type. It names a fuel but nothing says whether it was burned in vehicles or on site."
+   ]
+  }
+ },
+ "PDF-NG-001.pdf": {
+  "items": [
+   {
+    "candidate_id": "candidate::EV-PDF-NG-001.pdf::DOC-PDF-NG-001.pdf::activity_quantity",
+    "confidence": 0.88,
+    "display_label": "Activity quantity",
+    "document_id": "DOC-PDF-NG-001.pdf",
+    "evidence_id": "EV-PDF-NG-001.pdf",
+    "field_name": "activity_quantity",
+    "normalized_value": 32400,
+    "raw_value": "32,400",
+    "record_index": null,
+    "record_key": null,
+    "source_reference": {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.039974,
+      "x": 0.667784,
+      "y": 0.317424
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b18"
+     ],
+     "sheet_name": null,
+     "source_reference_id": "SRC-pymupdf-p1-18",
+     "text_snippet": "Meter ID Previous Read Current Read Billing Days Usage Unit | NFG-BWV-239871 1,027,540 1,059,940 31 32,400 MMBtu"
+    },
+    "unit": "MMBtu",
+    "validation_flags": []
+   },
+   {
+    "candidate_id": "candidate::EV-PDF-NG-001.pdf::DOC-PDF-NG-001.pdf::activity_unit",
+    "confidence": 0.88,
+    "display_label": "Activity unit",
+    "document_id": "DOC-PDF-NG-001.pdf",
+    "evidence_id": "EV-PDF-NG-001.pdf",
+    "field_name": "activity_unit",
+    "normalized_value": "MMBtu",
+    "raw_value": "MMBtu",
+    "record_index": null,
+    "record_key": null,
+    "source_reference": {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.041399,
+      "x": 0.727366,
+      "y": 0.317424
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b19"
+     ],
+     "sheet_name": null,
+     "source_reference_id": "SRC-pymupdf-p1-19",
+     "text_snippet": "MMBtu"
+    },
+    "unit": null,
+    "validation_flags": []
+   },
+   {
+    "candidate_id": "candidate::EV-PDF-NG-001.pdf::DOC-PDF-NG-001.pdf::facility_name",
+    "confidence": 0.92,
+    "display_label": "Facility name",
+    "document_id": "DOC-PDF-NG-001.pdf",
+    "evidence_id": "EV-PDF-NG-001.pdf",
+    "field_name": "facility_name",
+    "normalized_value": "Anheuser-Busch Baldwinsville Brewery",
+    "raw_value": "Anheuser-Busch Baldwinsville Brewery",
+    "record_index": null,
+    "record_key": null,
+    "source_reference": {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.363203,
+      "x": 0.083333,
+      "y": 0.14678
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b3"
+     ],
+     "sheet_name": null,
+     "source_reference_id": "SRC-pymupdf-p1-3",
+     "text_snippet": "Customer: Anheuser-Busch Baldwinsville Brewery"
+    },
+    "unit": null,
+    "validation_flags": []
+   },
+   {
+    "candidate_id": "candidate::EV-PDF-NG-001.pdf::DOC-PDF-NG-001.pdf::fuel_type",
+    "confidence": 0.7,
+    "display_label": "Fuel type",
+    "document_id": "DOC-PDF-NG-001.pdf",
+    "evidence_id": "EV-PDF-NG-001.pdf",
+    "field_name": "fuel_type",
+    "normalized_value": "natural_gas",
+    "raw_value": "National Fuel Gas Company - Natural Gas Statement",
+    "record_index": null,
+    "record_key": null,
+    "source_reference": {
+     "bounding_box": {
+      "height": 0.031295,
+      "width": 0.732206,
+      "x": 0.133897,
+      "y": 0.062803
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b1"
+     ],
+     "sheet_name": null,
+     "source_reference_id": "SRC-pymupdf-p1-1",
+     "text_snippet": "National Fuel Gas Company - Natural Gas Statement"
+    },
+    "unit": null,
+    "validation_flags": []
+   },
+   {
+    "candidate_id": "candidate::EV-PDF-NG-001.pdf::DOC-PDF-NG-001.pdf::service_period_end",
+    "confidence": 0.85,
+    "display_label": "Service period end",
+    "document_id": "DOC-PDF-NG-001.pdf",
+    "evidence_id": "EV-PDF-NG-001.pdf",
+    "field_name": "service_period_end",
+    "normalized_value": "2023-01-31",
+    "raw_value": "Jan 1, 2023 to Jan 31, 2023",
+    "record_index": null,
+    "record_key": null,
+    "source_reference": {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.317908,
+      "x": 0.083333,
+      "y": 0.230114
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b6"
+     ],
+     "sheet_name": null,
+     "source_reference_id": "SRC-pymupdf-p1-6",
+     "text_snippet": "Service Period: Jan 1, 2023 to Jan 31, 2023"
+    },
+    "unit": null,
+    "validation_flags": []
+   },
+   {
+    "candidate_id": "candidate::EV-PDF-NG-001.pdf::DOC-PDF-NG-001.pdf::service_period_start",
+    "confidence": 0.85,
+    "display_label": "Service period start",
+    "document_id": "DOC-PDF-NG-001.pdf",
+    "evidence_id": "EV-PDF-NG-001.pdf",
+    "field_name": "service_period_start",
+    "normalized_value": "2023-01-01",
+    "raw_value": "Jan 1, 2023 to Jan 31, 2023",
+    "record_index": null,
+    "record_key": null,
+    "source_reference": {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.317908,
+      "x": 0.083333,
+      "y": 0.230114
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b6"
+     ],
+     "sheet_name": null,
+     "source_reference_id": "SRC-pymupdf-p1-6",
+     "text_snippet": "Service Period: Jan 1, 2023 to Jan 31, 2023"
+    },
+    "unit": null,
+    "validation_flags": []
+   },
+   {
+    "candidate_id": "candidate::EV-PDF-NG-001.pdf::DOC-PDF-NG-001.pdf::service_address",
+    "confidence": 0.92,
+    "display_label": "Service or account address",
+    "document_id": "DOC-PDF-NG-001.pdf",
+    "evidence_id": "EV-PDF-NG-001.pdf",
+    "field_name": "service_address",
+    "normalized_value": "4797 River Road, Baldwinsville, NY 13027",
+    "raw_value": "4797 River Road, Baldwinsville, NY 13027",
+    "record_index": null,
+    "record_key": null,
+    "source_reference": {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.434984,
+      "x": 0.083333,
+      "y": 0.174558
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b4"
+     ],
+     "sheet_name": null,
+     "source_reference_id": "SRC-pymupdf-p1-4",
+     "text_snippet": "Service Address: 4797 River Road, Baldwinsville, NY 13027"
+    },
+    "unit": null,
+    "validation_flags": []
+   },
+   {
+    "candidate_id": "candidate::EV-PDF-NG-001.pdf::DOC-PDF-NG-001.pdf::supplier_name",
+    "confidence": 0.75,
+    "display_label": "Supplier or utility name",
+    "document_id": "DOC-PDF-NG-001.pdf",
+    "evidence_id": "EV-PDF-NG-001.pdf",
+    "field_name": "supplier_name",
+    "normalized_value": "National Fuel Gas Company - Natural Gas Statement",
+    "raw_value": "National Fuel Gas Company - Natural Gas Statement",
+    "record_index": null,
+    "record_key": null,
+    "source_reference": {
+     "bounding_box": {
+      "height": 0.031295,
+      "width": 0.732206,
+      "x": 0.133897,
+      "y": 0.062803
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b1"
+     ],
+     "sheet_name": null,
+     "source_reference_id": "SRC-pymupdf-p1-1",
+     "text_snippet": "National Fuel Gas Company - Natural Gas Statement"
+    },
+    "unit": null,
+    "validation_flags": []
+   },
+   {
+    "candidate_id": "candidate::EV-PDF-NG-001.pdf::DOC-PDF-NG-001.pdf::account_number",
+    "confidence": 0.92,
+    "display_label": "Account number",
+    "document_id": "DOC-PDF-NG-001.pdf",
+    "evidence_id": "EV-PDF-NG-001.pdf",
+    "field_name": "account_number",
+    "normalized_value": "ACC-2023-BWV-001",
+    "raw_value": "ACC-2023-BWV-001",
+    "record_index": null,
+    "record_key": null,
+    "source_reference": {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.282402,
+      "x": 0.083333,
+      "y": 0.202336
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b5"
+     ],
+     "sheet_name": null,
+     "source_reference_id": "SRC-pymupdf-p1-5",
+     "text_snippet": "Account Number: ACC-2023-BWV-001"
+    },
+    "unit": null,
+    "validation_flags": []
+   }
+  ],
+  "parser_output": {
+   "document_id": "DOC-PDF-NG-001.pdf",
+   "key_value_pairs": [],
+   "pages": [
+    {
+     "page_number": 1,
+     "text": "National Fuel Gas Company - Natural Gas Statement\nDocument ID: EV-NG-2023-001\nCustomer: Anheuser-Busch Baldwinsville Brewery\nService Address: 4797 River Road, Baldwinsville, NY 13027\nAccount Number: ACC-2023-BWV-001\nService Period: Jan 1, 2023 to Jan 31, 2023\nUsage Unit: MMBtu\nMeter ID\nPrevious Read\nCurrent Read\nBilling Days\nUsage\nUnit\nNFG-BWV-239871\n1,027,540\n1,059,940\n31\n32,400\nMMBtu\n"
+    }
+   ],
+   "parser_name": "pymupdf",
+   "parser_version": "v0",
+   "processing_run_id": "RUN-PDF-NG-001.pdf",
+   "raw_artifact_uri": null,
+   "source_references": [
+    {
+     "bounding_box": {
+      "height": 0.031295,
+      "width": 0.732206,
+      "x": 0.133897,
+      "y": 0.062803
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b1"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-1",
+     "text_snippet": "National Fuel Gas Company - Natural Gas Statement"
+    },
+    {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.230654,
+      "x": 0.083333,
+      "y": 0.119003
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b2"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-2",
+     "text_snippet": "Document ID: EV-NG-2023-001"
+    },
+    {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.363203,
+      "x": 0.083333,
+      "y": 0.14678
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b3"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-3",
+     "text_snippet": "Customer: Anheuser-Busch Baldwinsville Brewery"
+    },
+    {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.434984,
+      "x": 0.083333,
+      "y": 0.174558
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b4"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-4",
+     "text_snippet": "Service Address: 4797 River Road, Baldwinsville, NY 13027"
+    },
+    {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.282402,
+      "x": 0.083333,
+      "y": 0.202336
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b5"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-5",
+     "text_snippet": "Account Number: ACC-2023-BWV-001"
+    },
+    {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.317908,
+      "x": 0.083333,
+      "y": 0.230114
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b6"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-6",
+     "text_snippet": "Service Period: Jan 1, 2023 to Jan 31, 2023"
+    },
+    {
+     "bounding_box": {
+      "height": 0.017348,
+      "width": 0.14165,
+      "x": 0.083333,
+      "y": 0.257891
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b7"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-7",
+     "text_snippet": "Usage Unit: MMBtu"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013909,
+      "width": 0.051569,
+      "x": 0.231235,
+      "y": 0.294747
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b8"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-8",
+     "text_snippet": "Meter ID"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013909,
+      "width": 0.09081,
+      "x": 0.360529,
+      "y": 0.294747
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b9"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-9",
+     "text_snippet": "Previous Read"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013909,
+      "width": 0.082797,
+      "x": 0.470948,
+      "y": 0.294747
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b10"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-10",
+     "text_snippet": "Current Read"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013909,
+      "width": 0.074824,
+      "x": 0.573353,
+      "y": 0.294747
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b11"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-11",
+     "text_snippet": "Billing Days"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013909,
+      "width": 0.039229,
+      "x": 0.667784,
+      "y": 0.294747
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b12"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-12",
+     "text_snippet": "Usage"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013909,
+      "width": 0.025412,
+      "x": 0.727366,
+      "y": 0.294747
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b13"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-13",
+     "text_snippet": "Unit"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.109686,
+      "x": 0.231235,
+      "y": 0.317424
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b14"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-14",
+     "text_snippet": "NFG-BWV-239871"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.058144,
+      "x": 0.360529,
+      "y": 0.317424
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b15"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-15",
+     "text_snippet": "1,027,540"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.058144,
+      "x": 0.470948,
+      "y": 0.317424
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b16"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-16",
+     "text_snippet": "1,059,940"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.014536,
+      "x": 0.573353,
+      "y": 0.317424
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b17"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-17",
+     "text_snippet": "31"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.039974,
+      "x": 0.667784,
+      "y": 0.317424
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b18"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-18",
+     "text_snippet": "32,400"
+    },
+    {
+     "bounding_box": {
+      "height": 0.013879,
+      "width": 0.041399,
+      "x": 0.727366,
+      "y": 0.317424
+     },
+     "cell_or_range": null,
+     "document_id": "DOC-PDF-NG-001.pdf",
+     "page_number": 1,
+     "parser_block_ids": [
+      "pymupdf-p1-b19"
+     ],
+     "sheet_name": null,
+     "source_kind": "line_text",
+     "source_reference_id": "SRC-pymupdf-p1-19",
+     "text_snippet": "MMBtu"
+    }
+   ],
+   "status": "parsed",
+   "tables": [],
+   "text_blocks": [
+    {
+     "block_id": "pymupdf-p1-b1",
+     "bounding_box": {
+      "height": 0.031295,
+      "left": 0.133897,
+      "top": 0.062803,
+      "width": 0.732206
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-1",
+     "text": "National Fuel Gas Company - Natural Gas Statement"
+    },
+    {
+     "block_id": "pymupdf-p1-b2",
+     "bounding_box": {
+      "height": 0.017348,
+      "left": 0.083333,
+      "top": 0.119003,
+      "width": 0.230654
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-2",
+     "text": "Document ID: EV-NG-2023-001"
+    },
+    {
+     "block_id": "pymupdf-p1-b3",
+     "bounding_box": {
+      "height": 0.017348,
+      "left": 0.083333,
+      "top": 0.14678,
+      "width": 0.363203
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-3",
+     "text": "Customer: Anheuser-Busch Baldwinsville Brewery"
+    },
+    {
+     "block_id": "pymupdf-p1-b4",
+     "bounding_box": {
+      "height": 0.017348,
+      "left": 0.083333,
+      "top": 0.174558,
+      "width": 0.434984
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-4",
+     "text": "Service Address: 4797 River Road, Baldwinsville, NY 13027"
+    },
+    {
+     "block_id": "pymupdf-p1-b5",
+     "bounding_box": {
+      "height": 0.017348,
+      "left": 0.083333,
+      "top": 0.202336,
+      "width": 0.282402
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-5",
+     "text": "Account Number: ACC-2023-BWV-001"
+    },
+    {
+     "block_id": "pymupdf-p1-b6",
+     "bounding_box": {
+      "height": 0.017348,
+      "left": 0.083333,
+      "top": 0.230114,
+      "width": 0.317908
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-6",
+     "text": "Service Period: Jan 1, 2023 to Jan 31, 2023"
+    },
+    {
+     "block_id": "pymupdf-p1-b7",
+     "bounding_box": {
+      "height": 0.017348,
+      "left": 0.083333,
+      "top": 0.257891,
+      "width": 0.14165
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-7",
+     "text": "Usage Unit: MMBtu"
+    },
+    {
+     "block_id": "pymupdf-p1-b8",
+     "bounding_box": {
+      "height": 0.013909,
+      "left": 0.231235,
+      "top": 0.294747,
+      "width": 0.051569
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-8",
+     "text": "Meter ID"
+    },
+    {
+     "block_id": "pymupdf-p1-b9",
+     "bounding_box": {
+      "height": 0.013909,
+      "left": 0.360529,
+      "top": 0.294747,
+      "width": 0.09081
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-9",
+     "text": "Previous Read"
+    },
+    {
+     "block_id": "pymupdf-p1-b10",
+     "bounding_box": {
+      "height": 0.013909,
+      "left": 0.470948,
+      "top": 0.294747,
+      "width": 0.082797
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-10",
+     "text": "Current Read"
+    },
+    {
+     "block_id": "pymupdf-p1-b11",
+     "bounding_box": {
+      "height": 0.013909,
+      "left": 0.573353,
+      "top": 0.294747,
+      "width": 0.074824
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-11",
+     "text": "Billing Days"
+    },
+    {
+     "block_id": "pymupdf-p1-b12",
+     "bounding_box": {
+      "height": 0.013909,
+      "left": 0.667784,
+      "top": 0.294747,
+      "width": 0.039229
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-12",
+     "text": "Usage"
+    },
+    {
+     "block_id": "pymupdf-p1-b13",
+     "bounding_box": {
+      "height": 0.013909,
+      "left": 0.727366,
+      "top": 0.294747,
+      "width": 0.025412
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-13",
+     "text": "Unit"
+    },
+    {
+     "block_id": "pymupdf-p1-b14",
+     "bounding_box": {
+      "height": 0.013879,
+      "left": 0.231235,
+      "top": 0.317424,
+      "width": 0.109686
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-14",
+     "text": "NFG-BWV-239871"
+    },
+    {
+     "block_id": "pymupdf-p1-b15",
+     "bounding_box": {
+      "height": 0.013879,
+      "left": 0.360529,
+      "top": 0.317424,
+      "width": 0.058144
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-15",
+     "text": "1,027,540"
+    },
+    {
+     "block_id": "pymupdf-p1-b16",
+     "bounding_box": {
+      "height": 0.013879,
+      "left": 0.470948,
+      "top": 0.317424,
+      "width": 0.058144
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-16",
+     "text": "1,059,940"
+    },
+    {
+     "block_id": "pymupdf-p1-b17",
+     "bounding_box": {
+      "height": 0.013879,
+      "left": 0.573353,
+      "top": 0.317424,
+      "width": 0.014536
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-17",
+     "text": "31"
+    },
+    {
+     "block_id": "pymupdf-p1-b18",
+     "bounding_box": {
+      "height": 0.013879,
+      "left": 0.667784,
+      "top": 0.317424,
+      "width": 0.039974
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-18",
+     "text": "32,400"
+    },
+    {
+     "block_id": "pymupdf-p1-b19",
+     "bounding_box": {
+      "height": 0.013879,
+      "left": 0.727366,
+      "top": 0.317424,
+      "width": 0.041399
+     },
+     "confidence": null,
+     "page_number": 1,
+     "source_reference_id": "SRC-pymupdf-p1-19",
+     "text": "MMBtu"
+    }
+   ],
+   "warnings": []
+  },
+  "pipeline_run": {
+   "artifacts": {
+    "approved_evidence_id": null,
+    "candidate_output_path": null,
+    "parser_output_path": null
+   },
+   "candidate_count": 9,
+   "canonical_type_id": "CT-S1-FUELQTY",
+   "canonical_type_source": "classifier",
+   "classification_status": "classified",
+   "document_id": "DOC-PDF-NG-001.pdf",
+   "engagement_id": "ENG-GOLDEN",
+   "errors": [],
+   "evidence_id": "EV-PDF-NG-001.pdf",
+   "found_candidate_count": 9,
+   "halt_reason": null,
+   "input_file_name": "PDF-NG-001.pdf",
+   "low_confidence_candidate_count": 0,
+   "missing_candidate_count": 0,
+   "org_id": null,
+   "parser_status": "parsed",
+   "processing_run_id": "RUN-PDF-NG-001.pdf",
+   "stage_statuses": {
+    "candidate_generation": "completed",
+    "classify": "completed",
+    "parse": "completed",
+    "target_plan": "completed"
+   },
+   "status": "completed",
+   "target_count": 9,
+   "warnings": []
+  }
+ }
+}

@@ -30,7 +30,7 @@ from typing import Any, Literal
 
 from backend.app.adapters.parsers.base import build_empty_parser_output, build_warning
 from backend.app.core.config import Settings
-from backend.app.repositories.document_chunk_repository import DocumentChunk
+from backend.app.repositories.document_chunk_repository import OCR_PAGE_FAILED, DocumentChunk, ocr_failed_pages
 from backend.app.services.document_processing_service import RETRY_DELAYS_SECONDS, stored_file
 from backend.app.services.parser_service import ParserService
 
@@ -38,7 +38,6 @@ logger = logging.getLogger("sustentra.chunks")
 
 HALT_DOCUMENT_TOO_LONG = "document_too_long"
 PAGES_UNREAD = "pages_unread"
-OCR_PAGE_FAILED = "ocr_page_failed"
 _RENAMED_IDS = ("block_id", "source_reference_id", "key_source_reference_id", "value_source_reference_id")
 
 
@@ -129,6 +128,10 @@ def merge_chunk_outputs(
     ordered = sorted(chunks, key=lambda c: c.page_from)
     done = [c for c in ordered if c.status == "completed" and isinstance(c.parser_output, dict)]
     unread = [(c.page_from, c.page_to) for c in ordered if c not in done]
+    for chunk in done:  # pages Textract failed on in a chunk kept on its last attempt
+        failed = [str(w.get("message")) for w in (chunk.parser_output or {}).get("warnings") or []
+                  if isinstance(w, dict) and w.get("code") == OCR_PAGE_FAILED]
+        unread += [(n, n) for n in ocr_failed_pages(failed)]
     if not done:
         warnings = [build_warning(PAGES_UNREAD, pages_unread_message(unread), severity="warning")] if unread else []
         return build_empty_parser_output(document_id=document_id, processing_run_id=run_id,
@@ -153,7 +156,7 @@ def merge_chunk_outputs(
         merged["warnings"].append(build_warning(PAGES_UNREAD, pages_unread_message(unread), severity="warning"))
     status = ("parsed" if statuses == {"parsed"} and not unread else
               "empty" if statuses == {"empty"} and not unread else "partial")
-    base = dict(done[0].parser_output or {})
+    base = dict(done[0].parser_output or {})  # header fields (parser_name, created_at, ...) come from the first chunk
     return {**base, "document_id": document_id, "processing_run_id": run_id, "status": status, **merged}, unread
 
 
@@ -175,7 +178,7 @@ class ChunkStep:
 class ChunkOutcome:
     status: Literal["completed", "failed", "retry"]
     parser_output: dict[str, Any] | None = None
-    error_code: str | None = None
+    error_code: str | None = None  # on a completed chunk: OCR_PAGE_FAILED when some pages stayed unread
 
 
 class DocumentChunkService:
@@ -236,13 +239,15 @@ class DocumentChunkService:
         codes = {w.get("code") for w in output.get("warnings") or [] if isinstance(w, dict)}
         if OCR_PAGE_FAILED in codes and chunk.attempts < chunk.max_attempts:
             return ChunkOutcome("retry", error_code=OCR_PAGE_FAILED)  # Textract failed on a page: try again
-        return ChunkOutcome("completed", parser_output=output)
+        return ChunkOutcome("completed", parser_output=output,
+                            error_code=OCR_PAGE_FAILED if OCR_PAGE_FAILED in codes else None)
 
     def finish(self, chunk: DocumentChunk, outcome: ChunkOutcome, worker_id: str) -> DocumentChunk | None:
         """Record the outcome, fenced to this reader. ``None`` when the chunk is no longer its."""
 
         if outcome.status == "completed":
-            result = self._chunks.finalize_completed(chunk, worker_id, outcome.parser_output or {})
+            result = self._chunks.finalize_completed(chunk, worker_id, outcome.parser_output or {},
+                                                   outcome.error_code)
         elif outcome.status == "retry" and chunk.attempts < chunk.max_attempts:
             delay = RETRY_DELAYS_SECONDS[min(chunk.attempts, len(RETRY_DELAYS_SECONDS)) - 1]
             result = self._chunks.retry_later(chunk, worker_id, delay, outcome.error_code)
