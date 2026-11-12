@@ -6,7 +6,7 @@ import { api } from "../../../lib/api";
  * nothing here adds up or builds text.
  */
 
-export type BatchDocumentStatus = "queued" | "reading" | "done" | "partial" | "failed";
+export type BatchDocumentStatus = "queued" | "reading" | "done" | "partial" | "failed" | "not_started";
 
 export interface BatchChunks {
   total: number;
@@ -33,7 +33,7 @@ export interface BatchView {
   label: string | null;
   items: BatchDocument[];
   totals: Record<BatchDocumentStatus, number>;
-  /** Nothing is waiting or being read any more: the client stops asking. */
+  /** Nothing is waiting or being read any more (a file no read was asked for does not count): the client stops asking. */
   complete: boolean;
 }
 

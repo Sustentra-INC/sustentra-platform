@@ -106,7 +106,7 @@ def test_a_batch_is_created_for_the_engagement(env: dict) -> None:
     empty = env["create_batch"]()
     view = env["view"](empty).json()
     assert view["items"] == [] and view["complete"] is True
-    assert view["totals"] == {"queued": 0, "reading": 0, "done": 0, "partial": 0, "failed": 0}
+    assert view["totals"] == {"queued": 0, "reading": 0, "done": 0, "partial": 0, "failed": 0, "not_started": 0}
 
 
 def test_a_provider_admin_cannot_create_a_batch(env: dict) -> None:
@@ -167,7 +167,7 @@ def test_each_document_shows_its_status_and_the_totals_count_them(env: dict) -> 
     body = env["view"](batch).json()
     by_id = {item["document_id"]: item for item in body["items"]}
     assert [by_id[d["document_id"]]["status"] for d in docs] == ["queued", "reading", "done", "partial", "failed"]
-    assert body["totals"] == {"queued": 1, "reading": 1, "done": 1, "partial": 1, "failed": 1}
+    assert body["totals"] == {"queued": 1, "reading": 1, "done": 1, "partial": 1, "failed": 1, "not_started": 0}
     assert body["complete"] is False
     done, partial, failed = (by_id[docs[i]["document_id"]] for i in (2, 3, 4))
     assert (done["canonical_type_id"], done["records_found"], done["halt_reason"]) == (FUEL, 4, None)
@@ -180,10 +180,32 @@ def test_each_document_shows_its_status_and_the_totals_count_them(env: dict) -> 
 def test_the_view_is_complete_once_nothing_waits_or_reads(env: dict) -> None:
     batch = env["create_batch"]()
     document = env["upload"](batch).json()
-    assert env["view"](batch).json()["complete"] is False  # queued
+    assert env["view"](batch).json()["complete"] is False  # a queued run is waiting
     env["finish"](document, pipeline_run("p1", document))
     body = env["view"](batch).json()
     assert body["complete"] is True and body["totals"]["done"] == 1
+
+
+def test_a_document_with_no_run_is_not_started_and_does_not_hold_the_batch_open(env: dict, run_queue) -> None:
+    batch = env["create_batch"]()
+    document = env["upload"](batch).json()
+    # Queued mode queued a first read at upload; remove it to stand for an upload whose read was never asked for.
+    run_queue._runs.clear()
+    body = env["view"](batch).json()
+    item = body["items"][0]
+    assert item["document_id"] == document["document_id"]
+    assert (item["status"], item["halt_reason"], item["records_found"]) == (
+        "not_started", "Reading hasn't started for this file. Open it to start reading.", 0)
+    assert body["totals"]["not_started"] == 1 and body["totals"]["queued"] == 0
+    assert body["complete"] is True
+
+
+def test_a_failed_run_with_no_reason_at_all_gets_a_default_sentence(env: dict) -> None:
+    batch = env["create_batch"]()
+    document = env["upload"](batch).json()
+    env["finish"](document, None, status="failed", error=("worker_error", ""))
+    item = env["view"](batch).json()["items"][0]
+    assert (item["status"], item["halt_reason"]) == ("failed", "Reading failed. Try uploading the file again.")
 
 
 def test_a_failed_run_without_a_halt_says_its_own_error(env: dict) -> None:

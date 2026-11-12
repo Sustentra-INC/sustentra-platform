@@ -3,10 +3,11 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "../../../lib/api";
 import { BATCH_POLL_MS, type BatchDocument, type BatchView } from "../api/documentBatches";
 import { BATCH_STATUS, BatchProgress } from "../components/BatchProgress";
 import { UploadDialog } from "../components/UploadDialog";
-import { useBatchProgress } from "../hooks/useBatchProgress";
+import { BATCH_LOAD_FAILED, BATCH_MAX_FAILURES, BATCH_NOT_CREATED, useBatchProgress } from "../hooks/useBatchProgress";
 import { findBlockedUiTerms } from "../utils/copyCompliance";
 
 const fetchMock = vi.fn();
@@ -25,7 +26,7 @@ function doc(overrides: Partial<BatchDocument> = {}): BatchDocument {
 }
 
 function batch(items: BatchDocument[], overrides: Partial<BatchView> = {}): BatchView {
-  const totals = { queued: 0, reading: 0, done: 0, partial: 0, failed: 0 };
+  const totals = { queued: 0, reading: 0, done: 0, partial: 0, failed: 0, not_started: 0 };
   for (const item of items) totals[item.status] += 1;
   return {
     batch_id: "B1",
@@ -97,6 +98,29 @@ describe("batch progress table", () => {
     expect(findBlockedUiTerms(document.body.textContent ?? "")).toEqual([]);
   });
 
+  it("shows a file no read was asked for as not started, with its sentence, a link, and no records", () => {
+    const open = vi.fn();
+    const idle = batch([doc({ document_id: "DOC-9", file_name: "idle.pdf", status: "not_started", canonical_type_id: null,
+      records_found: 0, halt_reason: "Reading hasn't started for this file. Open it to start reading." })]);
+    render(<BatchProgress batch={idle} onOpenDocument={open} />);
+    const row = screen.getAllByRole("row")[1];
+    expect(within(row).getByText("Not started")).toBeInTheDocument();
+    expect(within(row).getByText("Reading hasn't started for this file. Open it to start reading.")).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole("button", { name: "idle.pdf" }));
+    expect(open).toHaveBeenCalledWith("DOC-9");
+    expect(screen.getByText("1 not started")).toBeInTheDocument();
+    expect(findBlockedUiTerms(document.body.textContent ?? "")).toEqual([]);
+  });
+
+  it("says so when the batch could not be made or its progress could not be loaded", () => {
+    const props = { onClose: vi.fn(), onUploadFiles: vi.fn(), batch: [], tasks: [], onOpenWorkspace: vi.fn() };
+    const { rerender } = render(<UploadDialog {...props} batchNote={BATCH_NOT_CREATED} />);
+    expect(screen.getByText("These files were uploaded without a batch.")).toBeInTheDocument();
+    rerender(<UploadDialog {...props} batchNote={BATCH_LOAD_FAILED} />);
+    expect(screen.getByText("Progress couldn't be loaded. Refresh to try again.")).toBeInTheDocument();
+    expect(findBlockedUiTerms(`${BATCH_NOT_CREATED} ${BATCH_LOAD_FAILED}`)).toEqual([]);
+  });
+
   it("appears in the upload dialog only for a batch with files", () => {
     const props = { onClose: vi.fn(), onUploadFiles: vi.fn(), batch: [], tasks: [], onOpenWorkspace: vi.fn() };
     const { rerender } = render(<UploadDialog {...props} batchProgress={batch([])} onOpenDocument={vi.fn()} />);
@@ -126,7 +150,7 @@ describe("batch polling", () => {
     await flush();
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toContain("/engagements/ENG-1/document-batches/B1");
-    expect(result.current?.complete).toBe(false);
+    expect(result.current.view?.complete).toBe(false);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(BATCH_POLL_MS);
@@ -136,7 +160,7 @@ describe("batch polling", () => {
       await vi.advanceTimersByTimeAsync(BATCH_POLL_MS);
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(result.current?.complete).toBe(true);
+    expect(result.current.view?.complete).toBe(true);
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(BATCH_POLL_MS * 5);
@@ -176,5 +200,100 @@ describe("batch polling", () => {
     });
     expect(onError).toHaveBeenCalledTimes(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("batch polling failures", () => {
+  const hook = (onError?: (e: unknown) => boolean) =>
+    renderHook(() => useBatchProgress({ enabled: true, engagementId: "ENG-1", batchId: "B1", uploading: false, onError }));
+
+  it("stops at once on a 4xx and says progress could not be loaded", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(async () => new Response(JSON.stringify({ detail: "Batch not found." }), { status: 404 }));
+    const { result } = hook(() => false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BATCH_POLL_MS * 10);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.error).toBe(BATCH_LOAD_FAILED);
+  });
+
+  it("backs off 3 s then 6 s on server errors and stops at the third failure in a row", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(async () => new Response("{}", { status: 503 }));
+    const { result } = hook();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BATCH_POLL_MS - 1);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BATCH_POLL_MS * 2 - 1);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(BATCH_MAX_FAILURES);
+    expect(result.current.error).toBe(BATCH_LOAD_FAILED);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BATCH_POLL_MS * 20);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(BATCH_MAX_FAILURES);
+  });
+
+  it("starts the count again after a poll that works, and keeps the last table when it gives up", async () => {
+    vi.useFakeTimers();
+    const running = batch([doc({ status: "reading" })]);
+    const answers = [503, 503, "ok", 503, 503, 503];
+    fetchMock.mockImplementation(async () => {
+      const next = answers.shift();
+      return next === "ok" ? reply(running) : new Response("{}", { status: Number(next ?? 503) });
+    });
+    const { result } = hook();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BATCH_POLL_MS * 30);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    expect(result.current.error).toBe(BATCH_LOAD_FAILED);
+    expect(result.current.view?.items).toHaveLength(1);
+  });
+
+  it("hands a failure the app handles (the session ended) to onError and stops", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockImplementation(async () => new Response("{}", { status: 503 }));
+    const onError = vi.fn(() => true);
+    const { result } = hook(onError);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BATCH_POLL_MS * 10);
+    });
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("stops asking and ignores a late answer after unmount", async () => {
+    vi.useFakeTimers();
+    let release: (r: Response) => void = () => undefined;
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => (release = resolve)));
+    const { unmount, result } = hook();
+    unmount();
+    release(reply(batch([doc({ status: "reading" })])));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(BATCH_POLL_MS * 5);
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(result.current.view).toBeNull();
+  });
+
+  it("is an ApiError that carries the status the hook reads", () => {
+    expect(new ApiError(404, "x", null, null).status).toBe(404);
   });
 });

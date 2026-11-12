@@ -62,6 +62,7 @@ export function UploadDialog({
   tasks = [],
   items = [],
   batchProgress = null,
+  batchNote = null,
   onOpenDocument,
   onOpenWorkspace,
 }: {
@@ -78,6 +79,8 @@ export function UploadDialog({
   items?: EvidenceItem[];
   /** Backend mode: how reading the files dropped together stands, when they were uploaded as a batch. */
   batchProgress?: BatchView | null;
+  /** A line about the batch: its progress could not be loaded, or it could not be made. */
+  batchNote?: string | null;
   /** Open a read file's extraction review. */
   onOpenDocument?: (documentId: string) => void;
   onOpenWorkspace: () => void;
@@ -193,6 +196,12 @@ export function UploadDialog({
         ) : null}
 
         {tasks.length > 0 ? <UploadProgress tasks={tasks} items={items} /> : null}
+
+        {batchNote ? (
+          <p className="s1-muted s1-batch__notice" aria-live="polite">
+            {batchNote}
+          </p>
+        ) : null}
 
         {batchProgress && batchProgress.items.length > 0 && onOpenDocument ? (
           <BatchProgress batch={batchProgress} onOpenDocument={onOpenDocument} />

@@ -183,7 +183,8 @@ Needs `S1_PROCESSING=queued` and the reader running.
    partly read or couldn't read.
 3. A file that can't be read says why in a sentence under its name; a row with a read file shows its type and
    the number of records found. Click a read file's name: its extraction review opens.
-4. Drop a single file: no batch table (it is uploaded as before).
+4. Drop a single file: no batch table (it is uploaded as before). A file uploaded in a batch whose read was
+   never asked for shows "Not started" with a sentence and a link; it does not keep the table polling.
 5. With a second organization's batch id, `GET .../document-batches/{id}` as the first one answers 404, and an
    upload with that `batch_id` answers 404 and stores nothing.
 

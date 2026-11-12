@@ -8,9 +8,10 @@ export const BATCH_STATUS: Record<BatchDocumentStatus, { label: string; role: st
   done: { label: "Done", role: "resolved" },
   partial: { label: "Partly read", role: "open" },
   failed: { label: "Couldn't read", role: "blocking" },
+  not_started: { label: "Not started", role: "open" },
 };
 
-const ORDER: BatchDocumentStatus[] = ["queued", "reading", "done", "partial", "failed"];
+const ORDER: BatchDocumentStatus[] = ["queued", "reading", "done", "partial", "failed", "not_started"];
 
 /** What a large PDF's reading has got through; nothing for a document read whole. */
 function progressText(item: BatchDocument): string | null {
@@ -76,7 +77,7 @@ export function BatchProgress({
                   {progress ? <span className="s1-muted s1-batch__progress">{progress}</span> : null}
                 </td>
                 <td className="s1-muted">{type ?? "–"}</td>
-                <td className="s1-batch__num">{item.status === "queued" || item.status === "reading" ? "–" : item.records_found}</td>
+                <td className="s1-batch__num">{item.status === "queued" || item.status === "reading" || item.status === "not_started" ? "–" : item.records_found}</td>
               </tr>
             );
           })}

@@ -15,7 +15,7 @@ import { ApiError } from "../../../lib/api";
 import { isActiveRun, readFailureMessage, requestRead, type ProcessingRunView } from "../api/processingRuns";
 import { useProcessingRuns } from "../hooks/useProcessingRuns";
 import { createDocumentBatch } from "../api/documentBatches";
-import { useBatchProgress } from "../hooks/useBatchProgress";
+import { BATCH_NOT_CREATED, useBatchProgress } from "../hooks/useBatchProgress";
 import { readAfterUpload, withReadingState } from "../utils/readingState";
 import { reviewValuesFromFields, withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import {
@@ -197,6 +197,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [uploadTasks, setUploadTasks] = useState<UploadTask[]>([]);
   // The batch of the upload in progress (several files dropped together): its progress table.
   const [uploadBatchId, setUploadBatchId] = useState<string | null>(null);
+  const [batchCreateFailed, setBatchCreateFailed] = useState(false);
   // Backend mode: every extracted field (facts about each document) and the reviewer's
   // saved decisions per document, laid over the machine's view of the evidence.
   const [workspaceFields, setWorkspaceFields] = useState<ExtractedField[]>([]);
@@ -468,7 +469,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     onError: handleSessionEnded,
   });
 
-  const batchView = useBatchProgress({
+  const batchProgress = useBatchProgress({
     enabled: dataMode === "backend",
     engagementId: engagement.engagementId,
     batchId: uploadBatchId,
@@ -750,6 +751,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     // is not worth stopping the upload for: the files go up without one.
     let batchId: string | undefined;
     setUploadBatchId(null);
+    setBatchCreateFailed(false);
     if (tasks.filter((task) => task.stage === "waiting").length > 1) {
       try {
         batchId = await createDocumentBatch(engagement.engagementId);
@@ -759,6 +761,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           setIsUploading(false);
           return;
         }
+        setBatchCreateFailed(true);
       }
     }
     for (const [index, file] of picked.entries()) {
@@ -1305,7 +1308,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             batch={dataMode === "backend" ? [] : sessionUploadItems}
             tasks={dataMode === "backend" ? uploadTasks : undefined}
             items={dataMode === "backend" ? evidenceItems : undefined}
-            batchProgress={dataMode === "backend" ? batchView : null}
+            batchProgress={dataMode === "backend" ? batchProgress.view : null}
+            batchNote={dataMode === "backend" ? (batchCreateFailed ? BATCH_NOT_CREATED : batchProgress.error) : null}
             onOpenDocument={(documentId) => {
               setUploadOpen(false);
               openExtraction(documentId);

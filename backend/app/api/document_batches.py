@@ -33,7 +33,9 @@ router = APIRouter(prefix="/v1", tags=["document-batches"])
 # The batch table lives in Postgres whatever S1_STORE is (as the run queue).
 _batch_repository: Any = DocumentBatchRepository()
 
-STATUSES = ("queued", "reading", "done", "partial", "failed")
+STATUSES = ("queued", "reading", "done", "partial", "failed", "not_started")
+NOT_STARTED_MESSAGE = "Reading hasn't started for this file. Open it to start reading."
+READ_FAILED_MESSAGE = "Reading failed. Try uploading the file again."
 BATCH_NOT_FOUND = "Batch not found."
 _RUN_STATUS = {"queued": "queued", "in_progress": "reading", "waiting_on_chunks": "reading", "failed": "failed"}
 
@@ -96,12 +98,13 @@ def _row(
 ) -> dict[str, Any]:
     """One document of the batch, as the progress view shows it."""
 
-    status = "queued" if run is None else _RUN_STATUS.get(run.status, "done")
+    # No run at all: the upload stored the file but no read was ever asked for (it is not waiting).
+    status = "not_started" if run is None else _RUN_STATUS.get(run.status, "done")
     if status == "queued" and chunks is not None:
         status = "reading"  # the chunks are read and the run waits to be assembled: not waiting to start
-    halt: str | None = None
+    halt: str | None = NOT_STARTED_MESSAGE if run is None else None
     if run is not None and run.status == "failed":
-        halt = ((pipeline_run or {}).get("halt_reason") or {}).get("message") or run.error
+        halt = ((pipeline_run or {}).get("halt_reason") or {}).get("message") or run.error or READ_FAILED_MESSAGE
     elif run is not None and run.status == "completed" and pipeline_run is not None:
         if pipeline_run.get("status") == "failed":
             status = "failed"
@@ -153,6 +156,7 @@ def get_batch(engagement_id: str, batch_id: str, user: CurrentUser = Depends(s1_
         "created_at": batch.created_at.isoformat(),
         "items": items,
         "totals": totals,
-        # Nothing is waiting or being read: the client stops asking.
+        # Nothing is waiting or being read: the client stops asking. A document no read was asked
+        # for (not_started) is not waiting on anything either.
         "complete": totals["queued"] == 0 and totals["reading"] == 0,
     }

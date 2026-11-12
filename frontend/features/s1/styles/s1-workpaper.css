@@ -1298,6 +1298,7 @@ select:focus-visible,
 .s1-batch__file { display: flex; flex-direction: column; gap: var(--sp-1); overflow-wrap: anywhere; }
 .s1-batch__file .s1-linklike { text-align: left; color: var(--accent); }
 .s1-batch__note { color: var(--ink-2); }
+.s1-batch__notice { margin: 0; font-size: var(--text-sm); }
 .s1-batch__progress { margin-left: var(--sp-2); }
 .s1-batch__table th.s1-batch__num, .s1-batch__table td.s1-batch__num { text-align: right; font-variant-numeric: tabular-nums; }
 

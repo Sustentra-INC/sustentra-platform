@@ -83,12 +83,12 @@ engagement's. Answers:
   (`{total, completed, failed, failed_pages}` for a PDF read in page chunks, else `null`), `canonical_type_id`
   (`null` until classified), `halt_reason` (a sentence saying why it was not read in full, else `null`) and
   `records_found`.
-- `status` is `queued` (no reader has it yet), `reading` (being read, or its chunks are, or it waits to be
+- `status` is `not_started` (no read was ever asked for; `halt_reason` says to open it to start reading; it does not hold `complete` back), `queued` (no reader has it yet), `reading` (being read, or its chunks are, or it waits to be
   assembled), `done`, `partial` (read, but its pipeline run is partial: pages that failed, or nothing to
   review) or `failed`.
 - `halt_reason` is the pipeline's halt message; for a failed run without one, the run's own error; for a
   partial run read in chunks, "Pages 11-20 could not be read."
-- `totals`: `{queued, reading, done, partial, failed}`.
+- `totals`: `{queued, reading, done, partial, failed, not_started}`.
 - `complete`: `true` when nothing is queued or reading. Clients poll (every 3 s) until it is `true`.
 
 ### GET /v1/engagements/{engagement_id}/processing-runs
