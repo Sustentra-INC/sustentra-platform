@@ -105,7 +105,7 @@ class Settings(BaseSettings):
     # adapter sends "anthropic." + AI_MODEL. Prices still come from AI_MODEL.
     ai_bedrock_model_id: str | None = None
     ai_effort: AiEffort = "low"
-    # Per-organization monthly spend cap in USD, checked by the usage ledger (later PR).
+    # Per-organization monthly spend cap in USD, checked against the usage ledger (ai_usage) before each call.
     # The Anthropic Console spend limit is the hard ceiling across all organizations.
     ai_monthly_cap_usd: float = Field(default=25.0, ge=0)
 

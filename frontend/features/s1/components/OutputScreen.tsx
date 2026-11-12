@@ -237,7 +237,8 @@ export interface LiveOutput {
   basisLines: string[];
 }
 
-const NOT_SET = "Not set in Setup";
+// Setup has no boundary field; it is set in the methodology review, so no place is named here.
+const NOT_SET = "Not set";
 
 /**
  * The demo's statement on live data. Only what exists is shown: the one real export, a

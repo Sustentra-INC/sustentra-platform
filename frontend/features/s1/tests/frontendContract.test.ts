@@ -31,6 +31,16 @@ describe("frontend contract checks", () => {
   });
 
   // docs/design_standard.md, section 2: one family, three sizes, two weights.
+  it("lets the context bar wrap at phone width, so the header never scrolls the page sideways", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    const phone = css.slice(css.indexOf("Context bar tidies up on a phone"));
+    const block = phone.slice(0, phone.indexOf("\n}") + 2);
+    expect(block).toMatch(/\.s1-ctx__bar\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(block).toMatch(/\.s1-ctx__actions\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(block).toMatch(/\.s1-ctx__actions\s*\{[^}]*min-width:\s*0/);
+    expect(block).toMatch(/\.s1-ctx__user\s*\{[^}]*flex-wrap:\s*wrap/);
+  });
+
   it("keeps the interface to one font family, three text sizes and two weights", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
     const values = (property: string) => [...css.matchAll(new RegExp(`${property}:\\s*([^;}]+)`, "g"))].map((m) => m[1].trim());

@@ -102,8 +102,11 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   - Values by kind: text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
-  - `ai`: `{enabled, reason_code, reason}`: `reason_code` is `off`, `not_configured`, `cap_reached`, `no_documents`, `not_built` or
-    `null` and `reason` a sentence; until suggestions are built it is `not_built`. Later also provider, model, month spend and cap.
+  - `ai`: `{enabled, reason_code, reason, provider, model, month_spend_usd, cap_usd}`. `enabled` is true when
+    Claude can be asked now; otherwise `reason_code` is `off` (AI_SUGGESTIONS_ENABLED is false), `not_configured`
+    (no Claude client: no key or Bedrock region), `cap_reached` (this organization's spend this UTC month is at
+    or over AI_MONTHLY_CAP_USD) or `no_documents` (no document whose latest type is a client-prepared summary
+    type), and `reason` is the sentence to show; both are `null` when enabled. Checked in that order.
 - `POST .../{field_id}/accept` takes the suggestion's value, or the value already set. `POST .../{field_id}/edit`
   `{value}`. `POST .../{field_id}/reject` `{reason}` (required, at most 500 characters). `POST
   .../{field_id}/revert` returns to pending. Each answers the updated record. Accept and reject only work from
@@ -114,6 +117,37 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   state does not allow is 409 and bad input 422, both with a sentence in `detail`; an unknown field is 404.
   Bodies forbid unknown fields; who acted and when come from the session. Each action writes one
   `methodology_decision` audit event with the field id, action and status only.
+- `POST .../prefill` (s1_writer, open engagement, no body) asks Claude to propose values from the engagement's
+  client-prepared summary documents (latest type in `calculation_lines.SUMMARY_TYPES`; at most 5 documents,
+  1,500 lines and 150,000 characters, taken in document order). One synchronous call. Answers
+  `{suggested, dropped: {reason: count}, kept_reviewer_decision, documents_read: [{document_id, file_name,
+  truncated}], cost_usd, model}`.
+  - Claude only suggests: each kept suggestion is written to the field's record `suggestion` (the shape above;
+    `source_reference` is the parser's reference for the quoted line; a quote over 1,000 characters is stored cut
+    with `quote_truncated: true`, after it was verified whole) and nothing else changes. Fields the
+    reviewer has decided (accepted, edited, rejected) are left alone and counted in `kept_reviewer_decision`;
+    a pending field's older suggestion is replaced. An entity or factor source Claude finds becomes a new
+    record under a server-made id with `user_added: false`, unless a row with the same name (entity) or the
+    same database and edition (factor) is already on the page or earlier in the same reply. Documents the
+    reviewer set aside (withdrawn, duplicate, superseded) are not read.
+  - A suggestion is kept only if its quote (at least 8 characters) is printed on the cited line of the cited
+    document and, for percentages and a factor edition with digits, the number is printed in the quote; for
+    the consolidation approach and the GWP set the quote must also name the choice (for example "operational
+    control", "AR5" or "Fifth Assessment"). A too-short quote counts as `quote_not_on_document`. `dropped` keys are
+    exactly: `empty_value`, `unknown_line`, `quote_not_on_document`, `ambiguous_quote`, `value_not_in_quote`
+    (from the locator), `unknown_document`, `invalid_value` (failed the field's validation) and `unknown_field`.
+  - 409 with a sentence in `detail`: switched off, not configured, over the monthly limit (the `ai.reason`
+    sentences), no documents ("Upload the company's GHG inventory report, boundary statement or methodology
+    document first."), a prefill already running for the organization, documents unreadable, or Claude refused or its answer was cut short or unusable (nothing
+    is kept). 502 when Claude could not be reached, or when its answer could not be saved (the call is still
+    recorded in the ledger; nothing was kept).
+  - The call is made with no database transaction open; the ledger row is committed first, in its own
+    transaction, then the suggestions and the audit event in another. The cap is exact within one app
+    process (one prefill per organization at a time); across processes it can be passed by at most one
+    in-flight call per process.
+  - Every call that was made is one row in `ai_usage` (outcome, tokens, cost, request id), refused or invalid
+    ones included; a refused call before the request is not. One `methodology_prefill` audit event with outcome,
+    counts and cost only.
 
 ### GET /v1/engagements/{engagement_id}/evidence
 List evidence entities produced under the engagement.
@@ -205,16 +239,23 @@ for another org's engagement).
 
 ```
 { line: CalculationLine, reporting_period: {start, end},
+  calculated: bool,                                  // true when the recalculation has this line in calculation_lines
   coverage: [{month: "YYYY-MM", status: "counted" | "counted_in_part" | "not_reviewed" | "no_document",
-              quantity, unit, document_ids, flags: []}],   // flags: "unconverted"
+              quantity, unit, document_ids, flags: [],     // flags: "unconverted"
+              waiting_on: [string]}],                      // field labels the recalculation still awaits
   identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter
   values: [{service_period_start, service_period_end, days, quantity, unit, document_id, file_name,
-            page, candidate_id, decided_by, decided_at, decision}],
+            page, candidate_id, decided_by, decided_at, decision, waiting_on: [string]}],
   history: [{at, text}],                                             // newest first
   // schedule v2 (Claire's supporting-schedule spec); the keys above are unchanged
   rows: [{record_key, record_index, accepted,        // one row per record (document + period + meter)
           decision,                                  // "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited"
-                                                     // (accepted is true for accepted and edited)
+                                                     // | "awaiting_other_fields" (quantity reviewed, but the
+                                                     // recalculation still awaits other fields of the record)
+                                                     // (accepted is true for accepted and edited, and only when the
+                                                     // record is not in the recalculation's awaiting_review)
+          waiting_on: [string],                      // labels of those fields ("Fuel type"); [] otherwise
+          rejected_fields: [string],                 // labels of other required fields the reviewer rejected
                                                      // record_key is opaque: use it as an id, never parse it
           date: {start, end, days, label},           // label: "Service period" | "Transaction date" | "Service date"
           activity_quantity: {value, unit},          // the extracted value; the reviewed value once accepted
@@ -237,6 +278,13 @@ no extractor produces them yet, so today a line shows only Date and Activity qua
 group the line's documents by identifier value; `not_found` holds documents without the identifier.
 Facility is the Setup facility, and `matched_by` says how: "Chosen by the reviewer", "Facility name in
 Setup" or "Service address in Setup". `identifiers` (one entry per value) is kept for older clients.
+
+A row counts (`accepted` true) only when its record is not in the recalculation's `awaiting_review`. When
+the quantity is reviewed but another required field is not (for example `fuel_type`), the row has
+`decision: "awaiting_other_fields"`, `accepted: false`, and `waiting_on` lists the field labels. `calculated`
+is false when the line has no entry in the recalculation's `calculation_lines`; the page then shows
+"Not calculated yet" instead of a link to the calculation. Months follow the same rule: a value awaiting
+other fields does not count, and the month lists its labels in `waiting_on`.
 
 A month is `counted` when accepted values cover all its days, `counted_in_part` when they cover
 some, `not_reviewed` when a document covers it but no accepted value does, and `no_document`

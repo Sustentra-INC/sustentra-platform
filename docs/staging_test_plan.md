@@ -141,6 +141,13 @@ Needs the evidence-tree API (feat/evidence-tree-api) deployed.
 3. Open a line's schedule icon: coverage by month, source identifiers, accepted values and the
    line history show. Click a month: its document opens. Click a value's document icon: the
    review opens at that value. Back returns to the tree as you left it.
+   Schedule v2 (needs feat/schedule-v2-api): the values table has one row per record, with the
+   unit in each cell, dates as MM/DD/YY and spans as "start – end · N days". A value not yet
+   accepted is grey and says "Not reviewed" (or "Rejected" / "Needs more evidence"). "Saved by
+   <name> · <date>" is grey at the row end. A grey note names the activity quantity. Each
+   identifier says "n of N documents"; click it to group the documents by value, with a "Not
+   found" group, and open any of them. Facility says how it was matched. Nothing on the page
+   can be edited.
 4. Document menu, "Move to…": move one document to another line. A move that touches a line asks
    "This changes the calculation for …". Reload: the move is kept; the Activity log lists it.
 5. "+ New calculation line in <fuel>" and "+ New fuel": the line appears tagged "Added by a

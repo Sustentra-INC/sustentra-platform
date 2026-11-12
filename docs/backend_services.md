@@ -109,7 +109,7 @@ Claude yet, and the feature is off everywhere.
 | `AI_MODEL` | `claude-sonnet-5-5` | Claude API model id; on Bedrock the adapter adds `anthropic.`. |
 | `AI_BEDROCK_MODEL_ID` | none | Bedrock only: full model id, sent as given. Unset, the adapter sends `anthropic.` + `AI_MODEL`. Prices stay keyed by `AI_MODEL`. |
 | `AI_EFFORT` | `low` | `low`, `medium` or `high`. |
-| `AI_MONTHLY_CAP_USD` | `25` | Per-organization monthly cap (enforced by the usage ledger, a later PR). |
+| `AI_MONTHLY_CAP_USD` | `25` | Per-organization monthly cap (UTC calendar month; enforced before each call against the `ai_usage` ledger, which records every call; used by Methodology review prefill). |
 
 ### How the key reaches the api container (staging)
 

@@ -88,7 +88,13 @@ QUANTITY_LABELS: tuple[tuple[str, ...], ...] = (
      "total gallons", "quantity delivered", "litres delivered", "liters delivered", "usage", "consumption",
      "quantity"),
 )
-DOCUMENT_TITLE_WORDS = ("invoice", "statement", "bill", "ticket", "receipt", "notice")
+DOCUMENT_TITLE_WORDS = ("invoice", "statement", "bill", "ticket", "receipt", "notice", "summary", "report",
+                        "usage", "record", "overview", "delivery", "history")
+# The last word of a first-line letterhead when nothing else marks it (no larger type)
+LETTERHEAD_END_WORDS = frozenset({
+    "inc", "llc", "ltd", "limited", "co", "corp", "corporation", "company", "utility", "utilities", "power",
+    "energy", "electric", "gas", "water", "department", "authority", "cooperative", "co-op", "district",
+    "board"})
 ORG_HINTS = (" inc", " llc", " ltd", " co.", " company", " corp", "utilities", " utility", " energy", " gas",
              " fuel", " oil", " propane", " power", " services", " transport")
 
@@ -220,6 +226,8 @@ class Cell:
     # Lines without geometry (CSV rows, Word/text lines): which part of the line this cell is
     # (1 = first), so the source pane can mark the exact spot. For a CSV row it is the column.
     part: int | None = None
+    # The line as the parser gave it, before runs of spaces were collapsed (boxed lines only)
+    raw_text: str | None = None
 
     @property
     def left(self) -> float:
@@ -583,6 +591,7 @@ class StationaryCombustionExtractor:
                     text=" ".join(line.split()) if box is not None else line.strip(), page=block.get("page_number"), box=box,
                     block_id=block.get("block_id"), source_reference_id=block.get("source_reference_id"),
                     confidence=self._as_conf(block.get("confidence")), order=order,
+                    raw_text=line.strip() if box is not None else None,
                 ))
         if not cells:
             for page in parser_output.get("pages", []) or []:
@@ -706,19 +715,31 @@ class StationaryCombustionExtractor:
         accept: Any = None,
         allow_next_row: bool = True,
         accept_bare: Any = None,
+        inline: bool = False,
+        inline_gap: bool = False,
+        inline_only: bool = False,
     ) -> Located | None:
         """First value for the highest-priority label group.
+
+        With ``inline``, when no cell starts with a label, a label that follows other text
+        in a cell ("Total kWh Used: 41,200 kWh Service Period: 05/01/2025 to 05/31/2025",
+        which OCR returns as one line) is also read; see ``_find_inline``.
 
         ``accept`` validates a candidate value. ``accept_bare`` (stricter) allows
         "Label value" with no delimiter, e.g. "Account Number 1234-5678"; without it
         such text is treated as a phrase ("Customer charge"), not a label.
         """
+        if inline_only:
+            return self._find_inline(rows, groups, accept, stop_at_gap=inline_gap)
         for labels in groups:
             for row in rows:
                 for position, cell in enumerate(row.cells):
                     prefix = self._label_prefix(cell.text, labels)
                     if prefix is None:
                         continue
+                    if inline_gap and cell.raw_text:
+                        # a text value ends at a column gap (2+ spaces as the parser gave the line)
+                        prefix = self._label_prefix(self._cut_at_gap(cell.raw_text, prefix[0]), labels) or prefix
                     _, remainder, had_delimiter = prefix
                     # 1) "Label: value" in the same cell
                     if remainder and had_delimiter:
@@ -762,6 +783,75 @@ class StationaryCombustionExtractor:
                             if value and (accept is None or accept(value)):
                                 return Located(value, [below[1]], below[0], CONF_NEXT_ROW, label_cell=cell,
                                                context=f"{cell.text} {below[1].text}")
+        if inline:
+            return self._find_inline(rows, groups, accept, stop_at_gap=inline_gap)
+        return None
+
+    @staticmethod
+    def _cut_at_gap(raw: str, label: str) -> str:
+        """``raw`` with its value cut at the first gap of 2+ spaces or a tab. Whitespace between
+        the label and its value (or its colon) is not a gap: "Facility:  Main Plant  Meter 9"
+        gives "Facility: Main Plant"."""
+
+        head = re.match(r"\s*" + r"\s+".join(re.escape(word) for word in label.split()) + r"\s*", raw,
+                        re.IGNORECASE)
+        if head is None:
+            return raw
+        rest = raw[head.end():]
+        delimiter = re.match(r"([:#=])?\s*", rest)
+        assert delimiter is not None
+        value = re.split(r" {2,}|\t+", rest[delimiter.end():])[0]
+        return f"{raw[:head.end()].strip()}{delimiter.group(1) or ''} {value}".strip()
+
+    # A short label ("from", "to", "period", "site") inside running text is a common word, so a
+    # mid-cell label is only trusted with a colon, or (longer labels only) directly before dates.
+    _INLINE_BARE_DATE_MIN_LABEL = 6
+
+    def _find_inline(self, rows: Sequence[Row], groups: Sequence[Sequence[str]], accept: Any,
+                     stop_at_gap: bool = False) -> Located | None:
+        """A label that follows other text in a cell, e.g. the ``Service Period`` of
+        "Total kWh Used: 41,200 kWh Service Period: 05/01/2025 to 05/31/2025".
+
+        The label must start a word and be followed by a colon, or directly by a date when
+        it is at least ``_INLINE_BARE_DATE_MIN_LABEL`` characters. The value runs to the
+        next "label:" pair, if any. With ``stop_at_gap`` (text values: facility, address, account)
+        it also stops at a run of 2+ spaces in the cell as the parser gave it, which separates columns.
+        """
+
+        next_label = re.compile(
+            r"\s(?:" + "|".join(re.escape(label) for label in sorted(_ALL_LABELS, key=len, reverse=True))
+            + r")\s*:", re.IGNORECASE)
+        for labels in groups:
+            pattern = re.compile(
+                r"(?<![A-Za-z0-9])(?:" + "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True))
+                + r")(?![A-Za-z0-9])", re.IGNORECASE)
+            for row in rows:
+                for cell in row.cells:
+                    # column gaps (runs of spaces) become \x00 markers until the value is cut
+                    text = (re.sub(r" {2,}|\t+", "\x00", (cell.raw_text or cell.text).strip()) if stop_at_gap
+                            else " ".join(cell.text.split()))
+                    for match in pattern.finditer(text):
+                        if match.start() == 0:
+                            continue  # a label at the start of the cell is the ordinary case
+                        rest = text[match.end():].lstrip()
+                        colon = rest.startswith(":")
+                        if colon:
+                            value = rest[1:]
+                        elif len(match.group(0)) >= self._INLINE_BARE_DATE_MIN_LABEL and (
+                                (hit := parse_date(rest)) is not None and hit[1] == 0):
+                            value = rest
+                        else:
+                            continue
+                        if colon and match.group(0).lower() in ("to", "from") and (parse_date(value.strip()) or ("", 1))[1] != 0:
+                            continue  # "to:" / "from:" are ordinary words unless a date follows
+                        stop = next_label.search(value.replace("\x00", " "))
+                        value = value[:stop.start()] if stop else value
+                        if stop_at_gap:
+                            value = value.lstrip("\x00").split("\x00")[0]
+                        value = self._trim_value(value.replace("\x00", " "))
+                        if value and (accept is None or accept(value)):
+                            return Located(value, [cell], row, CONF_SAME_CELL - 0.04, label_cell=cell,
+                                           context=text.replace("\x00", " "))
         return None
 
     @staticmethod
@@ -822,7 +912,8 @@ class StationaryCombustionExtractor:
     # Document-level fields
     # =================================================================================
     def _facility(self, rows: Sequence[Row]) -> tuple[Located | None, Located | None]:
-        located = self._find_labeled(rows, FACILITY_LABELS, accept=lambda v: bool(re.search(r"[A-Za-z]{2}", v)))
+        located = self._find_labeled(rows, FACILITY_LABELS, accept=lambda v: bool(re.search(r"[A-Za-z]{2}", v)),
+                                     inline=True, inline_gap=True)
         if located is None:
             return None, None
         # "Site: Standby Generator Plant, 77 Weir Lane, Lodi, CA" -> name + address
@@ -837,7 +928,8 @@ class StationaryCombustionExtractor:
 
     def _address(self, rows: Sequence[Row]) -> Located | None:
         return self._find_labeled(rows, ADDRESS_LABELS, accept=lambda v: bool(re.search(r"\d", v)),
-                                  accept_bare=lambda v: bool(re.match(r"\d+\s+\S", v)))
+                                  accept_bare=lambda v: bool(re.match(r"\d+\s+\S", v)), inline=True,
+                                  inline_gap=True)
 
     def _account(self, rows: Sequence[Row]) -> Located | None:
         def accept(value: str) -> bool:
@@ -846,10 +938,12 @@ class StationaryCombustionExtractor:
         def accept_bare(value: str) -> bool:  # first token must look like an identifier
             return accept(value) and bool(re.match(r"[A-Za-z0-9#-]*\d[\w-]*", value))
 
-        return self._find_labeled(rows, ACCOUNT_LABELS, accept=accept, accept_bare=accept_bare)
+        return self._find_labeled(rows, ACCOUNT_LABELS, accept=accept, accept_bare=accept_bare, inline=True,
+                                  inline_gap=True)
 
     def _supplier(self, rows: Sequence[Row]) -> Located | None:
-        labeled = self._find_labeled(rows, SUPPLIER_LABELS, accept=self._looks_like_org_name, allow_next_row=False)
+        labeled = self._find_labeled(rows, SUPPLIER_LABELS, accept=self._looks_like_org_name, allow_next_row=False,
+                                     inline=True)
         letterhead = self._letterhead(rows)
         if letterhead is not None and (labeled is None or labeled.row is None or labeled.row.index > 2):
             return letterhead
@@ -874,8 +968,10 @@ class StationaryCombustionExtractor:
                         return Located(name, [row.cells[0]], row, CONF_LETTERHEAD - 0.05, context=text)
             return None
         cell = max(cells, key=lambda c: (c.height, -c.order))
-        if cell.height < 1.25 * min(c.height for c in cells):
-            return None
+        if len(cells) < 2 or cell.height < 1.25 * min(c.height for c in cells):
+            # No cell stands out by size (a lone line near the top, or all the same height, as
+            # OCR often returns): fall back to the first line of the page, if it names an organization.
+            return self._first_line_letterhead(first_page)
         text = cell.text
         prefix = self._label_prefix(text, SUPPLIER_LABELS[0])
         if prefix is not None and prefix[1]:
@@ -884,6 +980,24 @@ class StationaryCombustionExtractor:
             return None
         row = next(r for r in first_page if cell in r.cells)
         return Located(self._trim_value(text), [cell], row, CONF_LETTERHEAD)
+
+    def _first_line_letterhead(self, first_page: Sequence[Row]) -> Located | None:
+        """The first line of the page when it is alone on its row and its last word is an
+        organization word (``LETTERHEAD_END_WORDS``: "City Water Department", "Pacific Electric");
+        stricter than ``_looks_like_org_name``, since size is no evidence."""
+
+        row = first_page[0] if first_page else None
+        if row is None or len(row.cells) != 1:
+            return None
+        cell = row.cells[0]
+        # "Shell Energy UK Limited, Elder House, 586-592 Elder Gate" -> the name before the address
+        name = re.split(r"\s+[-\u2013\u2014|]\s+|,", cell.text)[0].strip()
+        low = f" {_norm(name)}"
+        titled = re.search(r"\b(?:" + "|".join(DOCUMENT_TITLE_WORDS) + r")\b", low)  # "Natural Gas Utility Bill"
+        last = re.sub(r"[^\w-]", "", low.split()[-1]) if low.split() else ""  # "Ltd." -> "ltd"
+        if ":" in name or titled or last not in LETTERHEAD_END_WORDS or not self._looks_like_org_name(name):
+            return None
+        return Located(self._trim_value(name), [cell], row, CONF_LETTERHEAD - 0.05, context=cell.text)
 
     @staticmethod
     def _looks_like_org_name(value: str) -> bool:
@@ -919,19 +1033,23 @@ class StationaryCombustionExtractor:
         def starts_with_range(value: str) -> bool:
             return starts_with_date(value) and len(parse_dates(value)) >= 2
 
-        delivery = self._find_labeled(rows, DELIVERY_DATE_LABELS, accept=lambda v: parse_date(v) is not None,
-                                      accept_bare=starts_with_date)
-        if delivery is not None:
-            return delivery, delivery
-        ranged = self._find_labeled(rows, RANGE_PERIOD_LABELS, accept=lambda v: len(parse_dates(v)) >= 2,
-                                    accept_bare=starts_with_range)
-        if ranged is not None:
-            return ranged, ranged
-        start = self._find_labeled(rows, START_LABELS, accept=lambda v: parse_date(v) is not None,
-                                   accept_bare=starts_with_date)
-        end = self._find_labeled(rows, END_LABELS, accept=lambda v: parse_date(v) is not None,
-                                 accept_bare=starts_with_date)
-        return start, end
+        # every cell-start pass first, then the mid-cell ones in the same priority order
+        for inline in (False, True):
+            delivery = self._find_labeled(rows, DELIVERY_DATE_LABELS, accept=lambda v: parse_date(v) is not None,
+                                          accept_bare=starts_with_date, inline=inline, inline_only=inline)
+            if delivery is not None:
+                return delivery, delivery
+            ranged = self._find_labeled(rows, RANGE_PERIOD_LABELS, accept=lambda v: len(parse_dates(v)) >= 2,
+                                        accept_bare=starts_with_range, inline=inline, inline_only=inline)
+            if ranged is not None:
+                return ranged, ranged
+            start = self._find_labeled(rows, START_LABELS, accept=lambda v: parse_date(v) is not None,
+                                       accept_bare=starts_with_date, inline=inline, inline_only=inline)
+            end = self._find_labeled(rows, END_LABELS, accept=lambda v: parse_date(v) is not None,
+                                     accept_bare=starts_with_date, inline=inline, inline_only=inline)
+            if start is not None or end is not None:
+                return start, end
+        return None, None
 
     # =================================================================================
     # Quantities

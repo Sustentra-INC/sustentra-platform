@@ -2298,7 +2298,11 @@ html { font-size: 82%; }
 @media (max-width: 48rem) {
   .s1-ctx__bar { flex-wrap: wrap; gap: var(--sp-2); }
   .s1-ctx__hint { display: none; }
-  .s1-ctx__summary { flex: 1; }
+  .s1-ctx__summary { flex: 1; min-width: 0; }
+  /* The user links drop under the engagement line instead of pushing the page sideways. */
+  .s1-ctx__actions { flex: 1 1 100%; flex-wrap: wrap; justify-content: space-between; gap: var(--sp-2); min-width: 0; }
+  .s1-ctx__user { flex-wrap: wrap; min-width: 0; padding-left: 0; border-left: 0; }
+  .s1-ctx__user-name { max-width: 10rem; }
 }
 
 /* App touches the viewport edges — kill the default body margin, tighten the
@@ -2871,7 +2875,7 @@ html, body { margin: 0; padding: 0; }
    words. Colour flags exceptions only: done is slate, and only "blocked" and
    "to review" counts take a colour. */
 .s1-ws-gr__bar { display: flex; gap: 0.125rem; height: 0.5rem; border-radius: var(--radius-chip); overflow: hidden; background: var(--sf-sunken); }
-.s1-ws-gr__seg { flex-basis: 0; min-width: 0.25rem; transition: flex-grow 0.4s var(--ease-out); }
+.s1-ws-gr__seg { flex-basis: 0; min-width: 0.25rem; padding: 0; border: 0; margin: 0; transition: flex-grow 0.4s var(--ease-out); }
 .s1-ws-gr__pct { font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink); font-variant-numeric: tabular-nums; text-align: right; }
 .s1-ws-gr__seg--resolved { background: var(--mark-done); }
 .s1-ws-gr__seg--open { background: var(--mark-review); }
@@ -3559,7 +3563,7 @@ button.s1-sch-month { cursor: pointer; }
 button.s1-sch-month:hover { border-color: var(--accent); }
 button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .s1-sch-month__name { font-weight: var(--weight-strong); }
-.s1-sch-month__status, .s1-sch-month__qty { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.s1-sch-month__status, .s1-sch-month__qty, .s1-sch-month__waiting { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .s1-sch-month--resolved { background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
 .s1-sch-month--active { background: var(--state-active-bg); border-color: var(--state-active-line); }
 .s1-sch-month--open { background: var(--state-open-bg); border-color: var(--state-open-line); }
@@ -3574,8 +3578,22 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-sch-ids li { display: grid; grid-template-columns: 1fr auto; gap: 0 var(--sp-3); padding: var(--sp-2); border: var(--border-hairline); border-radius: var(--radius-input); }
 .s1-sch-ids li.is-partial { background: var(--state-open-bg); border-color: var(--state-open-line); }
 .s1-sch-ids__label { font-size: var(--text-sm); color: var(--ink-3); }
-.s1-sch-ids__value { grid-column: 1; font-weight: var(--weight-strong); overflow-wrap: anywhere; }
+.s1-sch-ids__value { grid-column: 1; font-weight: var(--weight-strong); overflow-wrap: break-word; word-break: normal; }
+.s1-sch-ids__value--short { white-space: nowrap; }
 .s1-sch-ids__n { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: var(--text-sm); color: var(--ink-2); }
+.s1-sch-ids__toggle { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--sp-2); width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.s1-sch-ids__toggle svg { width: 1rem; height: 1rem; }
+.s1-sch-ids__toggle:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__n { grid-row: auto; grid-column: auto; }
+.s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__value { grid-column: auto; }
+.s1-sch-ids li { display: block; }
+.s1-sch-ids__how { margin: var(--sp-1) 0 0; font-size: var(--text-sm); }
+.s1-sch-ids ul.s1-sch-ids__groups { margin-top: var(--sp-2); gap: var(--sp-1); }
+.s1-sch-ids .s1-sch-ids__groups li { display: flex; flex-direction: column; border: 0; padding: var(--sp-1) 0 0; }
+.s1-sch-ids__gname { font-size: var(--text-sm); color: var(--ink-2); }
+.s1-sch-ids__docs { display: flex; flex-direction: column; align-items: flex-start; }
+.s1-sch-row--pending td { color: var(--ink-3); }
+.s1-sch-row__flag { font-size: var(--text-sm); }
 .s1-sch-values { max-height: 22rem; overflow: auto; }
 .s1-sch-values thead th { position: sticky; top: 0; background: var(--sf-card); z-index: 1; }
 .s1-sch-history summary { cursor: pointer; font-weight: var(--weight-strong); }

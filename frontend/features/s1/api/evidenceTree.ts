@@ -101,11 +101,67 @@ export type CoverageStatus = "counted" | "counted_in_part" | "not_reviewed" | "n
 
 export interface LineSchedule {
   line: CalculationLine;
+  /** True when the recalculation has this line. Absent on an older server (then treated as true). */
+  calculated?: boolean;
   reporting_period: { start: string | null; end: string | null };
-  coverage: { month: string; status: CoverageStatus; quantity: number | null; unit: string | null; document_ids: string[]; flags?: string[] }[];
+  coverage: { month: string; status: CoverageStatus; quantity: number | null; unit: string | null; document_ids: string[]; flags?: string[]; waiting_on?: string[] }[];
   identifiers: { label: string; value: string; documents_with: number; documents_total: number }[];
   values: ScheduleValue[];
   history: { at: string; text: string }[];
+  /** Schedule v2: one row per record, accepted or not. */
+  rows: ScheduleRow[];
+  /** The ordered column set; Date and Activity quantity first, then only the extras the line has. */
+  columns: ScheduleColumn[];
+  activity_quantity_note?: string | null;
+  identifier_groups: IdentifierGroup[];
+}
+
+export interface ScheduleColumn {
+  key: string;
+  label: string;
+  unit_in_cells: boolean;
+}
+
+export interface ScheduleCell {
+  value: string | number | null;
+  unit?: string | null;
+}
+
+export interface ScheduleRow {
+  record_key: string;
+  record_index?: number;
+  accepted: boolean;
+  /** Absent on an older server; then `accepted` decides. */
+  decision?: "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited" | "awaiting_other_fields";
+  /** Labels of the record's other fields the recalculation still waits on (decision awaiting_other_fields). */
+  waiting_on?: string[];
+  /** Labels of other fields the reviewer rejected, so the record is not calculated. */
+  rejected_fields?: string[];
+  /** `days` is counted by the server; the page never works it out. */
+  date: { start: string | null; end: string | null; days: number | null; label: string };
+  activity_quantity: { value: number | string | null; unit: string | null };
+  cells: Record<string, ScheduleCell>;
+  saved_by: { name: string; at: string | null } | null;
+  document_id: string;
+  file_name: string;
+  page: number | null;
+  candidate_id: string | null;
+}
+
+export interface IdentifierDocument {
+  document_id: string;
+  file_name: string;
+  matched_by?: string;
+}
+
+export interface IdentifierGroup {
+  label: string;
+  values: { value: string; documents: IdentifierDocument[] }[];
+  not_found: IdentifierDocument[];
+  documents_with: number;
+  documents_total: number;
+  /** Facility only: how the match was made. */
+  matched_by?: string[];
 }
 
 export interface ScheduleValue {
