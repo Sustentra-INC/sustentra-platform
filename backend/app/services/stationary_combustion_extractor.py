@@ -734,11 +734,12 @@ class StationaryCombustionExtractor:
         for labels in groups:
             for row in rows:
                 for position, cell in enumerate(row.cells):
-                    # a text value ends at a column gap (2+ spaces as the parser gave the line)
-                    head = re.split(r" {2,}|\t+", cell.raw_text.strip())[0] if inline_gap and cell.raw_text else cell.text
-                    prefix = self._label_prefix(head, labels)
+                    prefix = self._label_prefix(cell.text, labels)
                     if prefix is None:
                         continue
+                    if inline_gap and cell.raw_text:
+                        # a text value ends at a column gap (2+ spaces as the parser gave the line)
+                        prefix = self._label_prefix(self._cut_at_gap(cell.raw_text, prefix[0]), labels) or prefix
                     _, remainder, had_delimiter = prefix
                     # 1) "Label: value" in the same cell
                     if remainder and had_delimiter:
@@ -785,6 +786,22 @@ class StationaryCombustionExtractor:
         if inline:
             return self._find_inline(rows, groups, accept, stop_at_gap=inline_gap)
         return None
+
+    @staticmethod
+    def _cut_at_gap(raw: str, label: str) -> str:
+        """``raw`` with its value cut at the first gap of 2+ spaces or a tab. Whitespace between
+        the label and its value (or its colon) is not a gap: "Facility:  Main Plant  Meter 9"
+        gives "Facility: Main Plant"."""
+
+        head = re.match(r"\s*" + r"\s+".join(re.escape(word) for word in label.split()) + r"\s*", raw,
+                        re.IGNORECASE)
+        if head is None:
+            return raw
+        rest = raw[head.end():]
+        delimiter = re.match(r"([:#=])?\s*", rest)
+        assert delimiter is not None
+        value = re.split(r" {2,}|\t+", rest[delimiter.end():])[0]
+        return f"{raw[:head.end()].strip()}{delimiter.group(1) or ''} {value}".strip()
 
     # A short label ("from", "to", "period", "site") inside running text is a common word, so a
     # mid-cell label is only trusted with a colon, or (longer labels only) directly before dates.

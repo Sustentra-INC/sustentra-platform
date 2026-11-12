@@ -345,3 +345,17 @@ def test_a_mid_cell_to_or_from_with_a_colon_needs_a_date(targets: list[dict]) ->
         _ocr_blocks(("City Water & Power", 0.05, 0.03), (line, 0.2, 0.012)), targets, "EV-1").candidates)
     assert fields["service_period_start"]["raw_value"] is None
     assert fields["service_period_end"]["raw_value"] is None
+
+
+@pytest.mark.parametrize(("line", "field", "expected"), [
+    ("Facility:  Main Plant", "facility_name", "Main Plant"),
+    ("Account Number:   AB-1234   Rate: GS", "account_number", "AB-1234"),
+    ("Service Address:    12 Main St   Albany", "service_address", "12 Main St"),
+    ("Total kWh Used: 5 kWh   Account Number:   AB-1234   Rate: GS", "account_number", "AB-1234"),
+])
+def test_a_gap_after_the_label_is_not_the_end_of_the_value(
+        targets: list[dict], line: str, field: str, expected: str) -> None:
+    fields = _by_field(ElectricityExtractor().extract(
+        _ocr_blocks(("City Water & Power", 0.05, 0.03), (line, 0.2, 0.012), ("Total kWh Used: 41,200 kWh", 0.3, 0.012)),
+        targets, "EV-1").candidates)
+    assert fields[field]["normalized_value"] == expected
