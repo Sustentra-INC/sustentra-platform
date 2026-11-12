@@ -25,6 +25,60 @@
 - storage: S3 read/write shell.
 - persistence: SQLAlchemy session/bootstrap shell.
 
+## Page chunks (large PDFs, queued mode)
+
+A scanned PDF of hundreds of pages used to be parsed in one run (50 OCR pages at most, and one
+failure lost everything). In queued mode a PDF with more than `S1_CHUNK_THRESHOLD_PAGES` pages
+is now read as page chunks on the same queue as the document reads. Inline mode and smaller
+documents are read as before, byte for byte.
+
+1. The reader claims the run (`processing_reader`). `DocumentChunkService.step` counts the pages
+   and, in one transaction (`DocumentChunkRepository.plan`), inserts one `s1_document_chunks` row per
+   `S1_CHUNK_PAGES` (10) pages and parks the run in `waiting_on_chunks`: no worker, no lease,
+   and the attempt is not spent.
+2. One loop, chunks first: a reader claims the oldest due chunk
+   (`claim_s1_document_chunk`, `SKIP LOCKED`), parses only its pages through
+   `ParserService.parse_document(..., pages=(from, to))` and stores the parser output on the
+   chunk. Page numbers in `pages`, `text_blocks` and `source_references` are the document's own.
+   The 50-page OCR cap (`OCR_MAX_PAGES`) applies per chunk.
+3. The chunk that ends the last unfinished chunk (completed, or failed for good) queues the run
+   again with `s1_wake_parent_run`: a fenced `UPDATE ... WHERE NOT EXISTS (unfinished chunk)`
+   taken under the run's row lock, so two readers ending the last two chunks together wake it
+   exactly once, never zero times.
+4. A reader claims the run again and assembles (`merge_chunk_outputs`): the chunks' text blocks,
+   key-value pairs, tables, source references, pages and warnings are concatenated in page
+   order into one parser output (an id that would collide gets a `c{index}:` prefix). Classify,
+   target planning, extraction and persist then run on that one output as for any document, so
+   the rule extractors see the whole document. The merged status is `parsed` when every chunk
+   is, `empty` when none found text, `partial` otherwise.
+
+Retries and leases are those of the runs: a chunk failure goes back to `queued` after
+`RETRY_DELAYS_SECONDS` (30 s, then 120 s), and after `S1_CHUNK_MAX_ATTEMPTS` (3) the chunk is
+`failed` (`error_code`, no text). A chunk whose Textract call failed on a page is also tried
+again, and on its last attempt it is kept with what it read. A chunk whose reader died is
+claimable again when its lease runs out (`requeue_expired_s1_document_chunks`, called by the
+reader every 30 s with the runs'). Assembly goes on with the pages it has: the pipeline run is
+`partial` with the warning `pages_unread: Pages 11-20 could not be read, ...`.
+
+Over `S1_MAX_DOCUMENT_PAGES` (500) pages the document is not read: a `partial` pipeline run with
+halt `document_too_long`.
+
+| Setting | Default | |
+|---|---|---|
+| `S1_CHUNK_THRESHOLD_PAGES` | 20 | A PDF with more pages is chunked (at or under: read whole). |
+| `S1_CHUNK_PAGES` | 10 | Pages per chunk. |
+| `S1_CHUNK_MAX_ATTEMPTS` | 3 | Reads of one chunk before it is failed. |
+| `S1_MAX_DOCUMENT_PAGES` | 500 | Over this, the run is partial with `document_too_long`. |
+
+Like the `S1_READER_*` settings they are read from the container's own environment; a value in
+`/opt/sustentra/.env` reaches it only once `write_app_env` in `deploy.sh` lists it.
+
+`GET /v1/processing-runs/{run_id}` adds `chunks: {total, completed, failed, failed_pages}` for a
+chunked run (see `api_contract.md`). Log lines for chunks carry the run id, chunk index, page
+range, attempt, status and error code only (`chunks_planned`, `document_chunk_claimed`,
+`chunk_finished`, `document_chunk_done`, `chunks_assembled`, `document_too_long`,
+`document_chunks_requeued`).
+
 ## AI suggestions (Claude)
 
 AI suggests a type or values for documents the system cannot read on its own; a person

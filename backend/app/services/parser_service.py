@@ -85,8 +85,12 @@ class ParserService:
         document_id: str,
         processing_run_id: str,
         mime_type: str | None = None,
+        pages: tuple[int, int] | None = None,
     ) -> dict:
         """Parse a local file into a normalized ``parser_output`` dictionary.
+
+        ``pages`` (PDF only; 1-based, inclusive): read only those pages, which keep the
+        document's own page numbers. The OCR page cap then applies to that range.
 
         Raises ``FileNotFoundError`` when the input path itself is invalid. All
         other parser-level problems are reported as ``failed``/``partial``
@@ -114,7 +118,7 @@ class ParserService:
         if parser_kind == "image" and self._textract_enabled():
             return self._live_textract_parser.parse(path, document_id, processing_run_id)
         if parser_kind == "pdf":
-            return self._parse_pdf(path, document_id, processing_run_id)
+            return self._parse_pdf(path, document_id, processing_run_id, pages)
         if parser_kind == "image":
             return self._image_parser.parse(path, document_id, processing_run_id)
 
@@ -142,16 +146,17 @@ class ParserService:
 
         return self._textract_parser.parse(textract_source, document_id, processing_run_id)
 
-    def _parse_pdf(self, path: Path, document_id: str, processing_run_id: str) -> dict:
+    def _parse_pdf(self, path: Path, document_id: str, processing_run_id: str,
+                   pages: tuple[int, int] | None = None) -> dict:
         """A PDF's own text layer first. With Textract on, only the pages without one
         (scans, photos saved as PDF) are rendered and read by Textract, one page per
         synchronous call, so text PDFs never leave the server and a multi-page scan needs
         no S3 round trip. A PDF the local reader cannot open goes to Textract whole."""
 
-        output = self._pdf_parser.parse(path, document_id, processing_run_id)
+        output = self._pdf_parser.parse(path, document_id, processing_run_id, pages)
         if not self._textract_enabled():
             return output
-        if output.get("status") == "failed":
+        if output.get("status") == "failed" and pages is None:  # a chunk is retried, not read whole
             return self._live_textract_parser.parse(path, document_id, processing_run_id)
         scanned = [
             int(page["page_number"]) for page in output.get("pages") or []

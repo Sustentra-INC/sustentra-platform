@@ -3,7 +3,10 @@
 A run is one request to read a document. It is ``queued`` when asked for, ``in_progress``
 once something claims it (with a worker id and a lease that the reader renews), and then
 ``completed`` (with the pipeline run it produced) or ``failed`` (with a message for the user).
-A document has at most one active (queued or in_progress) run.
+A large PDF is read in page chunks (migration 0017, ``document_chunk_repository``): its run is
+parked in ``waiting_on_chunks`` (no worker, no lease) until the chunks are done, then queued
+again to be assembled. A document has at most one active (queued, in_progress or
+waiting_on_chunks) run.
 
 Two implementations with the same interface:
 
@@ -42,7 +45,7 @@ from sqlalchemy.engine import Engine
 from backend.app.core.db import get_sync_engine, tenant_transaction
 from backend.app.core.s1_scope import S1Scope, current_scope
 
-ACTIVE_STATUSES = ("queued", "in_progress")
+ACTIVE_STATUSES = ("queued", "in_progress", "waiting_on_chunks")
 DEFAULT_MAX_ATTEMPTS = 3
 # A run whose lease ran out while it was being read (the reader was killed, or hung) and that
 # is not read again: the user's message.
@@ -107,7 +110,7 @@ def _run(row: Any) -> ProcessingRun:
 
 _LEASE = "now() + make_interval(secs => :lease_seconds)"
 _FENCE = "run_id = :run_id AND worker_id = :worker_id AND status = 'in_progress'"
-_ACTIVE = "status IN ('queued', 'in_progress')"
+_ACTIVE = "status IN ('queued', 'in_progress', 'waiting_on_chunks')"
 
 _EXPIRE_STALE = text(
     "UPDATE s1_processing_runs SET status = 'failed', error_code = :code, error = :message, "
@@ -418,6 +421,27 @@ class InMemoryProcessingRunRepository:
             attempts = max((current.run.attempts if current else run.attempts) - 1, 0)
             return self._update(run, worker_id, status="queued", attempts=attempts, worker_id=None,
                                 lease_expires_at=None, run_after=self._now())
+
+    def _park(self, run: ProcessingRun, worker_id: str) -> bool:
+        """Park the run until its chunks are done (used by the in-memory chunk repository)."""
+
+        with self._lock:
+            current = self._runs.get(run.run_id)
+            parked = self._update(run, worker_id, status="waiting_on_chunks",
+                                  attempts=max((current.run.attempts if current else run.attempts) - 1, 0),
+                                  worker_id=None, lease_expires_at=None)
+            return parked is not None
+
+    def _wake(self, run_id: str) -> bool:
+        """Queue a parked run again (its chunks are done). ``False`` when it is not parked."""
+
+        with self._lock:
+            current = self._runs.get(run_id)
+            if current is None or current.run.status != "waiting_on_chunks":
+                return False
+            now = self._now()
+            self._save(replace(current.run, status="queued", run_after=now, updated_at=now))
+            return True
 
     def requeue_expired(self) -> list[ExpiredRun]:
         with self._lock:
