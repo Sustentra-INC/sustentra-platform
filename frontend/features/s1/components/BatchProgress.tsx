@@ -1,5 +1,7 @@
 import type { BatchDocument, BatchDocumentStatus, BatchView } from "../api/documentBatches";
-import { resolveCanonicalTypeDisplayName } from "../adapters/evidenceAdapter";
+import { plainBatchHalt, resolveCanonicalTypeDisplayName } from "../adapters/evidenceAdapter";
+import type { EvidenceItem } from "../types";
+import { BreakableName } from "./BreakableName";
 
 /** Words for each status, and the state colour that goes with the word (never colour alone). */
 export const BATCH_STATUS: Record<BatchDocumentStatus, { label: string; role: string }> = {
@@ -10,6 +12,12 @@ export const BATCH_STATUS: Record<BatchDocumentStatus, { label: string; role: st
   failed: { label: "Couldn't read", role: "blocking" },
   not_started: { label: "Not started", role: "open" },
 };
+
+/** What the row says. A document read in part that gave no values at all was not read. */
+export function batchStatusFor(item: Pick<BatchDocument, "status" | "records_found">): { label: string; role: string } {
+  if (item.status === "partial" && item.records_found === 0) return { label: "Not read", role: "open" };
+  return BATCH_STATUS[item.status];
+}
 
 const ORDER: BatchDocumentStatus[] = ["queued", "reading", "done", "partial", "failed", "not_started"];
 
@@ -28,17 +36,29 @@ function progressText(item: BatchDocument): string | null {
 export function BatchProgress({
   batch,
   onOpenDocument,
+  items = [],
 }: {
   batch: BatchView;
   onOpenDocument: (documentId: string) => void;
+  /** The engagement's documents: their halt reason is mapped from the pipeline's code, so it is preferred. */
+  items?: EvidenceItem[];
 }) {
-  const totals = ORDER.filter((status) => batch.totals[status] > 0);
+  const halts = new Map(items.map((i) => [i.documentId, i.haltReason]));
+  // Totals follow the row labels, so "Partly read" counts only documents that gave some values.
+  const counts = new Map<string, number>();
+  for (const item of batch.items) {
+    const label = batchStatusFor(item).label;
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  const totals = [...ORDER.map((status) => BATCH_STATUS[status].label), "Not read"].filter(
+    (label) => (counts.get(label) ?? 0) > 0
+  );
   return (
     <div className="s1-batch" aria-live="polite">
       <div className="s1-batch__head">
         <strong>Reading this batch</strong>
         <span className="s1-muted">
-          {totals.map((status) => `${batch.totals[status]} ${BATCH_STATUS[status].label.toLowerCase()}`).join(" · ")}
+          {totals.map((label) => `${counts.get(label)} ${label.toLowerCase()}`).join(" · ")}
         </span>
       </div>
       <table className="s1-batch__table">
@@ -54,20 +74,20 @@ export function BatchProgress({
         </thead>
         <tbody>
           {batch.items.map((item) => {
-            const status = BATCH_STATUS[item.status];
+            const status = batchStatusFor(item);
             const progress = progressText(item);
             const type = item.canonical_type_id
               ? resolveCanonicalTypeDisplayName({ canonical_type_id: item.canonical_type_id })
               : null;
-            const note = item.halt_reason;
+            const note = halts.get(item.document_id) || plainBatchHalt(item.halt_reason);
             return (
               <tr key={item.document_id} className="s1-batch__row">
                 <td className="s1-batch__file">
                   {item.status === "queued" || item.status === "reading" ? (
-                    item.file_name
+                    <BreakableName name={item.file_name} />
                   ) : (
                     <button className="s1-linklike" type="button" onClick={() => onOpenDocument(item.document_id)}>
-                      {item.file_name}
+                      <BreakableName name={item.file_name} />
                     </button>
                   )}
                   {note ? <span className="s1-batch__note">{note}</span> : null}

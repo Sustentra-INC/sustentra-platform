@@ -5,7 +5,7 @@ export const HALT_REASONS = {
   ocrRequired: "Photo or scan: its text is read once OCR is switched on. Ask for a text PDF meanwhile.",
   passwordProtected: "Password-protected: ask the client for a copy without a password.",
   noTemplate: "No extraction template exists for this document type.",
-  typeUnknown: "Document type not recognised. Choose its type on Evidence and it is read again.",
+  typeUnknown: "We couldn't tell what kind of document this is. Choose its type in Evidence.",
   multiFacility: "Multi-facility document · splitting is not supported in V1.",
   pipeline: "Processing failed. Retry available.",
   documentTooLong: "Too many pages to read in one file. Split it into smaller files and upload them separately.",

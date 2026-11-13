@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import type { BatchView } from "../api/documentBatches";
 import type { EvidenceItem } from "../types";
 import { BatchProgress } from "./BatchProgress";
+import { BreakableName } from "./BreakableName";
 import { isReadableUpload, MAX_UPLOAD_MB, unreadableUploadMessage, UPLOAD_ACCEPT } from "../constants/uploads";
 
 
@@ -65,6 +66,7 @@ export function UploadDialog({
   batchNote = null,
   onOpenDocument,
   onOpenWorkspace,
+  setupWarning = null,
 }: {
   onClose: () => void;
   onUploadFiles: (files: FileList) => void;
@@ -84,6 +86,8 @@ export function UploadDialog({
   /** Open a read file's extraction review. */
   onOpenDocument?: (documentId: string) => void;
   onOpenWorkspace: () => void;
+  /** A calm note above the drop zone when Setup lacks what placing documents needs. It never blocks the upload. */
+  setupWarning?: string | null;
 }) {
   const [drag, setDrag] = useState(false);
   const [before] = useState(() => new Set(batch.map((item) => item.documentId)));
@@ -113,13 +117,19 @@ export function UploadDialog({
 
   return createPortal(
     <div className="s1-updlg-scrim" onPointerDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="s1-updlg" role="dialog" aria-modal="true" aria-labelledby="s1-updlg-title">
+      <div className={`s1-updlg${batchProgress && batchProgress.items.length > 0 ? " s1-updlg--wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby="s1-updlg-title">
         <div className="s1-updlg__head">
           <h2 id="s1-updlg-title">Upload evidence</h2>
           <button className="s1-updlg__close" type="button" aria-label="Close" onClick={onClose}>
             <X aria-hidden />
           </button>
         </div>
+
+        {setupWarning && !script ? (
+          <p className="s1-updlg__warn" role="note">
+            {setupWarning}
+          </p>
+        ) : null}
 
         {script ? (
           <div className="s1-analyze" aria-live="polite">
@@ -204,7 +214,7 @@ export function UploadDialog({
         ) : null}
 
         {batchProgress && batchProgress.items.length > 0 && onOpenDocument ? (
-          <BatchProgress batch={batchProgress} onOpenDocument={onOpenDocument} />
+          <BatchProgress batch={batchProgress} onOpenDocument={onOpenDocument} items={items} />
         ) : null}
 
         {added.length > 0 && !script ? (
@@ -294,8 +304,11 @@ function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: Evidence
       </div>
       <ul className="s1-upq__list">
         {tasks.map((t) => (
-          <li key={t.id} className={`s1-upq__row s1-upq__row--${t.stage}`}>
-            <span className="s1-upq__name">{t.filename}</span>
+          <li
+            key={t.id}
+            className={`s1-upq__row s1-upq__row--${t.stage}${outcome(t)?.processingState === "blocked" ? " s1-upq__row--needs" : ""}`}
+          >
+            <BreakableName className="s1-upq__name" name={t.filename} />
             <span className="s1-muted s1-upq__size">{formatSize(t.size)}</span>
             <span className="s1-upq__track" aria-hidden>
               <span
@@ -322,8 +335,8 @@ function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: Evidence
             </span>
             {t.error ? <span className="s1-upq__error">{t.error}</span> : null}
             {outcome(t)?.processingState === "blocked" ? (
-              <span className="s1-upq__error">
-                {outcome(t)?.haltReason ?? "Could not be read."} Set its type in Evidence to read it again.
+              <span className="s1-upq__note">
+                {outcome(t)?.haltReason ?? "Could not be read. Choose its type in Evidence to try again."}
               </span>
             ) : null}
           </li>

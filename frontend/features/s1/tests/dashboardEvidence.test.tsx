@@ -121,13 +121,13 @@ describe("dashboard evidence figures: live coverage", () => {
     expect(figuresFor(rules).coverage).toMatchObject({ present: 0, missing: 0 });
   });
 
-  it("reads 'Nothing uploaded yet' on a brand-new engagement, and sends the missing end date to Setup", async () => {
+  it("reads 'Not started' on a brand-new engagement, and sends the missing end date to Setup", async () => {
     const onNavigate = vi.fn();
     await renderLive(NEW_ENGAGEMENT, EMPTY, { onNavigate });
     expect(api).toHaveBeenCalledWith("/engagements/ENG-NEW/recalculation");
 
     const meter = screen.getByRole("button", { name: /Evidence obtained/ });
-    expect(meter).toHaveTextContent("Evidence obtained0%Nothing uploaded yet");
+    expect(meter).toHaveTextContent("Evidence obtainedNot startedUpload documents to begin");
     expect(screen.queryByText(/in-scope data points/)).toBeNull();
     expect(screen.queryByText(/of 0/)).toBeNull();
 
@@ -185,8 +185,8 @@ describe("dashboard evidence figures: live coverage", () => {
     expect(screen.queryByText(/missing evidence/)).toBeNull();
     expect(screen.queryByText(/Reporting period needs/)).toBeNull();
 
-    const row = attentionRows().find((b) => b.textContent?.startsWith("Reported total"));
-    expect(row).toHaveTextContent(/^Reported total not enteredResults$/);
+    const row = attentionRows().find((b) => b.textContent?.includes("Reported total"));
+    expect(row).toHaveTextContent(/^1Reported total not enteredResults$/);
     fireEvent.click(row!);
     expect(onNavigate).toHaveBeenCalledWith("results");
   });
