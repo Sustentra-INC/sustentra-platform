@@ -100,6 +100,7 @@ import type {
 import type { SessionAuditEntry } from "../utils/auditIntent";
 import { dashboardFigures, engagementActivity } from "../utils/engagementActivity";
 import { SupportingSchedule } from "../components/SupportingSchedule";
+import { setDemoEngagement } from "../demo-backend/state";
 import { saveDocumentPlacement, type EvidenceLineSetting, type Placement } from "../api/evidenceTree";
 import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
 import { ActivityDrawer } from "../components/ActivityDrawer";
@@ -165,6 +166,9 @@ const DEMO_ACTOR = engagementConfig.engagementTeam?.find((m) => m.login === enga
 
 export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const dataMode = process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture" ? "fixture" : "backend";
+  // The demo site runs the same screens as staging; in fixture mode `lib/api.ts` answers their
+  // requests from the in-browser demo backend (features/s1/demo-backend).
+  const STAGING_SCREENS: boolean = dataMode === "backend" || dataMode === "fixture";
   // Demo-only: rehydrate the fixture state from localStorage once, so a refresh
   // does not wipe the walkthrough. Read a single time on mount.
   const [persisted] = useState<DemoSnapshot | null>(() => (dataMode === "fixture" ? loadDemoState() : null));
@@ -554,6 +558,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     const base = pendingSave.current ?? engagement;
     pendingSave.current = null;
     const next = { ...base, recalculation };
+    if (dataMode === "fixture") {
+      setDemoEngagement(next);
+      setEngagement(next);
+      return;
+    }
     const row = await saveEngagement(next);
     setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
     setEngagement(next);
@@ -567,6 +576,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     const base = pendingSave.current ?? engagement;
     pendingSave.current = null;
     const next = { ...base, evidenceLines };
+    if (dataMode === "fixture") {
+      setDemoEngagement(next);
+      setEngagement(next);
+      return;
+    }
     const row = await saveEngagement(next);
     setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
     setEngagement(engagementFromBackend(row));
@@ -574,6 +588,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   /** Moves one placement of a document: the document's saved decision is merged, not replaced. */
   async function moveDocumentPlacement(documentId: string, move: Placement) {
+    if (dataMode === "fixture") {
+      const saved = await saveDocumentPlacement(engagement.engagementId, decisionsRef.current[documentId], documentId, move);
+      setDocumentDecisions((cur) => ({ ...cur, [documentId]: saved }));
+      return;
+    }
     // Until the saved decisions have loaded, a save here could overwrite one the page has not seen.
     if (!workpaper.loaded) throw new Error("Your saved work is still loading. Try again in a moment.");
     // A save of this document that is already on its way finishes first; the decision is then read
@@ -586,6 +605,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   function changeEngagement(next: EngagementConfig) {
     setEngagement(next);
+    if (dataMode === "fixture") setDemoEngagement(next);
     if (dataMode !== "backend" || !next.engagementId) return;
     pendingSave.current = next;
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
@@ -1006,7 +1026,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         }
       >
         {activeView.name === "dashboard" ? (
-          dataMode === "backend" ? (
+          STAGING_SCREENS ? (
             <BackendDashboard
               engagement={engagement}
               evidence={evidenceView}
@@ -1084,7 +1104,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             serverRecordsActor={dataMode === "backend"}
           />
         ) : activeView.name === "methodology" ? (
-          dataMode === "backend" ? (
+          STAGING_SCREENS ? (
             <BackendMethodologyReview
               engagementId={engagement.engagementId}
               onOpenDocument={openExtraction}
@@ -1100,7 +1120,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             />
           )
         ) : activeView.name === "results" ? (
-          dataMode === "backend" ? (
+          STAGING_SCREENS ? (
             <BackendVerificationResults
               engagement={engagementForUser}
               store={verification}
@@ -1120,7 +1140,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             />
           )
         ) : activeView.name === "output" ? (
-          dataMode === "backend" ? (
+          STAGING_SCREENS ? (
             <BackendOutputScreen
               engagement={engagement}
               evidence={evidenceView}
@@ -1159,7 +1179,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onOpenExtraction={openExtraction}
             onOpenSetup={() => setActiveView({ name: "setup" })}
             tree={
-              dataMode === "backend"
+              STAGING_SCREENS
                 ? {
                     openIds: evidenceTreeOpen,
                     view: evidenceGrouping,
