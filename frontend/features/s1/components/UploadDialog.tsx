@@ -308,9 +308,7 @@ function UploadProgress({ tasks, items }: { tasks: UploadTask[]; items: Evidence
             key={t.id}
             className={`s1-upq__row s1-upq__row--${t.stage}${outcome(t)?.processingState === "blocked" ? " s1-upq__row--needs" : ""}`}
           >
-            <span className="s1-upq__name">
-              <BreakableName name={t.filename} />
-            </span>
+            <BreakableName className="s1-upq__name" name={t.filename} />
             <span className="s1-muted s1-upq__size">{formatSize(t.size)}</span>
             <span className="s1-upq__track" aria-hidden>
               <span
