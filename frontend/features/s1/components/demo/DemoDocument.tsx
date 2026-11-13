@@ -155,6 +155,8 @@ export function DemoDocument({
         <UtilityBill ctx={ctx} kind="electricity" />
       ) : first.documentType === "Natural gas bill" ? (
         <UtilityBill ctx={ctx} kind="gas" />
+      ) : first.documentType === "Fleet fuel statement" ? (
+        <FleetCard ctx={ctx} />
       ) : /refrigerant/i.test(first.documentType) ? (
         <ServiceTicket ctx={ctx} />
       ) : first.sourceKind === "image" ? (
@@ -333,7 +335,8 @@ function UtilityBill({ ctx, kind }: { ctx: Ctx; kind: "electricity" | "gas" }) {
   const billingPeriod = pick(ctx, /billing period/i);
   const factor = kind === "electricity" ? pick(ctx, /emission factor/i) : [];
   const emissions = kind === "electricity" ? pick(ctx, /emissions$/i) : [];
-  const others = rest(ctx, [...consumption, ...peak, ...periodEnd, ...billingPeriod, ...factor, ...emissions]);
+  // A value keyed to a figure on the page is highlighted there, not listed again.
+  const others = rest(ctx, [...consumption, ...peak, ...periodEnd, ...billingPeriod, ...factor, ...emissions]).filter((v) => !v.docAnchor);
   // eGRID subregion by facility: the Pacific Northwest sites are NWPP, Modesto is CAMX.
   const subregion = first.facilityId === "facility-modesto" ? "CAMX" : "NWPP";
   const unit = kind === "electricity" ? "kWh" : "therms";
@@ -483,6 +486,68 @@ function UtilityBill({ ctx, kind }: { ctx: Ctx; kind: "electricity" | "gas" }) {
             <div className="s1-dd-big">${fmt(total, 2)}</div>
           </div>
         </div>
+      </Page>
+    </>
+  );
+}
+
+/* ============================ fleet fuel card ============================ */
+
+function FleetCard({ ctx }: { ctx: Ctx }) {
+  const first = ctx.values[0];
+  const s = seed(first.documentId);
+  const facility = facilityOf(ctx);
+  const figure = (anchor: string, fallback: string) => ctx.values.find((v) => v.docAnchor === anchor) ?? { value: fallback, unit: "" };
+  const text = (anchor: string, label: string, fallback: string) => {
+    const v = figure(anchor, fallback);
+    return <Fig ctx={ctx} anchor={anchor} label={label}>{`${v.value}${v.unit ? ` ${v.unit}` : ""}`}</Fig>;
+  };
+  const known = new Set(["fuel-purchased", "vehicle-type", "model-year", "distance", "odometer-change"]);
+  const others = ctx.values.filter((v) => !known.has(v.docAnchor ?? ""));
+  const fuel = num(figure("fuel-purchased", "1,800").value) ?? 1800;
+  const detail = ctx.values.some((v) => v.ai?.disagrees) ? ctx.values.find((v) => v.ai?.disagrees)!.ai!.disagrees!.value : fmt(fuel);
+  return (
+    <>
+      <Page n={1} of={2}>
+        <header className="s1-dd-band s1-dd-band--service">
+          <div>
+            <strong>Northwest Fleet Fuel Card</strong>
+            <span>Fleet fuel card · quarterly statement</span>
+          </div>
+          <div className="s1-dd-band__meta">
+            <span>Statement FC-{String(s % 90000).padStart(5, "0")}</span>
+            <span>{first.period}</span>
+          </div>
+        </header>
+        <div className="s1-dd-two">
+          <div>
+            <div className="s1-dd-label">Card holder</div>
+            <div className="s1-dd-big">Cascade Provisions Co.</div>
+            <div>{facility.name}</div>
+            <div className="s1-dd-dim">{facility.address}</div>
+          </div>
+          <div className="s1-dd-right">
+            <div className="s1-dd-label">Card</div>
+            <div className="s1-dd-big">•••• {String(1000 + (s % 9000))}</div>
+          </div>
+        </div>
+        <h4 className="s1-dd-h">Vehicle on this card</h4>
+        <Row label="Vehicle">{text("vehicle-type", "Vehicle type", "Ford Transit 250 cargo van")}</Row>
+        <Row label="Model year">{text("model-year", "Model year", "2021")}</Row>
+        <h4 className="s1-dd-h">Activity this quarter</h4>
+        <Row label="Distance driven this quarter">{text("distance", "Distance driven", "14,500 mi")}</Row>
+        <Row label="Fuel purchased (statement summary)" strong>{text("fuel-purchased", "Fuel purchased", fmt(fuel) + " gal")}</Row>
+        {others.map((v) => (
+          <Row key={v.id} label={v.whatItIs}>
+            <Hl ctx={ctx} vs={[v]} />
+          </Row>
+        ))}
+      </Page>
+      <Page n={2} of={2}>
+        <h4 className="s1-dd-h">Transactions</h4>
+        <p className="s1-dd-p">Card transactions for the quarter are listed by date, station and gallons. Pending pre-authorisations are included in the summary on page 1 and not listed here.</p>
+        <Row label="Total of transactions listed"><Fig ctx={ctx} anchor="transactions-total" label="Transactions total">{`${detail} gal`}</Fig></Row>
+        <Row label="Odometer change, start to end">{text("odometer-change", "Odometer change", "14,500 mi")}</Row>
       </Page>
     </>
   );

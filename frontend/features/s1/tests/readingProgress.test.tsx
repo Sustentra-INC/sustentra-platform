@@ -52,7 +52,7 @@ const MANUFACTURER_STATUS_CELLS = [
 
 const MANUFACTURER_GROUP_MIX = [
   "2 to review", "5 extracted", "1 blocked3 to review33 extracted", "3 to review34 extracted", "4 extracted",
-  "12 extracted", "3 extracted", "1 to review36 extracted", "2 extracted", "3 extracted", "1 extracted",
+  "1 to review11 extracted", "3 extracted", "1 to review36 extracted", "2 extracted", "3 extracted", "1 extracted",
   "2 extracted", "1 extracted", "1 extracted",
 ];
 

@@ -1,3 +1,4 @@
+import { withClaudeType } from "../ai/claudeReadings";
 import type { Actor } from "../../types/engagement";
 import type { EvidenceItem, EvidenceFormat } from "../../types/evidence";
 
@@ -606,7 +607,9 @@ docs.push(
 const GENERATED = /^DOC-(tualatin|kent|modesto)-(elec|gas)-[a-z]{3}$/;
 const storyFiles = new Set(docs.filter((d) => !GENERATED.test(d.documentId)).map((d) => d.filename));
 
-export const manufacturerEvidence: EvidenceItem[] = docs.filter((d) => !(GENERATED.test(d.documentId) && storyFiles.has(d.filename)));
+export const manufacturerEvidence: EvidenceItem[] = docs
+  .filter((d) => !(GENERATED.test(d.documentId) && storyFiles.has(d.filename)))
+  .map(withClaudeType);
 
 /** A couple of supportive documents (enter the workpaper, never extracted). */
 export const manufacturerSupportive: EvidenceItem[] = [
