@@ -42,7 +42,7 @@ export function DashboardScreen({
   // Data points once an evidence check is in play; until then, the documents read.
   const byDataPoint = coverage !== null && covered > 0;
   const reviewable = figures.valuesReviewed + figures.valuesToReview;
-  const attention = attentionItems(figures);
+  const attention = attentionItems(figures, hasEngagement);
 
   return (
     <section className="s1-content s1-dash">
@@ -60,6 +60,11 @@ export function DashboardScreen({
               : "Set up the engagement to begin"}
           </p>
         </div>
+        {!hasEngagement ? (
+          <button className="s1-button s1-button--pri" type="button" onClick={go("setup")}>
+            Start setup
+          </button>
+        ) : null}
       </header>
 
       <ol className="s1-timeline" aria-label="Engagement timeline">
@@ -88,7 +93,7 @@ export function DashboardScreen({
               ? `${coverage.present} of ${covered} in-scope data points have their evidence`
               : figures.documents
                 ? `${figures.documentsReadable} of ${figures.documents} documents read`
-                : "Nothing uploaded yet"
+                : "Upload documents to begin"
           }
           onClick={go("requests")}
         />
@@ -154,10 +159,14 @@ function Meter({
   return (
     <button className="s1-meter" type="button" onClick={onClick}>
       <span className="s1-meter__label">{label}</span>
-      <span className="s1-meter__figure">
-        {done > 0 && share < 0.01 ? "<1" : Math.round(share * 100)}
-        <span className="s1-meter__unit">%</span>
-      </span>
+      {total > 0 ? (
+        <span className="s1-meter__figure">
+          {done > 0 && share < 0.01 ? "<1" : Math.round(share * 100)}
+          <span className="s1-meter__unit">%</span>
+        </span>
+      ) : (
+        <span className="s1-meter__figure s1-meter__figure--none">Not started</span>
+      )}
       <span className="s1-meter__track" aria-hidden>
         <span className="s1-meter__fill" style={{ transform: `scaleX(${share})` }} />
       </span>
@@ -256,9 +265,20 @@ interface Attention {
   nav: NavKey;
 }
 
-function attentionItems(f: DashboardFigures): Attention[] {
+function attentionItems(f: DashboardFigures, hasEngagement: boolean): Attention[] {
   const plural = (n: number, one: string, many: string) => (n === 1 ? one : many);
   const items: Attention[] = [
+    {
+      // On an empty engagement the one thing that needs anyone is Setup.
+      key: "setup",
+      tone: "open",
+      icon: <ListChecks />,
+      n: hasEngagement ? 0 : 1,
+      uncounted: true,
+      text: "Setup is not done: add the company, reporting period and facilities",
+      action: "Setup",
+      nav: "setup",
+    },
     {
       key: "blocked",
       tone: "blocking",
@@ -319,7 +339,6 @@ function attentionItems(f: DashboardFigures): Attention[] {
       tone: "open",
       icon: <PencilLine />,
       n: f.reportedTotalsMissing ?? 0,
-      uncounted: true,
       text: plural(f.reportedTotalsMissing ?? 0, "Reported total not entered", "Reported totals not entered"),
       action: "Results",
       nav: "results",
