@@ -19,8 +19,9 @@ import type { MethodologyState } from "../types/methodology";
 const KEY = "sustentra-demo-v1";
 
 export interface DemoSnapshot {
-  /** 2: the demo's documents became one set (21 Oct 2026); older saves no longer match them. */
-  version: 2;
+  /** 3: the demo runs the staging screens with review decisions in the fixtures (13 Nov 2026);
+   *  older saves no longer match them. */
+  version: 3;
   engagement: EngagementConfig;
   evidenceItems: EvidenceItem[];
   reviewValues: ReviewValue[];
@@ -39,7 +40,7 @@ export function loadDemoState(): DemoSnapshot | null {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as DemoSnapshot;
-    return parsed && parsed.version === 2 ? parsed : null;
+    return parsed && parsed.version === 3 ? parsed : null;
   } catch {
     return null;
   }
@@ -48,7 +49,7 @@ export function loadDemoState(): DemoSnapshot | null {
 export function saveDemoState(snapshot: Omit<DemoSnapshot, "version">): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(KEY, JSON.stringify({ version: 2, ...snapshot }));
+    window.localStorage.setItem(KEY, JSON.stringify({ version: 3, ...snapshot }));
   } catch {
     // Storage full or unavailable — the demo still works, it just won't persist.
   }
