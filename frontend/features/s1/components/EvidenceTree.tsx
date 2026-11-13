@@ -168,7 +168,10 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         </button>
         <span className="s1-et-doc__meta">
           {period ? <span>{period}</span> : null}
-          {doc.facility_name ? <span className="s1-chip">{doc.facility_name}</span> : null}
+          {/* Under a facility's own line the facility is already named by the line. */}
+          {doc.facility_name && !(lineMap.get(section)?.facility_id && lineMap.get(section)?.facility_id === doc.facility_id) ? (
+            <span className="s1-chip">{doc.facility_name}</span>
+          ) : null}
           {section === BLOCK_UNASSIGNED ? <span>{processingText(doc.processing_status)}</span> : null}
           {doc.flags.includes("unknown_line") ? <span>Its line was deleted</span> : null}
           {also.length ? <span>Also in {also.map(lineTitle).join(", ")}</span> : null}
@@ -443,6 +446,11 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 
 /* =============================== helpers =============================== */
 
+/** "97% accepted", not "97.1%": whole percents read faster in a tree. Never rounds up to 100. */
+function wholePercent(pct: number): number {
+  return pct >= 100 ? 100 : Math.floor(pct);
+}
+
 function defaultOpen(tree: EvidenceTreeData): string[] {
   const ids = ["b:supporting", ...tree.blocks.supporting.scopes.map((s) => `scope:${s.scope}`)];
   if (tree.blocks.unassigned.length) ids.push("b:unassigned");
@@ -533,7 +541,7 @@ function Fold({
               className="s1-ws-gr__pct"
               title={`${counts.accepted} of ${counts.values} values accepted${counts.issues ? `, ${counts.issues} with issues` : ""}`}
             >
-              {counts.pct_accepted}% accepted
+              {wholePercent(counts.pct_accepted)}% accepted
             </span>
           </>
         ) : (
