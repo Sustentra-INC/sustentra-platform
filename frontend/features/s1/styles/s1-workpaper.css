@@ -3612,11 +3612,12 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-sch-ids__value { grid-column: 1; font-weight: var(--weight-strong); overflow-wrap: break-word; word-break: normal; }
 .s1-sch-ids__value--short { white-space: nowrap; }
 .s1-sch-ids__n { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: var(--text-sm); color: var(--ink-2); }
-.s1-sch-ids__toggle { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: var(--sp-2); width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.s1-sch-ids__toggle { display: grid; grid-template-columns: auto max-content minmax(0, 1fr) auto; align-items: center; gap: var(--sp-2); width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .s1-sch-ids__toggle svg { width: 1rem; height: 1rem; }
 .s1-sch-ids__toggle:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__n { grid-row: auto; grid-column: auto; }
-.s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__value { grid-column: auto; }
+.s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__value { grid-column: auto; text-align: right; }
+.s1-sch-ids__toggle .s1-sch-ids__label { white-space: nowrap; }
 .s1-sch-ids li { display: block; }
 .s1-sch-ids__how { margin: var(--sp-1) 0 0; font-size: var(--text-sm); }
 .s1-sch-ids ul.s1-sch-ids__groups { margin-top: var(--sp-2); gap: var(--sp-1); }

@@ -149,8 +149,9 @@ export function buildSchedule(lineKey: string): LineSchedule | null {
       record_key: `${r.documentId}:0`, record_index: 0, accepted: r.accepted, decision: r.decision,
       waiting_on: [...r.waiting], rejected_fields: [],
       date: { start: r.start, end: r.end, days, label },
-      activity_quantity: { value: r.quantity, unit: r.quantity === null ? null : r.unit },
-      cells: r.distance !== null ? { distance: { value: r.distance, unit: "mi" } } : {},
+      // As the bill prints it: the backend returns the value's text, separators included.
+      activity_quantity: { value: r.quantity === null ? null : r.quantity.toLocaleString("en-US"), unit: r.quantity === null ? null : r.unit },
+      cells: r.distance !== null ? { distance: { value: r.distance.toLocaleString("en-US"), unit: "mi" } } : {},
       saved_by: r.accepted && r.reviewer ? { name: r.reviewer, at: r.reviewedAt } : null,
       document_id: r.documentId, file_name: r.fileName, page: r.quantity === null ? null : r.page, candidate_id: r.candidateId,
     });

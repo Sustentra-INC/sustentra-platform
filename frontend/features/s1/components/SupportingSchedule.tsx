@@ -396,8 +396,9 @@ function formatDateTime(iso: string): string {
     : d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
+/** A month's counted quantity, a computed share of its bills: whole units once it is in the hundreds. */
 function formatQuantity(n: number): string {
-  return n.toLocaleString(undefined, { maximumFractionDigits: 3 });
+  return n.toLocaleString(undefined, { maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 3 });
 }
 
 /** One identifier: "n of N documents"; opens to group the documents by value, with a Not found group. */
