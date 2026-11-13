@@ -1,5 +1,6 @@
 import type { ReviewValue, ScopePlacement, SourceKind, ValueRecordEntry } from "../../types/review";
 import type { SourceRef } from "../../types/verificationResults";
+import { claudeReadings } from "../ai/claudeReadings";
 import { manufacturerEvidence } from "../evidence/manufacturerEvidence";
 import { verificationLines } from "../verification/resultsDataset";
 
@@ -337,6 +338,9 @@ for (let i = 1; i <= 218; i += 1) {
     })
   );
 }
+
+// What Claude read where the rules found nothing, or read differently (fixtures/ai/claudeReadings.ts).
+values.push(...claudeReadings(values).map((r) => rv(r)));
 
 // Each value belongs to the Evidence row for its file: where a value was keyed to another id
 // (refrigerant logs, meter photos, reference documents), it takes the row's.
