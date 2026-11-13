@@ -36,7 +36,7 @@ const MANUFACTURER_STATUS_CELLS = [
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "ExtractedSuperseded by tualatin_gas_apr_2025_corrected.pdf",
   "ExtractedSupersedes tualatin_gas_apr_2025.pdf", "Extracted", "Extracted", "Extracted", "Extracted",
-  "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
+  "Withdrawn", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Partially extractedNot found: Service period end date", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
@@ -51,8 +51,8 @@ const MANUFACTURER_STATUS_CELLS = [
 ];
 
 const MANUFACTURER_GROUP_MIX = [
-  "2 to review", "5 extracted", "1 blocked3 to review33 extracted", "3 to review34 extracted", "4 extracted",
-  "12 extracted", "3 extracted", "1 to review36 extracted", "2 extracted", "3 extracted", "1 extracted",
+  "2 to review", "5 extracted", "1 blocked3 to review33 extracted", "3 to review33 extracted1 withdrawn", "4 extracted",
+  "1 to review11 extracted", "3 extracted", "1 to review36 extracted", "2 extracted", "3 extracted", "1 extracted",
   "2 extracted", "1 extracted", "1 extracted",
 ];
 

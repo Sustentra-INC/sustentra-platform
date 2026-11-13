@@ -15,6 +15,7 @@ import { ApiError } from "../../../lib/api";
 import { isActiveRun, readFailureMessage, requestRead, type ProcessingRunView } from "../api/processingRuns";
 import { useProcessingRuns } from "../hooks/useProcessingRuns";
 import { createDocumentBatch } from "../api/documentBatches";
+import { demoBatchAiTypeDocument, registerDemoBatch } from "../demo-backend/batches";
 import { BATCH_NOT_CREATED, useBatchProgress } from "../hooks/useBatchProgress";
 import { readAfterUpload, withReadingState } from "../utils/readingState";
 import { reviewValuesFromFields, withRequestsFromAsks } from "../adapters/reviewValueAdapter";
@@ -63,7 +64,7 @@ import { seedExaminations, verificationLines } from "../fixtures/verification/re
 import { useVerificationStore } from "../verification/verificationStore";
 import { useWorkpaperSync } from "../verification/useWorkpaperSync";
 import { StateIndicator } from "../components/StateIndicator";
-import { EXACT_COPY } from "../constants/copy";
+import { AI_TYPE, EXACT_COPY } from "../constants/copy";
 import { uploadProblemTitle } from "../constants/uploads";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { inScopeFieldPlaceholders } from "../fixtures/scope/inScopeFields";
@@ -100,6 +101,7 @@ import type {
 import type { SessionAuditEntry } from "../utils/auditIntent";
 import { dashboardFigures, engagementActivity } from "../utils/engagementActivity";
 import { SupportingSchedule } from "../components/SupportingSchedule";
+import { setDemoEngagement } from "../demo-backend/state";
 import { saveDocumentPlacement, type EvidenceLineSetting, type Placement } from "../api/evidenceTree";
 import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
 import { ActivityDrawer } from "../components/ActivityDrawer";
@@ -165,6 +167,9 @@ const DEMO_ACTOR = engagementConfig.engagementTeam?.find((m) => m.login === enga
 
 export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const dataMode = process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture" ? "fixture" : "backend";
+  // The demo site runs the same screens as staging; in fixture mode `lib/api.ts` answers their
+  // requests from the in-browser demo backend (features/s1/demo-backend).
+  const STAGING_SCREENS: boolean = dataMode === "backend" || dataMode === "fixture";
   // Demo-only: rehydrate the fixture state from localStorage once, so a refresh
   // does not wipe the walkthrough. Read a single time on mount.
   const [persisted] = useState<DemoSnapshot | null>(() => (dataMode === "fixture" ? loadDemoState() : null));
@@ -473,7 +478,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   });
 
   const batchProgress = useBatchProgress({
-    enabled: dataMode === "backend",
+    enabled: dataMode === "backend" || dataMode === "fixture",
     engagementId: engagement.engagementId,
     batchId: uploadBatchId,
     uploading: isUploading,
@@ -554,6 +559,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     const base = pendingSave.current ?? engagement;
     pendingSave.current = null;
     const next = { ...base, recalculation };
+    if (dataMode === "fixture") {
+      setDemoEngagement(next);
+      setEngagement(next);
+      return;
+    }
     const row = await saveEngagement(next);
     setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
     setEngagement(next);
@@ -567,6 +577,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     const base = pendingSave.current ?? engagement;
     pendingSave.current = null;
     const next = { ...base, evidenceLines };
+    if (dataMode === "fixture") {
+      setDemoEngagement(next);
+      setEngagement(next);
+      return;
+    }
     const row = await saveEngagement(next);
     setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
     setEngagement(engagementFromBackend(row));
@@ -574,6 +589,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   /** Moves one placement of a document: the document's saved decision is merged, not replaced. */
   async function moveDocumentPlacement(documentId: string, move: Placement) {
+    if (dataMode === "fixture") {
+      const saved = await saveDocumentPlacement(engagement.engagementId, decisionsRef.current[documentId], documentId, move);
+      setDocumentDecisions((cur) => ({ ...cur, [documentId]: saved }));
+      return;
+    }
     // Until the saved decisions have loaded, a save here could overwrite one the page has not seen.
     if (!workpaper.loaded) throw new Error("Your saved work is still loading. Try again in a moment.");
     // A save of this document that is already on its way finishes first; the decision is then read
@@ -586,6 +606,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   function changeEngagement(next: EngagementConfig) {
     setEngagement(next);
+    if (dataMode === "fixture") setDemoEngagement(next);
     if (dataMode !== "backend" || !next.engagementId) return;
     pendingSave.current = next;
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
@@ -634,9 +655,28 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setSessionUploads((cur) => [...created.map((c) => c.documentId), ...cur]);
     const patch = (id: string, next: Partial<EvidenceItem>) =>
       setEvidenceItems((cur) => cur.map((x) => (x.documentId === id ? { ...x, ...next } : x)));
+    // Several files dropped together are one batch with a progress table, as on staging; the demo
+    // backend scripts its reading over these files. A single file has no batch.
+    const batchFiles = created.map((item) => ({ documentId: item.documentId, fileName: item.filename }));
+    const aiTyped = created.length > 1 ? demoBatchAiTypeDocument(batchFiles) : null;
+    setUploadBatchId(null);
+    setBatchCreateFailed(false);
+    if (created.length > 1) {
+      createDocumentBatch(engagement.engagementId)
+        .then((batchId) => {
+          registerDemoBatch(batchId, batchFiles);
+          setUploadBatchId(batchId);
+        })
+        .catch(() => setBatchCreateFailed(true));
+    }
     created.forEach((item, i) => {
       window.setTimeout(() => patch(item.documentId, { processingState: "ingested" }), 700 + i * 140);
-      window.setTimeout(() => patch(item.documentId, classifyGuess(item.filename, engagement)), 1600 + i * 180);
+      window.setTimeout(() => {
+        patch(item.documentId, classifyGuess(item.filename, engagement));
+        // The type Claude suggested waits for a reviewer to confirm it.
+        if (item.documentId === aiTyped)
+          patch(item.documentId, { typeReviewBand: "needs_review", typeReviewReason: AI_TYPE.suggested, typeConfirmed: false });
+      }, 1600 + i * 180);
     });
   }
 
@@ -1006,7 +1046,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         }
       >
         {activeView.name === "dashboard" ? (
-          dataMode === "backend" ? (
+          STAGING_SCREENS ? (
             <BackendDashboard
               engagement={engagement}
               evidence={evidenceView}
@@ -1084,7 +1124,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             serverRecordsActor={dataMode === "backend"}
           />
         ) : activeView.name === "methodology" ? (
-          dataMode === "backend" ? (
+          STAGING_SCREENS ? (
             <BackendMethodologyReview
               engagementId={engagement.engagementId}
               onOpenDocument={openExtraction}
@@ -1100,7 +1140,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             />
           )
         ) : activeView.name === "results" ? (
-          dataMode === "backend" ? (
+          STAGING_SCREENS ? (
             <BackendVerificationResults
               engagement={engagementForUser}
               store={verification}
@@ -1120,7 +1160,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             />
           )
         ) : activeView.name === "output" ? (
-          dataMode === "backend" ? (
+          STAGING_SCREENS ? (
             <BackendOutputScreen
               engagement={engagement}
               evidence={evidenceView}
@@ -1159,7 +1199,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onOpenExtraction={openExtraction}
             onOpenSetup={() => setActiveView({ name: "setup" })}
             tree={
-              dataMode === "backend"
+              STAGING_SCREENS
                 ? {
                     openIds: evidenceTreeOpen,
                     view: evidenceGrouping,
@@ -1317,8 +1357,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             batch={dataMode === "backend" ? [] : sessionUploadItems}
             tasks={dataMode === "backend" ? uploadTasks : undefined}
             items={dataMode === "backend" ? evidenceItems : undefined}
-            batchProgress={dataMode === "backend" ? batchProgress.view : null}
-            batchNote={dataMode === "backend" ? (batchCreateFailed ? BATCH_NOT_CREATED : batchProgress.error) : null}
+            batchProgress={batchProgress.view}
+            batchNote={batchCreateFailed ? BATCH_NOT_CREATED : batchProgress.error}
             onOpenDocument={(documentId) => {
               setUploadOpen(false);
               openExtraction(documentId);
