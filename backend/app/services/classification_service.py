@@ -15,6 +15,34 @@ from ..reference.vocabulary_loader import (
 )
 
 
+# --- content cues -----------------------------------------------------------------------
+# The vocabulary library's filename globs and header terms miss ordinary documents: a gas
+# bill is "Usage (CCF)" with no "gas bill" in its file name, a vehicle log is headed "Miles"
+# and "Gallons", a refrigerant invoice lists "R-134a" in a line item. Cues read units and
+# product names in the text itself and credit the canonical type that unit belongs to.
+GAS_UNIT_RE = re.compile(r"\b(?:therms?|ccf|hcf|mcf|dekatherms?|dth)\b")
+GAS_QUANTITY_RE = re.compile(
+    r"\d[\d,.]*\s*(?:therms?|ccf|hcf|mcf|dekatherms?|dth)\b|\((?:therms?|ccf|hcf|mcf|dth)\)"
+)
+CHARGE_RE = re.compile(r"\$\s?\d|amount due|total due|pay by|pay this amount|\bamount\b|\bcharges?\b|\binvoice\b")
+ELECTRICITY_RE = re.compile(r"\bk?wh\b|\bmwh\b|kilowatt|megawatt|electric")
+DISTANCE_RE = re.compile(r"\bmiles?\b|\bodometer\b|\bmileage\b|\bkilomet(?:er|re)s?\b|\bkm\b")
+FUEL_VOLUME_RE = re.compile(r"\bgallons?\b|\bgal\b|\blit(?:er|re)s?\b")
+VEHICLE_RE = re.compile(r"\bvehicles?\b|\btrucks?\b|\bvans?\b|\bpickup\b|\bfleet\b|\bdriver\b|\btractor\b")
+REFRIGERANT_RE = re.compile(
+    r"\br-?(?:11|12|22|32|123|125|134a|143a|152a|290|401a|402a|404a|407a|407c|407f|408a|410a|417a|422b|422d|427a|"
+    r"438a|448a|449a|452a|454b|507a?|508b|600a?|717|744)\b|\bhfc-?\d{3}|\bhcfc-?\d{2,3}|\brefrigerants?\b"
+)
+MASS_RE = re.compile(r"\d\s*(?:lbs?|pounds?|kg|kilograms?)\b|\bcylinders?\b|\blbs?\b")
+CUE_BONUS = 0.3
+SUMMARY_PREFIX = "CT-GHG-"
+STATIONARY_TYPE = "CT-S1-FUELQTY"
+MOBILE_TYPE = "CT-S1-MOBFUEL"
+REFRIGERANT_TYPE = "CT-S1-REFRSVC"
+ELECTRICITY_TYPE = "CT-S2-ELEC"
+DISTANCE_TYPE = "CT-S1-TRANSACT"
+
+
 class ClassificationService:
     """Deterministic S1 document classifier driven by the vocabulary library."""
 
@@ -185,6 +213,13 @@ class ClassificationService:
                 continue
 
             effective_threshold = min(variant.confidence_threshold_default, self._threshold_cap)
+            if variant.canonical_type_id.startswith(SUMMARY_PREFIX):
+                # A company-prepared summary is a claim about the whole document. A file name glob plus
+                # one generic header ("Fuel type") is not enough to make it one: a log of fuel
+                # deliveries is activity data. Without two content terms, stay below threshold.
+                content_terms = len(matched_signals["header_terms"]) + len(matched_signals["key_phrases"])
+                if content_terms < 2:
+                    confidence = min(confidence, effective_threshold - 0.01)
             candidate = {
                 "canonical_type_id": variant.canonical_type_id,
                 "variant_id": variant.variant_id,
@@ -196,6 +231,7 @@ class ClassificationService:
             }
             candidates.append(candidate)
 
+        candidates = self._apply_content_cues(vocabulary_library, search_text, candidates)
         candidates.sort(
             key=lambda item: (
                 -item["confidence"],
@@ -204,6 +240,62 @@ class ClassificationService:
             )
         )
         return candidates
+
+    def _apply_content_cues(
+        self,
+        vocabulary_library: VocabularyLibrary,
+        search_text: str,
+        candidates: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Credit the type a unit or product name belongs to; drop types the text contradicts."""
+
+        credits: dict[str, str] = {}
+        has_gas_quantity = bool(GAS_QUANTITY_RE.search(search_text)) or (
+            bool(GAS_UNIT_RE.search(search_text)) and "natural gas" in search_text
+        )
+        if has_gas_quantity and CHARGE_RE.search(search_text):
+            credits[STATIONARY_TYPE] = "cue: gas quantity (therms/CCF) with charges"
+        if DISTANCE_RE.search(search_text) and FUEL_VOLUME_RE.search(search_text) and VEHICLE_RE.search(search_text):
+            credits[MOBILE_TYPE] = "cue: vehicle distance and fuel volume"
+        if REFRIGERANT_RE.search(search_text) and MASS_RE.search(search_text):
+            credits[REFRIGERANT_TYPE] = "cue: refrigerant name with a mass or cylinders"
+
+        for type_id, label in credits.items():
+            of_type = [c for c in candidates if c["canonical_type_id"] == type_id]
+            if of_type:
+                target = max(of_type, key=lambda c: c["confidence"])
+            else:
+                variants = [v for v in vocabulary_library.variants if v.canonical_type_id == type_id]
+                if not variants:
+                    continue
+                target = {
+                    "canonical_type_id": type_id,
+                    "variant_id": variants[0].variant_id,
+                    "confidence": 0.0,
+                    "threshold": min(variants[0].confidence_threshold_default, self._threshold_cap),
+                    "matched_signals": self._empty_matched_signals(),
+                    "reason": "",
+                    "review_required": True,
+                }
+                candidates.append(target)
+            target["matched_signals"]["key_phrases"].append(label)
+            target["confidence"] = round(min(target["confidence"] + CUE_BONUS, 1.0), 4)
+            target["reason"] = self._build_reason(target["matched_signals"])
+            target["review_required"] = target["confidence"] < target["threshold"]
+
+        kept: list[dict[str, Any]] = []
+        electricity_named = bool(ELECTRICITY_RE.search(search_text))
+        for candidate in candidates:
+            type_id = candidate["canonical_type_id"]
+            if type_id == ELECTRICITY_TYPE and not electricity_named and STATIONARY_TYPE in credits:
+                continue  # gas units and no kWh: not an electricity bill
+            if type_id == DISTANCE_TYPE and MOBILE_TYPE in credits:
+                # A log with fuel volume next to the distance is fuel activity (mobile combustion):
+                # the distance-only type no longer outranks it.
+                candidate["confidence"] = round(min(candidate["confidence"], candidate["threshold"] - 0.01), 4)
+                candidate["review_required"] = True
+            kept.append(candidate)
+        return kept
 
     def _build_search_text(self, payload: dict[str, Any]) -> str:
         text_parts: list[str] = []
