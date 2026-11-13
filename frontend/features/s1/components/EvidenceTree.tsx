@@ -446,6 +446,16 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 function defaultOpen(tree: EvidenceTreeData): string[] {
   const ids = ["b:supporting", ...tree.blocks.supporting.scopes.map((s) => `scope:${s.scope}`)];
   if (tree.blocks.unassigned.length) ids.push("b:unassigned");
+  // As in Claire's design, the first category with documents opens down to its calculation
+  // lines, so the reviewer sees the lines and their supporting-schedule buttons on arrival.
+  for (const scope of tree.blocks.supporting.scopes) {
+    const category = scope.categories.find((c) => (c.counts?.documents ?? 1) > 0);
+    if (!category) continue;
+    ids.push(`cat:${scope.scope}:${category.category}`);
+    const level2 = category.level2s.find((l) => (l.counts?.documents ?? 1) > 0);
+    if (level2) ids.push(`l2:${category.category}:${level2.level2}`);
+    break;
+  }
   return ids;
 }
 
