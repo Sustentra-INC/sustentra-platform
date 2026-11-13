@@ -5,7 +5,7 @@ import type { ReviewValue, ScopePlacement } from "../../types/review";
 /**
  * What Claude read on a handful of Cascade documents, so the demo's Extraction review and
  * Evidence show the same notes staging does. Four documents are touched, all easy to reach:
- *   - kent_gas_jun_2025.pdf       Claude suggests the heat content and the meter number.
+ *   - kent_gas_sep_2025.pdf       Claude suggests the heat content and the meter number.
  *   - kent_gas_aug_2025.pdf       Claude suggests the heat content.
  *   - kent_fleetcard_q3_2025.pdf  Claude suggests the vehicle type and model year, disagrees with the
  *                                 rules on the fuel purchased, and set the document's type (not yet confirmed).
@@ -27,16 +27,23 @@ export type ClaudeReading = Partial<ReviewValue> & {
 
 const KENT = "facility-kent";
 
-/** The same hash DemoDocument uses to print a bill's meter number (kept in step by a test). */
+/** The same hash DemoDocument uses to size a bill whose usage no value reads (kept in step by a test). */
 function seed(text: string): number {
   let h = 2166136261;
   for (const ch of text) h = Math.imul(h ^ ch.charCodeAt(0), 16777619);
   return Math.abs(h);
 }
 
-/** The meter number a gas bill prints: "G" and four digits. */
-export function gasMeterNumber(documentId: string): string {
-  return `G${String(seed(documentId) % 9000).padStart(4, "0")}`;
+/** The gas meter each facility's bills print, and the demo's schedule lists as the meter number. */
+export const GAS_METERS: Record<string, string> = {
+  "facility-tualatin": "M-2290",
+  "facility-kent": "M-4471",
+  "facility-modesto": "M-7712",
+};
+
+/** Therms a gas bill prints when no value reads its usage line (DemoDocument's own figure). */
+function printedTherms(documentId: string): number {
+  return 22000 + (seed(documentId) % 9000);
 }
 
 const oneDecimal = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -50,8 +57,9 @@ function gasReadings(values: ReviewValue[]): ClaudeReading[] {
   const out: ClaudeReading[] = [];
   const bill = (documentId: string, filename: string, period: string, meter: boolean) => {
     const used = values.find((v) => v.documentId === documentId && /consumed$/.test(v.whatItIs));
-    const therms = Number((used?.value ?? "").replace(/,/g, ""));
-    if (!used || !Number.isFinite(therms)) return;
+    // A bill no rule read the usage of (the September bill) prints a figure of its own.
+    const therms = used ? Number(used.value.replace(/,/g, "")) : printedTherms(documentId);
+    if (!Number.isFinite(therms)) return;
     const heat = oneDecimal(therms / 10);
     const common = {
       documentId,
@@ -76,7 +84,7 @@ function gasReadings(values: ReviewValue[]): ClaudeReading[] {
       record: claude(`read "Heat content ${heat} MMBtu"`),
     });
     if (meter) {
-      const number = gasMeterNumber(documentId);
+      const number = GAS_METERS[KENT];
       out.push({
         ...common,
         whatItIs: "Meter number",
@@ -87,7 +95,8 @@ function gasReadings(values: ReviewValue[]): ClaudeReading[] {
       });
     }
   };
-  bill("DOC-kent-gas-jun", "kent_gas_jun_2025.pdf", "Jun 2025", true);
+  // September is the Kent bill still awaiting review, so Claude's suggestions sit on a document a reviewer will open.
+  bill("DOC-PARTIAL", "kent_gas_sep_2025.pdf", "Sep 2025", true);
   bill("DOC-kent-gas-aug", "kent_gas_aug_2025.pdf", "Aug 2025", false);
   return out;
 }

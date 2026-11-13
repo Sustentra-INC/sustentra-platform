@@ -3,6 +3,7 @@
 import { Highlighter, X } from "lucide-react";
 import { createContext, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 
+import { GAS_METERS } from "../../fixtures/ai/claudeReadings";
 import type { EngagementConfig } from "../../types";
 import type { ReviewValue, ScopePlacement } from "../../types/review";
 
@@ -394,7 +395,7 @@ function UtilityBill({ ctx, kind }: { ctx: Ctx; kind: "electricity" | "gas" }) {
           </div>
         </div>
 
-        <h4 className="s1-dd-h">Meter readings · Meter {kind === "electricity" ? "E" : "G"}{String(s % 9000).padStart(4, "0")}</h4>
+        <h4 className="s1-dd-h">Meter readings · Meter {kind === "electricity" || !GAS_METERS[first.facilityId ?? ""] ? `${kind === "electricity" ? "E" : "G"}${String(s % 9000).padStart(4, "0")}` : GAS_METERS[first.facilityId ?? ""]}</h4>
         <Row label={<>Previous read (<Fig ctx={ctx} anchor="previous-read-date" label="Service period start date">{period.start}</Fig>)</>}>
           <Fig ctx={ctx} anchor="previous-read" label="Previous meter read">{fmt(previous)} {kind === "electricity" ? "kWh" : "ccf"}</Fig>
         </Row>

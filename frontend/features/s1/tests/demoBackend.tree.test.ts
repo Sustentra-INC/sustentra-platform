@@ -88,7 +88,8 @@ describe("demo backend: evidence tree, schedule and recalculation", () => {
       const accepted = new Map(sched.rows.filter((r) => r.accepted).map((r) => [r.document_id, r]));
       for (const row of line.step1.rows) {
         expect(accepted.has(row.document_id)).toBe(true);
-        expect(accepted.get(row.document_id)!.activity_quantity.value).toBe(row.quantity);
+        // The schedule gives the value as the bill prints it ("101,111"); Step 1 gives the number.
+        expect(Number(String(accepted.get(row.document_id)!.activity_quantity.value ?? "").replace(/,/g, ""))).toBe(row.quantity);
         expect(row.candidate_id).toBe(accepted.get(row.document_id)!.candidate_id);
       }
       // The schedule's accepted values feed the activity: their prorated sum is Step 1's total.

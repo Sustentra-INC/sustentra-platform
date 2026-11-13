@@ -8,7 +8,10 @@
  * Ports the backend's rules (`backend/app/services/calculation_lines.py`): line keys, default
  * placement, the reviewer's moves, and the month coverage.
  */
+import { GAS_METERS } from "../fixtures/ai/claudeReadings";
 import { engagementConfig } from "../fixtures/engagementConfig";
+import { PROPANE_BY_DOC, fleetQuarter } from "../fixtures/extraction/demoQuantities";
+import { documentReview } from "../fixtures/extraction/reviewDecisions";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
 import type { EngagementConfig, FacilityOption } from "../types/engagement";
@@ -32,9 +35,6 @@ export const CATEGORIES: [string, string, string][] = [
   ["biogenic", "Biogenic CO₂", "biogenic"],
 ];
 const CATEGORY_SCOPE = Object.fromEntries(CATEGORIES.map(([k, , s]) => [k, s]));
-
-/** Who reviewed the demo's accepted values: the engagement team. */
-const TEAM = ["M. Osei", "R. Iqbal", "T. Brandt", "L. Chen"];
 
 export function slug(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/g, "") || "none";
@@ -120,40 +120,18 @@ export interface SetAside { document_id: string; file_name: string; reason: stri
 
 const FAC_CODE: Record<string, string> = { "facility-tualatin": "tualatin", "facility-kent": "kent", "facility-modesto": "modesto" };
 const GAS_ACCOUNT: Record<string, string> = { tualatin: "WG-30418-2", kent: "GRG-77120", modesto: "SGP-5521-09" };
-const GAS_METER: Record<string, string> = { tualatin: "M-2290", kent: "M-4471", modesto: "M-7712" };
 const ELEC_ACCOUNT: Record<string, string> = { tualatin: "TVP-88213", kent: "GRP-40977", modesto: "SGP-5521-10" };
 const ELEC_METER: Record<string, string> = { tualatin: "E-31877", kent: "E-55604", modesto: "E-90412" };
 const PROPANE_ACCOUNT: Record<string, string> = { kent: "KP-2031", modesto: "VP-6630", tualatin: "CP-1189" };
 
 /**
- * Documents that are not accepted yet, so the demo shows work still open. Everything else the
- * bills read (gas, electricity, fleet, propane, refrigerant) stands as reviewed, unless a fixture
- * value says otherwise (a value accepted or corrected there is taken as it is).
+ * What the fixtures cannot say. Whether a document is accepted, by whom and when comes from its
+ * fixture values (`fixtures/extraction/reviewDecisions.ts`); a withdrawn document and a billing
+ * cycle across the year come from the Evidence row. What is left here: the backend's name for an
+ * open field.
  */
-const NOT_REVIEWED = new Set(["DOC-PARTIAL", "DOC-modesto-elec-nov", "modesto_refrigerant_service.pdf"]);
-/** Reviewed quantity, but another field of the record is still open. */
-const AWAITING_FIELD: Record<string, { label: string; field: string }> = {
-  "modesto_propane_aug.pdf": { label: "Fuel type", field: "fuel_type" },
-};
-/** Withdrawn by the reviewer in the demo: filed nowhere. */
-const WITHDRAWN: Record<string, string> = {
-  "DOC-kent-gas-jun": "Withdrawn by the reviewer: the client is re-issuing the June bill after a billing dispute.",
-};
-/** Billing cycles that cross the reporting year (the bill's own service period). */
-const SERVICE_PERIOD: Record<string, [string, string]> = {
-  "DOC-kent-gas-jan": ["2024-12-17", "2025-01-16"],
-  "DOC-kent-gas-dec": ["2025-12-16", "2026-01-15"],
-};
-
-/** Demo quantities for documents the fixture values do not read (old demo's annual numbers, spread). */
-const FLEET_ANNUAL: Record<string, { gal: number; mi: number }> = {
-  tualatin: { gal: 180_000, mi: 1_170_000 },
-  kent: { gal: 180_000, mi: 1_170_000 },
-  modesto: { gal: 108_900, mi: 707_850 },
-};
-const PROPANE_BY_DOC: Record<string, number> = {
-  "modesto_propane_feb.pdf": 4_000, "modesto_propane_aug.pdf": 4_000, "kent_propane_may.pdf": 3_000, "kent_propane_nov.pdf": 3_000,
-};
+const FIELD_NAME: Record<string, string> = { "Fuel type": "fuel_type" };
+const fieldName = (label: string) => FIELD_NAME[label] ?? label.toLowerCase().replace(/[^a-z0-9]+/g, "_");
 
 const SUMMARY_TYPES = new Set(["Inventory workbook", "Organizational boundary statement", "Inventory methodology statement", "Facility list", "Emission factor source list", "Prior-year inventory or report"]);
 
@@ -171,10 +149,6 @@ export function daysBetween(start: string, end: string): number {
   return Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
 }
 
-function reviewedAt(i: number): string {
-  return `2026-01-${String(12 + (i % 6)).padStart(2, "0")}T${String(9 + (i % 8)).padStart(2, "0")}:${String((i * 7) % 60).padStart(2, "0")}:00Z`;
-}
-
 interface Built { records: ModelRecord[]; setAside: SetAside[] }
 
 function valuesByDocument() {
@@ -190,18 +164,15 @@ export function buildRecords(facilities: FacilityOption[]): Built {
   const setAside: SetAside[] = [];
   const address = (id: string | null) => facilities.find((f) => f.facilityId === id)?.address ?? null;
   const facName = (id: string | null) => facilities.find((f) => f.facilityId === id)?.name ?? null;
-  let reviewIndex = 0;
 
   const docs = manufacturerEvidence.filter((d: EvidenceItem) => d.evidenceClass === "main");
   const fileOf = new Map(docs.map((d) => [d.documentId, d.filename]));
   for (const doc of docs) {
     const decision = decisions.get(doc.documentId);
     if (doc.disposition === "withdrawn" || decision?.disposition === "withdrawn") {
-      setAside.push({ document_id: doc.documentId, file_name: doc.filename, reason: "Withdrawn by the reviewer." });
-      continue;
-    }
-    if (WITHDRAWN[doc.documentId]) {
-      setAside.push({ document_id: doc.documentId, file_name: doc.filename, reason: WITHDRAWN[doc.documentId] });
+      // The Evidence row's note is the reason the reviewer gave.
+      const why = doc.disposition === "withdrawn" && doc.note ? `: ${doc.note}` : ".";
+      setAside.push({ document_id: doc.documentId, file_name: doc.filename, reason: `Withdrawn by the reviewer${why}` });
       continue;
     }
     const rel = doc.relationships.find((r) => r.kind === "superseded_by");
@@ -234,43 +205,35 @@ export function buildRecords(facilities: FacilityOption[]): Built {
     const read = own.find((v) => /consumed|added on service/i.test(v.whatItIs) && (v.scope !== "scope2_market"));
     let quantity: number | null = read ? parseNumber(read.value) : null;
     let distance: number | null = null;
-    let start = doc.periodStart ?? null;
+    const start = doc.periodStart ?? null;
     let end = doc.periodEnd ?? null;
-    if (SERVICE_PERIOD[doc.documentId]) [start, end] = SERVICE_PERIOD[doc.documentId];
     if (kind === "fleet" && facilityId && start) {
-      const annual = FLEET_ANNUAL[code];
       const q = Math.ceil(Number(start.slice(5, 7)) / 3);
-      const last = q === 4;
-      quantity = last ? annual.gal - 3 * Math.round(annual.gal / 4) : Math.round(annual.gal / 4);
-      distance = last ? annual.mi - 3 * Math.round(annual.mi / 4) : Math.round(annual.mi / 4);
+      ({ gal: quantity, mi: distance } = fleetQuarter(code, q));
       end = `${start.slice(0, 4)}-${["", "03-31", "06-30", "09-30", "12-31"][q]}`;
     }
     if (kind === "propane") quantity = PROPANE_BY_DOC[doc.filename] ?? null;
-    if (kind === "electricity" && doc.documentId === "DOC-WRONGYEAR") quantity = 590_000;
 
     const calc = kind !== "other";
-    const fixtureAccepted = own.find((v) => v.reviewState === "accepted" || v.reviewState === "corrected");
-    const awaiting = AWAITING_FIELD[doc.filename];
-    const accepted = calc && quantity !== null && doc.processingState !== "blocked" && !NOT_REVIEWED.has(doc.documentId) && !NOT_REVIEWED.has(doc.filename);
-    const human = fixtureAccepted?.record.find((r) => r.kind === "human");
-    const index = reviewIndex;
-    if (accepted) reviewIndex += 1;
-    const waiting = awaiting && accepted ? [awaiting.label] : [];
-    const waitingFields = awaiting && accepted ? [awaiting.field] : kind !== "other" && !accepted && doc.processingState !== "blocked" && quantity !== null ? ["activity_quantity"] : [];
-    const edited = fixtureAccepted?.reviewState === "corrected";
+    // The review decision is the fixture values' own: accepted, by whom, when, and what is still open.
+    const review = documentReview(own);
+    const accepted = calc && quantity !== null && doc.processingState !== "blocked" && review.done;
+    const waiting = accepted ? review.open : [];
+    const waitingFields = accepted ? waiting.map(fieldName) : kind !== "other" && doc.processingState !== "blocked" && quantity !== null ? ["activity_quantity"] : [];
+    const edited = review.edited;
     const fields = doc.fieldsExtracted;
     const accountMap = kind === "gas" ? GAS_ACCOUNT : kind === "electricity" ? ELEC_ACCOUNT : kind === "propane" ? PROPANE_ACCOUNT : null;
     const utility = kind === "gas" || kind === "electricity";
     records.push({
       documentId: doc.documentId, fileName: doc.filename, kind, facilityId, defaultTarget: target, start, end, quantity, unit, distance,
       accepted: accepted && waiting.length === 0, decision: waiting.length ? "awaiting_other_fields" : accepted ? (edited ? "edited" : "accepted") : "not_reviewed",
-      reviewer: accepted ? (human?.actor ?? TEAM[index % TEAM.length]) : null,
-      reviewedAt: accepted ? (human?.at ?? reviewedAt(index)) : null,
+      reviewer: accepted ? review.reviewer : null,
+      reviewedAt: accepted ? review.at : null,
       candidateId: read?.id ?? null, page: read?.page ?? 1,
       waiting, waitingFields,
       values: fields, acceptedValues: accepted ? fields : 0, issues: doc.filename === "modesto_refrigerant_service.pdf" ? 1 : 0,
       account: accountMap && facilityId ? accountMap[code] ?? null : null,
-      meter: utility && facilityId && doc.documentId !== "DOC-PARTIAL" ? (kind === "gas" ? GAS_METER : ELEC_METER)[code] ?? null : null,
+      meter: utility && facilityId && doc.documentId !== "DOC-PARTIAL" ? (kind === "gas" ? GAS_METERS[facilityId] : ELEC_METER[code]) ?? null : null,
       address: utility ? address(facilityId) : null,
       processingStatus: doc.processingState, detectedType: type,
       matchedBy: doc.documentId === "DOC-PARTIAL" ? "Service address in Setup" : "Facility name in Setup",

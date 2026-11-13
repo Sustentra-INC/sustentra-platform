@@ -607,9 +607,32 @@ docs.push(
 const GENERATED = /^DOC-(tualatin|kent|modesto)-(elec|gas)-[a-z]{3}$/;
 const storyFiles = new Set(docs.filter((d) => !GENERATED.test(d.documentId)).map((d) => d.filename));
 
+/** Kent's gas bills whose billing cycle crosses the reporting year: the bill's own service period. */
+const CROSS_YEAR: Record<string, [string, string]> = {
+  "DOC-kent-gas-jan": ["2024-12-17", "2025-01-16"],
+  "DOC-kent-gas-dec": ["2025-12-16", "2026-01-15"],
+};
+const JUNE_WITHDRAWN = "the client is re-issuing the June bill after a billing dispute.";
+
+/** The facts the demo adds to a generated bill: a cycle across the year, a bill set aside. */
+function withDemoFacts(item: EvidenceItem): EvidenceItem {
+  const cycle = CROSS_YEAR[item.documentId];
+  if (cycle) return { ...item, periodStart: cycle[0], periodEnd: cycle[1] };
+  if (item.documentId === "DOC-kent-gas-jun") {
+    return {
+      ...item,
+      disposition: "withdrawn",
+      note: JUNE_WITHDRAWN,
+      notes: [{ id: "n-kent-jun-1", author: "T. Brandt", at: "2025-09-12T14:20:00Z", text: JUNE_WITHDRAWN }],
+    };
+  }
+  return item;
+}
+
 export const manufacturerEvidence: EvidenceItem[] = docs
   .filter((d) => !(GENERATED.test(d.documentId) && storyFiles.has(d.filename)))
-  .map(withClaudeType);
+  .map(withClaudeType)
+  .map(withDemoFacts);
 
 /** A couple of supportive documents (enter the workpaper, never extracted). */
 export const manufacturerSupportive: EvidenceItem[] = [
