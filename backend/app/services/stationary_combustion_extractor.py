@@ -193,12 +193,17 @@ _DATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(rf"(?P<d>\d{{1,2}})[\s-](?P<mon>{_MONTH_RE})\.?[\s-],?(?P<y>\d{{4}}|\d{{2}})(?!\d)", re.IGNORECASE),
     # 14.03.2026 - dotted dates are day-first wherever they are used
     re.compile(r"(?<![\d.])(?P<d>\d{1,2})\.(?P<m>\d{1,2})\.(?P<y>\d{4}|\d{2})(?![\d.])"),
+    # Jan-2025 - a month column in a monthly log: the first day of that month
+    re.compile(rf"(?<![\w-])(?P<mon>{_MONTH_RE})-(?P<y>\d{{4}})(?![\w-])", re.IGNORECASE),
 )
 _NUMBER_RE = re.compile(
     r"(?P<open>\()?(?P<sign>-)?(?<![\w.,])"
     r"(?P<num>\d{1,3}(?:[,.]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
     r"(?!\d)(?P<close>\))?(?P<trail>-(?![\w\d])|\s?CR\b)?"
 )
+_EXPORTED_FROM_RE = re.compile(
+    r"\bexported (?:from|by)\s+(.+?)(?:\s+(?:business |customer |online |web )?(?:portal|account|website)\b|\s+on\s|\s+\d{1,2}/\d{1,2}/\d{2,4}|$)",
+    re.IGNORECASE)
 _SLASH_DATE_RE = re.compile(r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})(?!\d)")
 
 
@@ -293,6 +298,12 @@ class ExtractionOutcome:
     notes: list[str] = field(default_factory=list)
 
 
+def _blank_dates(text: str) -> str:
+    for pattern in _DATE_PATTERNS:
+        text = pattern.sub(" ", text)
+    return text
+
+
 def _norm(text: str) -> str:
     return " ".join(str(text).lower().replace("–", "-").replace("—", "-").split())
 
@@ -323,7 +334,7 @@ def parse_date(text: str, day_first: bool | None = None) -> tuple[str, int, int]
                 if year < 100:
                     year += 2000
                 if parts.get("mon"):
-                    month, day = _MONTHS[parts["mon"].lower().rstrip(".")], int(parts["d"])
+                    month, day = _MONTHS[parts["mon"].lower().rstrip(".")], int(parts.get("d") or 1)
                 elif "/" in match.group(0):
                     first, second = int(parts["m"]), int(parts["d"])
                     month, day = (second, first) if day_first or first > 12 else (first, second)
@@ -432,6 +443,8 @@ class StationaryCombustionExtractor:
     # A fuel log's "Site" / "Facility" column: each line's facility (a log can cover several).
     EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {
         "site": ("site", "site name", "facility", "facility name", "plant", "building", "premises"),
+        # A portal export repeats the account on every row.
+        "account": ("account", "account number", "account no", "account #", "acct", "acct no", "customer account"),
     }
     ALL_LABELS: tuple[str, ...] = ()  # filled after the module-level label groups
 
@@ -540,6 +553,8 @@ class StationaryCombustionExtractor:
                     located = document_values.get(field_id)
                     if field_id == "facility_name" and record is not None and record.extra.get("site") is not None:
                         located = record.extra["site"]
+                    if field_id == "account_number" and located is None and record is not None:
+                        located = record.extra.get("account")
                     record_candidates.append(self._candidate_for_text(
                         target, located, document_id, evidence_id, record_key,
                         record_index, parser_output, field_id))
@@ -766,7 +781,10 @@ class StationaryCombustionExtractor:
                             if value and (accept is None or accept(value)):
                                 return Located(value, lines, row, CONF_NEXT_CELL, label_cell=cell,
                                                context=f"{cell.text} {value}")
-                            continue
+                            if re.search(r"\d", nxt.text):
+                                continue
+                            # The neighbour is another column heading ("Invoice Date | PO Number" over a
+                            # row of values): the value is below, under its own heading.
                     # 2b) a wrapped value centered on its label: no line of it is on the label's row
                     if cell.box is not None:
                         after = next((c for c in row.cells[position + 1:] if c.box is not None), None)
@@ -944,12 +962,26 @@ class StationaryCombustionExtractor:
     def _supplier(self, rows: Sequence[Row]) -> Located | None:
         labeled = self._find_labeled(rows, SUPPLIER_LABELS, accept=self._looks_like_org_name, allow_next_row=False,
                                      inline=True)
+        if labeled is None and (exported := self._exported_from(rows)) is not None:
+            return exported  # an explicit "Exported from <supplier>" beats a guess at the letterhead
         letterhead = self._letterhead(rows)
         if letterhead is not None and (labeled is None or labeled.row is None or labeled.row.index > 2):
             return letterhead
         if labeled is not None:
             labeled.raw = re.split(r"\s{2,}|\s+(?:GST|HST|VAT|Tax ID|EIN)\b", labeled.raw)[0].strip()
-        return labeled
+            return labeled
+        return self._exported_from(rows)
+
+    @staticmethod
+    def _exported_from(rows: Sequence[Row]) -> Located | None:
+        """A portal export's footer names the supplier: "Exported from Mill Creek Natural Gas Co. Business Portal 07/08/2025"."""
+
+        for row in rows:
+            for cell in row.cells:
+                match = _EXPORTED_FROM_RE.search(cell.text)
+                if match:
+                    return Located(match.group(1).strip(), [cell], row, CONF_LETTERHEAD - 0.05, context=cell.text)
+        return None
 
     def _letterhead(self, rows: Sequence[Row]) -> Located | None:
         """The largest text near the top of page 1, when it reads like an organization.
@@ -962,7 +994,7 @@ class StationaryCombustionExtractor:
         if not cells:
             for row in first_page[:4]:
                 text = row.cells[0].text
-                if len(row.cells) == 1 and re.search(r"\b(company|co\.|inc\.?|llc|ltd\.?|corp\.?|utilities)\b", text, re.I):
+                if len(row.cells) == 1 and re.search(r"(?<!\w)(company|co\.?|inc\.?|llc|ltd\.?|corp\.?|utilities)(?!\w)", text, re.I):
                     name = re.split(r"\s+[-\u2013\u2014|]\s+", text)[0].strip()
                     if self._looks_like_org_name(name):
                         return Located(name, [row.cells[0]], row, CONF_LETTERHEAD - 0.05, context=text)
@@ -1048,6 +1080,11 @@ class StationaryCombustionExtractor:
             end = self._find_labeled(rows, END_LABELS, accept=lambda v: parse_date(v) is not None,
                                      accept_bare=starts_with_date, inline=inline, inline_only=inline)
             if start is not None or end is not None:
+                # "Service from January 1, 2025 through January 31, 2025": one value holds both dates
+                if end is None and start is not None and len(parse_dates(start.raw)) >= 2:
+                    return start, start
+                if start is None and end is not None and len(parse_dates(end.raw)) >= 2:
+                    return end, end
                 return start, end
         return None, None
 
@@ -1068,7 +1105,9 @@ class StationaryCombustionExtractor:
         if len(row.cells) < 3:
             return None
         texts = [_norm(c.text) for c in row.cells]
-        if any(re.search(r"\d{3}|\d,\d|\d\.\d|\d/\d", t) for t in texts):
+        # "Read on January 1, 2025" is a label that names a date, not a value: blank dates first.
+        undated = [_blank_dates(t) for t in texts]
+        if any(re.search(r"\d{3}|\d,\d|\d\.\d|\d/\d", t) for t in undated):
             return None  # header rows carry labels, not values
         scores: list[tuple[int, int]] = []
         for index, text in enumerate(texts):
