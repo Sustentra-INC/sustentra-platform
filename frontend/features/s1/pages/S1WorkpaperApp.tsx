@@ -38,6 +38,7 @@ import { ExtractionReview } from "../components/ExtractionReview";
 import { EvidenceWorkspace, type WorkspaceProblem } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
 import { logout } from "../../auth/api";
+import { navForView } from "../utils/navForView";
 import { DashboardScreen } from "../components/DashboardScreen";
 import { UploadDialog, uploadTasksFor, type SampleScript, type UploadTask } from "../components/UploadDialog";
 import { SetupScreen } from "../components/SetupScreen";
@@ -680,17 +681,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     });
   }
 
-  const NAV_FOR_VIEW: Partial<Record<ActiveView["name"], NavKey>> = {
-    dashboard: "dashboard",
-    setup: "setup",
-    requests: "requests",
-    coverage: "requests",
-    methodology: "methodology",
-    results: "results",
-    output: "output",
-    schedule: "evidence",
-  };
-  const navCurrent: NavKey = NAV_FOR_VIEW[activeView.name] ?? "evidence";
+  const navCurrent: NavKey = navForView(activeView);
+  const uploadSetupWarning = setupGapWarning(engagement);
   function onNavigate(key: NavKey) {
     if (key === "dashboard") setActiveView({ name: "dashboard" });
     else if (key === "setup") setActiveView({ name: "setup" });
@@ -1345,6 +1337,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         )}
         {uploadOpen ? (
           <UploadDialog
+            setupWarning={uploadSetupWarning}
             onClose={() => setUploadOpen(false)}
             onUploadFiles={uploadFiles}
             onUploadSample={dataMode === "fixture" ? runSampleUpload : undefined}
@@ -1588,3 +1581,12 @@ const STATE_ENUMERATION_ROWS: Array<{
     ],
   },
 ];
+
+/** Upload is never blocked, but without a period and facilities documents cannot be placed or checked against the year. */
+export function setupGapWarning(config: EngagementConfig): string | null {
+  const noPeriod = !config.reportingPeriod.start || !config.reportingPeriod.end;
+  const noFacilities = config.facilities.length === 0;
+  if (!noPeriod && !noFacilities) return null;
+  const missing = noPeriod && noFacilities ? "the reporting period and facilities" : noPeriod ? "the reporting period" : "facilities";
+  return `Add ${missing} first, so documents can be placed on facilities and checked against the year.`;
+}

@@ -223,7 +223,7 @@ describe("halted documents (unreadable / unsupported)", () => {
     const run = { status: "partial", candidate_count: 0, target_count: 0,
       halt_reason: { code: "unsupported_document", message: "Unsupported document type: ..." } };
     expect(mapBackendDocumentToEvidenceItem(DOCUMENT, run).haltReason).toBe(
-      "Document type not recognised. Choose its type on Evidence and it is read again."
+      "We couldn't tell what kind of document this is. Choose its type in Evidence."
     );
   });
 
@@ -237,6 +237,6 @@ describe("halted documents (unreadable / unsupported)", () => {
     expect(userFacingApiError(new ApiError(422, "Unreadable document: no text could be extracted ...", null, null)))
       .toBe("File could not be read.");
     expect(userFacingApiError(new ApiError(422, "Unsupported document type: it does not match ...", null, null)))
-      .toBe("Document type not recognised. Choose its type on Evidence and it is read again.");
+      .toBe("We couldn't tell what kind of document this is. Choose its type in Evidence.");
   });
 });
