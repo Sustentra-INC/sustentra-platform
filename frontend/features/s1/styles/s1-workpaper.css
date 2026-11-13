@@ -3520,45 +3520,69 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-et-bar { display: flex; gap: var(--sp-4); justify-content: flex-end; font-size: var(--text-sm); }
 .s1-et-node { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card); }
 .s1-et-node .s1-et-node { border-radius: 0; border-width: var(--hairline-width) 0 0 0; }
+/* One rhythm for every row of the tree: the same height, one indent step per level (the width of
+   the caret and its gap, so a child's caret sits under its parent's title), and the same right-hand
+   columns, so counts, bars, "% accepted" and actions line up from the blocks down to the files. */
+.s1-et { --et-step: calc(1rem + var(--sp-2)); --et-row: 2.75rem; }
 .s1-et-head {
   display: grid; grid-template-columns: minmax(12rem, 1fr) 7rem minmax(6rem, 10rem) 7.5rem 5.5rem;
-  align-items: center; gap: var(--sp-3); padding-inline-end: var(--sp-3);
+  align-items: center; gap: var(--sp-3); padding-inline-end: var(--sp-3); min-height: var(--et-row);
 }
 .s1-et-toggle {
-  display: flex; align-items: center; gap: var(--sp-2); min-width: 0; padding: var(--sp-2) var(--sp-3);
+  display: flex; align-items: center; gap: var(--sp-2); min-width: 0; align-self: stretch;
+  padding: 0 var(--sp-3) 0 calc(var(--sp-3) + var(--et-depth, 0) * var(--et-step));
   border: 0; background: none; font: inherit; color: var(--ink); text-align: left; cursor: pointer;
 }
 .s1-et-toggle:hover { background: var(--accent-softer); }
 .s1-et-toggle:focus-visible { outline: var(--focus-ring); outline-offset: calc(-1 * var(--focus-offset)); }
-.s1-et-node--d1 > .s1-et-head .s1-et-toggle { padding-inline-start: var(--sp-5); }
-.s1-et-node--d2 > .s1-et-head .s1-et-toggle { padding-inline-start: var(--sp-6); }
-.s1-et-node--d3 > .s1-et-head .s1-et-toggle { padding-inline-start: calc(var(--sp-6) + var(--sp-4)); }
-.s1-et-node--d4 > .s1-et-head .s1-et-toggle { padding-inline-start: calc(var(--sp-6) + var(--sp-5)); }
-.s1-et-node--d0 > .s1-et-head .s1-et-title { font-weight: var(--weight-strong); }
+.s1-et-node--d0 { --et-depth: 0; }
+.s1-et-node--d1 { --et-depth: 1; }
+.s1-et-node--d2 { --et-depth: 2; }
+.s1-et-node--d3 { --et-depth: 3; }
+.s1-et-node--d4 { --et-depth: 4; }
+/* Weight marks structure only: the blocks and the emission categories. Scopes are small group
+   labels; fuels, lines and files are plain text. */
+.s1-et-node--d0 > .s1-et-head .s1-et-title,
+.s1-et-node--d2 > .s1-et-head .s1-et-title { font-weight: var(--weight-strong); }
+.s1-et-node--d1 > .s1-et-head .s1-et-title {
+  font-size: var(--text-sm); font-weight: var(--weight-strong); color: var(--ink-2); text-transform: uppercase; letter-spacing: 0.03em;
+}
 .s1-et-caret { width: 1rem; height: 1rem; flex: none; color: var(--ink-3); transition: transform 0.2s var(--ease-out); }
 .s1-et-node.is-open > .s1-et-head .s1-et-caret { transform: rotate(90deg); color: var(--accent); }
-.s1-et-title { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); min-width: 0; }
-.s1-et-sub { font-size: var(--text-sm); color: var(--ink-3); font-weight: var(--weight-regular); }
-.s1-et-n { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.s1-et-title { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); min-width: 0; font-weight: var(--weight-regular); }
+.s1-et-sub { font-size: var(--text-sm); color: var(--ink-3); font-weight: var(--weight-regular); text-transform: none; letter-spacing: 0; }
+.s1-et-n { font-size: var(--text-sm); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.s1-et .s1-ws-gr__pct { font-weight: var(--weight-regular); color: var(--ink-2); }
 .s1-et-bar-track { min-width: 0; }
 .s1-et-fill { grid-column: 2 / 5; }
 .s1-et-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-1); }
+.s1-et-actions .s1-icon-tile { width: 2rem; height: 2rem; }
+.s1-et-actions .s1-icon-tile svg { width: 1.125rem; height: 1.125rem; }
 .s1-et-body { border-top: var(--border-hairline); }
 .s1-et-docs { display: flex; flex-direction: column; }
+/* A file sits one level below its fold, its name under the fold's title; what is known about it
+   follows the name, and "n of N accepted" and the row menu share the fold's right-hand columns. */
 .s1-et-doc {
-  display: grid; grid-template-columns: minmax(10rem, 1.2fr) minmax(10rem, 2fr) 9rem 2.5rem; align-items: center; gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-6); border-top: var(--border-hairline); min-height: var(--row-height-compact);
+  display: grid; grid-template-columns: fit-content(50%) minmax(0, 1fr) 7.5rem 5.5rem; align-items: center; gap: var(--sp-3);
+  padding: 0 var(--sp-3) 0 calc(var(--sp-3) + (var(--et-depth, 0) + 1) * var(--et-step) + var(--et-step));
+  border-top: var(--border-hairline); min-height: var(--et-row);
 }
+.s1-et-doc .s1-doc-link { font-weight: var(--weight-regular); }
+.s1-et-doc > .s1-action-menu, .s1-et-doc > :last-child { justify-self: end; }
 .s1-et-body > .s1-et-docs > .s1-et-doc:first-child { border-top: 0; }
-.s1-et-doc__meta { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); font-size: var(--text-sm); color: var(--ink-2); }
+.s1-et-doc__meta { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-3); font-size: var(--text-sm); color: var(--ink-3); }
 .s1-et-doc__vals { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; }
-.s1-et-none { margin: 0; padding: var(--sp-2) var(--sp-6); font-size: var(--text-sm); color: var(--ink-3); }
+.s1-et-none {
+  margin: 0; padding: var(--sp-2) var(--sp-3) var(--sp-2) calc(var(--sp-3) + (var(--et-depth, 0) + 2) * var(--et-step));
+  font-size: var(--text-sm); color: var(--ink-3);
+}
 .s1-et-add {
-  display: inline-flex; align-items: center; gap: var(--sp-1); margin: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-6);
+  display: inline-flex; align-items: center; gap: var(--sp-1); align-self: flex-start;
+  margin: 0; padding: var(--sp-2) var(--sp-3) var(--sp-2) calc(var(--sp-3) + (var(--et-depth, 0) + 1) * var(--et-step));
   border: 0; background: none; font: inherit; font-size: var(--text-sm); color: var(--accent); cursor: pointer;
 }
 .s1-et-add svg { width: 1rem; height: 1rem; }
-.s1-et-add:hover { color: var(--accent-strong); }
+.s1-et-add:hover { color: var(--accent-strong); text-decoration: underline; }
 .s1-icon-button {
   display: inline-grid; place-items: center; width: 2rem; height: 2rem; border: 0; border-radius: var(--radius-input);
   background: none; color: var(--accent); cursor: pointer;
