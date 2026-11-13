@@ -15,6 +15,19 @@ directories that share children) cannot make the work outgrow the file. On top o
 - Attachments are listed with their bytes (``attach_method`` 1) or without them (a link to a
   file, an embedded object). An embedded message (method 5) is read as a nested package, to
   ``MAX_DEPTH`` levels; a deeper one is named in a note and never opened. Nothing is run.
+- An encrypted message is refused as ``password_protected`` (the .eml reader's sentence), before
+  any of its text is decoded, when it is the message itself: an S/MIME message (class
+  ``IPM.Note.SMIME``, but not the clear-signed ``.MultipartSigned``) with an attachment whose
+  first ``_OID_WINDOW`` bytes carry the CMS enveloped-data or authEnveloped-data OID, or a
+  rights-protected one (a class containing ``.rpmsg``, or a by-value ``message.rpmsg``). An
+  encrypted message embedded in another is listed as not read, and the covering message is read.
+  An opaque-signed one (signed-data) is read like any other, its ``smime.p7m`` listed.
+- A clear-signed message (``IPM.Note.SMIME.MultipartSigned``) keeps its MIME text in the
+  attachment tagged ``multipart/signed``. That is read by the .eml reader, under this message's
+  own budgets (parts, lines, text, forwarded levels): its attachments and forwarded messages take
+  the wrapper's place in the listing, its text is the message text when the MAPI body is blank,
+  and the wrapper is never listed, unless the .eml reader refuses it ("could not be read"). A
+  wrapper that is itself encrypted (signed after it was encrypted) makes the message encrypted.
 - ``read_msg`` raises ``EmailError`` and nothing else. A container ``OleFile`` refuses (or a
   stream it cannot read) is ``email_load_failed``, raised without a cause; only a failure this
   reader did not foresee carries one (``__cause__``), which the fuzz tests treat as a bug.
@@ -28,12 +41,16 @@ is the one refused:
    message, so it also makes ``OleFile`` claim the mini stream, the container of the small
    streams, before any other stream; the reader does not reach into ``OleFile`` to do that
    earlier, as a large property stream gains nothing from it);
-2. the subject; the sender; the recipients in storage-name order (each one's property stream,
-   then its strings), or the display To and Cc when there are none; the transport headers or the
-   times (Sent); the message id;
-3. the plain body, then the HTML body only when the plain one is blank;
-4. the attachments in storage-name order: each one's property stream, its names, then its data
-   (an embedded message is read there, in the same order, one level down).
+2. the subject; the message class; the property streams of the attachments in storage-name order
+   (up to the parts limit); then, to tell whether the message is encrypted, each by-value
+   attachment's name and, for an S/MIME message, its data. An encrypted message stops here;
+3. the sender; the recipients in storage-name order (each one's property stream, then its
+   strings), or the display To and Cc when there are none; the transport headers or the times
+   (Sent); the message id;
+4. the plain body, then the HTML body only when the plain one is blank;
+5. a clear-signed message's wrapper (its data, read as an email);
+6. the attachments in storage-name order: each one's names, then its data (an embedded message
+   is read there, in the same order, one level down).
 
 A stream that is never read (the HTML body of a message with a plain one, a Bcc recipient's
 strings, anything past a cap) claims nothing, so sharing sectors with it is not noticed.
@@ -49,12 +66,15 @@ from email.utils import format_datetime
 
 from backend.app.adapters.parsers.email_reader import (
     DAMAGED_EMAIL,
+    ENCRYPTED_EMAIL,
     MAX_BODY_CHARS,
     MAX_DEPTH,
+    MAX_PARTS,
     SHOWN_HEADER_CHARS,
     EmailError,
     EmailPackage,
     EmailPart,
+    _CMS_ENCRYPTED_OIDS,
     _closing_notes,
     _safe_name,
     _tidy,
@@ -64,6 +84,7 @@ from backend.app.adapters.parsers.email_reader import (
     header_text,
     html_to_text,
     mailbox,
+    read_eml_within,
     too_deep_note,
 )
 from backend.app.adapters.parsers.ole import STORAGE, STREAM, OleEntry, OleError, OleFile
@@ -95,6 +116,18 @@ _RECIPIENT_TYPE, _DISPLAY_NAME, _RECIPIENT_SMTP, _EMAIL_ADDRESS, _ADDRESS_TYPE =
 _ATTACH_METHOD, _ATTACH_DATA, _LONG_FILENAME, _FILENAME = 0x3705, 0x3701, 0x3707, 0x3704
 _MIME_TAG, _CONTENT_ID, _ATTACH_FLAGS, _HIDDEN, _ATTACH_SIZE = 0x370E, 0x3712, 0x3714, 0x7FFE, 0x0E20
 _RENDERED_IN_BODY = 0x4  # [MS-OXCMSG] 2.2.2.9: attach flags, the attachment is referenced by the HTML body
+_MESSAGE_CLASS = 0x001A
+
+# What makes a message encrypted or signed, by class ([MS-OXOSMIME]: S/MIME; [MS-OXORMMS]: rights
+# protection), compared in lower case.
+_SMIME_CLASS = ("ipm", "note", "smime")  # opaque-signed or encrypted: the attachment's CMS data tells which
+_CLEAR_SIGNED_CLASS = (*_SMIME_CLASS, "multipartsigned")  # signed, the MIME text kept whole in an attachment
+_RIGHTS_PROTECTED = ".rpmsg"  # in the class of a rights-protected message
+_RIGHTS_PROTECTED_ATTACHMENT = "message.rpmsg"  # the protected message, in a cover message of class IPM.Note
+_CLEAR_SIGNED_TAG = "multipart/signed"  # the MIME tag of the attachment that holds it
+_OID_WINDOW = 64  # bytes of an S/MIME attachment looked at for the CMS content-type OID
+_FORWARD_ENCRYPTED = "the forwarded message is encrypted"
+_FORWARD_FAILED = "the forwarded message could not be read"
 
 # The fixed-size properties the reader uses; every other entry is passed over.
 _FIXED = frozenset(
@@ -133,6 +166,8 @@ def _read(data: bytes) -> EmailPackage:
     walk = _Walk()
     props = _Props(ole, root, _TOP_HEADER)
     package = _message(ole, root, props, props.header(_SUBJECT), depth=0, walk=walk, path=[])
+    if package is None:
+        raise EmailError("password_protected", ENCRYPTED_EMAIL)
     _closing_notes(package, walk)
     return package
 
@@ -207,14 +242,78 @@ def _decode(raw: bytes, codec: str, limit: int) -> tuple[str, bool]:
 
 # --- the message --------------------------------------------------------------------------------
 def _message(ole: OleFile, storage: OleEntry, props: _Props, subject: str, *, depth: int, walk: _Walk,
-             path: list[str]) -> EmailPackage:
+             path: list[str]) -> EmailPackage | None:
+    """The message read, or None when it is encrypted (the caller says so: refuses the file, or
+    lists the embedded message as not read)."""
+
+    attached = _attached(ole, storage, props)
+    kind = _message_class(props)
+    if _encrypted(ole, kind, attached):  # before any text is decoded
+        return None
     sender = _sender(props)
     to, cc = _recipients(ole, storage, props)
     package = EmailPackage(
         subject=subject, sender=sender, to=to, cc=cc, sent_at=_sent(props), message_id=props.header(_MESSAGE_ID))
     package.body_text, package.body_source = _body(props, walk)
-    _attachments(ole, storage, props, package, depth=depth, walk=walk, path=path)
+    signed = _clear_signed(ole, kind, attached)
+    adopted = False
+    if signed is not None:
+        try:
+            wrapper = read_eml_within(attached[signed][1].stream(_ATTACH_DATA, _BINARY) or b"", walk, depth=depth,
+                                      path=path)
+        except EmailError as refused:
+            if refused.code == "password_protected":  # signed after it was encrypted
+                return None
+        else:  # its parts take the wrapper's place; its text stands in for a blank MAPI body
+            adopted = True
+            if not package.body_text.strip() and wrapper.body_text.strip():
+                package.body_text, package.body_source = wrapper.body_text, wrapper.body_source
+            package.attachments += wrapper.attachments
+            package.nested += wrapper.nested
+            package.notes += wrapper.notes
+    _attachments(ole, package, attached, signed=signed, adopted=adopted, depth=depth, walk=walk, path=path)
     return package
+
+
+def _message_class(props: _Props) -> str:
+    """PidTagMessageClass in lower case (message classes compare without regard to case)."""
+
+    return props.text(_MESSAGE_CLASS, 255).strip().lower()
+
+
+def _encrypted(ole: OleFile, kind: str, attached: list[tuple[OleEntry, _Props]]) -> bool:
+    """True when the message itself is encrypted: a rights-protected one (its class, or a cover
+    message with the protected message attached by value), or an S/MIME one that is not
+    clear-signed with an attachment of enveloped or authEnveloped CMS data (looked for in the
+    first ``_OID_WINDOW`` bytes; signed-data is a signed message, which is read). An encrypted
+    message *embedded* in this one is no concern of this check: it is listed on its own."""
+
+    if _RIGHTS_PROTECTED in kind:
+        return True
+    parts = tuple(kind.split("."))
+    smime = parts[:3] == _SMIME_CLASS and parts[:4] != _CLEAR_SIGNED_CLASS
+    for entry, attach in attached[:MAX_PARTS]:
+        if _method(ole, entry, attach) != 1:
+            continue
+        if _attachment_name(attach).strip().lower() == _RIGHTS_PROTECTED_ATTACHMENT:
+            return True
+        if smime:
+            head = (attach.stream(_ATTACH_DATA, _BINARY) or b"")[:_OID_WINDOW]
+            if any(oid in head for oid in _CMS_ENCRYPTED_OIDS):
+                return True
+    return False
+
+
+def _clear_signed(ole: OleFile, kind: str, attached: list[tuple[OleEntry, _Props]]) -> int | None:
+    """Which attachment (by position) holds the MIME text of a clear-signed message: the first
+    by-value one tagged ``multipart/signed``. None for any other message."""
+
+    if tuple(kind.split("."))[:4] != _CLEAR_SIGNED_CLASS:
+        return None
+    for index, (entry, attach) in enumerate(attached[:MAX_PARTS]):
+        if _method(ole, entry, attach) == 1 and _mime_tag(attach) == _CLEAR_SIGNED_TAG:
+            return index
+    return None
 
 
 def _sender(props: _Props) -> str:
@@ -315,32 +414,67 @@ def _body(props: _Props, walk: _Walk) -> tuple[str, str]:
 
 
 # --- attachments --------------------------------------------------------------------------------
-def _attachments(ole: OleFile, storage: OleEntry, props: _Props, package: EmailPackage, *, depth: int,
-                 walk: _Walk, path: list[str]) -> None:
+def _attached(ole: OleFile, storage: OleEntry, message: _Props) -> list[tuple[OleEntry, _Props]]:
+    """The attachment storages of a message in storage-name order, each with its properties: the
+    first ``MAX_PARTS`` and the one that trips the parts limit (``_attachments`` notes that)."""
+
+    found: list[tuple[OleEntry, _Props]] = []
     for entry in ole.children(storage):
         if entry.kind != STORAGE or not entry.name.upper().startswith(_ATTACHMENT):
             continue
+        if len(found) > MAX_PARTS:
+            break
+        found.append((entry, _Props(ole, entry, _CHILD_HEADER, message.codec)))  # its message's code page
+    return found
+
+
+def _attachments(ole: OleFile, package: EmailPackage, attached: list[tuple[OleEntry, _Props]], *, signed: int | None,
+                 adopted: bool, depth: int, walk: _Walk, path: list[str]) -> None:
+    """List the attachments. The clear-signed wrapper (position ``signed``) is not listed when its
+    parts were ``adopted``; when the .eml reader refused it, it is listed as not read."""
+
+    for index, (entry, attach) in enumerate(attached):
         if not walk.take():
             return
-        _attachment(ole, entry, props, package, depth=depth, walk=walk, path=path)
+        if index == signed and adopted:
+            continue
+        _attachment(ole, entry, attach, package, depth=depth, walk=walk, path=path)
+        if index == signed:
+            package.attachments[-1].note = _FORWARD_FAILED
 
 
-def _attachment(ole: OleFile, entry: OleEntry, message: _Props, package: EmailPackage, *, depth: int,
-                walk: _Walk, path: list[str]) -> None:
-    attach = _Props(ole, entry, _CHILD_HEADER, message.codec)
+def _method(ole: OleFile, entry: OleEntry, attach: _Props) -> int:
+    """PidTagAttachMethod; with none stated, by value (1) when the attachment has data, else 0."""
+
     method = attach.number(_ATTACH_METHOD)
-    if method is None:  # no method stated: by value when it has data
+    if method is None:
         method = 1 if ole.child(entry, f"__substg1.0_{_ATTACH_DATA:04X}{_BINARY}") is not None else 0
+    return method
+
+
+def _attachment_name(attach: _Props) -> str:
+    return attach.text(_LONG_FILENAME, _NAME_CHARS) or attach.text(_FILENAME, _NAME_CHARS) or attach.text(
+        _DISPLAY_NAME, _NAME_CHARS)
+
+
+def _mime_tag(attach: _Props) -> str:
+    """PidTagAttachMimeTag in lower case; empty when it is not a MIME type."""
+
+    mime = header_text(attach.text(_MIME_TAG, 255)).lower()
+    return mime if _MIME_TYPE.fullmatch(mime) else ""
+
+
+def _attachment(ole: OleFile, entry: OleEntry, attach: _Props, package: EmailPackage, *, depth: int,
+                walk: _Walk, path: list[str]) -> None:
+    method = _method(ole, entry, attach)
     if method == 0:  # no attachment
         return
     if method == 5:
         _embedded(ole, entry, attach, package, depth=depth, walk=walk, path=path)
         return
-    raw = attach.text(_LONG_FILENAME, _NAME_CHARS) or attach.text(_FILENAME, _NAME_CHARS) or attach.text(
-        _DISPLAY_NAME, _NAME_CHARS)
+    raw = _attachment_name(attach)
     declared = attach.number(_ATTACH_SIZE)
-    mime = header_text(attach.text(_MIME_TAG, 255)).lower()
-    mime = mime if _MIME_TYPE.fullmatch(mime) else ""
+    mime = _mime_tag(attach)
     name = _safe_name(raw, mime or "application/octet-stream", len(package.attachments) + 1)
     content_type = mime or _guess_type(name)
     part = EmailPart(name=name, content_type=content_type, data=b"", path=list(path),
@@ -369,17 +503,20 @@ def _embedded(ole: OleFile, entry: OleEntry, attach: _Props, package: EmailPacka
     storage = ole.child(entry, _EMBEDDED_MESSAGE)
     inner = _Props(ole, storage, _EMBEDDED_HEADER) if storage is not None and storage.kind == STORAGE else None
     subject = "" if inner is None else inner.header(_SUBJECT)
+    reason = _FORWARD_FAILED
     if storage is not None and inner is not None and inner.has_properties:
         label = subject or "Forwarded message"
         if depth + 1 > MAX_DEPTH:  # named, never opened
             package.notes.append(too_deep_note(label))
             return
-        package.nested.append(
-            _message(ole, storage, inner, subject, depth=depth + 1, walk=walk, path=[*path, label]))
-        return
+        nested = _message(ole, storage, inner, subject, depth=depth + 1, walk=walk, path=[*path, label])
+        if nested is not None:
+            package.nested.append(nested)
+            return
+        reason = _FORWARD_ENCRYPTED  # listed with its size as the attachment states it; the cover is read
     title = " ".join(subject.replace("/", " ").replace("\\", " ").split()) or "message"
     declared = attach.number(_ATTACH_SIZE)
     package.attachments.append(EmailPart(
         name=_safe_name(f"{title}.msg", "application/vnd.ms-outlook", len(package.attachments) + 1),
         content_type="application/vnd.ms-outlook", data=b"", path=list(path),
-        note="the forwarded message could not be read", declared_size=declared if declared and declared > 0 else None))
+        note=reason, declared_size=declared if declared and declared > 0 else None))
