@@ -1315,7 +1315,7 @@ select:focus-visible,
 .s1-setup-field { display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); color: var(--ink-2); }
 .s1-setup-inline { display: flex; align-items: flex-end; gap: var(--sp-2); --setup-control-h: 2.5rem; }
 .s1-setup-field input, .s1-setup-field select, .s1-setup-inline > .s1-button { box-sizing: border-box; min-height: var(--setup-control-h); }
-.s1-setup-inline > .s1-button { font-size: var(--text-sm); white-space: nowrap; }
+.s1-setup-inline > .s1-button { white-space: nowrap; }
 .s1-setup-inline > .s1-linklike, .s1-setup-inline > .s1-muted { display: inline-flex; align-items: center; min-height: var(--setup-control-h); }
 .s1-setup-field--name { flex: 0 1 20rem; min-width: 0; }
 .s1-setup-hint { font-size: var(--text-sm); color: var(--ink-3); }
