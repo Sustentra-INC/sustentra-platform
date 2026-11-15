@@ -70,6 +70,25 @@ describe("frontend contract checks", () => {
     expect(offenders).toEqual([]);
   });
 
+  // docs/design_standard.md, section 2: bold is for structure. The last declaration wins, so read the cascade's end.
+  it("keeps values, counts and links regular weight, and the schedule title at the page-title size", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    const last = (selector: string, prop: string) => {
+      let found: string | undefined;
+      postcss.parse(css).walkRules((rule) => {
+        if (!rule.selectors.includes(selector)) return;
+        rule.walkDecls(prop, (d) => {
+          found = d.value;
+        });
+      });
+      return found;
+    };
+    for (const sel of [".s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__value", ".s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__n", ".s1-xr-node__count", ".s1-xr-card .s1-xr-val", ".s1-backlink"]) {
+      expect(last(sel, "font-weight"), sel).toBe("var(--weight-regular)");
+    }
+    expect(last(".s1-sch-head__id h1", "font-size")).toBe("var(--text-lg)");
+  });
+
   // docs/design_standard.md, section 4: text reads at 4.5:1 or better on every surface it sits on.
   it("keeps text colours legible on every surface (WCAG AA, 4.5:1)", () => {
     const tokens = readFileSync(join(process.cwd(), "features", "s1", "styles", "sustentra-tokens.css"), "utf8");

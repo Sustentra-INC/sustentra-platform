@@ -717,7 +717,7 @@ describe("the supporting schedule", () => {
     const props = renderSchedule();
     fireEvent.click(await screen.findByRole("button", { name: "Open calculation line ›" }));
     expect(props.onOpenCalculationLine).toHaveBeenCalledWith(KENT.key);
-    fireEvent.click(screen.getAllByRole("button", { name: /Back to Evidence|^Evidence$/ })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /Back to evidence|^Evidence$/i })[0]);
     expect(props.onBack).toHaveBeenCalled();
   });
 

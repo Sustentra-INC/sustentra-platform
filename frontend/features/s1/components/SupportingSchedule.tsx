@@ -94,7 +94,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
   if (problem) {
     return (
       <section className="s1-content s1-sch">
-        <button className="s1-linklike" type="button" onClick={onBack}>
+        <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
           ‹ Back to {backLabel}
         </button>
         <div className="s1-system-banner" role="alert">
@@ -151,7 +151,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
           {year ? <p className="s1-muted">Reporting year {year}</p> : null}
         </div>
         <div className="s1-sch-head__actions">
-          <button className="s1-linklike" type="button" onClick={onBack}>
+          <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
             ‹ Back to {backLabel}
           </button>
           {schedule.calculated === false ? (
