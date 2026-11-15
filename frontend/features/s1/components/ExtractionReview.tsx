@@ -526,6 +526,20 @@ export function ExtractionReview({
   });
   const listed = groups.flatMap((g) => g.capped);
 
+  // Opening the page on a document (in the app, or from a link or a reload) brings the selected
+  // card into view once. Without this, the card could sit below other documents' cards, out of sight.
+  const scrolledFor = useRef<string | null>(null);
+  useEffect(() => {
+    const opening = `${initialDocumentId ?? ""}|${initialValueId ?? ""}`;
+    if (!selectedId || scrolledFor.current === opening) return;
+    scrolledFor.current = opening;
+    const id = typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(selectedId) : selectedId;
+    const frame = window.requestAnimationFrame(() => {
+      valuesPane.current?.querySelector<HTMLElement>(`[data-value-id="${id}"]`)?.scrollIntoView?.({ block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedId, initialDocumentId, initialValueId]);
+
   // The selected value's document, drawn with its values marked (the demo's drawing, or the
   // uploaded file's pages or content). Whenever it is drawn, the key above the cards says what
   // its marks mean and how many values were read.
