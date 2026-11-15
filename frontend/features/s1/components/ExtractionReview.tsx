@@ -52,6 +52,8 @@ interface ExtractionReviewProps {
   /** The engagement's asks: a card added to requests says whether its request was sent. */
   asks?: Ask[];
   onBack: () => void;
+  /** Where the back link goes ("evidence", "schedule", "dashboard", ...). */
+  backLabel?: string;
   /** Render the real source page for a document (else a facsimile is drawn).
    *  `onPickBox` lets a clicked highlight on the page select its value card (by its id
    *  when the page knows it); `marks` are every value of the document that has a position.
@@ -105,6 +107,7 @@ export function ExtractionReview({
   serverRecordsActor = false,
   asks = NO_ASKS,
   onBack,
+  backLabel = "evidence",
   renderPage,
   reviewerName = "M. Osei",
   onPersistAccept,
@@ -550,7 +553,7 @@ export function ExtractionReview({
     return (
       <section className="s1-content s1-xr">
         <button className="s1-linklike" type="button" onClick={onBack}>
-          ‹ Back to evidence
+          ‹ Back to {backLabel}
         </button>
         <div className="s1-ws-empty">No values to review yet.</div>
       </section>
@@ -563,7 +566,7 @@ export function ExtractionReview({
         {/* Navigator */}
         <aside className="s1-xr-nav" aria-label="Navigator">
           <button className="s1-linklike s1-xr-back" type="button" onClick={onBack}>
-            ‹ Back to evidence
+            ‹ Back to {backLabel}
           </button>
           {tree.map((root) => (
             <div key={root.key} className="s1-xr-navgroup">

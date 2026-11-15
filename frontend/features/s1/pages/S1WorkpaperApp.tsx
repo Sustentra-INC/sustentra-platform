@@ -104,6 +104,7 @@ import { dashboardFigures, engagementActivity } from "../utils/engagementActivit
 import { SupportingSchedule } from "../components/SupportingSchedule";
 import { setDemoEngagement } from "../demo-backend/state";
 import { saveDocumentPlacement, type EvidenceLineSetting, type Placement } from "../api/evidenceTree";
+import { useViewHistory, viewLabel } from "../utils/viewHistory";
 import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
 import { ActivityDrawer } from "../components/ActivityDrawer";
 import { useBackendCoverage } from "../components/useBackendCoverage";
@@ -112,20 +113,6 @@ import { BackendMethodologyReview } from "../components/BackendMethodologyReview
 import { MethodologyReview } from "../components/MethodologyReview";
 import { emptyMethodologyReview, methodologyStated } from "../fixtures/methodology/methodologyReview";
 import type { MethodologyState } from "../types/methodology";
-
-type ActiveView =
-  | { name: "dashboard" }
-  | { name: "evidence" }
-  | { name: "setup" }
-  | { name: "requests" }
-  | { name: "coverage" }
-  | { name: "methodology" }
-  /** `lineKey` opens Verification with that calculation line expanded (Evidence's "Open calculation line"). */
-  | { name: "results"; lineKey?: string }
-  | { name: "output" }
-  | { name: "schedule"; lineKey: string }
-  | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string; valueId?: string }
-  | { name: "glossary"; previous: Exclude<ActiveView, { name: "glossary" }> };
 
 /** The files of the upload in progress (or just finished): the lines the Evidence banner lists,
  *  and the documents whose reads may still fail after the upload dialog has moved on. */
@@ -184,7 +171,6 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     () => true,
     () => false
   );
-  const [activeView, setActiveView] = useState<ActiveView>({ name: "dashboard" });
   // Which rows of the Evidence tree are open (null: the default). Kept here so it survives a visit
   // to a document or a schedule.
   const [evidenceTreeOpen, setEvidenceTreeOpen] = useState<string[] | null>(null);
@@ -237,6 +223,14 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   );
   // Backend mode: the org's engagements (S1-BE-002); null until loaded.
   const [engagements, setEngagements] = useState<BackendEngagement[] | null>(dataMode === "backend" ? null : []);
+
+  // In-app screens are mirrored into browser history, scoped to the engagement (see
+  // utils/viewHistory.ts), so Back and Forward step through them. `setActiveView` pushes an entry;
+  // `goBack` returns to the screen the user came from, and `backLabel` names it.
+  const history = useViewHistory(engagement.engagementId);
+  const { view: activeView, navigate: setActiveView, previous: previousView } = history;
+  const goBack = history.back;
+  const backLabel = previousView ? viewLabel(previousView) : "evidence";
 
   // Reference lists for Setup (backend mode): eGRID subregions for the facility picker and
   // the workbook's reported data points for the in-scope list.
@@ -385,7 +379,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       .then(() => listEngagements())
       .then((items) => {
         setEngagements(items);
-        const picked = pickEngagement(items);
+        const picked =
+          items.find((item) => item.id === history.requestedEngagement) ?? pickEngagement(items);
         if (picked) {
           setEngagement(engagementFromBackend(picked));
           rememberEngagement(picked.id);
@@ -680,6 +675,19 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       }, 1600 + i * 180);
     });
   }
+
+  // A document the URL or history names that this engagement doesn't have (any longer): open
+  // Evidence with a plain notice, never a blank page. Checked once the workspace has loaded.
+  const workspaceLoaded = dataMode !== "backend" || (demoState !== "loading" && !!engagement.engagementId);
+  useEffect(() => {
+    if (activeView.name !== "extraction" || !workspaceLoaded) return;
+    if (evidenceItems.some((i) => i.documentId === activeView.documentId)) return;
+    history.replaceView({ name: "evidence" });
+    queueMicrotask(() =>
+      setBackendError({ title: "Couldn't open that document", message: "That document is no longer in this engagement." })
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView, workspaceLoaded, evidenceItems]);
 
   const navCurrent: NavKey = navForView(activeView);
   const uploadSetupWarning = setupGapWarning(engagement);
@@ -1222,7 +1230,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           <SupportingSchedule
             engagementId={engagement.engagementId}
             lineKey={activeView.lineKey}
-            onBack={() => setActiveView({ name: "evidence" })}
+            onBack={() => goBack({ name: "evidence" })}
+            backLabel={backLabel}
+            onOpenEvidence={() => setActiveView({ name: "evidence" })}
+            onMissing={() => {
+              history.replaceView({ name: "evidence" });
+              setBackendError({ title: "Couldn't open that schedule", message: "That schedule is no longer in this engagement." });
+            }}
             onOpenDocument={openExtraction}
             onOpenCalculationLine={(key) => setActiveView(resultsViewForLine(key))}
             onError={handleSessionEnded}
@@ -1241,7 +1255,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onSaveAsk={requests.saveAsk}
             asks={requests.asks}
             serverRecordsActor={dataMode === "backend"}
-            onBack={() => setActiveView({ name: "evidence" })}
+            onBack={() => goBack({ name: "evidence" })}
+            backLabel={backLabel}
             reviewerName={dataMode === "backend" ? user?.firstName ?? user?.email : undefined}
             allowAddValue={dataMode === "fixture"}
             onValueAdded={(value, filled) => {
@@ -1333,7 +1348,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             }}
           />
         ) : (
-          <GlossaryPage onBack={() => setActiveView(activeView.previous)} />
+          <GlossaryPage onBack={() => goBack(activeView.previous)} />
         )}
         {uploadOpen ? (
           <UploadDialog

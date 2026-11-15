@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleRow } from "../api/evidenceTree";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
+import { ApiError } from "../../../lib/api";
 import { userFacingApiError } from "../api/s1Backend";
 import { ContainerStateSurface } from "./ContainerStateSurface";
 
@@ -19,6 +20,12 @@ export interface SupportingScheduleProps {
   engagementId: string;
   lineKey: string;
   onBack: () => void;
+  /** Where the back link goes ("evidence", "dashboard", ...); defaults to evidence. */
+  backLabel?: string;
+  /** The "Evidence" crumb always opens Evidence (default: the back link's action). */
+  onOpenEvidence?: () => void;
+  /** The line isn't in this engagement (the API answered 404). */
+  onMissing?: () => void;
   /** Opens a document in the extraction review, at one value when given. */
   onOpenDocument: (documentId: string, valueId?: string) => void;
   /** Goes to the line's calculation. Today that is Verification results; it will focus the line. */
@@ -51,7 +58,7 @@ const STATUS_ROLE: Record<CoverageStatus, string> = {
   no_document: "na",
 };
 
-export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocument, onOpenCalculationLine, onError }: SupportingScheduleProps) {
+export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = "evidence", onOpenEvidence, onMissing, onOpenDocument, onOpenCalculationLine, onError }: SupportingScheduleProps) {
   const [schedule, setSchedule] = useState<LineSchedule | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -71,6 +78,10 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
       })
       .catch((error: unknown) => {
         if (!live || onError?.(error)) return;
+        if (error instanceof ApiError && error.status === 404 && onMissing) {
+          onMissing();
+          return;
+        }
         setProblem(userFacingApiError(error));
       });
     return () => {
@@ -84,7 +95,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
     return (
       <section className="s1-content s1-sch">
         <button className="s1-linklike" type="button" onClick={onBack}>
-          ‹ Back to Evidence
+          ‹ Back to {backLabel}
         </button>
         <div className="s1-system-banner" role="alert">
           <strong>Couldn&apos;t load this schedule</strong>
@@ -124,7 +135,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
       <header className="s1-sch-head">
         <div className="s1-sch-head__id">
           <nav className="s1-sch-crumbs" aria-label="Breadcrumb">
-            <button className="s1-linklike" type="button" onClick={onBack}>
+            <button className="s1-linklike" type="button" onClick={onOpenEvidence ?? onBack}>
               Evidence
             </button>
             {crumbs.map((c, i) => (
@@ -141,7 +152,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, onOpenDocume
         </div>
         <div className="s1-sch-head__actions">
           <button className="s1-linklike" type="button" onClick={onBack}>
-            ‹ Back to Evidence
+            ‹ Back to {backLabel}
           </button>
           {schedule.calculated === false ? (
             <p className="s1-muted s1-sch-notcalc">
