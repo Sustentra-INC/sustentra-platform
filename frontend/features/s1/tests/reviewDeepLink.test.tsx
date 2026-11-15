@@ -105,3 +105,26 @@ describe("the real app in fixture mode", () => {
     vi.unstubAllEnvs();
   });
 });
+
+describe("opening a review brings the selected card into view", () => {
+  it("scrolls the linked value's card into view once, including after a reload", async () => {
+    const spy = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      const { container, rerender } = render(review([], { valueId: "candidate:account_number" }));
+      rerender(review(values(), { valueId: "candidate:account_number" }));
+      await new Promise((r) => window.requestAnimationFrame(() => r(null)));
+      expect(spy).toHaveBeenCalledTimes(1);
+      const card = spy.mock.contexts[0] as HTMLElement;
+      expect(card.getAttribute("data-value-id")).toBe(
+        container.querySelector(".s1-xr-card.is-sel")?.getAttribute("data-value-id")
+      );
+      rerender(review(values(), { valueId: "candidate:account_number" }));
+      await new Promise((r) => window.requestAnimationFrame(() => r(null)));
+      expect(spy).toHaveBeenCalledTimes(1);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+});
