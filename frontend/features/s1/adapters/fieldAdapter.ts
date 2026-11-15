@@ -97,17 +97,36 @@ export function encodeReviewCandidateToken(candidate: BackendExtractionCandidate
     source_reference: candidate.source_reference ?? null,
     validation_flags: candidate.validation_flags ?? [],
   });
-  if (typeof btoa === "function") return btoa(payload);
-  return Buffer.from(payload, "utf8").toString("base64");
+  return utf8ToBase64(payload);
 }
 
 export function decodeReviewCandidateToken(token: string): BackendExtractionCandidateLike | null {
   try {
-    const payload = typeof atob === "function" ? atob(token) : Buffer.from(token, "base64").toString("utf8");
-    return JSON.parse(payload) as BackendExtractionCandidateLike;
+    return JSON.parse(base64ToUtf8(token)) as BackendExtractionCandidateLike;
   } catch {
     return null;
   }
+}
+
+/** Base64 of the text's UTF-8 bytes. `btoa` alone takes Latin-1 only and throws on a value
+ *  such as "CO₂", "–" or "°F", which stopped the whole Evidence page from loading. */
+function utf8ToBase64(text: string): string {
+  if (typeof btoa === "function" && typeof TextEncoder === "function") {
+    let binary = "";
+    for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+  return Buffer.from(text, "utf8").toString("base64");
+}
+
+function base64ToUtf8(token: string): string {
+  if (typeof atob === "function" && typeof TextDecoder === "function") {
+    const binary = atob(token);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+  return Buffer.from(token, "base64").toString("utf8");
 }
 
 function mapAiAlternative(candidate: BackendExtractionCandidateLike): ExtractedField["aiAlternative"] {
