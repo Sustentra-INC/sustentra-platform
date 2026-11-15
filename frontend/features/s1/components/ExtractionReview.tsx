@@ -126,12 +126,21 @@ export function ExtractionReview({
     [items, initialDocumentId, initialNodeKey, initialValueId]
   );
 
-  // A document opened with no values: say so, rather than open another document's value.
-  const [unreadDocument] = useState<string | null>(() =>
-    initialDocumentId && !initialValueId && !items.some((v) => v.documentId === initialDocumentId) ? (initialDocumentName ?? "this document") : null
-  );
+  // A document with no values: say so, rather than open another document's value.
+  const docHasValues = (list: ReviewValue[]) => !initialDocumentId || list.some((v) => v.documentId === initialDocumentId);
+  const unreadDocument = !docHasValues(items) ? (initialDocumentName ?? "this document") : null;
   const [nodeKey, setNodeKey] = useState<string>(initial.nodeKey);
-  const [selectedId, setSelectedId] = useState<string | null>(unreadDocument ? null : initial.valueId);
+  const [selectedId, setSelectedId] = useState<string | null>(docHasValues(items) ? initial.valueId : null);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.rootKey ? [initial.rootKey] : []));
+  // A reload or a link opens this page before the workspace has loaded: the values arrive after
+  // mount. Pick the document, value and navigator node once they do, as the in-app path does.
+  const [seeded, setSeeded] = useState(items.length > 0);
+  if (!seeded && items.length > 0) {
+    setSeeded(true);
+    setNodeKey(initial.nodeKey);
+    setSelectedId(docHasValues(items) ? initial.valueId : null);
+    setExpanded(new Set(initial.rootKey ? [initial.rootKey] : []));
+  }
   const [filter, setFilter] = useState<ValueReviewState | null>(null);
   // A long document: show the values of one page at a time.
   const [pageFilter, setPageFilter] = useState<number | null>(null);
@@ -141,7 +150,6 @@ export function ExtractionReview({
   // A pick on the document asks the values pane to bring the picked card into view.
   const [scrollTo, setScrollTo] = useState<{ id: string; tick: number } | null>(null);
   const valuesPane = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.rootKey ? [initial.rootKey] : []));
   const [modalTarget, setModalTarget] = useState<AddToRequestsTarget | null>(null);
   // The values a request is for: every data point of the reading.
   const [requestIds, setRequestIds] = useState<string[]>([]);

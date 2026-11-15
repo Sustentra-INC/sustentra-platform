@@ -106,6 +106,7 @@ import { setDemoEngagement } from "../demo-backend/state";
 import { saveDocumentPlacement, type EvidenceLineSetting, type Placement } from "../api/evidenceTree";
 import { useViewHistory, viewLabel } from "../utils/viewHistory";
 import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
+import { ContainerStateSurface } from "../components/ContainerStateSurface";
 import { ActivityDrawer } from "../components/ActivityDrawer";
 import { useBackendCoverage } from "../components/useBackendCoverage";
 import { testedExaminationKeys } from "../utils/verificationTable";
@@ -1241,6 +1242,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onOpenCalculationLine={(key) => setActiveView(resultsViewForLine(key))}
             onError={handleSessionEnded}
           />
+        ) : activeView.name === "extraction" && !workspaceLoaded ? (
+          // Opened from a reload or a link: wait for the workspace, then pick the value.
+          <section className="s1-content">
+            <ContainerStateSurface state="loading" />
+          </section>
         ) : activeView.name === "extraction" ? (
           <ExtractionReview
             engagement={engagementForUser}
