@@ -1767,7 +1767,7 @@ input:focus-visible, select:focus-visible, textarea:focus-visible {
 .s1-app--fullscreen .s1-nav { flex: none; margin: var(--sp-3) var(--sp-4) 0; }
 .s1-app--fullscreen .s1-xr { flex: 1; min-height: 0; padding: 0; gap: 0; display: flex; }
 .s1-app--fullscreen .s1-xr-grid {
-  grid-template-columns: 15rem minmax(0, 1fr) 30rem;
+  grid-template-columns: 17rem minmax(0, 1fr) 30rem;
   flex: 1; height: auto; min-height: 0; border: 0; border-radius: 0;
   border-top: var(--border-hairline);
 }
@@ -2028,7 +2028,7 @@ html { font-size: 82%; }
    other screen, so entering/leaving extraction never shifts the layout.
    ========================================================================== */
 .s1-xr-grid {
-  grid-template-columns: 15rem minmax(0, 1fr) 26rem;
+  grid-template-columns: 17rem minmax(0, 1fr) 26rem;
   height: calc(100vh - 9rem); min-height: 34rem;
   border: var(--border-hairline); border-radius: var(--radius-card); overflow: hidden;
 }
@@ -3628,7 +3628,7 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 button.s1-sch-month { cursor: pointer; }
 button.s1-sch-month:hover { border-color: var(--accent); }
 button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.s1-sch-month__name { font-weight: var(--weight-strong); }
+.s1-sch-month__name { font-size: var(--text-md); font-weight: var(--weight-strong); }
 .s1-sch-month__status, .s1-sch-month__qty, .s1-sch-month__waiting { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .s1-sch-month--resolved { background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
 .s1-sch-month--active { background: var(--state-active-bg); border-color: var(--state-active-line); }
@@ -3644,7 +3644,7 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-sch-ids li { display: grid; grid-template-columns: 1fr auto; gap: 0 var(--sp-3); padding: var(--sp-2); border: var(--border-hairline); border-radius: var(--radius-input); }
 .s1-sch-ids li.is-partial { background: var(--state-open-bg); border-color: var(--state-open-line); }
 .s1-sch-ids__label { font-size: var(--text-sm); color: var(--ink-3); }
-.s1-sch-ids__value { grid-column: 1; font-weight: var(--weight-strong); overflow-wrap: break-word; word-break: normal; }
+.s1-sch-ids__value { grid-column: 1; overflow-wrap: break-word; word-break: normal; }
 .s1-sch-ids__value--short { white-space: nowrap; }
 .s1-sch-ids__n { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: var(--text-sm); color: var(--ink-2); }
 .s1-sch-ids__toggle { display: grid; grid-template-columns: auto max-content minmax(0, 1fr) auto; align-items: center; gap: var(--sp-2); width: 100%; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; }
@@ -3678,3 +3678,64 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-et-bar__fold { display: inline-flex; gap: var(--sp-4); }
 .s1-et-facility { display: inline-flex; align-items: center; gap: var(--sp-2); color: var(--ink-3); font-size: var(--text-sm); }
 .s1-sch-month__docs { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); }
+
+/* ===================================================================
+   Typography and width pass: Supporting schedule and Extraction review.
+   Three sizes, two weights: bold is for structure (titles, group names), never for
+   values, counts, chips or links. Placed last so it settles the layers above.
+   ========================================================================== */
+
+/* The back link: one small text-link style on every screen that has it. */
+.s1-backlink { align-self: flex-start; font-size: var(--text-sm); font-weight: var(--weight-regular); line-height: var(--leading-tight); color: var(--accent); text-decoration: none; white-space: nowrap; }
+.s1-backlink:hover:not(:disabled) { color: var(--accent-strong); text-decoration: underline; text-underline-offset: var(--underline-offset); }
+
+/* Schedule: the page title is the page-title size, like every other screen. */
+.s1-sch-head__id h1 { font-size: var(--text-lg); font-weight: var(--weight-strong); line-height: var(--leading-tight); }
+.s1-sch-head__actions { align-items: center; }
+.s1-sch-head__actions .s1-sch-notcalc { font-size: var(--text-sm); color: var(--ink-3); }
+
+/* Coverage tiles: 6 + 6 (4 x 3 on narrow widths); one size, one padding, the same height. */
+.s1-sch-cov { container-type: inline-size; }
+.s1-sch-months { grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: 1fr; }
+@container (max-width: 34rem) { .s1-sch-months { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.s1-sch-month { box-sizing: border-box; padding: var(--sp-2); }
+.s1-sch-month__name { font-size: var(--text-md); font-weight: var(--weight-strong); line-height: var(--leading-tight); }
+.s1-sch-month__status, .s1-sch-month__qty, .s1-sch-month__waiting { font-size: var(--text-sm); font-weight: var(--weight-regular); color: var(--ink-2); line-height: var(--leading-tight); }
+.s1-sch-month--na { color: var(--ink); }
+/* The legend: a dot and its words on one centre line. */
+.s1-sch-legend li { display: inline-flex; align-items: center; gap: var(--sp-2); line-height: var(--leading-tight); }
+.s1-sch-swatch { flex: none; vertical-align: baseline; }
+
+/* Source identifiers: label and count on one line, the value under the label, left-aligned. */
+.s1-sch-ids ul { gap: var(--sp-2); }
+.s1-sch-ids > ul > li { padding: var(--sp-2) var(--sp-3); }
+.s1-sch-ids__toggle { grid-template-columns: auto minmax(0, 1fr) auto; grid-template-areas: "caret label count" ". value value"; align-items: center; column-gap: var(--sp-2); row-gap: var(--sp-1); }
+.s1-sch-ids__toggle > svg { grid-area: caret; }
+.s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__label { grid-area: label; font-size: var(--text-sm); color: var(--ink-3); white-space: nowrap; }
+.s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__n { grid-area: count; font-size: var(--text-sm); font-weight: var(--weight-regular); color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__value { grid-area: value; font-size: var(--text-md); font-weight: var(--weight-regular); color: var(--ink); text-align: left; white-space: normal; overflow-wrap: break-word; line-height: var(--leading-tight); }
+.s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__value--short { white-space: nowrap; }
+.s1-sch-ids .s1-sch-ids__how { margin: var(--sp-1) 0 0; padding-left: calc(1rem + var(--sp-2)); font-size: var(--text-sm); color: var(--ink-3); }
+
+/* Extraction review navigator: group titles strong, counts regular small figures on the right. */
+.s1-xr-node { align-items: baseline; padding: var(--sp-2) var(--sp-4); font-size: var(--text-md); line-height: var(--leading-tight); }
+.s1-xr-node--root { font-weight: var(--weight-strong); }
+.s1-xr-node--child { padding-left: calc(var(--sp-4) + var(--sp-3) + var(--sp-2)); font-weight: var(--weight-regular); }
+.s1-xr-node__label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.s1-xr-node__count, .s1-xr-node--root .s1-xr-node__count { flex: none; min-width: var(--sp-5); font-size: var(--text-sm); font-weight: var(--weight-regular); color: var(--ink-2); font-variant-numeric: tabular-nums; text-align: right; }
+.s1-xr-node.is-dim .s1-xr-node__count { color: var(--state-resolved-fg); }
+.s1-xr-back { display: block; padding: var(--sp-2) var(--sp-4); }
+
+/* Document column: the page uses the column. A sheet fills it (and scrolls inside itself when
+   wider); a page or image scales to it up to a sensible limit. No empty gutters. */
+.s1-xr-src-body { justify-content: stretch; }
+.s1-xr-src-body .s1-xr-realpage, .s1-xr-src-body .s1-xr-realpage:has(.s1-dd) { max-width: 72rem; margin-inline: auto; }
+.s1-xr-src-body .s1-xr-realpage:has(.s1-dd-sheet) { max-width: none; }
+
+/* Value cards: field label md strong, value md regular, metadata small; one inner padding. */
+.s1-xr-card { gap: var(--sp-1); padding: var(--sp-3); }
+.s1-xr-card__top .s1-xr-what { font-size: var(--text-md); font-weight: var(--weight-strong); line-height: var(--leading-tight); }
+.s1-xr-card__top .s1-xr-period, .s1-xr-card .s1-xr-scope, .s1-xr-card .s1-xr-unit, .s1-xr-card .s1-xr-was { font-size: var(--text-sm); font-weight: var(--weight-regular); }
+.s1-xr-card .s1-xr-val, .s1-xr-card .s1-xr-missing { font-size: var(--text-md); font-weight: var(--weight-regular); line-height: var(--leading-tight); }
+.s1-xr-card .s1-xr-rec, .s1-xr-card .s1-xr-rec__act, .s1-xr-card .s1-xr-rec__who, .s1-xr-card .s1-xr-badge { font-size: var(--text-sm); font-weight: var(--weight-regular); }
+.s1-xr-card .s1-xr-rec__act { color: var(--ink-2); }

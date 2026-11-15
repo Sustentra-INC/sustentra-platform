@@ -552,7 +552,7 @@ export function ExtractionReview({
   if (items.length === 0) {
     return (
       <section className="s1-content s1-xr">
-        <button className="s1-linklike" type="button" onClick={onBack}>
+        <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
           ‹ Back to {backLabel}
         </button>
         <div className="s1-ws-empty">No values to review yet.</div>
@@ -565,7 +565,7 @@ export function ExtractionReview({
       <div className="s1-xr-grid">
         {/* Navigator */}
         <aside className="s1-xr-nav" aria-label="Navigator">
-          <button className="s1-linklike s1-xr-back" type="button" onClick={onBack}>
+          <button className="s1-linklike s1-backlink s1-xr-back" type="button" onClick={onBack}>
             ‹ Back to {backLabel}
           </button>
           {tree.map((root) => (
