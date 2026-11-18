@@ -78,7 +78,7 @@ def test_get_lists_every_field_pending_with_the_catalog_and_ai_off() -> None:
     gwp = next(c for c in body["catalog"] if c["field_id"] == "gwp")
     assert gwp["group"] == "gwp" and gwp["group_label"] == "GWP factors source"
     assert [p["key"] for p in gwp["parts"]] == ["set", "horizon"] and gwp["parts"][0]["allowed"] == ["AR4", "AR5", "AR6"]
-    assert "parts" not in next(c for c in body["catalog"] if c["field_id"] == "reporting_period")
+    assert "parts" not in next(c for c in body["catalog"] if c["field_id"] == "exclusion:boundary")
     assert body["row_groups"] == ["entities", "factor:scope1", "factor:scope2"]
     assert {"group": "boundary", "label": "Organizational boundary"} in body["groups"]
     assert next(c for c in body["catalog"] if c["field_id"] == "gwp")["allowed"]["set"] == ["AR4", "AR5", "AR6"]
@@ -129,12 +129,12 @@ def test_edit_accept_reject_and_revert_record_the_session_user_and_audit_each() 
 def test_refused_moves_answer_with_a_sentence_and_write_nothing() -> None:
     engagement = create()
     eid = engagement["id"]
-    assert act(eid, "reporting_period", "edit", {"value": "2025"}).status_code == 200
+    assert act(eid, "exclusion:boundary", "edit", {"value": "2025"}).status_code == 200
     before = events()
 
-    again = act(eid, "reporting_period", "accept")
+    again = act(eid, "exclusion:boundary", "accept")
     assert again.status_code == 409 and "already edited" in again.json()["detail"]
-    assert act(eid, "reporting_period", "reject", {"reason": "x"}).status_code == 409
+    assert act(eid, "exclusion:boundary", "reject", {"reason": "x"}).status_code == 409
     assert act(eid, "gwp", "revert").status_code == 409
     nothing = act(eid, "exclusion:boundary", "accept")
     assert nothing.status_code == 409 and "nothing to accept" in nothing.json()["detail"]
@@ -146,19 +146,19 @@ def test_refused_moves_answer_with_a_sentence_and_write_nothing() -> None:
     assert act(eid, "no_such_field", "accept").status_code == 404
     assert act(eid, "entity:abcd1234", "edit", {"value": {}}).status_code == 404
     assert len(events()) == len(before)
-    assert record(eid, "reporting_period")["decision"]["value"] == "2025"
+    assert record(eid, "exclusion:boundary")["decision"]["value"] == "2025"
     assert record(eid, "category:scope1:fugitive")["decision"] is None
     stored = asyncio.run(_admin("SELECT item_key FROM workpaper_items WHERE kind = 'methodology'"))
-    assert [r["item_key"] for r in stored] == ["reporting_period"]  # refused moves leave no rows behind
+    assert [r["item_key"] for r in stored] == ["exclusion:boundary"]  # refused moves leave no rows behind
 
 
 def test_a_client_cannot_name_the_actor_or_set_the_status() -> None:
     engagement = create()
     eid = engagement["id"]
-    assert act(eid, "reporting_period", "edit", {"value": "2025", "by": "Someone"}).status_code == 422
-    assert act(eid, "reporting_period", "edit", {"value": "2025", "status": "accepted"}).status_code == 422
-    assert act(eid, "reporting_period", "reject", {"reason": "r", "by": {"name": "x"}}).status_code == 422
-    assert act(eid, "reporting_period", "edit", {}).status_code == 422
+    assert act(eid, "exclusion:boundary", "edit", {"value": "2025", "by": "Someone"}).status_code == 422
+    assert act(eid, "exclusion:boundary", "edit", {"value": "2025", "status": "accepted"}).status_code == 422
+    assert act(eid, "exclusion:boundary", "reject", {"reason": "r", "by": {"name": "x"}}).status_code == 422
+    assert act(eid, "exclusion:boundary", "edit", {}).status_code == 422
     put = call("PUT", f"{BASE}/{eid}/workpaper-items/methodology/reporting_period", body={"payload": {"a": 1}})
     assert put.status_code == 422  # decisions are not saved around the actions
     assert call("GET", f"{BASE}/{eid}/workpaper-items?kind=methodology").json() == {"items": []}
@@ -220,31 +220,31 @@ def test_other_orgs_provider_admins_and_archived_engagements() -> None:
     engagement = create()
     eid = engagement["id"]
     field_id = add_row(eid).json()["field"]["field_id"]
-    assert act(eid, "reporting_period", "edit", {"value": "2025"}).status_code == 200
+    assert act(eid, "exclusion:boundary", "edit", {"value": "2025"}).status_code == 200
 
     assert review(eid, "b_member").status_code == 404
-    assert act(eid, "reporting_period", "edit", {"value": "x"}, token="b_member").status_code == 404
-    assert act(eid, "reporting_period", "revert", token="b_member").status_code == 404
+    assert act(eid, "exclusion:boundary", "edit", {"value": "x"}, token="b_member").status_code == 404
+    assert act(eid, "exclusion:boundary", "revert", token="b_member").status_code == 404
     assert add_row(eid, token="b_member").status_code == 404
     assert call("DELETE", f"{BASE}/{eid}/methodology-review/{field_id}", "b_member").status_code == 404
     assert review(eid, "provider").status_code == 200  # read-only
-    assert act(eid, "reporting_period", "revert", token="provider").status_code == 403
+    assert act(eid, "exclusion:boundary", "revert", token="provider").status_code == 403
     assert add_row(eid, token="provider").status_code == 403
     assert call("GET", f"{BASE}/{eid}/methodology-review", None).status_code == 401
 
     call("PATCH", f"{BASE}/{eid}", body={"status": "archived"})
-    assert act(eid, "reporting_period", "revert").status_code == 409
+    assert act(eid, "exclusion:boundary", "revert").status_code == 409
     assert act(eid, "gwp", "edit", {"value": {"set": "AR5", "horizon": "100-year"}}).status_code == 409
     assert add_row(eid).status_code == 409
     assert call("DELETE", f"{BASE}/{eid}/methodology-review/{field_id}").status_code == 409
     assert review(eid).status_code == 200  # still readable
-    assert record(eid, "reporting_period")["decision"]["status"] == "edited"
+    assert record(eid, "exclusion:boundary")["decision"]["status"] == "edited"
 
 
 def test_one_engagements_decisions_are_not_another_s() -> None:
     first, second = create(), create(name="Second")
-    act(first["id"], "reporting_period", "edit", {"value": "2025"})
-    assert record(second["id"], "reporting_period")["decision"] is None
+    act(first["id"], "exclusion:boundary", "edit", {"value": "2025"})
+    assert record(second["id"], "exclusion:boundary")["decision"] is None
 
 
 # --- optional rows: hidden until there is a value or the reviewer adds them ----------------------
@@ -293,7 +293,7 @@ def test_an_optional_row_is_hidden_until_a_suggestion_a_decision_or_add_an_item(
 
 def test_reveal_refuses_a_required_row_an_unknown_row_and_other_orgs(optional_field: str) -> None:
     eid = create()["id"]
-    refused = act(eid, "reporting_period", "reveal")
+    refused = act(eid, "exclusion:boundary", "reveal")
     assert refused.status_code == 422 and "always shown" in refused.json()["detail"]
     assert act(eid, "nope", "reveal").status_code == 404
     assert act(eid, "entity:abc123", "reveal").status_code == 404
@@ -337,7 +337,7 @@ def test_migration_0016_widens_the_kind_check_and_downgrade_restores_it() -> Non
     engagement = create()
     try:
         assert "methodology" in allowed_kinds()
-        act(engagement["id"], "reporting_period", "edit", {"value": "2025"})
+        act(engagement["id"], "exclusion:boundary", "edit", {"value": "2025"})
         alembic("downgrade", "0015")
         assert allowed_kinds() == {"ask", "finding", "examination", "document"}
         assert asyncio.run(_admin("SELECT count(*) AS n FROM workpaper_items WHERE kind = 'methodology'"))[0]["n"] == 0
