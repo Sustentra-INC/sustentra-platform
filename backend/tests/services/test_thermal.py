@@ -248,3 +248,74 @@ def test_a_sparse_district_heat_bill_is_not_lost_to_a_weak_vehicle_fuel_guess(tm
     read = _read(tmp_path, SPARSE_DISTRICT_HEAT)
     assert read["type"] == "CT-S2-THERMAL"
     assert read["values"]["energy_type"][0] == "hot_water"
+
+
+# --- the energy type comes from the usage line, never a stray word (EXT-014, N27) -------------
+
+TAGLINE = "Harborline District Energy\nSteam & chilled water utility - 60 Quay Way, Zürich\n"
+STEAM_SECTION = """Steam Consumption
+Meter | Start Read (Mlb) | End Read (Mlb) | Usage (Mlb) | Conversion | Usage (MMBtu)
+STM-17-B | 14,882.6 | 15,695.0 | 812.4 | 1.194 MMBtu / Mlb | 970.01
+Mlb = thousand pounds of steam.
+"""
+BILL_HEAD = "Account: HDE-00417\nService Location: Müller Käserei – Zürich Plant, 10 Quay Way\nFrom: 01/01/2025\nTo: 01/31/2025\n"
+RATE_CARD = "Rate card: chilled water $0.12 per ton-hour, district cooling services on request; boiler at 180 °F\n"
+
+
+def _extract(tmp_path: Path, text: str) -> dict[str, Any]:
+    path = tmp_path / "bill.txt"
+    path.write_text(text, encoding="utf-8")
+    return PipelineOrchestrationService(
+        pipeline_repository=InMemoryPipelineRunRepository(),
+        extraction_result_repository=InMemoryExtractionResultRepository(),
+    ).process_local_document(str(path), engagement_id="ENG", persist_run=False)
+
+
+def _energy(tmp_path: Path, text: str) -> list[tuple[Any, Any, Any]]:
+    """(energy type, quantity, unit) of every record, in a stable order."""
+
+    by_record: dict[Any, dict[str, Any]] = {}
+    for c in _extract(tmp_path, text)["extraction_result"]["items"]:
+        by_record.setdefault(c.get("record_index"), {})[c["field_name"]] = c
+    return sorted(
+        ((r["energy_type"]["normalized_value"], r["activity_quantity"]["normalized_value"],
+          r["activity_quantity"].get("unit")) for r in by_record.values()), key=str)
+
+
+@pytest.mark.parametrize("extra", ["", RATE_CARD, "Chilled water service is available at this campus.\n",
+                                   "Cooling tower makeup water is billed separately.\n"])
+def test_a_steam_bill_whose_letterhead_also_names_chilled_water_is_steam(tmp_path: Path, extra: str) -> None:
+    text = TAGLINE + BILL_HEAD + STEAM_SECTION + extra
+    assert _energy(tmp_path, text) == [("steam", pytest.approx(970.01), "MMBtu")]
+
+
+@pytest.mark.parametrize("unit", ["Mlb", "klb", "lb"])
+def test_steam_by_weight_is_steam_whatever_else_the_bill_names(tmp_path: Path, unit: str) -> None:
+    text = TAGLINE + BILL_HEAD + f"Total Usage: 812.4 {unit}\n" + RATE_CARD
+    [(energy, quantity, _)] = _energy(tmp_path, text)
+    assert (energy, quantity) == ("steam", 812.4)
+
+
+def test_ton_hours_are_chilled_water_even_on_a_steam_and_chilled_water_letterhead(tmp_path: Path) -> None:
+    text = TAGLINE + BILL_HEAD + "Total Usage: 42,000 ton-hours\n"
+    assert _energy(tmp_path, text) == [("chilled_water", pytest.approx(504), "MMBtu")]
+
+
+def test_a_bill_with_both_services_keeps_each_by_its_own_line(tmp_path: Path) -> None:
+    text = TAGLINE + BILL_HEAD + "Steam Usage: 410 MMBtu\nSteam Demand: 12 Mlb/hr\nChilled Water Usage: 504 MMBtu\n"
+    assert _energy(tmp_path, text) == [("chilled_water", 504, "MMBtu"), ("steam", 410, "MMBtu")]
+
+
+def test_a_bill_naming_both_with_nothing_near_the_quantity_leaves_the_type_empty_and_says_so(tmp_path: Path) -> None:
+    out = _extract(tmp_path, TAGLINE + BILL_HEAD + "Total Usage: 410 MMBtu\n")
+    items = {c["field_name"]: c for c in out["extraction_result"]["items"]}
+    assert items["energy_type"]["normalized_value"] is None  # never guessed, and never cooling
+    assert items["activity_quantity"]["normalized_value"] == 410
+    assert any("energy type" in w and "Choose it" in w for w in out["pipeline_run"]["warnings"])
+
+
+def test_a_bill_that_names_one_type_only_needs_no_heading(tmp_path: Path) -> None:
+    steam = "Harborline District Energy\nSteam Service Statement\n" + BILL_HEAD + "Total Usage: 410 MMBtu\n"
+    cooling = "Harborline District Energy\nChilled Water Statement\n" + BILL_HEAD + "Total Usage: 410 MMBtu\n"
+    assert _energy(tmp_path, steam) == [("steam", 410, "MMBtu")]
+    assert _energy(tmp_path, cooling) == [("chilled_water", 410, "MMBtu")]

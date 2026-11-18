@@ -288,6 +288,7 @@ class UsageRecord:
     end: Located | None = None
     fuel: Located | None = None
     extra: dict[str, Located] = field(default_factory=dict)  # subclass EXTRA_COLUMNS values
+    energy: str | None = None  # thermal bills: the energy type told from this line (steam / hot_water / chilled_water)
 
 
 @dataclass
