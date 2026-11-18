@@ -42,6 +42,11 @@ def wired(monkeypatch: pytest.MonkeyPatch) -> FakeStore:
     monkeypatch.setattr(tree_api, "_visible", visible)
     monkeypatch.setattr(tree_api, "document_decisions", decisions)
     monkeypatch.setattr(tree_api, "reviewer_names", names)
+
+    async def creators(db, org_id):  # noqa: ANN001, ANN202
+        return {}
+
+    monkeypatch.setattr(tree_api, "creator_names", creators)
     monkeypatch.setattr(tree_api, "_service", lambda: EvidenceTreeService(store, store, store))
     app.dependency_overrides[get_db_session] = no_db
     yield store

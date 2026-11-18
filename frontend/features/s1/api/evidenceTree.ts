@@ -22,6 +22,11 @@ export interface CalculationLine {
   label: string;
   facility_id: string | null;
   created_by_user: boolean;
+  /** Reviewer lines only, stamped by the server when the line was added. */
+  created_by?: string | null;
+  created_at?: string | null;
+  /** The creator's name (their login when they have none); null when the user is unknown. */
+  created_by_name?: string | null;
 }
 
 export interface TreeCounts {
@@ -190,6 +195,9 @@ export interface EvidenceLineSetting {
   anchor_kind: AnchorKind;
   anchor_id: string;
   label: string;
+  /** Set by the server and sent back unchanged; the server ignores what a client puts here. */
+  created_by?: string;
+  created_at?: string;
 }
 
 /** One move of one placement, applied in order to the document's default placements. */

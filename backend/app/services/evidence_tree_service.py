@@ -154,10 +154,18 @@ class EvidenceTreeService:
 
     # ------------------------------------------------------------------------------------
     def tree(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
-             decisions: dict[str, dict[str, Any]] | None = None, facility_id: str | None = None) -> dict[str, Any]:
+             decisions: dict[str, dict[str, Any]] | None = None, facility_id: str | None = None,
+             creator_names: dict[str, str] | None = None) -> dict[str, Any]:
         """The tree. With ``facility_id`` every level shows only placements at that Setup facility
         (rows whose ``facility_id`` and lines whose ``facility_id`` match) and every count is
-        recomputed for that view."""
+        recomputed for that view. ``creator_names`` maps a user id to the name shown on a reviewer's line
+        ("created_by_name"; absent when the user is unknown)."""
+
+        def line_dict(line: cl.CalculationLine) -> dict[str, Any]:
+            out = line.to_dict()
+            if line.created_by_user:
+                out["created_by_name"] = (creator_names or {}).get(str(line.created_by)) if line.created_by else None
+            return out
 
         loaded = self.load(engagement, can_see, decisions)
         by_key = {line.key: line for line in loaded.lines}
@@ -202,7 +210,7 @@ class EvidenceTreeService:
                 for line in in_category:
                     level2 = level2s.setdefault(line.level2, {"level2": line.level2, "label": line.level2_label,
                                                               "lines": []})
-                    level2["lines"].append({"line": line.to_dict(), "counts": counts_of([line.key]),
+                    level2["lines"].append({"line": line_dict(line), "counts": counts_of([line.key]),
                                             "documents": documents(line.key)})
                 for level2 in level2s.values():
                     level2["counts"] = counts_of([entry["line"]["key"] for entry in level2["lines"]])
@@ -222,7 +230,7 @@ class EvidenceTreeService:
             },
             "facilities": [{"facility_id": cl.facility_anchor_id(f), "name": f.get("name"),
                             "address": f.get("address")} for f in loaded.facilities],
-            "lines": [line.to_dict() for line in shown_lines],
+            "lines": [line_dict(line) for line in shown_lines],
             # the ids a client uses to create a mobile line (anchor_kind "vehicle_group"), built here
             "vehicle_groups": [{"anchor_id": anchor_id, "label": cl.vehicle_group_label(group),
                                 "fuel": group.get("fuel")}

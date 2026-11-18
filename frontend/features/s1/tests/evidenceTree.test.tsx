@@ -69,7 +69,7 @@ const line = (key: string, label: string, over: Partial<CalculationLine> = {}): 
 });
 
 const KENT = line("s1:stationary:natural-gas:fac-kc01", "Kent");
-const PLANT = line("s1:stationary:natural-gas:fac-pl02", "Plant 2", { created_by_user: true });
+const PLANT = line("s1:stationary:natural-gas:fac-pl02", "Plant 2", { created_by_user: true, created_by_name: "Jane Park", created_at: "2025-11-04T12:00:00Z" });
 const ELEC = line("s2:purchased_energy:electricity:fac-kc01", "Kent", { scope: "s2", category: "purchased_energy", level2: "electricity", level2_label: "Electricity" });
 
 const TREE: TreeData = {
@@ -186,7 +186,7 @@ describe("the Evidence tree", () => {
     expect(within(head).getByText("3 documents")).toBeInTheDocument();
     expect(within(head).getByText("33% accepted")).toBeInTheDocument();
     expect(screen.getAllByText("1 document").length).toBeGreaterThan(0);
-    expect(screen.getByText("Added by a reviewer")).toBeInTheDocument();
+    expect(screen.getByText("Added by J. Park \u00b7 Nov 4")).toBeInTheDocument();
     expect(screen.getByText(/Also in Electricity · Kent/)).toBeInTheDocument();
     expect(screen.getByText("Set aside")).toBeInTheDocument();
   });

@@ -230,7 +230,12 @@ DocRow  = {document_id, file_name, period_start, period_end, facility_id, facili
 
 `CalculationLine = {key, scope, category, level2, level2_label, anchor_kind
 ("facility" | "vehicle_group" | "company"), anchor_id, label, facility_id | null,
-created_by_user}`. The key is `<scope>:<category>:<level2-slug>:<anchor-slug>` (for example
+created_by_user, created_by?, created_at?, created_by_name?}`. A reviewer's line (`created_by_user`)
+carries `created_by` (the user id), `created_at` (ISO 8601 UTC) and `created_by_name` (full name, else
+first and last name, else the login; null when the user is unknown). The server stamps `created_by` and
+`created_at` once, when a line is first saved, and keeps them through a rename or a re-save; whatever a
+client sends for them is ignored. Lines saved before this have none, and the tree shows "Added by a
+reviewer". A deleted user is still named. The key is `<scope>:<category>:<level2-slug>:<anchor-slug>` (for example
 `s1:stationary:natural-gas:fac-kc01`) and is built only by `calculation_lines.line_key`.
 A document whose records map to several lines is listed under each, with only that line's
 values counted. Every `counts` (block, scope, category, level 2, line) is computed by the server:
