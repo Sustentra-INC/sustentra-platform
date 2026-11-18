@@ -36,6 +36,8 @@ export interface ExtractedField {
   /** Who made the latest review decision, and when (from the API). */
   reviewedBy?: string | null;
   reviewedAt?: string | null;
+  /** When the system read this value off the document (the read's own time, not the upload's). */
+  readAt?: string | null;
   valueOrigin: "extracted" | "computed" | "verifier_determined" | "assigned";
 }
 

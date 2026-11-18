@@ -54,6 +54,30 @@ describe("extracted fields as review cards", () => {
     expect(card.record[1]).toMatchObject({ actor: "claire@sustentra.com", at: "2026-10-12T22:00:00Z" });
   });
 
+  it("dates the system read from the read, not from the upload", () => {
+    // The same file name and bytes, uploaded on 12 Oct and read on 15 Oct: the card says 15 Oct.
+    const [read] = reviewValuesFromFields([field("activity_quantity", "42.31", { readAt: "2026-10-15T09:30:00Z" })], [DOC]);
+    expect(read.record[0]).toMatchObject({ kind: "machine", at: "2026-10-15T09:30:00Z" });
+    // With no read time from the server (demo data), the upload time stands in.
+    const [unknown] = reviewValuesFromFields([field("activity_quantity", "42.31")], [DOC]);
+    expect(unknown.record[0].at).toBe("2026-10-12T20:00:00Z");
+  });
+
+  it("gives each document its own read time when two documents hold the same values", () => {
+    const other = { ...DOC, documentId: "DOC-2", uploadedAt: "2026-10-15T08:00:00Z" } as EvidenceItem;
+    const cards = reviewValuesFromFields(
+      [
+        field("activity_quantity", "42.31", { readAt: "2026-10-12T20:01:00Z" }),
+        field("activity_quantity", "42.31", { documentId: "DOC-2", fieldKey: "candidate:other", readAt: "2026-10-15T08:01:00Z" }),
+      ],
+      [DOC, other]
+    );
+    expect(cards.map((c) => [c.documentId, c.record[0].at])).toEqual([
+      ["DOC-1", "2026-10-12T20:01:00Z"],
+      ["DOC-2", "2026-10-15T08:01:00Z"],
+    ]);
+  });
+
   it("gives the reviewer a card for a key value that was not found, and none for others", () => {
     const cards = reviewValuesFromFields([field("activity_quantity", null), field("supplier_name", null)], [DOC]);
     expect(cards.map((c) => [c.whatItIs, c.missing])).toEqual([["activity_quantity", true]]);
