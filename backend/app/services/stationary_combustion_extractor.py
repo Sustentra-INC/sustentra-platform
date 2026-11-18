@@ -62,6 +62,16 @@ ADDRESS_LABELS: tuple[tuple[str, ...], ...] = (
      "delivery address", "delivered to", "deliver to", "ship to", "service at"),
     ("location", "account address"),
 )
+# A block under one of these headings names the site the bill is for, as lines in the column below it:
+# the customer, then the site name (optional), the street, and the city / postal code. A "MAILING ADDRESS"
+# block beside it is never read.
+SERVICE_BLOCK_HEADINGS = ("service for", "service to", "service site", "service premise", "service premises")
+_STREET_LINE_RE = re.compile(r"^\d+[\w/-]*\s+\S")
+_POSTAL_LINE_RE = re.compile(r"(?:^\d{4,6}\s+\S|\d{4,6}(?:-\d{4})?\s*$)")  # "Tacoma, WA 98421" or "8001 Zürich"
+_BLOCK_LINES = 6
+_BLOCK_COLUMN_TOLERANCE = 0.02
+
+
 ACCOUNT_LABELS: tuple[tuple[str, ...], ...] = (
     ("account number", "account no", "account #", "acct number", "acct no", "acct #", "customer account",
      "customer acct", "customer number", "customer no", "account id", "account"),
@@ -929,11 +939,43 @@ class StationaryCombustionExtractor:
     # =================================================================================
     # Document-level fields
     # =================================================================================
+    def _service_block(self, rows: Sequence[Row]) -> tuple[Located | None, Located | None]:
+        """(site name, address) from a "SERVICE FOR" block: the lines in the column under the heading.
+        The first line is the customer, so a site name is only a line between it and the street."""
+
+        for at, row in enumerate(rows):
+            for head in row.cells:
+                if not head.box or _norm(head.text) not in SERVICE_BLOCK_HEADINGS:
+                    continue
+                lines: list[tuple[Cell, Row]] = []
+                for below in rows[at + 1: at + 1 + _BLOCK_LINES]:
+                    cell = next((c for c in below.cells if c.box and below.page == row.page
+                                 and abs(c.left - head.left) <= _BLOCK_COLUMN_TOLERANCE), None)
+                    if cell is None:
+                        break
+                    lines.append((cell, below))
+                    if _POSTAL_LINE_RE.search(cell.text) and any(_STREET_LINE_RE.match(c.text) for c, _ in lines):
+                        break
+                street = next((i for i, (c, _) in enumerate(lines) if _STREET_LINE_RE.match(c.text)), None)
+                if street is None:
+                    continue
+                parts = [lines[street]]
+                if street + 1 < len(lines) and _POSTAL_LINE_RE.search(lines[street + 1][0].text):
+                    parts.append(lines[street + 1])
+                address = Located(", ".join(c.text.strip(" ,") for c, _ in parts), [c for c, _ in parts],
+                                  parts[0][1], CONF_DOCUMENT_SCAN)
+                name = None
+                if street >= 2 and not re.search(r"\d", lines[street - 1][0].text):
+                    cell, name_row = lines[street - 1]
+                    name = Located(cell.text.strip(), [cell], name_row, CONF_DOCUMENT_SCAN)
+                return name, address
+        return None, None
+
     def _facility(self, rows: Sequence[Row]) -> tuple[Located | None, Located | None]:
         located = self._find_labeled(rows, FACILITY_LABELS, accept=lambda v: bool(re.search(r"[A-Za-z]{2}", v)),
                                      inline=True, inline_gap=True)
         if located is None:
-            return None, None
+            return self._service_block(rows)
         # "Site: Standby Generator Plant, 77 Weir Lane, Lodi, CA" -> name + address
         split = re.match(r"^(?P<name>[^,\d][^,]*?),\s*(?P<addr>\d+\s+\S.*)$", located.raw)
         if split:
@@ -947,7 +989,7 @@ class StationaryCombustionExtractor:
     def _address(self, rows: Sequence[Row]) -> Located | None:
         return self._find_labeled(rows, ADDRESS_LABELS, accept=lambda v: bool(re.search(r"\d", v)),
                                   accept_bare=lambda v: bool(re.match(r"\d+\s+\S", v)), inline=True,
-                                  inline_gap=True)
+                                  inline_gap=True) or self._service_block(rows)[1]
 
     def _account(self, rows: Sequence[Row]) -> Located | None:
         def accept(value: str) -> bool:
