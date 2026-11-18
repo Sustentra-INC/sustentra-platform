@@ -1097,6 +1097,72 @@ describe("the supporting schedule", () => {
     for (const rule of rules) expect(rule).not.toContain("--weight-strong");
   });
 
+  it("opens each value at its own source: the quantity and every extra column carry their candidate and page", async () => {
+    const [first] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        rows: [
+          {
+            ...first,
+            activity_quantity: { value: 120, unit: "therm", candidate_id: "cand-qty", page: 2 },
+            cells: {
+              heat_content: { value: 1.03, unit: "MMBtu/Mcf", candidate_id: "cand-heat", page: 4 },
+              meter_number: { value: "M-4471", candidate_id: "cand-meter", page: 1 },
+            },
+          },
+        ],
+        columns: [...SCHEDULE.columns, { key: "meter_number", label: "Meter number", unit_in_cells: false }],
+      },
+    };
+    const props = renderSchedule();
+    fireEvent.click(await screen.findByRole("button", { name: "Open jan.pdf, page 4 at Heat content (HHV) 1.03 MMBtu/Mcf" }));
+    expect(props.onOpenDocument).toHaveBeenLastCalledWith("jan", "candidate:cand-heat");
+    fireEvent.click(screen.getByRole("button", { name: "Open jan.pdf, page 1 at Meter number M-4471" }));
+    expect(props.onOpenDocument).toHaveBeenLastCalledWith("jan", "candidate:cand-meter");
+    fireEvent.click(screen.getByRole("button", { name: "Open jan.pdf, page 2 at Activity quantity 120 therm" }));
+    expect(props.onOpenDocument).toHaveBeenLastCalledWith("jan", "candidate:cand-qty");
+  });
+
+  it("says so when a value has no page, and opens the document with no highlight when it has no candidate", async () => {
+    const [first] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        rows: [{ ...first, page: null, candidate_id: null, activity_quantity: { value: 120, unit: "therm" }, cells: { heat_content: { value: 1.03, unit: "MMBtu/Mcf", candidate_id: null, page: null } } }],
+      },
+    };
+    const props = renderSchedule();
+    const link = await screen.findByRole("button", { name: "Open jan.pdf, page 1, no page was recorded at Heat content (HHV) 1.03 MMBtu/Mcf" });
+    expect(link).toHaveAttribute("title", "No page was recorded for this value; the document opens at page 1.");
+    expect(screen.getAllByText("(no page recorded, opens at page 1)").length).toBeGreaterThan(0);
+    fireEvent.click(link);
+    expect(props.onOpenDocument).toHaveBeenCalledWith("jan", undefined);
+  });
+
+  it("names a workbook value by its sheet and cell, and keeps non-ASCII file and sheet names", async () => {
+    const [first] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        rows: [
+          {
+            ...first,
+            file_name: "Müller Käserei – Zürich 2025.xlsx",
+            page: null,
+            activity_quantity: { value: 120, unit: "therm", candidate_id: "c1", page: null, sheet: "Gas – 北京", cell: "C7" },
+            cells: {},
+          },
+        ],
+      },
+    };
+    const props = renderSchedule();
+    const link = await screen.findByRole("button", { name: "Open Müller Käserei – Zürich 2025.xlsx, sheet Gas – 北京, cell C7 at Activity quantity 120 therm" });
+    expect(screen.queryByText("(no page recorded, opens at page 1)")).toBeNull();
+    fireEvent.click(link);
+    expect(props.onOpenDocument).toHaveBeenCalledWith("jan", "candidate:c1");
+  });
+
   it("round-trips a line key with : . - between results and the schedule", async () => {
     const key = "s1:stationary:natural-gas:fac-k.c-01";
     const encoded = `/engagements/${ENG}/calculation-lines/${encodeURIComponent(key)}/schedule`;

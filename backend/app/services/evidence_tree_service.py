@@ -383,7 +383,7 @@ class EvidenceTreeService:
             extra = record.fields.get(field_name)
             value = (extra.value if extra.status in REVIEWED else extra.extracted) if extra is not None else None
             if extra is not None and value not in (None, ""):
-                cells[key] = {"value": value, "unit": extra.unit}
+                cells[key] = {"value": value, "unit": extra.unit, **EvidenceTreeService._source(extra)}
         index = record.record_index
         return {
             "record_key": f"{doc.document_id}:{0 if index is None else index}", "record_index": index,
@@ -394,7 +394,8 @@ class EvidenceTreeService:
             "date": {"start": _iso(start), "end": _iso(end),
                      "days": (end - start).days + 1 if start and end and end >= start else None,
                      "label": EvidenceTreeService._date_label(line, record.canonical_type_id, start, end)},
-            "activity_quantity": {"value": shown, "unit": unit},
+            "activity_quantity": {"value": shown, "unit": unit,
+                                  **(EvidenceTreeService._source(item) if item is not None else {})},
             "cells": cells,
             "saved_by": ({"name": name_of(item.reviewer), "at": _iso(item.reviewed_at)}
                          if reviewed and item.reviewer else None),
@@ -410,6 +411,16 @@ class EvidenceTreeService:
         columns.extend({"key": key, "label": label, "unit_in_cells": True}
                        for key, label, _ in EXTRA_COLUMNS if any(key in row["cells"] for row in rows))
         return columns
+
+    @staticmethod
+    def _source(item: Any) -> dict[str, Any]:
+        """Where one value was read, so the page can open the document at it: the candidate, and the
+        page (a PDF or image) or the sheet and cell (a workbook or CSV). Missing parts are None."""
+
+        ref = item.source_reference or {}
+        page = ref.get("page_number")
+        return {"candidate_id": item.candidate_id, "page": page if isinstance(page, int) and page > 0 else None,
+                "sheet": ref.get("sheet_name") or None, "cell": ref.get("cell_or_range") or None}
 
     @staticmethod
     def _date_label(line: cl.CalculationLine, canonical_type_id: str | None, start: date | None,

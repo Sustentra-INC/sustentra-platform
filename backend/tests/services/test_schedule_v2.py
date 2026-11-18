@@ -37,7 +37,8 @@ def test_rows_carry_every_value_and_flag_the_unaccepted() -> None:
     assert [rows[d]["accepted"] for d in ("BILL-A", "BILL-B", "BILL-C")] == [True, False, True]
     a = rows["BILL-A"]
     assert a["date"] == {"start": "2025-01-16", "end": "2025-02-15", "days": 31, "label": "Service period"}
-    assert a["activity_quantity"] == {"value": 310, "unit": "MMBtu"} and a["cells"] == {}
+    assert a["activity_quantity"] == {"value": 310, "unit": "MMBtu", "candidate_id": "BILL-A:1:activity_quantity",
+                                      "page": 1, "sheet": None, "cell": None} and a["cells"] == {}
     assert a["saved_by"] == {"name": "Ana Reyes", "at": "2025-04-02T10:00:00Z"}
     assert (a["file_name"], a["page"], a["candidate_id"]) == ("BILL-A.pdf", 1, "BILL-A:1:activity_quantity")
     assert a["record_key"] == "BILL-A:0" and a["record_index"] is None
@@ -67,8 +68,10 @@ def test_columns_show_only_with_a_value_and_in_the_spec_order() -> None:
     schedule = _schedule(store)
     assert [c["key"] for c in schedule["columns"]] == ["date", "activity_quantity", "heat_content", "distance"]
     rows = {r["document_id"]: r for r in schedule["rows"]}
-    assert rows["A"]["cells"] == {"heat_content": {"value": 1.03, "unit": "MMBtu/Mscf"},
-                                  "distance": {"value": 12, "unit": "mi"}}
+    src = {"sheet": None, "cell": None, "page": 1}
+    assert rows["A"]["cells"] == {
+        "heat_content": {"value": 1.03, "unit": "MMBtu/Mscf", "candidate_id": "A:1:heat_content", **src},
+        "distance": {"value": 12, "unit": "mi", "candidate_id": "A:1:distance", **src}}
     assert rows["B"]["cells"] == {}
 
 
@@ -78,7 +81,8 @@ def test_an_unaccepted_value_still_opens_its_column() -> None:
     schedule = _schedule(store)
     assert [c["key"] for c in schedule["columns"]][-1] == "model_year"
     assert schedule["rows"][0]["accepted"] is False
-    assert schedule["rows"][0]["cells"] == {"model_year": {"value": 2019, "unit": None}}
+    assert schedule["rows"][0]["cells"] == {"model_year": {"value": 2019, "unit": None, "candidate_id": "A:1:model_year",
+                                                           "page": 1, "sheet": None, "cell": None}}
 
 
 def test_activity_note_by_category() -> None:
@@ -181,7 +185,7 @@ def _decided(decision: str | None, **extra: object) -> FakeStore:
 
 def test_an_edited_quantity_shows_the_reviewed_value() -> None:
     row = _schedule(_decided("edited", reviewed_value=999, reviewed_unit="MMBtu"))["rows"][0]
-    assert row["activity_quantity"] == {"value": 999, "unit": "MMBtu"}
+    assert (row["activity_quantity"]["value"], row["activity_quantity"]["unit"]) == (999, "MMBtu")
     assert row["accepted"] is True and row["decision"] == "edited"
     assert row["saved_by"] == {"name": "ana@example.com", "at": "2025-04-02T10:00:00Z"}
 
@@ -352,3 +356,34 @@ def test_electricity_lines_show_all_four_identifiers() -> None:
     store = FakeStore()
     store.add_document("E", "CT-S2-ELEC", [_elec(10)])
     assert _labels(_schedule(store, ELEC_KC)) == ["Facility", "Service address", "Account number", "Meter number"]
+
+
+# --- UI-037: every value carries where it was read --------------------------------------------
+def _with_refs(store: FakeStore, refs: dict[str, dict]) -> FakeStore:
+    for item in store.results["A"][0]["items"]:
+        if item["field_name"] in refs:
+            item["source_reference"] = refs[item["field_name"]]
+    return store
+
+
+def test_each_cell_has_its_own_candidate_and_page_a_workbook_value_its_sheet_and_cell() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [{**_gas(100), "heat_content": (1.03, "MMBtu/Mscf"),
+                                               "distance": (12, "mi")}])
+    _with_refs(store, {"heat_content": {"page_number": 3},
+                       "distance": {"source_kind": "excel_cell", "sheet_name": "Gas – Zürich",
+                                    "cell_or_range": "C7", "page_number": None}})
+    row = _schedule(store)["rows"][0]
+    assert row["cells"]["heat_content"] == {
+        "value": 1.03, "unit": "MMBtu/Mscf", "candidate_id": "A:1:heat_content", "page": 3, "sheet": None, "cell": None}
+    distance = row["cells"]["distance"]
+    assert (distance["sheet"], distance["cell"], distance["page"], distance["candidate_id"]) == (
+        "Gas – Zürich", "C7", None, "A:1:distance")
+
+
+def test_a_value_without_a_usable_page_reports_none_not_zero() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [{**_gas(100), "heat_content": (1.03, None)}])
+    _with_refs(store, {"activity_quantity": {"page_number": 0}, "heat_content": {}})
+    row = _schedule(store)["rows"][0]
+    assert row["activity_quantity"]["page"] is None and row["cells"]["heat_content"]["page"] is None
