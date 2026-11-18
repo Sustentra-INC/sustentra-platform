@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../../lib/api", () => ({
@@ -106,7 +106,9 @@ describe("scrolling to the selected value", () => {
       motion(reduce);
       render(<DocumentContentView documentId="DOC" marks={[MARK]} selectedId="kwh" />);
       await screen.findByRole("button", { name: /^Select Electricity consumed/ });
-      expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ behavior }));
+      // The view scrolls in an effect that runs after the content settles; under load the button
+      // can be found a beat before that, so wait for the scroll rather than expect it at once.
+      await waitFor(() => expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ behavior })));
     });
   }
 });
