@@ -125,6 +125,8 @@ class CalculationLine:
     label: str
     facility_id: str | None
     created_by_user: bool
+    created_by: str | None = None  # the user id the server stamped on a reviewer's line (None on system lines)
+    created_at: str | None = None  # when, ISO 8601 UTC
 
     @property
     def family(self) -> str | None:
@@ -150,13 +152,15 @@ def record_family(canonical_type_id: str | None) -> str | None:
 
 
 def make_line(category: str, level2: str, level2_label: str, anchor_kind: str, anchor_id: str, label: str,
-              *, created_by_user: bool) -> CalculationLine:
+              *, created_by_user: bool, created_by: str | None = None,
+              created_at: str | None = None) -> CalculationLine:
     scope = CATEGORY_SCOPE[category]
     return CalculationLine(
         key=line_key(scope, category, level2, anchor_kind, anchor_id), scope=scope, category=category,
         level2=slug(level2), level2_label=level2_label, anchor_kind=anchor_kind,
         anchor_id=COMPANY_ANCHOR if anchor_kind == "company" else anchor_id, label=label,
-        facility_id=anchor_id if anchor_kind == "facility" else None, created_by_user=created_by_user)
+        facility_id=anchor_id if anchor_kind == "facility" else None, created_by_user=created_by_user,
+        created_by=created_by, created_at=created_at)
 
 
 def facility_anchor_id(facility: dict[str, Any]) -> str:
@@ -181,7 +185,10 @@ def vehicle_group_anchors(groups: list[dict[str, Any]]) -> list[tuple[str, dict[
 
 
 # --- user-created lines: settings["evidenceLines"] ------------------------------------------
-_LINE_FIELDS = {"key", "scope", "category", "level2", "level2_label", "anchor_kind", "anchor_id", "label"}
+_LINE_FIELDS = {"key", "scope", "category", "level2", "level2_label", "anchor_kind", "anchor_id", "label",
+                "created_by", "created_at"}
+# Stamped by the server (``stamp_new_lines``); whatever a client sends for them is replaced, never trusted.
+_STAMP_FIELDS = ("created_by", "created_at")
 
 
 def _normalize_entry(entry: Any) -> dict[str, Any]:
@@ -211,10 +218,14 @@ def _normalize_entry(entry: Any) -> dict[str, Any]:
     key = line_key(scope, category, level2, kind, anchor_id)
     if entry.get("key") not in (None, key):
         raise ValueError(f"key must be {key}")
-    return {"key": key, "scope": scope, "category": category, "level2": slug(level2),
-            "level2_label": entry["level2_label"].strip(), "anchor_kind": kind,
-            "anchor_id": COMPANY_ANCHOR if kind == "company" else anchor_id.strip(),
-            "label": entry["label"].strip()}
+    normal = {"key": key, "scope": scope, "category": category, "level2": slug(level2),
+              "level2_label": entry["level2_label"].strip(), "anchor_kind": kind,
+              "anchor_id": COMPANY_ANCHOR if kind == "company" else anchor_id.strip(),
+              "label": entry["label"].strip()}
+    for name in _STAMP_FIELDS:
+        if isinstance(entry.get(name), str) and entry[name]:
+            normal[name] = entry[name][:64]
+    return normal
 
 
 def normalize_evidence_lines(value: Any) -> list[dict[str, Any]]:
@@ -235,6 +246,23 @@ def normalize_evidence_lines(value: Any) -> list[dict[str, Any]]:
             raise ValueError(f"line {normal['key']} is listed twice")
         seen.add(normal["key"])
         out.append(normal)
+    return out
+
+
+def stamp_new_lines(lines: list[dict[str, Any]], stored: Any, *, user_id: str, now: str) -> list[dict[str, Any]]:
+    """Who made each line, and when: set by the server, once. A line whose key is already stored keeps
+    exactly what is stored (a rename or a re-save never changes it); a new key gets ``user_id`` and
+    ``now``. Whatever the client sent for ``created_by`` and ``created_at`` is dropped first."""
+
+    kept: dict[str, dict[str, Any]] = {}
+    for entry in stored if isinstance(stored, list) else []:
+        if isinstance(entry, dict) and isinstance(entry.get("key"), str):
+            kept.setdefault(entry["key"], {n: entry[n] for n in _STAMP_FIELDS if isinstance(entry.get(n), str)})
+    out: list[dict[str, Any]] = []
+    for line in lines:
+        clean = {k: v for k, v in line.items() if k not in _STAMP_FIELDS}
+        stamp = kept[line["key"]] if line["key"] in kept else {"created_by": user_id, "created_at": now}
+        out.append({**clean, **stamp})
     return out
 
 
@@ -280,7 +308,8 @@ def user_lines(settings: dict[str, Any] | None) -> list[CalculationLine]:
         except ValueError:
             continue
         lines.setdefault(e["key"], make_line(e["category"], e["level2"], e["level2_label"], e["anchor_kind"],
-                                             e["anchor_id"], e["label"], created_by_user=True))
+                                             e["anchor_id"], e["label"], created_by_user=True,
+                                             created_by=e.get("created_by"), created_at=e.get("created_at")))
     return list(lines.values())
 
 
