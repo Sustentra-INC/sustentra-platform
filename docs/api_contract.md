@@ -321,7 +321,7 @@ group the line's documents by identifier value; `not_found` holds documents with
 Facility is the Setup facility, and `matched_by` says how: "Chosen by the reviewer", "Facility name in
 Setup" or "Service address in Setup". Facility is listed for every line; Service address, Account number
 and Meter number only for utility-bill lines (stationary natural gas, electricity, steam, heating, cooling).
-Values that differ only by case, spacing or Unicode form (NFC/NFD) fall in one group, shown in the first
+Values that differ only by case, spacing or Unicode form (NFKC, so full-width digits match ASCII) fall in one group, shown in the first
 spelling seen; a whitespace-only value counts as not found. `identifiers` (one entry per value) is kept for older clients.
 
 A row counts (`accepted` true) only when its record is not in the recalculation's `awaiting_review`. When

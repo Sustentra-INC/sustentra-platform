@@ -107,10 +107,10 @@ function isUtilityLine(line: { category: string; level2: string }): boolean {
   return line.category === "purchased_energy" || (line.category === "stationary" && line.level2 === "natural-gas");
 }
 
-/** Whitespace collapsed for display; the comparison key is NFC and case-folded (the backend's rule). */
+/** Whitespace collapsed for display; the comparison key is NFKC, case-folded and space-collapsed (the backend's rule). */
 function spelling(raw: string | null): [string, string] {
   const text = raw ? raw.split(/\s+/).filter(Boolean).join(" ") : "";
-  return [text, text.normalize("NFC").toLowerCase()];
+  return [text, text.normalize("NFKC").toLowerCase().split(/\s+/).filter(Boolean).join(" ")];
 }
 
 function groupsOf(model: Model, line: { category: string; level2: string }, on: ModelRecord[]): IdentifierGroup[] {

@@ -426,10 +426,10 @@ class EvidenceTreeService:
 
     @staticmethod
     def _spelling(raw: Any) -> tuple[str, str]:
-        """(display, comparison key) of an identifier: whitespace collapsed; the key is NFC and case-folded."""
+        """(display, comparison key) of an identifier: whitespace collapsed; the key is NFKC, case-folded and whitespace-collapsed."""
 
         text = " ".join(str(raw).split()) if raw not in (None, "") else ""
-        return text, unicodedata.normalize("NFC", text).casefold()
+        return text, " ".join(unicodedata.normalize("NFKC", text).casefold().split())
 
     @classmethod
     def _identifier_groups(cls, line: cl.CalculationLine, on_line: list[tuple[DocState, list[ReviewedRecord]]],

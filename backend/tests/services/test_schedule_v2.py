@@ -289,8 +289,15 @@ def test_case_and_spacing_do_not_split_a_group() -> None:
 
 def test_non_ascii_and_full_width_identifiers_work() -> None:
     group = _meter_group("№ 4471-Ж", "№ 4471-ж", "４４７１")
-    assert len(group["values"]) == 2  # the case variants group; full-width digits are their own value
+    assert len(group["values"]) == 2  # the case variants group; "4471" is a different meter
     assert group["documents_with"] == 3
+
+
+def test_full_width_digits_group_with_ascii_and_keep_the_first_spelling() -> None:
+    group = _meter_group("４４７１", "4471", "Ｍ-4471", "M-4471")
+    assert [(v["value"], len(v["documents"])) for v in group["values"]] in (
+        [("４４７１", 2), ("Ｍ-4471", 2)], [("Ｍ-4471", 2), ("４４７１", 2)])
+    assert (group["documents_with"], group["documents_total"]) == (4, 4)
 
 
 def test_a_whitespace_only_value_is_not_found_and_counts_read_n_of_total() -> None:
