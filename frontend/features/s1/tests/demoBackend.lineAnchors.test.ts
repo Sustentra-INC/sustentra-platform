@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { newLineProblem } from "../demo-backend/linesModel";
+import { newLineProblem, stampDemoLines } from "../demo-backend/linesModel";
+import { addedByText } from "../utils/formatPeriod";
 import type { EngagementConfig } from "../types/engagement";
 
 const engagement = {
@@ -31,5 +32,24 @@ describe("the demo checks new line anchors like the server", () => {
   it("leaves a line that is already saved alone", () => {
     const saved = { ...engagement, facilities: [], evidenceLines: [line()] } as unknown as EngagementConfig;
     expect(newLineProblem(saved, [line()])).toBeNull();
+  });
+});
+
+describe("who added a line, and when", () => {
+  const NOW = "2025-11-04T12:00:00.000Z";
+  it("stamps a new line once and keeps the stamp through a rename, ignoring what the caller sent", () => {
+    const first = stampDemoLines(engagement, [line({ created_by: "forged", created_at: "2001-01-01T00:00:00Z" })], "j.park@acme.test", NOW);
+    expect(first[0]).toMatchObject({ created_by: "j.park@acme.test", created_at: NOW });
+    const saved = { ...engagement, evidenceLines: first } as unknown as EngagementConfig;
+    const renamed = stampDemoLines(saved, [{ ...first[0], label: "Propane, Kent", created_by: "someone-else" }], "k.lee@acme.test", "2025-12-01T12:00:00.000Z");
+    expect(renamed[0]).toMatchObject({ label: "Propane, Kent", created_by: "j.park@acme.test", created_at: NOW });
+  });
+  it("reads as 'Added by J. Park \u00b7 Nov 4' and copes with missing or unusual names", () => {
+    expect(addedByText("Jane Park", NOW)).toBe("Added by J. Park \u00b7 Nov 4");
+    expect(addedByText("M\u00fcller K\u00e4serei \u2013 Z\u00fcrich", NOW)).toBe("Added by M\u00fcller K\u00e4serei \u2013 Z\u00fcrich \u00b7 Nov 4");
+    expect(addedByText("\u738b\u82b3 \u674e", NOW)).toBe("Added by \u738b. \u674e \u00b7 Nov 4");
+    expect(addedByText("j.park@acme.test", NOW)).toBe("Added by j.park@acme.test \u00b7 Nov 4");
+    expect(addedByText(null, null)).toBe("Added by a reviewer");
+    expect(addedByText("Jane Park", "not a date")).toBe("Added by J. Park");
   });
 });

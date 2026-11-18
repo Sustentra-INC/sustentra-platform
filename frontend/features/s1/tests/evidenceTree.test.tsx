@@ -71,7 +71,7 @@ const line = (key: string, label: string, over: Partial<CalculationLine> = {}): 
 });
 
 const KENT = line("s1:stationary:natural-gas:fac-kc01", "Kent", { family: "stationary" });
-const PLANT = line("s1:stationary:natural-gas:fac-pl02", "Plant 2", { created_by_user: true, family: "stationary" });
+const PLANT = line("s1:stationary:natural-gas:fac-pl02", "Plant 2", { created_by_user: true, family: "stationary", created_by_name: "Jane Park", created_at: "2025-11-04T12:00:00Z" });
 const ELEC = line("s2:purchased_energy:electricity:fac-kc01", "Kent", { scope: "s2", category: "purchased_energy", level2: "electricity", level2_label: "Electricity", family: "electricity" });
 
 const TREE: TreeData = {
@@ -188,7 +188,7 @@ describe("the Evidence tree", () => {
     expect(within(head).getByText("3 documents")).toBeInTheDocument();
     expect(within(head).getByText("33% accepted")).toBeInTheDocument();
     expect(screen.getAllByText("1 document").length).toBeGreaterThan(0);
-    expect(screen.getByText("Added by a reviewer")).toBeInTheDocument();
+    expect(screen.getByText("Added by J. Park \u00b7 Nov 4")).toBeInTheDocument();
     expect(screen.getByText("Also in Scope 2 › Purchased energy › Electricity › Kent")).toBeInTheDocument();
     expect(screen.getByText("Set aside")).toBeInTheDocument();
   });
@@ -1106,6 +1106,39 @@ describe("the supporting schedule", () => {
     fireEvent.click(await screen.findByText(/Line history \(250\)/));
     expect(screen.getByText("Showing the latest 200")).toBeInTheDocument();
     expect(document.querySelectorAll(".s1-sch-history li")).toHaveLength(200);
+  });
+
+  it("puts the back link first, left-aligned, above the title block and the calculation button", async () => {
+    const { container } = render(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />);
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const section = container.querySelector(".s1-sch") as HTMLElement;
+    const back = within(section).getByRole("button", { name: /Back to evidence/i });
+    expect(section.firstElementChild).toBe(back);
+    expect(container.querySelector(".s1-sch-head")?.contains(back)).toBe(false);
+  });
+
+  it("says '1 of 1 document' in the singular, and 'documents' otherwise", async () => {
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, identifier_groups: [{ ...SCHEDULE.identifier_groups[0], documents_with: 1, documents_total: 1 }, SCHEDULE.identifier_groups[1]] } };
+    renderSchedule();
+    expect(await screen.findByText("1 of 1 document")).toBeInTheDocument();
+    expect(screen.getByText("2 of 3 documents")).toBeInTheDocument();
+  });
+
+  it("shows a plain loading line, not placeholder rows, while the schedule loads", () => {
+    mocks.byPath = { [SCHEDULE_PATH]: new Promise(() => undefined) as unknown as LineSchedule };
+    render(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading the supporting schedule.");
+    expect(screen.queryByText("Loading row")).toBeNull();
+  });
+
+  it("styles values at one size and month names in the regular weight", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    // The quantity cell (class s1-num, 12px by default) is raised to the body size the date cell has.
+    expect(css).toMatch(/\.s1-sch-values td\.s1-num\s*\{[^}]*font-size:\s*var\(--text-md\)/);
+    // Bold is for structure: no month label rule uses the strong weight.
+    const rules = css.match(/\.s1-sch-month__name\s*\{[^}]*\}/g) ?? [];
+    expect(rules.length).toBeGreaterThan(0);
+    for (const rule of rules) expect(rule).not.toContain("--weight-strong");
   });
 
   it("round-trips a line key with : . - between results and the schedule", async () => {

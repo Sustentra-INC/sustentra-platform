@@ -38,7 +38,8 @@ GOOD = {
         # not on the document: dropped
         {"field_id": "category:scope1:mobile", "value": "Yes", **cite("L5", "mobile combustion is included")},
     ],
-    "texts": [{"field_id": "reporting_period", "value": "January 1 to December 31, 2024", **cite("L3", "Reporting period")}],
+    "texts": [],
+    "periods": [{"start": "2024-01-01", "end": "2024-12-31", **cite("L3", "January 1 to December 31, 2024")}],
     "gwp": [],
     "entities": [{"name": "Acme Foods Kent LLC", "facilities": ["Kent Cannery"], "equity_share_pct": 51,
                   "financial_control": 51, "operational_control": "Yes",
@@ -137,7 +138,7 @@ def test_a_reviewers_decision_is_never_overwritten(claude: FakeClaude) -> None:
     assert approach["decision"]["status"] == "edited" and len(approach["history"]) == 1
     rejected = record(eid, "category:scope1:stationary")
     assert rejected["suggestion"] is None and rejected["decision"]["status"] == "rejected"
-    assert record(eid, "reporting_period")["suggestion"]["value"] == "January 1 to December 31, 2024"
+    assert record(eid, "reporting_period")["suggestion"]["value"] == {"start": "2024-01-01", "end": "2024-12-31"}
 
 
 def test_a_second_run_replaces_pending_suggestions_and_does_not_repeat_rows(claude: FakeClaude) -> None:
@@ -165,7 +166,7 @@ def test_an_injected_instruction_changes_nothing_without_a_matching_quote(claude
     eid = create()["id"]
     claude.output = {**GOOD, "choices": [{"field_id": "consolidation_approach", "value": "Equity Share",
                                           **cite("L7", "the company uses the equity share approach")}],
-                     "texts": [], "entities": [], "factors": []}
+                     "texts": [], "periods": [], "entities": [], "factors": []}
     body = prefill(eid).json()
     assert body["suggested"] == 0 and body["dropped"] == {"quote_not_on_document": 1}
     approach = record(eid, "consolidation_approach")

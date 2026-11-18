@@ -109,7 +109,7 @@ export function buildTree(facilityId: string | null): EvidenceTree {
 
 /* ------------------------------------ schedule ------------------------------------ */
 
-const NOTES: Record<string, string> = { stationary: "fuel quantity combusted", biogenic: "fuel quantity combusted", mobile: "fuel use quantity", fugitive: "refrigerant quantity added or recovered" };
+const NOTES: Record<string, string> = { stationary: "fuel quantity combusted", biogenic: "fuel quantity combusted", mobile: "fuel use quantity", contractual: "certificates retired (MWh)" };
 
 function dateLabel(r: ModelRecord): string {
   return r.kind === "fleet" ? "Statement period" : r.kind === "propane" ? "Delivery date" : r.kind === "refrigerant" ? "Service date" : "Service period";
@@ -202,7 +202,7 @@ export function buildSchedule(lineKey: string): LineSchedule | null {
   const columns = [{ key: "date", label: "Date", unit_in_cells: true }, { key: "activity_quantity", label: "Activity quantity", unit_in_cells: true }];
   if (hasDistance) columns.push({ key: "distance", label: "Distance", unit_in_cells: true });
   const calculated = ["stationary", "mobile", "purchased_energy"].includes(line.category) && on.some((r) => r.accepted && r.quantity !== null);
-  const what = line.category === "purchased_energy" ? "electricity quantity purchased" : NOTES[line.category];
+  const what = line.category === "purchased_energy" ? (["steam", "heating", "cooling"].includes(line.level2) ? "energy quantity purchased" : "electricity quantity purchased / consumed") : NOTES[line.category];
   const groups = groupsOf(model, line, on);
   const identifiers = groups.flatMap((g) => g.values.map((v) => ({ label: g.label, value: v.value, documents_with: v.documents.length, documents_total: on.length })));
 

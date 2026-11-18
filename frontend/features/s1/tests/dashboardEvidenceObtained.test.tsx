@@ -112,8 +112,11 @@ describe("dashboard: documents in, values not yet accepted", () => {
 
 describe("dashboard: a choice is needed, or evidence is absent", () => {
   it("a grid region not chosen is 'needs a choice', not missing", () => {
+    const outOfScope = (key: string) => ({ key, data_point: key, status: "not_in_scope" }) as unknown as Recalculation["comparisons"][number];
     const result: Recalculation = {
       ...BASE,
+      // The other three sources are out of scope in Setup, so only the grid region is open.
+      comparisons: ["stationary_combustion_total", "mobile_combustion_total", "fugitive_total"].map(outOfScope),
       needs_input: [{ kind: "grid_region", key: "Zürich plant", message: "Choose a grid region." }],
     };
     expect(figuresOf(result).coverage).toMatchObject({ needsChoice: 1, awaitingReview: 0, missing: 0, obtained: 1 });
@@ -154,11 +157,8 @@ describe("dashboard: a choice is needed, or evidence is absent", () => {
     expect(screen.getByText("data point missing evidence")).toBeInTheDocument();
   });
 
-  it("an empty engagement keeps its empty state", () => {
+  it("with no documents, every in-scope source has no evidence yet (the live dashboard keeps its empty state: see dashboardEvidence.test)", () => {
     const empty = { ...BASE, documents_considered: 0 };
-    expect(figuresOf(empty).coverage).toMatchObject({ obtained: 0, inScope: 0, missing: 0 });
-    show(figuresOf(empty));
-    expect(screen.getAllByText("Not started").length).toBeGreaterThan(0);
-    expect(screen.queryByText(/data points? (waiting|need|missing)/)).toBeNull();
+    expect(figuresOf(empty).coverage).toMatchObject({ obtained: 0, inScope: 4, missing: 4 });
   });
 });

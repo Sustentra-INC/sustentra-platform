@@ -132,6 +132,36 @@ def _group(fuel: str, label: str) -> dict:
             "on_road": True, "label": label}
 
 
+def test_removing_a_vehicle_group_never_drops_its_documents() -> None:
+    mine = "s1:mobile:diesel-fuel:vg-lieferwagen-z-rich"  # the slug keeps ASCII letters only
+    groups = [_group("Diesel Fuel", "Lieferwagen – Zürich")]
+
+    def tree(settings_groups: list[dict]) -> dict:
+        store = FakeStore()
+        store.add_document("M1", "CT-S1-MOBFUEL", [_mobile()])
+        store.add_document("M2", "CT-S1-MOBFUEL", [_mobile()])
+        # M2 was also placed on the group's line by hand
+        return _tree(store, {"M2": {"placements": [{"from": cl.SUPPORTING_UNASSIGNED, "to": mine}]}},
+                     recalculation={"vehicle_groups": settings_groups})
+
+    before = tree(groups)
+    assert mine in {line["key"] for line in before["lines"]}
+    assert sorted(_lines_with_docs(before)[mine]) == ["M1", "M2"]
+    after = tree([])  # the group is removed in Setup
+    assert mine not in {line["key"] for line in after["lines"]}
+    unassigned = {row["document_id"] for row in after["blocks"]["supporting"]["unassigned"]}
+    assert unassigned == {"M1", "M2"}  # both still listed, in Unassigned supporting evidence
+    assert after["set_aside"] == []
+
+
+def test_two_vehicle_groups_with_one_name_get_distinct_lines_and_cjk_names_do_not_fail() -> None:
+    twice = [_group("Diesel Fuel", "配送トラック"), _group("Diesel Fuel", "配送トラック"),
+             _group("Diesel Fuel", "Lieferwagen – Zürich")]
+    anchors = [a for a, _ in cl.vehicle_group_anchors(twice)]
+    assert anchors == ["vg-none", "vg-none-2", "vg-lieferwagen-z-rich"]  # CJK-only names slug alike, then number by order
+    assert _tree(FakeStore(), recalculation={"vehicle_groups": twice})["blocks"]["summary"] == []
+
+
 def test_mobile_takes_the_vehicle_group_only_when_exactly_one_uses_the_fuel() -> None:
     one = [_group("Diesel Fuel", "Delivery trucks"), _group("Motor Gasoline", "Pickups")]
     assert _place("CT-S1-MOBFUEL", _mobile(), groups=one).line_key == "s1:mobile:diesel-fuel:vg-delivery-trucks"
@@ -890,3 +920,53 @@ def test_a_stored_line_on_a_removed_facility_does_not_break_the_tree() -> None:
     tree = _tree(store, {"G1": {"placements": [{"from": GAS_KC, "to": orphan}]}}, evidenceLines=mine)
     # the read path is unchanged: the line stays visible with its document, and nothing fails
     assert _lines_with_docs(tree) == {orphan: ["G1"]}
+
+
+# --- D2: who created a line, and when ---------------------------------------------------------
+NOW = "2025-11-04T10:00:00+00:00"
+
+
+def test_a_new_line_is_stamped_and_a_stored_one_keeps_its_stamp() -> None:
+    old = {**_saved(), "created_by": "user-1", "created_at": "2025-10-01T09:00:00+00:00"}
+    new = _saved(level2_label="Diesel")
+    out = cl.stamp_new_lines([_saved(label="Renamed"), new], [old], user_id="user-2", now=NOW)
+    assert (out[0]["created_by"], out[0]["created_at"]) == ("user-1", "2025-10-01T09:00:00+00:00")
+    assert out[0]["label"] == "Renamed"
+    assert (out[1]["created_by"], out[1]["created_at"]) == ("user-2", NOW)
+
+
+def test_a_forged_stamp_is_dropped_for_new_and_stored_lines() -> None:
+    forged = {"created_by": "admin", "created_at": "2001-01-01T00:00:00+00:00"}
+    old = {**_saved(), "created_by": "user-1", "created_at": NOW}
+    out = cl.stamp_new_lines(cl.normalize_evidence_lines([{**_line(), **forged}, {**_line(level2_label="Diesel"), **forged}]),
+                             [old], user_id="user-2", now="2025-11-05T00:00:00+00:00")
+    assert out[0]["created_by"] == "user-1" and out[0]["created_at"] == NOW
+    assert out[1]["created_by"] == "user-2" and out[1]["created_at"] == "2025-11-05T00:00:00+00:00"
+
+
+def test_a_line_stored_before_stamps_existed_stays_unstamped() -> None:
+    out = cl.stamp_new_lines([_saved()], [_saved()], user_id="user-2", now=NOW)
+    assert "created_by" not in out[0] and "created_at" not in out[0]
+    assert cl.stamp_new_lines([_saved()], "junk", user_id="u", now=NOW)[0]["created_by"] == "u"
+
+
+def test_stamps_survive_the_settings_check_and_reach_the_line() -> None:
+    entry = {**_saved(), "created_by": "user-1", "created_at": NOW}
+    assert cl.normalize_evidence_lines([entry])[0]["created_by"] == "user-1"
+    [line] = cl.user_lines({"evidenceLines": [entry]})
+    assert (line.created_by, line.created_at) == ("user-1", NOW)
+    assert cl.user_lines({"evidenceLines": [_saved()]})[0].created_by is None
+
+
+def test_the_tree_names_the_creator_and_copes_with_an_unknown_one() -> None:
+    mine = [{**_saved(), "created_by": "u-1", "created_at": NOW},
+            {**_saved(level2_label="Diesel", label="Diesel"), "created_by": "u-gone", "created_at": NOW},
+            _saved(level2_label="Kerosene", label="Kerosene")]
+    store = FakeStore()
+    store.add_document("G1", "CT-S1-FUELQTY", [_gas()])
+    tree = _tree_service(store).tree(_engagement(evidenceLines=mine), _own, None, None, {"u-1": "Müller Käserei – Zürich"})
+    by_label = {ln["label"]: ln for ln in tree["lines"]}
+    assert by_label["Propane at KC"]["created_by_name"] == "Müller Käserei – Zürich"
+    assert by_label["Propane at KC"]["created_at"] == NOW
+    assert by_label["Diesel"]["created_by_name"] is None and by_label["Kerosene"]["created_by_name"] is None
+    assert "created_by_name" not in by_label["Natural Gas, Kansas City Plant"]  # a system line has no creator

@@ -30,7 +30,7 @@ import copy
 import re
 import uuid
 from collections.abc import Mapping
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -143,7 +143,7 @@ def _field(field_id: str, group: str, label: str, kind: str, allowed: Any = None
 
 def _static_fields() -> list[dict[str, Any]]:
     fields = [
-        _field("reporting_period", "boundary", "Reporting period", "text"),
+        _field("reporting_period", "boundary", "Reporting period", "date_range"),
         _field("consolidation_approach", "boundary", "Consolidation approach", "enum",
                list(CONSOLIDATION_APPROACHES)),
     ]
@@ -249,10 +249,39 @@ def _percent(field: Mapping[str, Any], value: Any, name: str) -> int | float:
     return value
 
 
+_ISO_DATE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+
+
+def parse_iso_date(text: Any) -> date | None:
+    """A real calendar date written YYYY-MM-DD (ASCII digits only), or None."""
+
+    if not isinstance(text, str) or not _ISO_DATE.match(text):
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _date_range(field: Mapping[str, Any], value: Any) -> dict[str, str]:
+    if not isinstance(value, dict) or set(value) != {"start", "end"}:
+        raise _fail(field, "enter both a start date and an end date, written YYYY-MM-DD.")
+    start, end = parse_iso_date(value["start"]), parse_iso_date(value["end"])
+    if start is None:
+        raise _fail(field, "the start date is not a real date. Write it as YYYY-MM-DD, for example 2025-01-01.")
+    if end is None:
+        raise _fail(field, "the end date is not a real date. Write it as YYYY-MM-DD, for example 2025-12-31.")
+    if end < start:
+        raise _fail(field, "the end date can't be before the start date.")
+    return {"start": start.isoformat(), "end": end.isoformat()}
+
+
 def validate_value(field: Mapping[str, Any], value: Any) -> Any:
     """The value cleaned for its field, or MethodologyInvalid with a sentence."""
 
     kind = field["kind"]
+    if kind == "date_range":
+        return _date_range(field, value)
     if kind == "text":
         return _text(field, value)
     if kind == "enum":

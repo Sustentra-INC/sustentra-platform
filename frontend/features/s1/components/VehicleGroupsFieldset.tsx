@@ -1,5 +1,7 @@
 "use client";
 
+import { useState, type ReactNode } from "react";
+
 import type { RecalcNeedsInput, VehicleTypeOption } from "../api/recalculation";
 import type { VehicleGroupSetting } from "../types";
 
@@ -88,6 +90,9 @@ export function VehicleGroupsFieldset({
   types,
   asks,
   onChange,
+  confirmRemove,
+  maxGroups,
+  heading = true,
 }: {
   drafts: VehicleGroupDraft[];
   /** EPA Table 2 fuels with reviewed mobile records (each a recalculated line). */
@@ -95,7 +100,14 @@ export function VehicleGroupsFieldset({
   types: VehicleTypeOption[];
   asks: RecalcNeedsInput[];
   onChange: (next: VehicleGroupDraft[]) => void;
+  /** When set, removing a group first asks, saying this. */
+  confirmRemove?: string;
+  /** The most groups the API takes; adding stops there. */
+  maxGroups?: number;
+  /** False where the page already titles the section. */
+  heading?: boolean;
 }) {
+  const [removing, setRemoving] = useState<number | null>(null);
   const update = (index: number, patch: Partial<VehicleGroupDraft>) =>
     onChange(drafts.map((d, i) => (i === index ? { ...d, ...patch } : d)));
   const vehicleTypes = (onRoad: boolean) =>
@@ -104,8 +116,7 @@ export function VehicleGroupsFieldset({
     types.filter((t) => t.on_road === onRoad && t.vehicle_type === vehicleType).map((t) => t.fuel_type);
 
   return (
-    <fieldset className="s1-rc__group s1-rc__group--wide">
-      <legend>Vehicle groups (mobile CH₄ and N₂O)</legend>
+    <Wrap heading={heading}>
       <p className="s1-muted s1-rc__hint">
         CH₄ and N₂O depend on the vehicle as well as the fuel. Say which vehicles used each fuel: on-road by
         distance driven, non-road (forklifts, equipment, boats) by the fuel they used.
@@ -233,13 +244,32 @@ export function VehicleGroupsFieldset({
             )}
             <div className="s1-rc__vg-foot">
               {problem ? <span className="s1-muted">{problem}</span> : null}
-              <button
-                className="s1-linklike"
-                type="button"
-                onClick={() => onChange(drafts.filter((_, i) => i !== index))}
-              >
-                Remove group
-              </button>
+              {removing === index ? (
+                <span role="alert">
+                  <span className="s1-muted">{confirmRemove} </span>
+                  <button
+                    className="s1-linklike"
+                    type="button"
+                    onClick={() => {
+                      setRemoving(null);
+                      onChange(drafts.filter((_, i) => i !== index));
+                    }}
+                  >
+                    Confirm remove
+                  </button>{" "}
+                  <button className="s1-linklike" type="button" onClick={() => setRemoving(null)}>
+                    Keep group
+                  </button>
+                </span>
+              ) : (
+                <button
+                  className="s1-linklike"
+                  type="button"
+                  onClick={() => (confirmRemove ? setRemoving(index) : onChange(drafts.filter((_, i) => i !== index)))}
+                >
+                  Remove group
+                </button>
+              )}
             </div>
           </div>
         );
@@ -247,6 +277,7 @@ export function VehicleGroupsFieldset({
       <button
         className="s1-linklike"
         type="button"
+        disabled={maxGroups !== undefined && drafts.length >= maxGroups}
         onClick={() =>
           onChange([
             ...drafts,
@@ -267,6 +298,22 @@ export function VehicleGroupsFieldset({
       >
         Add vehicle group
       </button>
+      {maxGroups !== undefined && drafts.length >= maxGroups ? (
+        <span className="s1-muted">A company can have at most {maxGroups} vehicle groups.</span>
+      ) : null}
+    </Wrap>
+  );
+}
+
+function Wrap({ heading, children }: { heading: boolean; children: ReactNode }) {
+  return heading ? (
+    <fieldset className="s1-rc__group s1-rc__group--wide">
+      <legend>Vehicle groups (mobile CH₄ and N₂O)</legend>
+      {children}
     </fieldset>
+  ) : (
+    <div className="s1-rc__group s1-rc__group--wide" role="group" aria-label="Vehicle groups">
+      {children}
+    </div>
   );
 }

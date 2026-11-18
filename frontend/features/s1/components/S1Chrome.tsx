@@ -181,9 +181,15 @@ function ContextBar({
       <div className="s1-ctx__bar">
         {/* Two looks only: the client, then everything else in the small secondary style. */}
         <button className="s1-ctx__summary" type="button" onClick={onToggle} aria-expanded={expanded}>
-          <span className="s1-ctx__client">{contextTitle.title}</span>
+          <span className="s1-ctx__client" title={contextTitle.title}>
+            {contextTitle.title}
+          </span>
           <span className="s1-ctx__meta">
-            {contextTitle.sub ? <span className="s1-ctx__id">{contextTitle.sub}</span> : null}
+            {contextTitle.sub ? (
+              <span className="s1-ctx__id" title={contextTitle.sub}>
+                {contextTitle.sub}
+              </span>
+            ) : null}
             <span className="s1-ctx__hint">
               {expanded ? "Hide details" : "Details"}
               <ChevronDown className={`s1-ctx__chev${expanded ? " is-open" : ""}`} aria-hidden />

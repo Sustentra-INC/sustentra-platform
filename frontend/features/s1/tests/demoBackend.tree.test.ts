@@ -73,6 +73,18 @@ describe("demo backend: evidence tree, schedule and recalculation", () => {
     expect(s.activity_quantity_note).toBe("Activity quantity: fuel quantity combusted");
   });
 
+  it("words the activity note per category and never fails on a category without one", async () => {
+    const tree = await demoApi<EvidenceTree>(`/engagements/${ID}/evidence-tree`);
+    const notes = new Map<string, string | null>();
+    for (const l of tree.lines) {
+      const s = await demoApi<LineSchedule>(`/engagements/${ID}/calculation-lines/${enc(l.key)}/schedule`);
+      notes.set(l.category, s.activity_quantity_note ?? null);
+    }
+    expect(notes.get("stationary")).toBe("Activity quantity: fuel quantity combusted");
+    expect(notes.get("purchased_energy")).toMatch(/^Activity quantity: (electricity quantity purchased \/ consumed|energy quantity purchased)$/);
+    if (notes.has("fugitive")) expect(notes.get("fugitive")).toBeNull();
+  });
+
   it("shows Facility only on a line that is not fed by a utility bill", async () => {
     const tree = await demoApi<EvidenceTree>(`/engagements/${ID}/evidence-tree`);
     const other = tree.lines.find((l) => !(l.category === "purchased_energy" || (l.category === "stationary" && l.level2 === "natural-gas")));

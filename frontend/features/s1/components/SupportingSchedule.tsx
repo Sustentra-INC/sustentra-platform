@@ -110,7 +110,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
   if (!schedule) {
     return (
       <section className="s1-content s1-sch">
-        <ContainerStateSurface state="loading" />
+        <ContainerStateSurface state="loading" label="Loading the supporting schedule" />
       </section>
     );
   }
@@ -132,6 +132,10 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
 
   return (
     <section className="s1-content s1-sch">
+      {/* The back link sits first, left-aligned, like on the other screens. */}
+      <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
+        ‹ Back to {backLabel}
+      </button>
       <header className="s1-sch-head">
         <div className="s1-sch-head__id">
           <nav className="s1-sch-crumbs" aria-label="Breadcrumb">
@@ -151,9 +155,6 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
           {year ? <p className="s1-muted">Reporting year {year}</p> : null}
         </div>
         <div className="s1-sch-head__actions">
-          <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
-            ‹ Back to {backLabel}
-          </button>
           {/* Always present. A line with no calculation yet shows it disabled, with the reason beside it. */}
           <button
             className="s1-button s1-button--pri"
@@ -466,7 +467,7 @@ function IdentifierItem({ group, onOpenDocument }: { group: IdentifierGroup; onO
         <span className="s1-sch-ids__label">{group.label}</span>
         <span className={`s1-sch-ids__value${summary.length <= 24 ? " s1-sch-ids__value--short" : ""}`}>{summary}</span>
         <span className="s1-sch-ids__n">
-          {group.documents_with} of {group.documents_total} documents
+          {group.documents_with} of {group.documents_total} {group.documents_total === 1 ? "document" : "documents"}
         </span>
       </button>
       {group.matched_by?.length ? <p className="s1-muted s1-sch-ids__how">Matched by: {group.matched_by.join("; ")}</p> : null}
