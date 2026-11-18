@@ -129,12 +129,12 @@ def test_edit_accept_reject_and_revert_record_the_session_user_and_audit_each() 
 def test_refused_moves_answer_with_a_sentence_and_write_nothing() -> None:
     engagement = create()
     eid = engagement["id"]
-    assert act(eid, "exclusion:boundary", "edit", {"value": "2025"}).status_code == 200
+    assert act(eid, "exclusion:inventory", "edit", {"value": "2025"}).status_code == 200
     before = events()
 
-    again = act(eid, "exclusion:boundary", "accept")
+    again = act(eid, "exclusion:inventory", "accept")
     assert again.status_code == 409 and "already edited" in again.json()["detail"]
-    assert act(eid, "exclusion:boundary", "reject", {"reason": "x"}).status_code == 409
+    assert act(eid, "exclusion:inventory", "reject", {"reason": "x"}).status_code == 409
     assert act(eid, "gwp", "revert").status_code == 409
     nothing = act(eid, "exclusion:boundary", "accept")
     assert nothing.status_code == 409 and "nothing to accept" in nothing.json()["detail"]
@@ -146,10 +146,10 @@ def test_refused_moves_answer_with_a_sentence_and_write_nothing() -> None:
     assert act(eid, "no_such_field", "accept").status_code == 404
     assert act(eid, "entity:abcd1234", "edit", {"value": {}}).status_code == 404
     assert len(events()) == len(before)
-    assert record(eid, "exclusion:boundary")["decision"]["value"] == "2025"
+    assert record(eid, "exclusion:inventory")["decision"]["value"] == "2025"
     assert record(eid, "category:scope1:fugitive")["decision"] is None
     stored = asyncio.run(_admin("SELECT item_key FROM workpaper_items WHERE kind = 'methodology'"))
-    assert [r["item_key"] for r in stored] == ["exclusion:boundary"]  # refused moves leave no rows behind
+    assert [r["item_key"] for r in stored] == ["exclusion:inventory"]  # refused moves leave no rows behind
 
 
 def test_a_client_cannot_name_the_actor_or_set_the_status() -> None:
@@ -345,3 +345,34 @@ def test_migration_0016_widens_the_kind_check_and_downgrade_restores_it() -> Non
         assert "methodology" in allowed_kinds()
     finally:
         alembic("upgrade", "head")
+
+
+# --- reporting period: two dates ----------------------------------------------------------
+
+def test_the_reporting_period_takes_two_real_dates_and_refuses_the_rest_with_a_sentence() -> None:
+    eid = create()["id"]
+    good = act(eid, "reporting_period", "edit", {"value": {"start": "2025-01-01", "end": "2025-12-31"}})
+    assert good.status_code == 200 and good.json()["decision"]["value"] == {"start": "2025-01-01", "end": "2025-12-31"}
+    for bad, words in (({"start": "2025-12-31", "end": "2025-01-01"}, "can't be before"),
+                       ({"start": "2025-13-45", "end": "2025-12-31"}, "not a real date"),
+                       ({"start": "2025-01-01"}, "both a start date and an end date"),
+                       ("January 1 to December 31, 2025", "both a start date and an end date")):
+        refused = act(eid, "reporting_period", "edit", {"value": bad})
+        assert refused.status_code == 422 and words in refused.json()["detail"]
+    assert record(eid, "reporting_period")["decision"]["value"] == {"start": "2025-01-01", "end": "2025-12-31"}
+
+
+def test_an_old_text_period_is_kept_shown_as_a_value_and_replaced_only_by_two_dates() -> None:
+    eid = create()["id"]
+    old = {"field_id": "reporting_period", "suggestion": None, "history": [],
+           "decision": {"status": "edited", "value": "Fiscal 2024 – Zürich 排放", "by": {"name": "A", "login": "a"},
+                        "at": "2026-11-01T10:00:00.000Z"}}
+    asyncio.run(_admin(
+        "INSERT INTO workpaper_items (org_id, engagement_id, kind, item_key, payload) "
+        "SELECT org_id, id, 'methodology', 'reporting_period', $2::jsonb FROM engagements WHERE id = $1::uuid",
+        eid, json.dumps(old)))
+    row = record(eid, "reporting_period")
+    assert row["decision"]["value"] == "Fiscal 2024 – Zürich 排放" and row["display_state"] == "has_value"
+    assert act(eid, "reporting_period", "edit", {"value": "2025"}).status_code == 422
+    assert record(eid, "reporting_period")["decision"]["value"] == "Fiscal 2024 – Zürich 排放"
+    assert act(eid, "reporting_period", "edit", {"value": {"start": "2024-01-01", "end": "2024-12-31"}}).status_code == 200

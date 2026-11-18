@@ -36,7 +36,7 @@ export const AI_MODEL = "claude-sonnet-4-5";
 
 /** Stated by the company in its report: present before Claude reads anything. */
 export const COMPANY_STATED: { fieldId: string; value: SeedValue; group?: string }[] = [
-  { fieldId: "reporting_period", value: "January 1, 2025 to December 31, 2025" },
+  { fieldId: "reporting_period", value: { start: "2025-01-01", end: "2025-12-31" } },
   { fieldId: "category:scope1:stationary", value: "Yes" },
   { fieldId: "category:scope1:mobile", value: "Yes" },
   { fieldId: "category:scope1:process", value: "No" },

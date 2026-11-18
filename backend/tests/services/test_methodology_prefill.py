@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from backend.app.services import methodology_prefill as mp
 from backend.app.services.ai_locator import document_lines
 from backend.tests.services.test_ai_locator import _pdf_like

@@ -122,4 +122,14 @@ describe("the demo backend's methodology review", () => {
     await open();
     expect(within(row("Indirect Biogenic")).queryByText("Not checked yet")).toBeNull();
   });
+  it("the reporting period is two real dates with the end not before the start", async () => {
+    const edit = (value: unknown) => demoApi(`${BASE}/reporting_period/edit`, { method: "POST", body: { value } });
+    await expect(edit({ start: "2025-12-31", end: "2025-01-01" })).rejects.toMatchObject({ status: 422 });
+    await expect(edit({ start: "2025-13-45", end: "2025-12-31" })).rejects.toMatchObject({ status: 422 });
+    await expect(edit({ start: "2025-01-01" })).rejects.toMatchObject({ status: 422 });
+    await expect(edit("January 1 to December 31, 2025")).rejects.toMatchObject({ status: 422 });
+    await edit({ start: "2024-02-29", end: "2024-12-31" });
+    await open();
+    expect(within(row("Reporting period")).getByText("2024-02-29 to 2024-12-31")).toBeTruthy();
+  });
 });

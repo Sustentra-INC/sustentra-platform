@@ -86,6 +86,9 @@ export function aiStatusWords(ai: AiStatus): string | null {
 function valueText(value: MethodologyValue | undefined): string {
   if (value === null || value === undefined || value === "") return "";
   if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "object" && typeof value.start === "string" && typeof value.end === "string" && Object.keys(value).length === 2) {
+    return `${value.start} to ${value.end}`; // a date range
+  }
   if (typeof value === "object") {
     return Object.entries(value)
       .map(([, v]) => valueText(v))
@@ -145,9 +148,15 @@ function ValueEditor({
   const [single, setSingle] = useState(valueText(start));
 
   const [problem, setProblem] = useState<string | null>(null);
+  const range = def.kind === "date_range";
+  const [dates, setDates] = useState({ start: typeof current.start === "string" ? current.start : "", end: typeof current.end === "string" ? current.end : "" });
 
   function save() {
     setProblem(null);
+    if (range) {
+      if (!dates.start || !dates.end) return setProblem("Enter both a start date and an end date.");
+      return onSave({ start: dates.start, end: dates.end });
+    }
     if (!parts) return onSave(single);
     const out: Record<string, MethodologyValue> = {};
     for (const p of parts) {
@@ -185,7 +194,18 @@ function ValueEditor({
 
   return (
     <div className="s1-mb-edit">
-      {parts
+      {range ? (
+        <>
+          <label className="s1-mb-part">
+            <span className="s1-mr-muted">Start date</span>
+            <input className="s1-mr-input" type="date" aria-label={`Start date: ${def.label}`} value={dates.start} onChange={(e) => setDates((d) => ({ ...d, start: e.target.value }))} />
+          </label>
+          <label className="s1-mb-part">
+            <span className="s1-mr-muted">End date</span>
+            <input className="s1-mr-input" type="date" aria-label={`End date: ${def.label}`} value={dates.end} onChange={(e) => setDates((d) => ({ ...d, end: e.target.value }))} />
+          </label>
+        </>
+      ) : parts
         ? parts.map((p) => {
             const options = p.allowed ?? (def.allowed && !Array.isArray(def.allowed) ? def.allowed[p.key] : undefined);
             return (
@@ -231,6 +251,9 @@ function FieldRow({
   const pendingStatus = status === "pending";
   const decided = status === "accepted" || status === "edited";
   const current = decided ? valueText(decision?.value) : "";
+  // A period saved before it became two dates is kept as the text it was; the reviewer re-enters it as dates.
+  const oldText = def.kind === "date_range" && typeof decision?.value === "string" && decision.value ? decision.value : null;
+  const suggestionIsOldText = def.kind === "date_range" && typeof suggestion?.value === "string";
   const finish = (run: () => Promise<unknown>) => {
     setMode("view");
     setReason("");
@@ -241,13 +264,14 @@ function FieldRow({
     <li className="s1-mb-row" data-status={status}>
       <div className="s1-mb-main">
         <span className="s1-mr-label">{def.label}</span>
-        <span className="s1-mr-value">{current || <span className="s1-mr-none">{emptyWords(status, record.displayState)}</span>}</span>
+        <span className="s1-mr-value">{oldText ? <span>Recorded as: {oldText}</span> : current || <span className="s1-mr-none">{emptyWords(status, record.displayState)}</span>}</span>
         <span className="s1-mb-status">{statusWord(status)}</span>
         {decision && status !== "pending" ? (
           <span className="s1-mr-muted">
             {decision.by.name} · {when(decision.at)}
           </span>
         ) : null}
+        {oldText ? <span className="s1-mr-muted">Enter the start and end dates with Edit.</span> : null}
         {status === "rejected" && decision?.reason ? <span className="s1-mr-muted">Reason: {decision.reason}</span> : null}
       </div>
 
@@ -267,7 +291,7 @@ function FieldRow({
       {mode === "edit" ? (
         <ValueEditor
           def={def}
-          start={(decided ? decision?.value : suggestion?.value) ?? {}}
+          start={(oldText || suggestionIsOldText ? {} : decided ? decision?.value : suggestion?.value) ?? {}}
           busy={busy}
           onCancel={() => setMode("view")}
           onSave={(value) => finish(() => editField(engagementId, def.fieldId, value))}
@@ -298,7 +322,7 @@ function FieldRow({
         </div>
       ) : (
         <span className="s1-mr-actions">
-          {pendingStatus && suggestion ? (
+          {pendingStatus && suggestion && !suggestionIsOldText ? (
             <button
               type="button"
               className="s1-button s1-button--compact"
