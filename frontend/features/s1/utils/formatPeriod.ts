@@ -45,6 +45,17 @@ export function formatPeriod(start: string | null | undefined, end: string | nul
   return `${ABBR[a.m - 1]} ${a.y} – ${ABBR[b.m - 1]} ${b.y}`;
 }
 
+/** "Added by J. Park · Nov 4": who added a reviewer's line and when. A name of two words shows as
+ *  initial and surname; any other name (or a login) shows as it is. Missing parts are left out. */
+export function addedByText(name: string | null | undefined, at: string | null | undefined): string {
+  const words = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  const who = words.length === 2 ? `${Array.from(words[0])[0]}. ${words[1]}` : words.join(" ");
+  const when = at ? new Date(at) : null;
+  const day = when && !Number.isNaN(when.getTime()) ? when.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+  const head = who ? `Added by ${who}` : "Added by a reviewer";
+  return day ? `${head} · ${day}` : head;
+}
+
 /** A date read from a client's document, the way a bill prints it: "01 Feb 2025". Anything
  *  that is not an ISO date comes back as it was read. */
 export function formatPrintedDate(iso: string): string {

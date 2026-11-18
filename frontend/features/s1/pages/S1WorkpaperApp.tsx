@@ -104,7 +104,7 @@ import type { SessionAuditEntry } from "../utils/auditIntent";
 import { dashboardFigures, engagementActivity } from "../utils/engagementActivity";
 import { SupportingSchedule } from "../components/SupportingSchedule";
 import { setDemoEngagement } from "../demo-backend/state";
-import { newLineProblem } from "../demo-backend/linesModel";
+import { newLineProblem, stampDemoLines } from "../demo-backend/linesModel";
 import { saveDocumentPlacement, type EvidenceLineSetting, type Placement } from "../api/evidenceTree";
 import { useViewHistory, viewLabel } from "../utils/viewHistory";
 import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
@@ -587,8 +587,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     if (dataMode === "fixture") {
       const problem = newLineProblem(base, evidenceLines);
       if (problem) throw new Error(problem);
-      setDemoEngagement(next);
-      setEngagement(next);
+      const stamped = { ...next, evidenceLines: stampDemoLines(base, evidenceLines, engagement.signedInLogin ?? "demo", new Date().toISOString()) };
+      setDemoEngagement(stamped);
+      setEngagement(stamped);
       return;
     }
     const row = await saveEngagement(next);
@@ -720,7 +721,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setDemoState("loading");
     void refreshBackendWorkspace();
   };
+  // The schedule is asked for under the engagement's id, which a reload only learns once the
+  // engagement has loaded: asking sooner is answered 404 and would send the reader to Evidence.
   const waitsForWorkspace =
+    activeView.name === "schedule" ||
     activeView.name === "dashboard" ||
     activeView.name === "evidence" ||
     activeView.name === "requests" ||

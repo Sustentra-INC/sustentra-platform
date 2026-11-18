@@ -51,6 +51,9 @@ export interface ModelLine {
   label: string;
   facility_id: string | null;
   created_by_user: boolean;
+  created_by?: string | null;
+  created_at?: string | null;
+  created_by_name?: string | null;
 }
 
 export function lineKey(scope: string, category: string, level2: string, anchorKind: string, anchorId: string): string {
@@ -262,7 +265,28 @@ function userLine(entry: EvidenceLineSetting): ModelLine | null {
   if (!entry.category || !CATEGORY_SCOPE[entry.category] || !entry.level2_label || !entry.label || !entry.anchor_kind) return null;
   const anchorId = entry.anchor_kind === "company" ? "company" : entry.anchor_id;
   if (!anchorId) return null;
-  return makeLine(entry.category, entry.level2 ?? entry.level2_label, entry.level2_label, entry.anchor_kind, anchorId, entry.label, true);
+  const line = makeLine(entry.category, entry.level2 ?? entry.level2_label, entry.level2_label, entry.anchor_kind, anchorId, entry.label, true);
+  const login = entry.created_by ?? null;
+  const person = login ? engagementNow().engagementTeam?.find((m) => m.login === login) : undefined;
+  return { ...line, created_by: login, created_at: entry.created_at ?? null, created_by_name: login ? (person?.name ?? login) : null };
+}
+
+/**
+ * The demo's copy of the server's stamp (`stamp_new_lines`): a line the save adds gets the signed-in
+ * login and the time; a line already saved keeps what it has; whatever the caller sent is dropped.
+ */
+export function stampDemoLines(engagement: EngagementConfig, lines: EvidenceLineSetting[], login: string, now: string): EvidenceLineSetting[] {
+  const keyOf = (e: EvidenceLineSetting) =>
+    lineKey(CATEGORY_SCOPE[e.category] ?? e.scope ?? "", e.category, e.level2 ?? e.level2_label, e.anchor_kind, e.anchor_id);
+  const stored = new Map((engagement.evidenceLines ?? []).map((e) => [keyOf(e), e]));
+  return lines.map((e) => {
+    const { created_by: _by, created_at: _at, ...rest } = e;
+    void _by;
+    void _at;
+    const old = stored.get(keyOf(e));
+    if (!old) return { ...rest, created_by: login, created_at: now };
+    return { ...rest, ...(old.created_by ? { created_by: old.created_by } : {}), ...(old.created_at ? { created_at: old.created_at } : {}) };
+  });
 }
 
 /**

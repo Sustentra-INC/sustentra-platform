@@ -49,7 +49,7 @@ def process_local_document(payload: LocalProcessDocumentRequest, user: CurrentUs
     # Reads an arbitrary server-side path: a local-development tool only (SEC-001).
     if get_settings().is_production_like:
         raise HTTPException(status_code=404, detail="Not Found")
-    if payload.evidence_id and not evidence_free_or_own(payload.evidence_id, user):
+    if payload.evidence_id and not evidence_free_or_own(payload.evidence_id, user, payload.engagement_id):
         raise HTTPException(status_code=404, detail="Evidence not found.")
     try:
         result = _service.process_local_document(
