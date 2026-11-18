@@ -478,6 +478,17 @@ describe("Methodology review on real data", () => {
       expect(screen.queryByRole("combobox", { name: "Add an item" })).toBeNull();
     });
 
+    it("offers Accept only where there is a suggestion; an empty row keeps Edit and Reject", async () => {
+      const d = withStates({ reporting_period: "not_detected" });
+      (d.fields[1] as { decision: unknown }).decision = null;
+      await open(vi.fn(), d);
+      const empty = row("Reporting period");
+      expect(within(empty).queryByRole("button", { name: /^Accept:/ })).toBeNull();
+      expect(within(empty).getByRole("button", { name: /^Edit:/ })).toBeTruthy();
+      expect(within(empty).getByRole("button", { name: /^Reject:/ })).toBeTruthy();
+      expect(within(row("Consolidation approach")).getByRole("button", { name: /^Accept:/ })).toBeTruthy();
+    });
+
     it("copes with a server that sends no state at all", async () => {
       await open();
       expect(screen.getByText("Consolidation approach")).toBeTruthy();

@@ -298,11 +298,11 @@ function FieldRow({
         </div>
       ) : (
         <span className="s1-mr-actions">
-          {pendingStatus ? (
+          {pendingStatus && suggestion ? (
             <button
               type="button"
               className="s1-button s1-button--compact"
-              disabled={busy || !suggestion}
+              disabled={busy}
               aria-label={`Accept: ${def.label}`}
               onClick={() => finish(() => acceptField(engagementId, def.fieldId))}
             >
