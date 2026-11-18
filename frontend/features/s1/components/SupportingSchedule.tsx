@@ -3,7 +3,7 @@
 import { ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleRow } from "../api/evidenceTree";
+import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleHistoryEntry, type ScheduleRow } from "../api/evidenceTree";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { ApiError } from "../../../lib/api";
 import { userFacingApiError } from "../api/s1Backend";
@@ -314,15 +314,18 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
       </section>
 
       <details className="s1-panel s1-sch-history">
-        <summary>Line history ({schedule.history.length})</summary>
+        <summary>Line history ({schedule.history_total ?? schedule.history.length})</summary>
         {schedule.history.length ? (
-          <ul>
-            {schedule.history.map((h, i) => (
-              <li key={`${h.at}:${i}`}>
-                <span className="s1-muted">{formatDateTime(h.at)}</span> {h.text}
-              </li>
-            ))}
-          </ul>
+          <>
+            {(schedule.history_total ?? 0) > schedule.history.length ? <p className="s1-muted">Showing the latest {schedule.history.length}</p> : null}
+            <ul>
+              {schedule.history.map((h, i) => (
+                <li key={`${h.at ?? "none"}:${i}`}>
+                  {h.at ? <span className="s1-muted">{formatDateTime(h.at)}</span> : null} {historySentence(h)}
+                </li>
+              ))}
+            </ul>
+          </>
         ) : (
           <p className="s1-muted">Nothing has happened on this line yet.</p>
         )}
@@ -332,6 +335,29 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
 }
 
 /* =============================== helpers =============================== */
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const ACTION_WORDS: Record<Exclude<ScheduleHistoryEntry["action"], "extracted">, string> = {
+  accepted: "accepted",
+  corrected: "corrected",
+  added: "added",
+  rejected: "rejected",
+  asked_for_more_evidence: "asked for more evidence on",
+};
+
+/** The history sentence: who, what, the value, and where it came from. The server sends the parts. */
+function historySentence(h: ScheduleHistoryEntry): string {
+  if (h.action === "extracted") {
+    return `System extracted ${plural(h.count ?? 0, "value", "values")} from ${plural(h.documents ?? 0, "document", "documents")} placed in this line`;
+  }
+  const who = h.actor_name || "A reviewer";
+  const verb = ACTION_WORDS[h.action] ?? h.action;
+  if ((h.count ?? 1) > 1) return `${who} ${verb} ${h.count} values`;
+  const value = h.value ? `${h.value}${h.unit ? ` ${h.unit}` : ""}` : "";
+  const what = [h.field, value].filter(Boolean).join(" ");
+  const from = h.file_name ? ` from ${h.file_name}${h.page ? `, page ${h.page}` : ""}` : "";
+  return `${who} ${verb}${what ? ` ${what}` : " a value"}${from}`;
+}
 
 function reportingYear(period: LineSchedule["reporting_period"]): string | null {
   const a = period.start?.slice(0, 4);
