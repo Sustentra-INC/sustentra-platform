@@ -11,7 +11,9 @@ import {
   prefillMethodology,
   rejectField,
   removeRow,
+  revealField,
   revertField,
+  sourceLocation,
   type AiStatus,
   type CatalogField,
   type MethodologyRecord,
@@ -57,6 +59,14 @@ const ADD_ROW_LABEL: Record<string, string> = {
   "factor:scope1": "Add Scope 1 factor row",
   "factor:scope2": "Add Scope 2 factor row",
 };
+
+/** What an empty row reads, by the server's display state. Never "Not set". */
+export function emptyWords(status: string, displayState: string | undefined): string {
+  if (status === "rejected") return "Rejected, no value";
+  if (displayState === "not_detected") return "Not detected";
+  if (displayState === "has_value") return "Not decided yet";
+  return "Not checked yet";
+}
 
 export function statusWord(status: string | undefined | null): string {
   if (!status) return "Pending";
@@ -231,7 +241,7 @@ function FieldRow({
     <li className="s1-mb-row" data-status={status}>
       <div className="s1-mb-main">
         <span className="s1-mr-label">{def.label}</span>
-        <span className="s1-mr-value">{current || <span className="s1-mr-none">{status === "rejected" ? "Rejected, no value" : "Not set"}</span>}</span>
+        <span className="s1-mr-value">{current || <span className="s1-mr-none">{emptyWords(status, record.displayState)}</span>}</span>
         <span className="s1-mb-status">{statusWord(status)}</span>
         {decision && status !== "pending" ? (
           <span className="s1-mr-muted">
@@ -249,7 +259,7 @@ function FieldRow({
           {suggestion.quote_truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
           <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(suggestion.document_id)}>
             {suggestion.file_name}
-            {suggestion.source_reference ? `, ${suggestion.source_reference}` : ""}
+            {sourceLocation(suggestion.source_reference) ? `, ${sourceLocation(suggestion.source_reference)}` : ""}
           </button>
         </div>
       ) : null}
@@ -288,11 +298,11 @@ function FieldRow({
         </div>
       ) : (
         <span className="s1-mr-actions">
-          {pendingStatus ? (
+          {pendingStatus && suggestion ? (
             <button
               type="button"
               className="s1-button s1-button--compact"
-              disabled={busy || !suggestion}
+              disabled={busy}
               aria-label={`Accept: ${def.label}`}
               onClick={() => finish(() => acceptField(engagementId, def.fieldId))}
             >
@@ -420,10 +430,13 @@ export function BackendMethodologyReview({
   const groups = useMemo(
     () =>
       (data?.groups ?? [])
-        .map((g) => ({ ...g, defs: (data?.catalog ?? []).filter((d) => d.group === g.group && records.has(d.fieldId)) }))
+        .map((g) => ({ ...g, defs: (data?.catalog ?? []).filter((d) => d.group === g.group && records.get(d.fieldId)?.shown !== false && records.has(d.fieldId)) }))
         .filter((g) => g.defs.length > 0),
     [data, records]
   );
+
+  // Optional rows with nothing on them stay off the page until "Add an item" brings one on.
+  const hiddenOptional = (data?.catalog ?? []).filter((d) => records.get(d.fieldId)?.shown === false);
 
   if (!data) {
     return (
@@ -500,6 +513,26 @@ export function BackendMethodologyReview({
             </button>
           ))}
         </span>
+      ) : null}
+
+      {hiddenOptional.length ? (
+        <select
+          className="s1-mr-input"
+          aria-label="Add an item"
+          disabled={busy}
+          value=""
+          onChange={(event) => {
+            const fieldId = event.target.value;
+            if (fieldId) void act(() => revealField(engagementId, fieldId));
+          }}
+        >
+          <option value="">Add an item</option>
+          {hiddenOptional.map((d) => (
+            <option key={d.fieldId} value={d.fieldId}>
+              {d.label}
+            </option>
+          ))}
+        </select>
       ) : null}
 
       {groups.map(({ group, label, defs }) => (

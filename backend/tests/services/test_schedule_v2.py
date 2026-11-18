@@ -3,6 +3,8 @@ value flagged accepted or not, a dynamic column set, the activity note, identifi
 
 from __future__ import annotations
 
+import dataclasses
+
 from backend.app.services import calculation_lines as cl
 from backend.app.services.evidence_tree_service import EvidenceTreeService
 from backend.tests.services.test_calculation_lines import (
@@ -216,3 +218,102 @@ def test_a_fully_reviewed_record_counts_and_the_line_is_calculated() -> None:
     assert schedule["calculated"] is True
     month = {m["month"]: m for m in schedule["coverage"]}["2025-03"]
     assert month["status"] == "counted_in_part" and month["waiting_on"] == []
+
+
+# --- C2: identifiers apply per line type ------------------------------------------------------
+def _labels(schedule: dict) -> list[str]:
+    return [g["label"] for g in schedule["identifier_groups"]]
+
+
+def test_a_mobile_line_shows_facility_only() -> None:
+    from backend.tests.services.test_calculation_lines import _group, _mobile
+
+    store = FakeStore()
+    store.add_document("M1", "CT-S1-MOBFUEL", [{**_mobile(), "meter_number": ("M-1", None)}])
+    engagement = _engagement(recalculation={"vehicle_groups": [_group("Diesel Fuel", "Delivery trucks")]})
+    key = "s1:mobile:diesel-fuel:vg-delivery-trucks"
+    schedule = _tree_service(store).schedule(engagement, _own, key)
+    assert schedule is not None
+    assert _labels(schedule) == ["Facility"]
+    assert {i["label"] for i in schedule["identifiers"]} <= {"Facility"}  # no "Meter number: Not found"
+
+
+def test_identifiers_by_category_facility_only_except_utility_lines() -> None:
+    def labels(category: str, level2: str) -> list[str]:
+        line = cl.make_line(category, level2, level2, "company", "company", "x", created_by_user=False)
+        return [label for label, _ in EvidenceTreeService._identifier_defs(line)]
+
+    four = ["Facility", "Service address", "Account number", "Meter number"]
+    assert labels("stationary", "natural-gas") == four
+    assert labels("purchased_energy", "electricity") == four
+    for thermal in ("steam", "heating", "cooling"):
+        assert labels("purchased_energy", thermal) == four
+    for category, level2 in (("mobile", "diesel-fuel"), ("fugitive", "r410a"), ("process", "x"),
+                             ("contractual", "x"), ("stationary", "propane")):
+        assert labels(category, level2) == ["Facility"]
+    unknown = dataclasses.replace(cl.make_line("mobile", "x", "x", "company", "company", "x", created_by_user=False),
+                                  category="something-new")
+    assert [label for label, _ in EvidenceTreeService._identifier_defs(unknown)] == ["Facility"]  # never crashes
+
+
+def test_a_line_with_no_documents_lists_its_identifiers_with_zero_counts() -> None:
+    mine = cl.normalize_evidence_lines([{"category": "stationary", "level2_label": "Natural gas",
+                                         "anchor_kind": "facility", "anchor_id": "fac-kc01", "label": "KC gas"}])
+    schedule = _tree_service(FakeStore()).schedule(_engagement(evidenceLines=mine), _own, GAS_KC)
+    assert schedule is not None
+    assert _labels(schedule) == ["Facility", "Service address", "Account number", "Meter number"]
+    assert all(g["documents_total"] == 0 and g["values"] == [] for g in schedule["identifier_groups"])
+
+
+def _meter_group(*meters: str) -> dict:
+    store = FakeStore()
+    for i, meter in enumerate(meters):
+        store.add_document(f"B{i}", "CT-S1-FUELQTY", [_gas(10, meter_number=meter)])
+    return {g["label"]: g for g in _schedule(store)["identifier_groups"]}["Meter number"]
+
+
+def test_nfc_and_nfd_spellings_group_together_and_keep_the_first_spelling() -> None:
+    nfc, nfd = "Rue de l'Église 12", "Rue de l'Église 12"
+    assert nfc != nfd
+    group = _meter_group(nfc, nfd)
+    assert len(group["values"]) == 1 and len(group["values"][0]["documents"]) == 2
+    assert group["values"][0]["value"] in (nfc, nfd)
+    assert (group["documents_with"], group["documents_total"]) == (2, 2)
+
+
+def test_case_and_spacing_do_not_split_a_group() -> None:
+    group = _meter_group("M-4471", "m-4471", "  M-4471  ")
+    assert [v["value"] for v in group["values"]] == ["M-4471"]
+    assert (group["documents_with"], group["documents_total"]) == (3, 3)
+
+
+def test_non_ascii_and_full_width_identifiers_work() -> None:
+    group = _meter_group("№ 4471-Ж", "№ 4471-ж", "４４７１")
+    assert len(group["values"]) == 2  # the case variants group; "4471" is a different meter
+    assert group["documents_with"] == 3
+
+
+def test_full_width_digits_group_with_ascii_and_keep_the_first_spelling() -> None:
+    group = _meter_group("４４７１", "4471", "Ｍ-4471", "M-4471")
+    assert [(v["value"], len(v["documents"])) for v in group["values"]] in (
+        [("４４７１", 2), ("Ｍ-4471", 2)], [("Ｍ-4471", 2), ("４４７１", 2)])
+    assert (group["documents_with"], group["documents_total"]) == (4, 4)
+
+
+def test_a_whitespace_only_value_is_not_found_and_counts_read_n_of_total() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(10, meter_number="M-1")])
+    store.add_document("B", "CT-S1-FUELQTY", [_gas(10, meter_number="   ")])
+    store.add_document("C", "CT-S1-FUELQTY", [_gas(10)])
+    schedule = _schedule(store)
+    group = {g["label"]: g for g in schedule["identifier_groups"]}["Meter number"]
+    assert (group["documents_with"], group["documents_total"]) == (1, 3)
+    assert sorted(d["document_id"] for d in group["not_found"]) == ["B", "C"]
+    assert [i for i in schedule["identifiers"] if i["label"] == "Meter number"] == [
+        {"label": "Meter number", "value": "M-1", "documents_with": 1, "documents_total": 3}]
+
+
+def test_electricity_lines_show_all_four_identifiers() -> None:
+    store = FakeStore()
+    store.add_document("E", "CT-S2-ELEC", [_elec(10)])
+    assert _labels(_schedule(store, ELEC_KC)) == ["Facility", "Service address", "Account number", "Meter number"]

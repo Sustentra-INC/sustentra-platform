@@ -20,7 +20,7 @@ const FIGURES: DashboardFigures = {
   requestsAwaitingClient: 1,
   requestsResolved: 0,
   requestsRaised: 2,
-  coverage: { present: 9, missing: 3, notApplicable: 1, outOfScope: 1 },
+  coverage: { present: 9, awaitingReview: 0, needsChoice: 0, missing: 3, obtained: 9, inScope: 12, notApplicable: 1, outOfScope: 1 },
   dataPointsCalculated: 0,
   dataPointsExamined: 0,
   findings: 0,

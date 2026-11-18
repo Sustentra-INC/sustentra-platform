@@ -10,6 +10,7 @@ import {
   getEvidenceTree,
   isSameLine,
   lineTitle,
+  type CalculationFamily,
   type CalculationLine,
   type EvidenceLineSetting,
   type EvidenceTree as EvidenceTreeData,
@@ -106,6 +107,16 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 
   const lineMap = useMemo(() => new Map((tree?.lines ?? []).map((l) => [l.key, l])), [tree]);
   const filtered = facilityId !== null;
+  // The labels the server already sends, for the full "Also in" path.
+  const pathLabels = useMemo(() => {
+    const scopes = new Map<string, string>();
+    const categories = new Map<string, string>();
+    for (const s of tree?.blocks.supporting.scopes ?? []) {
+      scopes.set(s.scope, s.label);
+      for (const c of s.categories) categories.set(c.category, c.label);
+    }
+    return { scopes, categories };
+  }, [tree]);
 
   if (problem) {
     return (
@@ -156,6 +167,14 @@ export function EvidenceTree(props: EvidenceTreeProps) {
     return line ? lineTitle(line) : UNKNOWN_LINE_LABEL;
   }
 
+  /** "Scope 2 › Purchased energy › Electricity › Kent Cannery"; today's short title when a label is missing. */
+  function alsoInPath(line: CalculationLine): string {
+    const scope = pathLabels.scopes.get(line.scope);
+    const category = pathLabels.categories.get(line.category);
+    if (!scope || !category || !line.level2_label || !line.label) return lineTitle(line);
+    return [scope, category, line.level2_label, line.label].join(" › ");
+  }
+
   function docRow(doc: TreeDocRow, section: string) {
     const id = `${section}|${doc.document_id}`;
     const from = doc.placement_from ?? section;
@@ -174,7 +193,11 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           ) : null}
           {section === BLOCK_UNASSIGNED ? <span>{processingText(doc.processing_status)}</span> : null}
           {doc.flags.includes("unknown_line") ? <span>Its line was deleted</span> : null}
-          {also.length ? <span>Also in {also.map(lineTitle).join(", ")}</span> : null}
+          {also.map((l) => (
+            <span key={l.key} className="s1-et-also">
+              Also in {alsoInPath(l)}
+            </span>
+          ))}
         </span>
         <span className="s1-et-doc__vals">{doc.values ? `${doc.accepted} of ${doc.values} accepted` : "No values yet"}</span>
         <ActionMenu
@@ -315,6 +338,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           title="Summary documents and workbook"
           tag="Company-prepared, not source evidence"
           counts={tree.blocks.summary_counts}
+          countOnly
         >
           {summary.length ? docList(summary, BLOCK_SUMMARY) : <p className="s1-et-none">No summary documents yet.</p>}
         </Fold>
@@ -329,6 +353,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           title="Unassigned documents"
           subtitle="System could not identify these"
           counts={tree.blocks.unassigned_counts}
+          countOnly
         >
           {unassigned.length ? docList(unassigned, BLOCK_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
         </Fold>
@@ -336,6 +361,16 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 
       {!filtered || visibleScopes.length || supporting.unassigned.length ? (
         <Fold id="b:supporting" depth={0} open={isOpen("b:supporting")} onToggle={toggle} title="Supporting evidence">
+          {tree.facilities.length === 0 ? (
+            <p className="s1-et-none s1-et-nofac">
+              No calculation lines yet. Add your facilities in Setup and each fuel gets one line per facility.{" "}
+              {props.onOpenSetup ? (
+                <button className="s1-linklike" type="button" onClick={props.onOpenSetup}>
+                  Open Setup
+                </button>
+              ) : null}
+            </p>
+          ) : null}
           {visibleScopes.map((scope) => {
             const id = `scope:${scope.scope}`;
             return (
@@ -351,6 +386,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
               open={isOpen("b:supporting-unassigned")}
               onToggle={toggle}
               title="Unassigned supporting evidence"
+              subtitle="Not yet on a calculation line"
               counts={supporting.unassigned_counts}
             >
               {supporting.unassigned.length ? docList(supporting.unassigned, SUPPORTING_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
@@ -385,6 +421,12 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           onError={onError}
           onCancel={() => setDialog(null)}
           onMove={async (to) => {
+            // Another tab may have moved it already: say so, and never save a move from a place it is not in.
+            const fresh = await getEvidenceTree(engagementId);
+            if (!stillOn(fresh, dialog.doc.document_id, dialog.from)) {
+              setReload((n) => n + 1);
+              throw new Error(STALE_MOVE);
+            }
             await props.onMovePlacement(dialog.doc.document_id, { from: dialog.from, to });
             audit("move_placement", { documentId: dialog.doc.document_id, from: placeLabel(dialog.from), to: placeLabel(to) });
             done();
@@ -482,6 +524,25 @@ function collectIds(tree: EvidenceTreeData): string[] {
   return ids;
 }
 
+const STALE_MOVE = "This document is no longer where this page showed it, so nothing was changed. The list has been refreshed; choose again.";
+
+/** Whether the document still has the placement a move names (a row's `placement_from`, else its section). */
+function stillOn(tree: EvidenceTreeData, documentId: string, from: string): boolean {
+  const has = (rows: TreeDocRow[], section: string) => rows.some((r) => r.document_id === documentId && (r.placement_from ?? section) === from);
+  const { summary, unassigned, supporting } = tree.blocks;
+  if (has(summary, BLOCK_SUMMARY) || has(unassigned, BLOCK_UNASSIGNED) || has(supporting.unassigned, SUPPORTING_UNASSIGNED)) return true;
+  return supporting.scopes.some((s) =>
+    s.categories.some((c) => c.level2s.some((l2) => l2.lines.some((n) => has(n.documents, n.line.key))))
+  );
+}
+
+const FAMILY_WORDS: Record<CalculationFamily, string> = { stationary: "stationary fuel", mobile: "mobile fuel", electricity: "electricity" };
+
+/** "3 values move" / "1 value moves". */
+function valuesText(n: number): string {
+  return n === 1 ? "1 value moves" : `${n} values move`;
+}
+
 function processingText(status: string): string {
   const s = status.toLowerCase();
   if (s === "failed" || s === "blocked") return "Could not be read";
@@ -501,6 +562,7 @@ function Fold({
   subtitle,
   tag,
   counts,
+  countOnly,
   actions,
   children,
 }: {
@@ -512,6 +574,8 @@ function Fold({
   subtitle?: string;
   tag?: string;
   counts?: TreeCounts;
+  /** Document count only: no bar, no percent (these documents have no values to accept). */
+  countOnly?: boolean;
   actions?: ReactNode;
   children?: ReactNode;
 }) {
@@ -531,18 +595,21 @@ function Fold({
             <span className="s1-et-n">
               {counts.documents} {counts.documents === 1 ? "document" : "documents"}
             </span>
-            <span className="s1-ws-gr__bar s1-et-bar-track" aria-hidden>
+            {countOnly ? <span className="s1-et-fill s1-et-fill--count" /> : null}
+            {countOnly ? null : <span className="s1-ws-gr__bar s1-et-bar-track" aria-hidden>
               {/* A zero count draws nothing: a segment keeps a minimum width, so it would show as a stub. */}
               {counts.accepted > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--resolved" style={{ flexGrow: counts.accepted }} /> : null}
               {counts.to_review > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--open" style={{ flexGrow: counts.to_review }} /> : null}
               {counts.issues > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--blocking" style={{ flexGrow: counts.issues }} /> : null}
-            </span>
-            <span
-              className="s1-ws-gr__pct"
-              title={`${counts.accepted} of ${counts.values} values accepted${counts.issues ? `, ${counts.issues} with issues` : ""}`}
-            >
-              {wholePercent(counts.pct_accepted)}% accepted
-            </span>
+            </span>}
+            {countOnly ? null : (
+              <span
+                className="s1-ws-gr__pct"
+                title={`${counts.accepted} of ${counts.values} values accepted${counts.issues ? `, ${counts.issues} with issues` : ""}`}
+              >
+                {wholePercent(counts.pct_accepted)}% accepted
+              </span>
+            )}
           </>
         ) : (
           <span className="s1-et-fill" />
@@ -646,6 +713,27 @@ function MoveDialog({
   // Only a line that still exists has a calculation to change.
   const affected = [from, to].filter((k) => isLineKey(k) && lineMap.has(k)).map(placeLabel);
   const needsConfirm = affected.length > 0;
+  const toLine = lineMap.get(to);
+  const fromSummary = from === BLOCK_SUMMARY || section === BLOCK_SUMMARY;
+  // What changes: the values this placement holds, and the lines whose calculations read them.
+  let consequence: string | null = null;
+  if (needsConfirm && !fromSummary) {
+    const n = doc.values;
+    const fromName = lineMap.has(from) ? placeLabel(from) : null;
+    const toName = toLine ? placeLabel(to) : null;
+    if (n === 0) consequence = "This document has no values yet, so no calculation changes.";
+    else if (fromName && toName) consequence = `${valuesText(n)} from ${fromName} to ${toName}. Both lines' calculations change.`;
+    else if (toName) consequence = `${valuesText(n)} to ${toName}. Its calculation changes.`;
+    else if (fromName) consequence = `${valuesText(n)} out of ${fromName}. Its calculation changes.`;
+  }
+  // Moves that are allowed but whose values will not count where they land.
+  let warning: string | null = null;
+  if (toLine && fromSummary) {
+    warning = "This is a summary document, and its values don't feed lines. Moving it here changes no calculation.";
+  } else if (toLine && doc.value_family && toLine.family !== doc.value_family) {
+    const why = toLine.family ? `it calculates ${FAMILY_WORDS[toLine.family]}` : "no calculation reads this kind of line";
+    warning = `These values won't count on this line, because ${why}. They will show as not placed.`;
+  }
 
   return (
     <Dialog title="Move to…" onClose={onCancel}>
@@ -674,9 +762,14 @@ function MoveDialog({
           ))}
         </select>
       </label>
+      {warning ? (
+        <p className="s1-modal__note" role="status">
+          {warning}
+        </p>
+      ) : null}
       {confirming ? (
         <p className="s1-modal__note" role="alert">
-          This changes the calculation for {affected.join(" and ")}.
+          {consequence ?? `This changes the calculation for ${affected.join(" and ")}.`}
         </p>
       ) : null}
       {error ? (

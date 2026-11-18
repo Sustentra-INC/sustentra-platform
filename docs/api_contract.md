@@ -141,6 +141,14 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (with `allowed_labels.set`),
     `{operational_control}` for an entity. `parts` (entity, factor, gwp only) lists the value's editors,
     `[{key, label, kind: text|list|percent|enum, allowed?}]`, so a blank new row can be drawn.
+  - Row states. The GET also answers `prefill_ran_at` (the time the last Claude prefill finished and stored its
+    result, or `null`), and each listed field carries `display_state` and `shown`; each catalog def carries
+    `required` (boolean). `display_state` is `has_value` (a suggestion, or a decision that is not a bare pending
+    one), `not_detected` (a prefill finished, and there is no suggestion or decision) or `not_checked` (no prefill has
+    finished). `required` true is "Must appear": always `shown`. `required` false is "Only if the company has a
+    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Every field in the
+    catalog is `required` today. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
+    added optional rows are kept in one extra `workpaper_items` row (`item_key` `meta:state`), never listed as a field.
   - Values by kind: text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
@@ -153,6 +161,9 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   `{value}`. `POST .../{field_id}/reject` `{reason}` (required, at most 500 characters). `POST
   .../{field_id}/revert` returns to pending. Each answers the updated record. Accept and reject only work from
   pending; edit works from any state; revert from any decided state.
+- `POST .../{field_id}/reveal` ("Add an item", no body) shows a hidden optional field and keeps it shown
+  (answers `{field_id, shown: true}`; repeating it is fine). A field that is always shown answers 422, an unknown field or a row 404. It
+  writes a `methodology_decision` audit event with action `reveal`.
 - `POST .../rows` `{group: "entities"|"factor:scope1"|"factor:scope2"}` adds a row under a server-made id (201, the new record plus `field`, its catalog def). `DELETE .../{field_id}` removes a row the reviewer added (answers the record with `removed: true`); the
   row is marked removed, not deleted. A field from the report answers 409 "Reject it instead".
 - Writes are s1_writer on an open engagement: another org 404, provider_admin 403, archived 409. A move the
@@ -225,12 +236,16 @@ counts  = {documents, values, accepted, to_review, issues, pct_accepted}
 DocRow  = {document_id, file_name, period_start, period_end, facility_id, facility_name,
            processing_status, detected_type, also_in: [lineKey], values, accepted,
            placement_from,   // send this as a move's "from" to move this row
+           value_family,     // "stationary" | "mobile" | "electricity" | null: the calculation this row's
+                             // values feed (null when mixed or when none reads them)
            flags: []}        // "unknown_line": it was moved to a line that no longer exists
 ```
 
 `CalculationLine = {key, scope, category, level2, level2_label, anchor_kind
 ("facility" | "vehicle_group" | "company"), anchor_id, label, facility_id | null,
-created_by_user, created_by?, created_at?, created_by_name?}`. A reviewer's line (`created_by_user`)
+created_by_user, family, created_by?, created_at?, created_by_name?}`. `family` is the calculation the line feeds ("stationary", "mobile",
+"electricity", or null when none reads it); a value placed on a line of another family is reported as
+not placed. A reviewer's line (`created_by_user`)
 carries `created_by` (the user id), `created_at` (ISO 8601 UTC) and `created_by_name` (full name, else
 first and last name, else the login; null when the user is unknown). The server stamps `created_by` and
 `created_at` once, when a line is first saved, and keeps them through a rename or a re-save; whatever a
@@ -333,7 +348,10 @@ fields `heat_content`, `carbon_content`, `vehicle_type`, `model_year`, `on_or_no
 no extractor produces them yet, so today a line shows only Date and Activity quantity. `identifier_groups`
 group the line's documents by identifier value; `not_found` holds documents without the identifier.
 Facility is the Setup facility, and `matched_by` says how: "Chosen by the reviewer", "Facility name in
-Setup" or "Service address in Setup". `identifiers` (one entry per value) is kept for older clients.
+Setup" or "Service address in Setup". Facility is listed for every line; Service address, Account number
+and Meter number only for utility-bill lines (stationary natural gas, electricity, steam, heating, cooling).
+Values that differ only by case, spacing or Unicode form (NFKC, so full-width digits match ASCII) fall in one group, shown in the first
+spelling seen; a whitespace-only value counts as not found. `identifiers` (one entry per value) is kept for older clients.
 
 A row counts (`accepted` true) only when its record is not in the recalculation's `awaiting_review`. When
 the quantity is reviewed but another required field is not (for example `fuel_type`), the row has

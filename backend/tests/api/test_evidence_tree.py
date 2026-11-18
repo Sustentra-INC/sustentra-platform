@@ -68,7 +68,7 @@ def test_a_reader_gets_the_tree(act_as, wired: FakeStore) -> None:
     assert row["document_id"] == "G1" and row["file_name"] == "G1.pdf" and row["facility_id"] == "fac-kc01"
     assert set(row) == {"document_id", "file_name", "period_start", "period_end", "facility_id", "facility_name",
                         "processing_status", "detected_type", "also_in", "values", "accepted", "flags",
-                        "placement_from"}
+                        "placement_from", "value_family"}
 
 
 def test_the_facility_query_filters_the_tree(act_as, wired: FakeStore) -> None:

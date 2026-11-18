@@ -29,6 +29,27 @@ export interface CatalogField {
   /** The value's editors (entity, factor, gwp), so a blank row can be drawn. */
   parts?: FieldPart[];
   userAdded: boolean;
+  /** "Must appear" (true or missing) rows are always on the page; false rows show only once they have a value or were added. */
+  required?: boolean;
+}
+
+export interface MethodologySourceReference {
+  page_number?: number | null;
+  sheet_name?: string | null;
+  cell_or_range?: string | null;
+  text_snippet?: string | null;
+  [key: string]: unknown;
+}
+
+/** The plain location shown after the file name: "page 4", "Sheet1, B12", or "" when unknown. */
+export function sourceLocation(ref: MethodologySuggestion["source_reference"] | undefined): string {
+  if (typeof ref === "string") return ref.trim();
+  if (!ref || typeof ref !== "object") return "";
+  const sheet = typeof ref.sheet_name === "string" ? ref.sheet_name.trim() : "";
+  const cell = typeof ref.cell_or_range === "string" ? ref.cell_or_range.trim() : "";
+  if (sheet || cell) return [sheet, cell].filter(Boolean).join(", ");
+  const page = ref.page_number;
+  return typeof page === "number" && Number.isInteger(page) && page > 0 ? `page ${page}` : "";
 }
 
 export interface MethodologySuggestion {
@@ -36,7 +57,8 @@ export interface MethodologySuggestion {
   quote: string;
   document_id: string;
   file_name: string;
-  source_reference: string | null;
+  /** An object from the backend; an older record may hold a plain string. */
+  source_reference: MethodologySourceReference | string | null;
   /** True when the stored quote was cut at 1,000 characters (it was verified whole). */
   quote_truncated?: boolean;
   origin: string;
@@ -58,6 +80,10 @@ export interface MethodologyRecord {
   fieldId: string;
   /** Only rows the reviewer added can be removed. */
   userAdded: boolean;
+  /** What an empty row reads: not checked yet (no Claude run), not detected (a run found nothing), or it has a value. */
+  displayState?: "not_checked" | "not_detected" | "has_value" | string;
+  /** False for an optional row that is hidden until it has a value or the reviewer adds it. */
+  shown?: boolean;
   suggestion: MethodologySuggestion | null;
   decision: MethodologyDecision | null;
   history: {
@@ -102,14 +128,14 @@ export interface PrefillResult {
 const base = (engagementId: string) => `/engagements/${encodeURIComponent(engagementId)}/methodology-review`;
 const field = (engagementId: string, fieldId: string) => `${base(engagementId)}/${encodeURIComponent(fieldId)}`;
 
-type WireRecord = { field_id: string; user_added?: boolean } & Omit<MethodologyRecord, "fieldId" | "userAdded">;
+type WireRecord = { field_id: string; user_added?: boolean; display_state?: string } & Omit<MethodologyRecord, "fieldId" | "userAdded" | "displayState">;
 type WireDef = { field_id: string; group_label: string; allowed_labels?: CatalogField["allowedLabels"]; user_added?: boolean } & Omit<
   CatalogField,
   "fieldId" | "groupLabel" | "allowedLabels" | "userAdded"
 >;
 
-function readRecord({ field_id, user_added, ...rest }: WireRecord): MethodologyRecord {
-  return { ...rest, fieldId: field_id, userAdded: Boolean(user_added) };
+function readRecord({ field_id, user_added, display_state, ...rest }: WireRecord): MethodologyRecord {
+  return { ...rest, fieldId: field_id, userAdded: Boolean(user_added), displayState: display_state };
 }
 
 function readDef({ field_id, group_label, allowed_labels, user_added, ...rest }: WireDef): CatalogField {
@@ -142,6 +168,10 @@ export const addRow = (engagementId: string, group: string) =>
 
 export const removeRow = (engagementId: string, fieldId: string) =>
   api<unknown>(field(engagementId, fieldId), { method: "DELETE" });
+
+/** "Add an item": show a hidden optional row, ready for a value. The server remembers it. */
+export const revealField = (engagementId: string, fieldId: string) =>
+  api<unknown>(`${field(engagementId, fieldId)}/reveal`, { method: "POST", body: {} });
 
 export const prefillMethodology = (engagementId: string) =>
   api<PrefillResult>(`${base(engagementId)}/prefill`, { method: "POST", body: {} });

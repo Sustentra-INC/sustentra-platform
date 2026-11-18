@@ -35,6 +35,8 @@ type Def = {
   label: string;
   kind: string;
   user_added: boolean;
+  /** "Must appear" (default) or, when false, "only if the company has a value". */
+  required: boolean;
   allowed?: Json;
   allowed_labels?: Json;
   parts?: Json;
@@ -82,8 +84,8 @@ const PARTS: Record<string, Json[]> = {
   ],
 };
 
-function def(fieldId: string, group: string, label: string, kind: string, allowed?: Json): Def {
-  const d: Def = { fieldId: fieldId, group, group_label: GROUP_LABEL.get(group) ?? group, label, kind, user_added: false };
+function def(fieldId: string, group: string, label: string, kind: string, allowed?: Json, required = true): Def {
+  const d: Def = { fieldId: fieldId, group, group_label: GROUP_LABEL.get(group) ?? group, label, kind, user_added: false, required };
   if (allowed !== undefined) d.allowed = allowed;
   if (PARTS[kind]) d.parts = clone(PARTS[kind]);
   return d;
@@ -146,6 +148,8 @@ interface State {
   rowCounter: number;
   /** Row definitions by id, for rows Claude or the reviewer added. */
   prefilled: boolean;
+  /** Optional rows the reviewer added with "Add an item". */
+  revealed: Set<string>;
 }
 
 const states = new Map<string, State>();
@@ -159,7 +163,7 @@ function stamp(state: State): string {
 function stateFor(engagementId: string): State {
   let state = states.get(engagementId);
   if (state) return state;
-  state = { defs: staticCatalog(), records: [], tick: 0, rowCounter: 0, prefilled: false };
+  state = { defs: staticCatalog(), records: [], tick: 0, rowCounter: 0, prefilled: false, revealed: new Set() };
   const company = new Date(Date.UTC(2026, 9, 28, 15, 0, 0)).toISOString().replace(".000Z", "Z");
   for (const d of state.defs) state.records.push({ fieldId: d.fieldId, user_added: false, suggestion: null, decision: null, history: [] });
   for (const stated of COMPANY_STATED) {
@@ -275,6 +279,17 @@ const publicRecord = (r: Rec): Record<string, unknown> => {
   return clone(toWire(out));
 };
 
+/** The GET's view of a record: the same record plus how an empty row reads and whether it is on the page
+ * (services/methodology_review.py display_state and is_shown). */
+function listedRecord(state: State, r: Rec): Record<string, unknown> {
+  const d = state.defs.find((x) => x.fieldId === r.fieldId);
+  const decision = r.decision;
+  const hasValue = Boolean(r.suggestion) || (decision !== null && (decision.status !== "pending" || (decision.value !== null && decision.value !== undefined)));
+  const displayState = hasValue ? "has_value" : state.prefilled ? "not_detected" : "not_checked";
+  const shown = d?.required !== false || hasValue || state.revealed.has(r.fieldId);
+  return { ...publicRecord(r), display_state: displayState, shown };
+}
+
 const fieldPath = (action: string) => new RegExp(`^/engagements/(?<id>[^/]+)/methodology-review/(?<field>[^/]+)/${action}$`);
 
 function bodyOf(body: unknown): Record<string, Json> {
@@ -291,13 +306,22 @@ function sameRow(group: string, a: Json, b: Json): boolean {
   return keys.every((k) => n(x?.[k]) === n(y?.[k]));
 }
 
+/** The demo's canned location text, shaped like the backend's source_reference object. */
+function demoReference(text: string): Record<string, Json> {
+  const page = /^page (\d+)$/.exec(text);
+  if (page) return { page_number: Number(page[1]) };
+  const cell = /^(.+?) sheet, cell (.+)$/.exec(text);
+  if (cell) return { sheet_name: cell[1], cell_or_range: cell[2] };
+  return { text_snippet: text };
+}
+
 function suggestionOf(item: ClaudeItem, at: string): Record<string, Json> {
   return {
     value: clone(item.value),
     quote: item.quote,
     document_id: item.source.document_id,
     file_name: item.source.file_name,
-    source_reference: item.page,
+    source_reference: demoReference(item.page),
     origin: "ai",
     model: AI_MODEL,
     request_id: "req_demo_methodology_prefill",
@@ -361,7 +385,7 @@ export const methodologyRoutes: DemoRoute[] = [
       const live = state.records.filter((r) => !r.removed);
       const ids = new Set(live.map((r) => r.fieldId));
       return clone({
-        fields: live.map(publicRecord),
+        fields: live.map((r) => listedRecord(state, r)),
         catalog: state.defs.filter((d) => ids.has(d.fieldId)).map(toWire),
         groups: GROUPS.map(([group, label]) => ({ group, label })),
         row_groups: Object.keys(ROW_GROUPS),
@@ -375,6 +399,17 @@ export const methodologyRoutes: DemoRoute[] = [
           cap_usd: 50,
         },
       });
+    },
+  },
+  {
+    method: "POST",
+    path: fieldPath("reveal"),
+    handle: ({ params }) => {
+      const state = stateFor(params.id);
+      const { record, d } = find(state, params.field);
+      if (d.user_added || d.required) demoError(422, `'${d.label}' is always shown, so there is nothing to add.`);
+      state.revealed.add(record.fieldId);
+      return { [WIRE_ID]: record.fieldId, shown: true };
     },
   },
   {

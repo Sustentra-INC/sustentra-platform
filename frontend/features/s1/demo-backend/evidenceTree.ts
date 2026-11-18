@@ -18,8 +18,20 @@ import type { DemoRoute } from "./types";
 
 const CATEGORY_SCOPE = Object.fromEntries(CATEGORIES.map(([k, , s]) => [k, s]));
 
+/** The calculation a line feeds (the backend's CalculationLine.family): null when none reads it. */
+function familyOfLine(line: ModelLine): CalculationLine["family"] {
+  if (line.category === "purchased_energy") return line.level2 === "electricity" ? "electricity" : null;
+  if (line.category === "mobile" || line.anchor_kind === "vehicle_group") return "mobile";
+  if ((line.category === "stationary" || line.category === "biogenic") && line.anchor_kind === "facility") return "stationary";
+  return null;
+}
+
+const FAMILY_OF_KIND: Partial<Record<ModelRecord["kind"], TreeDocRow["value_family"]>> = {
+  gas: "stationary", propane: "stationary", fleet: "mobile", electricity: "electricity",
+};
+
 function lineOf(line: ModelLine): CalculationLine {
-  return { ...line };
+  return { ...line, family: familyOfLine(line) };
 }
 
 function counts(parts: ModelRecord[]): TreeCounts {
@@ -56,6 +68,7 @@ export function buildTree(facilityId: string | null): EvidenceTree {
         processing_status: record.processingStatus, detected_type: record.detectedType,
         also_in: slots.filter((s) => s.target !== slot.target && byKey.has(s.target)).map((s) => s.target),
         values: record.values, accepted: record.acceptedValues, flags: [...slot.flags], placement_from: slot.target,
+        value_family: FAMILY_OF_KIND[record.kind] ?? null,
       };
       if (facilityId && row.facility_id !== facilityId) continue;
       rows.set(slot.target, [...(rows.get(slot.target) ?? []), { row, record }]);
@@ -102,24 +115,38 @@ function dateLabel(r: ModelRecord): string {
   return r.kind === "fleet" ? "Statement period" : r.kind === "propane" ? "Delivery date" : r.kind === "refrigerant" ? "Service date" : "Service period";
 }
 
-function groupsOf(model: Model, on: ModelRecord[]): IdentifierGroup[] {
-  const defs: [string, (r: ModelRecord) => string | null][] = [
+/** Same rule as the backend: Facility on every line; address, account and meter only on utility-bill lines. */
+function isUtilityLine(line: { category: string; level2: string }): boolean {
+  return line.category === "purchased_energy" || (line.category === "stationary" && line.level2 === "natural-gas");
+}
+
+/** Whitespace collapsed for display; the comparison key is NFKC, case-folded and space-collapsed (the backend's rule). */
+function spelling(raw: string | null): [string, string] {
+  const text = raw ? raw.split(/\s+/).filter(Boolean).join(" ") : "";
+  return [text, text.normalize("NFKC").toLowerCase().split(/\s+/).filter(Boolean).join(" ")];
+}
+
+function groupsOf(model: Model, line: { category: string; level2: string }, on: ModelRecord[]): IdentifierGroup[] {
+  const all: [string, (r: ModelRecord) => string | null][] = [
     ["Facility", (r) => (r.facilityId ? model.facilities.find((f) => f.facilityId === r.facilityId)?.name ?? null : null)],
     ["Service address", (r) => r.address],
     ["Account number", (r) => r.account],
     ["Meter number", (r) => r.meter],
   ];
+  const defs = isUtilityLine(line) ? all : all.slice(0, 1);
   return defs.map(([label, get]) => {
     const groups = new Map<string, { document_id: string; file_name: string; matched_by?: string }[]>();
+    const shown = new Map<string, string>();
     for (const r of on) {
-      const value = get(r);
-      if (!value) continue;
-      groups.set(value, [...(groups.get(value) ?? []), { document_id: r.documentId, file_name: r.fileName, ...(label === "Facility" ? { matched_by: r.matchedBy } : {}) }]);
+      const [text, norm] = spelling(get(r));
+      if (!text) continue;
+      if (!shown.has(norm)) shown.set(norm, text);
+      groups.set(norm, [...(groups.get(norm) ?? []), { document_id: r.documentId, file_name: r.fileName, ...(label === "Facility" ? { matched_by: r.matchedBy } : {}) }]);
     }
     const withValue = new Set([...groups.values()].flat().map((d) => d.document_id));
     const group: IdentifierGroup = {
       label,
-      values: [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([value, documents]) => ({ value, documents: documents.sort((a, b) => a.file_name.localeCompare(b.file_name)) })),
+      values: [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([norm, documents]) => ({ value: shown.get(norm) as string, documents: documents.sort((a, b) => a.file_name.localeCompare(b.file_name)) })),
       not_found: on.filter((r) => !withValue.has(r.documentId)).map((r) => ({ document_id: r.documentId, file_name: r.fileName })),
       documents_with: withValue.size, documents_total: on.length,
     };
@@ -172,13 +199,14 @@ export function buildSchedule(lineKey: string): LineSchedule | null {
   if (hasDistance) columns.push({ key: "distance", label: "Distance", unit_in_cells: true });
   const calculated = ["stationary", "mobile", "purchased_energy"].includes(line.category) && on.some((r) => r.accepted && r.quantity !== null);
   const what = line.category === "purchased_energy" ? "electricity quantity purchased" : NOTES[line.category];
-  const identifiers = groupsOf(model, on).flatMap((g) => g.values.map((v) => ({ label: g.label, value: v.value, documents_with: v.documents.length, documents_total: on.length })));
+  const groups = groupsOf(model, line, on);
+  const identifiers = groups.flatMap((g) => g.values.map((v) => ({ label: g.label, value: v.value, documents_with: v.documents.length, documents_total: on.length })));
 
   return {
     line: lineOf(line), calculated,
     reporting_period: { start: model.period.start, end: model.period.end },
     coverage: monthCoverage(model.period, on).map((m) => ({ ...m, status: m.status as CoverageStatus })),
-    identifiers, identifier_groups: groupsOf(model, on),
+    identifiers, identifier_groups: groups,
     values, rows, columns, activity_quantity_note: what ? `Activity quantity: ${what}` : null, history,
   };
 }

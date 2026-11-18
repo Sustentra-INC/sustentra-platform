@@ -229,7 +229,11 @@ describe("dashboard evidence figures: demo coverage", () => {
     const count = (status: string) => coverageRules.filter((r) => r.status === status).length;
     expect(figures.coverage).toEqual({
       present: count("inputs_present"),
+      awaitingReview: 0,
+      needsChoice: 0,
       missing: count("inputs_missing"),
+      obtained: count("inputs_present"),
+      inScope: count("inputs_present") + count("inputs_missing"),
       notApplicable: count("not_applicable"),
       outOfScope: count("out_of_scope"),
     });

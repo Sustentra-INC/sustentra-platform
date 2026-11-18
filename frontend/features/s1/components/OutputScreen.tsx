@@ -195,7 +195,7 @@ export function OutputScreen({
                 </li>
                 {figures.coverage ? (
                   <li>
-                    <strong>{figures.coverage.present}</strong> of {figures.coverage.present + figures.coverage.missing} in-scope data
+                    <strong>{figures.coverage.present}</strong> of {figures.coverage.inScope} in-scope data
                     points with their inputs present
                   </li>
                 ) : null}
@@ -458,7 +458,7 @@ function LiveOutputScreen({
                   </li>
                   {figures.coverage ? (
                     <li>
-                      <strong>{figures.coverage.present}</strong> of {figures.coverage.present + figures.coverage.missing} in-scope
+                      <strong>{figures.coverage.present}</strong> of {figures.coverage.inScope} in-scope
                       data points with their inputs present
                     </li>
                   ) : null}

@@ -27,7 +27,11 @@ export interface CalculationLine {
   created_at?: string | null;
   /** The creator's name (their login when they have none); null when the user is unknown. */
   created_by_name?: string | null;
+  /** The calculation this line feeds; null when none reads it (fugitive, process, steam…). */
+  family?: CalculationFamily | null;
 }
+
+export type CalculationFamily = "stationary" | "mobile" | "electricity";
 
 export interface TreeCounts {
   documents: number;
@@ -53,6 +57,8 @@ export interface TreeDocRow {
   accepted: number;
   /** "unknown_line": it was moved to a line that no longer exists, so it sits in Unassigned. */
   flags: string[];
+  /** The calculation this row's values feed; null when mixed or when none reads them. */
+  value_family?: CalculationFamily | null;
   /** The placement this row stands for, sent as `from` when the row is moved (else the row's line key). */
   placement_from?: string;
 }

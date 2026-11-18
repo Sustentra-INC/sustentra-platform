@@ -22,6 +22,7 @@ import { engagementFromBackend, engagementToBackend } from "../api/engagements";
 import { EvidenceTree, type EvidenceTreeProps } from "../components/EvidenceTree";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { SupportingSchedule } from "../components/SupportingSchedule";
+import { resultsViewForLine, scheduleViewForLine } from "../pages/lineLinks";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 import type { EngagementConfig } from "../types";
@@ -39,6 +40,7 @@ const doc = (id: string, over: Partial<TreeDocRow> = {}): TreeDocRow => ({
   processing_status: "completed",
   detected_type: "Natural gas bill",
   also_in: [],
+  value_family: "stationary",
   values: 4,
   accepted: 2,
   flags: [],
@@ -68,9 +70,9 @@ const line = (key: string, label: string, over: Partial<CalculationLine> = {}): 
   ...over,
 });
 
-const KENT = line("s1:stationary:natural-gas:fac-kc01", "Kent");
-const PLANT = line("s1:stationary:natural-gas:fac-pl02", "Plant 2", { created_by_user: true, created_by_name: "Jane Park", created_at: "2025-11-04T12:00:00Z" });
-const ELEC = line("s2:purchased_energy:electricity:fac-kc01", "Kent", { scope: "s2", category: "purchased_energy", level2: "electricity", level2_label: "Electricity" });
+const KENT = line("s1:stationary:natural-gas:fac-kc01", "Kent", { family: "stationary" });
+const PLANT = line("s1:stationary:natural-gas:fac-pl02", "Plant 2", { created_by_user: true, family: "stationary", created_by_name: "Jane Park", created_at: "2025-11-04T12:00:00Z" });
+const ELEC = line("s2:purchased_energy:electricity:fac-kc01", "Kent", { scope: "s2", category: "purchased_energy", level2: "electricity", level2_label: "Electricity", family: "electricity" });
 
 const TREE: TreeData = {
   blocks: {
@@ -187,7 +189,7 @@ describe("the Evidence tree", () => {
     expect(within(head).getByText("33% accepted")).toBeInTheDocument();
     expect(screen.getAllByText("1 document").length).toBeGreaterThan(0);
     expect(screen.getByText("Added by J. Park \u00b7 Nov 4")).toBeInTheDocument();
-    expect(screen.getByText(/Also in Electricity · Kent/)).toBeInTheDocument();
+    expect(screen.getByText("Also in Scope 2 › Purchased energy › Electricity › Kent")).toBeInTheDocument();
     expect(screen.getByText("Set aside")).toBeInTheDocument();
   });
 
@@ -235,7 +237,7 @@ describe("the Evidence tree", () => {
     const dialog = screen.getByRole("dialog", { name: "Move to…" });
     fireEvent.change(within(dialog).getByLabelText("Move to"), { target: { value: PLANT.key } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("This changes the calculation for Natural gas · Kent and Natural gas · Plant 2");
+    expect(screen.getByRole("alert")).toHaveTextContent("4 values move from Natural gas · Kent to Natural gas · Plant 2. Both lines' calculations change.");
     expect(onMovePlacement).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
     await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("feb", { from: KENT.key, to: PLANT.key }));
@@ -359,7 +361,7 @@ describe("the Evidence tree", () => {
     expect(within(dialog).queryByRole("option", { name: "Unassigned supporting evidence" })).toBeNull();
     fireEvent.change(within(dialog).getByLabelText("Move to"), { target: { value: KENT.key } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("This changes the calculation for Natural gas · Kent.");
+    expect(screen.getByRole("alert")).toHaveTextContent("4 values move to Natural gas · Kent. Its calculation changes.");
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
     await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("orph", { from: DEAD, to: KENT.key }));
   });
@@ -431,6 +433,251 @@ describe("the Evidence tree", () => {
     mocks.byPath = { [TREE_PATH]: TREE };
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Supporting evidence")).toBeInTheDocument();
+  });
+});
+
+describe("the blocks match the design", () => {
+  const head = (title: string) => (screen.getByText(title).closest("section") as HTMLElement).querySelector(".s1-et-head") as HTMLElement;
+
+  it("shows Block 1 and Block 2 with a document count and no bar or percent", async () => {
+    render(<Harness />);
+    await screen.findByText("Summary documents and workbook");
+    for (const title of ["Summary documents and workbook", "Unassigned documents"]) {
+      const h = head(title);
+      expect(within(h).getByText("1 document")).toBeInTheDocument();
+      expect(h.querySelector(".s1-et-bar-track")).toBeNull();
+      expect(h.textContent).not.toMatch(/%/);
+    }
+    expect(screen.getByText("Company-prepared, not source evidence")).toBeInTheDocument();
+    // Source evidence still shows its bar.
+    expect(head("Stationary combustion").querySelector(".s1-et-bar-track")).not.toBeNull();
+  });
+
+  it("says what each Unassigned group holds, as plain text and not a state chip", async () => {
+    const tree: TreeData = { ...TREE, blocks: { ...TREE.blocks, supporting: { ...TREE.blocks.supporting, unassigned: [doc("parked", { values: 0, accepted: 0 })], unassigned_counts: counts(1, 0, 0) } } };
+    mocks.byPath = { [TREE_PATH]: tree };
+    render(<Harness />);
+    const note = await screen.findByText("Not yet on a calculation line");
+    expect(note).toHaveClass("s1-et-sub");
+    expect(note).not.toHaveClass("s1-chip");
+    expect(screen.getByText("System could not identify these")).toHaveClass("s1-et-sub");
+    expect(head("Unassigned supporting evidence").querySelector(".s1-et-bar-track")).not.toBeNull();
+  });
+
+  it("shows the full path in Also in, for every line a document is on", async () => {
+    const lines = ["Müller Käserei – Zürich", "東京工場", "Plant 3", "Plant 4", "Plant 5"].map((label, i) =>
+      line(`s2:purchased_energy:electricity:fac-${i}`, label, { scope: "s2", category: "purchased_energy", level2: "electricity", level2_label: "Electricity" })
+    );
+    const tree: TreeData = {
+      ...TREE,
+      lines: [KENT, PLANT, ELEC, ...lines],
+      blocks: {
+        ...TREE.blocks,
+        supporting: {
+          ...TREE.blocks.supporting,
+          scopes: TREE.blocks.supporting.scopes.map((sc) =>
+            sc.scope !== "s1"
+              ? sc
+              : {
+                  ...sc,
+                  categories: sc.categories.map((c) => ({
+                    ...c,
+                    level2s: c.level2s.map((l2) => ({
+                      ...l2,
+                      lines: l2.lines.map((l) => (l.line.key === KENT.key ? { ...l, documents: [doc("jan", { also_in: lines.map((x) => x.key) })] } : l)),
+                    })),
+                  })),
+                }
+          ),
+        },
+      },
+    };
+    mocks.byPath = { [TREE_PATH]: tree };
+    render(<Harness />);
+    await expandAll();
+    for (const label of ["Müller Käserei – Zürich", "東京工場", "Plant 3", "Plant 4", "Plant 5"]) {
+      const el = screen.getByText(`Also in Scope 2 › Purchased energy › Electricity › ${label}`);
+      expect(el).toHaveClass("s1-et-also");
+    }
+    const css = readFileSync(join(__dirname, "../styles/s1-workpaper.css"), "utf8");
+    expect(css).toMatch(/\.s1-et-also\s*{[^}]*overflow-wrap:\s*anywhere/);
+  });
+
+  it("falls back to the short title when a label is missing", async () => {
+    const bare = line("s2:purchased_energy:electricity:fac-kc01", "Kent", { scope: "s2", category: "purchased_energy", level2: "electricity", level2_label: "" });
+    const tree: TreeData = { ...TREE, lines: [KENT, PLANT, bare] };
+    mocks.byPath = { [TREE_PATH]: tree };
+    render(<Harness />);
+    await expandAll();
+    expect(screen.getByText("Also in Kent")).toBeInTheDocument();
+  });
+
+  it("shows empty states and no bars for an empty engagement", async () => {
+    const empty: TreeData = {
+      blocks: {
+        summary_counts: counts(0, 0, 0),
+        unassigned_counts: counts(0, 0, 0),
+        summary: [],
+        unassigned: [],
+        supporting: { scopes: [], unassigned: [], unassigned_counts: counts(0, 0, 0) },
+      },
+      facilities: [],
+      vehicle_groups: [],
+      lines: [],
+      set_aside: [],
+    };
+    mocks.byPath = { [TREE_PATH]: empty };
+    render(<Harness />);
+    await screen.findByText("Summary documents and workbook");
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(screen.getByText("No summary documents yet.")).toBeInTheDocument();
+    expect(screen.getAllByText("Nothing here.").length).toBe(2);
+    expect(screen.getByText("Not yet on a calculation line")).toBeInTheDocument();
+  });
+
+  const NOTE = /No calculation lines yet\. Add your facilities in Setup and each fuel gets one line per facility\./;
+  const noFacilities: TreeData = {
+    blocks: {
+      summary_counts: counts(0, 0, 0),
+      unassigned_counts: counts(0, 0, 0),
+      summary: [],
+      unassigned: [],
+      supporting: { scopes: [], unassigned: [], unassigned_counts: counts(0, 0, 0) },
+    },
+    facilities: [],
+    vehicle_groups: [],
+    lines: [],
+    set_aside: [],
+  };
+
+  it("says why there are no lines when the engagement has no facilities, and opens Setup", async () => {
+    mocks.byPath = { [TREE_PATH]: noFacilities };
+    const onOpenSetup = vi.fn();
+    render(<Harness onOpenSetup={onOpenSetup} />);
+    const note = await screen.findByText(NOTE);
+    // Helper text: the small, regular-weight text style of the other empty states, not a state chip.
+    expect(note).toHaveClass("s1-et-none");
+    expect(note).not.toHaveClass("s1-chip");
+    fireEvent.click(within(note).getByRole("button", { name: "Open Setup" }));
+    expect(onOpenSetup).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the note without a button when the page cannot open Setup", async () => {
+    mocks.byPath = { [TREE_PATH]: noFacilities };
+    render(<Harness />);
+    expect(await screen.findByText(NOTE)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open Setup" })).toBeNull();
+  });
+
+  it("hides the note once there is one facility, including a non-ASCII or CJK name", async () => {
+    for (const name of ["Kent", "Müller Käserei – Zürich", "東京工場"]) {
+      mocks.byPath = { [TREE_PATH]: { ...noFacilities, facilities: [{ facility_id: "FAC-1", name }] } };
+      const { unmount } = render(<Harness />);
+      await screen.findByText("Summary documents and workbook");
+      expect(screen.queryByText(NOTE)).toBeNull();
+      unmount();
+    }
+  });
+
+  it("does not show the note when the engagement has facilities", async () => {
+    mocks.byPath = { [TREE_PATH]: { ...TREE } };
+    render(<Harness />);
+    await screen.findByText("Summary documents and workbook");
+    expect(screen.queryByText(NOTE)).toBeNull();
+  });
+});
+
+describe("the move confirm says what changes", () => {
+  async function openMove(file: string) {
+    await expandAll();
+    const row = screen.getAllByRole("button", { name: file })[0].closest(".s1-et-doc") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: `Actions for ${file}` }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to…" }));
+    return screen.getByRole("dialog", { name: "Move to…" });
+  }
+  const choose = (dialog: HTMLElement, to: string) => fireEvent.change(within(dialog).getByLabelText("Move to"), { target: { value: to } });
+
+  it("counts one value in the singular and names the one line that changes", async () => {
+    const one: TreeData = JSON.parse(JSON.stringify(TREE));
+    one.blocks.supporting.unassigned = [doc("parked", { file_name: "parked.pdf", values: 1, accepted: 0 })];
+    one.blocks.supporting.unassigned_counts = counts(1, 0, 1);
+    mocks.byPath = { [TREE_PATH]: one };
+    render(<Harness />);
+    const dialog = await openMove("parked.pdf");
+    choose(dialog, KENT.key);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("1 value moves to Natural gas · Kent. Its calculation changes.");
+  });
+
+  it("warns, and still allows the move, when the target line calculates another family", async () => {
+    const onMovePlacement = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onMovePlacement={onMovePlacement} />);
+    const dialog = await openMove("feb.pdf");
+    expect(within(dialog).queryByRole("status")).toBeNull();
+    choose(dialog, ELEC.key);
+    expect(within(dialog).getByRole("status")).toHaveTextContent(
+      "These values won't count on this line, because it calculates electricity. They will show as not placed."
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
+    await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("feb", { from: KENT.key, to: ELEC.key }));
+  });
+
+  it("does not warn for a target of the same family, a block, or a row with no known family", async () => {
+    render(<Harness />);
+    const dialog = await openMove("feb.pdf");
+    choose(dialog, PLANT.key);
+    expect(within(dialog).queryByRole("status")).toBeNull();
+    choose(dialog, "supporting:unassigned");
+    expect(within(dialog).queryByRole("status")).toBeNull();
+  });
+
+  it("says a summary document's values do not feed a line", async () => {
+    render(<Harness />);
+    const dialog = await openMove("GHG workbook.xlsx");
+    choose(dialog, KENT.key);
+    expect(within(dialog).getByRole("status")).toHaveTextContent("This is a summary document, and its values don't feed lines.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("This changes the calculation for Natural gas · Kent.");
+  });
+
+  it("says why when the target line is one no calculation reads, with non-ASCII names", async () => {
+    const odd = line("s1:fugitive:r-404a:fac-zh", "Müller Käserei – Zürich 東京", { category: "fugitive", level2: "r-404a", level2_label: "R-404A", family: null });
+    const tree: TreeData = { ...TREE, lines: [...TREE.lines, odd] };
+    mocks.byPath = { [TREE_PATH]: tree };
+    render(<Harness />);
+    const dialog = await openMove("feb.pdf");
+    choose(dialog, odd.key);
+    expect(within(dialog).getByRole("status")).toHaveTextContent("because no calculation reads this kind of line");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("4 values move from Natural gas · Kent to R-404A · Müller Käserei – Zürich 東京.");
+  });
+
+  it("counts only the row's own placement for a document on several lines", async () => {
+    // "jan" sits on Kent gas (4 values) and on Kent electricity; this row is the gas placement.
+    render(<Harness />);
+    const dialog = await openMove("jan.pdf");
+    choose(dialog, PLANT.key);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("4 values move from Natural gas · Kent to Natural gas · Plant 2.");
+    // The line it is already on is not offered, so a document is never put twice on one line.
+    const options = Array.from((within(dialog).getByLabelText("Move to") as HTMLSelectElement).options).map((o) => o.value);
+    expect(options).not.toContain(KENT.key);
+  });
+
+  it("says plainly when the document was already moved elsewhere, and saves nothing", async () => {
+    const onMovePlacement = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onMovePlacement={onMovePlacement} />);
+    const dialog = await openMove("feb.pdf");
+    choose(dialog, PLANT.key);
+    // Meanwhile, in another tab, feb.pdf left Kent.
+    const moved: TreeData = JSON.parse(JSON.stringify(TREE));
+    moved.blocks.supporting.scopes[0].categories[0].level2s[0].lines[0].documents = [];
+    mocks.byPath = { [TREE_PATH]: moved };
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
+    expect(await within(dialog).findByText(/no longer where this page showed it, so nothing was changed/)).toBeInTheDocument();
+    expect(onMovePlacement).not.toHaveBeenCalled();
   });
 });
 
@@ -721,7 +968,7 @@ describe("the supporting schedule", () => {
     expect(props.onBack).toHaveBeenCalled();
   });
 
-  it("says what a row and a month are waiting on, and replaces the button when the line is not calculated", async () => {
+  it("says what a row and a month are waiting on, and disables the calculation link, with the reason, when the line is not calculated", async () => {
     const [first, second, third] = SCHEDULE.rows;
     mocks.byPath = {
       [SCHEDULE_PATH]: {
@@ -741,7 +988,10 @@ describe("the supporting schedule", () => {
     await screen.findByRole("heading", { name: "Kent · Natural gas" });
     expect(screen.getAllByText("Waiting on: Fuel type")).toHaveLength(2); // the month and the row
     expect(screen.getByText("Not calculated yet: values on this line are waiting for review.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open calculation line ›" })).toBeNull();
+    const link = screen.getByRole("button", { name: "Open calculation line ›" });
+    expect(link).toBeDisabled();
+    expect(link).toHaveAccessibleDescription("Not calculated yet: values on this line are waiting for review.");
+    fireEvent.click(link);
     expect(props.onOpenCalculationLine).not.toHaveBeenCalled();
   });
 
@@ -758,6 +1008,73 @@ describe("the supporting schedule", () => {
     renderSchedule();
     expect(await screen.findByText("Rejected: Fuel type")).toBeInTheDocument();
     expect(screen.queryByText(/Waiting on/)).toBeNull();
+  });
+
+  it("stacks the sections in the spec's order: header, coverage, identifiers, values, history", async () => {
+    const { container } = render(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />);
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const order = [...container.querySelectorAll("header.s1-sch-head, section[aria-label], details.s1-sch-history")].map((e) => e.getAttribute("aria-label") ?? e.tagName.toLowerCase());
+    expect(order).toEqual(["header", "Coverage by month", "Source identifiers", "Accepted values", "details"]);
+    // Siblings in one column: nothing is wrapped in a side-by-side band.
+    expect(container.querySelector(".s1-sch-top")).toBeNull();
+  });
+
+  it("still offers the calculation link, with a plain reason, on a line with 0 values", async () => {
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, calculated: false, rows: [], values: [], coverage: [], history: [] } };
+    renderSchedule();
+    const link = await screen.findByRole("button", { name: "Open calculation line ›" });
+    expect(link).toBeDisabled();
+    expect(screen.getByText("No calculation for this line yet.")).toBeInTheDocument();
+    expect(screen.getByText("No values have been extracted on this line yet.")).toBeInTheDocument();
+  });
+
+  it("keeps non-ASCII line names in the title and breadcrumb, and a two-year period readable", async () => {
+    const muller = { ...KENT, label: "Müller Fabrik", level2_label: "Erdgas" };
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        line: muller,
+        reporting_period: { start: "2024-07-01", end: "2025-06-30" },
+        rows: [{ ...SCHEDULE.rows[0], date: { start: "2024-12-17", end: "2025-01-16", days: 31, label: "Service period" } }],
+      },
+    };
+    renderSchedule();
+    expect(await screen.findByRole("heading", { name: "Müller Fabrik · Erdgas" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent("Evidence › Scope 1 › Stationary combustion › Erdgas › Müller Fabrik");
+    expect(screen.getByText("Reporting year 2024 to 2025")).toBeInTheDocument();
+    expect(screen.getByRole("table")).toHaveTextContent("12/17/24 – 01/16/25 · 31 days");
+  });
+
+  it("writes history times as MM/DD/YY, HH:MM", async () => {
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, history: [{ at: "2025-11-04T09:12:00", text: "J. Park added 55,700 therm" }, { at: "not a date", text: "Odd entry" }] } };
+    renderSchedule();
+    fireEvent.click(await screen.findByText(/Line history/));
+    expect(screen.getByText("11/04/25, 09:12")).toBeInTheDocument();
+    expect(screen.getByText("not a date")).toBeInTheDocument();
+  });
+
+  it("shows the same local day in Saved by and in the line history for a timestamp near midnight UTC", async () => {
+    const at = "2025-03-02T23:30:00Z";
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, rows: [{ ...SCHEDULE.rows[0], saved_by: { name: "Zoë Ångström", at } }], history: [{ at, text: "Zoë Ångström accepted 120 therm" }] } };
+    renderSchedule();
+    const d = new Date(at);
+    const day = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/25`;
+    expect(await screen.findByText(`Saved by Zoë Ångström · ${day}`)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Line history/));
+    expect(screen.getByText(new RegExp(`^${day}, \\d{2}:\\d{2}$`))).toBeInTheDocument();
+  });
+
+  it("round-trips a line key with : . - between results and the schedule", async () => {
+    const key = "s1:stationary:natural-gas:fac-k.c-01";
+    const encoded = `/engagements/${ENG}/calculation-lines/${encodeURIComponent(key)}/schedule`;
+    mocks.byPath = { [encoded]: { ...SCHEDULE, line: { ...KENT, key } } };
+    const onOpenCalculationLine = vi.fn();
+    render(<SupportingSchedule engagementId={ENG} lineKey={key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={onOpenCalculationLine} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open calculation line ›" }));
+    const results = resultsViewForLine(onOpenCalculationLine.mock.calls[0][0]);
+    expect(results.lineKey).toBe(key);
+    expect(scheduleViewForLine(results.lineKey).lineKey).toBe(key);
+    expect(mocks.calls.some((c) => c.path === encoded)).toBe(true);
   });
 
   it("shows the load error, not an empty schedule, when the v2 fields are missing", async () => {
