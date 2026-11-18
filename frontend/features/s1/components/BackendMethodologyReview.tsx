@@ -12,6 +12,7 @@ import {
   rejectField,
   removeRow,
   revertField,
+  sourceLocation,
   type AiStatus,
   type CatalogField,
   type MethodologyRecord,
@@ -249,7 +250,7 @@ function FieldRow({
           {suggestion.quote_truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
           <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(suggestion.document_id)}>
             {suggestion.file_name}
-            {suggestion.source_reference ? `, ${suggestion.source_reference}` : ""}
+            {sourceLocation(suggestion.source_reference) ? `, ${sourceLocation(suggestion.source_reference)}` : ""}
           </button>
         </div>
       ) : null}

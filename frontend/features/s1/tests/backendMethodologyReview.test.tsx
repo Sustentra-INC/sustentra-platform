@@ -1,5 +1,5 @@
 /* @vitest-environment jsdom */
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mock = vi.hoisted(() => ({ data: null as unknown, fail: {} as Record<string, unknown> }));
@@ -376,5 +376,44 @@ describe("Methodology review on real data", () => {
     expect(within(weird).getByText("Status unknown")).toBeTruthy();
     // The row still offers Edit and Revert; the server decides what is allowed.
     expect(within(weird).getByRole("button", { name: "Edit: Brand new field" })).toBeTruthy();
+  });
+  describe("source location after the file name", () => {
+    const withRef = (source_reference: unknown, file_name = "GHG report.pdf") => {
+      const d = fixture() as { fields: { suggestion: Record<string, unknown> | null }[] };
+      d.fields[0].suggestion = { ...d.fields[0].suggestion!, source_reference, file_name };
+      return d;
+    };
+    const link = (name: RegExp) => within(row("Consolidation approach")).getByRole("button", { name });
+
+    it("shows the page of an object reference", async () => {
+      await open(vi.fn(), withRef({ page_number: 4, text_snippet: "We use the operational control approach." }));
+      expect(link(/^GHG report\.pdf, page 4$/)).toBeTruthy();
+      expect(document.body.textContent).not.toContain("[object Object]");
+    });
+
+    it("shows the sheet and cell of a spreadsheet reference", async () => {
+      await open(vi.fn(), withRef({ sheet_name: "Sheet1", cell_or_range: "B12" }, "Energy.xlsx"));
+      expect(link(/^Energy\.xlsx, Sheet1, B12$/)).toBeTruthy();
+    });
+
+    it("shows only the file name when the reference is null, empty or has nothing usable", async () => {
+      for (const ref of [null, {}, { page_number: "4" }, { page_number: 0 }]) {
+        cleanup();
+        await open(vi.fn(), withRef(ref));
+        expect(link(/^GHG report\.pdf$/)).toBeTruthy();
+        expect(document.body.textContent).not.toContain("[object Object]");
+      }
+    });
+
+    it("still renders an old string reference", async () => {
+      await open(vi.fn(), withRef("page 4"));
+      expect(link(/^GHG report\.pdf, page 4$/)).toBeTruthy();
+    });
+
+    it("works with a non-ASCII file name and opens the document", async () => {
+      const { onOpenDocument } = await open(vi.fn(), withRef({ page_number: 2 }, "Müller Käserei – Zürich 排放.pdf"));
+      fireEvent.click(link(/^Müller Käserei – Zürich 排放\.pdf, page 2$/));
+      expect(onOpenDocument).toHaveBeenCalledWith("d1");
+    });
   });
 });
