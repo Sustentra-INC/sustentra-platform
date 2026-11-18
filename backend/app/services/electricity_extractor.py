@@ -22,10 +22,11 @@ consumption.
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from backend.app.domain import fuel_units
+from backend.app.services.statement_segments import split_statements
 from backend.app.services.stationary_combustion_extractor import (
     _ALL_LABELS as _BASE_LABELS,
 )
@@ -84,6 +85,31 @@ def detect_electricity(text: str) -> tuple[str, str] | None:
 
     match = _ELECTRIC_RE.search(_norm(text))
     return (ENERGY_TYPE, match.group(0)) if match else None
+
+
+# Time-of-use lines that are parts of a total ("On-Peak kWh", "Off-Peak kWh", "Shoulder kWh").
+_COMPONENT_RE = re.compile(r"(?<![a-z])(?:(?:on|off|mid|super[- ]?off)[- ]?peak|shoulder|peak)(?![a-z])")
+_TOTAL_RE = re.compile(r"^total(?![a-z])")
+
+
+def _row_labels(record: UsageRecord) -> list[str]:
+    row = record.quantity.row
+    return [_norm(cell.text) for cell in row.cells] if row is not None else []
+
+
+def _without_components(records: list[UsageRecord]) -> list[UsageRecord]:
+    """Drop the time-of-use part lines when a line labelled total sits beside them in the same table."""
+
+    def is_part(record: UsageRecord) -> bool:
+        labels = _row_labels(record)
+        return bool(labels) and _COMPONENT_RE.search(labels[0]) is not None and _TOTAL_RE.match(labels[0]) is None
+
+    def is_total(record: UsageRecord) -> bool:
+        return any(_TOTAL_RE.match(label) for label in _row_labels(record))
+
+    if any(is_total(r) for r in records) and any(is_part(r) for r in records):
+        return [r for r in records if not is_part(r)]
+    return records
 
 
 class ElectricityExtractor(StationaryCombustionExtractor):
@@ -159,22 +185,64 @@ class ElectricityExtractor(StationaryCombustionExtractor):
             })
 
         unit_hint = self._document_unit(rows)
-        records = [r for r in self._quantity_records(rows) if self._record_unit(r, unit_hint) in ELECTRIC_UNITS]
         doc_energy = self._document_fuel(rows)
+        records = self._usable_records(rows, unit_hint)
         if not records or doc_energy is None:
             return ExtractionOutcome(candidates=[], halt_reason={
                 "code": HALT_UNSUPPORTED,
                 "message": "No electricity quantity in kWh or MWh was found, so this is not purchased-"
                 "electricity evidence (for example a gas, fuel or water bill).",
             })
+        bundle = self._statement_bundle(rows, parser_output, targets, evidence_id, document_id, unit_hint, doc_energy)
+        if bundle is not None:
+            return bundle
         return self._records_to_candidates(rows, parser_output, targets, evidence_id, document_id, records,
                                            doc_energy, unit_hint)
 
+    def _usable_records(self, rows: Sequence[Row], unit_hint: Located | None) -> list[UsageRecord]:
+        """The metered usage lines of ``rows`` in kWh or MWh. A time-of-use table lists on-peak and
+        off-peak lines beside the total: those are parts of it, so only the total is a record."""
+
+        records = [r for r in self._quantity_records(rows) if self._record_unit(r, unit_hint) in ELECTRIC_UNITS]
+        return _without_components(records)
+
+    def _statement_bundle(self, rows: list[Row], parser_output: dict, targets: Sequence[dict], evidence_id: str,
+                          document_id: str, unit_hint: Located | None, doc_energy: Located,
+                          read: Callable[[list[Row], Located | None], list[UsageRecord]] | None = None,
+                          energy_of: Callable[[list[Row]], Located | None] | None = None) -> ExtractionOutcome | None:
+        """One record per statement for a file holding several (EXT-015), numbered in file order and
+        read from each statement's own pages. None when the file is a single statement, or when fewer than
+        two of its parts hold a reading (then the file is read whole, as before)."""
+
+        parts = split_statements(rows)
+        if parts is None:
+            return None
+        found: list[tuple[list[Row], Located | None, list[UsageRecord]]] = []
+        for part in parts:
+            part_hint = self._document_unit(part) or unit_hint
+            records = (read or self._usable_records)(part, part_hint)
+            if records:
+                found.append((part, part_hint, records))
+        if len(found) < 2:
+            return None
+        total = sum(len(records) for _, _, records in found)
+        candidates: list[dict] = []
+        first_index = 1
+        for part, part_hint, records in found:
+            energy = (energy_of or self._document_fuel)(part) or doc_energy
+            outcome = self._records_to_candidates(part, parser_output, targets, evidence_id, document_id, records,
+                                                  energy, part_hint, first_index=first_index, multi=True)
+            candidates.extend(outcome.candidates)
+            first_index += len(records)
+        return ExtractionOutcome(candidates=candidates, records=total)
+
     def _records_to_candidates(self, rows: list[Row], parser_output: dict, targets: Sequence[dict],
                                evidence_id: str, document_id: str, records: list[UsageRecord],
-                               doc_energy: Located, unit_hint: Located | None) -> ExtractionOutcome:
+                               doc_energy: Located, unit_hint: Located | None, *, first_index: int = 1,
+                               multi: bool | None = None) -> ExtractionOutcome:
         """One candidate per target for each usage record; the bill's own fields (facility,
-        address, supplier, account) are shared by its records."""
+        address, supplier, account) are shared by its records. A statement of a bundle is numbered
+        on from the statements before it (``first_index``, ``multi``)."""
 
         facility, address_from_facility = self._facility(rows)
         document_values: dict[str, Located | None] = {
@@ -186,8 +254,8 @@ class ElectricityExtractor(StationaryCombustionExtractor):
         period = self._document_period(rows)
 
         candidates: list[dict] = []
-        multi = len(records) > 1
-        for index, record in enumerate(records, start=1):
+        multi = len(records) > 1 if multi is None else multi
+        for index, record in enumerate(records, start=first_index):
             values = self._record_values(record, period, doc_energy, unit_hint)
             record_index = index if multi else None
             record_key = self._record_key(index, record, values) if multi else None

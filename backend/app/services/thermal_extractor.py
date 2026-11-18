@@ -328,8 +328,14 @@ class ThermalExtractor(ElectricityExtractor):
                 "or cooling evidence.",
             })
         # Each record carries its own energy type; the placeholder only stands in where none was told.
-        outcome = self._records_to_candidates(rows, parser_output, targets, evidence_id, document_id, records,
-                                              Located("", [], None, CONF_MISSING), unit_hint)
+        placeholder = Located("", [], None, CONF_MISSING)
+        outcome = self._statement_bundle(
+            rows, parser_output, targets, evidence_id, document_id, unit_hint, placeholder,
+            read=lambda part, hint: self._usable(part, hint, self._document_kinds(part)),
+            energy_of=lambda part: placeholder)
+        if outcome is None:
+            outcome = self._records_to_candidates(rows, parser_output, targets, evidence_id, document_id, records,
+                                                  placeholder, unit_hint)
         if any(r.fuel is None for r in records):
             outcome.notes.append(AMBIGUOUS_ENERGY_NOTE)
         return outcome
