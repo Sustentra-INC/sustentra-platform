@@ -112,4 +112,14 @@ describe("the demo backend's methodology review", () => {
     await expect(demoApi(`${BASE}/reporting_period/reveal`, { method: "POST", body: {} })).rejects.toMatchObject({ status: 422 });
     await expect(demoApi(`${BASE}/nope/reveal`, { method: "POST", body: {} })).rejects.toMatchObject({ status: 404 });
   });
+  it("an empty row has no Accept; after an Edit with a value it has a value", async () => {
+    await open();
+    expect(within(row("Indirect Biogenic")).queryByRole("button", { name: /^Accept:/ })).toBeNull();
+    await demoApi(`${BASE}/category:biogenic:indirect/edit`, { method: "POST", body: { value: "No" } });
+    const listed = (await get()).fields.find((f) => (f as unknown as { field_id: string }).field_id === "category:biogenic:indirect");
+    expect((listed as unknown as { display_state: string }).display_state).toBe("has_value");
+    cleanup();
+    await open();
+    expect(within(row("Indirect Biogenic")).queryByText("Not checked yet")).toBeNull();
+  });
 });
