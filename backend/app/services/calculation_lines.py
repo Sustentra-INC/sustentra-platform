@@ -126,8 +126,27 @@ class CalculationLine:
     facility_id: str | None
     created_by_user: bool
 
+    @property
+    def family(self) -> str | None:
+        """The calculation this line feeds: "stationary", "mobile" or "electricity"; None for a line
+        no calculation reads (fugitive, process, steam and the like). Same rule as the recalculation."""
+
+        if self.category == "purchased_energy":
+            return "electricity" if self.level2 == "electricity" else None
+        if self.category == "mobile" or self.anchor_kind == "vehicle_group":
+            return "mobile"
+        if self.category in ("stationary", "biogenic") and self.anchor_kind == "facility":
+            return "stationary"
+        return None
+
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        return {**asdict(self), "family": self.family}
+
+
+def record_family(canonical_type_id: str | None) -> str | None:
+    """The calculation a record's value belongs to, from its document type; None when none reads it."""
+
+    return {STATIONARY: "stationary", MOBILE: "mobile", ELECTRICITY: "electricity"}.get(canonical_type_id or "")
 
 
 def make_line(category: str, level2: str, level2_label: str, anchor_kind: str, anchor_id: str, label: str,

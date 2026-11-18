@@ -18,8 +18,20 @@ import type { DemoRoute } from "./types";
 
 const CATEGORY_SCOPE = Object.fromEntries(CATEGORIES.map(([k, , s]) => [k, s]));
 
+/** The calculation a line feeds (the backend's CalculationLine.family): null when none reads it. */
+function familyOfLine(line: ModelLine): CalculationLine["family"] {
+  if (line.category === "purchased_energy") return line.level2 === "electricity" ? "electricity" : null;
+  if (line.category === "mobile" || line.anchor_kind === "vehicle_group") return "mobile";
+  if ((line.category === "stationary" || line.category === "biogenic") && line.anchor_kind === "facility") return "stationary";
+  return null;
+}
+
+const FAMILY_OF_KIND: Partial<Record<ModelRecord["kind"], TreeDocRow["value_family"]>> = {
+  gas: "stationary", propane: "stationary", fleet: "mobile", electricity: "electricity",
+};
+
 function lineOf(line: ModelLine): CalculationLine {
-  return { ...line };
+  return { ...line, family: familyOfLine(line) };
 }
 
 function counts(parts: ModelRecord[]): TreeCounts {
@@ -56,6 +68,7 @@ export function buildTree(facilityId: string | null): EvidenceTree {
         processing_status: record.processingStatus, detected_type: record.detectedType,
         also_in: slots.filter((s) => s.target !== slot.target && byKey.has(s.target)).map((s) => s.target),
         values: record.values, accepted: record.acceptedValues, flags: [...slot.flags], placement_from: slot.target,
+        value_family: FAMILY_OF_KIND[record.kind] ?? null,
       };
       if (facilityId && row.facility_id !== facilityId) continue;
       rows.set(slot.target, [...(rows.get(slot.target) ?? []), { row, record }]);
