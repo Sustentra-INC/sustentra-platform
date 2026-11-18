@@ -4,6 +4,7 @@ value flagged accepted or not, a dynamic column set, the activity note, identifi
 from __future__ import annotations
 
 import dataclasses
+from datetime import date
 
 from backend.app.services import calculation_lines as cl
 from backend.app.services.evidence_tree_service import EvidenceTreeService
@@ -85,16 +86,50 @@ def test_activity_note_by_category() -> None:
     store.add_document("G", "CT-S1-FUELQTY", [_gas()])
     store.add_document("E", "CT-S2-ELEC", [_elec(10)])
     assert _schedule(store)["activity_quantity_note"] == "Activity quantity: fuel quantity combusted"
-    assert _schedule(store, ELEC_KC)["activity_quantity_note"] == "Activity quantity: electricity quantity purchased"
+    assert _schedule(store, ELEC_KC)["activity_quantity_note"] == "Activity quantity: electricity quantity purchased / consumed"
 
     def note(category: str, level2: str) -> str | None:
         line = cl.make_line(category, level2, level2, "company", "company", "x", created_by_user=False)
         return EvidenceTreeService._activity_note(line)
 
     assert note("mobile", "diesel-fuel") == "Activity quantity: fuel use quantity"
-    assert note("purchased_energy", "steam") == "Activity quantity: thermal energy purchased"
-    assert note("fugitive", "r410a") == "Activity quantity: refrigerant quantity added or recovered"
-    assert note("contractual", "x") is None
+    for thermal in ("steam", "heating", "cooling"):
+        assert note("purchased_energy", thermal) == "Activity quantity: energy quantity purchased"
+    assert note("contractual", "ppa") == "Activity quantity: certificates retired (MWh)"
+    assert note("stationary", "propane") == "Activity quantity: fuel quantity combusted"
+    assert note("fugitive", "r410a") is None  # no note, and no error
+    assert note("process", "x") is None
+    unknown = dataclasses.replace(cl.make_line("mobile", "x", "x", "company", "company", "x", created_by_user=False),
+                                  category="something-new")
+    assert EvidenceTreeService._activity_note(unknown) is None  # an unknown category does not crash
+
+
+def test_row_date_label_by_document_and_line() -> None:
+    def label(category: str, level2: str, type_id: str | None, start: date | None, end: date | None) -> str:
+        line = cl.make_line(category, level2, level2, "company", "company", "x", created_by_user=False)
+        return EvidenceTreeService._date_label(line, type_id, start, end)
+
+    jan, feb = date(2025, 1, 1), date(2025, 1, 31)
+    assert label("stationary", "natural-gas", "CT-S1-FUELQTY", jan, feb) == "Service period"
+    assert label("purchased_energy", "electricity", "CT-S2-ELEC", jan, feb) == "Service period"
+    assert label("stationary", "propane", "CT-S1-FUELQTY", jan, jan) == "Delivery date"
+    assert label("stationary", "propane", "CT-S1-FUELQTY", jan, feb) == "Service period"
+    assert label("mobile", "diesel-fuel", "CT-S1-MOBFUEL", jan, jan) == "Transaction date"
+    assert label("mobile", "diesel-fuel", "CT-S1-MOBFUEL", jan, feb) == "Statement period"
+    assert label("fugitive", "r410a", "CT-S1-REFRSVC", jan, jan) == "Service date"
+    assert label("stationary", "natural-gas", None, None, None) == "Service period"
+
+
+def test_a_line_mixing_two_document_types_carries_both_labels_on_its_rows() -> None:
+    store = FakeStore()
+    store.add_document("BILL", "CT-S1-FUELQTY", [_gas(100, "2025-01-01", "2025-01-31", fuel="propane")])
+    store.add_document("DELIVERY", "CT-S1-FUELQTY", [_gas(10, "2025-02-05", "2025-02-05", fuel="propane")])
+    mine = cl.normalize_evidence_lines([{"category": "stationary", "level2_label": "Propane",
+                                         "anchor_kind": "facility", "anchor_id": "fac-kc01", "label": "KC propane"}])
+    schedule = _tree_service(store).schedule(_engagement(evidenceLines=mine), _own, "s1:stationary:propane:fac-kc01")
+    assert schedule is not None
+    labels = {r["document_id"]: r["date"]["label"] for r in schedule["rows"]}
+    assert labels == {"BILL": "Service period", "DELIVERY": "Delivery date"}  # the page shows "Date" for the column
 
 
 def test_date_label_follows_the_document() -> None:

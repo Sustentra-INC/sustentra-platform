@@ -323,7 +323,7 @@ for another org's engagement).
           waiting_on: [string],                      // labels of those fields ("Fuel type"); [] otherwise
           rejected_fields: [string],                 // labels of other required fields the reviewer rejected
                                                      // record_key is opaque: use it as an id, never parse it
-          date: {start, end, days, label},           // label: "Service period" | "Transaction date" | "Service date"
+          date: {start, end, days, label},           // label: "Service period" | "Statement period" | "Transaction date" | "Delivery date" | "Service date"
           activity_quantity: {value, unit},          // the extracted value; the reviewed value once accepted
           cells: {<column_key>: {value, unit}},      // only the extra columns this row has a value for
           saved_by: {name, at} | null,               // who accepted or edited the quantity; null when not reviewed
