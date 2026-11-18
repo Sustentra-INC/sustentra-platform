@@ -32,11 +32,15 @@ from backend.app.services.document_processing_service import (
     RunParams,
 )
 from backend.app.services.document_upload_service import DocumentUploadService
+from backend.app.services.halt_text import plain_halt
 from backend.app.services.local_storage_service import LocalStorageService
 from backend.app.services.parser_service import IMAGE_EXTENSIONS, ParserService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
 
 logger = logging.getLogger("sustentra.processing")
+READ_FAILED_DETAIL = "This document could not be read. Try uploading the file again."
+# Halts whose own sentence is already plain and specific; the 422 keeps it (see failed_run_error).
+CURATED_HALT_CODES = frozenset({"password_protected", "document_too_long"})
 
 router = APIRouter(prefix="/v1", tags=["documents"])
 
@@ -456,7 +460,14 @@ def failed_run_error(run: dict) -> HTTPException:
 
     halt = run.get("halt_reason") or {}
     if halt.get("message"):
-        return HTTPException(status_code=422, detail=str(halt["message"]))
+        # The pipeline's own sentence (type ids, scores, parser output) stays in the run record;
+        # the client gets the plain sentence for the halt's code.
+        code = halt.get("code")
+        if code in CURATED_HALT_CODES:
+            # Written for the person to act on, with no ids or scores (an encrypted email and an
+            # encrypted workbook each say what to ask the client for; a long file says its page counts).
+            return HTTPException(status_code=422, detail=str(halt["message"]))
+        return HTTPException(status_code=422, detail=plain_halt(code, str(halt["message"])) or READ_FAILED_DETAIL)
     return HTTPException(status_code=500, detail=run.get("errors") or ["Pipeline run failed."])
 
 

@@ -124,7 +124,7 @@ def test_a_halt_is_a_failed_run_with_its_reason(env: dict) -> None:
     doc = env["upload"]("scan.pdf", CORRUPT_PDF, "application/pdf")
     run = assert_contract(env["client"].post(runs_url(doc)).json())  # no body: the defaults
     assert (run["status"], run["error_code"]) == ("failed", "unreadable_document")
-    assert run["error"].startswith("Unreadable document") and run["pipeline_run_id"]
+    assert run["error"] == "File could not be read." and run["pipeline_run_id"]
     assert env["status_of"](doc) == "failed"
 
 

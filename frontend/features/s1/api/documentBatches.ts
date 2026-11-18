@@ -22,7 +22,10 @@ export interface BatchDocument {
   /** Set when a large PDF is read in page chunks. */
   chunks: BatchChunks | null;
   canonical_type_id: string | null;
-  /** A sentence saying why the document was not read in full; null when nothing went wrong. */
+  /** Why the document stopped, as a code (unsupported_document, unreadable_document, ocr_required,
+   *  password_protected, document_too_long); null when it is not a halt (or from an older server). */
+  halt_code?: string | null;
+  /** A plain sentence saying why the document was not read in full; null when nothing went wrong. */
   halt_reason: string | null;
   records_found: number;
 }

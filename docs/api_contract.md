@@ -106,8 +106,20 @@ engagement's. Answers:
 - `status` is `not_started` (no read was ever asked for; `halt_reason` says to open it to start reading; it does not hold `complete` back), `queued` (no reader has it yet), `reading` (being read, or its chunks are, or it waits to be
   assembled), `done`, `partial` (read, but its pipeline run is partial: pages that failed, or nothing to
   review) or `failed`.
-- `halt_reason` is the pipeline's halt message; for a failed run without one, the run's own error; for a
-  partial run read in chunks, "Pages 11-20 could not be read."
+- `halt_code` is the halt's code (`unsupported_document`, `unreadable_document`, `ocr_required`,
+  `password_protected`, `document_too_long`), or `null` when the document did not stop on a halt.
+- `halt_reason` is a plain sentence, worded server-side from one map by `halt_code` (the same wording as the
+  frontend's `HALT_REASONS`; `document_too_long` keeps its own sentence with the page counts). The pipeline's
+  own text (the closest classifier match with its id and score, parser output) is never returned: it stays in
+  the pipeline run record. For a failed run that is not a halt, the run's own plain error; for a partial run
+  read in chunks, "Pages 11-20 could not be read."
+- The same rule holds for `error` on a processing run (`GET /v1/processing-runs/{run_id}`, the engagement list
+  and the `POST` answers): for a halt `error_code` it is the plain sentence, not the pipeline's text. The 422
+  from the older `POST /v1/pipeline/process` says the plain sentence too; `password_protected` and
+  `document_too_long` keep their own sentence there (it says what to ask the client for, or the page counts).
+- Still returned raw, as the pipeline run record: `pipeline_run.halt_reason.message` and `warnings` on the
+  `/v1/pipeline/...` run endpoints and `halt_reason` in `GET .../extraction-result/latest`. They can name an
+  internal type id or a score; clients use `halt_reason.code` there and must not show the message.
 - `totals`: `{queued, reading, done, partial, failed, not_started}`.
 - `complete`: `true` when nothing is queued or reading. Clients poll (every 3 s) until it is `true`.
 
