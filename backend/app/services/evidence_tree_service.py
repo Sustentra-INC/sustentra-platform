@@ -474,17 +474,22 @@ class EvidenceTreeService:
                     how: str | None = None
                     if is_facility:
                         found = cl.facility_match(facilities, decisions, doc.document_id, record)
-                        text, how = (str(found[0].get("name")), found[1]) if found else ("", None)
+                        reads = [(str(found[0].get("name")), False)] if found else []
+                        how = found[1] if found else None
                     else:
-                        text = record.best(field_name)
-                    text, norm = cls._spelling(text)
-                    if not text:
-                        continue
-                    shown.setdefault(norm, text)
-                    entry = {"document_id": doc.document_id, "file_name": doc.document.get("file_name")}
-                    if is_facility:
-                        entry["matched_by"] = how
-                    groups.setdefault(norm, {}).setdefault(doc.document_id, entry)
+                        reads = record.identifiers(field_name)
+                    for raw, by_claude in reads:
+                        text, norm = cls._spelling(raw)
+                        if not text:
+                            continue
+                        shown.setdefault(norm, text)
+                        entry = groups.setdefault(norm, {}).setdefault(
+                            doc.document_id, {"document_id": doc.document_id, "file_name": doc.document.get("file_name")})
+                        if is_facility:
+                            entry["matched_by"] = how
+                        else:
+                            # A document counts once; a value a rule also read is not marked as Claude's.
+                            entry["read_by_claude"] = by_claude and entry.get("read_by_claude", True)
             with_value = {d for docs in groups.values() for d in docs}
             item: dict[str, Any] = {
                 "label": label,
@@ -508,10 +513,11 @@ class EvidenceTreeService:
             shown: dict[str, str] = {}
             for doc, records in on_line:
                 for record in records:
-                    text, norm = cls._spelling(record.best(field_name))
-                    if text:
-                        shown.setdefault(norm, text)
-                        found.setdefault(norm, set()).add(doc.document_id)
+                    for raw, _ in record.identifiers(field_name):
+                        text, norm = cls._spelling(raw)
+                        if text:
+                            shown.setdefault(norm, text)
+                            found.setdefault(norm, set()).add(doc.document_id)
             out.extend({"label": label, "value": shown[norm], "documents_with": len(ids), "documents_total": len(on_line)}
                        for norm, ids in sorted(found.items()))
         return out

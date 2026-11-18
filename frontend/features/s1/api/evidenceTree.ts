@@ -163,6 +163,8 @@ export interface IdentifierDocument {
   document_id: string;
   file_name: string;
   matched_by?: string;
+  /** Claude read this value and no reviewer has decided it yet (identifiers only; they never feed a number). */
+  read_by_claude?: boolean;
 }
 
 export interface IdentifierGroup {
