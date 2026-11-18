@@ -20,7 +20,7 @@ export function ContainerStateSurface({
   onClearFilter,
   onUploadFiles,
   isUploading = false,
-  label = "Loading evidence.",
+  label = "Loading evidence",
   children,
 }: ContainerStateSurfaceProps) {
   if (state === "populated") {
@@ -83,8 +83,8 @@ export function ContainerStateSurface({
 
   if (state === "loading") {
     return (
-      <p className="s1-muted" role="status">
-        {label}
+      <p className="s1-muted" role="status" aria-label={label}>
+        {label}.
       </p>
     );
   }

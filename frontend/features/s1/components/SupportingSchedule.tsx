@@ -110,7 +110,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
   if (!schedule) {
     return (
       <section className="s1-content s1-sch">
-        <ContainerStateSurface state="loading" label="Loading the supporting schedule." />
+        <ContainerStateSurface state="loading" label="Loading the supporting schedule" />
       </section>
     );
   }
