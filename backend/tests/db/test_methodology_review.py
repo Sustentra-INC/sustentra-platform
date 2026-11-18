@@ -14,6 +14,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import pytest
+
+from backend.app.services import methodology_review as rules
 from backend.tests.db.test_engagements import (  # noqa: F401 - `seeded` is an autouse fixture
     A_ADMIN,
     A_MEMBER,
@@ -242,6 +245,74 @@ def test_one_engagements_decisions_are_not_another_s() -> None:
     first, second = create(), create(name="Second")
     act(first["id"], "reporting_period", "edit", {"value": "2025"})
     assert record(second["id"], "reporting_period")["decision"] is None
+
+
+# --- optional rows: hidden until there is a value or the reviewer adds them ----------------------
+
+OPTIONAL = "optional:acquisitions"  # the catalog has no optional field yet; the rules are tested with one
+
+
+@pytest.fixture
+def optional_field(monkeypatch: pytest.MonkeyPatch) -> str:
+    field = rules._field(OPTIONAL, "boundary", "Acquisitions und Veräußerungen – 买卖", "text", required=False)
+    monkeypatch.setattr(rules, "CATALOG", (*rules.CATALOG, field))
+    monkeypatch.setattr(rules, "_BY_ID", {**rules._BY_ID, OPTIONAL: field})
+    return OPTIONAL
+
+
+def shown(engagement_id: str, field_id: str) -> bool:
+    return bool(record(engagement_id, field_id)["shown"])
+
+
+def test_an_optional_row_is_hidden_until_a_suggestion_a_decision_or_add_an_item(optional_field: str) -> None:
+    eid = create()["id"]
+    catalog = {c["field_id"]: c for c in review(eid).json()["catalog"]}
+    assert not shown(eid, optional_field) and catalog[optional_field]["required"] is False
+    assert record(eid, optional_field)["display_state"] == "not_checked"
+    assert all(shown(eid, f["field_id"]) for f in review(eid).json()["fields"] if f["field_id"] != optional_field)
+
+    suggest(eid, optional_field)  # a suggestion arrives
+    assert shown(eid, optional_field) and record(eid, optional_field)["display_state"] == "has_value"
+
+    other = create(name="Second")["id"]  # a reviewer adds it: it shows as not checked, and stays after a reload
+    assert not shown(other, optional_field)
+    added = act(other, optional_field, "reveal")
+    assert added.status_code == 200 and added.json() == {"field_id": optional_field, "shown": True}
+    assert act(other, optional_field, "reveal").status_code == 200  # twice is the same as once
+    assert shown(other, optional_field) and record(other, optional_field)["display_state"] == "not_checked"
+    assert asyncio.run(_admin(
+        "SELECT payload FROM workpaper_items WHERE kind = 'methodology' AND item_key = 'meta:state' "
+        "AND engagement_id = $1::uuid", other))[0]["payload"] is not None
+
+    third = create(name="Third")["id"]  # an edit also brings a hidden row onto the page
+    assert not shown(third, optional_field)
+    assert act(third, optional_field, "edit", {"value": "Sold the Kent plant in March – Müller Käserei"}).status_code == 200
+    assert shown(third, optional_field)
+    assert events()[-1]["metadata"] and "Müller" not in events()[-1]["metadata"]
+
+
+def test_reveal_refuses_a_required_row_an_unknown_row_and_other_orgs(optional_field: str) -> None:
+    eid = create()["id"]
+    refused = act(eid, "reporting_period", "reveal")
+    assert refused.status_code == 422 and "always shown" in refused.json()["detail"]
+    assert act(eid, "nope", "reveal").status_code == 404
+    assert act(eid, "entity:abc123", "reveal").status_code == 404
+    assert act(eid, optional_field, "reveal", token="b_member").status_code == 404
+    assert act(eid, optional_field, "reveal", token="provider").status_code == 403
+    assert not shown(eid, optional_field)
+    call("PATCH", f"{BASE}/{eid}", body={"status": "archived"})
+    assert act(eid, optional_field, "reveal").status_code == 409
+
+
+def test_a_hidden_row_after_a_prefill_that_found_nothing_stays_hidden(optional_field: str) -> None:
+    eid = create()["id"]
+    asyncio.run(_admin(
+        "INSERT INTO workpaper_items (org_id, engagement_id, kind, item_key, payload) "
+        "SELECT org_id, id, 'methodology', 'meta:state', $2::jsonb FROM engagements WHERE id = $1::uuid",
+        eid, json.dumps({"prefill_ran_at": "2026-11-18T10:00:00.000Z", "revealed": []})))
+    row = record(eid, optional_field)
+    assert row["display_state"] == "not_detected" and row["shown"] is False
+    assert record(eid, "gwp")["display_state"] == "not_detected" and record(eid, "gwp")["shown"] is True
 
 
 # --- migration 0016 ----------------------------------------------------------------------

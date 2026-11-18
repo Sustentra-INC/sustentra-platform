@@ -416,4 +416,82 @@ describe("Methodology review on real data", () => {
       expect(onOpenDocument).toHaveBeenCalledWith("d1");
     });
   });
+  describe("row states", () => {
+    type Wire = { fields: Record<string, unknown>[]; catalog: Record<string, unknown>[] };
+    const OPTIONAL = "optional:acquisitions";
+    const LABEL = "Acquisitions und Ver\u00e4u\u00dferungen \u2013 \u4e70\u5356";
+    const withStates = (states: Record<string, string>, optional?: { shown: boolean; state: string; suggestion?: boolean }) => {
+      const d = fixture() as unknown as Wire;
+      d.fields = d.fields.map((f) => ({ ...f, display_state: states[f.field_id as string] ?? "has_value", shown: true }));
+      if (optional) {
+        d.catalog.push({ group_label: "x", user_added: false, field_id: OPTIONAL, group: "boundary", label: LABEL, kind: "text", required: false });
+        d.fields.push({
+          field_id: OPTIONAL,
+          user_added: false,
+          display_state: optional.state,
+          shown: optional.shown,
+          suggestion: optional.suggestion
+            ? { value: "Sold the Kent plant", quote: "We sold the Kent plant in March.", document_id: "d1", file_name: "GHG report.pdf", source_reference: null, origin: "ai", model: "m", request_id: "r", suggested_at: "2026-11-01T10:00:00Z" }
+            : null,
+          decision: null,
+          history: [],
+        });
+      }
+      return d;
+    };
+
+    it("reads Not checked yet before Claude has run, and never Not set", async () => {
+      const d = withStates({ reporting_period: "not_checked" });
+      (d.fields[1] as { decision: unknown }).decision = null; // the fixture's reporting period is decided
+      await open(vi.fn(), d);
+      expect(within(row("Reporting period")).getByText("Not checked yet")).toBeTruthy();
+      expect(document.body.textContent).not.toContain("Not set");
+    });
+
+    it("reads Not detected after a run that found nothing", async () => {
+      const d = withStates({ reporting_period: "not_detected" });
+      (d.fields[1] as { decision: unknown }).decision = null;
+      await open(vi.fn(), d);
+      expect(within(row("Reporting period")).getByText("Not detected")).toBeTruthy();
+      expect(document.body.textContent).not.toContain("Not set");
+    });
+
+    it("keeps an optional row off the page and lists it under Add an item, in any script", async () => {
+      await open(vi.fn(), withStates({}, { shown: false, state: "not_checked" }));
+      expect(screen.queryByText(LABEL, { selector: "span" })).toBeNull();
+      const add = screen.getByRole("combobox", { name: "Add an item" });
+      expect(within(add).getByRole("option", { name: LABEL })).toBeTruthy();
+    });
+
+    it("asks the server to reveal the row when it is picked, and shows it as Not detected after the reload", async () => {
+      await open(vi.fn(), withStates({}, { shown: false, state: "not_detected" }));
+      mock.data = withStates({}, { shown: true, state: "not_detected" });
+      fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: OPTIONAL } });
+      await waitFor(() => expect(within(row(LABEL)).getByText("Not detected")).toBeTruthy());
+      expect(calls().map(([path, o]) => `${(o as { method: string }).method} ${path}`)).toContain(`POST ${BASE}/${encodeURIComponent(OPTIONAL)}/reveal`);
+      expect(screen.queryByRole("combobox", { name: "Add an item" })).toBeNull();
+    });
+
+    it("shows an optional row once a suggestion has arrived", async () => {
+      await open(vi.fn(), withStates({}, { shown: true, state: "has_value", suggestion: true }));
+      expect(within(row(LABEL)).getByText("Suggested by Claude")).toBeTruthy();
+      expect(screen.queryByRole("combobox", { name: "Add an item" })).toBeNull();
+    });
+
+    it("offers Accept only where there is a suggestion; an empty row keeps Edit and Reject", async () => {
+      const d = withStates({ reporting_period: "not_detected" });
+      (d.fields[1] as { decision: unknown }).decision = null;
+      await open(vi.fn(), d);
+      const empty = row("Reporting period");
+      expect(within(empty).queryByRole("button", { name: /^Accept:/ })).toBeNull();
+      expect(within(empty).getByRole("button", { name: /^Edit:/ })).toBeTruthy();
+      expect(within(empty).getByRole("button", { name: /^Reject:/ })).toBeTruthy();
+      expect(within(row("Consolidation approach")).getByRole("button", { name: /^Accept:/ })).toBeTruthy();
+    });
+
+    it("copes with a server that sends no state at all", async () => {
+      await open();
+      expect(screen.getByText("Consolidation approach")).toBeTruthy();
+    });
+  });
 });

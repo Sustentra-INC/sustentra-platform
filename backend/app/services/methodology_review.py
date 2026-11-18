@@ -125,9 +125,15 @@ _PARTS: dict[str, list[dict[str, Any]]] = {
 }
 
 
-def _field(field_id: str, group: str, label: str, kind: str, allowed: Any = None) -> dict[str, Any]:
+def _field(field_id: str, group: str, label: str, kind: str, allowed: Any = None,
+           required: bool = True) -> dict[str, Any]:
+    """A field definition. ``required`` is Claire's "Must appear" (always on the page); false is
+    "Only if the company has a value" (hidden until a suggestion or decision exists, or the
+    reviewer adds it). Every field in the spec's sheet today is "Must appear"; so is every row
+    and anything the spec does not list."""
+
     field: dict[str, Any] = {"field_id": field_id, "group": group, "group_label": _GROUP_LABELS[group],
-                             "label": label, "kind": kind, "user_added": False}
+                             "label": label, "kind": kind, "user_added": False, "required": required}
     if allowed is not None:
         field["allowed"] = allowed
     if kind in _PARTS:
@@ -458,6 +464,44 @@ async def save_suggestion(db: AsyncSession, *, org_id: uuid.UUID, engagement_id:
         raise MethodologyInvalid(f"The suggestion for '{field['label']}' is too long to record.")
     row = await workpaper_item_service.update_payload(db, engagement_id, KIND, field_id, updated, user_id)
     return row["payload"]
+
+
+# --- page state: the prefill marker and the optional rows a reviewer revealed ---------------------
+
+META_KEY = "meta:state"  # one extra item per engagement, never a field: {prefill_ran_at, revealed}
+NOT_CHECKED, NOT_DETECTED, HAS_VALUE = "not_checked", "not_detected", "has_value"
+
+
+def new_meta() -> dict[str, Any]:
+    return {"prefill_ran_at": None, "revealed": []}
+
+
+def has_value(record: Mapping[str, Any]) -> bool:
+    """Something is on the row: a suggestion, or a decision that carries a value or a verdict
+    (a reverted field is back to nothing)."""
+
+    if record.get("suggestion"):
+        return True
+    decision = record.get("decision")
+    if not decision:
+        return False
+    return bool(decision["status"] != PENDING or decision.get("value") is not None)
+
+
+def display_state(record: Mapping[str, Any], meta: Mapping[str, Any]) -> str:
+    """not_checked (no prefill has finished, nothing on the row), not_detected (a prefill
+    finished and found nothing, no decision), or has_value."""
+
+    if has_value(record):
+        return HAS_VALUE
+    return NOT_DETECTED if meta.get("prefill_ran_at") else NOT_CHECKED
+
+
+def is_shown(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mapping[str, Any]) -> bool:
+    """Must-appear rows always show; an optional one shows once it has a value or the reviewer
+    revealed it with "Add an item"."""
+
+    return bool(field.get("required", True)) or has_value(record) or field["field_id"] in meta.get("revealed", [])
 
 
 def public(record: Mapping[str, Any]) -> dict[str, Any]:

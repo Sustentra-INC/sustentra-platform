@@ -157,6 +157,23 @@ async def _locked(db: AsyncSession, engagement: dict[str, Any], field_id: str, u
     return field, found[0]["payload"]
 
 
+async def _update_meta(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser, *,
+                       prefill_ran_at: str | None = None, reveal: str | None = None) -> None:
+    """The page-state item (prefill marker, revealed rows), created on first use and locked while
+    it is changed."""
+
+    await workpaper_item_service.insert_item(
+        db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind=KIND, item_key=rules.META_KEY,
+        payload=rules.new_meta(), user_id=user.id)
+    [row] = await workpaper_item_service.get_items(db, engagement["id"], KIND, [rules.META_KEY], for_update=True)
+    meta = {**rules.new_meta(), **row["payload"]}
+    if prefill_ran_at:
+        meta["prefill_ran_at"] = prefill_ran_at
+    if reveal and reveal not in meta["revealed"]:
+        meta["revealed"] = [*meta["revealed"], reveal]
+    await workpaper_item_service.update_payload(db, engagement["id"], KIND, rules.META_KEY, meta, user.id)
+
+
 async def _save(db: AsyncSession, engagement: dict[str, Any], field_id: str, record: dict[str, Any],
                 user: CurrentUser) -> dict[str, Any]:
     if workpaper_item_service.payload_size(record) > MAX_PAYLOAD_BYTES:
@@ -193,15 +210,21 @@ async def get_methodology_review(
     engagement = await _visible(db, engagement_id, user)
     stored = {row["item_key"]: row["payload"]
               for row in await workpaper_item_service.list_items(db, engagement["id"], KIND)}
-    fields = [rules.public(stored.get(f["field_id"]) or rules.new_record(f["field_id"])) for f in rules.CATALOG]
+    meta = {**rules.new_meta(), **stored.get(rules.META_KEY, {})}
+    fields = []
+    for f in rules.CATALOG:
+        record = stored.get(f["field_id"]) or rules.new_record(f["field_id"])
+        fields.append({**rules.public(record), "display_state": rules.display_state(record, meta),
+                       "shown": rules.is_shown(f, record, meta)})
     catalog = [dict(f) for f in rules.CATALOG]
     for key, record in stored.items():  # rows the reviewer added, oldest first
         definition = rules.row_field(key)
         if definition is not None and not record.get("removed"):
             definition["user_added"] = bool(record.get("user_added"))  # the record's flag is the truth
-            fields.append(rules.public(record))
+            fields.append({**rules.public(record), "display_state": rules.HAS_VALUE, "shown": True})
             catalog.append(definition)
     return {
+        "prefill_ran_at": meta.get("prefill_ran_at"),
         "fields": fields,
         "catalog": catalog,
         "groups": [{"group": g, "label": label} for g, label in rules.GROUPS],
@@ -253,6 +276,26 @@ async def add_row(
         raise HTTPException(status_code=409, detail="The row could not be added. Try again.")
     await _audit(db, request, user, engagement, field_id, "add_row", rules.PENDING)
     return {**rules.public(row["payload"]), "field": {**(rules.row_field(field_id) or {}), "user_added": True}}
+
+
+@router.post("/engagements/{engagement_id}/methodology-review/{field_id}/reveal", response_model=dict[str, Any])
+async def reveal_field(
+    field_id: str,
+    request: Request,
+    user: CurrentUser = Depends(s1_writer),
+    engagement: dict[str, Any] = Depends(require_open_engagement),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict[str, Any]:
+    """"Add an item": show a hidden optional row, ready for a value. Remembered per engagement."""
+
+    field = rules.catalog_field(field_id) if ITEM_KEY.match(field_id) else None
+    if field is None:
+        raise _NOT_FOUND
+    if field.get("required", True):
+        raise HTTPException(status_code=422, detail=f"'{field['label']}' is always shown, so there is nothing to add.")
+    await _update_meta(db, engagement, user, reveal=field_id)
+    await _audit(db, request, user, engagement, field_id, "reveal", None)
+    return {"field_id": field_id, "shown": True}
 
 
 @router.post("/engagements/{engagement_id}/methodology-review/{field_id}/accept", response_model=dict[str, Any])
@@ -495,6 +538,7 @@ async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, An
                                            now_iso=stamp(_now()))
         async with _short_transaction(sessions, org_id) as work:
             suggested, kept = await _store(work, engagement, user, verified, dropped)
+            await _update_meta(work, engagement, user, prefill_ran_at=stamp(_now()))
             await _audit_prefill(work, request, user, engagement, {
                 "outcome": "ok", "documents": len(documents), "suggested": suggested,
                 "dropped": sum(dropped.values()), "kept_reviewer_decision": kept, "cost_usd": cost_usd})
