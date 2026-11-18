@@ -108,6 +108,7 @@ import { saveDocumentPlacement, type EvidenceLineSetting, type Placement } from 
 import { useViewHistory, viewLabel } from "../utils/viewHistory";
 import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
 import { ContainerStateSurface } from "../components/ContainerStateSurface";
+import { WorkspaceStateGate } from "../components/WorkspaceStateGate";
 import { ActivityDrawer } from "../components/ActivityDrawer";
 import { useBackendCoverage } from "../components/useBackendCoverage";
 import { testedExaminationKeys } from "../utils/verificationTable";
@@ -492,6 +493,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setEvidenceTreeOpen(null);
     rememberEngagement(row.id);
     setEngagementSave("idle");
+    // Nothing of the engagement just left may show while the new one loads.
+    setEvidenceItems([]);
+    setWorkspaceFields([]);
+    setReviewValues([]);
     setDemoState("loading");
     void refreshBackendWorkspace(undefined, row.id);
   }
@@ -692,6 +697,32 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, workspaceLoaded, evidenceItems]);
+
+  // Screens that read the engagement's documents wait for them: loading while they are fetched, a
+  // plain error if the fetch failed, and only then the screen (which may truly have 0 documents).
+  const workspaceStatus: "loading" | "failed" | "ready" =
+    dataMode !== "backend"
+      ? "ready"
+      : demoState === "loading"
+        ? "loading"
+        : demoState === "error_degraded" && evidenceItems.length === 0
+          ? "failed"
+          : "ready";
+  const retryWorkspace = () => {
+    if (!engagement.engagementId) {
+      window.location.reload();
+      return;
+    }
+    setDemoState("loading");
+    void refreshBackendWorkspace();
+  };
+  const waitsForWorkspace =
+    activeView.name === "dashboard" ||
+    activeView.name === "evidence" ||
+    activeView.name === "requests" ||
+    activeView.name === "coverage" ||
+    activeView.name === "results" ||
+    activeView.name === "output";
 
   const navCurrent: NavKey = navForView(activeView);
   const uploadSetupWarning = setupGapWarning(engagement);
@@ -1049,7 +1080,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           )
         }
       >
-        {activeView.name === "dashboard" ? (
+        {waitsForWorkspace && workspaceStatus !== "ready" ? (
+          <WorkspaceStateGate status={workspaceStatus} problem={backendError} onRetry={retryWorkspace} />
+        ) : activeView.name === "dashboard" ? (
           STAGING_SCREENS ? (
             <BackendDashboard
               engagement={engagement}
