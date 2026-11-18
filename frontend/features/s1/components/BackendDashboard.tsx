@@ -14,6 +14,7 @@ import type { Ask } from "../types/requests";
 import type { Examination, Finding } from "../types/verification";
 import { dashboardFigures } from "../utils/engagementActivity";
 import { testedExaminationKeys } from "../utils/verificationTable";
+import { ContainerStateSurface } from "./ContainerStateSurface";
 import { DashboardScreen } from "./DashboardScreen";
 import type { NavKey } from "./S1Chrome";
 
@@ -38,6 +39,8 @@ export function BackendDashboard({
   onError: (error: unknown) => boolean;
 }) {
   const [result, setResult] = useState<Recalculation | null>(null);
+  // The engagement whose recalculation failed to load: then the dashboard shows what it has.
+  const [failedFor, setFailedFor] = useState<string | null>(null);
   const onErrorRef = useRef(onError);
   useEffect(() => {
     onErrorRef.current = onError;
@@ -52,6 +55,7 @@ export function BackendDashboard({
         if (live) setResult(next);
       })
       .catch((error: unknown) => {
+        if (live) setFailedFor(engagement.engagementId);
         onErrorRef.current(error); // the dashboard keeps its empty states
       });
     return () => {
@@ -80,6 +84,20 @@ export function BackendDashboard({
       reportedTotalsMissing: current ? missingReportedTotals(current).length : 0,
     };
   }, [result, engagement.engagementId, start, end, values, evidence, asks, findings, examinations]);
+
+  // Until the first recalculation lands the figures are only half known, so say it is loading
+  // rather than show "Nothing needs you" or a document count that then jumps.
+  const pending =
+    Boolean(engagement.engagementId) &&
+    failedFor !== engagement.engagementId &&
+    !(result && result.engagement_id === engagement.engagementId);
+  if (pending) {
+    return (
+      <section className="s1-content">
+        <ContainerStateSurface state="loading" />
+      </section>
+    );
+  }
 
   return (
     <DashboardScreen engagement={engagement} figures={figures} onNavigate={onNavigate} />
