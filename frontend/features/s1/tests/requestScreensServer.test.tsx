@@ -101,6 +101,10 @@ function openSend(label = KENT) {
   return screen.getByRole("dialog", { name: "Send requests" });
 }
 
+// These render the real app or a whole screen: about 1-2 s alone, but over the 5 s default when the
+// full suite runs on a loaded machine. A longer limit for this file only; a hang still fails.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe("settle, andThen and problemText", () => {
   it("settle runs onDone at once for a plain value", () => {
     const done = vi.fn();

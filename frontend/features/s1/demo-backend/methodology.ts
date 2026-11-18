@@ -95,6 +95,9 @@ function staticCatalog(): Def[] {
   const fields: Def[] = [
     def("reporting_period", "boundary", "Reporting period", "date_range"),
     def("consolidation_approach", "boundary", "Consolidation approach", "enum", ["Equity Share", "Financial Control", "Operational Control"]),
+    // "Only if the company has a value": hidden until there is a value or the reviewer adds it.
+    def("boundary:acquisitions", "boundary", "Acquisitions and divestitures", "text", undefined, false),
+    def("boundary:leased_space", "boundary", "Treatment of leased space", "text", undefined, false),
   ];
   const scope1 = { stationary: "Stationary Combustion", mobile: "Mobile Combustion", process: "Process Emissions", fugitive: "Fugitive Emissions" };
   for (const [key, name] of Object.entries(scope1)) fields.push(def(`category:scope1:${key}`, "scope1", `Scope 1 ${name}`, "enum", INCLUSIONS));

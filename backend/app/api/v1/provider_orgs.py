@@ -99,6 +99,33 @@ class OrgResponse(BaseModel):
     updated_at: datetime
 
 
+class UserCounts(BaseModel):
+    """Seats by status (deleted users are gone)."""
+
+    active: int = 0
+    invited: int = 0
+    suspended: int = 0
+
+
+class InitialAdminStatus(BaseModel):
+    """The org's first admin: where their invite stands."""
+
+    user_id: UUID
+    email: str
+    first_name: str
+    last_name: str
+    status: Literal["invited", "active", "suspended"]
+    invited_at: datetime
+    last_invite_sent_at: datetime | None = None
+    # Only while status is "invited": the newest link is past its 24 hours (Resend invite makes a new one).
+    invite_expired: bool = False
+
+
+class OrgDetailResponse(OrgResponse):
+    user_counts: UserCounts
+    initial_admin: InitialAdminStatus | None = None
+
+
 class OrgListResponse(BaseModel):
     items: list[OrgResponse]
     total: int
@@ -153,9 +180,9 @@ async def create_org(
     return OrgResponse(**row)
 
 
-@router.get("/{org_id}", response_model=OrgResponse)
-async def get_org(org_id: UUID, principal: ProviderAdmin, db: Db) -> OrgResponse:
-    return OrgResponse(**await orgs.get_org(db, org_id))
+@router.get("/{org_id}", response_model=OrgDetailResponse)
+async def get_org(org_id: UUID, principal: ProviderAdmin, db: Db) -> OrgDetailResponse:
+    return OrgDetailResponse(**await orgs.get_org_detail(db, org_id))
 
 
 @router.patch("/{org_id}", response_model=OrgResponse)

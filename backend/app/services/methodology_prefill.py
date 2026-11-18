@@ -202,8 +202,12 @@ What the items mean
   prior year), give only the reporting year of the inventory. At most one.
 - texts: exclusion:* fields
   (what is left out of the organizational boundary, of this inventory, or under a materiality
-  threshold, in the company's own words) and calculation:* fields (how emissions are calculated,
-  in one or two plain sentences).
+  threshold, in the company's own words), calculation:* fields (how emissions are calculated,
+  in one or two plain sentences), boundary:acquisitions (acquisitions, divestitures or other
+  structural changes during the period and how they are treated) and boundary:leased_space (how
+  leased space or leased assets are treated in the boundary). Include boundary:acquisitions and
+  boundary:leased_space only if a document states something about them; if it is silent, leave
+  them out.
 - gwp: the Global Warming Potential set the company uses (IPCC assessment report AR4, AR5 or AR6)
   and the time horizon (100-year or 20-year). At most one.
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its

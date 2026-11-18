@@ -100,6 +100,31 @@ describe("frontend contract checks", () => {
     expect(offenders).toEqual([]);
   });
 
+  // Inheritance must not decide a field's size. The app-wide reset (`.s1-app :where(...) { font-size: inherit }`)
+  // ties with a single-class field rule and comes later in the file, so such a rule loses to it and the field
+  // computes the body size. A field rule that sets no size, or a single-class one, is only safe because of one
+  // explicit, more specific rule after the reset: check that it is there and that the reset is not below it.
+  it("sets every form field's text size explicitly, not by inheritance", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    const rules: { selector: string; size: string | null; line: number }[] = [];
+    postcss.parse(css).walkRules((rule) => {
+      let size: string | null = null;
+      rule.walkDecls("font-size", (d) => {
+        size = d.value;
+      });
+      rules.push({ selector: rule.selector.replace(/\s+/g, " "), size, line: rule.source?.start?.line ?? 0 });
+    });
+    const reset = rules.find((r) => r.selector.startsWith(".s1-app :where(button, input, select, textarea"));
+    const explicit = rules.find((r) => r.selector === ".s1-app input, .s1-app select, .s1-app textarea");
+    expect(reset, "the app-wide control reset").toBeDefined();
+    expect(explicit?.size).toBe("var(--text-sm)");
+    expect(explicit!.line).toBeGreaterThan(reset!.line);
+    // The methodology fields name the size themselves too.
+    for (const selector of [".s1-mr-input", ".s1-mr-select"]) {
+      expect(rules.find((r) => r.selector === selector)?.size, selector).toBe("var(--text-sm)");
+    }
+  });
+
   // docs/design_standard.md, section 2: bold is for structure. The last declaration wins, so read the cascade's end.
   it("keeps values, counts and links regular weight, and the schedule title at the page-title size", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
