@@ -123,6 +123,12 @@ AMBIGUOUS_ENERGY_NOTE = (
 )
 
 
+def _unread_table_note(page: int | None) -> str:
+    where = f"on page {page}" if page else "in this document"
+    return (f"A usage table {where} could not be read (its lines had no number in a thermal unit), so its "
+            "figures are not in the values below. Check that table in the document and add them if they count.")
+
+
 def thermal_kind(value: Any) -> str | None:
     """steam / hot_water / chilled_water from a stored or reviewer-typed energy type
     ("Chilled water", "hot-water", "Steam"), or None when it names none of them."""
@@ -278,9 +284,49 @@ class ThermalExtractor(ElectricityExtractor):
     def _counts(self, unit: str | None, energy: str | None) -> bool:
         return unit in THERMAL_ENERGY_UNITS or (energy == STEAM and unit in STEAM_MASS_UNITS)
 
-    def _usable(self, rows: Sequence[Row], unit_hint: Located | None, doc_kinds: set[str]) -> list[UsageRecord]:
+    def _usage_tables(self, rows: Sequence[Row]) -> tuple[list[tuple[Row, list[UsageRecord]]], list[Row]]:
+        """Every usage table on the bill, not only the first: (header row, its records) for each table that
+        reads, and the header rows of those that do not. A table continued under a repeated header, on the
+        next page, is one table (``_table_records`` follows it), so a header inside a table already read is
+        not a new table."""
+
+        tables: list[tuple[Row, list[UsageRecord]]] = []
+        unread: list[Row] = []
+        covered = -1
+        for row in rows:
+            if row.index <= covered:
+                continue
+            header = self._usage_header(row)
+            if header is None:
+                continue
+            records = self._table_records(rows, row, header)
+            if not records:
+                unread.append(row)
+                continue
+            tables.append((row, records))
+            covered = max((r.quantity.row.index for r in records if r.quantity.row is not None), default=row.index)
+        return tables, unread
+
+    @staticmethod
+    def _share_type_within_table(table: Sequence[UsageRecord]) -> None:
+        """A table is one commodity. A line the evidence did not type (the part of a table continued on the
+        next page, away from its heading) takes the type its sibling lines agree on."""
+
+        typed = {r.energy for r in table if r.energy}
+        if len(typed) != 1:
+            return
+        donor = next(r for r in table if r.energy)
+        for record in table:
+            if not record.energy and record.fuel is None:
+                record.energy, record.fuel = donor.energy, donor.fuel
+
+    def _usage_table_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
+        return [record for _, records in self._usage_tables(rows)[0] for record in records]
+
+    def _usable(self, rows: Sequence[Row], unit_hint: Located | None, doc_kinds: set[str],
+                candidates: Sequence[UsageRecord] | None = None) -> list[UsageRecord]:
         usable: list[UsageRecord] = []
-        for record in self._quantity_records(rows):
+        for record in (self._quantity_records(rows) if candidates is None else candidates):
             if not self._is_consumption(record):
                 continue
             found = self._record_kind(record, rows, unit_hint, doc_kinds)
@@ -319,7 +365,11 @@ class ThermalExtractor(ElectricityExtractor):
                 "layer while OCR is off, or an empty file). Upload a text-based PDF or enable OCR.",
             })
         unit_hint = self._document_unit(rows)
-        records = self._usable(rows, unit_hint, self._document_kinds(rows))
+        tables, unread = self._usage_tables(rows)
+        candidates = [record for _, table in tables for record in table] or self._labeled_quantity_records(rows)
+        records = self._usable(rows, unit_hint, self._document_kinds(rows), candidates)
+        for _, table in tables:
+            self._share_type_within_table(table)
         if not records:
             return ExtractionOutcome(candidates=[], halt_reason={
                 "code": HALT_UNSUPPORTED,
@@ -332,6 +382,11 @@ class ThermalExtractor(ElectricityExtractor):
                                               Located("", [], None, CONF_MISSING), unit_hint)
         if any(r.fuel is None for r in records):
             outcome.notes.append(AMBIGUOUS_ENERGY_NOTE)
+        # Nothing drops silently: a table whose header was found but whose lines gave no usable thermal
+        # quantity is named by its page.
+        kept = {id(record) for record in records}
+        for header in [header for header, table in tables if not any(id(r) in kept for r in table)] + unread:
+            outcome.notes.append(_unread_table_note(header.page))
         return outcome
 
     # ---------------------------------------------------------------------------------
