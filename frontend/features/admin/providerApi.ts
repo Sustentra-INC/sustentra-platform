@@ -18,6 +18,24 @@ export interface Org {
   created_at?: string;
 }
 
+/** Where the org's first admin stands with their invite (the org detail only). */
+export interface InitialAdminStatus {
+  user_id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  status: "invited" | "active" | "suspended";
+  invited_at: string;
+  last_invite_sent_at?: string | null;
+  /** While invited: the newest link is past its 24 hours. */
+  invite_expired?: boolean;
+}
+
+export interface OrgDetail extends Org {
+  user_counts?: { active: number; invited: number; suspended: number };
+  initial_admin?: InitialAdminStatus | null;
+}
+
 export interface OrgPage {
   items: Org[];
   total: number;
@@ -53,8 +71,8 @@ export function createOrg(input: CreateOrgInput): Promise<Org> {
   return api<Org>("/provider/orgs", { method: "POST", body: input });
 }
 
-export function getOrg(orgId: string): Promise<Org> {
-  return api<Org>(`/provider/orgs/${encodeURIComponent(orgId)}`);
+export function getOrg(orgId: string): Promise<OrgDetail> {
+  return api<OrgDetail>(`/provider/orgs/${encodeURIComponent(orgId)}`);
 }
 
 export function updateOrg(orgId: string, patch: { name?: string; max_users?: number }): Promise<Org> {
