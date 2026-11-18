@@ -106,6 +106,16 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 
   const lineMap = useMemo(() => new Map((tree?.lines ?? []).map((l) => [l.key, l])), [tree]);
   const filtered = facilityId !== null;
+  // The labels the server already sends, for the full "Also in" path.
+  const pathLabels = useMemo(() => {
+    const scopes = new Map<string, string>();
+    const categories = new Map<string, string>();
+    for (const s of tree?.blocks.supporting.scopes ?? []) {
+      scopes.set(s.scope, s.label);
+      for (const c of s.categories) categories.set(c.category, c.label);
+    }
+    return { scopes, categories };
+  }, [tree]);
 
   if (problem) {
     return (
@@ -156,6 +166,14 @@ export function EvidenceTree(props: EvidenceTreeProps) {
     return line ? lineTitle(line) : UNKNOWN_LINE_LABEL;
   }
 
+  /** "Scope 2 › Purchased energy › Electricity › Kent Cannery"; today's short title when a label is missing. */
+  function alsoInPath(line: CalculationLine): string {
+    const scope = pathLabels.scopes.get(line.scope);
+    const category = pathLabels.categories.get(line.category);
+    if (!scope || !category || !line.level2_label || !line.label) return lineTitle(line);
+    return [scope, category, line.level2_label, line.label].join(" › ");
+  }
+
   function docRow(doc: TreeDocRow, section: string) {
     const id = `${section}|${doc.document_id}`;
     const from = doc.placement_from ?? section;
@@ -174,7 +192,11 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           ) : null}
           {section === BLOCK_UNASSIGNED ? <span>{processingText(doc.processing_status)}</span> : null}
           {doc.flags.includes("unknown_line") ? <span>Its line was deleted</span> : null}
-          {also.length ? <span>Also in {also.map(lineTitle).join(", ")}</span> : null}
+          {also.map((l) => (
+            <span key={l.key} className="s1-et-also">
+              Also in {alsoInPath(l)}
+            </span>
+          ))}
         </span>
         <span className="s1-et-doc__vals">{doc.values ? `${doc.accepted} of ${doc.values} accepted` : "No values yet"}</span>
         <ActionMenu
@@ -315,6 +337,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           title="Summary documents and workbook"
           tag="Company-prepared, not source evidence"
           counts={tree.blocks.summary_counts}
+          countOnly
         >
           {summary.length ? docList(summary, BLOCK_SUMMARY) : <p className="s1-et-none">No summary documents yet.</p>}
         </Fold>
@@ -329,6 +352,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           title="Unassigned documents"
           subtitle="System could not identify these"
           counts={tree.blocks.unassigned_counts}
+          countOnly
         >
           {unassigned.length ? docList(unassigned, BLOCK_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
         </Fold>
@@ -351,6 +375,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
               open={isOpen("b:supporting-unassigned")}
               onToggle={toggle}
               title="Unassigned supporting evidence"
+              subtitle="Not yet on a calculation line"
               counts={supporting.unassigned_counts}
             >
               {supporting.unassigned.length ? docList(supporting.unassigned, SUPPORTING_UNASSIGNED) : <p className="s1-et-none">Nothing here.</p>}
@@ -501,6 +526,7 @@ function Fold({
   subtitle,
   tag,
   counts,
+  countOnly,
   actions,
   children,
 }: {
@@ -512,6 +538,8 @@ function Fold({
   subtitle?: string;
   tag?: string;
   counts?: TreeCounts;
+  /** Document count only: no bar, no percent (these documents have no values to accept). */
+  countOnly?: boolean;
   actions?: ReactNode;
   children?: ReactNode;
 }) {
@@ -531,18 +559,21 @@ function Fold({
             <span className="s1-et-n">
               {counts.documents} {counts.documents === 1 ? "document" : "documents"}
             </span>
-            <span className="s1-ws-gr__bar s1-et-bar-track" aria-hidden>
+            {countOnly ? <span className="s1-et-fill s1-et-fill--count" /> : null}
+            {countOnly ? null : <span className="s1-ws-gr__bar s1-et-bar-track" aria-hidden>
               {/* A zero count draws nothing: a segment keeps a minimum width, so it would show as a stub. */}
               {counts.accepted > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--resolved" style={{ flexGrow: counts.accepted }} /> : null}
               {counts.to_review > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--open" style={{ flexGrow: counts.to_review }} /> : null}
               {counts.issues > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--blocking" style={{ flexGrow: counts.issues }} /> : null}
-            </span>
-            <span
-              className="s1-ws-gr__pct"
-              title={`${counts.accepted} of ${counts.values} values accepted${counts.issues ? `, ${counts.issues} with issues` : ""}`}
-            >
-              {wholePercent(counts.pct_accepted)}% accepted
-            </span>
+            </span>}
+            {countOnly ? null : (
+              <span
+                className="s1-ws-gr__pct"
+                title={`${counts.accepted} of ${counts.values} values accepted${counts.issues ? `, ${counts.issues} with issues` : ""}`}
+              >
+                {wholePercent(counts.pct_accepted)}% accepted
+              </span>
+            )}
           </>
         ) : (
           <span className="s1-et-fill" />

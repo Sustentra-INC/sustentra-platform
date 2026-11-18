@@ -187,7 +187,7 @@ describe("the Evidence tree", () => {
     expect(within(head).getByText("33% accepted")).toBeInTheDocument();
     expect(screen.getAllByText("1 document").length).toBeGreaterThan(0);
     expect(screen.getByText("Added by a reviewer")).toBeInTheDocument();
-    expect(screen.getByText(/Also in Electricity · Kent/)).toBeInTheDocument();
+    expect(screen.getByText("Also in Scope 2 › Purchased energy › Electricity › Kent")).toBeInTheDocument();
     expect(screen.getByText("Set aside")).toBeInTheDocument();
   });
 
@@ -431,6 +431,106 @@ describe("the Evidence tree", () => {
     mocks.byPath = { [TREE_PATH]: TREE };
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByText("Supporting evidence")).toBeInTheDocument();
+  });
+});
+
+describe("the blocks match the design", () => {
+  const head = (title: string) => (screen.getByText(title).closest("section") as HTMLElement).querySelector(".s1-et-head") as HTMLElement;
+
+  it("shows Block 1 and Block 2 with a document count and no bar or percent", async () => {
+    render(<Harness />);
+    await screen.findByText("Summary documents and workbook");
+    for (const title of ["Summary documents and workbook", "Unassigned documents"]) {
+      const h = head(title);
+      expect(within(h).getByText("1 document")).toBeInTheDocument();
+      expect(h.querySelector(".s1-et-bar-track")).toBeNull();
+      expect(h.textContent).not.toMatch(/%/);
+    }
+    expect(screen.getByText("Company-prepared, not source evidence")).toBeInTheDocument();
+    // Source evidence still shows its bar.
+    expect(head("Stationary combustion").querySelector(".s1-et-bar-track")).not.toBeNull();
+  });
+
+  it("says what each Unassigned group holds, as plain text and not a state chip", async () => {
+    const tree: TreeData = { ...TREE, blocks: { ...TREE.blocks, supporting: { ...TREE.blocks.supporting, unassigned: [doc("parked", { values: 0, accepted: 0 })], unassigned_counts: counts(1, 0, 0) } } };
+    mocks.byPath = { [TREE_PATH]: tree };
+    render(<Harness />);
+    const note = await screen.findByText("Not yet on a calculation line");
+    expect(note).toHaveClass("s1-et-sub");
+    expect(note).not.toHaveClass("s1-chip");
+    expect(screen.getByText("System could not identify these")).toHaveClass("s1-et-sub");
+    expect(head("Unassigned supporting evidence").querySelector(".s1-et-bar-track")).not.toBeNull();
+  });
+
+  it("shows the full path in Also in, for every line a document is on", async () => {
+    const lines = ["Müller Käserei – Zürich", "東京工場", "Plant 3", "Plant 4", "Plant 5"].map((label, i) =>
+      line(`s2:purchased_energy:electricity:fac-${i}`, label, { scope: "s2", category: "purchased_energy", level2: "electricity", level2_label: "Electricity" })
+    );
+    const tree: TreeData = {
+      ...TREE,
+      lines: [KENT, PLANT, ELEC, ...lines],
+      blocks: {
+        ...TREE.blocks,
+        supporting: {
+          ...TREE.blocks.supporting,
+          scopes: TREE.blocks.supporting.scopes.map((sc) =>
+            sc.scope !== "s1"
+              ? sc
+              : {
+                  ...sc,
+                  categories: sc.categories.map((c) => ({
+                    ...c,
+                    level2s: c.level2s.map((l2) => ({
+                      ...l2,
+                      lines: l2.lines.map((l) => (l.line.key === KENT.key ? { ...l, documents: [doc("jan", { also_in: lines.map((x) => x.key) })] } : l)),
+                    })),
+                  })),
+                }
+          ),
+        },
+      },
+    };
+    mocks.byPath = { [TREE_PATH]: tree };
+    render(<Harness />);
+    await expandAll();
+    for (const label of ["Müller Käserei – Zürich", "東京工場", "Plant 3", "Plant 4", "Plant 5"]) {
+      const el = screen.getByText(`Also in Scope 2 › Purchased energy › Electricity › ${label}`);
+      expect(el).toHaveClass("s1-et-also");
+    }
+    const css = readFileSync(join(__dirname, "../styles/s1-workpaper.css"), "utf8");
+    expect(css).toMatch(/\.s1-et-also\s*{[^}]*overflow-wrap:\s*anywhere/);
+  });
+
+  it("falls back to the short title when a label is missing", async () => {
+    const bare = line("s2:purchased_energy:electricity:fac-kc01", "Kent", { scope: "s2", category: "purchased_energy", level2: "electricity", level2_label: "" });
+    const tree: TreeData = { ...TREE, lines: [KENT, PLANT, bare] };
+    mocks.byPath = { [TREE_PATH]: tree };
+    render(<Harness />);
+    await expandAll();
+    expect(screen.getByText("Also in Kent")).toBeInTheDocument();
+  });
+
+  it("shows empty states and no bars for an empty engagement", async () => {
+    const empty: TreeData = {
+      blocks: {
+        summary_counts: counts(0, 0, 0),
+        unassigned_counts: counts(0, 0, 0),
+        summary: [],
+        unassigned: [],
+        supporting: { scopes: [], unassigned: [], unassigned_counts: counts(0, 0, 0) },
+      },
+      facilities: [],
+      vehicle_groups: [],
+      lines: [],
+      set_aside: [],
+    };
+    mocks.byPath = { [TREE_PATH]: empty };
+    render(<Harness />);
+    await screen.findByText("Summary documents and workbook");
+    fireEvent.click(screen.getByRole("button", { name: "Expand all" }));
+    expect(screen.getByText("No summary documents yet.")).toBeInTheDocument();
+    expect(screen.getAllByText("Nothing here.").length).toBe(2);
+    expect(screen.getByText("Not yet on a calculation line")).toBeInTheDocument();
   });
 });
 
