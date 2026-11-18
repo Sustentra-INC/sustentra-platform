@@ -33,8 +33,8 @@ from .audit_log import write_audit_event
 from .invite_service import PendingInvite, create_invited_user
 from .org_user_service import Actor
 
-__all__ = ["Actor", "PendingInvite", "activate_org", "create_org", "get_org", "list_orgs", "suspend_org",
-           "update_org"]
+__all__ = ["Actor", "PendingInvite", "activate_org", "create_org", "get_org", "get_org_detail", "list_orgs",
+           "suspend_org", "update_org"]
 
 _SEATED = ", ".join(f"'{s}'" for s in SEATED_USER_STATUSES)
 _SELECT = f"""
@@ -87,6 +87,42 @@ async def list_orgs(db: AsyncSession, *, search: str | None, status: str | None,
 
 async def get_org(db: AsyncSession, org_id: uuid.UUID) -> dict[str, Any]:
     return await _get(db, org_id)
+
+
+async def get_org_detail(db: AsyncSession, org_id: uuid.UUID) -> dict[str, Any]:
+    """The org plus who its first admin is and whether they have accepted their invite.
+
+    Read in provider scope (RLS lets the provider see every org's users). ``initial_admin`` is the
+    org's earliest-created org_admin that is not deleted, with the dates of their invite; ``user_counts``
+    is the seat count by status. Nothing here is more than the provider typed when creating the org.
+    """
+
+    org = await _get(db, org_id)
+    counts = {"active": 0, "invited": 0, "suspended": 0}
+    for row in (await db.execute(
+        text("SELECT status, count(*) AS n FROM users WHERE org_id = :id AND status IN ('active', 'invited', "
+             "'suspended') GROUP BY status"), {"id": org_id},
+    )).mappings():
+        counts[str(row["status"])] = int(row["n"])
+    admin = (await db.execute(
+        text("""
+            SELECT u.id AS user_id, u.email, COALESCE(u.first_name, '') AS first_name,
+                   COALESCE(u.last_name, '') AS last_name, u.status, u.created_at AS invited_at,
+                   (SELECT max(t.created_at) FROM auth_tokens t WHERE t.user_id = u.id AND t.type = 'invite')
+                       AS last_invite_sent_at,
+                   COALESCE((SELECT t.expires_at <= now() FROM auth_tokens t
+                              WHERE t.user_id = u.id AND t.type = 'invite' AND t.consumed_at IS NULL
+                              ORDER BY t.created_at DESC LIMIT 1), false) AS invite_expired
+              FROM users u
+             WHERE u.org_id = :id AND u.role = 'org_admin' AND u.status IN ('active', 'invited', 'suspended')
+             ORDER BY u.created_at, u.id
+             LIMIT 1
+        """), {"id": org_id},
+    )).mappings().first()
+    admin_view = dict(admin) if admin is not None else None
+    if admin_view is not None and admin_view["status"] != "invited":
+        admin_view["invite_expired"] = False
+    return {**org, "user_counts": counts, "initial_admin": admin_view}
 
 
 async def create_org(db: AsyncSession, actor: Actor, *, name: str, slug: str, max_users: int | None,

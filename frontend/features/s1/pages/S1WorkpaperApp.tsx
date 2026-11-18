@@ -1116,6 +1116,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     <main className="s1-app">
       <S1Chrome
         engagement={engagement}
+        engagementLoading={dataMode === "backend" && !engagement.engagementId && demoState === "loading"}
         user={dataMode === "backend" ? user : undefined}
         onSignOut={dataMode === "backend" && user ? () => void signOut() : undefined}
         current={navCurrent}
