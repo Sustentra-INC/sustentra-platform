@@ -312,7 +312,9 @@ for another org's engagement).
   identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter
   values: [{service_period_start, service_period_end, days, quantity, unit, document_id, file_name,
             page, candidate_id, decided_by, decided_at, decision, waiting_on: [string]}],
-  history: [{at, text}],                                             // newest first
+  history: [{action, actor_name, at, field, value, unit, file_name, page, count, documents?}],
+      // newest first, entries with no time last, at most 200; history_total is the count before the cap
+  history_total: number,
   // schedule v2 (Claire's supporting-schedule spec); the keys above are unchanged
   rows: [{record_key, record_index, accepted,        // one row per record (document + period + meter)
           decision,                                  // "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited"
@@ -336,6 +338,14 @@ for another org's engagement).
                        not_found: [{document_id, file_name}], documents_with, documents_total,
                        matched_by?: [string]}] }     // matched_by on Facility only
 ```
+
+`history` entries: `action` is `extracted` (one system entry per batch: `count` values from `documents`
+documents), `accepted`, `corrected` (an edit of a value that was read), `added` (a value the reviewer keyed
+where the extractor found nothing: an `edited` decision on a placeholder candidate whose normalized value is
+empty), `rejected` or `asked_for_more_evidence`. Every field of the line's records is logged, not only the
+quantity (`field` is its label). `actor_name` comes from the session's reviewer; `value` and `unit` are the value
+decided (for a rejection, the value that was read). Accepts by one person in one minute on different values fold
+into one entry with `count` N and no field. The page words the sentence.
 
 `rows` lists every extracted record on the line, accepted or not. A row with `accepted: false` is present
 but flagged; only accepted values feed the calculation, as before. The extra columns read the extracted

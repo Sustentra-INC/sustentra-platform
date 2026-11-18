@@ -22,6 +22,7 @@ from backend.app.services.engagement_recalculation_service import (
     setup_facilities,
 )
 from backend.app.services.reviewed_evidence import (
+    AI_SUGGESTED,
     REVIEWED,
     THERMAL,
     ReviewedRecord,
@@ -58,8 +59,13 @@ FIELD_LABELS = {"fuel_type": "Fuel type", "activity_quantity": "Activity quantit
                 "refrigerant_type": "Refrigerant type", "refrigerant_added": "Refrigerant added",
                 "equipment_capacity": "Equipment capacity", "refrigerant_recovered": "Refrigerant recovered",
                 "service_type": "Service type"}
-VERBS = {"accepted": "accepted", "edited": "edited", "rejected": "rejected",
-         "needs_more_evidence": "asked for more evidence on"}
+# A review decision -> the history action the page words ("edited" is "corrected", or "added" when the
+# extractor found nothing and the reviewer keyed the value).
+ACTIONS = {"accepted": "accepted", "edited": "corrected", "rejected": "rejected",
+           "needs_more_evidence": "asked_for_more_evidence"}
+HISTORY_CAP = 200
+HISTORY_FIELD_LABELS = {**{name: label for label, name in IDENTIFIERS}, **{name: label for _, label, name in EXTRA_COLUMNS},
+                        **FIELD_LABELS}
 
 
 @dataclass
@@ -328,30 +334,20 @@ class EvidenceTreeService:
                     "decided_by": who, "decided_at": _iso(item.reviewed_at), "decision": decision,
                     "waiting_on": waiting, "rejected_fields": rejected,
                 })
-                # every decision on this value, not only the latest
-                past = item.history or ([{"decision": item.status, "reviewer_id": item.reviewer,
-                                          "reviewed_at": item.reviewed_at, "reviewed_value": item.value,
-                                          "reviewed_unit": item.unit}] if item.status in VERBS else [])
-                for entry in past:
-                    verb = VERBS.get(str(entry.get("decision")))
-                    if verb is None:
-                        continue
-                    reviewed = str(entry.get("decision")) in REVIEWED
-                    number = entry.get("reviewed_value") if reviewed else item.extracted
-                    entry_unit = (entry.get("reviewed_unit") or unit) if reviewed else unit
-                    amount = f"{number} {entry_unit or ''}".strip() if number is not None else "a value"
-                    login = entry.get("reviewer_id")
-                    history.append({"at": _iso(entry.get("reviewed_at")), "text": (
-                        f"{name_of(login) if login else 'A reviewer'} {verb} {amount} from "
-                        f"{doc.document.get('file_name')}" + (f", page {page}" if page else ""))})
+                history.extend(self._decision_entries(doc, record, name_of))
         values.sort(key=lambda v: (v["service_period_start"] or "9999", str(v["file_name"] or "")))
         rows.sort(key=lambda r: (r["date"]["start"] or "9999", str(r["file_name"] or ""), r["record_key"]))
         extracted = [d.extracted_at for d, _ in on_line if d.extracted_at]
+        history = self._group_bulk_accepts(history)
         if values:
-            history.append({"at": max(extracted) if extracted else None,
-                            "text": f"System extracted {len(values)} {'value' if len(values) == 1 else 'values'} "
-                                    f"from {len(on_line)} {'document' if len(on_line) == 1 else 'documents'}"})
+            history.append({"action": "extracted", "actor_name": "System", "at": max(extracted) if extracted else None,
+                            "field": None, "value": None, "unit": None, "file_name": None, "page": None,
+                            "count": len(values), "documents": len(on_line)})
+        # Newest first; an entry without a time goes last.
         history.sort(key=lambda h: h["at"] or "", reverse=True)
+        history.sort(key=lambda h: h["at"] is None)
+        history_total = len(history)
+        history = history[:HISTORY_CAP]
         return {
             "line": line.to_dict(),
             "calculated": calculated,
@@ -364,6 +360,7 @@ class EvidenceTreeService:
             "columns": self._columns(rows),
             "activity_quantity_note": self._activity_note(line),
             "history": history,
+            "history_total": history_total,
         }
 
     @staticmethod
@@ -409,6 +406,70 @@ class EvidenceTreeService:
         columns.extend({"key": key, "label": label, "unit_in_cells": True}
                        for key, label, _ in EXTRA_COLUMNS if any(key in row["cells"] for row in rows))
         return columns
+
+    @staticmethod
+    def _text(value: Any) -> str | None:
+        if value is None or value == "":
+            return None
+        return str(int(value)) if isinstance(value, float) and value.is_integer() else str(value)
+
+    @classmethod
+    def _decision_entries(cls, doc: DocState, record: ReviewedRecord,
+                          name_of: Callable[[str], str]) -> list[dict[str, Any]]:
+        """Every decision on every field of one record, as history entries (who, when, what, where)."""
+
+        out: list[dict[str, Any]] = []
+        for field_name, item in record.fields.items():
+            past = item.history or ([{"decision": item.status, "reviewer_id": item.reviewer,
+                                      "reviewed_at": item.reviewed_at, "reviewed_value": item.value,
+                                      "reviewed_unit": item.unit}] if item.status in ACTIONS else [])
+            page = (item.source_reference or {}).get("page_number")
+            for entry in past:
+                decision = str(entry.get("decision"))
+                action = ACTIONS.get(decision)
+                if action is None:
+                    continue
+                snapshot = entry.get("candidate_snapshot") or {}
+                found = snapshot.get("normalized_value") if snapshot else item.extracted
+                if decision in REVIEWED:
+                    value, unit = entry.get("reviewed_value"), entry.get("reviewed_unit") or item.unit
+                    if decision == "edited" and snapshot and found in (None, "") \
+                            and AI_SUGGESTED not in (snapshot.get("validation_flags") or []):
+                        action = "added"  # the extractor found nothing; the reviewer keyed the value
+                else:
+                    value, unit = found, snapshot.get("unit") or item.unit
+                login = entry.get("reviewer_id")
+                out.append({
+                    "action": action, "actor_name": name_of(str(login)) if login else None,
+                    "at": _iso(entry.get("reviewed_at")),
+                    "field": HISTORY_FIELD_LABELS.get(field_name, field_name.replace("_", " ").capitalize()),
+                    "value": cls._text(value), "unit": unit, "file_name": doc.document.get("file_name"), "page": page,
+                    "count": 1, "_field_key": (doc.document_id, record.label, field_name), "_login": login})
+        return out
+
+    @staticmethod
+    def _group_bulk_accepts(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Accepts by one person within one minute, on different values, become one entry:
+        "K. Lee accepted 9 values". The same value accepted twice is never folded together."""
+
+        groups: dict[tuple[Any, str], list[dict[str, Any]]] = {}
+        for entry in entries:
+            if entry["action"] == "accepted" and entry["at"] and entry["_login"]:
+                groups.setdefault((entry["_login"], entry["at"][:16]), []).append(entry)
+        folded: set[int] = set()
+        out: list[dict[str, Any]] = []
+        for members in groups.values():
+            keys = [m["_field_key"] for m in members]
+            if len(members) > 1 and len(set(keys)) == len(keys):
+                folded.update(id(m) for m in members)
+                latest = max(members, key=lambda m: m["at"])
+                out.append({**latest, "field": None, "value": None, "unit": None, "file_name": None, "page": None,
+                            "count": len(members)})
+        out.extend(e for e in entries if id(e) not in folded)
+        for entry in out:
+            entry.pop("_field_key", None)
+            entry.pop("_login", None)
+        return out
 
     @staticmethod
     def _activity_note(line: cl.CalculationLine) -> str | None:

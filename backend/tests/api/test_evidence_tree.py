@@ -83,11 +83,13 @@ def test_a_reader_gets_a_schedule_with_names(act_as, wired: FakeStore) -> None:
     assert response.status_code == 200
     body = response.json()
     assert set(body) == {"line", "calculated", "reporting_period", "coverage", "identifiers", "values", "history", "rows",
-                         "columns", "activity_quantity_note", "identifier_groups"}
+                         "columns", "activity_quantity_note", "identifier_groups", "history_total"}
     assert body["rows"][0]["saved_by"]["name"] == "Ana Reyes" and body["rows"][0]["accepted"] is True
     assert body["line"]["key"] == GAS_KC and body["values"][0]["decided_by"] == "Ana Reyes"
     assert [m["status"] for m in body["coverage"]] == ["counted_in_part", "counted_in_part", "no_document"]
-    assert body["history"][0]["text"].startswith("Ana Reyes accepted 310 MMBtu from G1.pdf")
+    assert any(h["actor_name"] == "Ana Reyes" and h["action"] == "accepted"
+               for h in body["history"])
+    assert body["history_total"] == len(body["history"])
 
 
 def test_provider_support_can_read(act_as, wired: FakeStore) -> None:

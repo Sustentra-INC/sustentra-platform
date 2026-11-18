@@ -113,13 +113,33 @@ export interface LineSchedule {
   coverage: { month: string; status: CoverageStatus; quantity: number | null; unit: string | null; document_ids: string[]; flags?: string[]; waiting_on?: string[] }[];
   identifiers: { label: string; value: string; documents_with: number; documents_total: number }[];
   values: ScheduleValue[];
-  history: { at: string; text: string }[];
+  /** Newest first, at most 200; `history_total` is the count before the cap. */
+  history: ScheduleHistoryEntry[];
+  history_total?: number;
   /** Schedule v2: one row per record, accepted or not. */
   rows: ScheduleRow[];
   /** The ordered column set; Date and Activity quantity first, then only the extras the line has. */
   columns: ScheduleColumn[];
   activity_quantity_note?: string | null;
   identifier_groups: IdentifierGroup[];
+}
+
+export type HistoryAction = "extracted" | "accepted" | "corrected" | "added" | "rejected" | "asked_for_more_evidence";
+
+/** One thing that happened on the line. The page words the sentence; who, when, what and where are fields. */
+export interface ScheduleHistoryEntry {
+  action: HistoryAction;
+  actor_name: string | null;
+  at: string | null;
+  field: string | null;
+  value: string | null;
+  unit: string | null;
+  file_name: string | null;
+  page: number | null;
+  /** Values folded into this entry (a bulk accept), or the values extracted by the system entry. */
+  count?: number;
+  /** Documents the system entry extracted from. */
+  documents?: number | null;
 }
 
 export interface ScheduleColumn {

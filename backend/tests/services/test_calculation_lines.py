@@ -534,11 +534,16 @@ def test_schedule_values_and_history_newest_first_with_names() -> None:
     assert values["BILL-C"]["quantity"] == 150 and values["BILL-C"]["decision"] == "edited"
     assert values["BILL-C"]["decided_by"] == "bo@example.com"  # no name on file: the login
     assert values["BILL-B"]["decision"] == "not_reviewed" and values["BILL-B"]["decided_by"] is None
-    assert schedule["history"] == [
-        {"at": "2025-04-03T09:30:00Z", "text": "bo@example.com edited 150 MMBtu from BILL-C.pdf, page 1"},
-        {"at": "2025-04-02T10:00:00Z", "text": "Ana Reyes accepted 310 MMBtu from BILL-A.pdf, page 1"},
-        {"at": "2025-04-01T08:05:00Z", "text": "System extracted 3 values from 3 documents"},
-    ]
+    history = schedule["history"]
+    assert [h["at"] for h in history] == sorted((h["at"] for h in history), reverse=True)  # newest first
+    corrected = next(h for h in history if h["action"] == "corrected")
+    assert (corrected["actor_name"], corrected["field"], corrected["value"], corrected["unit"], corrected["file_name"],
+            corrected["page"]) == ("bo@example.com", "Activity quantity", "150", "MMBtu", "BILL-C.pdf", 1)
+    # Ana accepted all of BILL-A's fields in one minute: one entry, with a count
+    bulk = next(h for h in history if h["action"] == "accepted" and h["actor_name"] == "Ana Reyes")
+    assert bulk["count"] > 1 and bulk["field"] is None and bulk["at"] == "2025-04-02T10:00:00Z"
+    assert history[-1] == {"action": "extracted", "actor_name": "System", "at": "2025-04-01T08:05:00Z", "field": None,
+                           "value": None, "unit": None, "file_name": None, "page": None, "count": 3, "documents": 3}
 
 
 def test_schedule_of_a_line_with_no_documents_and_of_an_unknown_line() -> None:
@@ -689,9 +694,9 @@ def test_history_lists_every_decision_on_a_value() -> None:
     ]
     schedule = _tree_service(store).schedule(_engagement(), _own, GAS_KC)
     assert schedule is not None
-    assert [h["text"] for h in schedule["history"][:2]] == [
-        "bo@example.com edited 300 MMBtu from BILL-A.pdf, page 1",
-        "ana@example.com accepted 310 MMBtu from BILL-A.pdf, page 1"]
+    assert [(h["action"], h["actor_name"], h["field"], h["value"]) for h in schedule["history"][:2]] == [
+        ("corrected", "bo@example.com", "Activity quantity", "300"),
+        ("accepted", "ana@example.com", "Activity quantity", "310")]
     assert schedule["values"][0]["decision"] == "edited" and schedule["values"][0]["quantity"] == 300
 
 
