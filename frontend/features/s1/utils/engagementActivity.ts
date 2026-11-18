@@ -108,7 +108,22 @@ export interface DashboardFigures {
    * (reporting period, GWP basis, reported totals, reviewer decisions) are not evidence
    * and are not counted here.
    */
-  coverage: { present: number; missing: number; notApplicable: number; outOfScope: number } | null;
+  coverage: {
+    /** Data points with their reviewed inputs in. */
+    present: number;
+    /** Data points whose documents are in but whose values wait for review. */
+    awaitingReview: number;
+    /** Data points that need a choice first (grid region, fuel, vehicle groups, a GWP). */
+    needsChoice: number;
+    /** Data points with no evidence at all. */
+    missing: number;
+    /** Data points whose documents are in: present, awaiting review or needing a choice. */
+    obtained: number;
+    /** Every in-scope data point: obtained plus missing. */
+    inScope: number;
+    notApplicable: number;
+    outOfScope: number;
+  } | null;
   /**
    * The engagement's reporting period is missing a date. Set by the live dashboard from the
    * engagement itself, so fixing the period in Setup clears it at once (absent: it is not).
@@ -138,6 +153,11 @@ export function dashboardFigures(input: {
   const values = input.values.filter((v) => !v.withdrawn);
   const rules = input.coverage?.filter((r) => !METHOD_CHECK_RULE_IDS.includes(r.ruleId)) ?? null;
   const calculated = input.calculatedIds ?? [];
+  const notReady = rules?.filter((r) => r.status === "inputs_missing") ?? [];
+  const waiting = notReady.filter((r) => r.missingBecause === "awaiting_review").length;
+  const choice = notReady.filter((r) => r.missingBecause === "needs_input").length;
+  const absent = notReady.length - waiting - choice;
+  const present = rules?.filter((r) => r.status === "inputs_present").length ?? 0;
   return {
     documents: documents.length,
     documentsReadable: documents.filter((e) => e.processingState === "extracted").length,
@@ -153,8 +173,12 @@ export function dashboardFigures(input: {
     requestsRaised: input.asks.filter((a) => a.state !== "withdrawn").length,
     coverage: rules
       ? {
-          present: rules.filter((r) => r.status === "inputs_present").length,
-          missing: rules.filter((r) => r.status === "inputs_missing").length,
+          present,
+          awaitingReview: waiting,
+          needsChoice: choice,
+          missing: absent,
+          obtained: present + waiting + choice,
+          inScope: present + notReady.length,
           notApplicable: rules.filter((r) => r.status === "not_applicable").length,
           outOfScope: rules.filter((r) => r.status === "out_of_scope").length,
         }

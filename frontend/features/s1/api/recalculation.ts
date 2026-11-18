@@ -1087,7 +1087,14 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
         waiting.length ? `${count(waiting.length, "record")} awaiting review (${listed(waiting)})` : "",
         choices.length ? choices.map((c) => c.message).join(" ") : "",
       ].filter(Boolean);
-      rules.push({ ruleId, assertion, appliesTo, status: "inputs_missing", reason: parts.join(". ") });
+      rules.push({
+        ruleId,
+        assertion,
+        appliesTo,
+        status: "inputs_missing",
+        reason: parts.join(". "),
+        missingBecause: waiting.length ? "awaiting_review" : "needs_input",
+      });
     } else if (category) {
       const docs = (category.details.inputs ?? []).reduce((n, i) => n + i.documents.length, 0);
       const vehicles = category.flags.includes("ch4_n2o_need_vehicle_groups")
@@ -1141,6 +1148,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
       assertion: "Purchased electricity is recalculated with each facility's eGRID subregion factor (EPA Hub Table 6)",
       appliesTo: elecAppliesTo,
       status: "inputs_missing",
+      missingBecause: elecWaiting.length ? "awaiting_review" : "needs_input",
       reason: [
         regions.length ? `Grid region not chosen for ${listed(regions.map((r) => r.key ?? ""))}` : "",
         elecWaiting.length ? `${count(elecWaiting.length, "bill")} awaiting review (${listed(elecWaiting)})` : "",
@@ -1261,6 +1269,7 @@ function refrigerantRule(result: Recalculation): CoverageRule {
     return {
       ...base,
       status: "inputs_missing",
+      missingBecause: waiting.length ? "awaiting_review" : "needs_input",
       reason: [
         category ? `Recalculated so far: ${category.lines.map((l) => l.key).join(", ")}` : "",
         waiting.length ? `${count(waiting.length, "record")} awaiting review (${listed(waiting)})` : "",

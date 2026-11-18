@@ -22,7 +22,11 @@ export interface CalculationLine {
   label: string;
   facility_id: string | null;
   created_by_user: boolean;
+  /** The calculation this line feeds; null when none reads it (fugitive, process, steam…). */
+  family?: CalculationFamily | null;
 }
+
+export type CalculationFamily = "stationary" | "mobile" | "electricity";
 
 export interface TreeCounts {
   documents: number;
@@ -48,6 +52,8 @@ export interface TreeDocRow {
   accepted: number;
   /** "unknown_line": it was moved to a line that no longer exists, so it sits in Unassigned. */
   flags: string[];
+  /** The calculation this row's values feed; null when mixed or when none reads them. */
+  value_family?: CalculationFamily | null;
   /** The placement this row stands for, sent as `from` when the row is moved (else the row's line key). */
   placement_from?: string;
 }

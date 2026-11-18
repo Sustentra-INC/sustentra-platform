@@ -10,6 +10,7 @@ import {
   getEvidenceTree,
   isSameLine,
   lineTitle,
+  type CalculationFamily,
   type CalculationLine,
   type EvidenceLineSetting,
   type EvidenceTree as EvidenceTreeData,
@@ -360,6 +361,16 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 
       {!filtered || visibleScopes.length || supporting.unassigned.length ? (
         <Fold id="b:supporting" depth={0} open={isOpen("b:supporting")} onToggle={toggle} title="Supporting evidence">
+          {tree.facilities.length === 0 ? (
+            <p className="s1-et-none s1-et-nofac">
+              No calculation lines yet. Add your facilities in Setup and each fuel gets one line per facility.{" "}
+              {props.onOpenSetup ? (
+                <button className="s1-linklike" type="button" onClick={props.onOpenSetup}>
+                  Open Setup
+                </button>
+              ) : null}
+            </p>
+          ) : null}
           {visibleScopes.map((scope) => {
             const id = `scope:${scope.scope}`;
             return (
@@ -410,6 +421,12 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           onError={onError}
           onCancel={() => setDialog(null)}
           onMove={async (to) => {
+            // Another tab may have moved it already: say so, and never save a move from a place it is not in.
+            const fresh = await getEvidenceTree(engagementId);
+            if (!stillOn(fresh, dialog.doc.document_id, dialog.from)) {
+              setReload((n) => n + 1);
+              throw new Error(STALE_MOVE);
+            }
             await props.onMovePlacement(dialog.doc.document_id, { from: dialog.from, to });
             audit("move_placement", { documentId: dialog.doc.document_id, from: placeLabel(dialog.from), to: placeLabel(to) });
             done();
@@ -505,6 +522,25 @@ function collectIds(tree: EvidenceTreeData): string[] {
     }
   }
   return ids;
+}
+
+const STALE_MOVE = "This document is no longer where this page showed it, so nothing was changed. The list has been refreshed; choose again.";
+
+/** Whether the document still has the placement a move names (a row's `placement_from`, else its section). */
+function stillOn(tree: EvidenceTreeData, documentId: string, from: string): boolean {
+  const has = (rows: TreeDocRow[], section: string) => rows.some((r) => r.document_id === documentId && (r.placement_from ?? section) === from);
+  const { summary, unassigned, supporting } = tree.blocks;
+  if (has(summary, BLOCK_SUMMARY) || has(unassigned, BLOCK_UNASSIGNED) || has(supporting.unassigned, SUPPORTING_UNASSIGNED)) return true;
+  return supporting.scopes.some((s) =>
+    s.categories.some((c) => c.level2s.some((l2) => l2.lines.some((n) => has(n.documents, n.line.key))))
+  );
+}
+
+const FAMILY_WORDS: Record<CalculationFamily, string> = { stationary: "stationary fuel", mobile: "mobile fuel", electricity: "electricity" };
+
+/** "3 values move" / "1 value moves". */
+function valuesText(n: number): string {
+  return n === 1 ? "1 value moves" : `${n} values move`;
 }
 
 function processingText(status: string): string {
@@ -677,6 +713,27 @@ function MoveDialog({
   // Only a line that still exists has a calculation to change.
   const affected = [from, to].filter((k) => isLineKey(k) && lineMap.has(k)).map(placeLabel);
   const needsConfirm = affected.length > 0;
+  const toLine = lineMap.get(to);
+  const fromSummary = from === BLOCK_SUMMARY || section === BLOCK_SUMMARY;
+  // What changes: the values this placement holds, and the lines whose calculations read them.
+  let consequence: string | null = null;
+  if (needsConfirm && !fromSummary) {
+    const n = doc.values;
+    const fromName = lineMap.has(from) ? placeLabel(from) : null;
+    const toName = toLine ? placeLabel(to) : null;
+    if (n === 0) consequence = "This document has no values yet, so no calculation changes.";
+    else if (fromName && toName) consequence = `${valuesText(n)} from ${fromName} to ${toName}. Both lines' calculations change.`;
+    else if (toName) consequence = `${valuesText(n)} to ${toName}. Its calculation changes.`;
+    else if (fromName) consequence = `${valuesText(n)} out of ${fromName}. Its calculation changes.`;
+  }
+  // Moves that are allowed but whose values will not count where they land.
+  let warning: string | null = null;
+  if (toLine && fromSummary) {
+    warning = "This is a summary document, and its values don't feed lines. Moving it here changes no calculation.";
+  } else if (toLine && doc.value_family && toLine.family !== doc.value_family) {
+    const why = toLine.family ? `it calculates ${FAMILY_WORDS[toLine.family]}` : "no calculation reads this kind of line";
+    warning = `These values won't count on this line, because ${why}. They will show as not placed.`;
+  }
 
   return (
     <Dialog title="Move to…" onClose={onCancel}>
@@ -705,9 +762,14 @@ function MoveDialog({
           ))}
         </select>
       </label>
+      {warning ? (
+        <p className="s1-modal__note" role="status">
+          {warning}
+        </p>
+      ) : null}
       {confirming ? (
         <p className="s1-modal__note" role="alert">
-          This changes the calculation for {affected.join(" and ")}.
+          {consequence ?? `This changes the calculation for ${affected.join(" and ")}.`}
         </p>
       ) : null}
       {error ? (

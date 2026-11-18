@@ -73,7 +73,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
           {
             kind: "machine",
             actor: field.valueProperties.includes("ai_suggested") ? "Claude" : "Extraction",
-            at: document?.uploadedAt ?? "",
+            at: field.readAt ?? document?.uploadedAt ?? "",
             action: field.value === null ? "did not find this on the document" : field.snippet ? `read "${field.snippet}"` : "extracted",
           },
           ...(accepted || corrected
