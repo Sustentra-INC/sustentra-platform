@@ -7,6 +7,7 @@ the two responses. It writes nothing and logs nothing.
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date
@@ -35,6 +36,9 @@ from backend.app.services.reviewed_evidence import (
 
 IDENTIFIERS = (("Facility", "facility_name"), ("Service address", "service_address"),
                ("Account number", "account_number"), ("Meter number", "meter_number"))
+# Facility applies to every line; the other three are printed on utility bills, so they apply only
+# to lines fed by one: metered natural gas, electricity, steam, heat and cooling.
+UTILITY_ONLY = {"service_address", "account_number", "meter_number"}
 # The schedule's optional columns, in order: (key, label, extracted field name). A column shows
 # only when a row on the line has a value. No extractor produces these fields yet (a column
 # appears as soon as one does).
@@ -349,8 +353,8 @@ class EvidenceTreeService:
             "calculated": calculated,
             "reporting_period": {"start": _iso(loaded.period[0]), "end": _iso(loaded.period[1])},
             "coverage": cl.month_coverage(loaded.period, covered),
-            "identifiers": self._identifiers(on_line),
-            "identifier_groups": self._identifier_groups(on_line, loaded.facilities, decisions or {}),
+            "identifiers": self._identifiers(line, on_line),
+            "identifier_groups": self._identifier_groups(line, on_line, loaded.facilities, decisions or {}),
             "values": values,
             "rows": rows,
             "columns": self._columns(rows),
@@ -412,14 +416,32 @@ class EvidenceTreeService:
         return f"Activity quantity: {what}" if what else None
 
     @staticmethod
-    def _identifier_groups(on_line: list[tuple[DocState, list[ReviewedRecord]]], facilities: list[dict[str, Any]],
+    def _is_utility_line(line: cl.CalculationLine) -> bool:
+        return line.category == "purchased_energy" or (line.category == "stationary" and line.level2 == "natural-gas")
+
+    @classmethod
+    def _identifier_defs(cls, line: cl.CalculationLine) -> list[tuple[str, str]]:
+        utility = cls._is_utility_line(line)
+        return [(label, name) for label, name in IDENTIFIERS if utility or name not in UTILITY_ONLY]
+
+    @staticmethod
+    def _spelling(raw: Any) -> tuple[str, str]:
+        """(display, comparison key) of an identifier: whitespace collapsed; the key is NFC and case-folded."""
+
+        text = " ".join(str(raw).split()) if raw not in (None, "") else ""
+        return text, unicodedata.normalize("NFC", text).casefold()
+
+    @classmethod
+    def _identifier_groups(cls, line: cl.CalculationLine, on_line: list[tuple[DocState, list[ReviewedRecord]]],
+                           facilities: list[dict[str, Any]],
                            decisions: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-        """Each identifier with its documents grouped by value, and the documents without it."""
+        """Each identifier that applies to the line, with its documents grouped by value, and the documents without it."""
 
         out: list[dict[str, Any]] = []
-        for label, field_name in IDENTIFIERS:
+        for label, field_name in cls._identifier_defs(line):
             is_facility = field_name == "facility_name"
             groups: dict[str, dict[str, dict[str, Any]]] = {}
+            shown: dict[str, str] = {}  # comparison key -> the first spelling seen
             for doc, records in on_line:
                 for record in records:
                     how: str | None = None
@@ -427,19 +449,20 @@ class EvidenceTreeService:
                         found = cl.facility_match(facilities, decisions, doc.document_id, record)
                         text, how = (str(found[0].get("name")), found[1]) if found else ("", None)
                     else:
-                        raw = record.best(field_name)
-                        text = " ".join(str(raw).split()) if raw not in (None, "") else ""
+                        text = record.best(field_name)
+                    text, norm = cls._spelling(text)
                     if not text:
                         continue
+                    shown.setdefault(norm, text)
                     entry = {"document_id": doc.document_id, "file_name": doc.document.get("file_name")}
                     if is_facility:
                         entry["matched_by"] = how
-                    groups.setdefault(text, {}).setdefault(doc.document_id, entry)
+                    groups.setdefault(norm, {}).setdefault(doc.document_id, entry)
             with_value = {d for docs in groups.values() for d in docs}
             item: dict[str, Any] = {
                 "label": label,
-                "values": [{"value": value, "documents": sorted(docs.values(), key=lambda d: str(d["file_name"]))}
-                           for value, docs in sorted(groups.items())],
+                "values": [{"value": shown[norm], "documents": sorted(docs.values(), key=lambda d: str(d["file_name"]))}
+                           for norm, docs in sorted(groups.items())],
                 "not_found": [{"document_id": d.document_id, "file_name": d.document.get("file_name")}
                               for d, _ in on_line if d.document_id not in with_value],
                 "documents_with": len(with_value), "documents_total": len(on_line),
@@ -449,17 +472,19 @@ class EvidenceTreeService:
             out.append(item)
         return out
 
-    @staticmethod
-    def _identifiers(on_line: list[tuple[DocState, list[ReviewedRecord]]]) -> list[dict[str, Any]]:
+    @classmethod
+    def _identifiers(cls, line: cl.CalculationLine,
+                     on_line: list[tuple[DocState, list[ReviewedRecord]]]) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
-        for label, field_name in IDENTIFIERS:
+        for label, field_name in cls._identifier_defs(line):
             found: dict[str, set[str]] = {}
+            shown: dict[str, str] = {}
             for doc, records in on_line:
                 for record in records:
-                    value = record.best(field_name)
-                    text = " ".join(str(value).split()) if value not in (None, "") else ""
+                    text, norm = cls._spelling(record.best(field_name))
                     if text:
-                        found.setdefault(text, set()).add(doc.document_id)
-            out.extend({"label": label, "value": value, "documents_with": len(ids), "documents_total": len(on_line)}
-                       for value, ids in sorted(found.items()))
+                        shown.setdefault(norm, text)
+                        found.setdefault(norm, set()).add(doc.document_id)
+            out.extend({"label": label, "value": shown[norm], "documents_with": len(ids), "documents_total": len(on_line)}
+                       for norm, ids in sorted(found.items()))
         return out
