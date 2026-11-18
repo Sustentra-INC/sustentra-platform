@@ -807,6 +807,17 @@ describe("the supporting schedule", () => {
     expect(screen.getByText("not a date")).toBeInTheDocument();
   });
 
+  it("shows the same local day in Saved by and in the line history for a timestamp near midnight UTC", async () => {
+    const at = "2025-03-02T23:30:00Z";
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, rows: [{ ...SCHEDULE.rows[0], saved_by: { name: "Zoë Ångström", at } }], history: [{ at, text: "Zoë Ångström accepted 120 therm" }] } };
+    renderSchedule();
+    const d = new Date(at);
+    const day = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/25`;
+    expect(await screen.findByText(`Saved by Zoë Ångström · ${day}`)).toBeInTheDocument();
+    fireEvent.click(screen.getByText(/Line history/));
+    expect(screen.getByText(new RegExp(`^${day}, \\d{2}:\\d{2}$`))).toBeInTheDocument();
+  });
+
   it("round-trips a line key with : . - between results and the schedule", async () => {
     const key = "s1:stationary:natural-gas:fac-k.c-01";
     const encoded = `/engagements/${ENG}/calculation-lines/${encodeURIComponent(key)}/schedule`;

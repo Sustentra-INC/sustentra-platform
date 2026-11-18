@@ -174,7 +174,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
         </div>
       </header>
 
-    <section className="s1-panel s1-sch-cov" aria-label="Coverage by month">
+      <section className="s1-panel s1-sch-cov" aria-label="Coverage by month">
         <h2>Coverage by month</h2>
         {schedule.coverage.length ? (
           <ul className="s1-sch-months">
@@ -401,14 +401,20 @@ function rowFlag(r: ScheduleRow): string | null {
 
 function savedByText(r: ScheduleRow): string {
   if (!r.saved_by) return "";
-  return `Saved by ${r.saved_by.name}${r.saved_by.at ? ` · ${formatDate(r.saved_by.at)}` : ""}`;
+  return `Saved by ${r.saved_by.name}${r.saved_by.at ? ` · ${formatLocal(r.saved_by.at, false)}` : ""}`;
 }
 
 function formatDateTime(iso: string): string {
+  return formatLocal(iso, true);
+}
+
+/** One formatter for every timestamp on the page (Saved by, line history): the reader's local day, so the two never disagree. */
+function formatLocal(iso: string, withTime: boolean): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   const two = (n: number) => String(n).padStart(2, "0");
-  return `${two(d.getMonth() + 1)}/${two(d.getDate())}/${two(d.getFullYear() % 100)}, ${two(d.getHours())}:${two(d.getMinutes())}`;
+  const day = `${two(d.getMonth() + 1)}/${two(d.getDate())}/${two(d.getFullYear() % 100)}`;
+  return withTime ? `${day}, ${two(d.getHours())}:${two(d.getMinutes())}` : day;
 }
 
 /** A month's counted quantity, a computed share of its bills: whole units once it is in the hundreds. */
