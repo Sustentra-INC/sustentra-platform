@@ -210,6 +210,13 @@ _DATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Jan-2025 - a month column in a monthly log: the first day of that month
     re.compile(rf"(?<![\w-])(?P<mon>{_MONTH_RE})-(?P<y>\d{{4}})(?![\w-])", re.IGNORECASE),
 )
+# "October 1 - 31, 2025", "Oct 1 \u2013 31, 2025", "September 28 - October 27, 2025", "Dec 16 - Jan 15, 2026":
+# a range whose first date has no year of its own. The year is the end date's; a first month after the
+# last month ("Dec 16 - Jan 15") is the year before. English month names only: another language's
+# names do not match, so such a range simply is not read.
+_SHORT_RANGE_RE = re.compile(
+    rf"(?<![\w])(?P<m1>{_MONTH_RE})\.?\s+(?P<d1>\d{{1,2}})\s*[-\u2013\u2014]\s*"
+    rf"(?:(?P<m2>{_MONTH_RE})\.?\s+)?(?P<d2>\d{{1,2}}),?\s+(?P<y>\d{{4}})(?!\d)", re.IGNORECASE)
 _NUMBER_RE = re.compile(
     r"(?P<open>\()?(?P<sign>-)?(?<![\w.,])"
     r"(?P<num>\d{1,3}(?:[,.]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
@@ -380,7 +387,24 @@ def parse_date(text: str, day_first: bool | None = None) -> tuple[str, int, int]
     return best
 
 
+def _short_range(match: re.Match[str]) -> tuple[str, str] | None:
+    parts = match.groupdict()
+    try:
+        year = int(parts["y"])
+        end_month = _MONTHS[(parts["m2"] or parts["m1"]).lower().rstrip(".")]
+        start_month = _MONTHS[parts["m1"].lower().rstrip(".")]
+        start_year = year - 1 if start_month > end_month else year
+        start = date(start_year, start_month, int(parts["d1"]))
+        end = date(year, end_month, int(parts["d2"]))
+    except (KeyError, ValueError):
+        return None
+    return (start.isoformat(), end.isoformat()) if start <= end else None
+
+
 def parse_dates(text: str, day_first: bool | None = None) -> list[str]:
+    short = _SHORT_RANGE_RE.search(text)
+    if short is not None and (pair := _short_range(short)) is not None:
+        return [*parse_dates(text[:short.start()], day_first), *pair, *parse_dates(text[short.end():], day_first)]
     found: list[str] = []
     remaining = text
     while True:
@@ -1084,7 +1108,9 @@ class StationaryCombustionExtractor:
 
     def _account(self, rows: Sequence[Row]) -> Located | None:
         def accept(value: str) -> bool:
-            return bool(re.search(r"\d", value)) and parse_date(value) is None and not value.startswith("$")
+            # an identifier has a token with digits in it ("Your last 6 months" is a heading, not an account)
+            return (any(len(t) >= 3 and re.search(r"\d", t) for t in value.split())
+                    and parse_date(value) is None and not value.startswith("$"))
 
         def accept_bare(value: str) -> bool:  # first token must look like an identifier
             return accept(value) and bool(re.match(r"[A-Za-z0-9#-]*\d[\w-]*", value))
@@ -1219,7 +1245,29 @@ class StationaryCombustionExtractor:
                 if start is None and end is not None and len(parse_dates(end.raw)) >= 2:
                     return end, end
                 return start, end
-        return None, None
+        alone = self._standalone_range(rows)
+        return (alone, alone) if alone is not None else (None, None)
+
+    @staticmethod
+    def _standalone_range(rows: Sequence[Row]) -> Located | None:
+        """A period with no label, as a consumer-style bill prints it ("October 1 - 31, 2025"): a cell that
+        is nothing but a date range. Only when the document has exactly one such range (a bill that also
+        prints last year's, or a chart's, is ambiguous) and it is a month-or-so long, not a year."""
+
+        found: list[tuple[Row, Cell]] = []
+        for row in rows:
+            for cell in row.cells:
+                text = cell.text.strip().rstrip(".")
+                dates = parse_dates(text)
+                whole = _SHORT_RANGE_RE.fullmatch(text) is not None or (
+                    len(dates) == 2 and parse_date(text) is not None and parse_date(text)[1] == 0  # type: ignore[index]
+                    and re.fullmatch(r"[\w .,/\u2013\u2014-]+", text) is not None and len(text) <= 40)
+                if whole and len(dates) == 2 and 0 <= (date.fromisoformat(dates[1]) - date.fromisoformat(dates[0])).days <= 100:
+                    found.append((row, cell))
+        if len(found) != 1:
+            return None
+        row, cell = found[0]
+        return Located(cell.text.strip(), [cell], row, CONF_LETTERHEAD, context=cell.text)
 
     # =================================================================================
     # Quantities
@@ -1427,7 +1475,61 @@ class StationaryCombustionExtractor:
     def _quantity_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
         """Usage table rows, else a labeled quantity (subclasses add more layouts)."""
 
-        return self._usage_table_records(rows) or self._labeled_quantity_records(rows)
+        return (self._usage_table_records(rows) or self._labeled_quantity_records(rows)
+                or self._headline_quantity_records(rows))
+
+    _BARE_NUMBER = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d+)?$|^\d+(?:\.\d+)?$")
+
+    def _headline_quantity_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
+        """A bill that leads with the quantity: "1,486" in large type with "therms used" directly below it.
+        The number must stand alone (no "$", no ID) and the unit must be the first word of the line right
+        under it, in the same column; an amount, an account number or a phone number has no unit there.
+        When the document has two such pairs, nothing is guessed."""
+
+        pairs: list[tuple[Row, Cell, Row, Cell]] = []
+        for position, row in enumerate(rows):
+            for cell in row.cells:
+                if not self._BARE_NUMBER.match(cell.text.strip()):
+                    continue
+                below = self._unit_line_below(rows, position, cell)
+                if below is not None:
+                    pairs.append((row, cell, *below))
+        if len(pairs) != 1:
+            return []
+        row, number, unit_row, unit_cell = pairs[0]
+        parsed = parse_number(number.text)
+        if parsed is None:
+            return []
+        unit_word = unit_cell.text.split()[0]
+        quantity = Located(parsed[1], [number], row, CONF_TABLE, context=f"{number.text} {unit_cell.text}")
+        return [UsageRecord(quantity=quantity, unit_raw=unit_word,
+                            unit_located=Located(unit_cell.text, [unit_cell], unit_row, CONF_NEXT_CELL), hint=None)]
+
+    def _unit_line_below(self, rows: Sequence[Row], position: int, number: Cell) -> tuple[Row, Cell] | None:
+        def is_unit_line(text: str) -> bool:
+            words = text.split()
+            return 0 < len(words) <= 4 and self._canonical_unit(words[0].strip(".,:;")) is not None
+
+        if number.box is None:  # plain text: the next line
+            if position + 1 < len(rows):
+                following = rows[position + 1]
+                if len(following.cells) == 1 and is_unit_line(following.cells[0].text):
+                    return following, following.cells[0]
+            return None
+        bottom = number.box["top"] + number.box["height"]
+        best: tuple[float, Row, Cell] | None = None
+        for other in rows[position + 1:position + 40]:
+            if other.page != rows[position].page:
+                break
+            for cell in other.cells:
+                if cell.box is None or abs(cell.left - number.left) > 0.02:
+                    continue
+                gap = cell.box["top"] - bottom
+                if -0.005 <= gap <= max(0.5 * number.height, 0.02) and (best is None or gap < best[0]):
+                    best = (gap, other, cell)
+        if best is not None and is_unit_line(best[2].text):
+            return best[1], best[2]
+        return None
 
     def _labeled_quantity_records(self, rows: Sequence[Row],
                                   label_groups: tuple[tuple[str, ...], ...] | None = None) -> list[UsageRecord]:

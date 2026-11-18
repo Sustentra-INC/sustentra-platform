@@ -708,3 +708,124 @@ def test_plain_text_blocks_skip_the_company_and_attention_lines(targets: list[di
 def test_a_site_beats_a_customer(targets: list[dict]) -> None:
     parties = "Customer: Staging-Test Foods Inc.\nService Location: Riverside Plant\n"
     assert _facility_of(PROPANE_SHAPE.format(parties=parties), targets) == "Riverside Plant"
+
+
+# --- an untitled bill: the quantity in large type with its unit below, and a period with no label ------
+@pytest.mark.parametrize(
+    ("text", "dates"),
+    [
+        ("October 1 - 31, 2025", ["2025-10-01", "2025-10-31"]),
+        ("Oct 1 – 31, 2025", ["2025-10-01", "2025-10-31"]),
+        ("Oct. 1 — 31, 2025", ["2025-10-01", "2025-10-31"]),
+        ("September 28 - October 27, 2025", ["2025-09-28", "2025-10-27"]),
+        ("December 16, 2025 - January 15, 2026", ["2025-12-16", "2026-01-15"]),
+        ("Dec 16 - Jan 15, 2026", ["2025-12-16", "2026-01-15"]),  # across a year end, the first year left out
+        ("Feb 1 - 29, 2024", ["2024-02-01", "2024-02-29"]),
+        ("Billing period October 1 - 31, 2025 (31 days)", ["2025-10-01", "2025-10-31"]),
+        # not a date range: nothing is invented
+        ("Feb 1 - 29, 2025", []),                       # no 29 February in 2025
+        ("October 31 - 1, 2025", []),                   # backwards
+        ("Oktober 1 - 31, 2025", []),                   # another language's month name does not match
+        ("10月1日 - 31日", []),
+        ("Mai 1 - 31, 2025", []),
+    ],
+)
+def test_a_range_written_with_one_year_is_read_and_anything_else_is_not(text: str, dates: list[str]) -> None:
+    assert parse_dates(text) == dates
+
+
+def _read(layout: list[tuple[str, float, float, float, float]], targets: list[dict]) -> dict[str, dict]:
+    return _by_field(StationaryCombustionExtractor().extract(_measured_output(layout), targets, "EV-1").candidates)
+
+
+# (text, left, top, width, height)
+MYSTERY = [
+    ("Hello, Staging-Test Foods Inc.", 0.065, 0.054, 0.3, 0.013),
+    ("Gas meter", 0.039, 0.489, 0.1, 0.01), ("CG-6620193", 0.039, 0.502, 0.1, 0.01),
+    ("1,486", 0.036, 0.171, 0.2, 0.058), ("therms used", 0.039, 0.228, 0.15, 0.015),
+    ("October 1 - 31, 2025", 0.039, 0.269, 0.2, 0.011),
+    ("That's 9% less than", 0.039, 0.302, 0.2, 0.011), ("October last year.", 0.039, 0.318, 0.2, 0.011),
+    ("Pay by 11/25/2025:", 0.039, 0.351, 0.2, 0.011), ("$1,474.33", 0.039, 0.385, 0.2, 0.025),
+    ("Customer number", 0.039, 0.447, 0.12, 0.01), ("3305-778-1102", 0.039, 0.461, 0.12, 0.01),
+    ("Natural gas bill from Cedarline Gas & Power", 0.351, 0.141, 0.4, 0.014),
+    ("1,980", 0.358, 0.47, 0.04, 0.009), ("May", 0.358, 0.58, 0.04, 0.009),
+    ("1,486", 0.808, 0.498, 0.04, 0.009), ("Oct", 0.808, 0.58, 0.04, 0.009),
+]
+
+
+def test_a_headline_quantity_with_its_unit_below_and_a_lone_period_are_read(targets: list[dict]) -> None:
+    fields = _read(MYSTERY, targets)
+    assert fields["activity_quantity"]["raw_value"] == "1,486"
+    assert fields["activity_quantity"]["normalized_value"] == pytest.approx(148.6)  # therms to MMBtu
+    assert fields["activity_unit"]["normalized_value"] == "MMBtu"
+    assert fields["service_period_start"]["normalized_value"] == "2025-10-01"
+    assert fields["service_period_end"]["normalized_value"] == "2025-10-31"
+    assert fields["fuel_type"]["normalized_value"] == "natural_gas"
+
+
+def test_an_amount_due_next_to_the_therms_is_never_the_quantity(targets: list[dict]) -> None:
+    layout = [row for row in MYSTERY if row[0] not in ("1,486", "therms used")] + [
+        ("$1,474.33", 0.039, 0.171, 0.2, 0.058), ("Amount due", 0.039, 0.228, 0.15, 0.015),
+        ("1,433", 0.2, 0.171, 0.1, 0.058), ("CCF", 0.2, 0.228, 0.1, 0.015)]
+    fields = _read(layout, targets)
+    assert fields["activity_quantity"]["raw_value"] == "1,433"  # the one with a unit under it, not the amount
+
+
+def test_a_number_without_a_unit_directly_below_is_not_a_quantity(targets: list[dict]) -> None:
+    layout = [
+        ("Hello, Staging-Test Foods Inc.", 0.065, 0.054, 0.3, 0.013),
+        ("Natural gas bill", 0.351, 0.141, 0.3, 0.014),
+        ("3305", 0.036, 0.171, 0.1, 0.058), ("Customer number", 0.039, 0.228, 0.15, 0.015),
+        ("5550177", 0.2, 0.171, 0.1, 0.058), ("Phone", 0.2, 0.228, 0.1, 0.015),
+        ("$1,474.33", 0.5, 0.171, 0.1, 0.058), ("Pay by 11/25/2025", 0.5, 0.228, 0.15, 0.015),
+    ]
+    assert not _read(layout, targets).get("activity_quantity", {}).get("normalized_value")
+
+
+def test_two_numbers_that_each_have_a_unit_below_are_not_guessed_between(targets: list[dict]) -> None:
+    layout = [row for row in MYSTERY if row[0] not in ("1,486", "therms used")] + [
+        ("1,486", 0.036, 0.171, 0.1, 0.058), ("therms used", 0.039, 0.228, 0.15, 0.015),
+        ("1,433", 0.3, 0.171, 0.1, 0.058), ("CCF", 0.3, 0.228, 0.1, 0.015)]
+    assert not _read(layout, targets).get("activity_quantity", {}).get("normalized_value")
+
+
+def test_a_number_far_above_the_unit_line_is_not_its_quantity(targets: list[dict]) -> None:
+    layout = [row for row in MYSTERY if row[0] != "1,486"] + [("1,486", 0.036, 0.05, 0.1, 0.02)]
+    assert not _read(layout, targets).get("activity_quantity", {}).get("normalized_value")
+
+
+def test_a_period_printed_twice_or_as_a_year_is_not_taken_as_the_service_period(targets: list[dict]) -> None:
+    twice = MYSTERY + [("October 1 - 31, 2024", 0.5, 0.269, 0.2, 0.011)]  # last year's, too
+    fields = _read(twice, targets)
+    assert not fields.get("service_period_start", {}).get("normalized_value")
+    year = [row for row in MYSTERY if row[0] != "October 1 - 31, 2025"] + [("January 1 - December 31, 2025", 0.039, 0.269, 0.3, 0.011)]
+    assert not _read(year, targets).get("service_period_start", {}).get("normalized_value")
+
+
+def test_a_labelled_period_still_wins_over_a_lone_range(targets: list[dict]) -> None:
+    layout = MYSTERY + [("Service Period: 09/01/2025 - 09/30/2025", 0.351, 0.62, 0.4, 0.011)]
+    fields = _read(layout, targets)
+    assert (fields["service_period_start"]["normalized_value"], fields["service_period_end"]["normalized_value"]) == (
+        "2025-09-01", "2025-09-30")
+
+
+def test_the_headline_layout_in_plain_text_is_read_too(targets: list[dict]) -> None:
+    text = "Hello, Staging-Test Foods Inc.\n1,486\ntherms used\nOctober 1 - 31, 2025\nNatural gas from Cedarline Gas & Power\n"
+    fields = _by_field(StationaryCombustionExtractor().extract(_text_output(text), targets, "EV-1").candidates)
+    assert fields["activity_quantity"]["raw_value"] == "1,486"
+    assert (fields["service_period_start"]["normalized_value"], fields["service_period_end"]["normalized_value"]) == (
+        "2025-10-01", "2025-10-31")
+
+
+def test_a_non_english_month_name_is_not_read_silently_as_a_period(targets: list[dict]) -> None:
+    layout = [("Oktober 1 - 31, 2025" if row[0] == "October 1 - 31, 2025" else row[0], *row[1:]) for row in MYSTERY]
+    fields = _read(layout, targets)
+    assert fields["activity_quantity"]["raw_value"] == "1,486"  # the quantity does not depend on the month name
+    assert not fields.get("service_period_start", {}).get("normalized_value")
+
+
+def test_a_heading_with_a_digit_is_not_an_account_number(targets: list[dict]) -> None:
+    layout = [("Customer number", 0.039, 0.447, 0.12, 0.01), ("Your last 6 months", 0.351, 0.444, 0.14, 0.014),
+              ("Natural gas therms", 0.039, 0.3, 0.2, 0.01), ("1,486", 0.036, 0.171, 0.2, 0.058),
+              ("therms used", 0.039, 0.228, 0.15, 0.015)]
+    assert not _read(layout, targets).get("account_number", {}).get("normalized_value")
