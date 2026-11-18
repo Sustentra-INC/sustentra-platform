@@ -291,13 +291,22 @@ function sameRow(group: string, a: Json, b: Json): boolean {
   return keys.every((k) => n(x?.[k]) === n(y?.[k]));
 }
 
+/** The demo's canned location text, shaped like the backend's source_reference object. */
+function demoReference(text: string): Record<string, Json> {
+  const page = /^page (\d+)$/.exec(text);
+  if (page) return { page_number: Number(page[1]) };
+  const cell = /^(.+?) sheet, cell (.+)$/.exec(text);
+  if (cell) return { sheet_name: cell[1], cell_or_range: cell[2] };
+  return { text_snippet: text };
+}
+
 function suggestionOf(item: ClaudeItem, at: string): Record<string, Json> {
   return {
     value: clone(item.value),
     quote: item.quote,
     document_id: item.source.document_id,
     file_name: item.source.file_name,
-    source_reference: item.page,
+    source_reference: demoReference(item.page),
     origin: "ai",
     model: AI_MODEL,
     request_id: "req_demo_methodology_prefill",
