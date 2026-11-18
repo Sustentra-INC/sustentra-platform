@@ -25,6 +25,7 @@ import {
   inScopeFieldsFrom,
   lookupEgridZip,
   type DataPointOption,
+  type VehicleTypeOption,
   type QualityCheck,
 } from "../api/recalculation";
 import {
@@ -119,6 +120,7 @@ import {
 import { useViewHistory, viewLabel } from "../utils/viewHistory";
 import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
 import { ContainerStateSurface } from "../components/ContainerStateSurface";
+import { WorkspaceStateGate } from "../components/WorkspaceStateGate";
 import { ActivityDrawer } from "../components/ActivityDrawer";
 import { useBackendCoverage } from "../components/useBackendCoverage";
 import { testedExaminationKeys } from "../utils/verificationTable";
@@ -214,6 +216,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   });
   const [gridRegions, setGridRegions] = useState<{ code: string; name: string }[] | undefined>(undefined);
   const [dataPoints, setDataPoints] = useState<DataPointOption[]>([]);
+  // The fuels and vehicle types a vehicle group is chosen from (Setup, backend mode).
+  const [vehicleReference, setVehicleReference] = useState<{ fuels: string[]; types: VehicleTypeOption[] } | undefined>(undefined);
   const [backendError, setBackendError] = useState<WorkspaceProblem | null>(null);
   // Backend mode: a 401 from the API means the session ended (FE-007).
   const [sessionEnded, setSessionEnded] = useState(false);
@@ -255,6 +259,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         if (!live) return;
         setGridRegions(ref.egrid_subregions.map((r) => ({ code: r.egrid_subregion, name: r.name })));
         setDataPoints(ref.data_points ?? []);
+        setVehicleReference(ref.vehicle_types ? { fuels: ref.mobile_fuels, types: ref.vehicle_types } : undefined);
       })
       .catch(() => undefined); // the picker simply stays hidden
     return () => {
@@ -504,6 +509,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setEvidenceTreeOpen(null);
     rememberEngagement(row.id);
     setEngagementSave("idle");
+    // Nothing of the engagement just left may show while the new one loads.
+    setEvidenceItems([]);
+    setWorkspaceFields([]);
+    setReviewValues([]);
     setDemoState("loading");
     void refreshBackendWorkspace(undefined, row.id);
   }
@@ -731,6 +740,35 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView, workspaceLoaded, evidenceItems]);
+
+  // Screens that read the engagement's documents wait for them: loading while they are fetched, a
+  // plain error if the fetch failed, and only then the screen (which may truly have 0 documents).
+  const workspaceStatus: "loading" | "failed" | "ready" =
+    dataMode !== "backend"
+      ? "ready"
+      : demoState === "loading"
+        ? "loading"
+        : demoState === "error_degraded" && evidenceItems.length === 0
+          ? "failed"
+          : "ready";
+  const retryWorkspace = () => {
+    if (!engagement.engagementId) {
+      window.location.reload();
+      return;
+    }
+    setDemoState("loading");
+    void refreshBackendWorkspace();
+  };
+  // The schedule is asked for under the engagement's id, which a reload only learns once the
+  // engagement has loaded: asking sooner is answered 404 and would send the reader to Evidence.
+  const waitsForWorkspace =
+    activeView.name === "schedule" ||
+    activeView.name === "dashboard" ||
+    activeView.name === "evidence" ||
+    activeView.name === "requests" ||
+    activeView.name === "coverage" ||
+    activeView.name === "results" ||
+    activeView.name === "output";
 
   const navCurrent: NavKey = navForView(activeView);
   const uploadSetupWarning = setupGapWarning(engagement);
@@ -1094,7 +1132,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           )
         }
       >
-        {activeView.name === "dashboard" ? (
+        {waitsForWorkspace && workspaceStatus !== "ready" ? (
+          <WorkspaceStateGate status={workspaceStatus} problem={backendError} onRetry={retryWorkspace} />
+        ) : activeView.name === "dashboard" ? (
           STAGING_SCREENS ? (
             <BackendDashboard
               engagement={engagement}
@@ -1150,6 +1190,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 : setInScopeFields
             }
             gridRegions={dataMode === "backend" ? gridRegions : undefined}
+            vehicleReference={dataMode === "backend" ? vehicleReference : undefined}
             lookupZip={dataMode === "backend" ? lookupEgridZip : undefined}
             foundFacilities={foundFacilities}
           />

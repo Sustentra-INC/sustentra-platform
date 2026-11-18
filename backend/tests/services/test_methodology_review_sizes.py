@@ -24,7 +24,7 @@ def field(field_id: str) -> dict:
 
 def test_text_with_a_null_character_is_refused() -> None:
     with pytest.raises(m.MethodologyInvalid, match="null character"):
-        m.validate_value(field("reporting_period"), "a\x00b")
+        m.validate_value(field("exclusion:boundary"), "a\x00b")
     with pytest.raises(m.MethodologyInvalid):
         m.validate_value(m.row_field("entity:abcd1234"), {  # type: ignore[arg-type]
             "name": "a\x00", "facilities": [], "equity_share_pct": 1, "financial_control": 1,
@@ -59,8 +59,8 @@ def test_a_worst_case_record_fits_and_history_is_trimmed_to_make_room() -> None:
 
 
 def test_history_keeps_only_the_newest_50_events() -> None:
-    f = field("reporting_period")
-    record = m.new_record("reporting_period")
+    f = field("exclusion:boundary")
+    record = m.new_record("exclusion:boundary")
     for n in range(70):
         record = m.edit(record, f, f"p{n}", ACTOR, NOW)
     assert len(record["history"]) == 50 and record["history"][-1]["to"] == "p69"
@@ -104,7 +104,7 @@ def test_a_suggestion_is_bounded_and_a_max_length_edit_still_fits() -> None:
 
 
 def test_a_short_quote_is_not_flagged_and_a_string_reference_is_clipped() -> None:
-    f = field("reporting_period")
+    f = field("exclusion:boundary")
     bounded = m.bound_suggestion(f, {**SUGGESTION, "value": "2025", "source_reference": "p" * 500})
     assert "quote_truncated" not in bounded and len(bounded["source_reference"]) == 200
 
@@ -119,5 +119,5 @@ def test_a_suggestion_that_stays_too_big_is_refused() -> None:
 
 def test_lone_surrogates_are_refused() -> None:
     with pytest.raises(m.MethodologyInvalid, match="can't be saved"):
-        m.validate_value(field("reporting_period"), "a\ud800b")
-    assert m.bound_suggestion(field("reporting_period"), {**SUGGESTION, "value": "x", "quote": "a\ud800b"})["quote"] == "a?b"
+        m.validate_value(field("exclusion:boundary"), "a\ud800b")
+    assert m.bound_suggestion(field("exclusion:boundary"), {**SUGGESTION, "value": "x", "quote": "a\ud800b"})["quote"] == "a?b"

@@ -46,9 +46,9 @@ def client_context(tmp_path: Path):
 
     storage_service = LocalStorageService(tmp_path / "uploads")
     repository = InMemoryDocumentRepository()
-    # Uploads may only attach to evidence that already exists in the caller's org.
+    # Uploads may only attach to evidence that already exists in the caller's org and in the same engagement.
     for evidence_id in ("EV-1", "EV-123", "EV-PIPE", "EV-9"):
-        repository.save({**seeded_document(evidence_id, document_id=f"SEED-{evidence_id}"), "engagement_id": "ENG-SEED"})
+        repository.save({**seeded_document(evidence_id, document_id=f"SEED-{evidence_id}"), "engagement_id": "ENG-1"})
 
     counters = {"document": 0, "evidence": 0}
 
@@ -157,7 +157,8 @@ def test_upload_refuses_a_file_no_parser_can_read(client_context, name: str, mim
     # Refused before anything is stored: no file on disk and no document in Evidence.
     storage_root = client_context["storage_service"].storage_root
     assert not storage_root.exists() or not any(path.is_file() for path in storage_root.rglob("*"))
-    assert client.get("/v1/engagements/ENG-1/documents").json()["items"] == []
+    listed = client.get("/v1/engagements/ENG-1/documents").json()["items"]
+    assert [item for item in listed if not item["document_id"].startswith("SEED-")] == []
 
 
 @pytest.mark.parametrize(("name", "mime"), [

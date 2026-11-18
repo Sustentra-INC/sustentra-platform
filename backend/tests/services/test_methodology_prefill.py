@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from backend.app.services import methodology_prefill as mp
 from backend.app.services.ai_locator import document_lines
 from backend.tests.services.test_ai_locator import _pdf_like
@@ -26,7 +28,7 @@ def doc(lines: list[tuple[int, str]] = REPORT, alias: str = "D1", document_id: s
 
 
 def answer(**lists: Any) -> mp.PrefillOutput:
-    empty: dict[str, Any] = {"choices": [], "texts": [], "gwp": [], "entities": [], "factors": []}
+    empty: dict[str, Any] = {"choices": [], "texts": [], "periods": [], "gwp": [], "entities": [], "factors": []}
     return mp.PrefillOutput.model_validate({**empty, **lists})
 
 
@@ -65,7 +67,7 @@ def test_a_wrong_line_is_dropped_but_a_unique_other_line_is_found() -> None:
 
 
 def test_an_unknown_document_is_dropped() -> None:
-    kept, dropped = check(answer(texts=[{"field_id": "reporting_period", "value": "2024", **cite("L3", "Reporting period", "D9")}]))
+    kept, dropped = check(answer(periods=[{"start": "2024-01-01", "end": "2024-12-31", **cite("L3", "January 1 to December 31, 2024", "D9")}]))
     assert kept == [] and dict(dropped) == {"unknown_document": 1}
 
 
@@ -97,7 +99,7 @@ def test_the_schema_refuses_a_field_outside_the_catalog() -> None:
     with pytest.raises(pydantic.ValidationError):
         answer(choices=[{"field_id": "category:scope1:stationary", "value": "Maybe", **cite("L1", "x")}])
     with pytest.raises(pydantic.ValidationError):
-        answer(texts=[{"field_id": "reporting_period", "value": "x", "page": 3, **cite("L1", "x")}])  # extra key
+        answer(texts=[{"field_id": "exclusion:boundary", "value": "x", "page": 3, **cite("L1", "x")}])  # extra key
 
 
 def test_a_factor_source_and_gwp_are_kept_and_an_unprinted_edition_is_dropped() -> None:
@@ -240,7 +242,7 @@ def test_a_quote_must_name_the_choice_and_be_long_enough() -> None:
         choices=[{"field_id": "consolidation_approach", "value": "Financial Control", **cite("L2", "operational control approach")}],
         gwp=[{"set": "AR6", "horizon": "100-year", **cite("L8", "IPCC Fifth Assessment Report (AR5)")}]))
     assert kept == [] and dict(dropped) == {"value_not_in_quote": 2}
-    kept, dropped = check(answer(texts=[{"field_id": "reporting_period", "value": "2024", **cite("L3", "2024.")}]))
+    kept, dropped = check(answer(texts=[{"field_id": "exclusion:boundary", "value": "2024", **cite("L3", "2024.")}]))
     assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}  # under 8 characters
     kept, _ = check(answer(gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "Fifth Assessment Report")}]))
     assert len(kept) == 1  # a synonym of the set is enough
@@ -259,6 +261,66 @@ def test_values_over_the_store_limits_are_invalid() -> None:
     entity = {"name": "Acme Foods Kent LLC", "facilities": [f"F{i}" for i in range(21)], "equity_share_pct": 51,
               "financial_control": 51, "operational_control": "Yes",
               **cite("L4", "equity share 51%, financial control 51%")}
-    kept, dropped = check(answer(texts=[{"field_id": "reporting_period", "value": "x" * 2001, **cite("L3", "Reporting period")}],
+    kept, dropped = check(answer(texts=[{"field_id": "exclusion:boundary", "value": "x" * 2001, **cite("L3", "Reporting period")}],
                                  entities=[entity]))
     assert kept == [] and dict(dropped) == {"invalid_value": 2}
+
+
+# --- reporting period: two dates, both printed in the quote ----------------------------------
+
+def period(start: str, end: str, quote: str, line: str = "L3") -> dict[str, str]:
+    return {"start": start, "end": end, **cite(line, quote)}
+
+
+def test_a_period_with_both_dates_in_long_form_is_kept_as_iso() -> None:
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "January 1 to December 31, 2024")]))
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["reporting_period"]
+    assert kept[0].suggestion["value"] == {"start": "2024-01-01", "end": "2024-12-31"}
+
+
+@pytest.mark.parametrize("line", [
+    "Reporting period: 1/1/2025 - 12/31/2025.",
+    "Reporting period: 2025-01-01 to 2025-12-31.",
+    "Reporting period: January 1, 2025 through December 31, 2025.",
+    "Reporting period: 1 January 2025 to 31 December 2025.",
+    "Reporting period: Jan. 1st, 2025 - Dec. 31st, 2025.",
+    "Reporting period: 31/12/2025 and 01-01-2025 are the end and start.",
+])
+def test_common_date_formats_are_read(line: str) -> None:
+    kept, dropped = check(answer(periods=[period("2025-01-01", "2025-12-31", line.split(": ", 1)[1], "L1")]),
+                          [doc([(1, line)])])
+    assert dict(dropped) == {} and len(kept) == 1
+
+
+@pytest.mark.parametrize("line", [
+    "Reporting period: January 1, 2025.",  # one date only
+    "Reporting period: calendar year 2025.",  # no dates
+    "Reporting period: 1 janvier 2025 au 31 décembre 2025.",  # not an English month name
+    "Reporting period: 2025-01-01 to 2025-11-30.",  # the end is not the one claimed
+])
+def test_a_quote_without_both_dates_drops_the_suggestion_and_counts_it(line: str) -> None:
+    kept, dropped = check(answer(periods=[period("2025-01-01", "2025-12-31", line.split(": ", 1)[1], "L1")]),
+                          [doc([(1, line)])])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+def test_a_reversed_or_impossible_range_is_invalid() -> None:
+    kept, dropped = check(answer(periods=[period("2024-12-31", "2024-01-01", "January 1 to December 31, 2024"),
+                                          period("2024-13-45", "2024-12-31", "January 1 to December 31, 2024")]))
+    assert kept == [] and dict(dropped) == {"invalid_value": 2}
+
+
+def test_with_two_periods_in_the_report_the_first_answer_wins() -> None:
+    lines = [(1, "Reporting period: January 1 to December 31, 2025. Prior year: January 1 to December 31, 2024.")]
+    kept, _ = check(answer(periods=[
+        period("2025-01-01", "2025-12-31", "January 1 to December 31, 2025", "L1"),
+        period("2024-01-01", "2024-12-31", "January 1 to December 31, 2024", "L1")]), [doc(lines)])
+    assert [k.suggestion["value"]["start"] for k in kept] == ["2025-01-01"]
+
+
+def test_ambiguous_numeric_dates_are_read_month_first() -> None:
+    from datetime import date
+    assert mp.dates_in("3/4/2025") == {date(2025, 3, 4)}
+    assert mp.dates_in("13/4/2025") == {date(2025, 4, 13)}
+    assert mp.dates_in("31 April 2025") == set()  # no such day
+    assert mp.dates_in("٢٠٢٥-01-01 CO₂ 2025-01-01") == {date(2025, 1, 1)}

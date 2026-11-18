@@ -49,9 +49,9 @@ def test_a_field_edited_many_times_with_long_non_ascii_text_can_still_be_changed
 def test_history_keeps_the_newest_50_events_and_the_audit_log_keeps_all() -> None:
     eid = create()["id"]
     for n in range(30):
-        assert act(eid, "reporting_period", "edit", {"value": f"p{n}"}).status_code == 200
-        assert act(eid, "reporting_period", "revert").status_code == 200
-    history = record(eid, "reporting_period")["history"]
+        assert act(eid, "exclusion:boundary", "edit", {"value": f"p{n}"}).status_code == 200
+        assert act(eid, "exclusion:boundary", "revert").status_code == 200
+    history = record(eid, "exclusion:boundary")["history"]
     assert len(history) == 50 and history[-1]["action"] == "revert"
     assert len(events()) == 60
 
@@ -69,12 +69,12 @@ def test_the_catalog_def_takes_user_added_from_the_record() -> None:
 
 def test_the_generic_list_filters_removed_rows_and_uses_the_review_shape() -> None:
     eid = create()["id"]
-    act(eid, "reporting_period", "edit", {"value": "2025"})
+    act(eid, "exclusion:boundary", "edit", {"value": "2025"})
     gone = add_row(eid).json()["field_id"]
     kept = add_row(eid, "factor:scope1").json()["field_id"]
     call("DELETE", f"{BASE}/{eid}/methodology-review/{gone}")
     items = call("GET", f"{BASE}/{eid}/workpaper-items?kind=methodology").json()["items"]
-    assert sorted(i["item_key"] for i in items) == sorted(["reporting_period", kept])
+    assert sorted(i["item_key"] for i in items) == sorted(["exclusion:boundary", kept])
     assert all(set(i["payload"]) == {"field_id", "suggestion", "decision", "history", "user_added"} for i in items)
 
 

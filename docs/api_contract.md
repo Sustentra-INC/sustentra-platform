@@ -11,6 +11,10 @@ Fetch engagement metadata and summary counts.
 ### POST /v1/engagements/{engagement_id}/documents
 Register an uploaded document for processing.
 
+A client-supplied `evidence_id` (here and on upload) must be existing evidence of this engagement. Unknown evidence, another
+organization's, and another engagement's all answer 404 "Evidence not found." and store nothing (SEC-004). The same holds for
+`POST /v1/evidence/{evidence_id}/approved-evidence/project`, whose `engagement_id` must be the evidence's own.
+
 ### POST /v1/engagements/{engagement_id}/documents/upload
 Upload a file and register it as a document (multipart: `file`, `document_role`, and optionally
 `evidence_id`, `document_type` and `batch_id`). Answers with the document; what it carries depends on `S1_PROCESSING`:
@@ -135,7 +139,7 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     value, reason?, by: {name, login}, at}`; a rejected decision has `value: null`. `history` is
     `[{at, by, action, to?}]` (the newest 50 events, fewer if the record would pass 32 KB; the audit log keeps the
     full trail), `action` one of accept, edit, reject, revert, add_row, remove_row.
-  - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp, allowed?, parts?, user_added}`, in page order: the fixed
+  - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp|date_range, allowed?, parts?, user_added}`, in page order: the fixed
     fields (reporting_period, consolidation_approach, `category:{scope1|location|market|biogenic}:...`,
     `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`), then the rows the
     reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (with `allowed_labels.set`),
@@ -149,7 +153,7 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Every field in the
     catalog is `required` today. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
     added optional rows are kept in one extra `workpaper_items` row (`item_key` `meta:state`), never listed as a field.
-  - Values by kind: text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
+  - Values by kind: date_range (`reporting_period`) is `{start, end}`, each a real calendar date written `YYYY-MM-DD` (ASCII digits), with end not before start (otherwise 422 with a sentence). A record saved before this change may still hold the text it was; the GET returns it unchanged and the screen shows "Recorded as: <text>" until the reviewer enters two dates. Claude's reporting-period suggestion carries both dates in ISO form, and is kept only if both are printed in its quote (English month names, `1/1/2025` read month first, `2025-01-01`); otherwise it is dropped and counted as `value_not_in_quote`. text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
   - `ai`: `{enabled, reason_code, reason, provider, model, month_spend_usd, cap_usd}`. `enabled` is true when
@@ -387,7 +391,7 @@ for another org's engagement).
           waiting_on: [string],                      // labels of those fields ("Fuel type"); [] otherwise
           rejected_fields: [string],                 // labels of other required fields the reviewer rejected
                                                      // record_key is opaque: use it as an id, never parse it
-          date: {start, end, days, label},           // label: "Service period" | "Transaction date" | "Service date"
+          date: {start, end, days, label},           // label: "Service period" | "Statement period" | "Transaction date" | "Delivery date" | "Service date"
           activity_quantity: {value, unit},          // the extracted value; the reviewed value once accepted
           cells: {<column_key>: {value, unit}},      // only the extra columns this row has a value for
           saved_by: {name, at} | null,               // who accepted or edited the quantity; null when not reviewed

@@ -67,7 +67,7 @@ def world(tmp_path: Path, act_as) -> Iterator[dict]:
     # Evidence EV-A / EV-B already exist in their orgs (uploads only attach to existing evidence).
     for evidence_id, org in (("EV-A", ORG_A), ("EV-B", ORG_B)):
         document_repo.save({**seeded_document(evidence_id, org, document_id=f"SEED-{evidence_id}"),
-                            "engagement_id": "ENG-SEED"})
+                            "engagement_id": "ENG-1"})
     documents = DocumentUploadService(storage_service=storage, document_repository=document_repo,
                                       clock=lambda: "2026-01-01T00:00:00+00:00")
     pipeline_repo = InMemoryPipelineRunRepository()
@@ -168,7 +168,8 @@ def test_other_org_gets_404_for_every_record(world: dict) -> None:
 def test_lists_only_show_the_callers_org(world: dict) -> None:
     client = world["client"]
     world["act_as"]("org_member", ORG_B)
-    ids = [d["document_id"] for d in client.get("/v1/engagements/ENG-1/documents").json()["items"]]
+    ids = [d["document_id"] for d in client.get("/v1/engagements/ENG-1/documents").json()["items"]
+           if not d["document_id"].startswith("SEED-")]  # the seeds only make the evidence exist
     assert ids == [world["b_doc"]["document_id"]]
     assert client.get("/v1/evidence/EV-A/documents").json()["items"] == []
     assert client.get("/v1/evidence/EV-A/reviews").json() == []
@@ -204,7 +205,7 @@ def test_provider_admin_reads_all_orgs_but_cannot_write(world: dict) -> None:
     for url in _reads(world):
         assert client.get(url).status_code == 200, url
     items = client.get("/v1/engagements/ENG-1/documents").json()["items"]
-    assert len({d["document_id"] for d in items}) == 3  # A, B and the legacy doc
+    assert len({d["document_id"] for d in items if not d["document_id"].startswith("SEED-")}) == 3  # A, B, legacy
     assert client.post("/v1/engagements/ENG-1/documents/upload",
                        files={"file": ("x.txt", b"x", "text/plain")}).status_code == 403
     assert client.post(f"/v1/documents/{world['a_doc']['document_id']}/pipeline/process", json={}).status_code == 403
