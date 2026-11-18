@@ -22,6 +22,7 @@ import { engagementFromBackend, engagementToBackend } from "../api/engagements";
 import { EvidenceTree, type EvidenceTreeProps } from "../components/EvidenceTree";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { SupportingSchedule } from "../components/SupportingSchedule";
+import { resultsViewForLine, scheduleViewForLine } from "../pages/lineLinks";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 import type { EngagementConfig } from "../types";
@@ -721,7 +722,7 @@ describe("the supporting schedule", () => {
     expect(props.onBack).toHaveBeenCalled();
   });
 
-  it("says what a row and a month are waiting on, and replaces the button when the line is not calculated", async () => {
+  it("says what a row and a month are waiting on, and disables the calculation link, with the reason, when the line is not calculated", async () => {
     const [first, second, third] = SCHEDULE.rows;
     mocks.byPath = {
       [SCHEDULE_PATH]: {
@@ -741,7 +742,10 @@ describe("the supporting schedule", () => {
     await screen.findByRole("heading", { name: "Kent · Natural gas" });
     expect(screen.getAllByText("Waiting on: Fuel type")).toHaveLength(2); // the month and the row
     expect(screen.getByText("Not calculated yet: values on this line are waiting for review.")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open calculation line ›" })).toBeNull();
+    const link = screen.getByRole("button", { name: "Open calculation line ›" });
+    expect(link).toBeDisabled();
+    expect(link).toHaveAccessibleDescription("Not calculated yet: values on this line are waiting for review.");
+    fireEvent.click(link);
     expect(props.onOpenCalculationLine).not.toHaveBeenCalled();
   });
 
@@ -758,6 +762,62 @@ describe("the supporting schedule", () => {
     renderSchedule();
     expect(await screen.findByText("Rejected: Fuel type")).toBeInTheDocument();
     expect(screen.queryByText(/Waiting on/)).toBeNull();
+  });
+
+  it("stacks the sections in the spec's order: header, coverage, identifiers, values, history", async () => {
+    const { container } = render(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />);
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const order = [...container.querySelectorAll("header.s1-sch-head, section[aria-label], details.s1-sch-history")].map((e) => e.getAttribute("aria-label") ?? e.tagName.toLowerCase());
+    expect(order).toEqual(["header", "Coverage by month", "Source identifiers", "Accepted values", "details"]);
+    // Siblings in one column: nothing is wrapped in a side-by-side band.
+    expect(container.querySelector(".s1-sch-top")).toBeNull();
+  });
+
+  it("still offers the calculation link, with a plain reason, on a line with 0 values", async () => {
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, calculated: false, rows: [], values: [], coverage: [], history: [] } };
+    renderSchedule();
+    const link = await screen.findByRole("button", { name: "Open calculation line ›" });
+    expect(link).toBeDisabled();
+    expect(screen.getByText("No calculation for this line yet.")).toBeInTheDocument();
+    expect(screen.getByText("No values have been extracted on this line yet.")).toBeInTheDocument();
+  });
+
+  it("keeps non-ASCII line names in the title and breadcrumb, and a two-year period readable", async () => {
+    const muller = { ...KENT, label: "Müller Fabrik", level2_label: "Erdgas" };
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        line: muller,
+        reporting_period: { start: "2024-07-01", end: "2025-06-30" },
+        rows: [{ ...SCHEDULE.rows[0], date: { start: "2024-12-17", end: "2025-01-16", days: 31, label: "Service period" } }],
+      },
+    };
+    renderSchedule();
+    expect(await screen.findByRole("heading", { name: "Müller Fabrik · Erdgas" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Breadcrumb" })).toHaveTextContent("Evidence › Scope 1 › Stationary combustion › Erdgas › Müller Fabrik");
+    expect(screen.getByText("Reporting year 2024 to 2025")).toBeInTheDocument();
+    expect(screen.getByRole("table")).toHaveTextContent("12/17/24 – 01/16/25 · 31 days");
+  });
+
+  it("writes history times as MM/DD/YY, HH:MM", async () => {
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, history: [{ at: "2025-11-04T09:12:00", text: "J. Park added 55,700 therm" }, { at: "not a date", text: "Odd entry" }] } };
+    renderSchedule();
+    fireEvent.click(await screen.findByText(/Line history/));
+    expect(screen.getByText("11/04/25, 09:12")).toBeInTheDocument();
+    expect(screen.getByText("not a date")).toBeInTheDocument();
+  });
+
+  it("round-trips a line key with : . - between results and the schedule", async () => {
+    const key = "s1:stationary:natural-gas:fac-k.c-01";
+    const encoded = `/engagements/${ENG}/calculation-lines/${encodeURIComponent(key)}/schedule`;
+    mocks.byPath = { [encoded]: { ...SCHEDULE, line: { ...KENT, key } } };
+    const onOpenCalculationLine = vi.fn();
+    render(<SupportingSchedule engagementId={ENG} lineKey={key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={onOpenCalculationLine} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open calculation line ›" }));
+    const results = resultsViewForLine(onOpenCalculationLine.mock.calls[0][0]);
+    expect(results.lineKey).toBe(key);
+    expect(scheduleViewForLine(results.lineKey).lineKey).toBe(key);
+    expect(mocks.calls.some((c) => c.path === encoded)).toBe(true);
   });
 
   it("shows the load error, not an empty schedule, when the v2 fields are missing", async () => {
