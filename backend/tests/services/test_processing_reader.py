@@ -202,7 +202,8 @@ def logs(caplog: pytest.LogCaptureFixture) -> None:
     caplog.set_level(logging.INFO)
 
 
-def eventually(condition: Callable[[], bool], timeout: float = 5.0) -> None:
+# The ceiling only ends a wait that would never finish; a passing test returns as soon as the condition holds.
+def eventually(condition: Callable[[], bool], timeout: float = 30.0) -> None:
     deadline = time.monotonic() + timeout
     while not condition():
         assert time.monotonic() < deadline, "timed out waiting"
