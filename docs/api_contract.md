@@ -11,6 +11,10 @@ Fetch engagement metadata and summary counts.
 ### POST /v1/engagements/{engagement_id}/documents
 Register an uploaded document for processing.
 
+A client-supplied `evidence_id` (here and on upload) must be existing evidence of this engagement. Unknown evidence, another
+organization's, and another engagement's all answer 404 "Evidence not found." and store nothing (SEC-004). The same holds for
+`POST /v1/evidence/{evidence_id}/approved-evidence/project`, whose `engagement_id` must be the evidence's own.
+
 ### POST /v1/engagements/{engagement_id}/documents/upload
 Upload a file and register it as a document (multipart: `file`, `document_role`, and optionally
 `evidence_id`, `document_type` and `batch_id`). Answers with the document; what it carries depends on `S1_PROCESSING`:
