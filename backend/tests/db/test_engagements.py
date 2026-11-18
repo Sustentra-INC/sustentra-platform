@@ -338,3 +338,68 @@ def test_upload_to_an_archived_engagement_is_409(temp_uploads: None) -> None:
 
 def test_provider_admin_cannot_upload(temp_uploads: None) -> None:
     assert upload(create()["id"], "provider").status_code == 403
+
+
+# --- who created a line, and when (D2) ----------------------------------------------------
+
+LINE = {"category": "stationary", "level2_label": "Propane", "anchor_kind": "facility", "anchor_id": "F1",
+        "label": "Propane at the cannery"}
+
+
+def _lines(engagement_id: str) -> list[dict]:
+    return call("GET", f"{BASE}/{engagement_id}").json()["settings"]["evidenceLines"]
+
+
+def _save_lines(engagement_id: str, lines: list[dict], token: str = "a_member") -> Any:
+    return call("PATCH", f"{BASE}/{engagement_id}", token, {"settings": {**SETUP, "evidenceLines": lines}})
+
+
+def test_the_server_stamps_who_added_a_line_and_when_once() -> None:
+    created = create()
+    saved = _save_lines(created["id"], [LINE])
+    assert saved.status_code == 200, saved.text
+    stamped = _lines(created["id"])[0]
+    assert stamped["created_by"] == str(A_MEMBER) and stamped["created_at"].endswith("+00:00")
+
+    # a rename keeps both, even when somebody else saves it
+    renamed = _save_lines(created["id"], [{**stamped, "label": "Propane, Kent"}], "a_admin")
+    assert renamed.status_code == 200, renamed.text
+    after = _lines(created["id"])[0]
+    assert after["label"] == "Propane, Kent"
+    assert (after["created_by"], after["created_at"]) == (stamped["created_by"], stamped["created_at"])
+
+    # a save that re-sends the old entry without the stamp does not lose it either
+    assert _save_lines(created["id"], [LINE], "a_admin").status_code == 200
+    again = _lines(created["id"])[0]
+    assert (again["created_by"], again["created_at"]) == (stamped["created_by"], stamped["created_at"])
+
+
+def test_a_forged_creator_is_ignored_for_new_and_saved_lines() -> None:
+    created = create()
+    forged = {"created_by": str(A_ADMIN), "created_at": "2001-01-01T00:00:00+00:00"}
+    assert _save_lines(created["id"], [{**LINE, **forged}]).status_code == 200
+    line = _lines(created["id"])[0]
+    assert line["created_by"] == str(A_MEMBER) and line["created_at"] != forged["created_at"]
+    assert _save_lines(created["id"], [{**line, **forged}], "a_admin").status_code == 200
+    assert _lines(created["id"])[0]["created_by"] == str(A_MEMBER)
+    assert _save_lines(created["id"], [{**LINE, "created_by": 7}]).status_code == 200  # not a string: dropped
+
+
+def test_the_tree_names_the_creator_even_for_a_deleted_user_and_a_non_ascii_name() -> None:
+    created = create()
+    assert _save_lines(created["id"], [LINE]).status_code == 200
+    assert _save_lines(created["id"], [{**LINE, "level2_label": "Diesel", "label": "Diesel"}, *_lines(created["id"])],
+                       "a_admin").status_code == 200
+    asyncio.run(_admin("UPDATE users SET full_name = 'Müller Käserei – Zürich' WHERE id = $1", A_MEMBER))
+
+    def named() -> dict[str, str | None]:
+        tree = call("GET", f"{BASE}/{created['id']}/evidence-tree", "a_admin")
+        assert tree.status_code == 200, tree.text
+        return {ln["label"]: ln.get("created_by_name") for ln in tree.json()["lines"]}
+
+    assert named() == {"Propane at the cannery": "Müller Käserei – Zürich",
+                       "Diesel": "admin@acme.test"}  # no name on file: the login
+    asyncio.run(_admin("UPDATE users SET status = 'deleted' WHERE id = $1", A_MEMBER))
+    assert named()["Propane at the cannery"] == "Müller Käserei – Zürich"  # a deleted user is still named
+    asyncio.run(_admin("UPDATE users SET full_name = NULL WHERE id = $1", A_MEMBER))
+    assert named()["Propane at the cannery"] == "member@acme.test"

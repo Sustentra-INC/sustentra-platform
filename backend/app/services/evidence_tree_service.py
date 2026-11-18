@@ -51,8 +51,9 @@ EXTRA_COLUMNS = (("heat_content", "Heat content (HHV)", "heat_content"),
 THERMAL_LEVEL2 = tuple(level2 for level2, _ in cl.THERMAL_LEVEL2.values())
 ACTIVITY_NOTES = {
     "stationary": "fuel quantity combusted", "biogenic": "fuel quantity combusted",
-    "mobile": "fuel use quantity", "fugitive": "refrigerant quantity added or recovered",
-}
+    "mobile": "fuel use quantity",
+    "contractual": "certificates retired (MWh)",
+}  # fugitive and process lines have no note
 # Plain labels for the fields a record can still be waiting on (the recalculation's awaiting_review).
 FIELD_LABELS = {"fuel_type": "Fuel type", "activity_quantity": "Activity quantity", "energy_type": "Energy type",
                 "refrigerant_type": "Refrigerant type", "refrigerant_added": "Refrigerant added",
@@ -158,10 +159,18 @@ class EvidenceTreeService:
 
     # ------------------------------------------------------------------------------------
     def tree(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
-             decisions: dict[str, dict[str, Any]] | None = None, facility_id: str | None = None) -> dict[str, Any]:
+             decisions: dict[str, dict[str, Any]] | None = None, facility_id: str | None = None,
+             creator_names: dict[str, str] | None = None) -> dict[str, Any]:
         """The tree. With ``facility_id`` every level shows only placements at that Setup facility
         (rows whose ``facility_id`` and lines whose ``facility_id`` match) and every count is
-        recomputed for that view."""
+        recomputed for that view. ``creator_names`` maps a user id to the name shown on a reviewer's line
+        ("created_by_name"; absent when the user is unknown)."""
+
+        def line_dict(line: cl.CalculationLine) -> dict[str, Any]:
+            out = line.to_dict()
+            if line.created_by_user:
+                out["created_by_name"] = (creator_names or {}).get(str(line.created_by)) if line.created_by else None
+            return out
 
         loaded = self.load(engagement, can_see, decisions)
         by_key = {line.key: line for line in loaded.lines}
@@ -206,7 +215,7 @@ class EvidenceTreeService:
                 for line in in_category:
                     level2 = level2s.setdefault(line.level2, {"level2": line.level2, "label": line.level2_label,
                                                               "lines": []})
-                    level2["lines"].append({"line": line.to_dict(), "counts": counts_of([line.key]),
+                    level2["lines"].append({"line": line_dict(line), "counts": counts_of([line.key]),
                                             "documents": documents(line.key)})
                 for level2 in level2s.values():
                     level2["counts"] = counts_of([entry["line"]["key"] for entry in level2["lines"]])
@@ -226,7 +235,7 @@ class EvidenceTreeService:
             },
             "facilities": [{"facility_id": cl.facility_anchor_id(f), "name": f.get("name"),
                             "address": f.get("address")} for f in loaded.facilities],
-            "lines": [line.to_dict() for line in shown_lines],
+            "lines": [line_dict(line) for line in shown_lines],
             # the ids a client uses to create a mobile line (anchor_kind "vehicle_group"), built here
             "vehicle_groups": [{"anchor_id": anchor_id, "label": cl.vehicle_group_label(group),
                                 "fuel": group.get("fuel")}
@@ -303,7 +312,7 @@ class EvidenceTreeService:
                 rejected = [label_of(f) for f in open_fields if f in record.fields and record.fields[f].status == "rejected"]
                 waiting = [label_of(f) for f in open_fields if label_of(f) not in rejected]
                 if item is None:
-                    rows.append(self._row_of(doc, record, None, None, None, (start, end), name_of, [], []))
+                    rows.append(self._row_of(doc, record, None, None, None, (start, end), name_of, [], [], line))
                     continue
                 thermal = record.canonical_type_id == THERMAL
                 unit_text = item.unit or record.best("activity_unit")
@@ -312,7 +321,7 @@ class EvidenceTreeService:
                 reviewed = item.status in REVIEWED
                 waiting, rejected = (waiting, rejected) if reviewed else ([], [])
                 held = bool(waiting or rejected)  # the recalculation does not count this record yet
-                rows.append(self._row_of(doc, record, item, shown, unit, (start, end), name_of, waiting, rejected))
+                rows.append(self._row_of(doc, record, item, shown, unit, (start, end), name_of, waiting, rejected, line))
                 covered.append(cl.Covered(start, end, to_number(shown), unit, reviewed and not held,
                                           doc.document_id, tuple(waiting)))
                 who = name_of(item.reviewer) if item.reviewer else None
@@ -369,7 +378,7 @@ class EvidenceTreeService:
     @staticmethod
     def _row_of(doc: DocState, record: ReviewedRecord, item: Any, shown: Any, unit: str | None,
                 period: tuple[date | None, date | None], name_of: Callable[[str], str],
-                waiting: list[str], rejected: list[str]) -> dict[str, Any]:
+                waiting: list[str], rejected: list[str], line: cl.CalculationLine) -> dict[str, Any]:
         """One record of the line as a schedule row: every extracted value, accepted or not.
         ``waiting`` / ``rejected``: labels of the record's other required fields the recalculation still
         awaits, or that the reviewer rejected (only for a reviewed quantity); such a row does not count."""
@@ -392,7 +401,7 @@ class EvidenceTreeService:
             "waiting_on": waiting, "rejected_fields": rejected,
             "date": {"start": _iso(start), "end": _iso(end),
                      "days": (end - start).days + 1 if start and end and end >= start else None,
-                     "label": cl.date_label(record.canonical_type_id)},
+                     "label": EvidenceTreeService._date_label(line, record.canonical_type_id, start, end)},
             "activity_quantity": {"value": shown, "unit": unit},
             "cells": cells,
             "saved_by": ({"name": name_of(item.reviewer), "at": _iso(item.reviewed_at)}
@@ -411,10 +420,24 @@ class EvidenceTreeService:
         return columns
 
     @staticmethod
+    def _date_label(line: cl.CalculationLine, canonical_type_id: str | None, start: date | None,
+                    end: date | None) -> str:
+        """What the row's date is called: a bill's service period, a statement's period, a service visit's
+        date, or the single date of a fuel purchase or delivery."""
+
+        spans = start is not None and end is not None and start != end
+        label = cl.date_label(canonical_type_id)
+        if canonical_type_id == cl.MOBILE:
+            return "Statement period" if spans else "Transaction date"
+        if label == "Service period" and not spans and line.category == "stationary" and line.level2 != "natural-gas":
+            return "Delivery date"
+        return label
+
+    @staticmethod
     def _activity_note(line: cl.CalculationLine) -> str | None:
         if line.category == "purchased_energy":
-            what: str | None = ("thermal energy purchased" if line.level2 in THERMAL_LEVEL2
-                                else "electricity quantity purchased")
+            what: str | None = ("energy quantity purchased" if line.level2 in THERMAL_LEVEL2
+                                else "electricity quantity purchased / consumed")
         else:
             what = ACTIVITY_NOTES.get(line.category)
         return f"Activity quantity: {what}" if what else None

@@ -13,7 +13,7 @@ No ``from __future__ import annotations``: FastAPI resolves these at runtime.
 
 import json
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -24,7 +24,7 @@ from backend.app.api.s1_access import s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
 from backend.app.services import engagement_service
-from backend.app.services.calculation_lines import check_new_lines, normalize_evidence_lines
+from backend.app.services.calculation_lines import check_new_lines, normalize_evidence_lines, stamp_new_lines
 from backend.app.services.engagement_recalculation_service import (
     setup_facilities,
     validate_facilities,
@@ -211,6 +211,17 @@ def _check_line_anchors(settings: dict[str, Any] | None, current: dict[str, Any]
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
+def _stamp_lines(settings: dict[str, Any] | None, current: dict[str, Any] | None, user: CurrentUser) -> None:
+    """The server records who added each new reviewer line and when (never the client)."""
+
+    if not settings or not settings.get("evidenceLines"):
+        return
+    stored = ((current or {}).get("settings") or {}).get("evidenceLines")
+    settings["evidenceLines"] = stamp_new_lines(
+        settings["evidenceLines"], stored, user_id=str(user.id),
+        now=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+
+
 async def _reject_system_lines(db: AsyncSession, current: dict[str, Any], settings: dict[str, Any] | None,
                                user: CurrentUser) -> None:
     """settings["evidenceLines"] holds the reviewers' own lines only: a line the system already
@@ -256,6 +267,7 @@ async def create_engagement(
 ) -> EngagementResponse:
     assert user.org_id is not None  # s1_writer excludes provider_admin
     _check_line_anchors(payload.settings, None)
+    _stamp_lines(payload.settings, None, user)
     row = await engagement_service.create_engagement(
         db,
         org_id=user.org_id,
@@ -298,6 +310,7 @@ async def update_engagement(
     if not changes:
         return EngagementResponse(**current)
     _check_line_anchors(changes.get("settings"), current)
+    _stamp_lines(changes.get("settings"), current, user)
     await _reject_system_lines(db, current, changes.get("settings"), user)
     row = await engagement_service.update_engagement(db, current["id"], changes)
     event = "engagement_archived" if changes.get("status") == "archived" else "engagement_updated"

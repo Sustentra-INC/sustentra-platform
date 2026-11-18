@@ -41,6 +41,36 @@ describe("frontend contract checks", () => {
     expect(block).toMatch(/\.s1-ctx__user\s*\{[^}]*flex-wrap:\s*wrap/);
   });
 
+  // Measured on staging at 792px: the summary was 0 wide, the client name wrapped to three lines
+  // and the actions drew over it. The rules below are what keeps that from coming back at any width.
+  it("keeps the context bar's summary readable at medium widths: actions wrap first, names truncate", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    const rule = (selector: string) => {
+      const match = css.match(new RegExp(`^${selector.replace(/\./g, "\\.")}\\s*\\{([^}]*)\\}`, "m"));
+      return match ? match[1] : "";
+    };
+    expect(rule(".s1-ctx__bar")).toMatch(/flex-wrap:\s*wrap/);
+    // A minimum width the summary keeps, and room to grow.
+    expect(rule(".s1-ctx__summary")).toMatch(/min-width:\s*min\(var\(--ctx-summary-min\),\s*100%\)/);
+    expect(rule(".s1-ctx__summary")).toMatch(/flex:\s*1 1 var\(--ctx-summary-min\)/);
+    expect(css).toMatch(/--ctx-summary-min:\s*[0-9.]+rem/);
+    // The actions wrap and may shrink; they never push the summary down to nothing.
+    expect(rule(".s1-ctx__actions")).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule(".s1-ctx__actions")).toMatch(/min-width:\s*0/);
+    // Long names are cut with an ellipsis on one line.
+    for (const name of [".s1-ctx__client", ".s1-ctx__id"]) {
+      expect(rule(name)).toMatch(/text-overflow:\s*ellipsis/);
+      expect(rule(name)).toMatch(/white-space:\s*nowrap/);
+      expect(rule(name)).toMatch(/min-width:\s*0/);
+    }
+  });
+
+  it("gives the context bar's names a title, so a cut name can still be read in full", () => {
+    const source = readFileSync(join(process.cwd(), "features", "s1", "components", "S1Chrome.tsx"), "utf8");
+    expect(source).toMatch(/className="s1-ctx__client" title=\{contextTitle\.title\}/);
+    expect(source).toMatch(/className="s1-ctx__id" title=\{contextTitle\.sub\}/);
+  });
+
   it("keeps the interface to one font family, three text sizes and two weights", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
     const values = (property: string) => [...css.matchAll(new RegExp(`${property}:\\s*([^;}]+)`, "g"))].map((m) => m[1].trim());

@@ -25,7 +25,7 @@ import {
 import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig } from "../types";
 import { createAuditIntent, type AuditIntentAction, type SessionAuditEntry } from "../utils/auditIntent";
-import { formatPeriod } from "../utils/formatPeriod";
+import { addedByText, formatPeriod } from "../utils/formatPeriod";
 import { ActionMenu } from "./ActionMenu";
 import { ContainerStateSurface } from "./ContainerStateSurface";
 
@@ -229,7 +229,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         open={isOpen(id)}
         onToggle={toggle}
         title={line.label}
-        tag={line.created_by_user ? "Added by a reviewer" : undefined}
+        tag={line.created_by_user ? addedByText(line.created_by_name, line.created_at) : undefined}
         counts={node.counts}
         actions={
           <>
