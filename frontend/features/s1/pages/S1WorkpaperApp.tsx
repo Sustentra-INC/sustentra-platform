@@ -721,7 +721,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setDemoState("loading");
     void refreshBackendWorkspace();
   };
+  // The schedule is asked for under the engagement's id, which a reload only learns once the
+  // engagement has loaded: asking sooner is answered 404 and would send the reader to Evidence.
   const waitsForWorkspace =
+    activeView.name === "schedule" ||
     activeView.name === "dashboard" ||
     activeView.name === "evidence" ||
     activeView.name === "requests" ||
