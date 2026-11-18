@@ -486,6 +486,21 @@ gwp_set:              "AR4" | "AR5" (default) | "AR6"                // one set 
 AR4 (IPCC AR4 WG1 Table 2.14: CO2 1, CH4 25, N2O 298) has no HFC, PFC, SF6 or NF3 values, like AR6:
 a refrigerant gas needs `refrigerant_gwps` under AR4 (an open `needs_input` item says so).
 
+### GET /v1/provider/orgs/{org_id}
+Provider admins only (an org admin or member gets 403, no session 401). 404 `Organization not found` for an
+id that does not exist. Answers the organization (`id`, `name`, `slug`, `status`, `max_users`, `user_count`,
+`created_at`, `updated_at`, as the list and the other org endpoints do) plus, for this detail only:
+
+- `user_counts`: `{active, invited, suspended}`, the seats by status (deleted users are gone).
+- `initial_admin`: the org's earliest-created `org_admin` that is not deleted, or `null` when it has none:
+  `user_id`, `email`, `first_name`, `last_name`, `status` (`invited` | `active` | `suspended`), `invited_at`
+  (when the user was created by the invite), `last_invite_sent_at` (the newest invite link, so a resend shows)
+  and `invite_expired` (only while `invited`: the newest link is past its 24 hours; `false` otherwise).
+
+No more than the provider typed when creating the org. Read in provider scope (`app.is_provider`).
+"Resend invite" is the existing `POST /v1/orgs/{org_id}/invites/{user_id}/resend` (ORG-003), which a provider
+admin may call for any org; it answers 409 when the user is not waiting for an invite.
+
 ## Contract Source
 
 JSON schema contracts are versioned in `contracts/` and should be treated as API truth for request/response payload shape.
