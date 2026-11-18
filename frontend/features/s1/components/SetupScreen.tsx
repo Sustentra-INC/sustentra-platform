@@ -5,7 +5,9 @@ import type { ReactNode } from "react";
 
 import type { EngagementConfig, FacilityOption } from "../types";
 import type { InScopeField } from "../types/scope";
+import type { VehicleTypeOption } from "../api/recalculation";
 import { InfoTip } from "./InfoTip";
+import { SetupVehicleGroups } from "./SetupVehicleGroups";
 import { ZipRegionHint } from "./ZipRegionHint";
 
 /**
@@ -61,6 +63,7 @@ export function SetupScreen({
   gridRegions,
   lookupZip,
   foundFacilities = [],
+  vehicleReference,
 }: {
   engagement: EngagementConfig;
   onChange: (next: EngagementConfig) => void;
@@ -74,6 +77,8 @@ export function SetupScreen({
   lookupZip?: (zip: string) => Promise<string[]>;
   /** Facilities named on uploaded bills that match no Setup facility yet. */
   foundFacilities?: { name: string; address: string | null }[];
+  /** The fuels and vehicle types a vehicle group is chosen from (backend mode); without them the section is hidden. */
+  vehicleReference?: { fuels: string[]; types: VehicleTypeOption[] };
 }) {
   const set = (patch: Partial<EngagementConfig>) => onChange({ ...engagement, ...patch });
   // Live data: the rows are the workbook's data points, each with its workbook row.
@@ -321,6 +326,16 @@ export function SetupScreen({
         ) : null}
         <AddButton onClick={() => addFacility()}>Add facility</AddButton>
       </div>
+
+      {vehicleReference ? (
+        <SetupVehicleGroups
+          key={engagement.engagementId}
+          engagement={engagement}
+          onChange={onChange}
+          fuels={vehicleReference.fuels}
+          types={vehicleReference.types}
+        />
+      ) : null}
 
       {/* Client contact */}
       <div className="s1-setup-card">

@@ -25,6 +25,7 @@ import {
   inScopeFieldsFrom,
   lookupEgridZip,
   type DataPointOption,
+  type VehicleTypeOption,
   type QualityCheck,
 } from "../api/recalculation";
 import {
@@ -204,6 +205,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   });
   const [gridRegions, setGridRegions] = useState<{ code: string; name: string }[] | undefined>(undefined);
   const [dataPoints, setDataPoints] = useState<DataPointOption[]>([]);
+  // The fuels and vehicle types a vehicle group is chosen from (Setup, backend mode).
+  const [vehicleReference, setVehicleReference] = useState<{ fuels: string[]; types: VehicleTypeOption[] } | undefined>(undefined);
   const [backendError, setBackendError] = useState<WorkspaceProblem | null>(null);
   // Backend mode: a 401 from the API means the session ended (FE-007).
   const [sessionEnded, setSessionEnded] = useState(false);
@@ -245,6 +248,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         if (!live) return;
         setGridRegions(ref.egrid_subregions.map((r) => ({ code: r.egrid_subregion, name: r.name })));
         setDataPoints(ref.data_points ?? []);
+        setVehicleReference(ref.vehicle_types ? { fuels: ref.mobile_fuels, types: ref.vehicle_types } : undefined);
       })
       .catch(() => undefined); // the picker simply stays hidden
     return () => {
@@ -1138,6 +1142,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 : setInScopeFields
             }
             gridRegions={dataMode === "backend" ? gridRegions : undefined}
+            vehicleReference={dataMode === "backend" ? vehicleReference : undefined}
             lookupZip={dataMode === "backend" ? lookupEgridZip : undefined}
             foundFacilities={foundFacilities}
           />
