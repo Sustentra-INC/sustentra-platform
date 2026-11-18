@@ -70,7 +70,7 @@ def suggest(engagement_id: str, field_id: str, suggestion: dict[str, Any] = SUGG
 def test_get_lists_every_field_pending_with_the_catalog_and_ai_off() -> None:
     engagement = create()
     body = review(engagement["id"]).json()
-    assert len(body["fields"]) == len(body["catalog"]) == 24
+    assert len(body["fields"]) == len(body["catalog"]) == 25
     assert [f["field_id"] for f in body["fields"]] == [c["field_id"] for c in body["catalog"]]
     assert all(f["suggestion"] is None and f["decision"] is None and f["history"] == [] for f in body["fields"])
     assert body["ai"]["enabled"] is False and body["ai"]["reason_code"] == "off" and body["ai"]["reason"]
@@ -179,7 +179,7 @@ def test_rows_can_be_added_edited_and_removed_when_the_reviewer_added_them() -> 
 
     listed = review(eid).json()
     assert listed["fields"][-1]["field_id"] == field_id and listed["catalog"][-1]["kind"] == "entity"
-    assert len(listed["fields"]) == 25
+    assert len(listed["fields"]) == 26
 
     blank = act(eid, field_id, "accept")
     assert blank.status_code == 422 and "name" in blank.json()["detail"]
@@ -249,7 +249,7 @@ def test_one_engagements_decisions_are_not_another_s() -> None:
 
 # --- optional rows: hidden until there is a value or the reviewer adds them ----------------------
 
-OPTIONAL_FIELDS = ("boundary:acquisitions", "boundary:leased_space")  # the real optional rows
+OPTIONAL_FIELDS = ("boundary:acquisitions", "boundary:leased_space", "calculation:estimation")  # the real optional rows
 OPTIONAL = "optional:test-row"  # the catalog has no optional field yet; the rules are tested with one
 
 

@@ -10,7 +10,7 @@
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 
-export type SeedValue = string | number | string[] | { [key: string]: string | number | string[] };
+export type SeedValue = string | number | string[] | { [key: string]: string | number | string[] } | { source_type: string; method: string }[];
 
 /** Document ids come from the Evidence fixtures, so "open document" lands on a real document. */
 function doc(filename: string): { document_id: string; file_name: string } {
@@ -56,6 +56,8 @@ export interface ClaudeItem {
   quote: string;
   source: { document_id: string; file_name: string };
   page: string;
+  /** A list suggestion's quote per entry or option. */
+  evidence?: { label: string; quote: string; page: string }[];
 }
 
 const B = BOUNDARY_DOC;
@@ -63,6 +65,20 @@ const W = WORKBOOK_DOC;
 
 /** What Claude proposes from the client's documents. Nothing here is pre-accepted. */
 export const CLAUDE_ITEMS: ClaudeItem[] = [
+  {
+    fieldId: "calculation:estimation",
+    value: [
+      { source_type: "Utility invoices", method: "Average of the adjacent months" },
+      { source_type: "Fuel cards", method: "Prior-year consumption" },
+    ],
+    quote: "Missing utility invoices are estimated from the average of the adjacent months.",
+    source: B,
+    page: "page 3",
+    evidence: [
+      { label: "Utility invoices", quote: "Missing utility invoices are estimated from the average of the adjacent months.", page: "page 3" },
+      { label: "Fuel cards", quote: "Where fuel card data has gaps, prior-year consumption is used.", page: "page 3" },
+    ],
+  },
   { fieldId: "boundary:leased_space", value: "Leased office space at the Tualatin Plant is reported under operational control.", quote: "Leased office space at the Tualatin Plant is reported under operational control.", source: B, page: "page 2" },
   { fieldId: "consolidation_approach", value: "Operational Control", quote: "Cascade Provisions Co. consolidates its 2025 GHG inventory using the operational control approach.", source: B, page: "page 1" },
   { fieldId: "category:location:electricity", value: "Yes", quote: "Purchased electricity is reported on a location-based basis for all three facilities.", source: W, page: "Scope 2 sheet, cell B4" },

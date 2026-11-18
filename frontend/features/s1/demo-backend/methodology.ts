@@ -41,6 +41,10 @@ type Def = {
   allowed_labels?: Json;
   parts?: Json;
 };
+const ENTRY_PARTS = [
+  { key: "source_type", label: "Source type", kind: "text" },
+  { key: "method", label: "Estimation method", kind: "text" },
+];
 
 const INCLUSIONS = ["Yes", "No", "Not detected"];
 const GWP_SETS = ["AR4", "AR5", "AR6"];
@@ -88,6 +92,7 @@ function def(fieldId: string, group: string, label: string, kind: string, allowe
   const d: Def = { fieldId: fieldId, group, group_label: GROUP_LABEL.get(group) ?? group, label, kind, user_added: false, required };
   if (allowed !== undefined) d.allowed = allowed;
   if (PARTS[kind]) d.parts = clone(PARTS[kind]);
+  if (kind === "entry_list") d.parts = clone(ENTRY_PARTS);
   return d;
 }
 
@@ -117,6 +122,8 @@ function staticCatalog(): Def[] {
   fields.push(gwp);
   fields.push(def("calculation:approach", "calculation", "Calculation approach", "text"));
   fields.push(def("calculation:process", "calculation", "Process-specific calculations", "text"));
+  // "Only if the company has a value": one entry per source type.
+  fields.push(def("calculation:estimation", "calculation", "Estimation method for missing data", "entry_list", undefined, false));
   return fields;
 }
 
@@ -223,6 +230,18 @@ function isoDate(text: Json): string | null {
 
 function validate(d: Def, value: Json): Json {
   switch (d.kind) {
+    case "entry_list": {
+      if (!Array.isArray(value) || value.length > 10) return invalid(d, "enter a list of at most 10 entries.");
+      const seen = new Set<string>();
+      return value.map((entry) => {
+        const o = only(d, entry as Json, ["source_type", "method"]);
+        const source = text(d, o.source_type, "the source type", true, 60);
+        const key = source.toLowerCase().split(/\s+/).join(" ");
+        if (seen.has(key)) return invalid(d, `'${source}' appears twice. Keep one entry per source type.`);
+        seen.add(key);
+        return { source_type: source, method: text(d, o.method, "the method", true, 300) };
+      });
+    }
     case "date_range": {
       const o = value as Record<string, Json> | null;
       if (!o || typeof o !== "object" || Array.isArray(o) || Object.keys(o).sort().join() !== "end,start") {
@@ -339,7 +358,9 @@ function demoReference(text: string): Record<string, Json> {
 }
 
 function suggestionOf(item: ClaudeItem, at: string): Record<string, Json> {
+  const evidence = item.evidence?.map((e) => ({ label: e.label, quote: e.quote, document_id: item.source.document_id, file_name: item.source.file_name, source_reference: demoReference(e.page) }));
   return {
+    ...(evidence ? { evidence } : {}),
     value: clone(item.value),
     quote: item.quote,
     document_id: item.source.document_id,

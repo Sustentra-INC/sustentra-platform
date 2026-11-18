@@ -24,7 +24,7 @@ def field(field_id: str) -> dict:
 
 def test_catalog_has_every_field_with_a_valid_unique_key() -> None:
     ids = [f["field_id"] for f in m.CATALOG]
-    assert len(ids) == len(set(ids)) == 24
+    assert len(ids) == len(set(ids)) == 25
     assert all(ITEM_KEY.match(i) for i in ids)
     for expected in ("reporting_period", "consolidation_approach", "category:scope1:fugitive",
                      "category:location:cooling", "category:market:steam", "category:biogenic:indirect",
@@ -221,3 +221,47 @@ def test_an_old_text_value_has_a_value_and_survives_other_actions() -> None:
     assert m.public(old)["decision"]["value"] == "FY2024 (1 janvier – 31 décembre)"
     edited = m.edit(old, field("reporting_period"), {"start": "2024-01-01", "end": "2024-12-31"}, ACTOR, NOW)
     assert edited["decision"]["value"] == {"start": "2024-01-01", "end": "2024-12-31"}
+
+
+# --- estimation method: one entry per source type ---------------------------------------------
+
+def entry(source: str, method: str) -> dict[str, str]:
+    return {"source_type": source, "method": method}
+
+
+def test_the_estimation_method_is_an_optional_list_of_entries() -> None:
+    f = field("calculation:estimation")
+    assert f["kind"] == "entry_list" and f["required"] is False and f["group"] == "calculation"
+    assert [p["key"] for p in f["parts"]] == ["source_type", "method"]
+    good = [entry("  Utility invoices ", "Average of the other months"), entry("Fuel cards", "Prior-year use × 1,02")]
+    assert m.validate_value(f, good) == [entry("Utility invoices", "Average of the other months"),
+                                         entry("Fuel cards", "Prior-year use × 1,02")]
+    assert m.validate_value(f, []) == []  # removing every entry is allowed
+
+
+@pytest.mark.parametrize("bad", [
+    "text", None, {"a": 1},
+    [entry("Utility invoices", "a"), entry("  utility   INVOICES ", "b")],  # one entry per source type
+    [entry("", "a")], [entry("Fuel", "  ")],  # blank
+    [entry("x" * 61, "a")], [entry("Fuel", "x" * 301)],  # too long
+    [entry(f"Source {i}", "a") for i in range(11)],  # too many
+    [{"source_type": "Fuel"}], [{"source_type": "Fuel", "method": "a", "extra": "b"}], ["Fuel: average"],
+    [entry("Fuel", "a\x00b")], [entry("Fuel", 5)],
+])
+def test_a_bad_entry_list_is_refused_with_a_sentence(bad: object) -> None:
+    with pytest.raises(m.MethodologyInvalid) as error:
+        m.validate_value(field("calculation:estimation"), bad)
+    assert error.value.args[0].startswith("'Estimation method for missing data': ")
+
+
+def test_a_suggestion_keeps_the_quote_of_each_entry_bounded() -> None:
+    f = field("calculation:estimation")
+    evidence = [{"label": f"Source {i}", "quote": "q" * 1000, "document_id": "d1", "file_name": "r.pdf",
+                 "source_reference": {"page_number": i, "text_snippet": "s" * 500}} for i in range(30)]
+    bounded = m.bound_suggestion(f, {**SUGGESTION, "value": [entry("Fuel cards", "Average")], "evidence": evidence})
+    assert 0 < len(bounded["evidence"]) <= m.MAX_EVIDENCE  # the last quotes go when they would not fit
+    assert [e["label"] for e in bounded["evidence"]] == [f"Source {i}" for i in range(len(bounded["evidence"]))]
+    assert all(len(e["quote"]) == m.MAX_EVIDENCE_QUOTE and len(e["source_reference"]["text_snippet"]) == 200
+               for e in bounded["evidence"])
+    assert m.payload_size({"e": bounded["evidence"]}) <= m.MAX_EVIDENCE_BYTES
+    assert m.bound_suggestion(f, {**SUGGESTION, "value": [], "evidence": ["junk", 5, None]})["evidence"] == []
