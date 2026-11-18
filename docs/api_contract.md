@@ -225,12 +225,16 @@ counts  = {documents, values, accepted, to_review, issues, pct_accepted}
 DocRow  = {document_id, file_name, period_start, period_end, facility_id, facility_name,
            processing_status, detected_type, also_in: [lineKey], values, accepted,
            placement_from,   // send this as a move's "from" to move this row
+           value_family,     // "stationary" | "mobile" | "electricity" | null: the calculation this row's
+                             // values feed (null when mixed or when none reads them)
            flags: []}        // "unknown_line": it was moved to a line that no longer exists
 ```
 
 `CalculationLine = {key, scope, category, level2, level2_label, anchor_kind
 ("facility" | "vehicle_group" | "company"), anchor_id, label, facility_id | null,
-created_by_user}`. The key is `<scope>:<category>:<level2-slug>:<anchor-slug>` (for example
+created_by_user, family}`. `family` is the calculation the line feeds ("stationary", "mobile",
+"electricity", or null when none reads it); a value placed on a line of another family is reported as
+not placed. The key is `<scope>:<category>:<level2-slug>:<anchor-slug>` (for example
 `s1:stationary:natural-gas:fac-kc01`) and is built only by `calculation_lines.line_key`.
 A document whose records map to several lines is listed under each, with only that line's
 values counted. Every `counts` (block, scope, category, level 2, line) is computed by the server:

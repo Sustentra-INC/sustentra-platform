@@ -246,6 +246,7 @@ class EvidenceTreeService:
             name = records[0].best("facility_name")
             facility_name = " ".join(str(name).split()) if name else None
         counts = cl.tally(records)
+        families = {cl.record_family(r.canonical_type_id) for r in records}
         return {
             "document_id": doc.document_id, "file_name": doc.document.get("file_name"),
             "period_start": min(starts).isoformat() if starts else None,
@@ -255,6 +256,9 @@ class EvidenceTreeService:
             "detected_type": cl.type_name(doc.canonical_type_id),
             "also_in": [s.target for s in doc.slots if s.target != slot.target and s.target in lines],
             "values": counts["values"], "accepted": counts["accepted"], "flags": list(slot.flags),
+            # the calculation these values feed (None when mixed, or when none reads them): a move
+            # onto a line of another family would leave them not placed
+            "value_family": families.pop() if len(families) == 1 else None,
             # what the UI sends as a move's "from" to move this row
             "placement_from": slot.target,
         }

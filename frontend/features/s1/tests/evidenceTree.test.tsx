@@ -40,6 +40,7 @@ const doc = (id: string, over: Partial<TreeDocRow> = {}): TreeDocRow => ({
   processing_status: "completed",
   detected_type: "Natural gas bill",
   also_in: [],
+  value_family: "stationary",
   values: 4,
   accepted: 2,
   flags: [],
@@ -69,9 +70,9 @@ const line = (key: string, label: string, over: Partial<CalculationLine> = {}): 
   ...over,
 });
 
-const KENT = line("s1:stationary:natural-gas:fac-kc01", "Kent");
-const PLANT = line("s1:stationary:natural-gas:fac-pl02", "Plant 2", { created_by_user: true });
-const ELEC = line("s2:purchased_energy:electricity:fac-kc01", "Kent", { scope: "s2", category: "purchased_energy", level2: "electricity", level2_label: "Electricity" });
+const KENT = line("s1:stationary:natural-gas:fac-kc01", "Kent", { family: "stationary" });
+const PLANT = line("s1:stationary:natural-gas:fac-pl02", "Plant 2", { created_by_user: true, family: "stationary" });
+const ELEC = line("s2:purchased_energy:electricity:fac-kc01", "Kent", { scope: "s2", category: "purchased_energy", level2: "electricity", level2_label: "Electricity", family: "electricity" });
 
 const TREE: TreeData = {
   blocks: {
@@ -236,7 +237,7 @@ describe("the Evidence tree", () => {
     const dialog = screen.getByRole("dialog", { name: "Move to…" });
     fireEvent.change(within(dialog).getByLabelText("Move to"), { target: { value: PLANT.key } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("This changes the calculation for Natural gas · Kent and Natural gas · Plant 2");
+    expect(screen.getByRole("alert")).toHaveTextContent("4 values move from Natural gas · Kent to Natural gas · Plant 2. Both lines' calculations change.");
     expect(onMovePlacement).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
     await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("feb", { from: KENT.key, to: PLANT.key }));
@@ -360,7 +361,7 @@ describe("the Evidence tree", () => {
     expect(within(dialog).queryByRole("option", { name: "Unassigned supporting evidence" })).toBeNull();
     fireEvent.change(within(dialog).getByLabelText("Move to"), { target: { value: KENT.key } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
-    expect(screen.getByRole("alert")).toHaveTextContent("This changes the calculation for Natural gas · Kent.");
+    expect(screen.getByRole("alert")).toHaveTextContent("4 values move to Natural gas · Kent. Its calculation changes.");
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
     await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("orph", { from: DEAD, to: KENT.key }));
   });
@@ -532,6 +533,100 @@ describe("the blocks match the design", () => {
     expect(screen.getByText("No summary documents yet.")).toBeInTheDocument();
     expect(screen.getAllByText("Nothing here.").length).toBe(2);
     expect(screen.getByText("Not yet on a calculation line")).toBeInTheDocument();
+  });
+});
+
+describe("the move confirm says what changes", () => {
+  async function openMove(file: string) {
+    await expandAll();
+    const row = screen.getAllByRole("button", { name: file })[0].closest(".s1-et-doc") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: `Actions for ${file}` }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to…" }));
+    return screen.getByRole("dialog", { name: "Move to…" });
+  }
+  const choose = (dialog: HTMLElement, to: string) => fireEvent.change(within(dialog).getByLabelText("Move to"), { target: { value: to } });
+
+  it("counts one value in the singular and names the one line that changes", async () => {
+    const one: TreeData = JSON.parse(JSON.stringify(TREE));
+    one.blocks.supporting.unassigned = [doc("parked", { file_name: "parked.pdf", values: 1, accepted: 0 })];
+    one.blocks.supporting.unassigned_counts = counts(1, 0, 1);
+    mocks.byPath = { [TREE_PATH]: one };
+    render(<Harness />);
+    const dialog = await openMove("parked.pdf");
+    choose(dialog, KENT.key);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("1 value moves to Natural gas · Kent. Its calculation changes.");
+  });
+
+  it("warns, and still allows the move, when the target line calculates another family", async () => {
+    const onMovePlacement = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onMovePlacement={onMovePlacement} />);
+    const dialog = await openMove("feb.pdf");
+    expect(within(dialog).queryByRole("status")).toBeNull();
+    choose(dialog, ELEC.key);
+    expect(within(dialog).getByRole("status")).toHaveTextContent(
+      "These values won't count on this line, because it calculates electricity. They will show as not placed."
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
+    await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("feb", { from: KENT.key, to: ELEC.key }));
+  });
+
+  it("does not warn for a target of the same family, a block, or a row with no known family", async () => {
+    render(<Harness />);
+    const dialog = await openMove("feb.pdf");
+    choose(dialog, PLANT.key);
+    expect(within(dialog).queryByRole("status")).toBeNull();
+    choose(dialog, "supporting:unassigned");
+    expect(within(dialog).queryByRole("status")).toBeNull();
+  });
+
+  it("says a summary document's values do not feed a line", async () => {
+    render(<Harness />);
+    const dialog = await openMove("GHG workbook.xlsx");
+    choose(dialog, KENT.key);
+    expect(within(dialog).getByRole("status")).toHaveTextContent("This is a summary document, and its values don't feed lines.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("This changes the calculation for Natural gas · Kent.");
+  });
+
+  it("says why when the target line is one no calculation reads, with non-ASCII names", async () => {
+    const odd = line("s1:fugitive:r-404a:fac-zh", "Müller Käserei – Zürich 東京", { category: "fugitive", level2: "r-404a", level2_label: "R-404A", family: null });
+    const tree: TreeData = { ...TREE, lines: [...TREE.lines, odd] };
+    mocks.byPath = { [TREE_PATH]: tree };
+    render(<Harness />);
+    const dialog = await openMove("feb.pdf");
+    choose(dialog, odd.key);
+    expect(within(dialog).getByRole("status")).toHaveTextContent("because no calculation reads this kind of line");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("4 values move from Natural gas · Kent to R-404A · Müller Käserei – Zürich 東京.");
+  });
+
+  it("counts only the row's own placement for a document on several lines", async () => {
+    // "jan" sits on Kent gas (4 values) and on Kent electricity; this row is the gas placement.
+    render(<Harness />);
+    const dialog = await openMove("jan.pdf");
+    choose(dialog, PLANT.key);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    expect(screen.getByRole("alert")).toHaveTextContent("4 values move from Natural gas · Kent to Natural gas · Plant 2.");
+    // The line it is already on is not offered, so a document is never put twice on one line.
+    const options = Array.from((within(dialog).getByLabelText("Move to") as HTMLSelectElement).options).map((o) => o.value);
+    expect(options).not.toContain(KENT.key);
+  });
+
+  it("says plainly when the document was already moved elsewhere, and saves nothing", async () => {
+    const onMovePlacement = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onMovePlacement={onMovePlacement} />);
+    const dialog = await openMove("feb.pdf");
+    choose(dialog, PLANT.key);
+    // Meanwhile, in another tab, feb.pdf left Kent.
+    const moved: TreeData = JSON.parse(JSON.stringify(TREE));
+    moved.blocks.supporting.scopes[0].categories[0].level2s[0].lines[0].documents = [];
+    mocks.byPath = { [TREE_PATH]: moved };
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
+    expect(await within(dialog).findByText(/no longer where this page showed it, so nothing was changed/)).toBeInTheDocument();
+    expect(onMovePlacement).not.toHaveBeenCalled();
   });
 });
 

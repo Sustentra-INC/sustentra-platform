@@ -217,6 +217,50 @@ def test_a_multi_line_document_appears_under_each_line_with_only_that_lines_reco
     assert (rows[ELEC_KC]["period_start"], rows[ELEC_KC]["period_end"]) == ("2025-01-01", "2025-01-31")
 
 
+# --- the calculation family, for a move's "won't count" warning --------------------------------
+def _rows_by_line(tree: dict) -> dict[str, dict]:
+    rows: dict[str, dict] = {}
+    for scope in tree["blocks"]["supporting"]["scopes"]:
+        for category in scope["categories"]:
+            for level2 in category["level2s"]:
+                for line in level2["lines"]:
+                    for row in line["documents"]:
+                        rows[line["line"]["key"]] = row
+    return rows
+
+
+def test_lines_and_rows_carry_the_calculation_family() -> None:
+    store = FakeStore()
+    store.add_document("GAS", "CT-S1-FUELQTY", [_gas()])
+    store.add_document("BILL", "CT-S2-ELEC", [_elec(10)])
+    tree = _tree(store)
+    family = {line["key"]: line["family"] for line in tree["lines"]}
+    assert family[GAS_KC] == "stationary" and family[ELEC_KC] == "electricity"
+    rows = _rows_by_line(tree)
+    assert rows[GAS_KC]["value_family"] == "stationary" and rows[ELEC_KC]["value_family"] == "electricity"
+
+
+def test_a_line_no_calculation_reads_has_no_family() -> None:
+    from backend.app.services import calculation_lines as cl
+
+    fugitive = cl.make_line("fugitive", "r-404a", "R-404A", "facility", "fac-kc01", "Kansas City Plant",
+                            created_by_user=True)
+    steam = cl.make_line("purchased_energy", "steam", "Steam", "facility", "fac-kc01", "Kansas City Plant",
+                         created_by_user=True)
+    assert fugitive.family is None and steam.family is None
+    assert fugitive.to_dict()["family"] is None
+
+
+def test_a_document_on_several_lines_reports_each_placements_own_family_and_a_block_has_none() -> None:
+    store = FakeStore()
+    store.add_document("BILL", "CT-S2-ELEC", [_elec(10), _elec(20, "St Louis Plant")])
+    store.add_document("WB", "CT-S0-WORKBOOK", [])
+    rows = _rows_by_line(_tree(store))
+    assert rows[ELEC_KC]["value_family"] == "electricity" and rows[ELEC_STL]["value_family"] == "electricity"
+    empty = _tree(FakeStore())
+    assert empty["lines"] == [] and empty["blocks"]["summary"] == []
+
+
 # --- the tree's shape and counts ---------------------------------------------------------------
 def test_tree_levels_counts_and_pre_created_facility_lines() -> None:
     store = FakeStore()
@@ -294,6 +338,15 @@ def test_a_chain_of_moves_applies_in_order() -> None:
     assert _lines_with_docs(_tree(_gas_store(), {"G1": {"placements": moves}})) == {GAS_KC: ["G1"]}
     stale = [{"from": GAS_STL, "to": GAS_KC}, {"from": GAS_KC, "to": GAS_KC}, "junk", {"to": GAS_STL}]
     assert _lines_with_docs(_tree(_gas_store(), {"G1": {"placements": stale}})) == {GAS_KC: ["G1"]}
+
+
+def test_moving_one_placement_onto_a_line_the_document_already_has_merges_without_a_duplicate() -> None:
+    store = FakeStore()
+    store.add_document("BILL", "CT-S2-ELEC", [_elec(10), _elec(20, "St Louis Plant")])
+    tree = _tree(store, {"BILL": {"placements": [{"from": ELEC_KC, "to": ELEC_STL}]}})
+    assert _lines_with_docs(tree) == {ELEC_STL: ["BILL"]}
+    row = _rows_by_line(tree)[ELEC_STL]
+    assert row["values"] == 12 and row["also_in"] == []  # both records now show on the one line, once
 
 
 def test_move_to_and_from_the_blocks() -> None:
