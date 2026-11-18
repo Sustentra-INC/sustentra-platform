@@ -4,7 +4,10 @@ import { Highlighter, Plus } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
-import type { EngagementConfig } from "../types";
+import type { EngagementConfig, EvidenceItem } from "../types";
+import { AiTypeNote } from "./AiTypeNote";
+import { AiValueNote } from "./AiValueNote";
+import { AI_VALUE } from "../constants/copy";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
 import type { Ask } from "../types/requests";
 import { andThen, useStillOpen, type MaybePromise } from "../requests/maybePromise";
@@ -32,6 +35,8 @@ interface ExtractionReviewProps {
   initialDocumentId?: string | null;
   /** The opened document's file name, said when no value was read from it. */
   initialDocumentName?: string;
+  /** The opened document's evidence row: its header says when Claude suggested the type. */
+  typeItem?: EvidenceItem;
   /** Open with this value selected (a link from the assistant). */
   initialValueId?: string;
   /** Facility->type (or entity/not-yet-known) node the clicked row maps to, so
@@ -47,6 +52,8 @@ interface ExtractionReviewProps {
   /** The engagement's asks: a card added to requests says whether its request was sent. */
   asks?: Ask[];
   onBack: () => void;
+  /** Where the back link goes ("evidence", "schedule", "dashboard", ...). */
+  backLabel?: string;
   /** Render the real source page for a document (else a facsimile is drawn).
    *  `onPickBox` lets a clicked highlight on the page select its value card (by its id
    *  when the page knows it); `marks` are every value of the document that has a position.
@@ -93,12 +100,14 @@ export function ExtractionReview({
   onValuesChange,
   initialDocumentId,
   initialDocumentName,
+  typeItem,
   initialValueId,
   initialNodeKey,
   onSaveAsk,
   serverRecordsActor = false,
   asks = NO_ASKS,
   onBack,
+  backLabel = "evidence",
   renderPage,
   reviewerName = "M. Osei",
   onPersistAccept,
@@ -117,12 +126,21 @@ export function ExtractionReview({
     [items, initialDocumentId, initialNodeKey, initialValueId]
   );
 
-  // A document opened with no values: say so, rather than open another document's value.
-  const [unreadDocument] = useState<string | null>(() =>
-    initialDocumentId && !initialValueId && !items.some((v) => v.documentId === initialDocumentId) ? (initialDocumentName ?? "this document") : null
-  );
+  // A document with no values: say so, rather than open another document's value.
+  const docHasValues = (list: ReviewValue[]) => !initialDocumentId || list.some((v) => v.documentId === initialDocumentId);
+  const unreadDocument = !docHasValues(items) ? (initialDocumentName ?? "this document") : null;
   const [nodeKey, setNodeKey] = useState<string>(initial.nodeKey);
-  const [selectedId, setSelectedId] = useState<string | null>(unreadDocument ? null : initial.valueId);
+  const [selectedId, setSelectedId] = useState<string | null>(docHasValues(items) ? initial.valueId : null);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.rootKey ? [initial.rootKey] : []));
+  // A reload or a link opens this page before the workspace has loaded: the values arrive after
+  // mount. Pick the document, value and navigator node once they do, as the in-app path does.
+  const [seeded, setSeeded] = useState(items.length > 0);
+  if (!seeded && items.length > 0) {
+    setSeeded(true);
+    setNodeKey(initial.nodeKey);
+    setSelectedId(docHasValues(items) ? initial.valueId : null);
+    setExpanded(new Set(initial.rootKey ? [initial.rootKey] : []));
+  }
   const [filter, setFilter] = useState<ValueReviewState | null>(null);
   // A long document: show the values of one page at a time.
   const [pageFilter, setPageFilter] = useState<number | null>(null);
@@ -132,7 +150,6 @@ export function ExtractionReview({
   // A pick on the document asks the values pane to bring the picked card into view.
   const [scrollTo, setScrollTo] = useState<{ id: string; tick: number } | null>(null);
   const valuesPane = useRef<HTMLDivElement>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initial.rootKey ? [initial.rootKey] : []));
   const [modalTarget, setModalTarget] = useState<AddToRequestsTarget | null>(null);
   // The values a request is for: every data point of the reading.
   const [requestIds, setRequestIds] = useState<string[]>([]);
@@ -314,7 +331,7 @@ export function ExtractionReview({
   function acceptAll(documentId: string) {
     // Values not found on the document need the reviewer to enter them; they are never "accepted".
     const pending = items.filter(
-      (x) => x.documentId === documentId && x.reviewState === "to_review" && !x.withdrawn && !x.missing
+      (x) => x.documentId === documentId && x.reviewState === "to_review" && !x.withdrawn && !x.missing && !needsOwnAccept(x)
     );
     if (pending.length === 0) return;
     const now = new Date().toISOString();
@@ -509,6 +526,20 @@ export function ExtractionReview({
   });
   const listed = groups.flatMap((g) => g.capped);
 
+  // Opening the page on a document (in the app, or from a link or a reload) brings the selected
+  // card into view once. Without this, the card could sit below other documents' cards, out of sight.
+  const scrolledFor = useRef<string | null>(null);
+  useEffect(() => {
+    const opening = `${initialDocumentId ?? ""}|${initialValueId ?? ""}`;
+    if (!selectedId || scrolledFor.current === opening) return;
+    scrolledFor.current = opening;
+    const id = typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(selectedId) : selectedId;
+    const frame = window.requestAnimationFrame(() => {
+      valuesPane.current?.querySelector<HTMLElement>(`[data-value-id="${id}"]`)?.scrollIntoView?.({ block: "center" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [selectedId, initialDocumentId, initialValueId]);
+
   // The selected value's document, drawn with its values marked (the demo's drawing, or the
   // uploaded file's pages or content). Whenever it is drawn, the key above the cards says what
   // its marks mean and how many values were read.
@@ -543,8 +574,8 @@ export function ExtractionReview({
   if (items.length === 0) {
     return (
       <section className="s1-content s1-xr">
-        <button className="s1-linklike" type="button" onClick={onBack}>
-          ‹ Back to evidence
+        <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
+          ‹ Back to {backLabel}
         </button>
         <div className="s1-ws-empty">No values to review yet.</div>
       </section>
@@ -556,8 +587,8 @@ export function ExtractionReview({
       <div className="s1-xr-grid">
         {/* Navigator */}
         <aside className="s1-xr-nav" aria-label="Navigator">
-          <button className="s1-linklike s1-xr-back" type="button" onClick={onBack}>
-            ‹ Back to evidence
+          <button className="s1-linklike s1-backlink s1-xr-back" type="button" onClick={onBack}>
+            ‹ Back to {backLabel}
           </button>
           {tree.map((root) => (
             <div key={root.key} className="s1-xr-navgroup">
@@ -606,6 +637,7 @@ export function ExtractionReview({
                 </button>
               ) : null}
             </div>
+            {typeItem ? <AiTypeNote item={typeItem} /> : null}
             <div className="s1-xr-filters" role="group" aria-label="Show cards by review state">
               {(["to_review", "accepted", "corrected", "requested"] as ValueReviewState[]).map((k) => (
                 <button
@@ -664,13 +696,21 @@ export function ExtractionReview({
                     {(() => {
                       const docId = group.values[0]?.documentId;
                       // Counted by card, like the list: one reading is one accept.
-                      const left = readings(
-                        items.filter((x) => x.documentId === docId && x.reviewState === "to_review" && !x.withdrawn && !x.missing)
-                      ).length;
-                      return left > 1 && docId ? (
-                        <button className="s1-button s1-button--compact s1-xr-acceptall" type="button" onClick={() => acceptAll(docId)}>
-                          Accept all {left}
-                        </button>
+                      const open = items.filter(
+                        (x) => x.documentId === docId && x.reviewState === "to_review" && !x.withdrawn && !x.missing
+                      );
+                      const left = readings(open.filter((x) => !needsOwnAccept(x))).length;
+                      // Claude's readings (and both sides of a conflict) are accepted one by one, against the page.
+                      const skipped = readings(open.filter(needsOwnAccept)).length;
+                      return docId ? (
+                        <>
+                          {left > 1 ? (
+                            <button className="s1-button s1-button--compact s1-xr-acceptall" type="button" onClick={() => acceptAll(docId)}>
+                              Accept all {left}
+                            </button>
+                          ) : null}
+                          {skipped > 0 ? <span className="s1-muted">{AI_VALUE.needIndividual(skipped)}</span> : null}
+                        </>
                       ) : null;
                     })()}
                   </div>
@@ -929,6 +969,7 @@ function ValueCard({
           </span>
         ) : null}
       </div>
+      <AiValueNote value={v} />
       <div className="s1-xr-card__scopes">
         {scopeChips(vs).map((chip) => (
           <span key={chip.label} className={`s1-xr-scope s1-xr-scope--${chip.scope}`}>
@@ -951,7 +992,7 @@ function ValueCard({
                   </span>
                 )}
                 <span className="s1-xr-rec__act">
-                  {r.kind === "machine" ? `System read · ${v.documentType}, page ${v.page}` : `${r.actor} · ${recordAction(r, askById)}`}
+                  {r.kind === "machine" ? `${v.ai?.suggested ? AI_VALUE.readBy : "System read"} · ${v.documentType}, page ${v.page}` : `${r.actor} · ${recordAction(r, askById)}`}
                 </span>
                 {r.reason ? <span className="s1-muted"> · {r.reason}</span> : null}
                 <span className="s1-muted s1-xr-rec__at">{formatTime(r.at)}</span>
@@ -1041,6 +1082,11 @@ function pageMarks(items: ReviewValue[], documentId: string): PageMark[] {
 }
 
 /** What a content view (workbook, CSV, Word) needs to select values from the file. */
+/** A value Claude read (or one of two it read for a field) is never swept in by "Accept all". */
+function needsOwnAccept(v: ReviewValue): boolean {
+  return Boolean(v.ai?.suggested || v.ai?.conflict);
+}
+
 export interface SourcePick {
   selectedId: string;
   onPickAmong: (ids: string[]) => void;

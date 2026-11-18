@@ -16,7 +16,8 @@ import type { QualityCheck } from "../api/recalculation";
 import { qualityIssueLines } from "./QualityChecksPanel";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
-import { EvidenceTree, type EvidenceTreeProps } from "./EvidenceTree";
+import { AiTypeNote } from "./AiTypeNote";
+import { EvidenceTree,type EvidenceTreeProps } from "./EvidenceTree";
 import { formatPeriod } from "../utils/formatPeriod";
 import { UPLOAD_ACCEPT } from "../constants/uploads";
 import { andThen, NOT_SAVED_TITLE, problemText, settle, useStillOpen, type MaybePromise } from "../requests/maybePromise";
@@ -874,6 +875,7 @@ function WorkspaceRow(props: {
         ) : (
           <span>{item.detectedType ?? "Type unresolved"}</span>
         )}
+        <AiTypeNote item={item} />
       </td>
 
       {/* Status: processing state, and any issue under it */}
@@ -1194,6 +1196,8 @@ function processingDisplay(item: EvidenceItem): { role: string; label: string; s
   if (item.reading)
     return { role: "active", label: "Reading…", sub: item.reading === "queued" ? "Waiting to be read" : null };
   if (item.processingState === "blocked") return { role: "blocking", label: "Blocked", sub: item.haltReason };
+  if (item.processingState === "extracted" && item.unreadPages)
+    return { role: "open", label: "Partly read", sub: `Pages ${item.unreadPages} could not be read` };
   if (
     item.processingState === "extracted" &&
     item.fieldsExpectedDisplay != null &&

@@ -32,7 +32,11 @@ export type ValueProperty =
   | "estimated_read"
   | "unit_missing"
   | "unit_ambiguous"
-  | "format_mismatch";
+  | "format_mismatch"
+  // Claude reading (backend services/ai_extraction.py): never pre-accepted, always to review.
+  | "ai_suggested"
+  | "ai_disagrees"
+  | "ai_conflict";
 
 export type ContainerState =
   | "populated"

@@ -271,6 +271,10 @@
         "null"
       ]
     },
+    "ai_only": {
+      "description": "Optional. True for a known-gap field only Claude reading (services/ai_extraction.py) is asked for; rule extraction never plans it and the calculation does not use it.",
+      "type": "boolean"
+    },
     "population_status": {
       "type": "string",
       "enum": [

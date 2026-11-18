@@ -118,7 +118,7 @@ export function RecalculationInputs({
       <button className="s1-rc__head" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className="s1-rc__title">Recalculation inputs</span>
         <span className={`s1-state s1-state--${asks.length ? "open" : "resolved"}`}>
-          {asks.length ? `${asks.length} needed` : "Complete"}
+          {asks.length ? `${asks.length} needed` : "Inputs entered"}
         </span>
         {result.awaiting_review.length ? (
           <span className="s1-state s1-state--unverifiable">{result.awaiting_review.length} awaiting review</span>

@@ -4,7 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 
 import type { BackendDocumentLike } from "../adapters/evidenceAdapter";
-import { READ_FAILED_ON_OUR_SIDE, type ProcessingRunView } from "../api/processingRuns";
+import { READ_FAILED_ON_OUR_SIDE, isActiveRun, type ProcessingRunView } from "../api/processingRuns";
 import { uploadDocumentWithProgress } from "../api/s1Backend";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
 import { HALT_REASONS } from "../constants/copy";
@@ -36,7 +36,7 @@ const MANUFACTURER_STATUS_CELLS = [
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "ExtractedSuperseded by tualatin_gas_apr_2025_corrected.pdf",
   "ExtractedSupersedes tualatin_gas_apr_2025.pdf", "Extracted", "Extracted", "Extracted", "Extracted",
-  "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
+  "Withdrawn", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Partially extractedNot found: Service period end date", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
@@ -51,8 +51,8 @@ const MANUFACTURER_STATUS_CELLS = [
 ];
 
 const MANUFACTURER_GROUP_MIX = [
-  "2 to review", "5 extracted", "1 blocked3 to review33 extracted", "3 to review34 extracted", "4 extracted",
-  "12 extracted", "3 extracted", "1 to review36 extracted", "2 extracted", "3 extracted", "1 extracted",
+  "2 to review", "5 extracted", "1 blocked3 to review33 extracted", "3 to review33 extracted1 withdrawn", "4 extracted",
+  "1 to review11 extracted", "3 extracted", "1 to review36 extracted", "2 extracted", "3 extracted", "1 extracted",
   "2 extracted", "1 extracted", "1 extracted",
 ];
 
@@ -115,6 +115,14 @@ describe("withReadingState", () => {
 
     expect(queued.reading).toBe("queued");
     expect(inProgress.reading).toBe("in_progress");
+  });
+
+  it("keeps a large PDF read in page chunks marked as being read, so the workspace goes on polling", () => {
+    const waiting = run({ status: "waiting_on_chunks", chunks: { total: 3, completed: 1, failed: 0, failed_pages: [] } });
+    const [view] = withReadingState(rows, { "DOC-1": waiting });
+
+    expect(view.reading).toBe("in_progress");
+    expect(isActiveRun(waiting)).toBe(true);
   });
 
   it("leaves the other documents as they were", () => {

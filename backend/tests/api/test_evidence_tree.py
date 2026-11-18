@@ -82,7 +82,7 @@ def test_a_reader_gets_a_schedule_with_names(act_as, wired: FakeStore) -> None:
         response = client.get(f"/v1/engagements/ENG-1/calculation-lines/{GAS_KC}/schedule")
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"line", "reporting_period", "coverage", "identifiers", "values", "history", "rows",
+    assert set(body) == {"line", "calculated", "reporting_period", "coverage", "identifiers", "values", "history", "rows",
                          "columns", "activity_quantity_note", "identifier_groups"}
     assert body["rows"][0]["saved_by"]["name"] == "Ana Reyes" and body["rows"][0]["accepted"] is True
     assert body["line"]["key"] == GAS_KC and body["values"][0]["decided_by"] == "Ana Reyes"

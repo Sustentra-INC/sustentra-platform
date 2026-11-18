@@ -435,7 +435,7 @@ def test_schedule_coverage_for_a_bill_spanning_two_months() -> None:
     assert months["2025-02"]["quantity"] == pytest.approx(310 * 15 / 31, abs=1e-3)
     # March: only the unreviewed bill covers it
     assert months["2025-03"] == {"month": "2025-03", "status": "not_reviewed", "quantity": None, "unit": None,
-                                 "document_ids": ["BILL-B"], "flags": []}
+                                 "document_ids": ["BILL-B"], "flags": [], "waiting_on": []}
 
 
 def test_schedule_marks_months_with_no_document() -> None:
@@ -475,7 +475,8 @@ def test_schedule_values_and_history_newest_first_with_names() -> None:
     assert values["BILL-A"] | {"candidate_id": None} == {
         "service_period_start": "2025-01-16", "service_period_end": "2025-02-15", "days": 31, "quantity": 310,
         "unit": "MMBtu", "document_id": "BILL-A", "file_name": "BILL-A.pdf", "page": 1, "candidate_id": None,
-        "decided_by": "Ana Reyes", "decided_at": "2025-04-02T10:00:00Z", "decision": "accepted"}
+        "decided_by": "Ana Reyes", "decided_at": "2025-04-02T10:00:00Z", "decision": "accepted", "waiting_on": [],
+        "rejected_fields": []}
     assert values["BILL-A"]["candidate_id"] == "BILL-A:1:activity_quantity"
     assert values["BILL-C"]["quantity"] == 150 and values["BILL-C"]["decision"] == "edited"
     assert values["BILL-C"]["decided_by"] == "bo@example.com"  # no name on file: the login
@@ -631,6 +632,7 @@ def test_history_lists_every_decision_on_a_value() -> None:
          "reviewer_id": "ana@example.com", "reviewed_at": "2025-04-01T10:00:00Z"},
         {"candidate_id": qty, "decision": "edited", "org_id": ORG, "reviewed_value": 300, "reviewed_unit": "MMBtu",
          "reviewer_id": "bo@example.com", "reviewed_at": "2025-04-02T10:00:00Z"},
+        {"candidate_id": "BILL-A:1:fuel_type", "decision": "accepted", "org_id": ORG, "reviewed_value": "natural_gas"},
     ]
     schedule = _tree_service(store).schedule(_engagement(), _own, GAS_KC)
     assert schedule is not None

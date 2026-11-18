@@ -9,6 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from . import observability
 from .api import (
     assistant,
+    document_batches,
     documents,
     engagements,
     evidence,
@@ -37,6 +38,7 @@ APP_TITLE = "Sustentra Evidence Extraction API"
 S1_ROUTERS = (
     engagements.router,
     documents.router,
+    document_batches.router,
     processing_runs.router,
     pipeline.router,
     evidence.router,

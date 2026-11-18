@@ -103,6 +103,8 @@ class ExtractionConfig:
     population_status: str
     version: str
     last_reviewed: str | None
+    # Offered to Claude reading only (services/ai_extraction.py); never planned for the rule extractors.
+    ai_only: bool = False
 
 
 def find_default_extraction_config_path(repo_root: Path | None = None) -> Path:
@@ -212,6 +214,10 @@ def _parse_row(row: dict[str, Any], index: int) -> ExtractionConfig:
             f"Extraction config row {index}: normalization must be an object."
         )
 
+    ai_only = row.get("ai_only", False)
+    if not isinstance(ai_only, bool):
+        raise ExtractionConfigLoaderError(f"Extraction config row {index}: ai_only must be a boolean.")
+
     tuples: dict[str, tuple[str, ...]] = {
         name: _to_tuple(row.get(name)) for name in TUPLE_FIELDS
     }
@@ -252,6 +258,7 @@ def _parse_row(row: dict[str, Any], index: int) -> ExtractionConfig:
         population_status=population_status,
         version=version,
         last_reviewed=last_reviewed,
+        ai_only=ai_only,
     )
 
 

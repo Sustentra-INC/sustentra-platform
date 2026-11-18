@@ -70,7 +70,7 @@ def test_get_lists_every_field_pending_with_the_catalog_and_ai_off() -> None:
     assert len(body["fields"]) == len(body["catalog"]) == 22
     assert [f["field_id"] for f in body["fields"]] == [c["field_id"] for c in body["catalog"]]
     assert all(f["suggestion"] is None and f["decision"] is None and f["history"] == [] for f in body["fields"])
-    assert body["ai"]["enabled"] is False and body["ai"]["reason_code"] == "not_built" and body["ai"]["reason"]
+    assert body["ai"]["enabled"] is False and body["ai"]["reason_code"] == "off" and body["ai"]["reason"]
     assert all(f["user_added"] is False for f in body["fields"])
     gwp = next(c for c in body["catalog"] if c["field_id"] == "gwp")
     assert gwp["group"] == "gwp" and gwp["group_label"] == "GWP factors source"

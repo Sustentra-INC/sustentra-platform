@@ -70,6 +70,15 @@ class Settings(BaseSettings):
     s1_reader_max_run_seconds: int = Field(default=900, ge=60, le=7200)
     s1_reader_shutdown_grace_seconds: int = Field(default=45, ge=0, le=300)
 
+    # Page chunks (queued mode only). A PDF with more than S1_CHUNK_THRESHOLD_PAGES pages is read
+    # in chunks of S1_CHUNK_PAGES pages, each its own job on the queue; a chunk that fails is
+    # retried up to S1_CHUNK_MAX_ATTEMPTS times. A document longer than S1_MAX_DOCUMENT_PAGES
+    # is not read (the run is partial, halt document_too_long). The 50-page OCR cap applies per chunk.
+    s1_chunk_threshold_pages: int = Field(default=20, ge=1, le=1000)
+    s1_chunk_pages: int = Field(default=10, ge=1, le=100)
+    s1_chunk_max_attempts: int = Field(default=3, ge=1, le=10)
+    s1_max_document_pages: int = Field(default=500, ge=1, le=5000)
+
     # Largest S1 document upload, in MB (INFRA-007). deploy/Caddyfile allows the same
     # size on the upload route only (+1 MB for the multipart envelope); the frontend
     # mirrors it in features/s1/constants/uploads.ts.
@@ -96,9 +105,23 @@ class Settings(BaseSettings):
     # adapter sends "anthropic." + AI_MODEL. Prices still come from AI_MODEL.
     ai_bedrock_model_id: str | None = None
     ai_effort: AiEffort = "low"
-    # Per-organization monthly spend cap in USD, checked by the usage ledger (later PR).
+    # Per-organization monthly spend cap in USD, checked against the usage ledger (ai_usage) before each call.
     # The Anthropic Console spend limit is the hard ceiling across all organizations.
     ai_monthly_cap_usd: float = Field(default=25.0, ge=0)
+    # Claude routing (services/ai_routing.py): a document the rule classifier places confidently
+    # is also shown to Claude, which may only add the warning ai_type_disagrees, never change the
+    # type. Off by default; it costs one call per document. Needs AI_SUGGESTIONS_ENABLED.
+    s1_ai_routing_shadow: bool = False
+    # Claude reading (services/ai_extraction.py): the document is read in windows of AI_WINDOW_PAGES
+    # pages (one page of overlap), at most AI_MAX_WINDOWS windows, in sequence, stopping at 80% of
+    # S1_READER_MAX_RUN_SECONDS. Needs AI_SUGGESTIONS_ENABLED.
+    ai_window_pages: int = Field(default=5, ge=1, le=20)
+    ai_max_windows: int = Field(default=10, ge=1, le=100)
+    # Inline mode (S1_PROCESSING=inline) reads inside the upload request: at most this many windows,
+    # and no window starts after this many seconds. Queued mode keeps AI_MAX_WINDOWS and 80% of
+    # S1_READER_MAX_RUN_SECONDS.
+    ai_inline_max_windows: int = Field(default=2, ge=1, le=10)
+    ai_inline_budget_seconds: int = Field(default=60, ge=10, le=600)
 
     @field_validator("allowed_origins_csv", "ai_model")
     @classmethod

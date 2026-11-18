@@ -94,6 +94,39 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
    says "Requested" (PR #159). Add to requests has no Raised by field.
 5. Reload: every decision is kept.
 
+### 5a. Claude routing (needs `AI_SUGGESTIONS_ENABLED=true` and the key)
+
+1. Upload a document the rules cannot place (for example a refrigerant top-up log with an
+   unusual title). Evidence shows its type with "Type suggested by Claude, please confirm"
+   and the words Claude cited; Extraction review shows the same line in its header, and
+   extraction ran.
+2. Choose another type in the type control: the suggestion note goes away and the document
+   is read again as that type.
+3. Choose a type before reading (override): Claude is not called (no new `routing` row in
+   `ai_usage`).
+4. With `S1_AI_ROUTING_SHADOW=true`, upload a normal fuel bill: its type is unchanged. If
+   Claude disagrees, the row says so in words.
+5. Switch AI off: the same documents read exactly as before, with no Claude lines.
+6. Each call is one `ai_usage` row with feature `routing`; the Methodology review page's
+   month spend includes it.
+
+### 5b. Claude reading (needs `AI_SUGGESTIONS_ENABLED=true` and the key)
+
+1. Upload a utility bill the rules read only partly (for example one with no account number
+   label the rules know). In Extraction review the missing value has a card with "Suggested by
+   Claude", the quoted line and its page; the page opens with the box on that line.
+2. The card is "to review": it is not accepted for you. Recalculate before accepting: the value
+   changes no number. Accept it: it is used.
+3. A value the rules read and Claude read differently shows "Claude read a different value
+   here" with Claude's value and quote; the rules' value is still the one on the card.
+4. A long document (more than 5 pages) is read in windows: the run's warnings say how many
+   windows were read and the cost; one above 50 pages says which pages were not read.
+5. Each window is one `ai_usage` row with feature `extraction`. Inline mode reads at most 2
+   windows. "Accept all" skips Claude's readings: the note says "n suggested by Claude need
+   individual review". A multi-record fuel log is not read (warning `multi_record_document`).
+6. Switch AI off and upload the same bill: the cards are exactly as before, with no Claude chips
+   and no `ai_*` warnings.
+
 ## 6. Coverage & requests
 
 1. Missing data points show up as "Inputs missing", with a Request button.
@@ -129,6 +162,25 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 1. Export the Excel workpaper. It opens. The roll-up shows mass per gas and CO₂e per
    category, with a "Counted as 0" column. The totals match Verification results.
 
+## 8a. Methodology review
+
+1. Open Methodology review in the left navigation. Fields are grouped under the headings the
+   server gives; each shows "Not set" and "Pending" until you act.
+2. With AI suggestions off, the button "Read the client's reports with Claude" is disabled and
+   the page says why in a sentence (for example that an administrator turns it on).
+3. With them on and a report document uploaded, press the button. It names what Claude will read
+   and says suggestions need review; confirm. A summary shows N suggested, M dropped with the
+   reasons, the documents read and the cost.
+4. A suggested field shows "Suggested by Claude", the quote, and the document name. Click the
+   name: the document opens in Extraction review.
+5. Accept one suggestion, Edit another (enum fields offer only the allowed values), Reject a third
+   with a reason (it is required). Each field then shows its status, who decided and when.
+6. Revert a decided field: it returns to Pending. Accept and Reject appear only on pending fields.
+7. Add an entity and a factor row; edit them; Remove row appears only on rows you added.
+8. Open the activity log: your decisions are listed. Reload: everything is kept.
+9. A reader (not a writer) cannot change anything: actions answer with a sentence, not an error page.
+
+
 ## 9. Evidence tree and supporting schedule
 
 Needs the evidence-tree API (feat/evidence-tree-api) deployed.
@@ -141,6 +193,13 @@ Needs the evidence-tree API (feat/evidence-tree-api) deployed.
 3. Open a line's schedule icon: coverage by month, source identifiers, accepted values and the
    line history show. Click a month: its document opens. Click a value's document icon: the
    review opens at that value. Back returns to the tree as you left it.
+   Schedule v2 (needs feat/schedule-v2-api): the values table has one row per record, with the
+   unit in each cell, dates as MM/DD/YY and spans as "start – end · N days". A value not yet
+   accepted is grey and says "Not reviewed" (or "Rejected" / "Needs more evidence"). "Saved by
+   <name> · <date>" is grey at the row end. A grey note names the activity quantity. Each
+   identifier says "n of N documents"; click it to group the documents by value, with a "Not
+   found" group, and open any of them. Facility says how it was matched. Nothing on the page
+   can be edited.
 4. Document menu, "Move to…": move one document to another line. A move that touches a line asks
    "This changes the calculation for …". Reload: the move is kept; the Activity log lists it.
 5. "+ New calculation line in <fuel>" and "+ New fuel": the line appears tagged "Added by a
@@ -152,6 +211,44 @@ Needs the evidence-tree API (feat/evidence-tree-api) deployed.
 1. A second organization's user can't see this engagement: its URL answers "not found".
 2. A provider admin can read it but can't upload or review.
 
-## 11. After a redeploy
+## 11. Large PDFs in page chunks
+
+Needs `S1_PROCESSING=queued`, the reader running, and Textract on for the scanned file. Page
+chunking applies to PDFs over 20 pages; a PDF of 20 pages or fewer reads as before.
+
+1. Upload a text PDF of 25 pages (a bill on page 1). Evidence shows "Reading…". It finishes
+   with the same values as a one-page bill, each with its page number. Nothing says pages were missed.
+2. Upload a scanned PDF of about 60 pages. It reads in chunks: while it does, the run
+   (`GET /v1/processing-runs/{id}`) is `waiting_on_chunks` with `chunks.completed` growing
+   toward `chunks.total` (6). The value found on a late page opens that page in the review, not page 1.
+3. While a chunked read is going, restart the reader container. The read finishes anyway
+   (chunks it held come back once their lease runs out, about two minutes).
+4. Make Textract fail for the reader (for example remove its Textract permission for a few
+   minutes) while a scanned PDF is read, then restore it. Each chunk is tried 3 times (30 s, then
+   120 s apart). The run ends `completed` but its pipeline run is `partial` with a "pages_unread"
+   warning naming the pages Textract could not read. `chunks.failed_pages` lists them (one page
+   each for pages that failed OCR, the whole range for a chunk that failed outright), and Evidence
+   shows "Partly read: Pages ... could not be read". The values from other pages are there to review.
+5. Upload a PDF of more than 500 pages. It is not read: Evidence shows it as Blocked with the
+   sentence "This document has N pages, more than the 500 we read in one document. Split it...".
+6. A 10-page PDF and a Word file read exactly as before (no `chunks` key on their runs).
+
+## 12. Uploading several files at once
+
+Needs `S1_PROCESSING=queued` and the reader running.
+
+1. In Upload, drop five files together: two small bills, a 25-page PDF, a scan, and a Word file. A table
+   "Reading this batch" appears under the upload bars, one row per file, with the totals above it.
+2. Rows go Waiting, then Reading, then Done. The 25-page PDF shows "n of m parts read" while it reads.
+   The table refreshes about every 3 seconds, and stops (check the network tab) once every row is done,
+   partly read or couldn't read.
+3. A file that can't be read says why in a sentence under its name; a row with a read file shows its type and
+   the number of records found. Click a read file's name: its extraction review opens.
+4. Drop a single file: no batch table (it is uploaded as before). A file uploaded in a batch whose read was
+   never asked for shows "Not started" with a sentence and a link; it does not keep the table polling.
+5. With a second organization's batch id, `GET .../document-batches/{id}` as the first one answers 404, and an
+   upload with that `batch_id` answers 404 and stores nothing.
+
+## 13. After a redeploy
 
 1. Redeploy the same build, or wait for the next one. Everything from steps 2–9 is still there.

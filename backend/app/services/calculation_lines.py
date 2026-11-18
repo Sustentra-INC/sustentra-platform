@@ -520,6 +520,7 @@ class Covered:
     unit: str | None
     accepted: bool
     document_id: str
+    waiting: tuple[str, ...] = ()  # labels of other fields still awaited: the value does not count
 
 
 def _months(first: date, last: date) -> list[tuple[int, int]]:
@@ -561,12 +562,14 @@ def month_coverage(period: tuple[date | None, date | None], values: list[Covered
         counted: set[date] = set()
         present: set[date] = set()
         quantity, has_quantity, unconverted, documents = 0.0, False, False, []
+        waiting_on: list[str] = []
         for start, end, value in dated:
             span = {start + timedelta(days=i) for i in range((end - start).days + 1)}
             overlap = span & all_days
             if not overlap:
                 continue
             present |= overlap
+            waiting_on.extend(w for w in value.waiting if w not in waiting_on)
             if value.document_id not in documents:
                 documents.append(value.document_id)
             if value.accepted:
@@ -591,5 +594,5 @@ def month_coverage(period: tuple[date | None, date | None], values: list[Covered
         out.append({"month": f"{year:04d}-{month:02d}", "status": status,
                     "quantity": round(quantity, 4) if counted and has_quantity else None,
                     "unit": unit if counted and has_quantity else None, "document_ids": documents,
-                    "flags": ["unconverted"] if unconverted else []})
+                    "flags": ["unconverted"] if unconverted else [], "waiting_on": waiting_on})
     return out

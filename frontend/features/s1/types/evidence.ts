@@ -35,6 +35,16 @@ export interface NoteEntry {
   text: string;
 }
 
+export interface AiTypeReading {
+  /** The words Claude cited, printed on the document. */
+  quote: string;
+  page: number | null;
+  /** The type Claude named, as its display name (never the id). */
+  typeName: string;
+  used: boolean;
+  disagrees: boolean;
+}
+
 export interface EvidenceItem {
   documentId: string;
   filename: string;
@@ -46,11 +56,15 @@ export interface EvidenceItem {
   disposition: EvidenceDisposition;
   processingState: ProcessingState;
   haltReason: string | null;
+  /** Page ranges (as the server wrote them) a chunked read could not read; the values on them are missing. */
+  unreadPages?: string | null;
   detectedType: string | null;
   typeReviewBand: TypeReviewBand;
   typeReviewReason: string | null;
   /** The reviewer chose or confirmed this type, so it is no longer the machine's guess. */
   typeConfirmed?: boolean;
+  /** Claude's reading of the type: it set the type (`used`, to confirm) or only disagreed with the rules. */
+  aiType?: AiTypeReading;
   facilityState: FacilityState;
   facilityId: string | null;
   facilityName: string | null;

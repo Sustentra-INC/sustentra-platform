@@ -90,7 +90,7 @@ export function EngagementPicker({
 
       {creating ? (
         <form className="s1-setup-inline" onSubmit={submit}>
-          <label className="s1-setup-field">
+          <label className="s1-setup-field s1-setup-field--name">
             <span>New engagement name</span>
             <input
               value={name}
@@ -98,7 +98,7 @@ export function EngagementPicker({
                 setName(e.target.value);
                 setError(null);
               }}
-              placeholder="e.g. FY2024 GHG verification"
+              placeholder="e.g. FY2025 GHG verification"
               maxLength={200}
               autoFocus
             />
@@ -117,6 +117,12 @@ export function EngagementPicker({
             </span>
           ) : null}
         </form>
+      ) : null}
+      {creating ? (
+        <p className="s1-setup-hint">
+          The engagement name is your label for this piece of work. The client&apos;s company name goes under Details
+          once it is created.
+        </p>
       ) : null}
     </div>
   );

@@ -1,4 +1,5 @@
 import { api } from "../../../lib/api";
+import { count } from "../utils/count";
 import type {
   CheckOutcome,
   CoverageRule,
@@ -1083,7 +1084,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
     if (waiting.length || choices.length) {
       const parts = [
         category ? `Recalculated so far: ${category.lines.map((l) => l.key).join(", ")}` : "",
-        waiting.length ? `${waiting.length} record(s) awaiting review (${listed(waiting)})` : "",
+        waiting.length ? `${count(waiting.length, "record")} awaiting review (${listed(waiting)})` : "",
         choices.length ? choices.map((c) => c.message).join(" ") : "",
       ].filter(Boolean);
       rules.push({ ruleId, assertion, appliesTo, status: "inputs_missing", reason: parts.join(". ") });
@@ -1097,7 +1098,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
         assertion,
         appliesTo,
         status: "inputs_present",
-        reason: `${category.lines.map((l) => l.key).join(", ")} from ${docs} reviewed record(s).${vehicles}`,
+        reason: `${category.lines.map((l) => l.key).join(", ")} from ${count(docs, "reviewed record")}.${vehicles}`,
       });
     } else {
       const leftOut = (result.excluded ?? []).filter((e) => e.canonical_type_id === typeId);
@@ -1142,7 +1143,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
       status: "inputs_missing",
       reason: [
         regions.length ? `Grid region not chosen for ${listed(regions.map((r) => r.key ?? ""))}` : "",
-        elecWaiting.length ? `${elecWaiting.length} bill(s) awaiting review (${listed(elecWaiting)})` : "",
+        elecWaiting.length ? `${count(elecWaiting.length, "bill")} awaiting review (${listed(elecWaiting)})` : "",
       ].filter(Boolean).join(". "),
     });
   } else if (location) {
@@ -1213,7 +1214,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
       result.reporting_period.start && result.reporting_period.end
         ? `${result.reporting_period.start} to ${result.reporting_period.end}.` +
           (excluded.length
-            ? ` ${excluded.length} record(s) fall entirely outside it and are not counted: ${listed(excluded.map((e) => `${e.record} (${e.period})`))}.`
+            ? ` ${count(excluded.length, "record")} ${excluded.length === 1 ? "falls" : "fall"} entirely outside it and ${excluded.length === 1 ? "is" : "are"} not counted: ${listed(excluded.map((e) => `${e.record} (${e.period})`))}.`
             : "")
         : "Set the reporting period in Setup; until then bills are counted in full.",
   });
@@ -1231,7 +1232,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
   for (const item of result.not_recalculated) {
     rules.push({
       ruleId: `COV-NOT-${item.replace(/\W+/g, "-").toUpperCase()}`,
-      assertion: `${item} are recalculated`,
+      assertion: `Recalculating ${item}`,
       appliesTo: [item],
       status: "out_of_scope",
       reason: "Not built yet.",
@@ -1262,7 +1263,7 @@ function refrigerantRule(result: Recalculation): CoverageRule {
       status: "inputs_missing",
       reason: [
         category ? `Recalculated so far: ${category.lines.map((l) => l.key).join(", ")}` : "",
-        waiting.length ? `${waiting.length} record(s) awaiting review (${listed(waiting)})` : "",
+        waiting.length ? `${count(waiting.length, "record")} awaiting review (${listed(waiting)})` : "",
         gwps.length ? `GWP needed for ${listed(gwps.map((g) => g.key ?? ""))} (not in the EPA Hub)` : "",
         amounts.length ? amounts.map((a) => a.message).join(" ") : "",
       ].filter(Boolean).join(". ") + "." + hcfcNote,

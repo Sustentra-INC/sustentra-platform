@@ -104,6 +104,11 @@ DATA_POINTS: tuple[tuple[str, str, int, str], ...] = (
 DATA_POINT_KEYS = frozenset(key for key, *_ in DATA_POINTS)
 
 
+def _reviewed_count(n: int, noun: str) -> str:
+    """'1 reviewed bill', '2 reviewed bills': the source note on a measure."""
+    return f"{n} reviewed {noun}" + ("" if n == 1 else "s")
+
+
 def _catalogue() -> tuple[tuple[str, str, int, str, str, str, str], ...]:
     """Every reported data point, for Setup's in-scope list: (key, label, row, unit, layer,
     Required/Optional, how it is checked). Built from the roll-up's final outputs, so the two
@@ -378,6 +383,12 @@ def _proration(start: Any, end: Any, period: tuple[date | None, date | None]) ->
 # =========================================================================================
 # Service
 # =========================================================================================
+def _suggested(item: dict[str, Any]) -> bool:
+    """A value Claude read (flag ai_suggested): the workpaper says so and keeps it out of "values extracted"."""
+
+    return "ai_suggested" in (item.get("validation_flags") or [])
+
+
 class EngagementRecalculationService:
     def __init__(self, upload_service: Any, pipeline_service: Any, review_service: Any,
                  reference: EmissionFactorReference | None = None) -> None:
@@ -414,7 +425,8 @@ class EngagementRecalculationService:
                 "document_id": document_id, "file_name": document.get("file_name"),
                 "uploaded_at": document.get("uploaded_at"), "uploaded_by": document.get("uploaded_by"),
                 "canonical_type_id": latest.get("canonical_type_id"),
-                "candidate_count": len(latest.get("items") or []),
+                "candidate_count": sum(1 for i in latest.get("items") or [] if not _suggested(i)),
+                "suggested_count": sum(1 for i in latest.get("items") or [] if _suggested(i)),
             })
             decisions: dict[str, dict] = {}
             for decision in self._reviews.list_by_document(document_id):
@@ -426,7 +438,9 @@ class EngagementRecalculationService:
                     "file_name": document.get("file_name"), "record_index": item.get("record_index"),
                     "field": item.get("display_label") or item.get("field_name"),
                     "extracted": item.get("normalized_value"), "unit": item.get("unit"),
-                    "decision": review.get("decision") or "not reviewed",
+                    "decision": review.get("decision")
+                    or ("Suggested by Claude (not reviewed)" if _suggested(item) else "not reviewed"),
+                    "suggested_by_claude": _suggested(item),
                     "reviewed_value": review.get("reviewed_value"),
                     "reviewed_unit": review.get("reviewed_unit"),
                     "reviewer": review.get("reviewer_id"), "reviewed_at": review.get("reviewed_at"),
@@ -756,7 +770,7 @@ class EngagementRecalculationService:
         for entry in totals.values():
             self._ledger.contributions.extend(entry.get("ledger", []))
         fuels = [calc.StationaryFuel(fuel, calc.Measure(entry["quantity"], base,
-                                                        f"{len(entry['documents'])} reviewed record(s)"))
+                                                        _reviewed_count(len(entry["documents"]), "record")))
                  for (fuel, base), entry in totals.items()]
         result = calc.stationary_combustion(fuels, self.reference, gwp_set=inputs.gwp_set)
         for line, entry in zip(result.lines, totals.values()):
@@ -813,7 +827,7 @@ class EngagementRecalculationService:
         fuels = []
         indexed_groups: dict[tuple[str, str], list[tuple[int, calc.VehicleGroup]]] = {}
         for (fuel, base), entry in totals.items():
-            measure = calc.Measure(entry["quantity"], base, f"{len(entry['documents'])} reviewed record(s)")
+            measure = calc.Measure(entry["quantity"], base, _reviewed_count(len(entry["documents"]), "record"))
             indexed, group_flags = self._indexed_vehicle_groups(fuel, measure, inputs, needs_input)
             indexed_groups[(fuel, base)] = indexed
             entry["flags"].update(group_flags)
@@ -979,7 +993,7 @@ class EngagementRecalculationService:
             if bills is not None:
                 bills[key] = entry["documents"]
             out.append(calc.FacilityElectricity(key, calc.Measure(entry["mwh"], "MWh",
-                                                                  f"{len(entry['documents'])} reviewed bill(s)"),
+                                                                  _reviewed_count(len(entry["documents"]), "bill")),
                                                 region))
         return out
 
@@ -1059,7 +1073,7 @@ class EngagementRecalculationService:
         for (source, facility), entry in totals.items():
             bills[f"{source}:{facility}"] = entry["documents"]
             out.setdefault(source, []).append(calc.FacilityThermal(
-                facility, calc.Measure(entry["mmbtu"], "MMBtu", f"{len(entry['documents'])} reviewed bill(s)")))
+                facility, calc.Measure(entry["mmbtu"], "MMBtu", _reviewed_count(len(entry["documents"]), "bill"))))
         return out
 
     # =================================================================================
@@ -1173,7 +1187,7 @@ class EngagementRecalculationService:
             uses.append(calc.RefrigerantUse(
                 gas, entry["unit"], new_charged=terms["P_N"], new_capacity=terms["C_N"], serviced=terms["P_S"],
                 retired_capacity=terms["C_D"], recovered=terms["R_D"],
-                source=f"{len(entry['documents'])} reviewed record(s)", gwp_override=override,
+                source=_reviewed_count(len(entry["documents"]), "record"), gwp_override=override,
                 gwp_override_source="entered by the reviewer (safety data sheet)" if override is not None else None))
         if not uses:
             return None

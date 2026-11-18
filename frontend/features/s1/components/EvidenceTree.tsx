@@ -168,7 +168,10 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         </button>
         <span className="s1-et-doc__meta">
           {period ? <span>{period}</span> : null}
-          {doc.facility_name ? <span className="s1-chip">{doc.facility_name}</span> : null}
+          {/* Under a facility's own line the facility is already named by the line. */}
+          {doc.facility_name && !(lineMap.get(section)?.facility_id && lineMap.get(section)?.facility_id === doc.facility_id) ? (
+            <span className="s1-chip">{doc.facility_name}</span>
+          ) : null}
           {section === BLOCK_UNASSIGNED ? <span>{processingText(doc.processing_status)}</span> : null}
           {doc.flags.includes("unknown_line") ? <span>Its line was deleted</span> : null}
           {also.length ? <span>Also in {also.map(lineTitle).join(", ")}</span> : null}
@@ -443,9 +446,24 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 
 /* =============================== helpers =============================== */
 
+/** "97% accepted", not "97.1%": whole percents read faster in a tree. Never rounds up to 100. */
+function wholePercent(pct: number): number {
+  return pct >= 100 ? 100 : Math.floor(pct);
+}
+
 function defaultOpen(tree: EvidenceTreeData): string[] {
   const ids = ["b:supporting", ...tree.blocks.supporting.scopes.map((s) => `scope:${s.scope}`)];
   if (tree.blocks.unassigned.length) ids.push("b:unassigned");
+  // As in Claire's design, the first category with documents opens down to its calculation
+  // lines, so the reviewer sees the lines and their supporting-schedule buttons on arrival.
+  for (const scope of tree.blocks.supporting.scopes) {
+    const category = scope.categories.find((c) => (c.counts?.documents ?? 1) > 0);
+    if (!category) continue;
+    ids.push(`cat:${scope.scope}:${category.category}`);
+    const level2 = category.level2s.find((l) => (l.counts?.documents ?? 1) > 0);
+    if (level2) ids.push(`l2:${category.category}:${level2.level2}`);
+    break;
+  }
   return ids;
 }
 
@@ -514,15 +532,16 @@ function Fold({
               {counts.documents} {counts.documents === 1 ? "document" : "documents"}
             </span>
             <span className="s1-ws-gr__bar s1-et-bar-track" aria-hidden>
-              <span className="s1-ws-gr__seg s1-ws-gr__seg--resolved" style={{ flexGrow: counts.accepted }} />
-              <span className="s1-ws-gr__seg s1-ws-gr__seg--open" style={{ flexGrow: counts.to_review }} />
-              <span className="s1-ws-gr__seg s1-ws-gr__seg--blocking" style={{ flexGrow: counts.issues }} />
+              {/* A zero count draws nothing: a segment keeps a minimum width, so it would show as a stub. */}
+              {counts.accepted > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--resolved" style={{ flexGrow: counts.accepted }} /> : null}
+              {counts.to_review > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--open" style={{ flexGrow: counts.to_review }} /> : null}
+              {counts.issues > 0 ? <span className="s1-ws-gr__seg s1-ws-gr__seg--blocking" style={{ flexGrow: counts.issues }} /> : null}
             </span>
             <span
               className="s1-ws-gr__pct"
               title={`${counts.accepted} of ${counts.values} values accepted${counts.issues ? `, ${counts.issues} with issues` : ""}`}
             >
-              {counts.pct_accepted}% accepted
+              {wholePercent(counts.pct_accepted)}% accepted
             </span>
           </>
         ) : (

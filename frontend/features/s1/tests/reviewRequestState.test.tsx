@@ -53,13 +53,13 @@ function renderReview(documentId: string, valueId?: string) {
 
 describe("extraction review: a value added to requests", () => {
   it("says the request is not sent until it is, then that the client was asked", () => {
-    const view = renderReview("DOC-tualatin-elec-jan");
+    const view = renderReview("DOC-modesto-elec-nov");
     view.addToRequests();
 
     // Only the label changes: the value is in the "requested" state, its ask not yet sent.
     const ask = view.live.store!.asks[0];
     expect(ask.state).toBe("not_yet_sent");
-    const reading = view.live.values.filter((v) => v.documentId === "DOC-tualatin-elec-jan");
+    const reading = view.live.values.filter((v) => v.documentId === "DOC-modesto-elec-nov");
     expect(reading.map((v) => v.reviewState)).toEqual(["requested", "requested"]);
     expect(reading[0].record.at(-1)).toMatchObject({ actor: "Thanishque", action: "added to requests", askId: ask.id });
 
@@ -92,7 +92,7 @@ describe("extraction review: a value added to requests", () => {
   });
 
   it("says a request withdrawn before it was sent never reached the client", () => {
-    const view = renderReview("DOC-tualatin-elec-jan");
+    const view = renderReview("DOC-modesto-elec-nov");
     view.addToRequests();
     const ask = view.live.store!.asks[0];
 
@@ -112,7 +112,7 @@ describe("extraction review: a value added to requests", () => {
   });
 
   it("follows the latest request raised from the card", () => {
-    const view = renderReview("DOC-tualatin-elec-jan");
+    const view = renderReview("DOC-modesto-elec-nov");
     view.addToRequests();
     const first = view.live.store!.asks[0];
     act(() => {

@@ -13,7 +13,7 @@ Register an uploaded document for processing.
 
 ### POST /v1/engagements/{engagement_id}/documents/upload
 Upload a file and register it as a document (multipart: `file`, `document_role`, and optionally
-`evidence_id` and `document_type`). Answers with the document; what it carries depends on `S1_PROCESSING`:
+`evidence_id`, `document_type` and `batch_id`). Answers with the document; what it carries depends on `S1_PROCESSING`:
 
 - `S1_PROCESSING=inline` (the default): 200 with the document, `processing_status` `not_started`, and no
   `processing_run` key. The read is asked for separately (`POST /v1/documents/{document_id}/processing-runs`).
@@ -22,6 +22,10 @@ Upload a file and register it as a document (multipart: `file`, `document_role`,
 - If that run can't be queued, the upload still succeeds: 200 with the document as in inline mode. The server logs
   `upload_read_not_queued` on `sustentra.processing` with the document id, and the client asks for the read itself
   with `POST /v1/documents/{document_id}/processing-runs`.
+
+`batch_id` (optional) puts the document in a batch made with `POST .../document-batches`. A batch that does not
+exist, is another organization's, or belongs to another engagement is a 404 ("Batch not found."), and nothing is
+stored. The document then carries `batch_id`; without one it is `null`.
 
 Refusals are unchanged: 400, 404 (unknown evidence), 413 (file over the size limit) and 415 (a file type no reader opens).
 
@@ -40,13 +44,72 @@ Returns a ProcessingRun (`contracts/processing_run.schema.json`):
   finished run (`completed`, or `failed` with `error_code` and the user-facing `error`).
 - `S1_PROCESSING=queued`: the run is only queued; 202 with `status: "queued"`, and the
   document's `processing_status` becomes `queued`.
-- A document has one active (queued or in_progress) run at a time: asking again returns that
-  run (202); asking for a different type while it is active is a 409.
+- A document has one active (queued, in_progress or waiting_on_chunks) run at a time: asking
+  again returns that run (202); asking for a different type while it is active is a 409.
+- A large PDF in queued mode (more than `S1_CHUNK_THRESHOLD_PAGES`, 20) is read in page
+  chunks: its run is `waiting_on_chunks` while the chunks are read, then `queued` again for
+  assembly, then `completed`. See "Page chunks" below.
 - 404 for a document of another organization, 400 when its stored file is missing, 403 for
   provider_admin.
 
+Pipeline runs (`contracts/pipeline_run.schema.json`, as read from `/pipeline/evidence/{id}/latest-run`)
+have `canonical_type_source` of `classifier`, `content_check`, `override`, `ai` or `none`.
+`ai` means Claude named the type from pages 1-2 and the reviewer must confirm it. An optional
+`ai_routing` object (`canonical_type_id`, `quote`, `line`, `reason_code`, `page_number`,
+`used`, `disagrees`, `review_required`) is present only when Claude was asked and its quote was
+verified on the document; `used: false, disagrees: true` means it only disagreed with the
+rules (the type is unchanged). `warnings` may carry `ai_type_disagrees`, `ai_unavailable` and
+`ai_routing_ignored: <reason>`.
+
+Extraction candidates (`contracts/extraction_candidate.schema.json`) may carry the
+`validation_flags` `ai_suggested` (Claude read the value where the rules found nothing; confidence
+at most 0.6; the reviewer must accept or correct it, and the calculation does not read it until
+then), `ai_disagrees` (the rules read the value; Claude read another, in the optional
+`ai_alternative {value, unit, source_reference}`; the value is unchanged) and `ai_conflict`
+(Claude read two different values for the field; each is a candidate). `warnings` may carry
+`ai_extraction: ...` (counts, dropped reasons, cost), `ai_pages_skipped` and `ai_time_budget`.
+Extraction config rows may set `ai_only` (read by Claude only).
+
 ### GET /v1/processing-runs/{run_id}
 One processing run; 404 when it belongs to another organization.
+
+#### Page chunks
+A run that was split into page chunks carries (from `waiting_on_chunks` on, and after it ends)
+`chunks: {total, completed, failed, failed_pages}`. `failed_pages` is `[[from, to], ...]`, the
+1-based inclusive page ranges of chunks that failed after `S1_CHUNK_MAX_ATTEMPTS` (3) tries,
+plus one `[n, n]` for each page Textract could not read in a chunk that was kept on its last
+attempt (`failed` counts failed chunks only).
+A run that was not chunked has no `chunks` key. The same object is on each item of
+`GET /v1/engagements/{engagement_id}/processing-runs`.
+
+How the read ends for a chunked document:
+- Every chunk read: the run is `completed` and its pipeline run is read as for any document.
+- A chunk failed, or Textract could not read some pages: the run is still `completed` (the read
+  ended), but its pipeline run is `partial` with a warning starting `pages_unread:` that lists the page ranges, and the
+  values on those pages are missing. It never looks complete.
+- More than `S1_MAX_DOCUMENT_PAGES` (500) pages: nothing is read; the pipeline run is `partial`
+  with `halt_reason: {code: "document_too_long", message}` (the message says how many pages
+  and to split the file).
+
+### POST /v1/engagements/{engagement_id}/document-batches
+Writers only (`org_admin`, `org_member`), on an active engagement. Optional body `{"label"}`. Answers 201 with
+`{"batch_id", "engagement_id", "label", "created_at"}`. Files uploaded together carry the `batch_id`.
+
+### GET /v1/engagements/{engagement_id}/document-batches/{batch_id}
+How reading a batch stands. 404 for a batch that does not exist, is another organization's or another
+engagement's. Answers:
+
+- `items`: one per document of the batch, in upload order: `document_id`, `file_name`, `status`, `chunks`
+  (`{total, completed, failed, failed_pages}` for a PDF read in page chunks, else `null`), `canonical_type_id`
+  (`null` until classified), `halt_reason` (a sentence saying why it was not read in full, else `null`) and
+  `records_found`.
+- `status` is `not_started` (no read was ever asked for; `halt_reason` says to open it to start reading; it does not hold `complete` back), `queued` (no reader has it yet), `reading` (being read, or its chunks are, or it waits to be
+  assembled), `done`, `partial` (read, but its pipeline run is partial: pages that failed, or nothing to
+  review) or `failed`.
+- `halt_reason` is the pipeline's halt message; for a failed run without one, the run's own error; for a
+  partial run read in chunks, "Pages 11-20 could not be read."
+- `totals`: `{queued, reading, done, partial, failed, not_started}`.
+- `complete`: `true` when nothing is queued or reading. Clients poll (every 3 s) until it is `true`.
 
 ### GET /v1/engagements/{engagement_id}/processing-runs
 `{"engagement_id", "items"}`: each document's latest run in the engagement. The call to poll
@@ -81,8 +144,11 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   - Values by kind: text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
-  - `ai`: `{enabled, reason_code, reason}`: `reason_code` is `off`, `not_configured`, `cap_reached`, `no_documents`, `not_built` or
-    `null` and `reason` a sentence; until suggestions are built it is `not_built`. Later also provider, model, month spend and cap.
+  - `ai`: `{enabled, reason_code, reason, provider, model, month_spend_usd, cap_usd}`. `enabled` is true when
+    Claude can be asked now; otherwise `reason_code` is `off` (AI_SUGGESTIONS_ENABLED is false), `not_configured`
+    (no Claude client: no key or Bedrock region), `cap_reached` (this organization's spend this UTC month is at
+    or over AI_MONTHLY_CAP_USD) or `no_documents` (no document whose latest type is a client-prepared summary
+    type), and `reason` is the sentence to show; both are `null` when enabled. Checked in that order.
 - `POST .../{field_id}/accept` takes the suggestion's value, or the value already set. `POST .../{field_id}/edit`
   `{value}`. `POST .../{field_id}/reject` `{reason}` (required, at most 500 characters). `POST
   .../{field_id}/revert` returns to pending. Each answers the updated record. Accept and reject only work from
@@ -93,6 +159,37 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   state does not allow is 409 and bad input 422, both with a sentence in `detail`; an unknown field is 404.
   Bodies forbid unknown fields; who acted and when come from the session. Each action writes one
   `methodology_decision` audit event with the field id, action and status only.
+- `POST .../prefill` (s1_writer, open engagement, no body) asks Claude to propose values from the engagement's
+  client-prepared summary documents (latest type in `calculation_lines.SUMMARY_TYPES`; at most 5 documents,
+  1,500 lines and 150,000 characters, taken in document order). One synchronous call. Answers
+  `{suggested, dropped: {reason: count}, kept_reviewer_decision, documents_read: [{document_id, file_name,
+  truncated}], cost_usd, model}`.
+  - Claude only suggests: each kept suggestion is written to the field's record `suggestion` (the shape above;
+    `source_reference` is the parser's reference for the quoted line; a quote over 1,000 characters is stored cut
+    with `quote_truncated: true`, after it was verified whole) and nothing else changes. Fields the
+    reviewer has decided (accepted, edited, rejected) are left alone and counted in `kept_reviewer_decision`;
+    a pending field's older suggestion is replaced. An entity or factor source Claude finds becomes a new
+    record under a server-made id with `user_added: false`, unless a row with the same name (entity) or the
+    same database and edition (factor) is already on the page or earlier in the same reply. Documents the
+    reviewer set aside (withdrawn, duplicate, superseded) are not read.
+  - A suggestion is kept only if its quote (at least 8 characters) is printed on the cited line of the cited
+    document and, for percentages and a factor edition with digits, the number is printed in the quote; for
+    the consolidation approach and the GWP set the quote must also name the choice (for example "operational
+    control", "AR5" or "Fifth Assessment"). A too-short quote counts as `quote_not_on_document`. `dropped` keys are
+    exactly: `empty_value`, `unknown_line`, `quote_not_on_document`, `ambiguous_quote`, `value_not_in_quote`
+    (from the locator), `unknown_document`, `invalid_value` (failed the field's validation) and `unknown_field`.
+  - 409 with a sentence in `detail`: switched off, not configured, over the monthly limit (the `ai.reason`
+    sentences), no documents ("Upload the company's GHG inventory report, boundary statement or methodology
+    document first."), a prefill already running for the organization, documents unreadable, or Claude refused or its answer was cut short or unusable (nothing
+    is kept). 502 when Claude could not be reached, or when its answer could not be saved (the call is still
+    recorded in the ledger; nothing was kept).
+  - The call is made with no database transaction open; the ledger row is committed first, in its own
+    transaction, then the suggestions and the audit event in another. The cap is exact within one app
+    process (one prefill per organization at a time); across processes it can be passed by at most one
+    in-flight call per process.
+  - Every call that was made is one row in `ai_usage` (outcome, tokens, cost, request id), refused or invalid
+    ones included; a refused call before the request is not. One `methodology_prefill` audit event with outcome,
+    counts and cost only.
 
 ### GET /v1/engagements/{engagement_id}/evidence
 List evidence entities produced under the engagement.
@@ -184,16 +281,23 @@ for another org's engagement).
 
 ```
 { line: CalculationLine, reporting_period: {start, end},
+  calculated: bool,                                  // true when the recalculation has this line in calculation_lines
   coverage: [{month: "YYYY-MM", status: "counted" | "counted_in_part" | "not_reviewed" | "no_document",
-              quantity, unit, document_ids, flags: []}],   // flags: "unconverted"
+              quantity, unit, document_ids, flags: [],     // flags: "unconverted"
+              waiting_on: [string]}],                      // field labels the recalculation still awaits
   identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter
   values: [{service_period_start, service_period_end, days, quantity, unit, document_id, file_name,
-            page, candidate_id, decided_by, decided_at, decision}],
+            page, candidate_id, decided_by, decided_at, decision, waiting_on: [string]}],
   history: [{at, text}],                                             // newest first
   // schedule v2 (Claire's supporting-schedule spec); the keys above are unchanged
   rows: [{record_key, record_index, accepted,        // one row per record (document + period + meter)
           decision,                                  // "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited"
-                                                     // (accepted is true for accepted and edited)
+                                                     // | "awaiting_other_fields" (quantity reviewed, but the
+                                                     // recalculation still awaits other fields of the record)
+                                                     // (accepted is true for accepted and edited, and only when the
+                                                     // record is not in the recalculation's awaiting_review)
+          waiting_on: [string],                      // labels of those fields ("Fuel type"); [] otherwise
+          rejected_fields: [string],                 // labels of other required fields the reviewer rejected
                                                      // record_key is opaque: use it as an id, never parse it
           date: {start, end, days, label},           // label: "Service period" | "Transaction date" | "Service date"
           activity_quantity: {value, unit},          // the extracted value; the reviewed value once accepted
@@ -216,6 +320,13 @@ no extractor produces them yet, so today a line shows only Date and Activity qua
 group the line's documents by identifier value; `not_found` holds documents without the identifier.
 Facility is the Setup facility, and `matched_by` says how: "Chosen by the reviewer", "Facility name in
 Setup" or "Service address in Setup". `identifiers` (one entry per value) is kept for older clients.
+
+A row counts (`accepted` true) only when its record is not in the recalculation's `awaiting_review`. When
+the quantity is reviewed but another required field is not (for example `fuel_type`), the row has
+`decision: "awaiting_other_fields"`, `accepted: false`, and `waiting_on` lists the field labels. `calculated`
+is false when the line has no entry in the recalculation's `calculation_lines`; the page then shows
+"Not calculated yet" instead of a link to the calculation. Months follow the same rule: a value awaiting
+other fields does not count, and the month lists its labels in `waiting_on`.
 
 A month is `counted` when accepted values cover all its days, `counted_in_part` when they cover
 some, `not_reviewed` when a document covers it but no accepted value does, and `no_document`

@@ -23,6 +23,11 @@ How an attempt ends (``Outcome``):
 | the pipeline refused the input          | failed: invalid_request               | no         |
 | the document or its file is gone        | failed: document_missing/file_missing | no         |
 | anything else raised (store, database)  | queued again after 30s, then 120s     | yes        |
+| a large PDF was split into page chunks  | waiting_on_chunks, until they end     | -          |
+
+A large PDF (queued mode only, see ``document_chunk_service``) is not read in one attempt: its
+run is parked while the chunks are read as jobs of their own, and the run is claimed again once
+they are done, to assemble and carry on. That second attempt is the one recorded above.
 
 A run that keeps failing that way fails with ``worker_error`` after its last attempt; inline,
 there is no second attempt.
@@ -50,6 +55,19 @@ WORKER_ERROR_MESSAGE = "Reading stopped because of a problem on our side. Try ag
 FILE_MISSING_MESSAGE = "The stored file is missing. Upload it again."
 DOCUMENT_MISSING_MESSAGE = "This document no longer exists. Upload it again."
 STILL_READING_MESSAGE = "This document is still being read. Choose its type again once reading finishes."
+
+
+def stored_file(storage: Any, document: dict[str, Any], org_id: str) -> Any:
+    """The document's stored file when it exists and the organization owns it, else ``None``."""
+
+    storage_uri = str(document.get("storage_uri") or "")
+    if not storage.is_owned_by(storage_uri, org_id):
+        return None
+    try:
+        path = storage.resolve_storage_uri(storage_uri)
+    except ValueError:
+        return None
+    return path if path.is_file() else None
 
 
 def inline_worker_id() -> str:
@@ -88,7 +106,7 @@ class RunParams:
 class Outcome:
     """How one attempt at a run ended."""
 
-    status: Literal["completed", "failed", "retry"]
+    status: Literal["completed", "failed", "retry", "waiting"]
     pipeline_run_id: str | None = None
     error_code: str | None = None
     error: str | None = None  # the message the user sees
@@ -119,7 +137,9 @@ class DocumentProcessingService:
         storage_service: Any,
         *,
         worker_id: str | None = None,
+        chunking: Any | None = None,
     ) -> None:
+        self._chunking = chunking  # a DocumentChunkService, in the reader only
         self._runs = runs
         self._uploads = upload_service
         self._pipeline = pipeline_service
@@ -188,6 +208,15 @@ class DocumentProcessingService:
 
         params = RunParams.of(run)
         try:
+            chunked: dict[str, Any] = {}
+            if self._chunking is not None:
+                step = self._chunking.step(run, self._worker_id, document, path)
+                if step.kind == "waiting":
+                    return Outcome("waiting")
+                if step.kind == "too_long":
+                    chunked = {"halt_override": step.halt}
+                elif step.kind == "assembled":
+                    chunked = {"prebuilt_parser_output": step.parser_output, "unread_pages": step.unread_pages}
             result = self._pipeline.process_local_document(
                 local_file_path=str(path),
                 engagement_id=str(document["engagement_id"]),
@@ -201,6 +230,7 @@ class DocumentProcessingService:
                 include_deprecated=params.include_deprecated,
                 persist_run=params.persist_run,
                 org_id=run.org_id,
+                **chunked,
             )
         except ValueError as exc:
             return Outcome("failed", error_code="invalid_request", error=str(exc), detail=str(exc))
@@ -212,14 +242,7 @@ class DocumentProcessingService:
         return _from_pipeline_result(result)
 
     def _stored_file(self, document: dict[str, Any], org_id: str) -> Any:
-        storage_uri = str(document.get("storage_uri") or "")
-        if not self._storage.is_owned_by(storage_uri, org_id):
-            return None
-        try:
-            path = self._storage.resolve_storage_uri(storage_uri)
-        except ValueError:
-            return None
-        return path if path.is_file() else None
+        return stored_file(self._storage, document, org_id)
 
     def _earlier_result(self, run: ProcessingRun, document: dict[str, Any]) -> Outcome | None:
         evidence_id = document.get("evidence_id")
@@ -241,6 +264,8 @@ class DocumentProcessingService:
 
         worker = self._worker_id
         finished: ProcessingRun | None
+        if outcome.status == "waiting":  # parked on its chunks: already recorded, the document keeps reading
+            return self._runs.get(run.run_id) or run
         if outcome.status == "completed":
             finished = self._runs.finalize_completed(run, worker, str(outcome.pipeline_run_id))
             status = "completed"
