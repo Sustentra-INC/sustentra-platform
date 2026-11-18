@@ -935,3 +935,63 @@ def test_the_tree_names_the_creator_and_copes_with_an_unknown_one() -> None:
     assert by_label["Propane at KC"]["created_at"] == NOW
     assert by_label["Diesel"]["created_by_name"] is None and by_label["Kerosene"]["created_by_name"] is None
     assert "created_by_name" not in by_label["Natural Gas, Kansas City Plant"]  # a system line has no creator
+
+
+# --- D3: compacting a document's chain of moves -------------------------------------------------
+def test_compacting_a_chain_keeps_the_filing_and_a_thousand_moves_stay_short() -> None:
+    import random
+
+    places = ["block:unassigned", "supporting:unassigned", "s1:stationary:a:f1", "s1:stationary:b:f1",
+              "s1:stationary:c:f1", "s1:stationary:d:f1"]
+    known = {p for p in places if p.startswith("s1:")}
+    for seed in range(300):
+        rng = random.Random(seed)
+        default = [cl.Slot("s1:stationary:a:f1", {0, 1}), cl.Slot("s1:stationary:b:f1", {2}),
+                   cl.Slot("s1:stationary:gone:f1", {3})]  # the last is on a line that no longer exists
+        chain: list[dict] = []
+        for _ in range(rng.randint(1, 12)):
+            chain.append({"from": rng.choice(places), "to": rng.choice(places)})
+        short = cl.compact_placements(chain)
+        if short is None:
+            continue
+        # Moves out of "supporting:unassigned" also match lines that no longer exist, so a caller checks
+        # the short chain against the real slots; whenever it passes, the two agree.
+        long_slots = cl.apply_placements(default, chain, known)
+        short_slots = cl.apply_placements(default, short, known)
+        plain = all(m["from"] != cl.SUPPORTING_UNASSIGNED and m["to"] != cl.SUPPORTING_UNASSIGNED for m in chain)
+        if plain:
+            assert cl.same_filing(long_slots, short_slots, known), (seed, chain, short)
+        assert len(short) <= len(places)
+    ping_pong = [{"from": "s1:stationary:a:f1", "to": "s1:stationary:b:f1"},
+                 {"from": "s1:stationary:b:f1", "to": "s1:stationary:a:f1"}] * 500
+    assert len(cl.compact_placements(ping_pong) or ping_pong) <= 2
+
+
+def test_compacting_handles_junk_and_chains_that_end_where_they_began() -> None:
+    assert cl.compact_placements("nope") == [] and cl.compact_placements(None) == []
+    junk = ["x", {"from": 1, "to": "b"}, {"from": "a", "to": "a"}, {"to": "b"}]
+    assert cl.compact_placements(junk) == []
+    assert cl.compact_placements([{"from": "a", "to": "b"}, {"from": "b", "to": "a"}]) == [{"from": "b", "to": "a"}]
+    assert cl.compact_placements([{"from": "a", "to": "b"}, {"from": "b", "to": "c"}]) == [
+        {"from": "a", "to": "c"}, {"from": "b", "to": "c"}]
+    # a move out of a place that was emptied is a no-op, as in apply_placements
+    assert cl.compact_placements([{"from": "a", "to": "b"}, {"from": "a", "to": "c"}]) == [{"from": "a", "to": "b"}]
+
+
+def test_a_chain_that_cannot_be_shortened_is_capped_with_a_plain_sentence() -> None:
+    from types import SimpleNamespace
+
+    from fastapi import HTTPException
+
+    from backend.app.api import evidence_actions
+
+    doc = SimpleNamespace(default_slots=[cl.Slot("s1:stationary:a:f1", {0})])
+    known = {"s1:stationary:a:f1"}
+    chain = [{"from": f"s1:stationary:x{i}:f1", "to": f"s1:stationary:y{i}:f1"} for i in range(cl.MAX_PLACEMENT_MOVES)]
+    with pytest.raises(HTTPException) as caught:
+        evidence_actions._compact(chain, {"from": "s1:stationary:p:f1", "to": "s1:stationary:q:f1"}, doc, known)  # type: ignore[arg-type]
+    assert caught.value.status_code == 409 and "moved too many times" in caught.value.detail
+    # moves that file the document nowhere new are dropped, so a long history of them still saves
+    dead = [{"from": "s1:stationary:x:f1", "to": "s1:stationary:y:f1"}] * 300
+    assert evidence_actions._compact(dead, {"from": "s1:stationary:a:f1", "to": "block:unassigned"},  # type: ignore[arg-type]
+                                     doc, known) == [{"from": "s1:stationary:a:f1", "to": "block:unassigned"}]

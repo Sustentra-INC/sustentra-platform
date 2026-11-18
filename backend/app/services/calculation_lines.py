@@ -228,6 +228,12 @@ def _normalize_entry(entry: Any) -> dict[str, Any]:
     return normal
 
 
+def normalize_line(entry: Any) -> dict[str, Any]:
+    """One line entry checked and completed (``normalize_evidence_lines`` for a single line)."""
+
+    return _normalize_entry(entry)
+
+
 def normalize_evidence_lines(value: Any) -> list[dict[str, Any]]:
     """settings["evidenceLines"] checked and completed; ValueError (a message for the user) otherwise.
 
@@ -484,6 +490,58 @@ def apply_placements(slots: list[Slot], overrides: Any, known_lines: set[str] | 
         else:
             out = [*stay, Slot(target, records)]
     return out
+
+
+MAX_PLACEMENT_MOVES = 200  # a document's saved chain of moves never grows past this
+
+
+def compact_placements(moves: Any) -> list[dict[str, str]] | None:
+    """The same moves, fewer of them: a chain of ``{"from", "to"}`` reduced to one move per place the
+    document started a move from. ``None`` when the chain cannot be put in a safe order (a cycle).
+
+    Each place a move names as ``from`` is an origin; the table tracks where its records are now.
+    A later move from X takes every origin now at X (and X itself, if it was never moved), so
+    ``A->B`` then ``B->C`` becomes ``A->C`` and ``B->C``, and ``A->B`` then ``B->A`` becomes ``B->A``.
+    The result is ordered so a move out of a place runs before the move that fills it. Junk entries
+    (the apply step ignores them) and moves that end where they began are dropped.
+
+    The caller must check the result against the document's real slots (``apply_placements`` of the
+    short and the long chain agree) before saving it: a move out of "supporting:unassigned" also
+    matches placements on lines that no longer exist, which this table cannot see.
+    """
+
+    now: dict[str, str] = {}
+    for move in moves if isinstance(moves, list) else []:
+        if not isinstance(move, dict):
+            continue
+        source, target = move.get("from"), move.get("to")
+        if not isinstance(source, str) or not isinstance(target, str) or source == target:
+            continue
+        moving = [origin for origin, place in now.items() if place == source]
+        if source not in now:
+            moving.append(source)
+        for origin in moving:
+            now[origin] = target
+    pending = [(origin, place) for origin, place in now.items() if origin != place]
+    ordered: list[dict[str, str]] = []
+    while pending:
+        ready = next((p for p in pending if not any(q is not p and q[0] == p[1] for q in pending)), None)
+        if ready is None:
+            return None
+        pending.remove(ready)
+        ordered.append({"from": ready[0], "to": ready[1]})
+    return ordered
+
+
+def same_filing(a: list[Slot], b: list[Slot], known_lines: set[str]) -> bool:
+    """Whether two sets of slots file the same records in the same places (after unknown lines go to
+    unassigned), ignoring order."""
+
+    def shape(slots: list[Slot]) -> dict[str, tuple[frozenset[int], tuple[str, ...]]]:
+        return {s.target: (frozenset(s.records), tuple(sorted(s.flags)))
+                for s in merge_slots([resolve_target(slot, known_lines) for slot in slots])}
+
+    return shape(a) == shape(b)
 
 
 def resolve_target(slot: Slot, known_lines: set[str]) -> Slot:

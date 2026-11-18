@@ -71,6 +71,7 @@ class DocState:
     records: list[ReviewedRecord]
     slots: list[cl.Slot] = field(default_factory=list)
     facility_ids: list[str | None] = field(default_factory=list)  # the Setup facility of each record
+    default_slots: list[cl.Slot] = field(default_factory=list)  # where it is filed before the reviewer's moves
 
 
 @dataclass
@@ -147,6 +148,7 @@ class EvidenceTreeService:
             decisions, known)
         for doc in docs:
             doc.slots = filed[doc.document_id]
+            doc.default_slots = cl.document_slots(doc.canonical_type_id, [placements[id(r)] for r in doc.records])
             doc.facility_ids = [cl.facility_anchor_id(f) if (f := placements[id(r)].facility) else None
                                 for r in doc.records]
         period = (to_date(engagement.get("reporting_period_start")), to_date(engagement.get("reporting_period_end")))

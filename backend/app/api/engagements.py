@@ -301,6 +301,8 @@ async def update_engagement(
 ) -> EngagementResponse:
     current = await _visible(db, engagement_id, user)
     changes = payload.model_dump(exclude_unset=True)
+    if "settings" in changes:  # lines are also changed by the evidence actions: take turns, read what they saved
+        current = await engagement_service.lock_engagement(db, engagement_id) or current
     start = changes.get("reporting_period_start", current["reporting_period_start"])
     end = changes.get("reporting_period_end", current["reporting_period_end"])
     try:

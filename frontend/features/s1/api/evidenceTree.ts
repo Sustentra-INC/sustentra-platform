@@ -238,6 +238,77 @@ export function lineTitle(line: CalculationLine): string {
   return line.label.toLowerCase().includes(line.level2_label.toLowerCase()) ? line.label : `${line.level2_label} · ${line.label}`;
 }
 
+/** What a line action answers: the engagement's reviewer lines as they now stand (the client keeps
+ *  them, so a later Setup save sends the same list), plus the line or the count the action concerns. */
+export interface LineAnswer {
+  evidenceLines: EvidenceLineSetting[];
+  line?: EvidenceLineSetting;
+  documents_moved?: number;
+}
+
+const lines = (engagementId: string) => `/engagements/${encodeURIComponent(engagementId)}/evidence-lines`;
+
+/** Adds a line. The server builds its key and records who added it; 422 says what is wrong with it. */
+export function createEvidenceLine(engagementId: string, entry: EvidenceLineSetting): Promise<LineAnswer> {
+  const { key: _key, scope: _scope, level2: _level2, created_by: _by, created_at: _at, ...fields } = entry;
+  void [_key, _scope, _level2, _by, _at];
+  return api<LineAnswer>(lines(engagementId), { method: "POST", body: fields });
+}
+
+export function renameEvidenceLine(engagementId: string, lineKey: string, label: string): Promise<LineAnswer> {
+  return api<LineAnswer>(`${lines(engagementId)}/${encodeURIComponent(lineKey)}`, { method: "PATCH", body: { label } });
+}
+
+/** Deletes a line; its documents move to Unassigned supporting evidence (the count comes back). */
+export function deleteEvidenceLine(engagementId: string, lineKey: string): Promise<LineAnswer> {
+  return api<LineAnswer>(`${lines(engagementId)}/${encodeURIComponent(lineKey)}`, { method: "DELETE" });
+}
+
+/** Moves one placement of a document. 409 when another tab moved it first. Answers the saved payload. */
+export function moveEvidenceDocument(
+  engagementId: string,
+  documentId: string,
+  move: Placement
+): Promise<{ document_id: string; payload: DocumentDecision }> {
+  return api(`/engagements/${encodeURIComponent(engagementId)}/documents/${encodeURIComponent(documentId)}/placements`, {
+    method: "POST",
+    body: move,
+  });
+}
+
+/** One change recorded by the server on the Evidence page. */
+export interface EvidenceActivityItem {
+  id: string;
+  event_type: "evidence_line_created" | "evidence_line_renamed" | "evidence_line_deleted" | "evidence_document_moved";
+  at: string;
+  actor_name: string | null;
+  line_key?: string;
+  label?: string;
+  level2_label?: string;
+  old_label?: string;
+  new_label?: string;
+  documents_moved?: number;
+  document_id?: string;
+  from_label?: string;
+  to_label?: string;
+}
+
+/** Evidence changes on the engagement, newest first, 100 at most (paged by `next_cursor`). */
+export async function getEvidenceActivity(engagementId: string): Promise<EvidenceActivityItem[]> {
+  const out: EvidenceActivityItem[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < 5; page += 1) {
+    const query: string = cursor ? `?limit=100&cursor=${encodeURIComponent(cursor)}` : "?limit=100";
+    const answer: { items: EvidenceActivityItem[]; next_cursor: string | null } = await api(
+      `/engagements/${encodeURIComponent(engagementId)}/evidence-activity${query}`
+    );
+    out.push(...answer.items);
+    cursor = answer.next_cursor;
+    if (!cursor) break;
+  }
+  return out;
+}
+
 /**
  * The document's saved decision with one more placement move. The workpaper item is replaced as
  * a whole, so every other key (facility, disposition, relationships, notes…) is carried over.

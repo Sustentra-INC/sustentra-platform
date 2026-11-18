@@ -4,6 +4,7 @@ import {
   createBulkAuditIntents,
   createCorrectionAuditIntents,
   createAuditIntent,
+  setAuditActor,
 } from "../utils/auditIntent";
 
 describe("audit intents", () => {
@@ -45,7 +46,11 @@ describe("audit intents", () => {
     });
 
     expect(entry.entryId).toMatch(/^session-/);
-    expect(entry.actor.name).toBe("C. Yang");
+    expect(entry.actor.name).toBe("You");
+    setAuditActor({ id: "jpark", name: "Jane Park" });
+    expect(createAuditIntent({ action: "accept_value", documentId: "DOC-0001" }).actor).toMatchObject({ id: "jpark", name: "Jane Park" });
+    setAuditActor({ id: "", name: "  " });
+    expect(createAuditIntent({ action: "accept_value", documentId: "DOC-0001" }).actor.name).toBe("You");
     expect(entry.persistence).toBe("intent_only");
     expect(entry.timestamp).toBeTruthy();
   });

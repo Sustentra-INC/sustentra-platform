@@ -155,8 +155,9 @@ function Harness(over: Partial<EvidenceTreeProps> = {}) {
       onOpenExtraction={vi.fn()}
       onOpenSchedule={vi.fn()}
       onMovePlacement={vi.fn().mockResolvedValue(undefined)}
-      onSaveLines={vi.fn().mockResolvedValue(undefined)}
-      onAudit={vi.fn()}
+      onCreateLine={vi.fn().mockResolvedValue(undefined)}
+      onRenameLine={vi.fn().mockResolvedValue(undefined)}
+      onDeleteLine={vi.fn().mockResolvedValue(0)}
       writesEnabled
       {...over}
     />
@@ -228,8 +229,7 @@ describe("the Evidence tree", () => {
 
   it("asks before a move that changes a calculation, then saves it once", async () => {
     const onMovePlacement = vi.fn().mockResolvedValue(undefined);
-    const onAudit = vi.fn();
-    render(<Harness onMovePlacement={onMovePlacement} onAudit={onAudit} />);
+    render(<Harness onMovePlacement={onMovePlacement} />);
     await expandAll();
     const row = screen.getByRole("button", { name: "feb.pdf" }).closest(".s1-et-doc") as HTMLElement;
     fireEvent.click(within(row).getByRole("button", { name: "Actions for feb.pdf" }));
@@ -241,7 +241,6 @@ describe("the Evidence tree", () => {
     expect(onMovePlacement).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
     await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("feb", { from: KENT.key, to: PLANT.key }));
-    expect(onAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "move_placement", documentId: "feb" }));
   });
 
   it("moves between blocks without asking", async () => {
@@ -256,25 +255,24 @@ describe("the Evidence tree", () => {
     await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("scan", { from: "block:unassigned", to: "supporting:unassigned" }));
   });
 
-  it("adds a calculation line to the engagement's evidenceLines", async () => {
-    const onSaveLines = vi.fn().mockResolvedValue(undefined);
-    render(<Harness onSaveLines={onSaveLines} />);
+  it("adds a calculation line through the server action", async () => {
+    const onCreateLine = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onCreateLine={onCreateLine} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "New calculation line in Natural gas" }));
     const dialog = screen.getByRole("dialog", { name: "New calculation line in Natural gas" });
     fireEvent.change(within(dialog).getByLabelText("Facility"), { target: { value: "FAC-NW03" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Add line" }));
     await waitFor(() =>
-      expect(onSaveLines).toHaveBeenCalledWith([
-        ...ENGAGEMENT.evidenceLines!,
-        { scope: "s1", category: "stationary", level2_label: "Natural gas", anchor_kind: "facility", anchor_id: "FAC-NW03", label: "North works" },
-      ])
+      expect(onCreateLine).toHaveBeenCalledWith({
+        scope: "s1", category: "stationary", level2_label: "Natural gas", anchor_kind: "facility", anchor_id: "FAC-NW03", label: "North works",
+      })
     );
   });
 
   it("shows the server's message when a line is refused", async () => {
-    const onSaveLines = vi.fn().mockRejectedValue(new ApiError(422, "The system already creates this line.", null, null));
-    render(<Harness onSaveLines={onSaveLines} />);
+    const onCreateLine = vi.fn().mockRejectedValue(new ApiError(422, "The system already creates this line.", null, null));
+    render(<Harness onCreateLine={onCreateLine} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "New calculation line in Natural gas" }));
     const dialog = screen.getByRole("dialog", { name: "New calculation line in Natural gas" });
@@ -284,31 +282,29 @@ describe("the Evidence tree", () => {
   });
 
   it("deletes only a reviewer's own line, and says its documents move to Unassigned", async () => {
-    const onSaveLines = vi.fn().mockResolvedValue(undefined);
-    const onAudit = vi.fn();
-    render(<Harness onSaveLines={onSaveLines} onAudit={onAudit} />);
+    const onDeleteLine = vi.fn().mockResolvedValue(2);
+    render(<Harness onDeleteLine={onDeleteLine} />);
     await expandAll();
     // The system line has no menu; the reviewer's line has Rename and Delete.
     expect(screen.queryByRole("button", { name: "Actions for Natural gas · Kent" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Actions for Natural gas · Plant 2" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveTextContent("Its documents move to Unassigned supporting evidence");
+    expect(dialog).toHaveTextContent(/Its \d+ documents? moves? to Unassigned supporting evidence|No documents are on this line/);
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete line" }));
-    await waitFor(() => expect(onSaveLines).toHaveBeenCalledWith([]));
-    expect(onAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "delete_line" }));
+    await waitFor(() => expect(onDeleteLine).toHaveBeenCalledWith(expect.objectContaining({ key: PLANT.key })));
   });
 
   it("renames a reviewer's own line", async () => {
-    const onSaveLines = vi.fn().mockResolvedValue(undefined);
-    render(<Harness onSaveLines={onSaveLines} />);
+    const onRenameLine = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onRenameLine={onRenameLine} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "Actions for Natural gas · Plant 2" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Line name"), { target: { value: "Plant 2 boilers" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
-    await waitFor(() => expect(onSaveLines).toHaveBeenCalledWith([{ ...ENGAGEMENT.evidenceLines![0], label: "Plant 2 boilers" }]));
+    await waitFor(() => expect(onRenameLine).toHaveBeenCalledWith(expect.objectContaining({ key: PLANT.key }), "Plant 2 boilers"));
   });
 
   it("filters by facility through the server, which recounts, and opens the matches", async () => {
@@ -374,8 +370,8 @@ describe("the Evidence tree", () => {
       lines: [MOBILE],
     };
     mocks.byPath = { [TREE_PATH]: tree };
-    const onSaveLines = vi.fn().mockResolvedValue(undefined);
-    render(<Harness onSaveLines={onSaveLines} />);
+    const onCreateLine = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onCreateLine={onCreateLine} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "New fuel" }));
     const dialog = screen.getByRole("dialog", { name: "New fuel in Mobile combustion" });
@@ -383,10 +379,9 @@ describe("the Evidence tree", () => {
     fireEvent.change(within(dialog).getByLabelText("Vehicle group"), { target: { value: "vg-fleet-a" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Add fuel" }));
     await waitFor(() =>
-      expect(onSaveLines).toHaveBeenCalledWith([
-        ...ENGAGEMENT.evidenceLines!,
-        { scope: "s1", category: "mobile", level2_label: "Biodiesel", anchor_kind: "vehicle_group", anchor_id: "vg-fleet-a", label: "Fleet A (diesel)" },
-      ])
+      expect(onCreateLine).toHaveBeenCalledWith({
+        scope: "s1", category: "mobile", level2_label: "Biodiesel", anchor_kind: "vehicle_group", anchor_id: "vg-fleet-a", label: "Fleet A (diesel)",
+      })
     );
   });
 
@@ -403,7 +398,7 @@ describe("the Evidence tree", () => {
   it("hands an ended session to the app instead of showing a message", async () => {
     const ended = new ApiError(401, "Session ended.", null, null);
     const onError = vi.fn().mockReturnValue(true);
-    render(<Harness onError={onError} onSaveLines={vi.fn().mockRejectedValue(ended)} />);
+    render(<Harness onError={onError} onDeleteLine={vi.fn().mockRejectedValue(ended)} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "Actions for Natural gas · Plant 2" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));

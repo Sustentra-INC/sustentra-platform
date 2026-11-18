@@ -304,6 +304,65 @@ numbers is refused: "Use letters or numbers in the name". Lines already stored a
 facility removed from Setup later never blocks a save, and the Evidence tree still shows that line with
 its documents.
 
+### Evidence actions: lines and placements, each with an audit event
+Line and placement changes are server actions. Each changes one thing, in one transaction, under the
+engagement's row lock (so two simultaneous requests run one after the other and neither loses the
+other's change), and writes one audit event with the actor from the session. Writers only
+(`org_admin`, `org_member`): a provider admin gets 403, an archived engagement 409, another org's
+engagement 404. Bodies reject unknown fields (422). Audit rows hold ids and labels, never a document's
+text or file name.
+
+| Request | Body | Answer |
+|---|---|---|
+| `POST /v1/engagements/{id}/evidence-lines` | `{category, level2_label, anchor_kind, anchor_id?, label, scope?}` | 201 `{line, evidenceLines}` |
+| `PATCH /v1/engagements/{id}/evidence-lines/{line_key}` | `{label}` | 200 `{line, evidenceLines}` |
+| `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, evidenceLines}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload}` |
+
+* **Create** checks the same as saving the setting (anchor on a Setup facility, vehicle group or the
+  company; letters or numbers in the name; at most 200 lines; not a line the system creates), 422 with a
+  sentence otherwise; a line that already exists is 409. The server builds the key and stamps
+  `created_by` and `created_at`; a client cannot send them.
+* **Rename** changes the label only (the key and the creator stay). A line the system creates, or one
+  that does not exist, is 404. Renaming to the same label changes and logs nothing.
+* **Delete** removes a line the reviewers added. Each document filed on it gets an explicit move to
+  `supporting:unassigned` saved first, so adding the same line again later does not pull the documents
+  back, and a document also on another line loses only this placement. All of it is one transaction: the
+  documents move and the line goes, or nothing changes. `documents_moved` is how many documents moved.
+* **Move** needs `from` to be a place the document is in now (a line key, `block:summary`,
+  `block:unassigned` or `supporting:unassigned`, as the row's `placement_from`); otherwise 409 "This
+  document was already moved from there", nothing is saved and nothing is logged. `to` must be a line that
+  exists or one of the three fixed places (422 otherwise); moving to where it is, 422; a document that is
+  not on the Evidence page, 404. The saved `placements` chain is compacted: one effective move per place
+  a move started from, kept only when it files the document exactly as the long chain does, so 1,000 moves
+  do not grow the payload (history lives in the audit log). A chain that still passes 200 moves is 409. Other
+  keys of the document's payload (`facilityId`, `disposition`, notes) are kept.
+* The old paths keep working: PATCH `/v1/engagements/{id}` still accepts `settings.evidenceLines` (and takes
+  the same row lock when it changes settings), and PUT of a `document` workpaper item still replaces its
+  payload. A client that uses the actions must keep its own copy of `evidenceLines` and of the document's
+  payload from the answers, because a settings save sends the whole list.
+
+Audit events (`target_type` "engagement", `target_id` the engagement):
+
+| `event_type` | `metadata` |
+|---|---|
+| `evidence_line_created` | `line_key, label, level2_label, category` |
+| `evidence_line_renamed` | `line_key, old_label, new_label` |
+| `evidence_line_deleted` | `line_key, label, documents_moved` |
+| `evidence_document_moved` | `document_id, from, to, from_label, to_label` |
+
+### GET /v1/engagements/{engagement_id}/evidence-activity[?limit=50&cursor=]
+The four events above for this engagement, newest first, 1 to 100 per page (`next_cursor` is null on the
+last page; a cursor that does not decode is 400). Any reader of the engagement (`org_admin`,
+`org_member`, `provider_admin`); another org's engagement is 404.
+
+```
+{ items: [{id, event_type, at, actor_name,   // the person's name, else their login; null when unknown
+           line_key?, label?, level2_label?, old_label?, new_label?, documents_moved?,
+           document_id?, from?, to?, from_label?, to_label?}],
+  next_cursor: string | null }
+```
+
 ### GET /v1/engagements/{engagement_id}/calculation-lines/{line_key}/schedule
 One calculation line's schedule (reader; 404 with a plain message for an unknown line key, and
 for another org's engagement).

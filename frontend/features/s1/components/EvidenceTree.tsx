@@ -8,7 +8,6 @@ import {
   BLOCK_UNASSIGNED,
   SUPPORTING_UNASSIGNED,
   getEvidenceTree,
-  isSameLine,
   lineTitle,
   type CalculationFamily,
   type CalculationLine,
@@ -24,7 +23,6 @@ import {
 } from "../api/evidenceTree";
 import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig } from "../types";
-import { createAuditIntent, type AuditIntentAction, type SessionAuditEntry } from "../utils/auditIntent";
 import { addedByText, formatPeriod } from "../utils/formatPeriod";
 import { ActionMenu } from "./ActionMenu";
 import { ContainerStateSurface } from "./ContainerStateSurface";
@@ -51,9 +49,11 @@ export interface EvidenceTreeProps {
   onOpenSetup?: () => void;
   /** Saves one move of one placement; rejects with the reason when it did not save. */
   onMovePlacement: (documentId: string, move: Placement) => Promise<void>;
-  /** Saves the reviewer-added lines (engagement setting `evidenceLines`); rejects when not saved. */
-  onSaveLines: (lines: EvidenceLineSetting[]) => Promise<void>;
-  onAudit: (intent: SessionAuditEntry) => void;
+  /** The three line actions run on the server, each with its own audit event; they reject with the reason. */
+  onCreateLine: (entry: EvidenceLineSetting) => Promise<void>;
+  onRenameLine: (line: CalculationLine, label: string) => Promise<void>;
+  /** Resolves with how many documents moved to Unassigned supporting evidence. */
+  onDeleteLine: (line: CalculationLine) => Promise<number>;
   /** Gives the app a chance to handle an ended session; true when it did. */
   onError?: (error: unknown) => boolean;
   writesEnabled: boolean;
@@ -64,7 +64,7 @@ type Dialog =
   | { kind: "newLine"; scope: string; category: string; level2: TreeLevel2 }
   | { kind: "newFuel"; scope: string; category: TreeCategory }
   | { kind: "rename"; line: CalculationLine }
-  | { kind: "delete"; line: CalculationLine };
+  | { kind: "delete"; line: CalculationLine; documents: number };
 
 type OnError = ((error: unknown) => boolean) | undefined;
 
@@ -151,12 +151,6 @@ export function EvidenceTree(props: EvidenceTreeProps) {
   function changeFacility(next: string | null) {
     openAllOnLoad.current = next !== null;
     props.onFacilityChange(next);
-  }
-
-  function audit(action: AuditIntentAction, what: { documentId?: string; lineLabel?: string; from: string | null; to: string | null }) {
-    props.onAudit(
-      createAuditIntent({ action, documentId: what.documentId ?? "", lineLabel: what.lineLabel, oldValue: what.from, newValue: what.to })
-    );
   }
 
   function placeLabel(key: string): string {
@@ -249,7 +243,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
                 onOpenChange={(o) => setMenuId(o ? id : null)}
                 entries={[
                   { label: "Rename", action: () => setDialog({ kind: "rename", line }) },
-                  { label: "Delete", action: () => setDialog({ kind: "delete", line }) },
+                  { label: "Delete", action: () => setDialog({ kind: "delete", line, documents: node.counts.documents }) },
                 ]}
               />
             ) : null}
@@ -428,7 +422,6 @@ export function EvidenceTree(props: EvidenceTreeProps) {
               throw new Error(STALE_MOVE);
             }
             await props.onMovePlacement(dialog.doc.document_id, { from: dialog.from, to });
-            audit("move_placement", { documentId: dialog.doc.document_id, from: placeLabel(dialog.from), to: placeLabel(to) });
             done();
           }}
         />
@@ -442,9 +435,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           onOpenSetup={props.onOpenSetup}
           onError={onError}
           onCancel={() => setDialog(null)}
-          onCreate={async (entry, isFuel) => {
-            await props.onSaveLines([...(engagement.evidenceLines ?? []), entry]);
-            audit(isFuel ? "create_fuel" : "create_line", { lineLabel: `${entry.level2_label} · ${entry.label}`, from: null, to: entry.label });
+          onCreate={async (entry) => {
+            await props.onCreateLine(entry);
             done();
           }}
         />
@@ -459,9 +451,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           onError={onError}
           onCancel={() => setDialog(null)}
           onSubmit={async (name) => {
-            const line = dialog.line;
-            await props.onSaveLines((engagement.evidenceLines ?? []).map((l) => (isSameLine(l, line) ? { ...l, label: name } : l)));
-            audit("rename_line", { lineLabel: lineTitle(line), from: line.label, to: name });
+            await props.onRenameLine(dialog.line, name);
             done();
           }}
         />
@@ -470,14 +460,18 @@ export function EvidenceTree(props: EvidenceTreeProps) {
       {dialog?.kind === "delete" ? (
         <ConfirmDialog
           title={`Delete ${lineTitle(dialog.line)}?`}
-          body="Its documents move to Unassigned supporting evidence. You can move them to another line from there."
+          body={
+            dialog.documents === 1
+              ? "Its 1 document moves to Unassigned supporting evidence. You can move it to another line from there."
+              : dialog.documents > 1
+                ? `Its ${dialog.documents} documents move to Unassigned supporting evidence. You can move them to another line from there.`
+                : "No documents are on this line."
+          }
           action="Delete line"
           onError={onError}
           onCancel={() => setDialog(null)}
           onConfirm={async () => {
-            const line = dialog.line;
-            await props.onSaveLines((engagement.evidenceLines ?? []).filter((l) => !isSameLine(l, line)));
-            audit("delete_line", { lineLabel: lineTitle(line), from: line.label, to: null });
+            await props.onDeleteLine(dialog.line);
             done();
           }}
         />
