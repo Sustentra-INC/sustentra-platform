@@ -38,7 +38,7 @@ export function DashboardScreen({
   const hasEngagement = Boolean(engagement.clientName);
   const phases = buildPhases(hasEngagement, figures);
   const coverage = figures.coverage;
-  const covered = coverage ? coverage.present + coverage.missing : 0;
+  const covered = coverage?.inScope ?? 0;
   // Data points once an evidence check is in play; until then, the documents read.
   const byDataPoint = coverage !== null && covered > 0;
   const reviewable = figures.valuesReviewed + figures.valuesToReview;
@@ -86,11 +86,11 @@ export function DashboardScreen({
       <div className="s1-dash__meters">
         <Meter
           label="Evidence obtained"
-          done={byDataPoint ? coverage.present : figures.documentsReadable}
+          done={byDataPoint ? coverage.obtained : figures.documentsReadable}
           total={byDataPoint ? covered : figures.documents}
           detail={
             byDataPoint
-              ? `${coverage.present} of ${covered} in-scope data points have their evidence`
+              ? `${coverage.obtained} of ${covered} in-scope data points have their evidence`
               : figures.documents
                 ? `${figures.documentsReadable} of ${figures.documents} documents read`
                 : "Upload documents to begin"
@@ -190,6 +190,8 @@ function buildPhases(hasEngagement: boolean, f: DashboardFigures): Phase[] {
   const hasEvidence = f.documents > 0;
   const reviewable = f.valuesReviewed + f.valuesToReview;
   const missing = f.coverage?.missing ?? 0;
+  const waiting = f.coverage?.awaitingReview ?? 0;
+  const choices = f.coverage?.needsChoice ?? 0;
 
   const intake: PhaseStatus = !hasEvidence
     ? hasEngagement
@@ -200,11 +202,13 @@ function buildPhases(hasEngagement: boolean, f: DashboardFigures): Phase[] {
       : "done";
   const review: PhaseStatus = !reviewable ? "pending" : f.valuesToReview ? "active" : "done";
   const assessment: PhaseStatus =
-    f.dataPointsCalculated === 0 && !f.coverage?.present
+    f.dataPointsCalculated === 0 && !f.coverage?.obtained
       ? "pending"
       : f.dataPointsCalculated > 0 &&
           f.dataPointsExamined >= f.dataPointsCalculated &&
           missing === 0 &&
+          waiting === 0 &&
+          choices === 0 &&
           !f.reportedTotalsMissing
         ? "done"
         : review === "pending"
@@ -234,8 +238,12 @@ function buildPhases(hasEngagement: boolean, f: DashboardFigures): Phase[] {
       caption: f.dataPointsCalculated
         ? `${f.dataPointsExamined} of ${f.dataPointsCalculated} results examined`
         : missing
-          ? `${missing} data points missing evidence`
-          : "Not started",
+          ? `${missing} ${missing === 1 ? "data point" : "data points"} missing evidence`
+          : choices
+            ? `${choices} ${choices === 1 ? "data point needs" : "data points need"} a choice`
+            : waiting
+              ? `${waiting} ${waiting === 1 ? "data point" : "data points"} waiting for review`
+              : "Not started",
       nav: "results",
     },
     { key: "opinion", label: "Opinion", status: "pending", caption: "Statement not issued", nav: "output" },
@@ -315,6 +323,24 @@ function attentionItems(f: DashboardFigures, hasEngagement: boolean): Attention[
       text: plural(f.valuesToReview, "value waiting for review", "values waiting for review"),
       action: "Review",
       nav: "evidence",
+    },
+    {
+      key: "dp-review",
+      tone: "open",
+      icon: <ListChecks />,
+      n: f.coverage?.awaitingReview ?? 0,
+      text: plural(f.coverage?.awaitingReview ?? 0, "data point waiting for review", "data points waiting for review"),
+      action: "Review",
+      nav: "evidence",
+    },
+    {
+      key: "dp-choice",
+      tone: "open",
+      icon: <PencilLine />,
+      n: f.coverage?.needsChoice ?? 0,
+      text: plural(f.coverage?.needsChoice ?? 0, "data point needs a choice", "data points need a choice"),
+      action: "Results",
+      nav: "results",
     },
     {
       key: "missing",
