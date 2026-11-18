@@ -24,8 +24,9 @@ from backend.app.api.s1_access import s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
 from backend.app.services import engagement_service
-from backend.app.services.calculation_lines import normalize_evidence_lines
+from backend.app.services.calculation_lines import check_new_lines, normalize_evidence_lines
 from backend.app.services.engagement_recalculation_service import (
+    setup_facilities,
     validate_facilities,
     validate_out_of_scope,
     validate_recalculation_settings,
@@ -193,6 +194,23 @@ async def require_open_engagement(
     return row
 
 
+def _check_line_anchors(settings: dict[str, Any] | None, current: dict[str, Any] | None) -> None:
+    """New reviewer lines must sit on a facility or vehicle group in the same settings (422 otherwise)."""
+
+    lines = (settings or {}).get("evidenceLines")
+    if not lines:
+        return
+    stored = {str(line.get("key")) for line in ((current or {}).get("settings") or {}).get("evidenceLines") or []
+              if isinstance(line, dict)}
+    recalculation = (settings or {}).get("recalculation")
+    groups = recalculation.get("vehicle_groups") if isinstance(recalculation, dict) else None
+    try:
+        check_new_lines(lines, stored_keys=stored, facilities=setup_facilities(settings),
+                        vehicle_groups=[g for g in groups or [] if isinstance(g, dict)])
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 async def _reject_system_lines(db: AsyncSession, current: dict[str, Any], settings: dict[str, Any] | None,
                                user: CurrentUser) -> None:
     """settings["evidenceLines"] holds the reviewers' own lines only: a line the system already
@@ -237,6 +255,7 @@ async def create_engagement(
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> EngagementResponse:
     assert user.org_id is not None  # s1_writer excludes provider_admin
+    _check_line_anchors(payload.settings, None)
     row = await engagement_service.create_engagement(
         db,
         org_id=user.org_id,
@@ -278,6 +297,7 @@ async def update_engagement(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not changes:
         return EngagementResponse(**current)
+    _check_line_anchors(changes.get("settings"), current)
     await _reject_system_lines(db, current, changes.get("settings"), user)
     row = await engagement_service.update_engagement(db, current["id"], changes)
     event = "engagement_archived" if changes.get("status") == "archived" else "engagement_updated"

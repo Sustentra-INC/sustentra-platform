@@ -265,6 +265,46 @@ function userLine(entry: EvidenceLineSetting): ModelLine | null {
   return makeLine(entry.category, entry.level2 ?? entry.level2_label, entry.level2_label, entry.anchor_kind, anchorId, entry.label, true);
 }
 
+/**
+ * The demo's copy of the server's check on new reviewer lines (`check_new_lines` in
+ * `backend/app/services/calculation_lines.py`): a line the save adds must sit on a Setup facility,
+ * a Setup vehicle group, or the company (contractual only). Lines already saved are not re-checked.
+ * Returns the sentence the server would answer with, or null when the save is fine.
+ */
+export function newLineProblem(engagement: EngagementConfig, lines: EvidenceLineSetting[]): string | null {
+  const keyOf = (e: EvidenceLineSetting) =>
+    lineKey(CATEGORY_SCOPE[e.category] ?? e.scope ?? "", e.category, e.level2 ?? e.level2_label, e.anchor_kind, e.anchor_id);
+  const stored = new Set((engagement.evidenceLines ?? []).map(keyOf));
+  const added = lines.filter((e) => !stored.has(keyOf(e)));
+  if (!added.length) return null;
+  const facilities = engagement.facilities.filter((f) => f.name);
+  if (!facilities.length) return "Add a facility in Setup first, then add the line.";
+  const facilityIds = new Set(facilities.map((f) => f.facilityId || `name-${slug(f.name)}`));
+  const groupIds = new Set(vehicleGroupAnchors(engagement).map((g) => g.anchor_id));
+  for (const e of added) {
+    if (!/[A-Za-z0-9]/.test(e.level2_label) && !e.level2) return "Use letters or numbers in the name of the fuel or energy type.";
+    if ((e.anchor_kind === "company") !== (e.category === "contractual")) {
+      return "Contractual instruments apply to the whole company, and no other line does.";
+    }
+    if (e.anchor_kind === "facility" && !facilityIds.has(e.anchor_id)) {
+      return "That facility isn't in Setup. Pick a facility from the list, or add it in Setup first.";
+    }
+    if (e.anchor_kind === "vehicle_group" && !groupIds.has(e.anchor_id)) {
+      return "That vehicle group isn't in Setup. Pick one from the list, or add it in Setup first.";
+    }
+  }
+  return null;
+}
+
+function vehicleGroupAnchors(engagement: EngagementConfig): { anchor_id: string; label: string; fuel: string }[] {
+  return (engagement.recalculation?.vehicle_groups ?? [DEFAULT_VEHICLE_GROUP]).map((g, i, all) => {
+    const label = g.label ?? `${g.vehicle_type} (${g.factor_fuel_type})`;
+    const base = `vg-${slug(label)}`;
+    const n = all.slice(0, i).filter((o) => `vg-${slug(o.label ?? `${o.vehicle_type} (${o.factor_fuel_type})`)}` === base).length;
+    return { anchor_id: n ? `${base}-${n + 1}` : base, label, fuel: g.fuel };
+  });
+}
+
 function applyMoves(slots: Slot[], moves: { from: string; to: string }[] | undefined, known: Set<string>): Slot[] {
   const effective = (s: Slot) => (FIXED.has(s.target) || known.has(s.target) ? s.target : SUPPORTING_UNASSIGNED);
   let out = slots.map((s) => ({ ...s, flags: [...s.flags] }));
@@ -284,12 +324,7 @@ export function buildModel(): Model {
   const facilities = engagement.facilities;
   const { records, setAside } = buildRecords(facilities);
   const decisions = demoDecisions();
-  const groups = (engagement.recalculation?.vehicle_groups ?? [DEFAULT_VEHICLE_GROUP]).map((g, i, all) => {
-    const label = g.label ?? `${g.vehicle_type} (${g.factor_fuel_type})`;
-    const base = `vg-${slug(label)}`;
-    const n = all.slice(0, i).filter((o) => `vg-${slug(o.label ?? `${o.vehicle_type} (${o.factor_fuel_type})`)}` === base).length;
-    return { anchor_id: n ? `${base}-${n + 1}` : base, label, fuel: g.fuel };
-  });
+  const groups = vehicleGroupAnchors(engagement);
 
   // The system lines: one per facility for each level 2 that has a record, one per vehicle group for a mobile fuel.
   const system = new Map<string, ModelLine>();

@@ -713,3 +713,119 @@ def test_a_stored_chain_through_a_line_that_was_since_deleted_still_lands_on_the
                                                                           "facility", "fac-kc01")])],
                               {"D": {"placements": moves}}, {GAS_KC, GAS_STL})
     assert [s.target for s in filed["D"]] == [GAS_STL]
+
+
+# --- D1: the server validates line anchors ----------------------------------------------------
+def _check(lines: list[dict], *, stored: set[str] | None = None, facilities: list[dict] | None = None,
+           groups: list[dict] | None = None) -> None:
+    cl.check_new_lines(cl.normalize_evidence_lines(lines), stored_keys=stored or set(),
+                       facilities=[KC, STL] if facilities is None else facilities, vehicle_groups=groups or [])
+
+
+def _refused(lines: list[dict], match: str, **kwargs: Any) -> None:
+    with pytest.raises(ValueError, match=match):
+        _check(lines, **kwargs)
+
+
+def test_a_line_on_a_setup_facility_is_accepted_and_an_unknown_facility_is_refused() -> None:
+    _check([_line()])
+    _refused([_line(anchor_id="fac-gone")], "facility isn't in Setup")
+
+
+def test_a_facility_without_a_facility_id_is_anchored_by_its_name() -> None:
+    nameless = {"name": "Müller Käserei – Zürich"}
+    anchor = cl.facility_anchor_id(nameless)
+    assert anchor == "name-m-ller-k-serei-z-rich"
+    _check([_line(anchor_id=anchor)], facilities=[nameless])
+    _refused([_line(anchor_id="name-other")], "facility isn't in Setup", facilities=[nameless])
+
+
+def test_an_engagement_with_no_facilities_refuses_every_new_line() -> None:
+    _refused([_line()], "Add a facility in Setup first", facilities=[])
+    _refused([_line(category="contractual", level2_label="PPAs", anchor_kind="company", anchor_id=None)],
+             "Add a facility in Setup first", facilities=[])
+    _check([_line()], stored={"s1:stationary:propane:fac-kc01"}, facilities=[])  # already stored: left alone
+
+
+def test_a_vehicle_group_line_follows_the_groups_in_the_same_settings() -> None:
+    groups = [{"vehicle_type": "Truck", "factor_fuel_type": "Diesel", "label": "Delivery vans", "fuel": "Diesel Fuel"}]
+    mobile = {"category": "mobile", "level2_label": "Diesel Fuel", "anchor_kind": "vehicle_group", "label": "Vans"}
+    _check([{**mobile, "anchor_id": "vg-delivery-vans"}], groups=groups)
+    _refused([{**mobile, "anchor_id": "vg-delivery-vans"}], "vehicle group isn't in Setup")  # no groups
+    # the group is renamed in Setup: the old anchor is refused as new, the stored line is left alone
+    renamed = [{**groups[0], "label": "Courier vans"}]
+    _refused([{**mobile, "anchor_id": "vg-delivery-vans"}], "vehicle group isn't in Setup", groups=renamed)
+    _check([{**mobile, "anchor_id": "vg-delivery-vans"}], groups=renamed,
+           stored={"s1:mobile:diesel-fuel:vg-delivery-vans"})
+    twins = [groups[0], dict(groups[0])]
+    _check([{**mobile, "anchor_id": "vg-delivery-vans-2"}], groups=twins)
+
+
+def test_company_anchor_is_for_contractual_lines_only() -> None:
+    _check([_line(category="contractual", level2_label="PPAs", anchor_kind="company", anchor_id=None)])
+    _refused([_line(anchor_kind="company", anchor_id=None)], "whole company")
+    _refused([_line(category="contractual", level2_label="PPAs", anchor_id="fac-kc01")], "whole company")
+
+
+@pytest.mark.parametrize("label", ["燃料", "日本語の燃料", "—", "Ω", "!!!", "💥"])
+def test_a_name_with_no_letters_or_numbers_is_refused(label: str) -> None:
+    _refused([_line(level2_label=label)], "Use letters or numbers")
+
+
+def test_a_literal_none_and_a_120_character_non_ascii_name_with_letters_are_fine() -> None:
+    _check([_line(level2_label="None")])
+    long = "Ölé" * 40
+    assert len(long) == 120
+    _check([_line(level2_label=long, label=long)])
+
+
+def test_the_200_line_cap_still_holds_and_a_full_valid_list_passes() -> None:
+    many = [_line(level2_label=f"Fuel {i}") for i in range(200)]
+    _check(many)
+    with pytest.raises(ValueError, match="at most 200"):
+        _check([*many, _line(level2_label="Fuel 200")])
+
+
+def _saved(**changes: Any) -> dict:
+    return cl.normalize_evidence_lines([_line(**changes)])[0]
+
+
+def test_the_engagement_routes_check_anchors_against_the_same_settings() -> None:
+    from fastapi import HTTPException
+
+    from backend.app.api import engagements as engagements_api
+
+    engagements_api._check_line_anchors({"facilities": [KC]}, {"settings": {}})
+    engagements_api._check_line_anchors({"facilities": [KC], "evidenceLines": [_saved()]}, {"settings": {}})
+    for bad in ({"facilities": [KC], "evidenceLines": [_saved(anchor_id="fac-nope")]},
+                {"evidenceLines": [_saved()]}):
+        with pytest.raises(HTTPException) as caught:
+            engagements_api._check_line_anchors(bad, {"settings": {}})
+        assert caught.value.status_code == 422 and caught.value.detail
+    # vehicle groups are read from the same settings' recalculation block
+    group = {"vehicle_type": "Truck", "factor_fuel_type": "Diesel", "label": "Vans", "fuel": "Diesel Fuel"}
+    mobile = cl.normalize_evidence_lines([{"category": "mobile", "level2_label": "Diesel Fuel",
+                                           "anchor_kind": "vehicle_group", "anchor_id": "vg-vans", "label": "Vans"}])
+    engagements_api._check_line_anchors({"facilities": [KC], "recalculation": {"vehicle_groups": [group]},
+                                         "evidenceLines": mobile}, None)
+    with pytest.raises(HTTPException):
+        engagements_api._check_line_anchors({"facilities": [KC], "evidenceLines": mobile}, None)
+
+
+def test_a_save_that_keeps_a_removed_facilitys_line_is_not_refused() -> None:
+    from backend.app.api import engagements as engagements_api
+
+    stored_line = [_saved()]
+    current = {"settings": {"facilities": [KC], "evidenceLines": stored_line}}
+    # Setup now holds only St Louis, and the Kansas City line is stored already: other settings still save.
+    engagements_api._check_line_anchors({"facilities": [STL], "evidenceLines": stored_line}, current)
+
+
+def test_a_stored_line_on_a_removed_facility_does_not_break_the_tree() -> None:
+    mine = [_saved(anchor_id="fac-gone", label="Propane at the old plant")]
+    store = FakeStore()
+    store.add_document("G1", "CT-S1-FUELQTY", [_gas()])
+    orphan = "s1:stationary:propane:fac-gone"  # fac-gone is not a Setup facility
+    tree = _tree(store, {"G1": {"placements": [{"from": GAS_KC, "to": orphan}]}}, evidenceLines=mine)
+    # the read path is unchanged: the line stays visible with its document, and nothing fails
+    assert _lines_with_docs(tree) == {orphan: ["G1"]}

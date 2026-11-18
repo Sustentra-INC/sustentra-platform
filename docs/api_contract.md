@@ -275,6 +275,16 @@ list). The server fills in `key` (and `level2`, the slug of `level2_label`); a `
 given must equal `line_key(...)`. A line the system already creates is refused with 422 (the
 system's lines are not stored here and cannot be deleted).
 
+**Anchors are checked (422, a plain sentence in `detail`).** On POST and PATCH of an engagement, a
+line the request adds (a key not already stored) must sit on a facility of the same `settings.facilities`
+(`facilityId`, or `name-<slug>` when it has none), a vehicle group of the same
+`settings.recalculation.vehicle_groups` (`vg-<label slug>`), or the company (`company`, contractual
+instruments only, and contractual lines are company-wide only). An engagement with no facilities
+refuses every new line: "Add a facility in Setup first". A fuel or energy name with no letters or
+numbers is refused: "Use letters or numbers in the name". Lines already stored are not re-checked, so a
+facility removed from Setup later never blocks a save, and the Evidence tree still shows that line with
+its documents.
+
 ### GET /v1/engagements/{engagement_id}/calculation-lines/{line_key}/schedule
 One calculation line's schedule (reader; 404 with a plain message for an unknown line key, and
 for another org's engagement).
