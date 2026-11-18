@@ -31,12 +31,32 @@ export interface CatalogField {
   userAdded: boolean;
 }
 
+export interface MethodologySourceReference {
+  page_number?: number | null;
+  sheet_name?: string | null;
+  cell_or_range?: string | null;
+  text_snippet?: string | null;
+  [key: string]: unknown;
+}
+
+/** The plain location shown after the file name: "page 4", "Sheet1, B12", or "" when unknown. */
+export function sourceLocation(ref: MethodologySuggestion["source_reference"] | undefined): string {
+  if (typeof ref === "string") return ref.trim();
+  if (!ref || typeof ref !== "object") return "";
+  const sheet = typeof ref.sheet_name === "string" ? ref.sheet_name.trim() : "";
+  const cell = typeof ref.cell_or_range === "string" ? ref.cell_or_range.trim() : "";
+  if (sheet || cell) return [sheet, cell].filter(Boolean).join(", ");
+  const page = ref.page_number;
+  return typeof page === "number" && Number.isInteger(page) && page > 0 ? `page ${page}` : "";
+}
+
 export interface MethodologySuggestion {
   value: MethodologyValue;
   quote: string;
   document_id: string;
   file_name: string;
-  source_reference: string | null;
+  /** An object from the backend; an older record may hold a plain string. */
+  source_reference: MethodologySourceReference | string | null;
   /** True when the stored quote was cut at 1,000 characters (it was verified whole). */
   quote_truncated?: boolean;
   origin: string;
