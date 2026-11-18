@@ -73,6 +73,18 @@ describe("demo backend: evidence tree, schedule and recalculation", () => {
     expect(s.activity_quantity_note).toBe("Activity quantity: fuel quantity combusted");
   });
 
+  it("words the activity note per category and never fails on a category without one", async () => {
+    const tree = await demoApi<EvidenceTree>(`/engagements/${ID}/evidence-tree`);
+    const notes = new Map<string, string | null>();
+    for (const l of tree.lines) {
+      const s = await demoApi<LineSchedule>(`/engagements/${ID}/calculation-lines/${enc(l.key)}/schedule`);
+      notes.set(l.category, s.activity_quantity_note ?? null);
+    }
+    expect(notes.get("stationary")).toBe("Activity quantity: fuel quantity combusted");
+    expect(notes.get("purchased_energy")).toMatch(/^Activity quantity: (electricity quantity purchased \/ consumed|energy quantity purchased)$/);
+    if (notes.has("fugitive")) expect(notes.get("fugitive")).toBeNull();
+  });
+
   it("keeps line keys and quantities the same across tree, schedule and recalculation", async () => {
     const tree = await demoApi<EvidenceTree>(`/engagements/${ID}/evidence-tree`);
     const recalc = await demoApi<Recalculation>(`/engagements/${ID}/recalculation`);
