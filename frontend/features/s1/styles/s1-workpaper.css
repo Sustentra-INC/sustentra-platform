@@ -3629,7 +3629,7 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 button.s1-sch-month { cursor: pointer; }
 button.s1-sch-month:hover { border-color: var(--accent); }
 button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.s1-sch-month__name { font-size: var(--text-md); font-weight: var(--weight-strong); }
+.s1-sch-month__name { font-size: var(--text-md); font-weight: var(--weight-regular); }
 .s1-sch-month__status, .s1-sch-month__qty, .s1-sch-month__waiting { font-size: var(--text-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .s1-sch-month--resolved { background: var(--state-resolved-bg); border-color: var(--state-resolved-line); }
 .s1-sch-month--active { background: var(--state-active-bg); border-color: var(--state-active-line); }
@@ -3663,6 +3663,8 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-sch-row--pending td { color: var(--ink-3); }
 .s1-sch-row__flag { font-size: var(--text-sm); }
 .s1-sch-values { max-height: 22rem; overflow: auto; }
+/* Every value in the table is body size: numbers carry .s1-num for alignment, not for a smaller size. */
+.s1-sch-values td.s1-num { font-size: var(--text-md); }
 .s1-sch-values thead th { position: sticky; top: 0; background: var(--sf-card); z-index: 1; }
 .s1-sch-history summary { cursor: pointer; font-weight: var(--weight-strong); }
 .s1-sch-history ul { display: flex; flex-direction: column; gap: var(--sp-2); margin: var(--sp-3) 0 0; padding: 0; list-style: none; }
@@ -3699,7 +3701,7 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-sch-months { grid-template-columns: repeat(6, minmax(0, 1fr)); grid-auto-rows: 1fr; }
 @container (max-width: 34rem) { .s1-sch-months { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .s1-sch-month { box-sizing: border-box; padding: var(--sp-2); }
-.s1-sch-month__name { font-size: var(--text-md); font-weight: var(--weight-strong); line-height: var(--leading-tight); }
+.s1-sch-month__name { font-size: var(--text-md); font-weight: var(--weight-regular); line-height: var(--leading-tight); }
 .s1-sch-month__status, .s1-sch-month__qty, .s1-sch-month__waiting { font-size: var(--text-sm); font-weight: var(--weight-regular); color: var(--ink-2); line-height: var(--leading-tight); }
 .s1-sch-month--na { color: var(--ink); }
 /* The legend: a dot and its words on one centre line. */
