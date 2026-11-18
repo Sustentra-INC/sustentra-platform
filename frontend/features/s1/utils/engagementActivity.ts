@@ -75,13 +75,13 @@ export function engagementActivity(input: {
     }
   }
   for (const intent of input.intents ?? []) {
-    const name = filename.get(intent.documentId) ?? intent.documentId;
+    const name = intent.lineLabel ?? filename.get(intent.documentId) ?? intent.documentId;
     const change = intent.newValue ? `: ${intent.newValue}` : "";
     log.push({
       at: intent.timestamp,
       who: intent.actor.name,
       what: `${intent.action.replaceAll("_", " ")} on ${name}${change}`,
-      documentId: intent.documentId,
+      documentId: intent.documentId || undefined,
       kind: "document",
     });
   }

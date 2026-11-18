@@ -27,6 +27,7 @@ def test_ai_is_off_by_default() -> None:
     assert settings.ai_provider == "anthropic"
     assert settings.anthropic_api_key is None
     assert settings.ai_model == "claude-sonnet-5-5"
+    assert settings.ai_bedrock_model_id is None
     assert settings.ai_effort == "low"
     assert settings.ai_monthly_cap_usd == 25.0
 
@@ -35,9 +36,11 @@ def test_ai_settings_come_from_the_environment(monkeypatch: pytest.MonkeyPatch) 
     monkeypatch.setenv("AI_SUGGESTIONS_ENABLED", "true")
     monkeypatch.setenv("AI_PROVIDER", "bedrock")
     monkeypatch.setenv("AI_MODEL", " claude-opus-5-5 ")
+    monkeypatch.setenv("AI_BEDROCK_MODEL_ID", " anthropic.claude-opus-5-5 ")
     monkeypatch.setenv("AI_EFFORT", "medium")
     monkeypatch.setenv("AI_MONTHLY_CAP_USD", "40")
     settings = Settings()
+    assert settings.ai_bedrock_model_id == "anthropic.claude-opus-5-5"
     assert settings.ai_suggestions_enabled is True
     assert settings.ai_provider == "bedrock"
     assert settings.ai_model == "claude-opus-5-5"
@@ -74,3 +77,8 @@ def test_show_settings_masks_the_key(monkeypatch: pytest.MonkeyPatch, capsys: py
     printed = capsys.readouterr().out
     assert TEST_KEY not in printed
     assert json.loads(printed)["anthropic_api_key"] == "**********"
+
+
+def test_blank_bedrock_model_id_is_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("AI_BEDROCK_MODEL_ID", "  ")
+    assert Settings().ai_bedrock_model_id is None

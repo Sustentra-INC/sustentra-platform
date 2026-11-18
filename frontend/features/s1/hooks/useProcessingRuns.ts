@@ -81,8 +81,20 @@ export function useProcessingRuns({ enabled, engagementId, onFinished, onError }
       const wait = document.visibilityState === "hidden" ? Math.max(delay, HIDDEN_MS) : delay;
       timer = setTimeout(() => {
         timer = null;
-        void poll();
+        tick();
       }, wait);
+    };
+
+    /** A step of a poll threw (the fetch, or a callback): try again, a little later each time. */
+    const retryLater = () => {
+      inFlight = false;
+      errorDelay = Math.min(errorDelay * 2, ERROR_MAX_MS);
+      schedule(errorDelay);
+    };
+
+    /** Polls, and never lets a throw end the loop. */
+    const tick = () => {
+      poll().catch(retryLater);
     };
 
     const pollDelay = () =>
@@ -102,8 +114,7 @@ export function useProcessingRuns({ enabled, engagementId, onFinished, onError }
           halted = true;
           return;
         }
-        errorDelay = Math.min(errorDelay * 2, ERROR_MAX_MS);
-        schedule(errorDelay);
+        retryLater();
         return;
       }
       inFlight = false;
@@ -158,11 +169,11 @@ export function useProcessingRuns({ enabled, engagementId, onFinished, onError }
       if (document.visibilityState !== "visible" || timer === null) return;
       clearTimeout(timer);
       timer = null;
-      void poll();
+      tick();
     };
     document.addEventListener("visibilitychange", onVisibilityChange);
 
-    void poll();
+    tick();
 
     return () => {
       generation.current += 1;

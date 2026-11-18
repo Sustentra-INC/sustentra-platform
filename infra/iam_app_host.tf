@@ -1,8 +1,9 @@
 # Instance role for the app host (least privilege):
 #   ECR pull, ssm:GetParameter on /<env>/*, ses:SendEmail from the verified
 #   identity, CloudWatch Logs write, textract:AnalyzeDocument for scanned
-#   bills, plus the AWS-managed SSM core policy required for Session Manager
-#   and SSM SendCommand from the deploy role.
+#   bills, bedrock-mantle:CreateInference for Claude on Bedrock, plus the
+#   AWS-managed SSM core policy required for Session Manager and SSM SendCommand
+#   from the deploy role.
 
 data "aws_iam_policy_document" "ec2_assume" {
   statement {
@@ -80,6 +81,18 @@ data "aws_iam_policy_document" "app_host" {
   statement {
     sid       = "TextractAnalyzeDocument"
     actions   = ["textract:AnalyzeDocument"]
+    resources = ["*"]
+  }
+
+  # Claude through Amazon Bedrock (AI_PROVIDER=bedrock). The app calls the bedrock-mantle
+  # endpoint, where inference is authorized by bedrock-mantle:CreateInference (not
+  # bedrock:InvokeModel). The model-ARN format for bedrock-mantle is not documented yet, so
+  # the resource is "*"; narrow it to Anthropic model ARNs once it is. Sources:
+  # https://platform.claude.com/docs/en/build-with-claude/claude-in-amazon-bedrock
+  # https://docs.aws.amazon.com/bedrock/latest/userguide/bedrock-mantle.html
+  statement {
+    sid       = "BedrockMantleInference"
+    actions   = ["bedrock-mantle:CreateInference"]
     resources = ["*"]
   }
 

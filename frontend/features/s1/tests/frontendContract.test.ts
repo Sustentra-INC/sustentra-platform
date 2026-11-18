@@ -31,6 +31,16 @@ describe("frontend contract checks", () => {
   });
 
   // docs/design_standard.md, section 2: one family, three sizes, two weights.
+  it("lets the context bar wrap at phone width, so the header never scrolls the page sideways", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    const phone = css.slice(css.indexOf("Context bar tidies up on a phone"));
+    const block = phone.slice(0, phone.indexOf("\n}") + 2);
+    expect(block).toMatch(/\.s1-ctx__bar\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(block).toMatch(/\.s1-ctx__actions\s*\{[^}]*flex-wrap:\s*wrap/);
+    expect(block).toMatch(/\.s1-ctx__actions\s*\{[^}]*min-width:\s*0/);
+    expect(block).toMatch(/\.s1-ctx__user\s*\{[^}]*flex-wrap:\s*wrap/);
+  });
+
   it("keeps the interface to one font family, three text sizes and two weights", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
     const values = (property: string) => [...css.matchAll(new RegExp(`${property}:\\s*([^;}]+)`, "g"))].map((m) => m[1].trim());
@@ -58,6 +68,25 @@ describe("frontend contract checks", () => {
       });
     });
     expect(offenders).toEqual([]);
+  });
+
+  // docs/design_standard.md, section 2: bold is for structure. The last declaration wins, so read the cascade's end.
+  it("keeps values, counts and links regular weight, and the schedule title at the page-title size", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    const last = (selector: string, prop: string) => {
+      let found: string | undefined;
+      postcss.parse(css).walkRules((rule) => {
+        if (!rule.selectors.includes(selector)) return;
+        rule.walkDecls(prop, (d) => {
+          found = d.value;
+        });
+      });
+      return found;
+    };
+    for (const sel of [".s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__value", ".s1-sch-ids .s1-sch-ids__toggle .s1-sch-ids__n", ".s1-xr-node__count", ".s1-xr-card .s1-xr-val", ".s1-backlink"]) {
+      expect(last(sel, "font-weight"), sel).toBe("var(--weight-regular)");
+    }
+    expect(last(".s1-sch-head__id h1", "font-size")).toBe("var(--text-lg)");
   });
 
   // docs/design_standard.md, section 4: text reads at 4.5:1 or better on every surface it sits on.

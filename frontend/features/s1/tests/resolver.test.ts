@@ -31,6 +31,8 @@ describe("field resolver", () => {
       .filter((file) => !file.includes(`${join("features", "s1", "docs")}`))
       .filter((file) => !file.includes(`${join("features", "s1", "tests")}`))
       .filter((file) => !file.endsWith("README.md"))
+      // The methodology review's own wire id (a decision field), read once and renamed there.
+      .filter((file) => !file.endsWith(join("api", "methodologyReview.ts")))
       .flatMap((file) => {
         const text = readFileSync(file, "utf8");
         return text.includes("field_id") ? [file] : [];

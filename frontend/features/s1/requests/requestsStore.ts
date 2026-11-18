@@ -44,7 +44,7 @@ export interface RequestsStore {
   replaceAsks: (asks: Ask[]) => void;
 }
 
-function requestsFrom(asks: Ask[]): ClientRequest[] {
+export function requestsFrom(asks: Ask[]): ClientRequest[] {
   const numbers = Array.from(
     new Set(asks.filter((a) => a.requestNumber != null).map((a) => a.requestNumber as number))
   ).sort((a, b) => a - b);

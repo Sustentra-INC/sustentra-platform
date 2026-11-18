@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, cast
@@ -13,9 +14,12 @@ from backend.app.domain.pipeline import (
     PipelineStageStatus,
     PipelineStageStatuses,
     PipelineStatus,
+    AiRoutingRecord,
 )
 from backend.app.repositories import s1_stores
 from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
+from backend.app.services.ai_extraction import AiExtraction
+from backend.app.services.ai_routing import AiRouting, RoutingResult
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
 from backend.app.services.classification_service import ClassificationService
 from backend.app.services.electricity_extractor import (
@@ -31,6 +35,7 @@ from backend.app.services.extraction_target_service import ExtractionTargetServi
 from backend.app.adapters.parsers.email_parser import PARSER_NAME as EMAIL_PARSER_NAME
 from backend.app.adapters.parsers.email_reader import ENCRYPTED_EMAIL
 from backend.app.adapters.parsers.xls_parser import PASSWORD_PROTECTED
+from backend.app.services.document_chunk_service import pages_unread_message
 from backend.app.services.parser_service import ParserService
 from backend.app.services.mobile_combustion_extractor import (
     CANONICAL_TYPE_ID as MOBFUEL_TYPE_ID,
@@ -63,6 +68,8 @@ HALT_PASSWORD_PROTECTED = "password_protected"
 PDF_PARSER_NAMES = {"pymupdf", "pdfplumber", "pdf_parser"}
 HALT_UNSUPPORTED = "unsupported_document"
 LOW_CONFIDENCE_THRESHOLD = 0.5
+# Claude routing reads a document only when the classifier found nothing or too little.
+AI_ROUTING_STATUSES = {"unclassified", "low_confidence"}
 # EXT-001/002: a low-confidence Scope 1 fuel match (FUELQTY or MOBFUEL) is accepted when it is the classifier's
 # best match overall, scores at least this much (two content signal groups, e.g. header
 # terms + layout features), and the stationary-combustion content check passes (a
@@ -94,7 +101,13 @@ class PipelineOrchestrationService:
         extraction_result_repository: Any | None = None,
         clock: Callable[[], str] | None = None,
         id_factory: Callable[[str, str], str] | None = None,
+        ai_routing: Any | None = None,
+        ai_extraction: Any | None = None,
     ) -> None:
+        # Claude routing (system 1): a no-op unless AI_SUGGESTIONS_ENABLED and the gate allow it.
+        self._ai_routing = ai_routing or AiRouting()
+        # Claude reading (system 2): fills what the rule extractors missed; a no-op unless the gate allows it.
+        self._ai_extraction = ai_extraction or AiExtraction()
         self._parser_service = parser_service or ParserService()
         self._classification_service = classification_service or ClassificationService()
 
@@ -139,7 +152,20 @@ class PipelineOrchestrationService:
         include_deprecated: bool = False,
         persist_run: bool = True,
         org_id: str | None = None,
+        prebuilt_parser_output: dict | None = None,
+        unread_pages: list[tuple[int, int]] | None = None,
+        halt_override: dict[str, str] | None = None,
     ) -> dict:
+        """Read a stored file: parse, classify, plan targets, extract, record the run.
+
+        The last three are for documents read in page chunks (queued mode), and are ``None``
+        otherwise, which reads exactly as before. ``prebuilt_parser_output``: the merged output of the
+        chunks, used instead of parsing the file. ``unread_pages``: page ranges no chunk could
+        read; the run is then ``partial`` with a ``pages_unread`` warning, never ``completed``.
+        ``halt_override``: stop before parsing, with this halt (the document is too long): a
+        ``partial`` run with no candidates.
+        """
+
         path = Path(local_file_path)
         if not path.exists() or not path.is_file():
             raise ValueError(f"local_file_path does not exist or is not a file: {local_file_path}")
@@ -154,6 +180,7 @@ class PipelineOrchestrationService:
         resolved_pipeline_run_id = self._id_factory("pipeline", resolved_evidence_id)
         resolved_file_name = file_name or path.name
 
+        started = time.monotonic()
         created_at = self._clock()
         stage_statuses = PipelineStageStatuses()
         warnings: list[str] = []
@@ -174,16 +201,60 @@ class PipelineOrchestrationService:
         canonical_type_id: str | None = None
         canonical_type_source = "none"
         halt_reason: dict[str, str] | None = None
+        ai_routing: dict[str, Any] | None = None
 
         try:
-            parser_output = self._parser_service.parse_document(
-                file_path=str(path),
-                document_id=resolved_document_id,
-                processing_run_id=resolved_processing_run_id,
-                mime_type=mime_type,
-            )
+            if halt_override is not None:
+                stage_statuses.parse = "skipped"
+                stage_statuses.classify = "skipped"
+                stage_statuses.target_plan = "skipped"
+                stage_statuses.candidate_generation = "skipped"
+                warnings.append(halt_override["message"])
+                run = self._build_pipeline_run(
+                    pipeline_run_id=resolved_pipeline_run_id,
+                    engagement_id=engagement_id,
+                    evidence_id=resolved_evidence_id,
+                    document_id=resolved_document_id,
+                    processing_run_id=resolved_processing_run_id,
+                    status="partial",
+                    stage_statuses=stage_statuses,
+                    input_file_name=resolved_file_name,
+                    canonical_type_id=None,
+                    canonical_type_source="none",
+                    classification_status=None,
+                    parser_status=None,
+                    extraction_targets=[],
+                    extraction_result=extraction_result,
+                    warnings=warnings,
+                    errors=errors,
+                    created_at=created_at,
+                    completed_at=self._clock(),
+                    halt_reason=halt_override,
+                )
+                saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
+                return {
+                    "pipeline_run": saved_run,
+                    "parser_output": parser_output,
+                    "classification_result": classification_result,
+                    "extraction_targets": extraction_targets,
+                    "extraction_result": extraction_result,
+                }
+
+            if prebuilt_parser_output is not None:
+                parser_output = prebuilt_parser_output
+            else:
+                parser_output = self._parser_service.parse_document(
+                    file_path=str(path),
+                    document_id=resolved_document_id,
+                    processing_run_id=resolved_processing_run_id,
+                    mime_type=mime_type,
+                )
             parser_status = str(parser_output.get("status") or "") or None
             stage_statuses.parse = self._parser_stage_status(parser_status)
+            if unread_pages:
+                warnings.append(
+                    "pages_unread: " + pages_unread_message(unread_pages)
+                )
 
             if parser_status == "failed" or (parser_status == "empty" and not canonical_type_id_override):
                 halt_reason = self._unreadable_halt(parser_output)
@@ -369,14 +440,46 @@ class PipelineOrchestrationService:
                         f"its threshold; accepted {confirmed} because the document {reason}"
                     )
                 else:
-                    canonical_type_id = None
-                    canonical_type_source = "none"
-                    warnings.append(
-                        "No confident canonical_type_id available; target planning and candidate generation were skipped."
+                    routed = (
+                        self._route(parser_output, org_id, engagement_id, include_optional, include_deprecated)
+                        if classification_status in AI_ROUTING_STATUSES
+                        else None
                     )
-                    if halt_reason is None:
-                        halt_reason = self._unsupported_halt(classification_result, parser_output)
-                        warnings.append(halt_reason["message"])
+                    if routed is not None:
+                        warnings.extend(self._routing_warnings(routed))
+                    if routed is not None and routed.status == "suggested":
+                        canonical_type_id = str(routed.canonical_type_id)
+                        canonical_type_source = "ai"
+                        extraction_targets = self._get_target_service().get_targets_for_canonical_type(
+                            canonical_type_id,
+                            include_optional=include_optional,
+                            include_deprecated=include_deprecated,
+                        )
+                        ai_routing = routed.as_record(used=True, disagrees=False)
+                        warnings.append(
+                            f"Claude suggested {canonical_type_id} from the first pages; the rules could not place "
+                            "this document. Confirm the type."
+                        )
+                    else:
+                        canonical_type_id = None
+                        canonical_type_source = "none"
+                        warnings.append(
+                            "No confident canonical_type_id available; target planning and candidate generation were skipped."
+                        )
+                        if halt_reason is None:
+                            halt_reason = self._unsupported_halt(classification_result, parser_output)
+                            warnings.append(halt_reason["message"])
+
+                if canonical_type_source in ("classifier", "content_check") and self._ai_routing.shadow:
+                    # Shadow mode: Claude reads the document too, and may only disagree in a warning.
+                    shadow = self._route(parser_output, org_id, engagement_id, include_optional, include_deprecated)
+                    warnings.extend(self._routing_warnings(shadow))
+                    if shadow.status == "suggested" and shadow.canonical_type_id != canonical_type_id:
+                        warnings.append(
+                            f"ai_type_disagrees: the rules chose {canonical_type_id}, Claude read the first pages "
+                            f"as {shadow.canonical_type_id}. The type was not changed."
+                        )
+                        ai_routing = shadow.as_record(used=False, disagrees=True)
 
             if canonical_type_id is None:
                 stage_statuses.target_plan = "skipped"
@@ -401,6 +504,7 @@ class PipelineOrchestrationService:
                     created_at=created_at,
                     completed_at=self._clock(),
                     halt_reason=halt_reason,
+                    ai_routing=ai_routing,
                 )
                 saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
                 return {
@@ -428,12 +532,28 @@ class PipelineOrchestrationService:
                     }
                 )
                 stage_statuses.candidate_generation = "completed"
-                overall_status = "completed"
+                overall_status = "partial" if unread_pages else "completed"
                 if extraction_result.get("halt_reason"):
                     halt_reason = dict(extraction_result["halt_reason"])
                     stage_statuses.candidate_generation = "skipped"
                     overall_status = "partial"
                     warnings.append(halt_reason["message"])
+                else:
+                    assist = self._ai_extraction.assist(
+                        parser_output=parser_output,
+                        extraction_result=extraction_result,
+                        extraction_targets=extraction_targets,
+                        canonical_type_id=canonical_type_id,
+                        file_name=resolved_file_name,
+                        org_id=org_id,
+                        engagement_id=engagement_id,
+                        started=started,
+                        gap_targets=lambda: self._get_target_service().get_targets_for_canonical_type(
+                            canonical_type_id, include_deprecated=include_deprecated, include_ai_only=True
+                        ),
+                    )
+                    extraction_result = assist.result
+                    warnings.extend(assist.warnings)
             else:
                 stage_statuses.candidate_generation = "skipped"
                 overall_status = "partial"
@@ -458,6 +578,7 @@ class PipelineOrchestrationService:
                 created_at=created_at,
                 completed_at=self._clock(),
                 halt_reason=halt_reason,
+                ai_routing=ai_routing,
             )
             saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
             return {
@@ -497,6 +618,7 @@ class PipelineOrchestrationService:
                 errors=errors,
                 created_at=created_at,
                 completed_at=self._clock(),
+                ai_routing=ai_routing,
             )
             saved_run = self._persist_if_needed({**run, "org_id": org_id}, persist_run, extraction_result)
             return {
@@ -794,6 +916,7 @@ class PipelineOrchestrationService:
         created_at: str,
         completed_at: str,
         halt_reason: dict[str, str] | None = None,
+        ai_routing: dict[str, Any] | None = None,
     ) -> dict:
         items = extraction_result.get("items") or []
         if not isinstance(items, list):
@@ -827,6 +950,7 @@ class PipelineOrchestrationService:
             warnings=[str(item) for item in warnings],
             errors=[str(item) for item in errors],
             halt_reason=HaltReason(**halt_reason) if halt_reason else None,
+            ai_routing=AiRoutingRecord(**ai_routing) if ai_routing else None,
             created_at=created_at,
             completed_at=completed_at,
             artifacts={
@@ -835,7 +959,30 @@ class PipelineOrchestrationService:
                 "approved_evidence_id": None,
             },
         )
-        return model.model_dump()
+        dumped = model.model_dump()
+        if dumped["ai_routing"] is None:
+            del dumped["ai_routing"]  # a run Claude did not read is stored exactly as before
+        return dumped
+
+    def _route(self, parser_output: dict, org_id: str | None, engagement_id: str, include_optional: bool,
+               include_deprecated: bool) -> RoutingResult:
+        """Claude's suggestion for the document's type (a no-op, ``off``, when AI is not enabled)."""
+
+        def has_targets(type_id: str) -> bool:
+            return bool(self._get_target_service().get_targets_for_canonical_type(
+                type_id, include_optional=include_optional, include_deprecated=include_deprecated))
+
+        result: RoutingResult = self._ai_routing.suggest(
+            parser_output, org_id=org_id, engagement_id=engagement_id, has_targets=has_targets)
+        return result
+
+    @staticmethod
+    def _routing_warnings(result: RoutingResult) -> list[str]:
+        if result.status in ("unavailable", "off") and result.warning:
+            return [result.warning]
+        if result.status == "ignored":
+            return [f"ai_routing_ignored: {result.ignored_reason}"]
+        return []
 
     @staticmethod
     def _candidate_has_value(candidate: Any) -> bool:

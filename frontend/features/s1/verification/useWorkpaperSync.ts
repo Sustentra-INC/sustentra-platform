@@ -8,15 +8,15 @@ import type { Ask } from "../types/requests";
 import type { Examination, Finding } from "../types/verification";
 
 /**
- * Keeps the verifier's requests, findings and examination states in the backend:
- * loads them when an engagement opens, then saves exactly the items that changed.
- * Nothing is saved for an engagement until its own items have loaded, so one
- * engagement's work can never be written into another.
+ * Keeps the verifier's findings, examination states and document decisions in the backend:
+ * loads them (and the engagement's requests) when an engagement opens, then saves exactly the
+ * items that changed. Requests are loaded here but never saved here: the server's request
+ * actions are the only way they change. Nothing is saved for an engagement until its own items
+ * have loaded, so one engagement's work can never be written into another.
  */
 export function useWorkpaperSync({
   enabled,
   engagementId,
-  asks,
   findings,
   examinations,
   documents,
@@ -27,7 +27,6 @@ export function useWorkpaperSync({
 }: {
   enabled: boolean;
   engagementId: string;
-  asks: Ask[];
   findings: Finding[];
   examinations: Record<string, Examination>;
   documents: Record<string, DocumentDecision>;
@@ -36,9 +35,15 @@ export function useWorkpaperSync({
   replaceDocuments: (documents: Record<string, DocumentDecision>) => void;
   /** Called with the failure; the item is retried on its next change. */
   onError: (error: unknown) => void;
-}): { loaded: boolean } {
+}): {
+  loaded: boolean;
+  markSaved: (kind: WorkpaperKind, id: string, payload: object) => void;
+  whenSaved: (kind: WorkpaperKind, id: string) => Promise<void>;
+} {
   // What the backend holds, per "kind|id", as JSON: an item is saved only when it differs.
   const saved = useRef<Map<string, string>>(new Map());
+  // Saves on their way, per item: a caller that saves an item itself waits for its own item's first.
+  const inflight = useRef<Map<string, Promise<void>>>(new Map());
   const [readyFor, setReadyFor] = useState<string | null>(null);
   const onErrorRef = useRef(onError);
   useEffect(() => {
@@ -52,7 +57,7 @@ export function useWorkpaperSync({
       .then((loaded) => {
         if (!live) return;
         const snapshot = new Map<string, string>();
-        for (const [kind, id, payload] of entries(loaded.asks, loaded.findings, loaded.examinations, loaded.documents)) {
+        for (const [kind, id, payload] of entries(loaded.findings, loaded.examinations, loaded.documents)) {
           snapshot.set(`${kind}|${id}`, JSON.stringify(payload));
         }
         saved.current = snapshot;
@@ -71,29 +76,41 @@ export function useWorkpaperSync({
 
   useEffect(() => {
     if (!enabled || !engagementId || readyFor !== engagementId) return;
-    for (const [kind, id, payload] of entries(asks, findings, examinations, documents)) {
+    for (const [kind, id, payload] of entries(findings, examinations, documents)) {
       const key = `${kind}|${id}`;
       const json = JSON.stringify(payload);
       if (saved.current.get(key) === json) continue;
       saved.current.set(key, json);
-      saveWorkpaperItem(engagementId, kind, id, payload).catch((error: unknown) => {
-        saved.current.delete(key); // not saved: try again on the next change
-        onErrorRef.current(error);
-      });
+      const request = saveWorkpaperItem(engagementId, kind, id, payload)
+        .then(() => undefined)
+        .catch((error: unknown) => {
+          saved.current.delete(key); // not saved: try again on the next change
+          onErrorRef.current(error);
+        })
+        .finally(() => {
+          if (inflight.current.get(key) === request) inflight.current.delete(key);
+        });
+      inflight.current.set(key, request);
     }
-  }, [enabled, engagementId, readyFor, asks, findings, examinations, documents]);
+  }, [enabled, engagementId, readyFor, findings, examinations, documents]);
 
-  return { loaded: !enabled || readyFor === engagementId };
+  /** Tells the hook a caller already saved this item, so the next change check does not save it again. */
+  const markSaved = (kind: WorkpaperKind, id: string, payload: object) => {
+    saved.current.set(`${kind}|${id}`, JSON.stringify(payload));
+  };
+
+  /** Resolves once any save of this item that is on its way has finished. */
+  const whenSaved = (kind: WorkpaperKind, id: string): Promise<void> => inflight.current.get(`${kind}|${id}`) ?? Promise.resolve();
+
+  return { loaded: !enabled || readyFor === engagementId, markSaved, whenSaved };
 }
 
 function entries(
-  asks: Ask[],
   findings: Finding[],
   examinations: Record<string, Examination>,
   documents: Record<string, DocumentDecision>
 ): [WorkpaperKind, string, object][] {
   return [
-    ...asks.map((ask): [WorkpaperKind, string, object] => ["ask", ask.id, ask]),
     ...findings.map((finding): [WorkpaperKind, string, object] => ["finding", finding.id, finding]),
     ...Object.entries(examinations).map(
       ([dataPointId, examination]): [WorkpaperKind, string, object] => [

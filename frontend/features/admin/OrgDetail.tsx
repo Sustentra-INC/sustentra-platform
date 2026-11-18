@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 
 import { ApiError } from "../../lib/api";
+import { logout } from "../auth/api";
 import { activateOrg, getOrg, suspendOrg, updateOrg, type Org } from "./providerApi";
 import { ConfirmByTyping } from "./ConfirmByTyping";
 import { StatusBadge } from "./StatusBadge";
@@ -17,6 +19,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -61,6 +64,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
     event.preventDefault();
     setError(null);
     setNotice(null);
+    setSaved(false);
     const max = Number(maxUsers);
     if (!Number.isInteger(max) || max < 1) {
       setError("Seat limit must be a whole number of at least 1.");
@@ -70,12 +74,21 @@ export function OrgDetail({ orgId }: { orgId: string }) {
     try {
       const updated = await updateOrg(orgId, { name: name.trim(), max_users: max });
       setOrg(updated);
-      setNotice("Saved.");
+      setSaved(true);
     } catch (err) {
       setError(err instanceof ApiError ? err.detail : "Could not save changes.");
     } finally {
       setSaving(false);
     }
+  }
+
+  async function onSignOut() {
+    try {
+      await logout();
+    } catch {
+      // Clear client state regardless.
+    }
+    window.location.assign("/provider-admin/login");
   }
 
   async function doSuspend() {
@@ -123,6 +136,19 @@ export function OrgDetail({ orgId }: { orgId: string }) {
 
   return (
     <div className={styles.page}>
+      <div className={styles.topBar}>
+        <nav aria-label="Breadcrumb" className={styles.breadcrumb}>
+          <Link className={styles.crumbLink} href="/provider-admin/orgs">
+            Organizations
+          </Link>
+          <span aria-hidden="true">/</span>
+          <span aria-current="page">{org.name}</span>
+        </nav>
+        <button type="button" className={`${styles.button} ${styles.ghost}`} onClick={() => void onSignOut()}>
+          Sign out
+        </button>
+      </div>
+
       <div className={styles.header}>
         <div>
           <h1 className={styles.title}>{org.name}</h1>
@@ -137,7 +163,11 @@ export function OrgDetail({ orgId }: { orgId: string }) {
           {error}
         </p>
       ) : null}
-      {notice ? <p className={styles.muted}>{notice}</p> : null}
+      {notice ? (
+        <p className={styles.success} role="status">
+          {notice}
+        </p>
+      ) : null}
 
       <form className={styles.card} onSubmit={onSave} noValidate>
         <div className={styles.field}>
@@ -163,6 +193,11 @@ export function OrgDetail({ orgId }: { orgId: string }) {
           <button type="submit" className={styles.button} disabled={saving}>
             {saving ? "Saving…" : "Save changes"}
           </button>
+          {saved ? (
+            <span className={styles.savedNote} role="status">
+              Saved. <Link href="/provider-admin/orgs">Back to Organizations</Link>
+            </span>
+          ) : null}
           {org.status === "active" ? (
             <button
               type="button"

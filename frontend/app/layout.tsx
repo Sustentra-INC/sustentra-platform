@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import type { ReactNode } from "react";
 
 import "../features/s1/styles/sustentra-tokens.css";
@@ -25,9 +25,17 @@ export const viewport: Viewport = {
   themeColor: "#2b2b77", // logo navy
 };
 
-// The interface font: IBM Plex Sans, self-hosted by next/font and used through --font-sans
-// (sustentra-tokens.css). Plex isn't a variable font, so it loads the standard's two weights.
-const plex = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "600"], variable: "--font-plex", display: "swap" });
+// The interface font: IBM Plex Sans, used through --font-sans (sustentra-tokens.css). The
+// standard's two weights are committed in ./fonts (Latin subset, from @fontsource/ibm-plex-sans
+// 5.3.0; SIL OFL 1.1, see ./fonts/OFL.txt), so builds never fetch from Google Fonts.
+const plex = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-sans-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-latin-600-normal.woff2", weight: "600", style: "normal" },
+  ],
+  variable: "--font-plex",
+  display: "swap",
+});
 
 interface RootLayoutProps {
   children: ReactNode;

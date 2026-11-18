@@ -21,6 +21,17 @@ export interface PipelineRunSummary {
   warnings?: string[];
   errors?: string[];
   halt_reason?: { code: string; message: string } | null;
+  canonical_type_source?: string | null;
+  ai_routing?: {
+    canonical_type_id: string;
+    quote: string;
+    line: string;
+    reason_code: string;
+    page_number?: number | null;
+    used: boolean;
+    disagrees?: boolean;
+    review_required?: boolean;
+  } | null;
 }
 
 export interface BackendExtractionResult {
@@ -162,13 +173,16 @@ export async function uploadDocument(engagementId: string, file: File): Promise<
 export function uploadDocumentWithProgress(
   engagementId: string,
   file: File,
-  onProgress: (fraction: number) => void
+  onProgress: (fraction: number) => void,
+  /** The batch this file is uploaded in with others (see api/documentBatches.ts). */
+  batchId?: string
 ): Promise<BackendDocumentLike> {
   if (!isReadableUpload(file)) return Promise.reject(new UnreadableFileError(file.name));
   if (file.size > MAX_UPLOAD_BYTES) return Promise.reject(new FileTooLargeError());
   const body = new FormData();
   body.append("file", file);
   body.append("document_role", "source_evidence");
+  if (batchId) body.append("batch_id", batchId);
 
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();

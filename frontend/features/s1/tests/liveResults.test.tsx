@@ -825,7 +825,7 @@ describe("Verification results in backend mode", () => {
     const findings = store.current.findings;
     renderHook(() =>
       useWorkpaperSync({
-        enabled: true, engagementId: "ENG-1", asks: [], findings, examinations: {}, documents: {},
+        enabled: true, engagementId: "ENG-1", findings, examinations: {}, documents: {},
         replaceAsks: NOOP, replaceVerification: NOOP, replaceDocuments: NOOP, onError: NOOP,
       })
     );

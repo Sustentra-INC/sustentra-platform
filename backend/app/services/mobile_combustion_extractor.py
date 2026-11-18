@@ -179,7 +179,7 @@ EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {
                     "invoice #", "ticket #", "ref #", "reference"),
 }
 DATE_HEADERS = ("date", "transaction date", "trans date", "purchase date", "date/time", "posted", "post date",
-                "sale date", "fill date", "delivery date")
+                "sale date", "fill date", "delivery date", "month")
 PRODUCT_HEADERS = ("product", "description", "fuel", "fuel type", "grade", "fuel grade", "item")
 
 # Card-number shapes only: 15-19 contiguous digits, or 4-4-4-4(-3) groups with one

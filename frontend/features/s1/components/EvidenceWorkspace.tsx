@@ -16,8 +16,11 @@ import type { QualityCheck } from "../api/recalculation";
 import { qualityIssueLines } from "./QualityChecksPanel";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import { AiTypeNote } from "./AiTypeNote";
+import { EvidenceTree,type EvidenceTreeProps } from "./EvidenceTree";
 import { formatPeriod } from "../utils/formatPeriod";
 import { UPLOAD_ACCEPT } from "../constants/uploads";
+import { andThen, NOT_SAVED_TITLE, problemText, settle, useStillOpen, type MaybePromise } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 
 /**
@@ -84,8 +87,11 @@ interface EvidenceWorkspaceProps {
   engagement: EngagementConfig;
   evidence: EvidenceItem[];
   asks: Ask[];
-  onSaveAsk: (draft: AskDraft) => void;
-  onResolveAsk?: (askId: string) => void;
+  /** Either may answer after the server has: the window waits, and says so if the change fails. */
+  onSaveAsk: (draft: AskDraft) => MaybePromise<unknown>;
+  onResolveAsk?: (askId: string) => MaybePromise<void>;
+  /** The server records who raised a request: the Add to requests window does not ask. */
+  serverRecordsActor?: boolean;
   /** Lifts manual edits (set type/facility, note, withdraw, mark relationship)
    *  to app state so they survive navigation. Same pattern as the other stores. */
   onEvidenceChange: (updater: (cur: EvidenceItem[]) => EvidenceItem[]) => void;
@@ -106,6 +112,15 @@ interface EvidenceWorkspaceProps {
   demoState?: ContainerState;
   auditIntents?: SessionAuditEntry[];
   onAuditIntent?: (intent: SessionAuditEntry) => void;
+  /** Backend mode: shows the calculation-line tree instead of the grouping by document type. */
+  tree?: Pick<
+    EvidenceTreeProps,
+    "openIds" | "onOpenIdsChange" | "onOpenSchedule" | "onMovePlacement" | "onSaveLines" | "onError" | "facilityId" | "onFacilityChange"
+  > & {
+    /** Which grouping shows, and a change to it; kept by the app with the tree's open rows. */
+    view: "lines" | "types";
+    onViewChange: (view: "lines" | "types") => void;
+  };
 }
 
 type FacilityFilter = string | "multiple" | "none" | "unknown" | null;
@@ -117,6 +132,7 @@ export function EvidenceWorkspace({
   asks,
   onSaveAsk,
   onResolveAsk,
+  serverRecordsActor = false,
   onEvidenceChange,
   onOpenExtraction,
   onOpenRequests,
@@ -131,12 +147,16 @@ export function EvidenceWorkspace({
   demoState,
   auditIntents = [],
   onAuditIntent,
+  tree,
 }: EvidenceWorkspaceProps) {
   // Evidence data lives in app state (via onEvidenceChange); filters/menus below
   // are local, ephemeral UI. So manual edits survive navigation.
   const items = evidence;
   const [facilityFilter, setFacilityFilter] = useState<FacilityFilter>(null);
   const [headerFilter, setHeaderFilter] = useState<HeaderFilter>(null);
+  // Backend mode: the calculation-line tree, or the table by document type (set type, facility, notes).
+  const view = tree?.view ?? "types";
+  const setView = (next: "lines" | "types") => tree?.onViewChange(next);
   // Bird's-eye by default: every type starts folded to its summary bar.
   const [openTypes, setOpenTypes] = useState<Set<string>>(new Set());
   const toggleType = (t: string) =>
@@ -157,6 +177,9 @@ export function EvidenceWorkspace({
   const [noteDraft, setNoteDraft] = useState("");
   const [modalDoc, setModalDoc] = useState<EvidenceItem | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // A change to a request that did not go through (resolving the request a file answers).
+  const [actionProblem, setActionProblem] = useState<string | null>(null);
+  const modalDocOpen = useStillOpen(modalDoc);
   const toastTimer = useRef<number | null>(null);
 
   function flash(message: string) {
@@ -193,7 +216,7 @@ export function EvidenceWorkspace({
     () => ({
       needs: active.filter(needsYou).length,
       arrived: active.filter((i) => i.arrivedSinceLastVisit).length,
-      blocked: active.filter((i) => i.processingState === "blocked").length,
+      blocked: active.filter(isBlocked).length,
     }),
     [active]
   );
@@ -213,13 +236,17 @@ export function EvidenceWorkspace({
       }
       if (headerFilter === "needs" && !needsYou(item)) return false;
       if (headerFilter === "arrived" && !item.arrivedSinceLastVisit) return false;
-      if (headerFilter === "blocked" && item.processingState !== "blocked") return false;
+      if (headerFilter === "blocked" && !isBlocked(item)) return false;
       return true;
     });
   }, [items, facilityFilter, headerFilter]);
 
   const groups = useMemo(() => groupByType(filtered), [filtered]);
   const hasFilter = facilityFilter !== null || headerFilter !== null;
+  const treeReloadKey = useMemo(
+    () => items.map((i) => `${i.documentId}:${i.processingState}:${i.disposition}`).join("|"),
+    [items]
+  );
   const activeCount = active.length;
 
   // --- writes (all real, recorded via audit intents) ---
@@ -305,9 +332,15 @@ export function EvidenceWorkspace({
       flash("No open request on this file to resolve");
       return;
     }
-    onResolveAsk?.(ask.id);
-    record("answers_request", documentId, `request ${ask.requestNumber}`, "resolved");
-    flash(`Resolved request ${ask.requestNumber}`);
+    setActionProblem(null);
+    settle(
+      () => onResolveAsk?.(ask.id),
+      () => {
+        record("answers_request", documentId, `request ${ask.requestNumber}`, "resolved");
+        flash(`Resolved request ${ask.requestNumber}`);
+      },
+      (error) => setActionProblem(problemText(error))
+    );
   }
 
   function withdraw(documentId: string) {
@@ -325,9 +358,13 @@ export function EvidenceWorkspace({
   }
 
   function submitAsk(draft: AskDraft) {
-    onSaveAsk(draft);
-    setModalDoc(null);
-    flash("Added to requests · not yet sent");
+    const mine = modalDoc;
+    return andThen(onSaveAsk(draft), () => {
+      // A window opened since is not this one: leave it, and say nothing of it.
+      if (!modalDocOpen(mine)) return;
+      setModalDoc(null);
+      flash("Added to requests · not yet sent");
+    });
   }
 
   const showEmpty = activeCount === 0;
@@ -363,6 +400,7 @@ export function EvidenceWorkspace({
         activeFilter={headerFilter}
         onFilter={(f) => setHeaderFilter((cur) => (cur === f ? null : f))}
         onUpload={onOpenUpload}
+        showFilters={!(tree && view === "lines")}
       />
 
       {backendError ? (
@@ -372,19 +410,56 @@ export function EvidenceWorkspace({
         </div>
       ) : null}
 
+      {actionProblem ? (
+        <div className="s1-system-banner" role="alert">
+          <strong>{NOT_SAVED_TITLE}</strong>
+          <span>{actionProblem}</span>
+        </div>
+      ) : null}
+
+      {tree ? (
+        <div className="s1-ws-factabs" role="group" aria-label="Group documents">
+          <button className={`s1-ws-factab${view === "lines" ? " is-on" : ""}`} type="button" aria-pressed={view === "lines"} onClick={() => setView("lines")}>
+            By calculation line
+          </button>
+          <button className={`s1-ws-factab${view === "types" ? " is-on" : ""}`} type="button" aria-pressed={view === "types"} onClick={() => setView("types")}>
+            By document type
+          </button>
+        </div>
+      ) : null}
+
       {showEmpty ? (
         <FirstDayEmpty onUploadFiles={onUploadFiles} isUploading={isUploading} />
       ) : (
         <>
-          <FacilityFilterStrip
-            engagement={engagement}
-            total={activeCount}
-            counts={facilityCounts}
-            active={facilityFilter}
-            onSelect={(f) => setFacilityFilter((cur) => (cur === f ? null : f))}
-          />
+          {tree && view === "lines" ? null : (
+            <FacilityFilterStrip
+              engagement={engagement}
+              total={activeCount}
+              counts={facilityCounts}
+              active={facilityFilter}
+              onSelect={(f) => setFacilityFilter((cur) => (cur === f ? null : f))}
+            />
+          )}
 
-          {showFilteredEmpty ? (
+          {tree && view === "lines" ? (
+            <EvidenceTree
+              openIds={tree.openIds}
+              onOpenIdsChange={tree.onOpenIdsChange}
+              onOpenSchedule={tree.onOpenSchedule}
+              onMovePlacement={tree.onMovePlacement}
+              onSaveLines={tree.onSaveLines}
+              onError={tree.onError}
+              facilityId={tree.facilityId}
+              onFacilityChange={tree.onFacilityChange}
+              engagement={engagement}
+              reloadKey={treeReloadKey}
+              onOpenExtraction={onOpenExtraction}
+              onOpenSetup={onOpenSetup}
+              onAudit={(intent) => onAuditIntent?.(intent)}
+              writesEnabled={writesEnabled}
+            />
+          ) : showFilteredEmpty ? (
             <div className="s1-ws-empty" role="status">
               <p>No files match {describeFilter(facilityFilter, headerFilter, engagement)}.</p>
               <button
@@ -562,6 +637,7 @@ export function EvidenceWorkspace({
           engagement={engagement}
           onCancel={() => setModalDoc(null)}
           onAdd={submitAsk}
+          serverRecordsActor={serverRecordsActor}
         />
       ) : null}
 
@@ -578,7 +654,9 @@ function WorkspaceHeader({
   activeFilter,
   onFilter,
   onUpload,
+  showFilters = true,
 }: {
+  showFilters?: boolean;
   total: number;
   counts: { needs: number; arrived: number; blocked: number };
   activeFilter: HeaderFilter;
@@ -594,11 +672,13 @@ function WorkspaceHeader({
         </span>
       </div>
       <div className="s1-ws-top__right">
-        <div className="s1-ws-header__counts" role="group" aria-label="Show only">
-          <CountFilter label="To review" tone="open" n={counts.needs} on={activeFilter === "needs"} onClick={() => onFilter("needs")} />
-          <CountFilter label="New since last visit" tone="neutral" n={counts.arrived} on={activeFilter === "arrived"} onClick={() => onFilter("arrived")} />
-          <CountFilter label="Blocked" tone="blocking" n={counts.blocked} on={activeFilter === "blocked"} onClick={() => onFilter("blocked")} />
-        </div>
+        {showFilters ? (
+          <div className="s1-ws-header__counts" role="group" aria-label="Show only">
+            <CountFilter label="To review" tone="open" n={counts.needs} on={activeFilter === "needs"} onClick={() => onFilter("needs")} />
+            <CountFilter label="New since last visit" tone="neutral" n={counts.arrived} on={activeFilter === "arrived"} onClick={() => onFilter("arrived")} />
+            <CountFilter label="Blocked" tone="blocking" n={counts.blocked} on={activeFilter === "blocked"} onClick={() => onFilter("blocked")} />
+          </div>
+        ) : null}
         {onUpload ? (
           <button className="s1-button s1-button--pri s1-ws-top__upload" type="button" onClick={onUpload}>
             <Upload aria-hidden /> Upload
@@ -795,6 +875,7 @@ function WorkspaceRow(props: {
         ) : (
           <span>{item.detectedType ?? "Type unresolved"}</span>
         )}
+        <AiTypeNote item={item} />
       </td>
 
       {/* Status: processing state, and any issue under it */}
@@ -855,7 +936,7 @@ function statusMix(items: EvidenceItem[]): Array<{ role: string; label: string; 
   };
   for (const item of items) {
     if (item.disposition === "withdrawn") bump("na");
-    else if (item.processingState === "blocked") bump("blocking");
+    else if (isBlocked(item)) bump("blocking");
     else if (needsYou(item)) bump("open");
     else if (item.processingState === "extracted") bump("resolved");
     else bump("active");
@@ -1091,8 +1172,15 @@ function sortDocs(items: EvidenceItem[]): EvidenceItem[] {
   return [...items].sort((a, b) => (a.periodStart ?? "").localeCompare(b.periodStart ?? ""));
 }
 
+/** Blocked, and not being read again: a row that is being read says so, and its earlier failure
+ *  is not shown or counted until the read ends. */
+function isBlocked(item: EvidenceItem): boolean {
+  return item.processingState === "blocked" && !item.reading;
+}
+
 function needsYou(item: EvidenceItem): boolean {
   if (item.disposition !== "active") return false;
+  if (item.reading) return false;
   if (item.processingState === "blocked") return true;
   if (item.detectedType == null || item.typeReviewBand === "cannot_determine" || item.typeReviewBand === "needs_review")
     return true;
@@ -1105,7 +1193,11 @@ function needsYou(item: EvidenceItem): boolean {
 
 function processingDisplay(item: EvidenceItem): { role: string; label: string; sub: string | null } {
   if (item.disposition === "withdrawn") return { role: "na", label: "Withdrawn", sub: null };
+  if (item.reading)
+    return { role: "active", label: "Reading…", sub: item.reading === "queued" ? "Waiting to be read" : null };
   if (item.processingState === "blocked") return { role: "blocking", label: "Blocked", sub: item.haltReason };
+  if (item.processingState === "extracted" && item.unreadPages)
+    return { role: "open", label: "Partly read", sub: `Pages ${item.unreadPages} could not be read` };
   if (
     item.processingState === "extracted" &&
     item.fieldsExpectedDisplay != null &&
@@ -1127,7 +1219,7 @@ function processingDisplay(item: EvidenceItem): { role: string; label: string; s
 function issueLines(item: EvidenceItem, all: EvidenceItem[], engagement: EngagementConfig): string[] {
   if (item.disposition === "withdrawn") return [];
   const lines: string[] = [];
-  if (item.processingState === "blocked" && item.haltReason) lines.push(item.haltReason);
+  if (isBlocked(item) && item.haltReason) lines.push(item.haltReason);
   if (
     item.processingState === "extracted" &&
     item.fieldsExpectedDisplay != null &&

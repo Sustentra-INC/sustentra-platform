@@ -251,6 +251,30 @@ def test_bedrock_request_uses_the_prefixed_model_and_no_fallback() -> None:
     assert "anthropic-beta" not in request.headers
 
 
+def test_bedrock_model_id_override_is_sent_verbatim_and_pricing_keeps_the_api_id() -> None:
+    api = FakeApi(_message())
+    sdk = anthropic.AnthropicBedrockMantle(
+        aws_region="us-east-1", aws_access_key="AKIDEXAMPLE", aws_secret_key="not-a-real-secret",
+        http_client=api.http_client(), max_retries=0,
+    )
+    claude = SdkClaude(sdk, provider="bedrock", model="claude-sonnet-5-5", effort="low",
+                       bedrock_model_id="anthropic.claude-sonnet-5-5-custom")
+    reply = claude.structured(system="Rules.", content="Doc.", output_type=Answer, max_tokens=8_000)
+    assert api.sent["model"] == "anthropic.claude-sonnet-5-5-custom"
+    assert claude.model == "claude-sonnet-5-5"
+    assert reply.cost_microusd == 1_000 * 2 + 200 * 10
+
+
+def test_override_is_ignored_for_the_claude_api() -> None:
+    api = FakeApi(_message())
+    claude = SdkClaude(
+        anthropic.Anthropic(api_key="k", http_client=api.http_client(), max_retries=0),
+        provider="anthropic", model="claude-sonnet-5-5", effort="low", bedrock_model_id="anthropic.x",
+    )
+    claude.structured(system="Rules.", content="Doc.", output_type=Answer, max_tokens=8_000)
+    assert api.sent["model"] == "claude-sonnet-5-5"
+
+
 def test_refusal_gives_no_output() -> None:
     api = FakeApi(_message(text="", stop_reason="refusal",
                            stop_details={"type": "refusal", "category": "cyber", "explanation": None}))

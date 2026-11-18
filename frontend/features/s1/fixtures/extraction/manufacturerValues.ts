@@ -1,7 +1,10 @@
 import type { ReviewValue, ScopePlacement, SourceKind, ValueRecordEntry } from "../../types/review";
 import type { SourceRef } from "../../types/verificationResults";
+import { claudeReadings } from "../ai/claudeReadings";
 import { manufacturerEvidence } from "../evidence/manufacturerEvidence";
 import { verificationLines } from "../verification/resultsDataset";
+import { PROPANE_BY_DOC, fleetQuarter } from "./demoQuantities";
+import { applyReviewDecisions } from "./reviewDecisions";
 
 /**
  * Extracted values for Cascade Provisions, keyed to the workspace documents.
@@ -136,7 +139,7 @@ const MONTH_NAME = (m: string) => m.charAt(0).toUpperCase() + m.slice(1);
 for (const doc of manufacturerEvidence) {
   const bill = /^(tualatin|kent|modesto)_(electric|gas)_([a-z]{3})_2025\.pdf$/.exec(doc.filename);
   const read = BILL_READS.get(doc.filename);
-  if (!bill || read === undefined || !doc.facilityId || doc.disposition === "withdrawn") continue;
+  if (!bill || read === undefined || !doc.facilityId) continue;
   if (bill[2] === "electric") electricity(doc.facilityId, MONTH_NAME(bill[3]), Math.round(read * 1000), doc.documentId);
   else gas(doc.facilityId, MONTH_NAME(bill[3]), Math.round(read), { documentId: doc.documentId });
 }
@@ -338,6 +341,9 @@ for (let i = 1; i <= 218; i += 1) {
   );
 }
 
+// What Claude read where the rules found nothing, or read differently (fixtures/ai/claudeReadings.ts).
+values.push(...claudeReadings(values).map((r) => rv(r)));
+
 // Each value belongs to the Evidence row for its file: where a value was keyed to another id
 // (refrigerant logs, meter photos, reference documents), it takes the row's.
 const evidenceIds = new Set(manufacturerEvidence.map((e) => e.documentId));
@@ -347,6 +353,47 @@ for (const v of values) {
   const row = evidenceIds.has(v.documentId) ? null : rowForFile.get(v.filename);
   if (row) v.documentId = row;
 }
+
+// Fleet statements and propane invoices the rules read nothing else from: the quantity the
+// schedule counts, so a reviewer's decision on the document has a value to sit on.
+const CODE_OF: Record<string, string> = { "facility-tualatin": "tualatin", "facility-kent": "kent", "facility-modesto": "modesto" };
+const MONTH_LABEL = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+for (const doc of manufacturerEvidence) {
+  const own = values.filter((v) => v.documentId === doc.documentId);
+  const code = doc.facilityId ? CODE_OF[doc.facilityId] : undefined;
+  const common = { documentId: doc.documentId, filename: doc.filename, documentType: doc.detectedType ?? "", facilityId: doc.facilityId };
+  if (doc.detectedType === "Fleet fuel statement" && code) {
+    const q = Number(/_q(\d)_/.exec(doc.filename)?.[1] ?? 1);
+    const period = `Q${q} 2025`;
+    const gal = fleetQuarter(code, q).gal.toLocaleString();
+    if (!own.length) {
+      values.push(rv({ ...common, period, whatItIs: "Fuel purchased", scope: "scope1", value: gal, unit: "gal", docAnchor: "fuel-purchased", snippet: `Fuel purchased (statement summary) ${gal} gal` }));
+    } else if (!own.some((v) => !v.ai)) {
+      // Every value on this statement is Claude's note: the statement's own period is what the rules read.
+      values.push(rv({ ...common, period, whatItIs: "Statement period", scope: "not_placed", value: `Q${q} 2025`, unit: "", snippet: `Statement period Q${q} 2025` }));
+    }
+  }
+  if (doc.detectedType === "Other fuel invoice" && code && PROPANE_BY_DOC[doc.filename] !== undefined) {
+    const period = `${MONTH_LABEL[Number((doc.periodStart ?? "2025-01").slice(5, 7)) - 1]} 2025`;
+    const gal = PROPANE_BY_DOC[doc.filename].toLocaleString();
+    values.push(rv({ ...common, period, whatItIs: "Fuel delivered", scope: "scope1", value: gal, unit: "gal", snippet: `Propane delivered ${gal} gal` }));
+    // The August invoice does not print the fuel type: the reviewer still has to fill it in.
+    if (doc.filename === "modesto_propane_aug.pdf") values.push(rv({ ...common, period, whatItIs: "Fuel type", scope: "not_placed", value: "not found", unit: "", missing: true, requestPreselect: "missing_data", snippet: "Fuel type (not printed)" }));
+  }
+  // A December 2024 bill that is in the folder by mistake: the quantity it reads is still a reading.
+  if (doc.documentId === "DOC-WRONGYEAR" && !own.length) {
+    values.push(rv({ ...common, period: "Dec 2024", whatItIs: "Electricity consumed", scope: "scope2_location", value: (590_000).toLocaleString(), unit: "kWh", span: { page: 1, x: 0.58, y: 0.42, w: 0.3, h: 0.05 } }));
+  }
+}
+
+// A withdrawn document's values stay on it, greyed (the reason is the Evidence row's note).
+for (const doc of manufacturerEvidence) {
+  if (doc.disposition !== "withdrawn") continue;
+  for (const v of values) if (v.documentId === doc.documentId) { v.withdrawn = true; v.withdrawnReason = `Document withdrawn · ${doc.note ?? "set aside by the reviewer."}`; }
+}
+
+// The review decisions: who accepted what, once, for every screen.
+applyReviewDecisions(values, manufacturerEvidence);
 
 export const manufacturerValues: ReviewValue[] = values;
 export const FACILITY_NAMES = FAC_NAME;

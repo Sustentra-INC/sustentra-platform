@@ -88,7 +88,7 @@ EQUIPMENT_LABELS: tuple[tuple[str, ...], ...] = (
 )
 DATE_LABELS: tuple[tuple[str, ...], ...] = (
     ("service date", "date of service", "date serviced", "work date", "date completed", "completion date",
-     "visit date", "date performed", "date"),
+     "visit date", "date performed", "invoice date", "date"),
 )
 SERVICE_TYPE_LABELS: tuple[tuple[str, ...], ...] = (
     ("service type", "type of service", "work type", "work performed", "reason for service", "reason for visit",
@@ -107,7 +107,7 @@ COLUMNS: tuple[tuple[str, tuple[str, ...]], ...] = (
                      "description", "item")),
     ("added", ("added", "amount added", "qty added", "quantity added", "refrigerant added", "lbs added",
                "lb added", "kg added", "oz added", "charged", "charge added", "amount charged", "quantity", "qty",
-               "amount")),
+               "total", "total qty", "total quantity", "net weight", "amount")),
     ("recovered", ("recovered", "amount recovered", "qty recovered", "refrigerant recovered", "lbs recovered",
                    "kg recovered", "removed", "reclaimed")),
     ("capacity", ("full charge", "nameplate charge", "system charge", "capacity", "charge capacity", "total charge",
@@ -146,6 +146,10 @@ _SHORT_INSTALL = {"installation", "install", "installed", "new install", "new in
 _UNIT_ONLY_RE = re.compile(r"\s*(?:lbs?|pounds?|oz|ounces?|kgs?|kilograms?|g|grams?)\.?\s*", re.I)
 # Cooling capacity, airflow and fuel units: a "Capacity: 5 tons" is tonnage, not a refrigerant charge.
 _NOT_A_CHARGE_RE = re.compile(r"\b(?:tons?|btu\w*|mbh|kw|hp|cfm|gallons?|gal)\b", re.I)
+_TOTAL_KEYS = ("total", "total qty", "total quantity")
+_BUSINESS_WORD_RE = re.compile(
+    r"\b(?:supply|supplies|services?|mechanical|refrigeration|company|co\.?|inc\.?|llc|ltd\.?|corp\.?|systems|"
+    r"solutions|distribut\w+|hvac|gases|wholesale)\b", re.I)
 _DOCUMENT_UNIT_RE = re.compile(r"(?:all )?(?:quantities|amounts|weights?) (?:are )?(?:in|shown in) ([a-z]+)", re.I)
 
 
@@ -235,7 +239,7 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             "service_address": self._address(rows) or address_from_facility,
             "service_provider": (self._find_labeled(rows, PROVIDER_LABELS, accept=self._looks_like_org_name,
                                                     allow_next_row=False)
-                                 or self._letterhead(rows)),
+                                 or self._letterhead_name(rows)),
         }
 
         candidates: list[dict] = []
@@ -255,6 +259,24 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
                     candidate["source_reference"]["record_key"] = record_key
             candidates.extend(record_candidates)
         return ExtractionOutcome(candidates=candidates, records=len(records))
+
+    def _letterhead_name(self, rows: Sequence[Row]) -> Located | None:
+        """The letterhead, joined with a short second line that completes the name
+        ("POLAR RIDGE" over "Refrigerant Supply")."""
+
+        head = self._letterhead(rows)
+        if head is None or head.row is None:
+            return head
+        nxt = next((r for r in rows if r.index == head.row.index + 1), None)
+        second = nxt.cells[0] if nxt is not None and nxt.cells else None
+        if (second is not None and nxt is not None and nxt.page == head.row.page and len(head.cells) == 1
+                and len(second.text.split()) <= 4 and not re.search(r"\d", second.text)
+                and _BUSINESS_WORD_RE.search(second.text)
+                and (head.cells[0].box is None or second.box is None
+                     or abs(second.left - head.cells[0].left) < 0.03)):
+            name = f"{head.raw} {second.text.strip()}"
+            return Located(name, [*head.cells, second], head.row, head.confidence, context=name)
+        return head
 
     # =================================================================================
     # Records
@@ -289,6 +311,8 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             for position, (key, unit) in enumerate(keys):
                 if position in used or key not in options:
                     continue
+                if key in _TOTAL_KEYS and unit is None:
+                    continue  # a bare "Total" is a money column; "Total Lbs" is a mass
                 rank = options.index(key)
                 if best is None or rank < best[0]:
                     best = (rank, position, unit)
@@ -362,7 +386,8 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             if c is None or not c.text.strip() or _NOT_A_CHARGE_RE.search(c.text):
                 continue
             bare = re.fullmatch(r"\s*(\d[\d,]*(?:\.\d+)?)\s*", c.text)
-            if name == "added" and package is not None and bare:
+            # A header that names the unit ("Total Lbs") says the cell is already a mass, not a count of packages.
+            if name == "added" and package is not None and bare and name not in units:
                 count = float(bare.group(1).replace(",", ""))
                 packaged = Mass(count * package.value, package.unit, f"{bare.group(1)} x {package.raw}",
                                 converted=package.converted)

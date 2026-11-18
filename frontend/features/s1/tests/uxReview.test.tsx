@@ -245,7 +245,7 @@ describe("extraction review: one card per reading", () => {
     const { ExtractionReview } = await import("../components/ExtractionReview");
     const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
     const { useState } = await import("react");
-    const elec = manufacturerValues.filter((v) => v.documentId === "DOC-tualatin-elec-jan");
+    const elec = manufacturerValues.filter((v) => v.documentId === "DOC-modesto-elec-nov");
     expect(elec.map((v) => v.scope).sort()).toEqual(["scope2_location", "scope2_market"]);
     let latest = manufacturerValues;
     function Harness() {
@@ -256,7 +256,7 @@ describe("extraction review: one card per reading", () => {
           engagement={engagementConfig}
           values={values}
           onValuesChange={setValues}
-          initialDocumentId="DOC-tualatin-elec-jan"
+          initialDocumentId="DOC-modesto-elec-nov"
           onSaveAsk={vi.fn()}
           onBack={vi.fn()}
         />
@@ -269,8 +269,9 @@ describe("extraction review: one card per reading", () => {
     expect(card()[0].textContent).toContain("Scope 2 · location- and market-based");
 
     fireEvent.click(within(card()[0]).getByRole("button", { name: "Accept" }));
-    expect(latest.filter((v) => v.documentId === "DOC-tualatin-elec-jan").map((v) => v.reviewState)).toEqual(["accepted", "accepted"]);
-    expect(card()).toHaveLength(1);
+    expect(latest.filter((v) => v.documentId === "DOC-modesto-elec-nov").map((v) => v.reviewState)).toEqual(["accepted", "accepted"]);
+    // Nothing else of this document is open, so the review moves on to the next open one.
+    expect(card()).toHaveLength(0);
   });
 });
 
@@ -283,7 +284,7 @@ describe("extraction review: compact cards", () => {
         engagement={engagementConfig}
         values={manufacturerValues}
         onValuesChange={vi.fn()}
-        initialDocumentId="DOC-tualatin-elec-jan"
+        initialDocumentId="DOC-modesto-elec-nov"
         onSaveAsk={vi.fn()}
         onBack={vi.fn()}
       />
@@ -422,7 +423,7 @@ describe("demo documents: the whole document, values highlighted in place", () =
   it("draws a bill whole, marks each value read and each value not found, and picks values from the page", async () => {
     const { DemoDocument } = await import("../components/demo/DemoDocument");
     const { manufacturerValues } = await import("../fixtures/extraction/manufacturerValues");
-    const elec = manufacturerValues.filter((v) => v.documentId === "DOC-tualatin-elec-jan");
+    const elec = manufacturerValues.filter((v) => v.documentId === "DOC-modesto-elec-nov");
     const onPick = vi.fn();
     render(<DemoDocument values={elec} engagement={engagementConfig} selectedId={elec[0].id} onPick={onPick} />);
 

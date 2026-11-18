@@ -205,7 +205,9 @@ jobs:
 
       - name: Install Chromium
         working-directory: frontend
-        run: npx playwright install --with-deps chromium
+        # The runner image already has Chromium's system libraries. When the Ubuntu
+        # mirrors can't be reached, --with-deps fails on apt; install the browser alone.
+        run: npx playwright install --with-deps chromium || npx playwright install chromium
 
       - name: Smoke test
         working-directory: frontend

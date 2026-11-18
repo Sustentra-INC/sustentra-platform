@@ -96,6 +96,7 @@ def _app(engine: Any) -> Any:
             yield session
 
     app.dependency_overrides[db.get_db_session] = session_dep
+    app.dependency_overrides[db.get_sessionmaker_dependency] = lambda: sessionmaker  # endpoints with own transactions
     return app
 
 
