@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
 from backend.app.domain import fuel_units
@@ -50,6 +51,7 @@ from backend.app.services.stationary_combustion_extractor import (
     UsageRecord,
     _norm,
     detect_fuel,
+    parse_date,
 )
 
 CANONICAL_TYPE_ID = "CT-S2-THERMAL"
@@ -123,10 +125,31 @@ AMBIGUOUS_ENERGY_NOTE = (
 )
 
 
+@dataclass
+class UsageTable:
+    header: Row
+    records: list[UsageRecord]
+    history: bool
+
+
+# A header row that calls its table a history or a comparison; "previous" and "prior" are left out here
+# because "Previous Read" is an ordinary column of a current table.
+_HISTORY_HEADER_RE = re.compile(
+    r"(?<![a-z])(history|historical|last \d+ months?|\d+[- ]months?|year ago|comparison|compared|average|avg|trend)"
+    r"(?![a-z])")
+# A heading over the table ("Usage history", "Prior year", "Last 13 months", "Past usage").
+_HISTORY_HEADING_RE = re.compile(
+    r"(?<![a-z])(history|historical|prior|previous|past|last \d+ months?|\d+[- ]months?|year ago|comparison|"
+    r"compared|average|avg|trend)(?![a-z])")
+_MONTH_NAME_RE = re.compile(
+    r"(?<![a-z])(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|"
+    r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?![a-z])")
+
+
 def _unread_table_note(page: int | None) -> str:
     where = f"on page {page}" if page else "in this document"
     return (f"A usage table {where} could not be read (its lines had no number in a thermal unit), so its "
-            "figures are not in the values below. Check that table in the document and add them if they count.")
+            "figures are not in the values below. Check that table in the document.")
 
 
 def thermal_kind(value: Any) -> str | None:
@@ -284,13 +307,13 @@ class ThermalExtractor(ElectricityExtractor):
     def _counts(self, unit: str | None, energy: str | None) -> bool:
         return unit in THERMAL_ENERGY_UNITS or (energy == STEAM and unit in STEAM_MASS_UNITS)
 
-    def _usage_tables(self, rows: Sequence[Row]) -> tuple[list[tuple[Row, list[UsageRecord]]], list[Row]]:
-        """Every usage table on the bill, not only the first: (header row, its records) for each table that
-        reads, and the header rows of those that do not. A table continued under a repeated header, on the
-        next page, is one table (``_table_records`` follows it), so a header inside a table already read is
-        not a new table."""
+    def _usage_tables(self, rows: Sequence[Row]) -> tuple[list[UsageTable], list[Row]]:
+        """Every usage table on the bill, not only the first: each table that reads (with its header row,
+        its records and whether it is a history table), and the header rows of those that do not. A table
+        continued under a repeated header, on the next page, is one table (``_table_records`` follows it),
+        so a header inside a table already read is not a new table."""
 
-        tables: list[tuple[Row, list[UsageRecord]]] = []
+        tables: list[UsageTable] = []
         unread: list[Row] = []
         covered = -1
         for row in rows:
@@ -303,9 +326,48 @@ class ThermalExtractor(ElectricityExtractor):
             if not records:
                 unread.append(row)
                 continue
-            tables.append((row, records))
+            tables.append(UsageTable(row, records, self._is_history(rows, row, records)))
             covered = max((r.quantity.row.index for r in records if r.quantity.row is not None), default=row.index)
         return tables, unread
+
+    @staticmethod
+    def _headings(rows: Sequence[Row], header: Row) -> list[Row]:
+        """The short lines just above a table (its heading), on the same page."""
+
+        return [r for r in rows[max(header.index - 2, 0):header.index]
+                if r.page == header.page and len(r.cells) <= 2]
+
+    @classmethod
+    def _names_history(cls, rows: Sequence[Row], header: Row) -> bool:
+        """The table's header row, or the heading over it, calls it history or a comparison."""
+
+        if _HISTORY_HEADER_RE.search(_norm(header.text)):
+            return True
+        return any(_HISTORY_HEADING_RE.search(_norm(r.text)) for r in cls._headings(rows, header))
+
+    def _is_history(self, rows: Sequence[Row], header: Row, records: Sequence[UsageRecord]) -> bool:
+        """A usage history ("Last 13 months", "Prior year"): named so by its header or heading, or lines that
+        read as a series of different months. It shows past use, not this bill's reading, so it is never
+        counted: adding it would count a year of use again on every bill."""
+
+        if self._names_history(rows, header):
+            return True
+        months: set[str] = set()
+        for record in records:
+            row = record.quantity.row
+            if row is None:
+                continue
+            for cell in row.cells:
+                if cell in record.quantity.cells:
+                    continue
+                month = _MONTH_NAME_RE.search(_norm(cell.text))
+                dated = parse_date(cell.text)
+                if month:
+                    year = re.search(r"\d{4}", cell.text)
+                    months.add(month.group(0)[:3] + (year.group(0) if year else ""))
+                elif dated:
+                    months.add(dated[0][:7])
+        return len(months) >= 3
 
     @staticmethod
     def _share_type_within_table(table: Sequence[UsageRecord]) -> None:
@@ -320,22 +382,54 @@ class ThermalExtractor(ElectricityExtractor):
             if not record.energy and record.fuel is None:
                 record.energy, record.fuel = donor.energy, donor.fuel
 
-    def _usage_table_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
-        return [record for _, records in self._usage_tables(rows)[0] for record in records]
-
     def _usable(self, rows: Sequence[Row], unit_hint: Located | None, doc_kinds: set[str],
-                candidates: Sequence[UsageRecord] | None = None) -> list[UsageRecord]:
-        usable: list[UsageRecord] = []
-        for record in (self._quantity_records(rows) if candidates is None else candidates):
+                records: Sequence[UsageRecord]) -> list[UsageRecord]:
+        """The lines of one table (or the labeled quantities) that are energy consumed. Each is typed
+        from its own evidence, then an untyped line takes its table's agreed type, and only then is the
+        unit checked: a continued steam table in Mlb has lines that count only once they are known to be steam."""
+
+        typed: list[UsageRecord] = []
+        for record in records:
             if not self._is_consumption(record):
                 continue
             found = self._record_kind(record, rows, unit_hint, doc_kinds)
-            if not self._counts(self._record_unit(record, unit_hint), found[0] if found else None):
-                continue
             if found is not None:
                 record.energy, record.fuel = found
-            usable.append(record)
-        return usable
+            typed.append(record)
+        self._share_type_within_table(typed)
+        return [r for r in typed if self._counts(self._record_unit(r, unit_hint), r.energy)]
+
+    def _read_tables(self, rows: Sequence[Row], unit_hint: Located | None,
+                     doc_kinds: set[str]) -> tuple[list[UsageRecord], list[Row]]:
+        """The bill's usable lines, and the header rows of usage tables that could not be read.
+
+        History tables are skipped (and never reported: a history is not a missed reading). If every table
+        that reads is a history, the first is used as before. After the first table counted, another counts
+        only when it is a commodity not yet counted or carries a meter or account id not yet seen: a second
+        table of the same commodity with no new meter is not a new reading."""
+
+        tables, unread = self._usage_tables(rows)
+        unread = [h for h in unread if not self._names_history(rows, h)]
+        if not tables:
+            return self._usable(rows, unit_hint, doc_kinds, self._labeled_quantity_records(rows)), unread
+        chosen = [t for t in tables if not t.history] or tables[:1]
+        usable: list[UsageRecord] = []
+        kinds: set[str] = set()
+        ids: set[str] = set()
+        problems = list(unread)
+        for table in chosen:
+            mine = self._usable(rows, unit_hint, doc_kinds, table.records)
+            if not mine:
+                problems.append(table.header)
+                continue
+            mine_kinds = {r.energy for r in mine if r.energy}
+            mine_ids = {_norm(r.hint) for r in mine if r.hint and r.hint.strip()}
+            if usable and not (mine_kinds - kinds) and not (mine_ids - ids):
+                continue
+            usable.extend(mine)
+            kinds |= mine_kinds
+            ids |= mine_ids
+        return usable, sorted(problems, key=lambda h: h.index)
 
     @staticmethod
     def _document_kinds(rows: Sequence[Row]) -> set[str]:
@@ -353,7 +447,7 @@ class ThermalExtractor(ElectricityExtractor):
             return False
         if StationaryCombustionExtractor().confirms(parser_output):
             return False
-        return bool(self._usable(rows, self._document_unit(rows), self._document_kinds(rows)))
+        return bool(self._read_tables(rows, self._document_unit(rows), self._document_kinds(rows))[0])
 
     # ---------------------------------------------------------------------------------
     def _extract(self, rows: list[Row], parser_output: dict, targets: Sequence[dict], evidence_id: str,
@@ -365,11 +459,7 @@ class ThermalExtractor(ElectricityExtractor):
                 "layer while OCR is off, or an empty file). Upload a text-based PDF or enable OCR.",
             })
         unit_hint = self._document_unit(rows)
-        tables, unread = self._usage_tables(rows)
-        candidates = [record for _, table in tables for record in table] or self._labeled_quantity_records(rows)
-        records = self._usable(rows, unit_hint, self._document_kinds(rows), candidates)
-        for _, table in tables:
-            self._share_type_within_table(table)
+        records, unread = self._read_tables(rows, unit_hint, self._document_kinds(rows))
         if not records:
             return ExtractionOutcome(candidates=[], halt_reason={
                 "code": HALT_UNSUPPORTED,
@@ -383,9 +473,8 @@ class ThermalExtractor(ElectricityExtractor):
         if any(r.fuel is None for r in records):
             outcome.notes.append(AMBIGUOUS_ENERGY_NOTE)
         # Nothing drops silently: a table whose header was found but whose lines gave no usable thermal
-        # quantity is named by its page.
-        kept = {id(record) for record in records}
-        for header in [header for header, table in tables if not any(id(r) in kept for r in table)] + unread:
+        # quantity is named by its page. (A history table is not a missed reading and is not named.)
+        for header in unread:
             outcome.notes.append(_unread_table_note(header.page))
         return outcome
 

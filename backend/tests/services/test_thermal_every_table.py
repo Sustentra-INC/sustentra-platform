@@ -124,3 +124,72 @@ def test_a_table_in_a_unit_that_is_not_thermal_is_named_not_dropped() -> None:
 def test_a_bill_with_no_readable_table_at_all_still_halts_as_before() -> None:
     outcome = _read("\n".join([TAGLINE, HEAD, "Steam Consumption", _table(GENERIC, "STM-1 | x | y | none")]))
     assert outcome.halt_reason is not None
+
+
+# --- usage history is never counted ----------------------------------------------------------
+
+MLB = "Meter | Start Read | End Read | Usage (Mlb)"
+CURRENT_STEAM = _table(MLB, "STM-17-B | 14,882.6 | 15,695.0 | 812.4")
+HISTORY_13 = _table(
+    "Month | Meter | Usage (Mlb)",
+    *(f"{month} 2024 | STM-17-B | {700 + i}" for i, month in enumerate(
+        ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober",
+         "November", "Dezember", "January"])),
+)
+
+
+def test_a_steam_bill_with_a_13_month_history_counts_only_the_current_lines() -> None:
+    text = "\n".join([TAGLINE, HEAD, "Steam Consumption", CURRENT_STEAM, "Usage history - last 13 months", HISTORY_13])
+    outcome = _read(text)
+    assert _energy(outcome) == [("steam", 812.4, "klb")]
+    assert outcome.notes == []  # a history is not a missed reading
+
+
+def test_a_history_above_the_current_table_is_skipped_too() -> None:
+    text = "\n".join([TAGLINE, HEAD, "Previous usage (13-month comparison)", HISTORY_13,
+                     "Steam Consumption", CURRENT_STEAM])
+    outcome = _read(text)
+    assert _energy(outcome) == [("steam", 812.4, "klb")]
+    assert outcome.notes == []
+
+
+def test_a_history_headed_only_mlb_is_told_by_its_months() -> None:
+    series = _table("Month | Meter | Mlb", "Jan 2024 | STM-17-B | 700", "Feb 2024 | STM-17-B | 701",
+                    "Mar 2024 | STM-17-B | 702", "Apr 2024 | STM-17-B | 703")
+    text = "\n".join([TAGLINE, HEAD, "Steam Consumption", CURRENT_STEAM, series])
+    outcome = _read(text)
+    assert _energy(outcome) == [("steam", 812.4, "klb")]
+    assert outcome.notes == []
+
+
+def test_a_chilled_water_table_counts_and_a_steam_history_does_not() -> None:
+    chilled = _table("Meter | Start Read | End Read | Usage (ton-hours)", "CHW-02 | 100 | 42,100 | 42,000")
+    text = "\n".join([TAGLINE, HEAD, "Chilled Water Consumption", chilled,
+                     "Steam usage history", HISTORY_13])
+    outcome = _read(text)
+    assert _energy(outcome) == [("chilled_water", pytest.approx(504), "MMBtu")]
+    assert outcome.notes == []
+
+
+def test_a_bill_whose_only_table_is_a_history_reads_it_as_before() -> None:
+    text = "\n".join([TAGLINE, HEAD, "Steam usage history - last 13 months", HISTORY_13])
+    assert len(_energy(_read(text))) == 13
+
+
+def test_a_second_table_of_the_same_commodity_and_meter_is_not_a_new_reading() -> None:
+    again = _table("Meter | Start Read | End Read | Usage (Mlb)", "STM-17-B | 14,882.6 | 15,695.0 | 812.4")
+    text = "\n".join([TAGLINE, HEAD, "Steam Consumption", CURRENT_STEAM, "Steam Consumption (summary)", again])
+    assert _energy(_read(text)) == [("steam", 812.4, "klb")]
+
+
+def test_a_second_steam_table_for_another_meter_is_counted() -> None:
+    other = _table("Meter | Start Read | End Read | Usage (Mlb)", "STM-22-C | 1.0 | 101.0 | 100")
+    text = "\n".join([TAGLINE, HEAD, "Steam Consumption", CURRENT_STEAM, "Steam Consumption - annex", other])
+    assert _energy(_read(text)) == [("steam", 100, "klb"), ("steam", 812.4, "klb")]
+
+
+def test_a_continued_steam_table_in_mlb_counts_on_its_second_page() -> None:
+    page_one = "\n".join([TAGLINE, HEAD, "Steam Consumption", _table(MLB, "STM-1 | 1 | 11 | 10", "STM-2 | 1 | 21 | 20")])
+    page_two = _table(MLB, "STM-3 | 1 | 31 | 30", "STM-4 | 1 | 41 | 40")
+    assert _energy(_read(page_one, page_two)) == [
+        ("steam", 10, "klb"), ("steam", 20, "klb"), ("steam", 30, "klb"), ("steam", 40, "klb")]
