@@ -71,7 +71,9 @@ export function BackendDashboard({
         asks,
         findings,
         examinations,
-        coverage: current ? coverageFromRecalculation(current) : null,
+        // An engagement with no documents at all keeps the empty state ("Upload documents to
+        // begin"), not a list of data points with nothing yet.
+        coverage: current && evidence.some((e) => e.disposition !== "withdrawn") ? coverageFromRecalculation(current) : null,
         calculatedIds,
       }),
       // From the engagement, not the recalculation: that may be fetched before a Setup

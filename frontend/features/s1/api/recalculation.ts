@@ -1061,6 +1061,48 @@ export const METHOD_CHECK_RULE_IDS: readonly string[] = [
   "COV-DECISIONS",
 ];
 
+interface ScopeKey {
+  /** The data point's key in Setup's in-scope list. */
+  dataPoint: string;
+  /** The roll-up source, where the reviewer can confirm the company has none. */
+  source: RollupSourceKey;
+}
+const STATIONARY_SCOPE: ScopeKey = { dataPoint: "stationary_combustion_total", source: "stationary_combustion" };
+const MOBILE_SCOPE: ScopeKey = { dataPoint: "mobile_combustion_total", source: "mobile_combustion" };
+const ELECTRICITY_SCOPE: ScopeKey = { dataPoint: "purchased_electricity_total", source: "purchased_electricity" };
+const REFRIGERANT_SCOPE: ScopeKey = { dataPoint: "fugitive_total", source: "fugitive_refrigerants" };
+
+/**
+ * A rule with nothing counted for it (no reviewed record, none awaiting review, no choice open).
+ * It is not applicable only when Setup takes the data point out of scope or the reviewer
+ * confirmed the company has none. Otherwise the evidence is missing: either no documents at all,
+ * or every record was left out of the numbers (and the reason is said).
+ */
+function nothingCounted(
+  result: Recalculation,
+  scope: ScopeKey,
+  noun: string,
+  leftOut: { reason?: ExcludedReason }[]
+): Pick<CoverageRule, "status" | "reason" | "missingBecause"> {
+  if (result.comparisons.some((c) => c.key === scope.dataPoint && c.status === "not_in_scope")) {
+    return { status: "not_applicable", reason: "Setup marks this data point as not in scope for the engagement." };
+  }
+  const absent = result.rollup?.categories?.[scope.source];
+  if (absent?.status === "confirmed_absent") {
+    return {
+      status: "not_applicable",
+      reason: `The reviewer confirmed the company has none${absent.absent_reason ? `: ${absent.absent_reason}` : "."}`,
+    };
+  }
+  return {
+    status: "inputs_missing",
+    missingBecause: "no_evidence",
+    reason: leftOut.length
+      ? `Every ${noun} record is left out (${describeLeftOut(leftOut)}), so none are counted.`
+      : `No documents for ${noun} yet.`,
+  };
+}
+
 /**
  * What the recalculation could and could not check, from its own result: which inputs
  * are present, which are missing and why. Nothing here is a guess about rules that did
@@ -1113,10 +1155,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
         ruleId,
         assertion,
         appliesTo,
-        status: "not_applicable",
-        reason: leftOut.length
-          ? `Every reviewed ${TYPE_LABEL[typeId]} record is left out (${describeLeftOut(leftOut)}), so none are counted.`
-          : `No reviewed ${TYPE_LABEL[typeId]} documents in this engagement.`,
+        ...nothingCounted(result, kind === "stationary" ? STATIONARY_SCOPE : MOBILE_SCOPE, TYPE_LABEL[typeId], leftOut),
       });
     }
   };
@@ -1167,8 +1206,12 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
       ruleId: "COV-S2-LOCATION",
       assertion: "Purchased electricity is recalculated with each facility's eGRID subregion factor (EPA Hub Table 6)",
       appliesTo: elecAppliesTo,
-      status: "not_applicable",
-      reason: "No reviewed electricity bills in this engagement.",
+      ...nothingCounted(
+        result,
+        ELECTRICITY_SCOPE,
+        TYPE_LABEL["CT-S2-ELEC"],
+        (result.excluded ?? []).filter((e) => e.canonical_type_id === "CT-S2-ELEC")
+      ),
     });
   }
 
@@ -1289,11 +1332,6 @@ function refrigerantRule(result: Recalculation): CoverageRule {
   const leftOut = (result.excluded ?? []).filter(
     (e) => e.canonical_type_id === "CT-S1-REFRSVC" && reasonOf(e) !== "montreal_protocol_gas"
   );
-  return {
-    ...base,
-    status: "not_applicable",
-    reason: leftOut.length
-      ? `Every reviewed refrigerant record is left out (${describeLeftOut(leftOut)}), so none are counted.${hcfcNote}`
-      : `No reviewed refrigerant service records in this engagement.${hcfcNote}`,
-  };
+  const nothing = nothingCounted(result, REFRIGERANT_SCOPE, "refrigerant", leftOut);
+  return { ...base, ...nothing, reason: `${nothing.reason}${hcfcNote}` };
 }

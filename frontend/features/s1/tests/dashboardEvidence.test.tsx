@@ -20,7 +20,8 @@ import { BackendDashboard } from "../components/BackendDashboard";
 import { DashboardScreen } from "../components/DashboardScreen";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { coverageRules } from "../fixtures/verification/coverageRules";
-import type { EngagementConfig } from "../types";
+import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
+import type { EngagementConfig, EvidenceItem } from "../types";
 import type { Examination } from "../types/verification";
 import { dashboardFigures } from "../utils/engagementActivity";
 import { testedExaminationKeys } from "../utils/verificationTable";
@@ -76,6 +77,28 @@ const examinedAll = (result: Recalculation): Record<string, Examination> =>
     ])
   );
 
+/** The bills the workbook example's engagement has uploaded (one is enough to leave the empty state). */
+const ONE_DOCUMENT = [manufacturerEvidence[0]];
+
+/** Setup takes these data points out of scope, as `outOfScopeDataPoints` does. */
+const withoutScope = (result: Recalculation, ...keys: string[]): Recalculation => {
+  const stub = (key: string) => ({
+    ...result.comparisons[0],
+    key,
+    data_point: key,
+    reported: null,
+    recalculated: null,
+    difference: null,
+    difference_pct: null,
+  });
+  // The backend lists every data point; the older fixture lacks some, so add what is missing.
+  const have = new Set(result.comparisons.map((c) => c.key));
+  const all = [...result.comparisons, ...keys.filter((k) => !have.has(k)).map(stub)];
+  return { ...result, comparisons: all.map((c) => (keys.includes(c.key) ? { ...c, status: "not_in_scope" as const } : c)) };
+};
+/** The workbook example covers gas and electricity only: the other two sources are out of scope. */
+const GAS_AND_ELECTRICITY = (result: Recalculation) => withoutScope(result, "mobile_combustion_total", "fugitive_total");
+
 const figuresFor = (coverage: Parameters<typeof dashboardFigures>[0]["coverage"]) =>
   dashboardFigures({ evidence: [], values: [], asks: [], findings: [], coverage });
 
@@ -88,12 +111,12 @@ const assessmentStep = () => screen.getByText("Assessment").closest("li");
 async function renderLive(
   engagement: EngagementConfig,
   result: Recalculation,
-  options: { examinations?: Record<string, Examination>; onNavigate?: (key: string) => void } = {}
+  options: { examinations?: Record<string, Examination>; onNavigate?: (key: string) => void; evidence?: EvidenceItem[] } = {}
 ) {
   vi.mocked(api).mockResolvedValue(result);
   const props = {
     engagement,
-    evidence: [],
+    evidence: options.evidence ?? [],
     values: [],
     asks: [],
     findings: [],
@@ -117,8 +140,9 @@ describe("dashboard evidence figures: live coverage", () => {
     expect(rules.find((r) => r.ruleId === "COV-GWP")?.status).toBe("inputs_present");
     expect(rules.find((r) => r.ruleId === "COV-PERIOD")?.status).toBe("inputs_missing");
 
-    // ... and neither is evidence for a data point.
-    expect(figuresFor(rules).coverage).toMatchObject({ present: 0, missing: 0 });
+    // ... and neither is evidence for a data point. With nothing uploaded, the four in-scope
+    // sources have no documents yet.
+    expect(figuresFor(rules).coverage).toMatchObject({ present: 0, missing: 4, inScope: 4 });
   });
 
   it("reads 'Not started' on a brand-new engagement, and sends the missing end date to Setup", async () => {
@@ -160,7 +184,7 @@ describe("dashboard evidence figures: live coverage", () => {
 
   it("falls back to documents read while no evidence check is in play", () => {
     const figures = {
-      ...figuresFor(coverageFromRecalculation(EMPTY)),
+      ...figuresFor(null),
       documents: 4,
       documentsReadable: 1,
     };
@@ -169,7 +193,7 @@ describe("dashboard evidence figures: live coverage", () => {
   });
 
   it("flags a missing reported total on its own row, not as a data point missing evidence", async () => {
-    const result = withoutReported("scope1_total");
+    const result = GAS_AND_ELECTRICITY(withoutReported("scope1_total"));
     const rules = coverageFromRecalculation(result);
     expect(rules.find((r) => r.ruleId === "COV-REPORTED")).toMatchObject({
       status: "inputs_missing",
@@ -180,7 +204,7 @@ describe("dashboard evidence figures: live coverage", () => {
     expect(figuresFor(rules).coverage).toMatchObject({ present: 3, missing: 0 });
 
     const onNavigate = vi.fn();
-    await renderLive(WORKBOOK_ENGAGEMENT, result, { onNavigate });
+    await renderLive(WORKBOOK_ENGAGEMENT, result, { onNavigate, evidence: ONE_DOCUMENT });
     expect(screen.getByText("3 of 3 in-scope data points have their evidence")).toBeInTheDocument();
     expect(screen.queryByText(/missing evidence/)).toBeNull();
     expect(screen.queryByText(/Reporting period needs/)).toBeNull();
@@ -200,13 +224,13 @@ describe("dashboard evidence figures: live coverage", () => {
   });
 
   it("keeps the Assessment step open until the reported totals are entered", async () => {
-    const missing = withoutReported("scope1_total");
-    const first = await renderLive(WORKBOOK_ENGAGEMENT, missing, { examinations: examinedAll(missing) });
+    const missing = GAS_AND_ELECTRICITY(withoutReported("scope1_total"));
+    const first = await renderLive(WORKBOOK_ENGAGEMENT, missing, { examinations: examinedAll(missing), evidence: ONE_DOCUMENT });
     expect(screen.getByText(/results examined/)).toHaveTextContent(/^(\d+) of \1 results examined$/);
     expect(assessmentStep()).not.toHaveClass("s1-timeline__step--done");
     first.unmount();
 
-    await renderLive(WORKBOOK_ENGAGEMENT, RESULT, { examinations: examinedAll(RESULT) });
+    await renderLive(WORKBOOK_ENGAGEMENT, GAS_AND_ELECTRICITY(RESULT), { examinations: examinedAll(RESULT), evidence: ONE_DOCUMENT });
     expect(missingReportedTotals(RESULT)).toEqual([]);
     expect(screen.queryByText(/Reported totals? not entered/)).toBeNull();
     expect(assessmentStep()).toHaveClass("s1-timeline__step--done");
