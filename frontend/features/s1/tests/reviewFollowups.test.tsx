@@ -106,8 +106,8 @@ describe("scrolling to the selected value", () => {
       motion(reduce);
       render(<DocumentContentView documentId="DOC" marks={[MARK]} selectedId="kwh" />);
       await screen.findByRole("button", { name: /^Select Electricity consumed/ });
-      // The view scrolls in an effect that runs after the content settles; under load the button
-      // can be found a beat before that, so wait for the scroll rather than expect it at once.
+      // The scroll runs in an effect after the content renders; wait for it rather than assume it has run
+      // by the time the button is found (it had not, on a slow CI runner).
       await waitFor(() => expect(scroll).toHaveBeenCalledWith(expect.objectContaining({ behavior })));
     });
   }
