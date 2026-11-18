@@ -81,6 +81,17 @@
         "null"
       ]
     },
+    "ai_alternative": {
+      "description": "Optional. Set with the flag ai_disagrees on a rule-extracted value: what Claude read in its place. Read-only; the value above is unchanged. source_reference is the parser's reference for the line Claude quoted.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "unit", "source_reference"],
+      "properties": {
+        "value": { "type": ["string", "number", "boolean", "null"] },
+        "unit": { "type": ["string", "null"] },
+        "source_reference": { "type": "object" }
+      }
+    },
     "record_index": {
       "description": "Optional. 1-based position of the record within the document when it yields several records; null for single-record documents.",
       "type": [

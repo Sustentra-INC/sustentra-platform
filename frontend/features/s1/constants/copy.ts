@@ -5,9 +5,29 @@ export const HALT_REASONS = {
   ocrRequired: "Photo or scan: its text is read once OCR is switched on. Ask for a text PDF meanwhile.",
   passwordProtected: "Password-protected: ask the client for a copy without a password.",
   noTemplate: "No extraction template exists for this document type.",
-  typeUnknown: "Document type not recognised. Choose its type on Evidence and it is read again.",
+  typeUnknown: "We couldn't tell what kind of document this is. Choose its type in Evidence.",
   multiFacility: "Multi-facility document · splitting is not supported in V1.",
   pipeline: "Processing failed. Retry available.",
+  documentTooLong: "Too many pages to read in one file. Split it into smaller files and upload them separately.",
+} as const;
+
+/** Claude's reading of a document's type (backend services/ai_routing.py). */
+export const AI_TYPE = {
+  suggested: "Type suggested by Claude, please confirm",
+  disagreesOn: (rulesType: string, claudeType: string) =>
+    `The rules chose ${rulesType}, but Claude read the first pages as ${claudeType}. The type was not changed.`,
+} as const;
+
+/** Claude's reading of a value (backend services/ai_extraction.py). */
+export const AI_VALUE = {
+  suggested: "Suggested by Claude",
+  suggestedHelp: "Claude read this where the rules found nothing. Check it against the page, then accept or correct it.",
+  conflict: "Claude read two different values here",
+  conflictHelp: "Claude read another value for this field elsewhere in the document. Check the page.",
+  disagrees: "Claude read a different value here",
+  disagreesHelp: "The rules read the value above and kept it. Claude read another: check the page.",
+  readBy: "Read by Claude",
+  needIndividual: (n: number) => `${n} suggested by Claude need individual review`,
 } as const;
 
 export const EXACT_COPY = {

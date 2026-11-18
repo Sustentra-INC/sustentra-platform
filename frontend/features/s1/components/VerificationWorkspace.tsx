@@ -1220,7 +1220,7 @@ function initials(name: string): string {
     .toUpperCase();
 }
 
-function RecordExamination({
+export function RecordExamination({
   title,
   examination,
   team,
@@ -1306,7 +1306,7 @@ function RecordExamination({
   );
 }
 
-function AddNote({ title, onCancel, onSave }: { title: string; onCancel: () => void; onSave: (text: string) => void }) {
+export function AddNote({ title, onCancel, onSave }: { title: string; onCancel: () => void; onSave: (text: string) => void }) {
   const [text, setText] = useState("");
   return (
     <div className="s1-vw-box-form" role="group" aria-label={`Add notes · ${title}`}>
@@ -1330,7 +1330,7 @@ function AddNote({ title, onCancel, onSave }: { title: string; onCancel: () => v
   );
 }
 
-function formatWhen(iso: string): string {
+export function formatWhen(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime())
     ? iso

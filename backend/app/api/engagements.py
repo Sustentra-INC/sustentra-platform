@@ -24,6 +24,7 @@ from backend.app.api.s1_access import s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
 from backend.app.services import engagement_service
+from backend.app.services.calculation_lines import normalize_evidence_lines
 from backend.app.services.engagement_recalculation_service import (
     validate_facilities,
     validate_out_of_scope,
@@ -52,6 +53,9 @@ SETTINGS_KEYS = frozenset(
         "assuranceStandard",
         "materialityThreshold",
         "recalculation",
+        # Calculation lines reviewers added on the Evidence page (the system's own lines are
+        # never stored here). See services/calculation_lines.py.
+        "evidenceLines",
     }
 )
 MAX_SETTINGS_BYTES = 64 * 1024
@@ -77,6 +81,8 @@ def _check_settings(value: dict[str, Any]) -> dict[str, Any]:
         validate_facilities(value["facilities"])
     if "outOfScopeDataPoints" in value:
         validate_out_of_scope(value["outOfScopeDataPoints"])
+    if "evidenceLines" in value:
+        value["evidenceLines"] = normalize_evidence_lines(value["evidenceLines"])  # fills in each line's key
     return value
 
 
@@ -187,6 +193,30 @@ async def require_open_engagement(
     return row
 
 
+async def _reject_system_lines(db: AsyncSession, current: dict[str, Any], settings: dict[str, Any] | None,
+                               user: CurrentUser) -> None:
+    """settings["evidenceLines"] holds the reviewers' own lines only: a line the system already
+    makes (a level 2 with documents, at a Setup facility or vehicle group) cannot be added to it.
+    Lines already stored are left alone, so saving other settings never fails over an old line."""
+
+    added = [line["key"] for line in (settings or {}).get("evidenceLines") or []]
+    added = [key for key in added if key not in {line.get("key") for line in
+                                                 (current.get("settings") or {}).get("evidenceLines") or []}]
+    if not added:
+        return
+    from backend.app.api import evidence_tree  # imports this module, so not at the top
+    from backend.app.api.s1_access import can_see
+
+    decisions = await evidence_tree.document_decisions(db, current)
+    system = evidence_tree.system_line_keys({**current, "settings": settings}, lambda r: can_see(r, user), decisions)
+    clash = [key for key in added if key in system]
+    if clash:
+        raise HTTPException(
+            status_code=422,
+            detail=f"{clash[0]} is a line the system already creates for this engagement, so it can't be added "
+                   "as your own. Use the existing line.")
+
+
 @router.get("/engagements", response_model=EngagementListResponse)
 async def list_engagements(
     include_archived: bool = Query(False),
@@ -248,6 +278,7 @@ async def update_engagement(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not changes:
         return EngagementResponse(**current)
+    await _reject_system_lines(db, current, changes.get("settings"), user)
     row = await engagement_service.update_engagement(db, current["id"], changes)
     event = "engagement_archived" if changes.get("status") == "archived" else "engagement_updated"
     await _audit(db, request, user, event, row, sorted(changes))

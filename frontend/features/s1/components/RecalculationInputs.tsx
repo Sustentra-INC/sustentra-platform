@@ -44,7 +44,8 @@ export function RecalculationInputs({
   const [steamText, setSteamText] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(settings.steam_heat_content ?? {}).map(([site, value]) => [site, String(value)]))
   );
-  const asks = result.needs_input;
+  // A calculation_lines item has no key or message: the questions below are the keyed ones.
+  const asks = result.needs_input.map((a) => ({ ...a, key: a.key ?? "", message: a.message ?? (a.kind === "calculation_lines" ? "The per-line calculations could not be built. The totals are not affected." : "") }));
   const [open, setOpen] = useState(asks.length > 0);
 
   const facilities = Array.from(
@@ -117,7 +118,7 @@ export function RecalculationInputs({
       <button className="s1-rc__head" type="button" aria-expanded={open} onClick={() => setOpen(!open)}>
         <span className="s1-rc__title">Recalculation inputs</span>
         <span className={`s1-state s1-state--${asks.length ? "open" : "resolved"}`}>
-          {asks.length ? `${asks.length} needed` : "Complete"}
+          {asks.length ? `${asks.length} needed` : "Inputs entered"}
         </span>
         {result.awaiting_review.length ? (
           <span className="s1-state s1-state--unverifiable">{result.awaiting_review.length} awaiting review</span>

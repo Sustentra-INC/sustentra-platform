@@ -183,7 +183,7 @@ function openItems(result: Recalculation, sources: RollupSourceKey[]): string[] 
   const gaps = sources.flatMap((s) => result.rollup?.categories[s]?.gaps ?? []).filter((g) => g.affects_total);
   return [
     awaiting.length ? `${awaiting.length} ${awaiting.length === 1 ? "record" : "records"} awaiting review (${listed(awaiting.map((a) => a.record))})` : "",
-    ...asks.map((a) => a.message.replace(/\.$/, "")),
+    ...asks.map((a) => (a.message ?? "").replace(/\.$/, "")),
     ...gaps.map((g) => GAP_WORDS[g.gap] ?? g.gap.replace(/_/g, " ")),
   ].filter(Boolean);
 }

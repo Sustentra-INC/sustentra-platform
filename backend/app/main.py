@@ -9,10 +9,13 @@ from slowapi.errors import RateLimitExceeded
 from . import observability
 from .api import (
     assistant,
+    document_batches,
     documents,
     engagements,
     evidence,
+    evidence_tree,
     methodology,
+    methodology_review,
     pipeline,
     processing_runs,
     recalculation,
@@ -35,14 +38,17 @@ APP_TITLE = "Sustentra Evidence Extraction API"
 S1_ROUTERS = (
     engagements.router,
     documents.router,
+    document_batches.router,
     processing_runs.router,
     pipeline.router,
     evidence.router,
     methodology.router,
     reviews.router,
     recalculation.router,
+    evidence_tree.router,
     workpaper_items.router,
     requests.router,
+    methodology_review.router,
     assistant.router,
 )
 # The S1 routes are also mounted at root /v1/* for local development and existing

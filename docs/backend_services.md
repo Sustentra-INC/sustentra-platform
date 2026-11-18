@@ -25,6 +25,71 @@
 - storage: S3 read/write shell.
 - persistence: SQLAlchemy session/bootstrap shell.
 
+## Page chunks (large PDFs, queued mode)
+
+A scanned PDF of hundreds of pages used to be parsed in one run (50 OCR pages at most, and one
+failure lost everything). In queued mode a PDF with more than `S1_CHUNK_THRESHOLD_PAGES` pages
+is now read as page chunks on the same queue as the document reads. Inline mode and smaller
+documents are read as before, byte for byte.
+
+1. The reader claims the run (`processing_reader`). `DocumentChunkService.step` counts the pages
+   and, in one transaction (`DocumentChunkRepository.plan`), inserts one `s1_document_chunks` row per
+   `S1_CHUNK_PAGES` (10) pages and parks the run in `waiting_on_chunks`: no worker, no lease,
+   and the attempt is not spent.
+2. One loop, chunks first: a reader claims the oldest due chunk
+   (`claim_s1_document_chunk`, `SKIP LOCKED`), parses only its pages through
+   `ParserService.parse_document(..., pages=(from, to))` and stores the parser output on the
+   chunk. Page numbers in `pages`, `text_blocks` and `source_references` are the document's own.
+   The 50-page OCR cap (`OCR_MAX_PAGES`) applies per chunk.
+3. The chunk that ends the last unfinished chunk (completed, or failed for good) queues the run
+   again with `s1_wake_parent_run`: a fenced `UPDATE ... WHERE NOT EXISTS (unfinished chunk)`
+   taken under the run's row lock, so two readers ending the last two chunks together wake it
+   exactly once, never zero times.
+4. A reader claims the run again and assembles (`merge_chunk_outputs`): the chunks' text blocks,
+   key-value pairs, tables, source references, pages and warnings are concatenated in page
+   order into one parser output (an id that would collide gets a `c{index}:` prefix). Classify,
+   target planning, extraction and persist then run on that one output as for any document, so
+   the rule extractors see the whole document. The merged status is `parsed` when every chunk
+   is, `empty` when none found text, `partial` otherwise.
+
+Retries and leases are those of the runs: a chunk failure goes back to `queued` after
+`RETRY_DELAYS_SECONDS` (30 s, then 120 s), and after `S1_CHUNK_MAX_ATTEMPTS` (3) the chunk is
+`failed` (`error_code`, no text). A chunk whose Textract call failed on a page is also tried
+again, and on its last attempt it is kept with what it read. A chunk whose reader died is
+claimable again when its lease runs out (`requeue_expired_s1_document_chunks`, called by the
+reader every 30 s with the runs'). Assembly goes on with the pages it has: the pipeline run is
+`partial` with the warning `pages_unread: Pages 11-20 could not be read, ...`.
+
+Over `S1_MAX_DOCUMENT_PAGES` (500) pages the document is not read: a `partial` pipeline run with
+halt `document_too_long`.
+
+| Setting | Default | |
+|---|---|---|
+| `S1_CHUNK_THRESHOLD_PAGES` | 20 | A PDF with more pages is chunked (at or under: read whole). |
+| `S1_CHUNK_PAGES` | 10 | Pages per chunk. |
+| `S1_CHUNK_MAX_ATTEMPTS` | 3 | Reads of one chunk before it is failed. |
+| `S1_MAX_DOCUMENT_PAGES` | 500 | Over this, the run is partial with `document_too_long`. |
+
+Like the `S1_READER_*` settings they are read from the container's own environment; a value in
+`/opt/sustentra/.env` reaches it only once `write_app_env` in `deploy.sh` lists it.
+
+`GET /v1/processing-runs/{run_id}` adds `chunks: {total, completed, failed, failed_pages}` for a
+chunked run (see `api_contract.md`). Log lines for chunks carry the run id, chunk index, page
+range, attempt, status and error code only (`chunks_planned`, `document_chunk_claimed`,
+`chunk_finished`, `document_chunk_done`, `chunks_assembled`, `document_too_long`,
+`document_chunks_requeued`).
+
+## Document batches (migration 0019)
+
+Files dropped together are one batch: `POST /v1/engagements/{id}/document-batches` makes it and uploads
+carry its `batch_id`; `GET .../document-batches/{batch_id}` reports each document's status, chunk
+progress, type, halt sentence and records found, with totals (`api/document_batches.py`, contract in
+`api_contract.md`). `s1_document_batches` (id, org_id, engagement_id, created_by, created_at, label) has
+RLS like the other s1 tables and is never updated or deleted by the app; `s1_documents.batch_id` is a
+nullable filter column that must equal the record's own `batch_id`. The batch table lives in Postgres
+whatever `S1_STORE` is, like the run queue. The view reads the latest run of each document, its chunk
+summary and its pipeline run; it adds no new queue or state of its own.
+
 ## AI suggestions (Claude)
 
 AI suggests a type or values for documents the system cannot read on its own; a person
@@ -53,8 +118,108 @@ Claude yet, and the feature is off everywhere.
 | `AI_PROVIDER` | `anthropic` | `anthropic` (Claude API, needs the key) or `bedrock` (instance role, no key). |
 | `ANTHROPIC_API_KEY` | none | Claude API key. A `SecretStr`: `show-settings` prints `**********`. |
 | `AI_MODEL` | `claude-sonnet-5-5` | Claude API model id; on Bedrock the adapter adds `anthropic.`. |
+| `AI_BEDROCK_MODEL_ID` | none | Bedrock only: full model id, sent as given. Unset, the adapter sends `anthropic.` + `AI_MODEL`. Prices stay keyed by `AI_MODEL`. |
 | `AI_EFFORT` | `low` | `low`, `medium` or `high`. |
-| `AI_MONTHLY_CAP_USD` | `25` | Per-organization monthly cap (enforced by the usage ledger, a later PR). |
+| `S1_AI_ROUTING_SHADOW` | `false` | Claude routing also reads documents the rules placed confidently, and may only add the warning `ai_type_disagrees`. One call per document; needs `AI_SUGGESTIONS_ENABLED`. |
+| `AI_WINDOW_PAGES` | `5` | Claude reading: pages per window (one page of overlap between windows). |
+| `AI_MAX_WINDOWS` | `10` | Claude reading: windows per document; the pages left out are the warning `ai_pages_skipped`. |
+| `AI_INLINE_MAX_WINDOWS` | `2` | Claude reading in inline mode (inside the upload request): at most this many windows. |
+| `AI_INLINE_BUDGET_SECONDS` | `60` | Inline mode: no window starts after this many seconds. |
+| `AI_MONTHLY_CAP_USD` | `25` | Per-organization monthly cap (UTC calendar month; enforced before each call against the `ai_usage` ledger, which records every call; used by Methodology review prefill). |
+
+### Claude routing (document type)
+
+`services/ai_routing.py`, called by `PipelineOrchestrationService` right after the rule
+classifier. Claude reads pages 1-2 (at most 200 lines and 12,000 characters, from
+`ai_locator.document_lines`) and answers one `structured()` call:
+`{canonical_type_id (the vocabulary's ids + "none"), quote, line, reason_code (title | header_terms | table_headers | other)}`.
+
+- Runs when the classifier status is `unclassified` or `low_confidence` and the content-check
+  accept path did not take the document. A type that has extraction targets is used with
+  `canonical_type_source = "ai"` and `review_required`; the pipeline run carries
+  `ai_routing` (quote, line, page from the parser, reason code). Extraction proceeds; the
+  reviewer confirms or changes the type with the existing control.
+- With `S1_AI_ROUTING_SHADOW` on, a confidently classified document is also read; a
+  different answer only adds the warning `ai_type_disagrees` (both ids) and an `ai_routing`
+  with `used: false`. The type never changes.
+- A reviewer's override wins and Claude is not called.
+- The quote must locate on the parser's lines (`locate_quote`). Otherwise the answer is
+  ignored and counted: warning `ai_routing_ignored: <reason>` (`quote_not_on_document`,
+  `unknown_line`, `ambiguous_quote`, `no_targets`). The page never comes from the model.
+- Gate as prefill: `AI_SUGGESTIONS_ENABLED`, a client from `get_claude()`, and
+  `ai_usage.cap_reached`. Every call that returns a reply is recorded in `ai_usage`
+  (feature `routing`, no user) in its own short transaction after the call; no connection is
+  held while Claude answers. A failed call (network, refusal, bad reply) adds the warning
+  `ai_unavailable` and the run goes on as without AI. AI off: the run is byte-identical.
+- The cap is checked without the per-org advisory lock: documents are read concurrently by
+  several readers, and the lock is released before the call anyway, so it would only drop
+  routing at random. A burst can overshoot the cap by a few calls of well under a cent each.
+
+### Claude reading (extraction assist)
+
+`services/ai_extraction.py`, called by `PipelineOrchestrationService` after
+`ExtractionService.extract` and before the result is persisted (not when the extraction halted).
+Claude reads the document in windows and suggests values the rule extractors missed. Claude
+only suggests.
+
+- **Windows.** The parser's lines (`ai_locator.document_lines`) are split by page into windows
+  of `AI_WINDOW_PAGES` pages with a one-page overlap (a workbook or CSV has no pages: its lines
+  are cut into parts of 100), at most `AI_MAX_WINDOWS`, read in sequence. Every window's prompt
+  starts with a header: canonical type, file name and the account number, period and supplier
+  the rules already read, so context crosses the window borders. Pages left out: warning
+  `ai_pages_skipped: pages 10-12 ...`. The run stops early at 80% of
+  `S1_READER_MAX_RUN_SECONDS` (counted from the start of the document's run): warning
+  `ai_time_budget` with the pages not read.
+- **What is asked.** Fields whose document-level candidate is empty (`normalized_value` and
+  `raw_value` null), each as an enum value with its label and allowed units, plus the known-gap
+  fields of the type (extraction-config rows with `ai_only: true`: `heat_content`,
+  `meter_number`, `vehicle_type`, `model_year`, `distance`; optional, not consumed by the
+  calculation, never planned for the rule extractors: `get_targets_for_canonical_type` leaves
+  them out unless `include_ai_only=True`). When a call is made anyway, the rule-read
+  document-level fields are included as read-only cross-checks. Candidates of a layout
+  extractor's records: a document with exactly one record is filled inside that record (the new
+  candidate takes its `record_index`); a document with several records is not read at all and is
+  counted as dropped `multi_record_document`. No record is ever created. Nothing is asked when
+  nothing is missing and the type has no known-gap field. With AI on, every document of a type
+  with a known-gap field (fuel, mobile fuel, electricity, thermal) is read in full, up to the
+  window limit.
+- **Verify.** `ai_locator.locate` (quote on the cited parser line, value printed in the quote as
+  a whole token), the value must be a bare number for numeric fields, and the unit must be in
+  the field's allowed list (for `activity_unit`, the value is the unit). Dropped and counted by
+  reason: `empty_value`, `unknown_line`, `quote_not_on_document`, `ambiguous_quote`,
+  `value_not_in_quote`, `invalid_value`, `unit_not_allowed`.
+- **Merge.** A verified value fills the empty candidate (same `candidate_id`; raw, normalized,
+  unit; `source_reference` is the parser's reference of the quoted line; `confidence` =
+  min(0.6, the line's parser confidence); flags: `field_not_found` removed, `ai_suggested`
+  added). A known-gap field is added as a new candidate. The same field at the same parser
+  reference counts once (windows overlap); the same value twice counts once; two different
+  values for one field are two candidates (`...::ai2`) flagged `ai_conflict`. A rule-extracted
+  value is never changed: when Claude read a different value there, the candidate gets the flag
+  `ai_disagrees` and `ai_alternative {value, unit, source_reference}`.
+- **The calculation never reads a suggestion.** `reviewed_evidence.group_reviewed_records` hides
+  the value and unit of an `ai_suggested` candidate that has no accepted or edited decision, so
+  neither the recalculation, the evidence tree nor the Coverage page can read it until a
+  reviewer accepts or corrects it (an accept records the candidate's value as the reviewed
+  value, as for any value).
+- **Time.** Queued mode: windows as above, none starts after 80% of `S1_READER_MAX_RUN_SECONDS`.
+  Inline mode: at most `AI_INLINE_MAX_WINDOWS` (2) windows, none after `AI_INLINE_BUDGET_SECONDS`
+  (60 s). In both, a window starts only if one call's worst case (`REQUEST_TIMEOUT_S` x
+  (`MAX_RETRIES` + 1) = 180 s) still ends before `S1_READER_MAX_RUN_SECONDS`; otherwise
+  `ai_time_budget`. A reader run that overruns is killed and retried, and the retry reads (and
+  pays for) the windows again; accepted for now.
+- **Conflicts and the calculation.** When several candidates share a field (`ai_conflict`), the
+  one with an accepted or edited decision counts, so a rejected sibling never hides an accepted
+  value; two accepted with different values leave the field unreviewed.
+- **Workpaper.** The "Reviewed values" sheet labels an unreviewed Claude reading "Suggested by
+  Claude (not reviewed)"; the Evidence sheet's "Values extracted" leaves them out and, when Claude
+  read anything, shows them in a "Suggested by Claude" column.
+- **Gate, ledger, warnings.** As routing: `AI_SUGGESTIONS_ENABLED`, a client, `cap_reached`
+  (checked before each window against the month's spend plus what this run has spent). One
+  `ai_usage` row per call, feature `extraction`, no user; a call that raises has no row. Any
+  failure is the warning `ai_unavailable` and the run goes on. A summary warning carries counts
+  only: `ai_extraction: ai_suggested n, ai_disagrees n, ai_conflict n, dropped n (reason n, ...),
+  cost $x, windows k of m`. Logs carry ids, counts, cost and duration, never text. AI off: the
+  pipeline output is byte-identical.
 
 ### How the key reaches the api container (staging)
 
@@ -70,7 +235,7 @@ Claude yet, and the feature is off everywhere.
    logger at INFO, because at DEBUG the SDK logs whole request bodies.
 
 The optional String parameters `/<env>/ai_suggestions_enabled`, `/<env>/ai_provider`,
-`/<env>/ai_model` and `/<env>/ai_monthly_cap_usd` are written to `app.env` the same way,
+`/<env>/ai_model`, `/<env>/ai_bedrock_model_id` and `/<env>/ai_monthly_cap_usd` are written to `app.env` the same way,
 when they exist.
 
 ### Runbook
@@ -90,7 +255,32 @@ when they exist.
   `"anthropic_api_key": "**********"` when the key is set.
 - **Remove the key.** `aws ssm delete-parameter --region us-east-1 --name
   /staging/anthropic_api_key`, then redeploy. Revoke it in the Anthropic Console too.
-- **Bedrock instead.** Set `/staging/ai_provider` to `bedrock` and redeploy. Not yet tried
-  live: the app-host role (`infra/iam_app_host.tf`) has no Bedrock permission yet, and the
-  model must be enabled for the account.
+- **Bedrock instead.** Not yet tried live. The adapter uses the Bedrock Mantle endpoint
+  (`bedrock-mantle.<region>.api.aws`, SigV4 service `bedrock-mantle`), which takes model ids
+  like `anthropic.claude-sonnet-5-5` (no cross-region `us.` profile) and is authorized by
+  `bedrock-mantle:CreateInference`, granted to the app-host role in `infra/iam_app_host.tf`
+  (resource `*` until the model-ARN format is documented). See
+  [Claude in Amazon Bedrock](https://platform.claude.com/docs/en/build-with-claude/claude-in-amazon-bedrock).
+  No server-side refusal fallback on Bedrock.
+  1. **First use (once per account).** An admin sends one message to the chosen Claude model
+     in the Bedrock console playground in us-east-1. Anthropic models ask for a one-time
+     use-case form on first invoke; the old model-access page is retired.
+  2. **Apply the IAM change.** Run the terraform-apply workflow for staging.
+  3. **Switch.** `aws ssm put-parameter --region us-east-1 --overwrite --name
+     /staging/ai_provider --type String --value bedrock`; optionally set
+     `/staging/ai_model` and `/staging/ai_bedrock_model_id`; then redeploy.
+  4. **Smoke check.** On the host, in `/opt/sustentra`, one real call (a few tokens):
+
+     ```bash
+     docker compose -f docker-compose.prod.yml --env-file .env exec api python -c "
+     from pydantic import BaseModel
+     from backend.app.adapters.llm.claude import get_claude
+     class Pong(BaseModel):
+         word: str
+     c = get_claude()
+     r = c.structured(system='Reply with JSON.', content='Set word to pong.', output_type=Pong, max_tokens=200)
+     print(c.provider, c.model, r.outcome, r.output, r.cost_microusd)"
+     ```
+
+     Expect `bedrock ... ok word='pong'`. `AccessDeniedException` means step 1 or 2 is missing.
 - Prod has no AI parameters, so AI stays off there.

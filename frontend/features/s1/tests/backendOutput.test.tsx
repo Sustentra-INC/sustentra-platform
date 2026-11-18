@@ -162,6 +162,13 @@ describe("the live statement", () => {
     expect(tile.textContent).not.toContain("Open items remain");
   });
 
+  it("says 'Not set' for the boundary approach, without pointing to Setup (it has no such field)", async () => {
+    renderOutput(LIVE, { boundaryApproach: "" });
+    const item = (await screen.findByText("Boundary approach")).parentElement as HTMLElement;
+    expect(item.textContent).toContain("Not set");
+    expect(item.textContent).not.toContain("Setup");
+  });
+
   it("renders as the demo's document: draft band, real Excel download, recalculated figures, honest sign-off", async () => {
     const finding: Finding = {
       id: "F-1", dataPointId: "vr:s1-stationary:natural-gas", dataPointLabel: "Natural gas", sentence: "April bill missing.",

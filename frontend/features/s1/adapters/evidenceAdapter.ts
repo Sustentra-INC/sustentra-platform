@@ -1,6 +1,6 @@
 import type { EvidenceItem } from "../types";
 import { apiPath } from "../../../lib/api";
-import { HALT_REASONS } from "../constants/copy";
+import { AI_TYPE, HALT_REASONS } from "../constants/copy";
 import type { ProcessingRunView } from "../api/processingRuns";
 
 export interface BackendDocumentLike {
@@ -30,15 +30,28 @@ export function mapBackendDocumentToEvidenceItem(
     errors?: string[] | null;
     /** Why the pipeline stopped before reviewable candidates (unreadable / unsupported). */
     halt_reason?: { code?: string | null; message?: string | null } | null;
+    /** "ai" when Claude set the type, which the reviewer confirms. */
+    canonical_type_source?: string | null;
+    /** What Claude cited for the type (present when it set it, or disagreed with the rules). */
+    ai_routing?: {
+      canonical_type_id: string;
+      quote: string;
+      page_number?: number | null;
+      used: boolean;
+      disagrees?: boolean;
+    } | null;
   } | null
 ): EvidenceItem {
   const hasType = Boolean(summary?.canonical_type_id);
+  const routing = summary?.ai_routing ?? null;
+  const aiSetType = hasType && summary?.canonical_type_source === "ai" && routing?.used === true;
   const summaryWarnings = summary?.warnings ?? [];
   const noExtractionTargets =
     summary?.status === "partial" &&
     Number(summary?.candidate_count ?? 0) === 0 &&
     Number(summary?.target_count ?? 0) === 0;
-  const halt = haltReasonFromCode(summary?.halt_reason?.code);
+  const halt = haltReasonFromCode(summary?.halt_reason?.code, summary?.halt_reason?.message);
+  const unreadPages = unreadPagesFromWarnings(summaryWarnings);
   const processingState =
     document.processing_status === "failed" || halt
       ? "blocked"
@@ -73,8 +86,20 @@ export function mapBackendDocumentToEvidenceItem(
           })
         : null,
     detectedType: resolveCanonicalTypeDisplayName(summary),
-    typeReviewBand: hasType ? "auto_accepted" : null,
-    typeReviewReason: hasType ? null : null,
+    typeReviewBand: aiSetType ? "needs_review" : hasType ? "auto_accepted" : null,
+    typeReviewReason: aiSetType ? AI_TYPE.suggested : null,
+    ...(routing && (aiSetType || routing.disagrees)
+      ? {
+          aiType: {
+            quote: routing.quote,
+            page: routing.page_number ?? null,
+            typeName:
+              resolveCanonicalTypeDisplayName({ canonical_type_id: routing.canonical_type_id }) ?? "another type",
+            used: routing.used,
+            disagrees: Boolean(routing.disagrees),
+          },
+        }
+      : {}),
     facilityState: "unresolved",
     facilityId: null,
     facilityName: null,
@@ -89,6 +114,7 @@ export function mapBackendDocumentToEvidenceItem(
     relationships: [],
     reviewArea: null,
     note: null,
+    unreadPages,
   };
 }
 
@@ -116,8 +142,19 @@ export function resolveCanonicalTypeDisplayName(
   return CANONICAL_TYPE_DISPLAY_NAMES[canonicalTypeId] ?? "Unmapped document type";
 }
 
+/** The page ranges a chunked read could not read, as the server wrote them ("11-20, 51"), from the
+ *  pipeline run's `pages_unread: Pages <ranges> could not be read...` warning. No arithmetic here. */
+export function unreadPagesFromWarnings(warnings: string[]): string | null {
+  for (const warning of warnings) {
+    const match = /^pages_unread: Pages (.+?) could not be read/.exec(warning);
+    if (match) return match[1];
+  }
+  return null;
+}
+
 /** The pipeline's structured halt (pipeline_run.halt_reason.code), when it gives one. */
-export function haltReasonFromCode(code: string | null | undefined): string | null {
+export function haltReasonFromCode(code: string | null | undefined, message?: string | null): string | null {
+  if (code === "document_too_long") return message?.trim() || HALT_REASONS.documentTooLong;
   if (code === "unreadable_document") return HALT_REASONS.unreadable;
   if (code === "ocr_required") return HALT_REASONS.ocrRequired;
   if (code === "password_protected") return HALT_REASONS.passwordProtected;
@@ -165,4 +202,15 @@ function resolveFormat(filename: string, mimeType?: string | null): EvidenceItem
   if (lower.endsWith(".pdf") || mimeType === "application/pdf") return "pdf";
   if (lower.endsWith(".docx")) return "docx";
   return "other";
+}
+
+/** The batch API words a halt as one sentence with no code. The internal wording of the
+ *  unsupported-type halt ("the closest match was CT-S1-..., with confidence 0.48") is never shown:
+ *  it becomes the plain sentence. The structured code is used wherever the API gives one
+ *  (see haltReasonFromCode); this prefix check is only for the batch sentence, which has none. */
+export function plainBatchHalt(message: string | null | undefined): string | null {
+  const text = message?.trim();
+  if (!text) return null;
+  if (/^Unsupported document type\b/i.test(text)) return HALT_REASONS.typeUnknown;
+  return text;
 }
