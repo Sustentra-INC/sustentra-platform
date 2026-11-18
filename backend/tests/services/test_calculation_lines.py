@@ -740,10 +740,12 @@ def test_a_facility_without_a_facility_id_is_anchored_by_its_name() -> None:
     _refused([_line(anchor_id="name-other")], "facility isn't in Setup", facilities=[nameless])
 
 
-def test_an_engagement_with_no_facilities_refuses_every_new_line() -> None:
+def test_an_engagement_with_no_facilities_refuses_facility_lines_but_not_company_wide_ones() -> None:
     _refused([_line()], "Add a facility in Setup first", facilities=[])
-    _refused([_line(category="contractual", level2_label="PPAs", anchor_kind="company", anchor_id=None)],
+    _refused([_line(category="contractual", level2_label="PPAs", anchor_id="fac-kc01")],
              "Add a facility in Setup first", facilities=[])
+    _check([_line(category="contractual", level2_label="PPAs", anchor_kind="company", anchor_id=None)],
+           facilities=[])
     _check([_line()], stored={"s1:stationary:propane:fac-kc01"}, facilities=[])  # already stored: left alone
 
 
@@ -761,10 +763,11 @@ def test_a_vehicle_group_line_follows_the_groups_in_the_same_settings() -> None:
     _check([{**mobile, "anchor_id": "vg-delivery-vans-2"}], groups=twins)
 
 
-def test_company_anchor_is_for_contractual_lines_only() -> None:
+def test_company_anchor_is_for_contractual_lines_only_and_contractual_may_sit_on_a_facility() -> None:
     _check([_line(category="contractual", level2_label="PPAs", anchor_kind="company", anchor_id=None)])
-    _refused([_line(anchor_kind="company", anchor_id=None)], "whole company")
-    _refused([_line(category="contractual", level2_label="PPAs", anchor_id="fac-kc01")], "whole company")
+    _check([_line(category="contractual", level2_label="PPAs", anchor_id="fac-kc01")])
+    _refused([_line(category="contractual", level2_label="PPAs", anchor_id="fac-gone")], "facility isn't in Setup")
+    _refused([_line(anchor_kind="company", anchor_id=None)], "Only contractual instruments")
 
 
 @pytest.mark.parametrize("label", ["燃料", "日本語の燃料", "—", "Ω", "!!!", "💥"])

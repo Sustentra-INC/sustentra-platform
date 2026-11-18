@@ -279,8 +279,7 @@ system's lines are not stored here and cannot be deleted).
 line the request adds (a key not already stored) must sit on a facility of the same `settings.facilities`
 (`facilityId`, or `name-<slug>` when it has none), a vehicle group of the same
 `settings.recalculation.vehicle_groups` (`vg-<label slug>`), or the company (`company`, contractual
-instruments only, and contractual lines are company-wide only). An engagement with no facilities
-refuses every new line: "Add a facility in Setup first". A fuel or energy name with no letters or
+instruments only; a contractual line may also sit on a facility). A facility line on an engagement with no facilities is refused: "Add a facility in Setup first". A fuel or energy name with no letters or
 numbers is refused: "Use letters or numbers in the name". Lines already stored are not re-checked, so a
 facility removed from Setup later never blocks a save, and the Evidence tree still shows that line with
 its documents.

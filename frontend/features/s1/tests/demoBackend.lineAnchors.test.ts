@@ -21,6 +21,13 @@ describe("the demo checks new line anchors like the server", () => {
     expect(newLineProblem(engagement, [line({ level2_label: "燃料" })])).toMatch(/letters or numbers/);
     expect(newLineProblem({ ...engagement, facilities: [] }, [line()])).toMatch(/Add a facility in Setup first/);
   });
+  it("allows a company-wide contractual line and a contractual line on a facility, and refuses company for others", () => {
+    const none = { ...engagement, facilities: [] } as unknown as EngagementConfig;
+    const ppa = { category: "contractual", level2_label: "PPAs", label: "PPAs" };
+    expect(newLineProblem(none, [{ ...ppa, anchor_kind: "company" as const, anchor_id: "company" }])).toBeNull();
+    expect(newLineProblem(engagement, [{ ...ppa, anchor_kind: "facility" as const, anchor_id: "fac-kc01" }])).toBeNull();
+    expect(newLineProblem(engagement, [line({ anchor_kind: "company", anchor_id: "company" })])).toMatch(/Only contractual/);
+  });
   it("leaves a line that is already saved alone", () => {
     const saved = { ...engagement, facilities: [], evidenceLines: [line()] } as unknown as EngagementConfig;
     expect(newLineProblem(saved, [line()])).toBeNull();

@@ -278,14 +278,14 @@ export function newLineProblem(engagement: EngagementConfig, lines: EvidenceLine
   const added = lines.filter((e) => !stored.has(keyOf(e)));
   if (!added.length) return null;
   const facilities = engagement.facilities.filter((f) => f.name);
-  if (!facilities.length) return "Add a facility in Setup first, then add the line.";
   const facilityIds = new Set(facilities.map((f) => f.facilityId || `name-${slug(f.name)}`));
   const groupIds = new Set(vehicleGroupAnchors(engagement).map((g) => g.anchor_id));
   for (const e of added) {
     if (!/[A-Za-z0-9]/.test(e.level2_label) && !e.level2) return "Use letters or numbers in the name of the fuel or energy type.";
-    if ((e.anchor_kind === "company") !== (e.category === "contractual")) {
-      return "Contractual instruments apply to the whole company, and no other line does.";
+    if (e.anchor_kind === "company" && e.category !== "contractual") {
+      return "Only contractual instruments can apply to the whole company.";
     }
+    if (e.anchor_kind === "facility" && !facilities.length) return "Add a facility in Setup first, then add the line.";
     if (e.anchor_kind === "facility" && !facilityIds.has(e.anchor_id)) {
       return "That facility isn't in Setup. Pick a facility from the list, or add it in Setup first.";
     }

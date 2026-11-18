@@ -222,7 +222,7 @@ def normalize_evidence_lines(value: Any) -> list[dict[str, Any]]:
 def check_new_lines(lines: list[dict[str, Any]], *, stored_keys: set[str], facilities: list[dict[str, Any]],
                     vehicle_groups: list[dict[str, Any]]) -> None:
     """The lines a request adds (keys not already stored) must sit on something Setup has: a
-    facility, a vehicle group, or the company for contractual instruments. ValueError with a
+    facility, a vehicle group, or the company (contractual instruments only; they may also sit on a facility). ValueError with a
     sentence for the user otherwise. Lines already stored are never re-checked, so saving other
     settings never fails over an old line whose facility was later removed from Setup.
 
@@ -233,16 +233,16 @@ def check_new_lines(lines: list[dict[str, Any]], *, stored_keys: set[str], facil
     added = [line for line in lines if line["key"] not in stored_keys]
     if not added:
         return
-    if not facilities:
-        raise ValueError("Add a facility in Setup first, then add the line.")
     facility_ids = {facility_anchor_id(f) for f in facilities}
     group_ids = {anchor for anchor, _ in vehicle_group_anchors(vehicle_groups)}
     for line in added:
         if line["level2"] == "none" and not re.search(r"[A-Za-z0-9]", line["level2_label"]):
             raise ValueError("Use letters or numbers in the name of the fuel or energy type.")
         kind, anchor = line["anchor_kind"], line["anchor_id"]
-        if (kind == "company") != (line["category"] == "contractual"):
-            raise ValueError("Contractual instruments apply to the whole company, and no other line does.")
+        if kind == "company" and line["category"] != "contractual":
+            raise ValueError("Only contractual instruments can apply to the whole company.")
+        if kind == "facility" and not facilities:
+            raise ValueError("Add a facility in Setup first, then add the line.")
         if kind == "facility" and anchor not in facility_ids:
             raise ValueError("That facility isn't in Setup. Pick a facility from the list, or add it in Setup first.")
         if kind == "vehicle_group" and anchor not in group_ids:
