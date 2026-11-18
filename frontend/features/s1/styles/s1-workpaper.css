@@ -3566,6 +3566,8 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-et .s1-ws-gr__pct { font-weight: var(--weight-regular); color: var(--ink-2); }
 .s1-et-bar-track { min-width: 0; }
 .s1-et-fill { grid-column: 2 / 5; }
+.s1-et-fill--count { grid-column: 3 / 5; }
+.s1-et-also { min-width: 0; overflow-wrap: anywhere; }
 .s1-et-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--sp-1); }
 .s1-et-actions .s1-icon-tile { width: 2rem; height: 2rem; }
 .s1-et-actions .s1-icon-tile svg { width: 1.125rem; height: 1.125rem; }
