@@ -229,8 +229,9 @@ describe("materiality and coverage when inputs are partial", () => {
     expect(rules["COV-S2-MARKET"].reason).toBe("600.00 of 2,000.00 MWh covered by certificates.".replace(/\.00/g, ""));
     expect(rules["COV-REPORTED"].status).toBe("inputs_missing");
     expect(rules["COV-REPORTED"].reason).toContain("Scope 1 (Total)");
-    expect(rules["COV-S1-FUGITIVE"].status).toBe("not_applicable");
-    expect(rules["COV-S1-MOBILE"].status).toBe("not_applicable");
+    // In scope with no documents: the evidence is missing, not "not applicable".
+    expect(rules["COV-S1-FUGITIVE"]).toMatchObject({ status: "inputs_missing", missingBecause: "no_evidence" });
+    expect(rules["COV-S1-MOBILE"]).toMatchObject({ status: "inputs_missing", missingBecause: "no_evidence" });
   });
 
   it("says when records were left out for being outside the reporting period", () => {
