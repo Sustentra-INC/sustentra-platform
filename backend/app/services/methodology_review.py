@@ -146,6 +146,9 @@ def _static_fields() -> list[dict[str, Any]]:
         _field("reporting_period", "boundary", "Reporting period", "date_range"),
         _field("consolidation_approach", "boundary", "Consolidation approach", "enum",
                list(CONSOLIDATION_APPROACHES)),
+        # "Only if the company has a value" (spec rows 5 and 6): hidden until there is a value or "Add an item".
+        _field("boundary:acquisitions", "boundary", "Acquisitions and divestitures", "text", required=False),
+        _field("boundary:leased_space", "boundary", "Treatment of leased space", "text", required=False),
     ]
     scope1 = {"stationary": "Stationary Combustion", "mobile": "Mobile Combustion",
               "process": "Process Emissions", "fugitive": "Fugitive Emissions"}
