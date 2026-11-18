@@ -200,6 +200,49 @@ def test_no_documents_refuses_with_the_upload_sentence(claude: FakeClaude, monke
     assert claude.calls == [] and ledger() == []
 
 
+def states(engagement_id: str) -> dict[str, str]:
+    return {f["field_id"]: f["display_state"] for f in review(engagement_id).json()["fields"]}
+
+
+def test_rows_read_not_checked_until_a_prefill_finishes_then_not_detected(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    before = review(eid).json()
+    assert before["prefill_ran_at"] is None and set(states(eid).values()) == {"not_checked"}
+    assert all(f["required"] for f in before["catalog"]) and all(f["shown"] for f in before["fields"])
+    assert prefill(eid).status_code == 200
+    after = review(eid).json()
+    assert after["prefill_ran_at"] is not None
+    now = states(eid)
+    assert now["consolidation_approach"] == "has_value" and now["reporting_period"] == "has_value"
+    assert now["gwp"] == "not_detected" and now["exclusion:boundary"] == "not_detected"
+    assert "not_checked" not in now.values()
+    # the marker is page state, not a field: it is never listed as a workpaper item
+    listed = call("GET", f"{BASE}/{eid}/workpaper-items?kind=methodology").json()["items"]
+    assert "meta:state" not in {i["item_key"] for i in listed}
+
+
+def test_a_rerun_after_a_decision_keeps_the_decision_and_the_state(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    act(eid, "consolidation_approach", "edit", {"value": "Equity Share"})
+    assert prefill(eid).status_code == 200
+    assert record(eid, "consolidation_approach")["decision"]["value"] == "Equity Share"
+    assert states(eid)["consolidation_approach"] == "has_value"
+    first = review(eid).json()["prefill_ran_at"]
+    assert prefill(eid).status_code == 200
+    assert record(eid, "consolidation_approach")["decision"]["value"] == "Equity Share"
+    assert review(eid).json()["prefill_ran_at"] >= first
+
+
+def test_a_refused_prefill_leaves_every_row_not_checked(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(api, "_candidates", _async_candidates([]))
+    assert prefill(eid).status_code == 409
+    monkeypatch.setattr(api, "_candidates", _async_candidates([{"document_id": "DOC-1"}]))
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [])
+    assert prefill(eid).status_code == 409
+    assert review(eid).json()["prefill_ran_at"] is None and set(states(eid).values()) == {"not_checked"}
+
+
 def seed_spend(engagement_id: str, microusd: int, when: str = "now()") -> None:
     asyncio.run(_admin(
         "INSERT INTO ai_usage (org_id, engagement_id, feature, model, provider, outcome, cost_microusd, created_at) "

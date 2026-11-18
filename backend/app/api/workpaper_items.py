@@ -73,8 +73,8 @@ async def list_workpaper_items(
     items = []
     for row in rows:
         if row["kind"] == "methodology":  # same shape as the review's GET; removed rows are not listed
-            if row["payload"].get("removed"):
-                continue
+            if row["payload"].get("removed") or row["item_key"] == methodology_review.META_KEY:
+                continue  # the page-state item is not a field
             row = {**row, "payload": methodology_review.public(row["payload"])}
         items.append(WorkpaperItem(**row))
     return WorkpaperItemList(items=items)

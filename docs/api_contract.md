@@ -141,6 +141,14 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (with `allowed_labels.set`),
     `{operational_control}` for an entity. `parts` (entity, factor, gwp only) lists the value's editors,
     `[{key, label, kind: text|list|percent|enum, allowed?}]`, so a blank new row can be drawn.
+  - Row states. The GET also answers `prefill_ran_at` (the time the last Claude prefill finished and stored its
+    result, or `null`), and each listed field carries `display_state` and `shown`; each catalog def carries
+    `required` (boolean). `display_state` is `has_value` (a suggestion, or a decision that is not a bare pending
+    one), `not_detected` (a prefill finished, and there is no suggestion or decision) or `not_checked` (no prefill has
+    finished). `required` true is "Must appear": always `shown`. `required` false is "Only if the company has a
+    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Every field in the
+    catalog is `required` today. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
+    added optional rows are kept in one extra `workpaper_items` row (`item_key` `meta:state`), never listed as a field.
   - Values by kind: text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
@@ -153,6 +161,9 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   `{value}`. `POST .../{field_id}/reject` `{reason}` (required, at most 500 characters). `POST
   .../{field_id}/revert` returns to pending. Each answers the updated record. Accept and reject only work from
   pending; edit works from any state; revert from any decided state.
+- `POST .../{field_id}/reveal` ("Add an item", no body) shows a hidden optional field and keeps it shown
+  (answers `{field_id, shown: true}`; repeating it is fine). A field that is always shown answers 422, an unknown field or a row 404. It
+  writes a `methodology_decision` audit event with action `reveal`.
 - `POST .../rows` `{group: "entities"|"factor:scope1"|"factor:scope2"}` adds a row under a server-made id (201, the new record plus `field`, its catalog def). `DELETE .../{field_id}` removes a row the reviewer added (answers the record with `removed: true`); the
   row is marked removed, not deleted. A field from the report answers 409 "Reject it instead".
 - Writes are s1_writer on an open engagement: another org 404, provider_admin 403, archived 409. A move the
