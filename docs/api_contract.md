@@ -141,6 +141,14 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (with `allowed_labels.set`),
     `{operational_control}` for an entity. `parts` (entity, factor, gwp only) lists the value's editors,
     `[{key, label, kind: text|list|percent|enum, allowed?}]`, so a blank new row can be drawn.
+  - Row states. The GET also answers `prefill_ran_at` (the time the last Claude prefill finished and stored its
+    result, or `null`), and each listed field carries `display_state` and `shown`; each catalog def carries
+    `required` (boolean). `display_state` is `has_value` (a suggestion, or a decision that is not a bare pending
+    one), `not_detected` (a prefill finished, and there is no suggestion or decision) or `not_checked` (no prefill has
+    finished). `required` true is "Must appear": always `shown`. `required` false is "Only if the company has a
+    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Every field in the
+    catalog is `required` today. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
+    added optional rows are kept in one extra `workpaper_items` row (`item_key` `meta:state`), never listed as a field.
   - Values by kind: text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
@@ -153,6 +161,9 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   `{value}`. `POST .../{field_id}/reject` `{reason}` (required, at most 500 characters). `POST
   .../{field_id}/revert` returns to pending. Each answers the updated record. Accept and reject only work from
   pending; edit works from any state; revert from any decided state.
+- `POST .../{field_id}/reveal` ("Add an item", no body) shows a hidden optional field and keeps it shown
+  (answers `{field_id, shown: true}`; repeating it is fine). A field that is always shown answers 422, an unknown field or a row 404. It
+  writes a `methodology_decision` audit event with action `reveal`.
 - `POST .../rows` `{group: "entities"|"factor:scope1"|"factor:scope2"}` adds a row under a server-made id (201, the new record plus `field`, its catalog def). `DELETE .../{field_id}` removes a row the reviewer added (answers the record with `removed: true`); the
   row is marked removed, not deleted. A field from the report answers 409 "Reject it instead".
 - Writes are s1_writer on an open engagement: another org 404, provider_admin 403, archived 409. A move the
@@ -225,12 +236,16 @@ counts  = {documents, values, accepted, to_review, issues, pct_accepted}
 DocRow  = {document_id, file_name, period_start, period_end, facility_id, facility_name,
            processing_status, detected_type, also_in: [lineKey], values, accepted,
            placement_from,   // send this as a move's "from" to move this row
+           value_family,     // "stationary" | "mobile" | "electricity" | null: the calculation this row's
+                             // values feed (null when mixed or when none reads them)
            flags: []}        // "unknown_line": it was moved to a line that no longer exists
 ```
 
 `CalculationLine = {key, scope, category, level2, level2_label, anchor_kind
 ("facility" | "vehicle_group" | "company"), anchor_id, label, facility_id | null,
-created_by_user}`. The key is `<scope>:<category>:<level2-slug>:<anchor-slug>` (for example
+created_by_user, family}`. `family` is the calculation the line feeds ("stationary", "mobile",
+"electricity", or null when none reads it); a value placed on a line of another family is reported as
+not placed. The key is `<scope>:<category>:<level2-slug>:<anchor-slug>` (for example
 `s1:stationary:natural-gas:fac-kc01`) and is built only by `calculation_lines.line_key`.
 A document whose records map to several lines is listed under each, with only that line's
 values counted. Every `counts` (block, scope, category, level 2, line) is computed by the server:
@@ -274,6 +289,15 @@ anchor_id?, label}]` (at most 200; labels at most 120 characters; `category` one
 list). The server fills in `key` (and `level2`, the slug of `level2_label`); a `key` that is
 given must equal `line_key(...)`. A line the system already creates is refused with 422 (the
 system's lines are not stored here and cannot be deleted).
+
+**Anchors are checked (422, a plain sentence in `detail`).** On POST and PATCH of an engagement, a
+line the request adds (a key not already stored) must sit on a facility of the same `settings.facilities`
+(`facilityId`, or `name-<slug>` when it has none), a vehicle group of the same
+`settings.recalculation.vehicle_groups` (`vg-<label slug>`), or the company (`company`, contractual
+instruments only; a contractual line may also sit on a facility). A facility line on an engagement with no facilities is refused: "Add a facility in Setup first". A fuel or energy name with no letters or
+numbers is refused: "Use letters or numbers in the name". Lines already stored are not re-checked, so a
+facility removed from Setup later never blocks a save, and the Evidence tree still shows that line with
+its documents.
 
 ### GET /v1/engagements/{engagement_id}/calculation-lines/{line_key}/schedule
 One calculation line's schedule (reader; 404 with a plain message for an unknown line key, and
@@ -319,7 +343,10 @@ fields `heat_content`, `carbon_content`, `vehicle_type`, `model_year`, `on_or_no
 no extractor produces them yet, so today a line shows only Date and Activity quantity. `identifier_groups`
 group the line's documents by identifier value; `not_found` holds documents without the identifier.
 Facility is the Setup facility, and `matched_by` says how: "Chosen by the reviewer", "Facility name in
-Setup" or "Service address in Setup". `identifiers` (one entry per value) is kept for older clients.
+Setup" or "Service address in Setup". Facility is listed for every line; Service address, Account number
+and Meter number only for utility-bill lines (stationary natural gas, electricity, steam, heating, cooling).
+Values that differ only by case, spacing or Unicode form (NFKC, so full-width digits match ASCII) fall in one group, shown in the first
+spelling seen; a whitespace-only value counts as not found. `identifiers` (one entry per value) is kept for older clients.
 
 A row counts (`accepted` true) only when its record is not in the recalculation's `awaiting_review`. When
 the quantity is reviewed but another required field is not (for example `fuel_type`), the row has

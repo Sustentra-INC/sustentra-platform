@@ -19,7 +19,15 @@ export interface CoverageRule {
   appliesTo: string[];
   status: CoverageStatus;
   reason: string;
+  /**
+   * Why a rule whose status is inputs_missing is not ready, from what the backend reported:
+   * records awaiting review, a choice still to make (grid region, fuel, vehicle groups, a
+   * GWP), or no evidence at all. Absent counts as no evidence, the cautious reading.
+   */
+  missingBecause?: MissingBecause;
 }
+
+export type MissingBecause = "awaiting_review" | "needs_input" | "no_evidence";
 
 /* ---- Screen 6: Verification results ---- */
 export type ResultLayer = "general" | "scope1" | "scope2";

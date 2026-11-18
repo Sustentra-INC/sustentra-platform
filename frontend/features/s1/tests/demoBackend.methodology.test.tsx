@@ -88,4 +88,38 @@ describe("the demo backend's methodology review", () => {
     expect(reverted.suggestion).not.toBeNull();
     expect(reverted.history.map((h) => h.action)).toEqual(["accept", "revert"]);
   });
+  it("rows Claude has not looked at read Not checked yet, then Not detected after a prefill that found nothing for them", async () => {
+    await open();
+    expect(within(row("Indirect Biogenic")).getByText("Not checked yet")).toBeTruthy();
+    expect(document.body.textContent).not.toContain("Not set");
+    expect((await get()).fields.every((f) => (f as unknown as { shown: boolean }).shown)).toBe(true);
+    await prefillViaUi();
+    expect(within(row("Indirect Biogenic")).getByText("Not detected")).toBeTruthy();
+    expect(within(row("Consolidation approach")).getByText("Suggested by Claude")).toBeTruthy();
+  });
+
+  it("a prefill after a reviewer's decision leaves the decision, and the row never reads Not detected", async () => {
+    await open();
+    await demoApi(`${BASE}/calculation:process/edit`, { method: "POST", body: { value: "Gas meter x 1.02 \u2013 Z\u00fcrich \u6392\u653e" } });
+    cleanup();
+    await open();
+    await prefillViaUi();
+    expect(within(row("Process-specific calculations")).getByText("Gas meter x 1.02 \u2013 Z\u00fcrich \u6392\u653e")).toBeTruthy();
+    expect(within(row("Process-specific calculations")).queryByText("Not detected")).toBeNull();
+  });
+
+  it("refuses to reveal a row that is always shown, and an unknown one", async () => {
+    await expect(demoApi(`${BASE}/reporting_period/reveal`, { method: "POST", body: {} })).rejects.toMatchObject({ status: 422 });
+    await expect(demoApi(`${BASE}/nope/reveal`, { method: "POST", body: {} })).rejects.toMatchObject({ status: 404 });
+  });
+  it("an empty row has no Accept; after an Edit with a value it has a value", async () => {
+    await open();
+    expect(within(row("Indirect Biogenic")).queryByRole("button", { name: /^Accept:/ })).toBeNull();
+    await demoApi(`${BASE}/category:biogenic:indirect/edit`, { method: "POST", body: { value: "No" } });
+    const listed = (await get()).fields.find((f) => (f as unknown as { field_id: string }).field_id === "category:biogenic:indirect");
+    expect((listed as unknown as { display_state: string }).display_state).toBe("has_value");
+    cleanup();
+    await open();
+    expect(within(row("Indirect Biogenic")).queryByText("Not checked yet")).toBeNull();
+  });
 });

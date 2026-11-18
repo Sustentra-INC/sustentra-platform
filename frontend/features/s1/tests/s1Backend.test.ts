@@ -115,6 +115,23 @@ describe("S1 data seam on cookie auth (FE-007)", () => {
     expect(JSON.parse(String(review.init.body))).not.toHaveProperty("reviewer_id");
   });
 
+  it("carries the read's own time onto each extracted field", async () => {
+    fetchMock.mockImplementation((input: RequestInfo | URL) =>
+      String(input).endsWith("/extraction-result/latest")
+        ? Promise.resolve(
+            json(200, {
+              evidence_id: "EV-1", document_id: "DOC-1", canonical_type_id: "CT-S1-FUELQTY", candidate_count: 1,
+              created_at: "2026-11-15T09:30:00+00:00",
+              items: [{ candidate_id: "C1", evidence_id: "EV-1", document_id: "DOC-1", field_name: "activity_quantity",
+                display_label: "Activity quantity", normalized_value: 120, unit: "therms" }],
+            })
+          )
+        : routeFetch(input)
+    );
+    const workspace = await listWorkspaceEvidence("ENG-1");
+    expect(workspace.fields.map((f) => f.readAt)).toEqual(["2026-11-15T09:30:00+00:00"]);
+  });
+
   it("treats a 404 on optional per-document data as missing, not an error", async () => {
     const workspace = await listWorkspaceEvidence("ENG-1");
     expect(workspace.evidence).toHaveLength(1);

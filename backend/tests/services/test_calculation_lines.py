@@ -217,6 +217,50 @@ def test_a_multi_line_document_appears_under_each_line_with_only_that_lines_reco
     assert (rows[ELEC_KC]["period_start"], rows[ELEC_KC]["period_end"]) == ("2025-01-01", "2025-01-31")
 
 
+# --- the calculation family, for a move's "won't count" warning --------------------------------
+def _rows_by_line(tree: dict) -> dict[str, dict]:
+    rows: dict[str, dict] = {}
+    for scope in tree["blocks"]["supporting"]["scopes"]:
+        for category in scope["categories"]:
+            for level2 in category["level2s"]:
+                for line in level2["lines"]:
+                    for row in line["documents"]:
+                        rows[line["line"]["key"]] = row
+    return rows
+
+
+def test_lines_and_rows_carry_the_calculation_family() -> None:
+    store = FakeStore()
+    store.add_document("GAS", "CT-S1-FUELQTY", [_gas()])
+    store.add_document("BILL", "CT-S2-ELEC", [_elec(10)])
+    tree = _tree(store)
+    family = {line["key"]: line["family"] for line in tree["lines"]}
+    assert family[GAS_KC] == "stationary" and family[ELEC_KC] == "electricity"
+    rows = _rows_by_line(tree)
+    assert rows[GAS_KC]["value_family"] == "stationary" and rows[ELEC_KC]["value_family"] == "electricity"
+
+
+def test_a_line_no_calculation_reads_has_no_family() -> None:
+    from backend.app.services import calculation_lines as cl
+
+    fugitive = cl.make_line("fugitive", "r-404a", "R-404A", "facility", "fac-kc01", "Kansas City Plant",
+                            created_by_user=True)
+    steam = cl.make_line("purchased_energy", "steam", "Steam", "facility", "fac-kc01", "Kansas City Plant",
+                         created_by_user=True)
+    assert fugitive.family is None and steam.family is None
+    assert fugitive.to_dict()["family"] is None
+
+
+def test_a_document_on_several_lines_reports_each_placements_own_family_and_a_block_has_none() -> None:
+    store = FakeStore()
+    store.add_document("BILL", "CT-S2-ELEC", [_elec(10), _elec(20, "St Louis Plant")])
+    store.add_document("WB", "CT-S0-WORKBOOK", [])
+    rows = _rows_by_line(_tree(store))
+    assert rows[ELEC_KC]["value_family"] == "electricity" and rows[ELEC_STL]["value_family"] == "electricity"
+    empty = _tree(FakeStore())
+    assert empty["lines"] == [] and empty["blocks"]["summary"] == []
+
+
 # --- the tree's shape and counts ---------------------------------------------------------------
 def test_tree_levels_counts_and_pre_created_facility_lines() -> None:
     store = FakeStore()
@@ -294,6 +338,15 @@ def test_a_chain_of_moves_applies_in_order() -> None:
     assert _lines_with_docs(_tree(_gas_store(), {"G1": {"placements": moves}})) == {GAS_KC: ["G1"]}
     stale = [{"from": GAS_STL, "to": GAS_KC}, {"from": GAS_KC, "to": GAS_KC}, "junk", {"to": GAS_STL}]
     assert _lines_with_docs(_tree(_gas_store(), {"G1": {"placements": stale}})) == {GAS_KC: ["G1"]}
+
+
+def test_moving_one_placement_onto_a_line_the_document_already_has_merges_without_a_duplicate() -> None:
+    store = FakeStore()
+    store.add_document("BILL", "CT-S2-ELEC", [_elec(10), _elec(20, "St Louis Plant")])
+    tree = _tree(store, {"BILL": {"placements": [{"from": ELEC_KC, "to": ELEC_STL}]}})
+    assert _lines_with_docs(tree) == {ELEC_STL: ["BILL"]}
+    row = _rows_by_line(tree)[ELEC_STL]
+    assert row["values"] == 12 and row["also_in"] == []  # both records now show on the one line, once
 
 
 def test_move_to_and_from_the_blocks() -> None:
@@ -713,3 +766,122 @@ def test_a_stored_chain_through_a_line_that_was_since_deleted_still_lands_on_the
                                                                           "facility", "fac-kc01")])],
                               {"D": {"placements": moves}}, {GAS_KC, GAS_STL})
     assert [s.target for s in filed["D"]] == [GAS_STL]
+
+
+# --- D1: the server validates line anchors ----------------------------------------------------
+def _check(lines: list[dict], *, stored: set[str] | None = None, facilities: list[dict] | None = None,
+           groups: list[dict] | None = None) -> None:
+    cl.check_new_lines(cl.normalize_evidence_lines(lines), stored_keys=stored or set(),
+                       facilities=[KC, STL] if facilities is None else facilities, vehicle_groups=groups or [])
+
+
+def _refused(lines: list[dict], match: str, **kwargs: Any) -> None:
+    with pytest.raises(ValueError, match=match):
+        _check(lines, **kwargs)
+
+
+def test_a_line_on_a_setup_facility_is_accepted_and_an_unknown_facility_is_refused() -> None:
+    _check([_line()])
+    _refused([_line(anchor_id="fac-gone")], "facility isn't in Setup")
+
+
+def test_a_facility_without_a_facility_id_is_anchored_by_its_name() -> None:
+    nameless = {"name": "Müller Käserei – Zürich"}
+    anchor = cl.facility_anchor_id(nameless)
+    assert anchor == "name-m-ller-k-serei-z-rich"
+    _check([_line(anchor_id=anchor)], facilities=[nameless])
+    _refused([_line(anchor_id="name-other")], "facility isn't in Setup", facilities=[nameless])
+
+
+def test_an_engagement_with_no_facilities_refuses_facility_lines_but_not_company_wide_ones() -> None:
+    _refused([_line()], "Add a facility in Setup first", facilities=[])
+    _refused([_line(category="contractual", level2_label="PPAs", anchor_id="fac-kc01")],
+             "Add a facility in Setup first", facilities=[])
+    _check([_line(category="contractual", level2_label="PPAs", anchor_kind="company", anchor_id=None)],
+           facilities=[])
+    _check([_line()], stored={"s1:stationary:propane:fac-kc01"}, facilities=[])  # already stored: left alone
+
+
+def test_a_vehicle_group_line_follows_the_groups_in_the_same_settings() -> None:
+    groups = [{"vehicle_type": "Truck", "factor_fuel_type": "Diesel", "label": "Delivery vans", "fuel": "Diesel Fuel"}]
+    mobile = {"category": "mobile", "level2_label": "Diesel Fuel", "anchor_kind": "vehicle_group", "label": "Vans"}
+    _check([{**mobile, "anchor_id": "vg-delivery-vans"}], groups=groups)
+    _refused([{**mobile, "anchor_id": "vg-delivery-vans"}], "vehicle group isn't in Setup")  # no groups
+    # the group is renamed in Setup: the old anchor is refused as new, the stored line is left alone
+    renamed = [{**groups[0], "label": "Courier vans"}]
+    _refused([{**mobile, "anchor_id": "vg-delivery-vans"}], "vehicle group isn't in Setup", groups=renamed)
+    _check([{**mobile, "anchor_id": "vg-delivery-vans"}], groups=renamed,
+           stored={"s1:mobile:diesel-fuel:vg-delivery-vans"})
+    twins = [groups[0], dict(groups[0])]
+    _check([{**mobile, "anchor_id": "vg-delivery-vans-2"}], groups=twins)
+
+
+def test_company_anchor_is_for_contractual_lines_only_and_contractual_may_sit_on_a_facility() -> None:
+    _check([_line(category="contractual", level2_label="PPAs", anchor_kind="company", anchor_id=None)])
+    _check([_line(category="contractual", level2_label="PPAs", anchor_id="fac-kc01")])
+    _refused([_line(category="contractual", level2_label="PPAs", anchor_id="fac-gone")], "facility isn't in Setup")
+    _refused([_line(anchor_kind="company", anchor_id=None)], "Only contractual instruments")
+
+
+@pytest.mark.parametrize("label", ["燃料", "日本語の燃料", "—", "Ω", "!!!", "💥"])
+def test_a_name_with_no_letters_or_numbers_is_refused(label: str) -> None:
+    _refused([_line(level2_label=label)], "Use letters or numbers")
+
+
+def test_a_literal_none_and_a_120_character_non_ascii_name_with_letters_are_fine() -> None:
+    _check([_line(level2_label="None")])
+    long = "Ölé" * 40
+    assert len(long) == 120
+    _check([_line(level2_label=long, label=long)])
+
+
+def test_the_200_line_cap_still_holds_and_a_full_valid_list_passes() -> None:
+    many = [_line(level2_label=f"Fuel {i}") for i in range(200)]
+    _check(many)
+    with pytest.raises(ValueError, match="at most 200"):
+        _check([*many, _line(level2_label="Fuel 200")])
+
+
+def _saved(**changes: Any) -> dict:
+    return cl.normalize_evidence_lines([_line(**changes)])[0]
+
+
+def test_the_engagement_routes_check_anchors_against_the_same_settings() -> None:
+    from fastapi import HTTPException
+
+    from backend.app.api import engagements as engagements_api
+
+    engagements_api._check_line_anchors({"facilities": [KC]}, {"settings": {}})
+    engagements_api._check_line_anchors({"facilities": [KC], "evidenceLines": [_saved()]}, {"settings": {}})
+    for bad in ({"facilities": [KC], "evidenceLines": [_saved(anchor_id="fac-nope")]},
+                {"evidenceLines": [_saved()]}):
+        with pytest.raises(HTTPException) as caught:
+            engagements_api._check_line_anchors(bad, {"settings": {}})
+        assert caught.value.status_code == 422 and caught.value.detail
+    # vehicle groups are read from the same settings' recalculation block
+    group = {"vehicle_type": "Truck", "factor_fuel_type": "Diesel", "label": "Vans", "fuel": "Diesel Fuel"}
+    mobile = cl.normalize_evidence_lines([{"category": "mobile", "level2_label": "Diesel Fuel",
+                                           "anchor_kind": "vehicle_group", "anchor_id": "vg-vans", "label": "Vans"}])
+    engagements_api._check_line_anchors({"facilities": [KC], "recalculation": {"vehicle_groups": [group]},
+                                         "evidenceLines": mobile}, None)
+    with pytest.raises(HTTPException):
+        engagements_api._check_line_anchors({"facilities": [KC], "evidenceLines": mobile}, None)
+
+
+def test_a_save_that_keeps_a_removed_facilitys_line_is_not_refused() -> None:
+    from backend.app.api import engagements as engagements_api
+
+    stored_line = [_saved()]
+    current = {"settings": {"facilities": [KC], "evidenceLines": stored_line}}
+    # Setup now holds only St Louis, and the Kansas City line is stored already: other settings still save.
+    engagements_api._check_line_anchors({"facilities": [STL], "evidenceLines": stored_line}, current)
+
+
+def test_a_stored_line_on_a_removed_facility_does_not_break_the_tree() -> None:
+    mine = [_saved(anchor_id="fac-gone", label="Propane at the old plant")]
+    store = FakeStore()
+    store.add_document("G1", "CT-S1-FUELQTY", [_gas()])
+    orphan = "s1:stationary:propane:fac-gone"  # fac-gone is not a Setup facility
+    tree = _tree(store, {"G1": {"placements": [{"from": GAS_KC, "to": orphan}]}}, evidenceLines=mine)
+    # the read path is unchanged: the line stays visible with its document, and nothing fails
+    assert _lines_with_docs(tree) == {orphan: ["G1"]}
