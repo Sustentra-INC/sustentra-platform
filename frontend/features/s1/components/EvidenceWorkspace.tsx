@@ -16,6 +16,8 @@ import type { QualityCheck } from "../api/recalculation";
 import { qualityIssueLines } from "./QualityChecksPanel";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import { AiTypeNote } from "./AiTypeNote";
+import { EvidenceTree,type EvidenceTreeProps } from "./EvidenceTree";
 import { formatPeriod } from "../utils/formatPeriod";
 import { UPLOAD_ACCEPT } from "../constants/uploads";
 import { andThen, NOT_SAVED_TITLE, problemText, settle, useStillOpen, type MaybePromise } from "../requests/maybePromise";
@@ -110,6 +112,15 @@ interface EvidenceWorkspaceProps {
   demoState?: ContainerState;
   auditIntents?: SessionAuditEntry[];
   onAuditIntent?: (intent: SessionAuditEntry) => void;
+  /** Backend mode: shows the calculation-line tree instead of the grouping by document type. */
+  tree?: Pick<
+    EvidenceTreeProps,
+    "openIds" | "onOpenIdsChange" | "onOpenSchedule" | "onMovePlacement" | "onSaveLines" | "onError" | "facilityId" | "onFacilityChange"
+  > & {
+    /** Which grouping shows, and a change to it; kept by the app with the tree's open rows. */
+    view: "lines" | "types";
+    onViewChange: (view: "lines" | "types") => void;
+  };
 }
 
 type FacilityFilter = string | "multiple" | "none" | "unknown" | null;
@@ -136,12 +147,16 @@ export function EvidenceWorkspace({
   demoState,
   auditIntents = [],
   onAuditIntent,
+  tree,
 }: EvidenceWorkspaceProps) {
   // Evidence data lives in app state (via onEvidenceChange); filters/menus below
   // are local, ephemeral UI. So manual edits survive navigation.
   const items = evidence;
   const [facilityFilter, setFacilityFilter] = useState<FacilityFilter>(null);
   const [headerFilter, setHeaderFilter] = useState<HeaderFilter>(null);
+  // Backend mode: the calculation-line tree, or the table by document type (set type, facility, notes).
+  const view = tree?.view ?? "types";
+  const setView = (next: "lines" | "types") => tree?.onViewChange(next);
   // Bird's-eye by default: every type starts folded to its summary bar.
   const [openTypes, setOpenTypes] = useState<Set<string>>(new Set());
   const toggleType = (t: string) =>
@@ -228,6 +243,10 @@ export function EvidenceWorkspace({
 
   const groups = useMemo(() => groupByType(filtered), [filtered]);
   const hasFilter = facilityFilter !== null || headerFilter !== null;
+  const treeReloadKey = useMemo(
+    () => items.map((i) => `${i.documentId}:${i.processingState}:${i.disposition}`).join("|"),
+    [items]
+  );
   const activeCount = active.length;
 
   // --- writes (all real, recorded via audit intents) ---
@@ -381,6 +400,7 @@ export function EvidenceWorkspace({
         activeFilter={headerFilter}
         onFilter={(f) => setHeaderFilter((cur) => (cur === f ? null : f))}
         onUpload={onOpenUpload}
+        showFilters={!(tree && view === "lines")}
       />
 
       {backendError ? (
@@ -397,19 +417,49 @@ export function EvidenceWorkspace({
         </div>
       ) : null}
 
+      {tree ? (
+        <div className="s1-ws-factabs" role="group" aria-label="Group documents">
+          <button className={`s1-ws-factab${view === "lines" ? " is-on" : ""}`} type="button" aria-pressed={view === "lines"} onClick={() => setView("lines")}>
+            By calculation line
+          </button>
+          <button className={`s1-ws-factab${view === "types" ? " is-on" : ""}`} type="button" aria-pressed={view === "types"} onClick={() => setView("types")}>
+            By document type
+          </button>
+        </div>
+      ) : null}
+
       {showEmpty ? (
         <FirstDayEmpty onUploadFiles={onUploadFiles} isUploading={isUploading} />
       ) : (
         <>
-          <FacilityFilterStrip
-            engagement={engagement}
-            total={activeCount}
-            counts={facilityCounts}
-            active={facilityFilter}
-            onSelect={(f) => setFacilityFilter((cur) => (cur === f ? null : f))}
-          />
+          {tree && view === "lines" ? null : (
+            <FacilityFilterStrip
+              engagement={engagement}
+              total={activeCount}
+              counts={facilityCounts}
+              active={facilityFilter}
+              onSelect={(f) => setFacilityFilter((cur) => (cur === f ? null : f))}
+            />
+          )}
 
-          {showFilteredEmpty ? (
+          {tree && view === "lines" ? (
+            <EvidenceTree
+              openIds={tree.openIds}
+              onOpenIdsChange={tree.onOpenIdsChange}
+              onOpenSchedule={tree.onOpenSchedule}
+              onMovePlacement={tree.onMovePlacement}
+              onSaveLines={tree.onSaveLines}
+              onError={tree.onError}
+              facilityId={tree.facilityId}
+              onFacilityChange={tree.onFacilityChange}
+              engagement={engagement}
+              reloadKey={treeReloadKey}
+              onOpenExtraction={onOpenExtraction}
+              onOpenSetup={onOpenSetup}
+              onAudit={(intent) => onAuditIntent?.(intent)}
+              writesEnabled={writesEnabled}
+            />
+          ) : showFilteredEmpty ? (
             <div className="s1-ws-empty" role="status">
               <p>No files match {describeFilter(facilityFilter, headerFilter, engagement)}.</p>
               <button
@@ -604,7 +654,9 @@ function WorkspaceHeader({
   activeFilter,
   onFilter,
   onUpload,
+  showFilters = true,
 }: {
+  showFilters?: boolean;
   total: number;
   counts: { needs: number; arrived: number; blocked: number };
   activeFilter: HeaderFilter;
@@ -620,11 +672,13 @@ function WorkspaceHeader({
         </span>
       </div>
       <div className="s1-ws-top__right">
-        <div className="s1-ws-header__counts" role="group" aria-label="Show only">
-          <CountFilter label="To review" tone="open" n={counts.needs} on={activeFilter === "needs"} onClick={() => onFilter("needs")} />
-          <CountFilter label="New since last visit" tone="neutral" n={counts.arrived} on={activeFilter === "arrived"} onClick={() => onFilter("arrived")} />
-          <CountFilter label="Blocked" tone="blocking" n={counts.blocked} on={activeFilter === "blocked"} onClick={() => onFilter("blocked")} />
-        </div>
+        {showFilters ? (
+          <div className="s1-ws-header__counts" role="group" aria-label="Show only">
+            <CountFilter label="To review" tone="open" n={counts.needs} on={activeFilter === "needs"} onClick={() => onFilter("needs")} />
+            <CountFilter label="New since last visit" tone="neutral" n={counts.arrived} on={activeFilter === "arrived"} onClick={() => onFilter("arrived")} />
+            <CountFilter label="Blocked" tone="blocking" n={counts.blocked} on={activeFilter === "blocked"} onClick={() => onFilter("blocked")} />
+          </div>
+        ) : null}
         {onUpload ? (
           <button className="s1-button s1-button--pri s1-ws-top__upload" type="button" onClick={onUpload}>
             <Upload aria-hidden /> Upload
@@ -821,6 +875,7 @@ function WorkspaceRow(props: {
         ) : (
           <span>{item.detectedType ?? "Type unresolved"}</span>
         )}
+        <AiTypeNote item={item} />
       </td>
 
       {/* Status: processing state, and any issue under it */}
@@ -1141,6 +1196,8 @@ function processingDisplay(item: EvidenceItem): { role: string; label: string; s
   if (item.reading)
     return { role: "active", label: "Reading…", sub: item.reading === "queued" ? "Waiting to be read" : null };
   if (item.processingState === "blocked") return { role: "blocking", label: "Blocked", sub: item.haltReason };
+  if (item.processingState === "extracted" && item.unreadPages)
+    return { role: "open", label: "Partly read", sub: `Pages ${item.unreadPages} could not be read` };
   if (
     item.processingState === "extracted" &&
     item.fieldsExpectedDisplay != null &&

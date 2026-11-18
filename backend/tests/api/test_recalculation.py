@@ -89,7 +89,7 @@ def test_reference_lists_the_input_choices(act_as) -> None:
     act_as("org_member", ORG_A)
     with TestClient(app) as client:
         body = client.get("/v1/reference/recalculation").json()
-    assert body["gwp_sets"] == ["AR5", "AR6"] and body["default_gwp_set"] == "AR5"
+    assert body["gwp_sets"] == ["AR4", "AR5", "AR6"] and body["default_gwp_set"] == "AR5"
     assert len(body["egrid_subregions"]) == 28 and len(body["stationary_fuels"]) == 63
     assert {"key": "scope1_total", "label": "Scope 1 (Total)", "workbook_row": 22, "unit": "t CO2e"} in \
         body["reported_data_points"]
@@ -114,7 +114,7 @@ def test_reference_lists_the_input_choices(act_as) -> None:
 def test_engagement_settings_validate_recalculation_inputs() -> None:
     EngagementUpdate(settings={"recalculation": {"gwp_set": "AR6", "grid_regions": {"Facility A": "NYUP"}}})
     with pytest.raises(ValueError):
-        EngagementUpdate(settings={"recalculation": {"gwp_set": "AR4"}})
+        EngagementUpdate(settings={"recalculation": {"gwp_set": "AR3"}})
     EngagementUpdate(settings={"outOfScopeDataPoints": ["process_total"]})
     with pytest.raises(ValueError):
         EngagementUpdate(settings={"outOfScopeDataPoints": ["not_a_data_point"]})

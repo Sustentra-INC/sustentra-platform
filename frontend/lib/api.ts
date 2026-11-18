@@ -36,6 +36,12 @@ export function apiPath(path: string): string {
 }
 
 export async function api<T>(path: string, options: ApiOptions = {}): Promise<T> {
+  // The demo site (fixture mode) has no backend: an in-browser stand-in answers the same
+  // routes with the demo engagement's data, so the demo runs the same screens as staging.
+  if (process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture") {
+    const { demoApi } = await import("../features/s1/demo-backend");
+    return demoApi<T>(path, options);
+  }
   const { body, headers: headersInit, ...rest } = options;
   const headers = new Headers(headersInit);
   headers.set("Accept", "application/json");

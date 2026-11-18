@@ -251,12 +251,16 @@ def build_workbook(
     _sheet(book, "Working", ["Category", "Line", "Step", "Formula", "Inputs (with source)", "Result", "Unit"],
            working, [30, 26, 30, 30, 90, 16, 10])
 
+    documents = register.get("documents") or []
+    with_claude = any(d.get("suggested_count") for d in documents)  # the column only exists when Claude read something
     _sheet(
         book, "Evidence",
-        ["File", "Document type", "Uploaded", "Uploaded by", "Values extracted"],
+        ["File", "Document type", "Uploaded", "Uploaded by", "Values extracted"]
+        + (["Suggested by Claude"] if with_claude else []),
         [[d.get("file_name"), d.get("canonical_type_id") or "Not identified", _when(d.get("uploaded_at")),
-          d.get("uploaded_by"), d.get("candidate_count")] for d in register.get("documents") or []],
-        [48, 22, 20, 30, 16],
+          d.get("uploaded_by"), d.get("candidate_count")] + ([d.get("suggested_count") or 0] if with_claude else [])
+         for d in documents],
+        [48, 22, 20, 30, 16] + ([20] if with_claude else []),
     )
     _sheet(
         book, "Reviewed values",

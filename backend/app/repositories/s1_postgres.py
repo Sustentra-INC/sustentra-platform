@@ -29,7 +29,7 @@ from backend.app.core.s1_scope import S1Scope, current_scope
 
 # table -> the columns filled from the record (besides org_id); must match migration 0013.
 COLUMNS: dict[str, tuple[str, ...]] = {
-    "s1_documents": ("document_id", "engagement_id", "evidence_id", "processing_status"),
+    "s1_documents": ("document_id", "engagement_id", "evidence_id", "processing_status", "batch_id"),
     "s1_pipeline_runs": ("pipeline_run_id", "engagement_id", "evidence_id", "document_id"),
     "s1_extraction_results": ("pipeline_run_id", "document_id", "evidence_id"),
     "s1_review_decisions": ("review_decision_id", "candidate_id", "evidence_id", "document_id", "field_name"),

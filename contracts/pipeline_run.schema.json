@@ -126,7 +126,9 @@
       "type": "string",
       "enum": [
         "classifier",
+        "content_check",
         "override",
+        "ai",
         "none"
       ]
     },
@@ -206,6 +208,53 @@
             "string",
             "null"
           ]
+        }
+      }
+    },
+    "ai_routing": {
+      "description": "Claude's reading of the document's type (services/ai_routing.py). Present only when Claude was asked and its quote was verified on the document. used: it set the type (canonical_type_source ai). Otherwise it only disagreed with the rules and changed nothing.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "canonical_type_id",
+        "quote",
+        "line",
+        "reason_code",
+        "used"
+      ],
+      "properties": {
+        "canonical_type_id": {
+          "type": "string"
+        },
+        "quote": {
+          "type": "string"
+        },
+        "line": {
+          "type": "string"
+        },
+        "reason_code": {
+          "type": "string",
+          "enum": [
+            "title",
+            "header_terms",
+            "table_headers",
+            "other"
+          ]
+        },
+        "page_number": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "used": {
+          "type": "boolean"
+        },
+        "disagrees": {
+          "type": "boolean"
+        },
+        "review_required": {
+          "type": "boolean"
         }
       }
     }

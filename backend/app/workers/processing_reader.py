@@ -12,8 +12,14 @@ records how the read ended. While the read goes on, the calling thread supervise
 * on SIGTERM the read gets ``shutdown_grace_seconds`` to finish, and then the run is put back
   in the queue without counting the attempt.
 
-Every ``REQUEUE_EVERY_SECONDS`` the reader also puts back the runs whose reader stopped renewing
-their lease (or fails them after their last attempt) and moves their documents' status with them.
+Chunks come first: a large PDF is split into page chunks (``document_chunk_service``) that are
+jobs on the same queue. One loop claims a due chunk before a run, reads its pages under the
+same supervision (lease, heartbeat, max run time, stop), and records the outcome; the chunk that
+ends the last unfinished one wakes the parked run, which is then claimed as any run.
+
+Every ``REQUEUE_EVERY_SECONDS`` the reader also puts back the runs and chunks whose reader stopped
+renewing their lease (or fails them after their last attempt) and moves the runs' documents'
+status with them.
 
 The reader touches ``reader_health.ALIVE_FILE`` as it works, for the container's health check.
 It is active whenever ``S1_STORE`` is Postgres-backed, whatever ``S1_PROCESSING`` says (inline,
@@ -42,12 +48,14 @@ from typing import Any, NoReturn
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.s1_scope import S1Scope, scoped
 from backend.app.observability import configure_logging
+from backend.app.repositories.document_chunk_repository import DocumentChunk, DocumentChunkRepository
 from backend.app.repositories.processing_run_repository import ProcessingRun, ProcessingRunRepository
 from backend.app.services.document_processing_service import (
     WORKER_ERROR_MESSAGE,
     DocumentProcessingService,
     Outcome,
 )
+from backend.app.services.document_chunk_service import ChunkingSettings, ChunkOutcome, DocumentChunkService
 from backend.app.services.document_upload_service import DocumentUploadService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
 from backend.app.workers import reader_health
@@ -132,7 +140,11 @@ class ProcessingReader:
         exit: Callable[[int], NoReturn] = os._exit,
         wait: Callable[[float], bool] | None = None,
         clock: Callable[[], float] = time.monotonic,
+        chunks: Any | None = None,
+        chunk_service: Any | None = None,
     ) -> None:
+        self._chunks: Any = chunks  # the chunk queue (None: no chunk is ever claimed)
+        self._chunk_service: Any = chunk_service
         self._runs = runs
         self._uploads = uploads
         self._pipeline = pipeline
@@ -158,6 +170,10 @@ class ProcessingReader:
     def requeue_expired(self) -> int:
         """Put back the runs whose lease ran out (failing those out of attempts), and their documents."""
 
+        expired_chunks = self._chunks.requeue_expired() if self._chunks is not None else []
+        if expired_chunks:
+            logger.info("document_chunks_requeued", extra={
+                "count": len(expired_chunks), "failed": sum(1 for c in expired_chunks if c.status == "failed")})
         expired = self._runs.requeue_expired()
         failed = 0
         for item in expired:
@@ -174,13 +190,17 @@ class ProcessingReader:
                                extra={"run_id": item.run_id, **_failure(exc, "status_failed")})
         if expired:
             logger.info("processing_runs_requeued", extra={"count": len(expired), "failed": failed})
-        return len(expired)
+        return len(expired) + len(expired_chunks)
 
     # --- one run -----------------------------------------------------------------------------
 
-    def run_once(self) -> ProcessingRun | None:
-        """Claim the oldest due run and read it. ``None`` when nothing is due."""
+    def run_once(self) -> ProcessingRun | DocumentChunk | None:
+        """Claim the oldest due chunk (else the oldest due run) and read it. ``None`` when nothing is due."""
 
+        if self._chunks is not None:
+            chunk = self._chunks.claim(self.worker_id, self.settings.lease_seconds)
+            if chunk is not None:
+                return self._run_chunk(chunk)
         run = self._runs.claim(self.worker_id, self.settings.lease_seconds)
         if run is None:
             return None
@@ -190,7 +210,7 @@ class ProcessingReader:
             "attempt": run.attempts, "wait_ms": _age_ms(run.created_at)})
 
         service = DocumentProcessingService(self._runs, self._uploads, self._pipeline, self._storage,
-                                            worker_id=self.worker_id)
+                                            worker_id=self.worker_id, chunking=self._chunk_service)
         result: dict[str, ProcessingRun] = {}
         thread = threading.Thread(target=self._read, args=(service, run, result), name="reader-read", daemon=True)
         thread.start()
@@ -220,7 +240,53 @@ class ProcessingReader:
                 logger.error("processing_run_finish_failed",
                              extra={"run_id": run.run_id, **_failure(again, "finish_failed")})
 
-    def _supervise(self, run: ProcessingRun, thread: threading.Thread, started: float) -> bool:
+    def _run_chunk(self, chunk: DocumentChunk) -> DocumentChunk:
+        """Read one claimed chunk under the same supervision as a run."""
+
+        started = self._clock()
+        logger.info("document_chunk_claimed", extra={
+            "run_id": chunk.run_id, "org_id": chunk.org_id, "chunk_index": chunk.chunk_index,
+            "page_from": chunk.page_from, "page_to": chunk.page_to, "attempt": chunk.attempts})
+        result: dict[str, DocumentChunk] = {}
+        thread = threading.Thread(target=self._read_chunk, args=(chunk, result), name="reader-chunk", daemon=True)
+        thread.start()
+        if not self._supervise(chunk, thread, started):
+            return self._release_chunk(chunk)
+        finished = result.get("finished") or chunk
+        logger.info("document_chunk_done", extra={
+            "run_id": chunk.run_id, "chunk_index": chunk.chunk_index, "status": finished.status,
+            "duration_ms": int((self._clock() - started) * 1000)})
+        return finished
+
+    def _read_chunk(self, chunk: DocumentChunk, result: dict[str, DocumentChunk]) -> None:
+        service = self._chunk_service
+        try:
+            with scoped(S1Scope.tenant(chunk.org_id)):
+                outcome = service.execute(chunk)
+                recorded = service.finish(chunk, outcome, self.worker_id)
+            if recorded is not None:
+                result["finished"] = recorded
+        except Exception as exc:
+            logger.error("document_chunk_crashed", extra={
+                "run_id": chunk.run_id, "chunk_index": chunk.chunk_index, **_failure(exc, "worker_error")})
+            try:
+                with scoped(S1Scope.tenant(chunk.org_id)):
+                    recorded = service.finish(chunk, ChunkOutcome("retry", error_code="worker_error"), self.worker_id)
+                if recorded is not None:
+                    result["finished"] = recorded
+            except Exception as again:  # the chunk is left for its lease to expire
+                logger.error("document_chunk_finish_failed", extra={
+                    "run_id": chunk.run_id, "chunk_index": chunk.chunk_index, **_failure(again, "finish_failed")})
+
+    def _release_chunk(self, chunk: DocumentChunk) -> DocumentChunk:
+        """The reader is stopping and the chunk is not read: back in the queue, attempt not counted."""
+
+        released = self._chunks.release(chunk, self.worker_id)
+        if released is not None:
+            logger.info("document_chunk_released", extra={"run_id": chunk.run_id, "chunk_index": chunk.chunk_index})
+        return released or chunk
+
+    def _supervise(self, run: ProcessingRun | DocumentChunk, thread: threading.Thread, started: float) -> bool:
         """Watch the read until it ends. ``False``: the reader is stopping and the read is not done."""
 
         s = self.settings
@@ -247,11 +313,12 @@ class ProcessingReader:
                 if now - stopping_since >= s.shutdown_grace_seconds:
                     return False
 
-    def _renew(self, run: ProcessingRun) -> bool:
+    def _renew(self, run: ProcessingRun | DocumentChunk) -> bool:
         """Renew the lease. ``False`` once it is lost; a failed attempt is retried at the next beat."""
 
         try:
-            renewed = self._runs.heartbeat(run, self.worker_id, self.settings.lease_seconds)
+            queue = self._chunks if isinstance(run, DocumentChunk) else self._runs
+            renewed = queue.heartbeat(run, self.worker_id, self.settings.lease_seconds)
         except Exception as exc:
             logger.warning("processing_run_heartbeat_failed",
                            extra={"run_id": run.run_id, **_failure(exc, "heartbeat_failed")})
@@ -315,9 +382,12 @@ def build_reader(settings: Settings, stop: threading.Event) -> ProcessingReader:
     """The reader on the real stores. Only here are the services (and so the stores) built."""
 
     uploads = DocumentUploadService()
+    chunks = DocumentChunkRepository()
+    chunk_service = DocumentChunkService(chunks, uploads, uploads.storage_service,
+                                         ChunkingSettings.from_settings(settings))
     return ProcessingReader(
         ProcessingRunRepository(), uploads, PipelineOrchestrationService(), uploads.storage_service,
-        settings=ReaderSettings.from_settings(settings), stop=stop)
+        settings=ReaderSettings.from_settings(settings), stop=stop, chunks=chunks, chunk_service=chunk_service)
 
 
 def idle(stop: threading.Event, reason: str, alive_file: Path | None = None) -> int:

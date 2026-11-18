@@ -39,6 +39,9 @@ export const STATE_ROLE_BY_PAIR: Partial<Record<StateDimension, Record<string, S
     unit_missing: "open",
     unit_ambiguous: "open",
     format_mismatch: "open",
+    ai_suggested: "open",
+    ai_disagrees: "open",
+    ai_conflict: "open",
   },
   review: {
     unreviewed: "na",

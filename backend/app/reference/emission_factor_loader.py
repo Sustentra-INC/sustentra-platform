@@ -31,9 +31,15 @@ EPA_UNIT_TO_CANONICAL = {"short ton": "short_ton", "scf": "scf", "gallon": "gal"
 
 # GWP sets the recalculation can use. AR5 is EPA Hub 2025 Table 11 (the set in the GHG
 # Required Data workbook's worked examples); AR6 is the combustion set in
-# reference-data/config/libraries/emission_factor_library.json. The engagement chooses.
-GWP_SETS = ("AR5", "AR6")
+# reference-data/config/libraries/emission_factor_library.json; AR4 is the three combustion
+# gases below (the Hub JSON and the library hold no AR4 values). The engagement chooses one.
+GWP_SETS = ("AR4", "AR5", "AR6")
 DEFAULT_GWP_SET = "AR5"
+
+# IPCC Fourth Assessment Report, 100-year GWPs of the combustion gases (WG1, Table 2.14).
+# Like AR6, AR4 has no HFC, PFC, SF6 or NF3 values here: a reviewer enters those (refrigerant_gwps).
+AR4_SOURCE = "IPCC AR4 WG1 Table 2.14 (100-year)"
+AR4_GWPS = {"co2": 1.0, "ch4": 25.0, "n2o": 298.0}
 
 # The gas groups reported separately (GHG Protocol / SB 253): CO2, CH4, N2O, HFCs, PFCs, SF6, NF3.
 GAS_GROUPS = ("CO2", "CH4", "N2O", "HFCs", "PFCs", "SF6", "NF3")
@@ -93,6 +99,8 @@ class EmissionFactorReference:
     def gwp(self, gas: str, gwp_set: str = DEFAULT_GWP_SET) -> Factor:
         if gwp_set == "AR6":
             return _ar6_gwp(gas)
+        if gwp_set == "AR4":
+            return _ar4_gwp(gas)
         if gwp_set != "AR5":
             raise EmissionFactorNotFoundError(f"Unknown GWP set {gwp_set!r}; use one of {GWP_SETS}.")
         row = self._gwp.get(_norm(gas))
@@ -265,6 +273,13 @@ def _ar6_values() -> dict[str, tuple[float, str]]:
             cite = f"emission_factor_library.json, {gwp_set['gwp_set_id']}, {value['gwp_key']} (IPCC AR6)"
             out[_norm(value["chemical_formula"])] = (float(value["gwp"]), cite)
     return out
+
+
+def _ar4_gwp(gas: str) -> Factor:
+    value = AR4_GWPS.get(_norm(gas))
+    if value is None:
+        raise EmissionFactorNotFoundError(f"The AR4 set has no GWP for {gas!r} (it covers CO2, CH4, N2O).")
+    return Factor(value, "kg CO2e per kg", AR4_SOURCE)
 
 
 def _ar6_gwp(gas: str) -> Factor:

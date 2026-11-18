@@ -116,7 +116,12 @@ export function liveOutputFrom(
     lines: results.lines,
     live: {
       statement: liveStatementFigures(results.lines, results.boxTotals, results.inventory, result.tolerance_pct),
-      exportHref: apiPath(`/engagements/${encodeURIComponent(result.engagement_id)}/export`),
+      // The demo site has no server to build the workbook; it serves one the backend built
+      // from the demo engagement's figures (public/demo).
+      exportHref:
+        process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture"
+          ? "/demo/cascade-provisions-2025-workpaper.xlsx"
+          : apiPath(`/engagements/${encodeURIComponent(result.engagement_id)}/export`),
       gwpBasis: `${result.gwp_set}${result.gwp_set === "AR5" ? " (EPA Hub Table 11)" : ""}`,
       findings,
       basisLines: [

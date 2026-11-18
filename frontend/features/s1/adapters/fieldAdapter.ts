@@ -12,6 +12,12 @@ export interface BackendExtractionCandidateLike {
   unit: string | null;
   confidence?: number | null;
   validation_flags?: string[] | null;
+  /** With the flag ai_disagrees: what Claude read where the rules read another value (read-only). */
+  ai_alternative?: {
+    value: string | number | boolean | null;
+    unit: string | null;
+    source_reference?: { text_snippet?: string | null; page_number?: number | null } | null;
+  } | null;
   source_reference?: {
     text_snippet?: string | null;
     page_number?: number | null;
@@ -46,6 +52,7 @@ export function mapBackendCandidateToExtractedField(
     value,
     unit: candidate.unit,
     valueProperties: mapValidationFlags(candidate.validation_flags),
+    aiAlternative: mapAiAlternative(candidate),
     fieldState: value === null ? "missing_requestable" : "populated",
     snippet: candidate.source_reference?.text_snippet ?? null,
     snippetContext: candidate.source_reference?.text_snippet ?? null,
@@ -90,21 +97,59 @@ export function encodeReviewCandidateToken(candidate: BackendExtractionCandidate
     source_reference: candidate.source_reference ?? null,
     validation_flags: candidate.validation_flags ?? [],
   });
-  if (typeof btoa === "function") return btoa(payload);
-  return Buffer.from(payload, "utf8").toString("base64");
+  return utf8ToBase64(payload);
 }
 
 export function decodeReviewCandidateToken(token: string): BackendExtractionCandidateLike | null {
   try {
-    const payload = typeof atob === "function" ? atob(token) : Buffer.from(token, "base64").toString("utf8");
-    return JSON.parse(payload) as BackendExtractionCandidateLike;
+    return JSON.parse(base64ToUtf8(token)) as BackendExtractionCandidateLike;
   } catch {
     return null;
   }
 }
 
+/** Base64 of the text's UTF-8 bytes. `btoa` alone takes Latin-1 only and throws on a value
+ *  such as "CO₂", "–" or "°F", which stopped the whole Evidence page from loading. */
+function utf8ToBase64(text: string): string {
+  if (typeof btoa === "function" && typeof TextEncoder === "function") {
+    let binary = "";
+    for (const byte of new TextEncoder().encode(text)) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+  return Buffer.from(text, "utf8").toString("base64");
+}
+
+function base64ToUtf8(token: string): string {
+  if (typeof atob === "function" && typeof TextDecoder === "function") {
+    const binary = atob(token);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+  return Buffer.from(token, "base64").toString("utf8");
+}
+
+function mapAiAlternative(candidate: BackendExtractionCandidateLike): ExtractedField["aiAlternative"] {
+  const alt = candidate.ai_alternative;
+  if (!alt || !(candidate.validation_flags ?? []).includes("ai_disagrees")) return undefined;
+  return {
+    value: alt.value === null || alt.value === undefined ? null : String(alt.value),
+    unit: alt.unit ?? null,
+    quote: alt.source_reference?.text_snippet ?? null,
+    page: typeof alt.source_reference?.page_number === "number" ? alt.source_reference.page_number : null,
+  };
+}
+
 function mapValidationFlags(flags?: string[] | null): ValueProperty[] {
-  const allowed: ValueProperty[] = ["estimated_read", "unit_missing", "unit_ambiguous", "format_mismatch"];
+  const allowed: ValueProperty[] = [
+    "estimated_read",
+    "unit_missing",
+    "unit_ambiguous",
+    "format_mismatch",
+    "ai_suggested",
+    "ai_disagrees",
+    "ai_conflict",
+  ];
   return (flags ?? []).filter((flag): flag is ValueProperty =>
     allowed.includes(flag as ValueProperty)
   );

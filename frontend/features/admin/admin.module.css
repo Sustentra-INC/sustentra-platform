@@ -253,3 +253,50 @@
   font-weight: 650;
   color: var(--ink, #1b1b17);
 }
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3, 0.75rem);
+  flex-wrap: wrap;
+}
+
+.breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2, 0.5rem);
+  font-size: var(--text-sm, 0.75rem);
+  color: var(--ink-3, #6b6b63);
+}
+
+.crumbLink {
+  color: var(--accent, #2c6fb3);
+  text-decoration: none;
+}
+
+.crumbLink:hover {
+  text-decoration: underline;
+}
+
+.success {
+  margin: 0;
+  font-size: var(--text-md, 0.875rem);
+  color: var(--state-resolved-fg, #3b6d11);
+  background: var(--state-resolved-bg, #edf4e2);
+  border: 0.0625rem solid var(--state-resolved-line, #cfe0b4);
+  border-radius: var(--radius-input, 0.5rem);
+  padding: var(--sp-2, 0.5rem) var(--sp-3, 0.75rem);
+}
+
+.savedNote {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2, 0.5rem);
+  font-size: var(--text-md, 0.875rem);
+  color: var(--state-resolved-fg, #3b6d11);
+}
+
+.savedNote a {
+  color: var(--accent, #2c6fb3);
+}

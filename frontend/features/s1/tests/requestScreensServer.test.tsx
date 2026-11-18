@@ -806,7 +806,7 @@ describe("Evidence waits for the server", () => {
 });
 
 describe("Extraction review waits for the server", () => {
-  const DOC = "DOC-tualatin-elec-jan";
+  const DOC = "DOC-modesto-elec-nov";
   const raised = (over: Partial<Ask> = {}): Ask => ({
     ...seedAsks[1],
     id: "ASK-SERVER-1",
@@ -895,7 +895,7 @@ describe("Extraction review waits for the server", () => {
   });
 
   it("marks the first card requested but leaves a window opened since alone, when its save answers late", async () => {
-    const GAS = "DOC-tualatin-gas-jan";
+    const GAS = "DOC-PARTIAL";
     const saving = deferred<Ask>();
     const view = renderReview(() => saving.promise, false, GAS);
     const firstId = view.selected().dataset.valueId!;
@@ -903,7 +903,7 @@ describe("Extraction review waits for the server", () => {
     fireEvent.click(within(modal).getByRole("button", { name: "Add to requests" }));
 
     // The window cannot be closed by hand now, so another card's is asked for from behind it.
-    const other = view.cards().find((card) => card.dataset.valueId !== firstId)!;
+    const other = view.cards().find((card) => card.dataset.valueId !== firstId && card.classList.contains("s1-xr-card--to_review") && !card.classList.contains("s1-xr-card--withdrawn"))!;
     const otherId = other.dataset.valueId!;
     fireEvent.click(other);
     fireEvent.click(within(view.selected()).getByRole("button", { name: "Request" }));

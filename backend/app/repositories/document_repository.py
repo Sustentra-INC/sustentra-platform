@@ -48,6 +48,9 @@ class _BaseDocumentRepository:
     def list_by_evidence(self, evidence_id: str) -> list[dict]:
         return _latest_versions(r for r in self._records() if r.get("evidence_id") == evidence_id)
 
+    def list_by_batch(self, batch_id: str) -> list[dict]:
+        return _latest_versions(r for r in self._records() if r.get("batch_id") == batch_id)
+
     def get_by_id(self, document_id: str) -> dict | None:
         for record in reversed(self._records()):
             if record.get("document_id") == document_id:
@@ -128,6 +131,9 @@ class PostgresDocumentRepository(_BaseDocumentRepository):
 
     def list_by_evidence(self, evidence_id: str) -> list[dict]:
         return self._table.select(evidence_id=evidence_id)
+
+    def list_by_batch(self, batch_id: str) -> list[dict]:
+        return self._table.select(batch_id=batch_id)
 
     def get_by_id(self, document_id: str) -> dict | None:
         return self._table.latest(document_id=document_id)

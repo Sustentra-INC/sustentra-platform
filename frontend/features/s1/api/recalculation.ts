@@ -1,4 +1,5 @@
 import { api } from "../../../lib/api";
+import { count } from "../utils/count";
 import type {
   CheckOutcome,
   CoverageRule,
@@ -112,9 +113,12 @@ export interface RecalcNeedsInput {
     | "vehicle_group"
     | "refrigerant_record"
     | "steam_heat_content"
-    | "thermal_type";
-  key: string;
-  message: string;
+    | "thermal_type"
+    | "company_activity"
+    | "calculation_lines";
+  /** Absent on a calculation_lines item (the lines could not be built at all). */
+  key?: string;
+  message?: string;
   options?: string[];
   /** The roll-up source the question holds open (absent from older results). */
   category?: RollupSourceKey;
@@ -202,6 +206,142 @@ type LaterCategory =
   | "purchased_heating_location_based"
   | "purchased_heating_market_based";
 
+/**
+ * Calculation lines (backend/app/services/recalculation_lines.py; docs/api_contract.md, "calculation
+ * lines"). Every number and status is the backend's: the frontend only formats and lays them out.
+ */
+export type CalcGas = "CO2" | "CH4" | "N2O";
+
+export interface CalcQuantity {
+  quantity: number;
+  unit: string;
+}
+
+export interface CalcLineStep2 {
+  from_unit: string;
+  to_unit: string;
+  /** 1 when the unit needs no conversion. */
+  factor: number;
+  /** Cites the unit conversion; null when the factor is 1. */
+  source: string | null;
+  result: CalcQuantity;
+  /** On-road mobile: the distance the vehicle group states (an input, not a conversion). */
+  distance: { quantity: number; unit: string; source: string } | null;
+  /** That distance over the fuel on the line: a reasonableness check only; null when it can't be judged. */
+  implied_fuel_economy: { value: number; unit: string; role: "reasonableness_check" } | null;
+}
+
+/** The backend's verdict on a line's difference against the tolerance. */
+export type CalcLineStatus = "within" | "above" | "not_reported";
+
+export interface CalcLineGas {
+  gas: CalcGas;
+  activity: { value: number; unit: string };
+  ef: { value: number; unit: string; source: string };
+  unit_conversion: number;
+  mass_t: number;
+  gwp: { value: number; source: string };
+  co2e_t: number;
+  /** Biomass fuel CO2: mass_t is biogenic CO2 and co2e_t is 0. */
+  biogenic: boolean;
+  /** Only when the line has a company side. */
+  company_co2e_t?: number | null;
+  difference_to_company_t?: number | null;
+}
+
+export interface CalcLineResults {
+  mass_t: Record<CalcGas, number>;
+  gas_co2e_t: Record<CalcGas, number>;
+  sum_co2e_t: number;
+  /** Sum times the consolidated share. */
+  total_co2e_t: number;
+  biogenic_co2_t: number;
+  company_total_co2e_t?: number | null;
+  company_gas_co2e_t?: Record<CalcGas, number> | null;
+  difference_to_company_t?: number | null;
+}
+
+export interface CalcLineStep1Row {
+  period_start: string | null;
+  period_end: string | null;
+  document_id: string;
+  /** Always null for now: the app has no evidence codes for documents. */
+  evidence_code: string | null;
+  file_name: string | null;
+  candidate_id: string | null;
+  review: "accepted" | "edited";
+  /** Null for a month with no numeric quantity. */
+  quantity: number | null;
+  unit: string;
+  share_in_period: number;
+  counted_quantity: number;
+  /** counted_quantity in the line's total unit; null when the record's unit can't be converted. */
+  counted_in_base: number | null;
+}
+
+/** The company's side of a line: its annual activity run through the same steps and factors. */
+export interface CalcLineCompany {
+  activity: CalcQuantity;
+  step2: CalcLineStep2;
+  step3: { gases: CalcLineGas[] };
+  results: CalcLineResults;
+}
+
+export type CalcCountsToward = "stationary" | "mobile" | "purchased_energy";
+
+/** One calculation line: a facility's (or vehicle group's) fuel, substance or energy. */
+export interface CalculationLine {
+  key: string;
+  scope: "s1" | "s2" | "biogenic";
+  category: CalcCountsToward | "biogenic";
+  /** The category total this line rolls into (a biogenic line counts toward stationary or mobile). */
+  counts_toward: CalcCountsToward;
+  level2: string;
+  level2_key: string;
+  /** The facility or vehicle group. */
+  label: string;
+  facility_id: string | null;
+  consolidated_share_pct: number;
+  method: { route: string; equations: Partial<Record<CalcGas, string>> };
+  step1: { rows: CalcLineStep1Row[]; total: CalcQuantity };
+  step2: CalcLineStep2;
+  step3: { gases: CalcLineGas[] };
+  results: CalcLineResults;
+  company: CalcLineCompany | null;
+  reported_total_co2e_t: number | null;
+  difference_t: number | null;
+  /** The backend's verdict on `difference_t`; the frontend applies no tolerance of its own. */
+  status: CalcLineStatus;
+  /** The difference as a percentage of the reported base (for example 4.6). */
+  difference_pct_of_base: number | null;
+  /** The line's category still has open needs_input or awaiting_review items. */
+  inputs_incomplete: boolean;
+  flags: string[];
+}
+
+export type CalcUnplacedReason =
+  | "unknown_line"
+  | "moved_to_another_place"
+  | "fuel_shared_by_vehicle_groups"
+  | "no_vehicle_group"
+  | "no_facility_match"
+  | "no_calculation_line";
+
+/** Records on no calculation line: reported on their own, never dropped. */
+export type CalcUnplaced = Omit<CalculationLine, "key" | "company"> & {
+  key: null;
+  company: null;
+  reason: CalcUnplacedReason;
+  target: string | null;
+};
+
+/** Company figures and shares that match nothing, to warn about. */
+export interface CalcLineInputs {
+  consolidated_shares: Record<string, number>;
+  unknown_line_keys: { setting: string; key: string }[];
+  unknown_facility_ids: string[];
+}
+
 export interface Recalculation {
   engagement_id: string;
   gwp_set: string;
@@ -229,6 +369,11 @@ export interface Recalculation {
   /** Category results to Scope 1, Scope 2 and inventory totals, then the final outputs.
    *  Absent from results computed before the roll-up; fall back to `comparisons`. */
   rollup?: Rollup;
+  /** Per-line calculations behind stationary, mobile and electricity. Absent from older results. */
+  calculation_lines?: CalculationLine[];
+  /** Records on no calculation line, with why. */
+  calculation_unplaced?: CalcUnplaced[];
+  calculation_line_inputs?: CalcLineInputs;
 }
 
 /** A data quality signal for the reviewer (backend/app/services/data_quality_checks.py):
@@ -934,12 +1079,12 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
   ) => {
     const waiting = awaitingFor(result, typeId);
     const choices = result.needs_input.filter(
-      (n) => n.key.startsWith(`${kind}:`) || (kind === "mobile" && (n.kind === "mobile" || n.kind === "vehicle_group"))
+      (n) => (n.key ?? "").startsWith(`${kind}:`) || (kind === "mobile" && (n.kind === "mobile" || n.kind === "vehicle_group"))
     );
     if (waiting.length || choices.length) {
       const parts = [
         category ? `Recalculated so far: ${category.lines.map((l) => l.key).join(", ")}` : "",
-        waiting.length ? `${waiting.length} record(s) awaiting review (${listed(waiting)})` : "",
+        waiting.length ? `${count(waiting.length, "record")} awaiting review (${listed(waiting)})` : "",
         choices.length ? choices.map((c) => c.message).join(" ") : "",
       ].filter(Boolean);
       rules.push({ ruleId, assertion, appliesTo, status: "inputs_missing", reason: parts.join(". ") });
@@ -953,7 +1098,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
         assertion,
         appliesTo,
         status: "inputs_present",
-        reason: `${category.lines.map((l) => l.key).join(", ")} from ${docs} reviewed record(s).${vehicles}`,
+        reason: `${category.lines.map((l) => l.key).join(", ")} from ${count(docs, "reviewed record")}.${vehicles}`,
       });
     } else {
       const leftOut = (result.excluded ?? []).filter((e) => e.canonical_type_id === typeId);
@@ -997,8 +1142,8 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
       appliesTo: elecAppliesTo,
       status: "inputs_missing",
       reason: [
-        regions.length ? `Grid region not chosen for ${listed(regions.map((r) => r.key))}` : "",
-        elecWaiting.length ? `${elecWaiting.length} bill(s) awaiting review (${listed(elecWaiting)})` : "",
+        regions.length ? `Grid region not chosen for ${listed(regions.map((r) => r.key ?? ""))}` : "",
+        elecWaiting.length ? `${count(elecWaiting.length, "bill")} awaiting review (${listed(elecWaiting)})` : "",
       ].filter(Boolean).join(". "),
     });
   } else if (location) {
@@ -1069,7 +1214,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
       result.reporting_period.start && result.reporting_period.end
         ? `${result.reporting_period.start} to ${result.reporting_period.end}.` +
           (excluded.length
-            ? ` ${excluded.length} record(s) fall entirely outside it and are not counted: ${listed(excluded.map((e) => `${e.record} (${e.period})`))}.`
+            ? ` ${count(excluded.length, "record")} ${excluded.length === 1 ? "falls" : "fall"} entirely outside it and ${excluded.length === 1 ? "is" : "are"} not counted: ${listed(excluded.map((e) => `${e.record} (${e.period})`))}.`
             : "")
         : "Set the reporting period in Setup; until then bills are counted in full.",
   });
@@ -1087,7 +1232,7 @@ export function coverageFromRecalculation(result: Recalculation): CoverageRule[]
   for (const item of result.not_recalculated) {
     rules.push({
       ruleId: `COV-NOT-${item.replace(/\W+/g, "-").toUpperCase()}`,
-      assertion: `${item} are recalculated`,
+      assertion: `Recalculating ${item}`,
       appliesTo: [item],
       status: "out_of_scope",
       reason: "Not built yet.",
@@ -1107,7 +1252,7 @@ function refrigerantRule(result: Recalculation): CoverageRule {
   const category = result.categories.fugitive_refrigerants ?? null;
   const waiting = awaitingFor(result, "CT-S1-REFRSVC");
   const gwps = result.needs_input.filter((n) => n.kind === "refrigerant_gwp");
-  const amounts = result.needs_input.filter((n) => n.kind === "quantity" && /refrigerant|equipment_capacity/.test(n.key));
+  const amounts = result.needs_input.filter((n) => n.kind === "quantity" && /refrigerant|equipment_capacity/.test(n.key ?? ""));
   const hcfcs = (result.excluded ?? []).filter((e) => reasonOf(e) === "montreal_protocol_gas");
   const hcfcNote = hcfcs.length
     ? ` ${hcfcs.length} record(s) of CFCs or HCFCs (${listed(hcfcs.map((e) => e.gas ?? e.record))}) are listed but not counted in Scope 1.`
@@ -1118,8 +1263,8 @@ function refrigerantRule(result: Recalculation): CoverageRule {
       status: "inputs_missing",
       reason: [
         category ? `Recalculated so far: ${category.lines.map((l) => l.key).join(", ")}` : "",
-        waiting.length ? `${waiting.length} record(s) awaiting review (${listed(waiting)})` : "",
-        gwps.length ? `GWP needed for ${listed(gwps.map((g) => g.key))} (not in the EPA Hub)` : "",
+        waiting.length ? `${count(waiting.length, "record")} awaiting review (${listed(waiting)})` : "",
+        gwps.length ? `GWP needed for ${listed(gwps.map((g) => g.key ?? ""))} (not in the EPA Hub)` : "",
         amounts.length ? amounts.map((a) => a.message).join(" ") : "",
       ].filter(Boolean).join(". ") + "." + hcfcNote,
     };

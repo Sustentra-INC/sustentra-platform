@@ -52,6 +52,9 @@ Log lines carry ids, codes, counts and durations, never a file name or document 
 | `processing_run_released` | a stop put an unfinished run back in the queue |
 | `processing_runs_requeued` | runs whose lease had run out were queued again |
 | `processing_run_overran`, `processing_run_crashed` | a read ran too long (the reader restarts), or failed unexpectedly |
+| `chunks_planned`, `document_chunk_claimed`, `chunk_finished`, `document_chunk_done`, `chunks_assembled` | a large PDF was split into page chunks (`pages`, `chunks`), a chunk was taken and how it ended, and the chunks were merged for the run (`unread_chunks`: how many failed). The reader claims chunks before runs; see `docs/backend_services.md` |
+| `document_chunks_requeued` | chunks whose lease had run out were queued again (or failed after their last attempt) |
+| `document_too_long` | a PDF over `S1_MAX_DOCUMENT_PAGES` was not read (a partial run) |
 | `reader_error` | one pass of its loop failed (for example the database was unreachable); it waits, then tries again |
 
 ## What a deploy does with it

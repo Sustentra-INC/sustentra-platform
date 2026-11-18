@@ -175,14 +175,15 @@ function ContextBar({
   user?: WorkpaperUser;
   onSignOut?: () => void;
 }) {
+  const contextTitle = contextBarTitle(engagement);
   return (
     <div className={`s1-ctx${expanded ? " s1-ctx--open" : ""}`}>
       <div className="s1-ctx__bar">
         {/* Two looks only: the client, then everything else in the small secondary style. */}
         <button className="s1-ctx__summary" type="button" onClick={onToggle} aria-expanded={expanded}>
-          <span className="s1-ctx__client">{engagement.clientName}</span>
+          <span className="s1-ctx__client">{contextTitle.title}</span>
           <span className="s1-ctx__meta">
-            <span className="s1-ctx__id">{engagement.engagementName || engagement.engagementId}</span>
+            {contextTitle.sub ? <span className="s1-ctx__id">{contextTitle.sub}</span> : null}
             <span className="s1-ctx__hint">
               {expanded ? "Hide details" : "Details"}
               <ChevronDown className={`s1-ctx__chev${expanded ? " is-open" : ""}`} aria-hidden />
@@ -248,6 +249,17 @@ function ContextBar({
       ) : null}
     </div>
   );
+}
+
+/** What the context bar leads with. The company when it is set; otherwise the
+ *  engagement name, labelled so it is not mistaken for the company, or "Company not
+ *  set". The second line never repeats the first and is never empty. */
+export function contextBarTitle(engagement: EngagementConfig): { title: string; sub: string } {
+  const company = engagement.clientName?.trim();
+  const name = engagement.engagementName?.trim();
+  if (company) return { title: company, sub: name || engagement.engagementId || "" };
+  if (name) return { title: `Engagement: ${name}`, sub: "" };
+  return { title: "Company not set", sub: engagement.engagementId || "" };
 }
 
 function CtxItem({ label, value }: { label: string; value: string }) {

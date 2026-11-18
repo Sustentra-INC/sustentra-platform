@@ -370,11 +370,18 @@ def _miles(distance: Measure) -> float:
     raise CalculationError(f"Distance unit {distance.unit!r} is not miles or kilometers.")
 
 
+def biogenic_fuel_names(ref: EmissionFactorReference | None = None) -> frozenset[str]:
+    """Lower-case names of the biomass fuels: their CO2 is reported separately (biogenic)."""
+
+    ref = ref or default_emission_factor_reference()
+    return frozenset(r["fuel_type"].lower() for r in ref.data["stationary_combustion"]
+                     if str(r.get("category") or "").startswith("Biomass"))
+
+
 def mobile_combustion(fuels: list[MobileFuel], ref: EmissionFactorReference | None = None,
                       gwp_set: str = DEFAULT_GWP_SET) -> CategoryResult:
     ref = ref or default_emission_factor_reference()
-    biogenic_names = {r["fuel_type"].lower() for r in ref.data["stationary_combustion"]
-                      if str(r.get("category") or "").startswith("Biomass")}
+    biogenic_names = biogenic_fuel_names(ref)
     lines: list[LineResult] = []
     for fuel in fuels:
         line = LineResult(fuel.fuel_type, {}, {"CH4": 0.0, "N2O": 0.0})
