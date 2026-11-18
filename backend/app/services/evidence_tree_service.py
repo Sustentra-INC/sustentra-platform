@@ -22,6 +22,7 @@ from backend.app.services.engagement_recalculation_service import (
     setup_facilities,
 )
 from backend.app.services.reviewed_evidence import (
+    AI_SUGGESTED,
     REVIEWED,
     THERMAL,
     ReviewedRecord,
@@ -51,15 +52,21 @@ EXTRA_COLUMNS = (("heat_content", "Heat content (HHV)", "heat_content"),
 THERMAL_LEVEL2 = tuple(level2 for level2, _ in cl.THERMAL_LEVEL2.values())
 ACTIVITY_NOTES = {
     "stationary": "fuel quantity combusted", "biogenic": "fuel quantity combusted",
-    "mobile": "fuel use quantity", "fugitive": "refrigerant quantity added or recovered",
-}
+    "mobile": "fuel use quantity",
+    "contractual": "certificates retired (MWh)",
+}  # fugitive and process lines have no note
 # Plain labels for the fields a record can still be waiting on (the recalculation's awaiting_review).
 FIELD_LABELS = {"fuel_type": "Fuel type", "activity_quantity": "Activity quantity", "energy_type": "Energy type",
                 "refrigerant_type": "Refrigerant type", "refrigerant_added": "Refrigerant added",
                 "equipment_capacity": "Equipment capacity", "refrigerant_recovered": "Refrigerant recovered",
                 "service_type": "Service type"}
-VERBS = {"accepted": "accepted", "edited": "edited", "rejected": "rejected",
-         "needs_more_evidence": "asked for more evidence on"}
+# A review decision -> the history action the page words ("edited" is "corrected", or "added" when the
+# extractor found nothing and the reviewer keyed the value).
+ACTIONS = {"accepted": "accepted", "edited": "corrected", "rejected": "rejected",
+           "needs_more_evidence": "asked_for_more_evidence"}
+HISTORY_CAP = 200
+HISTORY_FIELD_LABELS = {**{name: label for label, name in IDENTIFIERS}, **{name: label for _, label, name in EXTRA_COLUMNS},
+                        **FIELD_LABELS}
 
 
 @dataclass
@@ -158,10 +165,18 @@ class EvidenceTreeService:
 
     # ------------------------------------------------------------------------------------
     def tree(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
-             decisions: dict[str, dict[str, Any]] | None = None, facility_id: str | None = None) -> dict[str, Any]:
+             decisions: dict[str, dict[str, Any]] | None = None, facility_id: str | None = None,
+             creator_names: dict[str, str] | None = None) -> dict[str, Any]:
         """The tree. With ``facility_id`` every level shows only placements at that Setup facility
         (rows whose ``facility_id`` and lines whose ``facility_id`` match) and every count is
-        recomputed for that view."""
+        recomputed for that view. ``creator_names`` maps a user id to the name shown on a reviewer's line
+        ("created_by_name"; absent when the user is unknown)."""
+
+        def line_dict(line: cl.CalculationLine) -> dict[str, Any]:
+            out = line.to_dict()
+            if line.created_by_user:
+                out["created_by_name"] = (creator_names or {}).get(str(line.created_by)) if line.created_by else None
+            return out
 
         loaded = self.load(engagement, can_see, decisions)
         by_key = {line.key: line for line in loaded.lines}
@@ -206,7 +221,7 @@ class EvidenceTreeService:
                 for line in in_category:
                     level2 = level2s.setdefault(line.level2, {"level2": line.level2, "label": line.level2_label,
                                                               "lines": []})
-                    level2["lines"].append({"line": line.to_dict(), "counts": counts_of([line.key]),
+                    level2["lines"].append({"line": line_dict(line), "counts": counts_of([line.key]),
                                             "documents": documents(line.key)})
                 for level2 in level2s.values():
                     level2["counts"] = counts_of([entry["line"]["key"] for entry in level2["lines"]])
@@ -226,7 +241,7 @@ class EvidenceTreeService:
             },
             "facilities": [{"facility_id": cl.facility_anchor_id(f), "name": f.get("name"),
                             "address": f.get("address")} for f in loaded.facilities],
-            "lines": [line.to_dict() for line in shown_lines],
+            "lines": [line_dict(line) for line in shown_lines],
             # the ids a client uses to create a mobile line (anchor_kind "vehicle_group"), built here
             "vehicle_groups": [{"anchor_id": anchor_id, "label": cl.vehicle_group_label(group),
                                 "fuel": group.get("fuel")}
@@ -303,7 +318,7 @@ class EvidenceTreeService:
                 rejected = [label_of(f) for f in open_fields if f in record.fields and record.fields[f].status == "rejected"]
                 waiting = [label_of(f) for f in open_fields if label_of(f) not in rejected]
                 if item is None:
-                    rows.append(self._row_of(doc, record, None, None, None, (start, end), name_of, [], []))
+                    rows.append(self._row_of(doc, record, None, None, None, (start, end), name_of, [], [], line))
                     continue
                 thermal = record.canonical_type_id == THERMAL
                 unit_text = item.unit or record.best("activity_unit")
@@ -312,7 +327,7 @@ class EvidenceTreeService:
                 reviewed = item.status in REVIEWED
                 waiting, rejected = (waiting, rejected) if reviewed else ([], [])
                 held = bool(waiting or rejected)  # the recalculation does not count this record yet
-                rows.append(self._row_of(doc, record, item, shown, unit, (start, end), name_of, waiting, rejected))
+                rows.append(self._row_of(doc, record, item, shown, unit, (start, end), name_of, waiting, rejected, line))
                 covered.append(cl.Covered(start, end, to_number(shown), unit, reviewed and not held,
                                           doc.document_id, tuple(waiting)))
                 who = name_of(item.reviewer) if item.reviewer else None
@@ -328,30 +343,20 @@ class EvidenceTreeService:
                     "decided_by": who, "decided_at": _iso(item.reviewed_at), "decision": decision,
                     "waiting_on": waiting, "rejected_fields": rejected,
                 })
-                # every decision on this value, not only the latest
-                past = item.history or ([{"decision": item.status, "reviewer_id": item.reviewer,
-                                          "reviewed_at": item.reviewed_at, "reviewed_value": item.value,
-                                          "reviewed_unit": item.unit}] if item.status in VERBS else [])
-                for entry in past:
-                    verb = VERBS.get(str(entry.get("decision")))
-                    if verb is None:
-                        continue
-                    reviewed = str(entry.get("decision")) in REVIEWED
-                    number = entry.get("reviewed_value") if reviewed else item.extracted
-                    entry_unit = (entry.get("reviewed_unit") or unit) if reviewed else unit
-                    amount = f"{number} {entry_unit or ''}".strip() if number is not None else "a value"
-                    login = entry.get("reviewer_id")
-                    history.append({"at": _iso(entry.get("reviewed_at")), "text": (
-                        f"{name_of(login) if login else 'A reviewer'} {verb} {amount} from "
-                        f"{doc.document.get('file_name')}" + (f", page {page}" if page else ""))})
+                history.extend(self._decision_entries(doc, record, name_of))
         values.sort(key=lambda v: (v["service_period_start"] or "9999", str(v["file_name"] or "")))
         rows.sort(key=lambda r: (r["date"]["start"] or "9999", str(r["file_name"] or ""), r["record_key"]))
         extracted = [d.extracted_at for d, _ in on_line if d.extracted_at]
+        history = self._group_bulk_accepts(history)
         if values:
-            history.append({"at": max(extracted) if extracted else None,
-                            "text": f"System extracted {len(values)} {'value' if len(values) == 1 else 'values'} "
-                                    f"from {len(on_line)} {'document' if len(on_line) == 1 else 'documents'}"})
+            history.append({"action": "extracted", "actor_name": "System", "at": max(extracted) if extracted else None,
+                            "field": None, "value": None, "unit": None, "file_name": None, "page": None,
+                            "count": len(values), "documents": len(on_line)})
+        # Newest first; an entry without a time goes last.
         history.sort(key=lambda h: h["at"] or "", reverse=True)
+        history.sort(key=lambda h: h["at"] is None)
+        history_total = len(history)
+        history = history[:HISTORY_CAP]
         return {
             "line": line.to_dict(),
             "calculated": calculated,
@@ -364,12 +369,13 @@ class EvidenceTreeService:
             "columns": self._columns(rows),
             "activity_quantity_note": self._activity_note(line),
             "history": history,
+            "history_total": history_total,
         }
 
     @staticmethod
     def _row_of(doc: DocState, record: ReviewedRecord, item: Any, shown: Any, unit: str | None,
                 period: tuple[date | None, date | None], name_of: Callable[[str], str],
-                waiting: list[str], rejected: list[str]) -> dict[str, Any]:
+                waiting: list[str], rejected: list[str], line: cl.CalculationLine) -> dict[str, Any]:
         """One record of the line as a schedule row: every extracted value, accepted or not.
         ``waiting`` / ``rejected``: labels of the record's other required fields the recalculation still
         awaits, or that the reviewer rejected (only for a reviewed quantity); such a row does not count."""
@@ -392,7 +398,7 @@ class EvidenceTreeService:
             "waiting_on": waiting, "rejected_fields": rejected,
             "date": {"start": _iso(start), "end": _iso(end),
                      "days": (end - start).days + 1 if start and end and end >= start else None,
-                     "label": cl.date_label(record.canonical_type_id)},
+                     "label": EvidenceTreeService._date_label(line, record.canonical_type_id, start, end)},
             "activity_quantity": {"value": shown, "unit": unit},
             "cells": cells,
             "saved_by": ({"name": name_of(item.reviewer), "at": _iso(item.reviewed_at)}
@@ -411,10 +417,88 @@ class EvidenceTreeService:
         return columns
 
     @staticmethod
+    def _text(value: Any) -> str | None:
+        if value is None or value == "":
+            return None
+        return str(int(value)) if isinstance(value, float) and value.is_integer() else str(value)
+
+    @classmethod
+    def _decision_entries(cls, doc: DocState, record: ReviewedRecord,
+                          name_of: Callable[[str], str]) -> list[dict[str, Any]]:
+        """Every decision on every field of one record, as history entries (who, when, what, where)."""
+
+        out: list[dict[str, Any]] = []
+        for field_name, item in record.fields.items():
+            past = item.history or ([{"decision": item.status, "reviewer_id": item.reviewer,
+                                      "reviewed_at": item.reviewed_at, "reviewed_value": item.value,
+                                      "reviewed_unit": item.unit}] if item.status in ACTIONS else [])
+            page = (item.source_reference or {}).get("page_number")
+            for entry in past:
+                decision = str(entry.get("decision"))
+                action = ACTIONS.get(decision)
+                if action is None:
+                    continue
+                snapshot = entry.get("candidate_snapshot") or {}
+                found = snapshot.get("normalized_value") if snapshot else item.extracted
+                if decision in REVIEWED:
+                    value, unit = entry.get("reviewed_value"), entry.get("reviewed_unit") or item.unit
+                    if decision == "edited" and snapshot and found in (None, "") \
+                            and AI_SUGGESTED not in (snapshot.get("validation_flags") or []):
+                        action = "added"  # the extractor found nothing; the reviewer keyed the value
+                else:
+                    value, unit = found, snapshot.get("unit") or item.unit
+                login = entry.get("reviewer_id")
+                out.append({
+                    "action": action, "actor_name": name_of(str(login)) if login else None,
+                    "at": _iso(entry.get("reviewed_at")),
+                    "field": HISTORY_FIELD_LABELS.get(field_name, field_name.replace("_", " ").capitalize()),
+                    "value": cls._text(value), "unit": unit, "file_name": doc.document.get("file_name"), "page": page,
+                    "count": 1, "_field_key": (doc.document_id, record.label, field_name), "_login": login})
+        return out
+
+    @staticmethod
+    def _group_bulk_accepts(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Accepts by one person within one minute, on different values, become one entry:
+        "K. Lee accepted 9 values". The same value accepted twice is never folded together."""
+
+        groups: dict[tuple[Any, str], list[dict[str, Any]]] = {}
+        for entry in entries:
+            if entry["action"] == "accepted" and entry["at"] and entry["_login"]:
+                groups.setdefault((entry["_login"], entry["at"][:16]), []).append(entry)
+        folded: set[int] = set()
+        out: list[dict[str, Any]] = []
+        for members in groups.values():
+            keys = [m["_field_key"] for m in members]
+            if len(members) > 1 and len(set(keys)) == len(keys):
+                folded.update(id(m) for m in members)
+                latest = max(members, key=lambda m: m["at"])
+                out.append({**latest, "field": None, "value": None, "unit": None, "file_name": None, "page": None,
+                            "count": len(members)})
+        out.extend(e for e in entries if id(e) not in folded)
+        for entry in out:
+            entry.pop("_field_key", None)
+            entry.pop("_login", None)
+        return out
+
+    @staticmethod
+    def _date_label(line: cl.CalculationLine, canonical_type_id: str | None, start: date | None,
+                    end: date | None) -> str:
+        """What the row's date is called: a bill's service period, a statement's period, a service visit's
+        date, or the single date of a fuel purchase or delivery."""
+
+        spans = start is not None and end is not None and start != end
+        label = cl.date_label(canonical_type_id)
+        if canonical_type_id == cl.MOBILE:
+            return "Statement period" if spans else "Transaction date"
+        if label == "Service period" and not spans and line.category == "stationary" and line.level2 != "natural-gas":
+            return "Delivery date"
+        return label
+
+    @staticmethod
     def _activity_note(line: cl.CalculationLine) -> str | None:
         if line.category == "purchased_energy":
-            what: str | None = ("thermal energy purchased" if line.level2 in THERMAL_LEVEL2
-                                else "electricity quantity purchased")
+            what: str | None = ("energy quantity purchased" if line.level2 in THERMAL_LEVEL2
+                                else "electricity quantity purchased / consumed")
         else:
             what = ACTIVITY_NOTES.get(line.category)
         return f"Activity quantity: {what}" if what else None

@@ -542,3 +542,169 @@ def test_labels_after_other_text_in_a_cell_are_read(targets: list[dict]) -> None
     assert fields["service_period_start"]["normalized_value"] == "2025-03-01"
     assert fields["service_period_end"]["normalized_value"] == "2025-03-31"
     assert fields["supplier_name"]["normalized_value"] == "Riverside Gas Company"
+
+
+# --- the facility is the site, never the company that is billed ----------------------------------
+def _facility_of(text: str, targets: list[dict]) -> str | None:
+    outcome = StationaryCombustionExtractor().extract(_text_output(text), targets, "EV-1")
+    assert outcome.halt_reason is None
+    value = _by_field(outcome.candidates).get("facility_name", {}).get("normalized_value")
+    return value or None
+
+
+PROPANE_SHAPE = (
+    "Blue Kettle Propane Supply\nPROPANE DELIVERY INVOICE\nInvoice No: BK-2025-118844\n"
+    "{parties}"
+    "Account Number: C-008831\nFuel Type: Propane (LPG)\n"
+    "Delivery Date\tGallons\n02/11/2025\t612.4\n11/18/2025\t588.7\n"
+)
+
+
+@pytest.fixture
+def strict(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A document that names no site has no facility (the bill-to is not used as a last resort)."""
+
+    monkeypatch.setattr("backend.app.services.stationary_combustion_extractor.BILL_TO_NAME_IS_LAST_RESORT_FACILITY", False)
+
+
+@pytest.mark.parametrize(
+    ("parties", "site"),
+    [
+        ("Bill To: Staging-Test Foods Inc.\nShip To: Riverside Plant\n", "Riverside Plant"),
+        ("Bill To: Staging-Test Foods Inc.\nService Location: Riverside Plant\n", "Riverside Plant"),
+        ("Sold To: Staging-Test Foods Inc.\nDeliver To: Riverside Plant, 12 Mill Road, Dayton, OH 45402\n", "Riverside Plant"),
+        ("Bill To: Staging-Test Foods Inc.\nFacility: Riverside Plant\n", "Riverside Plant"),
+        # non-ASCII and CJK site names
+        ("Bill To: Staging-Test Foods Inc.\nShip To: Müller Käserei – Zürich\n", "Müller Käserei – Zürich"),
+        ("Bill To: Staging-Test Foods Inc.\nShip To: 東京工場\n", "東京工場"),
+        # a site name that contains the company name is a site, not the company
+        ("Bill To: Staging-Test Foods Inc.\nShip To: Staging-Test Foods Inc. – Riverside Plant\n",
+         "Staging-Test Foods Inc. – Riverside Plant"),
+    ],
+)
+def test_the_site_is_the_facility_when_a_bill_to_is_also_present(targets: list[dict], parties: str, site: str) -> None:
+    assert _facility_of(PROPANE_SHAPE.format(parties=parties), targets) == site
+
+
+@pytest.mark.parametrize("label", ["Bill To", "Sold To", "Customer", "Customer Name", "Account Name", "Account Holder",
+                                   "Billed To", "Invoice To"])
+def test_a_bill_to_name_alone_is_not_a_facility_in_strict_mode(targets: list[dict], strict: None, label: str) -> None:
+    assert _facility_of(PROPANE_SHAPE.format(parties=f"{label}: Staging-Test Foods Inc.\n"), targets) is None
+
+
+@pytest.mark.parametrize("label", ["Bill To", "Sold To", "Customer"])
+def test_a_document_with_no_site_keeps_the_company_on_the_bill_as_its_facility(targets: list[dict], label: str) -> None:
+    # the golden set's SC-03 and SC-05 rely on this (a bill to a single plant)
+    assert _facility_of(PROPANE_SHAPE.format(parties=f"{label}: Harborview Cold Storage LLC\n"), targets) == (
+        "Harborview Cold Storage LLC")
+
+
+def test_a_facility_label_that_repeats_the_bill_to_name_is_not_a_facility(targets: list[dict], strict: None) -> None:
+    parties = "Bill To: Staging-Test Foods Inc.\nSite: staging-test foods inc\n"
+    assert _facility_of(PROPANE_SHAPE.format(parties=parties), targets) is None
+
+
+def test_a_ship_to_that_is_only_a_street_address_is_not_a_facility_name(targets: list[dict], strict: None) -> None:
+    parties = "Bill To: Staging-Test Foods Inc.\nShip To: 12 Mill Road, Dayton, OH 45402\n"
+    outcome = StationaryCombustionExtractor().extract(_text_output(PROPANE_SHAPE.format(parties=parties)), targets, "EV-1")
+    fields = _by_field(outcome.candidates)
+    assert not fields.get("facility_name", {}).get("normalized_value")
+    assert fields["service_address"]["normalized_value"].startswith("12 Mill Road")  # the address is still read
+
+
+def test_bill_to_and_ship_to_blocks_in_columns_give_the_ship_to_name(targets: list[dict]) -> None:
+    layout = [
+        ("Blue Kettle Propane Supply", 0.08, 0.05, 0.4, 0.02),
+        ("Bill To", 0.08, 0.12, 0.07, 0.013), ("Ship To", 0.55, 0.12, 0.07, 0.013),
+        ("Staging-Test Foods Inc.", 0.08, 0.14, 0.2, 0.013), ("Riverside Plant", 0.55, 0.14, 0.15, 0.013),
+        ("500 Corporate Way", 0.08, 0.16, 0.18, 0.013), ("12 Mill Road", 0.55, 0.16, 0.12, 0.013),
+        ("Fuel Type", 0.08, 0.25, 0.1, 0.013), ("Propane (LPG)", 0.3, 0.25, 0.12, 0.013),
+        ("Delivery Date", 0.08, 0.30, 0.12, 0.013), ("Gallons", 0.4, 0.30, 0.07, 0.013),
+        ("02/11/2025", 0.08, 0.33, 0.1, 0.013), ("612.4", 0.4, 0.33, 0.06, 0.013),
+    ]
+    outcome = StationaryCombustionExtractor().extract(_measured_output(layout), targets, "EV-1")
+    fields = _by_field(outcome.candidates)
+    assert fields["facility_name"]["normalized_value"] == "Riverside Plant"
+
+
+def test_bill_to_block_alone_in_columns_gives_no_facility(targets: list[dict], strict: None) -> None:
+    layout = [
+        ("Blue Kettle Propane Supply", 0.08, 0.05, 0.4, 0.02),
+        ("Bill To", 0.08, 0.12, 0.07, 0.013), ("Staging-Test Foods Inc.", 0.08, 0.14, 0.2, 0.013),
+        ("Fuel Type", 0.08, 0.25, 0.1, 0.013), ("Propane (LPG)", 0.3, 0.25, 0.12, 0.013),
+        ("Delivery Date", 0.08, 0.30, 0.12, 0.013), ("Gallons", 0.4, 0.30, 0.07, 0.013),
+        ("02/11/2025", 0.08, 0.33, 0.1, 0.013), ("612.4", 0.4, 0.33, 0.06, 0.013),
+    ]
+    outcome = StationaryCombustionExtractor().extract(_measured_output(layout), targets, "EV-1")
+    assert not _by_field(outcome.candidates).get("facility_name", {}).get("normalized_value")
+
+
+# --- the layouts of the two staging invoices: the ship-to block repeats the bill-to company ----------
+# (synthetic text in the shape of a propane delivery invoice and a refrigerant supply invoice)
+def _blocks(left_label: str, right_label: str, bill: list[str], ship: list[str], x_ship: float, top: float = 0.17):
+    rows = [(left_label, 0.065, top, 0.08, 0.012), (right_label, x_ship, top, 0.1, 0.012)]
+    for i, text in enumerate(bill):
+        rows.append((text, 0.065, top + 0.016 * (i + 1), 0.2, 0.012))
+    for i, text in enumerate(ship):
+        rows.append((text, x_ship, top + 0.016 * (i + 1), 0.2, 0.012))
+    return rows
+
+
+def test_propane_invoice_shape_gives_the_site_line_of_the_delivered_to_block(targets: list[dict]) -> None:
+    layout = [
+        ("Blue Kettle Propane Supply", 0.18, 0.06, 0.4, 0.02),
+        *_blocks("Sold To:", "Delivered To:",
+                 ["Staging-Test Foods Inc.", "Attn: Accounts Payable", "PO Box 7718", "Springfield, OR 97477"],
+                 ["Staging-Test Foods Inc.", "Riverside Plant", "410 Mill Road", "Springfield, OR 97477"], 0.36),
+        ("Customer #:", 0.64, 0.205, 0.08, 0.012), ("C-008831", 0.76, 0.205, 0.08, 0.012),
+        ("Fuel: Propane (LPG), HD-5 grade.", 0.065, 0.45, 0.3, 0.012),
+        ("Delivery Date", 0.065, 0.30, 0.1, 0.012), ("Gallons", 0.5, 0.30, 0.05, 0.012),
+        ("02/11/2025", 0.065, 0.33, 0.1, 0.012), ("612.4", 0.5, 0.33, 0.05, 0.012),
+    ]
+    fields = _by_field(StationaryCombustionExtractor().extract(_measured_output(layout), targets, "EV-1").candidates)
+    assert fields["facility_name"]["normalized_value"] == "Riverside Plant"
+    assert fields["service_address"]["normalized_value"] == "410 Mill Road, Springfield, OR 97477"
+
+
+def test_refrigerant_invoice_shape_gives_the_site_line_of_the_ship_to_block(targets: list[dict]) -> None:
+    from backend.app.services.refrigerant_extractor import RefrigerantServiceExtractor
+
+    layout = [
+        ("POLAR RIDGE", 0.065, 0.06, 0.3, 0.025),
+        *_blocks("BILL TO", "SHIP TO",
+                 ["Staging-Test Foods Inc.", "Attn: Accounts Payable", "PO Box 7718", "Springfield, OR 97477"],
+                 ["Staging-Test Foods Inc.", "Riverside Plant - Maintenance", "410 Mill Road", "Springfield, OR 97477"],
+                 0.49, top=0.2),
+        ("Total refrigerant shipped: 120 lb (4 cylinders x 30 lb).", 0.065, 0.48, 0.4, 0.012),
+        ("Refrigerant R-134a (HFC-134a), 30 lb returnable cylinder", 0.15, 0.42, 0.35, 0.012),
+    ]
+    from backend.tests.services.test_refrigerant_extractor import _by_field as refrigerant_fields
+
+    outcome = RefrigerantServiceExtractor().extract(_measured_output(layout), targets, "EV-1")
+    fields = refrigerant_fields(outcome.candidates)
+    assert fields["facility_name"]["normalized_value"] == "Riverside Plant - Maintenance"
+    assert fields["service_address"]["normalized_value"] == "410 Mill Road, Springfield, OR 97477"
+
+
+def test_a_ship_to_block_with_only_the_company_and_an_address_gives_no_facility(targets: list[dict], strict: None) -> None:
+    layout = [
+        ("Blue Kettle Propane Supply", 0.18, 0.06, 0.4, 0.02),
+        *_blocks("Sold To:", "Delivered To:", ["Staging-Test Foods Inc.", "PO Box 7718", "Springfield, OR 97477"],
+                 ["Staging-Test Foods Inc.", "410 Mill Road", "Springfield, OR 97477"], 0.36),
+        ("Fuel: Propane (LPG), HD-5 grade.", 0.065, 0.45, 0.3, 0.012),
+        ("Delivery Date", 0.065, 0.30, 0.1, 0.012), ("Gallons", 0.5, 0.30, 0.05, 0.012),
+        ("02/11/2025", 0.065, 0.33, 0.1, 0.012), ("612.4", 0.5, 0.33, 0.05, 0.012),
+    ]
+    fields = _by_field(StationaryCombustionExtractor().extract(_measured_output(layout), targets, "EV-1").candidates)
+    assert not fields.get("facility_name", {}).get("normalized_value")
+
+
+def test_plain_text_blocks_skip_the_company_and_attention_lines(targets: list[dict]) -> None:
+    parties = ("Sold To:\nStaging-Test Foods Inc.\nAttn: Accounts Payable\nPO Box 7718\nSpringfield, OR 97477\n"
+               "Delivered To:\nStaging-Test Foods Inc.\nMüller Käserei – Zürich\n410 Mill Road\nSpringfield, OR 97477\n")
+    assert _facility_of(PROPANE_SHAPE.format(parties=parties), targets) == "Müller Käserei – Zürich"
+
+
+def test_a_site_beats_a_customer(targets: list[dict]) -> None:
+    parties = "Customer: Staging-Test Foods Inc.\nService Location: Riverside Plant\n"
+    assert _facility_of(PROPANE_SHAPE.format(parties=parties), targets) == "Riverside Plant"

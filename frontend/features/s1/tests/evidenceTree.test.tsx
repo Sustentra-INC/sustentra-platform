@@ -17,7 +17,7 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 }));
 
 import { ApiError } from "../../../lib/api";
-import { saveDocumentPlacement, withPlacement, type CalculationLine, type EvidenceTree as TreeData, type LineSchedule, type TreeDocRow } from "../api/evidenceTree";
+import { saveDocumentPlacement, withPlacement, type CalculationLine, type ScheduleHistoryEntry, type EvidenceTree as TreeData, type LineSchedule, type TreeDocRow } from "../api/evidenceTree";
 import { engagementFromBackend, engagementToBackend } from "../api/engagements";
 import { EvidenceTree, type EvidenceTreeProps } from "../components/EvidenceTree";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
@@ -71,7 +71,7 @@ const line = (key: string, label: string, over: Partial<CalculationLine> = {}): 
 });
 
 const KENT = line("s1:stationary:natural-gas:fac-kc01", "Kent", { family: "stationary" });
-const PLANT = line("s1:stationary:natural-gas:fac-pl02", "Plant 2", { created_by_user: true, family: "stationary" });
+const PLANT = line("s1:stationary:natural-gas:fac-pl02", "Plant 2", { created_by_user: true, family: "stationary", created_by_name: "Jane Park", created_at: "2025-11-04T12:00:00Z" });
 const ELEC = line("s2:purchased_energy:electricity:fac-kc01", "Kent", { scope: "s2", category: "purchased_energy", level2: "electricity", level2_label: "Electricity", family: "electricity" });
 
 const TREE: TreeData = {
@@ -188,7 +188,7 @@ describe("the Evidence tree", () => {
     expect(within(head).getByText("3 documents")).toBeInTheDocument();
     expect(within(head).getByText("33% accepted")).toBeInTheDocument();
     expect(screen.getAllByText("1 document").length).toBeGreaterThan(0);
-    expect(screen.getByText("Added by a reviewer")).toBeInTheDocument();
+    expect(screen.getByText("Added by J. Park \u00b7 Nov 4")).toBeInTheDocument();
     expect(screen.getByText("Also in Scope 2 › Purchased energy › Electricity › Kent")).toBeInTheDocument();
     expect(screen.getByText("Set aside")).toBeInTheDocument();
   });
@@ -744,6 +744,11 @@ describe("Evidence in fixture mode", () => {
 
 /* =============================== supporting schedule =============================== */
 
+const entry = (over: Partial<ScheduleHistoryEntry> = {}): ScheduleHistoryEntry => ({
+  action: "accepted", actor_name: "M. Osei", at: "2025-03-02T10:00:00Z", field: "Activity quantity", value: "120", unit: "therm",
+  file_name: "jan.pdf", page: 2, count: 1, ...over,
+});
+
 const SCHEDULE: LineSchedule = {
   line: KENT,
   reporting_period: { start: "2025-01-01", end: "2025-12-31" },
@@ -829,7 +834,7 @@ const SCHEDULE: LineSchedule = {
       matched_by: ["Service address in Setup"],
     },
   ],
-  history: [{ at: "2025-03-02T10:00:00Z", text: "M. Osei accepted 120 therm from jan.pdf, page 2" }],
+  history: [entry()],
 };
 const SCHEDULE_PATH = `/engagements/${ENG}/calculation-lines/${encodeURIComponent(KENT.key)}/schedule`;
 
@@ -858,7 +863,7 @@ describe("the supporting schedule", () => {
     expect(screen.getByText("2 of 3 documents")).toBeInTheDocument();
     expect(screen.getByText("Activity quantity: fuel quantity combusted")).toBeInTheDocument();
     expect(screen.getByText("Matched by: Service address in Setup")).toBeInTheDocument();
-    expect(screen.getByText(/M\. Osei accepted 120 therm from jan\.pdf, page 2/)).toBeInTheDocument();
+    expect(screen.getByText(/M\. Osei accepted Activity quantity 120 therm from jan\.pdf, page 2/)).toBeInTheDocument();
   });
 
   it("shows one row per record with units, MM/DD/YY dates, server day counts and a word for each unreviewed row", async () => {
@@ -1046,7 +1051,7 @@ describe("the supporting schedule", () => {
   });
 
   it("writes history times as MM/DD/YY, HH:MM", async () => {
-    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, history: [{ at: "2025-11-04T09:12:00", text: "J. Park added 55,700 therm" }, { at: "not a date", text: "Odd entry" }] } };
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, history: [entry({ at: "2025-11-04T09:12:00", actor_name: "J. Park", action: "added", value: "55,700" }), entry({ at: "not a date", actor_name: "Odd" })] } };
     renderSchedule();
     fireEvent.click(await screen.findByText(/Line history/));
     expect(screen.getByText("11/04/25, 09:12")).toBeInTheDocument();
@@ -1055,13 +1060,85 @@ describe("the supporting schedule", () => {
 
   it("shows the same local day in Saved by and in the line history for a timestamp near midnight UTC", async () => {
     const at = "2025-03-02T23:30:00Z";
-    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, rows: [{ ...SCHEDULE.rows[0], saved_by: { name: "Zoë Ångström", at } }], history: [{ at, text: "Zoë Ångström accepted 120 therm" }] } };
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, rows: [{ ...SCHEDULE.rows[0], saved_by: { name: "Zoë Ångström", at } }], history: [entry({ at, actor_name: "Zoë Ångström" })] } };
     renderSchedule();
     const d = new Date(at);
     const day = `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/25`;
     expect(await screen.findByText(`Saved by Zoë Ångström · ${day}`)).toBeInTheDocument();
     fireEvent.click(screen.getByText(/Line history/));
     expect(screen.getByText(new RegExp(`^${day}, \\d{2}:\\d{2}$`))).toBeInTheDocument();
+  });
+
+  it("words every kind of history entry from its fields, with who and when", async () => {
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        history: [
+          entry({ action: "added", actor_name: "J. Park", value: "55,700", file_name: "kent_gas_nov_2025.pdf", page: 2 }),
+          entry({ action: "corrected", actor_name: "Zoë Ångström", field: "Heat content (HHV)", value: "1.04", unit: "MMBtu/Mcf" }),
+          entry({ action: "rejected", actor_name: null, field: "Meter number", value: "M-4471", unit: null, page: null }),
+          entry({ action: "asked_for_more_evidence", field: "Meter number", value: null, unit: null, file_name: null, page: null }),
+          entry({ action: "accepted", actor_name: "K. Lee", count: 9, field: null, value: null, unit: null, file_name: null, page: null }),
+          entry({ action: "extracted", actor_name: "System", at: null, field: null, value: null, unit: null, file_name: null, page: null, count: 11, documents: 12 }),
+        ],
+      },
+    };
+    renderSchedule();
+    fireEvent.click(await screen.findByText(/Line history/));
+    const text = document.querySelector(".s1-sch-history")!.textContent!;
+    expect(text).toContain("J. Park added Activity quantity 55,700 therm from kent_gas_nov_2025.pdf, page 2");
+    expect(text).toContain("Zoë Ångström corrected Heat content (HHV) 1.04 MMBtu/Mcf from jan.pdf, page 2");
+    expect(text).toContain("A reviewer rejected Meter number M-4471 from jan.pdf");
+    expect(text).toContain("M. Osei asked for more evidence on Meter number");
+    expect(text).toContain("K. Lee accepted 9 values");
+    expect(text).toContain("System extracted 11 values from 12 documents placed in this line");
+  });
+
+  it("shows an empty state, and says when only the latest entries are listed", async () => {
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, history: [], history_total: 0 } };
+    const { unmount } = render(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />);
+    fireEvent.click(await screen.findByText(/Line history \(0\)/));
+    expect(screen.getByText("Nothing has happened on this line yet.")).toBeInTheDocument();
+    expect(screen.queryByText(/System extracted/)).toBeNull();
+    unmount();
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, history: Array.from({ length: 200 }, (_, i) => entry({ at: `2025-03-02T10:${String(i % 60).padStart(2, "0")}:00Z` })), history_total: 250 } };
+    renderSchedule();
+    fireEvent.click(await screen.findByText(/Line history \(250\)/));
+    expect(screen.getByText("Showing the latest 200")).toBeInTheDocument();
+    expect(document.querySelectorAll(".s1-sch-history li")).toHaveLength(200);
+  });
+
+  it("puts the back link first, left-aligned, above the title block and the calculation button", async () => {
+    const { container } = render(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />);
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const section = container.querySelector(".s1-sch") as HTMLElement;
+    const back = within(section).getByRole("button", { name: /Back to evidence/i });
+    expect(section.firstElementChild).toBe(back);
+    expect(container.querySelector(".s1-sch-head")?.contains(back)).toBe(false);
+  });
+
+  it("says '1 of 1 document' in the singular, and 'documents' otherwise", async () => {
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, identifier_groups: [{ ...SCHEDULE.identifier_groups[0], documents_with: 1, documents_total: 1 }, SCHEDULE.identifier_groups[1]] } };
+    renderSchedule();
+    expect(await screen.findByText("1 of 1 document")).toBeInTheDocument();
+    expect(screen.getByText("2 of 3 documents")).toBeInTheDocument();
+  });
+
+  it("shows a plain loading line, not placeholder rows, while the schedule loads", () => {
+    mocks.byPath = { [SCHEDULE_PATH]: new Promise(() => undefined) as unknown as LineSchedule };
+    render(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading the supporting schedule.");
+    expect(screen.queryByText("Loading row")).toBeNull();
+  });
+
+  it("styles values at one size and month names in the regular weight", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    // The quantity cell (class s1-num, 12px by default) is raised to the body size the date cell has.
+    expect(css).toMatch(/\.s1-sch-values td\.s1-num\s*\{[^}]*font-size:\s*var\(--text-md\)/);
+    // Bold is for structure: no month label rule uses the strong weight.
+    const rules = css.match(/\.s1-sch-month__name\s*\{[^}]*\}/g) ?? [];
+    expect(rules.length).toBeGreaterThan(0);
+    for (const rule of rules) expect(rule).not.toContain("--weight-strong");
   });
 
   it("round-trips a line key with : . - between results and the schedule", async () => {

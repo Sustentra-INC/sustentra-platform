@@ -164,11 +164,11 @@ def _require_readable(file_name: str, mime_type: str | None) -> None:
         raise HTTPException(status_code=415, detail=_unreadable_upload_detail(file_name))
 
 
-def _require_evidence_slot(evidence_id: str | None, user: CurrentUser) -> None:
-    # A client-supplied evidence id attaches the document to EXISTING evidence of the
-    # caller's org; anything else (unknown, or another org's) looks like it does not
-    # exist. Without one, the server generates a fresh id.
-    if evidence_id and not evidence_owned_by_caller(evidence_id, user):
+def _require_evidence_slot(evidence_id: str | None, user: CurrentUser, engagement_id: str) -> None:
+    # A client-supplied evidence id attaches the document to EXISTING evidence of this
+    # engagement; anything else (unknown, another org's, or another engagement's) looks like
+    # it does not exist. Without one, the server generates a fresh id.
+    if evidence_id and not evidence_owned_by_caller(evidence_id, user, engagement_id):
         raise HTTPException(status_code=404, detail="Evidence not found.")
 
 
@@ -180,7 +180,7 @@ def create_document(
     engagement: dict = Depends(require_open_engagement),
 ) -> dict:
     org_id = org_of(user)
-    _require_evidence_slot(payload.evidence_id, user)
+    _require_evidence_slot(payload.evidence_id, user, engagement_id)
     if not _storage_service.is_owned_by(payload.storage_uri, org_id):
         raise HTTPException(status_code=400, detail="storage_uri must point to a file uploaded by your organization.")
     try:
@@ -236,7 +236,7 @@ async def upload_document(
     engagement: dict = Depends(require_open_engagement),
 ) -> dict:
     org_id = org_of(user)
-    _require_evidence_slot(evidence_id, user)
+    _require_evidence_slot(evidence_id, user, engagement_id)
     if batch_id:  # one of several files uploaded together: the batch must be this engagement's
         from backend.app.api.document_batches import require_batch  # it imports this module
 

@@ -18,7 +18,10 @@ which the reviewer gives, so it is never guessed here.
 The district energy units (kBtu, ton-hours, Mlb) are known only here (``fuel_units``
 ``thermal=True``), so they never change how fuel or electricity documents are read. Each
 usage line takes its energy type from its own label ("Steam Usage", "Chilled Water Usage"),
-so a bill for steam and chilled water keeps both; demand (per hour) and condensate-return
+so a bill for steam and chilled water keeps both. When the label is generic, the nearest evidence decides:
+the unit (ton-hours are chilled water, pounds are steam), the heading just above the table, then a bill that
+names one type only. A bill that names several ("Steam & chilled water utility") with nothing near the
+quantity gets no energy type and a warning, never a guess; demand (per hour) and condensate-return
 lines are not consumption.
 """
 
@@ -36,6 +39,8 @@ from backend.app.services.stationary_combustion_extractor import (
 )
 from backend.app.services.stationary_combustion_extractor import (
     _PRODUCT_HEADERS,
+    CONF_DOCUMENT_SCAN,
+    CONF_MISSING,
     HALT_UNREADABLE,
     HALT_UNSUPPORTED,
     ExtractionOutcome,
@@ -95,6 +100,27 @@ def detect_thermal(text: str) -> tuple[str, str] | None:
         if match:
             return kind, match.group(0)
     return None
+
+
+def thermal_kinds(text: str) -> set[str]:
+    """Every energy type ``text`` names. A line naming two ("Steam & chilled water utility")
+    decides neither."""
+
+    normalized = _norm(text)
+    return {kind for kind, pattern in _CUES if pattern.search(normalized)}
+
+
+def _single_kind(text: str) -> str | None:
+    kinds = thermal_kinds(text)
+    return next(iter(kinds)) if len(kinds) == 1 else None
+
+
+# How far above a usage line a heading ("Steam Consumption") still belongs to it.
+_HEADING_REACH = 6
+AMBIGUOUS_ENERGY_NOTE = (
+    "The energy type (steam, hot water or chilled water) could not be told from the usage line, so it was left "
+    "empty: the bill names more than one, or none, next to the quantity. Choose it before the figure is used."
+)
 
 
 def thermal_kind(value: Any) -> str | None:
@@ -194,13 +220,54 @@ class ThermalExtractor(ElectricityExtractor):
                 records.append(record)
         return records or super()._labeled_quantity_records(rows, (GENERIC_LABELS,))
 
-    def _record_kind(self, record: UsageRecord, document_kind: str | None) -> str | None:
-        for text in (record.fuel.raw if record.fuel else None,
-                     record.quantity.label_cell.text if record.quantity.label_cell else None):
-            found = detect_thermal(text or "")
-            if found:
-                return found[0]
-        return document_kind
+    def _record_kind(self, record: UsageRecord, rows: Sequence[Row], unit_hint: Located | None,
+                     doc_kinds: set[str]) -> tuple[str, Located] | None:
+        """The usage line's own energy type, from the nearest evidence first and never from a stray
+        word elsewhere: its label, its unit (ton-hours are chilled water, pounds are steam), the heading
+        just above its table, a labelled "Energy type" field, and last a bill that names one type only.
+        None (with no guess) when the bill names several and nothing near the quantity chooses."""
+
+        label = record.quantity.label_cell
+        for located in (record.fuel, Located(label.text, [label], record.quantity.row, record.quantity.confidence)
+                        if label is not None else None):
+            kind = _single_kind(located.raw) if located is not None else None
+            if kind and located is not None:
+                return kind, located
+        unit = self._record_unit(record, unit_hint)
+        unit_located = record.unit_located or record.quantity
+        if unit == "ton_hour":
+            return CHILLED_WATER, unit_located
+        if unit in STEAM_MASS_UNITS:
+            return STEAM, unit_located
+        heading = self._heading_above(record, rows)
+        if heading is not None:
+            return heading
+        if len(doc_kinds) == 1:
+            kind = next(iter(doc_kinds))
+            for row in rows:
+                for cell in row.cells:
+                    if _single_kind(cell.text) == kind:
+                        return kind, Located(cell.text, [cell], row, CONF_DOCUMENT_SCAN)
+        return None
+
+    @staticmethod
+    def _heading_above(record: UsageRecord, rows: Sequence[Row]) -> tuple[str, Located] | None:
+        row = record.quantity.row
+        if row is None:
+            return None
+        positions = {id(r): i for i, r in enumerate(rows)}
+        at = positions.get(id(row))
+        if at is None:
+            return None
+        for above in range(at, max(at - _HEADING_REACH, -1) - 1, -1):
+            candidate = rows[above]
+            if candidate.page != row.page:
+                break
+            for cell in candidate.cells:
+                kind = _single_kind(cell.text)
+                if kind:
+                    return kind, Located(cell.text, [cell], candidate, CONF_DOCUMENT_SCAN)
+        return None
 
     def _is_consumption(self, record: UsageRecord) -> bool:
         texts = [record.quantity.context or "", record.unit_raw or ""]
@@ -211,10 +278,22 @@ class ThermalExtractor(ElectricityExtractor):
     def _counts(self, unit: str | None, energy: str | None) -> bool:
         return unit in THERMAL_ENERGY_UNITS or (energy == STEAM and unit in STEAM_MASS_UNITS)
 
-    def _usable(self, rows: Sequence[Row], unit_hint: Located | None, document_kind: str | None) -> list[UsageRecord]:
-        return [r for r in self._quantity_records(rows)
-                if self._is_consumption(r)
-                and self._counts(self._record_unit(r, unit_hint), self._record_kind(r, document_kind))]
+    def _usable(self, rows: Sequence[Row], unit_hint: Located | None, doc_kinds: set[str]) -> list[UsageRecord]:
+        usable: list[UsageRecord] = []
+        for record in self._quantity_records(rows):
+            if not self._is_consumption(record):
+                continue
+            found = self._record_kind(record, rows, unit_hint, doc_kinds)
+            if not self._counts(self._record_unit(record, unit_hint), found[0] if found else None):
+                continue
+            if found is not None:
+                record.energy, record.fuel = found
+            usable.append(record)
+        return usable
+
+    @staticmethod
+    def _document_kinds(rows: Sequence[Row]) -> set[str]:
+        return {kind for row in rows for cell in row.cells for kind in thermal_kinds(cell.text)}
 
     def confirms(self, parser_output: dict) -> bool:
         """Content check: the document names steam, hot water or chilled water, states a
@@ -228,7 +307,7 @@ class ThermalExtractor(ElectricityExtractor):
             return False
         if StationaryCombustionExtractor().confirms(parser_output):
             return False
-        return bool(self._usable(rows, self._document_unit(rows), found[0]))
+        return bool(self._usable(rows, self._document_unit(rows), self._document_kinds(rows)))
 
     # ---------------------------------------------------------------------------------
     def _extract(self, rows: list[Row], parser_output: dict, targets: Sequence[dict], evidence_id: str,
@@ -239,24 +318,28 @@ class ThermalExtractor(ElectricityExtractor):
                 "message": "No readable text was found in the document (for example a scan without a text "
                 "layer while OCR is off, or an empty file). Upload a text-based PDF or enable OCR.",
             })
-        doc_energy = self._document_fuel(rows)
-        kind = detect_thermal(doc_energy.raw if doc_energy is not None else "")
         unit_hint = self._document_unit(rows)
-        records = self._usable(rows, unit_hint, kind[0] if kind else None)
-        if not records or doc_energy is None:
+        records = self._usable(rows, unit_hint, self._document_kinds(rows))
+        if not records:
             return ExtractionOutcome(candidates=[], halt_reason={
                 "code": HALT_UNSUPPORTED,
                 "message": "No steam, hot water or chilled water quantity in a thermal unit (MMBtu, therms, "
                 "kBtu, GJ, MWh, ton-hours, or pounds of steam) was found, so this is not purchased steam, heat "
                 "or cooling evidence.",
             })
-        return self._records_to_candidates(rows, parser_output, targets, evidence_id, document_id, records,
-                                           doc_energy, unit_hint)
+        # Each record carries its own energy type; the placeholder only stands in where none was told.
+        outcome = self._records_to_candidates(rows, parser_output, targets, evidence_id, document_id, records,
+                                              Located("", [], None, CONF_MISSING), unit_hint)
+        if any(r.fuel is None for r in records):
+            outcome.notes.append(AMBIGUOUS_ENERGY_NOTE)
+        return outcome
 
     # ---------------------------------------------------------------------------------
     def _record_values(self, record: UsageRecord | None, period: tuple[Located | None, Located | None],
                        doc_fuel: Located, unit_hint: Located | None) -> dict[str, Any]:
         values = StationaryCombustionExtractor._record_values(self, record, period, doc_fuel, unit_hint)
+        if record is not None:  # the energy type is the line's own: a bill-wide word never fills it in
+            values["fuel_type"] = (record.fuel or doc_fuel, record.energy)
         quantity = values.get("activity_quantity")
         if record is None or quantity is None:
             return values

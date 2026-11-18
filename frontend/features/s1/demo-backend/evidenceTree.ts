@@ -4,7 +4,7 @@
  * the data is the demo line model (`linesModel.ts`), built from the fixture documents.
  */
 import type {
-  CalculationLine, CoverageStatus, EvidenceTree, IdentifierGroup, LineSchedule, ScheduleRow, ScheduleValue, TreeCounts, TreeDocRow, TreeLevel2,
+  CalculationLine, CoverageStatus, EvidenceTree, IdentifierGroup, LineSchedule, ScheduleHistoryEntry, ScheduleRow, ScheduleValue, TreeCounts, TreeDocRow, TreeLevel2,
 } from "../api/evidenceTree";
 import type { WorkpaperItem } from "../api/workpaper";
 import type { DocumentDecision } from "../types/evidence";
@@ -109,7 +109,7 @@ export function buildTree(facilityId: string | null): EvidenceTree {
 
 /* ------------------------------------ schedule ------------------------------------ */
 
-const NOTES: Record<string, string> = { stationary: "fuel quantity combusted", biogenic: "fuel quantity combusted", mobile: "fuel use quantity", fugitive: "refrigerant quantity added or recovered" };
+const NOTES: Record<string, string> = { stationary: "fuel quantity combusted", biogenic: "fuel quantity combusted", mobile: "fuel use quantity", contractual: "certificates retired (MWh)" };
 
 function dateLabel(r: ModelRecord): string {
   return r.kind === "fleet" ? "Statement period" : r.kind === "propane" ? "Delivery date" : r.kind === "refrigerant" ? "Service date" : "Service period";
@@ -167,7 +167,7 @@ export function buildSchedule(lineKey: string): LineSchedule | null {
   const quantified = on.filter((r) => r.quantity !== null);
   const rows: ScheduleRow[] = [];
   const values: ScheduleValue[] = [];
-  const history: { at: string; text: string }[] = [];
+  const history: ScheduleHistoryEntry[] = [];
   const hasDistance = quantified.some((r) => r.distance !== null);
   for (const r of on) {
     const days = r.start && r.end && r.end >= r.start ? daysBetween(r.start, r.end) : null;
@@ -189,16 +189,20 @@ export function buildSchedule(lineKey: string): LineSchedule | null {
       decided_by: r.accepted ? r.reviewer : null, decided_at: r.accepted ? r.reviewedAt : null, decision: r.decision,
     });
     if (r.accepted && r.reviewer && r.reviewedAt) {
-      history.push({ at: r.reviewedAt, text: `${r.reviewer} ${r.decision === "edited" ? "edited" : "accepted"} ${money(r.quantity)} ${r.unit} from ${r.fileName}, page ${r.page}` });
+      history.push({
+        action: r.decision === "edited" ? "corrected" : "accepted", actor_name: r.reviewer, at: r.reviewedAt, field: "Activity quantity",
+        value: money(r.quantity), unit: r.unit, file_name: r.fileName, page: r.page, count: 1,
+      });
     }
   }
-  if (values.length) history.push({ at: "2025-09-10T08:00:00Z", text: `System extracted ${values.length} ${values.length === 1 ? "value" : "values"} from ${on.length} ${on.length === 1 ? "document" : "documents"}` });
-  history.sort((a, b) => b.at.localeCompare(a.at));
+  if (values.length) history.push({ action: "extracted", actor_name: "System", at: "2025-09-10T08:00:00Z", field: null, value: null, unit: null, file_name: null, page: null, count: values.length, documents: on.length });
+  history.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
+  const historyShown = history.slice(0, 200);
 
   const columns = [{ key: "date", label: "Date", unit_in_cells: true }, { key: "activity_quantity", label: "Activity quantity", unit_in_cells: true }];
   if (hasDistance) columns.push({ key: "distance", label: "Distance", unit_in_cells: true });
   const calculated = ["stationary", "mobile", "purchased_energy"].includes(line.category) && on.some((r) => r.accepted && r.quantity !== null);
-  const what = line.category === "purchased_energy" ? "electricity quantity purchased" : NOTES[line.category];
+  const what = line.category === "purchased_energy" ? (["steam", "heating", "cooling"].includes(line.level2) ? "energy quantity purchased" : "electricity quantity purchased / consumed") : NOTES[line.category];
   const groups = groupsOf(model, line, on);
   const identifiers = groups.flatMap((g) => g.values.map((v) => ({ label: g.label, value: v.value, documents_with: v.documents.length, documents_total: on.length })));
 
@@ -207,7 +211,7 @@ export function buildSchedule(lineKey: string): LineSchedule | null {
     reporting_period: { start: model.period.start, end: model.period.end },
     coverage: monthCoverage(model.period, on).map((m) => ({ ...m, status: m.status as CoverageStatus })),
     identifiers, identifier_groups: groups,
-    values, rows, columns, activity_quantity_note: what ? `Activity quantity: ${what}` : null, history,
+    values, rows, columns, activity_quantity_note: what ? `Activity quantity: ${what}` : null, history: historyShown, history_total: history.length,
   };
 }
 

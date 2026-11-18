@@ -18,9 +18,11 @@ the locking, the ledger and the saving. No prompt, document text, quote or reply
 from __future__ import annotations
 
 import logging
+import re
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 from typing import Any, Literal
 
@@ -75,6 +77,11 @@ class TextSuggestion(_Cited):
     value: str
 
 
+class PeriodSuggestion(_Cited):
+    start: str  # YYYY-MM-DD
+    end: str  # YYYY-MM-DD
+
+
 class GwpSuggestion(_Cited):
     set: Literal["AR4", "AR5", "AR6"]
     horizon: Literal["100-year", "20-year"]
@@ -97,9 +104,60 @@ class FactorSuggestion(_Cited):
 class PrefillOutput(_Strict):
     choices: list[ChoiceSuggestion]
     texts: list[TextSuggestion]
+    periods: list[PeriodSuggestion]
     gwp: list[GwpSuggestion]
     entities: list[EntitySuggestion]
     factors: list[FactorSuggestion]
+
+
+# --- dates printed in a quote ------------------------------------------------------------------
+
+_MONTHS = {name: number for number, names in enumerate((
+    ("january", "jan"), ("february", "feb"), ("march", "mar"), ("april", "apr"), ("may",),
+    ("june", "jun"), ("july", "jul"), ("august", "aug"), ("september", "sep", "sept"),
+    ("october", "oct"), ("november", "nov"), ("december", "dec")), start=1) for name in names}
+_MONTH = "|".join(sorted(_MONTHS, key=len, reverse=True))
+_DATE_TOKEN = re.compile(
+    rf"(?P<iso>\b(?P<iy>[0-9]{{4}})[-/.](?P<im>[0-9]{{1,2}})[-/.](?P<id>[0-9]{{1,2}})\b)"
+    rf"|(?P<num>\b(?P<na>[0-9]{{1,2}})[/.-](?P<nb>[0-9]{{1,2}})[/.-](?P<ny>[0-9]{{4}})\b)"
+    rf"|(?P<mdy>\b(?P<mm>{_MONTH})\.?\s+(?P<md>[0-9]{{1,2}})(?:st|nd|rd|th)?(?:,?\s+(?P<my>[0-9]{{4}}))?\b)"
+    rf"|(?P<dmy>\b(?P<dd>[0-9]{{1,2}})(?:st|nd|rd|th)?\s+(?:of\s+)?(?P<dm>{_MONTH})\.?(?:,?\s+(?P<dy>[0-9]{{4}}))?\b)")
+
+
+def _make(year: int, month: int, day: int) -> date | None:
+    try:
+        return date(year, month, day)
+    except ValueError:
+        return None
+
+
+def dates_in(quote: str) -> set[date]:
+    """The calendar dates printed in a quote, in the forms a report uses: 2025-01-01, 1/1/2025,
+    January 1, 2025 and 1 January 2025 (English month names). A numeric date reads month first
+    unless the first number cannot be a month. A day and month with no year ("January 1 to
+    December 31, 2025") take the year of the next dated token. Anything else is not read."""
+
+    text = norm(quote)
+    found: list[tuple[int, int | None, int, int]] = []  # (position, year or None, month, day)
+    for match in _DATE_TOKEN.finditer(text):
+        if match["iso"]:
+            found.append((match.start(), int(match["iy"]), int(match["im"]), int(match["id"])))
+        elif match["num"]:
+            a, b, y = int(match["na"]), int(match["nb"]), int(match["ny"])
+            found.append((match.start(), y, a, b) if a <= 12 else (match.start(), y, b, a))
+        elif match["mdy"]:
+            year = int(match["my"]) if match["my"] else None
+            found.append((match.start(), year, _MONTHS[match["mm"]], int(match["md"])))
+        else:
+            year = int(match["dy"]) if match["dy"] else None
+            found.append((match.start(), year, _MONTHS[match["dm"]], int(match["dd"])))
+    dates: set[date] = set()
+    for index, (_, year, month, day) in enumerate(found):
+        if year is None:
+            year = next((later for _, later, _, _ in found[index + 1:] if later is not None), None)
+        if year is not None and (made := _make(year, month, day)) is not None:
+            dates.add(made)
+    return dates
 
 
 # What a quote must say for a choice to be tied to it (compared after ``norm``).
@@ -138,10 +196,18 @@ What the items mean
   Scope 1 categories: stationary combustion, mobile combustion, process emissions, fugitive emissions.
   Scope 2: purchased electricity, heating, steam, cooling, each location-based and market-based.
   Biogenic: direct and indirect biogenic CO2.
-- texts: reporting_period (for example "January 1 to December 31, 2024"), exclusion:* fields
+- periods: the inventory's reporting period: its start and end dates, each as YYYY-MM-DD. Both
+  dates must be printed in the quote (for example "January 1 to December 31, 2024", or
+  "1/1/2025 - 12/31/2025"). If the document shows several periods (such as the current and the
+  prior year), give only the reporting year of the inventory. At most one.
+- texts: exclusion:* fields
   (what is left out of the organizational boundary, of this inventory, or under a materiality
-  threshold, in the company's own words) and calculation:* fields (how emissions are calculated,
-  in one or two plain sentences).
+  threshold, in the company's own words), calculation:* fields (how emissions are calculated,
+  in one or two plain sentences), boundary:acquisitions (acquisitions, divestitures or other
+  structural changes during the period and how they are treated) and boundary:leased_space (how
+  leased space or leased assets are treated in the boundary). Include boundary:acquisitions and
+  boundary:leased_space only if a document states something about them; if it is silent, leave
+  them out.
 - gwp: the Global Warming Potential set the company uses (IPCC assessment report AR4, AR5 or AR6)
   and the time horizon (100-year or 20-year). At most one.
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
@@ -326,6 +392,16 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         value = checked(text.field_id, text.value)
         if value is not None:
             keep(text, value, text.field_id, None)
+    for period in output.periods:
+        value = checked("reporting_period", {"start": period.start, "end": period.end})
+        if value is None:
+            continue
+        printed = dates_in(period.quote)
+        wanted = (rules.parse_iso_date(value["start"]), rules.parse_iso_date(value["end"]))
+        if not all(d in printed for d in wanted):  # both dates must be printed in the quote
+            dropped["value_not_in_quote"] += 1
+            continue
+        keep(period, value, "reporting_period", None)
     for gwp in output.gwp:
         value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon})
         if value is not None:

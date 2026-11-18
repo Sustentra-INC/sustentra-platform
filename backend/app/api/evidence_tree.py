@@ -50,6 +50,23 @@ async def document_decisions(db: AsyncSession, engagement: dict[str, Any]) -> di
     }
 
 
+async def creator_names(db: AsyncSession, org_id: uuid.UUID) -> dict[str, str]:
+    """Display name by user id, for "Added by ..." on a reviewer's line: full name, else first and last
+    name, else the login. A deleted user keeps their row, so they are still named (by login when they
+    have no name)."""
+
+    rows = await db.execute(
+        text("""
+            SELECT id::text AS user_id,
+                   COALESCE(NULLIF(trim(COALESCE(full_name, concat_ws(' ', first_name, last_name))), ''), email)
+                       AS name
+              FROM users WHERE org_id = :org_id
+        """),
+        {"org_id": org_id},
+    )
+    return {r["user_id"]: r["name"] for r in rows.mappings() if r["name"]}
+
+
 async def reviewer_names(db: AsyncSession, org_id: uuid.UUID) -> dict[str, str]:
     """Display names of the org's users by login (email, lower case): full name, else first
     and last name. A login with no name here is shown as it is."""
@@ -81,7 +98,8 @@ async def get_evidence_tree(
 ) -> dict:
     engagement = await _visible(db, engagement_id, user)
     decisions = await document_decisions(db, engagement)
-    return _service().tree(engagement, lambda record: can_see(record, user), decisions, facility_id)
+    names = await creator_names(db, engagement["org_id"])
+    return _service().tree(engagement, lambda record: can_see(record, user), decisions, facility_id, names)
 
 
 @router.get("/engagements/{engagement_id}/calculation-lines/{line_key}/schedule")

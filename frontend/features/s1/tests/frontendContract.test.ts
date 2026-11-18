@@ -41,6 +41,36 @@ describe("frontend contract checks", () => {
     expect(block).toMatch(/\.s1-ctx__user\s*\{[^}]*flex-wrap:\s*wrap/);
   });
 
+  // Measured on staging at 792px: the summary was 0 wide, the client name wrapped to three lines
+  // and the actions drew over it. The rules below are what keeps that from coming back at any width.
+  it("keeps the context bar's summary readable at medium widths: actions wrap first, names truncate", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    const rule = (selector: string) => {
+      const match = css.match(new RegExp(`^${selector.replace(/\./g, "\\.")}\\s*\\{([^}]*)\\}`, "m"));
+      return match ? match[1] : "";
+    };
+    expect(rule(".s1-ctx__bar")).toMatch(/flex-wrap:\s*wrap/);
+    // A minimum width the summary keeps, and room to grow.
+    expect(rule(".s1-ctx__summary")).toMatch(/min-width:\s*min\(var\(--ctx-summary-min\),\s*100%\)/);
+    expect(rule(".s1-ctx__summary")).toMatch(/flex:\s*1 1 var\(--ctx-summary-min\)/);
+    expect(css).toMatch(/--ctx-summary-min:\s*[0-9.]+rem/);
+    // The actions wrap and may shrink; they never push the summary down to nothing.
+    expect(rule(".s1-ctx__actions")).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule(".s1-ctx__actions")).toMatch(/min-width:\s*0/);
+    // Long names are cut with an ellipsis on one line.
+    for (const name of [".s1-ctx__client", ".s1-ctx__id"]) {
+      expect(rule(name)).toMatch(/text-overflow:\s*ellipsis/);
+      expect(rule(name)).toMatch(/white-space:\s*nowrap/);
+      expect(rule(name)).toMatch(/min-width:\s*0/);
+    }
+  });
+
+  it("gives the context bar's names a title, so a cut name can still be read in full", () => {
+    const source = readFileSync(join(process.cwd(), "features", "s1", "components", "S1Chrome.tsx"), "utf8");
+    expect(source).toMatch(/className="s1-ctx__client" title=\{contextTitle\.title\}/);
+    expect(source).toMatch(/className="s1-ctx__id" title=\{contextTitle\.sub\}/);
+  });
+
   it("keeps the interface to one font family, three text sizes and two weights", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
     const values = (property: string) => [...css.matchAll(new RegExp(`${property}:\\s*([^;}]+)`, "g"))].map((m) => m[1].trim());
@@ -68,6 +98,31 @@ describe("frontend contract checks", () => {
       });
     });
     expect(offenders).toEqual([]);
+  });
+
+  // Inheritance must not decide a field's size. The app-wide reset (`.s1-app :where(...) { font-size: inherit }`)
+  // ties with a single-class field rule and comes later in the file, so such a rule loses to it and the field
+  // computes the body size. A field rule that sets no size, or a single-class one, is only safe because of one
+  // explicit, more specific rule after the reset: check that it is there and that the reset is not below it.
+  it("sets every form field's text size explicitly, not by inheritance", () => {
+    const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
+    const rules: { selector: string; size: string | null; line: number }[] = [];
+    postcss.parse(css).walkRules((rule) => {
+      let size: string | null = null;
+      rule.walkDecls("font-size", (d) => {
+        size = d.value;
+      });
+      rules.push({ selector: rule.selector.replace(/\s+/g, " "), size, line: rule.source?.start?.line ?? 0 });
+    });
+    const reset = rules.find((r) => r.selector.startsWith(".s1-app :where(button, input, select, textarea"));
+    const explicit = rules.find((r) => r.selector === ".s1-app input, .s1-app select, .s1-app textarea");
+    expect(reset, "the app-wide control reset").toBeDefined();
+    expect(explicit?.size).toBe("var(--text-sm)");
+    expect(explicit!.line).toBeGreaterThan(reset!.line);
+    // The methodology fields name the size themselves too.
+    for (const selector of [".s1-mr-input", ".s1-mr-select"]) {
+      expect(rules.find((r) => r.selector === selector)?.size, selector).toBe("var(--text-sm)");
+    }
   });
 
   // docs/design_standard.md, section 2: bold is for structure. The last declaration wins, so read the cascade's end.

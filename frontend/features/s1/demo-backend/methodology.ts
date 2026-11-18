@@ -93,8 +93,11 @@ function def(fieldId: string, group: string, label: string, kind: string, allowe
 
 function staticCatalog(): Def[] {
   const fields: Def[] = [
-    def("reporting_period", "boundary", "Reporting period", "text"),
+    def("reporting_period", "boundary", "Reporting period", "date_range"),
     def("consolidation_approach", "boundary", "Consolidation approach", "enum", ["Equity Share", "Financial Control", "Operational Control"]),
+    // "Only if the company has a value": hidden until there is a value or the reviewer adds it.
+    def("boundary:acquisitions", "boundary", "Acquisitions and divestitures", "text", undefined, false),
+    def("boundary:leased_space", "boundary", "Treatment of leased space", "text", undefined, false),
   ];
   const scope1 = { stationary: "Stationary Combustion", mobile: "Mobile Combustion", process: "Process Emissions", fugitive: "Fugitive Emissions" };
   for (const [key, name] of Object.entries(scope1)) fields.push(def(`category:scope1:${key}`, "scope1", `Scope 1 ${name}`, "enum", INCLUSIONS));
@@ -210,8 +213,28 @@ function only(d: Def, value: Json, keys: string[]): Record<string, Json> {
   return o;
 }
 
+/** A real calendar date written YYYY-MM-DD (ASCII digits), or null. */
+function isoDate(text: Json): string | null {
+  if (typeof text !== "string" || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(text)) return null;
+  const [y, m, day] = text.split("-").map(Number);
+  const made = new Date(Date.UTC(y, m - 1, day));
+  return made.getUTCFullYear() === y && made.getUTCMonth() === m - 1 && made.getUTCDate() === day ? text : null;
+}
+
 function validate(d: Def, value: Json): Json {
   switch (d.kind) {
+    case "date_range": {
+      const o = value as Record<string, Json> | null;
+      if (!o || typeof o !== "object" || Array.isArray(o) || Object.keys(o).sort().join() !== "end,start") {
+        return invalid(d, "enter both a start date and an end date, written YYYY-MM-DD.");
+      }
+      const start = isoDate(o.start);
+      const end = isoDate(o.end);
+      if (start === null) return invalid(d, "the start date is not a real date. Write it as YYYY-MM-DD, for example 2025-01-01.");
+      if (end === null) return invalid(d, "the end date is not a real date. Write it as YYYY-MM-DD, for example 2025-12-31.");
+      if (end < start) return invalid(d, "the end date can't be before the start date.");
+      return { start, end };
+    }
     case "text":
       return text(d, value);
     case "enum": {

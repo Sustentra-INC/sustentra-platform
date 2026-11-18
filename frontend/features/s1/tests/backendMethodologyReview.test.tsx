@@ -32,7 +32,8 @@ function fixture(ai: Record<string, unknown> = {}): Record<string, unknown> {
     row_groups: ["entities", "factor:scope1", "factor:scope2"],
     catalog: [
       { ...def, field_id: "consolidation_approach", group: "boundary", label: "Consolidation approach", kind: "enum", allowed: ["Equity Share", "Financial Control", "Operational Control"] },
-      { ...def, field_id: "reporting_period", group: "boundary", label: "Reporting period", kind: "text" },
+      { ...def, field_id: "reporting_period", group: "boundary", label: "Reporting period", kind: "date_range" },
+      { ...def, field_id: "exclusion:boundary", group: "boundary", label: "Excluded from boundary", kind: "text" },
       {
         ...def,
         field_id: "gwp",
@@ -74,9 +75,10 @@ function fixture(ai: Record<string, unknown> = {}): Record<string, unknown> {
         field_id: "reporting_period",
         user_added: false,
         suggestion: null,
-        decision: { status: "edited", value: "FY2025", by, at: "2026-11-02T10:00:00Z" },
+        decision: { status: "edited", value: { start: "2025-01-01", end: "2025-12-31" }, by, at: "2026-11-02T10:00:00Z" },
         history: [{ at: "2026-11-02T10:00:00Z", by, action: "edit" }],
       },
+      { field_id: "exclusion:boundary", user_added: false, suggestion: null, decision: null, history: [] },
       { field_id: "gwp", user_added: false, suggestion: null, decision: { status: "rejected", value: null, reason: "Wrong set", by, at: "2026-11-02T10:00:00Z" }, history: [] },
       { field_id: "entity:abc123", user_added: true, suggestion: null, decision: null, history: [{ at: "2026-11-03T10:00:00Z", by, action: "add_row" }] },
       { field_id: "factor:scope1:r1", user_added: true, suggestion: null, decision: null, history: [{ at: "2026-11-03T10:00:00Z", by, action: "add_row" }] },
@@ -153,7 +155,7 @@ describe("Methodology review on real data", () => {
     expect(onOpenDocument).toHaveBeenCalledWith("d1");
 
     const period = row("Reporting period");
-    expect(within(period).getByText("FY2025")).toBeTruthy();
+    expect(within(period).getByText("2025-01-01 to 2025-12-31")).toBeTruthy();
     expect(within(period).getByText("Edited")).toBeTruthy();
     expect(within(period).getByText(/M\. Osei/)).toBeTruthy();
     const gwp = row("GWP");
@@ -237,8 +239,8 @@ describe("Methodology review on real data", () => {
 
   it("limits what can be typed as the server does: text length, 20 facility names of 100 characters", async () => {
     await open();
-    fireEvent.click(within(row("Reporting period")).getByRole("button", { name: "Edit: Reporting period" }));
-    expect((screen.getByLabelText("Value: Reporting period") as HTMLInputElement).maxLength).toBe(2000);
+    fireEvent.click(within(row("Excluded from boundary")).getByRole("button", { name: "Edit: Excluded from boundary" }));
+    expect((screen.getByLabelText("Value: Excluded from boundary") as HTMLInputElement).maxLength).toBe(2000);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
@@ -492,6 +494,55 @@ describe("Methodology review on real data", () => {
     it("copes with a server that sends no state at all", async () => {
       await open();
       expect(screen.getByText("Consolidation approach")).toBeTruthy();
+    });
+  });
+  describe("reporting period as two dates", () => {
+    const edit = () => fireEvent.click(within(row("Reporting period")).getByRole("button", { name: "Edit: Reporting period" }));
+    const withPeriod = (decision: unknown) => {
+      const d = fixture() as unknown as { fields: Record<string, unknown>[] };
+      (d.fields[1] as { decision: unknown }).decision = decision;
+      return d;
+    };
+
+    it("edits with two date inputs and sends both as dates", async () => {
+      await open(vi.fn(), withPeriod(null));
+      edit();
+      expect((screen.getByLabelText("Start date: Reporting period") as HTMLInputElement).type).toBe("date");
+      fireEvent.change(screen.getByLabelText("Start date: Reporting period"), { target: { value: "2025-01-01" } });
+      fireEvent.change(screen.getByLabelText("End date: Reporting period"), { target: { value: "2025-12-31" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() =>
+        expect(calls()).toContainEqual([`${BASE}/reporting_period/edit`, expect.objectContaining({ body: { value: { start: "2025-01-01", end: "2025-12-31" } } })])
+      );
+    });
+
+    it("asks for both dates before it sends anything", async () => {
+      await open(vi.fn(), withPeriod(null));
+      edit();
+      fireEvent.change(screen.getByLabelText("Start date: Reporting period"), { target: { value: "2025-01-01" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("Enter both a start date and an end date.");
+      expect(calls().some(([path]) => String(path).endsWith("/reporting_period/edit"))).toBe(false);
+    });
+
+    it("keeps an old text value, shows it as recorded, and starts the editor empty", async () => {
+      await open(vi.fn(), withPeriod({ status: "edited", value: "Fiscal 2025 \u2013 Z\u00fcrich \u6392\u653e", by, at: "2026-11-02T10:00:00Z" }));
+      const period = row("Reporting period");
+      expect(within(period).getByText("Recorded as: Fiscal 2025 \u2013 Z\u00fcrich \u6392\u653e")).toBeTruthy();
+      expect(within(period).getByText("Enter the start and end dates with Edit.")).toBeTruthy();
+      edit();
+      expect((screen.getByLabelText("Start date: Reporting period") as HTMLInputElement).value).toBe("");
+      expect(document.body.textContent).not.toContain("[object Object]");
+    });
+
+    it("shows the server's sentence when the dates are refused", async () => {
+      await open(vi.fn(), withPeriod(null));
+      mock.fail[`POST ${BASE}/reporting_period/edit`] = new ApiError(422, "'Reporting period': the end date can't be before the start date.", null, null);
+      edit();
+      fireEvent.change(screen.getByLabelText("Start date: Reporting period"), { target: { value: "2025-12-31" } });
+      fireEvent.change(screen.getByLabelText("End date: Reporting period"), { target: { value: "2025-01-01" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("can't be before the start date");
     });
   });
 });

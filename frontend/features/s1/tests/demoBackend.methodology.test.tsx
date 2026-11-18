@@ -92,7 +92,7 @@ describe("the demo backend's methodology review", () => {
     await open();
     expect(within(row("Indirect Biogenic")).getByText("Not checked yet")).toBeTruthy();
     expect(document.body.textContent).not.toContain("Not set");
-    expect((await get()).fields.every((f) => (f as unknown as { shown: boolean }).shown)).toBe(true);
+    expect((await get()).fields.filter((f) => !(f as unknown as { shown: boolean }).shown).map((f) => (f as unknown as { field_id: string }).field_id).sort()).toEqual(["boundary:acquisitions", "boundary:leased_space"]);
     await prefillViaUi();
     expect(within(row("Indirect Biogenic")).getByText("Not detected")).toBeTruthy();
     expect(within(row("Consolidation approach")).getByText("Suggested by Claude")).toBeTruthy();
@@ -121,5 +121,58 @@ describe("the demo backend's methodology review", () => {
     cleanup();
     await open();
     expect(within(row("Indirect Biogenic")).queryByText("Not checked yet")).toBeNull();
+  });
+  it("the reporting period is two real dates with the end not before the start", async () => {
+    const edit = (value: unknown) => demoApi(`${BASE}/reporting_period/edit`, { method: "POST", body: { value } });
+    await expect(edit({ start: "2025-12-31", end: "2025-01-01" })).rejects.toMatchObject({ status: 422 });
+    await expect(edit({ start: "2025-13-45", end: "2025-12-31" })).rejects.toMatchObject({ status: 422 });
+    await expect(edit({ start: "2025-01-01" })).rejects.toMatchObject({ status: 422 });
+    await expect(edit("January 1 to December 31, 2025")).rejects.toMatchObject({ status: 422 });
+    await edit({ start: "2024-02-29", end: "2024-12-31" });
+    await open();
+    expect(within(row("Reporting period")).getByText("2024-02-29 to 2024-12-31")).toBeTruthy();
+  });
+  describe("acquisitions and leased space (only if the company has a value)", () => {
+    const addItem = (label: string) =>
+      fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), {
+        target: { value: label === "Acquisitions and divestitures" ? "boundary:acquisitions" : "boundary:leased_space" },
+      });
+
+    it("are hidden on a fresh engagement and offered under Add an item", async () => {
+      await open();
+      expect(screen.queryByText("Acquisitions and divestitures", { selector: "span" })).toBeNull();
+      const add = screen.getByRole("combobox", { name: "Add an item" });
+      expect(within(add).getByRole("option", { name: "Acquisitions and divestitures" })).toBeTruthy();
+      expect(within(add).getByRole("option", { name: "Treatment of leased space" })).toBeTruthy();
+    });
+
+    it("Add an item shows the row, it stays after a reload, and it reads Not detected once a run found nothing", async () => {
+      await open();
+      addItem("Acquisitions and divestitures");
+      await waitFor(() => expect(within(row("Acquisitions and divestitures")).getByText("Not checked yet")).toBeTruthy());
+      cleanup();
+      await open(); // a reload
+      expect(within(row("Acquisitions and divestitures")).getByText("Not checked yet")).toBeTruthy();
+      await prefillViaUi();
+      expect(within(row("Acquisitions and divestitures")).getByText("Not detected")).toBeTruthy();
+    });
+
+    it("a prefill that found a quote shows the leased-space row with Claude's suggestion; the silent one stays hidden", async () => {
+      await open();
+      await prefillViaUi();
+      expect(within(row("Treatment of leased space")).getByText("Suggested by Claude")).toBeTruthy();
+      expect(screen.queryByText("Acquisitions and divestitures", { selector: "span" })).toBeNull();
+      expect(within(screen.getByRole("combobox", { name: "Add an item" })).queryByRole("option", { name: "Treatment of leased space" })).toBeNull();
+    });
+
+    it("saves an edit with non-ASCII text and refuses one over 2,000 characters", async () => {
+      await open();
+      const edit = (value: unknown) => demoApi(`${BASE}/boundary:acquisitions/edit`, { method: "POST", body: { value } });
+      await expect(edit("x".repeat(2001))).rejects.toMatchObject({ status: 422 });
+      await edit("Acquired M\u00fcller K\u00e4serei \u2013 Z\u00fcrich (\u745e\u58eb) in March 2025.");
+      cleanup();
+      await open();
+      expect(within(row("Acquisitions and divestitures")).getByText("Acquired M\u00fcller K\u00e4serei \u2013 Z\u00fcrich (\u745e\u58eb) in March 2025.")).toBeTruthy();
+    });
   });
 });

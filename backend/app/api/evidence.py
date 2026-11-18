@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from backend.app.api.s1_access import org_of, require_evidence, require_visible, s1_reader, s1_writer, visible
+from backend.app.api.s1_access import evidence_owned_by_caller, org_of, require_evidence, require_visible, s1_reader, s1_writer, visible
 from backend.app.core.auth import CurrentUser
 
 from backend.app.repositories import s1_stores
@@ -69,6 +69,8 @@ def project_approved_evidence(
     user: CurrentUser = Depends(s1_writer),
 ) -> dict:
     require_evidence(evidence_id, user)
+    if not evidence_owned_by_caller(evidence_id, user, payload.engagement_id):  # SEC-004: this engagement's evidence only
+        raise HTTPException(status_code=404, detail="Evidence not found.")
     try:
         return _service.project_by_evidence(
             evidence_id=evidence_id,

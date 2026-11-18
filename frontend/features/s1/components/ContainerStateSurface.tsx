@@ -9,6 +9,8 @@ interface ContainerStateSurfaceProps {
   onClearFilter?: () => void;
   onUploadFiles?: (files: FileList) => void;
   isUploading?: boolean;
+  /** What the loading state says. */
+  label?: string;
   children?: React.ReactNode;
 }
 
@@ -18,6 +20,7 @@ export function ContainerStateSurface({
   onClearFilter,
   onUploadFiles,
   isUploading = false,
+  label = "Loading evidence",
   children,
 }: ContainerStateSurfaceProps) {
   if (state === "populated") {
@@ -80,19 +83,9 @@ export function ContainerStateSurface({
 
   if (state === "loading") {
     return (
-      <div className="s1-table-wrap" aria-label="Loading evidence">
-        <table className="s1-table">
-          <tbody>
-            {Array.from({ length: 6 }).map((_, index) => (
-              <tr key={index}>
-                <td colSpan={9} style={{ height: "var(--row-height-compact)" }}>
-                  <span className="s1-muted">Loading row</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <p className="s1-muted" role="status" aria-label={label}>
+        {label}.
+      </p>
     );
   }
 

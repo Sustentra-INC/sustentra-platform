@@ -53,10 +53,24 @@ CONF_MISSING = 0.2
 _MAX_SNIPPET = 240
 
 # --- labels (priority order; earlier groups win) -----------------------------------------
+# The facility is the place the fuel or gas was used: a labelled facility or site, else the name in a
+# labelled service / delivery / ship-to block. The company that is billed (bill to, sold to, customer) is
+# only a last resort: a ship-to block that repeats it names the site on its next line.
 FACILITY_LABELS: tuple[tuple[str, ...], ...] = (
     ("facility name", "facility", "site name", "site", "premises name", "premises", "plant", "location name"),
-    ("customer name", "customer", "sold to", "bill to", "ship to name", "account name", "service name"),
 )
+SITE_LOCATION_LABELS: tuple[tuple[str, ...], ...] = (
+    ("service location", "service site", "delivery location", "delivery site", "site location",
+     "ship to name", "ship to", "deliver to", "delivered to", "service at"),
+)
+BILL_TO_LABELS: tuple[tuple[str, ...], ...] = (
+    ("customer name", "customer", "sold to", "bill to", "billed to", "invoice to", "account name",
+     "account holder", "service name"),
+)
+# When a document names no site at all, the company on the bill is the facility, as on a utility bill to a
+# single plant (the golden set's SC-03 and SC-05). Set False to leave such a document with no facility,
+# so it waits in Unassigned supporting evidence until a reviewer picks one.
+BILL_TO_NAME_IS_LAST_RESORT_FACILITY = True
 ADDRESS_LABELS: tuple[tuple[str, ...], ...] = (
     ("service address", "service location", "premises address", "site address", "facility address",
      "delivery address", "delivered to", "deliver to", "ship to", "service at"),
@@ -288,6 +302,7 @@ class UsageRecord:
     end: Located | None = None
     fuel: Located | None = None
     extra: dict[str, Located] = field(default_factory=dict)  # subclass EXTRA_COLUMNS values
+    energy: str | None = None  # thermal bills: the energy type told from this line (steam / hot_water / chilled_water)
 
 
 @dataclass
@@ -302,6 +317,23 @@ def _blank_dates(text: str) -> str:
     for pattern in _DATE_PATTERNS:
         text = pattern.sub(" ", text)
     return text
+
+
+def _has_letters(value: str) -> bool:
+    return bool(re.search(r"[^\W\d_]{2}", value))
+
+
+def _name_key(text: str) -> str:
+    """A name compared ignoring case, punctuation and spacing."""
+
+    return " ".join(re.sub(r"[\W_]+", " ", text.casefold()).split())
+
+
+def _is_attention_line(text: str) -> bool:
+    return bool(re.match(r"^(attn|attention|c/o|care of)\b", text.strip(), re.I))
+
+
+_CITY_STATE_ZIP = re.compile(r"^[^\d,]+,\s*[A-Z]{2}\s+\d{5}(-\d{4})?\s*$")
 
 
 def _norm(text: str) -> str:
@@ -930,10 +962,37 @@ class StationaryCombustionExtractor:
     # Document-level fields
     # =================================================================================
     def _facility(self, rows: Sequence[Row]) -> tuple[Located | None, Located | None]:
-        located = self._find_labeled(rows, FACILITY_LABELS, accept=lambda v: bool(re.search(r"[A-Za-z]{2}", v)),
-                                     inline=True, inline_gap=True)
-        if located is None:
-            return None, None
+        """The place the fuel or gas was used, and its street address when the same block gives one.
+
+        In order: a labelled facility or site; the name in a labelled service / delivery / ship-to
+        block (its company line, which repeats the bill-to, and its "Attn" line are skipped); else
+        the company on the bill (see ``BILL_TO_NAME_IS_LAST_RESORT_FACILITY``). A name that only repeats the
+        bill-to, as a ship-to block's company line does, is never taken for the site.
+        """
+
+        bill_to = self._party_key(rows, BILL_TO_LABELS)
+        located = self._find_labeled(rows, FACILITY_LABELS, accept=_has_letters, inline=True, inline_gap=True)
+        if located is not None and _name_key(located.raw.split(",")[0]) != bill_to:
+            return self._split_name_address(located)
+        for label_cell, row, lines in self._label_blocks(rows, SITE_LOCATION_LABELS):
+            name, address = self._site_in_block(lines, bill_to)
+            if name is None:
+                continue
+            cell, text = name
+            site = Located(text, [cell], row, CONF_NEXT_CELL, label_cell=label_cell, context=f"{label_cell.text} {text}")
+            split, split_address = self._split_name_address(site)
+            if split_address is None and address is not None:
+                split_address = Located(address, [cell], row, CONF_NEXT_CELL - 0.05, label_cell=label_cell,
+                                        context=f"{label_cell.text} {address}")
+            return split, split_address
+        if BILL_TO_NAME_IS_LAST_RESORT_FACILITY:
+            billed = self._find_labeled(rows, BILL_TO_LABELS, accept=_has_letters, inline=True, inline_gap=True)
+            if billed is not None:
+                return self._split_name_address(billed)
+        return None, None
+
+    @staticmethod
+    def _split_name_address(located: Located) -> tuple[Located, Located | None]:
         # "Site: Standby Generator Plant, 77 Weir Lane, Lodi, CA" -> name + address
         split = re.match(r"^(?P<name>[^,\d][^,]*?),\s*(?P<addr>\d+\s+\S.*)$", located.raw)
         if split:
@@ -943,6 +1002,81 @@ class StationaryCombustionExtractor:
                               located.label_cell, located.context)
             return name, address
         return located, None
+
+    def _party_key(self, rows: Sequence[Row], groups: Sequence[Sequence[str]]) -> str:
+        """The name a billing-party label gives, as a comparison key ("" when the document has none)."""
+
+        for _, _, lines in self._label_blocks(rows, groups):
+            for _, text in lines:
+                if not _is_attention_line(text) and _has_letters(text):
+                    return _name_key(text.split(",")[0])
+        return ""
+
+    def _label_blocks(self, rows: Sequence[Row], groups: Sequence[Sequence[str]]) -> list[tuple[Cell, Row, list[tuple[Cell, str]]]]:
+        """Each label of ``groups`` with the text lines of the block that follows it: the value on the
+        label's own line, then the lines beneath it (same column, tightly spaced) or, in plain text,
+        the single-cell lines after it. A line that is itself a label ends the block."""
+
+        found: list[tuple[Cell, Row, list[tuple[Cell, str]]]] = []
+        for labels in groups:
+            for row in rows:
+                for cell in row.cells:
+                    prefix = self._label_prefix(cell.text, labels)
+                    if prefix is None:
+                        continue
+                    lines: list[tuple[Cell, str]] = []
+                    if prefix[1]:
+                        lines.append((cell, self._trim_value(prefix[1])))
+                    lines.extend(self._lines_below(rows, row, cell))
+                    found.append((cell, row, lines))
+        return found
+
+    def _lines_below(self, rows: Sequence[Row], row: Row, cell: Cell) -> list[tuple[Cell, str]]:
+        out: list[tuple[Cell, str]] = []
+        previous = cell
+        for following in rows[row.index + 1:row.index + 12]:
+            if following.page != row.page or len(out) >= 6:
+                break
+            if cell.box is not None:
+                nxt = next((c for c in following.cells if c.box and abs(c.left - cell.left) < 0.02), None)
+                if nxt is None or previous.box is None:
+                    break
+                gap = nxt.box["top"] - (previous.box["top"] + previous.box["height"])  # type: ignore[index]
+                if gap > 1.5 * max(previous.height, nxt.height):
+                    break
+            else:
+                nxt = following.cells[0] if len(following.cells) == 1 else None
+                if nxt is None:
+                    break
+            if not nxt.text.strip() or self._label_prefix(nxt.text, self.ALL_LABELS) is not None:
+                break
+            out.append((nxt, self._trim_value(nxt.text)))
+            previous = nxt
+        return out
+
+    @staticmethod
+    def _site_in_block(lines: list[tuple[Cell, str]], bill_to: str) -> tuple[tuple[Cell, str] | None, str | None]:
+        """The site name in a ship-to block, and its street address. The company line (the bill-to
+        repeated), "Attn:" lines, PO boxes, street lines and "City, ST 12345" lines are not names."""
+
+        name: tuple[Cell, str] | None = None
+        street: str | None = None
+        city: str | None = None
+        for cell, text in lines:
+            if not text or _is_attention_line(text) or _name_key(text.split(",")[0]) == bill_to:
+                continue
+            if re.match(r"^p\.?\s?o\.?\s*box\b", text, re.I):
+                continue
+            if _CITY_STATE_ZIP.match(text):
+                city = city or text
+                continue
+            if text[:1].isdigit():
+                street = street or text
+                continue
+            if name is None and _has_letters(text):
+                name = (cell, text)
+        address = ", ".join(part for part in (street, city) if part) if street else None
+        return name, address
 
     def _address(self, rows: Sequence[Row]) -> Located | None:
         return self._find_labeled(rows, ADDRESS_LABELS, accept=lambda v: bool(re.search(r"\d", v)),
@@ -1590,7 +1724,7 @@ class StationaryCombustionExtractor:
 
 
 ALL_LABEL_GROUPS: tuple[tuple[str, ...], ...] = (
-    FACILITY_LABELS + ADDRESS_LABELS + ACCOUNT_LABELS + SUPPLIER_LABELS + FUEL_LABELS + RANGE_PERIOD_LABELS
+    FACILITY_LABELS + SITE_LOCATION_LABELS + BILL_TO_LABELS + ADDRESS_LABELS + ACCOUNT_LABELS + SUPPLIER_LABELS + FUEL_LABELS + RANGE_PERIOD_LABELS
     + START_LABELS + END_LABELS + DELIVERY_DATE_LABELS + QUANTITY_LABELS
 )
 _ALL_LABELS: tuple[str, ...] = tuple(label for group in ALL_LABEL_GROUPS for label in group)

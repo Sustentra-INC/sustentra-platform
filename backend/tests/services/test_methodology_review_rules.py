@@ -24,7 +24,7 @@ def field(field_id: str) -> dict:
 
 def test_catalog_has_every_field_with_a_valid_unique_key() -> None:
     ids = [f["field_id"] for f in m.CATALOG]
-    assert len(ids) == len(set(ids)) == 22
+    assert len(ids) == len(set(ids)) == 24
     assert all(ITEM_KEY.match(i) for i in ids)
     for expected in ("reporting_period", "consolidation_approach", "category:scope1:fugitive",
                      "category:location:cooling", "category:market:steam", "category:biogenic:indirect",
@@ -53,7 +53,7 @@ def test_row_ids_are_made_by_the_server_and_recognised() -> None:
 
 
 @pytest.mark.parametrize(("field_id", "good", "cleaned"), [
-    ("reporting_period", "  2025-01-01 to 2025-12-31 ", "2025-01-01 to 2025-12-31"),
+    ("exclusion:boundary", "  2025-01-01 to 2025-12-31 ", "2025-01-01 to 2025-12-31"),
     ("exclusion:boundary", "", ""),
     ("consolidation_approach", "Equity Share", "Equity Share"),
     ("category:market:heating", "Not detected", "Not detected"),
@@ -64,8 +64,8 @@ def test_valid_values(field_id: str, good: object, cleaned: object) -> None:
 
 
 @pytest.mark.parametrize(("field_id", "bad"), [
-    ("reporting_period", 5),
-    ("reporting_period", "x" * 4001),
+    ("exclusion:boundary", 5),
+    ("exclusion:boundary", "x" * 4001),
     ("consolidation_approach", "Control"),
     ("consolidation_approach", None),
     ("category:scope1:mobile", ["Yes"]),
@@ -114,9 +114,9 @@ def test_accept_takes_the_suggestion_then_refuses_a_second_decision() -> None:
 
 
 def test_accept_with_nothing_to_take_is_refused_and_a_current_value_is_taken() -> None:
-    f = field("reporting_period")
+    f = field("exclusion:boundary")
     with pytest.raises(m.MethodologyConflict, match="nothing to accept"):
-        m.accept(m.new_record("reporting_period"), f, ACTOR, NOW)
+        m.accept(m.new_record("exclusion:boundary"), f, ACTOR, NOW)
     row = m.new_row("entity:abcd1234", ACTOR, NOW)
     entity = m.row_field("entity:abcd1234")
     with pytest.raises(m.MethodologyInvalid):  # the blank row has no name
@@ -183,3 +183,41 @@ def test_public_shape() -> None:
     row = m.new_row("factor:scope1:abcd1234", ACTOR, NOW)
     assert set(m.public(row)) == {"field_id", "suggestion", "decision", "history", "user_added"}
     assert m.public(m.new_record("gwp"))["user_added"] is False
+
+
+# --- reporting period: two dates -------------------------------------------------------------
+
+def test_the_reporting_period_is_two_dates() -> None:
+    f = field("reporting_period")
+    assert f["kind"] == "date_range"
+    assert m.validate_value(f, {"start": "2025-01-01", "end": "2025-12-31"}) == {"start": "2025-01-01", "end": "2025-12-31"}
+    assert m.validate_value(f, {"start": "2024-02-29", "end": "2024-02-29"})["end"] == "2024-02-29"  # one day, leap day
+
+
+@pytest.mark.parametrize("bad", [
+    {"start": "2025-12-31", "end": "2025-01-01"},  # end before start
+    {"start": "2025-13-45", "end": "2025-12-31"},  # not a date
+    {"start": "2025-01-01", "end": "2025-02-30"},  # not a date
+    {"start": "2023-02-29", "end": "2023-12-31"},  # not a leap year
+    {"start": "2025-1-1", "end": "2025-12-31"},  # not YYYY-MM-DD
+    {"start": "٢٠٢٥-01-01", "end": "2025-12-31"},  # Arabic-Indic digits
+    {"start": "2025-01-01"},  # one date
+    {"start": "2025-01-01", "end": None},
+    {"start": "2025-01-01", "end": "2025-12-31", "note": "x"},
+    "January 1 to December 31, 2025",  # an old text value cannot be saved again as is
+    5,
+    None,
+])
+def test_a_bad_reporting_period_is_refused_with_a_sentence(bad: object) -> None:
+    with pytest.raises(m.MethodologyInvalid) as error:
+        m.validate_value(field("reporting_period"), bad)
+    assert error.value.args[0].startswith("'Reporting period': ")
+
+
+def test_an_old_text_value_has_a_value_and_survives_other_actions() -> None:
+    old = {**m.new_record("reporting_period"),
+           "decision": {"status": "edited", "value": "FY2024 (1 janvier – 31 décembre)", "by": {}, "at": "x"}}
+    assert m.has_value(old) and m.display_state(old, m.new_meta()) == "has_value"
+    assert m.public(old)["decision"]["value"] == "FY2024 (1 janvier – 31 décembre)"
+    edited = m.edit(old, field("reporting_period"), {"start": "2024-01-01", "end": "2024-12-31"}, ACTOR, NOW)
+    assert edited["decision"]["value"] == {"start": "2024-01-01", "end": "2024-12-31"}

@@ -268,3 +268,43 @@ def test_cooling_tonnage_is_not_a_refrigerant_charge(targets: list[dict]) -> Non
     fields = _by_field(RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1").candidates)
     assert fields["equipment_capacity"]["normalized_value"] is None
     assert fields["refrigerant_added"]["normalized_value"] == 3
+
+
+# --- the facility is the site, never the company that is billed ----------------------------------
+INVOICE_SHAPE = """Cold Crest Mechanical Services
+REFRIGERANT SERVICE INVOICE
+Invoice No: CC-2025-0912
+{parties}Equipment ID: RTU-3
+Refrigerant Type: R-410A
+Full Charge: 18 lb
+Refrigerant Added: 6 lb
+Service Date: 09/12/2025
+"""
+
+
+def _site_of(parties: str, targets: list[dict]) -> str | None:
+    outcome = RefrigerantServiceExtractor().extract(_text_output(INVOICE_SHAPE.format(parties=parties)), targets, "EV-1")
+    assert outcome.halt_reason is None
+    return _by_field(outcome.candidates).get("facility_name", {}).get("normalized_value") or None
+
+
+@pytest.mark.parametrize(
+    ("parties", "site"),
+    [
+        ("Bill To: Staging-Test Foods Inc.\nService Location: Riverside Plant\n", "Riverside Plant"),
+        ("Bill To: Staging-Test Foods Inc.\nShip To: Riverside Plant\n", "Riverside Plant"),
+        ("Customer: Staging-Test Foods Inc.\nSite: Müller Käserei – Zürich\n", "Müller Käserei – Zürich"),
+        ("Bill To: Staging-Test Foods Inc.\nService Location: 東京工場\n", "東京工場"),
+        ("Bill To: Staging-Test Foods Inc.\nSite: Staging-Test Foods Inc. – Riverside Plant\n",
+         "Staging-Test Foods Inc. – Riverside Plant"),
+    ],
+)
+def test_the_service_site_is_the_facility_and_the_bill_to_is_not(targets: list[dict], parties: str, site: str) -> None:
+    assert _site_of(parties, targets) == site
+
+
+@pytest.mark.parametrize("label", ["Bill To", "Sold To", "Customer", "Account Name"])
+def test_a_bill_to_name_alone_is_not_a_facility_in_strict_mode(
+        targets: list[dict], monkeypatch: pytest.MonkeyPatch, label: str) -> None:
+    monkeypatch.setattr("backend.app.services.stationary_combustion_extractor.BILL_TO_NAME_IS_LAST_RESORT_FACILITY", False)
+    assert _site_of(f"{label}: Staging-Test Foods Inc.\n", targets) is None

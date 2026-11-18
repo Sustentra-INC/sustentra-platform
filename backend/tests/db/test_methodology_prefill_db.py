@@ -38,7 +38,8 @@ GOOD = {
         # not on the document: dropped
         {"field_id": "category:scope1:mobile", "value": "Yes", **cite("L5", "mobile combustion is included")},
     ],
-    "texts": [{"field_id": "reporting_period", "value": "January 1 to December 31, 2024", **cite("L3", "Reporting period")}],
+    "texts": [],
+    "periods": [{"start": "2024-01-01", "end": "2024-12-31", **cite("L3", "January 1 to December 31, 2024")}],
     "gwp": [],
     "entities": [{"name": "Acme Foods Kent LLC", "facilities": ["Kent Cannery"], "equity_share_pct": 51,
                   "financial_control": 51, "operational_control": "Yes",
@@ -137,7 +138,7 @@ def test_a_reviewers_decision_is_never_overwritten(claude: FakeClaude) -> None:
     assert approach["decision"]["status"] == "edited" and len(approach["history"]) == 1
     rejected = record(eid, "category:scope1:stationary")
     assert rejected["suggestion"] is None and rejected["decision"]["status"] == "rejected"
-    assert record(eid, "reporting_period")["suggestion"]["value"] == "January 1 to December 31, 2024"
+    assert record(eid, "reporting_period")["suggestion"]["value"] == {"start": "2024-01-01", "end": "2024-12-31"}
 
 
 def test_a_second_run_replaces_pending_suggestions_and_does_not_repeat_rows(claude: FakeClaude) -> None:
@@ -165,7 +166,7 @@ def test_an_injected_instruction_changes_nothing_without_a_matching_quote(claude
     eid = create()["id"]
     claude.output = {**GOOD, "choices": [{"field_id": "consolidation_approach", "value": "Equity Share",
                                           **cite("L7", "the company uses the equity share approach")}],
-                     "texts": [], "entities": [], "factors": []}
+                     "texts": [], "periods": [], "entities": [], "factors": []}
     body = prefill(eid).json()
     assert body["suggested"] == 0 and body["dropped"] == {"quote_not_on_document": 1}
     approach = record(eid, "consolidation_approach")
@@ -208,7 +209,9 @@ def test_rows_read_not_checked_until_a_prefill_finishes_then_not_detected(claude
     eid = create()["id"]
     before = review(eid).json()
     assert before["prefill_ran_at"] is None and set(states(eid).values()) == {"not_checked"}
-    assert all(f["required"] for f in before["catalog"]) and all(f["shown"] for f in before["fields"])
+    optional = {c["field_id"] for c in before["catalog"] if not c["required"]}
+    assert optional == {"boundary:acquisitions", "boundary:leased_space"}
+    assert all(f["shown"] is (f["field_id"] not in optional) for f in before["fields"])
     assert prefill(eid).status_code == 200
     after = review(eid).json()
     assert after["prefill_ran_at"] is not None
@@ -362,3 +365,67 @@ def test_migration_0017_creates_and_drops_the_ledger() -> None:
         assert exists()
     finally:
         alembic("upgrade", "head")
+
+
+# --- acquisitions and leased space: "only if the company has a value" -------------------------
+
+ACQ, LEASE = "boundary:acquisitions", "boundary:leased_space"
+DEAL = "In March 2025 we acquired Müller Käserei – Zürich (瑞士) and sold the Kent depot."
+LEASED = "Leased offices are outside the boundary; leased vehicles are reported under operational control."
+
+
+def shown_ids(engagement_id: str) -> set[str]:
+    return {f["field_id"] for f in review(engagement_id).json()["fields"] if f["shown"]}
+
+
+def with_report(monkeypatch: pytest.MonkeyPatch, *extra: str) -> None:
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, line) for line in extra])])
+
+
+def test_the_two_rows_are_hidden_on_a_fresh_engagement_and_listed_for_add_an_item(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    body = review(eid).json()
+    assert {ACQ, LEASE} & shown_ids(eid) == set()
+    defs = {c["field_id"]: c for c in body["catalog"]}
+    for field_id, label in ((ACQ, "Acquisitions and divestitures"), (LEASE, "Treatment of leased space")):
+        assert defs[field_id]["required"] is False and defs[field_id]["kind"] == "text" and defs[field_id]["label"] == label
+        assert defs[field_id]["group"] == "boundary"
+    assert states(eid)[ACQ] == "not_checked"
+
+
+def test_a_prefill_with_a_quote_shows_the_row_and_one_without_does_not(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    with_report(monkeypatch, DEAL)
+    claude.output = {**GOOD, "texts": [
+        {"field_id": ACQ, "value": "Acquired Müller Käserei – Zürich in March 2025; sold the Kent depot.", **cite("L9", "acquired Müller Käserei – Zürich")}]}
+    body = prefill(eid).json()
+    assert body["suggested"] == 6 and LEASE not in shown_ids(eid)
+    assert ACQ in shown_ids(eid) and states(eid)[ACQ] == "has_value"
+    suggestion = record(eid, ACQ)["suggestion"]
+    assert suggestion["value"].startswith("Acquired Müller Käserei – Zürich") and suggestion["origin"] == "ai"
+    assert states(eid)[LEASE] == "not_detected"  # the run found nothing: still hidden, and reads Not detected when added
+
+
+def test_a_quote_that_is_not_on_the_page_is_dropped_and_the_row_stays_hidden(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    with_report(monkeypatch, DEAL)
+    claude.output = {**GOOD, "texts": [{"field_id": LEASE, "value": "Leases are excluded.", **cite("L9", "all leases are excluded")}]}
+    body = prefill(eid).json()
+    assert body["dropped"] == {"quote_not_on_document": 2}  # the lease quote, and GOOD's mobile combustion quote
+    assert LEASE not in shown_ids(eid) and record(eid, LEASE)["suggestion"] is None
+
+
+def test_add_an_item_shows_the_row_as_not_detected_after_a_run_and_it_can_be_edited(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    with_report(monkeypatch, LEASED)
+    claude.output = {**GOOD, "texts": []}
+    prefill(eid)
+    assert LEASE not in shown_ids(eid)
+    assert act(eid, LEASE, "reveal").status_code == 200
+    assert LEASE in shown_ids(eid) and states(eid)[LEASE] == "not_detected"
+    value = "Leased offices excluded – Büro München 办公室; vehicles under operational control."
+    saved = act(eid, LEASE, "edit", {"value": value})
+    assert saved.status_code == 200 and record(eid, LEASE)["decision"]["value"] == value
+    assert states(eid)[LEASE] == "has_value" and LEASE in shown_ids(eid)
+    assert act(eid, LEASE, "edit", {"value": "x" * 2001}).status_code == 422
+    assert act(eid, ACQ, "edit", {"value": 5}).status_code == 422

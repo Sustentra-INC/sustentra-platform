@@ -3,7 +3,7 @@
 import { ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleRow } from "../api/evidenceTree";
+import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleHistoryEntry, type ScheduleRow } from "../api/evidenceTree";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { ApiError } from "../../../lib/api";
 import { userFacingApiError } from "../api/s1Backend";
@@ -110,7 +110,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
   if (!schedule) {
     return (
       <section className="s1-content s1-sch">
-        <ContainerStateSurface state="loading" />
+        <ContainerStateSurface state="loading" label="Loading the supporting schedule" />
       </section>
     );
   }
@@ -132,6 +132,10 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
 
   return (
     <section className="s1-content s1-sch">
+      {/* The back link sits first, left-aligned, like on the other screens. */}
+      <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
+        ‹ Back to {backLabel}
+      </button>
       <header className="s1-sch-head">
         <div className="s1-sch-head__id">
           <nav className="s1-sch-crumbs" aria-label="Breadcrumb">
@@ -151,9 +155,6 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
           {year ? <p className="s1-muted">Reporting year {year}</p> : null}
         </div>
         <div className="s1-sch-head__actions">
-          <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
-            ‹ Back to {backLabel}
-          </button>
           {/* Always present. A line with no calculation yet shows it disabled, with the reason beside it. */}
           <button
             className="s1-button s1-button--pri"
@@ -312,15 +313,18 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
       </section>
 
       <details className="s1-panel s1-sch-history">
-        <summary>Line history ({schedule.history.length})</summary>
+        <summary>Line history ({schedule.history_total ?? schedule.history.length})</summary>
         {schedule.history.length ? (
-          <ul>
-            {schedule.history.map((h, i) => (
-              <li key={`${h.at}:${i}`}>
-                <span className="s1-muted">{formatDateTime(h.at)}</span> {h.text}
-              </li>
-            ))}
-          </ul>
+          <>
+            {(schedule.history_total ?? 0) > schedule.history.length ? <p className="s1-muted">Showing the latest {schedule.history.length}</p> : null}
+            <ul>
+              {schedule.history.map((h, i) => (
+                <li key={`${h.at ?? "none"}:${i}`}>
+                  {h.at ? <span className="s1-muted">{formatDateTime(h.at)}</span> : null} {historySentence(h)}
+                </li>
+              ))}
+            </ul>
+          </>
         ) : (
           <p className="s1-muted">Nothing has happened on this line yet.</p>
         )}
@@ -330,6 +334,29 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
 }
 
 /* =============================== helpers =============================== */
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const ACTION_WORDS: Record<Exclude<ScheduleHistoryEntry["action"], "extracted">, string> = {
+  accepted: "accepted",
+  corrected: "corrected",
+  added: "added",
+  rejected: "rejected",
+  asked_for_more_evidence: "asked for more evidence on",
+};
+
+/** The history sentence: who, what, the value, and where it came from. The server sends the parts. */
+function historySentence(h: ScheduleHistoryEntry): string {
+  if (h.action === "extracted") {
+    return `System extracted ${plural(h.count ?? 0, "value", "values")} from ${plural(h.documents ?? 0, "document", "documents")} placed in this line`;
+  }
+  const who = h.actor_name || "A reviewer";
+  const verb = ACTION_WORDS[h.action] ?? h.action;
+  if ((h.count ?? 1) > 1) return `${who} ${verb} ${h.count} values`;
+  const value = h.value ? `${h.value}${h.unit ? ` ${h.unit}` : ""}` : "";
+  const what = [h.field, value].filter(Boolean).join(" ");
+  const from = h.file_name ? ` from ${h.file_name}${h.page ? `, page ${h.page}` : ""}` : "";
+  return `${who} ${verb}${what ? ` ${what}` : " a value"}${from}`;
+}
 
 function reportingYear(period: LineSchedule["reporting_period"]): string | null {
   const a = period.start?.slice(0, 4);
@@ -440,7 +467,7 @@ function IdentifierItem({ group, onOpenDocument }: { group: IdentifierGroup; onO
         <span className="s1-sch-ids__label">{group.label}</span>
         <span className={`s1-sch-ids__value${summary.length <= 24 ? " s1-sch-ids__value--short" : ""}`}>{summary}</span>
         <span className="s1-sch-ids__n">
-          {group.documents_with} of {group.documents_total} documents
+          {group.documents_with} of {group.documents_total} {group.documents_total === 1 ? "document" : "documents"}
         </span>
       </button>
       {group.matched_by?.length ? <p className="s1-muted s1-sch-ids__how">Matched by: {group.matched_by.join("; ")}</p> : null}

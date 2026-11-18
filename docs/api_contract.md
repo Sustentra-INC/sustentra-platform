@@ -11,6 +11,10 @@ Fetch engagement metadata and summary counts.
 ### POST /v1/engagements/{engagement_id}/documents
 Register an uploaded document for processing.
 
+A client-supplied `evidence_id` (here and on upload) must be existing evidence of this engagement. Unknown evidence, another
+organization's, and another engagement's all answer 404 "Evidence not found." and store nothing (SEC-004). The same holds for
+`POST /v1/evidence/{evidence_id}/approved-evidence/project`, whose `engagement_id` must be the evidence's own.
+
 ### POST /v1/engagements/{engagement_id}/documents/upload
 Upload a file and register it as a document (multipart: `file`, `document_role`, and optionally
 `evidence_id`, `document_type` and `batch_id`). Answers with the document; what it carries depends on `S1_PROCESSING`:
@@ -147,9 +151,9 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     value, reason?, by: {name, login}, at}`; a rejected decision has `value: null`. `history` is
     `[{at, by, action, to?}]` (the newest 50 events, fewer if the record would pass 32 KB; the audit log keeps the
     full trail), `action` one of accept, edit, reject, revert, add_row, remove_row.
-  - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp, allowed?, parts?, user_added}`, in page order: the fixed
+  - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp|date_range, allowed?, parts?, user_added}`, in page order: the fixed
     fields (reporting_period, consolidation_approach, `category:{scope1|location|market|biogenic}:...`,
-    `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`), then the rows the
+    `boundary:{acquisitions|leased_space}` (text, `required: false`: hidden until a value or "Add an item"), `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`), then the rows the
     reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (with `allowed_labels.set`),
     `{operational_control}` for an entity. `parts` (entity, factor, gwp only) lists the value's editors,
     `[{key, label, kind: text|list|percent|enum, allowed?}]`, so a blank new row can be drawn.
@@ -158,10 +162,10 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     `required` (boolean). `display_state` is `has_value` (a suggestion, or a decision that is not a bare pending
     one), `not_detected` (a prefill finished, and there is no suggestion or decision) or `not_checked` (no prefill has
     finished). `required` true is "Must appear": always `shown`. `required` false is "Only if the company has a
-    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Every field in the
-    catalog is `required` today. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
+    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Only `boundary:acquisitions` and `boundary:leased_space` are optional
+    today; every other field is `required`. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
     added optional rows are kept in one extra `workpaper_items` row (`item_key` `meta:state`), never listed as a field.
-  - Values by kind: text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
+  - Values by kind: date_range (`reporting_period`) is `{start, end}`, each a real calendar date written `YYYY-MM-DD` (ASCII digits), with end not before start (otherwise 422 with a sentence). A record saved before this change may still hold the text it was; the GET returns it unchanged and the screen shows "Recorded as: <text>" until the reviewer enters two dates. Claude's reporting-period suggestion carries both dates in ISO form, and is kept only if both are printed in its quote (English month names, `1/1/2025` read month first, `2025-01-01`); otherwise it is dropped and counted as `value_not_in_quote`. text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
   - `ai`: `{enabled, reason_code, reason, provider, model, month_spend_usd, cap_usd}`. `enabled` is true when
@@ -255,9 +259,14 @@ DocRow  = {document_id, file_name, period_start, period_end, facility_id, facili
 
 `CalculationLine = {key, scope, category, level2, level2_label, anchor_kind
 ("facility" | "vehicle_group" | "company"), anchor_id, label, facility_id | null,
-created_by_user, family}`. `family` is the calculation the line feeds ("stationary", "mobile",
+created_by_user, family, created_by?, created_at?, created_by_name?}`. `family` is the calculation the line feeds ("stationary", "mobile",
 "electricity", or null when none reads it); a value placed on a line of another family is reported as
-not placed. The key is `<scope>:<category>:<level2-slug>:<anchor-slug>` (for example
+not placed. A reviewer's line (`created_by_user`)
+carries `created_by` (the user id), `created_at` (ISO 8601 UTC) and `created_by_name` (full name, else
+first and last name, else the login; null when the user is unknown). The server stamps `created_by` and
+`created_at` once, when a line is first saved, and keeps them through a rename or a re-save; whatever a
+client sends for them is ignored. Lines saved before this have none, and the tree shows "Added by a
+reviewer". A deleted user is still named. The key is `<scope>:<category>:<level2-slug>:<anchor-slug>` (for example
 `s1:stationary:natural-gas:fac-kc01`) and is built only by `calculation_lines.line_key`.
 A document whose records map to several lines is listed under each, with only that line's
 values counted. Every `counts` (block, scope, category, level 2, line) is computed by the server:
@@ -324,7 +333,9 @@ for another org's engagement).
   identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter
   values: [{service_period_start, service_period_end, days, quantity, unit, document_id, file_name,
             page, candidate_id, decided_by, decided_at, decision, waiting_on: [string]}],
-  history: [{at, text}],                                             // newest first
+  history: [{action, actor_name, at, field, value, unit, file_name, page, count, documents?}],
+      // newest first, entries with no time last, at most 200; history_total is the count before the cap
+  history_total: number,
   // schedule v2 (Claire's supporting-schedule spec); the keys above are unchanged
   rows: [{record_key, record_index, accepted,        // one row per record (document + period + meter)
           decision,                                  // "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited"
@@ -335,7 +346,7 @@ for another org's engagement).
           waiting_on: [string],                      // labels of those fields ("Fuel type"); [] otherwise
           rejected_fields: [string],                 // labels of other required fields the reviewer rejected
                                                      // record_key is opaque: use it as an id, never parse it
-          date: {start, end, days, label},           // label: "Service period" | "Transaction date" | "Service date"
+          date: {start, end, days, label},           // label: "Service period" | "Statement period" | "Transaction date" | "Delivery date" | "Service date"
           activity_quantity: {value, unit},          // the extracted value; the reviewed value once accepted
           cells: {<column_key>: {value, unit}},      // only the extra columns this row has a value for
           saved_by: {name, at} | null,               // who accepted or edited the quantity; null when not reviewed
@@ -348,6 +359,14 @@ for another org's engagement).
                        not_found: [{document_id, file_name}], documents_with, documents_total,
                        matched_by?: [string]}] }     // matched_by on Facility only
 ```
+
+`history` entries: `action` is `extracted` (one system entry per batch: `count` values from `documents`
+documents), `accepted`, `corrected` (an edit of a value that was read), `added` (a value the reviewer keyed
+where the extractor found nothing: an `edited` decision on a placeholder candidate whose normalized value is
+empty), `rejected` or `asked_for_more_evidence`. Every field of the line's records is logged, not only the
+quantity (`field` is its label). `actor_name` comes from the session's reviewer; `value` and `unit` are the value
+decided (for a rejection, the value that was read). Accepts by one person in one minute on different values fold
+into one entry with `count` N and no field. The page words the sentence.
 
 `rows` lists every extracted record on the line, accepted or not. A row with `accepted: false` is present
 but flagged; only accepted values feed the calculation, as before. The extra columns read the extracted
