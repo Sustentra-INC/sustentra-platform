@@ -2270,23 +2270,26 @@ html { font-size: 82%; }
 .s1-side--min .s1-side__toggle .s1-side__label { display: none; }
 
 /* Context bar — engagement info, minimized by default */
-.s1-ctx { margin-bottom: var(--sp-4); }
+.s1-ctx { --ctx-summary-min: 16rem; margin-bottom: var(--sp-4); }
 .s1-ctx__bar {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3);
   background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-card);
   padding: var(--sp-2) var(--sp-4);
 }
 .s1-ctx--open .s1-ctx__bar { border-bottom: 0; border-radius: var(--radius-card) var(--radius-card) 0 0; }
-.s1-ctx__summary { display: flex; align-items: baseline; gap: var(--sp-3); font: inherit; background: none; border: 0; cursor: pointer; padding: var(--sp-1) 0; min-width: 0; }
-.s1-ctx__client { font-size: var(--text-md); font-weight: var(--weight-strong); color: var(--ink); }
-.s1-ctx__meta { display: inline-flex; align-items: baseline; gap: var(--sp-2); min-width: 0; font-size: var(--text-sm); color: var(--ink-2); }
-.s1-ctx__id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The summary keeps a readable width: the actions wrap onto their own row before it shrinks below
+   that, and a long name is cut with an ellipsis (the full name is in the title), never wrapped
+   onto several lines or drawn over the actions. */
+.s1-ctx__summary { display: flex; align-items: baseline; gap: var(--sp-3); font: inherit; text-align: left; background: none; border: 0; cursor: pointer; padding: var(--sp-1) 0; flex: 1 1 var(--ctx-summary-min); min-width: min(var(--ctx-summary-min), 100%); overflow: hidden; }
+.s1-ctx__client { font-size: var(--text-md); font-weight: var(--weight-strong); color: var(--ink); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.s1-ctx__meta { display: inline-flex; align-items: baseline; gap: var(--sp-2); min-width: 0; flex: 0 1 auto; font-size: var(--text-sm); color: var(--ink-2); }
+.s1-ctx__id { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s1-ctx__meta > * + *::before { content: "·"; margin-right: var(--sp-2); color: var(--ink-3); }
-.s1-ctx__hint { display: inline-flex; align-items: center; gap: 0.125rem; }
+.s1-ctx__hint { display: inline-flex; align-items: center; gap: 0.125rem; flex: none; white-space: nowrap; }
 .s1-ctx__summary:hover .s1-ctx__hint { color: var(--accent); }
 .s1-ctx__chev { width: 0.875rem; height: 0.875rem; align-self: center; transition: transform 0.16s var(--ease-out); }
 .s1-ctx__chev.is-open { transform: rotate(180deg); }
-.s1-ctx__actions { display: flex; align-items: center; gap: var(--sp-4); flex: none; }
+.s1-ctx__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--sp-2) var(--sp-4); flex: 0 1 auto; min-width: 0; margin-left: auto; }
 .s1-ctx__user { display: inline-flex; align-items: baseline; gap: var(--sp-3); padding-left: var(--sp-4); border-left: var(--border-hairline); font-size: var(--text-sm); }
 .s1-ctx__user-name { font-weight: var(--weight-strong); color: var(--ink); max-width: 16rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s1-ctx__user-role { font-size: var(--text-sm); }
