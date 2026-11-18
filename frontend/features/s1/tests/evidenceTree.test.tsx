@@ -534,6 +534,57 @@ describe("the blocks match the design", () => {
     expect(screen.getAllByText("Nothing here.").length).toBe(2);
     expect(screen.getByText("Not yet on a calculation line")).toBeInTheDocument();
   });
+
+  const NOTE = /No calculation lines yet\. Add your facilities in Setup and each fuel gets one line per facility\./;
+  const noFacilities: TreeData = {
+    blocks: {
+      summary_counts: counts(0, 0, 0),
+      unassigned_counts: counts(0, 0, 0),
+      summary: [],
+      unassigned: [],
+      supporting: { scopes: [], unassigned: [], unassigned_counts: counts(0, 0, 0) },
+    },
+    facilities: [],
+    vehicle_groups: [],
+    lines: [],
+    set_aside: [],
+  };
+
+  it("says why there are no lines when the engagement has no facilities, and opens Setup", async () => {
+    mocks.byPath = { [TREE_PATH]: noFacilities };
+    const onOpenSetup = vi.fn();
+    render(<Harness onOpenSetup={onOpenSetup} />);
+    const note = await screen.findByText(NOTE);
+    // Helper text: the small, regular-weight text style of the other empty states, not a state chip.
+    expect(note).toHaveClass("s1-et-none");
+    expect(note).not.toHaveClass("s1-chip");
+    fireEvent.click(within(note).getByRole("button", { name: "Open Setup" }));
+    expect(onOpenSetup).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows the note without a button when the page cannot open Setup", async () => {
+    mocks.byPath = { [TREE_PATH]: noFacilities };
+    render(<Harness />);
+    expect(await screen.findByText(NOTE)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open Setup" })).toBeNull();
+  });
+
+  it("hides the note once there is one facility, including a non-ASCII or CJK name", async () => {
+    for (const name of ["Kent", "Müller Käserei – Zürich", "東京工場"]) {
+      mocks.byPath = { [TREE_PATH]: { ...noFacilities, facilities: [{ facility_id: "FAC-1", name }] } };
+      const { unmount } = render(<Harness />);
+      await screen.findByText("Summary documents and workbook");
+      expect(screen.queryByText(NOTE)).toBeNull();
+      unmount();
+    }
+  });
+
+  it("does not show the note when the engagement has facilities", async () => {
+    mocks.byPath = { [TREE_PATH]: { ...TREE } };
+    render(<Harness />);
+    await screen.findByText("Summary documents and workbook");
+    expect(screen.queryByText(NOTE)).toBeNull();
+  });
 });
 
 describe("the move confirm says what changes", () => {

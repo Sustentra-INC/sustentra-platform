@@ -361,6 +361,16 @@ export function EvidenceTree(props: EvidenceTreeProps) {
 
       {!filtered || visibleScopes.length || supporting.unassigned.length ? (
         <Fold id="b:supporting" depth={0} open={isOpen("b:supporting")} onToggle={toggle} title="Supporting evidence">
+          {tree.facilities.length === 0 ? (
+            <p className="s1-et-none s1-et-nofac">
+              No calculation lines yet. Add your facilities in Setup and each fuel gets one line per facility.{" "}
+              {props.onOpenSetup ? (
+                <button className="s1-linklike" type="button" onClick={props.onOpenSetup}>
+                  Open Setup
+                </button>
+              ) : null}
+            </p>
+          ) : null}
           {visibleScopes.map((scope) => {
             const id = `scope:${scope.scope}`;
             return (
