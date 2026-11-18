@@ -39,6 +39,8 @@ export interface BackendExtractionResult {
   document_id: string;
   canonical_type_id: string | null;
   candidate_count: number;
+  /** When this document's read was recorded (not when it was uploaded). */
+  created_at?: string | null;
   items: BackendExtractionCandidateLike[];
 }
 
@@ -103,7 +105,10 @@ export async function listWorkspaceEvidence(engagementId: string): Promise<{
         evidence: mapBackendDocumentToEvidenceItem(document, latestRun),
         fields:
           extractionResult?.items.map((candidate) => {
-            const field = mapBackendCandidateToExtractedField(candidate, canonicalTypeId);
+            const field = {
+              ...mapBackendCandidateToExtractedField(candidate, canonicalTypeId),
+              ...(extractionResult.created_at ? { readAt: extractionResult.created_at } : {}),
+            };
             const review = candidate.candidate_id
               ? latestReviewByCandidate.get(candidate.candidate_id)
               : undefined;
