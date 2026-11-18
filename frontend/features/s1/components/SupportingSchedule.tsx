@@ -12,8 +12,8 @@ import { ContainerStateSurface } from "./ContainerStateSurface";
 /**
  * One calculation line's supporting schedule: what covers each month of the year, which
  * identifiers the documents agree on, the extracted values (read only) and the line's history. Everything is
- * computed by the backend; this only lays it out. Summary first (coverage and identifiers), the
- * values table below it, the history folded.
+ * computed by the backend; this only lays it out. Sections stack in a fixed order: header, coverage,
+ * source identifiers, accepted values, line history (folded).
  */
 
 export interface SupportingScheduleProps {
@@ -154,104 +154,108 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
           <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
             ‹ Back to {backLabel}
           </button>
+          {/* Always present. A line with no calculation yet shows it disabled, with the reason beside it. */}
+          <button
+            className="s1-button s1-button--pri"
+            type="button"
+            disabled={schedule.calculated === false}
+            aria-describedby={schedule.calculated === false ? "s1-sch-notcalc" : undefined}
+            onClick={() => onOpenCalculationLine(line.key)}
+          >
+            Open calculation line ›
+          </button>
           {schedule.calculated === false ? (
-            <p className="s1-muted s1-sch-notcalc">
+            <p id="s1-sch-notcalc" className="s1-muted s1-sch-notcalc">
               {rows.some((r) => r.waiting_on?.length || r.rejected_fields?.length)
                 ? "Not calculated yet: values on this line are waiting for review."
                 : "No calculation for this line yet."}
             </p>
-          ) : (
-            <button className="s1-button s1-button--pri" type="button" onClick={() => onOpenCalculationLine(line.key)}>
-              Open calculation line ›
-            </button>
-          )}
+          ) : null}
         </div>
       </header>
 
-      <div className="s1-sch-top">
-        <section className="s1-panel s1-sch-cov" aria-label="Coverage by month">
-          <h2>Coverage by month</h2>
-          {schedule.coverage.length ? (
-            <ul className="s1-sch-months">
-              {schedule.coverage.map((m) => {
-                const doc = m.document_ids[0];
-                const body = (
-                  <>
-                    <span className="s1-sch-month__name">{monthName(m.month)}</span>
-                    <span className="s1-sch-month__status">
-                      {STATUS_TEXT[m.status]}
-                      {m.flags?.includes("unconverted") ? " · units differ" : ""}
+      <section className="s1-panel s1-sch-cov" aria-label="Coverage by month">
+        <h2>Coverage by month</h2>
+        {schedule.coverage.length ? (
+          <ul className="s1-sch-months">
+            {schedule.coverage.map((m) => {
+              const doc = m.document_ids[0];
+              const body = (
+                <>
+                  <span className="s1-sch-month__name">{monthName(m.month)}</span>
+                  <span className="s1-sch-month__status">
+                    {STATUS_TEXT[m.status]}
+                    {m.flags?.includes("unconverted") ? " · units differ" : ""}
+                  </span>
+                  {m.waiting_on?.length ? <span className="s1-sch-month__waiting">Waiting on: {m.waiting_on.join(", ")}</span> : null}
+                  {m.quantity !== null ? (
+                    <span className="s1-sch-month__qty">
+                      {formatQuantity(m.quantity)} {m.unit ?? ""}
                     </span>
-                    {m.waiting_on?.length ? <span className="s1-sch-month__waiting">Waiting on: {m.waiting_on.join(", ")}</span> : null}
-                    {m.quantity !== null ? (
-                      <span className="s1-sch-month__qty">
-                        {formatQuantity(m.quantity)} {m.unit ?? ""}
+                  ) : null}
+                </>
+              );
+              const cls = `s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`;
+              return (
+                <li key={m.month}>
+                  {m.document_ids.length > 1 ? (
+                    // Several documents cover the month: each one opens from a short list.
+                    <div className={cls}>
+                      {body}
+                      <span className="s1-sch-month__docs">
+                        {m.document_ids.map((id, i) => (
+                          <button
+                            key={id}
+                            className="s1-linklike"
+                            type="button"
+                            aria-label={`${monthName(m.month)}: open ${fileNames.get(id) ?? `document ${i + 1}`}`}
+                            onClick={() => onOpenDocument(id)}
+                          >
+                            {fileNames.get(id) ?? `Document ${i + 1}`}
+                          </button>
+                        ))}
                       </span>
-                    ) : null}
-                  </>
-                );
-                const cls = `s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`;
-                return (
-                  <li key={m.month}>
-                    {m.document_ids.length > 1 ? (
-                      // Several documents cover the month: each one opens from a short list.
-                      <div className={cls}>
-                        {body}
-                        <span className="s1-sch-month__docs">
-                          {m.document_ids.map((id, i) => (
-                            <button
-                              key={id}
-                              className="s1-linklike"
-                              type="button"
-                              aria-label={`${monthName(m.month)}: open ${fileNames.get(id) ?? `document ${i + 1}`}`}
-                              onClick={() => onOpenDocument(id)}
-                            >
-                              {fileNames.get(id) ?? `Document ${i + 1}`}
-                            </button>
-                          ))}
-                        </span>
-                      </div>
-                    ) : doc ? (
-                      <button
-                        className={`s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`}
-                        type="button"
-                        aria-label={`${monthName(m.month)}: ${STATUS_TEXT[m.status]}. Open ${m.document_ids.length === 1 ? "the document" : "the first document"}`}
-                        onClick={() => onOpenDocument(doc)}
-                      >
-                        {body}
-                      </button>
-                    ) : (
-                      <span className={`s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`}>{body}</span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="s1-muted">No months to show yet.</p>
-          )}
-          <ul className="s1-sch-legend" aria-label="Legend">
-            {(Object.keys(STATUS_TEXT) as CoverageStatus[]).map((s) => (
-              <li key={s}>
-                <span className={`s1-sch-swatch s1-sch-swatch--${STATUS_ROLE[s]}`} aria-hidden /> {STATUS_TEXT[s]}
-              </li>
+                    </div>
+                  ) : doc ? (
+                    <button
+                      className={`s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`}
+                      type="button"
+                      aria-label={`${monthName(m.month)}: ${STATUS_TEXT[m.status]}. Open ${m.document_ids.length === 1 ? "the document" : "the first document"}`}
+                      onClick={() => onOpenDocument(doc)}
+                    >
+                      {body}
+                    </button>
+                  ) : (
+                    <span className={`s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`}>{body}</span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <p className="s1-muted">No months to show yet.</p>
+        )}
+        <ul className="s1-sch-legend" aria-label="Legend">
+          {(Object.keys(STATUS_TEXT) as CoverageStatus[]).map((s) => (
+            <li key={s}>
+              <span className={`s1-sch-swatch s1-sch-swatch--${STATUS_ROLE[s]}`} aria-hidden /> {STATUS_TEXT[s]}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="s1-panel s1-sch-ids" aria-label="Source identifiers">
+        <h2>Source identifiers</h2>
+        {groups.length ? (
+          <ul>
+            {groups.map((g) => (
+              <IdentifierItem key={g.label} group={g} onOpenDocument={onOpenDocument} />
             ))}
           </ul>
-        </section>
-
-        <section className="s1-panel s1-sch-ids" aria-label="Source identifiers">
-          <h2>Source identifiers</h2>
-          {groups.length ? (
-            <ul>
-              {groups.map((g) => (
-                <IdentifierItem key={g.label} group={g} onOpenDocument={onOpenDocument} />
-              ))}
-            </ul>
-          ) : (
-            <p className="s1-muted">No identifiers were read from these documents.</p>
-          )}
-        </section>
-      </div>
+        ) : (
+          <p className="s1-muted">No identifiers were read from these documents.</p>
+        )}
+      </section>
 
       <section className="s1-panel" aria-label="Accepted values">
         <h2>Accepted values</h2>
@@ -397,14 +401,20 @@ function rowFlag(r: ScheduleRow): string | null {
 
 function savedByText(r: ScheduleRow): string {
   if (!r.saved_by) return "";
-  return `Saved by ${r.saved_by.name}${r.saved_by.at ? ` · ${formatDate(r.saved_by.at)}` : ""}`;
+  return `Saved by ${r.saved_by.name}${r.saved_by.at ? ` · ${formatLocal(r.saved_by.at, false)}` : ""}`;
 }
 
 function formatDateTime(iso: string): string {
+  return formatLocal(iso, true);
+}
+
+/** One formatter for every timestamp on the page (Saved by, line history): the reader's local day, so the two never disagree. */
+function formatLocal(iso: string, withTime: boolean): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime())
-    ? iso
-    : d.toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  if (Number.isNaN(d.getTime())) return iso;
+  const two = (n: number) => String(n).padStart(2, "0");
+  const day = `${two(d.getMonth() + 1)}/${two(d.getDate())}/${two(d.getFullYear() % 100)}`;
+  return withTime ? `${day}, ${two(d.getHours())}:${two(d.getMinutes())}` : day;
 }
 
 /** A month's counted quantity, a computed share of its bills: whole units once it is in the hundreds. */
