@@ -63,6 +63,7 @@ const W = WORKBOOK_DOC;
 
 /** What Claude proposes from the client's documents. Nothing here is pre-accepted. */
 export const CLAUDE_ITEMS: ClaudeItem[] = [
+  { fieldId: "boundary:leased_space", value: "Leased office space at the Tualatin Plant is reported under operational control.", quote: "Leased office space at the Tualatin Plant is reported under operational control.", source: B, page: "page 2" },
   { fieldId: "consolidation_approach", value: "Operational Control", quote: "Cascade Provisions Co. consolidates its 2025 GHG inventory using the operational control approach.", source: B, page: "page 1" },
   { fieldId: "category:location:electricity", value: "Yes", quote: "Purchased electricity is reported on a location-based basis for all three facilities.", source: W, page: "Scope 2 sheet, cell B4" },
   { fieldId: "category:location:heating", value: "Yes", quote: "Purchased heat at Tualatin Plant is reported on a location-based basis.", source: W, page: "Scope 2 sheet, cell B5" },

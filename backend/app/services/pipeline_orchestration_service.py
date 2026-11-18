@@ -554,6 +554,7 @@ class PipelineOrchestrationService:
                     )
                     extraction_result = assist.result
                     warnings.extend(assist.warnings)
+                    warnings.extend(str(note) for note in extraction_result.get("notes") or [])
             else:
                 stage_statuses.candidate_generation = "skipped"
                 overall_status = "partial"

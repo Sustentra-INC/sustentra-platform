@@ -141,7 +141,7 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     full trail), `action` one of accept, edit, reject, revert, add_row, remove_row.
   - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp|date_range, allowed?, parts?, user_added}`, in page order: the fixed
     fields (reporting_period, consolidation_approach, `category:{scope1|location|market|biogenic}:...`,
-    `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`), then the rows the
+    `boundary:{acquisitions|leased_space}` (text, `required: false`: hidden until a value or "Add an item"), `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`), then the rows the
     reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (with `allowed_labels.set`),
     `{operational_control}` for an entity. `parts` (entity, factor, gwp only) lists the value's editors,
     `[{key, label, kind: text|list|percent|enum, allowed?}]`, so a blank new row can be drawn.
@@ -150,8 +150,8 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     `required` (boolean). `display_state` is `has_value` (a suggestion, or a decision that is not a bare pending
     one), `not_detected` (a prefill finished, and there is no suggestion or decision) or `not_checked` (no prefill has
     finished). `required` true is "Must appear": always `shown`. `required` false is "Only if the company has a
-    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Every field in the
-    catalog is `required` today. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
+    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Only `boundary:acquisitions` and `boundary:leased_space` are optional
+    today; every other field is `required`. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
     added optional rows are kept in one extra `workpaper_items` row (`item_key` `meta:state`), never listed as a field.
   - Values by kind: date_range (`reporting_period`) is `{start, end}`, each a real calendar date written `YYYY-MM-DD` (ASCII digits), with end not before start (otherwise 422 with a sentence). A record saved before this change may still hold the text it was; the GET returns it unchanged and the screen shows "Recorded as: <text>" until the reviewer enters two dates. Claude's reporting-period suggestion carries both dates in ISO form, and is kept only if both are printed in its quote (English month names, `1/1/2025` read month first, `2025-01-01`); otherwise it is dropped and counted as `value_not_in_quote`. text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
@@ -321,7 +321,9 @@ for another org's engagement).
   identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter
   values: [{service_period_start, service_period_end, days, quantity, unit, document_id, file_name,
             page, candidate_id, decided_by, decided_at, decision, waiting_on: [string]}],
-  history: [{at, text}],                                             // newest first
+  history: [{action, actor_name, at, field, value, unit, file_name, page, count, documents?}],
+      // newest first, entries with no time last, at most 200; history_total is the count before the cap
+  history_total: number,
   // schedule v2 (Claire's supporting-schedule spec); the keys above are unchanged
   rows: [{record_key, record_index, accepted,        // one row per record (document + period + meter)
           decision,                                  // "not_reviewed" | "rejected" | "needs_more_evidence" | "accepted" | "edited"
@@ -345,6 +347,14 @@ for another org's engagement).
                        not_found: [{document_id, file_name}], documents_with, documents_total,
                        matched_by?: [string]}] }     // matched_by on Facility only
 ```
+
+`history` entries: `action` is `extracted` (one system entry per batch: `count` values from `documents`
+documents), `accepted`, `corrected` (an edit of a value that was read), `added` (a value the reviewer keyed
+where the extractor found nothing: an `edited` decision on a placeholder candidate whose normalized value is
+empty), `rejected` or `asked_for_more_evidence`. Every field of the line's records is logged, not only the
+quantity (`field` is its label). `actor_name` comes from the session's reviewer; `value` and `unit` are the value
+decided (for a rejection, the value that was read). Accepts by one person in one minute on different values fold
+into one entry with `count` N and no field. The page words the sentence.
 
 `rows` lists every extracted record on the line, accepted or not. A row with `accepted: false` is present
 but flagged; only accepted values feed the calculation, as before. The extra columns read the extracted
