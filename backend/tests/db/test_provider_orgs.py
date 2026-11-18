@@ -196,6 +196,63 @@ def test_get_one_and_404() -> None:
     assert call("GET", f"{BASE}/not-a-uuid").status_code == 422
 
 
+# --- the first admin's invite status ----------------------------------------------------
+
+def test_detail_shows_the_first_admin_and_the_seat_counts_by_status() -> None:
+    body = call("GET", f"{BASE}/{ORG_A}").json()
+    assert body["user_counts"] == {"active": 2, "invited": 0, "suspended": 0}  # the deleted user is not counted
+    admin_user = body["initial_admin"]
+    assert (admin_user["email"], admin_user["status"], admin_user["invite_expired"]) == ("admin@acme.test", "active", False)
+    assert admin_user["user_id"] == str(A_ADMIN)
+    # An org with no admin yet says so.
+    beta = call("GET", f"{BASE}/{ORG_B}").json()
+    assert beta["initial_admin"] is None and beta["user_counts"] == {"active": 1, "invited": 0, "suspended": 0}
+    # The list keeps its own shape.
+    assert "initial_admin" not in call("GET", BASE).json()["items"][0]
+
+
+def test_an_invited_first_admin_is_waiting_then_expired_then_resent() -> None:
+    created = call("POST", BASE, body={"name": "Käserei Zürich", "slug": "kaserei",
+                                       "initial_admin": {"email": "zoe@kaserei.test", "first_name": "Zoë",
+                                                         "last_name": "Müller 山田"}}).json()
+    org_id = created["id"]
+    waiting = call("GET", f"{BASE}/{org_id}").json()
+    assert waiting["user_counts"] == {"active": 0, "invited": 1, "suspended": 0}
+    first = waiting["initial_admin"]
+    assert (first["status"], first["first_name"], first["last_name"], first["invite_expired"]) == (
+        "invited", "Zoë", "Müller 山田", False)
+    assert first["invited_at"] and first["last_invite_sent_at"]
+
+    # The 24 hours pass: the provider can see the link is dead.
+    admin("UPDATE auth_tokens SET expires_at = now() - interval '1 minute' WHERE user_id = $1",
+          uuid.UUID(first["user_id"]))
+    assert call("GET", f"{BASE}/{org_id}").json()["initial_admin"]["invite_expired"] is True
+
+    # The existing invite resend applies to a provider admin; the new link is live again.
+    SENT.clear()
+    resent = call("POST", f"/api/v1/orgs/{org_id}/invites/{first['user_id']}/resend")
+    assert resent.status_code == 200, resent.text
+    assert [to for to, _ in SENT] == ["zoe@kaserei.test"]
+    after = call("GET", f"{BASE}/{org_id}").json()["initial_admin"]
+    assert (after["status"], after["invite_expired"]) == ("invited", False)
+    assert after["invited_at"] == first["invited_at"]  # the user was invited once; only the link is new
+
+
+def test_a_suspended_first_admin_and_the_counts() -> None:
+    admin("UPDATE users SET status = 'suspended' WHERE id = $1", A_ADMIN)
+    body = call("GET", f"{BASE}/{ORG_A}").json()
+    assert body["initial_admin"]["status"] == "suspended" and body["initial_admin"]["invite_expired"] is False
+    assert body["user_counts"] == {"active": 1, "invited": 0, "suspended": 1}
+
+
+def test_the_first_admin_is_the_earliest_admin_that_is_not_deleted() -> None:
+    admin("INSERT INTO users (org_id, email, role, status, created_at) VALUES ($1, 'first@acme.test', 'org_admin', "
+          "'deleted', now() - interval '10 days')", ORG_A)
+    admin("INSERT INTO users (org_id, email, role, status, created_at) VALUES ($1, 'later@acme.test', 'org_admin', "
+          "'invited', now())", ORG_A)
+    assert call("GET", f"{BASE}/{ORG_A}").json()["initial_admin"]["email"] == "admin@acme.test"
+
+
 # --- create ------------------------------------------------------------------------
 
 def test_create_without_admin() -> None:
