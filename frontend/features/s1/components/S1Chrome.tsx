@@ -35,6 +35,8 @@ const ROLE_LABEL: Record<WorkpaperUser["role"], string> = {
 
 interface S1ChromeProps {
   engagement: EngagementConfig;
+  /** The engagement has not loaded yet: the context bar shows a placeholder, not "Company not set". */
+  engagementLoading?: boolean;
   /** Backend mode: who is signed in, with sign-out (FE-006). */
   user?: WorkpaperUser;
   onSignOut?: () => void;
@@ -63,6 +65,7 @@ const DESTINATIONS: Array<{ key: NavKey; label: string }> = [
 
 export function S1Chrome({
   engagement,
+  engagementLoading = false,
   user,
   onSignOut,
   children,
@@ -88,6 +91,7 @@ export function S1Chrome({
       <section className="s1-main">
         <ContextBar
           engagement={engagement}
+          loading={engagementLoading}
           expanded={ctxExpanded}
           onToggle={() => setCtxExpanded((v) => !v)}
           onOpenGlossary={onOpenGlossary}
@@ -158,6 +162,7 @@ function Sidebar({
 
 function ContextBar({
   engagement,
+  loading,
   expanded,
   onToggle,
   onOpenGlossary,
@@ -167,6 +172,7 @@ function ContextBar({
   onSignOut,
 }: {
   engagement: EngagementConfig;
+  loading: boolean;
   expanded: boolean;
   onToggle: () => void;
   onOpenGlossary?: () => void;
@@ -175,7 +181,8 @@ function ContextBar({
   user?: WorkpaperUser;
   onSignOut?: () => void;
 }) {
-  const contextTitle = contextBarTitle(engagement);
+  const contextTitle = loading ? { title: "Loading…", sub: "" } : contextBarTitle(engagement);
+  const detail = (value: string) => (loading ? "—" : value);
   return (
     <div className={`s1-ctx${expanded ? " s1-ctx--open" : ""}`}>
       <div className="s1-ctx__bar">
@@ -243,14 +250,14 @@ function ContextBar({
       </div>
       {expanded ? (
         <div className="s1-ctx__details">
-          <CtxItem label="Engagement ID" value={engagement.engagementId} />
+          <CtxItem label="Engagement ID" value={detail(engagement.engagementId)} />
           <CtxItem
             label="Reporting period"
-            value={formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end)}
+            value={detail(formatReportingPeriod(engagement.reportingPeriod.start, engagement.reportingPeriod.end))}
           />
-          <CtxItem label="Regulation" value={engagement.regulation} />
-          <CtxItem label="Assurance level" value={engagement.assuranceLevel} />
-          <CtxItem label="Boundary approach" value={engagement.boundaryApproach} />
+          <CtxItem label="Regulation" value={detail(engagement.regulation)} />
+          <CtxItem label="Assurance level" value={detail(engagement.assuranceLevel)} />
+          <CtxItem label="Boundary approach" value={detail(engagement.boundaryApproach)} />
         </div>
       ) : null}
     </div>
