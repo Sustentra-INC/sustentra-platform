@@ -443,6 +443,11 @@ class PipelineOrchestrationService:
                         reason = "names steam, hot water or chilled water and a thermal quantity."
                     elif confirmed == MOBFUEL_TYPE_ID:
                         reason = "names a combusted fuel and a quantity in a fuel unit with vehicle/fleet details."
+                    elif confirmed == FUELQTY_TYPE_ID and StationaryCombustionExtractor().reads_as_fuelless_run_log(
+                        parser_output
+                    ):
+                        reason = ("is a run log (run hours and fuel added) with a quantity in a fuel unit; "
+                                  "the fuel is left for the reviewer.")
                     else:
                         reason = "names a combusted fuel and a quantity in a fuel unit."
                     warnings.append(
@@ -719,7 +724,14 @@ class PipelineOrchestrationService:
         else:
             fuel_type = str(next(iter(fuel_leaders)))
         if PipelineOrchestrationService._fuel_cues_conflict(fuel_type, mobile, stationary):
-            return None
+            # A run log (run hours plus fuel added) is a generator's, whatever the classifier guessed: read it
+            # as stationary fuel use, as a confident classification already does. Any other mixed-cue document
+            # (for example a bulk diesel statement for a standby generator) stays untyped for the reviewer.
+            if fuel_type != MOBFUEL_TYPE_ID or not StationaryCombustionExtractor().reads_as_fuelless_run_log(
+                parser_output
+            ):
+                return None
+            fuel_type = FUELQTY_TYPE_ID
         extractor = StationaryCombustionExtractor() if fuel_type == FUELQTY_TYPE_ID else MobileCombustionExtractor()
         return fuel_type if extractor.confirms(parser_output) else None
 

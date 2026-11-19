@@ -90,6 +90,7 @@ class ElectricityExtractor(StationaryCombustionExtractor):
     """Builds CT-S2-ELEC candidates: one record per metered usage line (or one per bill)."""
 
     CANONICAL_TYPE_ID = CANONICAL_TYPE_ID
+    RUN_LOG_WITHOUT_FUEL = False  # a run log with no fuel named is stationary fuel use only
     FUEL_LABEL_GROUPS = ENERGY_TYPE_LABELS
     QUANTITY_LABEL_GROUPS = QUANTITY_LABELS
     QTY_EXCLUDE = StationaryCombustionExtractor.QTY_EXCLUDE + (

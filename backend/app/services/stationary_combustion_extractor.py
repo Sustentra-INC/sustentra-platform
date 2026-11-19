@@ -192,6 +192,14 @@ _DATE_HEADERS = ("date", "delivery date", "read date", "invoice date", "date pos
 # "Year to date", which would double count the rows above it if read as one more record.
 _TOTAL_ROW_WORDS = ("total", "totals", "subtotal", "grand total", "annual", "year to date", "ytd", "year total")
 
+# A generator run log: one line per run, with the hours it ran and the fuel added afterwards. It names no
+# fuel in its columns, so the fuel is left for the reviewer rather than guessed.
+_RUN_HOURS_RE = re.compile(r"\b(?:run(?:ning)?\s*(?:hours|hrs|time)|hours\s+run|runtime)\b")
+_FUEL_ADDED_RE = re.compile(
+    r"\b(?:gal(?:lon)?s?|lit(?:re|er)s?|fuel)\s*(?:added|refilled|filled|put in)\b"
+    r"|\b(?:added|refill(?:ed)?)\s*\(?(?:gal(?:lon)?s?|lit(?:re|er)s?)\b"
+)
+
 _MONTHS = {
     m: i
     for i, names in enumerate(
@@ -489,6 +497,9 @@ class StationaryCombustionExtractor:
         "account": ("account", "account number", "account no", "account #", "acct", "acct no", "customer account"),
     }
     ALL_LABELS: tuple[str, ...] = ()  # filled after the module-level label groups
+    # A run log that names no fuel still reads as stationary fuel use (fuel left for the reviewer). Only this
+    # type takes it: the other fuel and utility types keep their own content checks.
+    RUN_LOG_WITHOUT_FUEL: bool = True
 
     def handles(self, targets: Sequence[dict]) -> bool:
         return bool(targets) and all(t.get("canonical_type_id") == self.CANONICAL_TYPE_ID for t in targets)
@@ -506,7 +517,7 @@ class StationaryCombustionExtractor:
         rows = self._rows(parser_output)
         token = _DAY_FIRST.set(slash_dates_are_day_first([c.text for r in rows for c in r.cells]))
         try:
-            if self._document_fuel(rows) is None:
+            if self._document_fuel(rows) is None and not self._is_fuelless_run_log(rows):
                 return False
             records = self._quantity_records(rows)
             unit_hint = self._document_unit(rows)
@@ -518,6 +529,27 @@ class StationaryCombustionExtractor:
             return False
         finally:
             _DAY_FIRST.reset(token)
+
+    def _is_run_log(self, rows: Sequence[Row]) -> bool:
+        """A header row with a run-hours column and a fuel-added column: a generator (or pump, or boiler)
+        run log."""
+
+        for row in rows:
+            if len(row.cells) < 3:
+                continue
+            texts = [" ".join(_norm(c.text).replace("_", " ").split()) for c in row.cells]
+            if any(_RUN_HOURS_RE.search(t) for t in texts) and any(_FUEL_ADDED_RE.search(t) for t in texts):
+                return True
+        return False
+
+    def _is_fuelless_run_log(self, rows: Sequence[Row]) -> bool:
+        return self.RUN_LOG_WITHOUT_FUEL and self._is_run_log(rows)
+
+    def reads_as_fuelless_run_log(self, parser_output: dict) -> bool:
+        """True when the document is a run log that names no fuel (so the reviewer must pick it)."""
+
+        rows = self._rows(parser_output)
+        return self._document_fuel(rows) is None and self._is_fuelless_run_log(rows)
 
     # ---------------------------------------------------------------------------------
     def extract(self, parser_output: dict, targets: Sequence[dict], evidence_id: str) -> ExtractionOutcome:
@@ -545,16 +577,21 @@ class StationaryCombustionExtractor:
             )
 
         doc_fuel = self._document_fuel(rows)
+        notes: list[str] = []
         if doc_fuel is None:
-            return ExtractionOutcome(
-                candidates=[],
-                halt_reason={
-                    "code": HALT_UNSUPPORTED,
-                    "message": "No combusted fuel (natural gas, fuel oil, propane, diesel, coal or biomass) is "
-                    "named anywhere in the document, so it is not stationary-combustion evidence "
-                    "(for example a water or electricity bill).",
-                },
-            )
+            if not self._is_fuelless_run_log(rows):
+                return ExtractionOutcome(
+                    candidates=[],
+                    halt_reason={
+                        "code": HALT_UNSUPPORTED,
+                        "message": "No combusted fuel (natural gas, fuel oil, propane, diesel, coal or biomass) is "
+                        "named anywhere in the document, so it is not stationary-combustion evidence "
+                        "(for example a water or electricity bill).",
+                    },
+                )
+            # Run hours and fuel added, but no fuel named: leave the fuel empty for the reviewer.
+            doc_fuel = Located("", [], None, 0.0)
+            notes.append("This run log names no fuel. Choose the fuel for each line when you review it.")
 
         document_values: dict[str, Located | None] = {
             "facility_name": None,
@@ -613,7 +650,7 @@ class StationaryCombustionExtractor:
                     # Downstream (approved evidence, methodology values) groups by source_reference.record_key.
                     candidate["source_reference"]["record_key"] = record_key
             candidates.extend(record_candidates)
-        return ExtractionOutcome(candidates=candidates, records=len(record_list) if records else 0)
+        return ExtractionOutcome(candidates=candidates, records=len(record_list) if records else 0, notes=notes)
 
     # =================================================================================
     # Layout
