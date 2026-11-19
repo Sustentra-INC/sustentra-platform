@@ -29,7 +29,6 @@ from backend.app.domain import fuel_units
 from backend.app.services.stationary_combustion_extractor import (
     _ALL_LABELS as _BASE_LABELS,
 )
-from backend.app.services.statement_segments import SPLIT_NOTE, split_statements
 from backend.app.services.stationary_combustion_extractor import (
     CONF_LETTERHEAD,
     DOCUMENT_FIELDS,
@@ -317,34 +316,23 @@ class ElectricityExtractor(StationaryCombustionExtractor):
                           document_id: str, unit_hint: Located | None, doc_energy: Located,
                           notes: list[str]) -> ExtractionOutcome | None:
         """One record per statement for a file holding several (EXT-015), numbered in file order and
-        read from each statement's own pages. None when the file is read whole: it is a single statement,
-        a clean cut is not possible, or fewer than two of its parts hold a reading. A file that looks like
-        several statements but is read whole says so in ``notes``."""
+        read from each statement's own pages; None when the file is read whole (see ``_statement_parts``)."""
 
-        split = split_statements(rows)
-        if split.parts is None:
-            if split.note:
-                notes.append(split.note)
+        parts, split_note = self._statement_parts(rows, unit_hint)
+        if parts is None:
+            if split_note:
+                notes.append(split_note)
             return None
-        bundle_notes = [split.note] if split.note else []
-        found: list[tuple[list[Row], Located | None, list[UsageRecord]]] = []
-        part_notes: list[str] = []
-        for part in split.parts:
-            part_hint = self._document_unit(part) or unit_hint
-            records, more = self._part_records(part, part_hint)
-            if records:
-                found.append((part, part_hint, records))
-                part_notes.extend(n for n in more if n not in part_notes)
-        if len(found) < 2:
-            notes.append(SPLIT_NOTE)
-            return None
+        bundle_notes = [split_note] if split_note else []
         candidates: list[dict] = []
+        part_notes: list[str] = []
         first_index = 1
-        for part, part_hint, records in found:
+        for part, part_hint, records, more in parts:
             energy = self._part_energy(part) or doc_energy
             outcome = self._records_to_candidates(part, parser_output, targets, evidence_id, document_id, records,
                                                   energy, part_hint, first_index=first_index, multi=True)
             candidates.extend(outcome.candidates)
+            part_notes.extend(n for n in more if n not in part_notes)
             first_index += len(records)
         return ExtractionOutcome(candidates=candidates, records=first_index - 1,
                                  notes=[*bundle_notes, *(n for n in part_notes if n not in bundle_notes)])

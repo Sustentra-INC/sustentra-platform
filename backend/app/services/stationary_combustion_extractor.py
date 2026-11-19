@@ -556,19 +556,8 @@ class StationaryCombustionExtractor:
                 },
             )
 
-        document_values: dict[str, Located | None] = {
-            "facility_name": None,
-            "service_address": None,
-            "supplier_name": self._supplier(rows),
-            "account_number": self._account(rows),
-        }
-        facility, address_from_facility = self._facility(rows)
-        document_values["facility_name"] = facility
-        document_values["service_address"] = self._address(rows) or address_from_facility
-
-        records = self._quantity_records(rows)
-        period = self._document_period(rows)
         unit_hint = self._document_unit(rows)
+        records, notes = self._part_records(rows, unit_hint)
 
         units = {self._find_unit(r.unit_raw or (unit_hint.raw if unit_hint else "")) for r in records}
         if records and units <= ELECTRIC_UNITS and any("electric" in _norm(r.text) for r in rows):
@@ -581,10 +570,81 @@ class StationaryCombustionExtractor:
                 },
             )
 
+        parts, split_note = self._statement_parts(rows, unit_hint)
+        if parts is None and split_note:
+            notes.append(split_note)
+        if parts is not None:  # a file of several statements: one record each, numbered in file order
+            candidates: list[dict] = []
+            part_notes = [split_note] if split_note else []
+            first_index = 1
+            for part, part_hint, part_records, more in parts:
+                candidates.extend(self._statement_candidates(
+                    part, parser_output, targets, evidence_id, document_id, self._part_energy(part) or doc_fuel,
+                    list(part_records), part_hint, first_index=first_index, multi=True))
+                first_index += len(part_records)
+                part_notes.extend(n for n in more if n not in part_notes)
+            return ExtractionOutcome(candidates=candidates, records=first_index - 1, notes=part_notes)
+
+        candidates = self._statement_candidates(rows, parser_output, targets, evidence_id, document_id, doc_fuel,
+                                                list(records) if records else [None], unit_hint)
+        return ExtractionOutcome(candidates=candidates, records=len(records), notes=notes)
+
+    # --- a file of several statements (EXT-015) -------------------------------------------------------------
+    def _part_records(self, rows: Sequence[Row], unit_hint: Located | None) -> tuple[list[UsageRecord], list[str]]:
+        """The usage lines of one bill or statement, with a note for anything the reviewer should check.
+        The subclasses that read other things (kWh, thermal energy) override this and ``_part_energy``."""
+
+        return self._quantity_records(rows), []
+
+    def _part_energy(self, rows: Sequence[Row]) -> Located | None:
+        """What one statement says it is for (its fuel, or its energy type)."""
+
+        return self._document_fuel(rows)
+
+    def _statement_parts(self, rows: list[Row], unit_hint: Located | None,
+                         ) -> tuple[list[tuple[list[Row], Located | None, list[UsageRecord], list[str]]] | None,
+                                    str | None]:
+        """The statements of a file holding several: each part's rows, unit hint, usage records and notes,
+        and a note for the reviewer when the file may hold more statements than were told apart (None for
+        the parts when the file is read whole: it is a single statement, a clean cut is not possible, or
+        fewer than two of its parts hold a reading)."""
+
+        from backend.app.services.statement_segments import SPLIT_NOTE, split_statements  # it imports this module
+
+        split = split_statements(rows)
+        if split.parts is None:
+            return None, split.note
+        found: list[tuple[list[Row], Located | None, list[UsageRecord], list[str]]] = []
+        for part in split.parts:
+            part_hint = self._document_unit(part) or unit_hint
+            records, more = self._part_records(part, part_hint)
+            if records:
+                found.append((part, part_hint, records, more))
+        if len(found) < 2:
+            return None, SPLIT_NOTE
+        return found, split.note
+
+    def _statement_candidates(self, rows: list[Row], parser_output: dict, targets: Sequence[dict], evidence_id: str,
+                              document_id: str, doc_fuel: Located, record_list: Sequence[UsageRecord | None],
+                              unit_hint: Located | None, *, first_index: int = 1,
+                              multi: bool | None = None) -> list[dict]:
+        """One bill's (or one statement's) candidates: its own facility, address, supplier, account and
+        period, and one set of fields per usage record, numbered from ``first_index``."""
+
+        document_values: dict[str, Located | None] = {
+            "facility_name": None,
+            "service_address": None,
+            "supplier_name": self._supplier(rows),
+            "account_number": self._account(rows),
+        }
+        facility, address_from_facility = self._facility(rows)
+        document_values["facility_name"] = facility
+        document_values["service_address"] = self._address(rows) or address_from_facility
+        period = self._document_period(rows)
+
         candidates: list[dict] = []
-        record_list: list[UsageRecord | None] = list(records) if records else [None]
-        multi = len(record_list) > 1
-        for index, record in enumerate(record_list, start=1):
+        multi = len(record_list) > 1 if multi is None else multi
+        for index, record in enumerate(record_list, start=first_index):
             record_values = self._record_values(record, period, doc_fuel, unit_hint)
             record_index = index if multi else None
             record_key = self._record_key(index, record, record_values) if multi else None
@@ -613,7 +673,7 @@ class StationaryCombustionExtractor:
                     # Downstream (approved evidence, methodology values) groups by source_reference.record_key.
                     candidate["source_reference"]["record_key"] = record_key
             candidates.extend(record_candidates)
-        return ExtractionOutcome(candidates=candidates, records=len(record_list) if records else 0)
+        return candidates
 
     # =================================================================================
     # Layout
