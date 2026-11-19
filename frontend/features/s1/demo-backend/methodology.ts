@@ -228,6 +228,9 @@ function isoDate(text: Json): string | null {
   return made.getUTCFullYear() === y && made.getUTCMonth() === m - 1 && made.getUTCDate() === day ? text : null;
 }
 
+/** One folding rule, like the server's: case-folded, single spaces. */
+const fold = (text: string) => text.toLowerCase().replaceAll("\u00df", "ss").split(/\s+/).filter(Boolean).join(" ");
+
 function validate(d: Def, value: Json): Json {
   switch (d.kind) {
     case "entry_list": {
@@ -236,7 +239,7 @@ function validate(d: Def, value: Json): Json {
       return value.map((entry) => {
         const o = only(d, entry as Json, ["source_type", "method"]);
         const source = text(d, o.source_type, "the source type", true, 60);
-        const key = source.toLowerCase().split(/\s+/).join(" ");
+        const key = fold(source);
         if (seen.has(key)) return invalid(d, `'${source}' appears twice. Keep one entry per source type.`);
         seen.add(key);
         return { source_type: source, method: text(d, o.method, "the method", true, 300) };

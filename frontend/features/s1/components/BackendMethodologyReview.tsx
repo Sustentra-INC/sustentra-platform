@@ -340,15 +340,21 @@ function FieldRow({
           {suggestion.evidence?.length ? (
             <ul className="s1-mb-evidence">
               {suggestion.evidence.map((item, index) => (
-                <li key={index} className="s1-mb-suggest">
+                <li key={index} className="s1-mb-evidence-item">
                   <span className="s1-mr-muted">{item.label}</span>
                   <q className="s1-mb-quote">{item.quote}</q>
+                  {item.quote_truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
                   <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(item.document_id)}>
                     {item.file_name}
                     {sourceLocation(item.source_reference) ? `, ${sourceLocation(item.source_reference)}` : ""}
                   </button>
                 </li>
               ))}
+              {suggestion.entries_omitted ? (
+                <li className="s1-mr-muted">
+                  {suggestion.entries_omitted} more {suggestion.entries_omitted === 1 ? "entry was" : "entries were"} found but not shown: their quotes were too long to keep.
+                </li>
+              ) : null}
             </ul>
           ) : (
             <>

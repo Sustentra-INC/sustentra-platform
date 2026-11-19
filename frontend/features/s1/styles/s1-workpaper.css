@@ -3502,6 +3502,7 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-mb-chip { font-size: var(--text-sm); color: var(--state-active-fg); background: var(--state-active-bg); border: var(--hairline-width) solid var(--state-active-line); border-radius: var(--radius-chip); padding: 0 var(--sp-2); }
 .s1-mb-list-edit, .s1-mb-evidence { display: flex; flex-direction: column; gap: var(--sp-2); }
 .s1-mb-evidence { list-style: none; margin: 0; padding: 0; }
+.s1-mb-evidence-item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
 .s1-mb-quote { font-size: var(--text-sm); color: var(--ink-2); }
 .s1-mb-part { display: flex; flex-direction: column; gap: var(--sp-1); }
 

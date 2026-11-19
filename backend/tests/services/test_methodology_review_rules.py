@@ -256,12 +256,40 @@ def test_a_bad_entry_list_is_refused_with_a_sentence(bad: object) -> None:
 
 def test_a_suggestion_keeps_the_quote_of_each_entry_bounded() -> None:
     f = field("calculation:estimation")
-    evidence = [{"label": f"Source {i}", "quote": "q" * 1000, "document_id": "d1", "file_name": "r.pdf",
-                 "source_reference": {"page_number": i, "text_snippet": "s" * 500}} for i in range(30)]
-    bounded = m.bound_suggestion(f, {**SUGGESTION, "value": [entry("Fuel cards", "Average")], "evidence": evidence})
-    assert 0 < len(bounded["evidence"]) <= m.MAX_EVIDENCE  # the last quotes go when they would not fit
-    assert [e["label"] for e in bounded["evidence"]] == [f"Source {i}" for i in range(len(bounded["evidence"]))]
-    assert all(len(e["quote"]) == m.MAX_EVIDENCE_QUOTE and len(e["source_reference"]["text_snippet"]) == 200
-               for e in bounded["evidence"])
+    ref = {"page_number": 3, "sheet_name": "S" * 300, "cell_or_range": "B12", "text_snippet": "s" * 500,
+           "bounding_box": {"x": 1}}
+    evidence = [{"label": f"Source {i}", "quote": "q" * 1500, "document_id": "d1", "file_name": "r.pdf",
+                 "source_reference": ref} for i in range(10)]
+    value = [entry(f"Source {i}", "Average") for i in range(10)]
+    bounded = m.bound_suggestion(f, {**SUGGESTION, "value": value, "evidence": evidence})
+    assert len(bounded["value"]) == len(bounded["evidence"]) and bounded["value"] == value[:len(bounded["value"])]
+    assert all(len(e["quote"]) == m.MAX_EVIDENCE_QUOTE and e["quote_truncated"] is True for e in bounded["evidence"])
+    assert all(set(e["source_reference"]) == {"page_number", "sheet_name", "cell_or_range"}
+               and len(e["source_reference"]["sheet_name"]) == 100 for e in bounded["evidence"])  # no snippet or box
     assert m.payload_size({"e": bounded["evidence"]}) <= m.MAX_EVIDENCE_BYTES
-    assert m.bound_suggestion(f, {**SUGGESTION, "value": [], "evidence": ["junk", 5, None]})["evidence"] == []
+    assert bounded.get("entries_omitted", 0) == 10 - len(bounded["value"])
+    # a value entry whose quote did not come with it is never kept
+    short = m.bound_suggestion(f, {**SUGGESTION, "value": value[:3], "evidence": evidence[:1]})
+    assert short["value"] == value[:1] and short["entries_omitted"] == 2
+    with pytest.raises(m.MethodologyInvalid):
+        m.bound_suggestion(f, {**SUGGESTION, "value": value[:2], "evidence": ["junk", 5, None]})
+
+
+def test_ten_cjk_entries_with_long_quotes_never_leave_an_entry_without_its_quote() -> None:
+    f = field("calculation:estimation")
+    cjk = "\u71c3\u6599\u8bb0\u5f55" * 250  # 1,000 characters, three bytes each
+    value = [entry(f"\u71c3\u6599 {i}", "\u5e73\u5747" * 75) for i in range(10)]
+    evidence = [{"label": v["source_type"], "quote": cjk, "document_id": "d1", "file_name": "r.pdf",
+                 "source_reference": {"page_number": 1}} for v in value]
+    bounded = m.bound_suggestion(f, {**SUGGESTION, "value": value, "evidence": evidence})
+    kept = len(bounded["value"])
+    assert 1 <= kept < 10 and kept == len(bounded["evidence"]) and bounded["entries_omitted"] == 10 - kept
+    assert [v["source_type"] for v in bounded["value"]] == [e["label"] for e in bounded["evidence"]]
+    assert all(e["quote"] for e in bounded["evidence"])
+    # the record still fits with a decision of the same size on the same field
+    record = {**m.new_record(f["field_id"]), "suggestion": bounded,
+              "decision": {"status": "edited", "value": value, "by": {"name": "A", "login": "a"}, "at": "x"}}
+    assert m.payload_size(record) < 32 * 1024
+    ascii_value = [entry(f"Source {i}", "m" * 300) for i in range(10)]
+    ascii_ev = [{"label": v["source_type"], "quote": "q" * 1000, "document_id": "d1", "file_name": "r.pdf"} for v in ascii_value]
+    assert len(m.bound_suggestion(f, {**SUGGESTION, "value": ascii_value, "evidence": ascii_ev})["value"]) == 10

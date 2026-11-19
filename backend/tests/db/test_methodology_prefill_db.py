@@ -219,6 +219,7 @@ def test_rows_read_not_checked_until_a_prefill_finishes_then_not_detected(claude
     now = states(eid)
     assert now["consolidation_approach"] == "has_value" and now["reporting_period"] == "has_value"
     assert now["gwp"] == "not_detected" and now["exclusion:boundary"] == "not_detected"
+    assert now["calculation:estimation"] == "not_detected"  # this run covered the newer rows too
     assert "not_checked" not in now.values()
     # the marker is page state, not a field: it is never listed as a workpaper item
     listed = call("GET", f"{BASE}/{eid}/workpaper-items?kind=methodology").json()["items"]
@@ -444,8 +445,8 @@ def test_the_estimation_row_is_hidden_until_prefill_finds_it_and_keeps_a_quote_p
     assert EST not in shown_ids(eid)
     monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in EST_LINES])])
     claude.output = {**GOOD, "estimations": [
-        {"source_type": "Utility invoices", "method": "Average of adjacent months", **cite("L9", "estimated from the average of the adjacent months")},
-        {"source_type": "Fuel cards", "method": "Prior-year consumption", **cite("L10", "prior-year consumption is used (燃料)")}]}
+        {"source_type": "Utility invoices", "method": "Average of adjacent months", **cite("L9", "Missing utility invoices are estimated")},
+        {"source_type": "Fuel cards", "method": "Prior-year consumption", **cite("L10", "fuel cards have gaps, prior-year consumption is used (燃料)")}]}
     assert prefill(eid).status_code == 200
     assert EST in shown_ids(eid)
     suggestion = record(eid, EST)["suggestion"]

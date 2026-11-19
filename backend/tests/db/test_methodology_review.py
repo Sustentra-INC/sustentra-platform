@@ -311,10 +311,25 @@ def test_a_hidden_row_after_a_prefill_that_found_nothing_stays_hidden(optional_f
     asyncio.run(_admin(
         "INSERT INTO workpaper_items (org_id, engagement_id, kind, item_key, payload) "
         "SELECT org_id, id, 'methodology', 'meta:state', $2::jsonb FROM engagements WHERE id = $1::uuid",
-        eid, json.dumps({"prefill_ran_at": "2026-11-18T10:00:00.000Z", "revealed": []})))
+        eid, json.dumps({"prefill_ran_at": "2026-11-18T10:00:00.000Z", "prefill_covered": [optional_field, "gwp"], "revealed": []})))
     row = record(eid, optional_field)
     assert row["display_state"] == "not_detected" and row["shown"] is False
     assert record(eid, "gwp")["display_state"] == "not_detected" and record(eid, "gwp")["shown"] is True
+    # a field the run did not cover says nothing: it was not looked at
+    assert record(eid, "reporting_period")["display_state"] == "not_checked"
+
+
+def test_an_engagement_prefilled_before_the_newer_rows_existed_shows_them_as_not_checked_yet() -> None:
+    eid = create()["id"]
+    asyncio.run(_admin(
+        "INSERT INTO workpaper_items (org_id, engagement_id, kind, item_key, payload) "
+        "SELECT org_id, id, 'methodology', 'meta:state', $2::jsonb FROM engagements WHERE id = $1::uuid",
+        eid, json.dumps({"prefill_ran_at": "2026-11-18T10:00:00.000Z", "revealed": []})))  # no covered list: an older run
+    states = {f["field_id"]: f["display_state"] for f in review(eid).json()["fields"]}
+    assert states["gwp"] == states["reporting_period"] == states["category:market:steam"] == "not_detected"
+    newer = [f for f in states if f not in rules.LEGACY_PREFILL_COVERED]
+    assert newer and all(states[f] == "not_checked" for f in newer)
+    assert "calculation:estimation" in newer and "boundary:acquisitions" in newer
 
 
 # --- migration 0016 ----------------------------------------------------------------------
