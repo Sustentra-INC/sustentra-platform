@@ -221,7 +221,7 @@ def test_a_street_only_bill_on_a_street_two_sites_share_matches_neither() -> Non
     assert _only("100 Main St, Springfield, IL 62701", None, *rows) == "Springfield Plant"
     twins = (("Werk A", "5 Via Roma, Zürich"), ("Werk B", "5 Via Roma, Zürich"))
     assert _only("5 Via Roma", None, *twins) is None
-    assert _only(None, "Werk A", *(("Werk A", "x"), ("Werk A", "y"))) is None  # one name, two sites: nothing matched
+    assert _only(None, "Werk A", *(("Werk A", "x"), ("Werk A", "y"))) is None  # one name, two sites, no address
 
 
 def test_fl_is_florida_and_a_town_called_ste_is_not_a_suite() -> None:
@@ -295,3 +295,28 @@ def _meter_bill_with(header: str) -> dict[str, Any]:
         if block["text"].startswith("Meter | Service Address"):
             block["text"] = block["text"].replace("Service Address", header)
     return bill
+
+
+# --- fix round 2: postal codes are not house numbers; an ambiguous name goes on to the address -------------------
+def test_a_street_with_the_number_after_the_name_never_matches_another_street_in_the_same_city() -> None:
+    assert _only("Hauptstrasse 5, 8001 Zürich", None, ("Werk", "Bahnhofstrasse 12, 8001 Zürich")) is None
+    assert _only("Musterstraße 5, 10115 Berlin", None, ("Büro", "Friedrichstraße 100, 10115 Berlin")) is None
+    assert _only("Musterstraße 5, 10115 Berlin", None, ("Büro", "Friedrichstraße 100, 10115 Berlin"),
+                 ("Zweig", "Musterstraße 5, 10115 Berlin")) == "Zweig"  # the same text still matches
+
+
+def test_a_setup_address_with_no_street_never_matches_by_address() -> None:
+    city = (("Ort Ä", "Fresno, CA"),)
+    assert _only("Fresno, CA", None, *city) is None
+    assert _only("100 Main St, Fresno, CA", None, *city) is None
+    assert _only("Zürich", None, ("Ort Ä", "Zürich")) is None
+    assert _only("One Market Plaza", None, ("Ort Ä", "One Market Plaza")) == "Ort Ä"  # a place, not a city
+
+
+def test_a_name_on_several_facilities_is_settled_by_the_address_among_them_only() -> None:
+    rows = (("Plant #1", "100 Main St, Zürich"), ("Plant 1", "200 Oak Ave, Zürich"), ("Plant 2", "100 Main St, Zürich"))
+    assert _only("100 Main Street", "Plant 1", *rows) == "Plant #1"
+    assert _only("200 Oak Avenue", "Plant 1", *rows) == "Plant 1"
+    assert _only("300 Elm Rd", "Plant 1", *rows) is None
+    assert _only(None, "Plant 1", *rows) is None
+    assert _only("100 Main St", "Plant 1", ("Plant #1", "100 Main St, Zürich"), ("Plant 1", "100 Main St, Zürich")) is None

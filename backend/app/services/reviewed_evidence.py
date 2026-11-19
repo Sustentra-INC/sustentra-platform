@@ -152,9 +152,13 @@ class _Address:
                   if _HOUSE_NUMBER.match(w) and wi + 1 < len(seg) and not seg[wi + 1][0].isdigit()]
         if not starts:
             return
-        # a house number whose own line has a street suffix wins over an earlier number ("3M Company, 100 Main St")
-        si, wi = next(((a, b) for a, b in starts if any(w in _STREET_SUFFIXES | _ROUTE_WORDS for w in segments[a][b + 2:])),
-                      starts[0])
+        # the house number is the one on a line with a street suffix ("3M Company, 100 Main St"). With none, there
+        # is no street: a postal code is not a house number ("Hauptstrasse 5, 8001 Zürich"), so only equal text matches
+        found = next(((a, b) for a, b in starts if any(w in _ROUTE_WORDS for w in segments[a][b + 1:])
+                      or any(w in _STREET_SUFFIXES for w in segments[a][b + 2:])), None)
+        if found is None:
+            return
+        si, wi = found
         words = segments[si][wi:]
         end = len(words)
         route = next((i for i, w in enumerate(words) if i >= 1 and w in _ROUTE_WORDS), None)
@@ -176,12 +180,19 @@ class _Address:
         self.rest = rest
 
 
+def _names_a_place(segments: list[list[str]]) -> bool:
+    """Equal text identifies a place only when it has a number or at least three words: "Fresno, CA" is a city."""
+
+    words = [w for seg in segments for w in seg]
+    return len(words) >= 3 or any(w[0].isdigit() for w in words)
+
+
 def _address_rank(bill: _Address, setup: _Address) -> int | None:
     """How well a bill's address fits a Setup address: 0 the same (unit too), 1 the same with a unit the bill has and
     Setup has not; None when they are not the same place. Word for word, once spelled the same way, with the house
     number never optional. One side may stop after the street (or its unit); what both give must agree."""
 
-    if bill.full and bill.full == setup.full:
+    if bill.full and bill.full == setup.full and _names_a_place(setup.full):
         return 0
     if bill.street is None or setup.street is None or bill.street != setup.street:
         return None
@@ -207,8 +218,10 @@ def match_facility(name: Any, address: Any, facilities: list[dict[str, Any]],
     bill_names = _facility_names(name, company)
     if bill_names:
         named = [f for f in facilities if _norm_text(f.get("name")) in bill_names]
-        if named:
-            return named[0] if len(named) == 1 else None
+        if len(named) == 1:
+            return named[0]
+        if named:  # one name on several facilities ("Plant #1", "Plant 1"): the address chooses among them
+            facilities = named
     if address:
         bill = _Address(address)
         ranked = [(rank, f) for f in facilities if f.get("address")
