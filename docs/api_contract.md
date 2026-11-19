@@ -77,18 +77,30 @@ What a bill says about itself (EXT-025, `services/bill_notes.py`; the rule reade
 bills). Neither changes a value:
 
 - `estimated_read`: a `validation_flags` entry on the `activity_quantity` candidate when the bill says a read was
-  estimated, in a sentence ("This bill is based on an ESTIMATED read") or in a read-type column ("Estimated",
-  "EST", or "E" with a legend "E = Estimated read"). A legend alone, or "not estimated", does not flag. The
-  review screen words it "Estimated read".
-- `supersedes_reference`: an extra candidate (label "Replaces an earlier bill") on each record of a bill that says
-  it replaces, corrects or supersedes an earlier bill. Its value is the earlier bill's number or date as printed
-  ("04/04/2025", "INV-2025-889"), or `revised` when the bill says it is revised and gives none. The data quality
-  `quality_checks` (Q-003) then carry a `revised_bill_replaces_earlier` finding (severity `review`) when the
-  earlier bill, the same source, account (or facility) and days, is also in the engagement, with
-  `detail {suggestion: "mark_superseded", original_document_id, reference}`. It is a suggestion: nothing is marked
-  superseded until the reviewer does it on the Evidence screen. The same pair is not also reported as an overlap.
-- Account labels read for `account_number` now include "Customer No.", "Cust. No.", "Client ID", "Acct:" (also
-  inline after other text) and similar. An account is never read from an email subject line or prose.
+  estimated: a sentence ("This bill is based on an ESTIMATED read", "usage was estimated"), an "ESTIMATED READ"
+  heading, or a read-type column ("Read Type: Estimated / Estimate / EST"; "E", "E" in a "Read" or "Reading"
+  column, or "853,925 (E)", each only with a legend "E = Estimated read"). A legend alone, "not estimated", fees
+  ("Estimated Read Fee: $5.00"), conditions ("if we estimate your read"), dates and "not applicable" do not
+  flag. In a multi-meter bill only the estimated meter's quantity is flagged. The review screen words it
+  "Estimated read".
+- `supersedes_reference`: an extra candidate (label "Replaces an earlier bill") on each record of a bill that is
+  headed "REVISED STATEMENT" / "CORRECTED BILL" or has a sentence that starts "This bill/statement replaces,
+  corrects or supersedes ..." Boilerplate that only mentions a correction does not count. Its value is the earlier
+  bill's number or date as printed ("04/04/2025", "INV-2025-889"), or `revised` when it gives none; its
+  `source_reference.reference_key` is that reference as a key (a date as ISO, a number upper-cased). Every bill
+  also keeps its own statement date (ISO) and invoice or statement number in
+  `source_reference.bill_ids` of its `activity_quantity` candidate (no extra value to review).
+- Data quality (`quality_checks`, Q-003) then carries a `revised_bill_replaces_earlier` finding (severity `review`)
+  when an earlier bill (the same source, account or facility, the same days, and not itself a revision) is also in
+  the engagement. When the revised bill printed a date or number, only the bill whose `bill_ids` hold it counts;
+  no match, no finding. One candidate gives `detail {suggestion: "mark_superseded", original_document_id,
+  reference}`; several give `{suggestion: "mark_which", candidates, reference}` and name none. It is a suggestion:
+  nothing is marked superseded until the reviewer does it on the Evidence screen. A pair matched by a printed
+  reference is not also reported as an overlap (Q-004); a `revised` bill with no reference keeps the overlap
+  finding.
+- Account labels read for `account_number` now include "Customer No.", "Cust. No.", "Acct:" (also inline after
+  other text) and similar. "Client ID" and "Customer ID" (CRM references) are not read. An account is never read
+  from an email subject line or prose, and a value that is a phone number or longer than three words is rejected.
 Extraction config rows may set `ai_only` (read by Claude only).
 
 ### GET /v1/processing-runs/{run_id}

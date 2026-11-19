@@ -109,6 +109,15 @@ def _reviewed_count(n: int, noun: str) -> str:
     return f"{n} reviewed {noun}" + ("" if n == 1 else "s")
 
 
+def _source_value(record: Any, field_name: str, key: str) -> Any:
+    """A value the extractor kept on a field's source reference (the bill's own identifiers, the reference key
+    of a revised bill), or None."""
+
+    item = record.fields.get(field_name)
+    reference = getattr(item, "source_reference", None)
+    return reference.get(key) if isinstance(reference, dict) else None
+
+
 def _catalogue() -> tuple[tuple[str, str, int, str, str, str, str], ...]:
     """Every reported data point, for Setup's in-scope list: (key, label, row, unit, layer,
     Required/Optional, how it is checked). Built from the roll-up's final outputs, so the two
@@ -1245,7 +1254,9 @@ class EngagementRecalculationService:
                               file_name=record.file_name or record.document_id, label=record.label,
                               facility=facility, item=item, account=str(account) if account else None,
                               start=start, end=end, amounts=amounts, unit=unit, periodic=periodic,
-                              revises=str(record.best("supersedes_reference") or "") or None)
+                              revises=str(record.best("supersedes_reference") or "") or None,
+                              revises_key=_source_value(record, "supersedes_reference", "reference_key"),
+                              bill_ids=tuple(_source_value(record, "activity_quantity", "bill_ids") or ()))
 
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""
