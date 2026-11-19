@@ -9,7 +9,8 @@ the documents and says what to look at. The numbers are unchanged by it.
   no bill covers (``missing_month``), or days not covered (``incomplete_year``).
 - Q-003 Duplicate evidence: records in different documents with the same facility,
   source, dates and amounts (``duplicate_counting_risk``); a whole document repeated
-  under another name (``same_document_reuploaded_with_different_file_name``).
+  under another name (``same_document_reuploaded_with_different_file_name``); one statement
+  printed twice in a file (``duplicate_statement_in_same_file``).
 - Q-004 Overlapping periods: two bills for the same facility and source covering the same
   days (``overlap_same_source_different_document_id`` / ``overlapping_period``).
 - Q-005 Cross-year allocation: a bill running across the reporting period's start or end,
@@ -171,6 +172,20 @@ def _duplicates(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], se
         key = _duplicate_key(record)
         if key is not None:
             by_key[key].append(record)
+    out: list[dict[str, Any]] = []
+    for group in by_key.values():  # one statement printed twice in one file (a bundle repeating a month)
+        in_file: dict[str, list[EvidenceRecord]] = defaultdict(list)
+        for found in group:
+            in_file[found.document_id].append(found)
+        for same in in_file.values():
+            for n, one in enumerate(same):
+                other = next((r for r in same[n + 1:] if one.account and r.account == one.account), None)
+                if other is not None:
+                    out.append(_finding(
+                        "Q-003", "duplicate_statement_in_same_file", "warning", [one, other],
+                        f"{one.label} and {other.label} are the same statement printed twice in one file (same "
+                        f"{_source_name(one)} dates, amounts and account): it may be counted twice. "
+                        "Check the file.", matching_records=2))
     # Pairs of documents sharing records, with the records they share.
     shared: dict[tuple[str, str], list[tuple[EvidenceRecord, EvidenceRecord]]] = defaultdict(list)
     for group in by_key.values():
@@ -183,7 +198,6 @@ def _duplicates(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], se
     per_document: dict[str, int] = defaultdict(int)
     for record in records:
         per_document[record.document_id] += 1
-    out: list[dict[str, Any]] = []
     pairs: set[frozenset[str]] = set()
     for (first, second), matches in shared.items():
         a, b = matches[0]
@@ -221,6 +235,9 @@ def _overlaps(groups: dict[tuple[str, str, str | None], list[EvidenceRecord]],
                     continue
                 if a.document_id != b.document_id and frozenset((a.document_id, b.document_id)) in duplicate_pairs:
                     continue  # already reported as a duplicate
+                if (a.document_id == b.document_id and a.account and a.account == b.account
+                        and _duplicate_key(a) == _duplicate_key(b)):
+                    continue  # the same statement twice in one file: reported as a duplicate
                 start = max(span_a[0], span_b[0]).isoformat()
                 end = min(span_a[1], span_b[1]).isoformat()
                 if a.document_id == b.document_id:

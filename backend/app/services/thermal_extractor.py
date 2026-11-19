@@ -319,7 +319,7 @@ class ThermalExtractor(ElectricityExtractor):
                 "layer while OCR is off, or an empty file). Upload a text-based PDF or enable OCR.",
             })
         unit_hint = self._document_unit(rows)
-        records = self._usable(rows, unit_hint, self._document_kinds(rows))
+        records, notes = self._part_records(rows, unit_hint)
         if not records:
             return ExtractionOutcome(candidates=[], halt_reason={
                 "code": HALT_UNSUPPORTED,
@@ -328,17 +328,23 @@ class ThermalExtractor(ElectricityExtractor):
                 "or cooling evidence.",
             })
         # Each record carries its own energy type; the placeholder only stands in where none was told.
-        placeholder = Located("", [], None, CONF_MISSING)
-        outcome = self._statement_bundle(
-            rows, parser_output, targets, evidence_id, document_id, unit_hint, placeholder,
-            read=lambda part, hint: self._usable(part, hint, self._document_kinds(part)),
-            energy_of=lambda part: placeholder)
+        placeholder = self._part_energy(rows)
+        assert placeholder is not None
+        outcome = self._statement_bundle(rows, parser_output, targets, evidence_id, document_id, unit_hint,
+                                         placeholder, notes)
         if outcome is None:
             outcome = self._records_to_candidates(rows, parser_output, targets, evidence_id, document_id, records,
                                                   placeholder, unit_hint)
-        if any(r.fuel is None for r in records):
-            outcome.notes.append(AMBIGUOUS_ENERGY_NOTE)
+            outcome.notes.extend(notes)
         return outcome
+
+    # --- the readings of one statement (the hooks of the electricity extractor's bundle reader) -------------
+    def _part_records(self, rows: Sequence[Row], unit_hint: Located | None) -> tuple[list[UsageRecord], list[str]]:
+        records = self._usable(rows, unit_hint, self._document_kinds(rows))
+        return records, [AMBIGUOUS_ENERGY_NOTE] if any(r.fuel is None for r in records) else []
+
+    def _part_energy(self, rows: Sequence[Row]) -> Located | None:
+        return Located("", [], None, CONF_MISSING)  # the energy type is each record's own
 
     # ---------------------------------------------------------------------------------
     def _record_values(self, record: UsageRecord | None, period: tuple[Located | None, Located | None],

@@ -22,14 +22,14 @@ consumption.
 from __future__ import annotations
 
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 from backend.app.domain import fuel_units
-from backend.app.services.statement_segments import split_statements
 from backend.app.services.stationary_combustion_extractor import (
     _ALL_LABELS as _BASE_LABELS,
 )
+from backend.app.services.statement_segments import SPLIT_NOTE, split_statements
 from backend.app.services.stationary_combustion_extractor import (
     CONF_LETTERHEAD,
     DOCUMENT_FIELDS,
@@ -44,6 +44,7 @@ from backend.app.services.stationary_combustion_extractor import (
     StationaryCombustionExtractor,
     UsageRecord,
     _norm,
+    parse_number,
 )
 
 CANONICAL_TYPE_ID = "CT-S2-ELEC"
@@ -87,29 +88,63 @@ def detect_electricity(text: str) -> tuple[str, str] | None:
     return (ENERGY_TYPE, match.group(0)) if match else None
 
 
-# Time-of-use lines that are parts of a total ("On-Peak kWh", "Off-Peak kWh", "Shoulder kWh").
-_COMPONENT_RE = re.compile(r"(?<![a-z])(?:(?:on|off|mid|super[- ]?off)[- ]?peak|shoulder|peak)(?![a-z])")
+# Time-of-use lines that are parts of a total ("On-Peak kWh", "Off-Peak kWh", "Part-Peak", "Shoulder").
+_COMPONENT_RE = re.compile(
+    r"(?<![a-z])(?:(?:on|off|mid|part|super[- ]?off)[- ]?peak|shoulder|peak)(?![a-z])")
 _TOTAL_RE = re.compile(r"^total(?![a-z])")
+TOU_TOLERANCE = 0.005  # parts add up to their total within half a percent
+TOU_NOTE = ("Time-of-use lines (on-peak, off-peak) were read as separate records because no total line adds "
+            "up to them. Check that none of them is counted twice.")
+# The header text of a table row's context ("Meter | Register | Usage | <row text>"), the row's own cells excluded.
+_HEADER_SEPARATOR = " | "
 
 
-def _row_labels(record: UsageRecord) -> list[str]:
+def _labels(record: UsageRecord) -> list[str]:
+    """The text cells of the record's row (the quantity cell and bare numbers left out)."""
+
     row = record.quantity.row
-    return [_norm(cell.text) for cell in row.cells] if row is not None else []
+    if row is None:
+        return []
+    return [_norm(cell.text) for cell in row.cells
+            if cell not in record.quantity.cells and re.search(r"[a-z]", _norm(cell.text))]
 
 
-def _without_components(records: list[UsageRecord]) -> list[UsageRecord]:
-    """Drop the time-of-use part lines when a line labelled total sits beside them in the same table."""
+def _is_part(record: UsageRecord) -> bool:
+    """A time-of-use line: the peak label can sit in any text cell of the row (the register or the
+    description, not only the first), and a row that is a part is never also a total."""
 
-    def is_part(record: UsageRecord) -> bool:
-        labels = _row_labels(record)
-        return bool(labels) and _COMPONENT_RE.search(labels[0]) is not None and _TOTAL_RE.match(labels[0]) is None
+    return any(_COMPONENT_RE.search(label) for label in _labels(record))
 
-    def is_total(record: UsageRecord) -> bool:
-        return any(_TOTAL_RE.match(label) for label in _row_labels(record))
 
-    if any(is_total(r) for r in records) and any(is_part(r) for r in records):
-        return [r for r in records if not is_part(r)]
-    return records
+def _is_total(record: UsageRecord) -> bool:
+    return not _is_part(record) and any(_TOTAL_RE.match(label) for label in _labels(record))
+
+
+def _block_key(record: UsageRecord) -> str:
+    context = record.quantity.context or ""
+    return context.split(_HEADER_SEPARATOR, 1)[0]
+
+
+def _blocks(records: list[UsageRecord]) -> list[list[UsageRecord]]:
+    """Records grouped by table and meter: a new block starts when the table header changes or a different
+    meter id begins (a line with no meter id belongs to the meter above it)."""
+
+    blocks: list[list[UsageRecord]] = []
+    meter: str | None = None
+    for record in records:
+        hint = _norm(record.hint) if record.hint else None
+        if hint is not None and (_COMPONENT_RE.search(hint) or _TOTAL_RE.match(hint)):
+            hint = None  # a peak or total label in the meter column is a line, not another meter
+        new = (not blocks or _block_key(blocks[-1][0]) != _block_key(record)
+               or (hint is not None and meter is not None and hint != meter)
+               or (_is_total(record) and any(_is_total(r) for r in blocks[-1])))  # a second total: a table again
+        if new:
+            blocks.append([])
+            meter = None
+        blocks[-1].append(record)
+        if hint is not None:
+            meter = hint
+    return blocks
 
 
 class ElectricityExtractor(StationaryCombustionExtractor):
@@ -186,55 +221,131 @@ class ElectricityExtractor(StationaryCombustionExtractor):
 
         unit_hint = self._document_unit(rows)
         doc_energy = self._document_fuel(rows)
-        records = self._usable_records(rows, unit_hint)
+        records, notes = self._part_records(rows, unit_hint)
         if not records or doc_energy is None:
             return ExtractionOutcome(candidates=[], halt_reason={
                 "code": HALT_UNSUPPORTED,
                 "message": "No electricity quantity in kWh or MWh was found, so this is not purchased-"
                 "electricity evidence (for example a gas, fuel or water bill).",
             })
-        bundle = self._statement_bundle(rows, parser_output, targets, evidence_id, document_id, unit_hint, doc_energy)
-        if bundle is not None:
-            return bundle
-        return self._records_to_candidates(rows, parser_output, targets, evidence_id, document_id, records,
-                                           doc_energy, unit_hint)
+        outcome = self._statement_bundle(rows, parser_output, targets, evidence_id, document_id, unit_hint,
+                                         doc_energy, notes)
+        if outcome is None:
+            outcome = self._records_to_candidates(rows, parser_output, targets, evidence_id, document_id, records,
+                                                  doc_energy, unit_hint)
+            outcome.notes.extend(notes)
+        return outcome
 
-    def _usable_records(self, rows: Sequence[Row], unit_hint: Located | None) -> list[UsageRecord]:
-        """The metered usage lines of ``rows`` in kWh or MWh. A time-of-use table lists on-peak and
-        off-peak lines beside the total: those are parts of it, so only the total is a record."""
+    # --- the readings of one statement (hooks the thermal extractor overrides) ---------------------------
+    def _part_records(self, rows: Sequence[Row], unit_hint: Located | None) -> tuple[list[UsageRecord], list[str]]:
+        """The metered usage lines of ``rows`` in kWh or MWh, with a note for anything the reviewer should
+        check. A time-of-use table lists on-peak and off-peak lines beside the total."""
 
         records = [r for r in self._quantity_records(rows) if self._record_unit(r, unit_hint) in ELECTRIC_UNITS]
-        return _without_components(records)
+        return self._collapse_time_of_use(records, rows, unit_hint)
+
+    def _part_energy(self, rows: Sequence[Row]) -> Located | None:
+        return self._document_fuel(rows)
+
+    def _mwh(self, record: UsageRecord, unit_hint: Located | None) -> float | None:
+        number = parse_number(record.quantity.raw)
+        normalized = self._to_mwh(number, self._record_unit(record, unit_hint))
+        return normalized.value if normalized is not None else None
+
+    def _collapse_time_of_use(self, records: list[UsageRecord], rows: Sequence[Row],
+                              unit_hint: Located | None) -> tuple[list[UsageRecord], list[str]]:
+        """Per meter or table block: when the on-peak, off-peak and similar lines add up to the block's own
+        total (a line labelled total, or the Total row right under the table) within half a percent, the total
+        is the record and the parts are not. Parts that do not add up, or have no total, are all kept and
+        the reviewer is told: dropping a meter's real usage would be silent, keeping it is visible."""
+
+        out: list[UsageRecord] = []
+        notes: list[str] = []
+        for block in _blocks(records):
+            parts = [r for r in block if _is_part(r)]
+            if not parts:
+                out.extend(block)
+                continue
+            values = [self._mwh(r, unit_hint) for r in parts]
+            total_record = next((r for r in block if _is_total(r)), None)
+            if total_record is None:
+                total_record = self._total_row_under(parts, rows, unit_hint)
+            total = self._mwh(total_record, unit_hint) if total_record is not None else None
+            if (total_record is None or total is None or None in values
+                    or abs(sum(v for v in values if v is not None) - total) > TOU_TOLERANCE * abs(total)):
+                out.extend(block)
+                if TOU_NOTE not in notes:
+                    notes.append(TOU_NOTE)
+                continue
+            out.extend(r for r in block if r not in parts)
+            if total_record not in block:  # the Total row under the table, read as a record of its own
+                out.append(total_record)
+        return out, notes
+
+    def _total_row_under(self, parts: list[UsageRecord], rows: Sequence[Row],
+                         unit_hint: Located | None) -> UsageRecord | None:
+        """A "Total" row right under the time-of-use lines, as a record of its own (the table reader stops at
+        it): its figure is the cell nearest the parts' sum."""
+
+        last = parts[-1].quantity.row
+        if last is None or last.index + 1 >= len(rows):
+            return None
+        under = rows[last.index + 1]
+        if not under.cells or _TOTAL_RE.match(_norm(under.cells[0].text)) is None:
+            return None
+        wanted = sum(v for v in (self._mwh(r, unit_hint) for r in parts) if v is not None)
+        best: tuple[float, Any, Any] | None = None
+        for cell in under.cells[1:]:
+            number = parse_number(cell.text)
+            if number is None:
+                continue
+            probe = UsageRecord(quantity=Located(number[1], [cell], under, parts[-1].quantity.confidence),
+                                unit_raw=parts[-1].unit_raw, unit_located=parts[-1].unit_located, hint=None)
+            value = self._mwh(probe, unit_hint)
+            if value is not None and (best is None or abs(value - wanted) < best[0]):
+                best = (abs(value - wanted), cell, number)
+        if best is None:
+            return None
+        _, cell, number = best
+        header = (parts[-1].quantity.context or "").split(_HEADER_SEPARATOR, 1)[0]
+        quantity = Located(number[1], [cell], under, parts[-1].quantity.confidence,
+                           context=f"{header}{_HEADER_SEPARATOR}{under.text}")
+        return UsageRecord(quantity=quantity, unit_raw=parts[-1].unit_raw, unit_located=parts[-1].unit_located,
+                           hint=None)
 
     def _statement_bundle(self, rows: list[Row], parser_output: dict, targets: Sequence[dict], evidence_id: str,
                           document_id: str, unit_hint: Located | None, doc_energy: Located,
-                          read: Callable[[list[Row], Located | None], list[UsageRecord]] | None = None,
-                          energy_of: Callable[[list[Row]], Located | None] | None = None) -> ExtractionOutcome | None:
+                          notes: list[str]) -> ExtractionOutcome | None:
         """One record per statement for a file holding several (EXT-015), numbered in file order and
-        read from each statement's own pages. None when the file is a single statement, or when fewer than
-        two of its parts hold a reading (then the file is read whole, as before)."""
+        read from each statement's own pages. None when the file is read whole: it is a single statement,
+        a clean cut is not possible, or fewer than two of its parts hold a reading. A file that looks like
+        several statements but is read whole says so in ``notes``."""
 
-        parts = split_statements(rows)
-        if parts is None:
+        split = split_statements(rows)
+        if split.parts is None:
+            if split.note:
+                notes.append(split.note)
             return None
         found: list[tuple[list[Row], Located | None, list[UsageRecord]]] = []
-        for part in parts:
+        part_notes: list[str] = []
+        for part in split.parts:
             part_hint = self._document_unit(part) or unit_hint
-            records = (read or self._usable_records)(part, part_hint)
+            records, more = self._part_records(part, part_hint)
             if records:
                 found.append((part, part_hint, records))
+                part_notes.extend(n for n in more if n not in part_notes)
         if len(found) < 2:
+            notes.append(SPLIT_NOTE)
             return None
-        total = sum(len(records) for _, _, records in found)
         candidates: list[dict] = []
         first_index = 1
         for part, part_hint, records in found:
-            energy = (energy_of or self._document_fuel)(part) or doc_energy
+            energy = self._part_energy(part) or doc_energy
             outcome = self._records_to_candidates(part, parser_output, targets, evidence_id, document_id, records,
                                                   energy, part_hint, first_index=first_index, multi=True)
             candidates.extend(outcome.candidates)
             first_index += len(records)
-        return ExtractionOutcome(candidates=candidates, records=total)
+        return ExtractionOutcome(candidates=candidates, records=first_index - 1, notes=part_notes)
 
     def _records_to_candidates(self, rows: list[Row], parser_output: dict, targets: Sequence[dict],
                                evidence_id: str, document_id: str, records: list[UsageRecord],
