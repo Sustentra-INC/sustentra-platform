@@ -205,6 +205,7 @@ _MONTHS = {
     for m in names
 }
 _MONTH_RE = "|".join(sorted(_MONTHS, key=len, reverse=True))
+_MONTHS_BUT_MAY = "|".join(name for name in sorted(_MONTHS, key=len, reverse=True) if name != "may")
 # How a line without geometry splits into parts (tabs, 2+ spaces, pipes); the source pane
 # splits lines the same way (frontend utils/sourceAnchor.ts).
 _LINE_PARTS_RE = re.compile(r"\t+|\s{2,}|\s*\|\s*")
@@ -386,12 +387,22 @@ def _labelled_as(rows: Sequence[Row], cell: Cell, words: Sequence[str]) -> bool:
     return any(_has_word(found[1], word) for found in (above, left) if found for word in words)
 
 
-def _has_word(text: str, word: str) -> bool:
-    """Whether ``word`` is in ``text`` as a whole word or phrase ("rate" is not in "Corporate"), ignoring what
-    is in parentheses: "Your usage (31 days)" is a heading about usage, "Days in period" is about days. A word
-    with no letter or digit in it ("$") is looked for as it is."""
+def _names_a_month(text: str) -> bool:
+    """Whether ``text`` names a month. "May" counts only beside a day number or a year ("you may pay online" is
+    a sentence)."""
 
-    low = re.sub(r"\([^)]*\)", " ", text.lower())
+    if re.search(rf"\b(?:{_MONTHS_BUT_MAY})\b", text, re.IGNORECASE):
+        return True
+    return re.search(r"\bmay\s+\d{1,2}\b|\b\d{1,2}\s+may\b|\bmay,?\s+(?:19|20)\d{2}\b", text, re.IGNORECASE) is not None
+
+
+def _has_word(text: str, word: str) -> bool:
+    """Whether ``word`` is in ``text`` as a whole word or phrase ("rate" is not in "Corporate"), ignoring a
+    parenthesis that holds a number: "Your usage (31 days)" is a heading about usage, "Days in period" is about
+    days. A parenthesis with only words in it ("Same month (last year)", "Tank (capacity)") says what the
+    figure is, so it counts. A word with no letter or digit in it ("$") is looked for as it is."""
+
+    low = re.sub(r"\([^)]*\d[^)]*\)", " ", text.lower())
     if not any(char.isalnum() for char in word):
         return word in low
     return re.search(rf"(?<!\w){re.escape(word)}(?!\w)", low) is not None
@@ -1608,8 +1619,8 @@ class StationaryCombustionExtractor:
     _BARE_NUMBER = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d+)?$|^\d+(?:\.\d+)?$")
     _USAGE_WORDS = frozenset({"used", "billed", "consumed", "delivered", "usage"})
     # Words in the text above or beside a number that say it is not the quantity of the bill.
-    _NOT_A_QUANTITY = ("reading", "capacity", "days", "year", "rate", "average", "avg", "daily", "last", "previous",
-                       "prior")
+    _NOT_A_QUANTITY = ("reading", "capacity", "days", "year", "rate", "average", "avg", "daily", "per day", "last",
+                       "previous", "prior")
     # Words in the line right under the unit line that say the pair is not the bill's quantity ("therms" over
     # "per day", "gallons" over "tank capacity", "CCF" over "current meter reading").
     _NOT_UNDER_A_UNIT = ("per", "daily", "average", "avg", "tank", "capacity", "meter", "reading", "last", "previous",
@@ -1704,7 +1715,7 @@ class StationaryCombustionExtractor:
                 if _only_a_date_range(text):
                     return False
                 return (any(_has_word(text, word) for word in self._NOT_UNDER_A_UNIT)
-                        or parse_date(text) is not None or re.search(rf"\b(?:{_MONTH_RE})\b", text, re.I) is not None
+                        or parse_date(text) is not None or _names_a_month(text)
                         or re.search(r"\b(?:19|20)\d{2}\b", text) is not None)
         return False
 

@@ -1108,3 +1108,41 @@ def test_the_ambiguous_unit_check_is_a_public_helper() -> None:
         assert fuel_units.is_ambiguous_in_text(word), word
     for word in ("therms", "gallons", "CCF", "kWh"):
         assert not fuel_units.is_ambiguous_in_text(word), word
+
+
+# --- fix round 3: a parenthesis that holds only words still says what the figure is; "may" is a month only beside a number
+PAREN_LABELS = ["Same month (last year)", "Usage (previous reading)", "Tank (capacity)", "(per day)",
+                "Durchschnitt (daily) – Zürich"]
+
+
+@pytest.mark.parametrize("label", PAREN_LABELS)
+def test_a_label_in_parentheses_above_the_number_still_excludes_it(targets: list[dict], label: str) -> None:
+    layout = HEAD + [("Total therms: 1,486", 0.5, 0.6, 0.2, BODY), (label, 0.05, 0.25, 0.15, BODY),
+                     ("1,640", 0.05, 0.265, 0.1, 0.05), ("therms", 0.05, 0.317, 0.08, 0.015)]
+
+    fields = _read(layout, targets)
+
+    assert fields["activity_quantity"].get("raw_value") != "1,640", label
+
+
+def test_a_parenthesis_that_holds_a_number_is_still_ignored(targets: list[dict]) -> None:
+    layout = MYSTERY + [("Your usage (31 days)", 0.036, 0.15, 0.2, 0.012)]
+
+    assert _read(layout, targets)["activity_quantity"]["raw_value"] == "1,486"
+
+
+def test_a_payment_due_date_label_in_parentheses_is_not_the_service_period(targets: list[dict]) -> None:
+    layout = [row for row in MYSTERY if row[0] != "October 1 - 31, 2025"] + [
+        ("Zahlung (due date) – Zürich", 0.5, 0.30, 0.3, BODY), ("Nov 1 - Nov 25, 2025", 0.5, 0.315, 0.3, BODY)]
+
+    _nothing_read(_read(layout, targets), "service_period_start", "service_period_end")
+
+
+@pytest.mark.parametrize(("under", "month"), [("May 5", True), ("5 May", True), ("May, 2025", True),
+                                               ("you may pay online", False), ("Thank you, you may pay online – Zürich", False)])
+def test_may_is_a_month_only_beside_a_day_or_a_year(targets: list[dict], under: str, month: bool) -> None:
+    layout = [row for row in MYSTERY if row[0] != "October 1 - 31, 2025"] + [(under, 0.039, 0.245, 0.3, 0.012)]
+
+    fields = _read(layout, targets)
+
+    assert (fields["activity_quantity"].get("raw_value") != "1,486") is month
