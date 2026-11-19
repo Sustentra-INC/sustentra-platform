@@ -29,6 +29,17 @@ describe("unsupported-document wording (N22, N23)", () => {
     expect(plain).toBe("We couldn't tell what kind of document this is. Choose its type in Evidence.");
     expect(plain).not.toMatch(/CT-S1|0\.48/);
   });
+  it("prefers the halt code, whatever the sentence says", () => {
+    expect(plainBatchHalt(raw, "unsupported_document")).toBe(
+      "We couldn't tell what kind of document this is. Choose its type in Evidence."
+    );
+    expect(plainBatchHalt("Parser said: CT-S1-X 0.2", "unreadable_document")).toBe("File could not be read.");
+    expect(plainBatchHalt("Something Müller 電気", "ocr_required")).toMatch(/^Photo or scan/);
+    // document_too_long keeps the server's sentence (it carries the page counts).
+    expect(plainBatchHalt("This document has 600 pages, more than the 500 we read.", "document_too_long")).toMatch(/600 pages/);
+    // No code (an older server, or not a halt): the sentence as before.
+    expect(plainBatchHalt("Pages 11-20 could not be read.", null)).toBe("Pages 11-20 could not be read.");
+  });
   it("calls a partial read with no values 'Not read'", () => {
     expect(batchStatusFor({ status: "partial", records_found: 0 }).label).toBe("Not read");
     expect(batchStatusFor({ status: "partial", records_found: 3 }).label).toBe("Partly read");
