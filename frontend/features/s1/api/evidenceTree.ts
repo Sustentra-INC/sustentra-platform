@@ -48,6 +48,8 @@ export interface TreeDocRow {
   period_end: string | null;
   facility_id: string | null;
   facility_name: string | null;
+  /** Why the bill's account or meter number did not place it, e.g. "Account 4417-2290-31 is listed on two facilities". */
+  facility_note?: string | null;
   processing_status: string;
   detected_type: string | null;
   /** Keys of the other calculation lines this document feeds. */

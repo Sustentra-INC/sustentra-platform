@@ -318,6 +318,7 @@ engagement is 404). Nothing is stored by this route.
   set_aside: [{document_id, file_name, reason}] }    // withdrawn / duplicate / superseded: not filed
 counts  = {documents, values, accepted, to_review, issues, pct_accepted}
 DocRow  = {document_id, file_name, period_start, period_end, facility_id, facility_name,
+           facility_note,    // when facility_id is null: why an account or meter number placed nothing, or null
            processing_status, detected_type, also_in: [lineKey], values, accepted,
            placement_from,   // send this as a move's "from" to move this row
            value_family,     // "stationary" | "mobile" | "electricity" | null: the calculation this row's
@@ -598,7 +599,8 @@ calculation_lines: [{
   no company side), never dropped. `reason` is one of: `unknown_line` (filed on a line that no longer
   exists), `moved_to_another_place` (a reviewer filed it elsewhere), `fuel_shared_by_vehicle_groups`
   (mobile fuel used by two or more groups), `no_vehicle_group` (mobile fuel no group uses),
-  `no_facility_match` (no Setup facility matches), `no_calculation_line`. Lines plus unplaced add up to the
+  `no_facility_match` (no Setup facility matches), `identifier_on_two_facilities` (the bill's account or
+  meter number is listed on two or more Setup facilities, so it is not placed), `no_calculation_line`. Lines plus unplaced add up to the
   category on `sum_co2e_t`; a consolidated share below 100% scales `total_co2e_t` only.
 - `calculation_line_inputs`: `{consolidated_shares, unknown_line_keys: [{setting, key}],
   unknown_facility_ids}`. A key that matches no line and names no facility or vehicle group is allowed
@@ -657,3 +659,37 @@ admin may call for any org; it answers 409 when the user is not waiting for an i
 ## Contract Source
 
 JSON schema contracts are versioned in `contracts/` and should be treated as API truth for request/response payload shape.
+
+### Facility account and meter numbers (PROVISIONAL)
+
+Approved by the product owner on 18 Nov 2026 as provisional: the ops lead may change the format of the client's
+facility list. Each facility in `settings.facilities` may carry `accountNumbers: string[]` and, optionally,
+`meterNumbers: string[]` (at most 50 each, at most 64 characters each, at least one digit, stored as typed). A
+facility without them behaves exactly as before. A bad list is refused on save (422, a plain sentence). The same number
+on two facilities saves; Setup shows "Account 4417-2290-31 is on two facilities. Bills with it won't be placed
+automatically."
+
+Placement uses them as the last step. The reviewer's choice, the facility name and the service address come first (the
+name and address step answers match, ambiguous or none; the numbers are used only on none, never on ambiguous);
+the bill's account number (then its meter number) is used **only when the bill gives no usable name and no usable
+address**. A bill whose name or address matched nothing is never placed by its number: the Evidence tree row carries
+`facility_note` ("Account 2001-7788 is listed on Tacoma Plant, but this bill's address (2210 Port of Tacoma Rd) is not
+in Setup. Choose the facility.") and the reviewer chooses. A value a reviewer rejected or marked "needs more evidence",
+and a value only Claude read, is never read for placement (name, address, account and meter number alike), on the
+backend and on the screen.
+
+A number matches only as a whole, never a partial one. NFKC and case folding apply, and invisible characters (a BOM)
+are dropped. Spaces, dashes and dots separate groups: two numbers are the same when their groups are the same ("4417
+2290 31" = "4417-2290-31"), or when one is written without separators and the characters are the same; "12-345" is not
+"1234-5". A number needs at least 4 digits, on the bill and in Setup, to match. A number listed on two facilities, or an
+account and a meter number that point at different facilities, place nothing: `facility_note` says why ("Account
+7700-1234 is listed on two facilities. Choose the facility.") and the recalculation lists the record in
+`calculation_unplaced` with `reason: "identifier_on_two_facilities"`. A bill placed this way is described as "Account
+or meter number in Setup". Each record of a bill is placed on its own.
+
+Not built yet, because the format is provisional and waits on the ops lead: a supplier per number (two utilities can
+issue the same account number). The code is in `backend/app/services/facility_identifiers.py` (one matching function)
+and `reviewed_evidence.place_on_facility` (the one placement decision); the frontend twin is
+`frontend/features/s1/utils/facilityNumbers.ts` and `placeRecord` in `utils/documentView.ts`. Both sides run the shared
+cases in `backend/tests/fixtures/facility_placement_cases.json` and the name and address probes in
+`facility_match_probes.json`.

@@ -1031,9 +1031,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const evidenceView = useMemo(
     () =>
       dataMode === "backend"
-        ? withReadingState(applyDocumentView(evidenceItems, facts, documentDecisions, engagement.facilities), reads.runs)
+        ? withReadingState(applyDocumentView(evidenceItems, facts, documentDecisions, engagement.facilities, engagement.clientName), reads.runs)
         : evidenceItems,
-    [dataMode, evidenceItems, facts, documentDecisions, engagement.facilities, reads.runs]
+    [dataMode, evidenceItems, facts, documentDecisions, engagement.facilities, engagement.clientName, reads.runs]
   );
   // The data quality checks behind the Evidence screen's Issue column (backend mode), fetched
   // again when the documents or the reviewer's decisions change.
@@ -1115,8 +1115,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     [dataMode, engagement, evidenceView, reviewValuesView, requests.asks, verification.examinations, verification.findings, auditIntents, evidenceEvents, methodology.log]
   );
   const foundFacilities = useMemo(
-    () => (dataMode === "backend" ? unmatchedFacilities(facts, engagement.facilities) : []),
-    [dataMode, facts, engagement.facilities]
+    () => (dataMode === "backend" ? unmatchedFacilities(facts, engagement.facilities, engagement.clientName) : []),
+    [dataMode, facts, engagement.facilities, engagement.clientName]
   );
 
   if (!mounted) {
