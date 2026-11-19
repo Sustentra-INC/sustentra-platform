@@ -37,7 +37,8 @@ def test_rows_carry_every_value_and_flag_the_unaccepted() -> None:
     assert [rows[d]["accepted"] for d in ("BILL-A", "BILL-B", "BILL-C")] == [True, False, True]
     a = rows["BILL-A"]
     assert a["date"] == {"start": "2025-01-16", "end": "2025-02-15", "days": 31, "label": "Service period"}
-    assert a["activity_quantity"] == {"value": 310, "unit": "MMBtu"} and a["cells"] == {}
+    assert a["activity_quantity"] == {"value": 310, "unit": "MMBtu", "candidate_id": "BILL-A:1:activity_quantity",
+                                      "page": 1, "sheet": None, "cell": None} and a["cells"] == {}
     assert a["saved_by"] == {"name": "Ana Reyes", "at": "2025-04-02T10:00:00Z"}
     assert (a["file_name"], a["page"], a["candidate_id"]) == ("BILL-A.pdf", 1, "BILL-A:1:activity_quantity")
     assert a["record_key"] == "BILL-A:0" and a["record_index"] is None
@@ -67,8 +68,10 @@ def test_columns_show_only_with_a_value_and_in_the_spec_order() -> None:
     schedule = _schedule(store)
     assert [c["key"] for c in schedule["columns"]] == ["date", "activity_quantity", "heat_content", "distance"]
     rows = {r["document_id"]: r for r in schedule["rows"]}
-    assert rows["A"]["cells"] == {"heat_content": {"value": 1.03, "unit": "MMBtu/Mscf"},
-                                  "distance": {"value": 12, "unit": "mi"}}
+    src = {"sheet": None, "cell": None, "page": 1}
+    assert rows["A"]["cells"] == {
+        "heat_content": {"value": 1.03, "unit": "MMBtu/Mscf", "candidate_id": "A:1:heat_content", **src},
+        "distance": {"value": 12, "unit": "mi", "candidate_id": "A:1:distance", **src}}
     assert rows["B"]["cells"] == {}
 
 
@@ -78,7 +81,8 @@ def test_an_unaccepted_value_still_opens_its_column() -> None:
     schedule = _schedule(store)
     assert [c["key"] for c in schedule["columns"]][-1] == "model_year"
     assert schedule["rows"][0]["accepted"] is False
-    assert schedule["rows"][0]["cells"] == {"model_year": {"value": 2019, "unit": None}}
+    assert schedule["rows"][0]["cells"] == {"model_year": {"value": 2019, "unit": None, "candidate_id": "A:1:model_year",
+                                                           "page": 1, "sheet": None, "cell": None}}
 
 
 def test_activity_note_by_category() -> None:
@@ -181,7 +185,7 @@ def _decided(decision: str | None, **extra: object) -> FakeStore:
 
 def test_an_edited_quantity_shows_the_reviewed_value() -> None:
     row = _schedule(_decided("edited", reviewed_value=999, reviewed_unit="MMBtu"))["rows"][0]
-    assert row["activity_quantity"] == {"value": 999, "unit": "MMBtu"}
+    assert (row["activity_quantity"]["value"], row["activity_quantity"]["unit"]) == (999, "MMBtu")
     assert row["accepted"] is True and row["decision"] == "edited"
     assert row["saved_by"] == {"name": "ana@example.com", "at": "2025-04-02T10:00:00Z"}
 
@@ -352,3 +356,249 @@ def test_electricity_lines_show_all_four_identifiers() -> None:
     store = FakeStore()
     store.add_document("E", "CT-S2-ELEC", [_elec(10)])
     assert _labels(_schedule(store, ELEC_KC)) == ["Facility", "Service address", "Account number", "Meter number"]
+
+
+# --- EXT-011: identifiers Claude read count before a decision; they never feed a number --------
+def _ai_meter(store: FakeStore, document_id: str, meter: str | None, *, decision: str | None = None,
+              reviewed: str | None = None) -> None:
+    """Mark the meter number of one document as read by Claude (ai_suggested), with an optional decision."""
+
+    for item in store.results[document_id][0]["items"]:
+        if item["field_name"] == "meter_number":
+            item["normalized_value"] = meter
+            item["validation_flags"] = ["ai_suggested"]
+    candidate = f"{document_id}:1:meter_number"
+    store.reviews[document_id] = [r for r in store.reviews[document_id] if r["candidate_id"] != candidate]
+    if decision:
+        store.reviews[document_id].append({"candidate_id": candidate, "decision": decision, "org_id": ORG,
+                                           "reviewed_value": reviewed, "reviewed_unit": None})
+
+
+def _meter(schedule: dict) -> dict:
+    return {g["label"]: g for g in schedule["identifier_groups"]}["Meter number"]
+
+
+def test_a_meter_claude_read_counts_in_source_identifiers_and_says_so() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(10, meter_number="seed")])
+    _ai_meter(store, "A", "№ 4471-Ж")
+    store.add_document("B", "CT-S1-FUELQTY", [_gas(10)])
+    schedule = _schedule(store)
+    meter = _meter(schedule)
+    assert (meter["documents_with"], meter["documents_total"]) == (1, 2)
+    assert [(v["value"], [(d["document_id"], d["read_by_claude"]) for d in v["documents"]]) for v in meter["values"]] == [
+        ("№ 4471-Ж", [("A", True)])]
+    assert [d["document_id"] for d in meter["not_found"]] == ["B"]
+    assert [(i["value"], i["documents_with"]) for i in schedule["identifiers"] if i["label"] == "Meter number"] == [
+        ("№ 4471-Ж", 1)]
+
+
+def test_what_claude_read_never_reaches_best_or_the_calculation() -> None:
+    from backend.app.services.reviewed_evidence import group_reviewed_records
+
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(10, meter_number="M-1")])
+    _ai_meter(store, "A", "M-1")
+    item = store.results["A"][0]["items"]
+    (record,) = group_reviewed_records({"document_id": "A", "file_name": "A.pdf"}, "CT-S1-FUELQTY", item, [])
+    assert record.best("meter_number") is None and record.reviewed("meter_number") is None
+    assert record.identifiers("meter_number") == [("M-1", True)]
+    # a field that is not an identifier keeps nothing of Claude's reading
+    for it in item:
+        if it["field_name"] == "fuel_type":
+            it["validation_flags"] = ["ai_suggested"]
+    (again,) = group_reviewed_records({"document_id": "A", "file_name": "A.pdf"}, "CT-S1-FUELQTY", item, [])
+    assert again.fields["fuel_type"].ai_reads == [] and again.best("fuel_type") is None
+
+
+def test_the_recalculation_is_the_same_with_or_without_an_ai_meter() -> None:
+    from backend.tests.services.test_engagement_recalculation_service import _service
+
+    plain, ai = FakeStore(), FakeStore()
+    for store in (plain, ai):
+        store.add_document("A", "CT-S1-FUELQTY", [_gas(10, meter_number="M-1")])
+    _ai_meter(ai, "A", "M-1")
+    assert _service(ai).recalculate(_engagement(), _own) == _service(plain).recalculate(_engagement(), _own)
+
+
+def test_a_claude_value_equal_to_a_rule_value_is_counted_once_and_not_marked_as_claudes() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(10, meter_number="M-4471"), _gas(20, "2025-02-01", "2025-02-28",
+                                                                                   meter_number="seed")])
+    # record 2 of the same bill: Claude read the same meter in other letters; record 1 was read by the rules
+    for item in store.results["A"][0]["items"]:
+        if item["field_name"] == "meter_number" and item["record_index"] == 2:
+            item["normalized_value"], item["validation_flags"] = "m-4471", ["ai_suggested"]
+    store.reviews["A"] = [r for r in store.reviews["A"] if r["candidate_id"] != "A:2:meter_number"]
+    store.add_document("B", "CT-S1-FUELQTY", [_gas(10, meter_number="seed")])
+    _ai_meter(store, "B", " M-4471 ")
+    meter = _meter(_schedule(store))
+    assert (meter["documents_with"], meter["documents_total"]) == (2, 2)
+    (value,) = meter["values"]
+    assert value["value"] == "M-4471"
+    assert {d["document_id"]: d["read_by_claude"] for d in value["documents"]} == {"A": False, "B": True}
+
+
+def test_conflicting_meters_show_as_two_values_even_when_both_are_claudes() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(10, meter_number="M-1")])
+    _ai_meter(store, "A", "M-1")
+    first = next(i for i in store.results["A"][0]["items"] if i["field_name"] == "meter_number")
+    store.results["A"][0]["items"].append({**first, "candidate_id": "A:1:meter_number:2", "normalized_value": "M-2"})
+    meter = _meter(_schedule(store))
+    assert [v["value"] for v in meter["values"]] == ["M-1", "M-2"] and meter["documents_with"] == 1
+
+
+def test_a_decided_ai_meter_follows_the_decision() -> None:
+    for decision, reviewed, expect in (("rejected", None, []), ("accepted", "M-1", [("M-1", False)]),
+                                       ("edited", "M-9", [("M-9", False)])):
+        store = FakeStore()
+        store.add_document("A", "CT-S1-FUELQTY", [_gas(10, meter_number="M-1")])
+        _ai_meter(store, "A", "M-1", decision=decision, reviewed=reviewed)
+        meter = _meter(_schedule(store))
+        assert [(v["value"], v["documents"][0]["read_by_claude"]) for v in meter["values"]] == expect, decision
+
+
+def test_a_mobile_line_shows_heat_content_and_on_or_non_road_when_a_row_has_them() -> None:
+    from backend.tests.services.test_calculation_lines import _group, _mobile
+
+    store = FakeStore()
+    store.add_document("M1", "CT-S1-MOBFUEL", [{**_mobile(), "heat_content": (0.138, "MMBtu/gal"),
+                                                "on_or_non_road": ("On-road", None)}])
+    engagement = _engagement(recalculation={"vehicle_groups": [_group("Diesel Fuel", "Delivery trucks")]})
+    schedule = _tree_service(store).schedule(engagement, _own, "s1:mobile:diesel-fuel:vg-delivery-trucks")
+    assert schedule is not None
+    assert [c["key"] for c in schedule["columns"]] == ["date", "activity_quantity", "heat_content", "on_or_non_road"]
+    cells = schedule["rows"][0]["cells"]
+    assert (cells["heat_content"]["value"], cells["on_or_non_road"]["value"]) == (0.138, "On-road")
+
+
+# --- UI-037: every value carries where it was read --------------------------------------------
+def _with_refs(store: FakeStore, refs: dict[str, dict]) -> FakeStore:
+    for item in store.results["A"][0]["items"]:
+        if item["field_name"] in refs:
+            item["source_reference"] = refs[item["field_name"]]
+    return store
+
+
+def test_each_cell_has_its_own_candidate_and_page_a_workbook_value_its_sheet_and_cell() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [{**_gas(100), "heat_content": (1.03, "MMBtu/Mscf"),
+                                               "distance": (12, "mi")}])
+    _with_refs(store, {"heat_content": {"page_number": 3},
+                       "distance": {"source_kind": "excel_cell", "sheet_name": "Gas – Zürich",
+                                    "cell_or_range": "C7", "page_number": None}})
+    row = _schedule(store)["rows"][0]
+    assert row["cells"]["heat_content"] == {
+        "value": 1.03, "unit": "MMBtu/Mscf", "candidate_id": "A:1:heat_content", "page": 3, "sheet": None, "cell": None}
+    distance = row["cells"]["distance"]
+    assert (distance["sheet"], distance["cell"], distance["page"], distance["candidate_id"]) == (
+        "Gas – Zürich", "C7", None, "A:1:distance")
+
+
+def test_a_value_without_a_usable_page_reports_none_not_zero() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [{**_gas(100), "heat_content": (1.03, None)}])
+    _with_refs(store, {"activity_quantity": {"page_number": 0}, "heat_content": {}})
+    row = _schedule(store)["rows"][0]
+    assert row["activity_quantity"]["page"] is None and row["cells"]["heat_content"]["page"] is None
+
+
+# --- C4: line history ---------------------------------------------------------------------
+def _review(candidate: str, decision: str, who: str | None, at: str | None, value: object = None,
+            unit: str | None = "MMBtu", found: object = 100) -> dict:
+    return {"candidate_id": candidate, "decision": decision, "org_id": ORG, "reviewed_value": value,
+            "reviewed_unit": unit if value is not None else None, "reviewer_id": who, "reviewed_at": at,
+            "candidate_snapshot": {"normalized_value": found, "unit": "MMBtu", "validation_flags": []}}
+
+
+def _history(store: FakeStore, **kwargs):  # type: ignore[no-untyped-def]
+    return _schedule(store, **kwargs)["history"]
+
+
+def test_accept_then_edit_then_accept_again_gives_three_entries_newest_first() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(100)], decision=None)
+    q = "A:1:activity_quantity"
+    store.reviews["A"] = [_review(q, "accepted", "kl", "2025-04-01T10:00:00Z", 100),
+                          _review(q, "edited", "kl", "2025-04-02T10:00:00Z", 90),
+                          _review(q, "accepted", "kl", "2025-04-03T10:00:00Z", 90)]
+    entries = [h for h in _history(store) if h["action"] != "extracted"]
+    assert [(h["action"], h["value"], h["at"][:10]) for h in entries] == [
+        ("accepted", "90", "2025-04-03"), ("corrected", "90", "2025-04-02"), ("accepted", "100", "2025-04-01")]
+    assert all(h["field"] == "Activity quantity" and h["unit"] == "MMBtu" and h["file_name"] == "A.pdf" and h["page"] == 1
+               for h in entries)
+
+
+def test_a_value_the_reviewer_keyed_where_nothing_was_extracted_is_an_added_entry() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [{**_gas(0), "activity_quantity": (None, "MMBtu")}], decision=None)
+    store.reviews["A"] = [_review("A:1:activity_quantity", "edited", "jp", "2025-04-04T09:12:00Z", 55700, found=None)]
+    added = [h for h in _history(store) if h["action"] == "added"]
+    assert [(h["actor_name"], h["value"], h["unit"], h["field"]) for h in added] == [
+        ("jp", "55700", "MMBtu", "Activity quantity")]
+    # a correction of a value that was read stays "corrected"
+    store.reviews["A"] = [_review("A:1:activity_quantity", "edited", "jp", "2025-04-04T09:12:00Z", 55700, found=100)]
+    assert [h["action"] for h in _history(store) if h["action"] != "extracted"] == ["corrected"]
+
+
+def test_reviewer_names_with_non_ascii_letters_come_through() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(100)], decision=None)
+    store.reviews["A"] = [_review("A:1:activity_quantity", "rejected", "zoe@example.com", "2025-04-01T10:00:00Z")]
+    history = _history(store, name_of=lambda login: "Zoë Ångström")
+    rejected = next(h for h in history if h["action"] == "rejected")
+    assert rejected["actor_name"] == "Zoë Ångström" and rejected["value"] == "100"  # the value read
+
+
+def test_a_decision_without_a_time_sorts_last_and_a_missing_reviewer_is_none() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(100)], decision=None)
+    store.reviews["A"] = [_review("A:1:activity_quantity", "needs_more_evidence", None, None)]
+    store.results["A"][0]["created_at"] = "2025-04-01T08:00:00Z"
+    history = _history(store)
+    assert [h["action"] for h in history] == ["extracted", "asked_for_more_evidence"]
+    assert history[-1]["at"] is None and history[-1]["actor_name"] is None
+
+
+def test_history_is_capped_at_200_newest_first_and_reports_the_total() -> None:
+    store = FakeStore()
+    for i in range(250):
+        store.add_document(f"D{i:03}", "CT-S1-FUELQTY", [_gas(10)], decision=None)
+        store.reviews[f"D{i:03}"] = [_review(f"D{i:03}:1:activity_quantity", "edited", f"u{i}",
+                                             f"2025-{1 + i // 28:02}-{1 + i % 28:02}T10:00:00Z", 9)]
+    schedule = _schedule(store)
+    assert len(schedule["history"]) == 200 and schedule["history_total"] == 251  # 250 edits + the extraction
+    times = [h["at"] for h in schedule["history"]]
+    assert times == sorted(times, reverse=True)
+
+
+def test_a_line_with_no_values_has_an_empty_history_and_no_system_entry() -> None:
+    mine = cl.normalize_evidence_lines([{"category": "stationary", "level2_label": "Natural gas",
+                                         "anchor_kind": "facility", "anchor_id": "fac-kc01", "label": "KC gas"}])
+    schedule = _tree_service(FakeStore()).schedule(_engagement(evidenceLines=mine), _own, GAS_KC)
+    assert schedule is not None and schedule["history"] == [] and schedule["history_total"] == 0
+
+
+def test_a_bulk_accept_in_one_minute_is_one_entry_but_the_same_value_twice_is_not_folded() -> None:
+    store = FakeStore()
+    for i in range(9):
+        store.add_document(f"D{i}", "CT-S1-FUELQTY", [_gas(10)], decision=None)
+        store.reviews[f"D{i}"] = [_review(f"D{i}:1:activity_quantity", "accepted", "kl", f"2025-04-02T10:00:{i:02}Z", 10, found=10)]
+    bulk = [h for h in _history(store, name_of=lambda login: "K. Lee") if h["action"] == "accepted"]
+    assert len(bulk) == 1 and bulk[0]["count"] == 9 and bulk[0]["actor_name"] == "K. Lee"
+    twice = FakeStore()
+    twice.add_document("A", "CT-S1-FUELQTY", [_gas(10)], decision=None)
+    q = "A:1:activity_quantity"
+    twice.reviews["A"] = [_review(q, "accepted", "kl", "2025-04-02T10:00:01Z", 10, found=10),
+                          _review(q, "accepted", "kl", "2025-04-02T10:00:30Z", 10, found=10)]
+    assert [h["count"] for h in _history(twice) if h["action"] == "accepted"] == [1, 1]
+
+
+def test_every_field_is_logged_not_only_the_quantity_heat_content_and_meter() -> None:
+    store = FakeStore()
+    store.add_document("A", "CT-S1-FUELQTY", [_gas(10, heat_content=1.03, meter_number="M-1")], decision=None)
+    store.reviews["A"] = [_review("A:1:heat_content", "edited", "kl", "2025-04-02T10:00:00Z", 1.04, "MMBtu/Mcf", 1.03),
+                          _review("A:1:meter_number", "rejected", "ana", "2025-04-03T10:00:00Z", None, None, "M-1")]
+    seen = {(h["field"], h["action"], h["value"]) for h in _history(store) if h["action"] != "extracted"}
+    assert seen == {("Heat content (HHV)", "corrected", "1.04"), ("Meter number", "rejected", "M-1")}

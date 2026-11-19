@@ -8,13 +8,14 @@
  * A route nobody answers is a 404, which the screens already treat as "not there yet".
  */
 import { ApiError, type ApiOptions } from "../../../lib/api";
+import { evidenceActionRoutes } from "./evidenceActions";
 import { evidenceTreeRoutes } from "./evidenceTree";
 import { methodologyRoutes } from "./methodology";
 import { recalculationRoutes } from "./recalculation";
 import { batchRoutes } from "./batches";
 import type { DemoRoute } from "./types";
 
-const ROUTES: DemoRoute[] = [...evidenceTreeRoutes, ...methodologyRoutes, ...recalculationRoutes, ...batchRoutes];
+const ROUTES: DemoRoute[] = [...evidenceTreeRoutes, ...evidenceActionRoutes, ...methodologyRoutes, ...recalculationRoutes, ...batchRoutes];
 
 /** A short pause so loading states show briefly, as they do on staging. */
 const LATENCY_MS = 180;

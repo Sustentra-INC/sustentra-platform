@@ -172,8 +172,8 @@ only suggests.
   `ai_time_budget` with the pages not read.
 - **What is asked.** Fields whose document-level candidate is empty (`normalized_value` and
   `raw_value` null), each as an enum value with its label and allowed units, plus the known-gap
-  fields of the type (extraction-config rows with `ai_only: true`: `heat_content`,
-  `meter_number`, `vehicle_type`, `model_year`, `distance`; optional, not consumed by the
+  fields of the type (extraction-config rows with `ai_only: true`: `heat_content`
+  (fuel and mobile fuel), `meter_number`, `vehicle_type`, `model_year`, `on_or_non_road`, `distance`; optional, not consumed by the
   calculation, never planned for the rule extractors: `get_targets_for_canonical_type` leaves
   them out unless `include_ai_only=True`). When a call is made anyway, the rule-read
   document-level fields are included as read-only cross-checks. Candidates of a layout

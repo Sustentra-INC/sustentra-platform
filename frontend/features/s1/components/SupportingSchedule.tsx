@@ -3,10 +3,11 @@
 import { ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleRow } from "../api/evidenceTree";
+import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleHistoryEntry, type ScheduleRow, type ValueSource } from "../api/evidenceTree";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { ApiError } from "../../../lib/api";
 import { userFacingApiError } from "../api/s1Backend";
+import { AI_VALUE, REREAD } from "../constants/copy";
 import { ContainerStateSurface } from "./ContainerStateSurface";
 
 /**
@@ -286,7 +287,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
                             {rowFlag(r) ? <span className="s1-sch-row__flag"> {rowFlag(r)}</span> : null}
                           </>
                         ) : (
-                          cellText(c.key, r)
+                          <ValueLink column={headerLabel(c)} row={r} text={cellText(c.key, r)} source={sourceOf(c.key, r)} onOpenDocument={onOpenDocument} />
                         )}
                       </td>
                     ))}
@@ -313,15 +314,18 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
       </section>
 
       <details className="s1-panel s1-sch-history">
-        <summary>Line history ({schedule.history.length})</summary>
+        <summary>Line history ({schedule.history_total ?? schedule.history.length})</summary>
         {schedule.history.length ? (
-          <ul>
-            {schedule.history.map((h, i) => (
-              <li key={`${h.at}:${i}`}>
-                <span className="s1-muted">{formatDateTime(h.at)}</span> {h.text}
-              </li>
-            ))}
-          </ul>
+          <>
+            {(schedule.history_total ?? 0) > schedule.history.length ? <p className="s1-muted">Showing the latest {schedule.history.length}</p> : null}
+            <ul>
+              {schedule.history.map((h, i) => (
+                <li key={`${h.at ?? "none"}:${i}`}>
+                  {h.at ? <span className="s1-muted">{formatDateTime(h.at)}</span> : null} {historySentence(h)}
+                </li>
+              ))}
+            </ul>
+          </>
         ) : (
           <p className="s1-muted">Nothing has happened on this line yet.</p>
         )}
@@ -331,6 +335,30 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
 }
 
 /* =============================== helpers =============================== */
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+const ACTION_WORDS: Record<Exclude<ScheduleHistoryEntry["action"], "extracted">, string> = {
+  accepted: "accepted",
+  corrected: "corrected",
+  added: "added",
+  rejected: "rejected",
+  asked_for_more_evidence: "asked for more evidence on",
+};
+
+/** The history sentence: who, what, the value, and where it came from. The server sends the parts. */
+export function historySentence(h: ScheduleHistoryEntry): string {
+  if (h.action === "extracted") {
+    return `System extracted ${plural(h.count ?? 0, "value", "values")} from ${plural(h.documents ?? 0, "document", "documents")} placed in this line`;
+  }
+  const who = h.actor_name || "A reviewer";
+  const verb = ACTION_WORDS[h.action] ?? h.action;
+  if ((h.count ?? 1) > 1) return `${who} ${verb} ${h.count} values`;
+  const value = h.value ? `${h.value}${h.unit ? ` ${h.unit}` : ""}` : "";
+  const what = [h.field, value].filter(Boolean).join(" ");
+  const from = h.file_name ? ` from ${h.file_name}${h.page ? `, page ${h.page}` : ""}` : "";
+  const sentence = `${who} ${verb}${what ? ` ${what}` : " a value"}${from}`;
+  return h.superseded_by_reread ? `${sentence} (no longer applies: the document was re-read)` : sentence;
+}
 
 function reportingYear(period: LineSchedule["reporting_period"]): string | null {
   const a = period.start?.slice(0, 4);
@@ -376,7 +404,15 @@ function isPending(r: ScheduleRow): boolean {
 }
 
 /** The word on a row: why it is not counted, or "Edited" for a corrected value; null for plain accepted rows. */
-function rowFlag(r: ScheduleRow): string | null {
+export function rowFlag(r: ScheduleRow): string | null {
+  const base = baseRowFlag(r);
+  // After a re-read (backend S1-BE-014): an earlier decision no longer applies, or a correction carried over a changed value.
+  if (r.reread_changed) return `${base ?? "Not reviewed"} · ${REREAD.again}`;
+  if (r.value_changed_since_review) return `${base ?? "Accepted"} · Value changed since review`;
+  return base;
+}
+
+function baseRowFlag(r: ScheduleRow): string | null {
   switch (r.decision) {
     case "accepted":
       return null;
@@ -418,6 +454,36 @@ function formatLocal(iso: string, withTime: boolean): string {
   return withTime ? `${day}, ${two(d.getHours())}:${two(d.getMinutes())}` : day;
 }
 
+/** Where one cell's value was read; the quantity falls back to the row's own candidate and page. */
+function sourceOf(key: string, r: ScheduleRow): ValueSource {
+  if (key === "activity_quantity") {
+    const q = r.activity_quantity;
+    return { candidate_id: q.candidate_id ?? r.candidate_id, page: q.page ?? r.page, sheet: q.sheet, cell: q.cell };
+  }
+  return r.cells[key] ?? {};
+}
+
+/** A value that opens its own source: the review opens at that value, or at the document when nothing says where. */
+function ValueLink({ column, row, text, source, onOpenDocument }: { column: string; row: ScheduleRow; text: string; source: ValueSource; onOpenDocument: (documentId: string, valueId?: string) => void }) {
+  if (!text) return null;
+  const where = source.sheet ? `sheet ${source.sheet}${source.cell ? `, cell ${source.cell}` : ""}` : source.page ? `page ${source.page}` : null;
+  const label = `Open ${row.file_name}, ${where ?? "page 1, no page was recorded"} at ${column} ${text}`;
+  return (
+    <>
+      <button
+        className="s1-linklike"
+        type="button"
+        aria-label={label}
+        title={where ?? "No page was recorded for this value; the document opens at page 1."}
+        onClick={() => onOpenDocument(row.document_id, source.candidate_id ? resolveFieldKey({ candidateId: source.candidate_id, backendFieldId: "" }) : undefined)}
+      >
+        {text}
+      </button>
+      {where ? null : <span className="s1-muted s1-sch-nopage"> (no page recorded, opens at page 1)</span>}
+    </>
+  );
+}
+
 /** A month's counted quantity, a computed share of its bills: whole units once it is in the hundreds. */
 function formatQuantity(n: number): string {
   return n.toLocaleString(undefined, { maximumFractionDigits: Math.abs(n) >= 100 ? 0 : 3 });
@@ -429,10 +495,13 @@ function IdentifierItem({ group, onOpenDocument }: { group: IdentifierGroup; onO
   const all = group.documents_with === group.documents_total;
   const summary = group.values.length > 1 ? `${group.values.length} values` : (group.values[0]?.value.trim() || "Not found");
   const count = (n: number) => `${n} ${n === 1 ? "document" : "documents"}`;
-  const docLink = (d: { document_id: string; file_name: string }) => (
-    <button key={d.document_id} className="s1-linklike" type="button" aria-label={`Open ${d.file_name}`} onClick={() => onOpenDocument(d.document_id)}>
-      {d.file_name}
-    </button>
+  const docLink = (d: { document_id: string; file_name: string; read_by_claude?: boolean }) => (
+    <span key={d.document_id} className="s1-sch-ids__doc">
+      <button className="s1-linklike" type="button" aria-label={`Open ${d.file_name}`} onClick={() => onOpenDocument(d.document_id)}>
+        {d.file_name}
+      </button>
+      {d.read_by_claude ? <span className="s1-muted"> · {AI_VALUE.readBy}</span> : null}
+    </span>
   );
   return (
     <li className={all ? "" : "is-partial"}>

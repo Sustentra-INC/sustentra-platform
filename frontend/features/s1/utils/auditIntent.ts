@@ -15,19 +15,12 @@ export type AuditIntentAction =
   | "correct_value_machine"
   | "correct_value_human"
   | "enter_value"
-  | "re_extract"
-  | "move_placement"
-  | "create_line"
-  | "create_fuel"
-  | "rename_line"
-  | "delete_line";
+  | "re_extract";
 
 export interface AuditIntent {
   action: AuditIntentAction;
-  /** The document the change is on; empty for a change to a calculation line. */
+  /** The document the change is on. */
   documentId: string;
-  /** The calculation line a change is on (Evidence tree), named as the reviewer sees it. */
-  lineLabel?: string;
   fieldKey?: string;
   oldValue?: string | number | boolean | null;
   newValue?: string | number | boolean | null;
@@ -44,11 +37,22 @@ export interface SessionAuditEntry extends AuditIntent {
   persistence: "intent_only" | "saved";
 }
 
+/**
+ * Who a session-only entry is attributed to: the signed-in person, set by the app once it knows them.
+ * Until then it is "You", never a made-up name. (Evidence line and placement changes are not session
+ * entries: the server records them with the person who made them.)
+ */
+let sessionActor = { id: "session-user", name: "You" };
+
+export function setAuditActor(actor: { id: string; name: string }): void {
+  sessionActor = { id: actor.id || "session-user", name: actor.name.trim() || "You" };
+}
+
 export function recordAuditEntry(intent: AuditIntent): SessionAuditEntry {
   return {
     ...intent,
     entryId: `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    actor: { id: "session-reviewer", name: "C. Yang", actorType: "reviewer" },
+    actor: { ...sessionActor, actorType: "reviewer" },
     timestamp: new Date().toISOString(),
     persistence: "intent_only",
   };

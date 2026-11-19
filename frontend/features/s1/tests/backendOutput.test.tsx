@@ -51,6 +51,10 @@ async function basisLines(result: Recalculation): Promise<string[]> {
   return within(heading.parentElement as HTMLElement).getAllByRole("listitem").map((li) => li.textContent ?? "");
 }
 
+// These render the real app or a whole screen: about 1-2 s alone, but over the 5 s default when the
+// full suite runs on a loaded machine. A longer limit for this file only; a hang still fails.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe("basis of evidence on Output", () => {
   it("counts fully reviewed documents, then the ones with values awaiting review", async () => {
     // 4 documents read: 1 fully reviewed; a partly reviewed CSV and two scans still have values awaiting review.

@@ -30,7 +30,7 @@ from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundE
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
-from backend.app.services.reviewed_evidence import ReviewedRecord, to_date
+from backend.app.services.reviewed_evidence import ReviewedRecord, place_on_facility, to_date
 
 if TYPE_CHECKING:
     from backend.app.services.engagement_recalculation_service import RecalculationInputs
@@ -467,12 +467,14 @@ def _resolve_key(key: str, known: dict[str, cl.CalculationLine], facilities: lis
 
 def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRecord],
           inputs: RecalculationInputs, settings: dict[str, Any], decisions: dict[str, dict[str, Any]],
-          tolerance: float, open_sources: dict[str, bool], facilities: list[dict[str, Any]]) -> Built:
+          tolerance: float, open_sources: dict[str, bool], facilities: list[dict[str, Any]],
+          company: str | None = None) -> Built:
     """The calculation lines of one recalculation, from what its categories counted (``ledger``)."""
 
     placements = {
         id(r): cl.place_record(r, ref=ref, facilities=facilities, decisions=decisions,
-                               vehicle_groups=inputs.vehicle_groups, fuel_choices=inputs.fuel_choices)
+                               vehicle_groups=inputs.vehicle_groups, fuel_choices=inputs.fuel_choices,
+                               company=company)
         for r in records}
     system = cl.default_lines(placements.values(), facilities, inputs.vehicle_groups)
     known = {line.key: line for line in cl.merge_lines(system, cl.user_lines(settings))}
@@ -514,6 +516,8 @@ def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRe
             count = groups_using.get(place.level2_label.lower(), 0)
             return "fuel_shared_by_vehicle_groups" if count > 1 else "no_vehicle_group"
         if place.anchor_id is None and place.facility is None:
+            if place_on_facility(facilities, decisions, c.record.document_id, c.record, company).ambiguous:
+                return "identifier_on_two_facilities"
             return "no_facility_match"
         return "no_calculation_line"
 

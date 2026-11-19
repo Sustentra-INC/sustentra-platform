@@ -51,6 +51,10 @@ function renderReview(documentId: string, valueId?: string) {
   return { live, card, chip, lines, filters, addToRequests };
 }
 
+// These render the real app or a whole screen: about 1-2 s alone, but over the 5 s default when the
+// full suite runs on a loaded machine. A longer limit for this file only; a hang still fails.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe("extraction review: a value added to requests", () => {
   it("says the request is not sent until it is, then that the client was asked", () => {
     const view = renderReview("DOC-modesto-elec-nov");

@@ -79,6 +79,8 @@ export const CLAUDE_ITEMS: ClaudeItem[] = [
       { label: "Fuel cards", quote: "Where fuel card data has gaps, prior-year consumption is used.", page: "page 3" },
     ],
   },
+  { fieldId: "gas:co2", value: "Included", quote: "The 2025 inventory covers CO2, CH4 and N2O.", source: B, page: "page 2" },
+  { fieldId: "gas:nf3", value: "Declared absent", quote: "SF6 and NF3 are not emitted at any Cascade Provisions site.", source: B, page: "page 2" },
   { fieldId: "boundary:leased_space", value: "Leased office space at the Tualatin Plant is reported under operational control.", quote: "Leased office space at the Tualatin Plant is reported under operational control.", source: B, page: "page 2" },
   { fieldId: "consolidation_approach", value: "Operational Control", quote: "Cascade Provisions Co. consolidates its 2025 GHG inventory using the operational control approach.", source: B, page: "page 1" },
   { fieldId: "category:location:electricity", value: "Yes", quote: "Purchased electricity is reported on a location-based basis for all three facilities.", source: W, page: "Scope 2 sheet, cell B4" },

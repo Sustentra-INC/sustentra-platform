@@ -17,6 +17,7 @@ from backend.app.adapters.llm.claude import StructuredReply, TokenUsage
 from backend.app.api import methodology_review as api
 from backend.app.core.config import Settings
 from backend.app.services import methodology_prefill as mp
+from backend.app.services import methodology_review as rules
 from backend.tests.db.test_engagements import ORIGIN, _admin, call, create, pytestmark, seeded  # noqa: F401
 from backend.tests.db.test_methodology_review import BASE, act, record, review
 from backend.tests.services.test_methodology_prefill import REPORT, doc
@@ -38,6 +39,7 @@ GOOD = {
         # not on the document: dropped
         {"field_id": "category:scope1:mobile", "value": "Yes", **cite("L5", "mobile combustion is included")},
     ],
+    "gases": [],
     "texts": [],
     "estimations": [],
     "periods": [{"start": "2024-01-01", "end": "2024-12-31", **cite("L3", "January 1 to December 31, 2024")}],
@@ -167,7 +169,7 @@ def test_an_injected_instruction_changes_nothing_without_a_matching_quote(claude
     eid = create()["id"]
     claude.output = {**GOOD, "choices": [{"field_id": "consolidation_approach", "value": "Equity Share",
                                           **cite("L7", "the company uses the equity share approach")}],
-                     "texts": [], "estimations": [], "periods": [], "entities": [], "factors": []}
+                     "texts": [], "estimations": [], "periods": [], "gases": [], "entities": [], "factors": []}
     body = prefill(eid).json()
     assert body["suggested"] == 0 and body["dropped"] == {"quote_not_on_document": 1}
     approach = record(eid, "consolidation_approach")
@@ -211,7 +213,7 @@ def test_rows_read_not_checked_until_a_prefill_finishes_then_not_detected(claude
     before = review(eid).json()
     assert before["prefill_ran_at"] is None and set(states(eid).values()) == {"not_checked"}
     optional = {c["field_id"] for c in before["catalog"] if not c["required"]}
-    assert optional == {"boundary:acquisitions", "boundary:leased_space", "calculation:estimation"}
+    assert optional == {"boundary:acquisitions", "boundary:leased_space", "calculation:estimation", *rules.GAS_IDS}
     assert all(f["shown"] is (f["field_id"] not in optional) for f in before["fields"])
     assert prefill(eid).status_code == 200
     after = review(eid).json()
@@ -470,3 +472,48 @@ def test_a_reviewer_adds_edits_and_removes_entries_and_the_list_can_be_emptied(c
     dup = [{"source_type": "Fuel", "method": "a"}, {"source_type": "fuel", "method": "b"}]
     assert act(eid, EST, "edit", {"value": dup}).status_code == 422
     assert act(eid, EST, "edit", {"value": "average"}).status_code == 422
+# --- gases covered: one row per gas, "only if the company has a value" -----------------------
+
+GASES = ["gas:co2", "gas:ch4", "gas:n2o", "gas:hfcs", "gas:pfcs", "gas:sf6", "gas:nf3"]
+GAS_LINE = "The inventory covers CO₂, CH₄ and N₂O; SF6 and NF3 are not emitted at our Käserei sites (瑞士)."
+
+
+def test_the_seven_gas_rows_are_hidden_until_there_is_a_value_and_keep_their_own_values(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    body = review(eid).json()
+    defs = {c["field_id"]: c for c in body["catalog"] if c["field_id"].startswith("gas:")}
+    assert list(defs) == GASES
+    assert all(d["required"] is False and d["allowed"] == ["Included", "Declared absent", "Not mentioned"] for d in defs.values())
+    assert [d["label"] for d in defs.values()] == ["Gas: CO2", "Gas: CH4", "Gas: N2O", "Gas: HFCs", "Gas: PFCs", "Gas: SF6", "Gas: NF3"]
+    assert not set(GASES) & shown_ids(eid)
+    assert {"group": "gases", "label": "Gases covered"} in body["groups"]
+    # the category set and the gas set stay apart
+    assert act(eid, "gas:co2", "edit", {"value": "Yes"}).status_code == 422
+    assert act(eid, "gas:co2", "edit", {"value": "Not detected"}).status_code == 422
+    assert act(eid, "category:scope1:mobile", "edit", {"value": "Included"}).status_code == 422
+    assert not set(GASES) & shown_ids(eid)  # refused edits reveal nothing
+
+
+def test_prefill_with_a_quote_shows_only_the_gases_it_found(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, GAS_LINE)])])
+    claude.output = {**GOOD, "gases": [
+        {"field_id": "gas:co2", "value": "Included", **cite("L9", "covers CO₂, CH₄ and N₂O")},
+        {"field_id": "gas:sf6", "value": "Declared absent", **cite("L9", "SF6 and NF3 are not emitted")},
+        {"field_id": "gas:pfcs", "value": "Declared absent", **cite("L9", "PFCs are not emitted")}]}  # not on the page
+    body = prefill(eid).json()
+    assert body["dropped"] == {"quote_not_on_document": 2}  # the PFC quote, and GOOD's mobile combustion quote
+    assert shown_ids(eid) & set(GASES) == {"gas:co2", "gas:sf6"}
+    assert record(eid, "gas:co2")["suggestion"]["value"] == "Included"
+    assert record(eid, "gas:sf6")["suggestion"]["value"] == "Declared absent"
+    assert states(eid)["gas:pfcs"] == "not_detected" and not record(eid, "gas:pfcs")["shown"]
+
+
+def test_add_an_item_and_a_reviewer_can_set_not_mentioned_and_decide_a_gas(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    assert act(eid, "gas:nf3", "reveal").status_code == 200
+    assert record(eid, "gas:nf3")["shown"] and states(eid)["gas:nf3"] == "not_checked"
+    assert act(eid, "gas:nf3", "edit", {"value": "Not mentioned"}).status_code == 200
+    assert record(eid, "gas:nf3")["decision"]["value"] == "Not mentioned" and states(eid)["gas:nf3"] == "has_value"
+    assert act(eid, "gas:hfcs", "edit", {"value": "Declared absent"}).status_code == 200
+    assert shown_ids(eid) & set(GASES) == {"gas:nf3", "gas:hfcs"}
