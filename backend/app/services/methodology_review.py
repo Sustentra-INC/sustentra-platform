@@ -44,7 +44,7 @@ KIND = "methodology"
 CONSOLIDATION_APPROACHES = ("Equity Share", "Financial Control", "Operational Control")
 INCLUSIONS = ("Yes", "No", "Not detected")
 GWP_SETS = ("AR4", "AR5", "AR6")
-GWP_HORIZONS = ("100-year", "20-year")
+GWP_HORIZONS = ("100-year", "20-year", "500-year")
 GWP_SET_LABELS = {
     "AR4": "IPCC Fourth Assessment Report (AR4)",
     "AR5": "IPCC Fifth Assessment Report (AR5)",
@@ -91,8 +91,10 @@ ROW_GROUPS: dict[str, tuple[str, str, str, str]] = {
     "entities": ("entity", "entity", "boundary", "Entity"),
     "factor:scope1": ("factor:scope1", "factor", "factors", "Scope 1 emission factor source"),
     "factor:scope2": ("factor:scope2", "factor", "factors", "Scope 2 emission factor source"),
+    # A report may name more than one GWP set: the first is the fixed "gwp" field, each other is a row.
+    "gwp": ("gwp", "gwp", "gwp", "GWP set"),
 }
-_ROW_ID = re.compile(r"^(entity|factor:scope1|factor:scope2):[a-z0-9]{4,32}$")
+_ROW_ID = re.compile(r"^(entity|factor:scope1|factor:scope2|gwp):[a-z0-9]{4,32}$")
 
 
 class MethodologyConflict(Exception):
@@ -194,7 +196,14 @@ def row_field(field_id: str) -> dict[str, Any] | None:
     if not match:
         return None
     prefix, kind, group, label = next(g for g in ROW_GROUPS.values() if g[0] == match.group(1))
-    field = _field(field_id, group, label, kind, {"operational_control": list(YES_NO)} if kind == "entity" else None)
+    allowed: Any = None
+    if kind == "entity":
+        allowed = {"operational_control": list(YES_NO)}
+    elif kind == "gwp":
+        allowed = {"set": list(GWP_SETS), "horizon": list(GWP_HORIZONS)}
+    field = _field(field_id, group, label, kind, allowed)
+    if kind == "gwp":
+        field["allowed_labels"] = {"set": dict(GWP_SET_LABELS)}
     field["user_added"] = True
     return field
 
@@ -203,7 +212,7 @@ def new_row_id(group: str) -> str:
     """A fresh id for a row in ``group`` (entities, factor:scope1, factor:scope2)."""
 
     if group not in ROW_GROUPS:
-        raise MethodologyInvalid("Rows can be added to the entities and to the Scope 1 or Scope 2 emission factor sources.")
+        raise MethodologyInvalid("Rows can be added to the entities, the emission factor sources and the GWP sets.")
     return f"{ROW_GROUPS[group][0]}:{uuid.uuid4().hex[:12]}"
 
 
@@ -213,6 +222,8 @@ def blank_value(field_id: str) -> Any:
     if field_id.startswith("entity:"):
         return {"name": "", "facilities": [], "equity_share_pct": 0, "financial_control": 0,
                 "operational_control": "No"}
+    if field_id.startswith("gwp:"):
+        return {"set": "", "horizon": ""}
     return {"database": "", "edition": ""}
 
 

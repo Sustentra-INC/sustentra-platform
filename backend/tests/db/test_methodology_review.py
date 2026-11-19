@@ -79,7 +79,7 @@ def test_get_lists_every_field_pending_with_the_catalog_and_ai_off() -> None:
     assert gwp["group"] == "gwp" and gwp["group_label"] == "GWP factors source"
     assert [p["key"] for p in gwp["parts"]] == ["set", "horizon"] and gwp["parts"][0]["allowed"] == ["AR4", "AR5", "AR6"]
     assert "parts" not in next(c for c in body["catalog"] if c["field_id"] == "exclusion:boundary")
-    assert body["row_groups"] == ["entities", "factor:scope1", "factor:scope2"]
+    assert body["row_groups"] == ["entities", "factor:scope1", "factor:scope2", "gwp"]
     assert {"group": "boundary", "label": "Organizational boundary"} in body["groups"]
     assert next(c for c in body["catalog"] if c["field_id"] == "gwp")["allowed"]["set"] == ["AR4", "AR5", "AR6"]
     assert asyncio.run(_admin("SELECT count(*) AS n FROM workpaper_items"))[0]["n"] == 0  # reading writes nothing

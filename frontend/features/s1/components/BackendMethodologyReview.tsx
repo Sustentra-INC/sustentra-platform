@@ -58,6 +58,7 @@ const ADD_ROW_LABEL: Record<string, string> = {
   entities: "Add entity",
   "factor:scope1": "Add Scope 1 factor row",
   "factor:scope2": "Add Scope 2 factor row",
+  gwp: "Add GWP set",
 };
 
 /** What an empty row reads, by the server's display state. Never "Not set". */

@@ -70,7 +70,7 @@ class RejectBody(_Body):
 
 
 class RowBody(_Body):
-    group: Literal["entities", "factor:scope1", "factor:scope2"]
+    group: Literal["entities", "factor:scope1", "factor:scope2", "gwp"]
 
 
 @contextmanager
@@ -387,9 +387,14 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser
             payload=rules.new_record(field_id), user_id=user.id)
     locked = {row["item_key"]: row["payload"] for row in await workpaper_item_service.get_items(
         db, engagement["id"], KIND, list(fixed), for_update=True)}
+    moved: list[prefill.Verified] = []  # a GWP set the decided fixed field cannot take becomes a row
     for field_id, item in fixed.items():
         if rules.status_of(locked[field_id]) != rules.PENDING:
-            kept += 1
+            decided = (locked[field_id].get("decision") or {}).get("value")
+            if field_id == "gwp" and not prefill.same_row_value("gwp", decided, item.suggestion["value"]):
+                moved.append(prefill.Verified(None, "gwp", item.suggestion))
+            else:
+                kept += 1
             continue
         try:
             saved = await rules.save_suggestion(db, org_id=engagement["org_id"], engagement_id=engagement["id"],
@@ -400,9 +405,14 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser
         suggested += 1 if saved is not None else 0
     existing = [row for row in await workpaper_item_service.list_items(db, engagement["id"], KIND)
                 if rules.row_field(row["item_key"]) is not None and not row["payload"].get("removed")]
-    for item in (v for v in verified if v.row_group):
+    fixed_gwp = [row["payload"] for row in await workpaper_item_service.get_items(db, engagement["id"], KIND, ["gwp"])]
+    gwp_values = [mine for payload in fixed_gwp for mine in ((payload.get("suggestion") or {}).get("value"),
+                                                              (payload.get("decision") or {}).get("value"))]
+    for item in [*(v for v in verified if v.row_group), *moved]:
         group = str(item.row_group)
         value = item.suggestion["value"]
+        if group == "gwp" and any(prefill.same_row_value(group, mine, value) for mine in gwp_values):
+            continue  # the fixed GWP field already holds this set
         if any(row["item_key"].startswith(rules.ROW_GROUPS[group][0] + ":") and any(
                 prefill.same_row_value(group, mine, value)
                 for mine in ((row["payload"].get("suggestion") or {}).get("value"),

@@ -142,7 +142,7 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp|date_range, allowed?, parts?, user_added}`, in page order: the fixed
     fields (reporting_period, consolidation_approach, `category:{scope1|location|market|biogenic}:...`,
     `boundary:{acquisitions|leased_space}` (text, `required: false`: hidden until a value or "Add an item"), `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`), then the rows the
-    reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (with `allowed_labels.set`),
+    reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (horizon one of 100-year, 20-year, 500-year; with `allowed_labels.set`),
     `{operational_control}` for an entity. `parts` (entity, factor, gwp only) lists the value's editors,
     `[{key, label, kind: text|list|percent|enum, allowed?}]`, so a blank new row can be drawn.
   - Row states. The GET also answers `prefill_ran_at` (the time the last Claude prefill finished and stored its
@@ -153,6 +153,7 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Only `boundary:acquisitions` and `boundary:leased_space` are optional
     today; every other field is `required`. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
     added optional rows are kept in one extra `workpaper_items` row (`item_key` `meta:state`), never listed as a field.
+  - GWP sets. The report may name more than one GWP set. The first set Claude finds fills the fixed `gwp` field; every other distinct set and horizon becomes a row (`gwp:<id>`, group `gwp`, label "GWP set", `user_added: false`) instead of being dropped; the reviewer can add rows (`POST .../rows` `{group: "gwp"}`, blank value `{set: "", horizon: ""}`) and remove the ones they added. A set the fixed field already holds (suggested or decided) is not added again, and a reviewer's decision is never overwritten. "Identified by" and mismatch flags are not built yet.
   - Values by kind: date_range (`reporting_period`) is `{start, end}`, each a real calendar date written `YYYY-MM-DD` (ASCII digits), with end not before start (otherwise 422 with a sentence). A record saved before this change may still hold the text it was; the GET returns it unchanged and the screen shows "Recorded as: <text>" until the reviewer enters two dates. Claude's reporting-period suggestion carries both dates in ISO form, and is kept only if both are printed in its quote (English month names, `1/1/2025` read month first, `2025-01-01`); otherwise it is dropped and counted as `value_not_in_quote`. text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
@@ -168,7 +169,7 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
 - `POST .../{field_id}/reveal` ("Add an item", no body) shows a hidden optional field and keeps it shown
   (answers `{field_id, shown: true}`; repeating it is fine). A field that is always shown answers 422, an unknown field or a row 404. It
   writes a `methodology_decision` audit event with action `reveal`.
-- `POST .../rows` `{group: "entities"|"factor:scope1"|"factor:scope2"}` adds a row under a server-made id (201, the new record plus `field`, its catalog def). `DELETE .../{field_id}` removes a row the reviewer added (answers the record with `removed: true`); the
+- `POST .../rows` `{group: "entities"|"factor:scope1"|"factor:scope2"|"gwp"}` adds a row under a server-made id (201, the new record plus `field`, its catalog def). `DELETE .../{field_id}` removes a row the reviewer added (answers the record with `removed: true`); the
   row is marked removed, not deleted. A field from the report answers 409 "Reject it instead".
 - Writes are s1_writer on an open engagement: another org 404, provider_admin 403, archived 409. A move the
   state does not allow is 409 and bad input 422, both with a sentence in `detail`; an unknown field is 404.

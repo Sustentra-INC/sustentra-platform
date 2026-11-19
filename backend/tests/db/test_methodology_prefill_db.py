@@ -429,3 +429,57 @@ def test_add_an_item_shows_the_row_as_not_detected_after_a_run_and_it_can_be_edi
     assert states(eid)[LEASE] == "has_value" and LEASE in shown_ids(eid)
     assert act(eid, LEASE, "edit", {"value": "x" * 2001}).status_code == 422
     assert act(eid, ACQ, "edit", {"value": 5}).status_code == 422
+
+
+# --- GWP: every set the report names stays, as its own row --------------------------------------
+
+GWP_LINES = ["Scope 1 uses the IPCC Fifth Assessment Report (AR5) 100-year GWP values.",
+             "Scope 2 uses AR6 with a 20-year horizon; a 500-year horizon (AR4) is shown for comparison."]
+
+
+def gwp_rows(engagement_id: str) -> list[dict]:
+    return [f for f in review(engagement_id).json()["fields"] if f["field_id"].startswith("gwp:")]
+
+
+def test_every_gwp_set_the_report_names_is_kept_the_first_as_the_field_and_the_rest_as_rows(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
+    claude.output = {**GOOD, "gwp": [
+        {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")},
+        {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")},
+        {"set": "AR4", "horizon": "500-year", **cite("L10", "a 500-year horizon (AR4)")}]}
+    assert prefill(eid).json()["suggested"] == 8  # GOOD's five, the fixed GWP field and two GWP rows
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
+    rows = gwp_rows(eid)
+    assert sorted((r["suggestion"]["value"]["set"], r["suggestion"]["value"]["horizon"]) for r in rows) == [("AR4", "500-year"), ("AR6", "20-year")]
+    assert all(r["user_added"] is False and r["decision"] is None and r["shown"] for r in rows)
+    catalog = {c["field_id"]: c for c in review(eid).json()["catalog"] if c["field_id"].startswith("gwp:")}
+    assert set(catalog) == {r["field_id"] for r in rows} and all(c["label"] == "GWP set" for c in catalog.values())
+    again = prefill(eid).json()  # a second run adds no second copy
+    assert len(gwp_rows(eid)) == 2 and again["suggested"] == 4  # no second copy of a row
+
+
+def test_a_decided_gwp_field_is_kept_and_a_set_it_already_holds_is_not_added_again(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    assert act(eid, "gwp", "edit", {"value": {"set": "AR5", "horizon": "100-year"}}).status_code == 200
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
+    claude.output = {**GOOD, "gwp": [
+        {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")},
+        {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}]}
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["decision"]["value"] == {"set": "AR5", "horizon": "100-year"} and record(eid, "gwp")["suggestion"] is None
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]  # AR5 / 100-year is the decided field
+
+
+def test_a_reviewer_adds_edits_and_removes_gwp_rows_and_the_500_year_horizon_saves(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    assert act(eid, "gwp", "edit", {"value": {"set": "AR6", "horizon": "500-year"}}).status_code == 200
+    added = call("POST", f"{BASE}/{eid}/methodology-review/rows", "a_member", {"group": "gwp"})
+    assert added.status_code == 201, added.text
+    row_id = added.json()["field"]["field_id"]
+    assert row_id.startswith("gwp:") and added.json()["decision"]["value"] == {"set": "", "horizon": ""}
+    assert act(eid, row_id, "accept").status_code == 422  # blank: nothing to accept
+    assert act(eid, row_id, "edit", {"value": {"set": "AR4", "horizon": "20-year"}}).status_code == 200
+    assert act(eid, row_id, "edit", {"value": {"set": "AR4", "horizon": "5-year"}}).status_code == 422
+    removed = call("DELETE", f"{BASE}/{eid}/methodology-review/{row_id}", "a_member")
+    assert removed.status_code == 200 and gwp_rows(eid) == []

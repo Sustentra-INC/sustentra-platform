@@ -84,7 +84,7 @@ class PeriodSuggestion(_Cited):
 
 class GwpSuggestion(_Cited):
     set: Literal["AR4", "AR5", "AR6"]
-    horizon: Literal["100-year", "20-year"]
+    horizon: Literal["100-year", "20-year", "500-year"]
 
 
 class EntitySuggestion(_Cited):
@@ -209,7 +209,8 @@ What the items mean
   boundary:leased_space only if a document states something about them; if it is silent, leave
   them out.
 - gwp: the Global Warming Potential set the company uses (IPCC assessment report AR4, AR5 or AR6)
-  and the time horizon (100-year or 20-year). At most one.
+  and the time horizon (20-year, 100-year or 500-year). If the report uses more than one set or
+  horizon, give each one separately; do not pick between them.
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
   equity share (percent, 0 to 100), financial control (percent, 0 to 100) and whether the company
   has operational control (Yes or No). Include an entity only if the cited line states its equity
@@ -402,10 +403,21 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped["value_not_in_quote"] += 1
             continue
         keep(period, value, "reporting_period", None)
+    gwp_pairs: set[tuple[str, str]] = set()
     for gwp in output.gwp:
         value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon})
-        if value is not None:
+        if value is None:
+            continue
+        pair = (value["set"], value["horizon"])
+        if pair in gwp_pairs:  # the same set and horizon named again
+            dropped["duplicate_entry"] += 1
+            continue
+        # The first set the report names is the fixed GWP field; every other set is a row of its own.
+        if "gwp" not in seen:
             keep(gwp, value, "gwp", None, terms=_GWP_TERMS[gwp.set])
+        else:
+            keep(gwp, value, None, "gwp", terms=_GWP_TERMS[gwp.set])
+        gwp_pairs.add(pair)
     for entity in output.entities:
         definition = rules.row_field("entity:aaaa")
         assert definition is not None
@@ -436,7 +448,7 @@ def same_row_value(group: str, a: Any, b: Any) -> bool:
 
     if not isinstance(a, dict) or not isinstance(b, dict):
         return False
-    keys = ("name",) if group == "entities" else ("database", "edition")
+    keys = ("name",) if group == "entities" else ("set", "horizon") if group == "gwp" else ("database", "edition")
     return all(norm(str(a.get(k) or "")) == norm(str(b.get(k) or "")) for k in keys)
 
 

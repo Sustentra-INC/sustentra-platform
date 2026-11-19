@@ -324,3 +324,47 @@ def test_ambiguous_numeric_dates_are_read_month_first() -> None:
     assert mp.dates_in("13/4/2025") == {date(2025, 4, 13)}
     assert mp.dates_in("31 April 2025") == set()  # no such day
     assert mp.dates_in("٢٠٢٥-01-01 CO₂ 2025-01-01") == {date(2025, 1, 1)}
+
+
+# --- GWP: every set the report names, the 500-year horizon ------------------------------------
+
+GWP_REPORT = [
+    (1, "Scope 1 uses the IPCC Fifth Assessment Report (AR5) 100-year GWP values."),
+    (1, "Scope 2 uses AR6 with a 20-year horizon; a 500-year horizon (AR4) is shown for comparison."),
+]
+
+
+def gwp_item(set_: str, horizon: str, quote: str, line: str) -> dict[str, str]:
+    return {"set": set_, "horizon": horizon, **cite(line, quote)}
+
+
+def test_the_first_set_is_the_fixed_field_and_every_other_set_is_a_row() -> None:
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),
+        gwp_item("AR6", "20-year", "AR6 with a 20-year horizon", "L2"),
+        gwp_item("AR4", "500-year", "a 500-year horizon (AR4)", "L2")]), [doc(GWP_REPORT)])
+    assert dict(dropped) == {}
+    assert [(k.field_id, k.row_group) for k in kept] == [("gwp", None), (None, "gwp"), (None, "gwp")]
+    assert [k.suggestion["value"] for k in kept] == [
+        {"set": "AR5", "horizon": "100-year"}, {"set": "AR6", "horizon": "20-year"}, {"set": "AR4", "horizon": "500-year"}]
+
+
+def test_a_repeated_set_and_horizon_is_dropped_but_the_same_set_with_another_horizon_is_kept() -> None:
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),
+        gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),
+        gwp_item("AR5", "20-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1")]), [doc(GWP_REPORT)])
+    assert len(kept) == 2 and dict(dropped) == {"duplicate_entry": 1}
+
+
+def test_a_set_the_quote_does_not_name_is_dropped_and_the_next_one_becomes_the_fixed_field() -> None:
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR6", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),  # names AR5, not AR6
+        gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1")]), [doc(GWP_REPORT)])
+    assert dict(dropped) == {"value_not_in_quote": 1} and [(k.field_id, k.row_group) for k in kept] == [("gwp", None)]
+
+
+def test_the_schema_takes_the_500_year_horizon_and_no_other() -> None:
+    answer(gwp=[gwp_item("AR6", "500-year", "a 500-year horizon (AR4)", "L2")])
+    with pytest.raises(ValueError):
+        answer(gwp=[gwp_item("AR6", "50-year", "a 500-year horizon (AR4)", "L2")])

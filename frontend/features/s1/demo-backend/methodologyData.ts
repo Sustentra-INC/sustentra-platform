@@ -50,7 +50,7 @@ export const COMPANY_STATED: { fieldId: string; value: SeedValue; group?: string
 export interface ClaudeItem {
   /** A fixed field, or a new row in `rowGroup`. */
   fieldId?: string;
-  rowGroup?: "entities" | "factor:scope1" | "factor:scope2";
+  rowGroup?: "entities" | "factor:scope1" | "factor:scope2" | "gwp";
   rowKey?: string;
   value: SeedValue;
   quote: string;
@@ -63,6 +63,8 @@ const W = WORKBOOK_DOC;
 
 /** What Claude proposes from the client's documents. Nothing here is pre-accepted. */
 export const CLAUDE_ITEMS: ClaudeItem[] = [
+  // The report shows a second set for comparison: it stays as its own row, beside the decided AR5 field.
+  { rowGroup: "gwp", rowKey: "w1", value: { set: "AR6", horizon: "500-year" }, quote: "A 500-year horizon using AR6 is shown for comparison only.", source: B, page: "page 3" },
   { fieldId: "boundary:leased_space", value: "Leased office space at the Tualatin Plant is reported under operational control.", quote: "Leased office space at the Tualatin Plant is reported under operational control.", source: B, page: "page 2" },
   { fieldId: "consolidation_approach", value: "Operational Control", quote: "Cascade Provisions Co. consolidates its 2025 GHG inventory using the operational control approach.", source: B, page: "page 1" },
   { fieldId: "category:location:electricity", value: "Yes", quote: "Purchased electricity is reported on a location-based basis for all three facilities.", source: W, page: "Scope 2 sheet, cell B4" },
