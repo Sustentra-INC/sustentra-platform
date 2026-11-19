@@ -60,6 +60,7 @@ from backend.app.services.reviewed_evidence import (  # noqa: F401 - re-exported
     latest_decisions,
     match_facility,
     resolve_fuel_name,
+    place_on_facility,
     resolve_setup_facility,
     set_aside_reason,
     superseded_ids,
@@ -1252,9 +1253,7 @@ class EngagementRecalculationService:
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""
 
-        return resolve_setup_facility(self._facilities, self._decisions, record.document_id,
-                                      record.best("facility_name"), record.best("service_address"),
-                                      account=record.best("account_number"), meter=record.best("meter_number"))
+        return place_on_facility(self._facilities, self._decisions, record.document_id, record).facility
 
     # =================================================================================
     # Totals and comparison

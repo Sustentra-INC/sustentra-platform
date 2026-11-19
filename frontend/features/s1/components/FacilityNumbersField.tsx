@@ -35,7 +35,8 @@ export function FacilityNumbersField({
     const result = addNumbers(values, text);
     if (result.values.length !== values.length) onChange(result.values);
     setProblem(result.problem);
-    setDraft(result.problem ? text.trim() : "");
+    // Keep only what was refused, so the rest of a long paste is not typed again.
+    setDraft(result.rejected.map((part) => (/[\r\n,;]/.test(part) ? `"${part}"` : part)).join("; "));
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {

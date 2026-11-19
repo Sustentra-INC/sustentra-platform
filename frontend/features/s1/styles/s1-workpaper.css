@@ -3756,8 +3756,8 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-fac__numbers-label { font-size: var(--text-sm); color: var(--ink-3); font-weight: var(--weight-regular); }
 .s1-fac__chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .s1-fac__chip { display: inline-flex; align-items: center; gap: var(--sp-1); }
-.s1-fac__chip-remove { display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: var(--ink-3); cursor: pointer; border-radius: var(--radius-chip); }
-.s1-fac__chip-remove:hover { color: var(--state-blocking-fg); }
+.s1-fac__chip-remove { display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; min-height: 1.5rem; padding: 0; border: 0; background: none; color: var(--ink-3); cursor: pointer; border-radius: var(--radius-chip); }
+.s1-fac__chip-remove:hover { background: var(--sf-inset); color: var(--ink); }
 .s1-fac__chip-remove:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .s1-fac__chip-remove svg { width: 0.85rem; height: 0.85rem; }
 .s1-fac__problem { font-size: var(--text-sm); color: var(--state-blocking-fg); }

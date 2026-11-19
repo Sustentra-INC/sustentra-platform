@@ -12,6 +12,14 @@ export const BACKEND_TYPE_IDS: Record<string, string> = {
   "Purchased steam, heat or cooling record": "CT-S2-THERMAL",
 };
 
+/** What one record of a document says about where it belongs (only values placement may read). */
+export interface RecordFacts {
+  name: string | null;
+  address: string | null;
+  account: string | null;
+  meter: string | null;
+}
+
 /** What a document's own extracted values say about it. */
 export interface DocumentFacts {
   facilityName: string | null;
@@ -19,6 +27,8 @@ export interface DocumentFacts {
   /** The account and meter number the bill gives (provisional step, see utils/facilityNumbers.ts). */
   accountNumber?: string | null;
   meterNumber?: string | null;
+  /** The same, record by record (a bill can hold several). When absent, the fields above stand for one record. */
+  records?: RecordFacts[];
   periodStart: string | null;
   periodEnd: string | null;
   /** Every facility name and address the document's records give (a log can cover several sites). */
@@ -31,13 +41,71 @@ function fieldName(field: ExtractedField): string | null {
   return typeof candidate?.field_name === "string" ? candidate.field_name : null;
 }
 
-/** A value the backend would read with best(): reviewed, or not an unreviewed suggestion from Claude. */
+/**
+ * A value the backend would read to place a bill (record.for_placement): reviewed, or read by the rules, but not
+ * one only Claude read and nobody accepted, and not one a reviewer rejected or asked for more evidence on.
+ */
 function countsForPlacement(field: ExtractedField): boolean {
+  if (field.placementBlocked) return false;
   return field.reviewStatus !== "unreviewed" || !field.valueProperties.includes("ai_suggested");
+}
+
+export interface RecordPlacement {
+  facility: FacilityOption | null;
+  how: string | null;
+  /** Why nothing was placed when the account or meter number had something to say; null otherwise. */
+  note: string | null;
+  ambiguous: boolean;
+}
+
+const usable = (text: string | null | undefined) => matchFacilityText(text) !== "";
+function matchFacilityText(text: string | null | undefined): string {
+  return (text ?? "").toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, " ").split(/\s+/).filter(Boolean).join(" ");
+}
+
+/**
+ * The one place a record's Setup facility is decided on the screen (the backend's place_on_facility, without the
+ * reviewer's choice, which the caller applies first): the facility name, then the service address, then, only
+ * when the bill gives no name and no address at all, the account or meter number. A bill whose name or address
+ * matched nothing is never placed by its number: it gets a note that asks for a choice.
+ */
+export function placeRecord(rec: RecordFacts, facilities: FacilityOption[]): RecordPlacement {
+  const none: RecordPlacement = { facility: null, how: null, note: null, ambiguous: false };
+  const byName = matchFacility(rec.name, null, facilities);
+  if (byName) return { ...none, facility: byName, how: "Facility name in Setup" };
+  const byAddress = matchFacility(null, rec.address, facilities);
+  if (byAddress) return { ...none, facility: byAddress, how: "Service address in Setup" };
+  const byNumber = matchByIdentifier(rec.account, rec.meter, facilities);
+  if (byNumber.ambiguous) return { ...none, note: `${byNumber.ambiguous}. Choose the facility.`, ambiguous: true };
+  if (!byNumber.facility) return none;
+  const given = usable(rec.address) ? (["address", rec.address] as const) : usable(rec.name) ? (["facility name", rec.name] as const) : null;
+  if (!given) return { ...none, facility: byNumber.facility, how: byNumber.reason };
+  const shown = (given[1] ?? "").split(/\s+/).filter(Boolean).join(" ");
+  return { ...none, note: `${byNumber.what} is listed on ${byNumber.facility.name}, but this bill's ${given[0]} (${shown}) is not in Setup. Choose the facility.` };
+}
+
+/** The record facts of a document's facts: its records, or the document-level fields standing for one record. */
+function recordsOf(fact: DocumentFacts): RecordFacts[] {
+  if (fact.records?.length) return fact.records;
+  const records: RecordFacts[] = [
+    { name: fact.facilityName, address: fact.address, account: fact.accountNumber ?? null, meter: fact.meterNumber ?? null },
+  ];
+  for (const name of fact.facilityNames ?? []) records.push({ name, address: null, account: null, meter: null });
+  for (const address of fact.addresses ?? []) records.push({ name: null, address, account: null, meter: null });
+  return records;
 }
 
 export function documentFacts(fields: ExtractedField[]): Map<string, DocumentFacts> {
   const facts = new Map<string, DocumentFacts & { dates: string[] }>();
+  const byRecord = new Map<string, Map<string, RecordFacts>>();
+  const recordOf = (field: ExtractedField): RecordFacts => {
+    const records = byRecord.get(field.documentId) ?? new Map<string, RecordFacts>();
+    byRecord.set(field.documentId, records);
+    const key = String(field.recordIndex ?? "");
+    const record = records.get(key) ?? { name: null, address: null, account: null, meter: null };
+    records.set(key, record);
+    return record;
+  };
   for (const field of fields) {
     const value = field.correctedValue ?? field.value;
     if (!value) continue;
@@ -50,19 +118,25 @@ export function documentFacts(fields: ExtractedField[]): Map<string, DocumentFac
       // never one only Claude read. That holds for the name, the address and the account and meter numbers.
       case "facility_name":
         if (!countsForPlacement(field)) break;
+        recordOf(field).name ??= value;
         entry.facilityName ??= value;
         if (!entry.facilityNames!.includes(value)) entry.facilityNames!.push(value);
         break;
       case "service_address":
         if (!countsForPlacement(field)) break;
+        recordOf(field).address ??= value;
         entry.address ??= value;
         if (!entry.addresses!.includes(value)) entry.addresses!.push(value);
         break;
       case "account_number":
-        if (countsForPlacement(field)) entry.accountNumber ??= value;
+        if (!countsForPlacement(field)) break;
+        recordOf(field).account ??= value;
+        entry.accountNumber ??= value;
         break;
       case "meter_number":
-        if (countsForPlacement(field)) entry.meterNumber ??= value;
+        if (!countsForPlacement(field)) break;
+        recordOf(field).meter ??= value;
+        entry.meterNumber ??= value;
         break;
       case "service_period_start":
       case "transaction_date":
@@ -78,7 +152,8 @@ export function documentFacts(fields: ExtractedField[]): Map<string, DocumentFac
   const out = new Map<string, DocumentFacts>();
   facts.forEach(({ dates, ...rest }, documentId) => {
     const sorted = [...dates].sort();
-    out.set(documentId, { ...rest, periodStart: sorted[0] ?? null, periodEnd: sorted.at(-1) ?? null });
+    const records = [...(byRecord.get(documentId)?.values() ?? [])].filter((r) => r.name || r.address || r.account || r.meter);
+    out.set(documentId, { ...rest, ...(records.length ? { records } : {}), periodStart: sorted[0] ?? null, periodEnd: sorted.at(-1) ?? null });
   });
   return out;
 }
@@ -133,19 +208,12 @@ export function applyDocumentView(
   });
 }
 
-/** The Setup facilities a document's records match, by name or address, each once. */
+/** The Setup facilities a document's records match (each record by the one rule, ``placeRecord``), each once. */
 function matchedFacilities(fact: DocumentFacts | undefined, facilities: FacilityOption[]): FacilityOption[] {
   if (!fact) return [];
-  const found = [
-    matchFacility(fact.facilityName, fact.address, facilities),
-    ...(fact.facilityNames ?? []).map((name) => matchFacility(name, null, facilities)),
-    ...(fact.addresses ?? []).map((address) => matchFacility(null, address, facilities)),
-  ].filter((f): f is FacilityOption => f !== null);
-  // Only when the name and address steps found nothing: the account or meter number the bill gives.
-  if (!found.length) {
-    const byNumber = matchByIdentifier(fact.accountNumber, fact.meterNumber, facilities).facility;
-    if (byNumber) found.push(byNumber);
-  }
+  const found = recordsOf(fact)
+    .map((rec) => placeRecord(rec, facilities).facility)
+    .filter((f): f is FacilityOption => f !== null);
   return found.filter((f, i) => found.findIndex((g) => g.facilityId === f.facilityId) === i);
 }
 
@@ -190,7 +258,6 @@ export function unmatchedFacilities(
   facts.forEach((fact) => {
     const name = fact.facilityName ?? fact.address;
     if (!name || matchFacility(fact.facilityName, fact.address, facilities)) return;
-    if (matchByIdentifier(fact.accountNumber, fact.meterNumber, facilities).facility) return;
     const key = name.trim().toLowerCase();
     if (!seen.has(key)) seen.set(key, { name: name.trim(), address: fact.address });
   });

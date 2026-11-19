@@ -609,10 +609,25 @@ facility without them behaves exactly as before. A bad list is refused on save (
 on two facilities saves; Setup shows "Account 4417-2290-31 is on two facilities. Bills with it won't be placed
 automatically."
 
-Placement uses them as the last step, only when the reviewer's choice, the facility name and the service address found
-no facility: the bill's account number (then its meter number) must equal exactly one facility's entry after dropping
-case, spaces, dashes and dots. A partial match never counts. Two facilities place nothing: the Evidence tree row
-carries `facility_note` ("Account 4417-2290-31 is listed on two facilities") and the recalculation lists the record in
-`calculation_unplaced` with `reason: "identifier_on_two_facilities"`. The code is in
-`backend/app/services/facility_identifiers.py` (one matching function); the frontend twin is
-`frontend/features/s1/utils/facilityNumbers.ts`.
+Placement uses them as the last step. The reviewer's choice, the facility name and the service address come first;
+the bill's account number (then its meter number) is used **only when the bill gives no usable name and no usable
+address**. A bill whose name or address matched nothing is never placed by its number: the Evidence tree row carries
+`facility_note` ("Account 2001-7788 is listed on Tacoma Plant, but this bill's address (2210 Port of Tacoma Rd) is not
+in Setup. Choose the facility.") and the reviewer chooses. A value a reviewer rejected or marked "needs more evidence",
+and a value only Claude read, is never read for placement (name, address, account and meter number alike), on the
+backend and on the screen.
+
+A number matches only as a whole, never a partial one. NFKC and case folding apply, and invisible characters (a BOM)
+are dropped. Spaces, dashes and dots separate groups: two numbers are the same when their groups are the same ("4417
+2290 31" = "4417-2290-31"), or when one is written without separators and the characters are the same; "12-345" is not
+"1234-5". A number needs at least 4 digits, on the bill and in Setup, to match. A number listed on two facilities, or an
+account and a meter number that point at different facilities, place nothing: `facility_note` says why ("Account
+7700-1234 is listed on two facilities. Choose the facility.") and the recalculation lists the record in
+`calculation_unplaced` with `reason: "identifier_on_two_facilities"`. A bill placed this way is described as "Account
+or meter number in Setup". Each record of a bill is placed on its own.
+
+Not built yet, because the format is provisional and waits on the ops lead: a supplier per number (two utilities can
+issue the same account number). The code is in `backend/app/services/facility_identifiers.py` (one matching function)
+and `reviewed_evidence.place_on_facility` (the one placement decision); the frontend twin is
+`frontend/features/s1/utils/facilityNumbers.ts` and `placeRecord` in `utils/documentView.ts`. Both sides run the shared
+cases in `backend/tests/fixtures/facility_placement_cases.json`.

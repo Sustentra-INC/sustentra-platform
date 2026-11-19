@@ -30,7 +30,7 @@ from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundE
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
-from backend.app.services.reviewed_evidence import ReviewedRecord, match_identifier_step, to_date
+from backend.app.services.reviewed_evidence import ReviewedRecord, place_on_facility, to_date
 
 if TYPE_CHECKING:
     from backend.app.services.engagement_recalculation_service import RecalculationInputs
@@ -514,8 +514,7 @@ def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRe
             count = groups_using.get(place.level2_label.lower(), 0)
             return "fuel_shared_by_vehicle_groups" if count > 1 else "no_vehicle_group"
         if place.anchor_id is None and place.facility is None:
-            if match_identifier_step(c.record.best("account_number"), c.record.best("meter_number"),
-                                        facilities).ambiguous:
+            if place_on_facility(facilities, decisions, c.record.document_id, c.record).ambiguous:
                 return "identifier_on_two_facilities"
             return "no_facility_match"
         return "no_calculation_line"

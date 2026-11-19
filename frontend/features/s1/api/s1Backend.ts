@@ -129,6 +129,10 @@ export async function listWorkspaceEvidence(engagementId: string): Promise<{
                 reviewStatus: field.value === null ? ("keyed_by_reviewer" as const) : ("corrected" as const),
               };
             }
+            // A rejected value, or one needing more evidence, is never used to place the bill (same as the backend).
+            if (review.decision === "rejected" || review.decision === "needs_more_evidence") {
+              return { ...field, ...who, placementBlocked: true };
+            }
             return field;
           }) ?? [],
       };

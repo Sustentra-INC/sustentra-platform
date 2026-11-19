@@ -6,6 +6,8 @@ export interface BackendExtractionCandidateLike {
   evidence_id?: string;
   document_id: string;
   field_name: string;
+  /** Which record of the document the value belongs to (null for a single record). */
+  record_index?: number | null;
   display_label: string;
   raw_value?: string | number | boolean | null;
   normalized_value: string | number | boolean | null;
@@ -80,6 +82,7 @@ export function mapBackendCandidateToExtractedField(
     reviewStatus: "unreviewed",
     correctedValue: null,
     valueOrigin: "extracted",
+    recordIndex: candidate.record_index ?? null,
   };
 }
 

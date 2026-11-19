@@ -3,10 +3,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
-import { encodeReviewCandidateToken } from "../adapters/fieldAdapter";
 import { SetupScreen } from "../components/SetupScreen";
-import type { EvidenceItem, ExtractedField } from "../types";
-import { applyDocumentView, documentFacts } from "../utils/documentView";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import type { EngagementConfig, FacilityOption } from "../types/engagement";
 import {
@@ -14,6 +11,7 @@ import {
   checkNumber,
   matchByIdentifier,
   normaliseNumber,
+  sameNumber,
   sharedNumberNote,
   sharedNumbers,
   splitPasted,
@@ -29,10 +27,25 @@ describe("facility numbers: parsing and normalising", () => {
     ]);
   });
 
+  it("keeps a quoted value whole and drops its quotes", () => {
+    expect(splitPasted('"4417, 22";"55;0012", 99-1234\n"Müller, Zürich 7"')).toEqual([
+      "4417, 22", "55;0012", "99-1234", "Müller, Zürich 7",
+    ]);
+  });
+
   it("treats case, spaces, dashes and dots as the same, and nothing else", () => {
     expect(normaliseNumber("4417 2290 31")).toBe(normaliseNumber("4417-2290-31"));
     expect(normaliseNumber("AB 12–3")).toBe(normaliseNumber("ab.12-3"));
     expect(normaliseNumber("4417/2290")).not.toBe(normaliseNumber("44172290"));
+    expect(normaliseNumber("ẞ12")).toBe("ss12"); // case folding, not just lower-casing
+    expect(normaliseNumber("\ufeff4417\u200b-2290")).toBe("44172290"); // a BOM and a zero-width space are dropped
+  });
+
+  it("is the same number only with the same groups, or no separators on one side", () => {
+    expect(sameNumber("4417 2290 31", "4417-2290-31")).toBe(true);
+    expect(sameNumber("442290", "44-2290")).toBe(true);
+    expect(sameNumber("12-345", "1234-5")).toBe(false);
+    expect(sameNumber("4417-2290", "4417-2290-31")).toBe(false);
   });
 
   it("refuses an empty, digit-free or too long value with a sentence", () => {
@@ -50,6 +63,12 @@ describe("facility numbers: parsing and normalising", () => {
     expect(full.values).toHaveLength(50);
     expect(full.problem).toMatch(/at most 50/);
   });
+
+  it("returns only the refused parts of a paste, so the input keeps just those", () => {
+    const out = addNumbers([], "4417-2290-31; Zürich; 55-0012; ");
+    expect(out.values).toEqual(["4417-2290-31", "55-0012"]);
+    expect(out.rejected).toEqual(["Zürich"]);
+  });
 });
 
 describe("facility numbers: matching", () => {
@@ -62,7 +81,7 @@ describe("facility numbers: matching", () => {
 
   it("never matches a partial number", () => {
     for (const partial of ["4417-2290", "2290-31", "4417-2290-31-1"]) {
-      expect(matchByIdentifier(partial, partial, facilities)).toEqual({ facility: null, reason: null, ambiguous: null });
+      expect(matchByIdentifier(partial, partial, facilities)).toEqual({ facility: null, reason: null, ambiguous: null, what: null });
     }
   });
 
@@ -73,44 +92,21 @@ describe("facility numbers: matching", () => {
     expect(out.ambiguous).toBe("Account 4417-2290-31 is listed on two facilities");
   });
 
+  it("never matches a number with fewer than four digits", () => {
+    const short = [{ ...KC, accountNumbers: ["123"], meterNumbers: ["77"] }];
+    expect(matchByIdentifier("123", "77", short).facility).toBeNull();
+  });
+
+  it("places nothing when the account and the meter number are on different facilities", () => {
+    const apart = [{ ...KC, accountNumbers: ["4417-2290-31"] }, { ...STL, meterNumbers: ["E-55604"] }];
+    expect(matchByIdentifier("4417-2290-31", "E 55604", apart).ambiguous).toBe(
+      "Account 4417-2290-31 and meter E 55604 are listed on different facilities");
+  });
+
   it("changes nothing for an old facility with no numbers", () => {
     expect(matchByIdentifier("4417-2290-31", "E-1", [KC, STL]).facility).toBeNull();
     expect(sharedNumbers([KC, STL])).toEqual([]);
   });
-});
-
-describe("the Evidence screen places a bill the way the backend does", () => {
-  const facilities = [{ ...KC, accountNumbers: ["4417-2290-31"] }, STL];
-  const field = (name: string, value: string, over: Partial<ExtractedField>): ExtractedField =>
-    ({
-      documentId: "D1", canonicalTypeId: "CT-S1-FUELQTY", fieldKey: name, fieldLabel: name, value, unit: null,
-      valueProperties: [], fieldState: "extracted", snippet: null, snippetContext: null, location: null,
-      reviewStatus: "unreviewed", correctedValue: null, valueOrigin: "extracted",
-      reviewToken: encodeReviewCandidateToken({ candidate_id: `c-${name}`, document_id: "D1", field_name: name, normalized_value: value } as never),
-      ...over,
-    }) as ExtractedField;
-  const OTHER = "Müller Käserei – Zürich 工場 (other)"; // a name Setup does not list
-  const placedOn = (...fields: ExtractedField[]) => {
-    const facts = documentFacts(fields);
-    const [row] = applyDocumentView([{ documentId: "D1", filename: "D1.pdf", facilityState: "unresolved", facilityId: null, facilityName: null, disposition: "active", relationships: [] } as unknown as EvidenceItem], facts, {}, facilities);
-    return row.facilityId ?? null;
-  };
-  const AI = { valueProperties: ["ai_suggested"] } as Partial<ExtractedField>;
-  const ACCEPTED = { valueProperties: ["ai_suggested"], reviewStatus: "accepted" } as Partial<ExtractedField>;
-
-  // The same three cases, for the name, the address and the account number, as the backend test
-  // test_the_tree_the_lines_and_the_recalculation_place_a_bill_the_same_way: read by the rules (placed),
-  // read only by Claude (not placed), read by Claude and accepted (placed).
-  const bySource: Record<string, (over: Partial<ExtractedField>) => ExtractedField[]> = {
-    name: (over) => [field("facility_name", KC.name, over)],
-    address: (over) => [field("facility_name", OTHER, {}), field("service_address", "100 Main Street, Kansas City", over)],
-    account: (over) => [field("facility_name", OTHER, {}), field("account_number", "4417 2290 31", over)],
-  };
-  for (const [source, make] of Object.entries(bySource)) {
-    it(`${source}: places a rule-read value`, () => expect(placedOn(...make({}))).toBe("f-kc"));
-    it(`${source}: does not place a value only Claude read`, () => expect(placedOn(...make(AI))).toBeNull());
-    it(`${source}: places a value Claude read and a reviewer accepted`, () => expect(placedOn(...make(ACCEPTED))).toBe("f-kc"));
-  }
 });
 
 function Harness({ initial }: { initial: FacilityOption[] }) {

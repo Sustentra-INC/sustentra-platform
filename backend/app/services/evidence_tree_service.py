@@ -172,7 +172,7 @@ class EvidenceTreeService:
             doc.facility_ids = [cl.facility_anchor_id(f) if (f := placements[id(r)].facility) else None
                                 for r in doc.records]
             doc.facility_notes = [None if placements[id(r)].facility else
-                                  cl.unplaced_reason(facilities, decisions, doc.document_id, r) for r in doc.records]
+                                  cl.unplaced_note(facilities, decisions, doc.document_id, r) for r in doc.records]
         period = (to_date(engagement.get("reporting_period_start")), to_date(engagement.get("reporting_period_end")))
         return Loaded(docs, set_aside, system, lines, facilities, period, inputs.vehicle_groups, aside)
 

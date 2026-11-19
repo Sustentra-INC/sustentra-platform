@@ -15,7 +15,7 @@ from typing import Any
 
 from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorReference
-from backend.app.services.facility_identifiers import IdentifierMatch, match_by_identifier
+from backend.app.services.facility_identifiers import match_by_identifier
 
 STATIONARY = "CT-S1-FUELQTY"
 MOBILE = "CT-S1-MOBFUEL"
@@ -23,6 +23,7 @@ ELECTRICITY = "CT-S2-ELEC"
 REFRIGERANT = "CT-S1-REFRSVC"
 THERMAL = "CT-S2-THERMAL"
 REVIEWED = ("accepted", "edited")
+NOT_FOR_PLACEMENT = ("rejected", "needs_more_evidence")  # a decision that says do not use this value
 AI_SUGGESTED = "ai_suggested"  # validation flag of a value Claude read (services/ai_extraction.py)
 # Identifier fields never feed a number (spec A13), so the schedule's Source identifiers counts what Claude read
 # in them before a reviewer has decided. Nothing else reads these values: best() and reviewed() stay blank.
@@ -111,29 +112,61 @@ def resolve_fuel_name(ref: EmissionFactorReference, kind: str, code: str, quanti
     return None, []
 
 
-def match_identifier_step(account: Any, meter: Any, facilities: list[dict[str, Any]]) -> IdentifierMatch:
-    """The last placement step (PROVISIONAL, see ``facility_identifiers``): the bill's account or meter
-    number against the numbers listed on Setup facilities. Callers run it only when the name and address
-    steps found nothing. Kept apart from ``match_facility`` on purpose."""
-
-    return match_by_identifier(account, meter, facilities)
-
-
 def resolve_setup_facility(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]],
-                           document_id: str, facility_name: Any, address: Any, *,
-                           account: Any = None, meter: Any = None) -> dict[str, Any] | None:
-    """The reviewer's facility for a document, else a clear name/address match, else (only when those
-    found nothing) the facility that lists the bill's account or meter number."""
+                           document_id: str, facility_name: Any, address: Any) -> dict[str, Any] | None:
+    """The reviewer's facility for a document, else a clear name/address match."""
 
     chosen = (decisions.get(document_id) or {}).get("facilityId")
     if chosen:
         for facility in facilities:
             if facility.get("facilityId") == chosen:
                 return facility
-    found = match_facility(facility_name, address, facilities)
-    if found is None:
-        found = match_identifier_step(account, meter, facilities).facility
-    return found
+    return match_facility(facility_name, address, facilities)
+
+
+@dataclass(frozen=True)
+class FacilityPlacement:
+    """Where one record's facility comes from. ``how`` says which step placed it. ``note`` says, in a plain
+    sentence, why nothing was placed when the account or meter number had something to say about it;
+    ``ambiguous`` is set when the numbers point at two or more facilities."""
+
+    facility: dict[str, Any] | None = None
+    how: str | None = None
+    note: str | None = None
+    ambiguous: bool = False
+
+
+def place_on_facility(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
+                      record: ReviewedRecord) -> FacilityPlacement:
+    """The one place a record's Setup facility is decided: the reviewer's choice, else the facility name,
+    else the service address, else (PROVISIONAL, see ``facility_identifiers``) the account or meter number.
+
+    The number is used only when the bill gives no name and no address at all. A bill whose name or address
+    matched nothing is never placed by its number: it gets a note that names the facility the number is
+    listed on and asks for a choice. Values a reviewer rejected, or that only Claude read, are not read here."""
+
+    chosen = (decisions.get(document_id) or {}).get("facilityId")
+    if chosen:
+        for facility in facilities:
+            if facility.get("facilityId") == chosen:
+                return FacilityPlacement(facility, "Chosen by the reviewer")
+    name, address = record.for_placement("facility_name"), record.for_placement("service_address")
+    if (found := match_facility(name, None, facilities)) is not None:
+        return FacilityPlacement(found, "Facility name in Setup")
+    if (found := match_facility(None, address, facilities)) is not None:
+        return FacilityPlacement(found, "Service address in Setup")
+    by_number = match_by_identifier(record.for_placement("account_number"), record.for_placement("meter_number"),
+                                    facilities)
+    if by_number.ambiguous:
+        return FacilityPlacement(note=by_number.ambiguous + ". Choose the facility.", ambiguous=True)
+    if by_number.facility is None:
+        return FacilityPlacement()
+    given = _norm_text(address) and ("address", address) or _norm_text(name) and ("facility name", name) or None
+    if given is None:
+        return FacilityPlacement(by_number.facility, by_number.reason)
+    shown = " ".join(str(given[1]).split())
+    return FacilityPlacement(note=f"{by_number.what} is listed on {by_number.facility.get('name')}, but this bill's "
+                                  f"{given[0]} ({shown}) is not in Setup. Choose the facility.")
 
 
 @dataclass
@@ -180,6 +213,15 @@ class ReviewedRecord:
         if item is None:
             return None
         return item.value if item.status in REVIEWED else item.extracted
+
+    def for_placement(self, name: str) -> Any:
+        """The value that may decide which facility a bill belongs to: reviewed, or read by the rules
+        (``best``), but nothing a reviewer rejected or asked for more evidence on."""
+
+        item = self.fields.get(name)
+        if item is None or item.status in NOT_FOR_PLACEMENT:
+            return None
+        return self.best(name)
 
     def unit_of(self, name: str) -> str | None:
         item = self.fields.get(name)

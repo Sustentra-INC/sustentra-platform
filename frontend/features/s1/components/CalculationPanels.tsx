@@ -115,7 +115,7 @@ const UNPLACED_TEXT: Record<CalcUnplacedReason, string> = {
   fuel_shared_by_vehicle_groups: "Two or more vehicle groups use this fuel, so it can't go on one.",
   no_vehicle_group: "No vehicle group uses this fuel. Add one under Recalculation inputs.",
   no_facility_match: "No facility in Setup matches it.",
-  identifier_on_two_facilities: "Its account or meter number is listed on two facilities in Setup, so it is not placed.",
+  identifier_on_two_facilities: "Its account or meter number points at more than one facility in Setup, so it is not placed.",
   no_calculation_line: "It has no calculation line.",
 };
 
