@@ -531,13 +531,16 @@ def derive_placements(default: list[Slot], filing: list[Slot]) -> list[dict[str,
         if place != slot.target:
             pairs.append((slot.target, str(place)))
     used = {t for pair in pairs for t in pair} | {slot.target for slot in default} | set(where.values())
-    free = next((t for t in (BLOCK_SUMMARY, BLOCK_UNASSIGNED, SUPPORTING_UNASSIGNED) if t not in used), None)
+    available = [t for t in (BLOCK_SUMMARY, BLOCK_UNASSIGNED, SUPPORTING_UNASSIGNED) if t not in used]
+    parked: set[str] = set()  # free places holding a parked slot until its last move runs
     ordered: list[dict[str, str]] = []
     while pairs:
         ready = next((p for p in pairs if not any(q is not p and q[0] == p[1] for q in pairs)), None)
-        if ready is None:  # every pair waits on another: a cycle. Park one slot on the free place, finish it last.
-            if free is None:
+        if ready is None:  # every pair waits on another: a cycle. Park one slot on a free place, finish it last.
+            if not available:  # each cycle needs a place of its own while it is parked
                 return None
+            free = available.pop(0)
+            parked.add(free)
             ready = pairs[0]
             pairs.remove(ready)
             ordered.append({"from": ready[0], "to": free})
@@ -545,6 +548,9 @@ def derive_placements(default: list[Slot], filing: list[Slot]) -> list[dict[str,
             continue
         pairs.remove(ready)
         ordered.append({"from": ready[0], "to": ready[1]})
+        if ready[0] in parked:  # the parked slot has landed: its place is free for the next cycle
+            parked.discard(ready[0])
+            available.append(ready[0])
     return ordered
 
 
