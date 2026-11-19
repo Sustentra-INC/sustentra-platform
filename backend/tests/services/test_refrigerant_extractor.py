@@ -751,3 +751,75 @@ def test_the_npl_sacramento_log_reads_as_eight_service_lines_with_accents_intact
         totals[gas] = totals.get(gas, 0) + r["refrigerant_added"]["normalized_value"]
     assert totals == {"R-404A": 51.5, "HFC-134a": 13.5}
     assert {r["service_provider"]["normalized_value"] for r in records.values()} == {"POLAR POINT MECHANICAL SERVICES"}
+
+
+# --- fix round 2: a repeated header is not a totals table; work words, not "supply" or "ship to" --------------
+LOG_H = "Date    Equipment    Refrigerant    Added (lb)    Recovered (lb)\n"
+
+
+def _purchase_flags(text: str, targets: list[dict]) -> tuple[list[Any], list[str]]:
+    outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
+    added = [c for c in outcome.candidates if c["field_name"] == "refrigerant_added"]
+    return [("purchase_not_equipment_charge" in c["validation_flags"]) for c in added], outcome.notes
+
+
+def test_a_second_page_with_the_header_repeated_and_the_same_top_up_is_two_service_lines(targets: list[dict]) -> None:
+    text = (LOG_H + "01/15/2025    RTU-1    R-410A    2.0    0.0\n"
+            "Page 2\n" + LOG_H + "04/15/2025    RTU-1    R-410A    2.0    0.0\n")
+    outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
+    added = [c["normalized_value"] for c in outcome.candidates if c["field_name"] == "refrigerant_added"]
+    assert added == [2, 2]  # both top-ups: the second table equals the first but is dated, so it is not totals
+    assert outcome.notes == []
+
+
+def test_a_table_with_an_equipment_id_and_no_date_is_service_lines_too(targets: list[dict]) -> None:
+    text = (LOG_H + "01/15/2025    RTU-1    R-410A    2.0    0.0\n"
+            "Equipment    Refrigerant    Added (lb)    Recovered (lb)\n" + "RTU-1    R-410A    2.0    0.0\n")
+    outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
+    assert len([c for c in outcome.candidates if c["field_name"] == "refrigerant_added"]) == 2
+
+
+CONTRACTOR_TABLE = ("Description    Qty    Unit    Unit Price    Amount\n"
+                    "R-410A refrigerant    6    lb    $85.00    $510.00\n")
+
+
+@pytest.mark.parametrize(
+    "top",
+    [
+        "COASTAL HVAC SERVICE & SUPPLY    INVOICE\nInvoice Date    09/12/2025\nLeak repair labor\n",
+        "ACME MECHANICAL    INVOICE\nShip To: Store 12\nInvoice Date    09/12/2025\nRecharged system\n",
+        "ACME MECHANICAL    INVOICE\nInvoice Date    09/12/2025\nChecked supply air temp at unit\n"
+        "Adjusted charge per superheat on condenser\n",
+        "ACME MECHANICAL    INVOICE\nInvoice Date    09/12/2025\nRepaired leak, recharged\n",
+        "COASTAL HVAC SERVICE & SUPPLY    INVOICE\nInvoice Date    09/12/2025\n",  # no work words at all
+        "ACME MECHANICAL    INVOICE\nShip To: Store 12\nInvoice Date    09/12/2025\n",
+    ],
+    ids=["supply in the name and a labor line", "ship to and a short work phrase", "supply air and adjusted charge",
+         "short work phrase", "contractor named supply, nothing else", "ship to alone"],
+)
+def test_a_contractors_invoice_is_not_a_purchase_even_priced_and_named_supply_or_ship_to(
+        targets: list[dict], top: str) -> None:
+    flags, notes = _purchase_flags(top + CONTRACTOR_TABLE, targets)
+    assert flags == [False] and notes == []
+
+
+def test_a_cylinder_line_with_the_work_beside_it_is_not_a_purchase(targets: list[dict]) -> None:
+    text = ("ACME MECHANICAL    INVOICE\nInvoice Date    09/12/2025\nRepaired leak, recharged\n"
+            "Description    Qty    Unit    Unit Price    Amount\n"
+            "R-410A refrigerant 25 lb cylinder    1    cyl    $395.00    $395.00\n")
+    assert _purchase_flags(text, targets) == ([False], [])
+
+
+def test_a_leak_detector_is_a_tool_not_work_so_a_suppliers_cylinders_stay_a_purchase(targets: list[dict]) -> None:
+    text = ("WESTBAY REFRIGERANT SUPPLY    INVOICE\nInvoice Date    09/17/2025\n"
+            "Item    Description    Qty    Unit    Unit Price    Amount\n"
+            "R410A-25    Refrigerant R-410A, 25 lb disposable cylinder    4    cyl    $395.00    $1,580.00\n"
+            "LD-1    Electronic leak detector with case    1    ea    $189.00    $189.00\n")
+    flags, notes = _purchase_flags(text, targets)
+    assert flags == [True] and len(notes) == 1
+
+
+@pytest.mark.parametrize("letterhead", ["WESTBAY REFRIGERANT SUPPLY", "Polar Ridge Wholesale", "Cold Chain Distributors"])
+def test_the_suppliers_letterhead_is_what_makes_a_per_pound_sale_a_purchase(targets: list[dict], letterhead: str) -> None:
+    text = (f"{letterhead}    INVOICE\nInvoice Date    09/17/2025\n" + CONTRACTOR_TABLE)
+    assert _purchase_flags(text, targets)[0] == [True]

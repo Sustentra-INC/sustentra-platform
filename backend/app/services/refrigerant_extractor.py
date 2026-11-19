@@ -168,11 +168,13 @@ _KNOWN_HEADERS = frozenset(name for _, options in COLUMNS for name in options)
 _GAS_HEADERS = frozenset({"refrigerant", "refrigerant type", "gas", "gas type", "agent", "agent type"})
 # A column that prices the line ("Unit Price", "Price / Lb", "Rate"): the table is an invoice, not a log of work.
 _PRICE_HEADER_RE = re.compile(r"\bprice\b|\bcost\b|\brate\b|\bext\b\.?|\$\s*/|/\s*\$", re.I)
-# A supplier, not a contractor: the letterhead or an address block says so.
-_SUPPLIER_RE = re.compile(r"\b(?:refrigerant supply|supply|supplies|distribut\w+|wholesale|gases)\b|\bship(?:ped)? (?:to|date)\b",
-                          re.I)
-# Work described in a sentence ("Found leak at RTU-3, repaired and recharged"), not a site called "Maintenance".
-_WORK_DONE_RE = re.compile(r"\b(?:leak\w*|repair(?:ed)?|recharg\w+|top[- ]?(?:off|up)|replaced|evacuat\w*|brazed)\b", re.I)
+# A supplier, not a contractor: only the letterhead says so ("Refrigerant Supply", "Wholesale"). "Supply" alone is
+# in contractors' names ("HVAC Service & Supply") and a "Ship To" block is on every invoice.
+_SUPPLIER_RE = re.compile(r"\b(?:refrigerant supply|refrigerants? (?:supplier|distribut\w+)|wholesale|distributors?)\b", re.I)
+# Work done, anywhere on the document: "Leak repair labor", "Recharged system", "Adjusted charge per superheat". A tool
+# or a product ("leak detector") is not work, so "leak" alone is not a word here, only "leak check".
+_WORK_DONE_RE = re.compile(
+    r"\b(?:repair\w*|recharg\w+|charged|adjust\w*|leak[- ]?check\w*|service[ds]?|servicing|labou?r)\b", re.I)
 # Cooling capacity, airflow and fuel units: a "Capacity: 5 tons" is tonnage, not a refrigerant charge.
 _NOT_A_CHARGE_RE = re.compile(r"\b(?:tons?|btu\w*|mbh|kw|hp|cfm|gallons?|gal)\b", re.I)
 _TOTAL_KEYS = ("total", "total qty", "total quantity")
@@ -362,6 +364,10 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
                 out[r.refrigerant[1].name] = (added + pounds(r.added), recovered + pounds(r.recovered))
             return out
 
+        # A table with a dated line or an equipment id is service lines (a log's next page repeats the header, and
+        # two equal top-ups are not totals); totals carry neither.
+        if any(r.date is not None or r.equipment is not None for r in group):
+            return False
         mine, theirs = sums(group), sums(earlier)
         return bool(mine) and all(
             gas in theirs and abs(a - theirs[gas][0]) <= 1e-6 * max(1.0, theirs[gas][0])
@@ -375,13 +381,13 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
         priced = [r for r in table if r.priced]
         if not priced:
             return
-        supplier = any(_SUPPLIER_RE.search(row.text) for row in rows[:8])
+        supplier = any(_SUPPLIER_RE.search(row.text) for row in rows[:3])  # the letterhead
         for r in priced:
             r.purchase = r.packaged or supplier
         work = (self._equipment(rows) is not None
                 or self._find_labeled(rows, SERVICE_TYPE_LABELS, accept=lambda v: classify_service(v) is not None)
                 is not None
-                or any(len(c.text.split()) >= 4 and _WORK_DONE_RE.search(c.text) for row in rows for c in row.cells))
+                or any(_WORK_DONE_RE.search(c.text) for row in rows for c in row.cells))
         if work:
             for r in priced:
                 r.purchase = False
