@@ -2,7 +2,7 @@
 
 import { ChevronDown, History } from "lucide-react";
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
 import { formatReportingPeriod } from "../utils/formatPeriod";
@@ -63,6 +63,14 @@ const DESTINATIONS: Array<{ key: NavKey; label: string }> = [
   { key: "output", label: "Output" },
 ];
 
+const TABLET = "(min-width: 48rem) and (max-width: 64rem)";
+const isTablet = () => typeof window !== "undefined" && Boolean(window.matchMedia?.(TABLET).matches);
+function subscribeTablet(onChange: () => void) {
+  const query = typeof window !== "undefined" ? window.matchMedia?.(TABLET) : undefined;
+  query?.addEventListener?.("change", onChange);
+  return () => query?.removeEventListener?.("change", onChange);
+}
+
 export function S1Chrome({
   engagement,
   engagementLoading = false,
@@ -77,7 +85,10 @@ export function S1Chrome({
   assistant,
   hiddenNav,
 }: S1ChromeProps) {
-  const [navExpanded, setNavExpanded] = useState(true);
+  // A tablet (768 to 1024 px) starts with the icon rail, so the screens keep their width. The toggle still opens it.
+  const onTablet = useSyncExternalStore(subscribeTablet, isTablet, () => false);
+  const [navChoice, setNavChoice] = useState<boolean | null>(null);
+  const navExpanded = navChoice ?? !onTablet;
   const [ctxExpanded, setCtxExpanded] = useState(false);
   return (
     <div className="s1-shell">
@@ -86,7 +97,7 @@ export function S1Chrome({
         onNavigate={onNavigate}
         hidden={hiddenNav}
         expanded={navExpanded}
-        onToggle={() => setNavExpanded((v) => !v)}
+        onToggle={() => setNavChoice(!navExpanded)}
       />
       <section className="s1-main">
         <ContextBar
