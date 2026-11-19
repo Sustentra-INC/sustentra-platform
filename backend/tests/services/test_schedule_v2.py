@@ -400,14 +400,14 @@ def test_what_claude_read_never_reaches_best_or_the_calculation() -> None:
     store.add_document("A", "CT-S1-FUELQTY", [_gas(10, meter_number="M-1")])
     _ai_meter(store, "A", "M-1")
     item = store.results["A"][0]["items"]
-    (record,) = group_reviewed_records({"document_id": "A", "file_name": "A.pdf"}, "CT-S1-FUELQTY", item, {})
+    (record,) = group_reviewed_records({"document_id": "A", "file_name": "A.pdf"}, "CT-S1-FUELQTY", item, [])
     assert record.best("meter_number") is None and record.reviewed("meter_number") is None
     assert record.identifiers("meter_number") == [("M-1", True)]
     # a field that is not an identifier keeps nothing of Claude's reading
     for it in item:
         if it["field_name"] == "fuel_type":
             it["validation_flags"] = ["ai_suggested"]
-    (again,) = group_reviewed_records({"document_id": "A", "file_name": "A.pdf"}, "CT-S1-FUELQTY", item, {})
+    (again,) = group_reviewed_records({"document_id": "A", "file_name": "A.pdf"}, "CT-S1-FUELQTY", item, [])
     assert again.fields["fuel_type"].ai_reads == [] and again.best("fuel_type") is None
 
 

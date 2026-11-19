@@ -664,6 +664,9 @@ class PipelineOrchestrationService:
         return self._pipeline_repository.get_latest_by_evidence(evidence_id)
 
     def get_evidence_status(self, evidence_id: str) -> dict:
+        """Status of an evidence id. ``review_decision_count`` counts the stored decisions (the history,
+        including any a re-read made void); the approved fields come from the guarded projection."""
+
         latest_pipeline_run = self._pipeline_repository.get_latest_by_evidence(evidence_id)
         review_decisions = self._review_service.list_by_evidence(evidence_id)
         latest_approved_evidence = self._approved_evidence_service.get_latest_by_evidence(

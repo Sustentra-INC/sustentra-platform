@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { mapBackendCandidateToExtractedField, type BackendExtractionCandidateLike } from "../adapters/fieldAdapter";
 import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
 import { RereadNote } from "../components/RereadNote";
+import { historySentence, rowFlag } from "../components/SupportingSchedule";
+import type { ScheduleHistoryEntry, ScheduleRow } from "../api/evidenceTree";
 import type { EvidenceItem } from "../types";
 
 const candidate = (over: Partial<BackendExtractionCandidateLike>): BackendExtractionCandidateLike => ({
@@ -51,5 +53,27 @@ describe("a re-read leaves an earlier decision on a changed value", () => {
       <RereadNote value={{ rereadChanged: true, reviewState: "accepted" }} />
     );
     expect(html).toBe("");
+  });
+});
+
+describe("the schedule after a re-read", () => {
+  const row = (over: Record<string, unknown>) =>
+    ({ record_key: "BILL-1:2", accepted: false, decision: "not_reviewed", ...over }) as unknown as ScheduleRow;
+
+  it("says Review it again on a row the re-read left unreviewed", () => {
+    expect(rowFlag(row({ reread_changed: true }))).toBe("Not reviewed · Review it again");
+    expect(rowFlag(row({}))).toBe("Not reviewed");
+  });
+
+  it("says when a correction carried over a changed value, and marks a voided decision in the history", () => {
+    expect(rowFlag(row({ decision: "edited", accepted: true, value_changed_since_review: true }))).toBe(
+      "Edited · Value changed since review"
+    );
+    const entry = {
+      action: "accepted", actor_name: "K. Müller", at: null, field: "Menge", value: "58,92", unit: "MWh",
+      file_name: "Rechnung – Zürich.pdf", page: 1, superseded_by_reread: true,
+    } as unknown as ScheduleHistoryEntry;
+    expect(historySentence(entry)).toContain("no longer applies: the document was re-read");
+    expect(historySentence({ ...entry, superseded_by_reread: undefined })).not.toContain("no longer applies");
   });
 });

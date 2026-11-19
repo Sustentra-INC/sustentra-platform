@@ -8,6 +8,7 @@ from backend.app.core.auth import CurrentUser
 
 from backend.app.repositories import s1_stores
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
+from backend.app.services.reviewed_evidence import latest_items_per_document
 
 router = APIRouter(prefix="/v1", tags=["evidence"])
 
@@ -75,10 +76,11 @@ def project_approved_evidence(
 
     # The latest read of the evidence's document(s): decisions made on values a re-read changed are not projected.
     current_items: list[dict] | None = None
+    read_documents: set[str] | None = None
     results = visible(pipeline_service().list_extraction_results_by_evidence(evidence_id), user)
     if results:
-        latest = results[-1]
-        current_items = list(latest.get("items") or [])
+        current_items = latest_items_per_document(results)  # each document's own latest read
+        read_documents = {str(r.get("document_id")) for r in results}
     try:
         return _service.project_by_evidence(
             evidence_id=evidence_id,
@@ -86,6 +88,7 @@ def project_approved_evidence(
             evidence_type=payload.evidence_type,
             org_id=org_of(user),
             current_items=current_items,
+            read_documents=read_documents,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

@@ -40,7 +40,8 @@ FIELDS = ("fuel_type", "activity_quantity", "activity_unit", "service_period_sta
           "facility_name")
 
 
-def _read(*records: tuple[str, str, str, float], plant: str = PLANT, keyed: bool = True) -> list[dict[str, Any]]:
+def _read(*records: tuple[str, str, str, float], plant: str = PLANT, keyed: bool = True,
+          doc: str = DOC) -> list[dict[str, Any]]:
     """One read of the document: records of (hint, start, end, MMBtu), numbered from 1 as the extractor does."""
 
     items: list[dict[str, Any]] = []
@@ -53,10 +54,10 @@ def _read(*records: tuple[str, str, str, float], plant: str = PLANT, keyed: bool
         for name in FIELDS:
             value, unit = values[name]
             items.append({
-                "candidate_id": f"candidate::EV-1::{DOC}::{name}::r{index}", "evidence_id": "EV-1",
-                "document_id": DOC, "field_name": name, "normalized_value": value, "unit": unit,
+                "candidate_id": f"candidate::EV-1::{doc}::{name}::r{index}", "evidence_id": "EV-1",
+                "document_id": doc, "field_name": name, "normalized_value": value, "unit": unit,
                 "validation_flags": [], "record_index": index, "record_key": key if keyed else None,
-                "source_reference": {"document_id": DOC, "page_number": index, "text_snippet": f"{hint} · {quantity}",
+                "source_reference": {"document_id": doc, "page_number": index, "text_snippet": f"{hint} · {quantity}",
                                      **({"record_key": key} if keyed else {})}})
     return items
 
@@ -78,7 +79,7 @@ def _decide(items: list[dict[str, Any]], decision: str = "accepted", *, fields: 
         reviewed = {"accepted": item["normalized_value"], "edited": value}.get(decision)
         out.append({
             "review_decision_id": f"rd-{at}-{item['candidate_id']}", "candidate_id": item["candidate_id"],
-            "evidence_id": "EV-1", "document_id": DOC, "field_name": item["field_name"], "decision": decision,
+            "evidence_id": "EV-1", "document_id": item["document_id"], "field_name": item["field_name"], "decision": decision,
             "reviewed_value": reviewed, "reviewed_unit": item["unit"] if reviewed is not None else None,
             "reviewer_id": "k.lee@example.com", "reviewed_at": f"2025-05-0{at}T10:00:00+00:00",
             "candidate_snapshot": snapshot, "source_reference": copy.deepcopy(item["source_reference"]), "org_id": ORG})
@@ -227,10 +228,13 @@ def test_old_decisions_without_a_record_key_use_the_service_period() -> None:
     assert fields[2]["activity_quantity"].status == "unreviewed" and fields[2]["activity_quantity"].reread_changed
 
 
-def test_old_decisions_without_a_period_to_compare_on_a_multi_record_read_do_not_apply() -> None:
-    old = _decide(_read(JAN, FEB), fields=("activity_quantity",), keyed=False)  # the reviewer never decided the period
-    quantity = _fields(_read(JAN, FEB), old)[1]["activity_quantity"]
-    assert quantity.status == "unreviewed" and quantity.reread_changed
+def test_old_decisions_with_no_period_evidence_at_all_keep_their_own_record() -> None:
+    # The reviewer decided only the quantity and the snapshot has no key: nothing says the record changed,
+    # so an unchanged document keeps its decision (the value rule still protects an accept).
+    old = _decide(_read(JAN, FEB), fields=("activity_quantity",), keyed=False)
+    assert _fields(_read(JAN, FEB), old)[1]["activity_quantity"].status == "accepted"
+    changed = _fields(_read(("On-peak", "2025-01-01", "2025-01-31", 99.0), FEB), old)[1]["activity_quantity"]
+    assert changed.status == "unreviewed" and changed.reread_changed
 
 
 def test_a_single_record_document_keeps_its_decision_by_id() -> None:
@@ -240,11 +244,13 @@ def test_a_single_record_document_keeps_its_decision_by_id() -> None:
     assert all(f.status == "accepted" for f in _fields(single, reviews)[None].values())
 
 
-def test_a_decision_with_no_snapshot_applies_only_under_its_own_candidate_id() -> None:
-    item = _read(JAN)[1]
-    bare = {"candidate_id": item["candidate_id"], "decision": "accepted", "reviewed_value": 58.92}
-    assert effective_decision(item, bare).applies
-    assert not effective_decision({**item, "candidate_id": "other"}, bare).applies
+def test_a_decision_with_no_snapshot_never_applies_on_a_multi_record_read() -> None:
+    items = _read(JAN, FEB)
+    bare = {"candidate_id": items[1]["candidate_id"], "decision": "accepted", "reviewed_value": 58.92}
+    assert not effective_decision(items[1], bare).applies  # fail closed: the original bug
+    single = {**items[1], "record_index": None, "candidate_id": f"candidate::EV-1::{DOC}::activity_quantity"}
+    assert effective_decision(single, {**bare, "candidate_id": single["candidate_id"]}).applies
+    assert not effective_decision({**single, "candidate_id": "other"}, bare).applies
 
 
 # --- effective_decision itself ----------------------------------------------------------------------
@@ -339,20 +345,60 @@ def _legacy_resolve(items: list[dict[str, Any]], reviews: list[dict[str, Any]]) 
             for i in items]
 
 
+def _ai_conflict_read(doc: str) -> list[dict[str, Any]]:
+    """One record where Claude read two different quantities: the main candidate and its ``::ai2`` sibling
+    (no record key of its own, Claude's own source reference), as services/ai_extraction.py writes them."""
+
+    items = _read(("Zähler 7", "2025-02-01", "2025-02-28", 10.0), doc=doc)
+    for item in items:
+        if item["field_name"] == "activity_quantity":
+            item["validation_flags"] = ["ai_suggested", "ai_conflict"]
+            item["source_reference"]["source_reference_id"] = "ai-1"
+    items.append({"candidate_id": f"candidate::EV-1::{doc}::activity_quantity::r1::ai2", "evidence_id": "EV-1",
+                  "document_id": doc, "field_name": "activity_quantity", "display_label": "Menge",
+                  "normalized_value": 12.0, "unit": "MMBtu", "validation_flags": ["ai_suggested", "ai_conflict"],
+                  "record_index": 1,
+                  "source_reference": {"document_id": doc, "page_number": 1, "text_snippet": "12 MMBtu – Käserei",
+                                       "source_reference_id": "ai-2"}})
+    return items
+
+
+def _decide_ai_conflict(items: list[dict[str, Any]], *, siblings: bool = True) -> list[dict[str, Any]]:
+    """The reviewer rejected the main reading and accepted Claude's ``::ai2`` one."""
+
+    main = _decide(items, "rejected", fields=("activity_quantity",), at=1)[:1]
+    others = _decide(items, fields=tuple(f for f in FIELDS if f != "activity_quantity"), at=1) if siblings else []
+    ai2 = next(i for i in items if i["candidate_id"].endswith("::ai2"))
+    accepted = _decide([ai2], at=2)
+    return [*main, *others, *accepted]
+
+
 def _unchanged_engagement() -> FakeStore:
     store = FakeStore()
-    store.add_document("BILL-A", "CT-S1-FUELQTY", [], decision=None)
-    store.add_document("BILL-B", "CT-S1-FUELQTY", [], decision=None)
+    for doc in ("BILL-A", "BILL-B", "BILL-C", "BILL-D", "BILL-E"):
+        store.add_document(doc, "CT-S1-FUELQTY", [], decision=None)
     store.add_document("ELEC-1", "CT-S2-ELEC", [{
         "activity_quantity": (700, "MWh"), "activity_unit": ("MWh", None), "energy_type": ("electricity", None),
         "facility_name": (PLANT, None), "service_address": ("Seestraße 1, Zürich", None),
         "service_period_start": ("2025-01-01", None), "service_period_end": ("2025-06-30", None)}])
     records = [JAN, FEB, MAR]
-    store.results["BILL-A"][0]["items"] = _read(*records)
-    store.reviews["BILL-A"] = [*_decide(_read(*records)), *_decide(_read(*records), "edited", fields=("activity_quantity",),
-                                                                  value=50.0, at=2, record=2)]
-    store.results["BILL-B"][0]["items"] = _read(*records, plant="Plant 2")
-    store.reviews["BILL-B"] = _decide(_read(*records, plant="Plant 2"), "rejected", fields=("activity_quantity",), record=3)
+    # A: accepted, then edited, then accepted again on one value (repeated decisions)
+    store.results["BILL-A"][0]["items"] = _read(*records, doc="BILL-A")
+    again = _decide(_read(*records, doc="BILL-A"), fields=("activity_quantity",), value=None, at=3, record=2)
+    store.reviews["BILL-A"] = [*_decide(_read(*records, doc="BILL-A")),
+                               *_decide(_read(*records, doc="BILL-A"), "edited", fields=("activity_quantity",),
+                                        value=50.0, at=2, record=2), *again]
+    store.results["BILL-B"][0]["items"] = _read(*records, plant="Plant 2", doc="BILL-B")
+    store.reviews["BILL-B"] = _decide(_read(*records, plant="Plant 2", doc="BILL-B"), "rejected",
+                                      fields=("activity_quantity",), record=3)
+    # C: a resolved Claude conflict, with and without decisions on the sibling fields
+    store.results["BILL-C"][0]["items"] = _ai_conflict_read("BILL-C")
+    store.reviews["BILL-C"] = _decide_ai_conflict(_ai_conflict_read("BILL-C"))
+    store.results["BILL-E"][0]["items"] = _ai_conflict_read("BILL-E")
+    store.reviews["BILL-E"] = _decide_ai_conflict(_ai_conflict_read("BILL-E"), siblings=False)
+    # D: decisions made before record keys were stored
+    store.results["BILL-D"][0]["items"] = _read(*records, plant="Plant 3", doc="BILL-D")
+    store.reviews["BILL-D"] = _decide(_read(*records, plant="Plant 3", doc="BILL-D"), keyed=False)
     return store
 
 
@@ -367,15 +413,135 @@ def test_a_full_recalculation_is_identical_before_and_after_the_guard(monkeypatc
     assert json.dumps(after, sort_keys=True, default=str) == json.dumps(before, sort_keys=True, default=str)
     assert json.dumps(schedule_after, sort_keys=True, default=str) == json.dumps(schedule_before, sort_keys=True, default=str)
     assert after["categories"]["stationary_combustion"] is not None  # the engagement really counted something
+    assert after["awaiting_review"] == before["awaiting_review"]
 
 
-def test_hostile_data_never_fails_a_page() -> None:
+def test_the_review_screen_reads_are_untouched_on_a_document_nobody_re_read() -> None:
+    store = _unchanged_engagement()
+    for doc in ("BILL-A", "BILL-B", "BILL-C", "BILL-D", "BILL-E"):
+        items, reviews = store.results[doc][0]["items"], store.reviews[doc]
+        assert mark_reread_items(items, reviews) == items
+        assert mark_review_targets(items, reviews) == reviews  # every decision, repeated ones too
+        assert applicable_decisions(items, reviews) == reviews
+        assert stale_decision_ids(items, reviews) == set()
+
+
+def test_a_resolved_claude_conflict_keeps_its_accept_with_or_without_sibling_decisions() -> None:
+    for siblings in (True, False):
+        items = _ai_conflict_read("BILL-C")
+        reviews = _decide_ai_conflict(items, siblings=siblings)
+        records = group_reviewed_records({"document_id": "BILL-C"}, "CT-S1-FUELQTY", items, reviews)
+        quantity = records[0].fields["activity_quantity"]
+        assert quantity.status == "accepted" and quantity.value == 12.0, siblings  # the ::ai2 accept counts
+        assert not quantity.reread_changed
+    # and the totals count Claude's 12, exactly as before the guard
+    store = _unchanged_engagement()
+    lines = _service(store).recalculate(_engagement(), _own)["categories"]["stationary_combustion"]["lines"]
+    assert sum(line["mass_t"]["CO2"] for line in lines) > 0
+
+
+def test_an_ai_alternative_is_not_carried_when_its_record_changed() -> None:
+    reviews = _decide_ai_conflict(_ai_conflict_read("BILL-C"))
+    reread = _ai_conflict_read("BILL-C")
+    for item in reread:  # the record is now another month
+        if item["field_name"] == "service_period_start":
+            item["normalized_value"] = "2025-03-01"
+        if item.get("record_key"):
+            item["record_key"] = item["record_key"].replace("2025-02-01", "2025-03-01")
+            item["source_reference"]["record_key"] = item["record_key"]
+    ai2 = next(i for i, item in enumerate(reread) if item["candidate_id"].endswith("::ai2"))
+    resolved = resolve_decisions(reread, reviews)[ai2]
+    assert resolved.decision is None and resolved.reread_changed  # review it again, never silently kept
+
+
+# --- I2 / I3: repeated decisions on one value ------------------------------------------------------------
+def test_every_decision_on_a_record_gets_its_target_not_only_the_latest() -> None:
     items = _read(JAN)
-    items.append({"field_name": None, "candidate_id": None, "normalized_value": "x", "record_index": "oops"})
-    items.append({"candidate_id": "c-1", "field_name": "activity_quantity", "record_key": 5, "record_index": 9,
-                  "normalized_value": float("nan"), "unit": 3})
-    reviews = _decide(_read(JAN))
-    reviews.append({"candidate_id": None, "decision": "accepted", "candidate_snapshot": "not a dict"})
-    reviews.append({"candidate_id": "c-1", "decision": "edited", "candidate_snapshot": {"record_key": ["x"]}})
-    assert len(resolve_decisions(items, reviews)) == len(items)
-    assert group_reviewed_records({"document_id": DOC}, "CT-S1-FUELQTY", items, reviews)
+    reviews = [*_decide(items, fields=("activity_quantity",), at=1),
+               *_decide(items, "edited", fields=("activity_quantity",), value=55.0, at=2)]
+    assert mark_review_targets(items, reviews) == reviews  # the earlier accept is not null
+    assert [h["decision"] for h in resolve_decisions(items, reviews)[1].history] == ["accepted", "edited"]
+
+
+def test_the_history_lists_the_earlier_decisions_and_marks_the_void_ones() -> None:
+    reviews = [*_decide(_read(JAN), fields=("activity_quantity",), at=1),
+               *_decide(_read(JAN), "edited", fields=("activity_quantity",), value=55.0, at=2),
+               *_decide(_read(JAN), fields=("activity_quantity",), at=3)]
+    reread = _read(("On-peak", "2025-01-01", "2025-01-31", 61.0))  # the value changed: the accepts are void
+    history = resolve_decisions(reread, reviews)[1].history
+    assert [(h["decision"], h.get("superseded_by_reread", False)) for h in history] == [
+        ("accepted", True), ("edited", False), ("accepted", True)]  # only the edit still counts
+    assert resolve_decisions(reread, reviews)[1].decision["decision"] == "edited"
+    assert all("superseded_by_reread" not in r for r in reviews)  # the stored decisions are untouched
+    assert mark_review_targets(reread, reviews)[1].get("applies_to_candidate_id", "own") == "own"
+
+
+def test_the_schedule_history_marks_what_a_re_read_voided() -> None:
+    store = FakeStore()
+    store.add_document(DOC, "CT-S1-FUELQTY", [], decision=None)
+    plant = "Kansas City Plant"
+    store.results[DOC][0]["items"] = _read(("Käserei", "2025-01-01", "2025-01-31", 61.0), plant=plant)
+    store.reviews[DOC] = _decide(_read(("Käserei", "2025-01-01", "2025-01-31", 58.92), plant=plant))
+    history = _tree_service(store).schedule(_tree_engagement(), _own, GAS_KC, None)["history"]  # type: ignore[index]
+    assert [h for h in history if h.get("superseded_by_reread")], history
+
+
+# --- I4: several documents in one evidence slot ---------------------------------------------------------
+def test_decisions_match_within_their_own_document_only() -> None:
+    one, two = _read(JAN, doc="DOC-1"), _read(JAN, doc="DOC-2")  # the same key and value in both
+    reviews = _decide(one)  # only DOC-1 was reviewed
+    latest = [*_read(FEB, doc="DOC-1"), *two]  # DOC-1 was re-read; DOC-2 was not
+    assert [r.decision for r in resolve_decisions(two, reviews)] == [None] * len(two)  # not DOC-2's decisions
+    assert all(r.reread_changed for r in resolve_decisions(_read(FEB, doc="DOC-1"), reviews)
+               if r.history or r.reread_changed)
+    stale = stale_decision_ids(latest, [{**d, "review_decision_id": d["review_decision_id"]} for d in reviews],
+                               {"DOC-1", "DOC-2"})
+    assert len(stale) == len(reviews)  # DOC-1's decisions went void by DOC-1's own read, nothing else's
+
+
+def test_each_documents_latest_read_is_used() -> None:
+    old = {"document_id": "DOC-1", "items": _read(JAN, doc="DOC-1")}
+    new = {"document_id": "DOC-1", "items": _read(FEB, doc="DOC-1")}
+    other = {"document_id": "DOC-2", "items": _read(MAR, doc="DOC-2")}
+    items = re_.latest_items_per_document([old, other, new])
+    assert {i["document_id"] for i in items} == {"DOC-1", "DOC-2"} and len(items) == 12
+    assert [i["normalized_value"] for i in items if i["field_name"] == "activity_quantity"] == [135.63, 71.5]
+
+
+def test_a_document_with_no_read_keeps_its_decisions_in_approved_evidence() -> None:
+    reviews = [*_decide(_read(JAN, doc="DOC-1")), *_decide(_read(JAN, doc="DOC-2"))]
+    kept = applicable_decisions(_read(FEB, doc="DOC-1"), reviews, {"DOC-1"})
+    assert {d["document_id"] for d in kept} == {"DOC-2"}  # DOC-1 went void; DOC-2 has no read to judge by
+
+
+# --- M6: twins ---------------------------------------------------------------------------------------------
+def test_twin_records_carry_an_edit_only_while_the_value_is_unchanged() -> None:
+    twin = ("Zähler 7", "2025-01-01", "2025-01-31", 10.0)
+    reviews = _decide(_read(twin, twin), "edited", fields=("activity_quantity",), value=9.0, record=1)
+    same = _fields(_read(twin, twin), reviews)[1]["activity_quantity"]
+    assert same.status == "edited" and same.value == 9.0
+    changed = _fields(_read(("Zähler 7", "2025-01-01", "2025-01-31", 11.0), twin), reviews)[1]["activity_quantity"]
+    assert changed.status == "unreviewed" and changed.reread_changed  # cannot tell it from its twin: review it again
+
+
+# --- M7: units and numbers -----------------------------------------------------------------------------------
+def test_units_compare_without_case_and_numbers_only_split_on_thousands_separators() -> None:
+    accepted = _decide(_read(JAN))
+    reread = _read(JAN)
+    for item in reread:
+        if item["field_name"] == "activity_quantity":
+            item["unit"] = "mmbtu"
+    assert _fields(reread, accepted)[1]["activity_quantity"].status == "accepted"
+    assert re_.same_value("1,234.5", 1234.5) and re_.same_value("58.920", 58.92)
+    assert not re_.same_value("12 34", 1234) and not re_.same_value("1,2,3", 123)
+    assert not re_.same_value(True, 1)
+
+
+def test_a_merged_staging_read_with_a_non_ascii_unit_still_matches() -> None:
+    accepted = _decide(_read(JAN))
+    reread = _read(JAN)
+    for item in [*reread, *accepted]:
+        target = item.get("candidate_snapshot", item)
+        if target["field_name"] == "activity_quantity":
+            target["unit"] = "m³"
+    assert _fields(reread, accepted)[1]["activity_quantity"].status == "accepted"

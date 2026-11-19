@@ -98,6 +98,7 @@ class ApprovedEvidenceService:
         evidence_type: str,
         org_id: str | None = None,
         current_items: list[dict] | None = None,
+        read_documents: set[str] | None = None,
     ) -> dict:
         """``current_items``: the extracted items of the document's latest read. Given, only the decisions
         that still apply to one of them are projected (a re-read can leave an old decision on another
@@ -107,7 +108,7 @@ class ApprovedEvidenceService:
         if org_id is not None:  # SEC-001: never project another org's (or unowned) decisions
             decisions = [d for d in decisions if d.get("org_id") == org_id]
         if current_items is not None:
-            decisions = applicable_decisions(current_items, decisions)
+            decisions = applicable_decisions(current_items, decisions, read_documents)
         if not decisions:
             return self._approved_repository.save(
                 self._build_aggregate(

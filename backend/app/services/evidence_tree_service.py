@@ -477,6 +477,7 @@ class EvidenceTreeService:
                     value, unit = found, snapshot.get("unit") or item.unit
                 login = entry.get("reviewer_id")
                 out.append({
+                    **({"superseded_by_reread": True} if entry.get("superseded_by_reread") else {}),
                     "action": action, "actor_name": name_of(str(login)) if login else None,
                     "at": _iso(entry.get("reviewed_at")),
                     "field": HISTORY_FIELD_LABELS.get(field_name, field_name.replace("_", " ").capitalize()),
@@ -491,7 +492,8 @@ class EvidenceTreeService:
 
         groups: dict[tuple[Any, str], list[dict[str, Any]]] = {}
         for entry in entries:
-            if entry["action"] == "accepted" and entry["at"] and entry["_login"]:
+            if entry["action"] == "accepted" and entry["at"] and entry["_login"] \
+                    and not entry.get("superseded_by_reread"):
                 groups.setdefault((entry["_login"], entry["at"][:16]), []).append(entry)
         folded: set[int] = set()
         out: list[dict[str, Any]] = []

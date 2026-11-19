@@ -144,6 +144,8 @@ export interface ScheduleHistoryEntry {
   count?: number;
   /** Documents the system entry extracted from. */
   documents?: number | null;
+  /** Present (true) only when a re-read made this decision void; it is kept in the history. */
+  superseded_by_reread?: boolean;
 }
 
 export interface ScheduleColumn {

@@ -254,6 +254,17 @@ A decision that does not apply leaves the item unreviewed for every purpose; it 
   it as `null`. Absent when it applies to its own candidate.
 - Schedule rows (`.../schedule`): `reread_changed` and `value_changed_since_review`, present only when true.
 - `POST /v1/evidence/{evidence_id}/approved-evidence/project` projects only decisions that still apply.
+  Each document of the evidence slot is judged by its own latest read, and a decision is matched only
+  within its own document.
+- `POST /v1/methodology/s2/run` drops approved fields whose review decision no longer applies (both the
+  persisted and the non-persisted path); a field whose decision the server does not know is kept.
+- Schedule history entries carry `superseded_by_reread: true` for a decision a re-read made void; it stays listed.
+- Raw history by design: `GET /v1/evidence/{evidence_id}/reviews` and
+  `GET /v1/candidates/{candidate_id}/reviews/latest` return the stored decisions as recorded (an audit
+  trail of what each reviewer did, per evidence id or candidate id, with no read to judge them by).
+  The screens that act on a decision use the guarded reads above. `review_decision_count` in the evidence
+  status counts stored decisions.
+- A decision with no candidate snapshot applies by candidate id only on a single-record document.
 
 ### GET /v1/engagements/{engagement_id}/approved-evidence
 Return evidence records and approved fields only.

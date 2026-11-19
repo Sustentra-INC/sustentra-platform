@@ -14,14 +14,14 @@ export function RereadNote({
 }) {
   if (value.rereadChanged && value.reviewState === "to_review") {
     return (
-      <div className="s1-muted" data-testid="reread-note">
+      <div className="s1-muted s1-xr-reread" data-testid="reread-note">
         {REREAD.reviewAgain}
       </div>
     );
   }
   if (value.valueChangedSinceReview) {
     return (
-      <div className="s1-muted" data-testid="reread-note">
+      <div className="s1-muted s1-xr-reread" data-testid="reread-note">
         {REREAD.valueChanged}
       </div>
     );

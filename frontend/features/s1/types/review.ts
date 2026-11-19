@@ -105,15 +105,15 @@ export interface ReviewValue {
    * for the calculation, so the card also shows the value the calculation uses.
    */
   asPrinted?: { value: string; unit: string; converted?: boolean };
+  /** The document was re-read and an earlier decision on this value no longer applies (the card is to review). */
+  rereadChanged?: boolean;
+  /** A correction or rejection carried over a re-read although the extracted value changed. */
+  valueChangedSinceReview?: boolean;
   /**
    * Claude read this value (backend services/ai_extraction.py). `suggested`: Claude read it where the
    * rules found nothing, so it is never pre-accepted and needs a reviewer. `conflict`: Claude read
    * another, different value elsewhere. `disagrees`: the rules read this value and Claude read another.
    */
-  /** The document was re-read and an earlier decision on this value no longer applies (the card is to review). */
-  rereadChanged?: boolean;
-  /** A correction or rejection carried over a re-read although the extracted value changed. */
-  valueChangedSinceReview?: boolean;
   ai?: {
     suggested?: boolean;
     conflict?: boolean;
