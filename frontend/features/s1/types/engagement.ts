@@ -13,6 +13,10 @@ export interface FacilityOption {
   address?: string;
   /** eGRID subregion for purchased electricity (Scope 2 location-based). */
   gridRegion?: string;
+  /** Optional account numbers on the client's bills for this facility (provisional, see utils/facilityNumbers.ts). */
+  accountNumbers?: string[];
+  /** Optional meter numbers, same pattern. */
+  meterNumbers?: string[];
 }
 
 /** The client's point of contact — one recipient for all Evidence requests. */
