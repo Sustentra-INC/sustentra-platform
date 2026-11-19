@@ -556,3 +556,198 @@ def test_a_supplier_invoice_priced_per_pound_is_a_purchase_even_with_a_site_call
     assert (added["normalized_value"], added["unit"]) == (120, "lb")
     assert added["display_label"] == "Refrigerant purchased"
     assert "purchase_not_equipment_charge" in added["validation_flags"]
+
+
+# --- review fixes: recovered is never booked as added; a totals table is not service lines ------------------
+RECOVERED_HEADERS = ["Amount Removed (lb)", "Qty Removed (lb)", "Quantity Recovered (lb)", "Amount Reclaimed (lb)",
+                     "Refrigerant Removed (lb)", "Quantity Removed (lb)", "Amount Recovered (lb)"]
+
+
+def _recovery_rows(header: str, number_left: float) -> list[list[tuple]]:
+    head = [("Date", 0.05, 0.04), ("Equipment", 0.15, 0.08), ("Refrigerant", 0.3, 0.08), (header, 0.45, 0.14),
+            ("Technician", 0.65, 0.08)]
+    row = [("10/02/2025", 0.05, 0.07), ("CH-1", 0.15, 0.04), ("R-134a", 0.3, 0.05), ("95.0", number_left, 0.03),
+           ("J. Doe", 0.65, 0.05)]
+    return [head, row]
+
+
+@pytest.mark.parametrize("header", RECOVERED_HEADERS)
+@pytest.mark.parametrize("number_left", [0.45, 0.56])  # left-aligned and right-aligned numbers
+def test_a_recovery_header_is_recovered_never_added_in_a_boxed_log(
+        targets: list[dict], header: str, number_left: float) -> None:
+    only = _log_records(_recovery_rows(header, number_left), targets)[1]
+    assert _value(only, "refrigerant_recovered") == (95, "lb")
+    assert only["refrigerant_added"]["normalized_value"] is None
+    assert only["technician"]["normalized_value"] == "J. Doe"
+
+
+@pytest.mark.parametrize("header", RECOVERED_HEADERS)
+def test_a_recovery_header_is_recovered_never_added_in_plain_text(targets: list[dict], header: str) -> None:
+    text = (f"Date    Equipment    Refrigerant    {header}    Technician\n"
+            "10/02/2025    CH-1    R-134a    95.0    J. Doe\n")
+    fields = _by_field(RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1").candidates)
+    assert (fields["refrigerant_recovered"]["normalized_value"], fields["refrigerant_recovered"]["unit"]) == (95, "lb")
+    assert fields["refrigerant_added"]["normalized_value"] is None
+
+
+@pytest.mark.parametrize("header", ["Amount Added", "Qty Added", "Amount Removed", "Quantity Recovered",
+                                    "Equipment ID", "Service Type", "Date Serviced", "Full Charge", "Work Performed",
+                                    "Total Recovered", "Refrigerant Type", "Gas Type"])
+def test_real_headers_are_never_cut(header: str) -> None:
+    from backend.app.services.refrigerant_extractor import Cell, Row
+
+    row = Row([Cell(header, 1, {"left": 0.1, "top": 0.1, "width": 0.2, "height": 0.01}, None, None, None, 0)], 1)
+    assert RefrigerantServiceExtractor._split_glued_headers(row) is row
+
+
+@pytest.mark.parametrize("glued", ["Amount Removed", "Added Recovered", "Qty Added Qty Removed", "Date Equipment"])
+def test_two_columns_that_are_not_the_refrigerant_are_never_cut_apart(glued: str) -> None:
+    from backend.app.services.refrigerant_extractor import Cell, Row
+
+    row = Row([Cell(glued, 1, {"left": 0.1, "top": 0.1, "width": 0.2, "height": 0.01}, None, None, None, 0)], 1)
+    assert [c.text for c in RefrigerantServiceExtractor._split_glued_headers(row).cells] == [glued]
+
+
+def test_the_gas_beside_an_amount_column_is_cut_both_ways() -> None:
+    from backend.app.services.refrigerant_extractor import Cell, Row
+
+    def cut(text: str) -> list[str]:
+        row = Row([Cell(text, 1, {"left": 0.1, "top": 0.1, "width": 0.2, "height": 0.01}, None, None, None, 0)], 1)
+        return [c.text for c in RefrigerantServiceExtractor._split_glued_headers(row).cells]
+
+    assert cut("RefrigerantFull Charge (lb)") == ["Refrigerant", "Full Charge (lb)"]
+    assert cut("Refrigerant Full Charge (kg)") == ["Refrigerant", "Full Charge (kg)"]
+    assert cut("Gas Added (lb)") == ["Gas", "Added (lb)"]
+
+
+# a totals table whose columns line up with the log's, under its own header
+ALIGNED_TOTALS: list[list[tuple]] = [
+    [("Totals by refrigerant", 0.05, 0.2)],
+    [("Gas", 0.293, 0.03), ("Added (lb)", 0.465, 0.06), ("Recovered (lb)", 0.54, 0.083)],
+    [("R-404A", 0.293, 0.04), ("20.5", 0.50, 0.025), ("0.0", 0.607, 0.016)],
+    [("R-134a", 0.293, 0.04), ("10.5", 0.50, 0.025), ("0.0", 0.607, 0.016)],
+]
+HEADERLESS_SUMMARY: list[list[tuple]] = [
+    [("Summary", 0.05, 0.2)],
+    [("", 0, 0), ("", 0, 0), ("R-404A", 0.293, 0.04), ("20.5", 0.50, 0.025), ("0.0", 0.607, 0.016)],
+    [("", 0, 0), ("", 0, 0), ("R-134a", 0.293, 0.04), ("10.5", 0.50, 0.025), ("0.0", 0.607, 0.016)],
+]
+
+
+@pytest.mark.parametrize("totals", [ALIGNED_TOTALS, HEADERLESS_SUMMARY], ids=["aligned table", "headerless rows"])
+def test_a_totals_table_under_the_log_is_never_counted_twice(targets: list[dict], totals: list[list[tuple]]) -> None:
+    from backend.app.services.refrigerant_extractor import TOTALS_NOTE
+
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, *LOG_LINES, *totals]), targets, "EV-1")
+    records = _by_record(outcome.candidates)
+    assert len(records) == 4
+    by_gas: dict[str, float] = {}
+    for fields in records.values():
+        gas = fields["refrigerant_type"]["normalized_value"]
+        by_gas[gas] = by_gas.get(gas, 0) + fields["refrigerant_added"]["normalized_value"]
+    assert by_gas == {"R-404A": 20.5, "HFC-134a": 10.5}  # not 41 lb: the totals are not lines
+    assert TOTALS_NOTE in outcome.notes
+
+
+def _by_record(candidates: list[dict]) -> dict[int, dict[str, dict]]:
+    indexes = sorted({c["record_index"] for c in candidates if c["record_index"] is not None})
+    return {i: _by_field(candidates, i) for i in indexes}
+
+
+def test_a_totals_table_in_kilograms_still_matches_the_lines_in_pounds(targets: list[dict]) -> None:
+    totals = [row for row in ALIGNED_TOTALS]
+    totals[1] = [("Gas", 0.293, 0.03), ("Added (kg)", 0.465, 0.06), ("Recovered (kg)", 0.54, 0.083)]
+    totals[2] = [("R-404A", 0.293, 0.04), (f"{20.5 * 0.45359237:.4f}", 0.50, 0.025), ("0.0", 0.607, 0.016)]
+    totals[3] = [("R-134a", 0.293, 0.04), (f"{10.5 * 0.45359237:.4f}", 0.50, 0.025), ("0.0", 0.607, 0.016)]
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, *LOG_LINES, *totals]), targets, "EV-1")
+    assert len(_by_record(outcome.candidates)) == 4
+
+
+def test_a_second_table_that_is_not_the_sum_of_the_first_is_more_service_lines(targets: list[dict]) -> None:
+    more = [
+        [("Date", 0.05, 0.04), ("Equipment", 0.15, 0.08), ("Refrigerant", 0.3, 0.08), ("Added (lb)", 0.45, 0.06),
+         ("Recovered (lb)", 0.54, 0.08)],
+        [("09/01/2025", 0.05, 0.07), ("RACK-B", 0.15, 0.05), ("R-404A", 0.3, 0.05), ("7.0", 0.45, 0.03),
+         ("0.0", 0.54, 0.03)],
+    ]
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, *LOG_LINES, *more]), targets, "EV-1")
+    assert len(_by_record(outcome.candidates)) == 5
+    assert outcome.notes == []
+
+
+def test_a_log_line_with_a_date_and_no_equipment_is_still_a_service_line(targets: list[dict]) -> None:
+    line = _log_row("09/01/2025", "", "R-404A", "180", "2.0", "0.0", "José Muñoz", "Top-up")
+    records = _log_records([*LOG_HEAD, *LOG_LINES, line], targets)
+    assert len(records) == 5 and records[5]["service_date"]["normalized_value"] == "2025-09-01"
+
+
+# --- a contractor's invoice is not a purchase; a supplier's price list is -----------------------------------
+def test_a_contractors_invoice_with_the_work_in_free_text_is_not_a_purchase(targets: list[dict]) -> None:
+    text = ("ACME MECHANICAL SERVICES    INVOICE\nInvoice Date    09/12/2025\n"
+            "Found leak at rooftop unit RTU-3 brazed joint, repaired and recharged system.\n"
+            "Description    Qty    Unit    Unit Price    Amount\n"
+            "R-410A refrigerant 25 lb cylinder    1    cyl    $395.00    $395.00\n"
+            "Labor    3    hr    $120.00    $360.00\n")
+    outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
+    added = _by_field(outcome.candidates)["refrigerant_added"]
+    assert "purchase_not_equipment_charge" not in added["validation_flags"]
+    assert added["display_label"] != "Refrigerant purchased" and outcome.notes == []
+
+
+@pytest.mark.parametrize("price_header", ["Cost / Cyl", "Cost", "Ext.", "$/Cyl", "Unit Price", "Price Each"])
+def test_a_supplier_invoice_is_a_purchase_whatever_its_price_column_is_called(
+        targets: list[dict], price_header: str) -> None:
+    table = (f"Item    Description    Qty    Unit    {price_header}    Amount\n"
+             "R410A-25    Refrigerant R-410A, 25 lb disposable cylinder    4    cyl    $395.00    $1,580.00\n")
+    added = _by_field(RefrigerantServiceExtractor().extract(_invoice(table), targets, "EV-1").candidates)[
+        "refrigerant_added"]
+    assert "purchase_not_equipment_charge" in added["validation_flags"]
+
+
+def test_a_supplier_selling_by_the_pound_is_a_purchase(targets: list[dict]) -> None:
+    text = ("WESTBAY REFRIGERANT SUPPLY    INVOICE\nInvoice Date    09/17/2025\n"
+            "Item    Description    Qty    Unit    Unit Price    Amount\n"
+            "R410A-BULK    Refrigerant R-410A bulk    100    lb    $15.00    $1,500.00\n")
+    outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
+    added = _by_field(outcome.candidates)["refrigerant_added"]
+    assert (added["normalized_value"], added["unit"]) == (100, "lb")
+    assert "purchase_not_equipment_charge" in added["validation_flags"] and added["display_label"] == "Refrigerant purchased"
+
+
+# --- the real layouts, as the parser reads them (fictional documents; no PDFs in the repo) --------------------
+def _fixture(name: str) -> dict[str, Any]:
+    import json
+    from pathlib import Path
+
+    return json.loads((Path(__file__).parent / "data" / name).read_text(encoding="utf-8"))
+
+
+def test_the_staging_harbor_log_reads_as_eight_service_lines(targets: list[dict]) -> None:
+    outcome = RefrigerantServiceExtractor().extract(_fixture("stg_harbor_refrigerant_service.parser.json"), targets, "EV-1")
+    records = _by_record(outcome.candidates)
+    assert len(records) == 8 and outcome.notes == []
+    rows = [(r["service_date"]["normalized_value"], r["equipment_id"]["normalized_value"],
+             r["refrigerant_type"]["normalized_value"], r["refrigerant_added"]["normalized_value"],
+             r["refrigerant_recovered"]["normalized_value"], r["technician"]["normalized_value"])
+            for r in records.values()]
+    assert rows[0] == ("2025-01-22", "HW-RC-01", "R-404A", 2.4, 0, "T. Vasquez-Hale")
+    assert rows[2] == ("2025-04-09", "HW-RF-02", "R-404A", 24.5, 21.3, "T. Vasquez-Hale")
+    assert rows[4] == ("2025-08-05", "HW-AC-03", "R-410A", 9.8, 8.95, "M. Ibekwe")
+    assert {r["refrigerant_added"]["unit"] for r in records.values()} == {"kg"}
+    assert round(sum(r["refrigerant_added"]["normalized_value"] for r in records.values()
+                     if r["refrigerant_type"]["normalized_value"] == "R-404A"), 2) == 33.1  # the log's own total
+    assert {r["service_provider"]["normalized_value"] for r in records.values()} == {"ColdCrest Mechanical Services"}
+
+
+def test_the_npl_sacramento_log_reads_as_eight_service_lines_with_accents_intact(targets: list[dict]) -> None:
+    outcome = RefrigerantServiceExtractor().extract(_fixture("npl_sacramento_refrigerant_log.parser.json"), targets, "EV-1")
+    records = _by_record(outcome.candidates)
+    assert len(records) == 8  # the two totals rows are not lines (their amounts are the sums of the lines)
+    assert [r["technician"]["normalized_value"] for r in records.values()] == [
+        "José Muñoz", "Renée Côté", "José Muñoz", "Renée Côté", "Zoë Brandão", "José Muñoz", "Renée Côté", "Zoë Brandão"]
+    totals: dict[str, float] = {}
+    for r in records.values():
+        gas = r["refrigerant_type"]["normalized_value"]
+        totals[gas] = totals.get(gas, 0) + r["refrigerant_added"]["normalized_value"]
+    assert totals == {"R-404A": 51.5, "HFC-134a": 13.5}
+    assert {r["service_provider"]["normalized_value"] for r in records.values()} == {"POLAR POINT MECHANICAL SERVICES"}
