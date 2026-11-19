@@ -17,7 +17,7 @@ import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
 import type { EngagementConfig, FacilityOption } from "../types/engagement";
 import type { EvidenceLineSetting } from "../api/evidenceTree";
 import type { EvidenceItem } from "../types/evidence";
-import { matchByIdentifier } from "../utils/facilityNumbers";
+import { placeRecord } from "../utils/documentView";
 import { demoDecisions, demoEngagement } from "./state";
 
 export const BLOCK_SUMMARY = "block:summary";
@@ -193,8 +193,12 @@ export function buildRecords(facilities: FacilityOption[]): Built {
 
     const type = doc.detectedType;
     // The account or meter number places a bill only when the name and address steps found no facility.
-    const byNumber = doc.facilityId ? null : matchByIdentifier(doc.accountNumber, doc.meterNumber, facilities);
-    const facilityId = doc.facilityId ?? byNumber?.facility?.facilityId ?? null;
+    // The same decision the screen and the backend make (placeRecord): the bill's own name, then, only when it
+    // gives no name and no address, its account or meter number; a name that is not in Setup is never overridden.
+    const placed = doc.facilityId
+      ? null
+      : placeRecord({ name: doc.facilityName, address: null, account: doc.accountNumber ?? null, meter: doc.meterNumber ?? null }, facilities, engagementConfig.clientName);
+    const facilityId = doc.facilityId ?? placed?.facility?.facilityId ?? null;
     const code = facilityId ? FAC_CODE[facilityId] ?? slug(facName(facilityId) ?? "") : "";
     let kind: RecordKind = "other";
     let target = SUPPORTING_UNASSIGNED;
@@ -244,8 +248,8 @@ export function buildRecords(facilities: FacilityOption[]): Built {
       meter: utility && facilityId && doc.documentId !== "DOC-PARTIAL" ? (kind === "gas" ? GAS_METERS[facilityId] : ELEC_METER[code]) ?? null : null,
       address: utility ? address(facilityId) : null,
       processingStatus: doc.processingState, detectedType: type,
-      matchedBy: byNumber?.facility ? byNumber.reason ?? "" : doc.documentId === "DOC-PARTIAL" ? "Service address in Setup" : "Facility name in Setup",
-      facilityNote: byNumber?.ambiguous ?? null,
+      matchedBy: placed?.facility ? placed.how ?? "" : doc.documentId === "DOC-PARTIAL" ? "Service address in Setup" : "Facility name in Setup",
+      facilityNote: placed?.note ?? null,
       flags: [],
     });
   }

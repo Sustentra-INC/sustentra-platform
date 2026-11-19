@@ -150,12 +150,12 @@ def test_old_or_malformed_facilities_read_as_having_no_numbers() -> None:
 
 
 # --- an engagement saved before the field existed -----------------------------------------------
-def _recalc(store: FakeStore, facilities: list[dict], company: str | None = None) -> dict:
+def _recalc(store: FakeStore, facilities: list[dict], company: str | None = None, decisions: dict | None = None) -> dict:
     from backend.app.services.engagement_recalculation_service import EngagementRecalculationService
 
     engagement = {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
                   "client_name": company, "settings": {"facilities": facilities, "recalculation": {}}}
-    return EngagementRecalculationService(store, store, store).recalculate(engagement, _own, None)
+    return EngagementRecalculationService(store, store, store).recalculate(engagement, _own, decisions)
 
 
 def test_an_old_engagement_without_the_field_is_calculated_exactly_as_before() -> None:

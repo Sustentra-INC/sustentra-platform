@@ -14,6 +14,8 @@ export const BACKEND_TYPE_IDS: Record<string, string> = {
 
 /** What one record of a document says about where it belongs (only values placement may read). */
 export interface RecordFacts {
+  /** The record's own index in the document (null for a single record), as the backend numbers it. */
+  recordIndex?: number | null;
   name: string | null;
   address: string | null;
   account: string | null;
@@ -41,14 +43,7 @@ function fieldName(field: ExtractedField): string | null {
   return typeof candidate?.field_name === "string" ? candidate.field_name : null;
 }
 
-/**
- * A value the backend would read to place a bill (record.for_placement): reviewed, or read by the rules, but not
- * one only Claude read and nobody accepted, and not one a reviewer rejected or asked for more evidence on.
- */
-function countsForPlacement(field: ExtractedField): boolean {
-  if (field.placementBlocked) return false;
-  return field.reviewStatus !== "unreviewed" || !field.valueProperties.includes("ai_suggested");
-}
+const PLACEMENT_FIELDS = new Set(["facility_name", "service_address", "account_number", "meter_number"]);
 
 export interface RecordPlacement {
   facility: FacilityOption | null;
@@ -94,49 +89,55 @@ function recordsOf(fact: DocumentFacts): RecordFacts[] {
   return records;
 }
 
+const REVIEWED_STATUSES = new Set(["accepted", "corrected", "keyed_by_reviewer"]);
+const isReviewed = (field: ExtractedField) => REVIEWED_STATUSES.has(field.reviewStatus);
+
+/**
+ * The value of one field of one record that may decide where a bill is placed. The backend's ``_one_field`` and
+ * ``for_placement``, exactly: with several readings of the field, the reviewed one counts (two reviewed with
+ * different values leave nothing), otherwise the last reading stands. Then a value a reviewer rejected or asked
+ * more evidence on, and one only Claude read, give nothing; a reviewed value or one the rules read is used.
+ */
+export function placementValue(readings: ExtractedField[]): string | null {
+  if (!readings.length) return null;
+  let field: ExtractedField | null;
+  if (readings.length === 1) field = readings[0];
+  else {
+    const reviewed = readings.filter(isReviewed);
+    if (!reviewed.length) field = readings[readings.length - 1];
+    else {
+      const same = (f: ExtractedField) =>
+        (f.correctedValue ?? f.value) === (reviewed[0].correctedValue ?? reviewed[0].value) &&
+        (f.correctedUnit ?? f.unit) === (reviewed[0].correctedUnit ?? reviewed[0].unit);
+      field = reviewed.every(same) ? reviewed[reviewed.length - 1] : null;
+    }
+  }
+  if (!field || field.placementBlocked) return null;
+  if (isReviewed(field)) return field.correctedValue ?? field.value ?? null;
+  return field.valueProperties.includes("ai_suggested") ? null : field.value ?? null;
+}
+
 export function documentFacts(fields: ExtractedField[]): Map<string, DocumentFacts> {
   const facts = new Map<string, DocumentFacts & { dates: string[] }>();
-  const byRecord = new Map<string, Map<string, RecordFacts>>();
-  const recordOf = (field: ExtractedField): RecordFacts => {
-    const records = byRecord.get(field.documentId) ?? new Map<string, RecordFacts>();
-    byRecord.set(field.documentId, records);
-    const key = String(field.recordIndex ?? "");
-    const record = records.get(key) ?? { name: null, address: null, account: null, meter: null };
-    records.set(key, record);
-    return record;
-  };
+  // document -> record -> field name -> every reading of it, in the order given
+  const readings = new Map<string, Map<string, Map<string, ExtractedField[]>>>();
   for (const field of fields) {
+    const name = fieldName(field);
+    if (name && PLACEMENT_FIELDS.has(name)) {
+      const records = readings.get(field.documentId) ?? new Map<string, Map<string, ExtractedField[]>>();
+      readings.set(field.documentId, records);
+      const key = String(field.recordIndex ?? "");
+      const named = records.get(key) ?? new Map<string, ExtractedField[]>();
+      records.set(key, named);
+      named.set(name, [...(named.get(name) ?? []), field]);
+    }
     const value = field.correctedValue ?? field.value;
     if (!value) continue;
     const entry = facts.get(field.documentId) ?? {
       facilityName: null, address: null, periodStart: null, periodEnd: null, dates: [], facilityNames: [],
       addresses: [],
     };
-    switch (fieldName(field)) {
-      // Placement reads the same source as the backend's best(): a reviewed value or one the rules read,
-      // never one only Claude read. That holds for the name, the address and the account and meter numbers.
-      case "facility_name":
-        if (!countsForPlacement(field)) break;
-        recordOf(field).name ??= value;
-        entry.facilityName ??= value;
-        if (!entry.facilityNames!.includes(value)) entry.facilityNames!.push(value);
-        break;
-      case "service_address":
-        if (!countsForPlacement(field)) break;
-        recordOf(field).address ??= value;
-        entry.address ??= value;
-        if (!entry.addresses!.includes(value)) entry.addresses!.push(value);
-        break;
-      case "account_number":
-        if (!countsForPlacement(field)) break;
-        recordOf(field).account ??= value;
-        entry.accountNumber ??= value;
-        break;
-      case "meter_number":
-        if (!countsForPlacement(field)) break;
-        recordOf(field).meter ??= value;
-        entry.meterNumber ??= value;
-        break;
+    switch (name) {
       case "service_period_start":
       case "transaction_date":
       case "service_date":
@@ -151,8 +152,30 @@ export function documentFacts(fields: ExtractedField[]): Map<string, DocumentFac
   const out = new Map<string, DocumentFacts>();
   facts.forEach(({ dates, ...rest }, documentId) => {
     const sorted = [...dates].sort();
-    const records = [...(byRecord.get(documentId)?.values() ?? [])].filter((r) => r.name || r.address || r.account || r.meter);
-    out.set(documentId, { ...rest, ...(records.length ? { records } : {}), periodStart: sorted[0] ?? null, periodEnd: sorted.at(-1) ?? null });
+    const records: RecordFacts[] = [];
+    for (const [key, named] of readings.get(documentId) ?? []) {
+      const rec: RecordFacts = {
+        recordIndex: key === "" ? null : Number(key),
+        name: placementValue(named.get("facility_name") ?? []),
+        address: placementValue(named.get("service_address") ?? []),
+        account: placementValue(named.get("account_number") ?? []),
+        meter: placementValue(named.get("meter_number") ?? []),
+      };
+      if (rec.name || rec.address || rec.account || rec.meter) records.push(rec);
+    }
+    records.sort((x, y) => (x.recordIndex ?? -1) - (y.recordIndex ?? -1));
+    const doc: DocumentFacts = {
+      ...rest,
+      facilityName: records.find((r) => r.name)?.name ?? null,
+      address: records.find((r) => r.address)?.address ?? null,
+      accountNumber: records.find((r) => r.account)?.account ?? null,
+      meterNumber: records.find((r) => r.meter)?.meter ?? null,
+      facilityNames: [...new Set(records.flatMap((r) => (r.name ? [r.name] : [])))],
+      addresses: [...new Set(records.flatMap((r) => (r.address ? [r.address] : [])))],
+      periodStart: sorted[0] ?? null,
+      periodEnd: sorted.at(-1) ?? null,
+    };
+    out.set(documentId, records.length ? { ...doc, records } : doc);
   });
   return out;
 }
