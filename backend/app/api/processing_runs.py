@@ -27,6 +27,7 @@ from backend.app.core.config import get_settings
 from backend.app.repositories.document_chunk_repository import ChunkSummary
 from backend.app.repositories.processing_run_repository import ProcessingRun
 from backend.app.services.document_processing_service import RunConflict, RunParams
+from backend.app.services.halt_text import is_halt_code, plain_halt
 
 router = APIRouter(prefix="/v1", tags=["processing-runs"])
 
@@ -61,7 +62,9 @@ def run_view(run: ProcessingRun, chunks: ChunkSummary | None = None) -> dict[str
         "canonical_type_id_override": run.params.get("canonical_type_id_override"),
         "pipeline_run_id": run.pipeline_run_id,
         "error_code": run.error_code,
-        "error": run.error,
+        # A halt's raw sentence (type ids, scores, parser output) stays in the stored run; the
+        # API says the plain sentence for its code. Other failures already say a plain sentence.
+        "error": plain_halt(run.error_code, run.error) if is_halt_code(run.error_code) else run.error,
     }
     if chunks is not None:
         view["chunks"] = {"total": chunks.total, "completed": chunks.completed, "failed": chunks.failed,

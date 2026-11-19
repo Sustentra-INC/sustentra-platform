@@ -3,7 +3,7 @@
 import { ChevronDown, ChevronRight, FileText } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleHistoryEntry, type ScheduleRow } from "../api/evidenceTree";
+import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSchedule, type ScheduleCell, type ScheduleHistoryEntry, type ScheduleRow, type ValueSource } from "../api/evidenceTree";
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { ApiError } from "../../../lib/api";
 import { userFacingApiError } from "../api/s1Backend";
@@ -287,7 +287,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
                             {rowFlag(r) ? <span className="s1-sch-row__flag"> {rowFlag(r)}</span> : null}
                           </>
                         ) : (
-                          cellText(c.key, r)
+                          <ValueLink column={headerLabel(c)} row={r} text={cellText(c.key, r)} source={sourceOf(c.key, r)} onOpenDocument={onOpenDocument} />
                         )}
                       </td>
                     ))}
@@ -443,6 +443,36 @@ function formatLocal(iso: string, withTime: boolean): string {
   const two = (n: number) => String(n).padStart(2, "0");
   const day = `${two(d.getMonth() + 1)}/${two(d.getDate())}/${two(d.getFullYear() % 100)}`;
   return withTime ? `${day}, ${two(d.getHours())}:${two(d.getMinutes())}` : day;
+}
+
+/** Where one cell's value was read; the quantity falls back to the row's own candidate and page. */
+function sourceOf(key: string, r: ScheduleRow): ValueSource {
+  if (key === "activity_quantity") {
+    const q = r.activity_quantity;
+    return { candidate_id: q.candidate_id ?? r.candidate_id, page: q.page ?? r.page, sheet: q.sheet, cell: q.cell };
+  }
+  return r.cells[key] ?? {};
+}
+
+/** A value that opens its own source: the review opens at that value, or at the document when nothing says where. */
+function ValueLink({ column, row, text, source, onOpenDocument }: { column: string; row: ScheduleRow; text: string; source: ValueSource; onOpenDocument: (documentId: string, valueId?: string) => void }) {
+  if (!text) return null;
+  const where = source.sheet ? `sheet ${source.sheet}${source.cell ? `, cell ${source.cell}` : ""}` : source.page ? `page ${source.page}` : null;
+  const label = `Open ${row.file_name}, ${where ?? "page 1, no page was recorded"} at ${column} ${text}`;
+  return (
+    <>
+      <button
+        className="s1-linklike"
+        type="button"
+        aria-label={label}
+        title={where ?? "No page was recorded for this value; the document opens at page 1."}
+        onClick={() => onOpenDocument(row.document_id, source.candidate_id ? resolveFieldKey({ candidateId: source.candidate_id, backendFieldId: "" }) : undefined)}
+      >
+        {text}
+      </button>
+      {where ? null : <span className="s1-muted s1-sch-nopage"> (no page recorded, opens at page 1)</span>}
+    </>
+  );
 }
 
 /** A month's counted quantity, a computed share of its bills: whole units once it is in the hundreds. */

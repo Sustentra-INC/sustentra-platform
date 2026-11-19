@@ -20,6 +20,8 @@ from backend.app.repositories import s1_stores
 from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
 from backend.app.services.ai_extraction import AiExtraction
 from backend.app.services.ai_routing import AiRouting, RoutingResult
+from backend.app.services.calculation_lines import SUMMARY_TYPES
+from backend.app.services.document_shape import NOT_EVIDENCE_MESSAGE, looks_like_a_note
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
 from backend.app.services.classification_service import ClassificationService
 from backend.app.services.electricity_extractor import (
@@ -402,6 +404,14 @@ class PipelineOrchestrationService:
                             include_optional=include_optional,
                             include_deprecated=include_deprecated,
                         )
+                    elif canonical_type_id in SUMMARY_TYPES:
+                        # A company's own summary (its workbook, boundary statement, inventory report) is read
+                        # as itself: the runner-up types of a multi-type match must not add their fuel fields.
+                        extraction_targets = self._get_target_service().get_targets_for_canonical_type(
+                            canonical_type_id,
+                            include_optional=include_optional,
+                            include_deprecated=include_deprecated,
+                        )
                     else:
                         extraction_targets = (
                             self._get_target_service().get_targets_for_classification_result(
@@ -469,6 +479,20 @@ class PipelineOrchestrationService:
                         if halt_reason is None:
                             halt_reason = self._unsupported_halt(classification_result, parser_output)
                             warnings.append(halt_reason["message"])
+
+                # A note from a person (prose, however many quantities it quotes) is not a bill or a record,
+                # whoever suggested the type: the rules, the content check or Claude. It stops here, with a
+                # plain reason, and waits in Unassigned documents.
+                if ((canonical_type_id is None or canonical_type_id in LAYOUT_EXTRACTOR_TYPE_IDS)
+                        and looks_like_a_note(parser_output)):
+                    canonical_type_id = None
+                    canonical_type_source = "none"
+                    extraction_targets = []
+                    ai_routing = None
+                    if halt_reason is not None:  # an earlier "closest match" reason would contradict this one
+                        warnings[:] = [w for w in warnings if w != halt_reason["message"]]
+                    halt_reason = {"code": HALT_UNSUPPORTED, "message": NOT_EVIDENCE_MESSAGE}
+                    warnings.append(NOT_EVIDENCE_MESSAGE)
 
                 if canonical_type_source in ("classifier", "content_check") and self._ai_routing.shadow:
                     # Shadow mode: Claude reads the document too, and may only disagree in a warning.

@@ -2,7 +2,6 @@
 
 import hashlib
 import re
-import time
 
 import pytest
 
@@ -26,21 +25,25 @@ def test_hash_is_bcrypt_cost_12_and_salted() -> None:
     assert first != second  # unique salt per hash
 
 
-def test_unknown_user_takes_comparable_time_and_fails() -> None:
+def test_unknown_user_runs_the_same_bcrypt_check_and_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Counts the work instead of timing it: an unknown user must cost one full bcrypt check
+    against a cost-12 hash, exactly like a wrong password, so response time does not reveal
+    whether the account exists. (A wall-clock ratio of two single runs flaked under load.)"""
     hashed = sp.hash_password("some real password here")
     sp.verify_password("warm-up", None)  # first call builds the dummy hash
 
-    start = time.perf_counter()
+    calls: list[bytes] = []
+    real_checkpw = sp.bcrypt.checkpw
+
+    def spy(candidate: bytes, stored: bytes) -> bool:
+        calls.append(stored)
+        return real_checkpw(candidate, stored)
+
+    monkeypatch.setattr(sp.bcrypt, "checkpw", spy)
     assert not sp.verify_password("guess one two three", None)
-    unknown = time.perf_counter() - start
-
-    start = time.perf_counter()
     assert not sp.verify_password("guess one two three", hashed)
-    wrong = time.perf_counter() - start
-
-    # Both run a full cost-12 bcrypt check; allow generous jitter.
-    assert unknown > wrong * 0.5
-    assert unknown < wrong * 2.0
+    assert len(calls) == 2  # one check each, no early return for the unknown user
+    assert all(stored.startswith(b"$2b$12$") for stored in calls)  # both at cost 12
 
 
 def test_long_passwords_beyond_72_bytes_are_fully_significant() -> None:
