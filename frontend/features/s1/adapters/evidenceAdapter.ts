@@ -208,7 +208,10 @@ function resolveFormat(filename: string, mimeType?: string | null): EvidenceItem
  *  unsupported-type halt ("the closest match was CT-S1-..., with confidence 0.48") is never shown:
  *  it becomes the plain sentence. The structured code is used wherever the API gives one
  *  (see haltReasonFromCode); this prefix check is only for the batch sentence, which has none. */
-export function plainBatchHalt(message: string | null | undefined): string | null {
+export function plainBatchHalt(message: string | null | undefined, code?: string | null): string | null {
+  // The server sends a code and a plain sentence; the code wins, so the screen and the API agree.
+  const fromCode = haltReasonFromCode(code, message);
+  if (fromCode) return fromCode;
   const text = message?.trim();
   if (!text) return null;
   if (/^Unsupported document type\b/i.test(text)) return HALT_REASONS.typeUnknown;

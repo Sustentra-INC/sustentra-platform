@@ -106,6 +106,10 @@ function run(overrides: Partial<ProcessingRunView> = {}): ProcessingRunView {
 
 const TIMED_OUT = "Reading stopped before it finished. Try again later, or upload a smaller file.";
 
+// These render the real app or a whole screen: about 1-2 s alone, but over the 5 s default when the
+// full suite runs on a loaded machine. A longer limit for this file only; a hang still fails.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe("withReadingState", () => {
   const rows = [uploadedRow(), uploadedRow({ documentId: "DOC-2", filename: "other.pdf" })];
 
