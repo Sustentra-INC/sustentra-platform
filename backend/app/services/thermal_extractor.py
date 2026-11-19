@@ -489,7 +489,7 @@ class ThermalExtractor(ElectricityExtractor):
                 "layer while OCR is off, or an empty file). Upload a text-based PDF or enable OCR.",
             })
         unit_hint = self._document_unit(rows)
-        records, unread = self._read_tables(rows, unit_hint, self._document_kinds(rows))
+        records, notes = self._part_records(rows, unit_hint)
         if not records:
             return ExtractionOutcome(candidates=[], halt_reason={
                 "code": HALT_UNSUPPORTED,
@@ -498,15 +498,26 @@ class ThermalExtractor(ElectricityExtractor):
                 "or cooling evidence.",
             })
         # Each record carries its own energy type; the placeholder only stands in where none was told.
-        outcome = self._records_to_candidates(rows, parser_output, targets, evidence_id, document_id, records,
-                                              Located("", [], None, CONF_MISSING), unit_hint)
-        if any(r.fuel is None for r in records):
-            outcome.notes.append(AMBIGUOUS_ENERGY_NOTE)
+        placeholder = Located("", [], None, CONF_MISSING)
+        outcome = self._statement_bundle(rows, parser_output, targets, evidence_id, document_id, unit_hint,
+                                         placeholder, notes)
+        if outcome is None:
+            outcome = self._records_to_candidates(rows, parser_output, targets, evidence_id, document_id, records,
+                                                  placeholder, unit_hint)
+            outcome.notes.extend(notes)
+        return outcome
+
+    # --- the readings of one statement (the hooks of the electricity extractor's bundle reader) -------------
+    def _part_records(self, rows: Sequence[Row], unit_hint: Located | None) -> tuple[list[UsageRecord], list[str]]:
+        records, unread = self._read_tables(rows, unit_hint, self._document_kinds(rows))
+        notes = [AMBIGUOUS_ENERGY_NOTE] if any(r.fuel is None for r in records) else []
         # Nothing drops silently: a table whose header was found but whose lines gave no usable thermal
         # quantity is named by its page. (A history table is not a missed reading and is not named.)
-        for header in unread:
-            outcome.notes.append(_unread_table_note(header.page))
-        return outcome
+        notes.extend(_unread_table_note(header.page) for header in unread)
+        return records, notes
+
+    def _part_energy(self, rows: Sequence[Row]) -> Located | None:
+        return Located("", [], None, CONF_MISSING)  # the energy type is each record's own
 
     # ---------------------------------------------------------------------------------
     def _record_values(self, record: UsageRecord | None, period: tuple[Located | None, Located | None],
