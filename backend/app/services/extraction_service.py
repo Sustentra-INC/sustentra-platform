@@ -69,6 +69,8 @@ class ExtractionService:
                 "items": outcome.candidates,
                 "record_count": outcome.records,
             }
+            if outcome.notes:
+                result["notes"] = list(outcome.notes)  # plain warnings for the reviewer (the pipeline shows them)
             if outcome.halt_reason is not None:
                 result["halt_reason"] = outcome.halt_reason
             return result

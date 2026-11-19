@@ -79,7 +79,7 @@ export function BatchProgress({
             const type = item.canonical_type_id
               ? resolveCanonicalTypeDisplayName({ canonical_type_id: item.canonical_type_id })
               : null;
-            const note = halts.get(item.document_id) || plainBatchHalt(item.halt_reason);
+            const note = halts.get(item.document_id) || plainBatchHalt(item.halt_reason, item.halt_code);
             return (
               <tr key={item.document_id} className="s1-batch__row">
                 <td className="s1-batch__file">
