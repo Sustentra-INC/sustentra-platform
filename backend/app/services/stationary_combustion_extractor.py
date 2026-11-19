@@ -205,6 +205,7 @@ _MONTHS = {
     for m in names
 }
 _MONTH_RE = "|".join(sorted(_MONTHS, key=len, reverse=True))
+_MONTHS_BUT_MAY = "|".join(name for name in sorted(_MONTHS, key=len, reverse=True) if name != "may")
 # How a line without geometry splits into parts (tabs, 2+ spaces, pipes); the source pane
 # splits lines the same way (frontend utils/sourceAnchor.ts).
 _LINE_PARTS_RE = re.compile(r"\t+|\s{2,}|\s*\|\s*")
@@ -220,6 +221,13 @@ _DATE_PATTERNS: tuple[re.Pattern[str], ...] = (
     # Jan-2025 - a month column in a monthly log: the first day of that month
     re.compile(rf"(?<![\w-])(?P<mon>{_MONTH_RE})-(?P<y>\d{{4}})(?![\w-])", re.IGNORECASE),
 )
+# "October 1 - 31, 2025", "Oct 1 \u2013 31, 2025", "September 28 - October 27, 2025", "Dec 16 - Jan 15, 2026":
+# a range whose first date has no year of its own. The year is the end date's; a first month after the
+# last month ("Dec 16 - Jan 15") is the year before. English month names only: another language's
+# names do not match, so such a range simply is not read.
+_SHORT_RANGE_RE = re.compile(
+    rf"(?<![\w])(?P<m1>{_MONTH_RE})\.?\s+(?P<d1>\d{{1,2}})\s*[-\u2013\u2014]\s*"
+    rf"(?:(?P<m2>{_MONTH_RE})\.?\s+)?(?P<d2>\d{{1,2}}),?\s+(?P<y>\d{{4}})(?!\d)", re.IGNORECASE)
 _NUMBER_RE = re.compile(
     r"(?P<open>\()?(?P<sign>-)?(?<![\w.,])"
     r"(?P<num>\d{1,3}(?:[,.]\d{3})+(?:[.,]\d+)?|\d+(?:[.,]\d+)?)"
@@ -329,6 +337,95 @@ def _blank_dates(text: str) -> str:
     return text
 
 
+# Words in the label above or beside a date that say it is not the service period.
+_NOT_A_SERVICE_PERIOD = ("next", "due", "pay by", "statement", "bill date", "billing date", "issued")
+_RANGE_SEPARATOR = re.compile(r"^\s*(?:[-\u2013\u2014]|to|through)\s*", re.IGNORECASE)
+
+
+def _only_a_date_range(text: str) -> bool:
+    """Whether ``text`` is exactly a date, a dash (or "to", "through") and a date, 20 to 100 days long. The
+    first date may leave its year to the second ("October 1 - 31, 2025"). Anything else in it, two dates with
+    no dash between them included, is not a range."""
+
+    if _SHORT_RANGE_RE.fullmatch(text):
+        dates = parse_dates(text)
+    elif (first := parse_date(text)) is not None and first[1] == 0 and (gap := _RANGE_SEPARATOR.match(text[first[2]:])):
+        tail = text[first[2] + gap.end():]
+        second = parse_date(tail)
+        if second is None or second[1] != 0 or tail[second[2]:].strip():
+            return False
+        dates = [first[0], second[0]]
+    else:
+        return False
+    return len(dates) == 2 and 20 <= (date.fromisoformat(dates[1]) - date.fromisoformat(dates[0])).days <= 100
+
+
+def _labelled_as(rows: Sequence[Row], cell: Cell, words: Sequence[str]) -> bool:
+    """Whether the text directly above ``cell`` or just to its left contains one of ``words`` (a label such
+    as "Next scheduled meter read" or "Current reading"). Cells without geometry have no neighbours."""
+
+    box = cell.box
+    if box is None:
+        return False
+    above: tuple[float, str] | None = None
+    left: tuple[float, str] | None = None
+    for row in rows:
+        if row.page != cell.page:
+            continue
+        for other in row.cells:
+            if other is cell or other.box is None:
+                continue
+            bottom = other.box["top"] + other.box["height"]
+            rise = box["top"] - bottom
+            if -0.005 <= rise <= max(cell.height, 0.03) and other.left < cell.right and other.right > cell.left:
+                if above is None or rise < above[0]:
+                    above = (rise, other.text)
+            beside = cell.left - other.right
+            if -0.005 <= beside <= 0.15 and abs(other.center_y - cell.center_y) <= max(cell.height, other.height) / 2:
+                if left is None or beside < left[0]:
+                    left = (beside, other.text)
+    return any(_has_word(found[1], word) for found in (above, left) if found for word in words)
+
+
+def _names_a_month(text: str) -> bool:
+    """Whether ``text`` names a month. "May" counts only beside a day number or a year ("you may pay online" is
+    a sentence)."""
+
+    if re.search(rf"\b(?:{_MONTHS_BUT_MAY})\b", text, re.IGNORECASE):
+        return True
+    return re.search(r"\bmay\s+\d{1,2}\b|\b\d{1,2}\s+may\b|\bmay,?\s+(?:19|20)\d{2}\b", text, re.IGNORECASE) is not None
+
+
+def _has_word(text: str, word: str) -> bool:
+    """Whether ``word`` is in ``text`` as a whole word or phrase ("rate" is not in "Corporate"), ignoring a
+    parenthesis that holds a number: "Your usage (31 days)" is a heading about usage, "Days in period" is about
+    days. A parenthesis with only words in it ("Same month (last year)", "Tank (capacity)") says what the
+    figure is, so it counts. A word with no letter or digit in it ("$") is looked for as it is."""
+
+    low = re.sub(r"\([^)]*\d[^)]*\)", " ", text.lower())
+    if not any(char.isalnum() for char in word):
+        return word in low
+    return re.search(rf"(?<!\w){re.escape(word)}(?!\w)", low) is not None
+
+
+def _third_band_floor(heights: Sequence[float]) -> float | None:
+    """The smallest text height among the three tallest sizes on a page, where heights within 10% of the tallest
+    of their size are one size (OCR reports a size as 0.0599, 0.0601 and 0.0602)."""
+
+    bands: list[float] = []  # the smallest height of each band, tallest band first
+    top = 0.0
+    for height in sorted(set(heights), reverse=True):
+        if bands and height >= 0.9 * top:
+            bands[-1] = height
+            continue
+        bands.append(height)
+        top = height
+        if len(bands) > 3:
+            bands.pop()
+            break
+    return bands[-1] if bands else None
+
+
 def _has_letters(value: str) -> bool:
     return bool(re.search(r"[^\W\d_]{2}", value))
 
@@ -391,7 +488,24 @@ def parse_date(text: str, day_first: bool | None = None) -> tuple[str, int, int]
     return best
 
 
+def _short_range(match: re.Match[str]) -> tuple[str, str] | None:
+    parts = match.groupdict()
+    try:
+        year = int(parts["y"])
+        end_month = _MONTHS[(parts["m2"] or parts["m1"]).lower().rstrip(".")]
+        start_month = _MONTHS[parts["m1"].lower().rstrip(".")]
+        start_year = year - 1 if start_month > end_month else year
+        start = date(start_year, start_month, int(parts["d1"]))
+        end = date(year, end_month, int(parts["d2"]))
+    except (KeyError, ValueError):
+        return None
+    return (start.isoformat(), end.isoformat()) if start <= end else None
+
+
 def parse_dates(text: str, day_first: bool | None = None) -> list[str]:
+    short = _SHORT_RANGE_RE.search(text)
+    if short is not None and (pair := _short_range(short)) is not None:
+        return [*parse_dates(text[:short.start()], day_first), *pair, *parse_dates(text[short.end():], day_first)]
     found: list[str] = []
     remaining = text
     while True:
@@ -481,6 +595,10 @@ class StationaryCombustionExtractor:
     DATE_HEADERS: tuple[str, ...] = _DATE_HEADERS
     UNIT_HEADERS: tuple[str, ...] = _UNIT_HEADERS
     QTY_EXCLUDE: tuple[str, ...] = _QTY_EXCLUDE
+    # Whether a bill that leads with its quantity in large type ("1,486" over "therms used") is read. Only the
+    # natural gas reader reads it: the others look for other units and layouts, and a number above a unit word
+    # is too weak a sign for them.
+    HEADLINE_QUANTITY = True
     # Additional table columns kept on each record: key -> header names (normalized).
     # A fuel log's "Site" / "Facility" column: each line's facility (a log can cover several).
     EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {
@@ -567,6 +685,8 @@ class StationaryCombustionExtractor:
         document_values["service_address"] = self._address(rows) or address_from_facility
 
         records = self._quantity_records(rows)
+        if not records and self.HEADLINE_QUANTITY:  # extraction only: classification (confirms) never reads it
+            records = self._headline_quantity_records(rows)
         period = self._document_period(rows)
         unit_hint = self._document_unit(rows)
 
@@ -1130,7 +1250,9 @@ class StationaryCombustionExtractor:
 
     def _account(self, rows: Sequence[Row]) -> Located | None:
         def accept(value: str) -> bool:
-            return bool(re.search(r"\d", value)) and parse_date(value) is None and not value.startswith("$")
+            # an identifier has a token with digits in it ("Your last 6 months" is a heading, not an account)
+            return (any(len(t) >= 3 and re.search(r"\d", t) for t in value.split())
+                    and parse_date(value) is None and not value.startswith("$"))
 
         def accept_bare(value: str) -> bool:  # first token must look like an identifier
             return accept(value) and bool(re.match(r"[A-Za-z0-9#-]*\d[\w-]*", value))
@@ -1265,7 +1387,26 @@ class StationaryCombustionExtractor:
                 if start is None and end is not None and len(parse_dates(end.raw)) >= 2:
                     return end, end
                 return start, end
-        return None, None
+        alone = self._standalone_range(rows)
+        return (alone, alone) if alone is not None else (None, None)
+
+    @staticmethod
+    def _standalone_range(rows: Sequence[Row]) -> Located | None:
+        """A period with no label, as a consumer-style bill prints it ("October 1 - 31, 2025"): a cell that
+        is exactly a date, a dash (or "to", "through") and a date, 20 to 100 days long, and not labelled as a
+        due, statement or next-read date. Only when the document has exactly one such range (a bill that
+        also prints last year's, or a chart's, is ambiguous)."""
+
+        found: list[tuple[Row, Cell]] = []
+        for row in rows:
+            for cell in row.cells:
+                text = cell.text.strip().rstrip(".")
+                if _only_a_date_range(text) and not _labelled_as(rows, cell, _NOT_A_SERVICE_PERIOD):
+                    found.append((row, cell))
+        if len(found) != 1:
+            return None
+        row, cell = found[0]
+        return Located(cell.text.strip(), [cell], row, CONF_LETTERHEAD, context=cell.text)
 
     # =================================================================================
     # Quantities
@@ -1474,6 +1615,109 @@ class StationaryCombustionExtractor:
         """Usage table rows, else a labeled quantity (subclasses add more layouts)."""
 
         return self._usage_table_records(rows) or self._labeled_quantity_records(rows)
+
+    _BARE_NUMBER = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d+)?$|^\d+(?:\.\d+)?$")
+    _USAGE_WORDS = frozenset({"used", "billed", "consumed", "delivered", "usage"})
+    # Words in the text above or beside a number that say it is not the quantity of the bill.
+    _NOT_A_QUANTITY = ("reading", "capacity", "days", "year", "rate", "average", "avg", "daily", "per day", "last",
+                       "previous", "prior")
+    # Words in the line right under the unit line that say the pair is not the bill's quantity ("therms" over
+    # "per day", "gallons" over "tank capacity", "CCF" over "current meter reading").
+    _NOT_UNDER_A_UNIT = ("per", "daily", "average", "avg", "tank", "capacity", "meter", "reading", "last", "previous",
+                         "prior")
+
+    def _headline_quantity_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
+        """A bill that leads with the quantity: "1,486" in large type with "therms used" directly below it.
+
+        Only a laid-out page counts (a line of plain text carries no sign of size), and only when:
+        - the number stands alone (no "$", no ID) and is at least twice as tall as the unit line under
+          it, and among the three tallest sizes of text on its page (sizes within 10% of each other are
+          one size, so OCR jitter does not push it out);
+        - the unit line has no digit, starts with a unit that is not one of the short aliases that are
+          ambiguous in free text (St, T, L, CF, Ton), and goes on with nothing or a usage word
+          ("therms used"; not "therms per day", "gallons capacity", "kWh actual" or "St. Louis, MO"), and
+          the line under the unit line is not a qualifier ("per day", "tank capacity", "current meter
+          reading") or a date ("October 2024"; the bill's own period, a lone date range, is fine);
+        - the text just above or beside the number is not a label that excludes it (a reading, a
+          capacity, days, a year, a rate, an amount).
+        When the document has two such pairs, nothing is guessed."""
+
+        sizes: dict[int | None, list[float]] = {}
+        for row in rows:
+            for cell in row.cells:
+                if cell.box is not None:
+                    sizes.setdefault(row.page, []).append(cell.height)
+        smallest_large = {page: _third_band_floor(heights) for page, heights in sizes.items()}
+        pairs: list[tuple[Row, Cell, Row, Cell]] = []
+        for position, row in enumerate(rows):
+            floor = smallest_large.get(row.page)
+            for cell in row.cells:
+                if cell.box is None or not self._BARE_NUMBER.match(cell.text.strip()):
+                    continue
+                if floor is None or cell.height < floor - 1e-9:
+                    continue
+                below = self._unit_line_below(rows, position, cell)
+                if below is not None and not _labelled_as(rows, cell, (*self.QTY_EXCLUDE, *self._NOT_A_QUANTITY)):
+                    pairs.append((row, cell, *below))
+        if len(pairs) != 1:
+            return []
+        row, number, unit_row, unit_cell = pairs[0]
+        parsed = parse_number(number.text)
+        if parsed is None:
+            return []
+        unit_word = unit_cell.text.split()[0]
+        quantity = Located(parsed[1], [number], row, CONF_DOCUMENT_SCAN, context=f"{number.text} {unit_cell.text}")
+        return [UsageRecord(quantity=quantity, unit_raw=unit_word,
+                            unit_located=Located(unit_cell.text, [unit_cell], unit_row, CONF_NEXT_CELL), hint=None)]
+
+    def _unit_line_below(self, rows: Sequence[Row], position: int, number: Cell) -> tuple[Row, Cell] | None:
+        def is_unit_line(cell: Cell) -> bool:
+            words = [word.strip(".,:;") for word in cell.text.split()]
+            if not words or re.search(r"\d", cell.text) or number.height < 2 * cell.height:
+                return False
+            first = words[0].lower()
+            return (self._canonical_unit(words[0]) is not None and not fuel_units.is_ambiguous_in_text(first)
+                    and all(word.lower() in self._USAGE_WORDS for word in words[1:]) and len(words) <= 2)
+
+        if number.box is None:
+            return None
+        bottom = number.box["top"] + number.box["height"]
+        best: tuple[float, Row, Cell] | None = None
+        for other in rows[position + 1:position + 40]:
+            if other.page != rows[position].page:
+                break
+            for cell in other.cells:
+                if cell.box is None or abs(cell.left - number.left) > 0.02:
+                    continue
+                gap = cell.box["top"] - bottom
+                if -0.005 <= gap <= max(0.5 * number.height, 0.02) and (best is None or gap < best[0]):
+                    best = (gap, other, cell)
+        if best is not None and is_unit_line(best[2]) and not self._qualified_below(rows, position, best[2]):
+            return best[1], best[2]
+        return None
+
+    def _qualified_below(self, rows: Sequence[Row], position: int, unit: Cell) -> bool:
+        """Whether the line directly under the unit line (same column, within about a line) says the pair is not
+        the bill's quantity: a qualifier word, or a date, a month and year or a year (last year's figure). A
+        date range that is exactly what ``_standalone_range`` accepts is the bill's period and does not count."""
+
+        if unit.box is None:
+            return False
+        bottom = unit.box["top"] + unit.box["height"]
+        for other in rows[position + 1:position + 40]:
+            for cell in other.cells:
+                if cell is unit or cell.box is None or abs(cell.left - unit.left) > 0.02:
+                    continue
+                gap = cell.box["top"] - bottom
+                if not -0.005 <= gap <= 1.2 * unit.height:
+                    continue
+                text = cell.text.strip().rstrip(".")
+                if _only_a_date_range(text):
+                    return False
+                return (any(_has_word(text, word) for word in self._NOT_UNDER_A_UNIT)
+                        or parse_date(text) is not None or _names_a_month(text)
+                        or re.search(r"\b(?:19|20)\d{2}\b", text) is not None)
+        return False
 
     def _labeled_quantity_records(self, rows: Sequence[Row],
                                   label_groups: tuple[tuple[str, ...], ...] | None = None) -> list[UsageRecord]:

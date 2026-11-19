@@ -127,6 +127,13 @@ _THERMAL_TOKEN_RE = _token_re({**_ALIASES, **_THERMAL_ALIASES})
 _AMBIGUOUS_IN_TEXT = {"l", "t", "mt", "st", "dt", "lt", "gl", "cf", "ton", "tons"}
 
 
+def is_ambiguous_in_text(word: str) -> bool:
+    """Whether ``word`` is a unit alias too ambiguous to trust outside a cell of its own ("St", "T", "L", "CF",
+    "Ton": a street, a letter, a cubic foot)."""
+
+    return word.strip(".,:;").lower() in _AMBIGUOUS_IN_TEXT
+
+
 class UnitError(ValueError):
     """Raised for unknown units or conversions across dimensions."""
 
