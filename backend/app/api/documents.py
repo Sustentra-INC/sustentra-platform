@@ -33,7 +33,7 @@ from backend.app.services.document_processing_service import (
     RunParams,
 )
 from backend.app.services.document_upload_service import DocumentUploadService
-from backend.app.services.halt_text import plain_halt
+from backend.app.services.halt_text import plain_halt, plain_note, plain_pipeline_result
 from backend.app.services.local_storage_service import LocalStorageService
 from backend.app.services.parser_service import IMAGE_EXTENSIONS, ParserService
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
@@ -473,7 +473,9 @@ def failed_run_error(run: dict) -> HTTPException:
             # encrypted workbook each say what to ask the client for; a long file says its page counts).
             return HTTPException(status_code=422, detail=str(halt["message"]))
         return HTTPException(status_code=422, detail=plain_halt(code, str(halt["message"])) or READ_FAILED_DETAIL)
-    return HTTPException(status_code=500, detail=run.get("errors") or ["Pipeline run failed."])
+    # The raw error text (an exception's words) stays in the stored run and the logs.
+    errors = [plain_note(item) for item in run.get("errors") or []]
+    return HTTPException(status_code=500, detail=errors or ["Pipeline run failed."])
 
 
 def processable_document(document_id: str, user: CurrentUser) -> dict:
@@ -492,7 +494,7 @@ def outcome_response(outcome: Outcome) -> dict:
     or 400 (refused input), 404 (document gone), 422 (a halt) and 500 (anything else)."""
 
     if outcome.status == "completed":
-        return outcome.result
+        return plain_pipeline_result(outcome.result)
     if outcome.error_code == "invalid_request":
         raise HTTPException(status_code=400, detail=outcome.detail or outcome.error)
     if outcome.error_code == "document_missing":

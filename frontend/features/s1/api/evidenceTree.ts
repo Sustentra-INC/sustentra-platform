@@ -1,6 +1,5 @@
 import { api } from "../../../lib/api";
 import type { DocumentDecision } from "../types";
-import { saveWorkpaperItem } from "./workpaper";
 
 /**
  * The Evidence tree and the supporting schedule (backend routes of the calculation-lines work).
@@ -195,6 +194,8 @@ export interface IdentifierDocument {
   document_id: string;
   file_name: string;
   matched_by?: string;
+  /** Claude read this value and no reviewer has decided it yet (identifiers only; they never feed a number). */
+  read_by_claude?: boolean;
 }
 
 export interface IdentifierGroup {
@@ -270,22 +271,68 @@ export function lineTitle(line: CalculationLine): string {
   return line.label.toLowerCase().includes(line.level2_label.toLowerCase()) ? line.label : `${line.level2_label} · ${line.label}`;
 }
 
-/**
- * The document's saved decision with one more placement move. The workpaper item is replaced as
- * a whole, so every other key (facility, disposition, relationships, notes…) is carried over.
- */
-export function withPlacement(decision: DocumentDecision | undefined, documentId: string, move: Placement): DocumentDecision {
-  return { ...(decision ?? {}), documentId, placements: [...(decision?.placements ?? []), move] };
+/** What a line action answers: the engagement's reviewer lines as they now stand (the client keeps
+ *  them, so a later Setup save sends the same list), plus the line or the count the action concerns. */
+export interface LineAnswer {
+  evidenceLines: EvidenceLineSetting[];
+  line?: EvidenceLineSetting;
+  documents_moved?: number;
+  /** A delete answers with the saved payload of every document it changed (the set-aside ones too). */
+  documents?: Record<string, DocumentDecision>;
 }
 
-/** Saves a placement move on the document's workpaper item; returns the payload that was saved. */
-export async function saveDocumentPlacement(
+const lines = (engagementId: string) => `/engagements/${encodeURIComponent(engagementId)}/evidence-lines`;
+
+/** Adds a line. The server builds its key and records who added it; 422 says what is wrong with it. */
+export function createEvidenceLine(engagementId: string, entry: EvidenceLineSetting): Promise<LineAnswer> {
+  const { key: _key, scope: _scope, level2: _level2, created_by: _by, created_at: _at, ...fields } = entry;
+  void [_key, _scope, _level2, _by, _at];
+  return api<LineAnswer>(lines(engagementId), { method: "POST", body: fields });
+}
+
+export function renameEvidenceLine(engagementId: string, lineKey: string, label: string): Promise<LineAnswer> {
+  return api<LineAnswer>(`${lines(engagementId)}/${encodeURIComponent(lineKey)}`, { method: "PATCH", body: { label } });
+}
+
+/** Deletes a line; its documents move to Unassigned supporting evidence (the count comes back). */
+export function deleteEvidenceLine(engagementId: string, lineKey: string): Promise<LineAnswer> {
+  return api<LineAnswer>(`${lines(engagementId)}/${encodeURIComponent(lineKey)}`, { method: "DELETE" });
+}
+
+/** Moves one placement of a document. 409 when another tab moved it first. Answers the saved payload. */
+export function moveEvidenceDocument(
   engagementId: string,
-  decision: DocumentDecision | undefined,
   documentId: string,
   move: Placement
-): Promise<DocumentDecision> {
-  const next = withPlacement(decision, documentId, move);
-  await saveWorkpaperItem(engagementId, "document", documentId, next);
-  return next;
+): Promise<{ document_id: string; payload: DocumentDecision }> {
+  return api(`/engagements/${encodeURIComponent(engagementId)}/documents/${encodeURIComponent(documentId)}/placements`, {
+    method: "POST",
+    body: move,
+  });
+}
+
+/** One change recorded by the server on the Evidence page. */
+export interface EvidenceActivityItem {
+  id: string;
+  event_type: "evidence_line_created" | "evidence_line_renamed" | "evidence_line_deleted" | "evidence_document_moved";
+  at: string;
+  actor_name: string | null;
+  line_key?: string;
+  label?: string;
+  level2_label?: string;
+  old_label?: string;
+  new_label?: string;
+  documents_moved?: number;
+  document_id?: string;
+  from_label?: string;
+  to_label?: string;
+}
+
+/** One page (100 at most) of the Evidence changes on the engagement, newest first. `next_cursor` is null on the last. */
+export function getEvidenceActivity(
+  engagementId: string,
+  cursor?: string | null
+): Promise<{ items: EvidenceActivityItem[]; next_cursor: string | null }> {
+  const query = cursor ? `?limit=100&cursor=${encodeURIComponent(cursor)}` : "?limit=100";
+  return api(`/engagements/${encodeURIComponent(engagementId)}/evidence-activity${query}`);
 }

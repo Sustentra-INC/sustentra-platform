@@ -30,6 +30,9 @@ VALUE_CHANGED = "extracted_value_changed_since_review"
 # The review screen's words for a decision that no longer applies to the re-read value.
 REREAD_NOTE = "The document was re-read and this value changed. Review it again."
 PERIOD_FIELDS = ("service_period_start", "service_period_end")
+# Identifier fields never feed a number (spec A13), so the schedule's Source identifiers counts what Claude read
+# in them before a reviewer has decided. Nothing else reads these values: best() and reviewed() stay blank.
+AI_IDENTIFIER_FIELDS = ("meter_number", "account_number", "service_address")
 
 # Unambiguous extractor fuel codes -> EPA names. Everything else asks the reviewer.
 STATIONARY_AUTO = {"natural_gas": "Natural Gas", "kerosene": "Kerosene", "diesel": "Distillate Fuel Oil No. 2"}
@@ -145,6 +148,9 @@ class ReviewedField:
     # was re-read and the record or its value changed): the field is unreviewed until it is reviewed again.
     reread_changed: bool = False
     flags: list[str] = field(default_factory=list)  # e.g. VALUE_CHANGED
+    # What Claude read here, not yet decided by a reviewer (identifier fields only; see AI_IDENTIFIER_FIELDS).
+    # Never an input to a calculation: best(), reviewed() and unit_of() do not see it.
+    ai_reads: list[Any] = field(default_factory=list)
 
 
 @dataclass
@@ -175,6 +181,19 @@ class ReviewedRecord:
     def unit_of(self, name: str) -> str | None:
         item = self.fields.get(name)
         return item.unit if item is not None else None
+
+    def identifiers(self, name: str) -> list[tuple[Any, bool]]:
+        """The values of an identifier field for the schedule's Source identifiers, each with whether Claude
+        read it: the reviewed or rule-read value, else what Claude read and nobody has decided yet. Only for
+        display: use ``best`` for anything that feeds a number."""
+
+        item = self.fields.get(name)
+        if item is None:
+            return []
+        value = self.best(name)
+        if value not in (None, ""):
+            return [(value, False)]
+        return [(read, True) for read in item.ai_reads if read not in (None, "")]
 
 
 def latest_decisions(decisions: Any) -> dict[str, dict]:
@@ -454,6 +473,7 @@ def group_reviewed_records(document: dict[str, Any], canonical_type_id: str, ite
         review = resolved.decision
         status = str(review.get("decision")) if review else "unreviewed"
         value = None
+        ai_reads: list[Any] = []
         extracted = item.get("normalized_value")
         unit = item.get("unit")
         if review and status in REVIEWED:
@@ -462,6 +482,8 @@ def group_reviewed_records(document: dict[str, Any], canonical_type_id: str, ite
         elif AI_SUGGESTED in (item.get("validation_flags") or []):
             # Claude's suggestion is not evidence until a reviewer accepts or edits it: nothing
             # downstream (best(), unit_of(), the calculation) may read it before then.
+            if status == "unreviewed" and str(item.get("field_name")) in AI_IDENTIFIER_FIELDS:
+                ai_reads = [extracted]  # shown under Source identifiers only, labelled as Claude's reading
             extracted, unit = None, None
         candidates.setdefault(item.get("record_index"), {}).setdefault(str(item.get("field_name")), []).append(ReviewedField(
             name=str(item.get("field_name")), extracted=extracted, unit=unit,
@@ -471,7 +493,7 @@ def group_reviewed_records(document: dict[str, Any], canonical_type_id: str, ite
             reviewed_at=review.get("reviewed_at") if review else None,
             history=list(resolved.history) if with_history else [],
             reread_changed=resolved.reread_changed,
-            flags=[VALUE_CHANGED] if resolved.value_changed else []))
+            flags=[VALUE_CHANGED] if resolved.value_changed else [], ai_reads=ai_reads))
     grouped = {record: {name: _one_field(same) for name, same in fields.items()}
                for record, fields in candidates.items()}
     return [ReviewedRecord(document_id, document.get("file_name"), canonical_type_id, record_index, fields)
@@ -488,7 +510,10 @@ def _one_field(same: list[ReviewedField]) -> ReviewedField:
         return same[0]
     reviewed = [f for f in same if f.status in REVIEWED]
     if not reviewed:
-        return same[-1]
+        last = same[-1]
+        if any(f.ai_reads for f in same):  # two Claude readings stay two readings
+            last.ai_reads = [read for f in same for read in f.ai_reads]
+        return last
     first = reviewed[0]
     if all(f.value == first.value and f.unit == first.unit for f in reviewed):
         return reviewed[-1]

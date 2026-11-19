@@ -121,9 +121,17 @@ engagement's. Answers:
   and the `POST` answers): for a halt `error_code` it is the plain sentence, not the pipeline's text. The 422
   from the older `POST /v1/pipeline/process` says the plain sentence too; `password_protected` and
   `document_too_long` keep their own sentence there (it says what to ask the client for, or the page counts).
-- Still returned raw, as the pipeline run record: `pipeline_run.halt_reason.message` and `warnings` on the
-  `/v1/pipeline/...` run endpoints and `halt_reason` in `GET .../extraction-result/latest`. They can name an
-  internal type id or a score; clients use `halt_reason.code` there and must not show the message.
+- Every other answer that carries a pipeline run is plain too: `GET /v1/pipeline/runs/{id}`,
+  `GET /v1/pipeline/evidence/{evidence_id}/latest-run`, `latest_pipeline_run` in
+  `GET /v1/pipeline/evidence/{evidence_id}/status`, and `pipeline_run` (and `extraction_result.halt_reason`) in the
+  answers of `POST /v1/documents/{id}/pipeline/process` and the local dev tool. `halt_reason` is
+  `{code, message}` with the plain sentence for the code (an unmapped code gets "Reading stopped. Try uploading the
+  file again."). Each entry of `warnings` and `errors` keeps its code as a prefix (`pages_unread:`,
+  `ai_type_disagrees:`, `type_corrected:`, `no_type:`, `pipeline_failed:` ...) and says a plain sentence: no type
+  id, classifier score, parser output, exception text or Claude cost. The stored run record keeps the pipeline's own
+  text. `GET .../extraction-result/latest` never carried the halt (its answer is the candidates and `status`).
+  Still in the debug payloads of `POST .../pipeline/process` (not sentences): `classification_result` (scores, matched
+  type ids) and `parser_output`; clients must not show them.
 - `totals`: `{queued, reading, done, partial, failed, not_started}`.
 - `complete`: `true` when nothing is queued or reading. Clients poll (every 3 s) until it is `true`.
 
@@ -153,7 +161,7 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     full trail), `action` one of accept, edit, reject, revert, add_row, remove_row.
   - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp|date_range, allowed?, parts?, user_added}`, in page order: the fixed
     fields (reporting_period, consolidation_approach, `category:{scope1|location|market|biogenic}:...`,
-    `boundary:{acquisitions|leased_space}` (text, `required: false`: hidden until a value or "Add an item"), `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`), then the rows the
+    `boundary:{acquisitions|leased_space}` (text, `required: false`: hidden until a value or "Add an item"), `gas:{co2|ch4|n2o|hfcs|pfcs|sf6|nf3}` (group `gases`, enum Included / Declared absent / Not mentioned, `required: false`; kept apart from the Yes / No / Not detected category values; Claude may suggest only Included or Declared absent, with a quote that names the gas), `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`), then the rows the
     reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (with `allowed_labels.set`),
     `{operational_control}` for an entity. `parts` (entity, factor, gwp only) lists the value's editors,
     `[{key, label, kind: text|list|percent|enum, allowed?}]`, so a blank new row can be drawn.
@@ -162,7 +170,7 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     `required` (boolean). `display_state` is `has_value` (a suggestion, or a decision that is not a bare pending
     one), `not_detected` (a prefill finished, and there is no suggestion or decision) or `not_checked` (no prefill has
     finished). `required` true is "Must appear": always `shown`. `required` false is "Only if the company has a
-    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Only `boundary:acquisitions` and `boundary:leased_space` are optional
+    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Only `boundary:acquisitions`, `boundary:leased_space` and the seven `gas:*` fields are optional
     today; every other field is `required`. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
     added optional rows are kept in one extra `workpaper_items` row (`item_key` `meta:state`), never listed as a field.
   - Values by kind: date_range (`reporting_period`) is `{start, end}`, each a real calendar date written `YYYY-MM-DD` (ASCII digits), with end not before start (otherwise 422 with a sentence). A record saved before this change may still hold the text it was; the GET returns it unchanged and the screen shows "Recorded as: <text>" until the reviewer enters two dates. Claude's reporting-period suggestion carries both dates in ISO form, and is kept only if both are printed in its quote (English month names, `1/1/2025` read month first, `2025-01-01`); otherwise it is dropped and counted as `value_not_in_quote`. text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
@@ -316,29 +324,101 @@ applied in order to the default placements, one placement at a time. Send the ro
 `placement_from` as `from`: a document filed under "Unassigned supporting evidence" because its
 line was deleted has `placement_from: "supporting:unassigned"`, and a move from that moves every
 placement shown there. A move whose `from` the document no longer has is ignored. A move to a line that does not exist files the document under
-"Unassigned supporting evidence" with the flag `unknown_line`. The PUT replaces the whole payload:
-**read the item, merge `placements` into it, keep every other key** (`facilityId`, `disposition`,
+"Unassigned supporting evidence" with the flag `unknown_line`. Placements are written only by the
+Evidence actions below (a PUT of the item keeps the stored `placements`); the PUT replaces every other key
+of the payload, so **read the item and keep the keys you do not change** (`facilityId`, `disposition`,
 `relationships`, ...).
 
-**Settings are replaced whole.** PATCH `/v1/engagements/{id}` replaces `settings` as a whole, so a
-client that changes any setting must send `evidenceLines` back too (read it, change it, send it all),
-or the reviewers' lines are lost.
+**Settings are replaced whole, except the reviewers' lines.** PATCH `/v1/engagements/{id}` replaces
+`settings` as a whole. `settings.evidenceLines` (the lines reviewers added in Evidence) is the exception:
+it changes only through the Evidence actions below, which lock the engagement, check the line and write an
+audit event. A save takes the stored value under the engagement's row lock and ignores whatever the body
+sends for `evidenceLines` (no error, so an autosave never fails on it). A stale tab's save can therefore
+never delete, rename or bring back a line. POST `/v1/engagements` ignores it too. `GET` still returns the
+lines in `settings.evidenceLines`.
 
-**Reviewers' own lines** are saved in `settings.evidenceLines` through PATCH
-`/v1/engagements/{id}`: `[{key?, scope?, category, level2?, level2_label, anchor_kind,
-anchor_id?, label}]` (at most 200; labels at most 120 characters; `category` one of the fixed
-list). The server fills in `key` (and `level2`, the slug of `level2_label`); a `key` that is
-given must equal `line_key(...)`. A line the system already creates is refused with 422 (the
-system's lines are not stored here and cannot be deleted).
+**Reviewers' own lines** are stored in `settings.evidenceLines`: `[{key, scope, category, level2,
+level2_label, anchor_kind, anchor_id, label, created_by, created_at}]` (at most 200; labels at most 120
+characters; `category` one of the fixed list). The server builds `key` (and `level2`, the slug of
+`level2_label`). A line the system already creates is refused with 422 (the system's lines are not stored
+here and cannot be deleted).
 
-**Anchors are checked (422, a plain sentence in `detail`).** On POST and PATCH of an engagement, a
-line the request adds (a key not already stored) must sit on a facility of the same `settings.facilities`
+**Anchors are checked (422, a plain sentence in `detail`).** When an Evidence action adds a line, it must sit on a facility of the same `settings.facilities`
 (`facilityId`, or `name-<slug>` when it has none), a vehicle group of the same
 `settings.recalculation.vehicle_groups` (`vg-<label slug>`), or the company (`company`, contractual
 instruments only; a contractual line may also sit on a facility). A facility line on an engagement with no facilities is refused: "Add a facility in Setup first". A fuel or energy name with no letters or
-numbers is refused: "Use letters or numbers in the name". Lines already stored are not re-checked, so a
-facility removed from Setup later never blocks a save, and the Evidence tree still shows that line with
-its documents.
+numbers is refused: "Use letters or numbers in the name". A facility removed from Setup later never
+blocks anything: the Evidence tree still shows the line with its documents.
+
+### Evidence actions: lines and placements, each with an audit event
+Line and placement changes are server actions. Each changes one thing, in one transaction, under the
+engagement's row lock (so two simultaneous requests run one after the other and neither loses the
+other's change), and writes one audit event with the actor from the session. Writers only
+(`org_admin`, `org_member`): a provider admin gets 403, an archived engagement 409, another org's
+engagement 404. Bodies reject unknown fields (422). Audit rows hold ids and labels, never a document's
+text or file name.
+
+| Request | Body | Answer |
+|---|---|---|
+| `POST /v1/engagements/{id}/evidence-lines` | `{category, level2_label, anchor_kind, anchor_id?, label, scope?}` | 201 `{line, evidenceLines}` |
+| `PATCH /v1/engagements/{id}/evidence-lines/{line_key}` | `{label}` | 200 `{line, evidenceLines}` |
+| `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, documents, evidenceLines}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload}` |
+
+* **Create** checks the same as saving the setting (anchor on a Setup facility, vehicle group or the
+  company; letters or numbers in the name; at most 200 lines; not a line the system creates), 422 with a
+  sentence otherwise; a line that already exists is 409. The server builds the key and stamps
+  `created_by` and `created_at`; a client cannot send them.
+* **Rename** changes the label only (the key and the creator stay). A line another tab already deleted is
+  404 "This line was already deleted. Reload to see the current lines."; a line the system creates is 422;
+  a reviewer's line whose key the system now creates too (documents arrived for it) is 409. Renaming to the
+  same label changes and logs nothing.
+* **Delete** removes a line the reviewers added. Each document filed on it gets an explicit move to
+  `supporting:unassigned` saved first, so adding the same line again later does not pull the documents
+  back, and a document also on another line loses only this placement. All of it is one transaction: the
+  documents move and the line goes, or nothing changes. `documents_moved` is how many documents moved;
+  `documents` is `{document_id: payload}` for every document the delete changed (set-aside ones too, which
+  keep a move out of the line for if they come back and are not counted), so a client can take them as saved.
+  A document that cannot take the move fails the whole delete with 409 naming it. The same 404, 422 and 409
+  as rename apply.
+* **Move** needs `from` to be a place the document is in now (a line key, `block:summary`,
+  `block:unassigned` or `supporting:unassigned`, as the row's `placement_from`); otherwise 409 "This
+  document was already moved from there", nothing is saved and nothing is logged. `to` must be a line that
+  exists or one of the three fixed places (422 otherwise); moving to where it is, 422; a document that is
+  not on the Evidence page, 404. The saved `placements` chain is derived from where the document is filed
+  after the move, not from its history: one move per default place of the document that is no longer where it
+  started, in an order where a move out of a place runs before a move into it (two places swapping go through
+  a free fixed place). It never has more moves than the document has default places, plus one per swap,
+  however many times it was moved (history lives in the audit log). A document parked on a line that no
+  longer exists stays on that line's key, so it returns there if the line comes back. The full chain is kept
+  only when the derived one would not file the document in exactly the same places; a chain past 200 moves is
+  409 naming the document. Other keys of the document's payload (`facilityId`, `disposition`, notes) are kept.
+* **The old paths no longer change lines or placements.** PATCH `/v1/engagements/{id}` keeps the stored
+  `evidenceLines` (see above). PUT `/v1/engagements/{id}/workpaper-items/document/{key}` takes the engagement
+  lock, saves every other key of the payload, and keeps the stored `placements` (a first save has none): a
+  stale tab's save cannot put a document back. Other kinds of workpaper item are unchanged. A client keeps its
+  own copy of `evidenceLines` and of a document's payload from the action answers.
+
+Audit events (`target_type` "engagement", `target_id` the engagement):
+
+| `event_type` | `metadata` |
+|---|---|
+| `evidence_line_created` | `line_key, label, level2_label, category` |
+| `evidence_line_renamed` | `line_key, old_label, new_label` |
+| `evidence_line_deleted` | `line_key, label, documents_moved` |
+| `evidence_document_moved` | `document_id, from, to, from_label, to_label` |
+
+### GET /v1/engagements/{engagement_id}/evidence-activity[?limit=50&cursor=]
+The four events above for this engagement, newest first, 1 to 100 per page (an index on `audit_logs (org_id, target_type, target_id, created_at, id)` serves it) (`next_cursor` is null on the
+last page; a cursor that does not decode is 400). Any reader of the engagement (`org_admin`,
+`org_member`, `provider_admin`); another org's engagement is 404.
+
+```
+{ items: [{id, event_type, at, actor_name,   // the person's name, else their login; null when unknown
+           line_key?, label?, level2_label?, old_label?, new_label?, documents_moved?,
+           document_id?, from?, to?, from_label?, to_label?}],
+  next_cursor: string | null }
+```
 
 ### GET /v1/engagements/{engagement_id}/calculation-lines/{line_key}/schedule
 One calculation line's schedule (reader; 404 with a plain message for an unknown line key, and
@@ -375,7 +455,7 @@ for another org's engagement).
                                                      // accepted or not) heat_content, carbon_content,
                                                      // vehicle_type, model_year, on_or_non_road, distance
   activity_quantity_note: string | null,             // "Activity quantity: fuel quantity combusted" ...
-  identifier_groups: [{label, values: [{value, documents: [{document_id, file_name, matched_by?}]}],
+  identifier_groups: [{label, values: [{value, documents: [{document_id, file_name, matched_by?, read_by_claude?}]}],
                        not_found: [{document_id, file_name}], documents_with, documents_total,
                        matched_by?: [string]}] }     // matched_by on Facility only
 ```
@@ -398,6 +478,7 @@ Setup" or "Service address in Setup". Facility is listed for every line; Service
 and Meter number only for utility-bill lines (stationary natural gas, electricity, steam, heating, cooling).
 Values that differ only by case, spacing or Unicode form (NFKC, so full-width digits match ASCII) fall in one group, shown in the first
 spelling seen; a whitespace-only value counts as not found. `identifiers` (one entry per value) is kept for older clients.
+Identifiers never feed a number, so a meter number, account number or service address that Claude read counts here before a reviewer has decided it, and its document says `read_by_claude: true` (a value a rule also read is not marked; a rejected reading does not count). Everything that feeds a calculation still ignores a reading until a reviewer accepts it.
 
 A row counts (`accepted` true) only when its record is not in the recalculation's `awaiting_review`. When
 the quantity is reviewed but another required field is not (for example `fuel_type`), the row has

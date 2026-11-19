@@ -2,6 +2,7 @@ import { METHOD_CHECK_RULE_IDS } from "../api/recalculation";
 import type { EvidenceItem, ReviewValue } from "../types";
 import type { Ask } from "../types/requests";
 import type { CoverageRule, Examination, Finding } from "../types/verification";
+import type { EvidenceActivityItem } from "../api/evidenceTree";
 import type { SessionAuditEntry } from "./auditIntent";
 
 /** One line of the engagement's activity log: who did what, when, to which document. */
@@ -21,6 +22,8 @@ export function engagementActivity(input: {
   asks: Ask[];
   findings: Finding[];
   intents?: SessionAuditEntry[];
+  /** Line and placement changes on the Evidence page, as the server recorded them. */
+  evidenceEvents?: EvidenceActivityItem[];
   /** Methodology review changes, oldest first. */
   methodology?: { at: string; who: string; what: string }[];
 }): ActivityEntry[] {
@@ -75,7 +78,7 @@ export function engagementActivity(input: {
     }
   }
   for (const intent of input.intents ?? []) {
-    const name = intent.lineLabel ?? filename.get(intent.documentId) ?? intent.documentId;
+    const name = filename.get(intent.documentId) ?? intent.documentId;
     const change = intent.newValue ? `: ${intent.newValue}` : "";
     log.push({
       at: intent.timestamp,
@@ -85,10 +88,37 @@ export function engagementActivity(input: {
       kind: "document",
     });
   }
+  for (const event of input.evidenceEvents ?? []) {
+    log.push({
+      at: event.at,
+      who: event.actor_name ?? "A team member",
+      what: evidenceEventText(event, filename),
+      documentId: event.document_id,
+      kind: "document",
+    });
+  }
   for (const change of input.methodology ?? []) {
     log.push({ at: change.at, who: change.who, what: change.what, kind: "methodology" });
   }
   return log.sort((a, b) => b.at.localeCompare(a.at));
+}
+
+/** One Evidence change as a sentence: "moved a.pdf from Natural gas · Kent to Unassigned supporting evidence". */
+function evidenceEventText(event: EvidenceActivityItem, filename: Map<string, string>): string {
+  const line = (label: string | undefined, level2?: string) => (level2 && label ? `${level2} · ${label}` : label ?? "a line");
+  switch (event.event_type) {
+    case "evidence_line_created":
+      return `added the line ${line(event.label, event.level2_label)}`;
+    case "evidence_line_renamed":
+      return `renamed the line ${event.old_label ?? ""} to ${event.new_label ?? ""}`.replace("  ", " ");
+    case "evidence_line_deleted": {
+      const n = event.documents_moved ?? 0;
+      const moved = n === 0 ? "" : n === 1 ? ", moving 1 document to Unassigned supporting evidence" : `, moving ${n} documents to Unassigned supporting evidence`;
+      return `deleted the line ${event.label ?? ""}${moved}`;
+    }
+    case "evidence_document_moved":
+      return `moved ${(event.document_id && filename.get(event.document_id)) || "a document"} from ${event.from_label ?? "its place"} to ${event.to_label ?? "another place"}`;
+  }
 }
 
 /** The figures the dashboard shows, from the engagement's state (either data mode). */
