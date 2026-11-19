@@ -446,22 +446,20 @@ _NOT_A_PAYEE = re.compile(
 
 
 def _company_words(name: str) -> list[str]:
-    """A company name as comparable words: lower case, no punctuation, dashes or bracketed text, and no
-    legal suffix (Inc, LLC, Co, Corp, Ltd...)."""
+    """A company name as comparable words: lower case, no punctuation, bracketed text or branch after a spaced
+    dash ("Northgate Provisions Inc - Plant 4"), and no legal suffix (Inc, LLC, Co, Corp, Ltd...)."""
 
-    low = re.sub(r"\([^)]*\)|\[[^\]]*\]", " ", name.casefold())
+    low = re.sub(r"\([^)]*\)|\[[^\]]*\]", " ", re.split(r"\s+[-\u2013\u2014]\s+", name.casefold())[0])
     return [word for word in re.sub(r"[\W_]+", " ", low).split() if word not in _LEGAL_SUFFIXES]
 
 
 def _same_company(first: str, second: str) -> bool:
-    """Whether two names are one company: equal as words, or one the other plus more ("Northgate Provisions Inc -
-    Plant 4" and "NORTHGATE PROVISIONS INC"). A one-word name only matches an equal one."""
+    """Whether two names are one company: equal as words once case, punctuation, legal suffixes, brackets and a
+    branch after a dash are gone ("Northgate Provisions Inc - Plant 4" and "NORTHGATE PROVISIONS INC"). "Sierra Basin
+    Co" and "Sierra Basin Foods Inc", or "City of Lodi" and "City of Lodi Utilities", are two companies."""
 
     a, b = _company_words(first), _company_words(second)
-    if not a or not b:
-        return False
-    short, long = sorted((a, b), key=len)
-    return short == long or (len(short) >= 2 and long[:len(short)] == short)
+    return bool(a) and a == b
 
 
 def _names_a_utility(name: str) -> bool:
@@ -477,7 +475,7 @@ def _is_customer(name: str, customers: Sequence[str]) -> bool:
         theirs = _company_words(customer)
         if _same_company(name, customer):
             return True
-        if len(words) >= 2 and len(theirs) >= 2 and words[:2] == theirs[:2]:
+        if len(words) >= 2 and len(theirs) >= 2 and words[:2] == theirs[:2] and not _names_a_utility(name):
             return True
         if words and theirs and words[0] == theirs[0] and len(words[0]) >= 4 and not _names_a_utility(name):
             return True
@@ -749,7 +747,7 @@ class StationaryCombustionExtractor:
         if not records and self.HEADLINE_QUANTITY:  # extraction only: classification (confirms) never reads these
             records = self._headline_quantity_records(rows)
         if not records and self.INLINE_TOTAL_QUANTITY:  # the weakest read, so it runs only when nothing else found one
-            records = self._inline_total_records(rows)
+            records = self._inline_total_records(rows, doc_fuel)
         period = self._document_period(rows)
         unit_hint = self._document_unit(rows)
 
@@ -1337,8 +1335,10 @@ class StationaryCombustionExtractor:
         def other_party(found: Located | None) -> Located | None:
             return None if found is not None and _is_customer(found.raw.split(",")[0], customers) else found
 
-        labeled = other_party(self._find_labeled(rows, SUPPLIER_LABELS, accept=self._looks_like_org_name,
-                                                 allow_next_row=False, inline=True))
+        labeled = self._find_labeled(rows, SUPPLIER_LABELS, accept=self._looks_like_org_name, allow_next_row=False,
+                                     inline=True)
+        if labeled is not None and any(_same_company(labeled.raw.split(",")[0], name) for name in customers):
+            labeled = None  # a labelled supplier is out only when it is the customer itself, never a "parent"
         if labeled is None and (exported := self._exported_from(rows)) is not None:
             return exported  # an explicit "Exported from <supplier>" beats a guess at the letterhead
         letterhead = other_party(self._letterhead(rows))
@@ -1751,23 +1751,38 @@ class StationaryCombustionExtractor:
         r"\b(?:ytd|years?|annual|months?|last|prior|previous|avg|average|daily|day|budget|estimated|est|history)\b"
         r"|\bto date\b|\b(?:19|20)\d{2}\b", re.IGNORECASE)
 
-    def _inline_total_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
+    _LIQUID_FUELS = frozenset({"propane", "diesel", "fuel_oil", "kerosene", "biodiesel"})  # where gallons are an activity unit
+    # Words in the row above that make the row a column of another period ("Year to date", "Aug 2024"); a bare
+    # year does not count there, because the line above a total is often the bill's own period.
+    _NOT_THIS_PERIOD_ABOVE = re.compile(
+        r"\b(?:ytd|years?|annual|months?|last|prior|previous|avg|average|daily|budget|estimated|est|history)\b|\bto date\b",
+        re.IGNORECASE)
+
+    def _inline_total_records(self, rows: Sequence[Row], doc_fuel: Located | None = None) -> list[UsageRecord]:
         """A dense statement that states its usage inside a line: "THERM FACTOR 1.030 TOTAL 1,273.1 THERMS".
         It runs last: the labelled reads, the usage table and the headline read are tried first. Money is never
         taken (a "$", or a TOTAL that is followed by a word), nor a line about another period (year to date,
         last year, a daily average, a budget plan, an estimate, a month or a year). When the document says it
         more than once with different numbers or units, nothing is guessed."""
 
+        fuel = (self._fuel(doc_fuel.raw) or (None,))[0] if doc_fuel is not None else None
         found: dict[tuple[float, str], tuple[Row, Cell, re.Match[str]]] = {}
-        for row in rows:
+        for position, row in enumerate(rows):
+            # The whole row (a PDF reader puts "Year to date" and "TOTAL 14,200 THERMS" in separate cells of one
+            # row) and the row directly above (column headers) say which period the total is for.
+            line = " ".join(cell.text for cell in row.cells)
+            above = " ".join(cell.text for cell in rows[position - 1].cells) if position and rows[position - 1].page == row.page else ""
+            if (self._NOT_THIS_PERIOD.search(line) or _names_a_month(line)
+                    or self._NOT_THIS_PERIOD_ABOVE.search(above) or _names_a_month(above)):
+                continue
             for cell in row.cells:
-                if self._NOT_THIS_PERIOD.search(cell.text) or _names_a_month(cell.text):
-                    continue
                 for match in self._INLINE_TOTAL.finditer(cell.text):
                     unit = match.group("unit")
                     canonical = self._canonical_unit(unit)
                     if canonical is None or canonical in ELECTRIC_UNITS or fuel_units.is_ambiguous_in_text(unit):
                         continue
+                    if fuel_units.dimension_of(canonical) == fuel_units.LIQUID_VOLUME and fuel not in self._LIQUID_FUELS:
+                        continue  # "TOTAL 500 GALLONS" on a natural gas bill is not its usage
                     number = parse_number(match.group("num"))
                     if number is None or ("," not in match.group("num") and "." not in match.group("num")
                                           and 1990 <= number[0] <= 2100):

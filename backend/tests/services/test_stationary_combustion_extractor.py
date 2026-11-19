@@ -1434,3 +1434,66 @@ def test_a_customer_block_with_no_remit_to_names_no_supplier(targets: list[dict]
              "Total Usage: 900 therms"]
 
     assert _value(_fields(lines, targets), "supplier_name") is None
+
+
+# --- fix round 2 of the dense statement: split cells, labelled suppliers, gallons ---------------------------
+def _split_row(label: str, total: str) -> list[tuple[str, float, float, float, float]]:
+    return [("NATURAL GAS STATEMENT – Zürich 東京", 0.05, 0.05, 0.4, 0.011), ("FROM 08/01/2025 TO 08/31/2025", 0.05, 0.07, 0.4, 0.011),
+            (label, 0.05, 0.3, 0.15, 0.011), (total, 0.4, 0.3, 0.25, 0.011)]
+
+
+@pytest.mark.parametrize(("label", "total"), [("Year to date", "TOTAL 14,200 THERMS"), ("Aug 2024", "TOTAL 1,190 THERMS"),
+                                              ("Same month last year", "TOTAL 1,190 THERMS"), ("Annual", "TOTAL 14,200 THERMS"),
+                                              ("Jahr bis heute YTD", "TOTAL 14,200 THERMS")])
+def test_a_period_word_in_another_cell_of_the_same_row_means_the_total_is_not_the_bills_usage(
+        targets: list[dict], label: str, total: str) -> None:
+    _nothing_read(_read(_split_row(label, total), targets), "activity_quantity")
+
+
+@pytest.mark.parametrize("header", ["Year to date", "Aug 2024", "Prior year", "Budget plan"])
+def test_a_period_header_on_the_row_above_means_the_total_is_not_the_bills_usage(targets: list[dict], header: str) -> None:
+    layout = [("NATURAL GAS STATEMENT", 0.05, 0.05, 0.4, 0.011), (header, 0.4, 0.28, 0.2, 0.011),
+              ("TOTAL 14,200 THERMS", 0.4, 0.3, 0.25, 0.011)]
+
+    _nothing_read(_read(layout, targets), "activity_quantity")
+
+
+def test_the_bills_own_period_on_the_row_above_does_not_stop_its_total(targets: list[dict]) -> None:
+    layout = [("NATURAL GAS STATEMENT", 0.05, 0.05, 0.4, 0.011), ("FROM 08/01/2025 TO 08/31/2025", 0.05, 0.28, 0.4, 0.011),
+              ("TOTAL 1,273.1 THERMS", 0.05, 0.3, 0.25, 0.011)]
+
+    assert _read(layout, targets)["activity_quantity"]["raw_value"] == "1,273.1"
+
+
+@pytest.mark.parametrize(("supplier", "customer"), [
+    ("Southern California Gas Company", "Southern California Foods Inc"), ("City of Lodi Utilities", "City of Lodi"),
+    ("Sierra Basin Co", "Sierra Basin Foods Inc"), ("Northgate Holdings Inc", "Northgate Provisions Inc"),
+    ("Müller Gas AG", "Müller Käserei AG"),
+])
+def test_a_labelled_supplier_is_never_dropped_for_sharing_words_with_the_customer(
+        targets: list[dict], supplier: str, customer: str) -> None:
+    lines = ["Natural gas bill", f"Supplier: {supplier}", f"Bill To: {customer}", "Total Usage: 900 therms"]
+
+    assert _value(_fields(lines, targets), "supplier_name") == supplier
+
+
+def test_a_labelled_supplier_that_is_the_customer_itself_is_still_dropped(targets: list[dict]) -> None:
+    lines = ["Natural gas bill", "Supplier: Northgate Provisions Inc - Plant 4", "Bill To: NORTHGATE PROVISIONS INC",
+             "Total Usage: 900 therms"]
+
+    assert _value(_fields(lines, targets), "supplier_name") is None
+
+
+def test_a_utility_that_shares_two_words_with_the_customer_is_a_supplier_on_the_letterhead_too(targets: list[dict]) -> None:
+    lines = ["Southern California Gas Company", "Natural gas bill", "Bill To: Southern California Foods Inc",
+             "Total Usage: 900 therms"]
+
+    assert _value(_fields(lines, targets), "supplier_name") == "Southern California Gas Company"
+
+
+def test_gallons_count_for_a_total_only_where_gallons_are_an_activity_unit(targets: list[dict]) -> None:
+    gas = _fields(["NATURAL GAS STATEMENT – Zürich", "TOTAL 500 GALLONS"], targets)
+    propane = _fields(["PROPANE DELIVERY STATEMENT – Zürich", "TOTAL 500 GALLONS"], targets)
+
+    assert _value(gas, "activity_quantity") is None
+    assert propane["activity_quantity"]["raw_value"] == "500" and _value(propane, "activity_unit") == "gal"
