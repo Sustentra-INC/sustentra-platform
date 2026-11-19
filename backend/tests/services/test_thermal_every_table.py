@@ -193,3 +193,48 @@ def test_a_continued_steam_table_in_mlb_counts_on_its_second_page() -> None:
     page_two = _table(MLB, "STM-3 | 1 | 31 | 30", "STM-4 | 1 | 41 | 40")
     assert _energy(_read(page_one, page_two)) == [
         ("steam", 10, "klb"), ("steam", 20, "klb"), ("steam", 30, "klb"), ("steam", 40, "klb")]
+
+
+# --- history told by content alone: only on evidence a current quarterly bill cannot give ----
+
+HEAD_NO_PERIOD = "Account: HDE-00417\nService Location: Müller Käserei – Zürich Plant, 10 Quay Way"
+MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def _monthly(labels: list[str], meter: str = "STM-17-B", start: int = 700) -> str:
+    return _table("Month | Meter | Usage (Mlb)", *(f"{label} | {meter} | {start + i}" for i, label in enumerate(labels)))
+
+
+# Jan 2024 .. Jan 2025: a 13-month series with no word calling it a history.
+SERIES_13 = _monthly([f"{m} 2024" for m in MONTHS] + ["Jan 2025"])
+QUARTER = _monthly(["Jan 2025", "Feb 2025", "Mar 2025"], start=270)
+QUARTER_HEAD = HEAD.replace("01/31/2025", "03/31/2025")
+
+
+def test_a_quarterly_steam_table_next_to_a_chilled_water_table_counts_both() -> None:
+    chilled = _table("Meter | Start Read | End Read | Usage (ton-hours)", "CHW-02 | 100 | 42,100 | 42,000")
+    text = "\n".join([TAGLINE, QUARTER_HEAD, "Steam Consumption", QUARTER, "Chilled Water Consumption", chilled])
+    assert _energy(_read(text)) == [
+        ("chilled_water", pytest.approx(504), "MMBtu"),
+        ("steam", 270, "klb"), ("steam", 271, "klb"), ("steam", 272, "klb"),
+    ]
+
+
+def test_a_quarterly_table_with_no_bill_period_read_still_counts() -> None:
+    chilled = _table("Meter | Start Read | End Read | Usage (ton-hours)", "CHW-02 | 100 | 42,100 | 42,000")
+    text = "\n".join([TAGLINE, HEAD_NO_PERIOD, "Steam Consumption", QUARTER, "Chilled Water Consumption", chilled])
+    assert len(_energy(_read(text))) == 4
+
+
+@pytest.mark.parametrize("head", [HEAD, HEAD_NO_PERIOD], ids=["period_read", "no_period"])
+def test_a_13_month_series_next_to_a_current_table_is_skipped_by_its_content(head: str) -> None:
+    text = "\n".join([TAGLINE, head, "Steam Consumption", CURRENT_STEAM, SERIES_13])
+    outcome = _read(text)
+    assert _energy(outcome) == [("steam", 812.4, "klb")]
+    assert outcome.notes == []
+
+
+def test_a_four_month_table_starting_before_the_bill_period_is_skipped() -> None:
+    four = _monthly(["Dec 2024", "Jan 2025", "Feb 2025", "Mar 2025"])
+    text = "\n".join([TAGLINE, QUARTER_HEAD, "Steam Consumption", CURRENT_STEAM, four])
+    assert _energy(_read(text)) == [("steam", 812.4, "klb")]

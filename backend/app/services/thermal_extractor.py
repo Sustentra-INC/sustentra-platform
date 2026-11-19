@@ -29,7 +29,9 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+import calendar
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from backend.app.domain import fuel_units
@@ -144,6 +146,10 @@ _HISTORY_HEADING_RE = re.compile(
 _MONTH_NAME_RE = re.compile(
     r"(?<![a-z])(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|"
     r"oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)(?![a-z])")
+
+
+_MONTH_NUMBERS = {m: i for i, m in enumerate(
+    ("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"), start=1)}
 
 
 def _unread_table_note(page: int | None) -> str:
@@ -316,6 +322,7 @@ class ThermalExtractor(ElectricityExtractor):
         tables: list[UsageTable] = []
         unread: list[Row] = []
         covered = -1
+        period_start = self._period_start(rows)
         for row in rows:
             if row.index <= covered:
                 continue
@@ -326,9 +333,16 @@ class ThermalExtractor(ElectricityExtractor):
             if not records:
                 unread.append(row)
                 continue
-            tables.append(UsageTable(row, records, self._is_history(rows, row, records)))
+            tables.append(UsageTable(row, records, self._is_history(rows, row, records, period_start)))
             covered = max((r.quantity.row.index for r in records if r.quantity.row is not None), default=row.index)
         return tables, unread
+
+    def _period_start(self, rows: Sequence[Row]) -> date | None:
+        """The first day of the bill's own service period, when one was read."""
+
+        start, _ = self._document_period(rows)
+        found = parse_date(start.raw) if start is not None else None
+        return date.fromisoformat(found[0]) if found else None
 
     @staticmethod
     def _headings(rows: Sequence[Row], header: Row) -> list[Row]:
@@ -345,14 +359,20 @@ class ThermalExtractor(ElectricityExtractor):
             return True
         return any(_HISTORY_HEADING_RE.search(_norm(r.text)) for r in cls._headings(rows, header))
 
-    def _is_history(self, rows: Sequence[Row], header: Row, records: Sequence[UsageRecord]) -> bool:
-        """A usage history ("Last 13 months", "Prior year"): named so by its header or heading, or lines that
-        read as a series of different months. It shows past use, not this bill's reading, so it is never
-        counted: adding it would count a year of use again on every bill."""
+    def _is_history(self, rows: Sequence[Row], header: Row, records: Sequence[UsageRecord],
+                    period_start: date | None) -> bool:
+        """A usage history ("Last 13 months", "Prior year"). It shows past use, not this bill's reading, so
+        it is never counted: adding it would count a year of use again on every bill.
+
+        Its own header or heading calling it a history decides. Otherwise its content does, but only on
+        evidence that cannot catch a current quarterly bill (Jan, Feb, Mar as three current lines): with the
+        bill's period read, a month or date wholly before that period's start; with no period read, six or
+        more distinct months (a real history runs 12 or 13, a current bill rarely past a quarter)."""
 
         if self._names_history(rows, header):
             return True
-        months: set[str] = set()
+        months: set[tuple[int | None, int]] = set()
+        before = False
         for record in records:
             row = record.quantity.row
             if row is None:
@@ -360,14 +380,22 @@ class ThermalExtractor(ElectricityExtractor):
             for cell in row.cells:
                 if cell in record.quantity.cells:
                     continue
-                month = _MONTH_NAME_RE.search(_norm(cell.text))
                 dated = parse_date(cell.text)
-                if month:
-                    year = re.search(r"\d{4}", cell.text)
-                    months.add(month.group(0)[:3] + (year.group(0) if year else ""))
-                elif dated:
-                    months.add(dated[0][:7])
-        return len(months) >= 3
+                if dated is not None:
+                    when = date.fromisoformat(dated[0])
+                    months.add((when.year, when.month))
+                    last_day = date(when.year, when.month, calendar.monthrange(when.year, when.month)[1])
+                    before = before or (period_start is not None and last_day < period_start)
+                    continue
+                name = _MONTH_NAME_RE.search(_norm(cell.text))
+                if name:
+                    month = _MONTH_NUMBERS[name.group(0)[:3]]
+                    months.add((None, month))
+                    # a month with no year is read in the year the bill's period starts
+                    before = before or (period_start is not None and month < period_start.month)
+        if period_start is not None:
+            return before
+        return len(months) >= 6
 
     @staticmethod
     def _share_type_within_table(table: Sequence[UsageRecord]) -> None:
