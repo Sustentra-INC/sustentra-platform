@@ -153,7 +153,15 @@ export interface ScheduleColumn {
   unit_in_cells: boolean;
 }
 
-export interface ScheduleCell {
+/** Where a value was read: its candidate, and a page (PDF, image) or a sheet and cell (workbook, CSV). */
+export interface ValueSource {
+  candidate_id?: string | null;
+  page?: number | null;
+  sheet?: string | null;
+  cell?: string | null;
+}
+
+export interface ScheduleCell extends ValueSource {
   value: string | number | null;
   unit?: string | null;
 }
@@ -170,7 +178,7 @@ export interface ScheduleRow {
   rejected_fields?: string[];
   /** `days` is counted by the server; the page never works it out. */
   date: { start: string | null; end: string | null; days: number | null; label: string };
-  activity_quantity: { value: number | string | null; unit: string | null };
+  activity_quantity: { value: number | string | null; unit: string | null } & ValueSource;
   cells: Record<string, ScheduleCell>;
   saved_by: { name: string; at: string | null } | null;
   document_id: string;
@@ -183,6 +191,8 @@ export interface IdentifierDocument {
   document_id: string;
   file_name: string;
   matched_by?: string;
+  /** Claude read this value and no reviewer has decided it yet (identifiers only; they never feed a number). */
+  read_by_claude?: boolean;
 }
 
 export interface IdentifierGroup {

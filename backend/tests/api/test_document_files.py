@@ -252,7 +252,8 @@ def test_an_unreadable_pdf_is_a_422_with_the_reason(env: dict) -> None:
     env["act_as"]("org_member", ORG_A)
     response = env["client"].post(url(doc, "pipeline/process"), json={})
     assert response.status_code == 422
-    assert response.json()["detail"].startswith("Unreadable document")
+    # The pipeline's own sentence (with what the parser said) stays in the run record.
+    assert response.json()["detail"] == "File could not be read."
 
     client = env["client"]
     assert client.get(f"/v1/documents/{doc['document_id']}").json()["processing_status"] == "failed"
@@ -264,7 +265,16 @@ def test_a_failed_run_without_a_halt_is_still_a_server_error() -> None:
     from backend.app.api.documents import failed_run_error
 
     halted = failed_run_error({"status": "failed", "halt_reason": {"code": "unreadable_document", "message": "Nope."}})
-    assert (halted.status_code, halted.detail) == (422, "Nope.")
+    assert (halted.status_code, halted.detail) == (422, "File could not be read.")
+    raw = "Unsupported document type: the closest match was CT-S1-ONSGEN with confidence 0.41, below the 0.55 needed."
+    unsupported = failed_run_error({"status": "failed", "halt_reason": {"code": "unsupported_document", "message": raw}})
+    assert unsupported.detail == "We couldn't tell what kind of document this is. Choose its type in Evidence."
+    # A code nobody mapped never falls back to the raw sentence.
+    unknown = failed_run_error({"status": "failed", "halt_reason": {"code": "new_halt", "message": raw}})
+    assert (unknown.status_code, "CT-S1" in str(unknown.detail)) == (422, False)
+    # Sentences written to be acted on are kept.
+    locked = failed_run_error({"status": "failed", "halt_reason": {"code": "password_protected", "message": "Ask for a copy."}})
+    assert locked.detail == "Ask for a copy."
     broken = failed_run_error({"status": "failed", "errors": ["Parser crashed."]})
     assert (broken.status_code, broken.detail) == (500, ["Parser crashed."])
     assert failed_run_error({"status": "failed"}).detail == ["Pipeline run failed."]
