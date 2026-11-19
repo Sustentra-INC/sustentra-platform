@@ -4,6 +4,7 @@ organization and the batch's engagement. Runs and chunks are in memory (conftest
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -172,8 +173,9 @@ def test_each_document_shows_its_status_and_the_totals_count_them(env: dict) -> 
     done, partial, failed = (by_id[docs[i]["document_id"]] for i in (2, 3, 4))
     assert (done["canonical_type_id"], done["records_found"], done["halt_reason"]) == (FUEL, 4, None)
     assert partial["records_found"] == 1
-    assert (failed["halt_reason"], failed["canonical_type_id"], failed["records_found"]) == (
-        "Unreadable document.", None, 0)
+    assert (failed["halt_code"], failed["halt_reason"], failed["canonical_type_id"], failed["records_found"]) == (
+        "unreadable_document", "File could not be read.", None, 0)
+    assert done["halt_code"] is None and partial["halt_code"] is None
     assert by_id[docs[0]["document_id"]]["file_name"] == "bill-0.txt"
 
 
@@ -256,3 +258,72 @@ def test_the_view_lists_only_this_batch_and_only_the_callers_documents(env: dict
     env["upload"](None, "c.txt")
     items = env["view"](mine).json()["items"]
     assert [item["document_id"] for item in items] == [in_mine["document_id"]]
+
+
+# --- plain halts: no type ids, scores or parser output reach the client ------------------------
+
+RAW_UNSUPPORTED = ("Unsupported document type: the closest match was CT-S1-ONSGEN with confidence 0.41, below the "
+                   "0.55 needed to extract automatically. Set the document type manually if it is a supported "
+                   "type. It reads as stationary fuel use (natural gas): CT-S1-FUELQTY is likely.")
+RAW_UNREADABLE = ("Unreadable document: no text could be extracted. Parser said: Müller Käserei – Zürich 電気 "
+                  "page 3 empty_page_text")
+LEAK = re.compile(r"CT-S\d|0\.41|0\.55|Parser said|pikepdf|Textract")
+
+
+@pytest.mark.parametrize(("code", "raw", "plain"), [
+    ("unsupported_document", RAW_UNSUPPORTED,
+     "We couldn't tell what kind of document this is. Choose its type in Evidence."),
+    ("unreadable_document", RAW_UNREADABLE, "File could not be read."),
+    ("ocr_required", "This is a photo or a scan without a text layer. Its text can be read once OCR (Textract)...",
+     "Photo or scan: its text is read once OCR is switched on. Ask for a text PDF meanwhile."),
+    ("password_protected", "Encrypted: parser said pikepdf.PasswordError",
+     "Password-protected: ask the client for a copy without a password."),
+])
+def test_a_halt_is_a_code_and_a_plain_sentence_never_the_pipelines_own_text(
+        env: dict, code: str, raw: str, plain: str) -> None:
+    batch = env["create_batch"]()
+    document = env["upload"](batch, "Rechnung März 電気.txt").json()
+    env["finish"](document, pipeline_run("p1", document, "partial", canonical_type_id=None, found_candidate_count=0,
+                                         halt_reason={"code": code, "message": raw}))
+    body = env["view"](batch).json()
+    item = body["items"][0]
+    assert (item["halt_code"], item["halt_reason"]) == (code, plain)
+    assert not LEAK.search(str(body))
+
+
+def test_a_failed_run_with_a_halt_code_is_plain_too(env: dict) -> None:
+    batch = env["create_batch"]()
+    document = env["upload"](batch).json()
+    env["finish"](document, None, status="failed", error=("unsupported_document", RAW_UNSUPPORTED))
+    item = env["view"](batch).json()["items"][0]
+    assert item["halt_code"] == "unsupported_document"
+    assert not LEAK.search(item["halt_reason"])
+
+
+def test_a_too_long_document_keeps_its_own_sentence_with_the_counts(env: dict) -> None:
+    batch = env["create_batch"]()
+    document = env["upload"](batch).json()
+    message = "This document has 600 pages, more than the 500 we read in one document. Split it into smaller files."
+    env["finish"](document, pipeline_run("p1", document, "failed", canonical_type_id=None, found_candidate_count=0,
+                                         halt_reason={"code": "document_too_long", "message": message}))
+    item = env["view"](batch).json()["items"][0]
+    assert (item["halt_code"], item["halt_reason"]) == ("document_too_long", message)
+
+
+def test_a_failure_that_is_not_a_halt_has_no_halt_code(env: dict) -> None:
+    batch = env["create_batch"]()
+    document = env["upload"](batch).json()
+    env["finish"](document, None, status="failed", error=("worker_error", "Reading stopped. Try again."))
+    item = env["view"](batch).json()["items"][0]
+    assert (item["halt_code"], item["halt_reason"]) == (None, "Reading stopped. Try again.")
+
+
+def test_the_processing_run_says_the_plain_sentence_for_a_halt(env: dict) -> None:
+    batch = env["create_batch"]()
+    document = env["upload"](batch).json()
+    env["finish"](document, None, status="failed", error=("unsupported_document", RAW_UNSUPPORTED))
+    env["act_as"]("org_member", ORG_A)
+    runs = env["client"].get("/v1/engagements/ENG-1/processing-runs").json()["items"]
+    failed = next(run for run in runs if run["document_id"] == document["document_id"])
+    assert failed["error_code"] == "unsupported_document"
+    assert failed["error"] == "We couldn't tell what kind of document this is. Choose its type in Evidence."

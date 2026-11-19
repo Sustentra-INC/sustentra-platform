@@ -33,6 +33,10 @@ async function poll(batchId: string, times: number) {
   return views;
 }
 
+// These render the real app or a whole screen: about 1-2 s alone, but over the 5 s default when the
+// full suite runs on a loaded machine. A longer limit for this file only; a hang still fails.
+vi.setConfig({ testTimeout: 30_000 });
+
 describe("the demo backend's document batches", () => {
   it("makes a batch with the contract's shape and 404s an unknown one", async () => {
     const created = await demoApi<Record<string, unknown>>(`/engagements/${ENG}/document-batches`, { method: "POST", body: { label: "Nov" } });
