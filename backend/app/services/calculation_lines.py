@@ -228,6 +228,12 @@ def _normalize_entry(entry: Any) -> dict[str, Any]:
     return normal
 
 
+def normalize_line(entry: Any) -> dict[str, Any]:
+    """One line entry checked and completed (``normalize_evidence_lines`` for a single line)."""
+
+    return _normalize_entry(entry)
+
+
 def normalize_evidence_lines(value: Any) -> list[dict[str, Any]]:
     """settings["evidenceLines"] checked and completed; ValueError (a message for the user) otherwise.
 
@@ -484,6 +490,62 @@ def apply_placements(slots: list[Slot], overrides: Any, known_lines: set[str] | 
         else:
             out = [*stay, Slot(target, records)]
     return out
+
+
+MAX_PLACEMENT_MOVES = 200  # a document's saved chain of moves never grows past this
+
+
+def raw_filing(slots: list[Slot]) -> dict[str, frozenset[int]]:
+    """Where each place's records are, one entry per place, with no unknown line resolved to unassigned."""
+
+    return {s.target: frozenset(s.records) for s in merge_slots(slots)}
+
+
+def derive_placements(default: list[Slot], filing: list[Slot]) -> list[dict[str, str]] | None:
+    """The saved chain for a document, derived from where it is filed now, not from its history.
+
+    ``default`` is where the document's records go before any reviewer move, ``filing`` where they are
+    now (``apply_placements`` over the full chain, nothing resolved: a record parked on a line that no
+    longer exists is still on that line's key, so it returns there if the line comes back).
+    Records of one default slot always travel together, so the filing is a map from each default slot
+    to its current place. The chain is one move for each default slot that is not where it started, so
+    it never has more moves than the document has default slots, however many times it was moved.
+
+    The moves are ordered so a move out of a place runs before a move into it (``apply_placements``
+    moves everything that is in a place). Slots that swap places (A to B and B to A, which a reviewer
+    reaches through a third place) go through a free fixed place: A to the free place, B to A, the free
+    place to B. ``None`` when a default slot's records ended up in different places, or when a swap needs
+    a free place and all three fixed ones are taken: the caller then keeps the full chain.
+    """
+
+    where: dict[int, str] = {}
+    for slot in filing:
+        for record in slot.records:
+            where[record] = slot.target
+    pairs: list[tuple[str, str]] = []
+    for slot in default:
+        places = {where.get(record) for record in slot.records}
+        if len(places) != 1 or None in places:
+            return None
+        (place,) = places
+        if place != slot.target:
+            pairs.append((slot.target, str(place)))
+    used = {t for pair in pairs for t in pair} | {slot.target for slot in default} | set(where.values())
+    free = next((t for t in (BLOCK_SUMMARY, BLOCK_UNASSIGNED, SUPPORTING_UNASSIGNED) if t not in used), None)
+    ordered: list[dict[str, str]] = []
+    while pairs:
+        ready = next((p for p in pairs if not any(q is not p and q[0] == p[1] for q in pairs)), None)
+        if ready is None:  # every pair waits on another: a cycle. Park one slot on the free place, finish it last.
+            if free is None:
+                return None
+            ready = pairs[0]
+            pairs.remove(ready)
+            ordered.append({"from": ready[0], "to": free})
+            pairs.append((free, ready[1]))
+            continue
+        pairs.remove(ready)
+        ordered.append({"from": ready[0], "to": ready[1]})
+    return ordered
 
 
 def resolve_target(slot: Slot, known_lines: set[str]) -> Slot:

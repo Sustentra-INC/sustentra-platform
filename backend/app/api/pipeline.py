@@ -14,6 +14,7 @@ from backend.app.api.s1_access import (
 )
 from backend.app.core.auth import CurrentUser
 from backend.app.core.config import get_settings
+from backend.app.services.halt_text import plain_pipeline_result, plain_pipeline_run
 from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
 
 router = APIRouter(prefix="/v1", tags=["pipeline"])
@@ -77,22 +78,25 @@ def process_local_document(payload: LocalProcessDocumentRequest, user: CurrentUs
     if pipeline_status == "failed":
         raise failed_run_error(result.get("pipeline_run", {}))
 
-    return result
+    return plain_pipeline_result(result)
 
 
 @router.get("/pipeline/runs/{pipeline_run_id}")
 def get_pipeline_run(pipeline_run_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
-    return require_visible(_service.get_pipeline_run(pipeline_run_id), user, "Pipeline run not found.")
+    run = require_visible(_service.get_pipeline_run(pipeline_run_id), user, "Pipeline run not found.")
+    return plain_pipeline_run(run) or run
 
 
 @router.get("/pipeline/evidence/{evidence_id}/latest-run")
 def get_latest_run_by_evidence(evidence_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
-    return require_visible(
+    run = require_visible(
         _service.get_latest_run_by_evidence(evidence_id), user, "No pipeline run found for evidence."
     )
+    return plain_pipeline_run(run) or run
 
 
 @router.get("/pipeline/evidence/{evidence_id}/status")
 def get_evidence_status(evidence_id: str, user: CurrentUser = Depends(s1_reader)) -> dict:
     require_evidence(evidence_id, user)
-    return _service.get_evidence_status(evidence_id)
+    status = _service.get_evidence_status(evidence_id)
+    return {**status, "latest_pipeline_run": plain_pipeline_run(status.get("latest_pipeline_run"))}

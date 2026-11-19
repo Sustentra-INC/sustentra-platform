@@ -27,7 +27,7 @@ from backend.app.api.engagements import _visible, require_open_engagement
 from backend.app.api.s1_access import s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
-from backend.app.services import methodology_review, workpaper_item_service
+from backend.app.services import engagement_service, methodology_review, workpaper_item_service
 from backend.app.services.audit_log import write_audit_event
 from backend.app.services.workpaper_item_service import ITEM_KEY, MAX_PAYLOAD_BYTES
 
@@ -95,13 +95,22 @@ async def save_workpaper_item(
     if not ITEM_KEY.match(item_key):
         raise HTTPException(status_code=422, detail="item_key: letters, digits and : . _ - only (max 200).")
     assert user.org_id is not None  # s1_writer excludes provider_admin
+    payload = body.payload
+    if kind == "document":
+        # A document's placements change only through the Evidence actions (which log each move). This
+        # save keeps whatever is stored, so a stale tab cannot put a document back where it was.
+        await engagement_service.lock_engagement(db, str(engagement["id"]))
+        stored = await workpaper_item_service.get_items(db, engagement["id"], "document", [item_key], for_update=True)
+        payload = {k: v for k, v in payload.items() if k != "placements"}
+        if stored and "placements" in stored[0]["payload"]:
+            payload["placements"] = stored[0]["payload"]["placements"]
     row = await workpaper_item_service.save_item(
         db,
         org_id=engagement["org_id"],
         engagement_id=engagement["id"],
         kind=kind,
         item_key=item_key,
-        payload=body.payload,
+        payload=payload,
         user_id=user.id,
     )
     await write_audit_event(
