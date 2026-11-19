@@ -484,11 +484,11 @@ class StationaryCombustionExtractor:
     # Additional table columns kept on each record: key -> header names (normalized).
     # A fuel log's "Site" / "Facility" column: each line's facility (a log can cover several).
     EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {
+        # first, so "Site Address" and "Premises Address" are an address and not a site name ("site", "premises")
+        "address": ("service address", "service location", "site address", "premises address"),
         "site": ("site", "site name", "facility", "facility name", "plant", "building", "premises"),
         # A portal export repeats the account on every row.
         "account": ("account", "account number", "account no", "account #", "acct", "acct no", "customer account"),
-        # A bill for several meters gives each its own service address: a record keeps the address of its row.
-        "address": ("service address", "service location", "site address", "premises address"),
     }
     ALL_LABELS: tuple[str, ...] = ()  # filled after the module-level label groups
 

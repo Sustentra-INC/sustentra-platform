@@ -58,7 +58,6 @@ from backend.app.services.reviewed_evidence import (  # noqa: F401 - re-exported
     ReviewedRecord,
     group_reviewed_records,
     latest_decisions,
-    match_facility,
     resolve_fuel_name,
     resolve_setup_facility,
     set_aside_reason,

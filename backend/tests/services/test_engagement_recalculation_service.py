@@ -354,7 +354,7 @@ def test_bills_take_their_setup_facility_and_its_grid_region() -> None:
 
 
 def test_match_facility_needs_a_clear_name_or_address() -> None:
-    from backend.app.services.engagement_recalculation_service import match_facility
+    from backend.app.services.reviewed_evidence import match_facility
 
     facilities = [{"facilityId": "F1", "name": "Kent Cannery", "address": "88 Mill Road, Kent, WA"}]
     assert match_facility("KENT CANNERY", None, facilities)["facilityId"] == "F1"

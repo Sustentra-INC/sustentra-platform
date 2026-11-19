@@ -86,12 +86,17 @@ _STREET_ABBREVIATIONS = {
     "southeast": "se", "southwest": "sw",
 }
 _STREET_SUFFIXES = frozenset(_STREET_ABBREVIATIONS.values()) - {"ste", "apt", "fl", "rm", "n", "s", "e", "w", "ne",
-                                                                  "nw", "se", "sw"}
+                                                                  "nw", "se", "sw", "hwy", "rte"}
+_ROUTE_WORDS = frozenset({"hwy", "rte"})  # "Highway 99", "State Route 9": the route number ends the street
 _DIRECTIONS = frozenset({"n", "s", "e", "w", "ne", "nw", "se", "sw"})
-_UNIT_WORDS = frozenset({"ste", "apt", "unit", "fl", "rm"})
+# Read as a unit only right after the street ("Ste 300", "# 4", "Unit 4") and only when a short token follows that
+# is not a postal code: "FL 33101" is Florida and "Ste. Genevieve" is a town.
+_UNIT_WORDS = frozenset({"ste", "apt", "unit", "rm", "fl"})
 _CORPORATE_SUFFIXES = frozenset({"inc", "incorporated", "llc", "ltd", "limited", "corp", "corporation", "co",
                                  "company", "plc", "gmbh", "ag", "sa"})
 _NAME_SEPARATOR = re.compile(r"\s[-\u2010-\u2015\u2212]\s")  # " - ", " \u2013 ", " \u2014 ": a dash with spaces round it
+_PO_BOX = re.compile(r"\bp\.?\s?o\.?\s*box\s*\w+|\bpost\s+office\s+box\s*\w+")
+_HOUSE_NUMBER = re.compile(r"^\d+[a-z]?$")
 
 
 def _company_key(value: Any) -> str:
@@ -114,66 +119,78 @@ def _facility_names(name: Any, company: Any) -> set[str]:
     return names
 
 
-def _street_tokens(address: Any, drop_unit: bool) -> list[str] | None:
-    """The address as words from the house number on, abbreviated the USPS way, with the unit left out when
-    ``drop_unit``. None when there is no house number followed by a street name."""
+def _segments(address: Any, drop_po_box: bool) -> list[list[str]]:
+    """The address as comma-separated segments of lower-case words in the USPS spelling. "#" is a unit word.
+    A PO box is dropped when asked: its number is never a house number."""
 
-    words = _norm_text(str(address or "").replace("#", " ste ")).split()
-    words = [_STREET_ABBREVIATIONS.get(w, w) for w in words]
-    start = next((i for i, w in enumerate(words)
-                  if w[0].isdigit() and i + 1 < len(words) and not words[i + 1][0].isdigit()
-                  and any(x in _STREET_SUFFIXES for x in words[i + 1:i + 7])), None)
-    if start is None:
-        return None
-    words = words[start:]
-    if drop_unit:
-        kept: list[str] = []
-        skip = 0
-        for index, word in enumerate(words):
-            if skip:
-                skip -= 1
-            elif word in _UNIT_WORDS and index + 1 < len(words):
-                skip = 1  # the unit's number or letter
-            else:
-                kept.append(word)
-        words = kept
-    return words
+    text = unicodedata.normalize("NFKC", str(address or "")).casefold().replace("#", " unit ")
+    if drop_po_box:
+        text = _PO_BOX.sub(" ", text)
+    out = []
+    for part in re.split(r"[,;\n]", text):
+        words = [_STREET_ABBREVIATIONS.get(w, w) for w in re.findall(r"\w+", part)]
+        if words:
+            out.append(words)
+    return out
 
 
-def _split_street(words: list[str]) -> tuple[list[str], list[str]] | None:
-    """(street, the rest) of an address's words: the street runs from the house number to its suffix (Rd, Blvd,
-    Way...) and an optional direction after it; the rest is unit, city, state and postal code. None when the
-    street has no suffix, so it cannot be told where it ends."""
+def _is_street_line(words: list[str]) -> bool:
+    return bool(words) and bool(_HOUSE_NUMBER.match(words[0])) and any(w in _STREET_SUFFIXES for w in words[2:])
 
-    for index, word in enumerate(words):
-        if index >= 2 and word in _STREET_SUFFIXES:
-            end = index + 1
-            if end < len(words) and words[end] in _DIRECTIONS:
+
+class _Address:
+    """A street address split into street (house number to its end), unit, and the rest (city, state, postal
+    code). ``street`` is None when no house number could be found."""
+
+    def __init__(self, address: Any) -> None:
+        self.full = _segments(address, drop_po_box=False)  # with its commas: "St, West Sacramento" is not "St W, Sacramento"
+        self.street: list[str] | None = None
+        self.unit: str | None = None
+        self.rest: list[str] = []
+        segments = _segments(address, drop_po_box=True)
+        starts = [(si, wi) for si, seg in enumerate(segments) for wi, w in enumerate(seg)
+                  if _HOUSE_NUMBER.match(w) and wi + 1 < len(seg) and not seg[wi + 1][0].isdigit()]
+        if not starts:
+            return
+        # a house number whose own line has a street suffix wins over an earlier number ("3M Company, 100 Main St")
+        si, wi = next(((a, b) for a, b in starts if any(w in _STREET_SUFFIXES | _ROUTE_WORDS for w in segments[a][b + 2:])),
+                      starts[0])
+        words = segments[si][wi:]
+        end = len(words)
+        route = next((i for i, w in enumerate(words) if i >= 1 and w in _ROUTE_WORDS), None)
+        suffix = next((i for i, w in enumerate(words) if i >= 2 and w in _STREET_SUFFIXES), None)
+        if route is not None and (suffix is None or route < suffix):
+            end = route + 2 if route + 1 < len(words) and words[route + 1].isdigit() else route + 1
+        elif suffix is not None:
+            end = suffix + 1
+            if end < len(words) and words[end] in _DIRECTIONS:  # only with no comma between: "St W", not "St, West ..."
                 end += 1
-            return words[:end], words[end:]
-    return None
+        self.street = words[:end]
+        rest = words[end:]
+        for seg in segments[si + 1:]:
+            if not _is_street_line(seg):  # two street lines: the first is the address
+                rest += seg
+        if len(rest) >= 2 and rest[0] in _UNIT_WORDS and len(rest[1]) <= 4 and not re.fullmatch(r"\d{5}", rest[1]):
+            self.unit = rest[1]
+            rest = rest[2:]
+        self.rest = rest
 
 
-def _same_address(bill: Any, setup: Any) -> bool:
-    """The same street address, word for word, once spelled the same way: same house number, street, and (when
-    both give them) unit, city, state and postal code. One side may stop after the street (or its unit);
-    it may not stop inside it. The house number is never optional, so 2210 is not 2200."""
+def _address_rank(bill: _Address, setup: _Address) -> int | None:
+    """How well a bill's address fits a Setup address: 0 the same (unit too), 1 the same with a unit the bill has and
+    Setup has not; None when they are not the same place. Word for word, once spelled the same way, with the house
+    number never optional. One side may stop after the street (or its unit); what both give must agree."""
 
-    setup_words = _norm_text(str(setup or "").replace("#", " ste ")).split()
-    setup_has_unit = any(_STREET_ABBREVIATIONS.get(w, w) in _UNIT_WORDS for w in setup_words)
-    bill_has_unit = any(_STREET_ABBREVIATIONS.get(w, w) in _UNIT_WORDS
-                        for w in _norm_text(str(bill or "").replace("#", " ste ")).split())
-    if setup_has_unit and not bill_has_unit:
-        return False  # Setup names a suite and the bill does not: it may be another suite
-    one = _street_tokens(bill, drop_unit=not setup_has_unit)
-    two = _street_tokens(setup, drop_unit=False)
-    if not one or not two:
-        return False
-    first, second = _split_street(one), _split_street(two)
-    if first is None or second is None or first[0] != second[0]:
-        return False  # not the same street, house number included
-    short, long = sorted((first[1], second[1]), key=len)
-    return long[:len(short)] == short  # one side may stop after the street; what both give must agree
+    if bill.full and bill.full == setup.full:
+        return 0
+    if bill.street is None or setup.street is None or bill.street != setup.street:
+        return None
+    short, long = sorted((bill.rest, setup.rest), key=len)
+    if long[:len(short)] != short:
+        return None
+    if setup.unit is not None:
+        return 0 if bill.unit == setup.unit else None  # Setup names a suite: the bill must name the same one
+    return 0 if bill.unit is None else 1  # a suite on the bill that Setup does not have is ignored
 
 
 def match_facility(name: Any, address: Any, facilities: list[dict[str, Any]],
@@ -182,17 +199,24 @@ def match_facility(name: Any, address: Any, facilities: list[dict[str, Any]],
 
     Names are compared after case, punctuation and whitespace are set aside, and a leading "Company - " is
     dropped when the company is the engagement's own (``company``). Addresses are compared word for word after
-    the USPS spellings (Road/Rd, Boulevard/Blvd, East/E, Suite/Ste) are made the same; a unit on the bill that
-    Setup does not have is ignored, and the house number must be the same. None when nothing matches clearly."""
+    the USPS spellings (Road/Rd, Boulevard/Blvd, East/E) are made the same; a unit on the bill that Setup does
+    not have is ignored, and the house number must be the same. Every facility that fits is collected: the one
+    whose unit agrees is preferred, and when more than one is still left (a street-only bill on a street two
+    sites share) nothing is matched. None when nothing matches clearly."""
 
     bill_names = _facility_names(name, company)
-    for facility in facilities:
-        if bill_names and _norm_text(facility.get("name")) in bill_names:
-            return facility
+    if bill_names:
+        named = [f for f in facilities if _norm_text(f.get("name")) in bill_names]
+        if named:
+            return named[0] if len(named) == 1 else None
     if address:
-        for facility in facilities:
-            if facility.get("address") and _same_address(address, facility.get("address")):
-                return facility
+        bill = _Address(address)
+        ranked = [(rank, f) for f in facilities if f.get("address")
+                  if (rank := _address_rank(bill, _Address(f.get("address")))) is not None]
+        if ranked:
+            best = min(rank for rank, _ in ranked)
+            top = [f for rank, f in ranked if rank == best]
+            return top[0] if len(top) == 1 else None
     return None
 
 

@@ -197,3 +197,101 @@ def test_another_companys_bill_with_the_same_site_name_is_left_unplaced() -> Non
 def test_the_annex_address_leaves_the_bill_unplaced_and_the_main_address_places_it() -> None:
     assert _filed(None, "2210 PORT OF TACOMA RD") == {}
     assert _filed(None, "2200 PORT OF TACOMA RD") == {"s2:purchased_energy:electricity:f3": ["MAR"]}
+
+
+# --- fix round 1: every fitting facility is collected; streets with no USPS suffix; punctuation boundaries ----------
+def _only(address: Any = None, name: Any = None, *rows: tuple[str, str]) -> str | None:
+    facilities = [{"facilityId": f"X{i}", "name": n, "address": a} for i, (n, a) in enumerate(rows)]
+    found = match_facility(name, address, facilities, COMPANY)
+    return found["name"] if found else None
+
+
+def test_the_facility_whose_suite_agrees_wins_over_the_plain_street_row() -> None:
+    rows = (("Hauptsitz Zürich", "100 Main St, München"), ("Büro 300", "100 Main St Ste 300, München"))
+    assert _only("100 Main St Ste 300, München", None, *rows) == "Büro 300"
+    assert _only("100 Main Street #300, München", None, *rows) == "Büro 300"
+    assert _only("100 Main St, München", None, *rows) == "Hauptsitz Zürich"
+    assert _only("100 Main St Ste 999, München", None, *rows) == "Hauptsitz Zürich"  # a suite Setup lacks is ignored
+
+
+def test_a_street_only_bill_on_a_street_two_sites_share_matches_neither() -> None:
+    rows = (("Springfield Plant", "100 Main St, Springfield, IL"), ("Peoria Plant", "100 Main St, Peoria, IL"))
+    assert _only("100 Main St", None, *rows) is None
+    assert _only("100 Main Street, Peoria", None, *rows) == "Peoria Plant"
+    assert _only("100 Main St, Springfield, IL 62701", None, *rows) == "Springfield Plant"
+    twins = (("Werk A", "5 Via Roma, Zürich"), ("Werk B", "5 Via Roma, Zürich"))
+    assert _only("5 Via Roma", None, *twins) is None
+    assert _only(None, "Werk A", *(("Werk A", "x"), ("Werk A", "y"))) is None  # one name, two sites: nothing matched
+
+
+def test_fl_is_florida_and_a_town_called_ste_is_not_a_suite() -> None:
+    miami = (("Miami Café", "100 Main St, Miami, FL 33101"),)
+    assert _only("100 Main St", None, *miami) == "Miami Café"
+    assert _only("100 Main Street, Miami, Florida".replace("Florida", "FL"), None, *miami) == "Miami Café"
+    assert _only("100 Main St, Miami, FL 33101", None, *miami) == "Miami Café"
+    genevieve = (("Sainte Müller", "12 Main St, Ste. Genevieve, MO 63670"),)
+    assert _only("12 Main St", None, *genevieve) == "Sainte Müller"
+    assert _only("12 Main Street, Ste. Genevieve, MO", None, *genevieve) == "Sainte Müller"
+    assert _only("12 Main St FL 3, Miami", None, *(("Etage", "12 Main St Fl 3, Miami"),)) == "Etage"  # a real floor
+
+
+@pytest.mark.parametrize("address", ["15 Broadway", "1211 Avenue of the Americas", "500 Highway 99", "PO Box 1234",
+                                     "One Market Plaza", "Bahnhofstrasse 12, 8001 Zurich", "100 Main"])
+def test_an_identical_address_with_no_usps_suffix_still_matches(address: str) -> None:
+    assert _only(address, None, ("Ort Ä", address)) == "Ort Ä"
+    assert _only(address.upper(), None, ("Ort Ä", address)) == "Ort Ä"
+
+
+def test_routes_end_the_street_at_their_number_and_a_different_number_is_another_street() -> None:
+    setup = (("Fresno Café", "500 Highway 99, Fresno, CA 93706"),)
+    assert _only("500 Hwy 99", None, *setup) == "Fresno Café"
+    assert _only("500 State Route 99, Fresno", None, *(("Rte", "500 State Rte 99, Fresno"),)) == "Rte"
+    assert _only("500 Highway 98, Fresno", None, *setup) is None
+    assert _only("500 Highway 99, Madera", None, *setup) is None
+
+
+def test_a_direction_after_the_suffix_belongs_to_the_street_only_when_no_comma_separates_it() -> None:
+    west = (("Sacramento Ä", "100 Main St W, Sacramento"),)
+    assert _only("100 Main St, West Sacramento", None, *west) is None  # West Sacramento is a city
+    assert _only("100 Main Street West, Sacramento", None, *west) == "Sacramento Ä"
+    assert _only("100 Main St W", None, *west) == "Sacramento Ä"
+    city = (("West Ä", "100 Main St, West Sacramento"),)
+    assert _only("100 Main St, West Sacramento, CA", None, *city) == "West Ä"
+    assert _only("100 Main St W, Sacramento", None, *city) is None
+
+
+def test_a_po_box_number_is_never_a_house_number() -> None:
+    assert _only("PO Box 100, Main St", None, ("Büro", "100 Main St")) is None
+    assert _only("P.O. Box 100, 100 Main St", None, ("Büro", "100 Main St")) == "Büro"  # the street after it counts
+    assert _only("PO Box 100", None, ("Büro", "100 Main St")) is None
+
+
+def test_unit_and_hash_are_the_same_unit() -> None:
+    row = (("Büro 4", "555 Capitol Mall Unit 4, Sacramento"),)
+    assert _only("555 Capitol Mall #4, Sacramento", None, *row) == "Büro 4"
+    assert _only("555 Capitol Mall, Suite 4, Sacramento", None, *row) == "Büro 4"
+    assert _only("555 Capitol Mall #5, Sacramento", None, *row) is None
+
+
+def test_two_consecutive_street_lines_are_one_address_with_the_first_street() -> None:
+    assert _only("100 Main St, 200 Oak Ave, Zürich", None, ("Büro", "100 Main St, Zürich")) == "Büro"
+    assert _only("200 Oak Ave, 100 Main St, Zürich", None, ("Büro", "100 Main St, Zürich")) is None
+
+
+def test_site_address_and_premises_address_columns_keep_each_meters_address(targets: list[dict]) -> None:
+    for header in ("Site Address", "Premises Address"):
+        text = _meter_bill_with(header)
+        outcome = ElectricityExtractor().extract(text, targets, "EV-1")
+        by_record: dict[Any, dict[str, Any]] = {}
+        for c in outcome.candidates:
+            by_record.setdefault(c["record_index"], {})[c["field_name"]] = c["normalized_value"]
+        assert sorted(r["service_address"] for r in by_record.values()) == [
+            "2200 PORT OF TACOMA RD", "2210 PORT OF TACOMA RD"], header
+
+
+def _meter_bill_with(header: str) -> dict[str, Any]:
+    bill = _meter_bill()
+    for block in bill["text_blocks"]:
+        if block["text"].startswith("Meter | Service Address"):
+            block["text"] = block["text"].replace("Service Address", header)
+    return bill
