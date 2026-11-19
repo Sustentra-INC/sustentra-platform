@@ -66,6 +66,7 @@ from backend.app.services.reviewed_evidence import (  # noqa: F401 - re-exported
     to_date as _date,
     to_number as _number,
 )
+from backend.app.services.facility_identifiers import validate_numbers
 from backend.app.services.refrigerant_extractor import DISPOSAL, INSTALLATION, service_type_of
 from backend.app.services.thermal_extractor import thermal_kind
 
@@ -326,7 +327,8 @@ def parse_inputs(settings: dict[str, Any] | None) -> RecalculationInputs:
 # Setup facilities and the reviewer's document decisions
 # =========================================================================================
 def validate_facilities(value: Any) -> None:
-    """Raise ValueError when Setup facilities are malformed or name an unknown eGRID subregion."""
+    """Raise ValueError when Setup facilities are malformed, name an unknown eGRID subregion, or list
+    account or meter numbers that break the format or the limits."""
 
     if not isinstance(value, list):
         raise ValueError("facilities must be a list")
@@ -334,6 +336,7 @@ def validate_facilities(value: Any) -> None:
     for facility in value:
         if not isinstance(facility, dict):
             raise ValueError("each facility must be an object")
+        validate_numbers(facility)
         region = facility.get("gridRegion")
         if region:
             try:
@@ -1250,7 +1253,8 @@ class EngagementRecalculationService:
         """The reviewer's facility for the bill's document, else a clear name/address match."""
 
         return resolve_setup_facility(self._facilities, self._decisions, record.document_id,
-                                      record.best("facility_name"), record.best("service_address"))
+                                      record.best("facility_name"), record.best("service_address"),
+                                      account=record.best("account_number"), meter=record.best("meter_number"))
 
     # =================================================================================
     # Totals and comparison

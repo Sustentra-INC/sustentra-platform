@@ -250,6 +250,7 @@ engagement is 404). Nothing is stored by this route.
   set_aside: [{document_id, file_name, reason}] }    // withdrawn / duplicate / superseded: not filed
 counts  = {documents, values, accepted, to_review, issues, pct_accepted}
 DocRow  = {document_id, file_name, period_start, period_end, facility_id, facility_name,
+           facility_note,    // when facility_id is null: why an account or meter number placed nothing, or null
            processing_status, detected_type, also_in: [lineKey], values, accepted,
            placement_from,   // send this as a move's "from" to move this row
            value_family,     // "stationary" | "mobile" | "electricity" | null: the calculation this row's
@@ -458,7 +459,8 @@ calculation_lines: [{
   no company side), never dropped. `reason` is one of: `unknown_line` (filed on a line that no longer
   exists), `moved_to_another_place` (a reviewer filed it elsewhere), `fuel_shared_by_vehicle_groups`
   (mobile fuel used by two or more groups), `no_vehicle_group` (mobile fuel no group uses),
-  `no_facility_match` (no Setup facility matches), `no_calculation_line`. Lines plus unplaced add up to the
+  `no_facility_match` (no Setup facility matches), `identifier_on_two_facilities` (the bill's account or
+  meter number is listed on two or more Setup facilities, so it is not placed), `no_calculation_line`. Lines plus unplaced add up to the
   category on `sum_co2e_t`; a consolidated share below 100% scales `total_co2e_t` only.
 - `calculation_line_inputs`: `{consolidated_shares, unknown_line_keys: [{setting, key}],
   unknown_facility_ids}`. A key that matches no line and names no facility or vehicle group is allowed
@@ -517,3 +519,20 @@ admin may call for any org; it answers 409 when the user is not waiting for an i
 ## Contract Source
 
 JSON schema contracts are versioned in `contracts/` and should be treated as API truth for request/response payload shape.
+
+### Facility account and meter numbers (PROVISIONAL)
+
+Approved by the product owner on 18 Nov 2026 as provisional: the ops lead may change the format of the client's
+facility list. Each facility in `settings.facilities` may carry `accountNumbers: string[]` and, optionally,
+`meterNumbers: string[]` (at most 50 each, at most 64 characters each, at least one digit, stored as typed). A
+facility without them behaves exactly as before. A bad list is refused on save (422, a plain sentence). The same number
+on two facilities saves; Setup shows "Account 4417-2290-31 is on two facilities. Bills with it won't be placed
+automatically."
+
+Placement uses them as the last step, only when the reviewer's choice, the facility name and the service address found
+no facility: the bill's account number (then its meter number) must equal exactly one facility's entry after dropping
+case, spaces, dashes and dots. A partial match never counts. Two facilities place nothing: the Evidence tree row
+carries `facility_note` ("Account 4417-2290-31 is listed on two facilities") and the recalculation lists the record in
+`calculation_unplaced` with `reason: "identifier_on_two_facilities"`. The code is in
+`backend/app/services/facility_identifiers.py` (one matching function); the frontend twin is
+`frontend/features/s1/utils/facilityNumbers.ts`.

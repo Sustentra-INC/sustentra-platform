@@ -65,6 +65,7 @@ export function buildTree(facilityId: string | null): EvidenceTree {
       const row: TreeDocRow = {
         document_id: record.documentId, file_name: record.fileName, period_start: p.start, period_end: p.end,
         facility_id: fid, facility_name: fid ? facilityName.get(fid) ?? null : null,
+        facility_note: fid ? null : record.facilityNote,
         processing_status: record.processingStatus, detected_type: record.detectedType,
         also_in: slots.filter((s) => s.target !== slot.target && byKey.has(s.target)).map((s) => s.target),
         values: record.values, accepted: record.acceptedValues, flags: [...slot.flags], placement_from: slot.target,

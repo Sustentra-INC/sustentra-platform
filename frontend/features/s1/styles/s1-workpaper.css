@@ -3750,3 +3750,15 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-xr-card .s1-xr-val, .s1-xr-card .s1-xr-missing { font-size: var(--text-md); font-weight: var(--weight-regular); line-height: var(--leading-tight); }
 .s1-xr-card .s1-xr-rec, .s1-xr-card .s1-xr-rec__act, .s1-xr-card .s1-xr-rec__who, .s1-xr-card .s1-xr-badge { font-size: var(--text-sm); font-weight: var(--weight-regular); }
 .s1-xr-card .s1-xr-rec__act { color: var(--ink-2); }
+
+/* Facility account and meter numbers (provisional): chips with a remove button, one full-width block per kind. */
+.s1-fac__numbers { grid-column: 1 / -1; display: flex; flex-direction: column; gap: var(--sp-2); min-width: 0; }
+.s1-fac__numbers-label { font-size: var(--text-sm); color: var(--ink-3); font-weight: var(--weight-regular); }
+.s1-fac__chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.s1-fac__chip { display: inline-flex; align-items: center; gap: var(--sp-1); }
+.s1-fac__chip-remove { display: inline-flex; align-items: center; padding: 0; border: 0; background: none; color: var(--ink-3); cursor: pointer; border-radius: var(--radius-chip); }
+.s1-fac__chip-remove:hover { color: var(--state-blocking-fg); }
+.s1-fac__chip-remove:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-fac__chip-remove svg { width: 0.85rem; height: 0.85rem; }
+.s1-fac__problem { font-size: var(--text-sm); color: var(--state-blocking-fg); }
+.s1-fac__notes { list-style: none; margin: 0; padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); color: var(--state-open-fg); background: var(--state-open-bg); border: var(--border-hairline); border-color: var(--state-open-line); border-radius: var(--radius-input); }

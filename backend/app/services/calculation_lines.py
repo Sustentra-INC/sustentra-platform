@@ -37,6 +37,7 @@ from backend.app.services.reviewed_evidence import (
     THERMAL,
     ReviewedRecord,
     match_facility,
+    match_identifier_step,
     resolve_fuel_name,
     resolve_setup_facility,
     to_date,
@@ -345,7 +346,8 @@ def place_record(record: ReviewedRecord, *, ref: EmissionFactorReference, facili
 
     kind = record.canonical_type_id
     facility = resolve_setup_facility(facilities, decisions, record.document_id,
-                                      record.best("facility_name"), record.best("service_address"))
+                                      record.best("facility_name"), record.best("service_address"),
+                                      account=record.best("account_number"), meter=record.best("meter_number"))
     facility_anchor = facility_anchor_id(facility) if facility else None
     if kind in (STATIONARY, MOBILE):
         source = "stationary" if kind == STATIONARY else "mobile"
@@ -575,7 +577,20 @@ def facility_match(facilities: list[dict[str, Any]], decisions: dict[str, dict[s
         return found, "Facility name in Setup"
     if (found := match_facility(None, record.best("service_address"), facilities)) is not None:
         return found, "Service address in Setup"
+    if (found := match_identifier_step(record.best("account_number"), record.best("meter_number"),
+                                       facilities).facility) is not None:
+        return found, "Account or meter number in Setup"
     return None
+
+
+def unplaced_reason(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
+                    record: ReviewedRecord) -> str | None:
+    """Why a record with no Setup facility was not placed by its account or meter number (the number is
+    listed on two facilities); None when it has a facility or the numbers say nothing."""
+
+    if facility_match(facilities, decisions, document_id, record) is not None:
+        return None
+    return match_identifier_step(record.best("account_number"), record.best("meter_number"), facilities).ambiguous
 
 
 def quantity_field(record: ReviewedRecord) -> str | None:

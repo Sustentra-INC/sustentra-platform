@@ -1,6 +1,7 @@
 import { decodeReviewCandidateToken } from "../adapters/fieldAdapter";
 import type { DocumentDecision, EvidenceItem, ExtractedField, FacilityOption } from "../types";
 import { matchFacility } from "./facilityMatch";
+import { matchByIdentifier } from "./facilityNumbers";
 
 /** The backend's document types a reviewer can set (backend mode), and their ids. */
 export const BACKEND_TYPE_IDS: Record<string, string> = {
@@ -15,6 +16,9 @@ export const BACKEND_TYPE_IDS: Record<string, string> = {
 export interface DocumentFacts {
   facilityName: string | null;
   address: string | null;
+  /** The account and meter number the bill gives (provisional step, see utils/facilityNumbers.ts). */
+  accountNumber?: string | null;
+  meterNumber?: string | null;
   periodStart: string | null;
   periodEnd: string | null;
   /** Every facility name and address the document's records give (a log can cover several sites). */
@@ -44,6 +48,12 @@ export function documentFacts(fields: ExtractedField[]): Map<string, DocumentFac
       case "service_address":
         entry.address ??= value;
         if (!entry.addresses!.includes(value)) entry.addresses!.push(value);
+        break;
+      case "account_number":
+        entry.accountNumber ??= value;
+        break;
+      case "meter_number":
+        entry.meterNumber ??= value;
         break;
       case "service_period_start":
       case "transaction_date":
@@ -122,6 +132,11 @@ function matchedFacilities(fact: DocumentFacts | undefined, facilities: Facility
     ...(fact.facilityNames ?? []).map((name) => matchFacility(name, null, facilities)),
     ...(fact.addresses ?? []).map((address) => matchFacility(null, address, facilities)),
   ].filter((f): f is FacilityOption => f !== null);
+  // Only when the name and address steps found nothing: the account or meter number the bill gives.
+  if (!found.length) {
+    const byNumber = matchByIdentifier(fact.accountNumber, fact.meterNumber, facilities).facility;
+    if (byNumber) found.push(byNumber);
+  }
   return found.filter((f, i) => found.findIndex((g) => g.facilityId === f.facilityId) === i);
 }
 
@@ -166,6 +181,7 @@ export function unmatchedFacilities(
   facts.forEach((fact) => {
     const name = fact.facilityName ?? fact.address;
     if (!name || matchFacility(fact.facilityName, fact.address, facilities)) return;
+    if (matchByIdentifier(fact.accountNumber, fact.meterNumber, facilities).facility) return;
     const key = name.trim().toLowerCase();
     if (!seen.has(key)) seen.set(key, { name: name.trim(), address: fact.address });
   });

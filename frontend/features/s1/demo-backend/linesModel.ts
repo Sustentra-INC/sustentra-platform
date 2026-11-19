@@ -17,6 +17,7 @@ import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
 import type { EngagementConfig, FacilityOption } from "../types/engagement";
 import type { EvidenceLineSetting } from "../api/evidenceTree";
 import type { EvidenceItem } from "../types/evidence";
+import { matchByIdentifier } from "../utils/facilityNumbers";
 import { demoDecisions, demoEngagement } from "./state";
 
 export const BLOCK_SUMMARY = "block:summary";
@@ -115,6 +116,8 @@ export interface ModelRecord {
   processingStatus: string;
   detectedType: string | null;
   matchedBy: string;
+  /** Why the account or meter number placed nothing (listed on two facilities). */
+  facilityNote: string | null;
   /** Kinds of quality note the record carries. */
   flags: string[];
 }
@@ -189,7 +192,9 @@ export function buildRecords(facilities: FacilityOption[]): Built {
     }
 
     const type = doc.detectedType;
-    const facilityId = doc.facilityId ?? null;
+    // The account or meter number places a bill only when the name and address steps found no facility.
+    const byNumber = doc.facilityId ? null : matchByIdentifier(doc.accountNumber, doc.meterNumber, facilities);
+    const facilityId = doc.facilityId ?? byNumber?.facility?.facilityId ?? null;
     const code = facilityId ? FAC_CODE[facilityId] ?? slug(facName(facilityId) ?? "") : "";
     let kind: RecordKind = "other";
     let target = SUPPORTING_UNASSIGNED;
@@ -239,7 +244,8 @@ export function buildRecords(facilities: FacilityOption[]): Built {
       meter: utility && facilityId && doc.documentId !== "DOC-PARTIAL" ? (kind === "gas" ? GAS_METERS[facilityId] : ELEC_METER[code]) ?? null : null,
       address: utility ? address(facilityId) : null,
       processingStatus: doc.processingState, detectedType: type,
-      matchedBy: doc.documentId === "DOC-PARTIAL" ? "Service address in Setup" : "Facility name in Setup",
+      matchedBy: byNumber?.facility ? byNumber.reason ?? "" : doc.documentId === "DOC-PARTIAL" ? "Service address in Setup" : "Facility name in Setup",
+      facilityNote: byNumber?.ambiguous ?? null,
       flags: [],
     });
   }

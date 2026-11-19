@@ -78,6 +78,8 @@ class DocState:
     records: list[ReviewedRecord]
     slots: list[cl.Slot] = field(default_factory=list)
     facility_ids: list[str | None] = field(default_factory=list)  # the Setup facility of each record
+    # why a record's account or meter number could not place it ("Account 4417-2290-31 is listed on two facilities")
+    facility_notes: list[str | None] = field(default_factory=list)
 
 
 @dataclass
@@ -156,6 +158,8 @@ class EvidenceTreeService:
             doc.slots = filed[doc.document_id]
             doc.facility_ids = [cl.facility_anchor_id(f) if (f := placements[id(r)].facility) else None
                                 for r in doc.records]
+            doc.facility_notes = [None if placements[id(r)].facility else
+                                  cl.unplaced_reason(facilities, decisions, doc.document_id, r) for r in doc.records]
         period = (to_date(engagement.get("reporting_period_start")), to_date(engagement.get("reporting_period_end")))
         return Loaded(docs, set_aside, system, lines, facilities, period, inputs.vehicle_groups)
 
@@ -264,6 +268,7 @@ class EvidenceTreeService:
         if facility_id is None and records:
             name = records[0].best("facility_name")
             facility_name = " ".join(str(name).split()) if name else None
+        facility_note = next((doc.facility_notes[i] for i in sorted(slot.records) if doc.facility_notes[i]), None)
         counts = cl.tally(records)
         families = {cl.record_family(r.canonical_type_id) for r in records}
         return {
@@ -271,6 +276,7 @@ class EvidenceTreeService:
             "period_start": min(starts).isoformat() if starts else None,
             "period_end": max(ends).isoformat() if ends else None,
             "facility_id": facility_id, "facility_name": facility_name,
+            "facility_note": facility_note if facility_id is None else None,
             "processing_status": doc.document.get("processing_status"),
             "detected_type": cl.type_name(doc.canonical_type_id),
             "also_in": [s.target for s in doc.slots if s.target != slot.target and s.target in lines],

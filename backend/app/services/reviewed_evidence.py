@@ -15,6 +15,7 @@ from typing import Any
 
 from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorReference
+from backend.app.services.facility_identifiers import IdentifierMatch, match_by_identifier
 
 STATIONARY = "CT-S1-FUELQTY"
 MOBILE = "CT-S1-MOBFUEL"
@@ -110,16 +111,29 @@ def resolve_fuel_name(ref: EmissionFactorReference, kind: str, code: str, quanti
     return None, []
 
 
+def match_identifier_step(account: Any, meter: Any, facilities: list[dict[str, Any]]) -> IdentifierMatch:
+    """The last placement step (PROVISIONAL, see ``facility_identifiers``): the bill's account or meter
+    number against the numbers listed on Setup facilities. Callers run it only when the name and address
+    steps found nothing. Kept apart from ``match_facility`` on purpose."""
+
+    return match_by_identifier(account, meter, facilities)
+
+
 def resolve_setup_facility(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]],
-                           document_id: str, facility_name: Any, address: Any) -> dict[str, Any] | None:
-    """The reviewer's facility for a document, else a clear name/address match."""
+                           document_id: str, facility_name: Any, address: Any, *,
+                           account: Any = None, meter: Any = None) -> dict[str, Any] | None:
+    """The reviewer's facility for a document, else a clear name/address match, else (only when those
+    found nothing) the facility that lists the bill's account or meter number."""
 
     chosen = (decisions.get(document_id) or {}).get("facilityId")
     if chosen:
         for facility in facilities:
             if facility.get("facilityId") == chosen:
                 return facility
-    return match_facility(facility_name, address, facilities)
+    found = match_facility(facility_name, address, facilities)
+    if found is None:
+        found = match_identifier_step(account, meter, facilities).facility
+    return found
 
 
 @dataclass
