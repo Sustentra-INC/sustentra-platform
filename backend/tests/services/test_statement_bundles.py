@@ -284,6 +284,42 @@ def test_a_bundle_whose_statements_cannot_be_cut_cleanly_is_read_whole_and_says_
     assert split.parts is None and split.note == SPLIT_NOTE
 
 
+# ---- a page that only carries a period and a total is not a statement ------------------------------------------
+def _own_page(page: int, heading: str, start: str, end: str, kwh: int = 143230) -> list[dict[str, Any]]:
+    return _page(page, [[(SUPPLIER, 0.07)], [(heading, 0.07)], [("Billing Period:", 0.07), (f"{start} - {end}", 0.3)],
+                        [("Total kWh Used:", 0.07), (f"{kwh:,} kWh", 0.3)]])
+
+
+@pytest.mark.parametrize("heading", ["Your Previous Bill", "Usage Comparison", "Budget Plan Detail",
+                                     "Your Usage Last Year", "Prior Year Statement Copy", "Billing History"])
+def test_a_previous_bill_comparison_or_budget_page_is_never_a_second_statement(targets: list[dict], heading: str) -> None:
+    """A February bill, then a page of its own that shows another period and a total: the bill's usage is not
+    counted again (the old reading gave a second record that double counted January)."""
+
+    blocks = (_summary(1, "01/16/2025", "02/15/2025") + _detail(2, "01/16/2025", "02/15/2025", 135630, 55410)
+              + _own_page(3, heading, "12/16/2024", "01/15/2025"))
+    assert _split(blocks).parts is None
+    outcome = _extract(blocks, targets)
+    assert [_mwh(r) for r in _records(outcome)] == pytest.approx([135.63])
+
+
+def test_a_page_with_a_period_and_a_total_that_repeats_neither_title_nor_account_is_not_a_statement(
+        targets: list[dict]) -> None:
+    """No keyword in its heading: it still is not a statement, because it names neither the first statement's
+    title nor its account. The file is read whole and the reviewer is told."""
+
+    blocks = (_summary(1, "01/16/2025", "02/15/2025") + _detail(2, "01/16/2025", "02/15/2025", 135630, 55410)
+              + _own_page(3, "Account Activity", "12/16/2024", "01/15/2025"))
+    split = _split(blocks)
+    assert split.parts is None and split.note == SPLIT_NOTE
+    assert [_mwh(r) for r in _records(_extract(blocks, targets))] == pytest.approx([135.63])
+
+
+def test_a_real_next_statement_with_the_same_title_and_account_still_splits(targets: list[dict]) -> None:
+    blocks = _two_pages(("01/16/2025", "02/15/2025"), ("02/16/2025", "03/15/2025"))
+    assert [_mwh(r) for r in _read(blocks, targets)] == pytest.approx([135.63, 148.56])
+
+
 # ---- time-of-use lines ----------------------------------------------------------------------------------------
 def _tou_detail(first_cell_is_meter: bool) -> list[dict[str, Any]]:
     rows: list[Line]

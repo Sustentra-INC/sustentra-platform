@@ -13,6 +13,8 @@ is not clean is not made:
   restatement, prior-period, correction, history or summary heading is not a statement's period.
 - Periods that overlap (two days or more), or start within a few days of each other, are the same
   statement: a summary page and its detail page state their periods a day apart.
+- A new part counts as a statement only when it repeats the first statement's title row or its account
+  number; otherwise nothing is split.
 - A new statement starts at the top of a page. The one exception is a page that also holds the earlier
   statement's usage table: there the new one must start at a title line that repeats the first
   statement's title ("Electric Service Statement"; a title line may have several cells).
@@ -31,6 +33,7 @@ from datetime import date
 
 from backend.app.domain import fuel_units
 from backend.app.services.stationary_combustion_extractor import (
+    ACCOUNT_LABELS,
     RANGE_PERIOD_LABELS,
     Row,
     _norm,
@@ -46,10 +49,12 @@ _TITLE_RE = re.compile(r"\b(?:statement|invoice|bill)\b")
 _TITLE_MAX_WORDS = 8
 _TITLE_REACH = 14  # how far above its period line a statement's title can sit
 _HEADING_REACH = 8  # how far above a period line its heading is looked for
-# A period under one of these headings restates or lists periods; it does not start a statement.
+# A period under one of these headings restates, compares or lists periods; it does not start a statement
+# ("Your Previous Bill", "Usage Comparison", "Last Year", "Budget Plan Detail", "Prior Period Adjustment").
 _NOT_A_STATEMENT_RE = re.compile(
-    r"\b(adjustment|adjustments|restatement|restated|prior[- ]period|previous period|correction|corrected|"
-    r"history|summary of accounts|account summary|summary)\b")
+    r"\b(adjustment|adjustments|restatement|restated|correction|corrected|comparison|compare|compared|"
+    r"previous|prior|last (?:year|month|bill|period)|budget|plan detail|history|summary)\b")
+_PAGE_HEADING_ROWS = 5  # a page's heading is among its first rows
 SAME_STATEMENT_OVERLAP_DAYS = 2  # periods sharing this many days or more are one statement
 SAME_STATEMENT_START_DAYS = 5  # periods starting this close are one statement
 
@@ -100,15 +105,21 @@ def _is_heading(row: Row) -> bool:
         and ":" not in text
 
 
-def _under_a_restating_heading(rows: Sequence[Row], at: int) -> bool:
-    """True when the nearest heading above the period line, on its page, restates or lists periods."""
+def _restates(row: Row) -> bool:
+    return _NOT_A_STATEMENT_RE.search(" ".join(_norm(c.text) for c in row.cells)) is not None
 
-    for above in range(at - 1, max(at - _HEADING_REACH, -1) - 1, -1):
-        if rows[above].page != rows[at].page:
-            return False
+
+def _under_a_restating_heading(rows: Sequence[Row], at: int) -> bool:
+    """True when the period line sits under a heading that restates, compares or lists periods: the nearest
+    heading above it on its page, or the heading of the page itself (its first rows)."""
+
+    first = next(i for i, r in enumerate(rows) if r.page == rows[at].page)
+    for above in range(at - 1, max(at - _HEADING_REACH, first - 1) - 1, -1):
         if _is_heading(rows[above]):
-            return _NOT_A_STATEMENT_RE.search(" ".join(_norm(c.text) for c in rows[above].cells)) is not None
-    return False
+            if _restates(rows[above]):
+                return True
+            break
+    return any(_is_heading(r) and _restates(r) for r in rows[first:min(at, first + _PAGE_HEADING_ROWS)])
 
 
 def _days(iso: str) -> date:
@@ -134,6 +145,27 @@ def _title_text(row: Row) -> str | None:
         if _TITLE_RE.search(text) and len(text.split()) <= _TITLE_MAX_WORDS and not re.search(r"\d", text):
             return text
     return None
+
+
+def _accounts(rows: Sequence[Row]) -> set[str]:
+    """The account numbers a run of rows states ("Account Number: 4471-20983-6")."""
+
+    labels = {label for group in ACCOUNT_LABELS for label in group}
+    found: set[str] = set()
+    for row in rows:
+        for at, cell in enumerate(row.cells):
+            text = _norm(cell.text).rstrip(":").strip()
+            value = None
+            if text in labels:
+                value = " ".join(c.text for c in row.cells[at + 1: at + 2])
+            else:
+                for label in labels:
+                    if _norm(cell.text).startswith(label + ":"):
+                        value = cell.text.split(":", 1)[1]
+                        break
+            if value and re.search(r"\d", value):
+                found.add(re.sub(r"\s+", "", value).lower())
+    return found
 
 
 def _has_usage_table_row(row: Row) -> bool:
@@ -192,4 +224,11 @@ def split_statements(rows: Sequence[Row]) -> Split:
     # rows are renumbered from 0 (the cells are shared, nothing is copied).
     parts = [[replace(row, index=n) for n, row in enumerate(rows[bounds[i]:bounds[i + 1]])]
              for i in range(len(starts)) if bounds[i] < bounds[i + 1]]
+    # A new part is a statement only when it repeats the first one's title or its account number: a page that
+    # merely carries a billing-period line and a total (a previous bill, a comparison) is not one.
+    first_accounts = _accounts(parts[0])
+    for part in parts[1:]:
+        titles = {t for r in part if (t := _title_text(r)) is not None}
+        if not ((title is not None and title in titles) or (first_accounts & _accounts(part))):
+            return Split(None, SPLIT_NOTE)
     return Split(parts, note)
