@@ -31,6 +31,8 @@ export interface CatalogField {
   userAdded: boolean;
   /** "Must appear" (true or missing) rows are always on the page; false rows show only once they have a value or were added. */
   required?: boolean;
+  /** A multi-select that also takes options of the reviewer's own. */
+  free?: boolean;
 }
 
 export interface MethodologySourceReference {

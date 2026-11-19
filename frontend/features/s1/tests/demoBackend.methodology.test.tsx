@@ -92,7 +92,7 @@ describe("the demo backend's methodology review", () => {
     await open();
     expect(within(row("Indirect Biogenic")).getByText("Not checked yet")).toBeTruthy();
     expect(document.body.textContent).not.toContain("Not set");
-    expect((await get()).fields.filter((f) => !(f as unknown as { shown: boolean }).shown).map((f) => (f as unknown as { field_id: string }).field_id).sort()).toEqual(["boundary:acquisitions", "boundary:leased_space", "calculation:estimation"]);
+    expect((await get()).fields.filter((f) => !(f as unknown as { shown: boolean }).shown).map((f) => (f as unknown as { field_id: string }).field_id).sort()).toEqual(["boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "calculation:source_records", "scope2:instruments"]);
     await prefillViaUi();
     expect(within(row("Indirect Biogenic")).getByText("Not detected")).toBeTruthy();
     expect(within(row("Consolidation approach")).getByText("Suggested by Claude")).toBeTruthy();
@@ -224,6 +224,76 @@ describe("the demo backend's methodology review", () => {
       await expect(edit([{ source_type: "Fuel", method: "" }])).rejects.toMatchObject({ status: 422 });
       await expect(edit(Array.from({ length: 11 }, (_, i) => ({ source_type: `S${i}`, method: "a" })))).rejects.toMatchObject({ status: 422 });
       await expect(edit("average")).rejects.toMatchObject({ status: 422 });
+    });
+  });
+  describe("multi-select rows: Scope 2 instrument types and source records", () => {
+    const INSTR = "Scope 2 instrument types (market-based)";
+    const RECORDS = "Source records";
+    const edit = (id: string, value: unknown) => demoApi(`${BASE}/${encodeURIComponent(id)}/edit`, { method: "POST", body: { value } });
+
+    it("instrument types stay hidden until a market-based category is Yes; source records until a value", async () => {
+      await open();
+      expect(screen.queryByText(INSTR, { selector: "span" })).toBeNull();
+      expect(screen.queryByText(RECORDS, { selector: "span" })).toBeNull();
+      await edit("category:market:steam", "No");
+      cleanup();
+      await open();
+      expect(screen.queryByText(INSTR, { selector: "span" })).toBeNull(); // a No is not a market-based number
+      await edit("category:market:steam", "Yes");
+      cleanup();
+      await open();
+      expect(within(row(INSTR)).getByText("Not checked yet")).toBeTruthy();
+      expect(screen.queryByText(RECORDS, { selector: "span" })).toBeNull();
+    });
+
+    it("a prefill shows both rows with a quote and a link for each option", async () => {
+      await open();
+      await prefillViaUi();
+      expect(within(row(INSTR)).getByText("PPA or VPPA (the Tualatin Plant PPA); Residual mix")).toBeTruthy();
+      expect(within(row(INSTR)).getByText(/Remaining market-based electricity uses the residual mix factor/)).toBeTruthy();
+      expect(within(row(RECORDS)).getByText("Utility invoices; Fuel cards (fuel card statements)")).toBeTruthy();
+      expect(within(row(RECORDS)).getAllByRole("button", { name: /cascade_org_boundary_statement/ })).toHaveLength(2);
+    });
+
+    it("selects and deselects options with the company's wording, None stands alone, and free additions work", async () => {
+      await open();
+      fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: "calculation:source_records" } });
+      await waitFor(() => expect(within(row(RECORDS)).getByText("Not checked yet")).toBeTruthy());
+      fireEvent.click(within(row(RECORDS)).getByRole("button", { name: `Edit: ${RECORDS}` }));
+      fireEvent.click(screen.getByRole("checkbox", { name: `Meter readings: ${RECORDS}` }));
+      fireEvent.change(screen.getByLabelText(`Company's wording for Meter readings: ${RECORDS}`), { target: { value: "Z\u00e4hlerst\u00e4nde \u8868\u8bfb\u6570" } });
+      fireEvent.change(screen.getByLabelText(`Add another option: ${RECORDS}`), { target: { value: "Lieferscheine \u7eb8\u8d28" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add option" }));
+      expect(screen.getByRole("checkbox", { name: `Lieferscheine \u7eb8\u8d28: ${RECORDS}` })).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row(RECORDS)).getByText("Meter readings (Z\u00e4hlerst\u00e4nde \u8868\u8bfb\u6570); Lieferscheine \u7eb8\u8d28")).toBeTruthy());
+      fireEvent.click(within(row(RECORDS)).getByRole("button", { name: `Edit: ${RECORDS}` }));
+      fireEvent.click(screen.getByRole("checkbox", { name: `Meter readings: ${RECORDS}` })); // deselect
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row(RECORDS)).getByText("Lieferscheine \u7eb8\u8d28")).toBeTruthy());
+    });
+
+    it("None clears the other instrument types and choosing another clears None", async () => {
+      await open();
+      await edit("category:market:electricity", "Yes");
+      cleanup();
+      await open();
+      fireEvent.click(within(row(INSTR)).getByRole("button", { name: `Edit: ${INSTR}` }));
+      fireEvent.click(screen.getByRole("checkbox", { name: `PPA or VPPA: ${INSTR}` }));
+      fireEvent.click(screen.getByRole("checkbox", { name: `None: ${INSTR}` }));
+      expect((screen.getByRole("checkbox", { name: `PPA or VPPA: ${INSTR}` }) as HTMLInputElement).checked).toBe(false);
+      fireEvent.click(screen.getByRole("checkbox", { name: `Residual mix: ${INSTR}` }));
+      expect((screen.getByRole("checkbox", { name: `None: ${INSTR}` }) as HTMLInputElement).checked).toBe(false);
+      expect(screen.queryByLabelText(`Add another option: ${INSTR}`)).toBeNull(); // no free additions here
+    });
+
+    it("refuses an option outside the list, a repeat, None with others, and an eleventh free option", async () => {
+      await open();
+      await expect(edit("scope2:instruments", [{ option: "Carbon offsets", wording: "" }])).rejects.toMatchObject({ status: 422 });
+      await expect(edit("scope2:instruments", [{ option: "PPA or VPPA", wording: "" }, { option: " ppa or vppa", wording: "" }])).rejects.toMatchObject({ status: 422 });
+      await expect(edit("scope2:instruments", [{ option: "None", wording: "" }, { option: "PPA or VPPA", wording: "" }])).rejects.toMatchObject({ status: 422 });
+      await expect(edit("calculation:source_records", Array.from({ length: 11 }, (_, i) => ({ option: `Other ${i}`, wording: "" })))).rejects.toMatchObject({ status: 422 });
+      await edit("calculation:source_records", [{ option: "utility invoices", wording: "" }]);
     });
   });
 });

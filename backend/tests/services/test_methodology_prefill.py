@@ -28,7 +28,7 @@ def doc(lines: list[tuple[int, str]] = REPORT, alias: str = "D1", document_id: s
 
 
 def answer(**lists: Any) -> mp.PrefillOutput:
-    empty: dict[str, Any] = {"choices": [], "texts": [], "estimations": [], "periods": [], "gwp": [], "entities": [], "factors": []}
+    empty: dict[str, Any] = {"choices": [], "texts": [], "estimations": [], "selections": [], "periods": [], "gwp": [], "entities": [], "factors": []}
     return mp.PrefillOutput.model_validate({**empty, **lists})
 
 
@@ -371,3 +371,48 @@ def test_no_entry_that_holds_up_means_no_suggestion_and_more_than_ten_are_capped
     many = [estimate(f"Source {i}", "Average", "estimated from the average of the adjacent months", "L1") for i in range(12)]
     kept, dropped = check(answer(estimations=many), [doc(EST_REPORT)])
     assert len(kept[0].suggestion["value"]) == 10 and dict(dropped) == {"too_many_entries": 2}
+
+
+# --- multi-select: a quote per selected option -------------------------------------------------
+
+SEL_REPORT = [
+    (1, "We buy RECs for our Tualatin Plant and have a PPA with W\u00e4rmewerke K\u00e4serei for steam."),
+    (1, "Figures come from utility invoices and fuel card statements."),
+    (1, "Our residual mix factor is used for the rest."),
+]
+
+
+def selection(field_id: str, option: str, quote: str, line: str, wording: str = "") -> dict[str, str]:
+    return {"field_id": field_id, "option": option, "wording": wording, **cite(line, quote)}
+
+
+def test_each_selected_option_keeps_its_own_quote_and_wording() -> None:
+    kept, dropped = check(answer(selections=[
+        selection("scope2:instruments", "RECs or other energy attribute certificates", "We buy RECs", "L1", "We buy RECs"),
+        selection("scope2:instruments", "PPA or VPPA", "a PPA with W\u00e4rmewerke K\u00e4serei", "L1", "a PPA with W\u00e4rmewerke K\u00e4serei"),
+        selection("scope2:instruments", "Residual mix", "residual mix factor is used", "L3", "invented words")]), [doc(SEL_REPORT)])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["scope2:instruments"]
+    [item] = kept
+    assert item.suggestion["value"] == [
+        {"option": "RECs or other energy attribute certificates", "wording": "We buy RECs"},
+        {"option": "PPA or VPPA", "wording": "a PPA with W\u00e4rmewerke K\u00e4serei"},
+        {"option": "Residual mix", "wording": ""}]  # wording that is not in the quote is not kept
+    assert [e["label"] for e in item.suggestion["evidence"]] == [v["option"] for v in item.suggestion["value"]]
+
+
+def test_an_option_the_quote_does_not_name_or_that_is_not_listed_is_dropped_alone() -> None:
+    kept, dropped = check(answer(selections=[
+        selection("calculation:source_records", "Utility invoices", "utility invoices and fuel card statements", "L2"),
+        selection("calculation:source_records", "Meter readings", "utility invoices and fuel card statements", "L2"),  # not named
+        selection("calculation:source_records", "Fuel cards", "this sentence is not in the document", "L2"),  # not on the page
+        selection("calculation:source_records", "Carbon offsets", "utility invoices and fuel card statements", "L2"),  # not listed
+        selection("scope2:instruments", "None", "residual mix factor is used", "L3")]), [doc(SEL_REPORT)])
+    assert [v["option"] for v in kept[0].suggestion["value"]] == ["Utility invoices"]
+    assert dict(dropped) == {"value_not_in_quote": 1, "quote_not_on_document": 1, "invalid_value": 2}
+
+
+def test_the_selection_schema_only_knows_the_multiselect_fields() -> None:
+    with pytest.raises(ValueError):
+        answer(selections=[selection("exclusion:boundary", "Utility invoices", "utility invoices", "L2")])
+    with pytest.raises(ValueError):
+        answer(choices=[{"field_id": "scope2:instruments", "value": "Yes", **cite("L1", "We buy RECs")}])

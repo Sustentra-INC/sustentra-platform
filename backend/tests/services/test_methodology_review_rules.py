@@ -24,7 +24,7 @@ def field(field_id: str) -> dict:
 
 def test_catalog_has_every_field_with_a_valid_unique_key() -> None:
     ids = [f["field_id"] for f in m.CATALOG]
-    assert len(ids) == len(set(ids)) == 25
+    assert len(ids) == len(set(ids)) == 27
     assert all(ITEM_KEY.match(i) for i in ids)
     for expected in ("reporting_period", "consolidation_approach", "category:scope1:fugitive",
                      "category:location:cooling", "category:market:steam", "category:biogenic:indirect",
@@ -265,3 +265,77 @@ def test_a_suggestion_keeps_the_quote_of_each_entry_bounded() -> None:
                for e in bounded["evidence"])
     assert m.payload_size({"e": bounded["evidence"]}) <= m.MAX_EVIDENCE_BYTES
     assert m.bound_suggestion(f, {**SUGGESTION, "value": [], "evidence": ["junk", 5, None]})["evidence"] == []
+
+
+# --- multi-select rows: Scope 2 instrument types, source records ------------------------------
+
+def pick(option: str, wording: str = "") -> dict[str, str]:
+    return {"option": option, "wording": wording}
+
+
+def test_the_two_multiselect_fields_have_their_options_and_are_optional() -> None:
+    instruments = field("scope2:instruments")
+    assert instruments["kind"] == "multiselect" and instruments["required"] is False and instruments["group"] == "scope2"
+    assert instruments["allowed"] == ["RECs or other energy attribute certificates", "PPA or VPPA",
+                                      "Green tariff or utility program", "Supplier-specific rate", "Residual mix", "None"]
+    assert instruments["shown_if_yes"] == [f"category:market:{k}" for k in ("electricity", "heating", "steam", "cooling")]
+    records = field("calculation:source_records")
+    assert records["free"] is True and records["required"] is False and "None" not in records["allowed"]
+
+
+def test_options_are_checked_against_the_list_and_keep_the_companys_wording() -> None:
+    f = field("scope2:instruments")
+    good = [pick("ppa or vppa", "  our PPA with W\u00e4rmewerke K\u00e4serei "), pick("Residual mix")]
+    assert m.validate_value(f, good) == [pick("PPA or VPPA", "our PPA with W\u00e4rmewerke K\u00e4serei"), pick("Residual mix")]
+    assert m.validate_value(f, [pick("None")]) == [pick("None")] and m.validate_value(f, []) == []
+    for bad in ([pick("Carbon offsets")], [pick("PPA or VPPA"), pick(" ppa  OR vppa ")], [pick("None"), pick("PPA or VPPA")],
+                [pick("PPA or VPPA", "x" * 201)], [pick("")], [{"option": "PPA or VPPA"}], ["PPA or VPPA"], "PPA or VPPA", None,
+                [pick("PPA or VPPA", "a\x00b")]):
+        with pytest.raises(m.MethodologyInvalid) as error:
+            m.validate_value(f, bad)
+        assert error.value.args[0].startswith("'Scope 2 instrument types (market-based)': ")
+
+
+def test_source_records_take_free_additions_up_to_a_limit() -> None:
+    f = field("calculation:source_records")
+    value = [pick("utility invoices"), pick("Lieferscheine \u2013 \u7eb8\u8d28\u8bb0\u5f55", "Papier-Belege"), pick("Meter readings")]
+    assert [e["option"] for e in m.validate_value(f, value)] == ["Utility invoices", "Lieferscheine \u2013 \u7eb8\u8d28\u8bb0\u5f55", "Meter readings"]
+    ten = [pick(f"Other {i}") for i in range(m.MAX_FREE_OPTIONS)]
+    assert len(m.validate_value(f, ten)) == 10
+    with pytest.raises(m.MethodologyInvalid):
+        m.validate_value(f, [*ten, pick("Other 10")])
+    with pytest.raises(m.MethodologyInvalid):
+        m.validate_value(f, [pick("Other"), pick("OTHER")])  # a free option twice
+    with pytest.raises(m.MethodologyInvalid):
+        m.validate_value(f, [pick("o" * 61)])
+
+
+def rec(field_id: str, value: object, status: str = "accepted") -> dict:
+    return {"field_id": field_id, "suggestion": None, "history": [],
+            "decision": {"status": status, "value": value, "by": {}, "at": "x"}}
+
+
+def test_market_based_scope2_is_reported_when_a_market_category_is_yes() -> None:
+    market = m.MARKET_CATEGORY_IDS
+    sugg = {"field_id": market[1], "decision": None, "history": [], "suggestion": {"value": "Yes"}}
+    assert not m.market_based_reported({})
+    assert m.market_based_reported({market[0]: rec(market[0], "Yes")})
+    assert m.market_based_reported({market[2]: rec(market[2], "Yes", "edited")})
+    assert m.market_based_reported({market[1]: sugg})  # undecided, Claude said Yes
+    assert not m.market_based_reported({market[0]: rec(market[0], "No")})
+    assert not m.market_based_reported({market[0]: rec(market[0], "Not detected")})
+    assert not m.market_based_reported({market[0]: rec(market[0], None, "rejected")})
+    assert not m.market_based_reported({market[1]: {**sugg, "decision": rec(market[1], "No")["decision"]}})  # decided No beats a Yes suggestion
+    assert not m.market_based_reported({market[1]: {**sugg, "decision": rec(market[1], None, "rejected")["decision"]}})
+
+
+def test_the_instrument_row_shows_on_a_market_yes_and_a_value_or_add_an_item_overrides_it() -> None:
+    f = field("scope2:instruments")
+    blank = m.new_record(f["field_id"])
+    meta = m.new_meta()
+    market = m.MARKET_CATEGORY_IDS
+    assert not m.is_shown(f, blank, meta, {})
+    assert m.is_shown(f, blank, meta, {market[0]: rec(market[0], "Yes")})
+    assert m.is_shown(f, rec(f["field_id"], [pick("None")]), meta, {})  # it has a value
+    assert m.is_shown(f, blank, {**meta, "revealed": [f["field_id"]]}, {})  # the reviewer added it
+    assert not m.is_shown(field("calculation:source_records"), blank, meta, {market[0]: rec(market[0], "Yes")})
