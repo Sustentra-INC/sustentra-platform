@@ -165,6 +165,13 @@ _CHOICE_TERMS = {"Equity Share": ("equity share", "equity"), "Financial Control"
                  "Operational Control": ("operational control",)}
 _GWP_TERMS = {"AR4": ("ar4", "fourth assessment"), "AR5": ("ar5", "fifth assessment"),
               "AR6": ("ar6", "sixth assessment")}
+# The horizon the quote must name, as whole tokens ("120-year" is not "20-year").
+_HORIZON_TERMS = {
+    "20-year": ("20-year", "20 year", "20-years", "20 years", "20-yr", "20 yr", "twenty-year", "twenty year"),
+    "100-year": ("100-year", "100 year", "100-years", "100 years", "100-yr", "100 yr", "hundred-year", "hundred year"),
+    "500-year": ("500-year", "500 year", "500-years", "500 years", "500-yr", "500 yr", "five-hundred-year",
+                 "five hundred year"),
+}
 
 
 SYSTEM_PROMPT = """\
@@ -343,7 +350,8 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     seen: set[str] = set()
 
     def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
-             numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = ()) -> None:
+             numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = (),
+             groups: Sequence[Sequence[str]] = ()) -> None:
         document = by_alias.get(item.document.strip().upper())
         if document is None:
             dropped["unknown_document"] += 1
@@ -358,7 +366,9 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         quote_text = norm(item.quote)
         if (any(not value_in_quote(_fmt(n), item.quote) for n in numbers)
                 or any(not value_in_quote(w, item.quote) for w in words)
-                or (terms and not any(term in quote_text for term in terms))):
+                or (terms and not any(term in quote_text for term in terms))
+                # each group needs one of its terms as a whole token (a set and a horizon, for GWP)
+                or any(not any(value_in_quote(t, item.quote) for t in group) for group in groups)):
             dropped["value_not_in_quote"] += 1
             return
         if field_id is not None:
@@ -413,11 +423,14 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped["duplicate_entry"] += 1
             continue
         # The first set the report names is the fixed GWP field; every other set is a row of its own.
+        needs = [_GWP_TERMS[gwp.set], _HORIZON_TERMS[gwp.horizon]]
+        before = len(kept)
         if "gwp" not in seen:
-            keep(gwp, value, "gwp", None, terms=_GWP_TERMS[gwp.set])
+            keep(gwp, value, "gwp", None, groups=needs)
         else:
-            keep(gwp, value, None, "gwp", terms=_GWP_TERMS[gwp.set])
-        gwp_pairs.add(pair)
+            keep(gwp, value, None, "gwp", groups=needs)
+        if len(kept) > before:  # only a pair that held up counts as seen
+            gwp_pairs.add(pair)
     for entity in output.entities:
         definition = rules.row_field("entity:aaaa")
         assert definition is not None

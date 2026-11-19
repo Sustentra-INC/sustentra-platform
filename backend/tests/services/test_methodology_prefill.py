@@ -105,7 +105,7 @@ def test_the_schema_refuses_a_field_outside_the_catalog() -> None:
 def test_a_factor_source_and_gwp_are_kept_and_an_unprinted_edition_is_dropped() -> None:
     factor = {"scope": "scope1", "database": "U.S. EPA GHG Emission Factors Hub", **cite("L6", "EPA GHG Emission Factors Hub, 2024 edition")}
     kept, dropped = check(answer(factors=[{**factor, "edition": "2024"}],
-                                 gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "IPCC Fifth Assessment Report (AR5)")}]))
+                                 gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "IPCC Fifth Assessment Report (AR5) 100-year")}]))
     assert not dropped
     assert {(k.row_group, k.field_id) for k in kept} == {("factor:scope1", None), (None, "gwp")}
     kept, dropped = check(answer(factors=[{**factor, "edition": "2019"}]))
@@ -244,8 +244,10 @@ def test_a_quote_must_name_the_choice_and_be_long_enough() -> None:
     assert kept == [] and dict(dropped) == {"value_not_in_quote": 2}
     kept, dropped = check(answer(texts=[{"field_id": "exclusion:boundary", "value": "2024", **cite("L3", "2024.")}]))
     assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}  # under 8 characters
-    kept, _ = check(answer(gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "Fifth Assessment Report")}]))
-    assert len(kept) == 1  # a synonym of the set is enough
+    kept, dropped = check(answer(gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "Fifth Assessment Report")}]))
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # the set is named, the horizon is not
+    kept, _ = check(answer(gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "Fifth Assessment Report (AR5) 100-year")}]))
+    assert len(kept) == 1
 
 
 def test_set_aside_documents_are_not_candidates() -> None:
@@ -331,6 +333,7 @@ def test_ambiguous_numeric_dates_are_read_month_first() -> None:
 GWP_REPORT = [
     (1, "Scope 1 uses the IPCC Fifth Assessment Report (AR5) 100-year GWP values."),
     (1, "Scope 2 uses AR6 with a 20-year horizon; a 500-year horizon (AR4) is shown for comparison."),
+    (1, "AR5 results are shown for 20-year and 100-year horizons; AR50 and a 120-year horizon are not used."),
 ]
 
 
@@ -353,8 +356,10 @@ def test_a_repeated_set_and_horizon_is_dropped_but_the_same_set_with_another_hor
     kept, dropped = check(answer(gwp=[
         gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),
         gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),
-        gwp_item("AR5", "20-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1")]), [doc(GWP_REPORT)])
-    assert len(kept) == 2 and dict(dropped) == {"duplicate_entry": 1}
+        gwp_item("AR5", "20-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),  # the quote says 100-year
+        gwp_item("AR5", "20-year", "AR5 results are shown for 20-year", "L3")]), [doc(GWP_REPORT)])
+    assert [k.suggestion["value"]["horizon"] for k in kept] == ["100-year", "20-year"]
+    assert dict(dropped) == {"duplicate_entry": 1, "value_not_in_quote": 1}
 
 
 def test_a_set_the_quote_does_not_name_is_dropped_and_the_next_one_becomes_the_fixed_field() -> None:
@@ -368,3 +373,15 @@ def test_the_schema_takes_the_500_year_horizon_and_no_other() -> None:
     answer(gwp=[gwp_item("AR6", "500-year", "a 500-year horizon (AR4)", "L2")])
     with pytest.raises(ValueError):
         answer(gwp=[gwp_item("AR6", "50-year", "a 500-year horizon (AR4)", "L2")])
+
+
+def test_the_set_and_the_horizon_are_whole_tokens_in_the_quote() -> None:
+    for set_, horizon, quote in (("AR5", "100-year", "AR50 results use a 100-year horizon"),  # AR50 is not AR5
+                                 ("AR5", "20-year", "AR5 results are shown for 120-year horizons"),  # 120 is not 20
+                                 ("AR5", "100-year", "AR5 uses a 1100-year horizon")):
+        kept, dropped = check(answer(gwp=[gwp_item(set_, horizon, quote, "L1")]), [doc([(1, quote)])])
+        assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}, quote
+    for horizon, quote in (("20-year", "AR5 with a 20 year horizon"), ("20-year", "AR5, 20-yr GWP"), ("500-year", "AR5 over 500 years"),
+                           ("100-year", "AR5 hundred-year values")):
+        kept, dropped = check(answer(gwp=[gwp_item("AR5", horizon, quote, "L1")]), [doc([(1, quote)])])
+        assert len(kept) == 1 and not dropped, quote

@@ -483,3 +483,22 @@ def test_a_reviewer_adds_edits_and_removes_gwp_rows_and_the_500_year_horizon_sav
     assert act(eid, row_id, "edit", {"value": {"set": "AR4", "horizon": "5-year"}}).status_code == 422
     removed = call("DELETE", f"{BASE}/{eid}/methodology-review/{row_id}", "a_member")
     assert removed.status_code == 200 and gwp_rows(eid) == []
+
+
+def test_a_second_run_in_another_order_never_shows_one_set_twice(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
+    ar5 = {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}
+    ar6 = {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")}
+    claude.output = {**GOOD, "gwp": [ar5, ar6]}
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
+    claude.output = {**GOOD, "gwp": [ar6, ar5]}  # the same sets, the other way round
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}  # keeps its set
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
+    claude.output = {**GOOD, "gwp": [ar6]}  # AR6 is already on a row, so it does not go into the fixed field too
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["suggestion"]["value"]["set"] == "AR5"
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
