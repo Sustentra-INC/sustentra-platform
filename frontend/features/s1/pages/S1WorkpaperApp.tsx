@@ -512,6 +512,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   function selectEngagement(id: string) {
     const row = engagements?.find((item) => item.id === id);
     if (!row) return;
+    stillOpen.markOpen(row.id); // answers for the engagement just left are stale from this moment
     flushEngagementSave();
     setEngagement(engagementFromBackend(row));
     setEvidenceEvents([]);
@@ -532,6 +533,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     try {
       const row = await createEngagement(name);
       setEngagements((current) => [row, ...(current ?? [])]);
+      stillOpen.markOpen(row.id);
       flushEngagementSave();
       setEngagement(engagementFromBackend(row));
       setEvidenceEvents([]);
