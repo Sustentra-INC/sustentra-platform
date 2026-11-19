@@ -13,6 +13,8 @@ is not clean is not made:
   restatement, prior-period, correction, history or summary heading is not a statement's period.
 - Periods that overlap (two days or more), or start within a few days of each other, are the same
   statement: a summary page and its detail page state their periods a day apart.
+- Statements run forward in time: a new period that starts before the previous statement's means the file
+  is not read as a bundle (a newest-first bundle is read whole, with the note).
 - A new part counts as a statement only when it repeats the first statement's title row or its account
   number; otherwise nothing is split.
 - A new statement starts at the top of a page. The one exception is a page that also holds the earlier
@@ -140,16 +142,19 @@ def _statement_headings(rows: Sequence[Row], infos: list[tuple[int, tuple[str, t
                                                                tuple[str, bool] | None]]) -> set[str]:
     """Headings that only look like a restatement: "Bill Summary" or "Budget Billing Plan Customer" printed on
     every statement. A heading without a strongly restating word, on two or more pages that each state a
-    different period and an account number (or a title of their own), is a statement's own heading."""
+    different period and an account number (or a title of their own), is a statement's own heading, but only
+    when the page of the file's first period line carries it too: appendix pages headed "Budget Billing
+    Summary" after a bill that does not are restatements."""
 
     pages: dict[str, dict[int, set[tuple[str, str]]]] = {}
     for at, (_, period), restating in infos:
         if restating is not None and not restating[1]:
             pages.setdefault(restating[0], {}).setdefault(rows[at].page or 0, set()).add(period)
+    first_heading = infos[0][2][0] if infos and infos[0][2] is not None else None
     out: set[str] = set()
     for heading, by_page in pages.items():
         periods = {p for found in by_page.values() for p in found}
-        if len(by_page) < 2 or len(periods) < 2:
+        if heading != first_heading or len(by_page) < 2 or len(periods) < 2:
             continue
         if all(_accounts([r for r in rows if (r.page or 0) == page])
                or any((t := _title_text(r)) is not None and t != heading
@@ -171,6 +176,16 @@ def _same_statement(first: tuple[str, str], other: tuple[str, str]) -> bool:
         return True  # an unreadable date is never grounds for a cut
     overlap = (min(end_a, end_b) - max(start_a, start_b)).days + 1
     return overlap >= SAME_STATEMENT_OVERLAP_DAYS or abs((start_a - start_b).days) <= SAME_STATEMENT_START_DAYS
+
+
+def _runs_backward(previous: tuple[str, str], period: tuple[str, str]) -> bool:
+    """True when a statement's period starts before the previous statement's: statements are in time order,
+    while a restated or earlier period points back (a newest-first bundle is read whole and flagged)."""
+
+    try:
+        return _days(period[0]) < _days(previous[0])
+    except ValueError:
+        return False
 
 
 def _title_text(row: Row) -> str | None:
@@ -233,6 +248,8 @@ def split_statements(rows: Sequence[Row]) -> Split:
     merged = False  # a period that differs from its statement's but was taken for the same statement
     for at, period in periods[1:]:
         if not _same_statement(firsts[-1][1], period):
+            if _runs_backward(firsts[-1][1], period):
+                return Split(None, SPLIT_NOTE)  # a bundle runs forward in time; this one does not
             firsts.append((at, period))
         elif period != firsts[-1][1]:
             merged = True

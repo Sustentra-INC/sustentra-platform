@@ -399,6 +399,55 @@ def test_every_period_line_taken_for_a_restatement_is_a_note_not_silence(targets
     assert SPLIT_NOTE in outcome.notes
 
 
+@pytest.mark.parametrize("heading", ["Budget Billing Summary", "Monthly Usage Summary", "Usage Summary"])
+def test_appendix_pages_headed_summary_after_a_bill_without_that_heading_are_restatements(
+        targets: list[dict], heading: str) -> None:
+    """January's bill, then two appendix pages with the same "summary" heading, each giving an earlier month's
+    period and total with the same account: the heading is not on the bill's own page, so it is not a
+    statement heading (the old reading gave 135.63 + 125 + 143.23 with no note)."""
+
+    blocks = _titled(1, "01/16/2025", "02/15/2025", 135630, "Your Bill")
+    for n, (start, end, kwh) in enumerate([("11/16/2024", "12/15/2024", 125000), ("12/16/2024", "01/15/2025", 143230)]):
+        blocks += _side_page(2 + n, [(heading, 0.07)], start, end, kwh)
+    outcome = _extract(blocks, targets)
+    assert [_mwh(r) for r in _records(outcome)] == pytest.approx([135.63])
+    assert SPLIT_NOTE in outcome.notes
+
+
+def test_a_bundle_printed_newest_first_is_read_whole_with_the_note(targets: list[dict]) -> None:
+    """Statements run forward in time. A bundle that runs backward is read as one record, flagged, and left to
+    the reviewer to split by hand: safe, where guessing would pair quantities with the wrong months."""
+
+    blocks: list[dict[str, Any]] = []
+    for n, (start, end, kwh) in enumerate([("03/01/2025", "03/31/2025", 3000), ("02/01/2025", "02/28/2025", 2000),
+                                           ("01/01/2025", "01/31/2025", 1000)]):
+        blocks += _titled(n + 1, start, end, kwh, "Your Bill")
+    split = _split(blocks)
+    assert split.parts is None and split.note == SPLIT_NOTE
+    outcome = _extract(blocks, targets)
+    assert SPLIT_NOTE in outcome.notes
+
+
+def test_periods_out_of_order_are_read_whole_with_the_note() -> None:
+    blocks: list[dict[str, Any]] = []
+    for n, (start, end, kwh) in enumerate([("01/01/2025", "01/31/2025", 1000), ("03/01/2025", "03/31/2025", 3000),
+                                           ("02/01/2025", "02/28/2025", 2000)]):
+        blocks += _titled(n + 1, start, end, kwh, "Your Bill")
+    assert _split(blocks).parts is None and _split(blocks).note == SPLIT_NOTE
+
+
+def test_a_forward_bundle_with_a_summary_heading_on_every_statement_still_splits(targets: list[dict]) -> None:
+    """The heading is on the first statement's page too, and the periods run forward: its own heading."""
+
+    months = [("01/01/2025", "01/31/2025", 1000), ("02/01/2025", "02/28/2025", 2000), ("03/01/2025", "03/31/2025", 3000)]
+    blocks: list[dict[str, Any]] = []
+    for n, (start, end, kwh) in enumerate(months):
+        blocks += _titled(n + 1, start, end, kwh, "Monthly Usage Summary")
+    records = _read(blocks, targets)
+    assert [(r["service_period_start"]["normalized_value"], _mwh(r)) for r in records] == [
+        ("2025-01-01", 1.0), ("2025-02-01", 2.0), ("2025-03-01", 3.0)]
+
+
 # ---- time-of-use lines ----------------------------------------------------------------------------------------
 def _tou_detail(first_cell_is_meter: bool) -> list[dict[str, Any]]:
     rows: list[Line]
