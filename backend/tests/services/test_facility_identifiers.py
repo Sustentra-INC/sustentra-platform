@@ -240,31 +240,36 @@ def test_facility_match_names_the_step_that_placed_the_record() -> None:
 
 
 # --- one source for placement: the Evidence tree, the calculation lines and the recalculation agree -----------
-def _read_store(case: str) -> FakeStore:
-    """A bill whose name and address match nothing, with its account number read three ways:
-    "rule": read by the rules and not yet reviewed; "ai_only": suggested by Claude, nobody accepted it;
-    "accepted": suggested by Claude and accepted by a reviewer."""
+def _read_store(case: str, source: str = "account") -> FakeStore:
+    """A bill whose placement comes from one field ``source`` ("name", "address" or "account"), read three
+    ways: "rule": read by the rules and not yet reviewed; "ai_only": suggested by Claude, nobody accepted it;
+    "accepted": suggested by Claude and accepted by a reviewer. The other fields match nothing."""
 
     store = FakeStore()
-    record = _gas(1000, plant=UNKNOWN_PLANT, account_number="4417 2290 31")
+    record = {"name": _gas(1000, plant="Kansas City Plant"),
+              "address": _gas(1000, plant=UNKNOWN_PLANT, service_address="100 Main Street, Kansas City, MO 64105"),
+              "account": _gas(1000, plant=UNKNOWN_PLANT, account_number="4417 2290 31")}[source]
     store.add_document("D1", "CT-S1-FUELQTY", [record], decision="accepted" if case == "accepted" else None)
+    field_name = {"name": "facility_name", "address": "service_address", "account": "account_number"}[source]
     if case in ("ai_only", "accepted"):
         for item in store.results["D1"][0]["items"]:
-            if item["field_name"] == "account_number":
+            if item["field_name"] == field_name:
                 item["validation_flags"] = ["ai_suggested"]
     return store
 
 
+@pytest.mark.parametrize("source", ["name", "address", "account"])
 @pytest.mark.parametrize("case, placed", [("rule", True), ("ai_only", False), ("accepted", True)])
-def test_the_tree_the_lines_and_the_recalculation_place_a_bill_the_same_way(case: str, placed: bool) -> None:
+def test_the_tree_the_lines_and_the_recalculation_place_a_bill_the_same_way(case: str, placed: bool,
+                                                                            source: str) -> None:
     facilities = [_with(KC, accountNumbers=[ACCT]), STL]
-    store = _read_store(case)
+    store = _read_store(case, source)
     assert _lines_with_docs(_tree(store, facilities=facilities)) == ({GAS_KC: ["D1"]} if placed else {})
     engagement = {"id": "ENG-1", "settings": {"facilities": facilities}}
     loaded = _tree_service(store).load(engagement, _own)
     found = cl.facility_match(loaded.facilities, {}, "D1", loaded.docs[0].records[0])
     assert (found[0]["facilityId"] if found else None) == ("fac-kc01" if placed else None)
-    result = _recalc(_read_store(case), facilities)
+    result = _recalc(_read_store(case, source), facilities)
     if case == "accepted":  # the recalculation counts reviewed values only
         assert [line["key"] for line in result["calculation_lines"]] == [GAS_KC]
     assert "identifier_on_two_facilities" not in [u["reason"] for u in result["calculation_unplaced"]]

@@ -89,22 +89,28 @@ describe("the Evidence screen places a bill the way the backend does", () => {
       reviewToken: encodeReviewCandidateToken({ candidate_id: `c-${name}`, document_id: "D1", field_name: name, normalized_value: value } as never),
       ...over,
     }) as ExtractedField;
-  const placedOn = (account: ExtractedField) => {
-    const facts = documentFacts([field("facility_name", "Müller Käserei – Zürich 工場 (other)", {}), account]);
+  const OTHER = "Müller Käserei – Zürich 工場 (other)"; // a name Setup does not list
+  const placedOn = (...fields: ExtractedField[]) => {
+    const facts = documentFacts(fields);
     const [row] = applyDocumentView([{ documentId: "D1", filename: "D1.pdf", facilityState: "unresolved", facilityId: null, facilityName: null, disposition: "active", relationships: [] } as unknown as EvidenceItem], facts, {}, facilities);
     return row.facilityId ?? null;
   };
+  const AI = { valueProperties: ["ai_suggested"] } as Partial<ExtractedField>;
+  const ACCEPTED = { valueProperties: ["ai_suggested"], reviewStatus: "accepted" } as Partial<ExtractedField>;
 
-  // The same three cases as the backend test test_the_tree_the_lines_and_the_recalculation_place_a_bill_the_same_way.
-  it("places a rule-read account number", () => {
-    expect(placedOn(field("account_number", "4417 2290 31", {}))).toBe("f-kc");
-  });
-  it("does not place a number only Claude read", () => {
-    expect(placedOn(field("account_number", "4417 2290 31", { valueProperties: ["ai_suggested"] }))).toBeNull();
-  });
-  it("places a number Claude read and a reviewer accepted", () => {
-    expect(placedOn(field("account_number", "4417 2290 31", { valueProperties: ["ai_suggested"], reviewStatus: "accepted" }))).toBe("f-kc");
-  });
+  // The same three cases, for the name, the address and the account number, as the backend test
+  // test_the_tree_the_lines_and_the_recalculation_place_a_bill_the_same_way: read by the rules (placed),
+  // read only by Claude (not placed), read by Claude and accepted (placed).
+  const bySource: Record<string, (over: Partial<ExtractedField>) => ExtractedField[]> = {
+    name: (over) => [field("facility_name", KC.name, over)],
+    address: (over) => [field("facility_name", OTHER, {}), field("service_address", "100 Main Street, Kansas City", over)],
+    account: (over) => [field("facility_name", OTHER, {}), field("account_number", "4417 2290 31", over)],
+  };
+  for (const [source, make] of Object.entries(bySource)) {
+    it(`${source}: places a rule-read value`, () => expect(placedOn(...make({}))).toBe("f-kc"));
+    it(`${source}: does not place a value only Claude read`, () => expect(placedOn(...make(AI))).toBeNull());
+    it(`${source}: places a value Claude read and a reviewer accepted`, () => expect(placedOn(...make(ACCEPTED))).toBe("f-kc"));
+  }
 });
 
 function Harness({ initial }: { initial: FacilityOption[] }) {

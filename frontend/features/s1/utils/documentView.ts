@@ -46,15 +46,18 @@ export function documentFacts(fields: ExtractedField[]): Map<string, DocumentFac
       addresses: [],
     };
     switch (fieldName(field)) {
+      // Placement reads the same source as the backend's best(): a reviewed value or one the rules read,
+      // never one only Claude read. That holds for the name, the address and the account and meter numbers.
       case "facility_name":
+        if (!countsForPlacement(field)) break;
         entry.facilityName ??= value;
         if (!entry.facilityNames!.includes(value)) entry.facilityNames!.push(value);
         break;
       case "service_address":
+        if (!countsForPlacement(field)) break;
         entry.address ??= value;
         if (!entry.addresses!.includes(value)) entry.addresses!.push(value);
         break;
-      // Same source as the backend's best(): a reviewed value or one the rules read, never one only Claude read.
       case "account_number":
         if (countsForPlacement(field)) entry.accountNumber ??= value;
         break;
