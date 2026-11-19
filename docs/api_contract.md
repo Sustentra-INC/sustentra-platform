@@ -121,9 +121,17 @@ engagement's. Answers:
   and the `POST` answers): for a halt `error_code` it is the plain sentence, not the pipeline's text. The 422
   from the older `POST /v1/pipeline/process` says the plain sentence too; `password_protected` and
   `document_too_long` keep their own sentence there (it says what to ask the client for, or the page counts).
-- Still returned raw, as the pipeline run record: `pipeline_run.halt_reason.message` and `warnings` on the
-  `/v1/pipeline/...` run endpoints and `halt_reason` in `GET .../extraction-result/latest`. They can name an
-  internal type id or a score; clients use `halt_reason.code` there and must not show the message.
+- Every other answer that carries a pipeline run is plain too: `GET /v1/pipeline/runs/{id}`,
+  `GET /v1/pipeline/evidence/{evidence_id}/latest-run`, `latest_pipeline_run` in
+  `GET /v1/pipeline/evidence/{evidence_id}/status`, and `pipeline_run` (and `extraction_result.halt_reason`) in the
+  answers of `POST /v1/documents/{id}/pipeline/process` and the local dev tool. `halt_reason` is
+  `{code, message}` with the plain sentence for the code (an unmapped code gets "Reading stopped. Try uploading the
+  file again."). Each entry of `warnings` and `errors` keeps its code as a prefix (`pages_unread:`,
+  `ai_type_disagrees:`, `type_corrected:`, `no_type:`, `pipeline_failed:` ...) and says a plain sentence: no type
+  id, classifier score, parser output, exception text or Claude cost. The stored run record keeps the pipeline's own
+  text. `GET .../extraction-result/latest` never carried the halt (its answer is the candidates and `status`).
+  Still in the debug payloads of `POST .../pipeline/process` (not sentences): `classification_result` (scores, matched
+  type ids) and `parser_output`; clients must not show them.
 - `totals`: `{queued, reading, done, partial, failed, not_started}`.
 - `complete`: `true` when nothing is queued or reading. Clients poll (every 3 s) until it is `true`.
 
