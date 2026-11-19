@@ -467,12 +467,14 @@ def _resolve_key(key: str, known: dict[str, cl.CalculationLine], facilities: lis
 
 def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRecord],
           inputs: RecalculationInputs, settings: dict[str, Any], decisions: dict[str, dict[str, Any]],
-          tolerance: float, open_sources: dict[str, bool], facilities: list[dict[str, Any]]) -> Built:
+          tolerance: float, open_sources: dict[str, bool], facilities: list[dict[str, Any]],
+          company: str | None = None) -> Built:
     """The calculation lines of one recalculation, from what its categories counted (``ledger``)."""
 
     placements = {
         id(r): cl.place_record(r, ref=ref, facilities=facilities, decisions=decisions,
-                               vehicle_groups=inputs.vehicle_groups, fuel_choices=inputs.fuel_choices)
+                               vehicle_groups=inputs.vehicle_groups, fuel_choices=inputs.fuel_choices,
+                               company=company)
         for r in records}
     system = cl.default_lines(placements.values(), facilities, inputs.vehicle_groups)
     known = {line.key: line for line in cl.merge_lines(system, cl.user_lines(settings))}

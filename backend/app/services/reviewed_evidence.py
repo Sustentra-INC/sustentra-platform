@@ -9,6 +9,7 @@ EPA fuel name for an extracted fuel code.
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -66,22 +67,131 @@ def to_date(value: Any) -> date | None:
 
 
 def _norm_text(value: Any) -> str:
-    return " ".join(re.sub(r"[^a-z0-9 ]+", " ", str(value or "").lower()).split())
+    """Case, punctuation (dashes included), accents' form and whitespace removed, so only the words and numbers
+    are compared. Letters of any script are kept."""
+
+    text = unicodedata.normalize("NFKC", str(value or "")).casefold()
+    return " ".join(re.sub(r"[\W_]+", " ", text).split())
 
 
-def match_facility(name: Any, address: Any, facilities: list[dict[str, Any]]) -> dict[str, Any] | None:
-    """The Setup facility a bill belongs to: same name, or the same street address
-    (one address containing the other, so "15 State Street" matches "15 State Street,
-    Albany, NY 12207"). None when nothing matches clearly."""
+# USPS street-suffix, directional and unit abbreviations (Publication 28), written out -> abbreviated. Both sides
+# of a comparison are put in the abbreviated form, so "Road" and "Rd", "East" and "E" are the same word.
+_STREET_ABBREVIATIONS = {
+    "alley": "aly", "avenue": "ave", "av": "ave", "boulevard": "blvd", "circle": "cir", "court": "ct",
+    "drive": "dr", "expressway": "expy", "freeway": "fwy", "highway": "hwy", "lane": "ln", "parkway": "pkwy",
+    "place": "pl", "plaza": "plz", "road": "rd", "square": "sq", "street": "st", "terrace": "ter", "trail": "trl",
+    "turnpike": "tpke", "way": "way", "mall": "mall", "loop": "loop", "pike": "pike", "crossing": "xing",
+    "center": "ctr", "centre": "ctr", "route": "rte", "suite": "ste", "apartment": "apt", "floor": "fl",
+    "room": "rm", "north": "n", "south": "s", "east": "e", "west": "w", "northeast": "ne", "northwest": "nw",
+    "southeast": "se", "southwest": "sw",
+}
+_STREET_SUFFIXES = frozenset(_STREET_ABBREVIATIONS.values()) - {"ste", "apt", "fl", "rm", "n", "s", "e", "w", "ne",
+                                                                  "nw", "se", "sw"}
+_DIRECTIONS = frozenset({"n", "s", "e", "w", "ne", "nw", "se", "sw"})
+_UNIT_WORDS = frozenset({"ste", "apt", "unit", "fl", "rm"})
+_CORPORATE_SUFFIXES = frozenset({"inc", "incorporated", "llc", "ltd", "limited", "corp", "corporation", "co",
+                                 "company", "plc", "gmbh", "ag", "sa"})
+_NAME_SEPARATOR = re.compile(r"\s[-\u2010-\u2015\u2212]\s")  # " - ", " \u2013 ", " \u2014 ": a dash with spaces round it
 
-    bill_name, bill_address = _norm_text(name), _norm_text(address)
+
+def _company_key(value: Any) -> str:
+    words = _norm_text(value).split()
+    while words and words[-1] in _CORPORATE_SUFFIXES:
+        words.pop()
+    return " ".join(words)
+
+
+def _facility_names(name: Any, company: Any) -> set[str]:
+    """What a bill's facility name may be called: as written, and without a leading "Company - " when that
+    company is the engagement's own (the site name is what follows the dash)."""
+
+    names = {_norm_text(name)} - {""}
+    company_key = _company_key(company)
+    if company_key and name:
+        parts = _NAME_SEPARATOR.split(str(name), maxsplit=1)
+        if len(parts) == 2 and _company_key(parts[0]) == company_key and _norm_text(parts[1]):
+            names.add(_norm_text(parts[1]))
+    return names
+
+
+def _street_tokens(address: Any, drop_unit: bool) -> list[str] | None:
+    """The address as words from the house number on, abbreviated the USPS way, with the unit left out when
+    ``drop_unit``. None when there is no house number followed by a street name."""
+
+    words = _norm_text(str(address or "").replace("#", " ste ")).split()
+    words = [_STREET_ABBREVIATIONS.get(w, w) for w in words]
+    start = next((i for i, w in enumerate(words)
+                  if w[0].isdigit() and i + 1 < len(words) and not words[i + 1][0].isdigit()
+                  and any(x in _STREET_SUFFIXES for x in words[i + 1:i + 7])), None)
+    if start is None:
+        return None
+    words = words[start:]
+    if drop_unit:
+        kept: list[str] = []
+        skip = 0
+        for index, word in enumerate(words):
+            if skip:
+                skip -= 1
+            elif word in _UNIT_WORDS and index + 1 < len(words):
+                skip = 1  # the unit's number or letter
+            else:
+                kept.append(word)
+        words = kept
+    return words
+
+
+def _split_street(words: list[str]) -> tuple[list[str], list[str]] | None:
+    """(street, the rest) of an address's words: the street runs from the house number to its suffix (Rd, Blvd,
+    Way...) and an optional direction after it; the rest is unit, city, state and postal code. None when the
+    street has no suffix, so it cannot be told where it ends."""
+
+    for index, word in enumerate(words):
+        if index >= 2 and word in _STREET_SUFFIXES:
+            end = index + 1
+            if end < len(words) and words[end] in _DIRECTIONS:
+                end += 1
+            return words[:end], words[end:]
+    return None
+
+
+def _same_address(bill: Any, setup: Any) -> bool:
+    """The same street address, word for word, once spelled the same way: same house number, street, and (when
+    both give them) unit, city, state and postal code. One side may stop after the street (or its unit);
+    it may not stop inside it. The house number is never optional, so 2210 is not 2200."""
+
+    setup_words = _norm_text(str(setup or "").replace("#", " ste ")).split()
+    setup_has_unit = any(_STREET_ABBREVIATIONS.get(w, w) in _UNIT_WORDS for w in setup_words)
+    bill_has_unit = any(_STREET_ABBREVIATIONS.get(w, w) in _UNIT_WORDS
+                        for w in _norm_text(str(bill or "").replace("#", " ste ")).split())
+    if setup_has_unit and not bill_has_unit:
+        return False  # Setup names a suite and the bill does not: it may be another suite
+    one = _street_tokens(bill, drop_unit=not setup_has_unit)
+    two = _street_tokens(setup, drop_unit=False)
+    if not one or not two:
+        return False
+    first, second = _split_street(one), _split_street(two)
+    if first is None or second is None or first[0] != second[0]:
+        return False  # not the same street, house number included
+    short, long = sorted((first[1], second[1]), key=len)
+    return long[:len(short)] == short  # one side may stop after the street; what both give must agree
+
+
+def match_facility(name: Any, address: Any, facilities: list[dict[str, Any]],
+                   company: Any = None) -> dict[str, Any] | None:
+    """The Setup facility a bill belongs to, by the same name or the same street address, never by a near miss.
+
+    Names are compared after case, punctuation and whitespace are set aside, and a leading "Company - " is
+    dropped when the company is the engagement's own (``company``). Addresses are compared word for word after
+    the USPS spellings (Road/Rd, Boulevard/Blvd, East/E, Suite/Ste) are made the same; a unit on the bill that
+    Setup does not have is ignored, and the house number must be the same. None when nothing matches clearly."""
+
+    bill_names = _facility_names(name, company)
     for facility in facilities:
-        if bill_name and _norm_text(facility.get("name")) == bill_name:
+        if bill_names and _norm_text(facility.get("name")) in bill_names:
             return facility
-    if len(bill_address) >= 8:
+    if address:
         for facility in facilities:
-            setup_address = _norm_text(facility.get("address"))
-            if len(setup_address) >= 8 and (setup_address in bill_address or bill_address in setup_address):
+            if facility.get("address") and _same_address(address, facility.get("address")):
                 return facility
     return None
 
@@ -111,7 +221,8 @@ def resolve_fuel_name(ref: EmissionFactorReference, kind: str, code: str, quanti
 
 
 def resolve_setup_facility(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]],
-                           document_id: str, facility_name: Any, address: Any) -> dict[str, Any] | None:
+                           document_id: str, facility_name: Any, address: Any,
+                           company: Any = None) -> dict[str, Any] | None:
     """The reviewer's facility for a document, else a clear name/address match."""
 
     chosen = (decisions.get(document_id) or {}).get("facilityId")
@@ -119,7 +230,7 @@ def resolve_setup_facility(facilities: list[dict[str, Any]], decisions: dict[str
         for facility in facilities:
             if facility.get("facilityId") == chosen:
                 return facility
-    return match_facility(facility_name, address, facilities)
+    return match_facility(facility_name, address, facilities, company)
 
 
 @dataclass

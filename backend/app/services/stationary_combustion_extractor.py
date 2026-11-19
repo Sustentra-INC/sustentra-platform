@@ -487,6 +487,8 @@ class StationaryCombustionExtractor:
         "site": ("site", "site name", "facility", "facility name", "plant", "building", "premises"),
         # A portal export repeats the account on every row.
         "account": ("account", "account number", "account no", "account #", "acct", "acct no", "customer account"),
+        # A bill for several meters gives each its own service address: a record keeps the address of its row.
+        "address": ("service address", "service location", "site address", "premises address"),
     }
     ALL_LABELS: tuple[str, ...] = ()  # filled after the module-level label groups
 
@@ -597,6 +599,8 @@ class StationaryCombustionExtractor:
                         located = record.extra["site"]
                     if field_id == "account_number" and located is None and record is not None:
                         located = record.extra.get("account")
+                    if field_id == "service_address" and record is not None and record.extra.get("address") is not None:
+                        located = record.extra["address"]
                     record_candidates.append(self._candidate_for_text(
                         target, located, document_id, evidence_id, record_key,
                         record_index, parser_output, field_id))
@@ -977,7 +981,7 @@ class StationaryCombustionExtractor:
 
         for at, row in enumerate(rows):
             for head in row.cells:
-                if not head.box or _norm(head.text) not in SERVICE_BLOCK_HEADINGS:
+                if not head.box or _norm(head.text).rstrip(" :") not in SERVICE_BLOCK_HEADINGS:
                     continue
                 lines: list[tuple[Cell, Row]] = []
                 for below in rows[at + 1: at + 1 + _BLOCK_LINES]:
@@ -986,7 +990,9 @@ class StationaryCombustionExtractor:
                     if cell is None:
                         break
                     lines.append((cell, below))
-                    if _POSTAL_LINE_RE.search(cell.text) and any(_STREET_LINE_RE.match(c.text) for c, _ in lines):
+                    # the postal line ends the block, once a street line has come before it: a street line that
+                    # starts with a four-digit house number ("4410 E JENSEN AVE") also looks like "8001 Zürich"
+                    if _POSTAL_LINE_RE.search(cell.text) and any(_STREET_LINE_RE.match(c.text) for c, _ in lines[:-1]):
                         break
                 street = next((i for i, (c, _) in enumerate(lines) if _STREET_LINE_RE.match(c.text)), None)
                 if street is None:

@@ -398,6 +398,7 @@ class EngagementRecalculationService:
         self._reference = reference
         # Set per recalculation: the engagement's Setup facilities and document decisions.
         self._facilities: list[dict[str, Any]] = []
+        self._company: str | None = None
         self._decisions: dict[str, dict[str, Any]] = {}
         # Set per recalculation, for the calculation lines.
         self._ledger = Ledger()
@@ -478,6 +479,7 @@ class EngagementRecalculationService:
         decisions = decisions or {}
         records, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
         self._facilities = setup_facilities(engagement.get("settings"))
+        self._company = engagement.get("client_name")
         self._decisions = decisions
         self._ledger = Ledger()
 
@@ -581,7 +583,7 @@ class EngagementRecalculationService:
         try:
             built = recalculation_lines.build(
                 self.reference, self._ledger, records, inputs, engagement.get("settings") or {}, decisions,
-                tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities)
+                tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company)
         except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
             log.warning("calculation lines failed: %s", type(exc).__name__)
             built = recalculation_lines.Built(needs_input=[{
@@ -1250,7 +1252,8 @@ class EngagementRecalculationService:
         """The reviewer's facility for the bill's document, else a clear name/address match."""
 
         return resolve_setup_facility(self._facilities, self._decisions, record.document_id,
-                                      record.best("facility_name"), record.best("service_address"))
+                                      record.best("facility_name"), record.best("service_address"),
+                                      self._company)
 
     # =================================================================================
     # Totals and comparison
