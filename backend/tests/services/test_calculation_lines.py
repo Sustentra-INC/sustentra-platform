@@ -684,7 +684,7 @@ def test_a_field_without_a_candidate_id_has_none_not_the_text_none() -> None:
     from backend.app.services.reviewed_evidence import group_reviewed_records
 
     items = [{"field_name": "fuel_type", "normalized_value": "x", "unit": None, "record_index": None}]
-    record = group_reviewed_records({"document_id": "D"}, "CT-S1-FUELQTY", items, {})[0]
+    record = group_reviewed_records({"document_id": "D"}, "CT-S1-FUELQTY", items, [])[0]
     assert record.fields["fuel_type"].candidate_id is None
 
 
@@ -751,6 +751,10 @@ def test_tree_lists_vehicle_groups_with_the_anchor_ids_lines_use() -> None:
 
 
 # --- counts at every level and the facility filter ----------------------------------------------
+# G2's values are rejected, and a rejected facility name does not place a bill: the reviewer chose its facility.
+COUNTS_DECISIONS = {"G2": {"facilityId": "fac-stl2"}}
+
+
 def _counts_store() -> FakeStore:
     store = FakeStore()
     store.add_document("BILL", "CT-S2-ELEC", [_elec(10, "Kansas City Plant"), _elec(20, "St Louis Plant")])
@@ -763,7 +767,7 @@ def _counts_store() -> FakeStore:
 
 
 def test_counts_at_every_level_never_double_count_a_document_in_two_places() -> None:
-    tree = _tree(_counts_store())
+    tree = _tree(_counts_store(), COUNTS_DECISIONS)
     blocks = tree["blocks"]
     assert blocks["summary_counts"] == {"documents": 1, "values": 1, "accepted": 0, "to_review": 1, "issues": 0,
                                         "pct_accepted": 0.0}
@@ -780,7 +784,7 @@ def test_counts_at_every_level_never_double_count_a_document_in_two_places() -> 
 
 def test_the_facility_filter_shows_one_facility_and_recomputes_counts() -> None:
     service = _tree_service(_counts_store())
-    tree = service.tree(_engagement(), _own, None, "fac-stl2")
+    tree = service.tree(_engagement(), _own, COUNTS_DECISIONS, "fac-stl2")
     assert {ln["key"] for ln in tree["lines"]} == {GAS_STL, ELEC_STL}
     assert _lines_with_docs(tree) == {GAS_STL: ["G2"], ELEC_STL: ["BILL"]}
     scopes = {s["scope"]: s for s in tree["blocks"]["supporting"]["scopes"]}
@@ -791,9 +795,9 @@ def test_the_facility_filter_shows_one_facility_and_recomputes_counts() -> None:
     assert tree["blocks"]["summary"] == [] and tree["blocks"]["unassigned"] == []
     assert tree["blocks"]["summary_counts"]["documents"] == 0
     assert [f["facility_id"] for f in tree["facilities"]] == ["fac-kc01", "fac-stl2"]  # not filtered
-    nothing = service.tree(_engagement(), _own, None, "fac-nowhere")
+    nothing = service.tree(_engagement(), _own, COUNTS_DECISIONS, "fac-nowhere")
     assert nothing["lines"] == [] and _lines_with_docs(nothing) == {}
-    unfiltered = service.tree(_engagement(), _own, None, None)
+    unfiltered = service.tree(_engagement(), _own, COUNTS_DECISIONS, None)
     assert len(unfiltered["lines"]) == 4 and len(unfiltered["blocks"]["summary"]) == 1
 
 

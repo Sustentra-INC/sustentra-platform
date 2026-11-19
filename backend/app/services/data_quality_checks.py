@@ -9,11 +9,15 @@ the documents and says what to look at. The numbers are unchanged by it.
   no bill covers (``missing_month``), or days not covered (``incomplete_year``).
 - Q-003 Duplicate evidence: records in different documents with the same facility,
   source, dates and amounts (``duplicate_counting_risk``); a whole document repeated
-  under another name (``same_document_reuploaded_with_different_file_name``).
+  under another name (``same_document_reuploaded_with_different_file_name``); one statement
+  printed twice in a file (``duplicate_statement_in_same_file``).
 - Q-004 Overlapping periods: two bills for the same facility and source covering the same
   days (``overlap_same_source_different_document_id`` / ``overlapping_period``).
 - Q-005 Cross-year allocation: a bill running across the reporting period's start or end,
   counted by its share of days (``cross_year_without_allocation_support``).
+- Q-003 Revised bill: a bill that says it replaces an earlier one (its reference is on the record),
+  while that earlier bill is also in the evidence (``revised_bill_replaces_earlier``). The finding
+  suggests marking the earlier bill as superseded; the reviewer decides, nothing is marked here.
 - N-003 Period normalization: a bill with no service period, counted in full
   (``date_missing``).
 
@@ -23,6 +27,7 @@ superseded decisions) and passes them in.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -56,6 +61,11 @@ class EvidenceRecord:
     amounts: tuple[float | None, ...]  # quantity (and for refrigerants: added, recovered, capacity)
     unit: str | None
     periodic: bool  # a bill for a service period, rather than a dated purchase or service
+    revises: str | None = None  # the earlier bill this one says it replaces (its number or date), if it says so
+    revises_key: str | None = None  # that reference as a key: a date as ISO, a number upper-cased; None if not given
+    bill_ids: tuple[str, ...] = ()  # this bill's own statement date (ISO) and invoice or statement number
+    meter: str | None = None  # the meter or line id the record was read under, when it has one
+    page: int | None = None  # the page the quantity was read from, when known
 
 
 def _span(record: EvidenceRecord) -> tuple[date, date] | None:
@@ -153,6 +163,18 @@ def _completeness(groups: dict[tuple[str, str, str | None], list[EvidenceRecord]
 # =========================================================================================
 # Q-003 duplicates and Q-004 overlaps
 # =========================================================================================
+def _repeat_in_file(first: EvidenceRecord, other: EvidenceRecord) -> bool:
+    """Two records of one file that read as the same statement printed twice: the same account, and the same
+    meter, or (when a meter is missing) on different pages. Two meters of one bill share its account, period and
+    maybe a reading; that is not a repeat."""
+
+    if not first.account or first.account != other.account:
+        return False
+    if first.meter and other.meter:
+        return first.meter == other.meter
+    return first.page is not None and other.page is not None and first.page != other.page
+
+
 def _duplicate_key(record: EvidenceRecord) -> tuple[Any, ...] | None:
     if record.start is None and record.end is None:
         return None
@@ -171,6 +193,20 @@ def _duplicates(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], se
         key = _duplicate_key(record)
         if key is not None:
             by_key[key].append(record)
+    out: list[dict[str, Any]] = []
+    for group in by_key.values():  # one statement printed twice in one file (a bundle repeating a month)
+        in_file: dict[str, list[EvidenceRecord]] = defaultdict(list)
+        for found in group:
+            in_file[found.document_id].append(found)
+        for same in in_file.values():
+            for n, one in enumerate(same):
+                other = next((r for r in same[n + 1:] if _repeat_in_file(one, r)), None)
+                if other is not None:
+                    out.append(_finding(
+                        "Q-003", "duplicate_statement_in_same_file", "warning", [one, other],
+                        f"{one.label} and {other.label} are the same statement printed twice in one file (same "
+                        f"{_source_name(one)} dates, amounts and account): it may be counted twice. "
+                        "Check the file.", matching_records=2))
     # Pairs of documents sharing records, with the records they share.
     shared: dict[tuple[str, str], list[tuple[EvidenceRecord, EvidenceRecord]]] = defaultdict(list)
     for group in by_key.values():
@@ -183,7 +219,6 @@ def _duplicates(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], se
     per_document: dict[str, int] = defaultdict(int)
     for record in records:
         per_document[record.document_id] += 1
-    out: list[dict[str, Any]] = []
     pairs: set[frozenset[str]] = set()
     for (first, second), matches in shared.items():
         a, b = matches[0]
@@ -209,6 +244,67 @@ def _duplicates(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], se
     return out, pairs
 
 
+def _revisions(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], set[frozenset[str]]]:
+    """A revised bill and the earlier bill it replaces: same source, same account (or facility) and the same
+    days, in another document. A bill that itself says it replaces another is never "the earlier one". When the
+    revised bill prints a date or number, only the bill with that statement date or invoice number counts; if
+    several bills could be the one, none is named and the reviewer is asked which. A suggestion, never a
+    decision: nothing is marked superseded here."""
+
+    out: list[dict[str, Any]] = []
+    pairs: set[frozenset[str]] = set()
+    for revised in records:
+        if not revised.revises or (span := _span(revised)) is None:
+            continue
+        pool: dict[str, EvidenceRecord] = {}
+        for earlier in records:
+            if (earlier.document_id == revised.document_id or earlier.revises or earlier.category != revised.category
+                    or (earlier.item or "").lower() != (revised.item or "").lower()):
+                continue
+            same_account = bool(earlier.account and revised.account and earlier.account == revised.account)
+            same_site = earlier.facility.lower() == revised.facility.lower()
+            other = _span(earlier)
+            if not (same_account or (same_site and not (earlier.account and revised.account))) or other is None:
+                continue
+            if _overlap_days(span, other) >= OVERLAP_MIN_DAYS:
+                pool.setdefault(earlier.document_id, earlier)
+        if revised.revises_key:
+            pool = {d: e for d, e in pool.items() if revised.revises_key in e.bill_ids}
+        if not pool:
+            continue
+        what = _printed(revised)
+        if len(pool) == 1:
+            earlier = next(iter(pool.values()))
+            message = (f"{revised.label} says it replaces {what}. {earlier.label} covers the same days for "
+                       f"{_source_name(revised)}: if it is the earlier bill, mark it as superseded on the Evidence "
+                       "screen, so that only the revised bill is counted.")
+            out.append(_finding("Q-003", "revised_bill_replaces_earlier", "review", [revised, earlier], message,
+                                suggestion="mark_superseded", original_document_id=earlier.document_id,
+                                reference=revised.revises))
+            if revised.revises_key:  # the printed reference matched: it is this pair, not also an overlap
+                pairs.add(frozenset((earlier.document_id, revised.document_id)))
+        else:
+            candidates = list(pool.values())
+            names = ", ".join(e.label for e in candidates)
+            message = (f"{revised.label} says it replaces {what}, and more than one bill covers the same days for "
+                       f"{_source_name(revised)} ({names}). Mark which one it replaces as superseded on the "
+                       "Evidence screen, so that only the revised bill is counted.")
+            out.append(_finding("Q-003", "revised_bill_replaces_earlier", "review", [revised, *candidates], message,
+                                suggestion="mark_which", candidates=[e.document_id for e in candidates],
+                                reference=revised.revises))
+    return out, pairs
+
+
+def _printed(revised: EvidenceRecord) -> str:
+    """How the revised bill names the bill it replaces, in the reviewer's words."""
+
+    if revised.revises_key is None:
+        return "an earlier bill"
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", revised.revises_key):
+        return f"the earlier statement dated {revised.revises}"
+    return f"the earlier bill number {revised.revises}"
+
+
 def _overlaps(groups: dict[tuple[str, str, str | None], list[EvidenceRecord]],
               duplicate_pairs: set[frozenset[str]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
@@ -221,6 +317,8 @@ def _overlaps(groups: dict[tuple[str, str, str | None], list[EvidenceRecord]],
                     continue
                 if a.document_id != b.document_id and frozenset((a.document_id, b.document_id)) in duplicate_pairs:
                     continue  # already reported as a duplicate
+                if a.document_id == b.document_id and _duplicate_key(a) == _duplicate_key(b) and _repeat_in_file(a, b):
+                    continue  # the same statement twice in one file: reported as a duplicate
                 start = max(span_a[0], span_b[0]).isoformat()
                 end = min(span_a[1], span_b[1]).isoformat()
                 if a.document_id == b.document_id:
@@ -284,9 +382,11 @@ def run_checks(records: list[EvidenceRecord], period: tuple[date | None, date | 
         if record.periodic:
             periodic[(record.category, record.facility.lower(), (record.item or "").lower() or None)].append(record)
     duplicates, duplicate_pairs = _duplicates(records)
+    revisions, revision_pairs = _revisions(records)
     findings = [
         *duplicates,
-        *_overlaps(periodic, duplicate_pairs),
+        *revisions,
+        *_overlaps(periodic, duplicate_pairs | revision_pairs),
         *(_completeness(periodic, reporting) if reporting else []),
         *_cutoff(records, reporting),
     ]
