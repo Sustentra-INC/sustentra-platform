@@ -30,6 +30,12 @@ export const AI_VALUE = {
   needIndividual: (n: number) => `${n} suggested by Claude need individual review`,
 } as const;
 
+/** A re-read changed what a reviewer had decided on (backend S1-BE-014). */
+export const REREAD = {
+  reviewAgain: "The document was re-read and this value changed. Review it again.",
+  valueChanged: "The document was re-read and the extracted value changed since this was reviewed.",
+} as const;
+
 export const EXACT_COPY = {
   noEvidenceYet: "No evidence yet",
   noDocumentsMatch: "No documents match this filter",

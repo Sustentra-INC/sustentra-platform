@@ -25,10 +25,9 @@ from backend.app.services.reviewed_evidence import (
     AI_SUGGESTED,
     REVIEWED,
     THERMAL,
+    VALUE_CHANGED,
     ReviewedRecord,
-    all_decisions,
     group_reviewed_records,
-    latest_decisions,
     set_aside_reason,
     superseded_ids,
     to_date,
@@ -138,8 +137,8 @@ class EvidenceTreeService:
             latest = results[-1] if results else {}
             canonical = str(latest.get("canonical_type_id") or "") or None
             reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
-            records = group_reviewed_records(document, canonical or "", latest.get("items") or [],
-                                             latest_decisions(reviews), all_decisions(reviews))
+            records = group_reviewed_records(document, canonical or "", latest.get("items") or [], reviews,
+                                             with_history=True)
             docs.append(DocState(document, document_id, canonical, _iso(latest.get("created_at")), records))
         placements = {
             id(record): cl.place_record(record, ref=self.reference, facilities=facilities, decisions=decisions,
@@ -396,6 +395,11 @@ class EvidenceTreeService:
             "decision": ("awaiting_other_fields" if waiting or rejected else
                          "not_reviewed" if item is None or item.status == "unreviewed" else item.status),
             "waiting_on": waiting, "rejected_fields": rejected,
+            # A decision made before the document was re-read no longer applies (the row is unreviewed),
+            # or an edit/reject carried over although the extracted value changed.
+            # The keys are present only when true, so a document nobody re-read answers exactly as before.
+            **({"reread_changed": True} if item is not None and item.reread_changed else {}),
+            **({"value_changed_since_review": True} if item is not None and VALUE_CHANGED in item.flags else {}),
             "date": {"start": _iso(start), "end": _iso(end),
                      "days": (end - start).days + 1 if start and end and end >= start else None,
                      "label": EvidenceTreeService._date_label(line, record.canonical_type_id, start, end)},

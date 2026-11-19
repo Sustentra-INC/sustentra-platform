@@ -71,12 +71,21 @@ def project_approved_evidence(
     require_evidence(evidence_id, user)
     if not evidence_owned_by_caller(evidence_id, user, payload.engagement_id):  # SEC-004: this engagement's evidence only
         raise HTTPException(status_code=404, detail="Evidence not found.")
+    from backend.app.api.documents import current_pipeline_service as pipeline_service
+
+    # The latest read of the evidence's document(s): decisions made on values a re-read changed are not projected.
+    current_items: list[dict] | None = None
+    results = visible(pipeline_service().list_extraction_results_by_evidence(evidence_id), user)
+    if results:
+        latest = results[-1]
+        current_items = list(latest.get("items") or [])
     try:
         return _service.project_by_evidence(
             evidence_id=evidence_id,
             engagement_id=payload.engagement_id,
             evidence_type=payload.evidence_type,
             org_id=org_of(user),
+            current_items=current_items,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

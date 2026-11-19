@@ -110,6 +110,10 @@ export interface ReviewValue {
    * rules found nothing, so it is never pre-accepted and needs a reviewer. `conflict`: Claude read
    * another, different value elsewhere. `disagrees`: the rules read this value and Claude read another.
    */
+  /** The document was re-read and an earlier decision on this value no longer applies (the card is to review). */
+  rereadChanged?: boolean;
+  /** A correction or rejection carried over a re-read although the extracted value changed. */
+  valueChangedSinceReview?: boolean;
   ai?: {
     suggested?: boolean;
     conflict?: boolean;

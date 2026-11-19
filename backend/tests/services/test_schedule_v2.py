@@ -469,14 +469,14 @@ def test_a_bulk_accept_in_one_minute_is_one_entry_but_the_same_value_twice_is_no
     store = FakeStore()
     for i in range(9):
         store.add_document(f"D{i}", "CT-S1-FUELQTY", [_gas(10)], decision=None)
-        store.reviews[f"D{i}"] = [_review(f"D{i}:1:activity_quantity", "accepted", "kl", f"2025-04-02T10:00:{i:02}Z", 10)]
+        store.reviews[f"D{i}"] = [_review(f"D{i}:1:activity_quantity", "accepted", "kl", f"2025-04-02T10:00:{i:02}Z", 10, found=10)]
     bulk = [h for h in _history(store, name_of=lambda login: "K. Lee") if h["action"] == "accepted"]
     assert len(bulk) == 1 and bulk[0]["count"] == 9 and bulk[0]["actor_name"] == "K. Lee"
     twice = FakeStore()
     twice.add_document("A", "CT-S1-FUELQTY", [_gas(10)], decision=None)
     q = "A:1:activity_quantity"
-    twice.reviews["A"] = [_review(q, "accepted", "kl", "2025-04-02T10:00:01Z", 10),
-                          _review(q, "accepted", "kl", "2025-04-02T10:00:30Z", 10)]
+    twice.reviews["A"] = [_review(q, "accepted", "kl", "2025-04-02T10:00:01Z", 10, found=10),
+                          _review(q, "accepted", "kl", "2025-04-02T10:00:30Z", 10, found=10)]
     assert [h["count"] for h in _history(twice) if h["action"] == "accepted"] == [1, 1]
 
 

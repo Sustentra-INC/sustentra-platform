@@ -227,6 +227,26 @@ Get one evidence record including candidate and review summary.
 ### PUT /v1/evidence/{evidence_id}/fields/{field_name}/review
 Persist reviewer decision for a candidate field.
 
+#### A re-read and earlier decisions (S1-BE-014)
+A decision is stored under a candidate id that holds the record's index, and a re-read can renumber
+records. `services/reviewed_evidence.effective_decision` is the one place that decides whether a
+stored decision applies to an item of the latest read; every reader uses it (recalculation, the
+evidence tree and schedule, the workpaper export, approved evidence, the methodology run, the review
+screen). A decision applies only when its snapshot is the same field and the same record (record key
+without the leading `r{index}`; the service period when a key is missing). An accept also needs the
+same value and unit. An edit, reject or needs-more-evidence carries over when the record is the same,
+and a changed extracted value adds the validation flag `extracted_value_changed_since_review`.
+A decision that does not apply leaves the item unreviewed for every purpose; it is never deleted.
+
+- `GET /v1/documents/{document_id}/extraction-result/latest`: an item whose earlier decision no longer
+  applies carries `review_reread_changed: true` (the screen says "The document was re-read and this value
+  changed. Review it again."). Absent otherwise.
+- `GET /v1/documents/{document_id}/reviews`: every decision, as before. After a re-read, one that applies to
+  a value under another candidate id carries `applies_to_candidate_id`; one that applies to no value carries
+  it as `null`. Absent when it applies to its own candidate.
+- Schedule rows (`.../schedule`): `reread_changed` and `value_changed_since_review`, present only when true.
+- `POST /v1/evidence/{evidence_id}/approved-evidence/project` projects only decisions that still apply.
+
 ### GET /v1/engagements/{engagement_id}/approved-evidence
 Return evidence records and approved fields only.
 

@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from backend.app.domain.evidence import ApprovedEvidence, ApprovedEvidenceField, ApprovedEvidenceReviewStatus
 from backend.app.repositories import s1_stores
+from backend.app.services.reviewed_evidence import applicable_decisions
 
 REQUIRED_REVIEW_DECISION_FIELDS = (
     "review_decision_id",
@@ -96,10 +97,17 @@ class ApprovedEvidenceService:
         engagement_id: str,
         evidence_type: str,
         org_id: str | None = None,
+        current_items: list[dict] | None = None,
     ) -> dict:
+        """``current_items``: the extracted items of the document's latest read. Given, only the decisions
+        that still apply to one of them are projected (a re-read can leave an old decision on another
+        value); the rest stay in the review history and count as unreviewed. None projects every decision."""
+
         decisions = self._review_repository.list_by_evidence(evidence_id)
         if org_id is not None:  # SEC-001: never project another org's (or unowned) decisions
             decisions = [d for d in decisions if d.get("org_id") == org_id]
+        if current_items is not None:
+            decisions = applicable_decisions(current_items, decisions)
         if not decisions:
             return self._approved_repository.save(
                 self._build_aggregate(

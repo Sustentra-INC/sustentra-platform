@@ -919,6 +919,10 @@ class PipelineOrchestrationService:
         """Every persisted extraction result for a document, oldest first."""
         return self._extraction_result_repository.list_by_document(document_id)
 
+    def list_extraction_results_by_evidence(self, evidence_id: str) -> list[dict]:
+        """Every persisted extraction result for an evidence id, oldest first."""
+        return self._extraction_result_repository.list_by_evidence(evidence_id)
+
     def _build_pipeline_run(
         self,
         *,
