@@ -72,6 +72,35 @@ then), `ai_disagrees` (the rules read the value; Claude read another, in the opt
 `ai_alternative {value, unit, source_reference}`; the value is unchanged) and `ai_conflict`
 (Claude read two different values for the field; each is a candidate). `warnings` may carry
 `ai_extraction: ...` (counts, dropped reasons, cost), `ai_pages_skipped` and `ai_time_budget`.
+
+What a bill says about itself (EXT-025, `services/bill_notes.py`; the rule readers for fuel, electricity and steam
+bills). Neither changes a value:
+
+- `estimated_read`: a `validation_flags` entry on the `activity_quantity` candidate when the bill says a read was
+  estimated: a sentence ("This bill is based on an ESTIMATED read", "usage was estimated"), an "ESTIMATED READ"
+  heading, or a read-type column ("Read Type: Estimated / Estimate / EST"; "E", "E" in a "Read" or "Reading"
+  column, or "853,925 (E)", each only with a legend "E = Estimated read"). A legend alone, "not estimated", fees
+  ("Estimated Read Fee: $5.00"), conditions ("if we estimate your read"), dates and "not applicable" do not
+  flag. In a multi-meter bill only the estimated meter's quantity is flagged. The review screen words it
+  "Estimated read".
+- `supersedes_reference`: an extra candidate (label "Replaces an earlier bill") on each record of a bill that is
+  headed "REVISED STATEMENT" / "CORRECTED BILL" or has a sentence that starts "This bill/statement replaces,
+  corrects or supersedes ..." Boilerplate that only mentions a correction does not count. Its value is the earlier
+  bill's number or date as printed ("04/04/2025", "INV-2025-889"), or `revised` when it gives none; its
+  `source_reference.reference_key` is that reference as a key (a date as ISO, a number upper-cased). Every bill
+  also keeps its own statement date (ISO) and invoice or statement number in
+  `source_reference.bill_ids` of its `activity_quantity` candidate (no extra value to review).
+- Data quality (`quality_checks`, Q-003) then carries a `revised_bill_replaces_earlier` finding (severity `review`)
+  when an earlier bill (the same source, account or facility, the same days, and not itself a revision) is also in
+  the engagement. When the revised bill printed a date or number, only the bill whose `bill_ids` hold it counts;
+  no match, no finding. One candidate gives `detail {suggestion: "mark_superseded", original_document_id,
+  reference}`; several give `{suggestion: "mark_which", candidates, reference}` and name none. It is a suggestion:
+  nothing is marked superseded until the reviewer does it on the Evidence screen. A pair matched by a printed
+  reference is not also reported as an overlap (Q-004); a `revised` bill with no reference keeps the overlap
+  finding.
+- Account labels read for `account_number` now include "Customer No.", "Cust. No.", "Acct:" (also inline after
+  other text) and similar. "Client ID" and "Customer ID" (CRM references) are not read. An account is never read
+  from an email subject line or prose, and a value that is a phone number or longer than three words is rejected.
 Extraction config rows may set `ai_only` (read by Claude only).
 
 ### GET /v1/processing-runs/{run_id}
@@ -235,6 +264,37 @@ Get one evidence record including candidate and review summary.
 ### PUT /v1/evidence/{evidence_id}/fields/{field_name}/review
 Persist reviewer decision for a candidate field.
 
+#### A re-read and earlier decisions (S1-BE-014)
+A decision is stored under a candidate id that holds the record's index, and a re-read can renumber
+records. `services/reviewed_evidence.effective_decision` is the one place that decides whether a
+stored decision applies to an item of the latest read; every reader uses it (recalculation, the
+evidence tree and schedule, the workpaper export, approved evidence, the methodology run, the review
+screen). A decision applies only when its snapshot is the same field and the same record (record key
+without the leading `r{index}`; the service period when a key is missing). An accept also needs the
+same value and unit. An edit, reject or needs-more-evidence carries over when the record is the same,
+and a changed extracted value adds the validation flag `extracted_value_changed_since_review`.
+A decision that does not apply leaves the item unreviewed for every purpose; it is never deleted.
+
+- `GET /v1/documents/{document_id}/extraction-result/latest`: an item whose earlier decision no longer
+  applies carries `review_reread_changed: true` (the screen says "The document was re-read and this value
+  changed. Review it again."). Absent otherwise.
+- `GET /v1/documents/{document_id}/reviews`: every decision, as before. After a re-read, one that applies to
+  a value under another candidate id carries `applies_to_candidate_id`; one that applies to no value carries
+  it as `null`. Absent when it applies to its own candidate.
+- Schedule rows (`.../schedule`): `reread_changed` and `value_changed_since_review`, present only when true.
+- `POST /v1/evidence/{evidence_id}/approved-evidence/project` projects only decisions that still apply.
+  Each document of the evidence slot is judged by its own latest read, and a decision is matched only
+  within its own document.
+- `POST /v1/methodology/s2/run` drops approved fields whose review decision no longer applies (both the
+  persisted and the non-persisted path); a field whose decision the server does not know is kept.
+- Schedule history entries carry `superseded_by_reread: true` for a decision a re-read made void; it stays listed.
+- Raw history by design: `GET /v1/evidence/{evidence_id}/reviews` and
+  `GET /v1/candidates/{candidate_id}/reviews/latest` return the stored decisions as recorded (an audit
+  trail of what each reviewer did, per evidence id or candidate id, with no read to judge them by).
+  The screens that act on a decision use the guarded reads above. `review_decision_count` in the evidence
+  status counts stored decisions.
+- A decision with no candidate snapshot applies by candidate id only on a single-record document.
+
 ### GET /v1/engagements/{engagement_id}/approved-evidence
 Return evidence records and approved fields only.
 
@@ -258,6 +318,7 @@ engagement is 404). Nothing is stored by this route.
   set_aside: [{document_id, file_name, reason}] }    // withdrawn / duplicate / superseded: not filed
 counts  = {documents, values, accepted, to_review, issues, pct_accepted}
 DocRow  = {document_id, file_name, period_start, period_end, facility_id, facility_name,
+           facility_note,    // when facility_id is null: why an account or meter number placed nothing, or null
            processing_status, detected_type, also_in: [lineKey], values, accepted,
            placement_from,   // send this as a move's "from" to move this row
            value_family,     // "stationary" | "mobile" | "electricity" | null: the calculation this row's
@@ -538,7 +599,8 @@ calculation_lines: [{
   no company side), never dropped. `reason` is one of: `unknown_line` (filed on a line that no longer
   exists), `moved_to_another_place` (a reviewer filed it elsewhere), `fuel_shared_by_vehicle_groups`
   (mobile fuel used by two or more groups), `no_vehicle_group` (mobile fuel no group uses),
-  `no_facility_match` (no Setup facility matches), `no_calculation_line`. Lines plus unplaced add up to the
+  `no_facility_match` (no Setup facility matches), `identifier_on_two_facilities` (the bill's account or
+  meter number is listed on two or more Setup facilities, so it is not placed), `no_calculation_line`. Lines plus unplaced add up to the
   category on `sum_co2e_t`; a consolidated share below 100% scales `total_co2e_t` only.
 - `calculation_line_inputs`: `{consolidated_shares, unknown_line_keys: [{setting, key}],
   unknown_facility_ids}`. A key that matches no line and names no facility or vehicle group is allowed
@@ -597,3 +659,37 @@ admin may call for any org; it answers 409 when the user is not waiting for an i
 ## Contract Source
 
 JSON schema contracts are versioned in `contracts/` and should be treated as API truth for request/response payload shape.
+
+### Facility account and meter numbers (PROVISIONAL)
+
+Approved by the product owner on 18 Nov 2026 as provisional: the ops lead may change the format of the client's
+facility list. Each facility in `settings.facilities` may carry `accountNumbers: string[]` and, optionally,
+`meterNumbers: string[]` (at most 50 each, at most 64 characters each, at least one digit, stored as typed). A
+facility without them behaves exactly as before. A bad list is refused on save (422, a plain sentence). The same number
+on two facilities saves; Setup shows "Account 4417-2290-31 is on two facilities. Bills with it won't be placed
+automatically."
+
+Placement uses them as the last step. The reviewer's choice, the facility name and the service address come first (the
+name and address step answers match, ambiguous or none; the numbers are used only on none, never on ambiguous);
+the bill's account number (then its meter number) is used **only when the bill gives no usable name and no usable
+address**. A bill whose name or address matched nothing is never placed by its number: the Evidence tree row carries
+`facility_note` ("Account 2001-7788 is listed on Tacoma Plant, but this bill's address (2210 Port of Tacoma Rd) is not
+in Setup. Choose the facility.") and the reviewer chooses. A value a reviewer rejected or marked "needs more evidence",
+and a value only Claude read, is never read for placement (name, address, account and meter number alike), on the
+backend and on the screen.
+
+A number matches only as a whole, never a partial one. NFKC and case folding apply, and invisible characters (a BOM)
+are dropped. Spaces, dashes and dots separate groups: two numbers are the same when their groups are the same ("4417
+2290 31" = "4417-2290-31"), or when one is written without separators and the characters are the same; "12-345" is not
+"1234-5". A number needs at least 4 digits, on the bill and in Setup, to match. A number listed on two facilities, or an
+account and a meter number that point at different facilities, place nothing: `facility_note` says why ("Account
+7700-1234 is listed on two facilities. Choose the facility.") and the recalculation lists the record in
+`calculation_unplaced` with `reason: "identifier_on_two_facilities"`. A bill placed this way is described as "Account
+or meter number in Setup". Each record of a bill is placed on its own.
+
+Not built yet, because the format is provisional and waits on the ops lead: a supplier per number (two utilities can
+issue the same account number). The code is in `backend/app/services/facility_identifiers.py` (one matching function)
+and `reviewed_evidence.place_on_facility` (the one placement decision); the frontend twin is
+`frontend/features/s1/utils/facilityNumbers.ts` and `placeRecord` in `utils/documentView.ts`. Both sides run the shared
+cases in `backend/tests/fixtures/facility_placement_cases.json` and the name and address probes in
+`facility_match_probes.json`.

@@ -48,6 +48,8 @@ export interface TreeDocRow {
   period_end: string | null;
   facility_id: string | null;
   facility_name: string | null;
+  /** Why the bill's account or meter number did not place it, e.g. "Account 4417-2290-31 is listed on two facilities". */
+  facility_note?: string | null;
   processing_status: string;
   detected_type: string | null;
   /** Keys of the other calculation lines this document feeds. */
@@ -144,6 +146,8 @@ export interface ScheduleHistoryEntry {
   count?: number;
   /** Documents the system entry extracted from. */
   documents?: number | null;
+  /** Present (true) only when a re-read made this decision void; it is kept in the history. */
+  superseded_by_reread?: boolean;
 }
 
 export interface ScheduleColumn {
@@ -175,6 +179,10 @@ export interface ScheduleRow {
   waiting_on?: string[];
   /** Labels of other fields the reviewer rejected, so the record is not calculated. */
   rejected_fields?: string[];
+  /** Present (true) only after a re-read: an earlier decision no longer applies, so the row is unreviewed. */
+  reread_changed?: boolean;
+  /** Present (true) only after a re-read: an edit or reject carried over but the extracted value changed. */
+  value_changed_since_review?: boolean;
   /** `days` is counted by the server; the page never works it out. */
   date: { start: string | null; end: string | null; days: number | null; label: string };
   activity_quantity: { value: number | string | null; unit: string | null } & ValueSource;

@@ -325,6 +325,7 @@ export type CalcUnplacedReason =
   | "fuel_shared_by_vehicle_groups"
   | "no_vehicle_group"
   | "no_facility_match"
+  | "identifier_on_two_facilities"
   | "no_calculation_line";
 
 /** Records on no calculation line: reported on their own, never dropped. */
