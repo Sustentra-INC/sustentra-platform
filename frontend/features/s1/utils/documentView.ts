@@ -1,6 +1,6 @@
 import { decodeReviewCandidateToken } from "../adapters/fieldAdapter";
 import type { DocumentDecision, EvidenceItem, ExtractedField, FacilityOption } from "../types";
-import { matchFacility } from "./facilityMatch";
+import { matchFacility, matchFacilityState } from "./facilityMatch";
 import { matchByIdentifier } from "./facilityNumbers";
 
 /** The backend's document types a reviewer can set (backend mode), and their ids. */
@@ -58,10 +58,7 @@ export interface RecordPlacement {
   ambiguous: boolean;
 }
 
-const usable = (text: string | null | undefined) => matchFacilityText(text) !== "";
-function matchFacilityText(text: string | null | undefined): string {
-  return (text ?? "").toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, " ").split(/\s+/).filter(Boolean).join(" ");
-}
+const usable = (text: string | null | undefined) => /[\p{L}\p{N}]/u.test((text ?? "").normalize("NFKC"));
 
 /**
  * The one place a record's Setup facility is decided on the screen (the backend's place_on_facility, without the
@@ -69,12 +66,14 @@ function matchFacilityText(text: string | null | undefined): string {
  * when the bill gives no name and no address at all, the account or meter number. A bill whose name or address
  * matched nothing is never placed by its number: it gets a note that asks for a choice.
  */
-export function placeRecord(rec: RecordFacts, facilities: FacilityOption[]): RecordPlacement {
+export function placeRecord(rec: RecordFacts, facilities: FacilityOption[], company?: string | null): RecordPlacement {
   const none: RecordPlacement = { facility: null, how: null, note: null, ambiguous: false };
-  const byName = matchFacility(rec.name, null, facilities);
-  if (byName) return { ...none, facility: byName, how: "Facility name in Setup" };
-  const byAddress = matchFacility(null, rec.address, facilities);
-  if (byAddress) return { ...none, facility: byAddress, how: "Service address in Setup" };
+  const state = matchFacilityState(rec.name, rec.address, facilities, company);
+  if (state.facility) {
+    const byName = matchFacility(rec.name, null, facilities, company) === state.facility;
+    return { ...none, facility: state.facility, how: byName ? "Facility name in Setup" : "Service address in Setup" };
+  }
+  if (state.ambiguous) return none; // a name or address that points at several facilities: no number settles it
   const byNumber = matchByIdentifier(rec.account, rec.meter, facilities);
   if (byNumber.ambiguous) return { ...none, note: `${byNumber.ambiguous}. Choose the facility.`, ambiguous: true };
   if (!byNumber.facility) return none;
@@ -167,13 +166,14 @@ export function applyDocumentView(
   items: EvidenceItem[],
   facts: Map<string, DocumentFacts>,
   decisions: Record<string, DocumentDecision>,
-  facilities: FacilityOption[]
+  facilities: FacilityOption[],
+  company?: string | null
 ): EvidenceItem[] {
   return items.map((item) => {
     const fact = facts.get(item.documentId);
     const decision = decisions[item.documentId];
     const chosen = decision?.facilityId ? facilities.find((f) => f.facilityId === decision.facilityId) : undefined;
-    const matched = chosen ? [] : matchedFacilities(fact, facilities);
+    const matched = chosen ? [] : matchedFacilities(fact, facilities, company);
     const next: EvidenceItem = { ...item };
     if (chosen || matched.length === 1) {
       const facility = chosen ?? matched[0];
@@ -209,10 +209,10 @@ export function applyDocumentView(
 }
 
 /** The Setup facilities a document's records match (each record by the one rule, ``placeRecord``), each once. */
-function matchedFacilities(fact: DocumentFacts | undefined, facilities: FacilityOption[]): FacilityOption[] {
+function matchedFacilities(fact: DocumentFacts | undefined, facilities: FacilityOption[], company?: string | null): FacilityOption[] {
   if (!fact) return [];
   const found = recordsOf(fact)
-    .map((rec) => placeRecord(rec, facilities).facility)
+    .map((rec) => placeRecord(rec, facilities, company).facility)
     .filter((f): f is FacilityOption => f !== null);
   return found.filter((f, i) => found.findIndex((g) => g.facilityId === f.facilityId) === i);
 }
@@ -252,12 +252,13 @@ export function decisionFromEdit(before: EvidenceItem, after: EvidenceItem, prio
 /** Facilities named on bills that match no Setup facility yet (one entry per name). */
 export function unmatchedFacilities(
   facts: Map<string, DocumentFacts>,
-  facilities: FacilityOption[]
+  facilities: FacilityOption[],
+  company?: string | null
 ): { name: string; address: string | null }[] {
   const seen = new Map<string, { name: string; address: string | null }>();
   facts.forEach((fact) => {
     const name = fact.facilityName ?? fact.address;
-    if (!name || matchFacility(fact.facilityName, fact.address, facilities)) return;
+    if (!name || matchFacility(fact.facilityName, fact.address, facilities, company)) return;
     const key = name.trim().toLowerCase();
     if (!seen.has(key)) seen.set(key, { name: name.trim(), address: fact.address });
   });

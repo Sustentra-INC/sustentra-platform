@@ -57,8 +57,7 @@ from backend.app.services.reviewed_evidence import (  # noqa: F401 - re-exported
     ReviewedField,
     ReviewedRecord,
     group_reviewed_records,
-    latest_decisions,
-    match_facility,
+    resolve_decisions,
     resolve_fuel_name,
     place_on_facility,
     resolve_setup_facility,
@@ -109,6 +108,15 @@ DATA_POINT_KEYS = frozenset(key for key, *_ in DATA_POINTS)
 def _reviewed_count(n: int, noun: str) -> str:
     """'1 reviewed bill', '2 reviewed bills': the source note on a measure."""
     return f"{n} reviewed {noun}" + ("" if n == 1 else "s")
+
+
+def _source_value(record: Any, field_name: str, key: str) -> Any:
+    """A value the extractor kept on a field's source reference (the bill's own identifiers, the reference key
+    of a revised bill), or None."""
+
+    item = record.fields.get(field_name)
+    reference = getattr(item, "source_reference", None)
+    return reference.get(key) if isinstance(reference, dict) else None
 
 
 def _catalogue() -> tuple[tuple[str, str, int, str, str, str, str], ...]:
@@ -402,6 +410,7 @@ class EngagementRecalculationService:
         self._reference = reference
         # Set per recalculation: the engagement's Setup facilities and document decisions.
         self._facilities: list[dict[str, Any]] = []
+        self._company: str | None = None
         self._decisions: dict[str, dict[str, Any]] = {}
         # Set per recalculation, for the calculation lines.
         self._ledger = Ledger()
@@ -432,18 +441,17 @@ class EngagementRecalculationService:
                 "candidate_count": sum(1 for i in latest.get("items") or [] if not _suggested(i)),
                 "suggested_count": sum(1 for i in latest.get("items") or [] if _suggested(i)),
             })
-            decisions: dict[str, dict] = {}
-            for decision in self._reviews.list_by_document(document_id):
-                if can_see(decision):
-                    decisions[str(decision.get("candidate_id"))] = decision
-            for item in latest.get("items") or []:
-                review = decisions.get(str(item.get("candidate_id"))) or {}
+            reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
+            read_items = latest.get("items") or []
+            for item, resolved in zip(read_items, resolve_decisions(read_items, reviews)):
+                review = resolved.decision or {}
                 values.append({
                     "file_name": document.get("file_name"), "record_index": item.get("record_index"),
                     "field": item.get("display_label") or item.get("field_name"),
                     "extracted": item.get("normalized_value"), "unit": item.get("unit"),
                     "decision": review.get("decision")
-                    or ("Suggested by Claude (not reviewed)" if _suggested(item) else "not reviewed"),
+                    or ("Suggested by Claude (not reviewed)" if _suggested(item)
+                        else "not reviewed (re-read, value changed)" if resolved.reread_changed else "not reviewed"),
                     "suggested_by_claude": _suggested(item),
                     "reviewed_value": review.get("reviewed_value"),
                     "reviewed_unit": review.get("reviewed_unit"),
@@ -466,8 +474,8 @@ class EngagementRecalculationService:
             canonical_type_id = str(latest.get("canonical_type_id") or "")
             if canonical_type_id not in RECALCULATED_TYPES:
                 continue
-            decisions = latest_decisions(d for d in self._reviews.list_by_document(document_id) if can_see(d))
-            records.extend(group_reviewed_records(document, canonical_type_id, latest.get("items") or [], decisions))
+            reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
+            records.extend(group_reviewed_records(document, canonical_type_id, latest.get("items") or [], reviews))
         return records
 
     # ---------------------------------------------------------------------------------
@@ -482,6 +490,7 @@ class EngagementRecalculationService:
         decisions = decisions or {}
         records, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
         self._facilities = setup_facilities(engagement.get("settings"))
+        self._company = engagement.get("client_name")
         self._decisions = decisions
         self._ledger = Ledger()
 
@@ -585,7 +594,7 @@ class EngagementRecalculationService:
         try:
             built = recalculation_lines.build(
                 self.reference, self._ledger, records, inputs, engagement.get("settings") or {}, decisions,
-                tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities)
+                tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company)
         except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
             log.warning("calculation lines failed: %s", type(exc).__name__)
             built = recalculation_lines.Built(needs_input=[{
@@ -1248,12 +1257,16 @@ class EngagementRecalculationService:
         return EvidenceRecord(category=category, document_id=record.document_id,
                               file_name=record.file_name or record.document_id, label=record.label,
                               facility=facility, item=item, account=str(account) if account else None,
-                              start=start, end=end, amounts=amounts, unit=unit, periodic=periodic)
+                              start=start, end=end, amounts=amounts, unit=unit, periodic=periodic,
+                              revises=str(record.best("supersedes_reference") or "") or None,
+                              revises_key=_source_value(record, "supersedes_reference", "reference_key"),
+                              bill_ids=tuple(_source_value(record, "activity_quantity", "bill_ids") or ()))
 
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""
 
-        return place_on_facility(self._facilities, self._decisions, record.document_id, record).facility
+        return place_on_facility(self._facilities, self._decisions, record.document_id, record,
+                                 self._company).facility
 
     # =================================================================================
     # Totals and comparison

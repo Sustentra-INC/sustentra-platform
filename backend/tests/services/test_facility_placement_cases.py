@@ -13,11 +13,12 @@ from typing import Any
 import pytest
 
 from backend.app.services import calculation_lines as cl
-from backend.tests.services.test_calculation_lines import _lines_with_docs, _tree, _tree_service
+from backend.tests.services.test_calculation_lines import _engagement, _lines_with_docs, _tree_service
 from backend.tests.services.test_engagement_recalculation_service import ORG, FakeStore, _own
 from backend.tests.services.test_facility_identifiers import _recalc
 
 SHARED = json.loads((Path(__file__).parent.parent / "fixtures" / "facility_placement_cases.json").read_text("utf-8"))
+COMPANY: str = SHARED["company"]
 FACILITIES: list[dict[str, Any]] = SHARED["facilities"]
 CASES: list[dict[str, Any]] = SHARED["cases"]
 FIXED = {"fuel_type": ("natural_gas", None), "activity_quantity": (1000, "MMBtu"), "activity_unit": ("MMBtu", None),
@@ -42,7 +43,9 @@ def _store(case: dict[str, Any]) -> FakeStore:
         decision = {"accepted": "accepted", "fixed": "accepted", "rejected": "rejected",
                     "needs_more_evidence": "needs_more_evidence"}.get(status)
         if decision:
+            snapshot = {k: v for k, v in items[-1].items() if k not in ("record_index", "validation_flags")}
             reviews.append({"candidate_id": candidate_id, "decision": decision, "org_id": ORG,
+                            "document_id": "D1", "field_name": name, "candidate_snapshot": snapshot,
                             "reviewed_value": value if decision == "accepted" else None,
                             "reviewed_unit": unit if decision == "accepted" else None})
 
@@ -60,22 +63,23 @@ def _store(case: dict[str, Any]) -> FakeStore:
 @pytest.mark.parametrize("case", CASES, ids=[c["id"] for c in CASES])
 def test_the_tree_the_lines_and_the_recalculation_agree_on_where_a_bill_is_placed(case: dict[str, Any]) -> None:
     store = _store(case)
-    loaded = _tree_service(store).load({"id": "ENG-1", "settings": {"facilities": FACILITIES}}, _own)
+    engagement = {**_engagement(facilities=FACILITIES), "client_name": COMPANY}
+    loaded = _tree_service(store).load(engagement, _own)
     records = sorted(loaded.docs[0].records, key=lambda r: r.record_index or 0)
     placed = []
     for record, want_facility, want_note in zip(records, case["expect"]["facility"], case["expect"]["note"],
                                                 strict=True):
-        found = cl.facility_match(loaded.facilities, {}, "D1", record)
+        found = cl.facility_match(loaded.facilities, {}, "D1", record, COMPANY)
         placed.append(found[0]["facilityId"] if found else None)
         assert placed[-1] == want_facility
-        note = cl.unplaced_note(loaded.facilities, {}, "D1", record)
+        note = cl.unplaced_note(loaded.facilities, {}, "D1", record, COMPANY)
         if want_note is None:
             assert note is None
         else:
             assert note is not None and want_note in note
     keys = {f"s1:stationary:natural-gas:{facility}" for facility in placed if facility}
-    tree = _tree(store, facilities=FACILITIES)
+    tree = _tree_service(store).tree(engagement, _own, None)
     assert set(_lines_with_docs(tree)) == keys
-    result = _recalc(store, FACILITIES)
+    result = _recalc(store, FACILITIES, COMPANY)
     assert {line["key"] for line in result["calculation_lines"]} == keys
     assert bool(result["calculation_unplaced"]) == (None in placed)

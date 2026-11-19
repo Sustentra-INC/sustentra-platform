@@ -340,7 +340,7 @@ class RecordPlacement:
 
 def place_record(record: ReviewedRecord, *, ref: EmissionFactorReference, facilities: list[dict[str, Any]],
                  decisions: dict[str, dict[str, Any]], vehicle_groups: list[dict[str, Any]],
-                 fuel_choices: dict[str, str]) -> RecordPlacement:
+                 fuel_choices: dict[str, str], company: str | None = None) -> RecordPlacement:
     """The line a record belongs on, from what the backend already knows of it.
 
     The fuel is the EPA name the recalculation resolves (``fuel_choices`` included); a biomass
@@ -349,7 +349,7 @@ def place_record(record: ReviewedRecord, *, ref: EmissionFactorReference, facili
     """
 
     kind = record.canonical_type_id
-    facility = place_on_facility(facilities, decisions, record.document_id, record).facility
+    facility = place_on_facility(facilities, decisions, record.document_id, record, company).facility
     facility_anchor = facility_anchor_id(facility) if facility else None
     if kind in (STATIONARY, MOBILE):
         source = "stationary" if kind == STATIONARY else "mobile"
@@ -622,21 +622,21 @@ def date_label(canonical_type_id: str | None) -> str:
 
 
 def facility_match(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
-                   record: ReviewedRecord) -> tuple[dict[str, Any], str] | None:
+                   record: ReviewedRecord, company: str | None = None) -> tuple[dict[str, Any], str] | None:
     """The Setup facility of a record and how it was matched: the reviewer's choice, the facility name, the
     service address, or (provisional) the account or meter number; None when nothing matches. It is the
     same decision ``place_record`` makes (``place_on_facility``), with the reason."""
 
-    placement = place_on_facility(facilities, decisions, document_id, record)
+    placement = place_on_facility(facilities, decisions, document_id, record, company)
     return (placement.facility, str(placement.how)) if placement.facility is not None else None
 
 
 def unplaced_note(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
-                  record: ReviewedRecord) -> str | None:
+                  record: ReviewedRecord, company: str | None = None) -> str | None:
     """Why a record with no Setup facility was not placed by its account or meter number, in a plain
     sentence; None when it has a facility or its numbers say nothing."""
 
-    placement = place_on_facility(facilities, decisions, document_id, record)
+    placement = place_on_facility(facilities, decisions, document_id, record, company)
     return placement.note if placement.facility is None else None
 
 

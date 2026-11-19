@@ -202,6 +202,7 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
     """Builds CT-S1-REFRSVC candidates: one record per refrigerant service line."""
 
     CANONICAL_TYPE_ID = CANONICAL_TYPE_ID
+    HEADLINE_QUANTITY = False  # only the natural gas reader reads a number in large type over a unit
     ALL_LABELS = _BASE_LABELS + tuple(
         label
         for group in (REFRIGERANT_LABELS + ADDED_LABELS + RECOVERED_LABELS + CAPACITY_LABELS + EQUIPMENT_LABELS

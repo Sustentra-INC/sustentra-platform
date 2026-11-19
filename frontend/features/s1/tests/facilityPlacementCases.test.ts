@@ -20,7 +20,7 @@ interface Case {
 }
 const shared = JSON.parse(
   readFileSync(resolve(process.cwd(), "../backend/tests/fixtures/facility_placement_cases.json"), "utf-8")
-) as { facilities: FacilityOption[]; cases: Case[] };
+) as { company: string; facilities: FacilityOption[]; cases: Case[] };
 
 function field(name: string, value: string, status: Status, recordIndex: number | null): ExtractedField {
   return {
@@ -46,7 +46,7 @@ describe("the Evidence screen places a bill where the backend does (shared cases
       const facts = documentFacts(fields).get("D1")!;
       // A record whose every value is blocked (rejected, or only Claude read it) has nothing left to read.
       const nothing = { name: null, address: null, account: null, meter: null };
-      const placements = c.records.map((_, i) => placeRecord(facts.records?.[i] ?? nothing, shared.facilities));
+      const placements = c.records.map((_, i) => placeRecord(facts.records?.[i] ?? nothing, shared.facilities, shared.company));
       expect(placements.map((p) => p.facility?.facilityId ?? null)).toEqual(c.expect.facility);
       placements.forEach((p, i) => {
         const want = c.expect.note[i];
@@ -55,7 +55,7 @@ describe("the Evidence screen places a bill where the backend does (shared cases
       });
       // The row on the Evidence screen: one facility, several ("multiple"), or none.
       const item = { documentId: "D1", filename: "D1.pdf", facilityState: "unresolved", facilityId: null, facilityName: null, disposition: "active", relationships: [] } as unknown as EvidenceItem;
-      const [row] = applyDocumentView([item], new Map([["D1", facts]]), {}, shared.facilities);
+      const [row] = applyDocumentView([item], new Map([["D1", facts]]), {}, shared.facilities, shared.company);
       const placed = [...new Set(c.expect.facility.filter((f): f is string => f !== null))];
       if (placed.length === 0) expect(row.facilityId ?? null).toBeNull();
       else if (placed.length === 1) expect(row.facilityId).toBe(placed[0]);

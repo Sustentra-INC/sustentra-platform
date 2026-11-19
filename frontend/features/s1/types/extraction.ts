@@ -43,6 +43,10 @@ export interface ExtractedField {
   recordIndex?: number | null;
   /** A reviewer rejected this value or asked for more evidence: it must not decide which facility a bill is on. */
   placementBlocked?: boolean;
+  /** The document was re-read and an earlier decision on this value no longer applies: it needs review again. */
+  rereadChanged?: boolean;
+  /** A correction or rejection carried over a re-read, but the extracted value changed since it was made. */
+  valueChangedSinceReview?: boolean;
 }
 
 export interface ReviewQueueItem {

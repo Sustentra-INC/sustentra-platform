@@ -14,6 +14,8 @@ export interface BackendExtractionCandidateLike {
   unit: string | null;
   confidence?: number | null;
   validation_flags?: string[] | null;
+  /** The document was re-read and an earlier decision on this value no longer applies: review it again. */
+  review_reread_changed?: boolean;
   /** With the flag ai_disagrees: what Claude read where the rules read another value (read-only). */
   ai_alternative?: {
     value: string | number | boolean | null;
@@ -31,6 +33,9 @@ export interface BackendExtractionCandidateLike {
     bounding_box?: { x?: number; y?: number; width?: number; height?: number; w?: number; h?: number } | null;
   } | null;
 }
+
+/** Backend flag: an edit or reject carried over a re-read although the extracted value changed. */
+const VALUE_CHANGED_FLAG = "extracted_value_changed_since_review";
 
 export function mapBackendCandidateToExtractedField(
   candidate: BackendExtractionCandidateLike,
@@ -83,6 +88,8 @@ export function mapBackendCandidateToExtractedField(
     correctedValue: null,
     valueOrigin: "extracted",
     recordIndex: candidate.record_index ?? null,
+    ...(candidate.review_reread_changed ? { rereadChanged: true } : {}),
+    ...((candidate.validation_flags ?? []).includes(VALUE_CHANGED_FLAG) ? { valueChangedSinceReview: true } : {}),
   };
 }
 

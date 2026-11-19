@@ -90,6 +90,7 @@ class ElectricityExtractor(StationaryCombustionExtractor):
     """Builds CT-S2-ELEC candidates: one record per metered usage line (or one per bill)."""
 
     CANONICAL_TYPE_ID = CANONICAL_TYPE_ID
+    HEADLINE_QUANTITY = False  # only the natural gas reader reads a number in large type over a unit
     FUEL_LABEL_GROUPS = ENERGY_TYPE_LABELS
     QUANTITY_LABEL_GROUPS = QUANTITY_LABELS
     QTY_EXCLUDE = StationaryCombustionExtractor.QTY_EXCLUDE + (
@@ -195,9 +196,12 @@ class ElectricityExtractor(StationaryCombustionExtractor):
             for target in targets:
                 field_id = str(target.get("field_id") or "")
                 if field_id in DOCUMENT_FIELDS:
+                    located = document_values.get(field_id)
+                    if field_id == "service_address" and record.extra.get("address") is not None:
+                        located = record.extra["address"]  # a meter's own row: each meter keeps its address
                     record_candidates.append(self._candidate_for_text(
-                        target, document_values.get(field_id), document_id, evidence_id, record_key,
-                        record_index, parser_output, field_id))
+                        target, located, document_id, evidence_id, record_key, record_index, parser_output,
+                        field_id))
                 elif field_id == "energy_type" or field_id in RECORD_FIELDS:
                     record_candidates.append(self._record_candidate(
                         target, values, document_id, evidence_id, record_key, record_index, parser_output))

@@ -25,10 +25,9 @@ from backend.app.services.reviewed_evidence import (
     AI_SUGGESTED,
     REVIEWED,
     THERMAL,
+    VALUE_CHANGED,
     ReviewedRecord,
-    all_decisions,
     group_reviewed_records,
-    latest_decisions,
     set_aside_reason,
     superseded_ids,
     to_date,
@@ -92,6 +91,7 @@ class Loaded:
     facilities: list[dict[str, Any]]
     period: tuple[date | None, date | None]
     vehicle_groups: list[dict[str, Any]] = field(default_factory=list)
+    company: str | None = None  # the engagement's own company: "Company - Site" names are matched by their site
     # Documents set aside (withdrawn, duplicate, replaced): not on any line, but a move saved for one is
     # still kept (``default_slots`` only), so a document that comes back is filed as its owner left it.
     aside: list[DocState] = field(default_factory=list)
@@ -141,8 +141,8 @@ class EvidenceTreeService:
             latest = results[-1] if results else {}
             canonical = str(latest.get("canonical_type_id") or "") or None
             reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
-            records = group_reviewed_records(document, canonical or "", latest.get("items") or [],
-                                             latest_decisions(reviews), all_decisions(reviews))
+            records = group_reviewed_records(document, canonical or "", latest.get("items") or [], reviews,
+                                             with_history=True)
             state = DocState(document, document_id, canonical, _iso(latest.get("created_at")), records)
             if reason is not None:
                 set_aside.append({"document_id": document_id, "file_name": document.get("file_name"),
@@ -152,7 +152,8 @@ class EvidenceTreeService:
             docs.append(state)
         placements = {
             id(record): cl.place_record(record, ref=self.reference, facilities=facilities, decisions=decisions,
-                                        vehicle_groups=inputs.vehicle_groups, fuel_choices=inputs.fuel_choices)
+                                        vehicle_groups=inputs.vehicle_groups, fuel_choices=inputs.fuel_choices,
+                                        company=engagement.get("client_name"))
             for doc in docs for record in doc.records
         }
         system = cl.default_lines(placements.values(), facilities, inputs.vehicle_groups)
@@ -172,9 +173,10 @@ class EvidenceTreeService:
             doc.facility_ids = [cl.facility_anchor_id(f) if (f := placements[id(r)].facility) else None
                                 for r in doc.records]
             doc.facility_notes = [None if placements[id(r)].facility else
-                                  cl.unplaced_note(facilities, decisions, doc.document_id, r) for r in doc.records]
+                                  cl.unplaced_note(facilities, decisions, doc.document_id, r, engagement.get("client_name")) for r in doc.records]
         period = (to_date(engagement.get("reporting_period_start")), to_date(engagement.get("reporting_period_end")))
-        return Loaded(docs, set_aside, system, lines, facilities, period, inputs.vehicle_groups, aside)
+        return Loaded(docs, set_aside, system, lines, facilities, period, inputs.vehicle_groups,
+                      company=engagement.get("client_name"), aside=aside)
 
     def system_line_keys(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
                          decisions: dict[str, dict[str, Any]] | None = None) -> set[str]:
@@ -382,7 +384,8 @@ class EvidenceTreeService:
             "reporting_period": {"start": _iso(loaded.period[0]), "end": _iso(loaded.period[1])},
             "coverage": cl.month_coverage(loaded.period, covered),
             "identifiers": self._identifiers(line, on_line),
-            "identifier_groups": self._identifier_groups(line, on_line, loaded.facilities, decisions or {}),
+            "identifier_groups": self._identifier_groups(line, on_line, loaded.facilities, decisions or {},
+                                                              loaded.company),
             "values": values,
             "rows": rows,
             "columns": self._columns(rows),
@@ -415,6 +418,11 @@ class EvidenceTreeService:
             "decision": ("awaiting_other_fields" if waiting or rejected else
                          "not_reviewed" if item is None or item.status == "unreviewed" else item.status),
             "waiting_on": waiting, "rejected_fields": rejected,
+            # A decision made before the document was re-read no longer applies (the row is unreviewed),
+            # or an edit/reject carried over although the extracted value changed.
+            # The keys are present only when true, so a document nobody re-read answers exactly as before.
+            **({"reread_changed": True} if item is not None and item.reread_changed else {}),
+            **({"value_changed_since_review": True} if item is not None and VALUE_CHANGED in item.flags else {}),
             "date": {"start": _iso(start), "end": _iso(end),
                      "days": (end - start).days + 1 if start and end and end >= start else None,
                      "label": EvidenceTreeService._date_label(line, record.canonical_type_id, start, end)},
@@ -479,6 +487,7 @@ class EvidenceTreeService:
                     value, unit = found, snapshot.get("unit") or item.unit
                 login = entry.get("reviewer_id")
                 out.append({
+                    **({"superseded_by_reread": True} if entry.get("superseded_by_reread") else {}),
                     "action": action, "actor_name": name_of(str(login)) if login else None,
                     "at": _iso(entry.get("reviewed_at")),
                     "field": HISTORY_FIELD_LABELS.get(field_name, field_name.replace("_", " ").capitalize()),
@@ -493,7 +502,8 @@ class EvidenceTreeService:
 
         groups: dict[tuple[Any, str], list[dict[str, Any]]] = {}
         for entry in entries:
-            if entry["action"] == "accepted" and entry["at"] and entry["_login"]:
+            if entry["action"] == "accepted" and entry["at"] and entry["_login"] \
+                    and not entry.get("superseded_by_reread"):
                 groups.setdefault((entry["_login"], entry["at"][:16]), []).append(entry)
         folded: set[int] = set()
         out: list[dict[str, Any]] = []
@@ -552,7 +562,7 @@ class EvidenceTreeService:
     @classmethod
     def _identifier_groups(cls, line: cl.CalculationLine, on_line: list[tuple[DocState, list[ReviewedRecord]]],
                            facilities: list[dict[str, Any]],
-                           decisions: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+                           decisions: dict[str, dict[str, Any]], company: str | None = None) -> list[dict[str, Any]]:
         """Each identifier that applies to the line, with its documents grouped by value, and the documents without it."""
 
         out: list[dict[str, Any]] = []
@@ -564,7 +574,7 @@ class EvidenceTreeService:
                 for record in records:
                     how: str | None = None
                     if is_facility:
-                        found = cl.facility_match(facilities, decisions, doc.document_id, record)
+                        found = cl.facility_match(facilities, decisions, doc.document_id, record, company)
                         reads = [(str(found[0].get("name")), False)] if found else []
                         how = found[1] if found else None
                     else:
