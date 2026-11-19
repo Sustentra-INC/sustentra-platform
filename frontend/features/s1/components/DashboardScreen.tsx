@@ -29,10 +29,13 @@ export function DashboardScreen({
   engagement,
   figures,
   onNavigate,
+  onOpenReview,
 }: {
   engagement: EngagementConfig;
   figures: DashboardFigures;
   onNavigate?: (key: NavKey) => void;
+  /** Opens the review at the first value waiting for review; without it the item opens Evidence. */
+  onOpenReview?: () => void;
 }) {
   const go = (key: NavKey) => () => onNavigate?.(key);
   const hasEngagement = Boolean(engagement.clientName);
@@ -116,7 +119,7 @@ export function DashboardScreen({
           <ul className="s1-attention__list">
             {attention.map((item) => (
               <li key={item.key}>
-                <button className={`s1-attention__item s1-attention__item--${item.tone}`} type="button" onClick={go(item.nav)}>
+                <button className={`s1-attention__item s1-attention__item--${item.tone}`} type="button" onClick={item.key === "review" && onOpenReview ? onOpenReview : go(item.nav)}>
                   <span className="s1-attention__icon" aria-hidden>
                     {item.icon}
                   </span>
