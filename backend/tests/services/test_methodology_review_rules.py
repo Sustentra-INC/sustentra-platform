@@ -315,8 +315,8 @@ def test_options_are_checked_against_the_list_and_keep_the_companys_wording() ->
     f = field("scope2:instruments")
     good = [pick("ppa or vppa", "  our PPA with W\u00e4rmewerke K\u00e4serei "), pick("Residual mix")]
     assert m.validate_value(f, good) == [pick("PPA or VPPA", "our PPA with W\u00e4rmewerke K\u00e4serei"), pick("Residual mix")]
-    assert m.validate_value(f, [pick("None")]) == [pick("None")] and m.validate_value(f, []) == []
-    for bad in ([pick("Carbon offsets")], [pick("PPA or VPPA"), pick(" ppa  OR vppa ")], [pick("None"), pick("PPA or VPPA")],
+    assert m.validate_value(f, [pick("None")]) == [pick("None")]
+    for bad in ([], [pick("Carbon offsets")], [pick("PPA or VPPA"), pick(" ppa  OR vppa ")], [pick("None"), pick("PPA or VPPA")],
                 [pick("PPA or VPPA", "x" * 201)], [pick("")], [{"option": "PPA or VPPA"}], ["PPA or VPPA"], "PPA or VPPA", None,
                 [pick("PPA or VPPA", "a\x00b")]):
         with pytest.raises(m.MethodologyInvalid) as error:
@@ -367,3 +367,32 @@ def test_the_instrument_row_shows_on_a_market_yes_and_a_value_or_add_an_item_ove
     assert m.is_shown(f, rec(f["field_id"], [pick("None")]), meta, {})  # it has a value
     assert m.is_shown(f, blank, {**meta, "revealed": [f["field_id"]]}, {})  # the reviewer added it
     assert not m.is_shown(field("calculation:source_records"), blank, meta, {market[0]: rec(market[0], "Yes")})
+
+
+def test_an_empty_selection_is_refused_and_none_is_not_a_free_option() -> None:
+    instruments = field("scope2:instruments")
+    with pytest.raises(m.MethodologyInvalid, match="or None if there are none"):
+        m.validate_value(instruments, [])
+    records = field("calculation:source_records")
+    with pytest.raises(m.MethodologyInvalid, match="reject this row"):
+        m.validate_value(records, [])
+    for text in ("none", "NONE", "  None ", "no\u006ee"):
+        with pytest.raises(m.MethodologyInvalid, match="'None' can't be added"):
+            m.validate_value(records, [pick(text)])
+    # a free option that is a listed option, in any case or spacing, selects the listed one
+    assert m.validate_value(records, [pick(" METER   readings ")]) == [pick("Meter readings")]
+    with pytest.raises(m.MethodologyInvalid, match="chosen twice"):
+        m.validate_value(records, [pick("Meter readings"), pick("meter READINGS")])
+
+
+def test_a_conditional_row_shown_only_by_claudes_suggestion_says_so() -> None:
+    f = field("scope2:instruments")
+    meta = m.new_meta()
+    market = m.MARKET_CATEGORY_IDS
+    claude_only = {**m.new_record(f["field_id"]), "suggestion": {"value": [pick("PPA or VPPA")]}}
+    note = m.shown_note(f, claude_only, meta, {})
+    assert note == "Shown because Claude found it, although no market-based category is Yes."
+    assert m.shown_note(f, claude_only, meta, {market[0]: rec(market[0], "Yes")}) is None  # the condition holds
+    assert m.shown_note(f, {**claude_only, "decision": rec(f["field_id"], [pick("None")])["decision"]}, meta, {}) is None
+    assert m.shown_note(f, claude_only, {**meta, "revealed": [f["field_id"]]}, {}) is None  # the reviewer added it
+    assert m.shown_note(field("calculation:source_records"), claude_only, meta, {}) is None

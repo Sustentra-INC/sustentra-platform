@@ -60,6 +60,9 @@ const ADD_ROW_LABEL: Record<string, string> = {
   "factor:scope2": "Add Scope 2 factor row",
 };
 
+/** One folding rule for option names, like the server's: case-folded, single spaces. */
+const foldOption = (text: string) => text.toLowerCase().replaceAll("\u00df", "ss").split(/\s+/).filter(Boolean).join(" ");
+
 /** What an empty row reads, by the server's display state. Never "Not set". */
 export function emptyWords(status: string, displayState: string | undefined): string {
   if (status === "rejected") return "Rejected, no value";
@@ -188,8 +191,17 @@ function ValueEditor({
     });
   const addOwn = () => {
     const text = ownOption.trim();
-    if (!text || picks.some((p) => p.option.toLowerCase() === text.toLowerCase())) return;
-    setPicks((all) => [...all.filter((p) => p.option !== "None"), { option: text, wording: "" }]);
+    const folded = foldOption(text);
+    if (!folded) return;
+    setProblem(null);
+    if (folded === "none") return setProblem("None can't be added as an option of your own.");
+    const listed = listedOptions.find((o) => foldOption(o) === folded);
+    if (listed) {
+      // an own option that is a listed one selects the listed one
+      if (!picks.some((p) => p.option === listed)) toggle(listed);
+    } else if (!picks.some((p) => foldOption(p.option) === folded)) {
+      setPicks((all) => [...all.filter((p) => p.option !== "None"), { option: text, wording: "" }]);
+    }
     setOwnOption("");
   };
   const [entries, setEntries] = useState<{ source_type: string; method: string }[]>(() =>
@@ -204,7 +216,12 @@ function ValueEditor({
 
   function save() {
     setProblem(null);
-    if (multi) return onSave(picks.map((p) => ({ option: p.option, wording: p.wording.trim() })));
+    if (multi) {
+      if (picks.length === 0) {
+        return setProblem(listedOptions.includes("None") ? "Choose at least one option, or None if there are none." : "Choose at least one option, or reject this row if the company has none.");
+      }
+      return onSave(picks.map((p) => ({ option: p.option, wording: p.wording.trim() })));
+    }
     if (listed) {
       const kept = entries.map((e) => ({ source_type: e.source_type.trim(), method: e.method.trim() })).filter((e) => e.source_type || e.method);
       if (kept.some((e) => !e.source_type || !e.method)) return setProblem("Give every entry a source type and a method, or remove it.");
@@ -258,7 +275,7 @@ function ValueEditor({
             return (
               <span key={option} className="s1-mr-actions">
                 <label className="s1-mb-part">
-                  <span>
+                  <span className="s1-mr-value">
                     <input type="checkbox" aria-label={`${option}: ${def.label}`} checked={Boolean(pick)} onChange={() => toggle(option)} /> {option}
                   </span>
                 </label>
@@ -390,6 +407,7 @@ function FieldRow({
           </span>
         ) : null}
         {oldText ? <span className="s1-mr-muted">Enter the start and end dates with Edit.</span> : null}
+        {record.shownNote ? <span className="s1-mr-muted">{record.shownNote}</span> : null}
         {status === "rejected" && decision?.reason ? <span className="s1-mr-muted">Reason: {decision.reason}</span> : null}
       </div>
 

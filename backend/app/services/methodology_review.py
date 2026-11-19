@@ -355,6 +355,8 @@ def _multiselect(field: Mapping[str, Any], value: Any) -> list[dict[str, str]]:
         if key in by_key:
             option = by_key[key]
         elif free:
+            if key == "none":  # "None" is a listed answer on the fields that have it, never a free option
+                raise _fail(field, "'None' can't be added as an option of your own.")
             extra += 1
             if extra > MAX_FREE_OPTIONS:
                 raise _fail(field, f"add at most {MAX_FREE_OPTIONS} options of your own.")
@@ -365,6 +367,9 @@ def _multiselect(field: Mapping[str, Any], value: Any) -> list[dict[str, str]]:
         seen.add(key)
         out.append({"option": option, "wording": _text(field, data["wording"], limit=MAX_WORDING,
                                                           name="the company's wording")})
+    if not out:  # a decision needs an option: "None" is the explicit empty answer where the field has it
+        raise _fail(field, "choose at least one option" + (", or None if there are none." if "None" in allowed else
+                                                              ", or reject this row if the company has none."))
     if len(out) > 1 and any(o["option"] == "None" for o in out):
         raise _fail(field, "'None' can't be chosen together with other options.")
     return out
@@ -715,6 +720,18 @@ def is_shown(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mapping[
         return True
     depends: list[str] = field.get("shown_if_yes") or []
     return bool(depends) and market_based_reported(records or {}, depends)
+
+
+def shown_note(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mapping[str, Any],
+               records: Mapping[str, Mapping[str, Any]] | None = None) -> str | None:
+    """Why a conditional row is on the page when its condition is not met: only Claude's suggestion
+    is there (no decision, not added by the reviewer), so it is shown rather than hidden."""
+
+    depends: list[str] = field.get("shown_if_yes") or []
+    if (depends and record.get("suggestion") and not record.get("decision")
+            and field["field_id"] not in meta.get("revealed", []) and not market_based_reported(records or {}, depends)):
+        return "Shown because Claude found it, although no market-based category is Yes."
+    return None
 
 
 def public(record: Mapping[str, Any]) -> dict[str, Any]:

@@ -523,4 +523,8 @@ def test_prefill_keeps_a_quote_per_option_and_the_reviewer_can_change_the_select
     assert act(eid, INSTR, "edit", {"value": [{"option": "Carbon offsets", "wording": ""}]}).status_code == 422
     free = [{"option": "Utility invoices", "wording": ""}, {"option": "Lieferscheine \u7eb8\u8d28", "wording": "Papier-Belege"}]
     assert act(eid, RECORDS, "edit", {"value": free}).status_code == 200
-    assert act(eid, RECORDS, "edit", {"value": []}).status_code == 200 and record(eid, RECORDS)["decision"]["value"] == []
+    empty = act(eid, RECORDS, "edit", {"value": []})  # a decision needs an option
+    assert empty.status_code == 422 and "choose at least one option" in empty.json()["detail"]
+    assert record(eid, RECORDS)["decision"]["value"] == free
+    none_only = act(eid, INSTR, "edit", {"value": [{"option": "None", "wording": ""}]})  # None is the explicit empty answer
+    assert none_only.status_code == 200

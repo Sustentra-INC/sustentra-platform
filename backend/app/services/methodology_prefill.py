@@ -177,21 +177,44 @@ def dates_in(quote: str) -> set[date]:
 # What a quote must say for a choice to be tied to it (compared after ``norm``).
 _CHOICE_TERMS = {"Equity Share": ("equity share", "equity"), "Financial Control": ("financial control",),
                  "Operational Control": ("operational control",)}
-# What a quote must name for an option to be tied to it (compared after ``norm``).
+# What a quote must name for an option to be tied to it: whole words or whole phrases, never a piece of
+# another word ("records" is not "REC", "release" is not a lease agreement).
 _OPTION_TERMS = {
-    "RECs or other energy attribute certificates": ("rec", "renewable energy certificate", "energy attribute certificate",
-                                                    "guarantee of origin", "eac"),
-    "PPA or VPPA": ("ppa", "power purchase agreement"),
-    "Green tariff or utility program": ("green tariff", "green power program", "utility program", "green pricing"),
-    "Supplier-specific rate": ("supplier-specific", "supplier specific", "supplier emission"),
+    "RECs or other energy attribute certificates": (
+        "rec", "recs", "eac", "eacs", "renewable energy certificate", "renewable energy certificates",
+        "energy attribute certificate", "energy attribute certificates", "guarantee of origin", "guarantees of origin"),
+    "PPA or VPPA": ("ppa", "ppas", "vppa", "vppas", "power purchase agreement", "power purchase agreements"),
+    "Green tariff or utility program": ("green tariff", "green tariffs", "green power program", "utility program",
+                                        "green pricing"),
+    "Supplier-specific rate": ("supplier-specific", "supplier specific", "supplier emission factor"),
     "Residual mix": ("residual mix",),
-    "Utility invoices": ("utility invoice", "utility bill"),
-    "Meter readings": ("meter reading",),
-    "Fuel cards": ("fuel card",),
-    "Fuel receipts or logs": ("fuel receipt", "fuel log"),
-    "Landlord reports": ("landlord",),
-    "Lease agreements": ("lease agreement", "lease"),
+    "Utility invoices": ("utility invoice", "utility invoices", "utility bill", "utility bills"),
+    "Meter readings": ("meter reading", "meter readings"),
+    "Fuel cards": ("fuel card", "fuel cards"),
+    "Fuel receipts or logs": ("fuel receipt", "fuel receipts", "fuel log", "fuel logs"),
+    "Landlord reports": ("landlord report", "landlord reports", "landlord"),
+    "Lease agreements": ("lease agreement", "lease agreements"),
 }
+_NEGATIONS = frozenset({"not", "no", "never", "without", "none", "neither", "nor", "cannot"})
+
+
+def names_option(quote: str, terms: Sequence[str]) -> str:
+    """How a quote names an option: ``yes`` (a term as a whole word or phrase, not negated), ``negated``
+    (every mention has a negation within five words before it: "we do not buy RECs") or ``no``."""
+
+    text = norm(quote)
+    negated = False
+    for term in terms:
+        pattern = r"(?<![0-9a-z.])(?<!\d,)" + re.escape(norm(term)) + r"(?![0-9a-z])(?![.,]\d)"
+        for match in re.finditer(pattern, text):
+            before = re.findall(r"[a-z0-9'-]+", text[:match.start()])[-5:]
+            if any(word in _NEGATIONS or word.endswith("n't") for word in before):
+                negated = True
+            else:
+                return "yes"
+    return "negated" if negated else "no"
+
+
 _GWP_TERMS = {"AR4": ("ar4", "fourth assessment"), "AR5": ("ar5", "fifth assessment"),
               "AR6": ("ar6", "sixth assessment")}
 
@@ -235,7 +258,8 @@ What the items mean
   "Supplier-specific rate", "Residual mix"; source records: "Utility invoices", "Meter readings",
   "Fuel cards", "Fuel receipts or logs", "Landlord reports", "Lease agreements"). Each item cites its
   own line, and the quote must name the option. "wording" is the company's own words for it, copied
-  from the quote, or "". Do not choose an option the documents do not mention.
+  from the quote, or "". Do not choose an option the documents do not mention, or say the company does
+  not use.
 - periods: the inventory's reporting period: its start and end dates, each as YYYY-MM-DD. Both
   dates must be printed in the quote (for example "January 1 to December 31, 2024", or
   "1/1/2025 - 12/31/2025"). If the document shows several periods (such as the current and the
@@ -490,8 +514,9 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         found = cited(sel)
         if found is None:
             continue
-        if not any(term in norm(sel.quote) for term in _OPTION_TERMS.get(option, ())):
-            dropped["value_not_in_quote"] += 1  # the quote does not name the option
+        named = names_option(sel.quote, _OPTION_TERMS.get(option, ()))
+        if named != "yes":  # the quote does not name the option, or says the company does not have it
+            dropped["negated" if named == "negated" else "value_not_in_quote"] += 1
             continue
         wording = sel.wording.strip() if sel.wording.strip() and norm(sel.wording) in norm(sel.quote) else ""
         picked.setdefault(sel.field_id, []).append(({"option": option, "wording": wording}, (option, sel.quote, *found)))

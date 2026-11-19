@@ -99,6 +99,8 @@ export interface MethodologyRecord {
   userAdded: boolean;
   /** What an empty row reads: not checked yet (no Claude run), not detected (a run found nothing), or it has a value. */
   displayState?: "not_checked" | "not_detected" | "has_value" | string;
+  /** Why a conditional row is on the page although its condition is not met (a sentence from the server). */
+  shownNote?: string | null;
   /** False for an optional row that is hidden until it has a value or the reviewer adds it. */
   shown?: boolean;
   suggestion: MethodologySuggestion | null;
@@ -145,14 +147,17 @@ export interface PrefillResult {
 const base = (engagementId: string) => `/engagements/${encodeURIComponent(engagementId)}/methodology-review`;
 const field = (engagementId: string, fieldId: string) => `${base(engagementId)}/${encodeURIComponent(fieldId)}`;
 
-type WireRecord = { field_id: string; user_added?: boolean; display_state?: string } & Omit<MethodologyRecord, "fieldId" | "userAdded" | "displayState">;
+type WireRecord = { field_id: string; user_added?: boolean; display_state?: string; shown_note?: string | null } & Omit<
+  MethodologyRecord,
+  "fieldId" | "userAdded" | "displayState" | "shownNote"
+>;
 type WireDef = { field_id: string; group_label: string; allowed_labels?: CatalogField["allowedLabels"]; user_added?: boolean } & Omit<
   CatalogField,
   "fieldId" | "groupLabel" | "allowedLabels" | "userAdded"
 >;
 
-function readRecord({ field_id, user_added, display_state, ...rest }: WireRecord): MethodologyRecord {
-  return { ...rest, fieldId: field_id, userAdded: Boolean(user_added), displayState: display_state };
+function readRecord({ field_id, user_added, display_state, shown_note, ...rest }: WireRecord): MethodologyRecord {
+  return { ...rest, fieldId: field_id, userAdded: Boolean(user_added), displayState: display_state, shownNote: shown_note ?? null };
 }
 
 function readDef({ field_id, group_label, allowed_labels, user_added, ...rest }: WireDef): CatalogField {

@@ -292,6 +292,50 @@ describe("the demo backend's methodology review", () => {
       expect(screen.queryByLabelText(`Add another option: ${INSTR}`)).toBeNull(); // no free additions here
     });
 
+    it("refuses an empty selection, and None as a free option in any case", async () => {
+      await open();
+      await expect(edit("calculation:source_records", [])).rejects.toMatchObject({ status: 422 });
+      await expect(edit("scope2:instruments", [])).rejects.toMatchObject({ status: 422 });
+      for (const none of ["none", "NONE", "  None "]) {
+        await expect(edit("calculation:source_records", [{ option: none, wording: "" }])).rejects.toMatchObject({ status: 422 });
+      }
+      await edit("scope2:instruments", [{ option: "None", wording: "" }]); // the explicit empty answer
+    });
+
+    it("the editor refuses to save nothing, refuses a free None, and a free option that is a listed one selects it", async () => {
+      await open();
+      fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: "calculation:source_records" } });
+      await waitFor(() => expect(within(row(RECORDS)).getByText("Not checked yet")).toBeTruthy());
+      fireEvent.click(within(row(RECORDS)).getByRole("button", { name: `Edit: ${RECORDS}` }));
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("Choose at least one option, or reject this row");
+      fireEvent.change(screen.getByLabelText(`Add another option: ${RECORDS}`), { target: { value: " NONE " } });
+      fireEvent.click(screen.getByRole("button", { name: "Add option" }));
+      expect((await screen.findByRole("alert")).textContent).toContain("None can't be added");
+      fireEvent.change(screen.getByLabelText(`Add another option: ${RECORDS}`), { target: { value: "  METER   readings " } });
+      fireEvent.click(screen.getByRole("button", { name: "Add option" }));
+      expect((screen.getByRole("checkbox", { name: `Meter readings: ${RECORDS}` }) as HTMLInputElement).checked).toBe(true);
+      expect(screen.getAllByRole("checkbox", { name: /meter readings/i })).toHaveLength(1); // no second box for the same option
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row(RECORDS)).getByText("Meter readings")).toBeTruthy());
+    });
+
+    it("says why the instrument row is shown when only Claude's suggestion put it there", async () => {
+      await open();
+      await prefillViaUi(); // the canned run says market categories are Yes, so the row shows without a note
+      expect(within(row(INSTR)).queryByText(/Shown because Claude found it/)).toBeNull();
+      for (const id of ["electricity", "heating", "steam", "cooling"]) {
+        await demoApi(`${BASE}/category:market:${id}/reject`, { method: "POST", body: { reason: "Not stated" } });
+      }
+      cleanup();
+      await open();
+      expect(within(row(INSTR)).getByText("Shown because Claude found it, although no market-based category is Yes.")).toBeTruthy();
+      await edit("scope2:instruments", [{ option: "PPA or VPPA", wording: "" }]); // a decision: the note goes
+      cleanup();
+      await open();
+      expect(within(row(INSTR)).queryByText(/Shown because Claude found it/)).toBeNull();
+    });
+
     it("refuses an option outside the list, a repeat, None with others, and an eleventh free option", async () => {
       await open();
       await expect(edit("scope2:instruments", [{ option: "Carbon offsets", wording: "" }])).rejects.toMatchObject({ status: 422 });

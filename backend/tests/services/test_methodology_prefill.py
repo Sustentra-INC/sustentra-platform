@@ -418,3 +418,50 @@ def test_the_selection_schema_only_knows_the_multiselect_fields() -> None:
         answer(selections=[selection("exclusion:boundary", "Utility invoices", "utility invoices", "L2")])
     with pytest.raises(ValueError):
         answer(choices=[{"field_id": "scope2:instruments", "value": "Yes", **cite("L1", "We buy RECs")}])
+
+
+# --- option names are whole words or phrases, and a negated mention is not a selection ------------
+
+def test_an_option_is_named_by_whole_words_not_by_a_piece_of_another_word() -> None:
+    for option, field_id, line in (
+            ("RECs or other energy attribute certificates", "scope2:instruments", "Our records are reconciled each quarter."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "We check each site every month."),  # "each" holds "eac"
+            ("RECs or other energy attribute certificates", "scope2:instruments", "The directory records the receipts."),
+            ("Lease agreements", "calculation:source_records", "Please release the report after the review."),
+            ("Lease agreements", "calculation:source_records", "The leaseholder is named in the file."),
+            ("PPA or VPPA", "scope2:instruments", "The happa festival is held in May."),
+            ("Fuel cards", "calculation:source_records", "Our fuel cardholders are listed.")):
+        kept, dropped = check(answer(selections=[selection(field_id, option, line.rstrip("."), "L1")]), [doc([(1, line)])])
+        assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}, line
+
+
+def test_whole_terms_and_their_plurals_are_still_named() -> None:
+    for option, field_id, line in (
+            ("RECs or other energy attribute certificates", "scope2:instruments", "We buy RECs for the plant."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "Each REC is retired in the registry."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "Renewable energy certificates (EACs) are used."),
+            ("PPA or VPPA", "scope2:instruments", "The plant has a virtual power purchase agreement (VPPA)."),
+            ("Lease agreements", "calculation:source_records", "Figures come from lease agreements."),
+            ("Fuel cards", "calculation:source_records", "Fuel cards are the source of fuel use."),
+            ("Landlord reports", "calculation:source_records", "Landlord reports give the shared energy use.")):
+        kept, dropped = check(answer(selections=[selection(field_id, option, line.rstrip("."), "L1")]), [doc([(1, line)])])
+        assert len(kept) == 1 and not dropped, line
+
+
+def test_a_negated_mention_is_dropped_and_counted_but_a_far_away_negation_is_not() -> None:
+    for line in ("We do not buy RECs for any site.", "No PPA is in place.", "The company has never used RECs.",
+                 "Sites without a PPA use the grid mix.", "We don't hold any RECs."):
+        kept, dropped = check(answer(selections=[selection(
+            "scope2:instruments", "PPA or VPPA" if "PPA" in line else "RECs or other energy attribute certificates",
+            line.rstrip("."), "L1")]), [doc([(1, line)])])
+        assert kept == [] and dict(dropped) == {"negated": 1}, line
+    far = "Not all of our many sites are covered, but the Tualatin plant does buy RECs."  # "not" is more than 5 words back
+    kept, dropped = check(answer(selections=[selection(
+        "scope2:instruments", "RECs or other energy attribute certificates", far.rstrip("."), "L1")]), [doc([(1, far)])])
+    assert len(kept) == 1 and not dropped
+    both = "We do not buy PPAs, but we do buy RECs."  # the RECs mention is far enough from "not"
+    kept, dropped = check(answer(selections=[
+        selection("scope2:instruments", "PPA or VPPA", both.rstrip("."), "L1"),
+        selection("scope2:instruments", "RECs or other energy attribute certificates", both.rstrip("."), "L1")]), [doc([(1, both)])])
+    assert [v["option"] for v in kept[0].suggestion["value"]] == ["RECs or other energy attribute certificates"]
+    assert dict(dropped) == {"negated": 1}

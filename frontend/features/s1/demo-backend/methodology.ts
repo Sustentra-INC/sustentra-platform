@@ -256,15 +256,19 @@ function validate(d: Def, value: Json): Json {
       const out = value.map((entry) => {
         const o = only(d, entry as Json, ["option", "wording"]);
         let option = text(d, o.option, "the option", true, 60);
-        const key = option.toLowerCase().split(/\s+/).join(" ");
-        const listed = allowed.find((a) => a.toLowerCase().split(/\s+/).join(" ") === key);
+        const key = fold(option);
+        const listed = allowed.find((a) => fold(a) === key);
         if (listed) option = listed;
         else if (!d.free) return invalid(d, `choose options from the list: ${allowed.join(", ")}.`);
+        else if (key === "none") return invalid(d, "'None' can't be added as an option of your own.");
         else if (++extra > MAX_FREE_OPTIONS) return invalid(d, `add at most ${MAX_FREE_OPTIONS} options of your own.`);
         if (seen.has(key)) return invalid(d, `'${option}' is chosen twice.`);
         seen.add(key);
         return { option, wording: text(d, o.wording, "the company's wording", false, 200) };
       });
+      if (out.length === 0) {
+        return invalid(d, "choose at least one option" + (allowed.includes("None") ? ", or None if there are none." : ", or reject this row if the company has none."));
+      }
       if (out.length > 1 && out.some((e) => e.option === "None")) return invalid(d, "'None' can't be chosen together with other options.");
       return out;
     }
@@ -366,14 +370,21 @@ function listedRecord(state: State, r: Rec): Record<string, unknown> {
   const decision = r.decision;
   const hasValue = Boolean(r.suggestion) || (decision !== null && (decision.status !== "pending" || (decision.value !== null && decision.value !== undefined)));
   const displayState = hasValue ? "has_value" : state.prefilled ? "not_detected" : "not_checked";
-  const marketYes = (d?.shown_if_yes ?? []).some((id) => {
+  const marketDepends = d?.shown_if_yes ?? [];
+  const marketYes = marketDepends.some((id) => {
     const other = state.records.find((x) => x.fieldId === id);
     const dec = other?.decision;
     if (dec && (dec.status === "accepted" || dec.status === "edited")) return dec.value === "Yes";
     return (!dec || dec.status === "pending") && other?.suggestion?.value === "Yes";
   });
   const shown = d?.required !== false || hasValue || state.revealed.has(r.fieldId) || marketYes;
-  return { ...publicRecord(r), display_state: displayState, shown };
+  const claudeOnly = marketDepends.length > 0 && Boolean(r.suggestion) && !r.decision && !state.revealed.has(r.fieldId) && !marketYes;
+  return {
+    ...publicRecord(r),
+    display_state: displayState,
+    shown,
+    ...(claudeOnly ? { shown_note: "Shown because Claude found it, although no market-based category is Yes." } : {}),
+  };
 }
 
 const fieldPath = (action: string) => new RegExp(`^/engagements/(?<id>[^/]+)/methodology-review/(?<field>[^/]+)/${action}$`);
