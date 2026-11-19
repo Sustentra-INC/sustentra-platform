@@ -8,10 +8,12 @@ EPA fuel name for an extracted fuel code.
 
 from __future__ import annotations
 
+import math
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any
+from typing import Any, Iterable
 
 from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorReference
@@ -23,6 +25,11 @@ REFRIGERANT = "CT-S1-REFRSVC"
 THERMAL = "CT-S2-THERMAL"
 REVIEWED = ("accepted", "edited")
 AI_SUGGESTED = "ai_suggested"  # validation flag of a value Claude read (services/ai_extraction.py)
+# Validation flag on a field whose edit or reject carried over a re-read where the extracted value changed.
+VALUE_CHANGED = "extracted_value_changed_since_review"
+# The review screen's words for a decision that no longer applies to the re-read value.
+REREAD_NOTE = "The document was re-read and this value changed. Review it again."
+PERIOD_FIELDS = ("service_period_start", "service_period_end")
 # Identifier fields never feed a number (spec A13), so the schedule's Source identifiers counts what Claude read
 # in them before a reviewer has decided. Nothing else reads these values: best() and reviewed() stay blank.
 AI_IDENTIFIER_FIELDS = ("meter_number", "account_number", "service_address")
@@ -137,6 +144,10 @@ class ReviewedField:
     # Claude read two different values for this field (ai_conflict) and the reviewer accepted both:
     # the field counts as unreviewed until one of them is rejected.
     conflict: bool = False
+    # A reviewer's decision exists on an earlier read of this value but no longer applies (the document
+    # was re-read and the record or its value changed): the field is unreviewed until it is reviewed again.
+    reread_changed: bool = False
+    flags: list[str] = field(default_factory=list)  # e.g. VALUE_CHANGED
     # What Claude read here, not yet decided by a reviewer (identifier fields only; see AI_IDENTIFIER_FIELDS).
     # Never an input to a calculation: best(), reviewed() and unit_of() do not see it.
     ai_reads: list[Any] = field(default_factory=list)
@@ -186,9 +197,297 @@ class ReviewedRecord:
 
 
 def latest_decisions(decisions: Any) -> dict[str, dict]:
-    """The latest review decision per candidate id (later entries win)."""
+    """The latest review decision per candidate id (later entries win). This is the raw per-id
+    lookup; what applies to an extracted item is ``resolve_decisions`` / ``effective_decision``."""
 
     return {str(d.get("candidate_id")): d for d in decisions}
+
+
+# ---------------------------------------------------------------------------------------------
+# Which decision applies to an extracted item
+#
+# A decision is stored under a candidate id built from the field and the record's *index*
+# (``...::{field}::r{n}``). A re-read can renumber the records, so the id alone cannot say the
+# decision was made on this value. ``effective_decision`` is the one place that decides.
+# ---------------------------------------------------------------------------------------------
+_RECORD_INDEX_SEGMENT = re.compile(r"^r\d+(?::|$)")
+# ``...::r2`` and Claude's alternative candidates ``...::r2::ai2``
+_INDEX_SUFFIX = re.compile(r"::r(\d+)(?:::ai\d+)?$")
+_PLAIN_NUMBER = re.compile(r"^[+-]?\d+(?:\.\d+)?$")
+_THOUSANDS_NUMBER = re.compile(r"^[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?$")
+
+
+@dataclass
+class EffectiveDecision:
+    """``decision`` is the stored decision when it applies to the item, else None. ``same_record``: the
+    decision was made on this record (an accept whose value changed is the same record, but does not apply)."""
+
+    decision: dict | None
+    applies: bool
+    value_changed: bool = False  # an edit/reject carried over although the extracted value changed
+    same_record: bool = False
+
+
+@dataclass
+class Resolution:
+    """What a re-read left of the reviewer's decisions on one extracted item."""
+
+    decision: dict | None = None  # the latest decision that applies, else None (unreviewed)
+    value_changed: bool = False
+    reread_changed: bool = False  # decisions exist on this record but none applies any more
+    # Every decision made on this record, oldest first. The ones a re-read made void are copies marked
+    # ``superseded_by_reread: True``; the stored decisions are never changed or removed.
+    history: list[dict] = field(default_factory=list)
+
+
+def record_key_of(container: Any) -> str | None:
+    """The ``record_key`` of an extracted item or a decision's candidate snapshot."""
+
+    if not isinstance(container, dict):
+        return None
+    key = container.get("record_key")
+    if not key and isinstance(container.get("source_reference"), dict):
+        key = container["source_reference"].get("record_key")
+    return str(key) if key else None
+
+
+def record_identity(record_key: str | None) -> str | None:
+    """A record key without its leading ``r{index}`` segment: the hint and the service period,
+    which stay the same when a re-read renumbers the records. None when nothing is left."""
+
+    if not record_key:
+        return None
+    rest = _RECORD_INDEX_SEGMENT.sub("", str(record_key), count=1).strip()
+    return rest or None
+
+
+def _index_of(decision: dict[str, Any]) -> int | None:
+    """The record index a decision was made on: the snapshot's ``record_index`` when it has one, else
+    the ``::r{n}`` (or ``::r{n}::ai{m}``) end of its candidate id. None for a single-record document."""
+
+    snapshot = decision.get("candidate_snapshot")
+    if isinstance(snapshot, dict) and isinstance(snapshot.get("record_index"), int) \
+            and not isinstance(snapshot.get("record_index"), bool):
+        return int(snapshot["record_index"])
+    found = _INDEX_SUFFIX.search(str(decision.get("candidate_id") or ""))
+    return int(found.group(1)) if found else None
+
+
+def _doc_of(record: dict[str, Any]) -> str:
+    return str(record.get("document_id"))
+
+
+def _blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _number(value: Any) -> float | None:
+    """A number, or text that is one: digits, an optional decimal part, and commas only as thousands
+    separators ("1,234.5"). "12 34" is not a number, so it never equals 1234."""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value) if math.isfinite(float(value)) else None
+    if isinstance(value, str):
+        text = value.strip()
+        if _THOUSANDS_NUMBER.match(text):
+            text = text.replace(",", "")
+        if _PLAIN_NUMBER.match(text):
+            return float(text)
+    return None
+
+
+def same_value(a: Any, b: Any) -> bool:
+    """Numbers compare numerically (58.92 equals "58.92"), the rest as trimmed text; blank equals only blank."""
+
+    if _blank(a) or _blank(b):
+        return _blank(a) and _blank(b)
+    na, nb = _number(a), _number(b)
+    if na is not None and nb is not None:
+        return math.isclose(na, nb, rel_tol=1e-9, abs_tol=1e-9)
+    return str(a).strip() == str(b).strip()
+
+
+def _same_unit(a: Any, b: Any) -> bool:
+    def norm(u: Any) -> str | None:
+        return None if _blank(u) else str(u).strip().casefold()
+
+    return norm(a) == norm(b)
+
+
+def _keys_by_record(records: list[dict[str, Any]]) -> dict[tuple[str, int | None], str]:
+    """A record's key as its items carry it, by document and record index: Claude's alternative
+    candidates (``::ai2``) have none of their own, so they take the key of the record they sit in."""
+
+    out: dict[tuple[str, int | None], str] = {}
+    for rec in records:
+        key = record_key_of(rec)
+        if key:
+            index = rec.get("record_index") if "record_index" in rec else _index_of(rec)
+            out.setdefault((_doc_of(rec), index), key)
+    return out
+
+
+def item_periods(items: Iterable[dict[str, Any]]) -> dict[tuple[str, Any], tuple[Any, Any]]:
+    """Each record's service period as the re-read extracted it, by document and ``record_index``."""
+
+    found: dict[tuple[str, Any], dict[str, Any]] = {}
+    for item in items:
+        name = item.get("field_name")
+        if name in PERIOD_FIELDS:
+            found.setdefault((_doc_of(item), item.get("record_index")), {})[name] = item.get("normalized_value")
+    return {k: (p.get("service_period_start"), p.get("service_period_end")) for k, p in found.items()}
+
+
+def decision_period(decisions: list[dict], position: int) -> tuple[Any, Any]:
+    """The service period a decision was made on, from the snapshots of the decisions on the same
+    record's period fields (the nearest in the list, which is time order). ``(None, None)`` when the
+    reviewer never decided them. Used only when a record key is missing."""
+
+    index, doc = _index_of(decisions[position]), _doc_of(decisions[position])
+    out: list[Any] = []
+    for name in PERIOD_FIELDS:
+        best: tuple[int, Any] | None = None
+        for i, other in enumerate(decisions):
+            snap = other.get("candidate_snapshot")
+            if not isinstance(snap, dict) or (snap.get("field_name") or other.get("field_name")) != name \
+                    or _index_of(other) != index or _doc_of(other) != doc:
+                continue
+            distance = abs(i - position)
+            if best is None or distance <= best[0]:
+                best = (distance, snap.get("normalized_value"))
+        out.append(None if best is None else best[1])
+    return out[0], out[1]
+
+
+def _decision_key(decisions: list[dict], position: int) -> str | None:
+    """The record key a decision was made on: its own snapshot's, else the nearest decision on the same
+    record (same document and index) that has one."""
+
+    own = record_key_of(decisions[position].get("candidate_snapshot"))
+    if own:
+        return own
+    index, doc = _index_of(decisions[position]), _doc_of(decisions[position])
+    best: tuple[int, str] | None = None
+    for i, other in enumerate(decisions):
+        key = record_key_of(other.get("candidate_snapshot"))
+        if key and _index_of(other) == index and _doc_of(other) == doc \
+                and (best is None or abs(i - position) <= best[0]):
+            best = (abs(i - position), key)
+    return None if best is None else best[1]
+
+
+def effective_decision(item: dict[str, Any], decision: dict[str, Any], *,
+                       item_key: str | None = None, decided_key: str | None = None,
+                       item_period: tuple[Any, Any] | None = None,
+                       decided_period: tuple[Any, Any] | None = None,
+                       twin: bool = False) -> EffectiveDecision:
+    """Whether a stored review decision applies to an extracted item of the latest read.
+
+    It applies only when it was made on the same document, field and record:
+      * the record keys, without their ``r{index}`` segment (hint and service period), are equal.
+        ``item_key`` / ``decided_key`` are the keys of the record the item / decision sits in (given by
+        ``resolve_decisions``; they default to the ones the item and the snapshot carry). When either
+        side has no key the service periods are compared instead (``item_period`` and ``decided_period``:
+        ``(start, end)`` as the read and the review saw them), and the decision must sit under the item's
+        own candidate id. A decision with no period evidence at all cannot be told apart from its record:
+        it is kept (the value rule below still protects an accept);
+      * an accept also needs the accepted value to be unchanged (value and unit, numbers numerically);
+      * an edit, a reject or "needs more evidence" carries over when the record is the same, even
+        if the extracted value changed (``value_changed`` says so, for a validation flag). On ``twin``
+        records (the read has several with the same hint and period) it carries over only if the value
+        is unchanged, since the record cannot be told from its twin.
+    A decision with no candidate snapshot cannot be compared: it applies by candidate id on a
+    single-record document and never on a multi-record one. Nothing is ever deleted: a decision that
+    does not apply stays in the history."""
+
+    none = EffectiveDecision(None, False)
+    same_id = str(decision.get("candidate_id")) == str(item.get("candidate_id"))
+    snapshot = decision.get("candidate_snapshot")
+    if not isinstance(snapshot, dict) or not snapshot:
+        single = item.get("record_index") is None and _index_of(decision) is None
+        ok = same_id and single
+        return EffectiveDecision(decision if ok else None, ok, same_record=ok)
+    if _doc_of(decision) != _doc_of(item) and decision.get("document_id") is not None \
+            and item.get("document_id") is not None:
+        return none
+    field_name = snapshot.get("field_name") or decision.get("field_name")
+    if field_name is not None and str(field_name) != str(item.get("field_name")):
+        return none
+    decided_key = decided_key if decided_key is not None else record_key_of(snapshot)
+    item_key = item_key if item_key is not None else record_key_of(item)
+    decided_id, read_id = record_identity(decided_key), record_identity(item_key)
+    if decided_id and read_id:
+        same_record = decided_id == read_id
+    elif not decided_key and not item_key and _index_of(decision) is None and item.get("record_index") is None:
+        same_record = True  # a single-record document before and after
+    else:
+        no_evidence = decided_period in (None, (None, None))
+        same_record = same_id and (no_evidence or (item_period or (None, None)) == decided_period)
+    if not same_record:
+        return none
+    unchanged = same_value(snapshot.get("normalized_value"), item.get("normalized_value")) \
+        and _same_unit(snapshot.get("unit"), item.get("unit"))
+    if decision.get("decision") == "accepted":
+        return EffectiveDecision(decision if unchanged else None, unchanged, same_record=True)
+    if twin and not unchanged:
+        return EffectiveDecision(None, False, same_record=True)
+    return EffectiveDecision(decision, True, value_changed=not unchanged, same_record=True)
+
+
+def resolve_decisions(items: list[dict[str, Any]], reviews: Iterable[dict[str, Any]]) -> list[Resolution]:
+    """For each extracted item (same order), the reviewer decision that applies to it.
+
+    The candidate id finds the decisions made on the same field and record index; a decision whose
+    record moved to another index in a re-read is found through its record key (hint and period), when
+    that identifies one record of the read. Decisions are matched within their own document only.
+    The latest decision that applies wins."""
+
+    decisions = [d for d in reviews]
+    by_id: dict[str, list[int]] = {}
+    by_field: dict[tuple[str, str], list[int]] = {}
+    for i, d in enumerate(decisions):
+        by_id.setdefault(str(d.get("candidate_id")), []).append(i)
+        snap = d.get("candidate_snapshot")
+        named = snap.get("field_name") if isinstance(snap, dict) else None
+        by_field.setdefault((_doc_of(d), str(named or d.get("field_name"))), []).append(i)
+    periods = item_periods(items)
+    read_keys = _keys_by_record(items)
+    decided_keys = [_decision_key(decisions, i) for i in range(len(decisions))]
+    decided_periods: dict[int, tuple[Any, Any]] = {}
+    item_key_of = [record_key_of(i) or read_keys.get((_doc_of(i), i.get("record_index"))) for i in items]
+    identities = Counter((_doc_of(i), str(i.get("field_name")), record_identity(k))
+                         for i, k in zip(items, item_key_of) if record_identity(k))
+    out: list[Resolution] = []
+    for item, item_key in zip(items, item_key_of):
+        direct = [] if item.get("candidate_id") is None else by_id.get(str(item.get("candidate_id")), [])
+        read_id = record_identity(item_key)
+        twin = bool(read_id) and identities[(_doc_of(item), str(item.get("field_name")), read_id)] > 1
+        moved: list[int] = []
+        if read_id and not twin:
+            moved = [i for i in by_field.get((_doc_of(item), str(item.get("field_name"))), [])
+                     if i not in direct and record_identity(decided_keys[i]) == read_id]
+        considered = sorted(set(direct) | set(moved))
+        applying: list[tuple[int, EffectiveDecision]] = []
+        history: list[dict] = []
+        for i in considered:
+            if i not in decided_periods:
+                decided_periods[i] = decision_period(decisions, i)
+            verdict = effective_decision(
+                item, decisions[i], item_key=item_key, decided_key=decided_keys[i],
+                item_period=periods.get((_doc_of(item), item.get("record_index"))),
+                decided_period=decided_periods[i], twin=twin)
+            if verdict.applies:
+                applying.append((i, verdict))
+                history.append(decisions[i])
+            elif verdict.same_record:
+                history.append({**decisions[i], "superseded_by_reread": True})
+        if applying:
+            out.append(Resolution(applying[-1][1].decision, applying[-1][1].value_changed, False, history))
+        else:
+            out.append(Resolution(None, False, bool(considered), history))
+    return out
 
 
 def all_decisions(decisions: Any) -> dict[str, list[dict]]:
@@ -200,16 +499,85 @@ def all_decisions(decisions: Any) -> dict[str, list[dict]]:
     return out
 
 
+def applicable_decisions(items: list[dict[str, Any]], reviews: Iterable[dict[str, Any]],
+                         read_documents: set[str] | None = None) -> list[dict[str, Any]]:
+    """The stored decisions (oldest first) that apply to some item of the latest read: every decision
+    on a record that still matches, not only the latest (the superseded copies are not the stored objects).
+    ``read_documents``: the documents the items come from; a decision on another document is kept as it
+    is (there is no read to judge it by). None judges every decision."""
+
+    decisions = [d for d in reviews]
+    kept = {id(h) for r in resolve_decisions(items, decisions) if r.decision is not None for h in r.history}
+    return [d for d in decisions
+            if id(d) in kept or (read_documents is not None and _doc_of(d) not in read_documents)]
+
+
+def latest_items_per_document(results: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The items of each document's latest extraction result (``results`` oldest first, any documents)."""
+
+    latest: dict[str, dict[str, Any]] = {}
+    for result in results:
+        latest[str(result.get("document_id"))] = result
+    return [item for result in latest.values() for item in result.get("items") or []]
+
+
+def stale_decision_ids(items: list[dict[str, Any]], reviews: Iterable[dict[str, Any]],
+                       read_documents: set[str] | None = None) -> set[str]:
+    """Ids of the stored decisions that no longer apply to any item of the latest read."""
+
+    decisions = [d for d in reviews]
+    kept = {id(d) for d in applicable_decisions(items, decisions, read_documents)}
+    return {str(d.get("review_decision_id")) for d in decisions if id(d) not in kept and d.get("review_decision_id")}
+
+
+def mark_reread_items(items: list[dict[str, Any]], reviews: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Copies of the extracted items for the review screen. An item whose earlier decision no longer
+    applies gets ``review_reread_changed: true`` (the screen says "Review it again"); an item whose
+    edit or reject carried over although the value changed gets VALUE_CHANGED in ``validation_flags``.
+    Items nobody re-read come back unchanged."""
+
+    out: list[dict[str, Any]] = []
+    for item, resolved in zip(items, resolve_decisions(items, reviews)):
+        if resolved.reread_changed:
+            out.append({**item, "review_reread_changed": True})
+        elif resolved.value_changed:
+            out.append({**item, "validation_flags": [*(item.get("validation_flags") or []), VALUE_CHANGED]})
+        else:
+            out.append(item)
+    return out
+
+
+def mark_review_targets(items: list[dict[str, Any]], reviews: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The stored decisions (every one, oldest first, none removed) for the review screen. A decision that
+    applies to an item under another candidate id (its record moved in a re-read) carries
+    ``applies_to_candidate_id``; one that applies to no item of the latest read (it matches nothing, or its
+    record is the same but a re-read changed the accepted value) carries it as None.
+    A decision that applies to its own candidate is returned as stored."""
+
+    decisions = [d for d in reviews]
+    target: dict[int, str] = {}
+    for item, resolved in zip(items, resolve_decisions(items, decisions)):
+        if resolved.decision is not None:  # every decision on the record, not only the latest one
+            for held in resolved.history:
+                target[id(held)] = str(item.get("candidate_id"))
+    out: list[dict[str, Any]] = []
+    for decision in decisions:
+        goes_to = target.get(id(decision))
+        out.append(decision if goes_to == str(decision.get("candidate_id"))
+                   else {**decision, "applies_to_candidate_id": goes_to})
+    return out
+
+
 def group_reviewed_records(document: dict[str, Any], canonical_type_id: str, items: list[dict[str, Any]],
-                           decisions: dict[str, dict],
-                           history: dict[str, list[dict]] | None = None) -> list[ReviewedRecord]:
+                           reviews: Iterable[dict[str, Any]], with_history: bool = False) -> list[ReviewedRecord]:
     """One document's extracted items grouped into records (by ``record_index``), each field
-    carrying its latest review decision (and, given ``history``, every decision on it)."""
+    carrying the review decision that applies to it (and, with ``with_history``, every decision on it).
+    ``reviews``: the document's stored decisions, oldest first."""
 
     document_id = str(document.get("document_id"))
     candidates: dict[int | None, dict[str, list[ReviewedField]]] = {}
-    for item in items:
-        review = decisions.get(str(item.get("candidate_id")))
+    for item, resolved in zip(items, resolve_decisions(items, reviews)):
+        review = resolved.decision
         status = str(review.get("decision")) if review else "unreviewed"
         value = None
         ai_reads: list[Any] = []
@@ -230,7 +598,9 @@ def group_reviewed_records(document: dict[str, Any], canonical_type_id: str, ite
             candidate_id=None if item.get("candidate_id") is None else str(item.get("candidate_id")),
             reviewer=review.get("reviewer_id") if review else None,
             reviewed_at=review.get("reviewed_at") if review else None,
-            history=list((history or {}).get(str(item.get("candidate_id")), [])), ai_reads=ai_reads))
+            history=list(resolved.history) if with_history else [],
+            reread_changed=resolved.reread_changed,
+            flags=[VALUE_CHANGED] if resolved.value_changed else [], ai_reads=ai_reads))
     grouped = {record: {name: _one_field(same) for name, same in fields.items()}
                for record, fields in candidates.items()}
     return [ReviewedRecord(document_id, document.get("file_name"), canonical_type_id, record_index, fields)

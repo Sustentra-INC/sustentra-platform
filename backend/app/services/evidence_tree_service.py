@@ -25,10 +25,9 @@ from backend.app.services.reviewed_evidence import (
     AI_SUGGESTED,
     REVIEWED,
     THERMAL,
+    VALUE_CHANGED,
     ReviewedRecord,
-    all_decisions,
     group_reviewed_records,
-    latest_decisions,
     set_aside_reason,
     superseded_ids,
     to_date,
@@ -139,8 +138,8 @@ class EvidenceTreeService:
             latest = results[-1] if results else {}
             canonical = str(latest.get("canonical_type_id") or "") or None
             reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
-            records = group_reviewed_records(document, canonical or "", latest.get("items") or [],
-                                             latest_decisions(reviews), all_decisions(reviews))
+            records = group_reviewed_records(document, canonical or "", latest.get("items") or [], reviews,
+                                             with_history=True)
             state = DocState(document, document_id, canonical, _iso(latest.get("created_at")), records)
             if reason is not None:
                 set_aside.append({"document_id": document_id, "file_name": document.get("file_name"),
@@ -409,6 +408,11 @@ class EvidenceTreeService:
             "decision": ("awaiting_other_fields" if waiting or rejected else
                          "not_reviewed" if item is None or item.status == "unreviewed" else item.status),
             "waiting_on": waiting, "rejected_fields": rejected,
+            # A decision made before the document was re-read no longer applies (the row is unreviewed),
+            # or an edit/reject carried over although the extracted value changed.
+            # The keys are present only when true, so a document nobody re-read answers exactly as before.
+            **({"reread_changed": True} if item is not None and item.reread_changed else {}),
+            **({"value_changed_since_review": True} if item is not None and VALUE_CHANGED in item.flags else {}),
             "date": {"start": _iso(start), "end": _iso(end),
                      "days": (end - start).days + 1 if start and end and end >= start else None,
                      "label": EvidenceTreeService._date_label(line, record.canonical_type_id, start, end)},
@@ -473,6 +477,7 @@ class EvidenceTreeService:
                     value, unit = found, snapshot.get("unit") or item.unit
                 login = entry.get("reviewer_id")
                 out.append({
+                    **({"superseded_by_reread": True} if entry.get("superseded_by_reread") else {}),
                     "action": action, "actor_name": name_of(str(login)) if login else None,
                     "at": _iso(entry.get("reviewed_at")),
                     "field": HISTORY_FIELD_LABELS.get(field_name, field_name.replace("_", " ").capitalize()),
@@ -487,7 +492,8 @@ class EvidenceTreeService:
 
         groups: dict[tuple[Any, str], list[dict[str, Any]]] = {}
         for entry in entries:
-            if entry["action"] == "accepted" and entry["at"] and entry["_login"]:
+            if entry["action"] == "accepted" and entry["at"] and entry["_login"] \
+                    and not entry.get("superseded_by_reread"):
                 groups.setdefault((entry["_login"], entry["at"][:16]), []).append(entry)
         folded: set[int] = set()
         out: list[dict[str, Any]] = []

@@ -105,6 +105,8 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         missing: field.value === null && field.correctedValue === null,
         asPrinted: corrected ? undefined : asPrinted(field, candidate, printedUnits),
         ai: aiOf(field),
+        ...(field.rereadChanged ? { rereadChanged: true } : {}),
+        ...(field.valueChangedSinceReview ? { valueChangedSinceReview: true } : {}),
       } satisfies ReviewValue;
     });
 }

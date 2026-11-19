@@ -39,6 +39,10 @@ export interface ExtractedField {
   /** When the system read this value off the document (the read's own time, not the upload's). */
   readAt?: string | null;
   valueOrigin: "extracted" | "computed" | "verifier_determined" | "assigned";
+  /** The document was re-read and an earlier decision on this value no longer applies: it needs review again. */
+  rereadChanged?: boolean;
+  /** A correction or rejection carried over a re-read, but the extracted value changed since it was made. */
+  valueChangedSinceReview?: boolean;
 }
 
 export interface ReviewQueueItem {
