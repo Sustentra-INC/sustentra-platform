@@ -106,6 +106,8 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         asPrinted: corrected ? undefined : asPrinted(field, candidate, printedUnits),
         ai: aiOf(field),
         ...(field.valueProperties.includes("estimated_read") ? { estimatedRead: true } : {}),
+        ...(field.rereadChanged ? { rereadChanged: true } : {}),
+        ...(field.valueChangedSinceReview ? { valueChangedSinceReview: true } : {}),
       } satisfies ReviewValue;
     });
 }

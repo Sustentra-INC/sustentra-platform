@@ -107,6 +107,10 @@ export interface ReviewValue {
   asPrinted?: { value: string; unit: string; converted?: boolean };
   /** The bill says this reading was estimated by the utility, not read from the meter (backend flag `estimated_read`). The value is as printed. */
   estimatedRead?: boolean;
+  /** The document was re-read and an earlier decision on this value no longer applies (the card is to review). */
+  rereadChanged?: boolean;
+  /** A correction or rejection carried over a re-read although the extracted value changed. */
+  valueChangedSinceReview?: boolean;
   /**
    * Claude read this value (backend services/ai_extraction.py). `suggested`: Claude read it where the
    * rules found nothing, so it is never pre-accepted and needs a reviewer. `conflict`: Claude read
