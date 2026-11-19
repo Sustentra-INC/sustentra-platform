@@ -3,7 +3,10 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it } from "vitest";
 
+import { encodeReviewCandidateToken } from "../adapters/fieldAdapter";
 import { SetupScreen } from "../components/SetupScreen";
+import type { EvidenceItem, ExtractedField } from "../types";
+import { applyDocumentView, documentFacts } from "../utils/documentView";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import type { EngagementConfig, FacilityOption } from "../types/engagement";
 import {
@@ -73,6 +76,34 @@ describe("facility numbers: matching", () => {
   it("changes nothing for an old facility with no numbers", () => {
     expect(matchByIdentifier("4417-2290-31", "E-1", [KC, STL]).facility).toBeNull();
     expect(sharedNumbers([KC, STL])).toEqual([]);
+  });
+});
+
+describe("the Evidence screen places a bill the way the backend does", () => {
+  const facilities = [{ ...KC, accountNumbers: ["4417-2290-31"] }, STL];
+  const field = (name: string, value: string, over: Partial<ExtractedField>): ExtractedField =>
+    ({
+      documentId: "D1", canonicalTypeId: "CT-S1-FUELQTY", fieldKey: name, fieldLabel: name, value, unit: null,
+      valueProperties: [], fieldState: "extracted", snippet: null, snippetContext: null, location: null,
+      reviewStatus: "unreviewed", correctedValue: null, valueOrigin: "extracted",
+      reviewToken: encodeReviewCandidateToken({ candidate_id: `c-${name}`, document_id: "D1", field_name: name, normalized_value: value } as never),
+      ...over,
+    }) as ExtractedField;
+  const placedOn = (account: ExtractedField) => {
+    const facts = documentFacts([field("facility_name", "Müller Käserei – Zürich 工場 (other)", {}), account]);
+    const [row] = applyDocumentView([{ documentId: "D1", filename: "D1.pdf", facilityState: "unresolved", facilityId: null, facilityName: null, disposition: "active", relationships: [] } as unknown as EvidenceItem], facts, {}, facilities);
+    return row.facilityId ?? null;
+  };
+
+  // The same three cases as the backend test test_the_tree_the_lines_and_the_recalculation_place_a_bill_the_same_way.
+  it("places a rule-read account number", () => {
+    expect(placedOn(field("account_number", "4417 2290 31", {}))).toBe("f-kc");
+  });
+  it("does not place a number only Claude read", () => {
+    expect(placedOn(field("account_number", "4417 2290 31", { valueProperties: ["ai_suggested"] }))).toBeNull();
+  });
+  it("places a number Claude read and a reviewer accepted", () => {
+    expect(placedOn(field("account_number", "4417 2290 31", { valueProperties: ["ai_suggested"], reviewStatus: "accepted" }))).toBe("f-kc");
   });
 });
 

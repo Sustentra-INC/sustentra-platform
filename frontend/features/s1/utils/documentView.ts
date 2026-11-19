@@ -31,6 +31,11 @@ function fieldName(field: ExtractedField): string | null {
   return typeof candidate?.field_name === "string" ? candidate.field_name : null;
 }
 
+/** A value the backend would read with best(): reviewed, or not an unreviewed suggestion from Claude. */
+function countsForPlacement(field: ExtractedField): boolean {
+  return field.reviewStatus !== "unreviewed" || !field.valueProperties.includes("ai_suggested");
+}
+
 export function documentFacts(fields: ExtractedField[]): Map<string, DocumentFacts> {
   const facts = new Map<string, DocumentFacts & { dates: string[] }>();
   for (const field of fields) {
@@ -49,11 +54,12 @@ export function documentFacts(fields: ExtractedField[]): Map<string, DocumentFac
         entry.address ??= value;
         if (!entry.addresses!.includes(value)) entry.addresses!.push(value);
         break;
+      // Same source as the backend's best(): a reviewed value or one the rules read, never one only Claude read.
       case "account_number":
-        entry.accountNumber ??= value;
+        if (countsForPlacement(field)) entry.accountNumber ??= value;
         break;
       case "meter_number":
-        entry.meterNumber ??= value;
+        if (countsForPlacement(field)) entry.meterNumber ??= value;
         break;
       case "service_period_start":
       case "transaction_date":
