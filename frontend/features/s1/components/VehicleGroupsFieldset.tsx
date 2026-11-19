@@ -12,6 +12,8 @@ import type { VehicleGroupSetting } from "../types";
  * EPA factor depends on it), non-road groups by the fuel they used.
  */
 export interface VehicleGroupDraft {
+  /** The server's id for a saved group (absent on a new one): sent back so a rename keeps the group's line. */
+  groupId?: string;
   label: string;
   fuel: string;
   onRoad: boolean;
@@ -26,6 +28,7 @@ export interface VehicleGroupDraft {
 
 export function draftsFrom(groups: VehicleGroupSetting[] | undefined): VehicleGroupDraft[] {
   return (groups ?? []).map((g) => ({
+    ...(g.group_id ? { groupId: g.group_id } : {}),
     label: g.label ?? "",
     fuel: g.fuel,
     onRoad: g.on_road,
@@ -37,6 +40,24 @@ export function draftsFrom(groups: VehicleGroupSetting[] | undefined): VehicleGr
     fuelQuantity: g.fuel_quantity != null ? String(g.fuel_quantity) : "",
     fuelUnit: g.fuel_unit ?? "gal",
   }));
+}
+
+/**
+ * The ids the server gave groups added in this session. A draft has no id until the save answers; the saved
+ * groups are in the drafts' order, so a draft with none takes the id of the saved group at its place when that
+ * group is the same group (same fuel, vehicle type and name). Returns the drafts as they were when nothing
+ * changed.
+ */
+export function withSavedIds(drafts: VehicleGroupDraft[], saved: VehicleGroupSetting[] | undefined): VehicleGroupDraft[] {
+  if (!saved || saved.length !== drafts.length) return drafts;
+  let changed = false;
+  const next = drafts.map((d, i) => {
+    const s = saved[i];
+    if (d.groupId || !s.group_id || s.fuel !== d.fuel || s.vehicle_type !== d.vehicleType || (s.label ?? "") !== d.label.trim()) return d;
+    changed = true;
+    return { ...d, groupId: s.group_id };
+  });
+  return changed ? next : drafts;
 }
 
 function optionFor(types: VehicleTypeOption[], draft: VehicleGroupDraft): VehicleTypeOption | undefined {
@@ -67,6 +88,7 @@ export function draftProblem(draft: VehicleGroupDraft, types: VehicleTypeOption[
  *  typed before switching to a type without one (hidden from then on) is not sent. */
 export function settingsFrom(drafts: VehicleGroupDraft[], types: VehicleTypeOption[]): VehicleGroupSetting[] {
   return drafts.map((d) => ({
+    ...(d.groupId ? { group_id: d.groupId } : {}),
     fuel: d.fuel,
     vehicle_type: d.vehicleType,
     factor_fuel_type: d.factorFuel,

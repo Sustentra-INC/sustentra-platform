@@ -1114,3 +1114,215 @@ def test_a_chain_that_cannot_be_shortened_is_capped_with_a_plain_sentence_naming
         _next([*chain, *swapped[:2]], swapped[2], full_default, {"A", "B", "T"})
     assert caught.value.status_code == 409 and "feb-bill.pdf" in caught.value.detail
     assert "moved too many times" in caught.value.detail
+
+
+# --- vehicle groups carry a stable group_id (S1-BE-012) ---------------------------------------------------------
+def _ids(groups: list[dict]) -> list[str]:
+    return [g["group_id"] for g in groups]
+
+
+def _with_ids(groups: list[dict], stored: list[dict] | None = None) -> list[dict]:
+    return cl.assign_group_ids(groups, stored)
+
+
+def test_a_new_group_gets_an_opaque_id_and_names_do_not_matter() -> None:
+    names = ["配送トラック", "配送トラック", "Lieferwagen – Zürich", "Zürich", "z-rich", "", "x" * 200]
+    groups = _with_ids([_group("Diesel Fuel", n) for n in names])
+    ids = _ids(groups)
+    assert len(set(ids)) == len(names)  # distinct, even for the same name and for names that slug alike
+    assert all(cl.GROUP_ID.match(i) and i.startswith("vg-") for i in ids)
+    assert all(a == i for (a, _), i in zip(cl.vehicle_group_anchors(groups), ids, strict=True))
+    assert not any("none" in i or "z-rich" in i for i in ids)  # no longer built from the name
+
+
+def test_rename_reorder_and_removal_never_change_another_groups_id() -> None:
+    stored = _with_ids([_group("Diesel Fuel", "Trucks"), _group("Diesel Fuel", "Trucks"), _group("Motor Gasoline", "Pickups")])
+    a, b, c = _ids(stored)
+    renamed = _with_ids([{**stored[0], "label": "Delivery 配送"}, stored[1], stored[2]], stored)
+    assert _ids(renamed) == [a, b, c] and renamed[0]["label"] == "Delivery 配送"
+    assert _ids(_with_ids([stored[2], stored[0], stored[1]], stored)) == [c, a, b]  # reordered
+    assert _ids(_with_ids([stored[1], stored[2]], stored)) == [b, c]  # the first removed
+    assert _ids(_with_ids([stored[0], stored[2]], stored)) == [a, c]  # the second removed
+    assert _ids(_with_ids([stored[0], stored[1]], stored)) == [a, b]  # the last removed
+
+
+def test_an_added_group_never_takes_the_id_of_a_removed_one() -> None:
+    stored = _with_ids([_group("Diesel Fuel", "A"), _group("Diesel Fuel", "B")])
+    after_removal = _with_ids([stored[1]], stored)
+    again = _with_ids([stored[1], _group("Diesel Fuel", "A")], after_removal)  # "A" is added again
+    assert again[1]["group_id"] not in _ids(stored)
+    assert again[0]["group_id"] == stored[1]["group_id"]
+
+
+def test_an_id_the_engagement_never_had_is_not_trusted() -> None:
+    stored = _with_ids([_group("Diesel Fuel", "A")])
+    forged = {**_group("Diesel Fuel", "B"), "group_id": "vg-forgedforged"}
+    out = _with_ids([stored[0], forged], stored)
+    assert out[0]["group_id"] == stored[0]["group_id"] and out[1]["group_id"] != "vg-forgedforged"
+    twice = _with_ids([stored[0], {**_group("Diesel Fuel", "C"), "group_id": stored[0]["group_id"]}], stored)
+    assert len(set(_ids(twice))) == 2  # one id, one group
+
+
+def test_a_client_that_sends_no_ids_keeps_the_groups_it_did_not_change() -> None:
+    stored = _with_ids([_group("Diesel Fuel", "Trucks"), _group("Diesel Fuel", "Trucks"), _group("Motor Gasoline", "Pickups")])
+    bare = [{k: v for k, v in g.items() if k != "group_id"} for g in stored]
+    assert _ids(_with_ids(bare, stored)) == _ids(stored)  # duplicates matched in order
+    assert _ids(_with_ids(bare[::-1], stored))[0] == stored[2]["group_id"]  # a reordered unchanged group too
+    changed = [{**bare[0], "label": "Renamed"}, *bare[1:]]
+    out = _with_ids(changed, stored)
+    assert out[1]["group_id"] in _ids(stored) and out[0]["group_id"] not in _ids(stored)  # a rename it cannot tell: new
+
+
+def test_groups_saved_before_ids_are_known_by_their_old_anchor() -> None:
+    old = [_group("Diesel Fuel", "配送トラック"), _group("Diesel Fuel", "配送トラック")]
+    assert [a for a, _ in cl.vehicle_group_anchors(old)] == ["vg-none", "vg-none-2"]
+    out = _with_ids(old, old)
+    assert _ids(out) == ["vg-none", "vg-none-2"]  # the lines they already have
+    # the page sends each group's id back, so removing the first no longer renumbers the second
+    assert _ids(_with_ids([{**old[1], "group_id": "vg-none-2"}], out)) == ["vg-none-2"]
+    mixed = [{**old[0], "group_id": "vg-abcdef012345"}, old[1]]
+    assert [a for a, _ in cl.vehicle_group_anchors(mixed)] == ["vg-abcdef012345", "vg-none-2"]
+
+
+def test_a_group_with_no_id_never_takes_an_anchor_another_group_has_as_its_id() -> None:
+    groups = [{**_group("Diesel Fuel", "Trucks"), "group_id": "vg-trucks"}, _group("Diesel Fuel", "Trucks")]
+    anchors = [a for a, _ in cl.vehicle_group_anchors(groups)]
+    assert anchors[0] == "vg-trucks" and anchors[1] != "vg-trucks" and len(set(anchors)) == 2
+
+
+def _on_line(settings_groups: list[dict], line: str, store: FakeStore | None = None) -> tuple[dict, list[str]]:
+    store = store or FakeStore()
+    if not store.documents:
+        store.add_document("M2", "CT-S1-MOBFUEL", [_mobile()])
+    tree = _tree(store, {"M2": {"placements": [{"from": cl.SUPPORTING_UNASSIGNED, "to": line}]}},
+                 recalculation={"vehicle_groups": settings_groups})
+    return tree, _lines_with_docs(tree).get(line, [])
+
+
+@pytest.mark.parametrize("names", [["Trucks", "Trucks"], ["配送トラック", "配送トラック"], ["Zürich", "Zürich", "Zürich"]],
+                         ids=["duplicate names", "CJK only", "accented"])
+def test_a_document_placed_by_hand_stays_on_its_groups_line_through_every_change(names: list[str]) -> None:
+    stored = _with_ids([_group("Diesel Fuel", n) for n in names])
+    target = stored[-1]  # the last group: removing or reordering an earlier one used to renumber it
+    line = f"s1:mobile:diesel-fuel:{target['group_id']}"
+    tree, docs = _on_line(stored, line)
+    assert docs == ["M2"]
+    changes = {
+        "renamed": [*stored[:-1], {**target, "label": "Brand new name"}],
+        "first removed": stored[1:],
+        "all others removed": [target],
+        "reordered": [target, *stored[:-1]],
+        "other groups edited": [{**g, "model_year": 2020} for g in stored[:-1]] + [target],
+    }
+    for name, groups in changes.items():
+        after, docs = _on_line(_with_ids(groups, stored), line)
+        assert docs == ["M2"], name
+        assert line in {ln["key"] for ln in after["lines"]}, name
+    renamed_tree, _ = _on_line(_with_ids(changes["renamed"], stored), line)
+    assert {ln["key"]: ln["label"] for ln in renamed_tree["lines"]}[line].endswith("Brand new name")  # the label follows
+
+
+def test_a_document_parked_on_a_removed_group_returns_only_with_that_group() -> None:
+    stored = _with_ids([_group("Diesel Fuel", "Trucks"), _group("Diesel Fuel", "Yard"), _group("Diesel Fuel", "Vans")])
+    line = f"s1:mobile:diesel-fuel:{stored[0]['group_id']}"
+    store = FakeStore()
+    store.add_document("M2", "CT-S1-MOBFUEL", [_mobile()])
+    gone, docs = _on_line(_with_ids(stored[1:], stored), line, store)
+    assert docs == [] and [r["document_id"] for r in gone["blocks"]["supporting"]["unassigned"]] == ["M2"]
+    # the group is added again: a new group, a new line: the document does not land on it
+    back = _with_ids([*stored[1:], _group("Diesel Fuel", "Trucks")], _with_ids(stored[1:], stored))
+    again, docs = _on_line(back, line, store)
+    assert docs == []
+    # while a rename of the removed group's neighbour, or the group's own id, brings nothing back by name
+    same_id = [*stored[1:], {**_group("Diesel Fuel", "Trucks"), "group_id": stored[0]["group_id"]}]
+    assert _on_line(same_id, line, store)[1] == ["M2"]  # the stored id is what a line is: the data, not the name
+
+
+def test_every_vehicle_group_line_label_and_key_follows_the_id() -> None:
+    groups = _with_ids([_group("Diesel Fuel", "Trucks")])
+    tree = _tree(FakeStore(), recalculation={"vehicle_groups": groups})
+    assert tree["vehicle_groups"] == [{"anchor_id": groups[0]["group_id"], "label": "Trucks", "fuel": "Diesel Fuel"}]
+    key = cl.line_key("s1", "mobile", "diesel-fuel", "vehicle_group", groups[0]["group_id"])
+    assert key == f"s1:mobile:diesel-fuel:{groups[0]['group_id']}"
+    entry = {"category": "mobile", "level2_label": "Diesel Fuel", "anchor_kind": "vehicle_group",
+             "anchor_id": groups[0]["group_id"], "label": "Trucks, diesel"}
+    assert cl.normalize_evidence_lines([entry])[0]["key"] == key
+    cl.check_new_lines(cl.normalize_evidence_lines([entry]), stored_keys=set(), facilities=[KC], vehicle_groups=groups)
+
+
+# --- an existing engagement migrates with identical filing and recalculation ---------------------------------------
+def _migration_module() -> Any:
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[2] / "migrations" / "versions" / "0021_vehicle_group_ids.py"
+    spec = importlib.util.spec_from_file_location("migration_0021", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+LEGACY_GROUPS = [  # what stored engagements hold today: no ids, anchors from the label and the order
+    _group("Diesel Fuel", "配送トラック"), _group("Diesel Fuel", "配送トラック"), _group("Diesel Fuel", "Lieferwagen – Zürich"),
+    _group("Diesel Fuel", "Lieferwagen – Zürich"), _group("Motor Gasoline", "Pickups"),
+]
+
+
+def test_the_migration_gives_each_group_the_anchor_it_has_today_and_is_safe_to_run_twice() -> None:
+    migration = _migration_module()
+    migrated = migration._add_ids(LEGACY_GROUPS)
+    assert [g["group_id"] for g in migrated] == [a for a, _ in cl.vehicle_group_anchors(LEGACY_GROUPS)]
+    assert [g["group_id"] for g in migrated] == ["vg-none", "vg-none-2", "vg-lieferwagen-z-rich",
+                                                  "vg-lieferwagen-z-rich-2", "vg-pickups"]
+    assert [{k: v for k, v in g.items() if k != "group_id"} for g in migrated] == LEGACY_GROUPS  # nothing else changed
+    assert migration._add_ids(migrated) is None  # already done: left alone
+    assert migration._remove_ids(migrated) == LEGACY_GROUPS and migration._remove_ids(LEGACY_GROUPS) is None
+    # the migration's own copy of the old numbering is the code's old numbering
+    assert migration._legacy_anchors(LEGACY_GROUPS) == cl.legacy_group_anchors(LEGACY_GROUPS)
+    for label in ["", "x" * 200, "Zürich", "配送", "a--b", "  spaced  out  "]:
+        group = _group("Diesel Fuel", label)
+        assert migration._legacy_anchors([group, group]) == cl.legacy_group_anchors([group, group])
+        assert all(cl.GROUP_ID.match(a) for a in cl.legacy_group_anchors([group, group]))  # valid ids as they are
+
+
+def test_an_existing_engagement_files_and_recalculates_exactly_the_same_after_the_migration() -> None:
+    from backend.tests.services.test_engagement_recalculation_service import _service as recalculation_service
+
+    migration = _migration_module()
+    migrated = migration._add_ids(LEGACY_GROUPS)
+    by_anchor = {a: g for a, g in cl.vehicle_group_anchors(LEGACY_GROUPS)}
+    user_line = cl.normalize_evidence_lines([{"category": "mobile", "level2_label": "Diesel Fuel",
+                                              "anchor_kind": "vehicle_group", "anchor_id": "vg-none-2",
+                                              "label": "Night trucks"}])
+    store = FakeStore()
+    for i in range(1, 6):
+        store.add_document(f"M{i}", "CT-S1-MOBFUEL", [_mobile()])
+    store.add_document("P1", "CT-S1-MOBFUEL", [_mobile(fuel="gasoline")])
+    # #260 chains and a document parked on a line that is gone, written in the old keys
+    decisions = {
+        "M1": {"placements": [{"from": cl.SUPPORTING_UNASSIGNED, "to": "s1:mobile:diesel-fuel:vg-none"}]},
+        "M2": {"placements": [{"from": cl.SUPPORTING_UNASSIGNED, "to": "s1:mobile:diesel-fuel:vg-none-2"}]},
+        "M3": {"placements": [{"from": cl.SUPPORTING_UNASSIGNED, "to": "s1:mobile:diesel-fuel:vg-lieferwagen-z-rich-2"},
+                              {"from": "s1:mobile:diesel-fuel:vg-lieferwagen-z-rich-2", "to": "block:unassigned"}]},
+        "M4": {"placements": [{"from": cl.SUPPORTING_UNASSIGNED, "to": "s1:mobile:diesel-fuel:vg-gone-group"}]},
+    }
+    assert set(by_anchor) >= {"vg-none", "vg-none-2"}
+
+    def view(groups: list[dict]) -> tuple[Any, Any]:
+        tree = _tree(store, decisions, recalculation={"vehicle_groups": groups}, evidenceLines=user_line)
+        filing = _lines_with_docs(tree)
+        parked = sorted(row["document_id"] for row in tree["blocks"]["supporting"]["unassigned"])
+        keys = sorted(line["key"] for line in tree["lines"])
+        return (filing, parked, keys, [(g["anchor_id"], g["label"]) for g in tree["vehicle_groups"]],
+                tree["blocks"]["unassigned"] == [], tree["set_aside"])
+
+    assert view(LEGACY_GROUPS) == view(migrated)
+    legacy_result = recalculation_service(store).recalculate(
+        {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
+         "settings": {"facilities": [KC], "recalculation": {"vehicle_groups": LEGACY_GROUPS}}}, _own)
+    migrated_result = recalculation_service(store).recalculate(
+        {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
+         "settings": {"facilities": [KC], "recalculation": {"vehicle_groups": migrated}}}, _own)
+    assert legacy_result == migrated_result
+    assert legacy_result["categories"]["mobile_combustion"] is not None

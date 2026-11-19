@@ -95,6 +95,7 @@ import { useRequestsStore } from "../requests/requestsStore";
 import type {
   ContainerState,
   DocumentDecision,
+  VehicleGroupSetting,
   EvidenceItem,
   ExtractedField,
   ReviewValue,
@@ -104,7 +105,9 @@ import { setAuditActor, type SessionAuditEntry } from "../utils/auditIntent";
 import { useOpenEngagement } from "../utils/useOpenEngagement";
 import { dashboardFigures, engagementActivity } from "../utils/engagementActivity";
 import { SupportingSchedule } from "../components/SupportingSchedule";
-import { setDemoEngagement } from "../demo-backend/state";
+import { withDemoGroupIds } from "../demo-backend/groupIds";
+import { demoEngagement, setDemoEngagement } from "../demo-backend/state";
+import { adoptGroupIds } from "../utils/vehicleGroupIds";
 import {
   createEvidenceLine,
   deleteEvidenceLine,
@@ -571,6 +574,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     try {
       const row = await saveEngagement(config);
       setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
+      adoptSavedGroups(row);
       setEngagementSave("saved");
       setEngagementSaveMessage(null);
     } catch (error) {
@@ -590,15 +594,27 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     saveTimer.current = null;
     const base = pendingSave.current ?? engagement;
     pendingSave.current = null;
-    const next = { ...base, recalculation };
+    const requested = { ...base, recalculation };
     if (dataMode === "fixture") {
+      const next = withDemoGroupIds(requested, demoEngagement());
       setDemoEngagement(next);
       setEngagement(next);
       return;
     }
+    const next = requested;
     const row = await saveEngagement(next);
     setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
     setEngagement(next);
+    adoptSavedGroups(row);
+  }
+
+  /** The server gives every vehicle group an id when it is first saved. Take the ids of the groups added since
+   *  the last save, here and in a Setup save still waiting, so the next save sends them back. */
+  function adoptSavedGroups(row: BackendEngagement) {
+    if (!stillOpen(row.id)) return;
+    const recalculation = (row.settings?.recalculation ?? {}) as { vehicle_groups?: VehicleGroupSetting[] };
+    setEngagement((current) => adoptGroupIds(current, recalculation.vehicle_groups));
+    if (pendingSave.current) pendingSave.current = adoptGroupIds(pendingSave.current, recalculation.vehicle_groups);
   }
 
   /** Takes the reviewer lines the server answered with. The server owns them: the page, the list of
@@ -683,7 +699,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     void refreshEvidenceActivity(id);
   }
 
-  function changeEngagement(next: EngagementConfig) {
+  function changeEngagement(requested: EngagementConfig) {
+    const next = dataMode === "fixture" ? withDemoGroupIds(requested, demoEngagement()) : requested;
     setEngagement(next);
     if (dataMode === "fixture") setDemoEngagement(next);
     if (dataMode !== "backend" || !next.engagementId) return;

@@ -5,7 +5,7 @@ import { useState } from "react";
 import type { VehicleTypeOption } from "../api/recalculation";
 import type { EngagementConfig } from "../types";
 import { InfoTip } from "./InfoTip";
-import { draftProblem, draftsFrom, settingsFrom, VehicleGroupsFieldset, type VehicleGroupDraft } from "./VehicleGroupsFieldset";
+import { draftProblem, draftsFrom, settingsFrom, VehicleGroupsFieldset, withSavedIds, type VehicleGroupDraft } from "./VehicleGroupsFieldset";
 
 /** The API takes at most this many vehicle groups. */
 export const MAX_VEHICLE_GROUPS = 200;
@@ -40,7 +40,9 @@ export function SetupVehicleGroups({
   fuels: string[];
   types: VehicleTypeOption[];
 }) {
-  const [drafts, setDrafts] = useState<VehicleGroupDraft[]>(() => draftsFrom(engagement.recalculation?.vehicle_groups));
+  const [typed, setDrafts] = useState<VehicleGroupDraft[]>(() => draftsFrom(engagement.recalculation?.vehicle_groups));
+  // A group added here has no id until the save answers: show it with the id the server gave, so a rename keeps the line.
+  const drafts = withSavedIds(typed, engagement.recalculation?.vehicle_groups);
   const unfinished = drafts.filter((d) => draftProblem(d, types) !== null).length;
 
   function change(next: VehicleGroupDraft[]) {
@@ -61,8 +63,8 @@ export function SetupVehicleGroups({
         Vehicle groups
         <InfoTip label="Vehicle groups">
           A fleet document lands on a group&apos;s line when only one group uses its fuel. With several groups on one
-          fuel, place the document by hand on Evidence. A group&apos;s line is named after it, so renaming or removing a
-          group can leave documents you placed on its line in Unassigned supporting evidence.
+          fuel, place the document by hand on Evidence. A group keeps its line when you rename it or change the other
+          groups. Removing a group removes its line, and documents you placed on it go to Unassigned supporting evidence.
         </InfoTip>
       </h2>
       <VehicleGroupsFieldset
@@ -77,7 +79,7 @@ export function SetupVehicleGroups({
       />
       {shared.map((d) => (
         <p key={sameName(d)} className="s1-rc__error" role="status">
-          More than one group is called &quot;{shownName(d)}&quot;. Give each its own name, so documents are placed on the right line.
+          More than one group is called &quot;{shownName(d)}&quot;. Give each its own name, so you can tell their lines apart.
         </p>
       ))}
       {unfinished ? (

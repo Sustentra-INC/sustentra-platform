@@ -253,7 +253,8 @@ engagement is 404). Nothing is stored by this route.
   facilities: [{facility_id, name, address}],        // the engagement's Setup facilities
   lines: [CalculationLine],                          // system lines, then reviewers' own
   vehicle_groups: [{anchor_id, label, fuel}],        // settings.recalculation.vehicle_groups, with the
-                                                     // anchor_id a mobile line (anchor_kind "vehicle_group") uses
+                                                     // anchor_id a mobile line (anchor_kind "vehicle_group") uses:
+                                                     // the group's own group_id
   anchors_for_contractual: "company",                // a contractual line uses anchor_kind "company", this anchor_id
   set_aside: [{document_id, file_name, reason}] }    // withdrawn / duplicate / superseded: not filed
 counts  = {documents, values, accepted, to_review, issues, pct_accepted}
@@ -325,7 +326,7 @@ here and cannot be deleted).
 
 **Anchors are checked (422, a plain sentence in `detail`).** When an Evidence action adds a line, it must sit on a facility of the same `settings.facilities`
 (`facilityId`, or `name-<slug>` when it has none), a vehicle group of the same
-`settings.recalculation.vehicle_groups` (`vg-<label slug>`), or the company (`company`, contractual
+`settings.recalculation.vehicle_groups` (its `group_id`), or the company (`company`, contractual
 instruments only; a contractual line may also sit on a facility). A facility line on an engagement with no facilities is refused: "Add a facility in Setup first". A fuel or energy name with no letters or
 numbers is refused: "Use letters or numbers in the name". A facility removed from Setup later never
 blocks anything: the Evidence tree still shows the line with its documents.
@@ -575,6 +576,24 @@ reported_activity:    {<line key>: {quantity >= 0, unit: text}}      // company 
 consolidated_shares:  {<facility id>: 0..100}                        // default 100
 gwp_set:              "AR4" | "AR5" (default) | "AR6"                // one set per engagement; the response says which
 ```
+
+**Vehicle group ids.** Every group in `settings.recalculation.vehicle_groups` carries a `group_id`
+(`vg-` and 12 hex digits for a new group) that is also its line anchor: a mobile line is
+`<scope>:mobile:<fuel>:<group_id>`. The server makes the id when the group is first saved (POST or PATCH of an
+engagement) and keeps it through a rename, a reorder and the removal of other groups, so a document placed by hand
+on a group's line stays on it. The id is not built from the name any more (`vg-none` and `z-rich` came from names
+with no ASCII letters). Rules of a save:
+- a group that sends the `group_id` of one of the engagement's stored groups keeps it; a client that sends no ids
+  back keeps the ids of the groups it did not change (matched on fuel, vehicle type, fuel type and name, in order);
+- a group with an id the engagement never had is a new group and gets a new id (the id sent is not trusted);
+- a new group never takes the id of a group that was removed, so adding a removed group again gives a new line;
+- an id that is not `vg-` followed by lower-case letters, digits and hyphens (at most 70) is 422, and so is the same
+  id twice. Send `group_id` back unchanged, or leave it out for a new group.
+
+Migration 0021 gave every stored group the anchor it had as its id (`vg-<label slug>`, numbered by order among equal
+slugs), so every line key, user line, document placement (chains and documents parked on a removed line) and
+recalculation reads exactly as before. Groups without an id (data written by older code) are read as if they had that
+anchor. Downgrading removes the ids again.
 
 AR4 (IPCC AR4 WG1 Table 2.14: CO2 1, CH4 25, N2O 298) has no HFC, PFC, SF6 or NF3 values, like AR6:
 a refrigerant gas needs `refrigerant_gwps` under AR4 (an open `needs_input` item says so).
