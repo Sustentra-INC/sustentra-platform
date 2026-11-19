@@ -73,7 +73,9 @@ async def lock_engagement(db: AsyncSession, engagement_id: str) -> dict[str, Any
     key = _as_uuid(engagement_id)
     if key is None:
         return None
-    await db.execute(text("SELECT 1 FROM engagements WHERE id = :id FOR UPDATE"), {"id": key})
+    # NO KEY UPDATE, not UPDATE: it still makes writers take turns, but it does not block the inserts that
+    # reference this row (a workpaper item takes a KEY SHARE lock on its engagement), which would deadlock.
+    await db.execute(text("SELECT 1 FROM engagements WHERE id = :id FOR NO KEY UPDATE"), {"id": key})
     return await get_engagement(db, engagement_id)
 
 

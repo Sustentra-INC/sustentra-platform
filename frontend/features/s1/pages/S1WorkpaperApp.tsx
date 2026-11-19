@@ -101,10 +101,10 @@ import type {
   StateDimension,
 } from "../types";
 import { setAuditActor, type SessionAuditEntry } from "../utils/auditIntent";
+import { useOpenEngagement } from "../utils/useOpenEngagement";
 import { dashboardFigures, engagementActivity } from "../utils/engagementActivity";
 import { SupportingSchedule } from "../components/SupportingSchedule";
-import { loadWorkpaper } from "../api/workpaper";
-import { demoDecisions, setDemoEngagement } from "../demo-backend/state";
+import { setDemoEngagement } from "../demo-backend/state";
 import {
   createEvidenceLine,
   deleteEvidenceLine,
@@ -343,6 +343,15 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [evidenceEvents, setEvidenceEvents] = useState<EvidenceActivityItem[]>([]);
+  const [evidenceOlder, setEvidenceOlder] = useState<string | null>(null);
+  // Entries kept only in this session carry the signed-in person's name, never a placeholder person.
+  useEffect(() => {
+    const login = engagement.signedInLogin ?? (dataMode === "backend" ? user?.email : undefined) ?? "";
+    const name = engagement.signedInName ?? (dataMode === "backend" ? user?.firstName ?? user?.email : DEMO_ACTOR) ?? "";
+    setAuditActor({ id: login, name });
+  }, [engagement.signedInLogin, engagement.signedInName, user, dataMode]);
+  // The engagement that is open now, for answers that arrive after the user switched (they are dropped).
+  const stillOpen = useOpenEngagement(engagement.engagementId);
   const DEMO_NODE = "F:facility-kent|T:Electricity bill";
 
   function runSampleUpload() {
@@ -505,6 +514,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     if (!row) return;
     flushEngagementSave();
     setEngagement(engagementFromBackend(row));
+    setEvidenceEvents([]);
+    setEvidenceOlder(null);
     setEvidenceFacility(null);
     setEvidenceTreeOpen(null);
     rememberEngagement(row.id);
@@ -523,6 +534,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       setEngagements((current) => [row, ...(current ?? [])]);
       flushEngagementSave();
       setEngagement(engagementFromBackend(row));
+      setEvidenceEvents([]);
+      setEvidenceOlder(null);
       rememberEngagement(row.id);
       setEngagementSave("idle");
       await refreshBackendWorkspace(undefined, row.id);
@@ -588,68 +601,86 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setEngagement(next);
   }
 
-  /** Takes the reviewer lines the server answered with. The server owns them, so the page, the list of
-   *  engagements and a Setup save still waiting all carry the same list (a later Setup save sends it back). */
-  function adoptLines(answer: LineAnswer) {
+  /** Takes the reviewer lines the server answered with. The server owns them: the page, the list of
+   *  engagements and a Setup save still waiting all carry the same list. An answer for an engagement that
+   *  is no longer the open one is dropped (the user switched while the request ran). */
+  function adoptLines(engagementId: string, answer: LineAnswer) {
+    if (!stillOpen(engagementId)) return;
     const evidenceLines = answer.evidenceLines;
     setEngagement((current) => ({ ...current, evidenceLines }));
     if (pendingSave.current) pendingSave.current = { ...pendingSave.current, evidenceLines };
     setEngagements((current) =>
-      (current ?? []).map((item) =>
-        item.id === engagement.engagementId ? { ...item, settings: { ...item.settings, evidenceLines } } : item
-      )
+      (current ?? []).map((item) => (item.id === engagementId ? { ...item, settings: { ...item.settings, evidenceLines } } : item))
     );
-    void refreshEvidenceActivity();
+    void refreshEvidenceActivity(engagementId);
   }
 
   /** Evidence line actions: each one is a request of its own, recorded by the server with who made it.
    *  They reject with the server's sentence (for example, a line the system already has). */
   async function createLine(entry: EvidenceLineSetting) {
-    adoptLines(await createEvidenceLine(engagement.engagementId, entry));
+    const id = engagement.engagementId;
+    adoptLines(id, await createEvidenceLine(id, entry));
   }
 
   async function renameLine(line: CalculationLine, label: string) {
-    adoptLines(await renameEvidenceLine(engagement.engagementId, line.key, label));
+    const id = engagement.engagementId;
+    adoptLines(id, await renameEvidenceLine(id, line.key, label));
   }
 
   async function deleteLine(line: CalculationLine): Promise<number> {
-    const answer = await deleteEvidenceLine(engagement.engagementId, line.key);
-    adoptLines(answer);
-    // The line's documents now have saved moves to Unassigned. Take their placements, so a later save of
-    // one of those documents (a facility, a note) sends the moves back instead of undoing them.
-    const saved: Record<string, DocumentDecision> =
-      dataMode === "backend" ? (await loadWorkpaper(engagement.engagementId)).documents : Object.fromEntries(demoDecisions());
-    if (dataMode === "backend") for (const [id, decision] of Object.entries(saved)) workpaper.markSaved("document", id, decision);
-    setDocumentDecisions((cur) => {
-      const next = { ...cur };
-      for (const [id, decision] of Object.entries(saved)) next[id] = { ...(next[id] ?? decision), placements: decision.placements };
-      return next;
-    });
+    const id = engagement.engagementId;
+    const answer = await deleteEvidenceLine(id, line.key);
+    adoptLines(id, answer);
+    // The documents the delete moved come back whole, as saved: take them as they are (as a move does), so a
+    // later save of one of them can't undo the move or carry another reviewer's older copy.
+    if (stillOpen(id) && answer.documents) {
+      const changed = answer.documents;
+      if (dataMode === "backend") for (const [docId, decision] of Object.entries(changed)) workpaper.markSaved("document", docId, decision);
+      setDocumentDecisions((cur) => ({ ...cur, ...changed }));
+    }
     return answer.documents_moved ?? 0;
   }
 
-  /** What the server recorded on the Evidence page, newest first (the Activity log reads it). */
-  async function refreshEvidenceActivity() {
-    if (!engagement.engagementId) return;
+  /** What the server recorded on the Evidence page, newest first (the Activity log reads it): the newest page. */
+  async function refreshEvidenceActivity(engagementId: string = engagement.engagementId) {
+    if (!engagementId) return;
     try {
-      setEvidenceEvents(await getEvidenceActivity(engagement.engagementId));
+      const page = await getEvidenceActivity(engagementId);
+      if (!stillOpen(engagementId)) return;
+      setEvidenceEvents(page.items);
+      setEvidenceOlder(page.next_cursor);
     } catch {
       // The log is a read; the Evidence page keeps working without it.
     }
   }
 
+  async function showOlderEvidenceActivity() {
+    const id = engagement.engagementId;
+    if (!id || !evidenceOlder) return;
+    try {
+      const page = await getEvidenceActivity(id, evidenceOlder);
+      if (!stillOpen(id)) return;
+      setEvidenceEvents((current) => [...current, ...page.items]);
+      setEvidenceOlder(page.next_cursor);
+    } catch {
+      // Stay on what is shown; the button is still there to try again.
+    }
+  }
+
   /** Moves one placement of a document on the server (409 when it was already moved from there). */
   async function moveDocumentPlacement(documentId: string, move: Placement) {
+    const id = engagement.engagementId;
     if (dataMode === "backend") {
       // Until the saved decisions have loaded, a move here could be judged against a stale document.
       if (!workpaper.loaded) throw new Error("Your saved work is still loading. Try again in a moment.");
       // A save of this document that is already on its way finishes first.
       await workpaper.whenSaved("document", documentId);
     }
-    const { payload } = await moveEvidenceDocument(engagement.engagementId, documentId, move);
+    const { payload } = await moveEvidenceDocument(id, documentId, move);
+    if (!stillOpen(id)) return;
     if (dataMode === "backend") workpaper.markSaved("document", documentId, payload);
     setDocumentDecisions((cur) => ({ ...cur, [documentId]: payload }));
-    void refreshEvidenceActivity();
+    void refreshEvidenceActivity(id);
   }
 
   function changeEngagement(next: EngagementConfig) {
@@ -1109,8 +1140,6 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           signedInName: engagement.signedInName ?? user.firstName ?? user.email,
         }
       : engagement;
-  // Entries kept only in this session carry the signed-in person's name, never a placeholder person.
-  setAuditActor({ id: engagementForUser.signedInLogin ?? "", name: engagementForUser.signedInName ?? DEMO_ACTOR ?? "" });
 
   return (
     <main className="s1-app">
@@ -1483,6 +1512,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               evidenceEvents,
               methodology: dataMode === "fixture" ? methodology.log : methodologyActivity,
             })}
+            hasOlder={evidenceOlder !== null}
+            onShowOlder={() => void showOlderEvidenceActivity()}
             onClose={() => setActivityOpen(false)}
           />
         ) : null}

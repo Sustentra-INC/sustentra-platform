@@ -137,8 +137,8 @@ def test_a_system_line_cannot_be_created_renamed_or_deleted(store: FakeStore) ->
     engagement_id = make_engagement(store, docs=1)
     clash = create_line(engagement_id, level2_label="Natural Gas", label="Gas at Kent")
     assert clash.status_code == 422 and "already creates" in clash.json()["detail"]
-    assert call("PATCH", path(engagement_id, f"evidence-lines/{GAS_KENT}"), body={"label": "x"}).status_code == 404
-    assert call("DELETE", path(engagement_id, f"evidence-lines/{GAS_KENT}")).status_code == 404
+    assert call("PATCH", path(engagement_id, f"evidence-lines/{GAS_KENT}"), body={"label": "x"}).status_code == 422
+    assert call("DELETE", path(engagement_id, f"evidence-lines/{GAS_KENT}")).status_code == 422
     assert events(engagement_id) == []
 
 
@@ -253,7 +253,7 @@ def test_a_move_is_saved_audited_and_answers_the_payload(store: FakeStore) -> No
     event = events(engagement_id)[-1]
     assert event["event_type"] == "evidence_document_moved" and event["actor_user_id"] == A_MEMBER
     assert event["metadata"]["document_id"] == "D0" and event["metadata"]["from"] == GAS_KENT
-    assert event["metadata"]["to_label"] == "Propane · Propane at Kent"
+    assert event["metadata"]["to_label"] == "Propane at Kent"
 
 
 def test_a_stale_from_is_409_and_nothing_is_saved_or_logged(store: FakeStore) -> None:
@@ -386,15 +386,165 @@ def test_no_document_text_reaches_any_audit_row(store: FakeStore) -> None:
     assert SECRET not in log
 
 
-def test_the_old_paths_still_work(store: FakeStore) -> None:
+def stored_payload(document_id: str) -> dict:
+    row = asyncio.run(_admin("SELECT payload FROM workpaper_items WHERE kind = 'document' AND item_key = $1",
+                             document_id))[0]["payload"]
+    return json.loads(row) if isinstance(row, str) else row
+
+
+def stored_lines(engagement_id: str) -> list[dict]:
+    return call("GET", f"{BASE}/{engagement_id}").json()["settings"].get("evidenceLines") or []
+
+
+# --- the old paths no longer change lines or placements (C1, C2) ---------------------------------
+def test_a_settings_save_from_a_stale_tab_cannot_delete_rename_or_bring_back_a_line(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=2)
+    stale_tab = stored_lines(engagement_id)  # what reviewer B loaded at 9:00: no lines
+    create_line(engagement_id)
+    assert move(engagement_id, "D0", GAS_KENT, PROPANE_KEY).status_code == 200
+    before = stored_lines(engagement_id)
+    assert len(before) == 1
+
+    for sent in (stale_tab, [], [{**before[0], "label": "Stale rename"}], before + [{**before[0], "key": "x"}]):
+        saved = call("PATCH", f"{BASE}/{engagement_id}", "a_admin",
+                     {"settings": {"facilities": [KENT], "assuranceLevel": "Limited", "evidenceLines": sent}})
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["settings"]["assuranceLevel"] == "Limited"  # the other settings did save
+        assert saved.json()["settings"]["evidenceLines"] == before  # and the lines are the server's
+    assert tree_lines(engagement_id)[PROPANE_KEY] == ["D0"]  # the document did not fall to Unassigned
+    assert [e["event_type"] for e in events(engagement_id)] == ["evidence_line_created", "evidence_document_moved"]
+
+    # a save without the key keeps the lines too, and one that never had lines gets none
+    assert call("PATCH", f"{BASE}/{engagement_id}", "a_admin", {"settings": {"facilities": [KENT]}}).json()[
+        "settings"]["evidenceLines"] == before
+    plain = make_engagement(store)
+    assert "evidenceLines" not in call("PATCH", f"{BASE}/{plain}", "a_admin", {"settings": {"facilities": [KENT]}}
+                                       ).json()["settings"]
+    # a broken copy is dropped, never a reason for the autosave to fail
+    assert call("PATCH", f"{BASE}/{plain}", "a_admin", {"settings": {"evidenceLines": "junk"}}).status_code == 200
+    # and creating an engagement with lines in its settings stores none
+    made = call("POST", BASE, "a_member", {"name": "X", "settings": {"facilities": [KENT], "evidenceLines": before}})
+    assert made.status_code == 201 and "evidenceLines" not in made.json()["settings"]
+
+
+def test_a_document_save_from_a_stale_tab_cannot_undo_a_move_or_a_deletes_moves(store: FakeStore) -> None:
     engagement_id = make_engagement(store, docs=1)
-    assert create_line(engagement_id).status_code == 201
-    line = call("GET", f"{BASE}/{engagement_id}").json()["settings"]["evidenceLines"]
-    patched = call("PATCH", f"{BASE}/{engagement_id}", "a_member",
-                   {"settings": {"facilities": [KENT], "assuranceLevel": "Limited", "evidenceLines": line}})
-    assert patched.status_code == 200 and patched.json()["settings"]["evidenceLines"] == line
-    put = call("PUT", path(engagement_id, "workpaper-items/document/D0"), "a_member",
-               {"payload": {"documentId": "D0", "placements": [{"from": GAS_KENT, "to": PROPANE_KEY}], "note": "x"}})
-    assert put.status_code == 200 and tree_lines(engagement_id)[PROPANE_KEY] == ["D0"]
-    # a move through the new endpoint keeps the keys the old path saved
-    assert move(engagement_id, "D0", PROPANE_KEY, UNASSIGNED).json()["payload"]["note"] == "x"
+    create_line(engagement_id)
+    stale = {"documentId": "D0", "facilityId": "F1", "placements": []}  # B's tab: loaded before the move
+    assert move(engagement_id, "D0", GAS_KENT, PROPANE_KEY).status_code == 200
+    put = call("PUT", path(engagement_id, "workpaper-items/document/D0"), "a_admin", {"payload": stale})
+    assert put.status_code == 200, put.text
+    assert put.json()["payload"]["facilityId"] == "F1"  # the other keys saved
+    assert put.json()["payload"]["placements"] == [{"from": GAS_KENT, "to": PROPANE_KEY}]  # the move did not
+    assert tree_lines(engagement_id)[PROPANE_KEY] == ["D0"]
+
+    # a delete's moves to Unassigned survive a stale save too
+    assert call("DELETE", path(engagement_id, f"evidence-lines/{PROPANE_KEY}")).status_code == 200
+    call("PUT", path(engagement_id, "workpaper-items/document/D0"), "a_admin",
+         {"payload": {**stale, "placements": [{"from": GAS_KENT, "to": PROPANE_KEY}]}})
+    assert tree_lines(engagement_id)[UNASSIGNED] == ["D0"]
+    # a first save of a document that has no stored item gets no placements from the client either
+    first = call("PUT", path(engagement_id, "workpaper-items/document/NEW"), "a_member",
+                 {"payload": {"documentId": "NEW", "placements": [{"from": "a", "to": "b"}], "note": "n"}})
+    assert first.status_code == 200 and first.json()["payload"] == {"documentId": "NEW", "note": "n"}
+    # the other kinds are untouched
+    assert call("PUT", path(engagement_id, "workpaper-items/finding/F-1"), "a_member",
+                {"payload": {"placements": [1]}}).json()["payload"] == {"placements": [1]}
+
+
+def test_a_first_document_save_racing_a_first_move_does_not_fail_or_deadlock(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    create_line(engagement_id)
+
+    async def both() -> list[Any]:
+        return await asyncio.gather(
+            _call("PUT", path(engagement_id, "workpaper-items/document/D0"), "a_admin",
+                  {"payload": {"documentId": "D0", "facilityId": "F1"}}),
+            _call("POST", path(engagement_id, "documents/D0/placements"), "a_member", {"from": GAS_KENT, "to": PROPANE_KEY}))
+
+    results = asyncio.run(both())
+    assert [r.status_code for r in results] == [200, 200], [r.text for r in results]
+    payload = stored_payload("D0")
+    assert payload["facilityId"] == "F1" and payload["placements"] == [{"from": GAS_KENT, "to": PROPANE_KEY}]
+
+
+# --- the delete answers with what it changed, and names what stops it ---------------------------
+def test_delete_answers_with_the_changed_payloads_and_keeps_other_keys(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=2)
+    create_line(engagement_id)
+    call("PUT", path(engagement_id, "workpaper-items/document/D0"), "a_member", {"payload": {"documentId": "D0", "note": "mine"}})
+    for i in range(2):
+        move(engagement_id, f"D{i}", GAS_KENT, PROPANE_KEY)
+    answer = call("DELETE", path(engagement_id, f"evidence-lines/{PROPANE_KEY}")).json()
+    assert sorted(answer["documents"]) == ["D0", "D1"] and answer["documents_moved"] == 2
+    assert answer["documents"]["D0"] == stored_payload("D0")
+    assert answer["documents"]["D0"]["note"] == "mine"
+    assert answer["documents"]["D0"]["placements"] == [{"from": GAS_KENT, "to": UNASSIGNED}]
+
+
+def test_a_withdrawn_document_moved_to_the_line_gets_its_move_out_and_is_not_counted(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=2)
+    create_line(engagement_id)
+    for i in range(2):
+        assert move(engagement_id, f"D{i}", GAS_KENT, PROPANE_KEY).status_code == 200
+    assert call("PUT", path(engagement_id, "workpaper-items/document/D1"), "a_member",
+                {"payload": {"documentId": "D1", "disposition": "withdrawn"}}).status_code == 200
+    answer = call("DELETE", path(engagement_id, f"evidence-lines/{PROPANE_KEY}")).json()
+    assert answer["documents_moved"] == 1 and sorted(answer["documents"]) == ["D0", "D1"]
+    assert stored_payload("D1")["placements"] == [{"from": GAS_KENT, "to": UNASSIGNED}]
+    assert stored_payload("D1")["disposition"] == "withdrawn"
+
+
+def test_a_document_that_cannot_take_the_move_fails_the_whole_delete_by_name(store: FakeStore, monkeypatch: pytest.MonkeyPatch) -> None:
+    from backend.app.api import evidence_actions
+    from backend.app.services import calculation_lines as cl
+
+    engagement_id = make_engagement(store, docs=2)
+    create_line(engagement_id)
+    for i in range(2):
+        move(engagement_id, f"D{i}", GAS_KENT, PROPANE_KEY)
+    monkeypatch.setattr(cl, "MAX_PLACEMENT_MOVES", 0)  # nothing can be saved: the first document fails
+    response = call("DELETE", path(engagement_id, f"evidence-lines/{PROPANE_KEY}"))
+    assert response.status_code == 409 and "D0.pdf" in response.json()["detail"] and SECRET in response.json()["detail"]
+    monkeypatch.setattr(cl, "MAX_PLACEMENT_MOVES", 200)
+    assert evidence_actions.cl.MAX_PLACEMENT_MOVES == 200
+    assert len(tree_lines(engagement_id)[PROPANE_KEY]) == 2 and len(stored_lines(engagement_id)) == 1  # nothing changed
+    assert call("DELETE", path(engagement_id, f"evidence-lines/{PROPANE_KEY}")).status_code == 200
+
+
+# --- sentences for a line that another tab changed (M4) and labels (M5) -----------------------
+def test_renaming_or_deleting_a_line_another_tab_already_deleted_says_so(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    create_line(engagement_id)
+    assert call("DELETE", path(engagement_id, f"evidence-lines/{PROPANE_KEY}")).status_code == 200
+    for method, body in (("PATCH", {"label": "x"}), ("DELETE", None)):
+        gone = call(method, path(engagement_id, f"evidence-lines/{PROPANE_KEY}"), "a_admin", body)
+        assert gone.status_code == 404 and gone.json()["detail"] == "This line was already deleted. Reload to see the current lines."
+        system = call(method, path(engagement_id, f"evidence-lines/{GAS_KENT}"), "a_admin", body)
+        assert system.status_code == 422 and "system creates this line" in system.json()["detail"]
+
+
+def test_a_reviewer_line_that_the_system_now_creates_cannot_be_renamed_or_deleted(store: FakeStore) -> None:
+    engagement_id = make_engagement(store)
+    assert create_line(engagement_id, level2_label="Natural Gas", label="Gas at Kent").status_code == 201
+    add_gas(store, "LATE", engagement_id)  # a document arrives: the system now creates this very line
+    for method, body in (("PATCH", {"label": "x"}), ("DELETE", None)):
+        clash = call(method, path(engagement_id, f"evidence-lines/{GAS_KENT}"), "a_member", body)
+        assert clash.status_code == 409 and "now holds documents the system filed" in clash.json()["detail"]
+    assert len(stored_lines(engagement_id)) == 1
+
+
+def test_the_audit_labels_follow_the_pages_line_title_rule(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    assert move(engagement_id, "D0", GAS_KENT, UNASSIGNED).status_code == 200
+    create_line(engagement_id)
+    assert move(engagement_id, "D0", UNASSIGNED, GAS_KENT).status_code == 200
+    first, second = [e["metadata"] for e in events(engagement_id) if e["event_type"] == "evidence_document_moved"]
+    # a system line's label already names its fuel ("Natural Gas, Kent Cannery"): not "Natural Gas · Natural Gas, ..."
+    assert first["from_label"] == "Natural Gas, Kent Cannery" and second["to_label"] == "Natural Gas, Kent Cannery"
+
+
+# --- the activity log pages (M7) ----------------------------------------------------------------
+def test_the_audit_log_has_an_index_for_one_engagements_events() -> None:
+    rows = asyncio.run(_admin("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_audit_logs_target'"))
+    assert rows and "target_id" in rows[0]["indexdef"] and "created_at DESC" in rows[0]["indexdef"]

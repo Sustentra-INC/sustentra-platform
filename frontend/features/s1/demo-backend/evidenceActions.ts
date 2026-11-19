@@ -12,7 +12,7 @@ import { CATEGORY_SCOPE, SUPPORTING_UNASSIGNED, applyMoves, buildModel, engageme
 import { demoDecisions, saveDemoDecision, setDemoEngagement } from "./state";
 import type { DemoRoute } from "./types";
 
-const events: EvidenceActivityItem[] = [];
+const events = new Map<string, EvidenceActivityItem[]>(); // per engagement, oldest first
 const MAX_MOVES = 200;
 const BLOCKS: Record<string, string> = {
   "block:summary": "Summary documents and workbook",
@@ -21,8 +21,8 @@ const BLOCKS: Record<string, string> = {
 };
 const STALE = "This document was already moved from there. Reload Evidence to see where it is now.";
 
-export function demoEvidenceEvents(): EvidenceActivityItem[] {
-  return [...events].reverse();
+export function demoEvidenceEvents(engagementId: string): EvidenceActivityItem[] {
+  return [...(events.get(engagementId) ?? [])].reverse();
 }
 
 function actor(): string {
@@ -31,7 +31,10 @@ function actor(): string {
 }
 
 function log(item: Omit<EvidenceActivityItem, "id" | "at" | "actor_name">): void {
-  events.push({ id: `demo-${events.length + 1}`, at: new Date().toISOString(), actor_name: actor(), ...item });
+  const id = engagementNow().engagementId;
+  const list = events.get(id) ?? [];
+  list.push({ id: `demo-${list.length + 1}`, at: new Date().toISOString(), actor_name: actor(), ...item });
+  events.set(id, list);
 }
 
 function placeLabel(model: Model, key: string): string {
@@ -53,32 +56,22 @@ function keyFor(e: EvidenceLineSetting): string {
 
 const keyOf = (e: EvidenceLineSetting): string => e.key ?? keyFor(e);
 
-/** The server's `compact_placements`: one move per place a move started from, in a safe order. */
-export function compactMoves(moves: Placement[]): Placement[] | null {
-  const now = new Map<string, string>();
-  for (const move of moves) {
-    if (!move || typeof move.from !== "string" || typeof move.to !== "string" || move.from === move.to) continue;
-    const moving = [...now].filter(([, place]) => place === move.from).map(([origin]) => origin);
-    if (!now.has(move.from)) moving.push(move.from);
-    for (const origin of moving) now.set(origin, move.to);
-  }
-  const pending = [...now].filter(([origin, place]) => origin !== place);
-  const ordered: Placement[] = [];
-  while (pending.length) {
-    const i = pending.findIndex((p) => !pending.some((q) => q !== p && q[0] === p[1]));
-    if (i < 0) return null;
-    const [origin, place] = pending.splice(i, 1)[0];
-    ordered.push({ from: origin, to: place });
-  }
-  return ordered;
+/**
+ * The server's `derive_placements` for the demo, where a document has one default place: the saved chain is
+ * derived from where the document is filed now, so it has at most one move however often it was moved. The full
+ * chain is kept only when the derived one would file the document somewhere else.
+ */
+export function deriveMoves(defaultTarget: string, chain: Placement[], move: Placement, known: Set<string>): Placement[] {
+  const full = [...chain, move];
+  const place = (moves: Placement[]) => applyMoves([{ target: defaultTarget, flags: [] }], moves, known)[0]?.target ?? defaultTarget;
+  const now = place(full);
+  const derived = now === defaultTarget ? [] : [{ from: defaultTarget, to: now }];
+  return place(derived) === now ? derived : full;
 }
 
 function chainWith(documentId: string, move: Placement, defaultTarget: string, known: Set<string>): Placement[] {
   const before = (demoDecisions().get(documentId)?.placements ?? []) as Placement[];
-  let full = [...before, move];
-  const short = compactMoves(full);
-  const filed = (moves: Placement[]) => applyMoves([{ target: defaultTarget, flags: [] }], moves, known).map((s) => s.target).sort().join("|");
-  if (short && short.length < full.length && filed(short) === filed(full)) full = short;
+  const full = deriveMoves(defaultTarget, before, move, known);
   if (full.length > MAX_MOVES) demoError(409, "This document has been moved too many times to save another move. Ask Sustentra support to tidy its history.");
   return full;
 }
@@ -144,11 +137,20 @@ export const evidenceActionRoutes: DemoRoute[] = [
       const knownAfter = new Set(model.lines.map((l) => l.key));
       knownAfter.delete(params.key);
       const on = model.records.filter((r) => model.slots.get(r.documentId)?.some((s) => s.target === params.key));
-      for (const r of on) saveChain(r.documentId, chainWith(r.documentId, { from: params.key, to: SUPPORTING_UNASSIGNED }, r.defaultTarget, knownAfter));
+      const changed: Record<string, DocumentDecision> = {};
+      for (const r of on) changed[r.documentId] = saveChain(r.documentId, chainWith(r.documentId, { from: params.key, to: SUPPORTING_UNASSIGNED }, r.defaultTarget, knownAfter));
+      // A set-aside document that was moved to the line keeps a move out, as on the server.
+      const shown = new Set(model.records.map((r) => r.documentId));
+      for (const [documentId, decision] of demoDecisions()) {
+        const chain = (decision.placements ?? []) as Placement[];
+        if (!shown.has(documentId) && chain.some((m) => m.to === params.key) && chain.length < MAX_MOVES) {
+          changed[documentId] = saveChain(documentId, [...chain, { from: params.key, to: SUPPORTING_UNASSIGNED }]);
+        }
+      }
       const lines = stored.filter((l) => l !== found);
       saveLines(lines);
       log({ event_type: "evidence_line_deleted", line_key: params.key, label: found.label, documents_moved: on.length });
-      return answer(lines, { documents_moved: on.length });
+      return answer(lines, { documents_moved: on.length, documents: changed });
     },
   },
   {
@@ -171,6 +173,6 @@ export const evidenceActionRoutes: DemoRoute[] = [
   {
     method: "GET",
     path: /^\/engagements\/(?<id>[^/]+)\/evidence-activity$/,
-    handle: () => ({ items: demoEvidenceEvents(), next_cursor: null }),
+    handle: ({ params }) => ({ items: demoEvidenceEvents(params.id), next_cursor: null }),
   },
 ];

@@ -284,29 +284,31 @@ applied in order to the default placements, one placement at a time. Send the ro
 `placement_from` as `from`: a document filed under "Unassigned supporting evidence" because its
 line was deleted has `placement_from: "supporting:unassigned"`, and a move from that moves every
 placement shown there. A move whose `from` the document no longer has is ignored. A move to a line that does not exist files the document under
-"Unassigned supporting evidence" with the flag `unknown_line`. The PUT replaces the whole payload:
-**read the item, merge `placements` into it, keep every other key** (`facilityId`, `disposition`,
+"Unassigned supporting evidence" with the flag `unknown_line`. Placements are written only by the
+Evidence actions below (a PUT of the item keeps the stored `placements`); the PUT replaces every other key
+of the payload, so **read the item and keep the keys you do not change** (`facilityId`, `disposition`,
 `relationships`, ...).
 
-**Settings are replaced whole.** PATCH `/v1/engagements/{id}` replaces `settings` as a whole, so a
-client that changes any setting must send `evidenceLines` back too (read it, change it, send it all),
-or the reviewers' lines are lost.
+**Settings are replaced whole, except the reviewers' lines.** PATCH `/v1/engagements/{id}` replaces
+`settings` as a whole. `settings.evidenceLines` (the lines reviewers added in Evidence) is the exception:
+it changes only through the Evidence actions below, which lock the engagement, check the line and write an
+audit event. A save takes the stored value under the engagement's row lock and ignores whatever the body
+sends for `evidenceLines` (no error, so an autosave never fails on it). A stale tab's save can therefore
+never delete, rename or bring back a line. POST `/v1/engagements` ignores it too. `GET` still returns the
+lines in `settings.evidenceLines`.
 
-**Reviewers' own lines** are saved in `settings.evidenceLines` through PATCH
-`/v1/engagements/{id}`: `[{key?, scope?, category, level2?, level2_label, anchor_kind,
-anchor_id?, label}]` (at most 200; labels at most 120 characters; `category` one of the fixed
-list). The server fills in `key` (and `level2`, the slug of `level2_label`); a `key` that is
-given must equal `line_key(...)`. A line the system already creates is refused with 422 (the
-system's lines are not stored here and cannot be deleted).
+**Reviewers' own lines** are stored in `settings.evidenceLines`: `[{key, scope, category, level2,
+level2_label, anchor_kind, anchor_id, label, created_by, created_at}]` (at most 200; labels at most 120
+characters; `category` one of the fixed list). The server builds `key` (and `level2`, the slug of
+`level2_label`). A line the system already creates is refused with 422 (the system's lines are not stored
+here and cannot be deleted).
 
-**Anchors are checked (422, a plain sentence in `detail`).** On POST and PATCH of an engagement, a
-line the request adds (a key not already stored) must sit on a facility of the same `settings.facilities`
+**Anchors are checked (422, a plain sentence in `detail`).** When an Evidence action adds a line, it must sit on a facility of the same `settings.facilities`
 (`facilityId`, or `name-<slug>` when it has none), a vehicle group of the same
 `settings.recalculation.vehicle_groups` (`vg-<label slug>`), or the company (`company`, contractual
 instruments only; a contractual line may also sit on a facility). A facility line on an engagement with no facilities is refused: "Add a facility in Setup first". A fuel or energy name with no letters or
-numbers is refused: "Use letters or numbers in the name". Lines already stored are not re-checked, so a
-facility removed from Setup later never blocks a save, and the Evidence tree still shows that line with
-its documents.
+numbers is refused: "Use letters or numbers in the name". A facility removed from Setup later never
+blocks anything: the Evidence tree still shows the line with its documents.
 
 ### Evidence actions: lines and placements, each with an audit event
 Line and placement changes are server actions. Each changes one thing, in one transaction, under the
@@ -320,31 +322,42 @@ text or file name.
 |---|---|---|
 | `POST /v1/engagements/{id}/evidence-lines` | `{category, level2_label, anchor_kind, anchor_id?, label, scope?}` | 201 `{line, evidenceLines}` |
 | `PATCH /v1/engagements/{id}/evidence-lines/{line_key}` | `{label}` | 200 `{line, evidenceLines}` |
-| `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, evidenceLines}` |
+| `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, documents, evidenceLines}` |
 | `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload}` |
 
 * **Create** checks the same as saving the setting (anchor on a Setup facility, vehicle group or the
   company; letters or numbers in the name; at most 200 lines; not a line the system creates), 422 with a
   sentence otherwise; a line that already exists is 409. The server builds the key and stamps
   `created_by` and `created_at`; a client cannot send them.
-* **Rename** changes the label only (the key and the creator stay). A line the system creates, or one
-  that does not exist, is 404. Renaming to the same label changes and logs nothing.
+* **Rename** changes the label only (the key and the creator stay). A line another tab already deleted is
+  404 "This line was already deleted. Reload to see the current lines."; a line the system creates is 422;
+  a reviewer's line whose key the system now creates too (documents arrived for it) is 409. Renaming to the
+  same label changes and logs nothing.
 * **Delete** removes a line the reviewers added. Each document filed on it gets an explicit move to
   `supporting:unassigned` saved first, so adding the same line again later does not pull the documents
   back, and a document also on another line loses only this placement. All of it is one transaction: the
-  documents move and the line goes, or nothing changes. `documents_moved` is how many documents moved.
+  documents move and the line goes, or nothing changes. `documents_moved` is how many documents moved;
+  `documents` is `{document_id: payload}` for every document the delete changed (set-aside ones too, which
+  keep a move out of the line for if they come back and are not counted), so a client can take them as saved.
+  A document that cannot take the move fails the whole delete with 409 naming it. The same 404, 422 and 409
+  as rename apply.
 * **Move** needs `from` to be a place the document is in now (a line key, `block:summary`,
   `block:unassigned` or `supporting:unassigned`, as the row's `placement_from`); otherwise 409 "This
   document was already moved from there", nothing is saved and nothing is logged. `to` must be a line that
   exists or one of the three fixed places (422 otherwise); moving to where it is, 422; a document that is
-  not on the Evidence page, 404. The saved `placements` chain is compacted: one effective move per place
-  a move started from, kept only when it files the document exactly as the long chain does, so 1,000 moves
-  do not grow the payload (history lives in the audit log). A chain that still passes 200 moves is 409. Other
-  keys of the document's payload (`facilityId`, `disposition`, notes) are kept.
-* The old paths keep working: PATCH `/v1/engagements/{id}` still accepts `settings.evidenceLines` (and takes
-  the same row lock when it changes settings), and PUT of a `document` workpaper item still replaces its
-  payload. A client that uses the actions must keep its own copy of `evidenceLines` and of the document's
-  payload from the answers, because a settings save sends the whole list.
+  not on the Evidence page, 404. The saved `placements` chain is derived from where the document is filed
+  after the move, not from its history: one move per default place of the document that is no longer where it
+  started, in an order where a move out of a place runs before a move into it (two places swapping go through
+  a free fixed place). It never has more moves than the document has default places, plus one per swap,
+  however many times it was moved (history lives in the audit log). A document parked on a line that no
+  longer exists stays on that line's key, so it returns there if the line comes back. The full chain is kept
+  only when the derived one would not file the document in exactly the same places; a chain past 200 moves is
+  409 naming the document. Other keys of the document's payload (`facilityId`, `disposition`, notes) are kept.
+* **The old paths no longer change lines or placements.** PATCH `/v1/engagements/{id}` keeps the stored
+  `evidenceLines` (see above). PUT `/v1/engagements/{id}/workpaper-items/document/{key}` takes the engagement
+  lock, saves every other key of the payload, and keeps the stored `placements` (a first save has none): a
+  stale tab's save cannot put a document back. Other kinds of workpaper item are unchanged. A client keeps its
+  own copy of `evidenceLines` and of a document's payload from the action answers.
 
 Audit events (`target_type` "engagement", `target_id` the engagement):
 
@@ -356,7 +369,7 @@ Audit events (`target_type` "engagement", `target_id` the engagement):
 | `evidence_document_moved` | `document_id, from, to, from_label, to_label` |
 
 ### GET /v1/engagements/{engagement_id}/evidence-activity[?limit=50&cursor=]
-The four events above for this engagement, newest first, 1 to 100 per page (`next_cursor` is null on the
+The four events above for this engagement, newest first, 1 to 100 per page (an index on `audit_logs (org_id, target_type, target_id, created_at, id)` serves it) (`next_cursor` is null on the
 last page; a cursor that does not decode is 400). Any reader of the engagement (`org_admin`,
 `org_member`, `provider_admin`); another org's engagement is 404.
 

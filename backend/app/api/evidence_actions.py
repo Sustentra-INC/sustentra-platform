@@ -118,23 +118,21 @@ async def _load(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser)
     return tree_api._service().load(engagement, lambda record: can_see(record, user), decisions), decisions
 
 
-def _compact(chain: list[Any], move: dict[str, str], doc: DocState, known: set[str]) -> list[Any]:
-    """The document's saved moves with ``move`` added, compacted when that provably files the
-    document the same way; the full chain otherwise. Never longer than MAX_PLACEMENT_MOVES."""
+def _next_chain(chain: list[Any], move: dict[str, str], doc: DocState, known: set[str]) -> list[Any]:
+    """The document's saved moves once ``move`` is added, derived from where the document is filed
+    then (``cl.derive_placements``): at most one move per default slot, whatever its history. The
+    full chain is kept only when the derived one does not file the document in exactly the same
+    places now (a move out of "supporting:unassigned" also matches a placement on a line that is gone,
+    and the derived order can't see that) or when no safe order exists."""
 
     full = [*chain, move]
-    short = cl.compact_placements(full)
-    if short is not None and len(short) < len(full):
-        a = cl.apply_placements(doc.default_slots, full, known)
-        b = cl.apply_placements(doc.default_slots, short, known)
-        if cl.same_filing(a, b, known):
-            full = short
-            for pair in list(short):  # keep the effective placements only: drop a move that changes nothing now
-                fewer = [m for m in full if m is not pair]
-                if cl.same_filing(b, cl.apply_placements(doc.default_slots, fewer, known), known):
-                    full = fewer
+    filing = cl.apply_placements(doc.default_slots, full, known)
+    derived = cl.derive_placements(doc.default_slots, filing)
+    if derived is not None and cl.raw_filing(cl.apply_placements(doc.default_slots, derived, known)) == cl.raw_filing(filing):
+        full = derived
     if len(full) > cl.MAX_PLACEMENT_MOVES:
-        raise HTTPException(status_code=409, detail="This document has been moved too many times to save another move. "
+        name = doc.document.get("file_name") or doc.document_id
+        raise HTTPException(status_code=409, detail=f"{name} has been moved too many times to save another move. "
                                                      "Ask Sustentra support to tidy its history.")
     return full
 
@@ -154,7 +152,10 @@ def _place_label(loaded: Loaded, key: str) -> str:
     if key in BLOCK_NAMES:
         return BLOCK_NAMES[key]
     line = next((ln for ln in loaded.lines if ln.key == key), None)
-    return f"{line.level2_label} · {line.label}" if line else key
+    if line is None:
+        return key
+    # the same rule as the page's lineTitle: the fuel in front unless the label already names it
+    return line.label if line.level2_label.lower() in line.label.lower() else f"{line.level2_label} · {line.label}"
 
 
 def _answer(lines: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
@@ -194,11 +195,23 @@ async def create_line(
     return _answer(lines, line=line)
 
 
-def _find(lines: list[dict[str, Any]], line_key: str) -> dict[str, Any]:
-    found = next((line for line in lines if line.get("key") == line_key), None)
+async def _own_line(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser, line_key: str,
+                    system_keys: set[str] | None = None) -> dict[str, Any]:
+    """The reviewer's own line with this key, or the sentence that says why it can't be changed:
+    another tab already deleted it, the system creates it, or it now holds documents the system filed."""
+
+    stored = _stored_lines(engagement)
+    found = next((line for line in stored if line.get("key") == line_key), None)
+    if system_keys is None:
+        decisions = await tree_api.document_decisions(db, engagement)
+        system_keys = tree_api.system_line_keys(engagement, lambda record: can_see(record, user), decisions)
     if found is None:
-        raise HTTPException(status_code=404, detail="That line isn't one added to this engagement. "
-                                                    "Lines the system creates can't be renamed or deleted.")
+        if line_key in system_keys:
+            raise HTTPException(status_code=422, detail="The system creates this line, so it can't be renamed or deleted.")
+        raise HTTPException(status_code=404, detail="This line was already deleted. Reload to see the current lines.")
+    if line_key in system_keys:
+        raise HTTPException(status_code=409, detail="This line now holds documents the system filed, so it can't be "
+                                                    "renamed or deleted.")
     return found
 
 
@@ -214,7 +227,7 @@ async def rename_line(
 ) -> dict[str, Any]:
     engagement = await _locked(db, engagement_id)
     stored = _stored_lines(engagement)
-    found = _find(stored, line_key)
+    found = await _own_line(db, engagement, user, line_key)
     label = body.label.strip()
     if not label:
         raise HTTPException(status_code=422, detail="Give the line a name.")
@@ -243,27 +256,29 @@ async def delete_line(
 
     engagement = await _locked(db, engagement_id)
     stored = _stored_lines(engagement)
-    found = _find(stored, line_key)
     loaded, decisions = await _load(db, engagement, user)
-    known_after = {line.key for line in loaded.lines} - {line_key}
+    found = await _own_line(db, engagement, user, line_key, {line.key for line in loaded.system})
+    known_before = {line.key for line in loaded.lines}
+    known_after = known_before - {line_key}
     move = {"from": line_key, "to": cl.SUPPORTING_UNASSIGNED}
-    on_line = [d for d in loaded.docs if any(s.target == line_key for s in d.slots)]
-    for doc in on_line:
-        existing = decisions.get(doc.document_id) or {}
-        await _save_chain(db, engagement, user, doc.document_id, existing,
-                          _compact(_chain(existing), move, doc, known_after))
-    # A document set aside (withdrawn, replaced) that was moved here keeps a move out, for if it comes back.
     shown = {d.document_id for d in loaded.docs}
-    for document_id, existing in decisions.items():
+    changed: dict[str, dict[str, Any]] = {}
+    moved = 0
+    # Every document with a placement on the line (set-aside ones too: if one comes back it stays where
+    # its owner left it). A document that cannot take the move fails the whole delete, by name.
+    for doc in [*loaded.docs, *loaded.aside]:
+        existing = decisions.get(doc.document_id) or {}
         chain = _chain(existing)
-        if document_id not in shown and any(m.get("to") == line_key for m in chain if isinstance(m, dict)):
-            if len([*chain, move]) <= cl.MAX_PLACEMENT_MOVES:
-                await _save_chain(db, engagement, user, document_id, existing, [*chain, move])
+        if not any(s.target == line_key for s in cl.apply_placements(doc.default_slots, chain, known_before)):
+            continue
+        changed[doc.document_id] = await _save_chain(db, engagement, user, doc.document_id, existing,
+                                                     _next_chain(chain, move, doc, known_after))
+        moved += doc.document_id in shown
     lines = [line for line in stored if line is not found]
     await _save_lines(db, engagement, lines)
     await _audit(db, request, user, LINE_DELETED, engagement,
-                 {"line_key": line_key, "label": str(found.get("label")), "documents_moved": len(on_line)})
-    return _answer(lines, documents_moved=len(on_line))
+                 {"line_key": line_key, "label": str(found.get("label")), "documents_moved": moved})
+    return _answer(lines, documents_moved=moved, documents=changed)
 
 
 def _chain(existing: dict[str, Any]) -> list[Any]:
@@ -303,7 +318,7 @@ async def move_document(
     existing = decisions.get(document_id) or {}
     move = {"from": source, "to": target}
     payload = await _save_chain(db, engagement, user, document_id, existing,
-                                _compact(_chain(existing), move, doc, known))
+                                _next_chain(_chain(existing), move, doc, known))
     await _audit(db, request, user, DOCUMENT_MOVED, engagement,
                  {"document_id": document_id, "from": source, "to": target,
                   "from_label": _place_label(loaded, source), "to_label": _place_label(loaded, target)})

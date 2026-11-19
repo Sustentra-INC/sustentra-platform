@@ -17,7 +17,7 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 }));
 
 import { ApiError } from "../../../lib/api";
-import { saveDocumentPlacement, withPlacement, type CalculationLine, type ScheduleHistoryEntry, type EvidenceTree as TreeData, type LineSchedule, type TreeDocRow } from "../api/evidenceTree";
+import { type CalculationLine, type ScheduleHistoryEntry, type EvidenceTree as TreeData, type LineSchedule, type TreeDocRow } from "../api/evidenceTree";
 import { engagementFromBackend, engagementToBackend } from "../api/engagements";
 import { EvidenceTree, type EvidenceTreeProps } from "../components/EvidenceTree";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
@@ -341,6 +341,35 @@ describe("the Evidence tree", () => {
     expect(screen.getByRole("button", { name: "Scope 1" })).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("names the documents a delete moves from the whole tree, not the facility-filtered one", async () => {
+    const whole: TreeData = JSON.parse(JSON.stringify(TREE));
+    for (const scope of whole.blocks.supporting.scopes) {
+      for (const category of scope.categories) {
+        for (const l2 of category.level2s) {
+          for (const node of l2.lines) if (node.line.key === PLANT.key) node.counts = counts(7, 7, 28);
+        }
+      }
+    }
+    const filtered: TreeData = JSON.parse(JSON.stringify(whole));
+    for (const scope of filtered.blocks.supporting.scopes) {
+      for (const category of scope.categories) {
+        for (const l2 of category.level2s) {
+          for (const node of l2.lines) if (node.line.key === PLANT.key) node.counts = counts(1, 1, 4);
+        }
+      }
+    }
+    mocks.byPath = { [TREE_PATH]: whole, [`${TREE_PATH}?facility_id=FAC-PL02`]: filtered };
+    function Filtered() {
+      const [facility, setFacility] = useState<string | null>("FAC-PL02");
+      return <Harness facilityId={facility} onFacilityChange={setFacility} />;
+    }
+    render(<Filtered />);
+    await expandAll();
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Natural gas · Plant 2" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    expect(await screen.findByText(/Its 7 documents move to Unassigned supporting evidence/)).toBeInTheDocument();
+  });
+
   it("moves a row whose line was deleted, sending its placement as from and asking nothing", async () => {
     const DEAD = "s1:stationary:natural-gas:fac-gone";
     const orphan = doc("orph", { flags: ["unknown_line"], placement_from: DEAD });
@@ -660,54 +689,55 @@ describe("the move confirm says what changes", () => {
     expect(options).not.toContain(KENT.key);
   });
 
-  it("says plainly when the document was already moved elsewhere, and saves nothing", async () => {
-    const onMovePlacement = vi.fn().mockResolvedValue(undefined);
+  it("shows the server's sentence when the document was already moved elsewhere, and loads the tree again", async () => {
+    const stale = new ApiError(409, "This document was already moved from there. Reload Evidence to see where it is now.", null, null);
+    const onMovePlacement = vi.fn().mockRejectedValue(stale);
     render(<Harness onMovePlacement={onMovePlacement} />);
     const dialog = await openMove("feb.pdf");
     choose(dialog, PLANT.key);
-    // Meanwhile, in another tab, feb.pdf left Kent.
-    const moved: TreeData = JSON.parse(JSON.stringify(TREE));
-    moved.blocks.supporting.scopes[0].categories[0].level2s[0].lines[0].documents = [];
-    mocks.byPath = { [TREE_PATH]: moved };
+    const loads = () => mocks.calls.filter((c) => c.path === TREE_PATH).length;
+    const before = loads();
     fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
-    expect(await within(dialog).findByText(/no longer where this page showed it, so nothing was changed/)).toBeInTheDocument();
-    expect(onMovePlacement).not.toHaveBeenCalled();
-  });
-});
-
-describe("moving a placement saves a merged payload", () => {
-  it("keeps every other key of the document's saved decision", async () => {
-    const before = { documentId: "feb", facilityId: "FAC-PL02", disposition: "active" as const, note: "check", placements: [{ from: "block:unassigned", to: KENT.key }] };
-    const saved = await saveDocumentPlacement(ENG, before, "feb", { from: KENT.key, to: PLANT.key });
-    const put = mocks.calls.find((c) => c.options?.method === "PUT")!;
-    expect(put.path).toBe(`/engagements/${ENG}/workpaper-items/document/feb`);
-    expect(put.options?.body).toEqual({
-      payload: {
-        documentId: "feb",
-        facilityId: "FAC-PL02",
-        disposition: "active",
-        note: "check",
-        placements: [
-          { from: "block:unassigned", to: KENT.key },
-          { from: KENT.key, to: PLANT.key },
-        ],
-      },
-    });
-    expect(saved.placements).toHaveLength(2);
+    expect(await within(dialog).findByText(/This document was already moved from there/)).toBeInTheDocument();
+    expect(onMovePlacement).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(loads()).toBeGreaterThan(before));
   });
 
-  it("starts a decision when the document has none", () => {
-    expect(withPlacement(undefined, "x", { from: "a", to: "b" })).toEqual({ documentId: "x", placements: [{ from: "a", to: "b" }] });
+  it("makes no extra tree request before a move", async () => {
+    const onMovePlacement = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onMovePlacement={onMovePlacement} />);
+    const dialog = await openMove("feb.pdf");
+    choose(dialog, "supporting:unassigned");
+    const before = mocks.calls.filter((c) => c.path === TREE_PATH).length;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Confirm move" }));
+    await waitFor(() => expect(onMovePlacement).toHaveBeenCalled());
+    expect(mocks.calls.filter((c) => c.path === TREE_PATH).length).toBeLessThanOrEqual(before + 1); // the reload after the move only
+  });
+
+  it("keeps a window open on Escape while its request is running", async () => {
+    let finish: () => void = () => undefined;
+    const onDeleteLine = vi.fn().mockReturnValue(new Promise<number>((resolve) => { finish = () => resolve(1); }));
+    render(<Harness onDeleteLine={onDeleteLine} />);
+    await expandAll();
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Natural gas · Plant 2" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete line" }));
+    await waitFor(() => expect(onDeleteLine).toHaveBeenCalled());
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    finish();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });
 
 describe("the evidenceLines setting", () => {
-  it("is sent back with every engagement save, so a Setup save does not wipe it", () => {
-    expect(engagementToBackend(ENGAGEMENT).settings.evidenceLines).toEqual(ENGAGEMENT.evidenceLines);
+  it("is never sent with an engagement save: the lines are changed only by the Evidence actions", () => {
+    expect(engagementToBackend(ENGAGEMENT).settings).not.toHaveProperty("evidenceLines");
   });
 
-  it("survives load, a Setup edit and save", () => {
+  it("is still read when the engagement loads, and a Setup save leaves it out", () => {
     const row = {
       id: ENG, org_id: "o", name: "FY", client_name: "Acme", reporting_period_start: "2025-01-01", reporting_period_end: "2025-12-31",
       status: "active" as const, settings: { evidenceLines: ENGAGEMENT.evidenceLines }, created_at: "", updated_at: "",
@@ -715,7 +745,8 @@ describe("the evidenceLines setting", () => {
     const loaded = engagementFromBackend(row);
     expect(loaded.evidenceLines).toEqual(ENGAGEMENT.evidenceLines);
     const edited = { ...loaded, regulation: "CSRD" };
-    expect(engagementToBackend(edited).settings.evidenceLines).toEqual(ENGAGEMENT.evidenceLines);
+    expect(engagementToBackend(edited).settings).not.toHaveProperty("evidenceLines");
+    expect(engagementToBackend(edited).settings.regulation).toBe("CSRD");
   });
 });
 

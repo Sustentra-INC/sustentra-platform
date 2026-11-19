@@ -1,6 +1,5 @@
 import { api } from "../../../lib/api";
 import type { DocumentDecision } from "../types";
-import { saveWorkpaperItem } from "./workpaper";
 
 /**
  * The Evidence tree and the supporting schedule (backend routes of the calculation-lines work).
@@ -264,6 +263,8 @@ export interface LineAnswer {
   evidenceLines: EvidenceLineSetting[];
   line?: EvidenceLineSetting;
   documents_moved?: number;
+  /** A delete answers with the saved payload of every document it changed (the set-aside ones too). */
+  documents?: Record<string, DocumentDecision>;
 }
 
 const lines = (engagementId: string) => `/engagements/${encodeURIComponent(engagementId)}/evidence-lines`;
@@ -313,38 +314,11 @@ export interface EvidenceActivityItem {
   to_label?: string;
 }
 
-/** Evidence changes on the engagement, newest first, 100 at most (paged by `next_cursor`). */
-export async function getEvidenceActivity(engagementId: string): Promise<EvidenceActivityItem[]> {
-  const out: EvidenceActivityItem[] = [];
-  let cursor: string | null = null;
-  for (let page = 0; page < 5; page += 1) {
-    const query: string = cursor ? `?limit=100&cursor=${encodeURIComponent(cursor)}` : "?limit=100";
-    const answer: { items: EvidenceActivityItem[]; next_cursor: string | null } = await api(
-      `/engagements/${encodeURIComponent(engagementId)}/evidence-activity${query}`
-    );
-    out.push(...answer.items);
-    cursor = answer.next_cursor;
-    if (!cursor) break;
-  }
-  return out;
-}
-
-/**
- * The document's saved decision with one more placement move. The workpaper item is replaced as
- * a whole, so every other key (facility, disposition, relationships, notes…) is carried over.
- */
-export function withPlacement(decision: DocumentDecision | undefined, documentId: string, move: Placement): DocumentDecision {
-  return { ...(decision ?? {}), documentId, placements: [...(decision?.placements ?? []), move] };
-}
-
-/** Saves a placement move on the document's workpaper item; returns the payload that was saved. */
-export async function saveDocumentPlacement(
+/** One page (100 at most) of the Evidence changes on the engagement, newest first. `next_cursor` is null on the last. */
+export function getEvidenceActivity(
   engagementId: string,
-  decision: DocumentDecision | undefined,
-  documentId: string,
-  move: Placement
-): Promise<DocumentDecision> {
-  const next = withPlacement(decision, documentId, move);
-  await saveWorkpaperItem(engagementId, "document", documentId, next);
-  return next;
+  cursor?: string | null
+): Promise<{ items: EvidenceActivityItem[]; next_cursor: string | null }> {
+  const query = cursor ? `?limit=100&cursor=${encodeURIComponent(cursor)}` : "?limit=100";
+  return api(`/engagements/${encodeURIComponent(engagementId)}/evidence-activity${query}`);
 }

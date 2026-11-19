@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { EvidenceActivityItem, EvidenceTree, LineAnswer } from "../api/evidenceTree";
 import { demoApi } from "../demo-backend";
-import { compactMoves } from "../demo-backend/evidenceActions";
+import { deriveMoves } from "../demo-backend/evidenceActions";
 import { demoDecisions, setDemoEngagement } from "../demo-backend/state";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { ApiError } from "../../../lib/api";
@@ -36,12 +36,21 @@ const docsOn = (t: EvidenceTree, key: string) =>
   t.blocks.supporting.scopes.flatMap((s) => s.categories.flatMap((c) => c.level2s.flatMap((l) => l.lines))).find((n) => n.line.key === key)?.documents.map((d) => d.document_id) ?? [];
 
 describe("demo backend: Evidence actions", () => {
-  it("compacts a chain of moves the way the server does", () => {
-    expect(compactMoves([{ from: "a", to: "b" }, { from: "b", to: "a" }])).toEqual([{ from: "b", to: "a" }]);
-    expect(compactMoves([{ from: "a", to: "b" }, { from: "b", to: "c" }])).toEqual([{ from: "a", to: "c" }, { from: "b", to: "c" }]);
-    expect(compactMoves([{ from: "x", to: "x" }])).toEqual([]);
-    const pingPong = Array.from({ length: 1000 }, (_, i) => (i % 2 ? { from: "b", to: "a" } : { from: "a", to: "b" }));
-    expect((compactMoves(pingPong) ?? pingPong).length).toBeLessThanOrEqual(2);
+  it("derives the saved chain from where the document is filed now, as the server does", () => {
+    const known = new Set(["A", "B", "L"]);
+    expect(deriveMoves("A", [], { from: "A", to: "B" }, known)).toEqual([{ from: "A", to: "B" }]);
+    expect(deriveMoves("A", [{ from: "A", to: "B" }], { from: "B", to: "A" }, known)).toEqual([]);
+    expect(deriveMoves("A", [{ from: "A", to: "B" }], { from: "B", to: "L" }, known)).toEqual([{ from: "A", to: "L" }]);
+    let chain: { from: string; to: string }[] = [];
+    for (let i = 0; i < 1000; i += 1) {
+      const here = i % 2 === 0 ? "A" : "B";
+      chain = deriveMoves("A", chain, { from: here, to: here === "A" ? "B" : "A" }, known);
+    }
+    expect(chain).toEqual([]);
+    // parked on a line that is gone: it stays on that line's key, and the move shown from Unassigned is kept
+    const parked = deriveMoves("A", [], { from: "A", to: "X" }, new Set(["A", "X"]));
+    expect(parked).toEqual([{ from: "A", to: "X" }]);
+    expect(deriveMoves("A", parked, { from: "supporting:unassigned", to: "B" }, new Set(["A", "B"]))).toEqual([{ from: "A", to: "B" }]);
   });
 
   it("adds a line stamped with the signed-in person, and refuses a duplicate or a bad anchor", async () => {
@@ -66,6 +75,7 @@ describe("demo backend: Evidence actions", () => {
 
     const deleted = await demoApi<LineAnswer>(`${lines}/${encodeURIComponent(PROPANE_KEY)}`, { method: "DELETE" });
     expect(deleted.documents_moved).toBe(1);
+    expect(Object.keys(deleted.documents ?? {})).toEqual([doc]); // the changed payloads come back whole
     const after = await tree();
     expect(after.blocks.supporting.unassigned.map((d) => d.document_id)).toContain(doc);
     expect(demoDecisions().get(doc)?.placements?.length).toBeLessThanOrEqual(2);

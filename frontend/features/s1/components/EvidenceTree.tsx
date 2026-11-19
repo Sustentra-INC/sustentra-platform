@@ -21,6 +21,7 @@ import {
   type TreeLineNode,
   type TreeScope,
 } from "../api/evidenceTree";
+import { ApiError } from "../../../lib/api";
 import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig } from "../types";
 import { addedByText, formatPeriod } from "../utils/formatPeriod";
@@ -64,7 +65,8 @@ type Dialog =
   | { kind: "newLine"; scope: string; category: string; level2: TreeLevel2 }
   | { kind: "newFuel"; scope: string; category: TreeCategory }
   | { kind: "rename"; line: CalculationLine }
-  | { kind: "delete"; line: CalculationLine; documents: number };
+  /** `documents` is how many documents are on the line in the whole tree; null when that is not known. */
+  | { kind: "delete"; line: CalculationLine; documents: number | null };
 
 type OnError = ((error: unknown) => boolean) | undefined;
 
@@ -243,7 +245,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
                 onOpenChange={(o) => setMenuId(o ? id : null)}
                 entries={[
                   { label: "Rename", action: () => setDialog({ kind: "rename", line }) },
-                  { label: "Delete", action: () => setDialog({ kind: "delete", line, documents: node.counts.documents }) },
+                  { label: "Delete", action: () => void openDelete(line, node.counts.documents) },
                 ]}
               />
             ) : null}
@@ -289,6 +291,33 @@ export function EvidenceTree(props: EvidenceTreeProps) {
     setDialog(null);
     setReload((n) => n + 1);
   };
+
+  /** Runs one server action. When the server says the page was out of date (409: moved or changed by someone
+   *  else; 404: the line is already gone), the tree loads again and the server's sentence is shown. */
+  async function guard<T>(task: () => Promise<T>): Promise<T> {
+    try {
+      return await task();
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 409 || e.status === 404)) setReload((n) => n + 1);
+      throw e;
+    }
+  }
+
+  /** The delete window names how many documents move. With a facility filter on, the tree counts only that
+   *  facility's documents, so the count is read from the whole tree. */
+  async function openDelete(line: CalculationLine, shown: number) {
+    if (facilityId === null) {
+      setDialog({ kind: "delete", line, documents: shown });
+      return;
+    }
+    let documents: number | null = null;
+    try {
+      documents = lineDocuments(await getEvidenceTree(engagementId), line.key);
+    } catch {
+      // The window still opens, and says the line's documents move without a number.
+    }
+    setDialog({ kind: "delete", line, documents });
+  }
 
   return (
     <div className="s1-et">
@@ -415,13 +444,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           onError={onError}
           onCancel={() => setDialog(null)}
           onMove={async (to) => {
-            // Another tab may have moved it already: say so, and never save a move from a place it is not in.
-            const fresh = await getEvidenceTree(engagementId);
-            if (!stillOn(fresh, dialog.doc.document_id, dialog.from)) {
-              setReload((n) => n + 1);
-              throw new Error(STALE_MOVE);
-            }
-            await props.onMovePlacement(dialog.doc.document_id, { from: dialog.from, to });
+            // The server refuses a move from a place the document is no longer in (409), saving nothing.
+            await guard(() => props.onMovePlacement(dialog.doc.document_id, { from: dialog.from, to }));
             done();
           }}
         />
@@ -436,7 +460,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           onError={onError}
           onCancel={() => setDialog(null)}
           onCreate={async (entry) => {
-            await props.onCreateLine(entry);
+            await guard(() => props.onCreateLine(entry));
             done();
           }}
         />
@@ -451,7 +475,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           onError={onError}
           onCancel={() => setDialog(null)}
           onSubmit={async (name) => {
-            await props.onRenameLine(dialog.line, name);
+            await guard(() => props.onRenameLine(dialog.line, name));
             done();
           }}
         />
@@ -461,7 +485,9 @@ export function EvidenceTree(props: EvidenceTreeProps) {
         <ConfirmDialog
           title={`Delete ${lineTitle(dialog.line)}?`}
           body={
-            dialog.documents === 1
+            dialog.documents === null
+              ? "Its documents move to Unassigned supporting evidence. You can move them to another line from there."
+              : dialog.documents === 1
               ? "Its 1 document moves to Unassigned supporting evidence. You can move it to another line from there."
               : dialog.documents > 1
                 ? `Its ${dialog.documents} documents move to Unassigned supporting evidence. You can move them to another line from there.`
@@ -471,7 +497,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           onError={onError}
           onCancel={() => setDialog(null)}
           onConfirm={async () => {
-            await props.onDeleteLine(dialog.line);
+            await guard(() => props.onDeleteLine(dialog.line));
             done();
           }}
         />
@@ -518,16 +544,17 @@ function collectIds(tree: EvidenceTreeData): string[] {
   return ids;
 }
 
-const STALE_MOVE = "This document is no longer where this page showed it, so nothing was changed. The list has been refreshed; choose again.";
-
-/** Whether the document still has the placement a move names (a row's `placement_from`, else its section). */
-function stillOn(tree: EvidenceTreeData, documentId: string, from: string): boolean {
-  const has = (rows: TreeDocRow[], section: string) => rows.some((r) => r.document_id === documentId && (r.placement_from ?? section) === from);
-  const { summary, unassigned, supporting } = tree.blocks;
-  if (has(summary, BLOCK_SUMMARY) || has(unassigned, BLOCK_UNASSIGNED) || has(supporting.unassigned, SUPPORTING_UNASSIGNED)) return true;
-  return supporting.scopes.some((s) =>
-    s.categories.some((c) => c.level2s.some((l2) => l2.lines.some((n) => has(n.documents, n.line.key))))
-  );
+/** How many documents are on a line in this tree (0 when the line is not in it). */
+function lineDocuments(tree: EvidenceTreeData, lineKey: string): number {
+  for (const scope of tree.blocks.supporting.scopes) {
+    for (const category of scope.categories) {
+      for (const l2 of category.level2s) {
+        const node = l2.lines.find((n) => n.line.key === lineKey);
+        if (node) return node.counts.documents;
+      }
+    }
+  }
+  return 0;
 }
 
 const FAMILY_WORDS: Record<CalculationFamily, string> = { stationary: "stationary fuel", mobile: "mobile fuel", electricity: "electricity" };
@@ -618,16 +645,20 @@ function Fold({
 /* =============================== dialogs =============================== */
 
 /** A window that closes on Escape and puts the cursor in its first field. */
-function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+function Dialog({ title, onClose, busy = false, children }: { title: string; onClose: () => void; busy?: boolean; children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
+  const working = useRef(busy);
   useEffect(() => {
     close.current = onClose;
+    working.current = busy;
   });
   useEffect(() => {
     box.current?.querySelector<HTMLElement>("input, select, textarea, button:not([disabled])")?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close.current();
+      // While a request is running the window stays: closing it would hide the answer (and let the user switch
+      // engagement before it lands).
+      if (e.key === "Escape" && !working.current) close.current();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -730,7 +761,7 @@ function MoveDialog({
   }
 
   return (
-    <Dialog title="Move to…" onClose={onCancel}>
+    <Dialog title="Move to…" onClose={onCancel} busy={busy}>
       <p className="s1-modal__note">
         Moves {doc.file_name} from {placeLabel(from)}. Only this placement moves; the document stays where else it is used.
       </p>
@@ -833,7 +864,7 @@ function NewLineDialog({
 
   if (anchors.length === 0) {
     return (
-      <Dialog title={title} onClose={onCancel}>
+      <Dialog title={title} onClose={onCancel} busy={busy}>
         <p className="s1-modal__note">
           {mobile ? "Add a vehicle group in Setup first. A line needs a vehicle group to sit on." : "Add a facility in Setup first. A line needs a facility to sit on."}
         </p>
@@ -852,7 +883,7 @@ function NewLineDialog({
   }
 
   return (
-    <Dialog title={title} onClose={onCancel}>
+    <Dialog title={title} onClose={onCancel} busy={busy}>
       {isFuel ? (
         <label className="s1-modal__field">
           <span>Fuel name</span>
@@ -909,7 +940,7 @@ function NewLineDialog({
         >
           {isFuel ? "Add fuel" : "Add line"}
         </button>
-        <button className="s1-linklike" type="button" onClick={onCancel}>
+        <button className="s1-linklike" type="button" disabled={busy} onClick={onCancel}>
           Cancel
         </button>
       </div>
@@ -938,7 +969,7 @@ function TextDialog({
   const { busy, error, run } = useSubmit(onError);
   const text = value.trim();
   return (
-    <Dialog title={title} onClose={onCancel}>
+    <Dialog title={title} onClose={onCancel} busy={busy}>
       <label className="s1-modal__field">
         <span>{label}</span>
         <input className="s1-inline-input" value={value} maxLength={120} onChange={(e) => setValue(e.target.value)} />
@@ -952,7 +983,7 @@ function TextDialog({
         <button className="s1-button s1-button--pri" type="button" disabled={!text || text === initial || busy} onClick={() => void run(() => onSubmit(text))}>
           {action}
         </button>
-        <button className="s1-linklike" type="button" onClick={onCancel}>
+        <button className="s1-linklike" type="button" disabled={busy} onClick={onCancel}>
           Cancel
         </button>
       </div>
@@ -977,7 +1008,7 @@ function ConfirmDialog({
 }) {
   const { busy, error, run } = useSubmit(onError);
   return (
-    <Dialog title={title} onClose={onCancel}>
+    <Dialog title={title} onClose={onCancel} busy={busy}>
       <p className="s1-modal__note">{body}</p>
       {error ? (
         <p className="s1-modal__note" role="alert">
@@ -988,7 +1019,7 @@ function ConfirmDialog({
         <button className="s1-button s1-button--pri" type="button" disabled={busy} onClick={() => void run(onConfirm)}>
           {action}
         </button>
-        <button className="s1-linklike" type="button" onClick={onCancel}>
+        <button className="s1-linklike" type="button" disabled={busy} onClick={onCancel}>
           Cancel
         </button>
       </div>
