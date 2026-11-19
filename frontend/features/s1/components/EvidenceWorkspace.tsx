@@ -115,7 +115,7 @@ interface EvidenceWorkspaceProps {
   /** Backend mode: shows the calculation-line tree instead of the grouping by document type. */
   tree?: Pick<
     EvidenceTreeProps,
-    "openIds" | "onOpenIdsChange" | "onOpenSchedule" | "onMovePlacement" | "onSaveLines" | "onError" | "facilityId" | "onFacilityChange"
+    "openIds" | "onOpenIdsChange" | "onOpenSchedule" | "onMovePlacement" | "onCreateLine" | "onRenameLine" | "onDeleteLine" | "onError" | "facilityId" | "onFacilityChange"
   > & {
     /** Which grouping shows, and a change to it; kept by the app with the tree's open rows. */
     view: "lines" | "types";
@@ -448,7 +448,9 @@ export function EvidenceWorkspace({
               onOpenIdsChange={tree.onOpenIdsChange}
               onOpenSchedule={tree.onOpenSchedule}
               onMovePlacement={tree.onMovePlacement}
-              onSaveLines={tree.onSaveLines}
+              onCreateLine={tree.onCreateLine}
+              onRenameLine={tree.onRenameLine}
+              onDeleteLine={tree.onDeleteLine}
               onError={tree.onError}
               facilityId={tree.facilityId}
               onFacilityChange={tree.onFacilityChange}
@@ -456,7 +458,6 @@ export function EvidenceWorkspace({
               reloadKey={treeReloadKey}
               onOpenExtraction={onOpenExtraction}
               onOpenSetup={onOpenSetup}
-              onAudit={(intent) => onAuditIntent?.(intent)}
               writesEnabled={writesEnabled}
             />
           ) : showFilteredEmpty ? (
