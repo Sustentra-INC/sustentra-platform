@@ -3473,6 +3473,10 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
    not the browser's defaults (Arial in selects, 700 in <strong>). */
 .s1-app :where(button, input, select, textarea, optgroup) { font-family: inherit; font-size: inherit; }
 .s1-app :where(strong, b, th, h1, h2, h3, h4, h5, h6) { font-weight: var(--weight-strong); }
+/* The text in a form field is the small size (design standard, section 2). The reset above has the
+   same specificity as a single-class field rule (.s1-mr-input, .s1-inline-input) and comes later, so it
+   would win and leave the field at the body size; this rule is more specific, so it holds everywhere. */
+.s1-app input, .s1-app select, .s1-app textarea { font-size: var(--text-sm); }
 .s1-xr-key .s1-xr-key__pick { font-size: var(--text-sm); font-weight: var(--weight-strong); }
 
 /* Icons sized by their box, not by a text size (design standard: three text sizes). */
@@ -3665,6 +3669,8 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-sch-ids__docs { display: flex; flex-direction: column; align-items: flex-start; }
 .s1-sch-row--pending td { color: var(--ink-3); }
 .s1-sch-row__flag { font-size: var(--text-sm); }
+.s1-sch-nopage { font-size: var(--text-sm); }
+.s1-sch-values .s1-linklike { font-size: inherit; text-align: right; }
 .s1-sch-values { max-height: 22rem; overflow: auto; }
 /* Every value in the table is body size: numbers carry .s1-num for alignment, not for a smaller size. */
 .s1-sch-values td.s1-num { font-size: var(--text-md); }

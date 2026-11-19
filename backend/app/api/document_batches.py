@@ -27,6 +27,7 @@ from backend.app.repositories.document_batch_repository import (
 )
 from backend.app.repositories.document_chunk_repository import ChunkSummary
 from backend.app.repositories.processing_run_repository import ProcessingRun
+from backend.app.services.halt_text import is_halt_code, plain_halt
 
 router = APIRouter(prefix="/v1", tags=["document-batches"])
 
@@ -103,14 +104,25 @@ def _row(
     if status == "queued" and chunks is not None:
         status = "reading"  # the chunks are read and the run waits to be assembled: not waiting to start
     halt: str | None = NOT_STARTED_MESSAGE if run is None else None
+    halt_code: str | None = None
+    pipeline_halt = (pipeline_run or {}).get("halt_reason") or {}
     if run is not None and run.status == "failed":
-        halt = ((pipeline_run or {}).get("halt_reason") or {}).get("message") or run.error or READ_FAILED_MESSAGE
+        halt_code = pipeline_halt.get("code") or run.error_code
+        # A halt is worded from the one map; the pipeline's own sentence (type ids, scores,
+        # parser output) stays in its run record. A failure that is not a halt says its own
+        # plain sentence (a timeout, a worker error).
+        halt = plain_halt(halt_code, pipeline_halt.get("message")) if is_halt_code(halt_code) else None
+        if halt is None:
+            halt_code = None
+            halt = run.error or READ_FAILED_MESSAGE
     elif run is not None and run.status == "completed" and pipeline_run is not None:
         if pipeline_run.get("status") == "failed":
             status = "failed"
         elif pipeline_run.get("status") == "partial":
             status = "partial"
-        halt = (pipeline_run.get("halt_reason") or {}).get("message")
+        code = pipeline_halt.get("code")
+        if is_halt_code(code):
+            halt_code, halt = code, plain_halt(code, pipeline_halt.get("message"))
         if halt is None and chunks is not None and chunks.failed_pages:
             halt = f"{_pages(chunks.failed_pages)} could not be read."
     return {
@@ -121,6 +133,7 @@ def _row(
             "total": chunks.total, "completed": chunks.completed, "failed": chunks.failed,
             "failed_pages": chunks.failed_pages},
         "canonical_type_id": (pipeline_run or {}).get("canonical_type_id"),
+        "halt_code": halt_code,
         "halt_reason": halt,
         "records_found": int((pipeline_run or {}).get("found_candidate_count") or 0),
     }

@@ -118,7 +118,9 @@ export interface LineSchedule {
   coverage: { month: string; status: CoverageStatus; quantity: number | null; unit: string | null; document_ids: string[]; flags?: string[]; waiting_on?: string[] }[];
   identifiers: { label: string; value: string; documents_with: number; documents_total: number }[];
   values: ScheduleValue[];
-  history: { at: string; text: string }[];
+  /** Newest first, at most 200; `history_total` is the count before the cap. */
+  history: ScheduleHistoryEntry[];
+  history_total?: number;
   /** Schedule v2: one row per record, accepted or not. */
   rows: ScheduleRow[];
   /** The ordered column set; Date and Activity quantity first, then only the extras the line has. */
@@ -127,13 +129,39 @@ export interface LineSchedule {
   identifier_groups: IdentifierGroup[];
 }
 
+export type HistoryAction = "extracted" | "accepted" | "corrected" | "added" | "rejected" | "asked_for_more_evidence";
+
+/** One thing that happened on the line. The page words the sentence; who, when, what and where are fields. */
+export interface ScheduleHistoryEntry {
+  action: HistoryAction;
+  actor_name: string | null;
+  at: string | null;
+  field: string | null;
+  value: string | null;
+  unit: string | null;
+  file_name: string | null;
+  page: number | null;
+  /** Values folded into this entry (a bulk accept), or the values extracted by the system entry. */
+  count?: number;
+  /** Documents the system entry extracted from. */
+  documents?: number | null;
+}
+
 export interface ScheduleColumn {
   key: string;
   label: string;
   unit_in_cells: boolean;
 }
 
-export interface ScheduleCell {
+/** Where a value was read: its candidate, and a page (PDF, image) or a sheet and cell (workbook, CSV). */
+export interface ValueSource {
+  candidate_id?: string | null;
+  page?: number | null;
+  sheet?: string | null;
+  cell?: string | null;
+}
+
+export interface ScheduleCell extends ValueSource {
   value: string | number | null;
   unit?: string | null;
 }
@@ -150,7 +178,7 @@ export interface ScheduleRow {
   rejected_fields?: string[];
   /** `days` is counted by the server; the page never works it out. */
   date: { start: string | null; end: string | null; days: number | null; label: string };
-  activity_quantity: { value: number | string | null; unit: string | null };
+  activity_quantity: { value: number | string | null; unit: string | null } & ValueSource;
   cells: Record<string, ScheduleCell>;
   saved_by: { name: string; at: string | null } | null;
   document_id: string;

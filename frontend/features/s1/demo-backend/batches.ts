@@ -82,14 +82,14 @@ function planFor(files: DemoBatchFile[]): Plan[] {
 function itemFor(file: DemoBatchFile, plan: Plan, polls: number): BatchDocument {
   const base = { document_id: file.documentId, file_name: file.fileName };
   if (polls < plan.start) {
-    return { ...base, status: "queued", chunks: null, canonical_type_id: null, halt_reason: null, records_found: 0 };
+    return { ...base, status: "queued", chunks: null, canonical_type_id: null, halt_code: null, halt_reason: null, records_found: 0 };
   }
   const step = polls - plan.start;
   if (step < plan.span) {
     const chunks = plan.longPdf
       ? { total: LONG_PDF_PAGES, completed: LONG_PDF_STEPS[step], failed: 0, failed_pages: [] as [number, number][] }
       : null;
-    return { ...base, status: "reading", chunks, canonical_type_id: null, halt_reason: null, records_found: 0 };
+    return { ...base, status: "reading", chunks, canonical_type_id: null, halt_code: null, halt_reason: null, records_found: 0 };
   }
   const found = 2 + (hash(file.fileName) % 7);
   if (plan.partial) {
@@ -103,11 +103,12 @@ function itemFor(file: DemoBatchFile, plan: Plan, polls: number): BatchDocument 
         failed_pages: [LONG_PDF_UNREAD],
       },
       canonical_type_id: plan.typeId ?? "CT-S1-FUELQTY",
+      halt_code: null,
       halt_reason: PARTIAL_REASON,
       records_found: Math.max(3, found),
     };
   }
-  return { ...base, status: "done", chunks: null, canonical_type_id: plan.typeId, halt_reason: null, records_found: found };
+  return { ...base, status: "done", chunks: null, canonical_type_id: plan.typeId, halt_code: null, halt_reason: null, records_found: found };
 }
 
 /** One step of the batch: the view a GET answers with. */
