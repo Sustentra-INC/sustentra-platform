@@ -65,7 +65,12 @@ SITE_LOCATION_LABELS: tuple[tuple[str, ...], ...] = (
 )
 BILL_TO_LABELS: tuple[tuple[str, ...], ...] = (
     ("customer name", "customer", "sold to", "bill to", "billed to", "invoice to", "account name",
-     "account holder", "service name"),
+     "account holder", "service name", "service for"),
+)
+# Who a bill asks to be paid: the organisation named there is a candidate for the supplier, after the
+# letterhead and the labelled reads. (Not a bank, a lockbox or a PO box: those are where, not who.)
+REMIT_LABELS: tuple[tuple[str, ...], ...] = (
+    ("remit payment to", "remit to", "make checks payable to", "make payment to", "payable to", "pay to"),
 )
 # When a document names no site at all, the company on the bill is the facility, as on a utility bill to a
 # single plant (the golden set's SC-03 and SC-05). Set False to leave such a document with no facility,
@@ -559,6 +564,9 @@ class StationaryCombustionExtractor:
     # natural gas reader reads it: the others look for other units and layouts, and a number above a unit word
     # is too weak a sign for them.
     HEADLINE_QUANTITY = True
+    # Whether "TOTAL 1,273.1 THERMS" inside a line of a dense statement is read as the quantity (the gas reader
+    # only, like the headline read).
+    INLINE_TOTAL_QUANTITY = True
     # Additional table columns kept on each record: key -> header names (normalized).
     # A fuel log's "Site" / "Facility" column: each line's facility (a log can cover several).
     EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {
@@ -645,7 +653,9 @@ class StationaryCombustionExtractor:
         document_values["service_address"] = self._address(rows) or address_from_facility
 
         records = self._quantity_records(rows)
-        if not records and self.HEADLINE_QUANTITY:  # extraction only: classification (confirms) never reads it
+        if not records and self.INLINE_TOTAL_QUANTITY:  # extraction only: classification (confirms) never reads it
+            records = self._inline_total_records(rows)
+        if not records and self.HEADLINE_QUANTITY:
             records = self._headline_quantity_records(rows)
         period = self._document_period(rows)
         unit_hint = self._document_unit(rows)
@@ -1221,17 +1231,60 @@ class StationaryCombustionExtractor:
                                   inline_gap=True)
 
     def _supplier(self, rows: Sequence[Row]) -> Located | None:
-        labeled = self._find_labeled(rows, SUPPLIER_LABELS, accept=self._looks_like_org_name, allow_next_row=False,
-                                     inline=True)
+        """The company that issued the bill. Never the customer: the name a Bill To, Sold To, Service For or
+        Customer label gives is the other party. In order: a labelled supplier, an "Exported from" footer, the
+        letterhead, then the organisation on a Remit To or Payable To line."""
+
+        customer = self._party_key(rows, BILL_TO_LABELS)
+
+        def other_party(found: Located | None) -> Located | None:
+            return None if found is not None and customer and _name_key(found.raw.split(",")[0]) == customer else found
+
+        labeled = other_party(self._find_labeled(rows, SUPPLIER_LABELS, accept=self._looks_like_org_name,
+                                                 allow_next_row=False, inline=True))
         if labeled is None and (exported := self._exported_from(rows)) is not None:
             return exported  # an explicit "Exported from <supplier>" beats a guess at the letterhead
-        letterhead = self._letterhead(rows)
+        letterhead = other_party(self._letterhead(rows))
+        remit = other_party(self._remit_to(rows))
+        if (letterhead is not None and remit is not None and letterhead.confidence < CONF_LETTERHEAD  # a guess at line one,
+                and _name_key(letterhead.raw) != _name_key(remit.raw)  # not the largest text on the page
+                and self._is_addressee_block(rows, letterhead)):
+            letterhead = None  # the top block is who the statement is addressed to, and the bill says who is paid
         if letterhead is not None and (labeled is None or labeled.row is None or labeled.row.index > 2):
             return letterhead
         if labeled is not None:
             labeled.raw = re.split(r"\s{2,}|\s+(?:GST|HST|VAT|Tax ID|EIN)\b", labeled.raw)[0].strip()
             return labeled
-        return self._exported_from(rows)
+        return self._exported_from(rows) or remit
+
+    def _remit_to(self, rows: Sequence[Row]) -> Located | None:
+        """The organisation a bill asks to be paid ("REMIT TO: SIERRA BASIN ENERGY CO, PO BOX 618"): the name
+        before the first comma or dash. A bank, a lockbox, a remittance centre or a PO box is where to pay, not
+        who is paid, so none of those is a supplier."""
+
+        for label_cell, row, lines in self._label_blocks(rows, REMIT_LABELS):
+            for cell, text in lines[:1]:
+                name = re.split(r"\s{2,}|,|\s+[-\u2013\u2014|]\s+", text)[0].strip()
+                if (name and not name[0].isdigit() and self._looks_like_org_name(name)
+                        and not re.search(r"\b(?:lock\s?box|bank|remittance|p\.?\s?o\.?\s*box)\b", name, re.I)):
+                    return Located(name, [cell], row, CONF_LETTERHEAD - 0.1, label_cell=label_cell, context=text)
+        return None
+
+    @staticmethod
+    def _is_addressee_block(rows: Sequence[Row], found: Located) -> bool:
+        """Whether the line a name was found on opens an address block (a street or PO box line, then a city,
+        state and ZIP line) that a statement header ("ACCOUNT NO", "STMT DATE", "INVOICE") follows: the block
+        a statement is addressed with, whose first line is the customer."""
+
+        if found.row is None:
+            return False
+        following = [r.cells[0].text.strip() for r in rows[found.row.index + 1:found.row.index + 5] if len(r.cells) == 1]
+        if len(following) < 3:
+            return False
+        street, city, header = following[:3]
+        return (bool(re.match(r"^(?:\d|p\.?\s?o\.?\s*box\b)", street, re.I))
+                and bool(re.match(r"^[^\d]+?,?\s+[A-Za-z]{2}\s+\d{5}(?:-\d{4})?$", city))
+                and bool(re.match(r"^(?:account|acct|stmt|statement|invoice|bill)\b", header, re.I)))
 
     @staticmethod
     def _exported_from(rows: Sequence[Row]) -> Located | None:
@@ -1575,6 +1628,36 @@ class StationaryCombustionExtractor:
         """Usage table rows, else a labeled quantity (subclasses add more layouts)."""
 
         return self._usage_table_records(rows) or self._labeled_quantity_records(rows)
+
+    # "TOTAL 1,273.1 THERMS" in the middle of a line: TOTAL directly before the number, the unit directly after
+    # it. "TOTAL AMOUNT DUE $1,474.33" and "TOTAL CHARGES 1,474.33" have a word where the number should be, a
+    # "$" or no unit; "PREV 40,211 CURR 41,447" has no TOTAL.
+    _INLINE_TOTAL = re.compile(
+        r"(?<![\w$])total\s+(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s+(?P<unit>[^\W\d_]+)(?![\w$@])",
+        re.IGNORECASE)
+
+    def _inline_total_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
+        """A dense statement that states its usage inside a line: "THERM FACTOR 1.030 TOTAL 1,273.1 THERMS".
+        The labelled usage table and the labelled reads are tried first. Money is never taken (a "$", or a TOTAL
+        that is followed by a word); when the document says it more than once with different numbers, nothing
+        is guessed."""
+
+        found: dict[tuple[float, str], tuple[Row, Cell, re.Match[str]]] = {}
+        for row in rows:
+            for cell in row.cells:
+                for match in self._INLINE_TOTAL.finditer(cell.text):
+                    unit = match.group("unit")
+                    if self._canonical_unit(unit) is None or unit.lower() in fuel_units._AMBIGUOUS_IN_TEXT:
+                        continue
+                    number = parse_number(match.group("num"))
+                    if number is not None:
+                        found.setdefault((number[0], unit.lower()), (row, cell, match))
+        if len(found) != 1:
+            return []
+        row, cell, match = next(iter(found.values()))
+        quantity = Located(match.group("num"), [cell], row, CONF_NEXT_CELL - 0.1, context=cell.text)
+        return [UsageRecord(quantity=quantity, unit_raw=match.group("unit"),
+                            unit_located=Located(match.group("unit"), [cell], row, CONF_NEXT_CELL - 0.1), hint=None)]
 
     _BARE_NUMBER = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d+)?$|^\d+(?:\.\d+)?$")
     _USAGE_WORDS = frozenset({"used", "billed", "consumed", "delivered", "usage"})

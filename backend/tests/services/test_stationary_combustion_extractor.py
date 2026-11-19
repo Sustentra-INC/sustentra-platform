@@ -1013,3 +1013,174 @@ def test_a_heading_with_a_digit_is_not_an_account_number(targets: list[dict]) ->
               ("therms used", 0.039, 0.228, 0.15, 0.015)]
 
     _nothing_read(_read(layout, targets), "account_number")
+
+
+# --- a dense statement: the usage inside a line, and who is paid on a Remit To line ------------------------
+def _lines_output(lines: list[str], *, boxed: bool = True) -> dict[str, Any]:
+    """A statement as a PDF reader gives it: one cell per line, all the same height (so no line is a letterhead
+    by size), or as plain text."""
+
+    if not boxed:
+        return _text_output("\n".join(lines))
+    return _measured_output([(text, 0.088, 0.08 + 0.0155 * i, 0.5, 0.011) for i, text in enumerate(lines)])
+
+
+def _fields(lines: list[str], targets: list[dict], *, boxed: bool = True) -> dict[str, dict]:
+    outcome = StationaryCombustionExtractor().extract(_lines_output(lines, boxed=boxed), targets, "EV-1")
+    return _by_field(outcome.candidates)
+
+
+def _value(fields: dict[str, dict], name: str) -> Any:
+    return fields.get(name, {}).get("normalized_value")
+
+
+# The layout of a dense gas statement (synthetic, with non-ASCII in the customer and supplier names).
+DENSE = [
+    "NORTHGATE PROVISIONS ÅNGSTRÖM INC",
+    "555 CAPITOL MALL STE 900",
+    "SACRAMENTO CA 95814",
+    "ACCOUNT NO 4417-9083-52",
+    "STMT DATE 09/05/2025",
+    "DUE DATE 09/26/2025",
+    "FROM 08/01/2025 TO 08/31/2025 31 DAYS",
+    "METER GM-0127764 PREV 40,211 CURR 41,447 USE 1,236 CCF",
+    "THERM FACTOR 1.030 TOTAL 1,273.1 THERMS",
+    "CUSTOMER CHARGE 31 DAYS @ 1.48000 45.88",
+    "GAS TRANSPORTATION 1,273.1 THM @ 0.68420 871.04",
+    "SUBTOTAL 1,785.85",
+    "TOTAL DUE 1,910.86",
+    "REMIT TO: SIERRA BASIN ÉNERGIE CO, PO BOX 618 東京",
+]
+
+
+@pytest.mark.parametrize("boxed", [True, False])
+def test_a_dense_statement_gives_its_inline_total_and_who_is_paid(targets: list[dict], boxed: bool) -> None:
+    fields = _fields(DENSE, targets, boxed=boxed)
+
+    assert fields["activity_quantity"]["raw_value"] == "1,273.1"
+    assert _value(fields, "activity_quantity") == pytest.approx(127.31)  # therms to MMBtu
+    assert _value(fields, "activity_unit") == "MMBtu"
+    assert _value(fields, "supplier_name") == "SIERRA BASIN ÉNERGIE CO"  # not the addressee on the first line
+    assert (_value(fields, "service_period_start"), _value(fields, "service_period_end")) == ("2025-08-01", "2025-08-31")
+    assert _value(fields, "account_number") == "4417-9083-52"
+
+
+def test_only_the_therms_count_when_a_total_amount_due_sits_beside_them(targets: list[dict]) -> None:
+    lines = [row for row in DENSE if not row.startswith(("THERM FACTOR", "TOTAL DUE"))]
+    lines[7:7] = ["TOTAL AMOUNT DUE $1,474.33", "THERM FACTOR 1.030 TOTAL 1,273.1 THERMS", "TOTAL 1,474.33 USD"]
+
+    fields = _fields(lines, targets)
+
+    assert fields["activity_quantity"]["raw_value"] == "1,273.1"
+
+
+@pytest.mark.parametrize("line", ["TOTAL CHARGES 1,474.33", "TOTAL AMOUNT DUE $1,474.33", "TOTAL $1,474.33 THERMS",
+                                  "TOTAL DUE 1,910.86 EUR – Zürich", "TOTAL 45.88 USD", "TOTAL 7 ST"])
+def test_a_total_that_is_money_or_has_no_real_unit_is_not_the_quantity(targets: list[dict], line: str) -> None:
+    lines = ["Natural gas statement – Zürich 東京", "ACCOUNT NO 4417-9083-52", "FROM 08/01/2025 TO 08/31/2025", line]
+
+    assert _value(_fields(lines, targets), "activity_quantity") is None
+
+
+def test_a_meter_read_line_is_not_the_quantity(targets: list[dict]) -> None:
+    lines = ["Natural gas statement – Zürich", "METER GM-0127764 PREV 40,211 CURR 41,447 USE 1,236 CCF",
+             "FROM 08/01/2025 TO 08/31/2025"]
+
+    fields = _fields(lines, targets)
+
+    assert _value(fields, "activity_quantity") not in (40211, 41447)  # the reads are never taken as usage
+    assert fields["activity_quantity"].get("raw_value") not in ("40,211", "41,447")
+
+
+def test_two_different_totals_in_units_are_not_guessed_between(targets: list[dict]) -> None:
+    lines = ["Natural gas statement – Zürich", "TOTAL 1,273.1 THERMS", "TOTAL 1,236 CCF", "FROM 08/01/2025 TO 08/31/2025"]
+
+    assert _value(_fields(lines, targets), "activity_quantity") is None
+
+
+def test_the_labelled_usage_reads_win_over_an_inline_total(targets: list[dict]) -> None:
+    lines = ["Natural gas statement – Zürich", "Total Usage: 900 therms", "THERM FACTOR 1.030 TOTAL 1,273.1 THERMS"]
+
+    assert _fields(lines, targets)["activity_quantity"]["raw_value"] == "900"
+
+
+def test_no_other_reader_reads_an_inline_total() -> None:
+    from backend.app.services.electricity_extractor import ElectricityExtractor
+    from backend.app.services.mobile_combustion_extractor import MobileCombustionExtractor
+    from backend.app.services.refrigerant_extractor import RefrigerantServiceExtractor
+    from backend.app.services.thermal_extractor import ThermalExtractor
+
+    assert StationaryCombustionExtractor.INLINE_TOTAL_QUANTITY is True
+    for extractor in (ElectricityExtractor, MobileCombustionExtractor, RefrigerantServiceExtractor, ThermalExtractor):
+        assert extractor.INLINE_TOTAL_QUANTITY is False, extractor.__name__
+
+
+def test_the_inline_total_is_not_part_of_the_classification_check() -> None:
+    # confirms() is decided by the labelled reads alone: the inline form does not confirm a document's type
+    assert not StationaryCombustionExtractor().confirms(_lines_output(["Natural gas statement", "TOTAL 1,273.1 THERMS"]))
+
+
+# --- the supplier ------------------------------------------------------------------------------------
+@pytest.mark.parametrize("remit", ["REMIT TO: PO BOX 618, LOCKBOX 1234", "REMIT TO: LOCKBOX 1234 PO BOX 618",
+                                   "Remit to: First National Bank, Lockbox 1234", "PAYABLE TO: Remittance Center – Zürich",
+                                   "REMIT TO: 618 Main Street", "REMIT TO: P.O. Box 618"])
+def test_a_remit_to_that_is_a_lockbox_or_a_bank_names_no_supplier(targets: list[dict], remit: str) -> None:
+    lines = ["Natural gas statement – Zürich 東京", "ACCOUNT NO 4417-9083-52", "Total Usage: 900 therms", remit]
+
+    assert _value(_fields(lines, targets), "supplier_name") is None
+
+
+@pytest.mark.parametrize("remit", ["REMIT TO: SIERRA BASIN ENERGY CO, PO BOX 618", "Make checks payable to: Sierra Basin Energy Co.",
+                                   "PAYABLE TO SIERRA BASIN ENERGY CO – PO BOX 618"])
+def test_a_remit_to_organisation_is_the_supplier_when_nothing_else_names_one(targets: list[dict], remit: str) -> None:
+    lines = ["Natural gas statement – Zürich", "Bill To: Müller Käserei GmbH", "Total Usage: 900 therms", remit]
+
+    assert str(_value(_fields(lines, targets), "supplier_name")).lower().startswith("sierra basin energy co")
+
+
+def test_a_bill_that_names_only_the_customer_and_a_remit_to_gets_the_remit_to(targets: list[dict]) -> None:
+    lines = ["Natural gas statement – Zürich", "CUSTOMER: ÅNGSTRÖM FOODS INC", "Total Usage: 900 therms",
+             "REMIT TO: SIERRA BASIN ENERGY CO"]
+
+    assert _value(_fields(lines, targets), "supplier_name") == "SIERRA BASIN ENERGY CO"
+
+
+@pytest.mark.parametrize("label", ["BILL TO", "SOLD TO", "SERVICE FOR", "CUSTOMER", "ACCOUNT HOLDER"])
+def test_the_customer_is_never_the_supplier(targets: list[dict], label: str) -> None:
+    # the customer named on the first line (a letterhead guess) and again under a customer label
+    lines = ["ÅNGSTRÖM FOODS INC", f"{label}: ÅNGSTRÖM FOODS INC", "Total Usage: 900 therms"]
+
+    assert _value(_fields(lines, targets), "supplier_name") is None
+
+
+def test_a_letterhead_that_names_the_utility_is_not_overridden_by_a_remit_to(targets: list[dict]) -> None:
+    # sized letterhead: the largest text near the top
+    layout = [("Acme Gas Company – Zürich", 0.2, 0.05, 0.5, 0.03), ("100 Main Street", 0.2, 0.09, 0.3, 0.011),
+              ("Dayton OH 45402", 0.2, 0.105, 0.3, 0.011), ("ACCOUNT NO 4417-9083-52", 0.2, 0.12, 0.3, 0.011),
+              ("Total Usage: 900 therms", 0.2, 0.3, 0.3, 0.011),
+              ("REMIT TO: ACME BILLING SERVICES INC, PO BOX 618", 0.2, 0.5, 0.5, 0.011)]
+    fields = _by_field(StationaryCombustionExtractor().extract(_measured_output(layout), targets, "EV-1").candidates)
+
+    assert _value(fields, "supplier_name") == "Acme Gas Company – Zürich"
+
+
+def test_a_first_line_that_is_not_an_address_block_is_still_the_letterhead(targets: list[dict]) -> None:
+    lines = ["Acme Gas Company", "Natural gas bill", "ACCOUNT NO 4417-9083-52", "Total Usage: 900 therms",
+             "REMIT TO: ACME BILLING SERVICES INC, PO BOX 618"]
+
+    assert _value(_fields(lines, targets), "supplier_name") == "Acme Gas Company"
+
+
+def test_a_labelled_supplier_is_not_overridden_by_a_remit_to(targets: list[dict]) -> None:
+    lines = ["Natural gas statement – Zürich", "Supplier: Cedarline Gas & Power", "Total Usage: 900 therms",
+             "REMIT TO: SIERRA BASIN ENERGY CO"]
+
+    assert _value(_fields(lines, targets), "supplier_name") == "Cedarline Gas & Power"
+
+
+def test_an_address_block_first_line_is_the_letterhead_when_nobody_else_is_paid(targets: list[dict]) -> None:
+    # without a remit-to organisation the guess at the first line stands, as before
+    lines = ["NORTHGATE PROVISIONS INC", "555 CAPITOL MALL STE 900", "SACRAMENTO CA 95814", "ACCOUNT NO 4417-9083-52",
+             "Total Usage: 900 therms"]
+
+    assert _value(_fields(lines, targets), "supplier_name") == "NORTHGATE PROVISIONS INC"
