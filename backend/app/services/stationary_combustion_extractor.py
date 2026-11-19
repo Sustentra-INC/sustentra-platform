@@ -30,6 +30,7 @@ from datetime import date
 from typing import Any, Sequence
 
 from backend.app.domain import fuel_units
+from backend.app.services import bill_notes
 
 CANONICAL_TYPE_ID = "CT-S1-FUELQTY"
 
@@ -87,9 +88,29 @@ _BLOCK_COLUMN_TOLERANCE = 0.02
 
 
 ACCOUNT_LABELS: tuple[tuple[str, ...], ...] = (
-    ("account number", "account no", "account #", "acct number", "acct no", "acct #", "customer account",
-     "customer acct", "customer number", "customer no", "account id", "account"),
+    ("account number", "account no", "account no.", "account #", "acct number", "acct no", "acct no.", "acct. no.",
+     "acct #", "acct.", "acct", "customer account", "customer acct", "customer number", "customer no",
+     "customer no.", "customer #", "cust no", "cust no.", "cust. no.", "cust #", "client number", "client no",
+     "client no.", "billing account", "service account", "account id", "account"),
 )
+_PHONE = re.compile(r"^\+?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}$|^\+\d[\d\s().-]{8,}$|^\d{3}[\s.-]\d{4}$")
+BILL_DATE_LABELS: tuple[tuple[str, ...], ...] = (
+    ("statement date", "invoice date", "bill date", "billing date", "date issued", "issue date", "date of issue"),
+)
+BILL_NUMBER_LABELS: tuple[tuple[str, ...], ...] = (
+    ("invoice number", "invoice no", "invoice no.", "invoice #", "statement number", "statement no", "statement no.",
+     "statement #", "bill number", "bill no", "bill no.", "invoice id"),
+)
+
+
+def _plausible_account(value: str) -> bool:
+    """An account is an identifier: a few tokens at most, and not a phone number ("Account: call 555-123-4567")."""
+
+    text = value.strip()
+    return len(text.split()) <= 3 and _PHONE.match(text) is None
+
+
+_EMAIL_HEADING = re.compile(r"\s*(?:subject|re|fw|fwd)\s*:", re.IGNORECASE)  # an email's subject line
 SUPPLIER_LABELS: tuple[tuple[str, ...], ...] = (
     ("supplier", "utility", "provider", "vendor", "issued by", "company", "distributor"),
 )
@@ -602,6 +623,8 @@ class StationaryCombustionExtractor:
     # Additional table columns kept on each record: key -> header names (normalized).
     # A fuel log's "Site" / "Facility" column: each line's facility (a log can cover several).
     EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {
+        # first, so "Site Address" and "Premises Address" are an address and not a site name ("site", "premises")
+        "address": ("service address", "service location", "site address", "premises address"),
         "site": ("site", "site name", "facility", "facility name", "plant", "building", "premises"),
         # A portal export repeats the account on every row.
         "account": ("account", "account number", "account no", "account #", "acct", "acct no", "customer account"),
@@ -646,9 +669,106 @@ class StationaryCombustionExtractor:
         rows = self._rows(parser_output)
         token = _DAY_FIRST.set(slash_dates_are_day_first([c.text for r in rows for c in r.cells]))
         try:
-            return self._extract(rows, parser_output, targets, evidence_id, document_id)
+            outcome = self._extract(rows, parser_output, targets, evidence_id, document_id)
+            if outcome.candidates:
+                self._note_estimated_reads(rows, outcome)
+                self._note_bill_ids(rows, outcome)
+                self._note_revised_bill(rows, outcome, parser_output, evidence_id, document_id)
+            return outcome
         finally:
             _DAY_FIRST.reset(token)
+
+    # -------------------------------------------------------------------------------------
+    # What the bill says about itself (bill_notes.py): an estimated read, a revised bill
+    # -------------------------------------------------------------------------------------
+    @staticmethod
+    def _note_estimated_reads(rows: Sequence[Row], outcome: ExtractionOutcome) -> None:
+        """Flag the quantity of a bill that says a read was estimated. Never changes the value.
+
+        A sentence about an estimated read covers the bill's quantities. A read-type cell marks its own row;
+        a bill with one record has its read-type cells (often on a second page) mark that record."""
+
+        found = bill_notes.estimated_reads(rows)
+        if not found.any():
+            return
+        # A parser block that is one row's alone tells which row a quantity came from; a plain-text
+        # document is one block for every line, so there the quantity is found by the number it prints.
+        block_rows: dict[str, set[int]] = {}
+        for row in rows:
+            for cell in row.cells:
+                if cell.block_id:
+                    block_rows.setdefault(cell.block_id, set()).add(id(row))
+        marked = {id(row) for row in found.marked_rows}
+        quantities = [c for c in outcome.candidates if c.get("field_name") == "activity_quantity"]
+        single = len({c.get("record_index") for c in quantities}) <= 1
+        for candidate in quantities:
+            blocks = (candidate.get("source_reference") or {}).get("parser_block_ids") or []
+            own = {next(iter(ids)) for b in blocks if len(ids := block_rows.get(b, set())) == 1}
+            if not own:
+                printed = str(candidate.get("raw_value") or "").strip()
+                own = {id(r) for r in rows if printed and printed in r.text.split()} if printed else set()
+            if found.statement or (single and marked) or (own and own <= marked):
+                flags = candidate.setdefault("validation_flags", [])
+                if bill_notes.ESTIMATED_FLAG not in flags:
+                    flags.append(bill_notes.ESTIMATED_FLAG)
+
+    def _bill_ids(self, rows: Sequence[Row]) -> list[str]:
+        """The bill's own statement date (ISO) and invoice or statement number, as the data quality check
+        needs them to tell which earlier bill a revised bill replaces. Empty when the bill prints none."""
+
+        ids: list[str] = []
+        dated = self._find_labeled(rows, BILL_DATE_LABELS, accept=lambda v: parse_date(v) is not None)
+        if dated is not None and (hit := parse_date(dated.raw)) is not None:
+            ids.append(hit[0])
+        number = self._find_labeled(
+            rows, BILL_NUMBER_LABELS, accept_bare=lambda v: bool(re.match(r"[A-Za-z0-9#-]*\d[\w-]{2,}", v)),
+            accept=lambda v: any(len(t) >= 3 and re.search(r"\d", t) for t in v.split())
+            and parse_date(v) is None and not v.startswith("$"))
+        if number is not None and number.raw.split():
+            ids.append(number.raw.split()[0].strip(".,;:").upper())
+        return ids
+
+    def _note_bill_ids(self, rows: Sequence[Row], outcome: ExtractionOutcome) -> None:
+        """Keep the bill's own identifiers on its quantity's source reference (no extra value to review)."""
+
+        ids = self._bill_ids(rows)
+        if not ids:
+            return
+        for candidate in outcome.candidates:
+            if candidate.get("field_name") == "activity_quantity":
+                candidate.setdefault("source_reference", {})["bill_ids"] = list(ids)
+
+    @staticmethod
+    def _reference_key(reference: str) -> str | None:
+        """A printed reference to an earlier bill as a key to match: a date as ISO, a number upper-cased."""
+
+        if reference == bill_notes.REVISED_WITHOUT_REFERENCE:
+            return None
+        hit = parse_date(reference)
+        return hit[0] if hit is not None and hit[1] == 0 else reference.upper()
+
+    def _note_revised_bill(self, rows: Sequence[Row], outcome: ExtractionOutcome, parser_output: dict,
+                           evidence_id: str, document_id: str) -> None:
+        """When the bill says it replaces an earlier one, keep the reference on every record, so the data
+        quality check can suggest marking the earlier bill as superseded (a suggestion only)."""
+
+        revised = bill_notes.revision(rows)
+        if revised is None:
+            return
+        located = Located(revised.reference, [revised.cell], revised.row, CONF_SAME_CELL - 0.04,
+                          context=" ".join(revised.cell.text.split()))
+        target = {"field_id": bill_notes.REVISES_FIELD, "field_label": bill_notes.REVISES_LABEL}
+        seen: dict[tuple[Any, Any], None] = {}
+        for candidate in outcome.candidates:
+            seen.setdefault((candidate.get("record_key"), candidate.get("record_index")))
+        key = self._reference_key(revised.reference)
+        for record_key, record_index in seen:
+            candidate = self._candidate(
+                target, located, revised.reference, revised.reference, None, document_id, evidence_id,
+                record_key, record_index, parser_output, [])
+            if key is not None:
+                candidate["source_reference"]["reference_key"] = key  # what to match the earlier bill's ids with
+            outcome.candidates.append(candidate)
 
     def _extract(self, rows: list[Row], parser_output: dict, targets: Sequence[dict], evidence_id: str,
                  document_id: str) -> ExtractionOutcome:
@@ -717,6 +837,8 @@ class StationaryCombustionExtractor:
                         located = record.extra["site"]
                     if field_id == "account_number" and located is None and record is not None:
                         located = record.extra.get("account")
+                    if field_id == "service_address" and record is not None and record.extra.get("address") is not None:
+                        located = record.extra["address"]
                     record_candidates.append(self._candidate_for_text(
                         target, located, document_id, evidence_id, record_key,
                         record_index, parser_output, field_id))
@@ -1097,7 +1219,7 @@ class StationaryCombustionExtractor:
 
         for at, row in enumerate(rows):
             for head in row.cells:
-                if not head.box or _norm(head.text) not in SERVICE_BLOCK_HEADINGS:
+                if not head.box or _norm(head.text).rstrip(" :") not in SERVICE_BLOCK_HEADINGS:
                     continue
                 lines: list[tuple[Cell, Row]] = []
                 for below in rows[at + 1: at + 1 + _BLOCK_LINES]:
@@ -1106,7 +1228,9 @@ class StationaryCombustionExtractor:
                     if cell is None:
                         break
                     lines.append((cell, below))
-                    if _POSTAL_LINE_RE.search(cell.text) and any(_STREET_LINE_RE.match(c.text) for c, _ in lines):
+                    # the postal line ends the block, once a street line has come before it: a street line that
+                    # starts with a four-digit house number ("4410 E JENSEN AVE") also looks like "8001 Zürich"
+                    if _POSTAL_LINE_RE.search(cell.text) and any(_STREET_LINE_RE.match(c.text) for c, _ in lines[:-1]):
                         break
                 street = next((i for i, (c, _) in enumerate(lines) if _STREET_LINE_RE.match(c.text)), None)
                 if street is None:
@@ -1249,6 +1373,9 @@ class StationaryCombustionExtractor:
                                   inline_gap=True) or self._service_block(rows)[1]
 
     def _account(self, rows: Sequence[Row]) -> Located | None:
+        # An account is read from a labelled field, never from an email's subject line or its prose.
+        rows = [r for r in rows if not _EMAIL_HEADING.match(r.text)]
+
         def accept(value: str) -> bool:
             # an identifier has a token with digits in it ("Your last 6 months" is a heading, not an account)
             return (any(len(t) >= 3 and re.search(r"\d", t) for t in value.split())
@@ -1257,7 +1384,8 @@ class StationaryCombustionExtractor:
         def accept_bare(value: str) -> bool:  # first token must look like an identifier
             return accept(value) and bool(re.match(r"[A-Za-z0-9#-]*\d[\w-]*", value))
 
-        return self._find_labeled(rows, ACCOUNT_LABELS, accept=accept, accept_bare=accept_bare, inline=True,
+        return self._find_labeled(rows, ACCOUNT_LABELS, accept=lambda v: accept(v) and _plausible_account(v),
+                                  accept_bare=lambda v: accept_bare(v) and _plausible_account(v), inline=True,
                                   inline_gap=True)
 
     def _supplier(self, rows: Sequence[Row]) -> Located | None:

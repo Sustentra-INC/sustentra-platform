@@ -377,9 +377,12 @@ class ElectricityExtractor(StationaryCombustionExtractor):
             for target in targets:
                 field_id = str(target.get("field_id") or "")
                 if field_id in DOCUMENT_FIELDS:
+                    located = document_values.get(field_id)
+                    if field_id == "service_address" and record.extra.get("address") is not None:
+                        located = record.extra["address"]  # a meter's own row: each meter keeps its address
                     record_candidates.append(self._candidate_for_text(
-                        target, document_values.get(field_id), document_id, evidence_id, record_key,
-                        record_index, parser_output, field_id))
+                        target, located, document_id, evidence_id, record_key, record_index, parser_output,
+                        field_id))
                 elif field_id == "energy_type" or field_id in RECORD_FIELDS:
                     record_candidates.append(self._record_candidate(
                         target, values, document_id, evidence_id, record_key, record_index, parser_output))

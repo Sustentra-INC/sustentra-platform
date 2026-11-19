@@ -105,6 +105,8 @@ export interface ReviewValue {
    * for the calculation, so the card also shows the value the calculation uses.
    */
   asPrinted?: { value: string; unit: string; converted?: boolean };
+  /** The bill says this reading was estimated by the utility, not read from the meter (backend flag `estimated_read`). The value is as printed. */
+  estimatedRead?: boolean;
   /** The document was re-read and an earlier decision on this value no longer applies (the card is to review). */
   rereadChanged?: boolean;
   /** A correction or rejection carried over a re-read although the extracted value changed. */

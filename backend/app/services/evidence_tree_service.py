@@ -89,6 +89,7 @@ class Loaded:
     facilities: list[dict[str, Any]]
     period: tuple[date | None, date | None]
     vehicle_groups: list[dict[str, Any]] = field(default_factory=list)
+    company: str | None = None  # the engagement's own company: "Company - Site" names are matched by their site
     # Documents set aside (withdrawn, duplicate, replaced): not on any line, but a move saved for one is
     # still kept (``default_slots`` only), so a document that comes back is filed as its owner left it.
     aside: list[DocState] = field(default_factory=list)
@@ -149,7 +150,8 @@ class EvidenceTreeService:
             docs.append(state)
         placements = {
             id(record): cl.place_record(record, ref=self.reference, facilities=facilities, decisions=decisions,
-                                        vehicle_groups=inputs.vehicle_groups, fuel_choices=inputs.fuel_choices)
+                                        vehicle_groups=inputs.vehicle_groups, fuel_choices=inputs.fuel_choices,
+                                        company=engagement.get("client_name"))
             for doc in docs for record in doc.records
         }
         system = cl.default_lines(placements.values(), facilities, inputs.vehicle_groups)
@@ -169,7 +171,8 @@ class EvidenceTreeService:
             doc.facility_ids = [cl.facility_anchor_id(f) if (f := placements[id(r)].facility) else None
                                 for r in doc.records]
         period = (to_date(engagement.get("reporting_period_start")), to_date(engagement.get("reporting_period_end")))
-        return Loaded(docs, set_aside, system, lines, facilities, period, inputs.vehicle_groups, aside)
+        return Loaded(docs, set_aside, system, lines, facilities, period, inputs.vehicle_groups,
+                      company=engagement.get("client_name"), aside=aside)
 
     def system_line_keys(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
                          decisions: dict[str, dict[str, Any]] | None = None) -> set[str]:
@@ -375,7 +378,8 @@ class EvidenceTreeService:
             "reporting_period": {"start": _iso(loaded.period[0]), "end": _iso(loaded.period[1])},
             "coverage": cl.month_coverage(loaded.period, covered),
             "identifiers": self._identifiers(line, on_line),
-            "identifier_groups": self._identifier_groups(line, on_line, loaded.facilities, decisions or {}),
+            "identifier_groups": self._identifier_groups(line, on_line, loaded.facilities, decisions or {},
+                                                              loaded.company),
             "values": values,
             "rows": rows,
             "columns": self._columns(rows),
@@ -552,7 +556,7 @@ class EvidenceTreeService:
     @classmethod
     def _identifier_groups(cls, line: cl.CalculationLine, on_line: list[tuple[DocState, list[ReviewedRecord]]],
                            facilities: list[dict[str, Any]],
-                           decisions: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+                           decisions: dict[str, dict[str, Any]], company: str | None = None) -> list[dict[str, Any]]:
         """Each identifier that applies to the line, with its documents grouped by value, and the documents without it."""
 
         out: list[dict[str, Any]] = []
@@ -564,7 +568,7 @@ class EvidenceTreeService:
                 for record in records:
                     how: str | None = None
                     if is_facility:
-                        found = cl.facility_match(facilities, decisions, doc.document_id, record)
+                        found = cl.facility_match(facilities, decisions, doc.document_id, record, company)
                         reads = [(str(found[0].get("name")), False)] if found else []
                         how = found[1] if found else None
                     else:

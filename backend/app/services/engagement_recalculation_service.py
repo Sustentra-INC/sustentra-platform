@@ -58,7 +58,6 @@ from backend.app.services.reviewed_evidence import (  # noqa: F401 - re-exported
     ReviewedRecord,
     group_reviewed_records,
     resolve_decisions,
-    match_facility,
     resolve_fuel_name,
     resolve_setup_facility,
     set_aside_reason,
@@ -107,6 +106,15 @@ DATA_POINT_KEYS = frozenset(key for key, *_ in DATA_POINTS)
 def _reviewed_count(n: int, noun: str) -> str:
     """'1 reviewed bill', '2 reviewed bills': the source note on a measure."""
     return f"{n} reviewed {noun}" + ("" if n == 1 else "s")
+
+
+def _source_value(record: Any, field_name: str, key: str) -> Any:
+    """A value the extractor kept on a field's source reference (the bill's own identifiers, the reference key
+    of a revised bill), or None."""
+
+    item = record.fields.get(field_name)
+    reference = getattr(item, "source_reference", None)
+    return reference.get(key) if isinstance(reference, dict) else None
 
 
 def _catalogue() -> tuple[tuple[str, str, int, str, str, str, str], ...]:
@@ -410,6 +418,7 @@ class EngagementRecalculationService:
         self._reference = reference
         # Set per recalculation: the engagement's Setup facilities and document decisions.
         self._facilities: list[dict[str, Any]] = []
+        self._company: str | None = None
         self._decisions: dict[str, dict[str, Any]] = {}
         # Set per recalculation, for the calculation lines.
         self._ledger = Ledger()
@@ -489,6 +498,7 @@ class EngagementRecalculationService:
         decisions = decisions or {}
         records, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
         self._facilities = setup_facilities(engagement.get("settings"))
+        self._company = engagement.get("client_name")
         self._decisions = decisions
         self._ledger = Ledger()
 
@@ -592,7 +602,7 @@ class EngagementRecalculationService:
         try:
             built = recalculation_lines.build(
                 self.reference, self._ledger, records, inputs, engagement.get("settings") or {}, decisions,
-                tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities)
+                tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company)
         except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
             log.warning("calculation lines failed: %s", type(exc).__name__)
             built = recalculation_lines.Built(needs_input=[{
@@ -1257,13 +1267,17 @@ class EngagementRecalculationService:
                               file_name=record.file_name or record.document_id, label=record.label,
                               facility=facility, item=item, account=str(account) if account else None,
                               start=start, end=end, amounts=amounts, unit=unit, periodic=periodic,
+                              revises=str(record.best("supersedes_reference") or "") or None,
+                              revises_key=_source_value(record, "supersedes_reference", "reference_key"),
+                              bill_ids=tuple(_source_value(record, "activity_quantity", "bill_ids") or ()),
                               meter=meter, page=page)
 
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""
 
         return resolve_setup_facility(self._facilities, self._decisions, record.document_id,
-                                      record.best("facility_name"), record.best("service_address"))
+                                      record.best("facility_name"), record.best("service_address"),
+                                      self._company)
 
     # =================================================================================
     # Totals and comparison
