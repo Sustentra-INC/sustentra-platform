@@ -320,6 +320,85 @@ def test_a_real_next_statement_with_the_same_title_and_account_still_splits(targ
     assert [_mwh(r) for r in _read(blocks, targets)] == pytest.approx([135.63, 148.56])
 
 
+def _side_page(page: int, heading_cells: Line, start: str, end: str, kwh: int) -> list[dict[str, Any]]:
+    """A page of its own that repeats the account and shows another period and a total."""
+
+    return _page(page, [[(SUPPLIER, 0.07)], heading_cells, [("Account Number:", 0.07), ("4471-20983-6", 0.3)],
+                        [("Billing Period:", 0.07), (f"{start} - {end}", 0.3)],
+                        [("Total kWh Used:", 0.07), (f"{kwh:,} kWh", 0.3)]])
+
+
+@pytest.mark.parametrize("heading_cells", [
+    [("WEC", 0.05), (SUPPLIER, 0.2), ("Your Previous Bill", 0.6)],  # logo | utility | heading, the NPL header style
+    [("Previous bill: summary", 0.07)],  # a colon keeps it from looking like a heading
+    [("Your Previous Bill", 0.07)],
+])
+def test_a_previous_bill_page_that_repeats_the_account_is_still_not_a_statement(
+        targets: list[dict], heading_cells: Line) -> None:
+    """The page repeats the account number, so the account gate lets it through: only the heading keeps its
+    period out, whatever row shape it is in. One record, and the reviewer is told."""
+
+    blocks = (_summary(1, "01/16/2025", "02/15/2025") + _detail(2, "01/16/2025", "02/15/2025", 135630, 55410)
+              + _side_page(3, heading_cells, "12/16/2024", "01/15/2025", 143230))
+    outcome = _extract(blocks, targets)
+    assert [_mwh(r) for r in _records(outcome)] == pytest.approx([135.63])  # not + 143.23
+    assert SPLIT_NOTE in outcome.notes
+
+
+def test_period_lines_left_out_as_restatements_leave_a_note_when_they_differ_from_the_ones_kept(
+        targets: list[dict]) -> None:
+    blocks = (_summary(1, "01/16/2025", "02/15/2025") + _detail(2, "01/16/2025", "02/15/2025", 135630, 55410)
+              + _own_page(3, "Usage Comparison", "01/16/2024", "02/15/2024", 130000))
+    assert _split(blocks).note == SPLIT_NOTE
+    # a restating heading over the very period already kept says nothing new
+    same = (_summary(1, "01/16/2025", "02/15/2025") + _detail(2, "01/16/2025", "02/15/2025", 135630, 55410)
+            + _own_page(3, "Usage Comparison", "01/16/2025", "02/15/2025", 135630))
+    assert _split(same).note is None
+
+
+def _titled(page: int, start: str, end: str, kwh: int, heading: str) -> list[dict[str, Any]]:
+    return _page(page, [[(SUPPLIER, 0.15)], [(heading, 0.15)], [("Electric Service Statement", 0.15)],
+                        [("Account Number:", 0.07), ("4471-20983-6", 0.3)],
+                        [("Billing Period:", 0.07), (f"{start} - {end}", 0.3)], HEADER,
+                        [("M-1", 0.075), ("Total kWh", 0.2), ("1", 0.35), ("2", 0.5), (f"{kwh:,}", 0.65),
+                         (f"{kwh:,} kWh", 0.8)]])
+
+
+@pytest.mark.parametrize("heading", ["Bill Summary", "Budget Billing Plan Customer"])
+def test_a_summary_or_budget_heading_printed_on_every_statement_is_a_statement_heading(
+        targets: list[dict], heading: str) -> None:
+    """Every statement of the bundle carries the heading, the title and the account: it is the statements'
+    own heading, so the bundle splits and each month keeps its own period (read whole, February and March
+    would have taken January's)."""
+
+    months = [("01/01/2025", "01/31/2025", 1000), ("02/01/2025", "02/28/2025", 2000), ("03/01/2025", "03/31/2025", 3000)]
+    blocks: list[dict[str, Any]] = []
+    for n, (start, end, kwh) in enumerate(months):
+        blocks += _titled(n + 1, start, end, kwh, heading)
+    records = _read(blocks, targets)
+    assert [(r["service_period_start"]["normalized_value"], _mwh(r)) for r in records] == [
+        ("2025-01-01", 1.0), ("2025-02-01", 2.0), ("2025-03-01", 3.0)]
+
+
+def test_a_budget_plan_detail_heading_on_each_page_stays_a_restatement(targets: list[dict]) -> None:
+    """"Plan detail" names a restatement outright, however many pages repeat it."""
+
+    blocks = _titled(1, "01/16/2025", "02/15/2025", 135630, "Your Bill")
+    for n, (start, end) in enumerate([("10/16/2024", "11/15/2024"), ("11/16/2024", "12/15/2024")]):
+        blocks += _side_page(2 + n, [("Budget Plan Detail", 0.07)], start, end, 120000)
+    assert [_mwh(r) for r in _read(blocks, targets)] == pytest.approx([135.63])
+
+
+def test_every_period_line_taken_for_a_restatement_is_a_note_not_silence(targets: list[dict]) -> None:
+    """A heading that restates on every page, so no period is kept: the file is read whole and says so."""
+
+    blocks: list[dict[str, Any]] = []
+    for n, (start, end, kwh) in enumerate([("01/01/2025", "01/31/2025", 1000), ("02/01/2025", "02/28/2025", 2000)]):
+        blocks += _titled(n + 1, start, end, kwh, "Previous Period Comparison")
+    outcome = _extract(blocks, targets)
+    assert SPLIT_NOTE in outcome.notes
+
+
 # ---- time-of-use lines ----------------------------------------------------------------------------------------
 def _tou_detail(first_cell_is_meter: bool) -> list[dict[str, Any]]:
     rows: list[Line]
@@ -534,8 +613,12 @@ class _Store:
                               "source_reference": {"document_id": document_id,
                                                    "page_number": pages[index - 1] if pages else index,
                                                    **_key(index, meters, record)}})
+                # a decision carries the snapshot of what it was made on, or it cannot apply to a multi-record read
                 reviews.append({"candidate_id": candidate_id, "decision": "accepted", "org_id": "org-a",
-                                "reviewed_value": value, "reviewed_unit": unit})
+                                "reviewed_value": value, "reviewed_unit": unit,
+                                "candidate_snapshot": {"field_name": name, "normalized_value": value, "unit": unit,
+                                                       "record_index": items[-1]["record_index"],
+                                                       **_key(index, meters, record)}})
         self.results[document_id] = [{"document_id": document_id, "org_id": "org-a",
                                       "canonical_type_id": "CT-S2-ELEC", "items": items}]
         self.reviews[document_id] = reviews
