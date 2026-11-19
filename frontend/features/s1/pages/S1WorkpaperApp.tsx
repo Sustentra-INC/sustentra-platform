@@ -803,6 +803,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   const navCurrent: NavKey = navForView(activeView);
   const uploadSetupWarning = setupGapWarning(engagement);
+  /** The dashboard's "values waiting for review": the review, at the first such value (Evidence if none are loaded). */
+  function openFirstReview() {
+    const next = reviewValuesView.find((v) => !v.withdrawn && v.reviewState === "to_review");
+    if (next) openExtraction(next.documentId, next.id);
+    else setActiveView({ name: "evidence" });
+  }
+
   function onNavigate(key: NavKey) {
     if (key === "dashboard") setActiveView({ name: "dashboard" });
     else if (key === "setup") setActiveView({ name: "setup" });
@@ -1174,6 +1181,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               findings={verification.findings}
               examinations={verification.examinations}
               onNavigate={onNavigate}
+              onOpenReview={openFirstReview}
               onError={handleSessionEnded}
             />
           ) : (
@@ -1189,6 +1197,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 calculatedIds: testedExaminationKeys(verificationLines),
               })}
               onNavigate={onNavigate}
+              onOpenReview={openFirstReview}
             />
           )
         ) : activeView.name === "setup" ? (
