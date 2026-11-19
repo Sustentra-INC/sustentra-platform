@@ -52,7 +52,7 @@ NO_DOCUMENTS = "Upload the company's GHG inventory report, boundary statement or
 
 # --- the reply's schema ----------------------------------------------------------------------
 
-_CHOICE_IDS = tuple(f["field_id"] for f in rules.CATALOG if f["kind"] == "enum")
+_CHOICE_IDS = tuple(f["field_id"] for f in rules.CATALOG if f["kind"] == "enum" and f["field_id"] not in rules.GAS_IDS)
 _TEXT_IDS = tuple(f["field_id"] for f in rules.CATALOG if f["kind"] == "text")
 _CHOICES = tuple(dict.fromkeys((*rules.CONSOLIDATION_APPROACHES, *rules.INCLUSIONS)))
 
@@ -70,6 +70,11 @@ class _Cited(_Strict):
 class ChoiceSuggestion(_Cited):
     field_id: Literal[_CHOICE_IDS]  # type: ignore[valid-type]
     value: Literal[_CHOICES]  # type: ignore[valid-type]
+
+
+class GasSuggestion(_Cited):
+    field_id: Literal[rules.GAS_IDS]  # type: ignore[valid-type]
+    value: Literal["Included", "Declared absent"]  # "Not mentioned" has nothing to quote: the reviewer sets it
 
 
 class TextSuggestion(_Cited):
@@ -103,6 +108,7 @@ class FactorSuggestion(_Cited):
 
 class PrefillOutput(_Strict):
     choices: list[ChoiceSuggestion]
+    gases: list[GasSuggestion]
     texts: list[TextSuggestion]
     periods: list[PeriodSuggestion]
     gwp: list[GwpSuggestion]
@@ -163,6 +169,11 @@ def dates_in(quote: str) -> set[date]:
 # What a quote must say for a choice to be tied to it (compared after ``norm``).
 _CHOICE_TERMS = {"Equity Share": ("equity share", "equity"), "Financial Control": ("financial control",),
                  "Operational Control": ("operational control",)}
+# What a quote must name for a gas row (compared after ``norm``, which folds CO\u2082 to co2).
+_GAS_TERMS = {"gas:co2": ("co2", "carbon dioxide"), "gas:ch4": ("ch4", "methane"),
+              "gas:n2o": ("n2o", "nitrous oxide"), "gas:hfcs": ("hfc", "hydrofluorocarbon"),
+              "gas:pfcs": ("pfc", "perfluorocarbon"), "gas:sf6": ("sf6", "sulfur hexafluoride", "sulphur hexafluoride"),
+              "gas:nf3": ("nf3", "nitrogen trifluoride")}
 _GWP_TERMS = {"AR4": ("ar4", "fourth assessment"), "AR5": ("ar5", "fifth assessment"),
               "AR6": ("ar6", "sixth assessment")}
 
@@ -196,6 +207,10 @@ What the items mean
   Scope 1 categories: stationary combustion, mobile combustion, process emissions, fugitive emissions.
   Scope 2: purchased electricity, heating, steam, cooling, each location-based and market-based.
   Biogenic: direct and indirect biogenic CO2.
+- gases: for each greenhouse gas (field_id gas:co2, gas:ch4, gas:n2o, gas:hfcs, gas:pfcs, gas:sf6,
+  gas:nf3) the document states, "Included" (the gas is covered by the inventory) or "Declared absent"
+  (the document says the gas is not emitted or not applicable). The quote must name the gas. If a
+  document does not say, leave the gas out: do not guess from the industry.
 - periods: the inventory's reporting period: its start and end dates, each as YYYY-MM-DD. Both
   dates must be printed in the quote (for example "January 1 to December 31, 2024", or
   "1/1/2025 - 12/31/2025"). If the document shows several periods (such as the current and the
@@ -385,6 +400,10 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         value = checked(choice.field_id, choice.value)
         if value is not None:
             keep(choice, value, choice.field_id, None, terms=_CHOICE_TERMS.get(str(value), ()) if choice.field_id == "consolidation_approach" else ())
+    for gas in output.gases:
+        value = checked(gas.field_id, gas.value)
+        if value is not None:
+            keep(gas, value, gas.field_id, None, terms=_GAS_TERMS[gas.field_id])
     for text in output.texts:
         if not norm(text.value):
             dropped["empty_value"] += 1

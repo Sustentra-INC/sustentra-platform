@@ -78,6 +78,7 @@ class DocState:
     records: list[ReviewedRecord]
     slots: list[cl.Slot] = field(default_factory=list)
     facility_ids: list[str | None] = field(default_factory=list)  # the Setup facility of each record
+    default_slots: list[cl.Slot] = field(default_factory=list)  # where it is filed before the reviewer's moves
 
 
 @dataclass
@@ -89,6 +90,9 @@ class Loaded:
     facilities: list[dict[str, Any]]
     period: tuple[date | None, date | None]
     vehicle_groups: list[dict[str, Any]] = field(default_factory=list)
+    # Documents set aside (withdrawn, duplicate, replaced): not on any line, but a move saved for one is
+    # still kept (``default_slots`` only), so a document that comes back is filed as its owner left it.
+    aside: list[DocState] = field(default_factory=list)
 
 
 def _iso(value: Any) -> str | None:
@@ -124,23 +128,26 @@ class EvidenceTreeService:
         engagement_id = str(engagement.get("id") or engagement.get("engagement_id"))
         docs: list[DocState] = []
         set_aside: list[dict[str, Any]] = []
+        aside: list[DocState] = []
         superseded = superseded_ids(decisions)
         for document in self._upload.list_documents(engagement_id):
             if not can_see(document):
                 continue
             document_id = str(document.get("document_id"))
             reason = set_aside_reason(decisions, document_id, superseded)
-            if reason is not None:
-                set_aside.append({"document_id": document_id, "file_name": document.get("file_name"),
-                                  "reason": reason})
-                continue
             results = [r for r in self._pipeline.list_extraction_results_by_document(document_id) if can_see(r)]
             latest = results[-1] if results else {}
             canonical = str(latest.get("canonical_type_id") or "") or None
             reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
             records = group_reviewed_records(document, canonical or "", latest.get("items") or [],
                                              latest_decisions(reviews), all_decisions(reviews))
-            docs.append(DocState(document, document_id, canonical, _iso(latest.get("created_at")), records))
+            state = DocState(document, document_id, canonical, _iso(latest.get("created_at")), records)
+            if reason is not None:
+                set_aside.append({"document_id": document_id, "file_name": document.get("file_name"),
+                                  "reason": reason})
+                aside.append(state)
+                continue
+            docs.append(state)
         placements = {
             id(record): cl.place_record(record, ref=self.reference, facilities=facilities, decisions=decisions,
                                         vehicle_groups=inputs.vehicle_groups, fuel_choices=inputs.fuel_choices)
@@ -152,12 +159,18 @@ class EvidenceTreeService:
         filed = cl.file_documents(
             [(doc.document_id, doc.canonical_type_id, [placements[id(r)] for r in doc.records]) for doc in docs],
             decisions, known)
+        for doc in aside:  # never feeds the system lines: only where its records would go by default
+            doc.default_slots = cl.document_slots(doc.canonical_type_id, [
+                cl.place_record(r, ref=self.reference, facilities=facilities, decisions=decisions,
+                                vehicle_groups=inputs.vehicle_groups, fuel_choices=inputs.fuel_choices)
+                for r in doc.records])
         for doc in docs:
             doc.slots = filed[doc.document_id]
+            doc.default_slots = cl.document_slots(doc.canonical_type_id, [placements[id(r)] for r in doc.records])
             doc.facility_ids = [cl.facility_anchor_id(f) if (f := placements[id(r)].facility) else None
                                 for r in doc.records]
         period = (to_date(engagement.get("reporting_period_start")), to_date(engagement.get("reporting_period_end")))
-        return Loaded(docs, set_aside, system, lines, facilities, period, inputs.vehicle_groups)
+        return Loaded(docs, set_aside, system, lines, facilities, period, inputs.vehicle_groups, aside)
 
     def system_line_keys(self, engagement: dict[str, Any], can_see: Callable[[dict], bool],
                          decisions: dict[str, dict[str, Any]] | None = None) -> set[str]:

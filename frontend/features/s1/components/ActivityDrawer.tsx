@@ -26,7 +26,18 @@ const ICON: Record<ActivityEntry["kind"], ReactNode> = {
 };
 
 /** The engagement's activity log: who did what, and when, newest first. */
-export function ActivityDrawer({ entries, onClose }: { entries: ActivityEntry[]; onClose: () => void }) {
+export function ActivityDrawer({
+  entries,
+  onClose,
+  hasOlder = false,
+  onShowOlder,
+}: {
+  entries: ActivityEntry[];
+  onClose: () => void;
+  /** More Evidence changes are on the server than the newest page shown. */
+  hasOlder?: boolean;
+  onShowOlder?: () => void;
+}) {
   const [kind, setKind] = useState<ActivityEntry["kind"] | "all">("all");
   const [query, setQuery] = useState("");
 
@@ -122,6 +133,11 @@ export function ActivityDrawer({ entries, onClose }: { entries: ActivityEntry[];
               </section>
             ))
           )}
+          {hasOlder && onShowOlder ? (
+            <button className="s1-button" type="button" onClick={onShowOlder}>
+              Show older changes
+            </button>
+          ) : null}
         </div>
       </aside>
     </div>,

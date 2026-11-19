@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 
 /**
@@ -11,8 +11,11 @@ import path from "node:path";
  */
 export const RUN = Date.now().toString(36);
 export const STATE_FILE = path.join(__dirname, ".state.json");
+/** The org admin's signed-in session, saved by smoke.spec.ts for workpaper.spec.ts. */
+export const ADMIN_STATE_FILE = path.join(__dirname, ".admin-session.json");
 
 export default function globalSetup(): void {
+  rmSync(ADMIN_STATE_FILE, { force: true }); // never reuse a session from an earlier run
   const email = `e2e-provider-${RUN}@sustentra.test`;
   const template =
     process.env.E2E_SEED_COMMAND ??

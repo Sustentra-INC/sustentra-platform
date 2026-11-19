@@ -147,11 +147,13 @@ export function SetupScreen({
             <div className="s1-setup-inline">
               <input
                 type="date"
+                aria-label="Reporting period start"
                 value={engagement.reportingPeriod.start}
                 onChange={(e) => set({ reportingPeriod: { ...engagement.reportingPeriod, start: e.target.value } })}
               />
               <input
                 type="date"
+                aria-label="Reporting period end"
                 value={engagement.reportingPeriod.end}
                 onChange={(e) => set({ reportingPeriod: { ...engagement.reportingPeriod, end: e.target.value } })}
               />
