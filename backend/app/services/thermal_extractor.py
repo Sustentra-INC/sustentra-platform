@@ -496,8 +496,7 @@ class ThermalExtractor(ElectricityExtractor):
                 "or cooling evidence.",
             })
         # Each record carries its own energy type; the placeholder only stands in where none was told.
-        placeholder = self._part_energy(rows)
-        assert placeholder is not None
+        placeholder = Located("", [], None, CONF_MISSING)
         outcome = self._statement_bundle(rows, parser_output, targets, evidence_id, document_id, unit_hint,
                                          placeholder, notes)
         if outcome is None:

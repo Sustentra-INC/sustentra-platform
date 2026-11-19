@@ -389,6 +389,18 @@ def _suggested(item: dict[str, Any]) -> bool:
     return "ai_suggested" in (item.get("validation_flags") or [])
 
 
+def _meter_and_page(record: ReviewedRecord) -> tuple[str | None, int | None]:
+    """The meter id a record was read under (the middle of its ``record_key``, "r3:WEC-1:2025-01-01..2025-01-31")
+    and the page its quantity was read from, for the duplicate check."""
+
+    field = record.fields.get("activity_quantity") or next(iter(record.fields.values()), None)
+    reference = (field.source_reference if field is not None else None) or {}
+    parts = str(reference.get("record_key") or "").split(":")
+    meter = ":".join(parts[1:-1]).replace("_", " ").strip() if len(parts) >= 3 else None
+    page = reference.get("page_number")
+    return (meter or None), (int(page) if isinstance(page, int) else None)
+
+
 class EngagementRecalculationService:
     def __init__(self, upload_service: Any, pipeline_service: Any, review_service: Any,
                  reference: EmissionFactorReference | None = None) -> None:
@@ -1241,10 +1253,12 @@ class EngagementRecalculationService:
         # A bill covers a service period; a delivery or purchase on one day is an event.
         periodic = record.canonical_type_id in (STATIONARY, ELECTRICITY, THERMAL) and not (start and end and start == end)
         account = record.best("account_number")
+        meter, page = _meter_and_page(record)
         return EvidenceRecord(category=category, document_id=record.document_id,
                               file_name=record.file_name or record.document_id, label=record.label,
                               facility=facility, item=item, account=str(account) if account else None,
-                              start=start, end=end, amounts=amounts, unit=unit, periodic=periodic)
+                              start=start, end=end, amounts=amounts, unit=unit, periodic=periodic,
+                              meter=meter, page=page)
 
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""

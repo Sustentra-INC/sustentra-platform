@@ -59,8 +59,9 @@ SPLIT_NOTE = ("This file may hold more than one statement, but it was read as on
 
 @dataclass(frozen=True)
 class Split:
-    """``parts``: one row list per statement; None when the file is read whole. ``note``: why a file that
-    looks like several statements was not split (None when it is a single statement)."""
+    """``parts``: one row list per statement; None when the file is read whole. ``note``: to tell the
+    reviewer when the file may hold more statements than were told apart (it was not cut, or periods that
+    differ were taken for one statement); None when the periods leave no doubt."""
 
     parts: list[list[Row]] | None
     note: str | None = None
@@ -158,11 +159,15 @@ def split_statements(rows: Sequence[Row]) -> Split:
 
     # where each new statement's period line sits (a period the current statement already states is not new)
     firsts = [periods[0]]
+    merged = False  # a period that differs from its statement's but was taken for the same statement
     for at, period in periods[1:]:
         if not _same_statement(firsts[-1][1], period):
             firsts.append((at, period))
+        elif period != firsts[-1][1]:
+            merged = True
+    note = SPLIT_NOTE if merged else None  # two real statements can overlap or start days apart: say so
     if len(firsts) < 2:
-        return Split(None)
+        return Split(None, note)
 
     title = next((t for i in range(firsts[0][0], max(firsts[0][0] - _TITLE_REACH, -1) - 1, -1)
                   if (t := _title_text(rows[i])) is not None), None)
@@ -187,4 +192,4 @@ def split_statements(rows: Sequence[Row]) -> Split:
     # rows are renumbered from 0 (the cells are shared, nothing is copied).
     parts = [[replace(row, index=n) for n, row in enumerate(rows[bounds[i]:bounds[i + 1]])]
              for i in range(len(starts)) if bounds[i] < bounds[i + 1]]
-    return Split(parts)
+    return Split(parts, note)

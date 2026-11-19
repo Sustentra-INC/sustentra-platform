@@ -57,6 +57,8 @@ class EvidenceRecord:
     amounts: tuple[float | None, ...]  # quantity (and for refrigerants: added, recovered, capacity)
     unit: str | None
     periodic: bool  # a bill for a service period, rather than a dated purchase or service
+    meter: str | None = None  # the meter or line id the record was read under, when it has one
+    page: int | None = None  # the page the quantity was read from, when known
 
 
 def _span(record: EvidenceRecord) -> tuple[date, date] | None:
@@ -154,6 +156,18 @@ def _completeness(groups: dict[tuple[str, str, str | None], list[EvidenceRecord]
 # =========================================================================================
 # Q-003 duplicates and Q-004 overlaps
 # =========================================================================================
+def _repeat_in_file(first: EvidenceRecord, other: EvidenceRecord) -> bool:
+    """Two records of one file that read as the same statement printed twice: the same account, and the same
+    meter, or (when a meter is missing) on different pages. Two meters of one bill share its account, period and
+    maybe a reading; that is not a repeat."""
+
+    if not first.account or first.account != other.account:
+        return False
+    if first.meter and other.meter:
+        return first.meter == other.meter
+    return first.page is not None and other.page is not None and first.page != other.page
+
+
 def _duplicate_key(record: EvidenceRecord) -> tuple[Any, ...] | None:
     if record.start is None and record.end is None:
         return None
@@ -179,7 +193,7 @@ def _duplicates(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], se
             in_file[found.document_id].append(found)
         for same in in_file.values():
             for n, one in enumerate(same):
-                other = next((r for r in same[n + 1:] if one.account and r.account == one.account), None)
+                other = next((r for r in same[n + 1:] if _repeat_in_file(one, r)), None)
                 if other is not None:
                     out.append(_finding(
                         "Q-003", "duplicate_statement_in_same_file", "warning", [one, other],
@@ -235,8 +249,7 @@ def _overlaps(groups: dict[tuple[str, str, str | None], list[EvidenceRecord]],
                     continue
                 if a.document_id != b.document_id and frozenset((a.document_id, b.document_id)) in duplicate_pairs:
                     continue  # already reported as a duplicate
-                if (a.document_id == b.document_id and a.account and a.account == b.account
-                        and _duplicate_key(a) == _duplicate_key(b)):
+                if a.document_id == b.document_id and _duplicate_key(a) == _duplicate_key(b) and _repeat_in_file(a, b):
                     continue  # the same statement twice in one file: reported as a duplicate
                 start = max(span_a[0], span_b[0]).isoformat()
                 end = min(span_a[1], span_b[1]).isoformat()

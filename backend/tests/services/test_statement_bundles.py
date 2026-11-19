@@ -471,6 +471,12 @@ def test_a_thermal_bundle_whose_parts_all_name_their_type_has_no_note() -> None:
 
 
 # ---- the duplicate check -------------------------------------------------------------------------------------------
+def _key(index: int, meters: list[str | None] | None, record: dict[str, tuple]) -> dict[str, str]:
+    meter = meters[index - 1] if meters else None
+    period = f"{record.get('service_period_start', (None,))[0]}..{record.get('service_period_end', (None,))[0]}"
+    return {"record_key": f"r{index}:{meter}:{period}" if meter else f"r{index}:{period}"}
+
+
 class _Store:
     """The three services the recalculation reads: a few documents, each with accepted records."""
 
@@ -479,7 +485,8 @@ class _Store:
         self.results: dict[str, list[dict]] = {}
         self.reviews: dict[str, list[dict]] = {}
 
-    def add(self, document_id: str, records: list[dict[str, tuple]]) -> None:
+    def add(self, document_id: str, records: list[dict[str, tuple]], *, pages: list[int] | None = None,
+            meters: list[str | None] | None = None) -> None:
         self.documents.append({"document_id": document_id, "engagement_id": "ENG-1", "org_id": "org-a",
                                "file_name": f"{document_id}.pdf"})
         items, reviews = [], []
@@ -488,7 +495,9 @@ class _Store:
                 candidate_id = f"{document_id}:{index}:{name}"
                 items.append({"candidate_id": candidate_id, "field_name": name, "normalized_value": value,
                               "unit": unit, "record_index": index if len(records) > 1 else None,
-                              "source_reference": {"document_id": document_id, "page_number": 1}})
+                              "source_reference": {"document_id": document_id,
+                                                   "page_number": pages[index - 1] if pages else index,
+                                                   **_key(index, meters, record)}})
                 reviews.append({"candidate_id": candidate_id, "decision": "accepted", "org_id": "org-a",
                                 "reviewed_value": value, "reviewed_unit": unit})
         self.results[document_id] = [{"document_id": document_id, "org_id": "org-a",
@@ -553,8 +562,54 @@ def test_a_month_printed_twice_inside_one_bundle_is_flagged_as_a_possible_duplic
     assert "printed twice" in findings[0]["message"]
 
 
+def test_two_meters_on_one_bill_with_the_same_reading_are_not_a_repeated_statement() -> None:
+    """Meter A and meter B share the bill's account and period and both read 50 MWh: two meters, not a repeat.
+    The overlap check still sees them, as it did before."""
+
+    store = _Store()
+    reading = _electric("2025-01-16", "2025-02-15", 50.0)
+    store.add("ONE-BILL", [dict(reading), dict(reading)], pages=[3, 3], meters=["A-111", "B-222"])
+    findings = _recalculate(store)["quality_checks"]
+    assert not [c for c in findings if c["check"] == "Q-003"]
+    assert [c["trigger"] for c in findings if c["check"] == "Q-004"] == ["overlapping_period"]
+
+
 def test_two_meters_with_the_same_reading_and_no_account_are_not_flagged_as_a_repeat() -> None:
     store = _Store()
     plain = {k: v for k, v in _electric("2025-01-16", "2025-02-15", 50.0).items() if k != "account_number"}
-    store.add("TWO-METERS", [plain, dict(plain)])
+    store.add("TWO-METERS", [plain, dict(plain)], pages=[3, 3])
     assert not [c for c in _recalculate(store)["quality_checks"] if c["check"] == "Q-003"]
+
+
+def test_the_same_meter_read_twice_on_different_pages_of_one_file_is_a_repeat() -> None:
+    store = _Store()
+    reading = _electric("2025-01-16", "2025-02-15", 50.0)
+    store.add("PRINTED-TWICE", [dict(reading), dict(reading)], pages=[3, 9], meters=["A-111", "A-111"])
+    assert [c["trigger"] for c in _recalculate(store)["quality_checks"] if c["check"] == "Q-003"] == [
+        "duplicate_statement_in_same_file"]
+
+
+# ---- statements merged by a near period say so --------------------------------------------------------------------
+def _two_pages(first: tuple[str, str], second: tuple[str, str]) -> list[dict[str, Any]]:
+    return (_summary(1, *first) + _detail(2, *first, 135630, 55410)
+            + _summary(3, *second) + _detail(4, *second, 148560, 61240))
+
+
+def test_two_statements_whose_periods_overlap_by_two_days_are_read_as_one_with_a_note(targets: list[dict]) -> None:
+    blocks = _two_pages(("01/16/2025", "02/15/2025"), ("02/14/2025", "03/15/2025"))  # share Feb 14 and 15
+    split = _split(blocks)
+    assert split.parts is None and split.note == SPLIT_NOTE
+    assert SPLIT_NOTE in _extract(blocks, targets).notes
+
+
+def test_a_short_move_in_bill_four_days_before_the_next_is_read_as_one_with_a_note(targets: list[dict]) -> None:
+    blocks = _two_pages(("02/12/2025", "02/15/2025"), ("02/16/2025", "03/15/2025"))
+    split = _split(blocks)
+    assert split.parts is None and split.note == SPLIT_NOTE
+    assert SPLIT_NOTE in _extract(blocks, targets).notes
+
+
+def test_a_clean_bundle_and_a_reprinted_period_carry_no_note(targets: list[dict]) -> None:
+    assert _extract(_bundle(), targets).notes == []
+    blocks = _two_pages(("01/16/2025", "02/15/2025"), ("01/16/2025", "02/15/2025"))  # the same period twice
+    assert _split(blocks).note is None

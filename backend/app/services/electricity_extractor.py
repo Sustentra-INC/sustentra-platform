@@ -326,6 +326,7 @@ class ElectricityExtractor(StationaryCombustionExtractor):
             if split.note:
                 notes.append(split.note)
             return None
+        bundle_notes = [split.note] if split.note else []
         found: list[tuple[list[Row], Located | None, list[UsageRecord]]] = []
         part_notes: list[str] = []
         for part in split.parts:
@@ -345,7 +346,8 @@ class ElectricityExtractor(StationaryCombustionExtractor):
                                                   energy, part_hint, first_index=first_index, multi=True)
             candidates.extend(outcome.candidates)
             first_index += len(records)
-        return ExtractionOutcome(candidates=candidates, records=first_index - 1, notes=part_notes)
+        return ExtractionOutcome(candidates=candidates, records=first_index - 1,
+                                 notes=[*bundle_notes, *(n for n in part_notes if n not in bundle_notes)])
 
     def _records_to_candidates(self, rows: list[Row], parser_output: dict, targets: Sequence[dict],
                                evidence_id: str, document_id: str, records: list[UsageRecord],
