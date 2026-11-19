@@ -1216,6 +1216,38 @@
     "last_reviewed": null
   },
   {
+    "extraction_config_id": "EC-S1-REFRSVC-TECHNICIAN",
+    "field_id": "technician",
+    "field_label": "Technician",
+    "description": "The person who did the work on one service line (the log's Technician column).",
+    "canonical_type_id": "CT-S1-REFRSVC",
+    "value_type": "string",
+    "required_status": "optional",
+    "expected_units": [],
+    "source_reference_required": true,
+    "anchor_labels": ["Technician", "Tech", "Technician Name"],
+    "value_patterns": [],
+    "unit_patterns": [],
+    "table_hints": ["refrigerant log"],
+    "sheet_hints": [],
+    "validation_hints": [],
+    "extraction_methods": ["table_lookup", "anchor_text", "manual_entry"],
+    "normalization": {
+      "target_unit": null,
+      "date_format": null,
+      "number_format": null,
+      "allowed_values": [],
+      "unit_conversion_allowed": false,
+      "trim_whitespace": true,
+      "remove_thousands_separators": false
+    },
+    "regulatory_field_id": null,
+    "notes": "GHG Required Data workbook, Data from Evidence (Scope 1): Fugitive Sources, Refrigeration and AC, Simplified Material Balance Method.",
+    "population_status": "provisional",
+    "version": "v0.1",
+    "last_reviewed": null
+  },
+  {
     "extraction_config_id": "EC-S2-THERMAL-FACILITY-NAME",
     "field_id": "facility_name",
     "field_label": "Facility name",

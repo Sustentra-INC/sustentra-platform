@@ -176,6 +176,7 @@ const GENERAL_FIELDS = new Set([
   "transaction_id",
   "equipment_id",
   "service_provider",
+  "technician",
 ]);
 
 /** Fields the recalculation turns into emissions: the quantity, its unit, what was burned,

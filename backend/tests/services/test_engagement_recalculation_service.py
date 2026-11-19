@@ -708,3 +708,22 @@ def test_reviewed_count_agrees_with_its_noun():
     assert _reviewed_count(2, "bill") == "2 reviewed bills"
     assert _reviewed_count(1, "record") == "1 reviewed record"
     assert _reviewed_count(3, "record") == "3 reviewed records"
+
+
+def test_refrigerant_amounts_in_kilograms_and_pounds_add_up_exactly() -> None:
+    """A log in lb and an invoice or log in kg for the same gas are one balance: the amounts are converted with
+    the exact factor (1 lb = 0.45359237 kg), never rounded first."""
+
+    def co2e(records: list[dict]) -> float:
+        store = FakeStore()
+        for i, record in enumerate(records):
+            store.add_document(f"R{i}", "CT-S1-REFRSVC", [record])
+        fugitive = _service(store).recalculate(_engagement(), _own)["categories"]["fugitive_refrigerants"]
+        return fugitive["total_co2e"]
+
+    kg_as_lb = 10 / 0.45359237
+    all_lb = co2e([_refrigerant("R-410A", "2025-04-09", added=12.5), _refrigerant("R-410A", "2025-05-09", added=kg_as_lb)])
+    mixed = co2e([_refrigerant("R-410A", "2025-04-09", added=12.5),
+                  _refrigerant("R-410A", "2025-05-09", added=10, unit="kg")])
+    assert mixed == pytest.approx(all_lb, rel=1e-12)
+    assert mixed == pytest.approx((12.5 * LB + 10 / 1000) * 1924)

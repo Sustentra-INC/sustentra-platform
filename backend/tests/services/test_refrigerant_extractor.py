@@ -11,6 +11,7 @@ from backend.app.services.extraction_service import ExtractionService
 from backend.app.services.extraction_target_service import ExtractionTargetService
 from backend.app.services.refrigerant_extractor import (
     HALT_UNSUPPORTED,
+    PURCHASE_NOTE,
     RefrigerantServiceExtractor,
     classify_service,
 )
@@ -308,3 +309,250 @@ def test_a_bill_to_name_alone_is_not_a_facility_in_strict_mode(
         targets: list[dict], monkeypatch: pytest.MonkeyPatch, label: str) -> None:
     monkeypatch.setattr("backend.app.services.stationary_combustion_extractor.BILL_TO_NAME_IS_LAST_RESORT_FACILITY", False)
     assert _site_of(f"{label}: Staging-Test Foods Inc.\n", targets) is None
+
+
+# --- a service log with one line per visit, as a contractor prints it (NPL refrigerant log) -------------
+def _grid_output(rows: list[list[tuple]], document_id: str = "DOC-LOG") -> dict[str, Any]:
+    """parser_output for a PDF page: each row is a list of (text, left, width[, height]); rows are 0.025 apart.
+    A cell with empty text is a gap in the table (nothing is drawn there)."""
+
+    blocks: list[dict] = []
+    for r, row in enumerate(rows):
+        for c, (text, left, width, *height) in enumerate(row):
+            if not text:
+                continue
+            blocks.append({
+                "block_id": f"p1-r{r}-c{c}", "page_number": 1, "text": text, "confidence": None,
+                "bounding_box": {"left": left, "top": 0.05 + 0.025 * r, "width": width,
+                                 "height": height[0] if height else 0.013},
+                "source_reference_id": None,
+            })
+    return {"document_id": document_id, "pages": [{"page_number": 1, "text": ""}], "text_blocks": blocks,
+            "tables": [], "key_value_pairs": [], "source_references": []}
+
+
+# column x positions of the printed log: date, equipment, refrigerant (+ full charge, right-aligned), added, recovered,
+# technician, notes
+X = {"date": (0.05, 0.06), "equipment": (0.12, 0.14), "gas": (0.293, 0.04), "charge": (0.43, 0.02),
+     "added": (0.50, 0.025), "recovered": (0.607, 0.016), "tech": (0.639, 0.057), "notes": (0.74, 0.17)}
+
+
+def _log_row(date: str, equipment: str, gas: str, charge: str, added: str, recovered: str, tech: str,
+             notes: str) -> list[tuple[str, float, float]]:
+    values = [date, equipment, gas, charge, added, recovered, tech, notes]
+    return [(text, *X[name]) for text, name in zip(values, X, strict=True)]
+
+
+LOG_HEAD: list[list[tuple]] = [
+    [("POLAR POINT MECHANICAL SERVICES", 0.05, 0.4, 0.03)],  # the letterhead is the largest text
+    [("Refrigerant Service & Leak Log – Calendar Year 2025 (01/01/2025 – 12/31/2025)", 0.05, 0.8)],
+    [("Customer: Northgate Provisions Inc. · Site: Sacramento Warehouse, 1820 Richards Boulevard, Sacramento, CA 95811",
+      0.05, 0.9)],
+    # the parser read "Refrigerant" and the right-aligned "Full Charge (lb)" as one line
+    [("Date", 0.05, 0.027), ("Equipment", 0.12, 0.061), ("RefrigerantFull Charge (lb)", 0.293, 0.159),
+     ("Added (lb)", 0.465, 0.06), ("Recovered (lb)", 0.54, 0.083), ("Technician", 0.639, 0.061), ("Notes", 0.74, 0.033)],
+]
+LOG_LINES = [
+    _log_row("02/11/2025", "RACK-A Walk-in freezer rack", "R-404A", "180", "12.5", "0.0", "José Muñoz",
+             "Leak at TXV flare fitting – repaired"),
+    _log_row("04/08/2025", "CH-1 Dock process chiller", "R-134a", "95", "6.0", "0.0", "Renée Côté",
+             "Low charge alarm; valve core replaced"),
+    _log_row("05/27/2025", "RACK-A Walk-in freezer rack", "R-404A", "180", "8.0", "0.0", "José Muñoz",
+             "Routine top-up, leak check OK"),
+    _log_row("08/19/2025", "CH-1 Dock process chiller", "R-134a", "95", "4.5", "0.0", "Zoë Brandão",
+             "Top-up after compressor service"),
+]
+LOG_TOTALS: list[list[tuple[str, float, float]]] = [
+    [("Refrigerant", 0.05, 0.08), ("Total Added 2025 (lb)", 0.3, 0.15), ("Total Recovered (lb)", 0.5, 0.15)],
+    [("R-404A", 0.05, 0.05), ("20.5", 0.3, 0.03), ("0.0", 0.5, 0.02)],
+    [("R-134a", 0.05, 0.05), ("10.5", 0.3, 0.03), ("0.0", 0.5, 0.02)],
+]
+
+
+def _log_records(rows: list[list[tuple[str, float, float]]], targets: list[dict]) -> dict[int, dict[str, dict]]:
+    outcome = RefrigerantServiceExtractor().extract(_grid_output(rows), targets, "EV-1")
+    assert outcome.halt_reason is None
+    indexes = sorted({c["record_index"] for c in outcome.candidates if c["record_index"] is not None})
+    if not indexes:  # a log with one line is one record, with no record number
+        return {1: _by_field(outcome.candidates)}
+    return {i: _by_field(outcome.candidates, i) for i in indexes}
+
+
+def _value(fields: dict[str, dict], name: str) -> tuple[Any, Any]:
+    return fields[name]["normalized_value"], fields[name]["unit"]
+
+
+def test_each_service_line_of_a_log_is_its_own_record(targets: list[dict]) -> None:
+    records = _log_records([*LOG_HEAD, *LOG_LINES, *LOG_TOTALS], targets)
+    assert len(records) == 4  # the totals table below the lines is not more records
+    first, second = records[1], records[2]
+    assert _value(first, "service_date") == ("2025-02-11", None)
+    assert first["equipment_id"]["normalized_value"] == "RACK-A Walk-in freezer rack"
+    assert _value(first, "refrigerant_type") == ("R-404A", None)
+    assert _value(first, "refrigerant_added") == (12.5, "lb")
+    assert _value(first, "refrigerant_recovered") == (0, "lb")
+    assert _value(first, "equipment_capacity") == (180, "lb")
+    assert _value(second, "refrigerant_type") == ("HFC-134a", None)
+    assert _value(second, "refrigerant_added") == (6, "lb")
+    assert _value(second, "equipment_capacity") == (95, "lb")
+    # the totals the log prints are the sum of its lines per gas, never read as lines of their own
+    by_gas: dict[str, float] = {}
+    for fields in records.values():
+        gas = fields["refrigerant_type"]["normalized_value"]
+        by_gas[gas] = by_gas.get(gas, 0) + fields["refrigerant_added"]["normalized_value"]
+    assert by_gas == {"R-404A": 20.5, "HFC-134a": 10.5}
+
+
+def test_a_technician_keeps_accents_and_is_not_the_service_provider(targets: list[dict]) -> None:
+    records = _log_records([*LOG_HEAD, *LOG_LINES], targets)
+    assert [r["technician"]["normalized_value"] for r in records.values()] == [
+        "José Muñoz", "Renée Côté", "José Muñoz", "Zoë Brandão"]
+    # the company is the letterhead, the same on every line
+    assert {r["service_provider"]["normalized_value"] for r in records.values()} == {"POLAR POINT MECHANICAL SERVICES"}
+
+
+def test_a_blank_line_between_service_lines_does_not_end_the_log(targets: list[dict]) -> None:
+    rows = [*LOG_HEAD, LOG_LINES[0], [], LOG_LINES[1], [("", 0, 0)], LOG_LINES[2], LOG_LINES[3]]
+    assert len(_log_records(rows, targets)) == 4
+
+
+def test_a_recovered_only_line_is_a_record_with_no_amount_added(targets: list[dict]) -> None:
+    removed = _log_row("09/30/2025", "CH-1 Dock process chiller", "R-134a", "95", "", "14.0", "Renée Côté",
+                       "Recovered before compressor swap")
+    records = _log_records([*LOG_HEAD, LOG_LINES[0], removed], targets)
+    assert len(records) == 2
+    line = records[2]
+    assert _value(line, "refrigerant_recovered") == (14, "lb")
+    assert line["refrigerant_added"]["normalized_value"] is None  # blank, never read from a neighbouring cell
+    assert _value(line, "refrigerant_type") == ("HFC-134a", None)
+    assert line["technician"]["normalized_value"] == "Renée Côté"
+
+
+def test_non_ascii_names_and_kilograms_in_a_log_survive(targets: list[dict]) -> None:
+    head = list(LOG_HEAD)
+    head[3] = [(text.replace("(lb)", "(kg)"), left, width) for text, left, width in head[3]]
+    line = _log_row("2025-03-04", "冷凍機 No.2 – Zürich", "R-410A", "40", "3.2", "0.4", "山田 太郎",
+                    "Fuite réparée – raccord")
+    records = _log_records([*head, line], targets)
+    only = records[1]
+    assert _value(only, "refrigerant_added") == (3.2, "kg") and _value(only, "refrigerant_recovered") == (0.4, "kg")
+    assert only["equipment_id"]["normalized_value"] == "冷凍機 No.2 – Zürich"
+    assert only["technician"]["normalized_value"] == "山田 太郎"
+
+
+def test_words_that_are_not_headers_are_never_split() -> None:
+    from backend.app.services.refrigerant_extractor import Cell, Row
+
+    def row(*texts: str) -> Row:
+        return Row([Cell(t, 1, {"left": 0.1 * i, "top": 0.1, "width": 0.1, "height": 0.01}, None, None, None, i)
+                    for i, t in enumerate(texts)], 1)
+
+    split = RefrigerantServiceExtractor._split_glued_headers
+    assert [c.text for c in split(row("RefrigerantFull Charge (lb)")).cells] == ["Refrigerant", "Full Charge (lb)"]
+    for plain in ("RACK-A Walk-in freezer rack", "AirHandler", "Notes", "McDonald Added", "José Muñoz"):
+        assert split(row(plain)).cells[0].text == plain
+
+
+# --- a supplier's invoice: refrigerant bought, counted in cylinders --------------------------------------
+def _invoice(table: str) -> dict[str, Any]:
+    return _text_output(
+        "WESTBAY REFRIGERANT SUPPLY    INVOICE\n"
+        "Invoice Date    09/17/2025\n"
+        f"{table}"
+        "Subtotal    $1,775.00\n"
+        "Total refrigerant shipped: 4 cylinders × 25 lb = 100 lb R-410A (net weight).\n")
+
+
+def test_cyl_is_a_unit_not_an_equipment_and_a_purchase_is_named_as_one(targets: list[dict]) -> None:
+    table = ("Item    Description    Qty    Unit    Unit Price    Amount\n"
+             "R410A-25    Refrigerant R-410A, 25 lb disposable cylinder    4    cyl    $395.00    $1,580.00\n")
+    outcome = RefrigerantServiceExtractor().extract(_invoice(table), targets, "EV-1")
+    fields = _by_field(outcome.candidates)
+    assert fields["equipment_id"]["normalized_value"] is None  # "cyl" is how the line is counted
+    added = fields["refrigerant_added"]
+    assert (added["normalized_value"], added["unit"]) == (100, "lb")
+    assert added["display_label"] == "Refrigerant purchased"
+    assert {"quantity_times_package_size", "purchase_not_equipment_charge"} <= set(added["validation_flags"])
+    assert fields["refrigerant_recovered"]["normalized_value"] is None
+    # the reviewer is told in plain words, once for the document
+    assert outcome.notes == [PURCHASE_NOTE] and "not an emission until it is charged into equipment" in PURCHASE_NOTE
+
+
+@pytest.mark.parametrize(("unit_word"), ["cyl", "cylinder", "Cylinders", "drum", "ea", "each", "pcs"])
+def test_package_words_in_the_unit_column_are_never_equipment(targets: list[dict], unit_word: str) -> None:
+    table = ("Item    Description    Qty    Unit    Unit Price    Amount\n"
+             f"R410A-25    Refrigerant R-410A, 25 lb cylinder    2    {unit_word}    $395.00    $790.00\n")
+    fields = _by_field(RefrigerantServiceExtractor().extract(_invoice(table), targets, "EV-1").candidates)
+    assert fields["equipment_id"]["normalized_value"] is None
+    assert fields["refrigerant_added"]["normalized_value"] == 50
+
+
+def test_kilograms_and_pounds_convert_exactly_both_ways(targets: list[dict]) -> None:
+    table = ("Item    Description    Qty    Unit    Unit Price    Amount\n"
+             "R410A-11    Refrigerant R-410A, 11.3 kg cylinder    3    cyl    $300.00    $900.00\n")
+    added = _by_field(RefrigerantServiceExtractor().extract(_invoice(table), targets, "EV-1").candidates)[
+        "refrigerant_added"]
+    assert (added["normalized_value"], added["unit"]) == (33.9, "kg")  # kept in the document's unit, flagged as a purchase
+    from backend.app.domain import fuel_units
+
+    assert fuel_units.convert_exact(100, "lb", "kg") == pytest.approx(45.359237)
+    assert fuel_units.convert_exact(45.359237, "kg", "lb") == pytest.approx(100)
+    assert fuel_units.convert_exact(33.9, "kg", "lb") == pytest.approx(33.9 / 0.45359237)
+
+
+def test_a_work_order_with_materials_is_not_a_purchase(targets: list[dict]) -> None:
+    text = ("Equipment ID: RTU-3\nService Date: 09/12/2025\nWork Performed: Leak repaired and recharged\n"
+            "Description    Qty    Unit    Unit Price    Amount\n"
+            "R-410A refrigerant 25 lb cylinder    1    cyl    $395.00    $395.00\n")
+    added = _by_field(RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1").candidates)[
+        "refrigerant_added"]
+    assert "purchase_not_equipment_charge" not in added["validation_flags"]
+    assert added["display_label"] != "Refrigerant purchased"
+
+
+def test_a_log_is_never_a_purchase(targets: list[dict]) -> None:
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, *LOG_LINES]), targets, "EV-1")
+    added = [c for c in outcome.candidates if c["field_name"] == "refrigerant_added"]
+    assert added and all("purchase_not_equipment_charge" not in c["validation_flags"] for c in added)
+    assert outcome.notes == []
+
+
+def test_a_header_run_together_with_a_space_is_cut_too_and_an_equipment_register_is_not_a_log(
+        targets: list[dict]) -> None:
+    """The staging log: "Refrigerant Full Charge (kg)" is one header cell over two data cells, and an
+    equipment register above the log has a Refrigerant column too but no amounts."""
+
+    register = [
+        [("Equipment Register", 0.05, 0.2)],
+        [("Equipment ID", 0.05, 0.1), ("Description", 0.2, 0.1), ("Refrigerant", 0.45, 0.07), ("Full Charge (kg)", 0.6, 0.12)],
+        [("HW-RC-01", 0.05, 0.08), ("Walk-in cooler, condensing unit", 0.2, 0.22), ("R-404A", 0.45, 0.05), ("18.2", 0.6, 0.03)],
+    ]
+    head = [[("Date", 0.05, 0.04), ("Equipment ID", 0.15, 0.1), ("Refrigerant Full Charge (kg)", 0.3, 0.22),
+             ("Added (kg)", 0.55, 0.07), ("Recovered (kg)", 0.64, 0.09), ("Technician", 0.75, 0.08),
+             ("Work Performed", 0.85, 0.12)]]
+    line = [("04/09/2025", 0.05, 0.07), ("HW-RF-02", 0.15, 0.07), ("R-404A", 0.3, 0.05), ("24.5", 0.45, 0.03),
+            ("24.50", 0.56, 0.04), ("21.30", 0.66, 0.04), ("T. Vasquez-Hale", 0.75, 0.1), ("Leak at evaporator coil", 0.85, 0.12)]
+    other = [("06/27/2025", 0.05, 0.07), ("HW-RC-01", 0.15, 0.07), ("R-404A", 0.3, 0.05), ("18.2", 0.45, 0.03),
+             ("3.15", 0.56, 0.03), ("0.00", 0.66, 0.03), ("R. Delacroix", 0.75, 0.08), ("Schrader core replaced", 0.85, 0.12)]
+    records = _log_records([*register, *head, line, other], targets)
+    assert len(records) == 2  # the register is not a service line
+    first = records[1]
+    assert first["equipment_id"]["normalized_value"] == "HW-RF-02"
+    assert _value(first, "refrigerant_added") == (24.5, "kg") and _value(first, "refrigerant_recovered") == (21.3, "kg")
+    assert _value(first, "equipment_capacity") == (24.5, "kg")
+    assert first["technician"]["normalized_value"] == "T. Vasquez-Hale"
+
+
+def test_a_supplier_invoice_priced_per_pound_is_a_purchase_even_with_a_site_called_maintenance(
+        targets: list[dict]) -> None:
+    text = ("POLAR RIDGE Refrigerant Supply\n"
+            "BILL TO    SHIP TO\n"
+            "Staging-Test Foods Inc.    Riverside Plant - Maintenance\n"
+            "Item    Description    Cyl.    Lbs / Cyl.    Total Lbs    Price / Lb    Amount\n"
+            "R134A-30    Refrigerant R-134a (HFC-134a), 30 lb returnable cylinder    4    30    120    $9.85    $1,182.00\n"
+            "Total refrigerant shipped: 120 lb (4 cylinders x 30 lb). 1 lb = 0.4536 kg.\n")
+    added = _by_field(RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1").candidates)[
+        "refrigerant_added"]
+    assert (added["normalized_value"], added["unit"]) == (120, "lb")
+    assert added["display_label"] == "Refrigerant purchased"
+    assert "purchase_not_equipment_charge" in added["validation_flags"]

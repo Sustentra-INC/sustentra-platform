@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from backend.app.domain.refrigerants import Mass, Refrigerant, find_refrigerant, mass_unit, parse_mass
@@ -53,13 +53,22 @@ from backend.app.services.stationary_combustion_extractor import (
 
 CANONICAL_TYPE_ID = "CT-S1-REFRSVC"
 
+# A priced line counted in cylinders on a supplier's invoice is refrigerant bought, not refrigerant added to
+# equipment. The material balance counts what is charged into equipment (P_S, P_N); a purchase is not an
+# emission until then, so the reader names it as a purchase and flags it for the reviewer.
+PURCHASE_FLAG = "purchase_not_equipment_charge"
+PURCHASE_LABEL = "Refrigerant purchased"
+PURCHASE_NOTE = ("This document is a supplier invoice: the refrigerant was bought, not recorded as added to equipment. "
+                 "A purchase is not an emission until it is charged into equipment, so accept these amounts only if "
+                 "the refrigerant went into equipment, and check them against the service records.")
+
 SERVICE = "service"
 INSTALLATION = "installation"
 DISPOSAL = "disposal"
 SERVICE_TYPES = (SERVICE, INSTALLATION, DISPOSAL)
 
 RECORD_FIELDS = ("service_date", "refrigerant_type", "refrigerant_added", "refrigerant_recovered",
-                 "equipment_id", "equipment_capacity", "service_type", "facility_name")
+                 "equipment_id", "equipment_capacity", "service_type", "facility_name", "technician")
 DOCUMENT_FIELDS = ("service_address", "service_provider")
 MASS_FIELDS = ("refrigerant_added", "refrigerant_recovered", "equipment_capacity")
 
@@ -116,7 +125,8 @@ COLUMNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("equipment", ("equipment", "equipment id", "equipment #", "unit", "unit id", "unit #", "asset", "asset id",
                    "asset #", "system", "equipment/unit")),
     ("site", ("site", "facility", "location", "building", "store")),
-    ("provider", ("technician", "contractor", "vendor", "service provider", "serviced by", "tech")),
+    ("provider", ("contractor", "vendor", "service provider", "serviced by")),
+    ("technician", ("technician", "technician name", "tech", "tech name")),
     ("unit", ("uom", "unit of measure", "units")),
 )
 
@@ -142,8 +152,14 @@ _SERVICE_RE = re.compile(r"\b(?:leak|recharge[ds]?|top[- ]?(?:off|up)|repair(?:e
 # A short Service Type cell may hold just the word.
 _SHORT_DISPOSAL = {"disposal", "disposed", "retired", "retirement", "decommissioned", "decommission", "scrapped"}
 _SHORT_INSTALL = {"installation", "install", "installed", "new install", "new installation", "new unit"}
-# A bare mass unit in a cell ("LB", "oz") is a unit of measure, never an equipment ID.
-_UNIT_ONLY_RE = re.compile(r"\s*(?:lbs?|pounds?|oz|ounces?|kgs?|kilograms?|g|grams?)\.?\s*", re.I)
+# A bare unit in a cell is a unit of measure, never an equipment ID: a mass ("LB", "oz") or a package an
+# invoice counts in ("cyl", "drum", "ea").
+_UNIT_ONLY_RE = re.compile(
+    r"\s*(?:lbs?|pounds?|oz|ounces?|kgs?|kilograms?|g|grams?|cyls?|cylinders?|drums?|bottles?|pails?|"
+    r"cases?|ea|each|pcs?|pieces?)\.?\s*", re.I)
+_KNOWN_HEADERS = frozenset(name for _, options in COLUMNS for name in options)
+# A column that prices the line ("Unit Price", "Price / Lb", "Rate"): the table is an invoice, not a log of work.
+_PRICE_HEADER_RE = re.compile(r"\bprice\b|\bunit cost\b|\brate\b", re.I)
 # Cooling capacity, airflow and fuel units: a "Capacity: 5 tons" is tonnage, not a refrigerant charge.
 _NOT_A_CHARGE_RE = re.compile(r"\b(?:tons?|btu\w*|mbh|kw|hp|cfm|gallons?|gal)\b", re.I)
 _TOTAL_KEYS = ("total", "total qty", "total quantity")
@@ -163,7 +179,10 @@ class ServiceRecord:
     equipment: Located | None = None
     site: Located | None = None
     provider: Located | None = None
+    technician: Located | None = None  # the person who did the work (a log's Technician column)
     service_type: tuple[Located, str] | None = None
+    # A line on a supplier's invoice (priced, counted in cylinders): refrigerant bought, not yet added to equipment.
+    purchase: bool = False
     unit_missing: set[str] = field(default_factory=set)
     flags: dict[str, list[str]] = field(default_factory=dict)  # field -> extra validation flags
 
@@ -258,7 +277,8 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
                     candidate["display_label"] = f"{candidate['display_label']} ({label})"
                     candidate["source_reference"]["record_key"] = record_key
             candidates.extend(record_candidates)
-        return ExtractionOutcome(candidates=candidates, records=len(records))
+        notes = [PURCHASE_NOTE] if any(r.purchase for r in records) else []
+        return ExtractionOutcome(candidates=candidates, records=len(records), notes=notes)
 
     def _letterhead_name(self, rows: Sequence[Row]) -> Located | None:
         """The letterhead, joined with a short second line that completes the name
@@ -286,6 +306,12 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
         table = self._service_table_records(rows, document_unit)
         if table:
             self._fill_from_document(table, rows)
+            if any(r.purchase for r in table) and (
+                    self._equipment(rows) is not None
+                    or self._find_labeled(rows, SERVICE_TYPE_LABELS,
+                                          accept=lambda v: classify_service(v) is not None) is not None):
+                for r in table:  # a work order names its equipment or the work done: the refrigerant went into it
+                    r.purchase = False
             return table
         single = self._labeled_record(rows, document_unit)
         return [single] if single is not None else []
@@ -325,16 +351,55 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             return None
         return columns, units
 
+    @staticmethod
+    def _split_glued_headers(row: Row) -> Row:
+        """A header whose neighbours the parser read as one cell: "RefrigerantFull Charge (lb)" or
+        "Refrigerant Full Charge (kg)" is the "Refrigerant" and "Full Charge" columns (the data rows have a
+        cell for each). A cell is cut only when it is not a header as a whole and both sides are headers
+        this reader knows, so an ordinary heading is never split. The box is shared out by text length, so
+        each part sits over the data cells under it."""
+
+        known = _KNOWN_HEADERS
+        cells: list[Cell] = []
+        changed = False
+        for cell in row.cells:
+            parts: tuple[str, str] | None = None
+            if cell.column is None and _header_key(cell.text)[0] not in known:
+                for boundary in re.finditer(r"(?<=[a-z])(?=[A-Z])|\s+", cell.text):
+                    left, right = cell.text[:boundary.start()], cell.text[boundary.end():]
+                    if left and right and _header_key(left)[0] in known and _header_key(right)[0] in known:
+                        parts = (left, right)
+                        break
+            if parts is None:
+                cells.append(cell)
+                continue
+            changed = True
+            share = len(parts[0]) / (len(parts[0]) + len(parts[1]))
+            box = cell.box
+            first_box = second_box = box
+            if box is not None:
+                width = box["width"]
+                first_box = {**box, "width": width * share}
+                second_box = {**box, "left": box["left"] + width * share, "width": width * (1 - share)}
+            cells.append(replace(cell, text=parts[0], box=first_box))
+            cells.append(replace(cell, text=parts[1], box=second_box))
+        return Row(cells, row.page, row.index) if changed else row
+
     def _service_table_records(self, rows: Sequence[Row], document_unit: str | None) -> list[ServiceRecord]:
         records: list[ServiceRecord] = []
         position = 0
         while position < len(rows):
-            header = self._header(rows[position])
+            header_row = rows[position]
+            header = self._header(header_row)
+            if header is None:  # a header the parser ran together: try it cut where two known headers meet
+                split = self._split_glued_headers(header_row)
+                header = self._header(split) if split is not header_row else None
+                if header is not None:
+                    header_row = split
             if header is None:
                 position += 1
                 continue
             columns, units = header
-            header_row = rows[position]
             position += 1
             misses = 0
             while position < len(rows) and misses < 3:
@@ -372,13 +437,18 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             return None
         unit_cell = cell("unit")
         row_unit = mass_unit(unit_cell.text) if unit_cell is not None else None
-        # An invoice's "Unit" column (lb, oz) can land under the equipment heading: a unit of
+        # An invoice's "Unit" column (lb, oz, cyl) can land under the equipment heading: a unit of
         # measure is never an equipment ID.
         equipment_cell = cell("equipment")
+        unit_words = [unit_cell.text] if unit_cell is not None else []
         if equipment_cell is not None and _UNIT_ONLY_RE.fullmatch(equipment_cell.text):
             row_unit = row_unit or mass_unit(equipment_cell.text)
+            unit_words.append(equipment_cell.text)
             equipment_cell = None
         record = ServiceRecord(refrigerant=(located(gas_cell), gas))
+        # A priced line counted in packages ("4 cyl", "25 lb cylinder") is a purchase from a supplier.
+        priced = any(_PRICE_HEADER_RE.search(c.text) for c in header_row.cells)
+        in_packages = any(_UNIT_ONLY_RE.fullmatch(w) and mass_unit(w) is None for w in unit_words)
         # "R-410A refrigerant 25 lb cylinder" names a package size; "R-410A refrigerant (lbs)" a unit.
         package = parse_mass(gas_cell.text)
         for name in ("added", "recovered", "capacity"):
@@ -405,10 +475,12 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
                 setattr(record, name, (located(c), mass))
         if record.added is None and record.recovered is None:
             return None
+        record.purchase = priced and (in_packages or package is not None)
         date_cell = cell("date")
         if date_cell is not None and (hit := parse_date(date_cell.text)):
             record.date = (located(date_cell), hit[0])
-        for name, attr in (("equipment", "equipment"), ("site", "site"), ("provider", "provider")):
+        for name, attr in (("equipment", "equipment"), ("site", "site"), ("provider", "provider"),
+                           ("technician", "technician")):
             c = equipment_cell if name == "equipment" else cell(name)
             if c is not None and c.text.strip():
                 setattr(record, attr, located(c))
@@ -535,12 +607,16 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             name = {"refrigerant_added": "added", "refrigerant_recovered": "recovered",
                     "equipment_capacity": "capacity"}[field_id]
             flags.extend(record.flags.get(name, []))
+            if name == "added" and record.purchase:
+                flags.append(PURCHASE_FLAG)
+            unit = None if name in record.unit_missing else mass.unit
             if name in record.unit_missing:
                 flags.append("unit_missing")
-                return self._candidate(target, located, mass.raw, self._clean_number(mass.value), None, *args,
-                                       parser_output, flags)
-            return self._candidate(target, located, mass.raw, self._clean_number(mass.value), mass.unit, *args,
-                                   parser_output, flags)
+            candidate = self._candidate(target, located, mass.raw, self._clean_number(mass.value), unit, *args,
+                                        parser_output, flags)
+            if name == "added" and record.purchase:
+                candidate["display_label"] = PURCHASE_LABEL  # bought from a supplier, not added to equipment
+            return candidate
         if field_id == "service_date":
             if record.date is None:
                 return self._missing(target, *args)
@@ -556,6 +632,8 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
         if field_id == "facility_name":
             return self._candidate_for_text(target, record.site or document.get("facility_name"), *args,
                                             parser_output, field_id)
+        if field_id == "technician":
+            return self._candidate_for_text(target, record.technician, *args, parser_output, field_id)
         if field_id == "service_provider":
             return self._candidate_for_text(target, record.provider or document.get("service_provider"), *args,
                                             parser_output, field_id)
