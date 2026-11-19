@@ -313,6 +313,7 @@ class UsageRecord:
     fuel: Located | None = None
     extra: dict[str, Located] = field(default_factory=dict)  # subclass EXTRA_COLUMNS values
     energy: str | None = None  # thermal bills: the energy type told from this line (steam / hot_water / chilled_water)
+    quantity_header: str | None = None  # table lines: the header of the quantity's own column (not the whole header row)
 
 
 @dataclass
@@ -1417,6 +1418,7 @@ class StationaryCombustionExtractor:
                 unit_located=unit_located,
                 hint=hint_cell.text if hint_cell is not None else None,
                 fuel=fuel,
+                quantity_header=header_text,
             )
             for key in self.EXTRA_COLUMNS:
                 cell = assigned.get(columns[key]) if key in columns else None
