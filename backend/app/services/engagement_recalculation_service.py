@@ -390,13 +390,15 @@ def _suggested(item: dict[str, Any]) -> bool:
 
 
 def _meter_and_page(record: ReviewedRecord) -> tuple[str | None, int | None]:
-    """The meter id a record was read under (the middle of its ``record_key``, "r3:WEC-1:2025-01-01..2025-01-31")
+    """The meter id a record was read under (from its ``record_key``: "r3:WEC-1:2025-01-01..2025-01-31", or "r3:WEC-1" when it has no period)
     and the page its quantity was read from, for the duplicate check."""
 
     field = record.fields.get("activity_quantity") or next(iter(record.fields.values()), None)
     reference = (field.source_reference if field is not None else None) or {}
-    parts = str(reference.get("record_key") or "").split(":")
-    meter = ":".join(parts[1:-1]).replace("_", " ").strip() if len(parts) >= 3 else None
+    parts = str(reference.get("record_key") or "").split(":")[1:]  # "r3" [":" meter] [":" "start..end"]
+    if parts and ".." in parts[-1]:
+        parts = parts[:-1]
+    meter = ":".join(parts).replace("_", " ").strip() or None
     page = reference.get("page_number")
     return (meter or None), (int(page) if isinstance(page, int) else None)
 

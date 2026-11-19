@@ -158,11 +158,13 @@ def _completeness(groups: dict[tuple[str, str, str | None], list[EvidenceRecord]
 # =========================================================================================
 def _repeat_in_file(first: EvidenceRecord, other: EvidenceRecord) -> bool:
     """Two records of one file that read as the same statement printed twice: the same account, and the same
-    meter, or (when a meter is missing) on different pages. Two meters of one bill share its account, period and
+    meter, or (when neither has a meter) on different pages. Two meters of one bill share its account, period and
     maybe a reading; that is not a repeat."""
 
     if not first.account or first.account != other.account:
         return False
+    if bool(first.meter) != bool(other.meter):
+        return False  # one has a meter and the other none: they cannot be told to be the same line
     if first.meter and other.meter:
         return first.meter == other.meter
     return first.page is not None and other.page is not None and first.page != other.page

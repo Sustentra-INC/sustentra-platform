@@ -18,9 +18,11 @@ class RecalcStore:
         self.reviews: dict[str, list[dict]] = {}
 
     def add(self, document_id: str, records: list[dict[str, tuple]], canonical_type_id: str = "CT-S2-ELEC", *,
-            pages: list[int] | None = None, meters: list[str | None] | None = None) -> None:
+            pages: list[int] | None = None, meters: list[str | None] | None = None,
+            keys: list[str] | None = None) -> None:
         """``records``: one dict per record of field name -> (value, unit). ``pages`` and ``meters`` say where
-        each record was read (default: its own page, no meter), as the extractor's source references do."""
+        each record was read (default: its own page, no meter), as the extractor's source references do;
+        ``keys`` sets the record keys outright."""
 
         self.documents.append({"document_id": document_id, "engagement_id": "ENG-1", "org_id": ORG,
                                "file_name": f"{document_id}.pdf"})
@@ -32,7 +34,8 @@ class RecalcStore:
                               "unit": unit, "record_index": index if len(records) > 1 else None,
                               "source_reference": {"document_id": document_id,
                                                    "page_number": pages[index - 1] if pages else index,
-                                                   **self._key(index, meters, record)}})
+                                                   **({"record_key": keys[index - 1]} if keys
+                                                      else self._key(index, meters, record))}})
                 reviews.append({"candidate_id": candidate_id, "decision": "accepted", "org_id": ORG,
                                 "reviewed_value": value, "reviewed_unit": unit})
         self.results[document_id] = [{"document_id": document_id, "org_id": ORG,
