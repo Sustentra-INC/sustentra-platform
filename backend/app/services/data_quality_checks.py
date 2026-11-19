@@ -14,6 +14,9 @@ the documents and says what to look at. The numbers are unchanged by it.
   days (``overlap_same_source_different_document_id`` / ``overlapping_period``).
 - Q-005 Cross-year allocation: a bill running across the reporting period's start or end,
   counted by its share of days (``cross_year_without_allocation_support``).
+- Q-003 Revised bill: a bill that says it replaces an earlier one (its reference is on the record),
+  while that earlier bill is also in the evidence (``revised_bill_replaces_earlier``). The finding
+  suggests marking the earlier bill as superseded; the reviewer decides, nothing is marked here.
 - N-003 Period normalization: a bill with no service period, counted in full
   (``date_missing``).
 
@@ -56,6 +59,7 @@ class EvidenceRecord:
     amounts: tuple[float | None, ...]  # quantity (and for refrigerants: added, recovered, capacity)
     unit: str | None
     periodic: bool  # a bill for a service period, rather than a dated purchase or service
+    revises: str | None = None  # the earlier bill this one says it replaces (its number or date), if it says so
 
 
 def _span(record: EvidenceRecord) -> tuple[date, date] | None:
@@ -209,6 +213,39 @@ def _duplicates(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], se
     return out, pairs
 
 
+def _revisions(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], set[frozenset[str]]]:
+    """A revised bill and the earlier bill it replaces: same source, same account (or facility) and the same
+    days, in another document. A suggestion to mark the earlier bill as superseded, never a decision."""
+
+    out: list[dict[str, Any]] = []
+    pairs: set[frozenset[str]] = set()
+    for revised in records:
+        if not revised.revises or (span := _span(revised)) is None:
+            continue
+        for earlier in records:
+            if (earlier.document_id == revised.document_id or earlier.category != revised.category
+                    or (earlier.item or "").lower() != (revised.item or "").lower()
+                    or frozenset((earlier.document_id, revised.document_id)) in pairs):
+                continue
+            same_account = bool(earlier.account and revised.account and earlier.account == revised.account)
+            same_site = earlier.facility.lower() == revised.facility.lower()
+            other = _span(earlier)
+            if not (same_account or (same_site and not (earlier.account and revised.account))) or other is None:
+                continue
+            if _overlap_days(span, other) < OVERLAP_MIN_DAYS:
+                continue
+            pairs.add(frozenset((earlier.document_id, revised.document_id)))
+            what = ("an earlier bill" if revised.revises == "revised"
+                    else f"the earlier bill ({revised.revises})")
+            message = (f"{revised.label} says it replaces {what}. {earlier.label} covers the same days for "
+                       f"{_source_name(revised)}: if it is the earlier bill, mark it as superseded on the Evidence "
+                       "screen, so that only the revised bill is counted.")
+            out.append(_finding("Q-003", "revised_bill_replaces_earlier", "review", [revised, earlier], message,
+                                suggestion="mark_superseded", original_document_id=earlier.document_id,
+                                reference=revised.revises))
+    return out, pairs
+
+
 def _overlaps(groups: dict[tuple[str, str, str | None], list[EvidenceRecord]],
               duplicate_pairs: set[frozenset[str]]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
@@ -284,9 +321,11 @@ def run_checks(records: list[EvidenceRecord], period: tuple[date | None, date | 
         if record.periodic:
             periodic[(record.category, record.facility.lower(), (record.item or "").lower() or None)].append(record)
     duplicates, duplicate_pairs = _duplicates(records)
+    revisions, revision_pairs = _revisions(records)
     findings = [
         *duplicates,
-        *_overlaps(periodic, duplicate_pairs),
+        *revisions,
+        *_overlaps(periodic, duplicate_pairs | revision_pairs),
         *(_completeness(periodic, reporting) if reporting else []),
         *_cutoff(records, reporting),
     ]

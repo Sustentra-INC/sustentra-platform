@@ -72,6 +72,23 @@ then), `ai_disagrees` (the rules read the value; Claude read another, in the opt
 `ai_alternative {value, unit, source_reference}`; the value is unchanged) and `ai_conflict`
 (Claude read two different values for the field; each is a candidate). `warnings` may carry
 `ai_extraction: ...` (counts, dropped reasons, cost), `ai_pages_skipped` and `ai_time_budget`.
+
+What a bill says about itself (EXT-025, `services/bill_notes.py`; the rule readers for fuel, electricity and steam
+bills). Neither changes a value:
+
+- `estimated_read`: a `validation_flags` entry on the `activity_quantity` candidate when the bill says a read was
+  estimated, in a sentence ("This bill is based on an ESTIMATED read") or in a read-type column ("Estimated",
+  "EST", or "E" with a legend "E = Estimated read"). A legend alone, or "not estimated", does not flag. The
+  review screen words it "Estimated read".
+- `supersedes_reference`: an extra candidate (label "Replaces an earlier bill") on each record of a bill that says
+  it replaces, corrects or supersedes an earlier bill. Its value is the earlier bill's number or date as printed
+  ("04/04/2025", "INV-2025-889"), or `revised` when the bill says it is revised and gives none. The data quality
+  `quality_checks` (Q-003) then carry a `revised_bill_replaces_earlier` finding (severity `review`) when the
+  earlier bill, the same source, account (or facility) and days, is also in the engagement, with
+  `detail {suggestion: "mark_superseded", original_document_id, reference}`. It is a suggestion: nothing is marked
+  superseded until the reviewer does it on the Evidence screen. The same pair is not also reported as an overlap.
+- Account labels read for `account_number` now include "Customer No.", "Cust. No.", "Client ID", "Acct:" (also
+  inline after other text) and similar. An account is never read from an email subject line or prose.
 Extraction config rows may set `ai_only` (read by Claude only).
 
 ### GET /v1/processing-runs/{run_id}

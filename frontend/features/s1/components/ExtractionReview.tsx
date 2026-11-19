@@ -6,7 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, typ
 import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import type { EngagementConfig, EvidenceItem } from "../types";
 import { AiTypeNote } from "./AiTypeNote";
-import { AiValueNote } from "./AiValueNote";
+import { AiValueNote, EstimatedReadNote } from "./AiValueNote";
 import { AI_VALUE } from "../constants/copy";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
 import type { Ask } from "../types/requests";
@@ -969,6 +969,7 @@ function ValueCard({
           </span>
         ) : null}
       </div>
+      <EstimatedReadNote value={v} />
       <AiValueNote value={v} />
       <div className="s1-xr-card__scopes">
         {scopeChips(vs).map((chip) => (

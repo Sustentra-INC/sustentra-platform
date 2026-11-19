@@ -30,6 +30,7 @@ from datetime import date
 from typing import Any, Sequence
 
 from backend.app.domain import fuel_units
+from backend.app.services import bill_notes
 
 CANONICAL_TYPE_ID = "CT-S1-FUELQTY"
 
@@ -87,9 +88,13 @@ _BLOCK_COLUMN_TOLERANCE = 0.02
 
 
 ACCOUNT_LABELS: tuple[tuple[str, ...], ...] = (
-    ("account number", "account no", "account #", "acct number", "acct no", "acct #", "customer account",
-     "customer acct", "customer number", "customer no", "account id", "account"),
+    ("account number", "account no", "account no.", "account #", "acct number", "acct no", "acct no.", "acct. no.",
+     "acct #", "acct.", "acct", "customer account", "customer acct", "customer number", "customer no",
+     "customer no.", "customer #", "customer id", "cust no", "cust no.", "cust. no.", "cust #", "client number",
+     "client no",
+     "client no.", "client id", "billing account", "service account", "account id", "account"),
 )
+_EMAIL_HEADING = re.compile(r"\s*(?:subject|re|fw|fwd)\s*:", re.IGNORECASE)  # an email's subject line
 SUPPLIER_LABELS: tuple[tuple[str, ...], ...] = (
     ("supplier", "utility", "provider", "vendor", "issued by", "company", "distributor"),
 )
@@ -528,9 +533,66 @@ class StationaryCombustionExtractor:
         rows = self._rows(parser_output)
         token = _DAY_FIRST.set(slash_dates_are_day_first([c.text for r in rows for c in r.cells]))
         try:
-            return self._extract(rows, parser_output, targets, evidence_id, document_id)
+            outcome = self._extract(rows, parser_output, targets, evidence_id, document_id)
+            if outcome.candidates:
+                self._note_estimated_reads(rows, outcome)
+                self._note_revised_bill(rows, outcome, parser_output, evidence_id, document_id)
+            return outcome
         finally:
             _DAY_FIRST.reset(token)
+
+    # -------------------------------------------------------------------------------------
+    # What the bill says about itself (bill_notes.py): an estimated read, a revised bill
+    # -------------------------------------------------------------------------------------
+    @staticmethod
+    def _note_estimated_reads(rows: Sequence[Row], outcome: ExtractionOutcome) -> None:
+        """Flag the quantity of a bill that says a read was estimated. Never changes the value.
+
+        A sentence about an estimated read covers the bill's quantities. A read-type cell marks its own row;
+        a bill with one record has its read-type cells (often on a second page) mark that record."""
+
+        found = bill_notes.estimated_reads(rows)
+        if not found.any():
+            return
+        # A parser block that is one row's alone tells which row a quantity came from; a plain-text
+        # document is one block for every line, so there the quantity is found by the number it prints.
+        block_rows: dict[str, set[int]] = {}
+        for row in rows:
+            for cell in row.cells:
+                if cell.block_id:
+                    block_rows.setdefault(cell.block_id, set()).add(id(row))
+        marked = {id(row) for row in found.marked_rows}
+        quantities = [c for c in outcome.candidates if c.get("field_name") == "activity_quantity"]
+        single = len({c.get("record_index") for c in quantities}) <= 1
+        for candidate in quantities:
+            blocks = (candidate.get("source_reference") or {}).get("parser_block_ids") or []
+            own = {next(iter(ids)) for b in blocks if len(ids := block_rows.get(b, set())) == 1}
+            if not own:
+                printed = str(candidate.get("raw_value") or "").strip()
+                own = {id(r) for r in rows if printed and printed in r.text.split()} if printed else set()
+            if found.statement or (own and own <= marked) or (single and marked and not own):
+                flags = candidate.setdefault("validation_flags", [])
+                if bill_notes.ESTIMATED_FLAG not in flags:
+                    flags.append(bill_notes.ESTIMATED_FLAG)
+
+    def _note_revised_bill(self, rows: Sequence[Row], outcome: ExtractionOutcome, parser_output: dict,
+                           evidence_id: str, document_id: str) -> None:
+        """When the bill says it replaces an earlier one, keep the reference on every record, so the data
+        quality check can suggest marking the earlier bill as superseded (a suggestion only)."""
+
+        revised = bill_notes.revision(rows)
+        if revised is None:
+            return
+        located = Located(revised.reference, [revised.cell], revised.row, CONF_SAME_CELL - 0.04,
+                          context=" ".join(revised.cell.text.split()))
+        target = {"field_id": bill_notes.REVISES_FIELD, "field_label": bill_notes.REVISES_LABEL}
+        seen: dict[tuple[Any, Any], None] = {}
+        for candidate in outcome.candidates:
+            seen.setdefault((candidate.get("record_key"), candidate.get("record_index")))
+        for record_key, record_index in seen:
+            outcome.candidates.append(self._candidate(
+                target, located, revised.reference, revised.reference, None, document_id, evidence_id,
+                record_key, record_index, parser_output, []))
 
     def _extract(self, rows: list[Row], parser_output: dict, targets: Sequence[dict], evidence_id: str,
                  document_id: str) -> ExtractionOutcome:
@@ -1129,6 +1191,9 @@ class StationaryCombustionExtractor:
                                   inline_gap=True) or self._service_block(rows)[1]
 
     def _account(self, rows: Sequence[Row]) -> Located | None:
+        # An account is read from a labelled field, never from an email's subject line or its prose.
+        rows = [r for r in rows if not _EMAIL_HEADING.match(r.text)]
+
         def accept(value: str) -> bool:
             return bool(re.search(r"\d", value)) and parse_date(value) is None and not value.startswith("$")
 

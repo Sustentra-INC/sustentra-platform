@@ -105,6 +105,7 @@ export function reviewValuesFromFields(fields: ExtractedField[], evidence: Evide
         missing: field.value === null && field.correctedValue === null,
         asPrinted: corrected ? undefined : asPrinted(field, candidate, printedUnits),
         ai: aiOf(field),
+        ...(field.valueProperties.includes("estimated_read") ? { estimatedRead: true } : {}),
       } satisfies ReviewValue;
     });
 }
@@ -165,6 +166,7 @@ const GENERAL_FIELDS = new Set([
   "facility_name",
   "service_address",
   "account_number",
+  "supersedes_reference", // the earlier bill a revised bill says it replaces
   "supplier_name",
   "service_period_start",
   "service_period_end",

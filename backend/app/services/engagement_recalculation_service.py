@@ -1244,7 +1244,8 @@ class EngagementRecalculationService:
         return EvidenceRecord(category=category, document_id=record.document_id,
                               file_name=record.file_name or record.document_id, label=record.label,
                               facility=facility, item=item, account=str(account) if account else None,
-                              start=start, end=end, amounts=amounts, unit=unit, periodic=periodic)
+                              start=start, end=end, amounts=amounts, unit=unit, periodic=periodic,
+                              revises=str(record.best("supersedes_reference") or "") or None)
 
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""
