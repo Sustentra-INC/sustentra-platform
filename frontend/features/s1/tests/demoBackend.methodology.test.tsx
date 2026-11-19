@@ -218,6 +218,11 @@ describe("the demo backend's methodology review", () => {
       await waitFor(() => expect(within(row(LABEL)).getByText("No entries")).toBeTruthy());
     });
 
+    it("folds case like the server: Stra\u00dfe and STRASSE are one source type", async () => {
+      await open();
+      await expect(edit([{ source_type: "Stra\u00dfe", method: "a" }, { source_type: "  STRASSE ", method: "b" }])).rejects.toMatchObject({ status: 422 });
+    });
+
     it("refuses a repeated source type, a blank part and an eleventh entry", async () => {
       await open();
       await expect(edit([{ source_type: "Fuel", method: "a" }, { source_type: " fuel ", method: "b" }])).rejects.toMatchObject({ status: 422 });

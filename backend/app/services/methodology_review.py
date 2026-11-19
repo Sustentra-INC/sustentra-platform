@@ -74,8 +74,10 @@ INSTRUMENT_OPTIONS = ("RECs or other energy attribute certificates", "PPA or VPP
 SOURCE_RECORD_OPTIONS = ("Utility invoices", "Meter readings", "Fuel cards", "Fuel receipts or logs",
                          "Landlord reports", "Lease agreements")
 MARKET_CATEGORY_IDS = tuple(f"category:market:{key}" for key in ("electricity", "heating", "steam", "cooling"))
-MAX_EVIDENCE_QUOTE = 250
-MAX_EVIDENCE_BYTES = 8 * 1024
+MAX_EVIDENCE_QUOTE = 1000  # as long as the quote Claude is checked against
+# The quotes of one list suggestion. Sized so the record always fits MAX_PAYLOAD_BYTES with a decision of the
+# same field: when the quotes do not fit, the suggestion carries fewer entries, never an entry without its quote.
+MAX_EVIDENCE_BYTES = 12 * 1024
 MAX_QUOTE = 1000
 # What a suggestion may carry: key -> longest text. Anything else is dropped.
 _SUGGESTION_TEXT = {"quote": MAX_QUOTE, "document_id": 100, "file_name": 255, "model": 100, "request_id": 100,
@@ -557,12 +559,23 @@ def _bound_evidence(items: list[Any]) -> list[dict[str, Any]]:
     for item in items[:MAX_EVIDENCE]:
         if not isinstance(item, Mapping):
             continue
+        raw_quote = item.get("quote")
         entry: dict[str, Any] = {"label": _clip(item.get("label"), 100) or "",
-                                 "quote": _clip(item.get("quote"), MAX_EVIDENCE_QUOTE) or "",
+                                 "quote": _clip(raw_quote, MAX_EVIDENCE_QUOTE) or "",
                                  "document_id": _clip(item.get("document_id"), 100) or "",
                                  "file_name": _clip(item.get("file_name"), 255) or ""}
-        if "source_reference" in item:
-            entry["source_reference"] = _bound_reference(item["source_reference"])
+        if isinstance(raw_quote, str) and len(raw_quote) > MAX_EVIDENCE_QUOTE:
+            entry["quote_truncated"] = True
+        reference = item.get("source_reference")
+        if isinstance(reference, Mapping):  # only where it was read: page, sheet, cell (no snippet or box)
+            kept: dict[str, Any] = {k: _clip(reference[k], 100) for k in ("sheet_name", "cell_or_range")
+                                    if isinstance(reference.get(k), str)}
+            page = reference.get("page_number")
+            if isinstance(page, int) and not isinstance(page, bool):
+                kept["page_number"] = page
+            entry["source_reference"] = kept
+        elif isinstance(reference, str):
+            entry["source_reference"] = _clip(reference, 100)
         out.append(entry)
     return out
 
@@ -583,11 +596,20 @@ def bound_suggestion(field: Mapping[str, Any], suggestion: Mapping[str, Any]) ->
     if "source_reference" in suggestion:
         out["source_reference"] = _bound_reference(suggestion["source_reference"])
     evidence = suggestion.get("evidence")
-    if isinstance(evidence, list):
+    if isinstance(evidence, list) and isinstance(out["value"], list):
         kept_evidence = _bound_evidence(evidence)
+        entries: list[Any] = out["value"]
+        total = len(entries)
+        del entries[len(kept_evidence):]  # an entry without a quote is never kept
+        del kept_evidence[len(entries):]
         while kept_evidence and payload_size({"e": kept_evidence}) > MAX_EVIDENCE_BYTES:
-            kept_evidence.pop()  # the last quotes go first; the entries themselves stay
+            kept_evidence.pop()  # the last entry goes with its quote
+            entries.pop()
+        if not entries and total:
+            raise MethodologyInvalid(f"The suggestion for '{field['label']}' is too long to record.")
         out["evidence"] = kept_evidence
+        if len(entries) < total:
+            out["entries_omitted"] = total - len(entries)
     if payload_size({k: v for k, v in out.items() if k != "evidence"}) > MAX_SUGGESTION_BYTES:
         raise MethodologyInvalid(f"The suggestion for '{field['label']}' is too long to record.")
     return out
@@ -623,8 +645,20 @@ META_KEY = "meta:state"  # one extra item per engagement, never a field: {prefil
 NOT_CHECKED, NOT_DETECTED, HAS_VALUE = "not_checked", "not_detected", "has_value"
 
 
+# The fields the page had when prefill first shipped. A prefill recorded before it stored which fields
+# it covered is taken to have covered these and no others, so a row added later reads "Not checked yet".
+LEGACY_PREFILL_COVERED = frozenset({
+    "reporting_period", "consolidation_approach",
+    *(f"category:scope1:{k}" for k in ("stationary", "mobile", "process", "fugitive")),
+    *(f"category:{b}:{k}" for b in ("location", "market") for k in ("electricity", "heating", "steam", "cooling")),
+    "category:biogenic:direct", "category:biogenic:indirect",
+    "exclusion:boundary", "exclusion:inventory", "exclusion:materiality",
+    "gwp", "calculation:approach", "calculation:process",
+})
+
+
 def new_meta() -> dict[str, Any]:
-    return {"prefill_ran_at": None, "revealed": []}
+    return {"prefill_ran_at": None, "prefill_covered": [], "revealed": []}
 
 
 def has_value(record: Mapping[str, Any]) -> bool:
@@ -645,7 +679,11 @@ def display_state(record: Mapping[str, Any], meta: Mapping[str, Any]) -> str:
 
     if has_value(record):
         return HAS_VALUE
-    return NOT_DETECTED if meta.get("prefill_ran_at") else NOT_CHECKED
+    if not meta.get("prefill_ran_at"):
+        return NOT_CHECKED
+    covered = meta.get("prefill_covered")
+    covered_ids = set(covered) if covered else LEGACY_PREFILL_COVERED  # a run that did not look at this field says nothing
+    return NOT_DETECTED if record.get("field_id") in covered_ids else NOT_CHECKED
 
 
 def market_based_reported(records: Mapping[str, Mapping[str, Any]], ids: Sequence[str] = MARKET_CATEGORY_IDS) -> bool:

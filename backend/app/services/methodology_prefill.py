@@ -470,8 +470,12 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     entries: list[tuple[EstimationSuggestion, PrefillDocument, DocumentLine]] = []
     for estimate in output.estimations:
         found = cited(estimate)
-        if found is not None:
-            entries.append((estimate, *found))
+        if found is None:
+            continue
+        if not value_in_quote(estimate.source_type, estimate.quote):  # the entry is about what its quote names
+            dropped["value_not_in_quote"] += 1
+            continue
+        entries.append((estimate, *found))
     if entries:
         keep_list("calculation:estimation", [{"source_type": e.source_type, "method": e.method} for e, _, _ in entries],
                   [(e.source_type, e.quote, d, ln) for e, d, ln in entries])

@@ -61,6 +61,8 @@ export interface MethodologyEvidence {
   document_id: string;
   file_name: string;
   source_reference?: MethodologySourceReference | string | null;
+  /** True when this quote was cut at 1,000 characters. */
+  quote_truncated?: boolean;
 }
 
 export interface MethodologySuggestion {
@@ -72,6 +74,8 @@ export interface MethodologySuggestion {
   source_reference: MethodologySourceReference | string | null;
   /** A list suggestion (entries, options): one quote per entry, in the value's order. */
   evidence?: MethodologyEvidence[];
+  /** Entries left out because their quotes did not fit the record (the first ones are kept). */
+  entries_omitted?: number;
   /** True when the stored quote was cut at 1,000 characters (it was verified whole). */
   quote_truncated?: boolean;
   origin: string;

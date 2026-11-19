@@ -345,8 +345,8 @@ def estimate(source: str, method: str, quote: str, line: str) -> dict[str, str]:
 
 def test_each_estimation_entry_keeps_its_own_quote_in_one_suggestion() -> None:
     kept, dropped = check(answer(estimations=[
-        estimate("Utility invoices", "Average of adjacent months", "estimated from the average of the adjacent months", "L1"),
-        estimate("Fuel cards", "Prior-year consumption", "prior-year consumption is used (燃料)", "L2")]), [doc(EST_REPORT)])
+        estimate("Utility invoices", "Average of adjacent months", "Missing utility invoices are estimated", "L1"),
+        estimate("Fuel cards", "Prior-year consumption", "fuel cards have gaps, prior-year consumption is used (燃料)", "L2")]), [doc(EST_REPORT)])
     assert dict(dropped) == {} and [k.field_id for k in kept] == ["calculation:estimation"]
     [item] = kept
     assert item.suggestion["value"] == [entry("Utility invoices", "Average of adjacent months"),
@@ -357,19 +357,21 @@ def test_each_estimation_entry_keeps_its_own_quote_in_one_suggestion() -> None:
 
 def test_one_bad_entry_is_dropped_and_the_others_stand() -> None:
     kept, dropped = check(answer(estimations=[
-        estimate("Utility invoices", "Average", "estimated from the average of the adjacent months", "L1"),
+        estimate("Utility invoices", "Average", "Missing utility invoices are estimated", "L1"),
         estimate("Fuel cards", "Average", "this sentence is not in the document at all", "L2"),  # not on the page
         estimate("Meter readings", "x" * 301, "Meter readings are never estimated", "L3"),  # too long
-        estimate("utility INVOICES", "Other", "estimated from the average of the adjacent months", "L1")]), [doc(EST_REPORT)])
+        estimate("Fuel cards", "Use zero", "Missing utility invoices are estimated", "L1"),  # the quote is about something else
+        estimate("utility INVOICES", "Other", "Missing utility invoices are estimated", "L1")]), [doc(EST_REPORT)])
     assert [e["label"] for e in kept[0].suggestion["evidence"]] == ["Utility invoices"]
-    assert dict(dropped) == {"quote_not_on_document": 1, "invalid_value": 1, "duplicate_entry": 1}
+    assert dict(dropped) == {"quote_not_on_document": 1, "invalid_value": 1, "value_not_in_quote": 1, "duplicate_entry": 1}
 
 
 def test_no_entry_that_holds_up_means_no_suggestion_and_more_than_ten_are_capped() -> None:
     kept, dropped = check(answer(estimations=[estimate("Fuel", "a", "not on the page anywhere", "L1")]), [doc(EST_REPORT)])
     assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
-    many = [estimate(f"Source {i}", "Average", "estimated from the average of the adjacent months", "L1") for i in range(12)]
-    kept, dropped = check(answer(estimations=many), [doc(EST_REPORT)])
+    line = "Gaps for " + ", ".join(f"source type {i}" for i in range(12)) + " are filled the same way."
+    many = [estimate(f"source type {i}", "Average", line, "L1") for i in range(12)]
+    kept, dropped = check(answer(estimations=many), [doc([(1, line)])])
     assert len(kept[0].suggestion["value"]) == 10 and dict(dropped) == {"too_many_entries": 2}
 
 
