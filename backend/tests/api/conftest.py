@@ -28,9 +28,10 @@ ORG_A = uuid.UUID("aaaaaaaa-0000-4000-8000-00000000000a")
 ORG_B = uuid.UUID("bbbbbbbb-0000-4000-8000-00000000000b")
 
 # Existing S1 route tests that predate SEC-001: signed in as an org-A member.
-_S1_MODULES = {"test_documents", "test_evidence", "test_methodology", "test_pipeline", "test_reviews"}
+_S1_MODULES = {"test_documents", "test_evidence", "test_methodology", "test_pipeline", "test_reviews",
+               "test_plain_pipeline_runs"}
 # Evidence ids those tests use, owned by org A.
-_SEEDED_EVIDENCE = ("EV-1", "EV-2", "EV-9", "EV-123", "EV-PIPE", "EV-STATUS", "EV-EMPTY")
+_SEEDED_EVIDENCE = ("EV-1", "EV-2", "EV-9", "EV-123", "EV-PIPE", "EV-STATUS", "EV-EMPTY", "EV-U", "EV-S")
 
 
 def make_user(role: str = "org_member", org_id: uuid.UUID | None = ORG_A) -> CurrentUser:

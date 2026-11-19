@@ -39,9 +39,11 @@ export const SETTINGS_KEYS = [
   // Not a Setup field, but PATCH replaces `settings`, so it must round-trip or a Setup save wipes it.
   "recalculation",
   "outOfScopeDataPoints",
-  // Added in Evidence; PATCH replaces `settings`, so a Setup save must send it back.
-  "evidenceLines",
 ] as const satisfies readonly (keyof EngagementConfig)[];
+
+/** Read from `settings` but never sent back. The reviewers' Evidence lines change only through the Evidence
+ *  actions (the server keeps them and ignores a save's copy), so a Setup save from a stale tab cannot undo them. */
+const READ_ONLY_KEYS = ["evidenceLines"] as const satisfies readonly (keyof EngagementConfig)[];
 
 export interface EngagementPayload {
   name: string;
@@ -66,7 +68,7 @@ export function engagementFromBackend(row: BackendEngagement): EngagementConfig 
     boundaryApproach: text("boundaryApproach"),
     scopeBoundaryStatement: text("scopeBoundaryStatement"),
   };
-  for (const key of SETTINGS_KEYS) {
+  for (const key of [...SETTINGS_KEYS, ...READ_ONLY_KEYS]) {
     if (!(key in config) && settings[key] !== undefined && settings[key] !== null) {
       (config as unknown as Record<string, unknown>)[key] = settings[key];
     }

@@ -8,3 +8,4 @@
 /playwright-report/
 /test-results/
 /e2e/.state.json
+/e2e/.admin-session.json

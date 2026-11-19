@@ -7,6 +7,7 @@ import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import type { EngagementConfig, EvidenceItem } from "../types";
 import { AiTypeNote } from "./AiTypeNote";
 import { AiValueNote } from "./AiValueNote";
+import { RereadNote } from "./RereadNote";
 import { AI_VALUE } from "../constants/copy";
 import type { PageMark, ReviewSpan, ReviewValue, ScopePlacement, ValueRecordEntry, ValueReviewState } from "../types/review";
 import type { Ask } from "../types/requests";
@@ -970,6 +971,7 @@ function ValueCard({
         ) : null}
       </div>
       <AiValueNote value={v} />
+      <RereadNote value={v} />
       <div className="s1-xr-card__scopes">
         {scopeChips(vs).map((chip) => (
           <span key={chip.label} className={`s1-xr-scope s1-xr-scope--${chip.scope}`}>
