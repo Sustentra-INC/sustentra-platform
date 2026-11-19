@@ -70,7 +70,7 @@ BILL_TO_LABELS: tuple[tuple[str, ...], ...] = (
 # Who a bill asks to be paid: the organisation named there is a candidate for the supplier, after the
 # letterhead and the labelled reads. (Not a bank, a lockbox or a PO box: those are where, not who.)
 REMIT_LABELS: tuple[tuple[str, ...], ...] = (
-    ("remit payment to", "remit to", "make checks payable to", "make payment to", "payable to", "pay to"),
+    ("remit payment to", "remit to", "make checks payable to", "payable to"),
 )
 # When a document names no site at all, the company on the bill is the facility, as on a utility bill to a
 # single plant (the golden set's SC-03 and SC-05). Set False to leave such a document with no facility,
@@ -431,6 +431,59 @@ def _third_band_floor(heights: Sequence[float]) -> float | None:
     return bands[-1] if bands else None
 
 
+_LEGAL_SUFFIXES = frozenset({"inc", "incorporated", "llc", "co", "company", "corp", "corporation", "ltd", "limited",
+                             "gmbh", "ag", "sa", "plc"})
+_UTILITY_WORDS = frozenset({"gas", "energy", "electric", "electricity", "power", "utility", "utilities", "water", "fuel",
+                            "fuels", "propane", "oil", "petroleum", "heating", "cooperative", "coop", "authority",
+                            "district", "light", "natural", "steam"})
+# What a supplier's name ends in. A name that ends in anything else on a Remit To line is a person, a bank or a
+# department, not the company.
+_ORGANISATION_WORDS = frozenset({"co", "company", "inc", "llc", "ltd", "corp", "corporation", "energy", "gas", "power",
+                                 "utilities", "utility", "electric", "district", "authority", "cooperative"})
+_NOT_A_PAYEE = re.compile(
+    r"\b(?:c/o|attn|dept|department|cent(?:er|re)|processing|payments?|lock\s?box|bank|n\.?a\.?|services?|billing|"
+    r"remittance|p\.?\s?o\.?\s*box)(?!\w)", re.IGNORECASE)
+
+
+def _company_words(name: str) -> list[str]:
+    """A company name as comparable words: lower case, no punctuation, dashes or bracketed text, and no
+    legal suffix (Inc, LLC, Co, Corp, Ltd...)."""
+
+    low = re.sub(r"\([^)]*\)|\[[^\]]*\]", " ", name.casefold())
+    return [word for word in re.sub(r"[\W_]+", " ", low).split() if word not in _LEGAL_SUFFIXES]
+
+
+def _same_company(first: str, second: str) -> bool:
+    """Whether two names are one company: equal as words, or one the other plus more ("Northgate Provisions Inc -
+    Plant 4" and "NORTHGATE PROVISIONS INC"). A one-word name only matches an equal one."""
+
+    a, b = _company_words(first), _company_words(second)
+    if not a or not b:
+        return False
+    short, long = sorted((a, b), key=len)
+    return short == long or (len(short) >= 2 and long[:len(short)] == short)
+
+
+def _names_a_utility(name: str) -> bool:
+    return any(word in _UTILITY_WORDS for word in _company_words(name))
+
+
+def _is_customer(name: str, customers: Sequence[str]) -> bool:
+    """Whether ``name`` is one of the customers or the customer's parent: the same company, the same first two
+    words, or the same first word (four letters or more) in a name that says nothing about being a utility."""
+
+    words = _company_words(name)
+    for customer in customers:
+        theirs = _company_words(customer)
+        if _same_company(name, customer):
+            return True
+        if len(words) >= 2 and len(theirs) >= 2 and words[:2] == theirs[:2]:
+            return True
+        if words and theirs and words[0] == theirs[0] and len(words[0]) >= 4 and not _names_a_utility(name):
+            return True
+    return False
+
+
 def _has_letters(value: str) -> bool:
     return bool(re.search(r"[^\W\d_]{2}", value))
 
@@ -693,10 +746,10 @@ class StationaryCombustionExtractor:
         document_values["service_address"] = self._address(rows) or address_from_facility
 
         records = self._quantity_records(rows)
-        if not records and self.INLINE_TOTAL_QUANTITY:  # extraction only: classification (confirms) never reads it
-            records = self._inline_total_records(rows)
-        if not records and self.HEADLINE_QUANTITY:
+        if not records and self.HEADLINE_QUANTITY:  # extraction only: classification (confirms) never reads these
             records = self._headline_quantity_records(rows)
+        if not records and self.INLINE_TOTAL_QUANTITY:  # the weakest read, so it runs only when nothing else found one
+            records = self._inline_total_records(rows)
         period = self._document_period(rows)
         unit_hint = self._document_unit(rows)
 
@@ -1271,45 +1324,59 @@ class StationaryCombustionExtractor:
                                   inline_gap=True)
 
     def _supplier(self, rows: Sequence[Row]) -> Located | None:
-        """The company that issued the bill. Never the customer: the name a Bill To, Sold To, Service For or
-        Customer label gives is the other party. In order: a labelled supplier, an "Exported from" footer, the
-        letterhead, then the organisation on a Remit To or Payable To line."""
+        """The company that issued the bill. Never the customer: the name a Bill To, Sold To, Customer or Service For
+        label gives is the other party, whether the name repeats it exactly, with a suffix or branch added
+        ("Northgate Provisions Inc - Plant 4"), or is its parent. In order: a labelled supplier, an "Exported from"
+        footer, the letterhead, then the organisation on a Remit To or Payable To line."""
 
         # A "Service For" block is the site's (``SERVICE_BLOCK_HEADINGS``), but the first line in it that is not a
         # site is still a customer, so its name is the other party too.
-        customers = {key for key in (self._party_key(rows, BILL_TO_LABELS),
-                                     self._party_key(rows, (SERVICE_BLOCK_HEADINGS[:1],))) if key}
+        customers = [name for name in (self._party_name(rows, BILL_TO_LABELS),
+                                       self._party_name(rows, (SERVICE_BLOCK_HEADINGS[:1],))) if name]
 
         def other_party(found: Located | None) -> Located | None:
-            return None if found is not None and _name_key(found.raw.split(",")[0]) in customers else found
+            return None if found is not None and _is_customer(found.raw.split(",")[0], customers) else found
 
         labeled = other_party(self._find_labeled(rows, SUPPLIER_LABELS, accept=self._looks_like_org_name,
                                                  allow_next_row=False, inline=True))
         if labeled is None and (exported := self._exported_from(rows)) is not None:
             return exported  # an explicit "Exported from <supplier>" beats a guess at the letterhead
         letterhead = other_party(self._letterhead(rows))
-        remit = other_party(self._remit_to(rows))
-        if (letterhead is not None and remit is not None and letterhead.confidence < CONF_LETTERHEAD  # a guess at line one,
-                and _name_key(letterhead.raw) != _name_key(remit.raw)  # not the largest text on the page
-                and self._is_addressee_block(rows, letterhead)):
-            letterhead = None  # the top block is who the statement is addressed to, and the bill says who is paid
+        if (letterhead is not None and letterhead.confidence < CONF_LETTERHEAD  # a guess at line one, not the largest text
+                and not _names_a_utility(letterhead.raw) and self._is_addressee_block(rows, letterhead)):
+            letterhead = None  # the block a statement is addressed with, and nothing in the name says utility
         if letterhead is not None and (labeled is None or labeled.row is None or labeled.row.index > 2):
             return letterhead
         if labeled is not None:
             labeled.raw = re.split(r"\s{2,}|\s+(?:GST|HST|VAT|Tax ID|EIN)\b", labeled.raw)[0].strip()
             return labeled
-        return self._exported_from(rows) or remit
+        return self._exported_from(rows) or other_party(self._remit_to(rows))
+
+    def _party_name(self, rows: Sequence[Row], groups: Sequence[Sequence[str]]) -> str:
+        """The name a billing-party label gives, as written ("" when the document has none)."""
+
+        for _, _, lines in self._label_blocks(rows, groups):
+            for _, text in lines:
+                if not _is_attention_line(text) and _has_letters(text):
+                    return text.split(",")[0].strip()
+        return ""
 
     def _remit_to(self, rows: Sequence[Row]) -> Located | None:
         """The organisation a bill asks to be paid ("REMIT TO: SIERRA BASIN ENERGY CO, PO BOX 618"): the name
-        before the first comma or dash. A bank, a lockbox, a remittance centre or a PO box is where to pay, not
-        who is paid, so none of those is a supplier."""
+        before the first comma or dash, or after "on behalf of". It must end in an organisation word (Co, Inc,
+        Energy, Gas, Utilities...) and must not be where or through whom to pay: a bank, lockbox, remittance or
+        payment-processing centre, a department, an "in care of" or "attention" line, a billing or services
+        company, a PO box or a street. Those name no supplier."""
 
         for label_cell, row, lines in self._label_blocks(rows, REMIT_LABELS):
             for cell, text in lines[:1]:
-                name = re.split(r"\s{2,}|,|\s+[-\u2013\u2014|]\s+", text)[0].strip()
+                behalf = re.search(r"\bon behalf of\s+(.+)$", text, re.IGNORECASE)
+                name = re.split(r"\s{2,}|,|\s+[-\u2013\u2014|]\s+", behalf.group(1) if behalf else text)[0].strip()
+                name = name.rstrip(".")
+                words = re.sub(r"[^\w ]+", " ", name.casefold()).split()
                 if (name and not name[0].isdigit() and self._looks_like_org_name(name)
-                        and not re.search(r"\b(?:lock\s?box|bank|remittance|p\.?\s?o\.?\s*box)\b", name, re.I)):
+                        and words and words[-1] in _ORGANISATION_WORDS
+                        and not _NOT_A_PAYEE.search(name)):
                     return Located(name, [cell], row, CONF_LETTERHEAD - 0.1, label_cell=label_cell, context=text)
         return None
 
@@ -1676,25 +1743,36 @@ class StationaryCombustionExtractor:
     # it. "TOTAL AMOUNT DUE $1,474.33" and "TOTAL CHARGES 1,474.33" have a word where the number should be, a
     # "$" or no unit; "PREV 40,211 CURR 41,447" has no TOTAL.
     _INLINE_TOTAL = re.compile(
-        r"(?<![\w$])total\s+(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s+(?P<unit>[^\W\d_]+)(?![\w$@])",
+        r"(?<![\w$])total\s+(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s+(?P<unit>[^\W\d_]+)(?=\s|$)",
         re.IGNORECASE)
+    # A line that is about a period other than the bill's own ("YEAR TO DATE TOTAL 14,200 THERMS", "SAME MONTH
+    # LAST YEAR TOTAL 1,190 THERMS", "AVG DAILY TOTAL 41"), a year, or a month name is not the bill's usage.
+    _NOT_THIS_PERIOD = re.compile(
+        r"\b(?:ytd|years?|annual|months?|last|prior|previous|avg|average|daily|day|budget|estimated|est|history)\b"
+        r"|\bto date\b|\b(?:19|20)\d{2}\b", re.IGNORECASE)
 
     def _inline_total_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
         """A dense statement that states its usage inside a line: "THERM FACTOR 1.030 TOTAL 1,273.1 THERMS".
-        The labelled usage table and the labelled reads are tried first. Money is never taken (a "$", or a TOTAL
-        that is followed by a word); when the document says it more than once with different numbers, nothing
-        is guessed."""
+        It runs last: the labelled reads, the usage table and the headline read are tried first. Money is never
+        taken (a "$", or a TOTAL that is followed by a word), nor a line about another period (year to date,
+        last year, a daily average, a budget plan, an estimate, a month or a year). When the document says it
+        more than once with different numbers or units, nothing is guessed."""
 
         found: dict[tuple[float, str], tuple[Row, Cell, re.Match[str]]] = {}
         for row in rows:
             for cell in row.cells:
+                if self._NOT_THIS_PERIOD.search(cell.text) or _names_a_month(cell.text):
+                    continue
                 for match in self._INLINE_TOTAL.finditer(cell.text):
                     unit = match.group("unit")
-                    if self._canonical_unit(unit) is None or fuel_units.is_ambiguous_in_text(unit):
+                    canonical = self._canonical_unit(unit)
+                    if canonical is None or canonical in ELECTRIC_UNITS or fuel_units.is_ambiguous_in_text(unit):
                         continue
                     number = parse_number(match.group("num"))
-                    if number is not None:
-                        found.setdefault((number[0], unit.lower()), (row, cell, match))
+                    if number is None or ("," not in match.group("num") and "." not in match.group("num")
+                                          and 1990 <= number[0] <= 2100):
+                        continue  # a bare year is not a quantity
+                    found.setdefault((number[0], canonical), (row, cell, match))  # THERMS and THM are one unit
         if len(found) != 1:
             return []
         row, cell, match = next(iter(found.values()))
