@@ -19,6 +19,7 @@ Where a document is filed
 from __future__ import annotations
 
 import re
+import uuid
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
@@ -171,16 +172,94 @@ def vehicle_group_label(group: dict[str, Any]) -> str:
     return str(group.get("label") or f"{group.get('vehicle_type')} ({group.get('factor_fuel_type')})")
 
 
-def vehicle_group_anchors(groups: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:
-    """(anchor id, group) for each vehicle group in settings: ``vg-<label slug>``, numbered
-    when two groups share a label."""
+GROUP_ID = re.compile(r"^vg-[a-z0-9](?:[a-z0-9-]{0,66}[a-z0-9])?$")  # a vehicle group's id: also its line anchor
+
+
+def new_group_id(taken: set[str]) -> str:
+    """A fresh, opaque id for a vehicle group (``vg-`` and 12 hex digits), unlike every id in ``taken``."""
+
+    while True:
+        candidate = f"vg-{uuid.uuid4().hex[:12]}"
+        if candidate not in taken:
+            return candidate
+
+
+def legacy_group_anchors(groups: list[dict[str, Any]]) -> list[str]:
+    """The anchor a group had before groups carried an id: ``vg-<label slug>``, numbered by order among
+    the groups whose labels give the same slug. Kept for groups with no ``group_id`` (older data, a demo)
+    and by the migration that gave existing groups their ids (so no key, line or placement changed)."""
 
     seen: dict[str, int] = {}
-    out: list[tuple[str, dict[str, Any]]] = []
+    out: list[str] = []
     for group in groups:
         base = f"vg-{slug(vehicle_group_label(group))}"
         seen[base] = seen.get(base, 0) + 1
-        out.append((base if seen[base] == 1 else f"{base}-{seen[base]}", group))
+        out.append(base if seen[base] == 1 else f"{base}-{seen[base]}")
+    return out
+
+
+def vehicle_group_anchors(groups: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:
+    """(anchor id, group) for each vehicle group in settings: the group's own ``group_id``, which the
+    server gave it when it was created and keeps through renames, removals and reordering. A group with no
+    ``group_id`` (data from before ids) takes its legacy anchor, moved on if an id already uses it."""
+
+    taken = {str(g["group_id"]) for g in groups if isinstance(g.get("group_id"), str) and GROUP_ID.match(g["group_id"])}
+    legacy = legacy_group_anchors(groups)
+    out: list[tuple[str, dict[str, Any]]] = []
+    for group, old in zip(groups, legacy, strict=True):
+        own = group.get("group_id")
+        if isinstance(own, str) and GROUP_ID.match(own):
+            out.append((own, group))
+            continue
+        anchor, n = old, 1
+        while anchor in taken:
+            n += 1
+            anchor = f"{old}-x{n}"
+        taken.add(anchor)
+        out.append((anchor, group))
+    return out
+
+
+def assign_group_ids(groups: list[dict[str, Any]], stored: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """The vehicle groups of a save, each with a ``group_id`` the server chose or kept.
+
+    A group keeps the id it already has when that id belongs to one of the engagement's stored groups
+    (so a rename, a reorder or a removal of another group changes nothing). A group that sends no id is
+    matched to a stored group that is unchanged in its fuel, vehicle type, fuel type and name and not yet
+    matched (a client that does not send ids back), and otherwise is new. A group that sends an id the
+    engagement never had is new too, whatever the id says. A new group gets a fresh id, never the id of
+    a group that was removed.
+    """
+
+    stored = [g for g in stored or [] if isinstance(g, dict)]
+    stored_anchors = vehicle_group_anchors(stored)  # a group saved before ids is known by its legacy anchor
+    known = {anchor for anchor, _ in stored_anchors}
+    used: set[str] = set()
+    out: list[dict[str, Any]] = []
+    pending: list[int] = []  # groups with no usable id yet; the ones that sent an id the engagement never had
+    for group in groups:
+        given = group.get("group_id")
+        if isinstance(given, str) and given in known and given not in used:
+            used.add(given)
+            out.append(dict(group))
+        else:
+            out.append({k: v for k, v in group.items() if k != "group_id"})
+            pending.append(len(out) - 1)
+    # a client that sends no ids back: an unchanged group is still the same group
+    same = ("fuel", "vehicle_type", "factor_fuel_type", "on_road", "label")
+    for index in pending:
+        if "group_id" in groups[index]:
+            continue  # it named an id this engagement never had: not trusted, so it is a new group
+        match = next((anchor for anchor, g in stored_anchors
+                      if anchor not in used and all(g.get(k) == out[index].get(k) for k in same)), None)
+        if match is not None:
+            used.add(match)
+            out[index]["group_id"] = match
+    taken = known | used
+    for group in out:
+        if "group_id" not in group:
+            group["group_id"] = new_group_id(taken)
+            taken.add(group["group_id"])
     return out
 
 
