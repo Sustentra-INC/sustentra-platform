@@ -336,6 +336,56 @@ def _blank_dates(text: str) -> str:
     return text
 
 
+# Words in the label above or beside a date that say it is not the service period.
+_NOT_A_SERVICE_PERIOD = ("next", "due", "pay by", "statement", "bill date", "billing date", "issued", "read")
+_RANGE_SEPARATOR = re.compile(r"^\s*(?:[-\u2013\u2014]|to|through)\s*", re.IGNORECASE)
+
+
+def _only_a_date_range(text: str) -> bool:
+    """Whether ``text`` is exactly a date, a dash (or "to", "through") and a date, 20 to 100 days long. The
+    first date may leave its year to the second ("October 1 - 31, 2025"). Anything else in it, two dates with
+    no dash between them included, is not a range."""
+
+    if _SHORT_RANGE_RE.fullmatch(text):
+        dates = parse_dates(text)
+    elif (first := parse_date(text)) is not None and first[1] == 0 and (gap := _RANGE_SEPARATOR.match(text[first[2]:])):
+        tail = text[first[2] + gap.end():]
+        second = parse_date(tail)
+        if second is None or second[1] != 0 or tail[second[2]:].strip():
+            return False
+        dates = [first[0], second[0]]
+    else:
+        return False
+    return len(dates) == 2 and 20 <= (date.fromisoformat(dates[1]) - date.fromisoformat(dates[0])).days <= 100
+
+
+def _labelled_as(rows: Sequence[Row], cell: Cell, words: Sequence[str]) -> bool:
+    """Whether the text directly above ``cell`` or just to its left contains one of ``words`` (a label such
+    as "Next scheduled meter read" or "Current reading"). Cells without geometry have no neighbours."""
+
+    box = cell.box
+    if box is None:
+        return False
+    above: tuple[float, str] | None = None
+    left: tuple[float, str] | None = None
+    for row in rows:
+        if row.page != cell.page:
+            continue
+        for other in row.cells:
+            if other is cell or other.box is None:
+                continue
+            bottom = other.box["top"] + other.box["height"]
+            rise = box["top"] - bottom
+            if -0.005 <= rise <= max(cell.height, 0.03) and other.left < cell.right and other.right > cell.left:
+                if above is None or rise < above[0]:
+                    above = (rise, other.text)
+            beside = cell.left - other.right
+            if -0.005 <= beside <= 0.15 and abs(other.center_y - cell.center_y) <= max(cell.height, other.height) / 2:
+                if left is None or beside < left[0]:
+                    left = (beside, other.text)
+    return any(word in text.lower() for found in (above, left) if found for text in (found[1],) for word in words)
+
+
 def _has_letters(value: str) -> bool:
     return bool(re.search(r"[^\W\d_]{2}", value))
 
@@ -505,6 +555,10 @@ class StationaryCombustionExtractor:
     DATE_HEADERS: tuple[str, ...] = _DATE_HEADERS
     UNIT_HEADERS: tuple[str, ...] = _UNIT_HEADERS
     QTY_EXCLUDE: tuple[str, ...] = _QTY_EXCLUDE
+    # Whether a bill that leads with its quantity in large type ("1,486" over "therms used") is read. Only the
+    # natural gas reader reads it: the others look for other units and layouts, and a number above a unit word
+    # is too weak a sign for them.
+    HEADLINE_QUANTITY = True
     # Additional table columns kept on each record: key -> header names (normalized).
     # A fuel log's "Site" / "Facility" column: each line's facility (a log can cover several).
     EXTRA_COLUMNS: dict[str, tuple[str, ...]] = {
@@ -591,6 +645,8 @@ class StationaryCombustionExtractor:
         document_values["service_address"] = self._address(rows) or address_from_facility
 
         records = self._quantity_records(rows)
+        if not records and self.HEADLINE_QUANTITY:  # extraction only: classification (confirms) never reads it
+            records = self._headline_quantity_records(rows)
         period = self._document_period(rows)
         unit_hint = self._document_unit(rows)
 
@@ -1297,18 +1353,15 @@ class StationaryCombustionExtractor:
     @staticmethod
     def _standalone_range(rows: Sequence[Row]) -> Located | None:
         """A period with no label, as a consumer-style bill prints it ("October 1 - 31, 2025"): a cell that
-        is nothing but a date range. Only when the document has exactly one such range (a bill that also
-        prints last year's, or a chart's, is ambiguous) and it is a month-or-so long, not a year."""
+        is exactly a date, a dash (or "to", "through") and a date, 20 to 100 days long, and not labelled as a
+        due, statement or next-read date. Only when the document has exactly one such range (a bill that
+        also prints last year's, or a chart's, is ambiguous)."""
 
         found: list[tuple[Row, Cell]] = []
         for row in rows:
             for cell in row.cells:
                 text = cell.text.strip().rstrip(".")
-                dates = parse_dates(text)
-                whole = _SHORT_RANGE_RE.fullmatch(text) is not None or (
-                    len(dates) == 2 and parse_date(text) is not None and parse_date(text)[1] == 0  # type: ignore[index]
-                    and re.fullmatch(r"[\w .,/\u2013\u2014-]+", text) is not None and len(text) <= 40)
-                if whole and len(dates) == 2 and 0 <= (date.fromisoformat(dates[1]) - date.fromisoformat(dates[0])).days <= 100:
+                if _only_a_date_range(text) and not _labelled_as(rows, cell, _NOT_A_SERVICE_PERIOD):
                     found.append((row, cell))
         if len(found) != 1:
             return None
@@ -1521,24 +1574,41 @@ class StationaryCombustionExtractor:
     def _quantity_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
         """Usage table rows, else a labeled quantity (subclasses add more layouts)."""
 
-        return (self._usage_table_records(rows) or self._labeled_quantity_records(rows)
-                or self._headline_quantity_records(rows))
+        return self._usage_table_records(rows) or self._labeled_quantity_records(rows)
 
     _BARE_NUMBER = re.compile(r"^\d{1,3}(?:,\d{3})+(?:\.\d+)?$|^\d+(?:\.\d+)?$")
+    _USAGE_WORDS = frozenset({"used", "billed", "consumed", "delivered", "usage"})
+    # Words in the text above or beside a number that say it is not the quantity of the bill.
+    _NOT_A_QUANTITY = ("reading", "capacity", "days", "year", "rate")
 
     def _headline_quantity_records(self, rows: Sequence[Row]) -> list[UsageRecord]:
         """A bill that leads with the quantity: "1,486" in large type with "therms used" directly below it.
-        The number must stand alone (no "$", no ID) and the unit must be the first word of the line right
-        under it, in the same column; an amount, an account number or a phone number has no unit there.
+
+        Only a laid-out page counts (a line of plain text carries no sign of size), and only when:
+        - the number stands alone (no "$", no ID) and is at least twice as tall as the unit line under
+          it, and among the three tallest sizes of text on its page;
+        - the unit line has no digit, starts with a unit that is not one of the short aliases that are
+          ambiguous in free text (St, T, L, CF, Ton), and goes on with nothing or a usage word
+          ("therms used"; not "therms per day", "gallons capacity", "kWh actual" or "St. Louis, MO");
+        - the text just above or beside the number is not a label that excludes it (a reading, a
+          capacity, days, a year, a rate, an amount).
         When the document has two such pairs, nothing is guessed."""
 
+        sizes: dict[int | None, list[float]] = {}
+        for row in rows:
+            for cell in row.cells:
+                if cell.box is not None:
+                    sizes.setdefault(row.page, []).append(round(cell.height, 4))
         pairs: list[tuple[Row, Cell, Row, Cell]] = []
         for position, row in enumerate(rows):
+            tallest = sorted(set(sizes.get(row.page, [])), reverse=True)[:3]
             for cell in row.cells:
-                if not self._BARE_NUMBER.match(cell.text.strip()):
+                if cell.box is None or not self._BARE_NUMBER.match(cell.text.strip()):
+                    continue
+                if not tallest or round(cell.height, 4) < tallest[-1]:
                     continue
                 below = self._unit_line_below(rows, position, cell)
-                if below is not None:
+                if below is not None and not _labelled_as(rows, cell, (*self.QTY_EXCLUDE, *self._NOT_A_QUANTITY)):
                     pairs.append((row, cell, *below))
         if len(pairs) != 1:
             return []
@@ -1547,20 +1617,20 @@ class StationaryCombustionExtractor:
         if parsed is None:
             return []
         unit_word = unit_cell.text.split()[0]
-        quantity = Located(parsed[1], [number], row, CONF_TABLE, context=f"{number.text} {unit_cell.text}")
+        quantity = Located(parsed[1], [number], row, CONF_DOCUMENT_SCAN, context=f"{number.text} {unit_cell.text}")
         return [UsageRecord(quantity=quantity, unit_raw=unit_word,
                             unit_located=Located(unit_cell.text, [unit_cell], unit_row, CONF_NEXT_CELL), hint=None)]
 
     def _unit_line_below(self, rows: Sequence[Row], position: int, number: Cell) -> tuple[Row, Cell] | None:
-        def is_unit_line(text: str) -> bool:
-            words = text.split()
-            return 0 < len(words) <= 4 and self._canonical_unit(words[0].strip(".,:;")) is not None
+        def is_unit_line(cell: Cell) -> bool:
+            words = [word.strip(".,:;") for word in cell.text.split()]
+            if not words or re.search(r"\d", cell.text) or number.height < 2 * cell.height:
+                return False
+            first = words[0].lower()
+            return (self._canonical_unit(words[0]) is not None and first not in fuel_units._AMBIGUOUS_IN_TEXT
+                    and all(word.lower() in self._USAGE_WORDS for word in words[1:]) and len(words) <= 2)
 
-        if number.box is None:  # plain text: the next line
-            if position + 1 < len(rows):
-                following = rows[position + 1]
-                if len(following.cells) == 1 and is_unit_line(following.cells[0].text):
-                    return following, following.cells[0]
+        if number.box is None:
             return None
         bottom = number.box["top"] + number.box["height"]
         best: tuple[float, Row, Cell] | None = None
@@ -1573,7 +1643,7 @@ class StationaryCombustionExtractor:
                 gap = cell.box["top"] - bottom
                 if -0.005 <= gap <= max(0.5 * number.height, 0.02) and (best is None or gap < best[0]):
                     best = (gap, other, cell)
-        if best is not None and is_unit_line(best[2].text):
+        if best is not None and is_unit_line(best[2]):
             return best[1], best[2]
         return None
 
