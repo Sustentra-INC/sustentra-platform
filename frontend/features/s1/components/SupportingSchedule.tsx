@@ -7,6 +7,7 @@ import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSc
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { ApiError } from "../../../lib/api";
 import { userFacingApiError } from "../api/s1Backend";
+import { AI_VALUE } from "../constants/copy";
 import { ContainerStateSurface } from "./ContainerStateSurface";
 
 /**
@@ -485,10 +486,13 @@ function IdentifierItem({ group, onOpenDocument }: { group: IdentifierGroup; onO
   const all = group.documents_with === group.documents_total;
   const summary = group.values.length > 1 ? `${group.values.length} values` : (group.values[0]?.value.trim() || "Not found");
   const count = (n: number) => `${n} ${n === 1 ? "document" : "documents"}`;
-  const docLink = (d: { document_id: string; file_name: string }) => (
-    <button key={d.document_id} className="s1-linklike" type="button" aria-label={`Open ${d.file_name}`} onClick={() => onOpenDocument(d.document_id)}>
-      {d.file_name}
-    </button>
+  const docLink = (d: { document_id: string; file_name: string; read_by_claude?: boolean }) => (
+    <span key={d.document_id} className="s1-sch-ids__doc">
+      <button className="s1-linklike" type="button" aria-label={`Open ${d.file_name}`} onClick={() => onOpenDocument(d.document_id)}>
+        {d.file_name}
+      </button>
+      {d.read_by_claude ? <span className="s1-muted"> · {AI_VALUE.readBy}</span> : null}
+    </span>
   );
   return (
     <li className={all ? "" : "is-partial"}>

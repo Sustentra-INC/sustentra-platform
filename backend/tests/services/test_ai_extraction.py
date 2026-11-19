@@ -567,7 +567,8 @@ def test_known_gap_rows_are_seeded_for_the_types_that_allow_them() -> None:
     gaps = {(c.canonical_type_id, c.field_id): c for c in load_default_extraction_configs() if c.ai_only}
     assert set(gaps) == {("CT-S1-FUELQTY", "heat_content"), ("CT-S1-FUELQTY", "meter_number"),
                          ("CT-S1-MOBFUEL", "vehicle_type"), ("CT-S1-MOBFUEL", "model_year"),
-                         ("CT-S1-MOBFUEL", "distance"), ("CT-S2-ELEC", "meter_number"),
+                         ("CT-S1-MOBFUEL", "distance"), ("CT-S1-MOBFUEL", "on_or_non_road"),
+                         ("CT-S1-MOBFUEL", "heat_content"), ("CT-S2-ELEC", "meter_number"),
                          ("CT-S2-THERMAL", "meter_number")}
     assert all(c.required_status == "optional" and c.extraction_methods == ("llm_structured",) for c in gaps.values())
     assert gaps[("CT-S1-MOBFUEL", "distance")].expected_units == ("mi", "km")
@@ -576,9 +577,10 @@ def test_known_gap_rows_are_seeded_for_the_types_that_allow_them() -> None:
 def test_rule_extraction_never_sees_the_known_gap_rows() -> None:
     service = ExtractionTargetService()
     default = {t["field_id"] for t in service.get_targets_for_canonical_type("CT-S1-MOBFUEL")}
-    assert not {"vehicle_type", "model_year", "distance"} & default
+    assert not {"vehicle_type", "model_year", "distance", "on_or_non_road", "heat_content"} & default
     with_gaps = service.get_targets_for_canonical_type("CT-S1-MOBFUEL", include_ai_only=True)
-    assert {t["field_id"] for t in with_gaps if t.get("ai_only")} == {"vehicle_type", "model_year", "distance"}
+    assert {t["field_id"] for t in with_gaps if t.get("ai_only")} == {
+        "vehicle_type", "model_year", "distance", "on_or_non_road", "heat_content"}
     assert all("ai_only" not in t for t in service.get_targets_for_canonical_type("CT-S1-MOBFUEL"))
 
 

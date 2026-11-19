@@ -1207,6 +1207,30 @@ describe("the supporting schedule", () => {
     expect(props.onOpenDocument).toHaveBeenCalledWith("jan", "candidate:c1");
   });
 
+  it("labels an identifier Claude read, per document, in the expanded view", async () => {
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        identifier_groups: [
+          {
+            label: "Meter number",
+            values: [
+              { value: "№ 4471-Ж", documents: [{ document_id: "jan", file_name: "Müller Käserei – Zürich.pdf", read_by_claude: true }, { document_id: "feb", file_name: "feb.pdf", read_by_claude: false }] },
+            ],
+            not_found: [],
+            documents_with: 2,
+            documents_total: 2,
+          },
+        ],
+      },
+    };
+    renderSchedule();
+    fireEvent.click(await screen.findByRole("button", { name: /Meter number/ }));
+    const claude = screen.getByRole("button", { name: "Open Müller Käserei – Zürich.pdf" }).parentElement!;
+    expect(claude).toHaveTextContent("Read by Claude");
+    expect(screen.getByRole("button", { name: "Open feb.pdf" }).parentElement).not.toHaveTextContent("Read by Claude");
+  });
+
   it("round-trips a line key with : . - between results and the schedule", async () => {
     const key = "s1:stationary:natural-gas:fac-k.c-01";
     const encoded = `/engagements/${ENG}/calculation-lines/${encodeURIComponent(key)}/schedule`;

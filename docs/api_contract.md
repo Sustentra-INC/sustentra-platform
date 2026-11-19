@@ -355,7 +355,7 @@ for another org's engagement).
                                                      // accepted or not) heat_content, carbon_content,
                                                      // vehicle_type, model_year, on_or_non_road, distance
   activity_quantity_note: string | null,             // "Activity quantity: fuel quantity combusted" ...
-  identifier_groups: [{label, values: [{value, documents: [{document_id, file_name, matched_by?}]}],
+  identifier_groups: [{label, values: [{value, documents: [{document_id, file_name, matched_by?, read_by_claude?}]}],
                        not_found: [{document_id, file_name}], documents_with, documents_total,
                        matched_by?: [string]}] }     // matched_by on Facility only
 ```
@@ -378,6 +378,7 @@ Setup" or "Service address in Setup". Facility is listed for every line; Service
 and Meter number only for utility-bill lines (stationary natural gas, electricity, steam, heating, cooling).
 Values that differ only by case, spacing or Unicode form (NFKC, so full-width digits match ASCII) fall in one group, shown in the first
 spelling seen; a whitespace-only value counts as not found. `identifiers` (one entry per value) is kept for older clients.
+Identifiers never feed a number, so a meter number, account number or service address that Claude read counts here before a reviewer has decided it, and its document says `read_by_claude: true` (a value a rule also read is not marked; a rejected reading does not count). Everything that feeds a calculation still ignores a reading until a reviewer accepts it.
 
 A row counts (`accepted` true) only when its record is not in the recalculation's `awaiting_review`. When
 the quantity is reviewed but another required field is not (for example `fuel_type`), the row has
