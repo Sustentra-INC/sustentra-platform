@@ -178,7 +178,7 @@ export function buildSchedule(lineKey: string): LineSchedule | null {
       date: { start: r.start, end: r.end, days, label },
       // As the bill prints it: the backend returns the value's text, separators included.
       activity_quantity: { value: r.quantity === null ? null : r.quantity.toLocaleString("en-US"), unit: r.quantity === null ? null : r.unit },
-      cells: r.distance !== null ? { distance: { value: r.distance.toLocaleString("en-US"), unit: "mi" } } : {},
+      cells: r.distance !== null ? { distance: { value: r.distance.toLocaleString("en-US"), unit: "mi", candidate_id: r.candidateId, page: r.page } } : {},
       saved_by: r.accepted && r.reviewer ? { name: r.reviewer, at: r.reviewedAt } : null,
       document_id: r.documentId, file_name: r.fileName, page: r.quantity === null ? null : r.page, candidate_id: r.candidateId,
     });

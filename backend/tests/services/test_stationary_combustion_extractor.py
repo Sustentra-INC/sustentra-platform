@@ -1184,3 +1184,96 @@ def test_an_address_block_first_line_is_the_letterhead_when_nobody_else_is_paid(
              "Total Usage: 900 therms"]
 
     assert _value(_fields(lines, targets), "supplier_name") == "NORTHGATE PROVISIONS INC"
+# --- fix round 2: the line under the unit line, whole-word labels, height bands ---------------------------
+UNDER_UNIT_LAYOUTS: dict[str, list[tuple[str, float, float, float, float]]] = {
+    "a daily average": HEAD + [("Average daily use", 0.05, 0.25, 0.15, BODY), ("48", 0.05, 0.27, 0.06, 0.05),
+                               ("therms", 0.05, 0.322, 0.08, 0.015), ("per day", 0.05, 0.34, 0.08, 0.015),
+                               ("Total therms: 1,486", 0.5, 0.6, 0.2, BODY)],
+    "a tank size": HEAD + [("500", 0.05, 0.27, 0.06, 0.05), ("gallons", 0.05, 0.322, 0.08, 0.015),
+                           ("tank capacity", 0.05, 0.34, 0.1, 0.015), ("Total therms: 1,486", 0.5, 0.6, 0.2, BODY)],
+    "a meter reading": HEAD + [("46696", 0.05, 0.27, 0.1, 0.05), ("CCF", 0.05, 0.322, 0.08, 0.015),
+                               ("current meter reading", 0.05, 0.34, 0.15, 0.015),
+                               ("Total therms: 1,486", 0.5, 0.6, 0.2, BODY)],
+    "last year's figure": HEAD + [("Same month last yr", 0.05, 0.25, 0.15, BODY), ("1,640", 0.05, 0.27, 0.1, 0.05),
+                                  ("therms", 0.05, 0.322, 0.08, 0.015), ("October 2024", 0.05, 0.34, 0.1, 0.015),
+                                  ("Total therms: 1,486", 0.5, 0.6, 0.2, BODY)],
+    "last year's figure, year only": HEAD + [("1,640", 0.05, 0.27, 0.1, 0.05), ("therms", 0.05, 0.322, 0.08, 0.015),
+                                             ("in 2024", 0.05, 0.34, 0.1, 0.015)],
+    "a date under the unit": HEAD + [("1,640", 0.05, 0.27, 0.1, 0.05), ("therms", 0.05, 0.322, 0.08, 0.015),
+                                     ("as of 10/31/2025", 0.05, 0.34, 0.1, 0.015)],
+    "a previous period (non-ASCII)": HEAD + [("1,640", 0.05, 0.27, 0.1, 0.05), ("therms", 0.05, 0.322, 0.08, 0.015),
+                                             ("Vorjahr: previous Zürich", 0.05, 0.34, 0.2, 0.015)],
+}
+
+
+@pytest.mark.parametrize("name", list(UNDER_UNIT_LAYOUTS))
+def test_a_qualifier_or_a_date_under_the_unit_line_means_it_is_not_the_bills_quantity(
+        targets: list[dict], name: str) -> None:
+    fields = _read(UNDER_UNIT_LAYOUTS[name], targets)
+
+    assert fields["activity_quantity"].get("raw_value") in (None, "1,486"), name  # only a labelled total, never the tile
+    assert _value_of(fields, "activity_quantity") in (None, pytest.approx(148.6))
+
+
+def _value_of(fields: dict[str, dict], name: str) -> Any:
+    return fields.get(name, {}).get("normalized_value")
+
+
+def test_the_bills_own_period_under_the_unit_line_is_fine(targets: list[dict]) -> None:
+    layout = [row for row in MYSTERY if row[0] not in ("October 1 - 31, 2025",)] + [
+        ("October 1 - 31, 2025", 0.039, 0.245, 0.2, 0.012)]  # right under "therms used"
+
+    fields = _read(layout, targets)
+
+    assert fields["activity_quantity"]["raw_value"] == "1,486"
+
+
+@pytest.mark.parametrize("heading", ["Corporate account usage", "Your usage (31 days)", "Ihre Nutzung (31 Tage) – Zürich"])
+def test_a_heading_that_only_contains_a_label_word_does_not_exclude_the_number(targets: list[dict], heading: str) -> None:
+    # "rate" is inside "Corporate" and "days" is in a parenthesis about the period: whole words only
+    layout = MYSTERY + [(heading, 0.036, 0.15, 0.2, 0.012)]
+
+    assert _read(layout, targets)["activity_quantity"]["raw_value"] == "1,486"
+
+
+@pytest.mark.parametrize("heading", ["Days in period", "Billing rate", "Average usage", "Last year"])
+def test_a_heading_that_is_one_of_the_label_words_still_excludes_the_number(targets: list[dict], heading: str) -> None:
+    layout = MYSTERY + [(heading, 0.036, 0.15, 0.2, 0.012)]
+
+    _nothing_read(_read(layout, targets), "activity_quantity")
+
+
+@pytest.mark.parametrize("label", ["Meter read dates", "Reading period", "Service period (meter read dates)",
+                                   "Zählerablesung – meter read dates"])
+def test_a_meter_read_label_over_the_range_is_the_service_period(targets: list[dict], label: str) -> None:
+    layout = [row for row in MYSTERY if row[0] != "October 1 - 31, 2025"] + [
+        (label, 0.5, 0.30, 0.3, BODY), ("Oct 1 - 31, 2025", 0.5, 0.315, 0.3, BODY)]
+
+    fields = _read(layout, targets)
+
+    assert (_value_of(fields, "service_period_start"), _value_of(fields, "service_period_end")) == (
+        "2025-10-01", "2025-10-31")
+
+
+def test_sizes_within_ten_percent_are_one_size_so_ocr_jitter_does_not_push_the_number_out(targets: list[dict]) -> None:
+    # a logo, a heading and an amount in nearly the same large type: exact heights make four sizes, bands make one
+    layout = MYSTERY + [("CEDARLINE", 0.7, 0.02, 0.2, 0.0601), ("Gas", 0.7, 0.1, 0.1, 0.0599),
+                        ("Power – Zürich", 0.85, 0.1, 0.1, 0.0602), ("LOGO", 0.5, 0.02, 0.1, 0.07),
+                        ("Your bill", 0.7, 0.2, 0.2, 0.065)]
+
+    assert _read(layout, targets)["activity_quantity"]["raw_value"] == "1,486"
+
+
+def test_three_clearly_larger_sizes_still_keep_the_number_out(targets: list[dict]) -> None:
+    layout = MYSTERY + [("A", 0.7, 0.02, 0.2, 0.2), ("B", 0.7, 0.3, 0.2, 0.15), ("C", 0.7, 0.5, 0.2, 0.1)]
+
+    _nothing_read(_read(layout, targets), "activity_quantity")
+
+
+def test_the_ambiguous_unit_check_is_a_public_helper() -> None:
+    from backend.app.domain import fuel_units
+
+    for word in ("St", "st.", "T", "L", "CF", "Ton", "tons", "MT"):
+        assert fuel_units.is_ambiguous_in_text(word), word
+    for word in ("therms", "gallons", "CCF", "kWh"):
+        assert not fuel_units.is_ambiguous_in_text(word), word

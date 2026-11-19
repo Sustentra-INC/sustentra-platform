@@ -388,7 +388,7 @@ class EvidenceTreeService:
             extra = record.fields.get(field_name)
             value = (extra.value if extra.status in REVIEWED else extra.extracted) if extra is not None else None
             if extra is not None and value not in (None, ""):
-                cells[key] = {"value": value, "unit": extra.unit}
+                cells[key] = {"value": value, "unit": extra.unit, **EvidenceTreeService._source(extra)}
         index = record.record_index
         return {
             "record_key": f"{doc.document_id}:{0 if index is None else index}", "record_index": index,
@@ -399,7 +399,8 @@ class EvidenceTreeService:
             "date": {"start": _iso(start), "end": _iso(end),
                      "days": (end - start).days + 1 if start and end and end >= start else None,
                      "label": EvidenceTreeService._date_label(line, record.canonical_type_id, start, end)},
-            "activity_quantity": {"value": shown, "unit": unit},
+            "activity_quantity": {"value": shown, "unit": unit,
+                                  **(EvidenceTreeService._source(item) if item is not None else {})},
             "cells": cells,
             "saved_by": ({"name": name_of(item.reviewer), "at": _iso(item.reviewed_at)}
                          if reviewed and item.reviewer else None),
@@ -415,6 +416,16 @@ class EvidenceTreeService:
         columns.extend({"key": key, "label": label, "unit_in_cells": True}
                        for key, label, _ in EXTRA_COLUMNS if any(key in row["cells"] for row in rows))
         return columns
+
+    @staticmethod
+    def _source(item: Any) -> dict[str, Any]:
+        """Where one value was read, so the page can open the document at it: the candidate, and the
+        page (a PDF or image) or the sheet and cell (a workbook or CSV). Missing parts are None."""
+
+        ref = item.source_reference or {}
+        page = ref.get("page_number")
+        return {"candidate_id": item.candidate_id, "page": page if isinstance(page, int) and page > 0 else None,
+                "sheet": ref.get("sheet_name") or None, "cell": ref.get("cell_or_range") or None}
 
     @staticmethod
     def _text(value: Any) -> str | None:
@@ -535,17 +546,22 @@ class EvidenceTreeService:
                     how: str | None = None
                     if is_facility:
                         found = cl.facility_match(facilities, decisions, doc.document_id, record)
-                        text, how = (str(found[0].get("name")), found[1]) if found else ("", None)
+                        reads = [(str(found[0].get("name")), False)] if found else []
+                        how = found[1] if found else None
                     else:
-                        text = record.best(field_name)
-                    text, norm = cls._spelling(text)
-                    if not text:
-                        continue
-                    shown.setdefault(norm, text)
-                    entry = {"document_id": doc.document_id, "file_name": doc.document.get("file_name")}
-                    if is_facility:
-                        entry["matched_by"] = how
-                    groups.setdefault(norm, {}).setdefault(doc.document_id, entry)
+                        reads = record.identifiers(field_name)
+                    for raw, by_claude in reads:
+                        text, norm = cls._spelling(raw)
+                        if not text:
+                            continue
+                        shown.setdefault(norm, text)
+                        entry = groups.setdefault(norm, {}).setdefault(
+                            doc.document_id, {"document_id": doc.document_id, "file_name": doc.document.get("file_name")})
+                        if is_facility:
+                            entry["matched_by"] = how
+                        else:
+                            # A document counts once; a value a rule also read is not marked as Claude's.
+                            entry["read_by_claude"] = by_claude and entry.get("read_by_claude", True)
             with_value = {d for docs in groups.values() for d in docs}
             item: dict[str, Any] = {
                 "label": label,
@@ -569,10 +585,11 @@ class EvidenceTreeService:
             shown: dict[str, str] = {}
             for doc, records in on_line:
                 for record in records:
-                    text, norm = cls._spelling(record.best(field_name))
-                    if text:
-                        shown.setdefault(norm, text)
-                        found.setdefault(norm, set()).add(doc.document_id)
+                    for raw, _ in record.identifiers(field_name):
+                        text, norm = cls._spelling(raw)
+                        if text:
+                            shown.setdefault(norm, text)
+                            found.setdefault(norm, set()).add(doc.document_id)
             out.extend({"label": label, "value": shown[norm], "documents_with": len(ids), "documents_total": len(on_line)}
                        for norm, ids in sorted(found.items()))
         return out
