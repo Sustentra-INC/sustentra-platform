@@ -684,7 +684,7 @@ def test_a_field_without_a_candidate_id_has_none_not_the_text_none() -> None:
     from backend.app.services.reviewed_evidence import group_reviewed_records
 
     items = [{"field_name": "fuel_type", "normalized_value": "x", "unit": None, "record_index": None}]
-    record = group_reviewed_records({"document_id": "D"}, "CT-S1-FUELQTY", items, {})[0]
+    record = group_reviewed_records({"document_id": "D"}, "CT-S1-FUELQTY", items, [])[0]
     assert record.fields["fuel_type"].candidate_id is None
 
 

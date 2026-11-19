@@ -38,7 +38,11 @@ class FakeStore:
                               "unit": unit, "record_index": index if multi else None,
                               "source_reference": {"document_id": document_id, "page_number": 1}})
                 if decision:
+                    # A real decision always carries the snapshot of the candidate it was made on.
+                    snapshot = {k: v for k, v in items[-1].items() if k != "record_index"}
                     reviews.append({"candidate_id": candidate_id, "decision": decision, "org_id": org_id,
+                                    "document_id": document_id, "field_name": field_name,
+                                    "candidate_snapshot": snapshot,
                                     "reviewed_value": value if decision == "accepted" else None,
                                     "reviewed_unit": unit if decision == "accepted" else None})
         self.results[document_id] = [{"document_id": document_id, "org_id": org_id,

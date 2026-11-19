@@ -46,6 +46,11 @@ export interface BackendExtractionResult {
 
 interface BackendReviewDecision {
   candidate_id: string;
+  /**
+   * After a re-read: the candidate this decision now applies to (its record moved), or null when it
+   * applies to no value of the latest read. Absent when it applies to its own candidate.
+   */
+  applies_to_candidate_id?: string | null;
   field_name: string;
   decision: "accepted" | "edited" | "rejected" | "needs_more_evidence";
   reviewed_value: string | number | boolean | null;
@@ -98,7 +103,9 @@ export async function listWorkspaceEvidence(engagementId: string): Promise<{
       const canonicalTypeId = extractionResult?.canonical_type_id ?? latestRun?.canonical_type_id ?? null;
       const latestReviewByCandidate = new Map<string, BackendReviewDecision>();
       for (const review of reviews ?? []) {
-        latestReviewByCandidate.set(review.candidate_id, review);
+        // A decision the re-read left on no value stays in the history only: it decides nothing here.
+        const target = review.applies_to_candidate_id === undefined ? review.candidate_id : review.applies_to_candidate_id;
+        if (target) latestReviewByCandidate.set(target, review);
       }
 
       return {
