@@ -355,8 +355,8 @@ for another org's engagement).
           rejected_fields: [string],                 // labels of other required fields the reviewer rejected
                                                      // record_key is opaque: use it as an id, never parse it
           date: {start, end, days, label},           // label: "Service period" | "Statement period" | "Transaction date" | "Delivery date" | "Service date"
-          activity_quantity: {value, unit},          // the extracted value; the reviewed value once accepted
-          cells: {<column_key>: {value, unit}},      // only the extra columns this row has a value for
+          activity_quantity: {value, unit, candidate_id, page, sheet, cell},       // the extracted value; the reviewed value once accepted
+          cells: {<column_key>: {value, unit, candidate_id, page, sheet, cell}},     // only the extra columns this row has a value for
           saved_by: {name, at} | null,               // who accepted or edited the quantity; null when not reviewed
           document_id, file_name, page, candidate_id}],
   columns: [{key, label, unit_in_cells: true}],      // date, activity_quantity, then (only when a row has a value,
@@ -379,7 +379,7 @@ into one entry with `count` N and no field. The page words the sentence.
 `rows` lists every extracted record on the line, accepted or not. A row with `accepted: false` is present
 but flagged; only accepted values feed the calculation, as before. The extra columns read the extracted
 fields `heat_content`, `carbon_content`, `vehicle_type`, `model_year`, `on_or_non_road` and `distance`;
-no extractor produces them yet, so today a line shows only Date and Activity quantity. `identifier_groups`
+no extractor produces them yet, so today a line shows only Date and Activity quantity. Every value in a row (the quantity and each extra cell) says where it was read: `candidate_id` (to open the review at that value), and `page` (PDF or image) or `sheet` and `cell` (workbook or CSV); missing parts are null, and the page then opens the document at page 1 and says so. `identifier_groups`
 group the line's documents by identifier value; `not_found` holds documents without the identifier.
 Facility is the Setup facility, and `matched_by` says how: "Chosen by the reviewer", "Facility name in
 Setup" or "Service address in Setup". Facility is listed for every line; Service address, Account number
