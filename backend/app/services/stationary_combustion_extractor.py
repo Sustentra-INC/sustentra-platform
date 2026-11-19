@@ -65,7 +65,7 @@ SITE_LOCATION_LABELS: tuple[tuple[str, ...], ...] = (
 )
 BILL_TO_LABELS: tuple[tuple[str, ...], ...] = (
     ("customer name", "customer", "sold to", "bill to", "billed to", "invoice to", "account name",
-     "account holder", "service name", "service for"),
+     "account holder", "service name"),
 )
 # Who a bill asks to be paid: the organisation named there is a candidate for the supplier, after the
 # letterhead and the labelled reads. (Not a bank, a lockbox or a PO box: those are where, not who.)
@@ -1264,10 +1264,13 @@ class StationaryCombustionExtractor:
         Customer label gives is the other party. In order: a labelled supplier, an "Exported from" footer, the
         letterhead, then the organisation on a Remit To or Payable To line."""
 
-        customer = self._party_key(rows, BILL_TO_LABELS)
+        # A "Service For" block is the site's (``SERVICE_BLOCK_HEADINGS``), but the first line in it that is not a
+        # site is still a customer, so its name is the other party too.
+        customers = {key for key in (self._party_key(rows, BILL_TO_LABELS),
+                                     self._party_key(rows, (SERVICE_BLOCK_HEADINGS[:1],))) if key}
 
         def other_party(found: Located | None) -> Located | None:
-            return None if found is not None and customer and _name_key(found.raw.split(",")[0]) == customer else found
+            return None if found is not None and _name_key(found.raw.split(",")[0]) in customers else found
 
         labeled = other_party(self._find_labeled(rows, SUPPLIER_LABELS, accept=self._looks_like_org_name,
                                                  allow_next_row=False, inline=True))
