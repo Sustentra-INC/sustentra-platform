@@ -467,13 +467,18 @@ def _names_a_utility(name: str) -> bool:
 
 
 def _is_customer(name: str, customers: Sequence[str]) -> bool:
-    """Whether ``name`` is one of the customers or the customer's parent: the same company, the same first two
-    words, or the same first word (four letters or more) in a name that says nothing about being a utility."""
+    """Whether ``name`` (a letterhead or a payee; a labelled supplier is only compared with ``_same_company``) is
+    one of the customers or the customer's parent: the same company, one name starting with the other (the
+    shorter has two words or more), the same first two words, or the same first word (four letters or more) in a
+    name that says nothing about being a utility."""
 
     words = _company_words(name)
     for customer in customers:
         theirs = _company_words(customer)
         if _same_company(name, customer):
+            return True
+        short, long = sorted((words, theirs), key=len)
+        if len(short) >= 2 and long[:len(short)] == short:  # "NORTHGATE ENERGY PARTNERS FRESNO CO" is the customer's
             return True
         if len(words) >= 2 and len(theirs) >= 2 and words[:2] == theirs[:2] and not _names_a_utility(name):
             return True
@@ -1758,6 +1763,21 @@ class StationaryCombustionExtractor:
         r"\b(?:ytd|years?|annual|months?|last|prior|previous|avg|average|daily|budget|estimated|est|history)\b|\bto date\b",
         re.IGNORECASE)
 
+    def _period_header_above(self, rows: Sequence[Row], position: int, cell: Cell) -> bool:
+        """Whether one of the three rows above holds, in the column of ``cell``, a period word or a month name
+        ("YEAR TO DATE" over a units line over "TOTAL 14,200 THERMS"). Cells with no geometry count as the same
+        column. A bare year does not count here: the line above a total is often the bill's own period."""
+
+        for above in rows[max(0, position - 3):position]:
+            if above.page != rows[position].page:
+                continue
+            for other in above.cells:
+                if other.box is not None and cell.box is not None and not (other.left < cell.right and other.right > cell.left):
+                    continue
+                if self._NOT_THIS_PERIOD_ABOVE.search(other.text) or _names_a_month(other.text):
+                    return True
+        return False
+
     def _inline_total_records(self, rows: Sequence[Row], doc_fuel: Located | None = None) -> list[UsageRecord]:
         """A dense statement that states its usage inside a line: "THERM FACTOR 1.030 TOTAL 1,273.1 THERMS".
         It runs last: the labelled reads, the usage table and the headline read are tried first. Money is never
@@ -1771,11 +1791,11 @@ class StationaryCombustionExtractor:
             # The whole row (a PDF reader puts "Year to date" and "TOTAL 14,200 THERMS" in separate cells of one
             # row) and the row directly above (column headers) say which period the total is for.
             line = " ".join(cell.text for cell in row.cells)
-            above = " ".join(cell.text for cell in rows[position - 1].cells) if position and rows[position - 1].page == row.page else ""
-            if (self._NOT_THIS_PERIOD.search(line) or _names_a_month(line)
-                    or self._NOT_THIS_PERIOD_ABOVE.search(above) or _names_a_month(above)):
+            if self._NOT_THIS_PERIOD.search(line) or _names_a_month(line):
                 continue
             for cell in row.cells:
+                if not self._INLINE_TOTAL.search(cell.text) or self._period_header_above(rows, position, cell):
+                    continue
                 for match in self._INLINE_TOTAL.finditer(cell.text):
                     unit = match.group("unit")
                     canonical = self._canonical_unit(unit)

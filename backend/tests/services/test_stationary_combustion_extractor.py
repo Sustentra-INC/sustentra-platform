@@ -1497,3 +1497,56 @@ def test_gallons_count_for_a_total_only_where_gallons_are_an_activity_unit(targe
 
     assert _value(gas, "activity_quantity") is None
     assert propane["activity_quantity"]["raw_value"] == "500" and _value(propane, "activity_unit") == "gal"
+
+
+# --- fix round 3 of the dense statement: headers up to three rows above; the prefix match for letterheads ---
+def _stacked(*above: str) -> list[tuple[str, float, float, float, float]]:
+    rows = [("NATURAL GAS STATEMENT – Zürich", 0.05, 0.05, 0.4, 0.011), ("FROM 08/01/2025 TO 08/31/2025", 0.05, 0.07, 0.4, 0.011)]
+    for index, text in enumerate(above):
+        rows.append((text, 0.4, 0.24 + 0.02 * index, 0.25, 0.011))
+    rows.append(("TOTAL 14,200 THERMS", 0.4, 0.24 + 0.02 * len(above), 0.25, 0.011))
+    return rows
+
+
+@pytest.mark.parametrize("above", [("YEAR TO DATE", "THERMS"), ("YEAR TO DATE", "UNITS", "THERMS"),
+                                   ("Aug 2024", "UNITS", "THERMS"), ("Vorjahr (last year)", "Einheit", "THERMS")])
+def test_a_period_header_two_or_three_rows_above_in_the_same_column_means_not_the_bills_usage(
+        targets: list[dict], above: tuple[str, ...]) -> None:
+    _nothing_read(_read(_stacked(*above), targets), "activity_quantity")
+
+
+def test_a_period_header_in_another_column_does_not_stop_the_total(targets: list[dict]) -> None:
+    layout = [("NATURAL GAS STATEMENT", 0.05, 0.05, 0.4, 0.011), ("YEAR TO DATE", 0.05, 0.24, 0.2, 0.011),
+              ("UNITS", 0.05, 0.26, 0.2, 0.011), ("TOTAL 1,273.1 THERMS", 0.5, 0.3, 0.25, 0.011)]
+
+    assert _read(layout, targets)["activity_quantity"]["raw_value"] == "1,273.1"
+
+
+def test_the_bills_own_from_to_line_three_rows_above_does_not_stop_its_total(targets: list[dict]) -> None:
+    layout = [("NATURAL GAS STATEMENT", 0.05, 0.05, 0.4, 0.011), ("FROM 08/01/2025 TO 08/31/2025", 0.4, 0.24, 0.4, 0.011),
+              ("METER GM-0127764", 0.4, 0.26, 0.2, 0.011), ("UNITS", 0.4, 0.28, 0.2, 0.011),
+              ("TOTAL 1,273.1 THERMS", 0.4, 0.3, 0.25, 0.011)]
+
+    assert _read(layout, targets)["activity_quantity"]["raw_value"] == "1,273.1"
+
+
+@pytest.mark.parametrize("letterhead", ["NORTHGATE ENERGY PARTNERS FRESNO CO", "NORTHGATE ENERGY CO",
+                                        "Northgate Energy Partners – Zürich 東京 Inc"])
+def test_a_letterhead_that_starts_like_the_customers_name_is_the_customer(targets: list[dict], letterhead: str) -> None:
+    lines = [letterhead, "Natural gas bill", "Bill To: Northgate Energy Partners LLC", "Total Usage: 900 therms"]
+
+    assert _value(_fields(lines, targets), "supplier_name") is None
+
+
+def test_the_prefix_match_does_not_apply_to_a_labelled_supplier(targets: list[dict]) -> None:
+    lines = ["Natural gas bill", "Supplier: Northgate Energy Co", "Bill To: Northgate Energy Partners LLC",
+             "Total Usage: 900 therms"]
+
+    assert _value(_fields(lines, targets), "supplier_name") == "Northgate Energy Co"
+
+
+def test_a_remit_to_that_starts_like_the_customers_name_is_not_the_supplier(targets: list[dict]) -> None:
+    lines = ["Natural gas bill", "Bill To: Northgate Energy Partners LLC", "Total Usage: 900 therms",
+             "REMIT TO: NORTHGATE ENERGY PARTNERS FRESNO CO"]
+
+    assert _value(_fields(lines, targets), "supplier_name") is None
