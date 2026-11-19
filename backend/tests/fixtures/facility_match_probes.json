@@ -1,0 +1,340 @@
+{
+ "_about": "Shared by test_facility_placement_layouts-style probes: backend test_facility_match_probes.py and frontend facilityMatchProbes.test.ts. expect is a facility id, null (none) or \"ambiguous\". The rules are #282's (EXT-022).",
+ "facilities": [
+  {
+   "facilityId": "F1",
+   "name": "Fresno Plant",
+   "address": "4410 E Jensen Ave, Fresno, CA 93725"
+  },
+  {
+   "facilityId": "F2",
+   "name": "Sacramento Warehouse",
+   "address": "1820 Richards Blvd, Sacramento, CA 95811"
+  },
+  {
+   "facilityId": "F3",
+   "name": "Tacoma Distribution Center",
+   "address": "2200 Port of Tacoma Road, Tacoma, WA 98421"
+  },
+  {
+   "facilityId": "F4",
+   "name": "Müller Käserei – Zürich",
+   "address": "10 Quay Way, Zürich"
+  },
+  {
+   "facilityId": "F5",
+   "name": "Capitol Office",
+   "address": "555 Capitol Mall, Suite 900, Sacramento, CA"
+  },
+  {
+   "facilityId": "F6",
+   "name": "Plant #1",
+   "address": "7 Elm St, Reno, NV 89501"
+  },
+  {
+   "facilityId": "F7",
+   "name": "Plant 1",
+   "address": "9 Oak St, Reno, NV 89501"
+  },
+  {
+   "facilityId": "F8",
+   "name": "Seattle Plant 1",
+   "address": "800 Fourth Ave, Seattle, WA 98104"
+  },
+  {
+   "facilityId": "F9",
+   "name": "Seattle Plant 2",
+   "address": "800 Fourth Ave, Seattle, WA 98104"
+  }
+ ],
+ "probes": [
+  {
+   "name": null,
+   "address": "4410 E JENSEN AVE",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F1"
+  },
+  {
+   "name": null,
+   "address": "4410 East Jensen Avenue",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F1"
+  },
+  {
+   "name": null,
+   "address": "4410 E. Jensen Ave., Fresno, CA 93725",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F1"
+  },
+  {
+   "name": null,
+   "address": "Fresno Plant, 4410 E Jensen Ave, Fresno CA 93725",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F1"
+  },
+  {
+   "name": null,
+   "address": "4410 e jensen ave fresno ca",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F1"
+  },
+  {
+   "name": null,
+   "address": "2200 PORT OF TACOMA RD",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F3"
+  },
+  {
+   "name": null,
+   "address": "2200 Port of Tacoma Rd, Tacoma, WA 98421",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F3"
+  },
+  {
+   "name": null,
+   "address": "Northgate Provisions Inc., 1820 Richards Boulevard, Sacramento, CA 95811",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F2"
+  },
+  {
+   "name": null,
+   "address": "1820 RICHARDS BLVD.",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F2"
+  },
+  {
+   "name": null,
+   "address": "10 Quay Way, Zürich",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F4"
+  },
+  {
+   "name": null,
+   "address": "2210 Port of Tacoma Rd",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "2210 PORT OF TACOMA RD, TACOMA WA 98421",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "22000 Port of Tacoma Road",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "220 Port of Tacoma Road",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "2200A Port of Tacoma Road",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "Port of Tacoma Road",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "2200 Port of Tacoma",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "2200 Port of Tacoma Rd, Tacoma, WA 98422",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "4410 E Jensen Ave, Fresno, CA 93726",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "1820 Richards Blvd, Sacramento, CA 95814",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "10 Quay Way, Zurich",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": "FRESNO  PLANT",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": "F1"
+  },
+  {
+   "name": "Müller Käserei — Zürich",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": "F4"
+  },
+  {
+   "name": "Müller Käserei - Zürich",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": "F4"
+  },
+  {
+   "name": "Sacramento Warehouse.",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": "F2"
+  },
+  {
+   "name": "Sacramento",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": "Sacramento Warehouse 2",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": "Northgate Provisions Inc. – Sacramento Warehouse",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": "F2"
+  },
+  {
+   "name": "Northgate Provisions Inc - Sacramento Warehouse",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": "F2"
+  },
+  {
+   "name": "NORTHGATE PROVISIONS INC. — SACRAMENTO WAREHOUSE",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": "F2"
+  },
+  {
+   "name": "Northgate Provisions – Sacramento Warehouse",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": "F2"
+  },
+  {
+   "name": "Acme – Sacramento Warehouse",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": "Acme Köln GmbH – Sacramento Warehouse",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": "Northgate Provisions Inc. – Sacramento Warehouse",
+   "address": null,
+   "company": "Acme",
+   "expect": null
+  },
+  {
+   "name": "Northgate Provisions Inc. – Sacramento Warehouse",
+   "address": null,
+   "company": null,
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "1820 Richards Boulevard, Suite 200, Sacramento, CA 95811",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F2"
+  },
+  {
+   "name": null,
+   "address": "1820 Richards Blvd Ste 200",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F2"
+  },
+  {
+   "name": null,
+   "address": "555 Capitol Mall Ste 900",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F5"
+  },
+  {
+   "name": null,
+   "address": "555 Capitol Mall #900, Sacramento, CA",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F5"
+  },
+  {
+   "name": null,
+   "address": "555 Capitol Mall Ste 901",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": null,
+   "address": "555 Capitol Mall, Sacramento, CA",
+   "company": "Northgate Provisions Inc.",
+   "expect": null
+  },
+  {
+   "name": "Fresno Plant",
+   "address": "2200 Port of Tacoma Rd",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F1"
+  },
+  {
+   "name": null,
+   "address": "800 Fourth Avenue, Seattle",
+   "company": "Northgate Provisions Inc.",
+   "expect": "ambiguous"
+  },
+  {
+   "name": null,
+   "address": "800 Fourth Ave",
+   "company": "Northgate Provisions Inc.",
+   "expect": "ambiguous"
+  },
+  {
+   "name": "Plant 1",
+   "address": null,
+   "company": "Northgate Provisions Inc.",
+   "expect": "ambiguous"
+  },
+  {
+   "name": "Plant 1",
+   "address": "9 Oak Street, Reno",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F7"
+  },
+  {
+   "name": "Plant 1",
+   "address": "1 Nowhere Rd",
+   "company": "Northgate Provisions Inc.",
+   "expect": "ambiguous"
+  },
+  {
+   "name": "Seattle Plant 2",
+   "address": "800 Fourth Avenue",
+   "company": "Northgate Provisions Inc.",
+   "expect": "F9"
+  }
+ ]
+}

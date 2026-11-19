@@ -187,6 +187,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           {doc.facility_name && !(lineMap.get(section)?.facility_id && lineMap.get(section)?.facility_id === doc.facility_id) ? (
             <span className="s1-chip">{doc.facility_name}</span>
           ) : null}
+          {doc.facility_note ? <span>{doc.facility_note}</span> : null}
           {section === BLOCK_UNASSIGNED ? <span>{processingText(doc.processing_status)}</span> : null}
           {doc.flags.includes("unknown_line") ? <span>Its line was deleted</span> : null}
           {also.map((l) => (

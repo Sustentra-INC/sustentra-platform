@@ -245,6 +245,8 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
 
     CANONICAL_TYPE_ID = CANONICAL_TYPE_ID
     RUN_LOG_WITHOUT_FUEL = False  # a run log with no fuel named is stationary fuel use only
+    HEADLINE_QUANTITY = False  # only the natural gas reader reads a number in large type over a unit
+    INLINE_TOTAL_QUANTITY = False  # ... or "TOTAL 1,273.1 THERMS" inside a line of a statement
     FUEL_LABEL_GROUPS = FUEL_LABELS
     QUANTITY_LABEL_GROUPS = QUANTITY_LABELS
     ID_HEADERS = ()

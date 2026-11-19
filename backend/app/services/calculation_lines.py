@@ -36,9 +36,8 @@ from backend.app.services.reviewed_evidence import (
     STATIONARY,
     THERMAL,
     ReviewedRecord,
-    match_facility,
+    place_on_facility,
     resolve_fuel_name,
-    resolve_setup_facility,
     to_date,
 )
 from backend.app.services.refrigerant_extractor import DISPOSAL, service_type_of
@@ -341,7 +340,7 @@ class RecordPlacement:
 
 def place_record(record: ReviewedRecord, *, ref: EmissionFactorReference, facilities: list[dict[str, Any]],
                  decisions: dict[str, dict[str, Any]], vehicle_groups: list[dict[str, Any]],
-                 fuel_choices: dict[str, str]) -> RecordPlacement:
+                 fuel_choices: dict[str, str], company: str | None = None) -> RecordPlacement:
     """The line a record belongs on, from what the backend already knows of it.
 
     The fuel is the EPA name the recalculation resolves (``fuel_choices`` included); a biomass
@@ -350,8 +349,7 @@ def place_record(record: ReviewedRecord, *, ref: EmissionFactorReference, facili
     """
 
     kind = record.canonical_type_id
-    facility = resolve_setup_facility(facilities, decisions, record.document_id,
-                                      record.best("facility_name"), record.best("service_address"))
+    facility = place_on_facility(facilities, decisions, record.document_id, record, company).facility
     facility_anchor = facility_anchor_id(facility) if facility else None
     if kind in (STATIONARY, MOBILE):
         source = "stationary" if kind == STATIONARY else "mobile"
@@ -624,20 +622,22 @@ def date_label(canonical_type_id: str | None) -> str:
 
 
 def facility_match(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
-                   record: ReviewedRecord) -> tuple[dict[str, Any], str] | None:
-    """The Setup facility of a record and how it was matched: the reviewer's choice, the
-    facility name, or the service address; None when nothing matches. Same order as
-    ``resolve_setup_facility`` (reviewer's choice, then name, then address), plus the reason."""
+                   record: ReviewedRecord, company: str | None = None) -> tuple[dict[str, Any], str] | None:
+    """The Setup facility of a record and how it was matched: the reviewer's choice, the facility name, the
+    service address, or (provisional) the account or meter number; None when nothing matches. It is the
+    same decision ``place_record`` makes (``place_on_facility``), with the reason."""
 
-    chosen = (decisions.get(document_id) or {}).get("facilityId")
-    for facility in facilities:
-        if chosen and facility.get("facilityId") == chosen:
-            return facility, "Chosen by the reviewer"
-    if (found := match_facility(record.best("facility_name"), None, facilities)) is not None:
-        return found, "Facility name in Setup"
-    if (found := match_facility(None, record.best("service_address"), facilities)) is not None:
-        return found, "Service address in Setup"
-    return None
+    placement = place_on_facility(facilities, decisions, document_id, record, company)
+    return (placement.facility, str(placement.how)) if placement.facility is not None else None
+
+
+def unplaced_note(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
+                  record: ReviewedRecord, company: str | None = None) -> str | None:
+    """Why a record with no Setup facility was not placed by its account or meter number, in a plain
+    sentence; None when it has a facility or its numbers say nothing."""
+
+    placement = place_on_facility(facilities, decisions, document_id, record, company)
+    return placement.note if placement.facility is None else None
 
 
 def quantity_field(record: ReviewedRecord) -> str | None:
