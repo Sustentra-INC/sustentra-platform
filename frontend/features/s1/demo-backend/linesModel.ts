@@ -35,7 +35,7 @@ export const CATEGORIES: [string, string, string][] = [
   ["contractual", "Contractual instruments", "s2"],
   ["biogenic", "Biogenic CO₂", "biogenic"],
 ];
-const CATEGORY_SCOPE = Object.fromEntries(CATEGORIES.map(([k, , s]) => [k, s]));
+export const CATEGORY_SCOPE = Object.fromEntries(CATEGORIES.map(([k, , s]) => [k, s]));
 
 export function slug(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/g, "") || "none";
@@ -335,7 +335,7 @@ function vehicleGroupAnchors(engagement: EngagementConfig): { anchor_id: string;
   });
 }
 
-function applyMoves(slots: Slot[], moves: { from: string; to: string }[] | undefined, known: Set<string>): Slot[] {
+export function applyMoves(slots: Slot[], moves: { from: string; to: string }[] | undefined, known: Set<string>): Slot[] {
   const effective = (s: Slot) => (FIXED.has(s.target) || known.has(s.target) ? s.target : SUPPORTING_UNASSIGNED);
   let out = slots.map((s) => ({ ...s, flags: [...s.flags] }));
   for (const move of moves ?? []) {
