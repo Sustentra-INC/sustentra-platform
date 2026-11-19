@@ -203,6 +203,7 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
 
     CANONICAL_TYPE_ID = CANONICAL_TYPE_ID
     HEADLINE_QUANTITY = False  # only the natural gas reader reads a number in large type over a unit
+    INLINE_TOTAL_QUANTITY = False  # ... or "TOTAL 1,273.1 THERMS" inside a line of a statement
     ALL_LABELS = _BASE_LABELS + tuple(
         label
         for group in (REFRIGERANT_LABELS + ADDED_LABELS + RECOVERED_LABELS + CAPACITY_LABELS + EQUIPMENT_LABELS
