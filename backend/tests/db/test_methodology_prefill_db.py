@@ -17,7 +17,6 @@ from backend.app.adapters.llm.claude import StructuredReply, TokenUsage
 from backend.app.api import methodology_review as api
 from backend.app.core.config import Settings
 from backend.app.services import methodology_prefill as mp
-from backend.app.services import methodology_review as rules
 from backend.tests.db.test_engagements import ORIGIN, _admin, call, create, pytestmark, seeded  # noqa: F401
 from backend.tests.db.test_methodology_review import BASE, act, record, review
 from backend.tests.services.test_methodology_prefill import REPORT, doc
