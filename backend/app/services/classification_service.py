@@ -49,7 +49,9 @@ GHG_YEAR_RE = re.compile(r"\b20\d{2}\b|\breporting year\b")
 # rows, or a quantity of fuel with its unit, keep the summary cue from outranking the fuel type.
 GHG_ACTIVITY_RE = re.compile(
     r"\bamount due\b|\btotal due\b|\bbilling period\b|\bservice period\b|\baccount number\b|\binvoice\b|\bpay by\b"
-    r"|\d[\d,.]*\s*(?:gal(?:lons?)?|therms?|ccf|mcf|mmbtu|dth|litres?|liters?)\b")
+    r"|\d[\d,.]*\s*(?:gal(?:lons?)?|therms?|ccf|mcf|mmbtu|dth|litres?|liters?)\b"
+    # an activity column even when the value and its unit are split (a header row "Fuel type | Gallons | Scope 1"):
+    r"|\b(?:gallons?|litres?|liters?|therms?|ccf|mcf|kwh|mwh|mmbtu|dth|fuel type|odometer|run hours|meter reading)\b")
 WORKBOOK_TYPE = "CT-GHG-WORKBOOK"
 SUMMARY_PREFIX = "CT-GHG-"
 STATIONARY_TYPE = "CT-S1-FUELQTY"

@@ -100,14 +100,16 @@ _MIN_CONTRACT_CUES = 5
 # What a contract does not have, found in the text alone (the parser may leave tables and key-value pairs empty):
 # a quantity with a unit, a quantity label, a bill-row label (with a colon, a tab or only spaces after it), or the
 # words of an invoice.
-_UNITS = r"(?:gal(?:lons?)?|k?wh|mwh|therms?|ccf|mmbtu|dth|l|litres?|liters?)"
+_UNITS = r"(?:gal(?:lons?)?|k?wh|mwh|therms?|ccf|mcf|mmbtu|dth|lbs?|kg|l|litres?|liters?)"
 _QUANTITY_WITH_UNIT = re.compile(rf"\d[\d,.]*\s*{_UNITS}\b", re.I)
 _QUANTITY_LABEL = re.compile(r"\b(?:quantity|qty|gallons?|kwh|therms?)\b", re.I)
 _BILL_ROW_LABEL = re.compile(
-    r"^\s*(?:account\s+(?:number|no\.?|#)|billing\s+period|service\s+period|meter\s+(?:number|no\.?)|"
-    r"invoice\s+(?:number|no\.?|date|#)|statement\s+date|due\s+date)\b(?=$|[:#\t]|\s+\S)", re.I | re.M)
-# (a label at the start of a line that is followed by a value or a colon, or stands alone; not "statement date." at
-# the start of a wrapped sentence)
+    # "Account Number   3305", "Account No. 3305", "Account #3305", "Meter No. 12": the label, then anything or nothing
+    r"^\s*(?:(?:account|meter|invoice)\s+(?:number|no\.?|#)\s*(?:$|[:#\t]|\S)"
+    # a label of words, not abbreviations: followed by a colon, a tab, a value or the end of the line, so a wrapped
+    # sentence that starts "statement date. Late payments..." is not a bill row
+    r"|(?:billing\s+period|service\s+period|invoice\s+date|statement\s+date|due\s+date)\b(?=$|[:#\t]|\s+\S))",
+    re.I | re.M)
 _INVOICE_WORDS = re.compile(r"\bamount\s+due\b|\binvoice\b|\bstatement\s+date\s*[:\t ]\s*\d", re.I)
 
 

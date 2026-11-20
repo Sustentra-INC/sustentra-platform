@@ -84,6 +84,34 @@ def test_a_fuel_log_with_emissions_columns_is_not_outranked_by_the_summary_cue()
     assert not credited(delivery, "log.csv")
 
 
+SPLIT_HEADER_LOG = ("Emissions Report 2025\nFuel type,Gallons,Scope 1 tCO2e,Scope 2 tCO2e\n"
+                    "Diesel,120,1.2,0\nDiesel,95,0.9,0\n")
+
+
+@pytest.mark.parametrize("header", [
+    "Fuel type | Gallons | Scope 1 tCO2e | Scope 2 tCO2e", "Date | Litres | Scope 1 tCO2e | Scope 2 tCO2e",
+    "Site | Therms | Scope 1 tCO2e | Scope 2 tCO2e", "Site | kWh | Scope 1 tCO2e | Scope 2 tCO2e",
+    "Vehicle | Odometer | Scope 1 tCO2e | Scope 2 tCO2e", "Unit | Run hours | Scope 1 tCO2e | Scope 2 tCO2e",
+    "Meter reading | Scope 1 tCO2e | Scope 2 tCO2e", "Site | MMBtu | Scope 1 tCO2e | Scope 2 tCO2e",
+    "Site | CCF | Scope 1 tCO2e | Scope 2 tCO2e", "Site | MWh | Scope 1 tCO2e | Scope 2 tCO2e",
+    "Site | Dth | Scope 1 tCO2e | Scope 2 tCO2e", "Site | MCF | Scope 1 tCO2e | Scope 2 tCO2e",
+])
+def test_an_activity_column_header_keeps_the_summary_cue_off(header: str) -> None:
+    assert not credited(f"Emissions Report 2025\n{header}\nMüller 120 1.2 0\n", "log.xlsx"), header
+
+
+def test_a_log_with_split_value_and_unit_keeps_its_fuel_type_and_quantities(tmp_path: Path) -> None:
+    assert not credited(SPLIT_HEADER_LOG, "emissions log 2025.csv")
+    path = tmp_path / "Emissionen Log 2025 電気.csv"
+    path.write_text(SPLIT_HEADER_LOG, encoding="utf-8")
+    read = _run(path)
+    assert read["pipeline_run"]["canonical_type_id"] in ("CT-S1-MOBFUEL", "CT-S1-FUELQTY")
+    assert read["pipeline_run"]["canonical_type_id"] != "CT-GHG-WORKBOOK"
+    items = read["extraction_result"]["items"]
+    assert [i["normalized_value"] for i in items if i["field_name"] == "activity_quantity"] == [120, 95]
+    assert {i["normalized_value"] for i in items if i["field_name"] == "fuel_type"} == {"diesel"}
+
+
 def test_a_fuel_bill_is_never_taken_for_a_summary() -> None:
     bill = ("Cedarline Gas & Power\nAccount Number: 3305-778-1102\nService Period: 10/01/2025 - 10/31/2025\n"
             "Fuel: Natural gas\nUsage: 1,486 therms\nYour Scope 2 electricity is separate.\nAmount Due: $1,474.33\n")
@@ -216,6 +244,17 @@ def test_a_utility_bill_with_space_gapped_labels_and_empty_tables_is_not_halted(
     assert looks_like_a_contract(output("SERVICE AGREEMENT\nAmount Due $44.10\n" + BACK_PAGE)) is False
     assert looks_like_a_contract(output("SERVICE AGREEMENT\nInvoice 4471\n" + BACK_PAGE)) is False
     assert looks_like_a_contract(output("SERVICE AGREEMENT\nStatement Date: 10/31/2025\n" + BACK_PAGE)) is False
+
+
+@pytest.mark.parametrize("label", ["Account No. 3305", "Account #3305", "Meter No. 12", "Meter # 12", "Invoice No. 889",
+                                   "Account Number   3305", "Billing Period 10/01-10/31"])
+def test_abbreviated_and_space_gapped_bill_labels_block_the_contract(label: str) -> None:
+    assert looks_like_a_contract(output(CONTRACT + label + "\\n", tables=[], key_value_pairs=[])) is False, label
+
+
+@pytest.mark.parametrize("quantity", ["12 mcf", "300 lb", "300 lbs", "250 kg", "500 gal", "38.5 Dth", "1,200 L"])
+def test_a_quantity_with_a_unit_blocks_the_contract(quantity: str) -> None:
+    assert looks_like_a_contract(output(CONTRACT + f"Delivered {quantity}\\n")) is False, quantity
 
 
 def test_a_wrapped_sentence_that_starts_with_statement_date_is_not_a_bill_row() -> None:
