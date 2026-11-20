@@ -10,7 +10,7 @@ import type {
 } from "../api/recalculation";
 import { verificationLines } from "../fixtures/verification/resultsDataset";
 import { COMPARISON_POINTS, LAYOUT_CATEGORIES, LAYOUT_NODES, LAYOUT_OUTPUTS, LAYOUT_STEPS } from "./recalcDataLayout";
-import { buildCategories, calculate, gwpOf, typeId, type Calculated } from "./recalcDataCalc";
+import { CALCULABLE, buildCategories, calculate, gwpOf, typeId, type Calculated } from "./recalcDataCalc";
 import { monthCoverage, recordsOn, shareInPeriod } from "./linesModel";
 
 const GROUPS: GasGroup[] = ["CO2", "CH4", "N2O", "HFCs", "PFCs", "SF6", "NF3"];
@@ -267,6 +267,21 @@ export function qualityChecks(c: Calculated): QualityCheck[] {
 
 /* ------------------------------------ the whole result ------------------------------------ */
 
+/** Accepted records whose document sits on no calculation line: counted nowhere (Claire, Evidence Screen tab I8). */
+function uncountedValues(c: Calculated): NonNullable<Recalculation["uncounted_values"]> {
+  const lineKeys = new Set(c.model.lines.map((l) => l.key));
+  const byDocument = new Map<string, NonNullable<Recalculation["uncounted_values"]>["documents"][number]>();
+  for (const r of c.model.records) {
+    if (!CALCULABLE.includes(r.kind) || !r.accepted || r.quantity === null) continue;
+    if (c.model.slots.get(r.documentId)?.some((s) => lineKeys.has(s.target))) continue;
+    const entry = byDocument.get(r.documentId) ?? { document_id: r.documentId, file_name: r.fileName, reason: "not_on_a_line" as const, accepted_records: 0 };
+    entry.accepted_records += 1;
+    byDocument.set(r.documentId, entry);
+  }
+  const documents = [...byDocument.values()].sort((a, b) => a.file_name.localeCompare(b.file_name) || a.document_id.localeCompare(b.document_id));
+  return { accepted_records: documents.reduce((n, d) => n + d.accepted_records, 0), documents };
+}
+
 export function buildRecalculation(engagementId: string): Recalculation {
   const c = calculate();
   const categories = buildCategories(c);
@@ -289,6 +304,7 @@ export function buildRecalculation(engagementId: string): Recalculation {
     scope_totals: { scope1: total("scope1_total"), scope2_location: total("scope2_location_total"), scope2_market: total("scope2_market_total") },
     comparisons, needs_input: [], awaiting_review: c.awaiting, excluded: c.excluded,
     not_recalculated: ["Scope 1 fugitive sources other than refrigerants and fire suppression", "Scope 1 process sources", "Scope 2 cooling"],
+    uncounted_values: uncountedValues(c),
     documents_considered: considered.size, documents_reviewed: [...considered].filter((d) => !open.has(d)).length,
     quality_checks: qualityChecks(c), rollup,
     calculation_lines: c.lines.map((l) => l.line), calculation_unplaced: [],

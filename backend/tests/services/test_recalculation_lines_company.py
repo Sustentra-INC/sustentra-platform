@@ -30,9 +30,13 @@ from backend.tests.services.test_recalculation_lines import (
 def test_vehicle_group_line_keys_equal_the_evidence_tree_keys() -> None:
     store = _mobile_store()
     engagement = _engagement(recalculation={"vehicle_groups": [GROUP_ROAD, GROUP_OFF]})
-    tree_keys = {line["key"] for line in EvidenceTreeService(store, store, store).tree(engagement, _own)["lines"]
+    # Two groups share the fuel, so a reviewer files the fleet document on one (it counts only on a line).
+    decisions = {"FLEET": {"placements": [{"from": "supporting:unassigned",
+                                           "to": "s1:mobile:diesel-fuel:vg-heavy-trucks"}]}}
+    tree_keys = {line["key"]
+                 for line in EvidenceTreeService(store, store, store).tree(engagement, _own, decisions)["lines"]
                  if line["category"] == "mobile"}
-    recalc_keys = {ln["key"] for ln in _service(store).recalculate(engagement, _own)["calculation_lines"]}
+    recalc_keys = {ln["key"] for ln in _service(store).recalculate(engagement, _own, decisions)["calculation_lines"]}
     assert recalc_keys == tree_keys == {"s1:mobile:diesel-fuel:vg-heavy-trucks", "s1:mobile:diesel-fuel:vg-forklifts"}
 
 
@@ -94,22 +98,30 @@ def test_company_figures_for_a_line_with_no_evidence_give_a_zero_line_and_the_ga
 
 
 def test_implied_fuel_economy_is_withheld_when_the_fuel_is_shared_and_non_road_has_no_distance() -> None:
-    result = _run(_mobile_store(), vehicle_groups=[GROUP_ROAD, GROUP_OFF])
+    result = _run(_mobile_store(), {"FLEET": {"placements": [
+        {"from": "supporting:unassigned", "to": "s1:mobile:diesel-fuel:vg-heavy-trucks"}]}},
+        vehicle_groups=[GROUP_ROAD, GROUP_OFF])
     road = _by_key(result)["s1:mobile:diesel-fuel:vg-heavy-trucks"]
     assert road["step2"]["distance"]["quantity"] == 10000 and road["step2"]["implied_fuel_economy"] is None
     assert _by_key(result)["s1:mobile:diesel-fuel:vg-forklifts"]["step2"]["distance"] is None
 
 
-def test_unplaced_reasons_say_why() -> None:
-    mobile = _run(_mobile_store(), vehicle_groups=[GROUP_ROAD, GROUP_OFF])["calculation_unplaced"]
-    assert [u["reason"] for u in mobile] == ["fuel_shared_by_vehicle_groups"]
+def test_a_record_on_no_line_is_listed_as_not_counted_whatever_the_reason() -> None:
+    """Changed by Claire's ruling (Evidence Screen tab I8). Before, each of these was reported under
+    ``calculation_unplaced`` with a reason and counted; now none is counted and Results lists the document."""
+
+    def left_out(result: dict) -> list[str]:
+        assert result["calculation_unplaced"] == []
+        return [d["document_id"] for d in result["uncounted_values"]["documents"]]
+
+    assert left_out(_run(_mobile_store(), vehicle_groups=[GROUP_ROAD, GROUP_OFF])) == ["FLEET"]  # fuel shared
     store = _gas_store()
     store.add_document("NOPLANT", "CT-S1-FUELQTY", [_gas_record(5, plant="Somewhere Else Ltd")])
-    assert [u["reason"] for u in _run(store)["calculation_unplaced"]] == ["no_facility_match"]
+    assert left_out(_run(store)) == ["NOPLANT"]  # no Setup facility
     moved = _run(_gas_store(), {"GAS-STL": {"placements": [{"from": GAS_STL, "to": "block:summary"}]}})
-    assert [u["reason"] for u in moved["calculation_unplaced"]] == ["moved_to_another_place"]
+    assert left_out(moved) == ["GAS-STL"]  # moved to a block
     gone = _run(_gas_store(), {"GAS-STL": {"placements": [{"from": GAS_STL, "to": "s1:stationary:coal:fac-x"}]}})
-    assert [u["reason"] for u in gone["calculation_unplaced"]] == ["unknown_line"]
+    assert left_out(gone) == ["GAS-STL"]  # parked on a line that does not exist
 
 
 def test_mixed_units_rows_add_up_to_the_total_in_the_total_unit() -> None:
