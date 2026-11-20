@@ -43,7 +43,7 @@ GOOD = {
     "texts": [],
     "estimations": [],
     "selections": [],
-    "periods": [{"start": "2024-01-01", "end": "2024-12-31", **cite("L3", "January 1 to December 31, 2024")}],
+    "periods": [{"start": "2024-01-01", "end": "2024-12-31", "start_implied": False, "title_line": "", "title_quote": "", **cite("L3", "January 1 to December 31, 2024")}],
     "gwp": [],
     "entities": [{"name": "Acme Foods Kent LLC", "facilities": ["Kent Cannery"], "equity_share_pct": 51,
                   "financial_control": 51, "operational_control": "Yes",
@@ -142,7 +142,7 @@ def test_a_reviewers_decision_is_never_overwritten(claude: FakeClaude) -> None:
     assert approach["decision"]["status"] == "edited" and len(approach["history"]) == 1
     rejected = record(eid, "category:scope1:stationary")
     assert rejected["suggestion"] is None and rejected["decision"]["status"] == "rejected"
-    assert record(eid, "reporting_period")["suggestion"]["value"] == {"start": "2024-01-01", "end": "2024-12-31"}
+    assert record(eid, "reporting_period")["suggestion"]["value"] == {"start": "2024-01-01", "end": "2024-12-31", "basis": "Calendar year"}
 
 
 def test_a_second_run_replaces_pending_suggestions_and_does_not_repeat_rows(claude: FakeClaude) -> None:
