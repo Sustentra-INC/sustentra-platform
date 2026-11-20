@@ -666,3 +666,30 @@ def test_a_rejected_fixed_gwp_set_never_comes_back_as_a_row(claude: FakeClaude, 
     assert prefill(eid).status_code == 200
     assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
     assert record(eid, "gwp")["decision"]["status"] == "rejected"
+
+
+def test_scopes_covered_is_stored_with_a_quote_per_scope_and_reads_not_detected_when_the_document_names_none(
+        claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    lines = [(1, "Acme Foods asserts its Scope 1 and Scope 2 emissions for the year ended December 31, 2024."),
+             (1, "Scope 3 is excluded from this statement.")]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(lines)])
+    empty: dict[str, Any] = {k: [] for k in GOOD}
+    pair = "Scope 1 and Scope 2 emissions"
+    claude.output = {**empty, "selections": [
+        {"field_id": "scopes:covered", "option": "Scope 1", "wording": "Scope 1", **cite("L1", pair)},
+        {"field_id": "scopes:covered", "option": "Scope 2", "wording": "", **cite("L1", pair)},
+        {"field_id": "scopes:covered", "option": "Scope 3", "wording": "", **cite("L2", "Scope 3 is excluded")}]}
+    body = prefill(eid).json()
+    assert body["suggested"] == 1 and body["dropped"] == {"negated": 1}
+    scopes = record(eid, "scopes:covered")
+    assert [v["option"] for v in scopes["suggestion"]["value"]] == ["Scope 1", "Scope 2"]
+    assert [e["quote"] for e in scopes["suggestion"]["evidence"]] == [pair, pair]
+    assert act(eid, "scopes:covered", "accept").json()["decision"]["value"] == scopes["suggestion"]["value"]
+    # a document that names no scope: nothing is suggested and the row reads Not detected, never an invented value
+    other = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc([(1, "Our report covers energy and water.")])])
+    claude.output = empty
+    assert prefill(other).json()["suggested"] == 0
+    assert record(other, "scopes:covered")["suggestion"] is None and record(other, "scopes:covered")["display_state"] == "not_detected"
+    assert act(other, "scopes:covered", "edit", {"value": [{"option": "Not stated", "wording": ""}]}).status_code == 200

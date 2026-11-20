@@ -95,7 +95,7 @@ class EstimationSuggestion(_Cited):
 
 class SelectionSuggestion(_Cited):
     field_id: Literal[_MULTI_IDS]  # type: ignore[valid-type]
-    option: str  # one of the field's listed options (never "None": that has nothing to quote)
+    option: str  # one of the field's listed options (never "None" or "Not stated": nothing to quote)
     wording: str  # the company's own words for it, copied from the quote ("" if none)
 
 
@@ -210,6 +210,54 @@ _OPTION_TERMS = {
 _NEGATIONS = frozenset({"not", "no", "never", "without", "none", "neither", "nor", "cannot"})
 
 
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3}
+_SCOPE_MENTION = re.compile(
+    r"\bscopes?\s*(?P<list>(?:[123]|one|two|three)(?:\s*(?:,|&|\+|/|and|or|to|through|-)\s*(?:[123]|one|two|three))*)(?![0-9])")
+_SCOPE_RANGE = re.compile(r"\s*(?:to|through|-)\s*")
+_BEFORE_SCOPE = _NEGATIONS | {"excluded", "excluding", "exclude", "excludes", "omit", "omitted", "outside", "except"}
+_AFTER_SCOPE = frozenset({"excluded", "excludes", "excluding", "omitted", "outside", "not", "never", "except"})
+_SCOPE_ID = {"Scope 1": 1, "Scope 2": 2, "Scope 3": 3}
+
+
+def _scope_numbers(listing: str) -> set[int]:
+    """The scope numbers in "1", "1 and 2", "1, 2 and 3", "1 to 3", "one"."""
+
+    def number(token: str) -> int:
+        return _NUMBER_WORDS.get(token) or int(token)
+
+    out: set[int] = set()
+    for piece in re.split(r"\s*(?:,|&|\+|/|and|or)\s*", listing.strip()):
+        bounds = [number(t) for t in re.findall(r"[123]|one|two|three", piece)]
+        if _SCOPE_RANGE.search(piece) and len(bounds) == 2:
+            out |= set(range(bounds[0], bounds[1] + 1))
+        else:
+            out |= set(bounds)
+    return out
+
+
+def names_scope(quote: str, option: str) -> str:
+    """How a quote names a scope ("Scope 1", "Scope 2", "Scope 3"): ``yes``, ``negated`` or ``no``. It reads
+    "Scope 1", "Scopes 1 and 2", "scope one" and "Scopes 1 to 3". A mention is negated by a negation or
+    "excluded" / "outside" / "omitted" up to five words before it, or one of the words after it within the
+    same clause (a comma, semicolon or the next scope named ends the clause): "Scope 3 is excluded", "except Scope 3"."""
+
+    wanted = _SCOPE_ID.get(option)
+    text = norm(quote)
+    negated = False
+    for match in _SCOPE_MENTION.finditer(text):
+        if wanted is None or wanted not in _scope_numbers(match["list"]):
+            continue
+        before = re.findall(r"[a-z0-9'-]+", text[:match.start()])[-5:]
+        clause = re.split(r"[,;.]|\bscopes?\b", text[match.end():], maxsplit=1)[0]  # up to the next scope named
+        after = re.findall(r"[a-z0-9'-]+", clause)[:8]
+        if (any(w in _BEFORE_SCOPE or w.endswith("n't") for w in before)
+                or any(w in _AFTER_SCOPE or w.endswith("n't") for w in after)):
+            negated = True
+        else:
+            return "yes"
+    return "negated" if negated else "no"
+
+
 def names_option(quote: str, terms: Sequence[str]) -> str:
     """How a quote names an option: ``yes`` (a term as a whole word or phrase, not negated), ``negated``
     (every mention has a negation within five words before it: "we do not buy RECs") or ``no``."""
@@ -309,6 +357,15 @@ What the items mean
   own line, and the quote must name the option. "wording" is the company's own words for it, copied
   from the quote, or "". Do not choose an option the documents do not mention, or say the company does
   not use.
+- scopes covered (selections with field_id scopes:covered): one item per scope the inventory covers,
+  with the option exactly "Scope 1", "Scope 2" or "Scope 3", each citing its own line. Look for the
+  row labels of the main emissions table or one sentence or list that names the scopes ("Scope 1",
+  "Scope 2", "Scope 3", "direct", "indirect"; ISO 14064-1 reports use "Category 1" to "Category 6"),
+  often under Operational Boundary, Reporting Boundary, Introduction or Overview. The quote must
+  name the scope, as "Scope 1" or in a list ("Scopes 1 and 2"). Choose a scope only when the
+  document says it is reported or covered. A scope the document calls excluded, outside the
+  boundary, or only relevant is not covered: leave it out. Never choose "Not stated": if the
+  documents name no scope, leave the field out. "wording" is the company's own label, or "".
 - gases: for each greenhouse gas (field_id gas:co2, gas:ch4, gas:n2o, gas:hfcs, gas:pfcs, gas:sf6,
   gas:nf3) the document states, "Included" (the gas is covered by the inventory) or "Declared absent"
   (the document says the gas is not emitted or not applicable). The quote must name the gas. If a
@@ -564,13 +621,14 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         definition = rules.catalog_field(sel.field_id)
         by_key = {norm(a): a for a in (definition or {}).get("allowed", [])}
         option = by_key.get(norm(sel.option))
-        if option is None or option == "None":
+        if option is None or option in rules.STANDALONE_OPTIONS:  # "None", "Not stated": nothing to quote
             dropped["invalid_value"] += 1
             continue
         found = cited(sel)
         if found is None:
             continue
-        named = names_option(sel.quote, _OPTION_TERMS.get(option, ()))
+        named = (names_scope(sel.quote, option) if sel.field_id == rules.SCOPES_ID
+                 else names_option(sel.quote, _OPTION_TERMS.get(option, ())))
         if named != "yes":  # the quote does not name the option, or says the company does not have it
             dropped["negated" if named == "negated" else "value_not_in_quote"] += 1
             continue
