@@ -326,6 +326,11 @@ def verified(output: Any, facilities: Sequence[Mapping[str, Any]], file_name: st
         return None
     if not set(_words(quote)) & distinctive_words(facility_id, facilities, company):
         return None  # nothing in the quote points at this facility and no other
+    # The file name or the sample also names another facility by a word of its own: the document points two ways
+    seen = set(_words(file_name)).union(*(_words(line.text) for line in lines))
+    if any(seen & distinctive_words(str(f.get("facilityId")), facilities, company)
+           for f in facilities if str(f.get("facilityId")) != facility_id):
+        return None
     if getattr(output, "source", None) == "file_name":
         return FacilitySuggestion(facility_id, quote, "file_name") if _contains_words(file_name, quote) else None
     found = locate_quote(quote, getattr(output, "line", None) or None, lines)

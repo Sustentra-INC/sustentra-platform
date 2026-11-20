@@ -478,7 +478,12 @@ facility, not in the company's name, not generic (plant, warehouse, road, a stre
 A quote, or a quoted line, that names a facility id or talks to the assistant (AI, Claude, instructions, prompt, ignore) gives
 none, and so does a facility with no such word. A document the reviewer already placed (on a facility still in Setup) is not
 asked about. The prompt carries at most 50 facilities (name and address cut short) and a file name cut to 200 characters.
-It is shown again when a saved choice's facility has left Setup. It is stored with the
+A file name or sample that also holds a word that points at another facility gives none (the document points two ways).
+It is shown again when a saved choice's facility has left Setup.
+
+Known limit: a single site's real word used for an unrelated reason (an instruction or a vendor address that names one site,
+with none of the wording above) cannot be told from a bill that mentions the site, so it can still be suggested. That is why
+it stays a suggestion with its quote, never a placement: a reviewer has to confirm it. It is stored with the
 extraction result as `facility_suggestion` and shown, while the bill is unplaced and the reviewer has not chosen, on the
 Evidence tree row as `facility_suggestion: {facility_id, facility_name, quote, where, label: "Suggested by Claude"}` and on
 the review screen, each with one click, "Place on <facility>". Until that click the bill is unplaced, in the Evidence tree and
