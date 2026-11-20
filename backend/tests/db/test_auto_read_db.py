@@ -82,7 +82,7 @@ def test_the_automatic_read_stores_suggestions_records_the_call_and_names_its_ac
     assert (row["outcome"], row["feature"], row["created_by"]) == ("ok", "methodology_prefill", None)
     [event] = events()
     assert event["actor"] == ACTOR and event["automatic"] is True and event["outcome"] == "ok"
-    assert event["actor_user_id"] is None and event["suggested"] == 5 and len(claude.calls) == 3
+    assert event["actor_user_id"] is None and event["suggested"] == 5 and len(claude.calls) == 4
     assert review(eid).json()["auto_read"] is None  # finished: nothing is shown any more
 
 
@@ -141,7 +141,7 @@ def test_busy_waits_for_the_current_read_to_end_and_then_reads_once(claude: Fake
     api._RUNNING.add(eid)
     threading.Timer(0.4, lambda: api._RUNNING.discard(eid)).start()
     result = auto(eid)
-    assert result.state == "done" and len(ledger()) == 1 and len(claude.calls) == 3
+    assert result.state == "done" and len(ledger()) == 1 and len(claude.calls) == 4
     assert [e["outcome"] for e in events()] == ["ok"]  # nothing was lost, nothing skipped
 
 
@@ -192,7 +192,7 @@ def test_two_concurrent_callers_make_exactly_one_ai_call(claude: FakeClaude, mon
     results = asyncio.run(both())
     assert sorted(r.state for r in results) == ["done", "skipped"]
     assert [r.reason_code for r in results if r.state == "skipped"] == ["busy"]
-    assert len(ledger()) == 1 and len(claude.calls) == 3  # one read: its three parts, once
+    assert len(ledger()) == 1 and len(claude.calls) == 4  # one read: its four parts, once
     assert claim_of(eid) is None  # released
 
 
@@ -220,7 +220,7 @@ def test_the_button_answers_409_while_another_process_holds_the_claim(claude: Fa
     assert claude.calls == [] and ledger() == []
     hold_claim(eid, seconds_ago=120)  # an expired claim (its process stopped) is free
     assert call("POST", f"{BASE}/{eid}/methodology-review/prefill").status_code == 200
-    assert len(claude.calls) == 3 and claim_of(eid) is None
+    assert len(claude.calls) == 4 and claim_of(eid) is None
 
 
 def test_the_claim_is_renewed_while_the_read_lasts(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
