@@ -24,6 +24,8 @@ import {
   type TreeScope,
 } from "../api/evidenceTree";
 import { ApiError } from "../../../lib/api";
+import { getMethodologyReview } from "../api/methodologyReview";
+import { factsReadByDocument } from "../utils/methodologyFacts";
 import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig } from "../types";
 import { addedByText, formatPeriod } from "../utils/formatPeriod";
@@ -60,6 +62,8 @@ export interface EvidenceTreeProps {
   onOpenExtraction: (documentId: string) => void;
   onOpenSchedule: (lineKey: string) => void;
   onOpenSetup?: () => void;
+  /** Opens Methodology review, where the facts read from a summary document are and where it can be read. */
+  onOpenMethodology?: () => void;
   /** Saves one move of one placement; rejects with the reason when it did not save. */
   onMovePlacement: (documentId: string, move: Placement, reread?: RereadChoice) => Promise<void>;
   /** The reviewer takes Claude's facility suggestion: places the document on that Setup facility (their own decision,
@@ -117,6 +121,18 @@ export function EvidenceTree(props: EvidenceTreeProps) {
   const [placeProblem, setPlaceProblem] = useState<{ documentId: string; message: string } | null>(null);
   // A filter opens every row once, so the matches show; the reviewer can still close any of them.
   const openAllOnLoad = useRef(false);
+  // Facts Methodology review has read, by document. null: not known (loading, or the server did not answer).
+  const [facts, setFacts] = useState<Map<string, number> | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    getMethodologyReview(engagementId)
+      .then((data) => live && setFacts(factsReadByDocument(data)))
+      .catch(() => live && setFacts(null));
+    return () => {
+      live = false;
+    };
+  }, [engagementId, reloadKey, reload]);
 
   useEffect(() => {
     let live = true;
@@ -209,6 +225,42 @@ export function EvidenceTree(props: EvidenceTreeProps) {
   const folderList = tree.blocks.summary_folders ?? [];
   const foldersOn = tree.blocks.summary_folders !== undefined && Boolean(props.onCreateFolder);
 
+  /** A summary document feeds no line, so it is read for Methodology review: how many facts that read found in it. */
+  function docValues(doc: TreeDocRow, section: string): ReactNode {
+    if (doc.values) return `${doc.accepted} of ${doc.values} accepted`;
+    if (section !== BLOCK_SUMMARY || facts === null) return "No values yet";
+    const n = facts.get(doc.document_id) ?? 0;
+    const open = props.onOpenMethodology;
+    if (n > 0) {
+      return (
+        <>
+          {n} {n === 1 ? "fact" : "facts"} read
+          {open ? (
+            <>
+              {" · "}
+              <button className="s1-linklike" type="button" onClick={open}>
+                Open Methodology review
+              </button>
+            </>
+          ) : null}
+        </>
+      );
+    }
+    return (
+      <>
+        Not read yet
+        {open ? (
+          <>
+            {" · "}
+            <button className="s1-linklike" type="button" onClick={open}>
+              Read with Sustentra&apos;s AI
+            </button>
+          </>
+        ) : null}
+      </>
+    );
+  }
+
   function docRow(doc: TreeDocRow, section: string) {
     const id = `${section}|${doc.document_id}`;
     const from = doc.placement_from ?? section;
@@ -278,7 +330,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
             </span>
           ))}
         </span>
-        <span className="s1-et-doc__vals">{doc.values ? `${doc.accepted} of ${doc.values} accepted` : "No values yet"}</span>
+        <span className="s1-et-doc__vals">{docValues(doc, section)}</span>
         <ActionMenu
           label={`Actions for ${doc.file_name}`}
           isOpen={menuId === id}
