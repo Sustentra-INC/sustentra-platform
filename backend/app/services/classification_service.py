@@ -53,6 +53,9 @@ GHG_ACTIVITY_RE = re.compile(
     r"|\d[\d,.]*\s*(?:gal(?:lons?)?|therms?|ccf|mcf|mmbtu|dth|litres?|liters?)\b"
     # an activity column even when the value and its unit are split (a header row "Fuel type | Gallons | Scope 1"):
     r"|\b(?:gallons?|litres?|liters?|therms?|ccf|mcf|kwh|mwh|mmbtu|dth|fuel type|odometer|run hours|meter reading)\b")
+# Fluorinated-gas inventory types match the word "inventory" alone; they are not bills, tickets or logs.
+FGAS_INVENTORY_TYPES = frozenset({"CT-S1-FGASINV", "CT-S1-EQUIPLEAK", "CT-S1-ELECSF6", "CT-S1-FGASPROC"})
+MAY_BE_REPORT = "may be a company GHG report \u2014 move it to Block 1 if so"
 WORKBOOK_TYPE = "CT-GHG-WORKBOOK"
 SUMMARY_PREFIX = "CT-GHG-"
 STATIONARY_TYPE = "CT-S1-FUELQTY"
@@ -178,6 +181,9 @@ class ClassificationService:
                     review_required = False
 
             primary = selected_candidates[0]
+            if MAY_BE_REPORT in str(primary.get("reason") or ""):
+                review_required = True
+                notes = f"The document {MAY_BE_REPORT}."
 
             base_result.update(
                 {
@@ -332,10 +338,26 @@ class ClassificationService:
         type_id: str,
         candidates: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        """A company's narrative GHG document (see ``narrative_ghg_document_type``) is that summary type, whatever
-        kWh, MWh or "invoice" its sentences mention: its type passes the threshold and every other type stays below."""
+        """A company's narrative GHG document (see ``narrative_ghg_document_type``) is that summary type, but only
+        when no evidence type meets its threshold. When one does, the evidence type wins and is flagged for review:
+        a missed summary is one move into Block 1; a bill typed as a summary loses its emissions."""
 
-        label = "cue: company GHG document (title or heading, mostly prose, no bill or log rows)"
+        from .calculation_lines import SUMMARY_TYPES
+
+        evidence = [c for c in candidates
+                    if c["canonical_type_id"] not in SUMMARY_TYPES and c["canonical_type_id"] not in FGAS_INVENTORY_TYPES
+                    and c["threshold"] is not None and c["confidence"] >= c["threshold"]]
+        if evidence:
+            for candidate in evidence:
+                candidate["review_required"] = True
+                if MAY_BE_REPORT not in candidate["reason"]:
+                    candidate["reason"] = f"{candidate['reason']}; {MAY_BE_REPORT}".strip("; ")
+            return candidates
+        for candidate in candidates:
+            if candidate["canonical_type_id"] in FGAS_INVENTORY_TYPES:
+                candidate["confidence"] = round(min(candidate["confidence"], candidate["threshold"] - 0.01), 4)
+                candidate["review_required"] = True
+        label = "cue: company GHG document (title, mostly prose, no bill or log rows)"
         of_type = [c for c in candidates if c["canonical_type_id"] == type_id]
         if of_type:
             target = max(of_type, key=lambda c: c["confidence"])
@@ -350,11 +372,7 @@ class ClassificationService:
         target["matched_signals"]["key_phrases"].append(label)
         target["confidence"] = round(min(max(target["confidence"] + CUE_BONUS, target["threshold"] + 0.15), 1.0), 4)
         target["reason"] = self._build_reason(target["matched_signals"])
-        target["review_required"] = False
-        for candidate in candidates:
-            if candidate is not target:
-                candidate["confidence"] = round(min(candidate["confidence"], candidate["threshold"] - 0.01), 4)
-                candidate["review_required"] = True
+        target["review_required"] = target["confidence"] < target["threshold"]
         return candidates
 
     def _build_search_text(self, payload: dict[str, Any]) -> str:

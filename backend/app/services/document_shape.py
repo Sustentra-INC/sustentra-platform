@@ -148,73 +148,114 @@ WORKBOOK_TYPE_ID = "CT-GHG-WORKBOOK"
 METHODDOC_TYPE_ID = "CT-S1-METHODDOC"
 _APOS = "['’ʼ`]"
 _GHG = r"(?:greenhouse\s+gas|ghg)"
+# Cues count only in the document's title (see ``_title_lines``): a footer that says "See our Greenhouse Gas Inventory
+# Report at example.com/esg" is not one. Bare "methodology" and "limited assurance" are not titles.
 _NARRATIVE_METHOD_HEADING = re.compile(
-    r"\bbasis\s+of\s+(?:reporting|preparation)\b|\bmethodology\b|\bmethods\s+and\s+assumptions\b", re.I)
+    rf"\bbasis\s+of\s+(?:reporting|preparation)\b|\b(?:{_GHG}|emissions(?:\s+calculation)?|inventory)\s+methodology\b",
+    re.I)
 _NARRATIVE_HEADING = re.compile(
     rf"\bstatement\s+of\s+{_GHG}\s+emissions\b|\bmanagement{_APOS}?s?\s+assertion\b"
     rf"|\b{_GHG}\s+inventory\s+(?:management\s+plan|report)\b|\bclimate\s+accounting\s+statement\b"
     rf"|\bindependent\s+accountants?{_APOS}?s?{_APOS}?\s+(?:review|examination)\s+report\b"
-    rf"|\b(?:limited\s+|reasonable\s+)?assurance\s+(?:statement|report)\b|\blimited\s+assurance\b"
-    rf"|\boperational\s+{_GHG}\s+emissions\b|\bannual\s+{_GHG}\s+(?:emissions\s+)?report\b", re.I)
-_TOP_LINES = 40  # where a title or heading cue is looked for
+    rf"|\b(?:limited\s+|reasonable\s+)?assurance\s+(?:statement|report)\b"
+    rf"|\boperational\s+{_GHG}\s+emissions\s+and\s+\w+|\bannual\s+{_GHG}\s+(?:emissions\s+)?report\b", re.I)
+_TITLE_LINES = 6  # the first non-empty lines of page 1
+_TITLE_WORDS = 12
+_NOT_A_TITLE = re.compile(r"https?:|www\.|\.(?:com|org|net|gov|io)\b|/|\b(?:see|visit)\b", re.I)
 _BILL_TOP_LINES = 30  # where bill rows and quantity tables veto
-_HEADING_WORDS = 16
 _NARRATIVE_MIN_LINES = 12
+_NARRATIVE_MIN_WORDS = 800  # prose, when the parser gave no page count
 _NARRATIVE_MIN_PROSE = 0.4
+_MAX_DATA_ROWS = 5
+_MAX_DATA_ROW_SHARE = 0.10
 _ACTIVITY_UNIT = re.compile(
     r"\d[\d,.]*\s*(?:gal(?:lons?)?|k?wh|mwh|therms?|ccf|mcf|mmbtu|dth|litres?|liters?)\b"
     r"|\b(?:gallons?|litres?|liters?|therms?|ccf|mcf|kwh|mwh|mmbtu|dth|odometer|meter reading)\b", re.I)
 _TABULAR = re.compile(r"\||\t|\s{3,}|^[^,]*(?:,[^,]*){3,}$")
 _BILL_TOP = re.compile(r"\bamount\s+due\b|\btotal\s+due\b|\bpay\s+by\b|\bpay\s+this\s+amount\b", re.I)
+_DATE = re.compile(
+    r"\b\d{4}[-/.]\d{1,2}[-/.]\d{1,2}\b|\b\d{1,2}[-/.]\d{1,2}[-/.]\d{2,4}\b"
+    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b", re.I)
+_QUANTITY_UNIT = re.compile(
+    r"\d[\d,.]*\s*(?:gal(?:lons?)?|l|litres?|liters?|k?wh|mwh|therms?|ccf|mmbtu|dth|lbs?|kg|hours?|hrs?)\b", re.I)
+# Labels of a bill, a delivery ticket or a fuel log, found anywhere in the document.
+_BILL_LABELS = re.compile(
+    r"\bdelivery\s+ticket\b|\bticket\s*(?:#|no\b|number)|\binvoice\s*(?:#|no\b\.?|number)?\s*[:#]?\s*\d"
+    r"|\bgallons\s+delivered\b|\bbill\s+date\b|\bservice\s+address\b|\bdue\s+date\b", re.I)
+_KEY_VALUE_BILL_FIELD = re.compile(
+    r"account\s*(?:number|no|#)|billing\s+period|service\s+period|amount\s+due|total\s+due|invoice|bill\s+date"
+    r"|due\s+date|service\s+address|meter|ticket|statement\s+date", re.I)
 
 
-def _document_lines(parser_output: dict[str, Any] | None, text: str) -> tuple[list[str], int | None]:
-    """The document's non-empty lines in reading order, and its page count when the parser gave one."""
+def _document_lines(parser_output: dict[str, Any] | None, text: str) -> tuple[list[str], list[str], int | None]:
+    """The document's non-empty lines in reading order, those of page 1, and the page count when the parser gave
+    one."""
 
     raw = ""
+    first = ""
     pages = None
     if isinstance(parser_output, dict):
         page_list = [p for p in parser_output.get("pages") or [] if isinstance(p, dict)]
         pages = len(page_list) or None
         raw = "\n".join(str(p.get("text") or "") for p in page_list)
+        first = str(page_list[0].get("text") or "") if page_list else ""
         if not raw.strip():
             raw = "\n".join(str(b.get("text") or "") for b in parser_output.get("text_blocks") or []
                             if isinstance(b, dict))
     if not raw.strip():
         raw = text
-    return [line.strip() for line in raw.splitlines() if line.strip()], pages
+    if not first.strip():
+        first = raw
+    return ([line.strip() for line in raw.splitlines() if line.strip()],
+            [line.strip() for line in first.splitlines() if line.strip()], pages)
+
+
+def _is_data_row(line: str) -> bool:
+    return bool(_DATE.search(line) and _QUANTITY_UNIT.search(line))
 
 
 def narrative_ghg_document_type(parser_output: dict[str, Any] | None = None, text: str = "") -> str | None:
     """The summary type (``CT-GHG-WORKBOOK`` or ``CT-S1-METHODDOC``) of a company's narrative GHG document, or
-    ``None``.
+    ``None``. When unsure it is ``None``: the evidence type wins, and a missed summary is one move into Block 1.
 
-    It needs a title or heading cue near the top (statement of GHG emissions, management assertion, inventory
-    management plan, basis of reporting, climate accounting statement, accountants' review report, assurance
-    statement, GHG inventory report, methodology), mostly prose across several pages, and none of a bill's or a
-    log's shape near the top: bill rows (account number, billing period, amount due) or a table of quantities.
-    kWh, MWh and "invoices" inside sentences do not count against it. A contract is never one."""
+    It needs the document's title (one of the first six lines of page 1, at most twelve words, no URL, "see" or
+    "visit", not a sentence) to name a GHG statement, management assertion, inventory management plan or report,
+    basis of reporting or preparation, climate accounting statement, accountants' review report, assurance
+    statement or a GHG methodology; prose over two or more pages (or 800 words when the page count is unknown);
+    and none of a bill's, ticket's or log's shape: bill or ticket labels, bill rows near the top, a quantity table,
+    or data rows (a date with a quantity and its unit) in number (five or more) or in share (over 10% of the
+    lines). kWh, MWh and "invoices" inside sentences do not count against it. A contract is never one."""
 
     if isinstance(parser_output, dict):
         if parser_output.get("tables") or any(
                 isinstance(r, dict) and r.get("sheet_name") for r in parser_output.get("source_references") or []):
             return None  # a spreadsheet or a document with tables: the summary cue for workbooks decides
+        if any(isinstance(kv, dict) and _KEY_VALUE_BILL_FIELD.search(str(kv.get("key") or ""))
+               for kv in parser_output.get("key_value_pairs") or []):
+            return None  # labelled bill fields: a record, not a report
         if looks_like_a_contract(parser_output):
             return None
-    lines, pages = _document_lines(parser_output, text)
+    lines, first_page, pages = _document_lines(parser_output, text)
     if len(lines) < _NARRATIVE_MIN_LINES or (pages is not None and pages < 2):
         return None
-    top = lines[:_TOP_LINES]
-    headings = [line for line in top if len(line.split()) <= _HEADING_WORDS]
-    report = any(_NARRATIVE_HEADING.search(line) for line in headings)
-    if not report and not any(_NARRATIVE_METHOD_HEADING.search(line) for line in headings):
+    titles = [line for line in first_page[:_TITLE_LINES]
+              if len(line.split()) <= _TITLE_WORDS and not _NOT_A_TITLE.search(line) and not line.endswith(".")]
+    report = any(_NARRATIVE_HEADING.search(line) for line in titles)
+    if not report and not any(_NARRATIVE_METHOD_HEADING.search(line) for line in titles):
+        return None
+    if _BILL_LABELS.search("\n".join(lines)):
+        return None
+    data_rows = sum(1 for line in lines if _is_data_row(line))
+    if data_rows >= _MAX_DATA_ROWS or data_rows / len(lines) > _MAX_DATA_ROW_SHARE:
         return None
     for line in lines[:_BILL_TOP_LINES]:
         if _BILL_ROW_LABEL.search(line) or _BILL_TOP.search(line):
             return None
         if _TABULAR.search(line) and _ACTIVITY_UNIT.search(line):
             return None
-    prose = sum(1 for line in lines if len(line.split()) >= 8 or _is_sentence(line))
-    if prose < 3 or prose / len(lines) < _NARRATIVE_MIN_PROSE:
+    prose_lines = [line for line in lines if len(line.split()) >= 8 or _is_sentence(line)]
+    if len(prose_lines) < 3 or len(prose_lines) / len(lines) < _NARRATIVE_MIN_PROSE:
+        return None
+    if pages is None and sum(len(line.split()) for line in prose_lines) < _NARRATIVE_MIN_WORDS:
         return None
     return WORKBOOK_TYPE_ID if report else METHODDOC_TYPE_ID
