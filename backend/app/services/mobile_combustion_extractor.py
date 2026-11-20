@@ -263,6 +263,7 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
     """Builds CT-S1-MOBFUEL candidates: one record per fuel transaction."""
 
     CANONICAL_TYPE_ID = CANONICAL_TYPE_ID
+    RUN_LOG_WITHOUT_FUEL = False  # a run log with no fuel named is stationary fuel use only
     # A fleet card statement is read as the issuer's (19 Nov ruling): the party that bills the client is the issuer
     # on the letterhead, so it is the supplier and the account printed in the header is the account. The station of
     # each transaction (and its city) is where the fuel was dispensed, and each masked card is its own field; both
