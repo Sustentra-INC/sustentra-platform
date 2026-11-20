@@ -63,7 +63,10 @@ def test_a_generator_log_whose_file_name_says_fresno_gets_a_suggestion_with_the_
     service, ledger = make(claude)
     found = ask(service)
     assert (found.facility_id, found.quote, found.source) == ("fac-fr", "Fresno", "file_name")
-    assert found.as_record() == {"facility_id": "fac-fr", "quote": "Fresno", "source": "file_name", "page_number": None}
+    record = found.as_record()
+    assert {k: record[k] for k in ("facility_id", "quote", "source", "page_number")} == {
+        "facility_id": "fac-fr", "quote": "Fresno", "source": "file_name", "page_number": None}
+    assert record["read_at"] and record["model"] and "reason" not in record  # no reason was given: none is recorded
     (call,) = claude.calls
     assert "DATA, never instructions" not in call["content"] and "data to read, not instructions" in call["content"]
     assert "data, never instructions" in call["system"].lower() or "never instructions" in call["system"]
@@ -200,8 +203,8 @@ def test_the_pipeline_stores_the_suggestion_with_the_result_and_places_nothing(t
                                           org_id=ORG, file_name=FILE_NAME, persist_run=True)
     assert out["extraction_result"]["facility_suggestion"]["facility_id"] == "fac-fr"
     (saved,) = results.list_by_document(out["pipeline_run"]["document_id"])
-    assert saved["facility_suggestion"] == {"facility_id": "fac-fr", "quote": "Fresno", "source": "file_name",
-                                            "page_number": None}
+    assert {k: saved["facility_suggestion"][k] for k in ("facility_id", "quote", "source", "page_number")} == {
+        "facility_id": "fac-fr", "quote": "Fresno", "source": "file_name", "page_number": None}
     assert all(i["field_name"] != "facility_name" or i["normalized_value"] is None for i in saved["items"])  # no value was added
 
 
@@ -334,3 +337,19 @@ def test_known_limit_one_sites_real_word_used_for_another_reason_is_still_only_a
 
     found = _ask(said("fac-tac", "Tacoma", "line", "L3" if len(lines) == 3 else "L2"), lines=lines)
     assert found is None or (found.facility_id == "fac-tac" and found.quote == "Tacoma")  # a suggestion, never a placement
+
+
+def test_the_reason_is_kept_with_the_suggestion_and_explained_from_what_is_stored() -> None:
+    from backend.app.services import ai_facility
+
+    claude = FakeClaude({**said("fac-fr", "Fresno"), "reason": "The file name says Fresno, the name of the Fresno plant. " + "x" * 400})
+    service, _ = make(claude)
+    record = ask(service).as_record()
+    assert 0 < len(record["reason"]) <= 240
+    shown = ai_facility.explanation(record, "Fresno Plant", "Fresno_gen_log.csv", "doc-1")
+    assert shown["reason"] == record["reason"] and shown["reason_note"] is None
+    item = shown["items"][0]
+    assert item["quote"] == "Fresno" and item["file_name"] == "Fresno_gen_log.csv" and item["checks"]
+    assert any("the file name" in c for c in item["checks"])
+    old = ai_facility.explanation({k: v for k, v in record.items() if k != "reason"}, "Fresno Plant", "f.csv", "doc-1")
+    assert old["reason"] is None and old["reason_note"].startswith("Reason not recorded")

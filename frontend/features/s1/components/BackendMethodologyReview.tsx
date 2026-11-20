@@ -16,6 +16,7 @@ import {
   revealField,
   pageOf,
   revertField,
+  explanationOf,
   sourceLocation,
   type SourceAt,
   type AiStatus,
@@ -34,6 +35,7 @@ import { andThen } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import { AiExplainPopover } from "./AiExplainPopover";
 import { InfoTip } from "./InfoTip";
 
 /**
@@ -587,7 +589,12 @@ export function FieldRow({
           <div className="s1-mb-suggest">
             <div className="s1-mb-suggest__head">
               <span className="s1-mr-value">{valueText(suggestion.value)}</span>
-              <span className="s1-chip s1-mb-chip">Suggested by Sustentra&apos;s AI</span>
+              <AiExplainPopover
+                label="Suggested by Sustentra's AI"
+                className="s1-chip s1-mb-chip"
+                explanation={explanationOf(record)!}
+                onOpenDocument={(documentId, at) => onOpenDocument(documentId, { fieldId: def.fieldId, entry: at.entry, page: at.page })}
+              />
               {def.value_note && !entitiesNamed ? <span className="s1-mr-muted">{def.value_note}</span> : null}
             </div>
             {suggestion.evidence?.length ? (

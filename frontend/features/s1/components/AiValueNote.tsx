@@ -1,5 +1,8 @@
+import { NO_REASON, type AiExplanation } from "../api/aiExplanation";
 import { AI_VALUE } from "../constants/copy";
+import { STATE_ROLE_BY_PAIR } from "../constants/stateIndicators";
 import type { ReviewValue } from "../types/review";
+import { AiExplainPopover } from "./AiExplainPopover";
 import { StateIndicator } from "./StateIndicator";
 
 /** The bill says the utility estimated this reading (backend flag `estimated_read`): the value is as printed. */
@@ -24,6 +27,32 @@ export function EstimatedReadNote({ value }: { value: Pick<ReviewValue, "estimat
  * pre-accepted. Where the rules read a value and Claude read another, the card says so with
  * Claude's value and quote. The chips are the existing state chips.
  */
+/**
+ * What is known of a read value from its card: the verified snippet and its page. The AI's reason is not kept for
+ * a read value yet, so the popover says so; the one check it states is the one the reading is kept under.
+ */
+function explanationOfValue(value: Pick<ReviewValue, "snippet" | "page" | "sourceKind">): AiExplanation {
+  const paged = value.sourceKind === "pdf" || value.sourceKind === "image";
+  const location = paged && value.page ? `page ${value.page}` : "";
+  return {
+    reason: null,
+    reason_note: NO_REASON,
+    items: [
+      {
+        label: null,
+        reason: null,
+        quote: value.snippet ?? "",
+        document_id: "",
+        file_name: "",
+        page: paged && value.page ? value.page : null,
+        location,
+        checks: value.snippet ? [`The quote was found on the document${location ? ` (${location})` : ""} when it was read.`] : [],
+        implied: [],
+      },
+    ],
+  };
+}
+
 export function AiValueNote({ value }: { value: Pick<ReviewValue, "ai" | "snippet" | "page" | "reviewState" | "sourceKind"> }) {
   const ai = value.ai;
   if (!ai) return null;
@@ -33,11 +62,11 @@ export function AiValueNote({ value }: { value: Pick<ReviewValue, "ai" | "snippe
     <div className="s1-muted" data-testid="ai-value-note">
       {suggested ? (
         <>
-          <StateIndicator
-            dimension="valueProperty"
-            value="ai_suggested"
+          <AiExplainPopover
             label={AI_VALUE.suggested}
-            explain={AI_VALUE.suggestedHelp}
+            className={`s1-state s1-state--${STATE_ROLE_BY_PAIR.valueProperty?.ai_suggested ?? "unmapped"}`}
+            explanation={explanationOfValue(value)}
+            testId="ai-value-explain"
           />
           {value.snippet ? (
             <div>

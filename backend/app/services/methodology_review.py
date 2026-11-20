@@ -6,7 +6,7 @@ functions (``save_suggestion`` is the one database call, for the AI task).
 Each field is one ``workpaper_items`` row (kind ``methodology``, item_key = field id):
 
     {field_id, suggestion: null | {value, quote, document_id, file_name, source_reference,
-                                   origin: "ai", model, request_id, suggested_at},
+                                   origin: "ai", model, request_id, suggested_at, reason?},
      decision: null | {status: pending|accepted|edited|rejected, value, reason?, by, at},
      history: [{at, by, action, to?}] (newest 50),
      value_history: [decision, ...] (the decisions before the current one, oldest first, at most 10),
@@ -106,7 +106,7 @@ MAX_EVIDENCE_BYTES = 12 * 1024
 MAX_QUOTE = 1000
 # What a suggestion may carry: key -> longest text. Anything else is dropped.
 _SUGGESTION_TEXT = {"quote": MAX_QUOTE, "document_id": 100, "file_name": 255, "model": 100, "request_id": 100,
-                    "origin": 20, "suggested_at": 40}
+                    "origin": 20, "suggested_at": 40, "reason": 240}
 # source_reference keeps the keys of contracts/source_reference.schema.json that are plain text or a page.
 _SOURCE_REFERENCE_TEXT = ("source_reference_id", "document_id", "sheet_name", "cell_or_range", "text_snippet",
                           "source_kind")
@@ -775,6 +775,8 @@ def _bound_evidence(items: list[Any]) -> list[dict[str, Any]]:
                                  "file_name": _clip(item.get("file_name"), 255) or ""}
         if isinstance(raw_quote, str) and len(raw_quote) > MAX_EVIDENCE_QUOTE:
             entry["quote_truncated"] = True
+        if isinstance(item.get("reason"), str) and item["reason"].strip():
+            entry["reason"] = _clip(item["reason"], 240)
         reference = item.get("source_reference")
         if isinstance(reference, Mapping):  # only where it was read: page, sheet, cell (no snippet or box)
             kept: dict[str, Any] = {k: _clip(reference[k], 100) for k in ("sheet_name", "cell_or_range")

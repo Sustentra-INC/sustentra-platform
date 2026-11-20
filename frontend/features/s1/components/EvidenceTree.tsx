@@ -236,6 +236,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
               facilityName={doc.facility_suggestion.facility_name}
               quote={doc.facility_suggestion.quote}
               where={doc.facility_suggestion.where}
+              explanation={doc.facility_suggestion.explanation}
+              onOpenDocument={props.onOpenExtraction}
               disabled={!props.writesEnabled || !props.onPlaceOnFacility || placing === doc.document_id}
               onPlace={() => void placeOnFacility(doc.document_id, doc.facility_suggestion!.facility_id)}
             />

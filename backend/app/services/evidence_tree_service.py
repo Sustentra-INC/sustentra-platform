@@ -15,6 +15,7 @@ from typing import Any
 
 from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorReference, default_emission_factor_reference
+from backend.app.services import ai_facility
 from backend.app.services import calculation_lines as cl
 from backend.app.services.engagement_recalculation_service import (
     EngagementRecalculationService,
@@ -310,7 +311,9 @@ class EvidenceTreeService:
         page = found.get("page_number")
         where = "the file name" if found.get("source") == "file_name" else (f"page {page}" if page else "the text")
         return {"facility_id": facility_id, "facility_name": name, "quote": quote, "where": where,
-                "label": "Suggested by Sustentra's AI"}
+                "label": "Suggested by Sustentra's AI",
+                "explanation": ai_facility.explanation(found, name, str(doc.document.get("file_name") or ""),
+                                                       doc.document_id)}
 
     def _row(self, doc: DocState, slot: cl.Slot, lines: dict[str, cl.CalculationLine],
              facility_names: dict[str, str], setup_names: dict[str, str] | None = None,

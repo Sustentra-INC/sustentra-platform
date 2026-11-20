@@ -52,6 +52,7 @@ from backend.app.core.auth import CurrentUser
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.db import get_db_session, get_sessionmaker_dependency, set_tenant
 from backend.app.services import ai_usage
+from backend.app.services import methodology_explanation as explanation
 from backend.app.services import methodology_prefill as prefill
 from backend.app.services import methodology_review as rules
 from backend.app.services import quote_locator
@@ -94,6 +95,16 @@ def _rules() -> Iterator[None]:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except MethodologyInvalid as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _public(record: dict[str, Any]) -> dict[str, Any]:
+    """The record as the API returns it, with the explanation of its suggestion (why Sustentra's AI suggested it)."""
+
+    out = rules.public(record)
+    field = rules.catalog_field(str(record["field_id"])) or rules.row_field(str(record["field_id"]))
+    if field is not None and isinstance(out.get("suggestion"), dict):
+        out["explanation"] = explanation.explain(field, out["suggestion"])
+    return out
 
 
 def _now() -> datetime:
@@ -300,7 +311,7 @@ async def get_methodology_review(
     fields = []
     for f in rules.CATALOG:
         record = stored.get(f["field_id"]) or rules.new_record(f["field_id"])
-        item = {**rules.public(record), "display_state": rules.display_state(record, meta),
+        item = {**_public(record), "display_state": rules.display_state(record, meta),
                 "shown": rules.is_shown(f, record, meta, stored)}
         note = rules.shown_note(f, record, meta, stored)
         if note:
@@ -311,7 +322,7 @@ async def get_methodology_review(
         definition = rules.row_field(key)
         if definition is not None and not record.get("removed"):
             definition["user_added"] = bool(record.get("user_added"))  # the record's flag is the truth
-            fields.append({**rules.public(record), "display_state": rules.HAS_VALUE, "shown": True})
+            fields.append({**_public(record), "display_state": rules.HAS_VALUE, "shown": True})
             catalog.append(definition)
     return {
         "prefill_ran_at": meta.get("prefill_ran_at"),
@@ -339,7 +350,7 @@ async def _act(action: str, field_id: str, request: Request, user: CurrentUser, 
     saved = await _save(db, engagement, field_id, updated, user)
     restored = (saved.get("history") or [{}])[-1].get("restored") if action == "revert" else None
     await _audit(db, request, user, engagement, field_id, action, rules.status_of(saved), restored=restored)
-    return rules.public(saved)
+    return _public(saved)
 
 
 @router.post("/engagements/{engagement_id}/methodology-review/rows", status_code=201, response_model=dict[str, Any])
@@ -366,7 +377,7 @@ async def add_row(
     if row is None:  # a random id colliding: not expected
         raise HTTPException(status_code=409, detail="The row could not be added. Try again.")
     await _audit(db, request, user, engagement, field_id, "add_row", rules.PENDING)
-    return {**rules.public(row["payload"]), "field": {**(rules.row_field(field_id) or {}), "user_added": True}}
+    return {**_public(row["payload"]), "field": {**(rules.row_field(field_id) or {}), "user_added": True}}
 
 
 @router.post("/engagements/{engagement_id}/methodology-review/{field_id}/reveal", response_model=dict[str, Any])
@@ -448,7 +459,7 @@ async def remove_row(
         removed = rules.remove(record, field, actor_of(user), _now())
     saved = await _save(db, engagement, field_id, removed, user)
     await _audit(db, request, user, engagement, field_id, "remove_row", None)
-    return {**rules.public(saved), "removed": True}
+    return {**_public(saved), "removed": True}
 
 
 @router.get("/engagements/{engagement_id}/methodology-review/documents/{document_id}/locations",
