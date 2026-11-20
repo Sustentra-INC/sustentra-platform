@@ -1434,6 +1434,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               onOpenDocument={openExtraction}
               onError={handleSessionEnded}
               onActivity={setMethodologyActivity}
+              followUp={{
+                engagement: engagementForUser,
+                asks: requests.asks,
+                onSaveAsk: requests.saveAsk,
+                onOpenRequests: () => setActiveView({ name: "requests" }),
+                serverRecordsActor: dataMode === "backend",
+              }}
             />
           ) : (
             <MethodologyReview

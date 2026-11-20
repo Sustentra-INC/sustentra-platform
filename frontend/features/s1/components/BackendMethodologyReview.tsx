@@ -21,6 +21,12 @@ import {
   type MethodologyValue,
   type PrefillResult,
 } from "../api/methodologyReview";
+import type { EngagementConfig } from "../types";
+import type { Ask } from "../types/requests";
+import type { MaybePromise } from "../requests/maybePromise";
+import { andThen } from "../requests/maybePromise";
+import type { AskDraft } from "../requests/requestsStore";
+import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { InfoTip } from "./InfoTip";
 
 /**
@@ -66,6 +72,27 @@ const ADD_ROW_LABEL: Record<string, string> = {
 /** Options that stand alone (the server's STANDALONE_OPTIONS): the explicit answer when nothing is named. */
 const STANDALONE = ["None", "Not stated"];
 const isStandalone = (option: string) => STANDALONE.includes(option);
+
+/** "Mark for client follow-up": what a row needs from the page that mounts it (the same request store as Add to requests). */
+export interface FollowUpSupport {
+  engagement: EngagementConfig;
+  asks: Ask[];
+  onSaveAsk: (draft: AskDraft) => MaybePromise<unknown>;
+  onOpenRequests?: () => void;
+  /** The server records the signed-in user as the person who raised it. */
+  serverRecordsActor?: boolean;
+}
+
+/** The row's open follow-up request (not yet sent, or sent): one per row. A resolved or withdrawn one is closed. */
+export function openFollowUp(asks: Ask[], fieldId: string): Ask | undefined {
+  return asks.find((a) => a.source.origin === "methodology_row" && a.source.fieldKey === fieldId && (a.state === "not_yet_sent" || a.state === "requested"));
+}
+
+/** "Nov 20, 2026" in the reader's locale, or the stamp as it came when it is not a date. */
+function requestedOn(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
 
 /** One folding rule for option names, like the server's: case-folded, single spaces. */
 const foldOption = (text: string) => text.toLowerCase().replaceAll("\u00df", "ss").split(/\s+/).filter(Boolean).join(" ");
@@ -401,6 +428,8 @@ function FieldRow({
   record,
   busy,
   entitiesNamed,
+  followUp,
+  onMarkFollowUp,
   onAct,
   onOpenDocument,
 }: {
@@ -410,6 +439,8 @@ function FieldRow({
   busy: boolean;
   /** True when at least one entity row has a name: then a boundary sentence is not "the only" thing the report gives. */
   entitiesNamed: boolean;
+  followUp?: FollowUpSupport;
+  onMarkFollowUp: (def: CatalogField) => void;
   onAct: (run: () => Promise<unknown>) => void;
   onOpenDocument: (documentId: string) => void;
 }) {
@@ -423,6 +454,7 @@ function FieldRow({
   // A period saved before it became two dates is kept as the text it was; the reviewer re-enters it as dates.
   const oldText = def.kind === "date_range" && typeof decision?.value === "string" && decision.value ? decision.value : null;
   const suggestionIsOldText = def.kind === "date_range" && typeof suggestion?.value === "string";
+  const asked = followUp ? openFollowUp(followUp.asks, def.fieldId) : undefined;
   const finish = (run: () => Promise<unknown>) => {
     setMode("view");
     setReason("");
@@ -541,6 +573,22 @@ function FieldRow({
               Revert
             </button>
           ) : null}
+          {followUp ? (
+            asked ? (
+              <>
+                <span className="s1-chip s1-mb-chip">Requested · {requestedOn(asked.raisedAt)}</span>
+                {followUp.onOpenRequests ? (
+                  <button type="button" className="s1-mr-link" aria-label={`View in requests: ${def.label}`} onClick={followUp.onOpenRequests}>
+                    View in requests
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <button type="button" className="s1-button s1-button--compact" disabled={busy} aria-label={`Mark for client follow-up: ${def.label}`} onClick={() => onMarkFollowUp(def)}>
+                Mark for client follow-up
+              </button>
+            )
+          ) : null}
           {record.userAdded ? (
             <button type="button" className="s1-mr-link" disabled={busy} aria-label={`Remove row: ${def.label}`} onClick={() => finish(() => removeRow(engagementId, def.fieldId))}>
               Remove row
@@ -557,12 +605,17 @@ export function BackendMethodologyReview({
   onOpenDocument,
   onError,
   onActivity,
+  followUp,
 }: {
   engagementId: string;
   onOpenDocument: (documentId: string) => void;
   onError?: (error: unknown) => boolean;
   onActivity?: (entries: { at: string; who: string; what: string }[]) => void;
+  /** Present on pages that can raise client requests: adds "Mark for client follow-up" to every row. */
+  followUp?: FollowUpSupport;
 }) {
+  const [requestFor, setRequestFor] = useState<CatalogField | null>(null);
+  const [added, setAdded] = useState<string | null>(null);
   const [data, setData] = useState<MethodologyReviewData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -768,11 +821,49 @@ export function BackendMethodologyReview({
           </div>
           <ul className="s1-mb-list">
             {defs.map((def) => (
-              <FieldRow key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
+              <FieldRow key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} followUp={followUp} onMarkFollowUp={setRequestFor} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
             ))}
           </ul>
         </section>
       ))}
+
+      {added ? (
+        <p className="s1-mb-result" role="status">
+          {added}
+        </p>
+      ) : null}
+
+      {followUp && requestFor ? (
+        <AddToRequestsModal
+          target={followUpTarget(requestFor, records.get(requestFor.fieldId), followUp.engagement)}
+          engagement={followUp.engagement}
+          serverRecordsActor={followUp.serverRecordsActor}
+          onCancel={() => setRequestFor(null)}
+          onAdd={(draft) =>
+            andThen(followUp.onSaveAsk(draft), () => {
+              setRequestFor(null);
+              setAdded(`${requestFor.label}: added to requests, not sent yet.`);
+            })
+          }
+        />
+      ) : null}
     </section>
   );
+}
+
+/** The Add to requests window's target for a Methodology row: the row's label and what it holds now. */
+export function followUpTarget(def: CatalogField, record: MethodologyRecord | undefined, engagement: EngagementConfig): AddToRequestsTarget {
+  const decided = record?.decision && record.decision.status !== "pending" ? record.decision.value : null;
+  const now = valueText((decided ?? record?.suggestion?.value) as MethodologyValue);
+  const year = engagement.reportingPeriod.start.slice(0, 4);
+  return {
+    origin: "methodology_row",
+    fieldKey: def.fieldId,
+    itemLabel: def.label,
+    facilityName: null,
+    period: year ? `FY ${year}` : null,
+    headerLine: `Methodology review · ${def.label}`,
+    defaultType: "clarify",
+    prefill: now ? `${def.label}: please confirm. We have "${now.slice(0, 300)}".` : `${def.label}: please tell us what applies.`,
+  };
 }
