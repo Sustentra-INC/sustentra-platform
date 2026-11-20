@@ -49,6 +49,30 @@ def fold(value: Any) -> str:
     return unicodedata.normalize("NFKC", _INVISIBLE.sub("", str(value if value is not None else ""))).casefold()
 
 
+# A label an OCR line can leave in front of a number ("SERVICE FOR: 8830-1174-562", "Acct #: 4417"): the account
+# labels and the service-block headings, each with its colon or number sign.
+_LEADING_LABEL = re.compile(
+    r"^\s*(?:account\s*(?:number|no\.?)?|acct\s*(?:number|no\.?)?|customer\s*(?:account|number|no\.?)?|"
+    r"service\s+(?:for|to|site|premises?)|bill(?:ed)?\s+to|meter\s*(?:number|no\.?)?)"
+    r"\s*(?:#\s*:|:|#(?=\s))\s*", re.IGNORECASE)  # a colon, or a number sign followed by a space: never "ACCT#12"
+
+
+def clean_account(value: Any) -> str:
+    """An account number without the label in front of it: "SERVICE FOR: 8830-1174-562" is "8830-1174-562". Only a
+    label ending in a colon (or a "#" followed by a space) is taken off, and only while something is left after it.
+    The label is matched on the NFKC form, so a fullwidth colon counts. A value with no label stays as read."""
+
+    original = str(value if value is not None else "").strip()
+    text = unicodedata.normalize("NFKC", _INVISIBLE.sub("", original)).strip()
+    stripped_any = False
+    for _ in range(3):
+        stripped = _LEADING_LABEL.sub("", text, count=1)
+        if stripped == text or not stripped.strip():
+            break
+        text, stripped_any = stripped, True
+    return text.strip() if stripped_any else original
+
+
 def groups(value: Any) -> tuple[str, ...]:
     """A number's groups of characters between spaces, dashes and dots."""
 

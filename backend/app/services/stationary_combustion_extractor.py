@@ -30,6 +30,7 @@ from datetime import date, timedelta
 from typing import Any, Sequence
 
 from backend.app.domain import fuel_units
+from backend.app.services.facility_identifiers import clean_account
 from backend.app.services import bill_notes
 from backend.app.services.extraction_target_service import DISPLAY_ONLY_FIELDS
 
@@ -447,6 +448,7 @@ class Located:
     confidence: float
     label_cell: Cell | None = None
     context: str | None = None  # snippet override
+    last_resort: bool = False  # the bill's customer, taken as the facility only because nothing else was named
 
 
 @dataclass
@@ -1085,6 +1087,9 @@ class StationaryCombustionExtractor:
                     located = document_values.get(field_id)
                     if field_id == "facility_name" and record is not None and record.extra.get("site") is not None:
                         located = record.extra["site"]
+                    if (field_id == "facility_name" and located is not None and located.last_resort and record is not None
+                            and record.extra.get("address") is not None):
+                        located = None  # the customer is not a site: a record with its own address is placed by it
                     if field_id == "account_number" and located is None and record is not None:
                         located = record.extra.get("account")
                     if field_id == "meter_number" and record is not None and record.extra.get("meter") is not None:
@@ -1529,7 +1534,9 @@ class StationaryCombustionExtractor:
         if BILL_TO_NAME_IS_LAST_RESORT_FACILITY:
             billed = self._find_labeled(rows, BILL_TO_LABELS, accept=_has_letters, inline=True, inline_gap=True)
             if billed is not None:
-                return self._split_name_address(billed)
+                customer, customer_address = self._split_name_address(billed)
+                customer.last_resort = True
+                return customer, customer_address
         return None, None
 
     @staticmethod
@@ -1636,9 +1643,12 @@ class StationaryCombustionExtractor:
         def accept_bare(value: str) -> bool:  # first token must look like an identifier
             return accept(value) and bool(re.match(r"[A-Za-z0-9#-]*\d[\w-]*", value))
 
-        return self._find_labeled(rows, ACCOUNT_LABELS, accept=lambda v: accept(v) and _plausible_account(v),
-                                  accept_bare=lambda v: accept_bare(v) and _plausible_account(v), inline=True,
-                                  inline_gap=True)
+        found = self._find_labeled(rows, ACCOUNT_LABELS, accept=lambda v: accept(clean_account(v)) and _plausible_account(v),
+                                   accept_bare=lambda v: accept_bare(clean_account(v)) and _plausible_account(v),
+                                   inline=True, inline_gap=True)
+        if found is not None and clean_account(found.raw) != found.raw:
+            found.raw = clean_account(found.raw)  # "SERVICE FOR: 8830-1174-562" is the account 8830-1174-562
+        return found
 
     def _meter(self, rows: Sequence[Row]) -> Located | None:
         """A meter number from a labelled field ("Meter No.", "Meter #", "Meter: GM-0083315"), never from prose."""

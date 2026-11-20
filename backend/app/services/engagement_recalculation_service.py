@@ -66,7 +66,7 @@ from backend.app.services.reviewed_evidence import (  # noqa: F401 - re-exported
     to_date as _date,
     to_number as _number,
 )
-from backend.app.services.facility_identifiers import validate_numbers
+from backend.app.services.facility_identifiers import clean_account, validate_numbers
 from backend.app.services.refrigerant_extractor import DISPOSAL, INSTALLATION, service_type_of
 from backend.app.services.thermal_extractor import thermal_kind
 
@@ -1251,8 +1251,14 @@ class EngagementRecalculationService:
         if category is None:
             return None
         setup = self._setup_facility(record)
-        facility = setup["name"] if setup else " ".join(
-            str(record.best("facility_name") or record.best("service_address") or "Facility not known").split())
+        if setup:
+            facility = setup["name"]
+        elif record.best("facility_name"):
+            facility = " ".join(str(record.best("facility_name")).split())
+        elif record.best("service_address"):  # no site name: the address says where, and Setup does not list it
+            facility = " ".join(str(record.best("service_address")).split()) + " (not in Setup)"
+        else:
+            facility = "Facility not known"
         amounts: tuple[float | None, ...]
         if record.canonical_type_id == REFRIGERANT:
             start = end = _date(record.best("service_date"))
@@ -1274,7 +1280,7 @@ class EngagementRecalculationService:
         meter, page = _meter_and_page(record)
         return EvidenceRecord(category=category, document_id=record.document_id,
                               file_name=record.file_name or record.document_id, label=record.label,
-                              facility=facility, item=item, account=str(account) if account else None,
+                              facility=facility, item=item, account=clean_account(account) or None if account else None,
                               start=start, end=end, amounts=amounts, unit=unit, periodic=periodic,
                               revises=str(record.best("supersedes_reference") or "") or None,
                               revises_key=_source_value(record, "supersedes_reference", "reference_key"),

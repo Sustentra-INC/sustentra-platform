@@ -18,7 +18,7 @@ from typing import Any, Iterable
 
 from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorReference
-from backend.app.services.facility_identifiers import match_by_identifier
+from backend.app.services.facility_identifiers import clean_account, match_by_identifier
 
 STATIONARY = "CT-S1-FUELQTY"
 MOBILE = "CT-S1-MOBFUEL"
@@ -327,8 +327,9 @@ def place_on_facility(facilities: list[dict[str, Any]], decisions: dict[str, dic
         return FacilityPlacement(found, "Facility name in Setup" if by_name else "Service address in Setup")
     if ambiguous:
         return FacilityPlacement()
-    by_number = match_by_identifier(record.for_placement("account_number"), record.for_placement("meter_number"),
-                                    facilities)
+    account = record.for_placement("account_number")  # a bill saved before the label was dropped still matches
+    by_number = match_by_identifier(clean_account(account) if account is not None else None,
+                                    record.for_placement("meter_number"), facilities)
     if by_number.ambiguous:
         return FacilityPlacement(note=by_number.ambiguous + ". Choose the facility.", ambiguous=True)
     if by_number.facility is None:
