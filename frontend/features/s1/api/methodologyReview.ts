@@ -165,9 +165,9 @@ export interface AiStatus {
 }
 
 /** Sustentra's AI reading the engagement's summary documents by itself, after an upload (`waiting`: until the batch
- *  is complete; `reading`: the call is made; `skipped`: it did not start, `reason` says why). */
+ *  is complete; `reading`: the call is made; `skipped`: it did not start, `failed`: it started and did not finish, including a stopped read ("Reading was interrupted"); `reason` says why). */
 export interface AutoRead {
-  state: "waiting" | "reading" | "skipped";
+  state: "waiting" | "reading" | "skipped" | "failed";
   file_names: string[];
   reason: string | null;
 }

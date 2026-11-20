@@ -743,7 +743,7 @@ export function BackendMethodologyReview({
       autoFiles.current = marker.file_names;
       setAutoDone(null);
     } else if (autoFiles.current) {
-      if (marker?.state !== "skipped") setAutoDone(autoFiles.current); // it finished: the suggestions are on the page
+      if (marker?.state !== "skipped" && marker?.state !== "failed") setAutoDone(autoFiles.current); // it finished: the suggestions are on the page
       autoFiles.current = null;
     }
   }, []);
@@ -886,7 +886,7 @@ export function BackendMethodologyReview({
           ))}
         </div>
         <span className="s1-mr-actions">
-          <button type="button" className="s1-button s1-button--pri" disabled={busy || prefilling || autoActive || aiOff !== null} onClick={() => setConfirming(true)}>
+          <button type="button" className="s1-button s1-button--pri" disabled={busy || prefilling || data.autoRead?.state === "reading" || aiOff !== null} onClick={() => setConfirming(true)}>
             {prefilling ? "Reading the reports…" : "Read the client's reports with Sustentra's AI"}
           </button>
           {aiOff ? <span className="s1-mb-ai">{aiOff}</span> : null}
@@ -914,6 +914,14 @@ export function BackendMethodologyReview({
           {data.autoRead.state === "reading"
             ? `Sustentra's AI is reading ${fileList(data.autoRead.file_names)}…`
             : `Sustentra's AI will read ${fileList(data.autoRead.file_names)} shortly…`}
+        </p>
+      ) : null}
+      {!autoActive && data.autoRead?.state === "failed" ? (
+        <p className="s1-mb-notice" role="alert">
+          {data.autoRead.reason ?? "Sustentra's AI could not read the documents."}{" "}
+          <button type="button" className="s1-button" disabled={busy || prefilling || aiOff !== null} onClick={() => void runPrefill()}>
+            Try again
+          </button>
         </p>
       ) : null}
       {!autoActive && data.autoRead?.state === "skipped" && data.autoRead.reason ? (

@@ -158,3 +158,20 @@ def test_a_reader_that_breaks_never_fails_the_document(monkeypatch: pytest.Monke
         complete(tmp_path, "CT-GHG-WORKBOOK")  # finish still returns the completed run
     finally:
         auto_read.set_reader(None)
+
+
+def test_shutdown_stops_the_loop_and_closes_the_pool(recorder: Recorder) -> None:
+    reader = auto_read.default_reader()
+    reader.note(ORG, ENG, "a.pdf")
+    assert recorder.ran.wait(3)
+    disposed: list[bool] = []
+
+    class Engine:
+        async def dispose(self) -> None:
+            disposed.append(True)
+
+    reader._engine = Engine()
+    loop = reader._loop
+    reader.shutdown()
+    assert disposed == [True] and reader._engine is None
+    assert wait_for(lambda: loop is not None and not loop.is_running())

@@ -47,6 +47,7 @@ class AutoReader:
         self._pending: dict[str, tuple[asyncio.Task[None], list[str]]] = {}  # on the loop thread only
         self._busy: dict[str, asyncio.Lock] = {}
         self._sessions: Any = None
+        self._engine: Any = None
 
     def debounce_seconds(self) -> float:
         value = self._debounce
@@ -101,9 +102,31 @@ class AutoReader:
         if self._sessions is None:
             from backend.app.core.db import build_sessionmaker, create_engine, runtime_database_url
 
-            self._sessions = build_sessionmaker(create_engine(runtime_database_url(get_settings()), pool_size=2,
-                                                              max_overflow=0))
+            self._engine = create_engine(runtime_database_url(get_settings()), pool_size=2, max_overflow=0)
+            self._sessions = build_sessionmaker(self._engine)
         return self._sessions
+
+    def shutdown(self, timeout: float = 5.0) -> None:
+        """Stop the background loop and close its database pool (the API's shutdown)."""
+
+        with self._lock:
+            loop, self._loop = self._loop, None
+        if loop is None:
+            return
+
+        async def close() -> None:
+            for task, _names in list(self._pending.values()):
+                task.cancel()
+            self._pending.clear()
+            if self._engine is not None:
+                await self._engine.dispose()
+                self._engine, self._sessions = None, None
+
+        try:
+            asyncio.run_coroutine_threadsafe(close(), loop).result(timeout)
+        except Exception as exc:  # shutting down anyway
+            logger.error("auto_read_shutdown_failed", extra={"error_type": type(exc).__name__})
+        loop.call_soon_threadsafe(loop.stop)
 
     def _prepare_fn(self) -> Prepare:
         if self._prepare is not None:
@@ -145,6 +168,15 @@ def set_reader(reader: AutoReader | None) -> None:
 
     global _reader
     _reader = reader
+
+
+def shutdown() -> None:
+    """Close the process's reader, if one was started."""
+
+    with _reader_lock:
+        reader = _reader
+    if reader is not None:
+        reader.shutdown()
 
 
 def summary_type(pipeline_run: dict[str, Any] | None) -> bool:

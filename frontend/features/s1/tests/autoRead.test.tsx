@@ -12,6 +12,7 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
   }),
 }));
 
+import { api } from "../../../lib/api";
 import { BackendMethodologyReview } from "../components/BackendMethodologyReview";
 import { useAutoRead } from "../hooks/useAutoRead";
 import { withAutoRead } from "../utils/readingState";
@@ -76,6 +77,27 @@ describe("Methodology review while Sustentra's AI reads by itself", () => {
     expect(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" })).toBeEnabled();
   });
 
+  it("shows a failed read as a failure with Try again, never as success", async () => {
+    mock.review = [review(reading), review({ state: "failed", file_names: ["ghg.pdf"], reason: "Sustentra's AI could not be reached. Try again in a moment." })];
+    render(<BackendMethodologyReview engagementId="e1" onOpenDocument={vi.fn()} />);
+    expect(await screen.findByText("Sustentra's AI is reading ghg.pdf…")).toBeInTheDocument();
+    const alert = await screen.findByText(/could not be reached/, undefined, { timeout: 6000 });
+    expect(alert).toBeInTheDocument();
+    expect(screen.queryByText(/Sustentra's AI read ghg/)).toBeNull(); // not the success sentence
+    expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" })).toBeEnabled();
+  }, 15000);
+
+  it("shows a stopped read as interrupted, stops polling and keeps the button usable", async () => {
+    mock.review = [review({ state: "failed", file_names: ["ghg.pdf"], reason: "Reading was interrupted. Try again." })];
+    render(<BackendMethodologyReview engagementId="e1" onOpenDocument={vi.fn()} />);
+    expect(await screen.findByText(/Reading was interrupted/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" })).toBeEnabled();
+    const before = vi.mocked(api).mock.calls.length;
+    await new Promise((r) => setTimeout(r, 3500));
+    expect(vi.mocked(api).mock.calls.length).toBe(before); // no polling for a failure
+  }, 15000);
+
   it("shows nothing extra when no automatic read is going on", async () => {
     mock.review = [review(null)];
     render(<BackendMethodologyReview engagementId="e1" onOpenDocument={vi.fn()} />);
@@ -103,6 +125,7 @@ describe("Evidence rows of a summary document being read", () => {
   it("changes nothing when no read is going on", () => {
     expect(withAutoRead(rows, null)).toBe(rows);
     expect(withAutoRead(rows, { state: "skipped", file_names: ["ghg.pdf"], reason: "x" })).toBe(rows);
+    expect(withAutoRead(rows, { state: "failed", file_names: ["ghg.pdf"], reason: "x" })).toBe(rows);
   });
 });
 
