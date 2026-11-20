@@ -675,6 +675,13 @@ calculation_lines: [{
   `reported_lines` value is `not_reported`.
 - `inputs_incomplete` is true while the line's category (stationary, mobile, purchased electricity) has
   open `needs_input` or `awaiting_review` items, as the comparisons mark a partial total.
+- `reported_sources` (by data point key), `reported_only` and each comparison's and roll-up output's `reported_source`:
+  the company's reported emissions read from its summary documents (types CT-GHG-WORKBOOK, CT-S1-METHODDOC; fields are the
+  data point keys, plus `scope3_*`, `reporting_year`, `reported_unit`) and ACCEPTED or corrected by a reviewer, normalised to
+  tonnes (`printed` keeps what was accepted, e.g. "1.2 MtCO2e"). They fill only the Reported side: a figure typed in
+  `settings.recalculation.reported` always wins and is never changed (`used: "manual"`, `differs` when the two disagree); two
+  documents that disagree feed nothing (`conflict`). `reported_only` lists Scope 3 figures, never compared. Nothing here
+  touches a recalculated value.
 - `difference_to_company_t` is recomputed minus company, per gas row and in `results` (both with the share
   applied in `results`); `difference_t` stays recomputed minus reported.
 - A biomass fuel sits on a `biogenic` line (scope `biogenic`). Its CO2 row has `biogenic: true`, `mass_t`

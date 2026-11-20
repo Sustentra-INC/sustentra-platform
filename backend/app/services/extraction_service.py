@@ -5,6 +5,7 @@ from backend.app.services.extraction_candidate_service import ExtractionCandidat
 from backend.app.services.extraction_target_service import ExtractionTargetService
 from backend.app.services.mobile_combustion_extractor import MobileCombustionExtractor
 from backend.app.services.refrigerant_extractor import RefrigerantServiceExtractor
+from backend.app.services.reported_totals import ReportedTotalsExtractor
 from backend.app.services.stationary_combustion_extractor import StationaryCombustionExtractor
 from backend.app.services.thermal_extractor import ThermalExtractor
 
@@ -21,6 +22,7 @@ class ExtractionService:
         electricity_extractor: ElectricityExtractor | None = None,
         refrigerant_extractor: RefrigerantServiceExtractor | None = None,
         thermal_extractor: ThermalExtractor | None = None,
+        reported_extractor: ReportedTotalsExtractor | None = None,
     ) -> None:
         self._target_service = target_service
         self._candidate_service = candidate_service or ExtractionCandidateService()
@@ -29,6 +31,7 @@ class ExtractionService:
         self._electricity_extractor = electricity_extractor or ElectricityExtractor()
         self._refrigerant_extractor = refrigerant_extractor or RefrigerantServiceExtractor()
         self._thermal_extractor = thermal_extractor or ThermalExtractor()
+        self._reported_extractor = reported_extractor or ReportedTotalsExtractor()
 
     def extract(self, payload: dict) -> dict:
         """Generate extraction candidates from parser_output + targets (PR6).
@@ -55,7 +58,7 @@ class ExtractionService:
             (
                 e
                 for e in (self._stationary_extractor, self._mobile_extractor, self._electricity_extractor,
-                          self._refrigerant_extractor, self._thermal_extractor)
+                          self._refrigerant_extractor, self._thermal_extractor, self._reported_extractor)
                 if e.handles(extraction_targets)
             ),
             None,

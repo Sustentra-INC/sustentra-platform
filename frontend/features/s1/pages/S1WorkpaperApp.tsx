@@ -60,7 +60,7 @@ import { VerificationResults } from "../components/VerificationResults";
 import { BackendVerificationResults } from "../components/BackendVerificationResults";
 import { BackendPageView } from "../components/BackendPageView";
 import { DocumentContentView } from "../components/DocumentContentView";
-import { SummaryDocumentReview } from "../components/SummaryDocumentReview";
+import { SummaryDocumentReview, WithMethodologyFacts, type MethodologyFacts } from "../components/SummaryDocumentReview";
 import type { SourceAt } from "../api/methodologyReview";
 import { BackendOutputScreen } from "../components/BackendOutputScreen";
 import { BackendDashboard } from "../components/BackendDashboard";
@@ -1631,7 +1631,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             }}
           />
         ) : activeView.name === "extraction" ? (
+          (() => {
+            const review = (facts?: MethodologyFacts) => (
           <ExtractionReview
+            facts={facts}
+            factsDeepLinked={Boolean(activeView.field)}
             engagement={engagementForUser}
             values={reviewValuesView}
             onValuesChange={setReviewValues}
@@ -1720,9 +1724,12 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               ) : dataMode === "backend" && ["pdf", "image"].includes(format) ? (
                 // The uploaded page as an image, the value outlined where it was read.
                 <BackendPageView
-                  key={`${documentId}:${span?.page ?? 0}`}
+                  key={`${documentId}:${pick?.viewerKey ?? span?.page ?? 0}`}
                   documentId={documentId}
                   span={span}
+                  openPage={pick?.openPage}
+                  selectedMarkIds={pick?.selectedMarkIds}
+                  pageNote={pick?.pageNote}
                   marks={marks}
                   onPickMark={onPickBox ? (m) => m.span && onPickBox(m.span, m.id) : undefined}
                 />
@@ -1738,6 +1745,22 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               ) : null;
             }}
           />
+            );
+            // A company summary document that also has reported values: its Methodology facts are a second tab.
+            return STAGING_SCREENS && dataMode === "backend" && (activeView.field || isSummaryDocument(evidenceView.find((e) => e.documentId === activeView.documentId))) ? (
+              <WithMethodologyFacts
+                key={`${activeView.documentId}:${activeView.field ?? ""}:${activeView.entry ?? ""}:${activeView.page ?? ""}`}
+                engagementId={engagement.engagementId}
+                documentId={activeView.documentId}
+                at={{ fieldId: activeView.field, entry: activeView.entry, page: activeView.page }}
+                onError={handleSessionEnded}
+              >
+                {review}
+              </WithMethodologyFacts>
+            ) : (
+              review()
+            );
+          })()
         ) : (
           <GlossaryPage onBack={() => goBack(activeView.previous)} />
         )}

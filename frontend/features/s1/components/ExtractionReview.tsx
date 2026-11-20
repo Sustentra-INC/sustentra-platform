@@ -17,6 +17,7 @@ import type { AskDraft } from "../requests/requestsStore";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { readablePeriod } from "../utils/formatPeriod";
 import type { HighlightEntry } from "./demo/DemoDocument";
+import type { MethodologyFacts } from "./SummaryDocumentReview";
 
 /**
  * Extraction Review (screen 3), built to the 09/16 revision. Three panes:
@@ -58,6 +59,11 @@ interface ExtractionReviewProps {
   onBack: () => void;
   /** Where the back link goes ("evidence", "schedule", "dashboard", ...). */
   backLabel?: string;
+  /** A company summary document: the Methodology facts read from it, as a second tab beside its reported figures, with
+   *  their highlights on the same page. */
+  facts?: MethodologyFacts;
+  /** Opened from a Methodology source link: the facts tab is the one shown. */
+  factsDeepLinked?: boolean;
   /** Render the real source page for a document (else a facsimile is drawn).
    *  `onPickBox` lets a clicked highlight on the page select its value card (by its id
    *  when the page knows it); `marks` are every value of the document that has a position.
@@ -137,6 +143,8 @@ export function ExtractionReview({
   onValueAdded,
   drawnWhole,
   onOpenMethodology,
+  facts,
+  factsDeepLinked = false,
 }: ExtractionReviewProps) {
   // Review data lives in app state (via onValuesChange); selection below is
   // local, ephemeral UI. So accepts/corrections/requests survive navigation.
@@ -167,6 +175,14 @@ export function ExtractionReview({
   // A long document: show the values of one page at a time.
   const [pageFilter, setPageFilter] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  // A summary document with both: its reported figures to review come first; otherwise (or from a Methodology
+  // source link) the Methodology facts. The default follows the values as they load; a tab the reviewer picked stays.
+  const [picked, setTab] = useState<"values" | "facts" | null>(null);
+  const defaultTab =
+    facts && (factsDeepLinked || !items.some((v) => v.documentId === initialDocumentId && v.reviewState === "to_review" && !v.withdrawn && !v.missing))
+      ? "facts"
+      : "values";
+  const tab = facts ? (picked ?? defaultTab) : "values";
   // Highlight mode, for one document: it ends when another document is selected.
   const [highlightDoc, setHighlightDoc] = useState<string | null>(null);
   // A pick on the document asks the values pane to bring the picked card into view.
@@ -225,6 +241,12 @@ export function ExtractionReview({
    *  can share one line ("Total kWh Used: 700,000 kWh" holds the amount and its unit), so a
    *  second click on the same box moves to the next of them. */
   function selectByBox(box: { x: number; y: number; w: number; h: number }, id?: string) {
+    const fact = id ? facts?.marks.find((m) => m.id === id) : undefined;
+    if (fact && facts) {
+      facts.pick(fact);
+      setTab("facts");
+      return;
+    }
     const sameBox = items.filter(
       (v) => v.span && Math.abs(v.span.x - box.x) < 0.003 && Math.abs(v.span.y - box.y) < 0.003
     );
@@ -244,6 +266,7 @@ export function ExtractionReview({
   }
 
   function focusValue(match: ReviewValue) {
+    setTab("values");
     const nk = nodeKeyForValue(match);
     if (nk !== nodeKey) {
       setNodeKey(nk);
@@ -565,10 +588,14 @@ export function ExtractionReview({
   // The selected value's document, drawn with its values marked (the demo's drawing, or the
   // uploaded file's pages or content). Whenever it is drawn, the key above the cards says what
   // its marks mean and how many values were read.
+  const onFacts = tab === "facts";
   const realPage =
     selected && renderPage
-      ? renderPage(selected.documentId, selected.span ?? null, selectByBox, pageMarks(items, selected.documentId), {
+      ? renderPage(selected.documentId, onFacts && facts ? facts.span : selected.span ?? null, selectByBox, [...pageMarks(items, selected.documentId), ...(facts?.marks ?? [])], {
           selectedId: selected.id,
+          ...(onFacts && facts
+            ? { openPage: facts.page, selectedMarkIds: facts.selectedMarkIds, pageNote: facts.pageNote, viewerKey: facts.viewerKey }
+            : {}),
           onPickAmong: selectAmong,
           onAddValue: allowAddValue && !selected.withdrawn ? (entry) => addValue(selected, entry) : undefined,
           highlighting,
@@ -689,6 +716,30 @@ export function ExtractionReview({
 
         {/* Values */}
         <div className="s1-xr-values" ref={valuesPane} onKeyDown={onListKey}>
+          {facts ? (
+            <div className="s1-xr-tabs" role="tablist" aria-label="What was read from this document">
+              {(["values", "facts"] as const).map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  id={`s1-xr-tab-${key}`}
+                  aria-selected={tab === key}
+                  className={`s1-xr-tab${tab === key ? " is-on" : ""}`}
+                  onClick={() => setTab(key)}
+                >
+                  {key === "values" ? "Reported figures" : "Methodology facts"}
+                  {key === "facts" && facts.count ? <span className="s1-xr-tab__n">{facts.count}</span> : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {facts && tab === "facts" ? (
+            <div className="s1-xr-facts" role="tabpanel" aria-labelledby="s1-xr-tab-facts">
+              {facts.panel}
+            </div>
+          ) : (
+            <>
           <div className="s1-xr-vhead">
             <div className="s1-xr-vhead__top">
               <h2>{nodeHeaderLabel(nodeKey, engagement)}</h2>
@@ -837,6 +888,8 @@ export function ExtractionReview({
                 </div>
               );
             })
+          )}
+            </>
           )}
         </div>
 
@@ -1159,6 +1212,11 @@ function needsOwnAccept(v: ReviewValue): boolean {
 
 export interface SourcePick {
   selectedId: string;
+  /** The Methodology facts tab is shown: where its selected quote is (a page, its boxes, or a note that it was not found). */
+  openPage?: number | null;
+  selectedMarkIds?: string[];
+  pageNote?: string | null;
+  viewerKey?: string;
   onPickAmong: (ids: string[]) => void;
   /** Add (or fill in) a value from a figure the reviewer highlighted on the page. */
   onAddValue?: (entry: HighlightEntry) => void;

@@ -88,8 +88,43 @@ export type ComparisonStatus =
   /** Setup says the engagement does not cover it: shown, never judged. */
   | "not_in_scope";
 
+/** A figure the company reported in a summary document and a reviewer accepted, in tonnes. */
+export interface ReportedDocumentFigure {
+  value: number;
+  /** How a per-gas figure was reported: tonnes of the gas, or of CO2e. */
+  unit: "t" | "t CO2e";
+  document_id: string;
+  file_name: string;
+  page: number | null;
+  /** The figure as the reviewer accepted it ("1.2 MtCO2e"), before it was normalised to tonnes. */
+  printed: string;
+  label: string;
+  /** The year its table (or the accepted reporting year) names; null when none is stated. */
+  year?: number | null;
+}
+
+/** Where a Reported value came from. A typed figure always wins; the document's is shown beside it. */
+export interface ReportedSource {
+  document: ReportedDocumentFigure | null;
+  manual: number | null;
+  used: "manual" | "document" | null;
+  /** Both exist and differ. */
+  differs: boolean;
+  /** Two accepted documents disagree: nothing from documents is used. */
+  conflict?: ReportedDocumentFigure[];
+  /** Why the document's figure is not compared: "Different year (2023) \u2014 not compared", "Year not stated". */
+  excluded?: string | null;
+}
+
+/** "From <file>, page N": where a reported figure was read. */
+export function reportedSourceWords(figure: ReportedDocumentFigure): string {
+  return `From ${figure.file_name || "the document"}${figure.page ? `, page ${figure.page}` : ""}`;
+}
+
 export interface RecalcComparison {
   key: string;
+  /** Present when an accepted summary-document figure is, or could have been, the Reported value. */
+  reported_source?: ReportedSource;
   data_point: string;
   workbook_row: number;
   unit: string;
@@ -458,6 +493,10 @@ export interface Recalculation {
   /** Category results to Scope 1, Scope 2 and inventory totals, then the final outputs.
    *  Absent from results computed before the roll-up; fall back to `comparisons`. */
   rollup?: Rollup;
+  /** Reported figures from accepted summary documents, by data point key (Verification results' Reported side). */
+  reported_sources?: Record<string, ReportedSource>;
+  /** Reported, never compared (Scope 3: it is not recalculated). */
+  reported_only?: (ReportedDocumentFigure & { key: string; excluded?: string | null })[];
   /** Accepted values whose documents are not on a calculation line (Unassigned supporting evidence, or
    *  moved off their line): counted nowhere until the document is placed. Absent from older results. */
   uncounted_values?: UncountedValues;
@@ -601,6 +640,7 @@ export interface RollupFinalOutput {
   unit: "t CO2e" | "t" | null;
   reported: number | null;
   reported_unit: "t" | "t CO2e" | null;
+  reported_source?: ReportedSource;
   recalculated: number | null;
   difference: number | null;
   difference_pct: number | null;

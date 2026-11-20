@@ -3884,6 +3884,13 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-mb-summary__reasons { margin: 0; padding-left: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); }
 .s1-xr-values .s1-sd__note { margin: 0; }
 
+/* A summary document with reported figures and Methodology facts: two tabs in the values pane. */
+.s1-xr-tabs { display: flex; gap: var(--sp-1); padding: var(--sp-3) 0 var(--sp-2); position: sticky; top: 0; background: var(--sf-card); z-index: 1; }
+.s1-xr-tab { border: var(--border-hairline); background: transparent; border-radius: var(--radius-chip); padding: var(--sp-1) var(--sp-3); font: inherit; font-size: var(--text-sm); color: var(--ink-2); cursor: pointer; }
+.s1-xr-tab.is-on { background: var(--state-active-bg); color: var(--state-active-fg); border-color: var(--state-active-line); font-weight: var(--weight-strong); }
+.s1-xr-tab__n { margin-left: var(--sp-2); color: var(--ink-3); }
+.s1-xr-facts { display: flex; flex-direction: column; gap: var(--sp-4); padding-bottom: var(--sp-5); }
+
 /* Methodology: entity, factor, GWP and Scope 2 tables */
 .s1-mb-groupbody { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); }
 .s1-mb-block { display: flex; flex-direction: column; border: var(--border-hairline); border-radius: var(--radius-card); overflow: hidden; }
