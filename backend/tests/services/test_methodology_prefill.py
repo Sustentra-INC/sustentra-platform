@@ -1416,7 +1416,7 @@ def test_a_negated_category_is_never_yes() -> None:
 
 
 def test_an_unrelated_word_does_not_match_a_category() -> None:
-    quote = "Our mobile phone policy covers all offices and heating oilseed crops."
+    quote = "Our mobile phone policy covers all offices and the oilseed crops."
     for field_id in ("category:scope1:mobile", "category:scope1:process", "category:location:cooling", "category:market:heating"):
         assert mp.names_option(quote, mp.category_terms(field_id), mp._EXCLUDING, mp._INCLUDING) == "no", field_id
     assert mp.names_option("company vehicles", mp.category_terms("category:scope1:mobile")) == "yes"
