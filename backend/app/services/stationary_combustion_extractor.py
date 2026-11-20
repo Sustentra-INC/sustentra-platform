@@ -380,6 +380,12 @@ _VENDOR_LINE = re.compile(
     r"\b(?:powered by|built by|developed by|software|platform|cloud|technologies|systems)\b"
     r"|\b(?:oracle|itron|sap|opower|bidgely|zuora|hansen|landis)\b", re.IGNORECASE)
 _FORWARDED = re.compile(r"\bfwd?:|forwarded message|original message", re.IGNORECASE)
+# A line one of these labels opens names a party (or a place) of the bill, never the issuer's letterhead
+_PARTY_LINE = re.compile(
+    r"\s*(?:customer|client|bill(?:ed)? to|sold to|ship(?:ped)? to|service (?:for|to|address|location)|rental site|"
+    r"site|attn|attention|prepared for|account (?:name|holder))\s*:", re.IGNORECASE)
+# "Acme Equipment Hire - Customer Fuel Report": the issuer, a dash, then what kind of document it is
+_REPORT_TITLE = re.compile(r"\s[-\u2013\u2014]\s.*\b(?:report|statement|invoice|bill|summary)\b", re.IGNORECASE)
 _GREETING = re.compile(r"\s*(?:hello|dear|hi|hey|good (?:morning|afternoon|evening))\b", re.IGNORECASE)
 _MAIL_HEADER = re.compile(r"\s*(?:from|to|cc|bcc|sent|date|subject|reply-to|return-path)\s*:", re.IGNORECASE)
 _SLASH_DATE_RE = re.compile(r"(?<!\d)(\d{1,2})/(\d{1,2})/(\d{2}|\d{4})(?!\d)")
@@ -922,6 +928,7 @@ class StationaryCombustionExtractor:
             outcome = self._extract(rows, parser_output, targets, evidence_id, document_id)
             if outcome.candidates:
                 self._note_estimated_reads(rows, outcome)
+                self._note_two_units(rows, outcome)
                 self._note_bill_ids(rows, outcome)
                 self._note_revised_bill(rows, outcome, parser_output, evidence_id, document_id)
             return outcome
@@ -961,6 +968,21 @@ class StationaryCombustionExtractor:
                 flags = candidate.setdefault("validation_flags", [])
                 if bill_notes.ESTIMATED_FLAG not in flags:
                     flags.append(bill_notes.ESTIMATED_FLAG)
+
+    @staticmethod
+    def _note_two_units(rows: Sequence[Row], outcome: ExtractionOutcome) -> None:
+        """A bill that prints a conversion factor prints the usage twice (a metered volume or mass and the energy
+        billed). The reader takes one number and one unit; the quantity and its unit carry ``unit_ambiguous`` so the
+        reviewer checks it is the one the engagement counts. Never changes the value."""
+
+        if not bill_notes.prints_conversion(rows):
+            return
+        for candidate in outcome.candidates:
+            if (candidate.get("field_name") in ("activity_quantity", "activity_unit")
+                    and candidate.get("normalized_value") is not None):
+                flags = candidate.setdefault("validation_flags", [])
+                if bill_notes.UNIT_AMBIGUOUS_FLAG not in flags:
+                    flags.append(bill_notes.UNIT_AMBIGUOUS_FLAG)
 
     def _bill_ids(self, rows: Sequence[Row]) -> list[str]:
         """The bill's own statement date (ISO) and invoice or statement number, as the data quality check
@@ -2010,8 +2032,35 @@ class StationaryCombustionExtractor:
                     or not set(_company_words(name) + re.sub(r"[^\w ]+", " ", name.casefold()).split())
                     & (_LEGAL_SUFFIXES | _UTILITY_WORDS | _ORGANISATION_WORDS | {"light", "lights", "stadtwerke"})):
                 return None  # an address names nobody, and a person's name ("Maria M\u00fcller") is not an organisation
+            name = StationaryCombustionExtractor._sender_company(rows, name)
             return Located(name, [row.cells[0]], row, CONF_LETTERHEAD - 0.15, context=row.cells[0].text)
         return None
+
+    # The mailbox a bill is sent from, not part of the company's name ("Acme Power Billing")
+    _MAILBOX_WORDS = frozenset({"billing", "bills", "ebill", "e-bill", "invoices", "invoicing", "accounts",
+                                "payments", "support", "notifications", "service", "services", "team", "department",
+                                "customer", "online", "noreply", "no-reply", "paperless"})
+
+    @staticmethod
+    def _sender_company(rows: Sequence[Row], display_name: str) -> str:
+        """The company behind an email's From display name. A role at the end ("Acme Power Billing") is the
+        mailbox, not the name; when the body signs off with the company in full ("Acme Power Company - Business
+        Billing"), that is the name."""
+
+        words = display_name.split()
+        while len(words) > 1 and words[-1].casefold().strip(".,") in StationaryCombustionExtractor._MAILBOX_WORDS:
+            words.pop()
+        if len(words) == len(display_name.split()):
+            return display_name
+        stem = " ".join(words)
+        for row in rows:
+            if len(row.cells) != 1:
+                continue
+            text = re.split(r"\s+[-\u2013\u2014|\u00b7]\s+|,", row.cells[0].text)[0].strip()
+            if (text.casefold().startswith(stem.casefold() + " ") and len(text.split()) <= len(words) + 2
+                    and text.split()[-1].casefold().strip(".") in _LEGAL_SUFFIXES | _ORGANISATION_WORDS):
+                return text
+        return stem
 
     @staticmethod
     def _greeted(rows: Sequence[Row]) -> str:
@@ -2093,9 +2142,13 @@ class StationaryCombustionExtractor:
                 if (_GREETING.match(text) or _FOOTER_EXPORT_RE.search(text) or _FOOTER_COPYRIGHT_RE.search(text)
                         or _VENDOR_LINE.search(text) or self._label_prefix(text, REMIT_LABELS[0]) is not None):
                     continue  # a greeting names the customer; a footer or a Remit To line is not the sender's letterhead
-                if len(row.cells) == 1 and re.search(r"(?<!\w)(company|co\.?|inc\.?|llc|ltd\.?|corp\.?|utilities)(?!\w)", text, re.I):
-                    name = re.split(r"\s+[-\u2013\u2014|]\s+", text)[0].strip()
-                    if self._looks_like_org_name(name):
+                if _PARTY_LINE.match(text):
+                    continue  # "Customer: X Inc. . Site: ...": a line a party label opens names the other party
+                if len(row.cells) == 1 and (
+                        re.search(r"(?<!\w)(company|co\.?|inc\.?|llc|ltd\.?|corp\.?|utilities)(?!\w)", text, re.I)
+                        or _REPORT_TITLE.search(text)):
+                    name = re.split(r"\s+[-\u2013\u2014|\u00b7]\s+", text)[0].strip()
+                    if self._looks_like_org_name(name) and (len(name.split()) >= 2 or not _REPORT_TITLE.search(text)):
                         return Located(name, [row.cells[0]], row, CONF_LETTERHEAD - 0.05, context=text)
             return None
         cell = max(cells, key=lambda c: (c.height, -c.order))
