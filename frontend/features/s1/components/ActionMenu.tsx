@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
 export interface ActionMenuEntry {
@@ -64,6 +64,29 @@ export function ActionMenu({
     return () => document.removeEventListener("pointerdown", onDown);
   }, [isOpen, onOpenChange]);
 
+  // Keyboard: opening focuses the first item; arrows, Home and End move; Escape closes and returns to the button; Tab closes.
+  useEffect(() => {
+    if (isOpen && place) menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  }, [isOpen, place === null]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function onMenuKey(e: KeyboardEvent<HTMLDivElement>) {
+    const items = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? []);
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    const go = (i: number) => {
+      e.preventDefault();
+      items[(i + items.length) % items.length]?.focus();
+    };
+    if (e.key === "ArrowDown") go(at + 1);
+    else if (e.key === "ArrowUp") go(at - 1);
+    else if (e.key === "Home") go(0);
+    else if (e.key === "End") go(items.length - 1);
+    else if (e.key === "Escape" || e.key === "Tab") {
+      if (e.key === "Escape") e.preventDefault();
+      onOpenChange(false);
+      triggerRef.current?.focus();
+    }
+  }
+
   return (
     <div className="s1-menu">
       <button
@@ -83,6 +106,7 @@ export function ActionMenu({
               className="s1-menu__panel s1-menu__panel--float"
               role="menu"
               ref={menuRef}
+              onKeyDown={onMenuKey}
               style={{ top: place.top, left: place.left, transformOrigin: place.up ? "bottom right" : "top right" }}
             >
               {entries.map((entry) => (

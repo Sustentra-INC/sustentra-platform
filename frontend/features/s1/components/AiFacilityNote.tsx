@@ -26,7 +26,7 @@ export function AiFacilityNote({
   disabled?: boolean;
   explanation?: AiExplanation | null;
   /** Opens the document the quote is on (the popover's link). */
-  onOpenDocument?: (documentId: string, page?: number | null) => void;
+  onOpenDocument?: (documentId: string) => void;
 }) {
   const shown: AiExplanation = explanation ?? {
     reason: null,

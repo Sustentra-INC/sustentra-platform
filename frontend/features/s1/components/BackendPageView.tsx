@@ -21,14 +21,23 @@ export function BackendPageView({
   span,
   marks = [],
   onPickMark,
+  openPage,
+  selectedMarkIds,
+  pageNote,
 }: {
   documentId: string;
   span: ReviewSpan | null;
   marks?: PageMark[];
   onPickMark?: (mark: PageMark) => void;
+  /** Open at this page when the selection has no box of its own (its quote was not located). */
+  openPage?: number | null;
+  /** Every box of the selected value (a quote can run over several lines); the first is scrolled into view. */
+  selectedMarkIds?: string[];
+  /** A line under the page bar for the page being shown, such as "Quote not located on this page". */
+  pageNote?: string | null;
 }) {
   const [pages, setPages] = useState<number | null>(null);
-  const [page, setPage] = useState(span?.page ?? 1);
+  const [page, setPage] = useState(span?.page ?? openPage ?? 1);
   const [failed, setFailed] = useState(false);
   const mark = useRef<HTMLElement | null>(null);
 
@@ -134,6 +143,11 @@ export function BackendPageView({
           ))}
         </div>
       ) : null}
+      {pageNote ? (
+        <p className="s1-mb-notlocated s1-pv__note" role="status">
+          {pageNote}
+        </p>
+      ) : null}
       <div className="s1-pv__page">
         {/* eslint-disable-next-line @next/next/no-img-element -- an authenticated API image, not a static asset */}
         <img
@@ -146,7 +160,7 @@ export function BackendPageView({
           const [first] = group;
           // Every value on the box, each with its state; the box shows the most urgent one.
           const name = markName(group);
-          const selected = boxKey(first.span) === selectedKey;
+          const selected = selectedMarkIds ? group.some((m) => selectedMarkIds.includes(m.id)) : boxKey(first.span) === selectedKey;
           return (
             <button
               key={first.id}
@@ -167,7 +181,7 @@ export function BackendPageView({
           <div ref={keepMark} className="s1-pv__box s1-pv__box--alone is-sel" style={place(span)} aria-label="The extracted value" />
         ) : null}
       </div>
-      {!span ? <p className="s1-muted s1-pv__note">The value&rsquo;s position was not recorded; check it on the page.</p> : null}
+      {!span && !pageNote ? <p className="s1-muted s1-pv__note">The value&rsquo;s position was not recorded; check it on the page.</p> : null}
     </div>
   );
 }

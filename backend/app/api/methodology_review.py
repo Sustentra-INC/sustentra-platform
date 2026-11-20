@@ -8,6 +8,7 @@ exclusions, factor sources, GWP and calculation methods (the page's fields).
 * POST   /v1/engagements/{id}/methodology-review/{field_id}/revert  back to the previous value
 * POST   /v1/engagements/{id}/methodology-review/rows               {group}: add an entity or factor row (201)
 * DELETE /v1/engagements/{id}/methodology-review/{field_id}         remove a row the reviewer added
+* GET    /v1/engagements/{id}/methodology-review/documents/{document_id}/locations  where each suggestion is printed on a PDF (s1_reader)
 
 The rules are in ``services/methodology_review``; a move they refuse answers 409 (state) or
 422 (input) with a sentence for the user and writes nothing. Each field is a
@@ -54,6 +55,8 @@ from backend.app.services import ai_usage
 from backend.app.services import methodology_explanation as explanation
 from backend.app.services import methodology_prefill as prefill
 from backend.app.services import methodology_review as rules
+from backend.app.services import quote_locator
+from backend.app.services.document_file_types import served_type
 from backend.app.services import workpaper_item_service
 from backend.app.services.audit_log import write_audit_event
 from backend.app.services.methodology_review import KIND, MethodologyConflict, MethodologyInvalid
@@ -457,6 +460,45 @@ async def remove_row(
     saved = await _save(db, engagement, field_id, removed, user)
     await _audit(db, request, user, engagement, field_id, "remove_row", None)
     return {**_public(saved), "removed": True}
+
+
+@router.get("/engagements/{engagement_id}/methodology-review/documents/{document_id}/locations",
+            response_model=dict[str, Any])
+async def document_locations(
+    engagement_id: str,
+    document_id: str,
+    user: CurrentUser = Depends(s1_reader),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict[str, Any]:
+    """Where each methodology suggestion read from this document is printed on it, so the viewer can
+    highlight it. Located from the PDF's own text layer (``quote_locator``): a quote that is not printed
+    on its page comes back ``located: false``, never placed approximately. Reads the stored suggestions only."""
+
+    engagement = await _visible(db, engagement_id, user)
+    upload = documents_api.current_upload_service()
+    document = next((d for d in upload.list_documents(str(engagement["id"]))
+                     if str(d.get("document_id")) == document_id and can_see(d, user)), None)
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    path = None
+    storage_uri = str(document.get("storage_uri") or "")
+    owner = document.get("org_id")
+    try:
+        if owner is None or upload.storage_service.is_owned_by(storage_uri, str(owner)):
+            candidate = upload.storage_service.resolve_storage_uri(storage_uri)
+            path = candidate if candidate.is_file() else None
+    except ValueError:
+        path = None
+    is_pdf = path is not None and served_type(path, document.get("file_name")).media_type == "application/pdf"
+    items: list[dict[str, Any]] = []
+    for row in await workpaper_item_service.list_items(db, engagement["id"], KIND):
+        if row["payload"].get("removed"):
+            continue
+        for source in quote_locator.sources_on_document(row["payload"], document_id):
+            placed = quote_locator.locate_on_pdf(path, source["quote"], source["page"]) if is_pdf and path else None
+            items.append({"field_id": row["item_key"], "entry": source["entry"], "page": placed.page if placed else source["page"],
+                          "located": placed is not None, "rects": placed.rects if placed else []})
+    return {"document_id": document_id, "items": items}
 
 
 # --- Claude's suggestions ---------------------------------------------------------------------

@@ -26,7 +26,7 @@ export function AiExplainPopover({
 }: {
   label: ReactNode;
   explanation: AiExplanation;
-  onOpenDocument?: (documentId: string, page?: number | null) => void;
+  onOpenDocument?: (documentId: string, at: { entry: number | null; page: number | null }) => void;
   /** The trigger's look: the caller's chip classes. */
   className?: string;
   testId?: string;
@@ -104,7 +104,7 @@ export function AiExplainPopover({
                   <q>{item.quote}</q>{" "}
                   {item.file_name ? (
                     onOpenDocument && item.document_id ? (
-                      <button type="button" className="s1-explain__link" onClick={() => onOpenDocument(item.document_id, item.page)}>
+                      <button type="button" className="s1-explain__link" onClick={() => onOpenDocument(item.document_id, { entry: many ? index : null, page: item.page })}>
                         {item.file_name}
                         {item.location ? `, ${item.location}` : ""}
                       </button>
