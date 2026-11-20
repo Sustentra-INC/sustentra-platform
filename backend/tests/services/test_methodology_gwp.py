@@ -232,3 +232,25 @@ def test_two_general_sets_block_but_a_general_and_a_refrigerant_set_do_not() -> 
 def test_an_embedded_set_with_an_unsupported_horizon_blocks_nothing() -> None:
     choice = choice_from_records({"gwp": _row("AR5"), "gwp:aa11bb": _row("AR6", "embedded in third-party factors", "500-year")})
     assert choice["supported"] and choice["set"] == "AR5"
+
+
+@pytest.mark.parametrize("note", ["for fugitive methane", "for all gases except refrigerants",
+                                  "default; supplier-specific factors where available",
+                                  "for all gases other than HFCs", ""])
+def test_these_use_notes_are_general_so_the_set_drives(note: str) -> None:
+    from backend.app.services.methodology_gwp import GENERAL, use_of
+
+    assert use_of(note) == GENERAL
+    assert choice_from_records({"gwp": _row("AR6", note)})["set"] == "AR6"
+
+
+@pytest.mark.parametrize("note,kind", [("for refrigerants", "refrigerants"), ("HFCs only", "refrigerants"),
+                                       ("for R-410A and R-32", "refrigerants"), ("for HCFC blends", "refrigerants"),
+                                       ("for cooling equipment", "refrigerants"),
+                                       ("embedded in the third-party emission factors", "embedded"),
+                                       ("included in supplier factors", "embedded"),
+                                       ("built into purchased factors", "embedded")])
+def test_these_use_notes_limit_the_set(note: str, kind: str) -> None:
+    from backend.app.services.methodology_gwp import use_of
+
+    assert use_of(note) == kind

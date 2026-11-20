@@ -734,7 +734,8 @@ def test_entries_dedupe_on_set_horizon_and_note() -> None:
         gwp_item("AR6", "100-year", q, "L2", "For Refrigerants"),
         gwp_item("AR6", "100-year", q, "L2", "for refrigerants"),          # same note, other casing: a repeat
         gwp_item("AR6", "100-year", q, "L2", "Fugitive Gases")]), [doc(NOTE_DOC)])  # same set and horizon, another note: kept
-    assert [k.suggestion["value"].get("applies_to") for k in kept] == ["For Refrigerants", "Fugitive Gases"]
+    # "Fugitive Gases" no longer limits a set to refrigerants: it is general and leads
+    assert [k.suggestion["value"].get("applies_to") for k in kept] == ["Fugitive Gases", "For Refrigerants"]
     assert dict(dropped) == {"duplicate_entry": 1}
 
 

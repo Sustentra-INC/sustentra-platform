@@ -34,8 +34,17 @@ UNSUPPORTED = "not supported for calculation"
 KEEP_ONE = "Two GWP sets confirmed in Methodology review — keep one"
 
 GENERAL, REFRIGERANTS, EMBEDDED = "general", "refrigerants", "embedded"
-_EMBEDDED = re.compile(r"\b(embedded|third[- ]party|built[- ]in|supplier|vendor)\b", re.I)
-_REFRIGERANT = re.compile(r"\b(refrigerants?|hfcs?|pfcs?|f-?gas(es)?|hydrofluorocarbons?|fugitive)\b", re.I)
+# Embedded in third-party factors: needs "embedded", "included in" or "built into", and a mention of factors.
+_EMBEDDED = re.compile(r"\b(embedded|included|built)\b[^;.]*\bfactors?\b", re.I)
+# Limited to refrigerants: refrigerant, HFC, HCFC, an R-number, or cooling / AC equipment wording.
+_REFRIGERANT = re.compile(
+    r"\b(refrigerants?|hfcs?|hcfcs?|r-?\d{2,3}[a-z]?|(air[- ]conditioning|cooling|a/?c|hvac)\s+equipment)\b", re.I)
+# "except refrigerants", "other than HFCs": the set covers everything else, so it is general.
+_NEGATED = re.compile(r"\b(except|excluding|other than|apart from|not for|without)\b[^;.]*$", re.I)
+
+
+def _scoped_to_refrigerants(text: str) -> bool:
+    return any(not _NEGATED.search(text[:m.start()]) for m in _REFRIGERANT.finditer(text))
 
 
 def use_of(note: Any) -> str:
@@ -45,7 +54,7 @@ def use_of(note: Any) -> str:
     text = str(note or "")
     if _EMBEDDED.search(text):
         return EMBEDDED
-    if _REFRIGERANT.search(text):
+    if _scoped_to_refrigerants(text):
         return REFRIGERANTS
     return GENERAL
 
