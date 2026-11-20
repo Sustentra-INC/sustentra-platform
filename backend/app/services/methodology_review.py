@@ -63,6 +63,7 @@ STATUSES = (PENDING, ACCEPTED, EDITED, REJECTED)
 
 MAX_TEXT = 2000
 MAX_REASON = 500
+BOUNDARY_SENTENCE_ID = "boundary:entities"
 MAX_APPLIES_TO = 200  # a GWP set's use note, in the company's words
 MAX_FACILITIES = 20
 MAX_FACILITY = 100
@@ -141,9 +142,10 @@ _PARTS: dict[str, list[dict[str, Any]]] = {
     "entity": [
         {"key": "name", "label": "Entity name", "kind": "text"},
         {"key": "facilities", "label": "Facilities", "kind": "list"},
-        {"key": "equity_share_pct", "label": "Equity share (%)", "kind": "percent"},
-        {"key": "financial_control", "label": "Financial control (%)", "kind": "percent"},
-        {"key": "operational_control", "label": "Operational control", "kind": "enum", "allowed": list(YES_NO)},
+        {"key": "equity_share_pct", "label": "Equity share (%, if stated)", "kind": "percent"},
+        {"key": "financial_control", "label": "Financial control (%, if stated)", "kind": "percent"},
+        {"key": "operational_control", "label": "Operational control", "kind": "enum", "allowed": list(YES_NO),
+         "optional": True},
     ],
     "factor": [
         {"key": "database", "label": "Database", "kind": "text"},
@@ -192,6 +194,11 @@ def _static_fields() -> list[dict[str, Any]]:
         _field("boundary:acquisitions", "boundary", "Acquisitions and divestitures", "text", required=False),
         _field("boundary:leased_space", "boundary", "Treatment of leased space", "text", required=False),
     ]
+    # Spec row 9, the fallback: a document that gives only the boundary sentence and names no entity shows that
+    # sentence here, marked "Boundary sentence only", instead of Not detected.
+    entities = _field(BOUNDARY_SENTENCE_ID, "boundary", "Entities and facilities in the boundary", "text")
+    entities["value_note"] = "Boundary sentence only"
+    fields.append(entities)
     # Spec row 11: only if the company reports a market-based Scope 2 number, which this page reads
     # as at least one market-based category that is Yes (see ``market_based_reported``).
     instruments = _field("scope2:instruments", "scope2", "Scope 2 instrument types (market-based)", "multiselect",
@@ -277,8 +284,8 @@ def blank_value(field_id: str) -> Any:
     """What a new row holds until the reviewer fills it in."""
 
     if field_id.startswith("entity:"):
-        return {"name": "", "facilities": [], "equity_share_pct": 0, "financial_control": 0,
-                "operational_control": "No"}
+        return {"name": "", "facilities": [], "equity_share_pct": None, "financial_control": None,
+                "operational_control": None}
     if field_id.startswith("gwp:"):
         return {"set": "", "horizon": ""}
     return {"database": "", "edition": ""}
@@ -314,9 +321,13 @@ def _only(field: Mapping[str, Any], value: Any, keys: tuple[str, ...]) -> Mappin
     return value
 
 
-def _percent(field: Mapping[str, Any], value: Any, name: str) -> int | float:
+def _percent(field: Mapping[str, Any], value: Any, name: str, *, optional: bool = False) -> int | float | None:
+    """A number from 0 to 100; ``None`` (not stated) only where the percentage is optional."""
+
+    if value is None and optional:
+        return None
     if isinstance(value, bool) or not isinstance(value, int | float) or not 0 <= value <= 100:
-        raise _fail(field, f"{name} must be a number from 0 to 100.")
+        raise _fail(field, f"{name} must be a number from 0 to 100" + (", or left blank." if optional else "."))
     return value
 
 
@@ -491,13 +502,14 @@ def validate_value(field: Mapping[str, Any], value: Any) -> Any:
         facilities = data["facilities"]
         if not isinstance(facilities, list) or len(facilities) > MAX_FACILITIES:
             raise _fail(field, f"facilities must be a list of at most {MAX_FACILITIES} names.")
-        if data["operational_control"] not in YES_NO:
-            raise _fail(field, "operational control must be Yes or No.")
+        if data["operational_control"] is not None and data["operational_control"] not in YES_NO:
+            raise _fail(field, "operational control must be Yes or No, or left blank when the document does not say.")
         return {
             "name": _text(field, data["name"], required=True, limit=200, name="the name"),
             "facilities": [_text(field, f, required=True, limit=MAX_FACILITY, name="a facility name") for f in facilities],
-            "equity_share_pct": _percent(field, data["equity_share_pct"], "equity share"),
-            "financial_control": _percent(field, data["financial_control"], "financial control"),
+            # Both percentages are optional: null means the document does not give it.
+            "equity_share_pct": _percent(field, data["equity_share_pct"], "equity share", optional=True),
+            "financial_control": _percent(field, data["financial_control"], "financial control", optional=True),
             "operational_control": data["operational_control"],
         }
     raise AssertionError(f"unknown field kind {kind}")  # pragma: no cover

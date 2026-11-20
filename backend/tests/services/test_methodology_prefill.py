@@ -794,6 +794,161 @@ def test_a_negated_renewable_energy_credit_is_dropped() -> None:
     assert kept == [] and dict(dropped) == {"negated": 1}
 
 
+# --- entities: a boundary sentence with no named entity, and optional percentages --------------------
+# Synthetic lines modelled on the shapes of a bank's assertion, a restaurant group's statement and an
+# engineering firm's plan (paraphrased, not copied).
+
+BOUNDARY = [
+    (1, "The boundary covers company-owned or leased buildings (offices, data centres, ATMs), vehicles and aircraft."),             # L1
+    (1, "Our boundary includes all offices where we have full authority to implement operating policies, such as Houston and Farnborough."),  # L2
+    (1, "Café Québec Holdings Inc. and Zürich Büro AG are inside the boundary; Moscow closed in December 2024."),   # L3
+    (1, "Acme Foods Kent LLC: equity share 51%, operational control: yes"),                                                         # L4
+    (1, "Greenhouse gas emissions are shown in the table below."),                                                                  # L5
+    (1, "Our offices in Moscow are within the boundary."),                                                                          # L6
+    (1, "Data centres used by Neovest are excluded because data is limited."),                                                      # L7
+    (1, "Stockton Cold Storage JV: equity share 50%, not under operational control."),                                              # L8
+    (1, "Acme Foods Kent LLC is included under the operational control approach."),                                                  # L9
+    (1, "Joint ventures not under operational control are outside the boundary."),                                                   # L10
+]
+
+
+def boundary_text(sentence: str, line: str, quote: str | None = None) -> dict[str, str]:
+    return {"field_id": rules.BOUNDARY_SENTENCE_ID, "value": sentence, **cite(line, quote or sentence)}
+
+
+def named_entity(name: str, quote: str, line: str, equity: float | None = None, control: float | None = None,
+                 op: str | None = None) -> dict[str, Any]:
+    return {"name": name, "facilities": [], "equity_share_pct": equity, "financial_control": control,
+            "operational_control": op, **cite(line, quote)}
+
+
+def test_a_boundary_sentence_with_no_named_entity_is_kept_as_the_value_with_its_quote() -> None:
+    sentence = BOUNDARY[0][1]
+    kept, dropped = check(answer(texts=[boundary_text(sentence, "L1")]), [doc(BOUNDARY)])
+    assert dict(dropped) == {} and [(k.field_id, k.suggestion["value"]) for k in kept] == [(rules.BOUNDARY_SENTENCE_ID, sentence)]
+    assert kept[0].suggestion["quote"] == sentence and kept[0].row_group is None
+
+
+def test_a_boundary_sentence_must_be_printed_in_its_quote() -> None:
+    # a paraphrase as the value, with a real quote beside it: the value shown would not trace to the quote
+    kept, dropped = check(answer(texts=[boundary_text("Everything the company owns is inside", "L1", "company-owned or leased buildings")]),
+                          [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+    kept, dropped = check(answer(texts=[boundary_text("The boundary covers a sentence that is not there.", "L1")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
+    kept, dropped = check(answer(texts=[boundary_text("  ", "L1", "company-owned or leased buildings")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"empty_value": 1}
+
+
+def test_a_boundary_sentence_with_non_ascii_text_and_extra_spacing_is_kept() -> None:
+    sentence = "Our boundary includes all offices where we have full authority to implement operating policies, such as Houston and Farnborough."
+    kept, dropped = check(answer(texts=[boundary_text(sentence.replace(" all ", "  all "), "L2", sentence)]), [doc(BOUNDARY)])
+    assert dict(dropped) == {} and len(kept) == 1
+
+
+def test_entities_named_in_the_boundary_are_kept_without_percentages_when_the_quote_names_them() -> None:
+    kept, dropped = check(answer(entities=[
+        named_entity("Café Québec Holdings Inc.", "Café Québec Holdings Inc. and Zürich Büro AG are inside the boundary", "L3"),
+        named_entity("Zürich Büro AG", "Café Québec Holdings Inc. and Zürich Büro AG are inside the boundary", "L3")]),
+        [doc(BOUNDARY)])
+    assert dict(dropped) == {} and [k.suggestion["value"]["name"] for k in kept] == ["Café Québec Holdings Inc.", "Zürich Büro AG"]
+    assert all(k.row_group == "entities" and k.suggestion["value"]["equity_share_pct"] is None for k in kept)
+    assert all(k.suggestion["value"]["financial_control"] is None for k in kept)
+
+
+def test_an_entity_with_no_percentage_whose_name_the_quote_does_not_print_is_dropped() -> None:
+    kept, dropped = check(answer(entities=[
+        named_entity("Fluor Moscow Office", "Our offices in Moscow are within the boundary", "L6"),  # the name is not in the quote
+        named_entity("Moscow", "Our offices in Moscow are within the boundary", "L6")]), [doc(BOUNDARY)])
+    assert [k.suggestion["value"]["name"] for k in kept] == ["Moscow"] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+def test_a_stated_percentage_is_still_checked_in_the_quote_and_the_other_may_be_missing() -> None:
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=51)]), [doc(BOUNDARY)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["equity_share_pct"] == 51 and kept[0].suggestion["value"]["financial_control"] is None
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=60)]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # 60 is not printed
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=51, control=100)]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # 100 is not printed
+
+
+def test_a_document_that_names_no_entity_and_no_boundary_sentence_gives_neither() -> None:
+    kept, dropped = check(answer(), [doc([(1, "Greenhouse gas emissions are shown in the table below.")])])
+    assert kept == [] and dict(dropped) == {}
+    # a model that tries anyway has no quote that names an entity or says what the boundary covers
+    kept, dropped = check(answer(texts=[boundary_text("The boundary covers every subsidiary.", "L5", "Greenhouse gas emissions are shown")]),
+                          [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "Greenhouse gas emissions are shown", "L5")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"not_an_inclusion": 1}  # no inclusion wording in the quote
+
+
+def test_the_prompt_separates_named_entities_from_the_boundary_sentence_and_makes_percentages_optional() -> None:
+    for words in ("boundary:entities", "Give a percentage only when the cited line prints it", "otherwise\n  null",
+                  "name must be printed in the quote", "gives no entity", "IN the\n  boundary", "or null: set it only when the quote says so"):
+        assert words in mp.SYSTEM_PROMPT, words
+
+
+# --- entities come from inclusion statements; the per-entity Yes / No is only what the quote supports ---
+
+def test_an_exclusion_sentence_makes_no_entity_row_it_belongs_to_the_exclusions() -> None:
+    kept, dropped = check(answer(entities=[
+        named_entity("Neovest", "Data centres used by Neovest are excluded because data is limited", "L7", op="No"),
+        named_entity("Neovest data centres", "Data centres used by Neovest are excluded", "L7"),
+        named_entity("Joint ventures", "Joint ventures not under operational control are outside the boundary", "L10", op="No")]),
+        [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"not_an_inclusion": 3}
+
+
+def test_the_per_entity_yes_no_is_set_only_when_the_quote_supports_it() -> None:
+    kept, dropped = check(answer(entities=[
+        named_entity("Acme Foods Kent LLC", "Acme Foods Kent LLC is included under the operational control approach", "L9", op="No"),  # says Yes
+        named_entity("Stockton Cold Storage JV", "equity share 50%, not under operational control", "L8", equity=50, op="Yes"),   # says No
+        named_entity("Caf\u00e9 Qu\u00e9bec Holdings Inc.", "Caf\u00e9 Qu\u00e9bec Holdings Inc. and Z\u00fcrich B\u00fcro AG are inside the boundary", "L3", op="No"),
+        named_entity("Z\u00fcrich B\u00fcro AG", "Z\u00fcrich B\u00fcro AG are inside the boundary", "L3")]), [doc(BOUNDARY)])
+    assert dict(dropped) == {}
+    assert [(k.suggestion["value"]["name"], k.suggestion["value"]["operational_control"]) for k in kept] == [
+        ("Acme Foods Kent LLC", "Yes"), ("Stockton Cold Storage JV", "No"), ("Caf\u00e9 Qu\u00e9bec Holdings Inc.", None),
+        ("Z\u00fcrich B\u00fcro AG", None)]  # inclusion alone says nothing about control; Claude's own values are not trusted
+
+
+def test_an_entity_whose_quote_does_not_say_yes_or_no_keeps_it_blank_and_claude_cannot_force_one() -> None:
+    quote = "Our offices in Moscow are within the boundary"
+    for claimed in ("Yes", "No", None):
+        kept, dropped = check(answer(entities=[named_entity("Moscow", quote, "L6", op=claimed)]), [doc(BOUNDARY)])
+        assert dict(dropped) == {} and kept[0].suggestion["value"]["operational_control"] is None  # "within the boundary" is inclusion, not control
+    quote = "Our offices in Moscow and Houston"
+    kept, dropped = check(answer(entities=[named_entity("Moscow", quote, "L6", op="Yes")]), [doc([(1, "Our offices in Moscow and Houston, listed in the plan")])])
+    assert kept == [] and dict(dropped) == {"not_an_inclusion": 1}
+    kept, _ = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=51, op="Yes")]), [doc(BOUNDARY)])
+    assert kept[0].suggestion["value"]["operational_control"] is None  # a percentage alone does not say who operates it
+
+
+def test_the_boundary_sentence_is_the_one_that_says_what_is_covered_not_an_exclusion_sentence() -> None:
+    covered = BOUNDARY[0][1]
+    left_out = BOUNDARY[6][1]  # "Data centres used by Neovest are excluded because data is limited."
+    kept, dropped = check(answer(texts=[boundary_text(covered, "L1")]), [doc(BOUNDARY)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"] == covered
+    kept, dropped = check(answer(texts=[boundary_text(left_out, "L7")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"not_a_boundary_sentence": 1}
+    outside = BOUNDARY[9][1]
+    kept, dropped = check(answer(texts=[boundary_text(outside, "L10")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"not_a_boundary_sentence": 1}
+    kept, dropped = check(answer(texts=[boundary_text("Greenhouse gas emissions are shown in the table below.", "L5")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"not_a_boundary_sentence": 1}  # says nothing about what the boundary covers
+
+
+def test_included_under_the_equity_share_approach_does_not_set_operational_control() -> None:
+    line = "Acme Foods Kent LLC is included under the equity share approach."
+    for claimed in ("Yes", "No", None):
+        kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", line.rstrip("."), "L1", op=claimed)]), [doc([(1, line)])])
+        assert dict(dropped) == {} and kept[0].suggestion["value"]["operational_control"] is None
+    for quote, expected in (("X is included", None), ("X is inside the boundary", None), ("X is within the boundary", None),
+                            ("X is included under the operational control approach", "Yes"), ("X: operational control: yes", "Yes")):
+        assert mp.entity_statement(quote, "X") == (True, expected), quote
+    assert mp.entity_statement("X is not included under operational control", "X") == (False, None)
+
+
 # --- GWP: a set named without a horizon, and every set the document names, with its use note ----------
 # Synthetic lines modelled on the shapes of a bank's assertion, a restaurant group's statement and an
 # engineering firm's plan (paraphrased, not copied).
