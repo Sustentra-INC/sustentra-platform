@@ -37,7 +37,7 @@ from backend.app.services.ai_locator import (
     norm,
     value_in_quote,
 )
-from backend.app.services.calculation_lines import SUMMARY_TYPES
+from backend.app.services import calculation_lines as cl
 from backend.app.services.reviewed_evidence import set_aside_reason, superseded_ids
 
 logger = logging.getLogger(__name__)
@@ -492,11 +492,22 @@ class PrefillDocument:
     truncated: bool
 
 
+def _in_summary_block(canonical_type_id: str, placements: Any) -> bool:
+    """Whether the document is in Block 1 (Summary documents and workbook) as the Evidence tree files it: its
+    default place (Block 1 for a summary type, Block 2 with no type, else supporting evidence) after the
+    reviewer's moves, by ``calculation_lines.apply_placements``. A move the tree ignores does not count; a
+    summary document moved out is no longer read. Whatever the machine type."""
+
+    default = cl.document_slots(canonical_type_id or None, [cl.RecordPlacement(category=None)])
+    return any(s.target == cl.BLOCK_SUMMARY for s in cl.apply_placements(default, placements))
+
+
 def candidate_documents(upload_service: Any, pipeline_service: Any, engagement_id: str,
                         can_see: Callable[[dict[str, Any]], bool],
                         decisions: dict[str, dict[str, Any]] | None = None) -> list[dict[str, Any]]:
     """The engagement's visible documents whose latest extraction result is a client-prepared
-    summary type (``calculation_lines.SUMMARY_TYPES``), in upload order. Documents the reviewer
+    summary type (``calculation_lines.SUMMARY_TYPES``), or that the reviewer moved into Block 1 (and not back
+    out), in upload order. Documents the reviewer
     set aside (withdrawn, duplicate, superseded: ``decisions`` as the evidence tree reads them)
     are left out, as they are of the evidence."""
 
@@ -511,7 +522,8 @@ def candidate_documents(upload_service: Any, pipeline_service: Any, engagement_i
         results = [r for r in pipeline_service.list_extraction_results_by_document(str(document["document_id"]))
                    if can_see(r)]
         latest = results[-1] if results else {}
-        if str(latest.get("canonical_type_id") or "") in SUMMARY_TYPES:
+        if _in_summary_block(str(latest.get("canonical_type_id") or ""),
+                             (decisions.get(str(document["document_id"])) or {}).get("placements")):
             found.append(document)
     return found
 
