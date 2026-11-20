@@ -416,17 +416,22 @@ def _line(**changes: Any) -> dict:
             "label": "Propane at KC", **changes}
 
 
-def test_evidence_lines_are_an_allowed_setting_and_the_server_fills_in_the_key() -> None:
-    assert "evidenceLines" in SETTINGS_KEYS
-    update = EngagementUpdate(settings={"evidenceLines": [_line()]})
-    assert update.settings is not None
-    saved = update.settings["evidenceLines"][0]
+def test_the_server_fills_in_the_key_of_a_line_and_the_saved_form_round_trips() -> None:
+    saved = cl.normalize_evidence_lines([_line()])[0]
     assert saved["key"] == "s1:stationary:propane:fac-kc01" and saved["scope"] == "s1" and saved["level2"] == "propane"
-    # the saved form round-trips
-    assert EngagementUpdate(settings={"evidenceLines": [saved]}).settings == {"evidenceLines": [saved]}
-    company = EngagementUpdate(settings={"evidenceLines": [
-        _line(category="contractual", level2_label="PPAs", anchor_kind="company", anchor_id=None)]}).settings
-    assert company is not None and company["evidenceLines"][0]["key"] == "s2:contractual:ppas:company"
+    assert cl.normalize_evidence_lines([saved]) == [saved]
+    company = cl.normalize_evidence_lines([
+        _line(category="contractual", level2_label="PPAs", anchor_kind="company", anchor_id=None)])
+    assert company[0]["key"] == "s2:contractual:ppas:company"
+
+
+def test_a_settings_save_drops_evidence_lines_whatever_they_hold() -> None:
+    """Lines change only through the Evidence actions: a save's own copy (a stale tab's, even a broken one)
+    is ignored, never judged, so an autosave cannot fail on it."""
+
+    assert "evidenceLines" in SETTINGS_KEYS  # an old client may still send it
+    for sent in ([_line()], "nope", [{"junk": 1}], [_line(), _line()]):
+        assert EngagementUpdate(settings={"evidenceLines": sent, "dataScope": "x"}).settings == {"dataScope": "x"}
 
 
 @pytest.mark.parametrize("bad", [
@@ -442,18 +447,18 @@ def test_evidence_lines_are_an_allowed_setting_and_the_server_fills_in_the_key()
 ])
 def test_evidence_lines_reject_bad_entries(bad: dict) -> None:
     with pytest.raises(ValueError):
-        EngagementUpdate(settings={"evidenceLines": [bad]})
+        cl.normalize_evidence_lines([bad])
 
 
 def test_evidence_lines_limits_and_duplicates() -> None:
     with pytest.raises(ValueError):
-        EngagementUpdate(settings={"evidenceLines": "nope"})
+        cl.normalize_evidence_lines("nope")
     with pytest.raises(ValueError):
-        EngagementUpdate(settings={"evidenceLines": [_line(), _line()]})
+        cl.normalize_evidence_lines([_line(), _line()])
     many = [_line(level2_label=f"Fuel {i}") for i in range(201)]
     with pytest.raises(ValueError):
-        EngagementUpdate(settings={"evidenceLines": many})
-    assert len(EngagementUpdate(settings={"evidenceLines": many[:200]}).settings["evidenceLines"]) == 200  # type: ignore[index]
+        cl.normalize_evidence_lines(many)
+    assert len(cl.normalize_evidence_lines(many[:200])) == 200
 
 
 @pytest.mark.asyncio
@@ -679,7 +684,7 @@ def test_a_field_without_a_candidate_id_has_none_not_the_text_none() -> None:
     from backend.app.services.reviewed_evidence import group_reviewed_records
 
     items = [{"field_name": "fuel_type", "normalized_value": "x", "unit": None, "record_index": None}]
-    record = group_reviewed_records({"document_id": "D"}, "CT-S1-FUELQTY", items, {})[0]
+    record = group_reviewed_records({"document_id": "D"}, "CT-S1-FUELQTY", items, [])[0]
     assert record.fields["fuel_type"].candidate_id is None
 
 
@@ -746,6 +751,10 @@ def test_tree_lists_vehicle_groups_with_the_anchor_ids_lines_use() -> None:
 
 
 # --- counts at every level and the facility filter ----------------------------------------------
+# G2's values are rejected, and a rejected facility name does not place a bill: the reviewer chose its facility.
+COUNTS_DECISIONS = {"G2": {"facilityId": "fac-stl2"}}
+
+
 def _counts_store() -> FakeStore:
     store = FakeStore()
     store.add_document("BILL", "CT-S2-ELEC", [_elec(10, "Kansas City Plant"), _elec(20, "St Louis Plant")])
@@ -758,7 +767,7 @@ def _counts_store() -> FakeStore:
 
 
 def test_counts_at_every_level_never_double_count_a_document_in_two_places() -> None:
-    tree = _tree(_counts_store())
+    tree = _tree(_counts_store(), COUNTS_DECISIONS)
     blocks = tree["blocks"]
     assert blocks["summary_counts"] == {"documents": 1, "values": 1, "accepted": 0, "to_review": 1, "issues": 0,
                                         "pct_accepted": 0.0}
@@ -775,7 +784,7 @@ def test_counts_at_every_level_never_double_count_a_document_in_two_places() -> 
 
 def test_the_facility_filter_shows_one_facility_and_recomputes_counts() -> None:
     service = _tree_service(_counts_store())
-    tree = service.tree(_engagement(), _own, None, "fac-stl2")
+    tree = service.tree(_engagement(), _own, COUNTS_DECISIONS, "fac-stl2")
     assert {ln["key"] for ln in tree["lines"]} == {GAS_STL, ELEC_STL}
     assert _lines_with_docs(tree) == {GAS_STL: ["G2"], ELEC_STL: ["BILL"]}
     scopes = {s["scope"]: s for s in tree["blocks"]["supporting"]["scopes"]}
@@ -786,9 +795,9 @@ def test_the_facility_filter_shows_one_facility_and_recomputes_counts() -> None:
     assert tree["blocks"]["summary"] == [] and tree["blocks"]["unassigned"] == []
     assert tree["blocks"]["summary_counts"]["documents"] == 0
     assert [f["facility_id"] for f in tree["facilities"]] == ["fac-kc01", "fac-stl2"]  # not filtered
-    nothing = service.tree(_engagement(), _own, None, "fac-nowhere")
+    nothing = service.tree(_engagement(), _own, COUNTS_DECISIONS, "fac-nowhere")
     assert nothing["lines"] == [] and _lines_with_docs(nothing) == {}
-    unfiltered = service.tree(_engagement(), _own, None, None)
+    unfiltered = service.tree(_engagement(), _own, COUNTS_DECISIONS, None)
     assert len(unfiltered["lines"]) == 4 and len(unfiltered["blocks"]["summary"]) == 1
 
 
@@ -970,3 +979,142 @@ def test_the_tree_names_the_creator_and_copes_with_an_unknown_one() -> None:
     assert by_label["Propane at KC"]["created_at"] == NOW
     assert by_label["Diesel"]["created_by_name"] is None and by_label["Kerosene"]["created_by_name"] is None
     assert "created_by_name" not in by_label["Natural Gas, Kansas City Plant"]  # a system line has no creator
+
+
+# --- D3 fix round: the saved chain is derived from where the document is filed now ---------------
+def _doc(default: list[cl.Slot]) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(default_slots=default, document={"file_name": "feb-bill.pdf"}, document_id="D")
+
+
+def _next(chain: list, move: dict, default: list[cl.Slot], known: set[str]) -> list:
+    from backend.app.api import evidence_actions
+
+    return evidence_actions._next_chain(chain, move, _doc(default), known)  # type: ignore[arg-type]
+
+
+def _resolved(default: list[cl.Slot], chain: list, known: set[str]) -> list:
+    return sorted((s.target, tuple(sorted(s.records)), tuple(s.flags)) for s in cl.merge_slots(
+        [cl.resolve_target(s, known) for s in cl.apply_placements(default, chain, known)]))
+
+
+def _simulate(seed: int, steps: int, churn: float):  # noqa: ANN202
+    """API-valid random moves on one document while lines vanish and come back: a move's ``from`` is a place
+    the document shows now (so a document parked on a missing line moves from "supporting:unassigned"), and
+    its ``to`` a line that exists or a fixed place. Yields (default, saved chain, move, known) per step."""
+
+    import random
+
+    rng = random.Random(seed)
+    base, others = ["D1", "D2"], ["X1", "X2", "X3"]
+    known = set(base) | set(others)
+    default = cl.merge_slots([cl.Slot(rng.choice(base), {i}) for i in range(rng.randint(1, 3))])
+    chain: list = []
+    for _ in range(steps):
+        if rng.random() < churn:
+            line = rng.choice(others)
+            known = known - {line} if line in known else known | {line}
+        shown = [t for t, _, _ in _resolved(default, chain, known)]
+        source = rng.choice(shown)
+        target = rng.choice([t for t in sorted(known) + [cl.BLOCK_SUMMARY, cl.BLOCK_UNASSIGNED, cl.SUPPORTING_UNASSIGNED]
+                             if t != source])
+        move = {"from": source, "to": target}
+        yield default, chain, move, set(known)
+        chain = _next(chain, move, default, known)
+
+
+def test_the_saved_chain_files_the_document_exactly_as_the_full_history_does_and_stays_short() -> None:
+    steps = fallbacks = 0
+    for seed in range(400):
+        longest = 0
+        for default, chain, move, known in _simulate(seed, 40, 0.15):
+            full = [*chain, move]
+            now = _next(chain, move, default, known)
+            filing = cl.apply_placements(default, full, known)
+            # exactly where every record is now: by raw place, so "parked on X1" never turns into "parked on X3"
+            assert cl.raw_filing(cl.apply_placements(default, now, known)) == cl.raw_filing(filing), (seed, full, now)
+            assert _resolved(default, now, known) == _resolved(default, full, known)
+            steps += 1
+            if len(now) > len(default) + len(default) // 2:  # the full chain was kept
+                fallbacks += 1
+            longest = max(longest, len(now))
+        assert longest <= cl.MAX_PLACEMENT_MOVES
+    assert fallbacks / steps < 0.02, (fallbacks, steps)
+
+
+def test_a_chain_never_has_more_moves_than_default_slots_plus_one_parking_move_per_swap() -> None:
+    for seed in range(300):
+        for default, chain, move, known in _simulate(seed, 60, 0.0):
+            now = _next(chain, move, default, known)
+            assert len(now) <= len(default) + len(default) // 2, (seed, now)
+
+
+def test_a_thousand_moves_between_two_lines_leave_at_most_one_saved_move() -> None:
+    default = [cl.Slot("s1:stationary:a:f1", {0})]
+    known = {"s1:stationary:a:f1", "s1:stationary:b:f1"}
+    chain: list = []
+    for i in range(1000):
+        here = "s1:stationary:a:f1" if i % 2 == 0 else "s1:stationary:b:f1"
+        there = "s1:stationary:b:f1" if i % 2 == 0 else "s1:stationary:a:f1"
+        chain = _next(chain, {"from": here, "to": there}, default, known)
+    assert chain == []  # 1000 moves ended where they began
+    assert _next(chain, {"from": "s1:stationary:a:f1", "to": "s1:stationary:b:f1"}, default, known) == [
+        {"from": "s1:stationary:a:f1", "to": "s1:stationary:b:f1"}]
+
+
+def test_seed_2178_a_record_moved_off_a_gone_line_is_not_put_back_on_another() -> None:
+    """The review's repro (seed 2178): compaction by resolved filing parked a record on a different missing
+    line than the history had, so it came back on the wrong line when that line returned."""
+
+    for default, chain, move, known in _simulate(2178, 15, 0.25):
+        now = _next(chain, move, default, known)
+        full = [*chain, move]
+        assert cl.raw_filing(cl.apply_placements(default, now, known)) == cl.raw_filing(
+            cl.apply_placements(default, full, known))
+        for line in ("X1", "X2", "X3"):  # whichever missing line returns, a parked record is where it was parked
+            back = known | {line}
+            parked = {t for t in cl.raw_filing(cl.apply_placements(default, full, known)) if t == line}
+            assert parked <= set(cl.raw_filing(cl.apply_placements(default, now, back)))
+
+
+def test_a_document_parked_on_a_line_that_is_gone_stays_parked_there_and_returns_with_the_line() -> None:
+    default = [cl.Slot("G", {0})]
+    chain = _next([], {"from": "G", "to": "X"}, default, {"G", "X"})
+    assert chain == [{"from": "G", "to": "X"}]
+    gone = {"G"}
+    # still the same one move however often it is asked about, and back on X when X returns
+    assert _next(chain, {"from": "supporting:unassigned", "to": "supporting:unassigned"}, default, gone) == chain
+    assert _resolved(default, chain, {"G", "X"}) == [("X", (0,), ())]
+
+
+def test_derive_places_every_default_slot_and_orders_out_before_in() -> None:
+    default = [cl.Slot("A", {0}), cl.Slot("B", {1})]
+    where = lambda *pairs: [cl.Slot(t, set(r)) for t, r in pairs]  # noqa: E731
+    assert cl.derive_placements(default, where(("A", {0}), ("B", {1}))) == []
+    assert cl.derive_placements(default, where(("C", {0, 1}))) == [{"from": "A", "to": "C"}, {"from": "B", "to": "C"}]
+    # A -> B and B -> C: B moves out first, or A's records would arrive in B and move on with it
+    assert cl.derive_placements(default, where(("B", {0}), ("C", {1}))) == [
+        {"from": "B", "to": "C"}, {"from": "A", "to": "B"}]
+    # two slots swapping places go through a free fixed place; a default slot split across places is not derivable
+    assert cl.derive_placements(default, where(("B", {0}), ("A", {1}))) == [
+        {"from": "A", "to": cl.BLOCK_SUMMARY}, {"from": "B", "to": "A"}, {"from": cl.BLOCK_SUMMARY, "to": "B"}]
+    taken = [cl.Slot("A", {0}), cl.Slot("B", {1}), cl.Slot(cl.BLOCK_SUMMARY, {2}), cl.Slot(cl.BLOCK_UNASSIGNED, {3}),
+             cl.Slot(cl.SUPPORTING_UNASSIGNED, {4})]
+    swapped = where(("B", {0}), ("A", {1}), (cl.BLOCK_SUMMARY, {2}), (cl.BLOCK_UNASSIGNED, {3}), (cl.SUPPORTING_UNASSIGNED, {4}))
+    assert cl.derive_placements(taken, swapped) is None
+    assert cl.derive_placements([cl.Slot("A", {0, 1})], where(("B", {0}), ("C", {1}))) is None
+
+
+def test_a_chain_that_cannot_be_shortened_is_capped_with_a_plain_sentence_naming_the_document() -> None:
+    from fastapi import HTTPException
+
+    chain = [{"from": f"x{i}", "to": f"y{i}"} for i in range(cl.MAX_PLACEMENT_MOVES)]
+    # a swap with every fixed place taken has no safe order, so the long chain is kept and the cap is reached
+    full_default = [cl.Slot("A", {0}), cl.Slot("B", {1}), cl.Slot(cl.BLOCK_SUMMARY, {2}), cl.Slot(cl.BLOCK_UNASSIGNED, {3}),
+                    cl.Slot(cl.SUPPORTING_UNASSIGNED, {4})]
+    swapped = [{"from": "A", "to": "T"}, {"from": "B", "to": "A"}, {"from": "T", "to": "B"}]
+    with pytest.raises(HTTPException) as caught:
+        _next([*chain, *swapped[:2]], swapped[2], full_default, {"A", "B", "T"})
+    assert caught.value.status_code == 409 and "feb-bill.pdf" in caught.value.detail
+    assert "moved too many times" in caught.value.detail

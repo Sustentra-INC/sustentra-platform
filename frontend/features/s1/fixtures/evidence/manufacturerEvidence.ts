@@ -489,6 +489,24 @@ docs.push(
   })
 );
 
+// A gas bill whose facility name and address match nothing in Setup: only its account number places it
+// (Kent Cannery lists GRG-77120 in Setup; the step is provisional, see utils/facilityNumbers.ts).
+docs.push(
+  base({
+    documentId: "DOC-ACCOUNT-ONLY",
+    filename: "gas_bill_account_only_oct_2025.pdf",
+    detectedType: "Natural gas bill",
+    facilityState: "unresolved",
+    accountNumber: "grg 77120",
+    periodState: "resolved",
+    periodStart: "2025-10-01",
+    periodEnd: "2025-10-31",
+    fieldsExpected: 2,
+    fieldsExpectedDisplay: 2,
+    fieldsExtracted: 2,
+  })
+);
+
 // Conflicting pair: a meter photo whose read conflicts with the bill.
 docs.push(
   base({

@@ -27,6 +27,7 @@ export function BackendDashboard({
   findings,
   examinations,
   onNavigate,
+  onOpenReview,
   onError,
 }: {
   engagement: EngagementConfig;
@@ -36,6 +37,7 @@ export function BackendDashboard({
   findings: Finding[];
   examinations: Record<string, Examination>;
   onNavigate?: (key: NavKey) => void;
+  onOpenReview?: () => void;
   onError: (error: unknown) => boolean;
 }) {
   const [result, setResult] = useState<Recalculation | null>(null);
@@ -102,6 +104,6 @@ export function BackendDashboard({
   }
 
   return (
-    <DashboardScreen engagement={engagement} figures={figures} onNavigate={onNavigate} />
+    <DashboardScreen engagement={engagement} figures={figures} onNavigate={onNavigate} onOpenReview={onOpenReview} />
   );
 }

@@ -9,6 +9,8 @@ import type { VehicleTypeOption } from "../api/recalculation";
 import { InfoTip } from "./InfoTip";
 import { SetupVehicleGroups } from "./SetupVehicleGroups";
 import { ZipRegionHint } from "./ZipRegionHint";
+import { FacilityNumbersField } from "./FacilityNumbersField";
+import { numbersOf, sharedNumberNote, sharedNumbers } from "../utils/facilityNumbers";
 
 /**
  * Setup (screen 0). Records what the engagement covers so every later page
@@ -147,11 +149,13 @@ export function SetupScreen({
             <div className="s1-setup-inline">
               <input
                 type="date"
+                aria-label="Reporting period start"
                 value={engagement.reportingPeriod.start}
                 onChange={(e) => set({ reportingPeriod: { ...engagement.reportingPeriod, start: e.target.value } })}
               />
               <input
                 type="date"
+                aria-label="Reporting period end"
                 value={engagement.reportingPeriod.end}
                 onChange={(e) => set({ reportingPeriod: { ...engagement.reportingPeriod, end: e.target.value } })}
               />
@@ -255,7 +259,7 @@ export function SetupScreen({
         <h2>
           Facilities
           <InfoTip label="Facilities">
-            Bills are matched to a facility by its name or street address. The grid region sets the factor for its
+            Bills are matched to a facility by its name or street address. A bill that matches neither is matched by the account or meter numbers listed here. The grid region sets the factor for its
             electricity (Scope 2, location-based).
           </InfoTip>
         </h2>
@@ -301,9 +305,28 @@ export function SetupScreen({
                     onUse={(code) => patchFacility(f.facilityId, { gridRegion: code })}
                   />
                 ) : null}
+                <FacilityNumbersField
+                  kind="account"
+                  facilityName={f.name}
+                  values={numbersOf(f, "account")}
+                  onChange={(accountNumbers) => patchFacility(f.facilityId, { accountNumbers })}
+                />
+                <FacilityNumbersField
+                  kind="meter"
+                  facilityName={f.name}
+                  values={numbersOf(f, "meter")}
+                  onChange={(meterNumbers) => patchFacility(f.facilityId, { meterNumbers })}
+                />
               </div>
             ))}
           </div>
+        ) : null}
+        {sharedNumbers(engagement.facilities).length ? (
+          <ul className="s1-fac__notes" aria-label="Numbers on more than one facility">
+            {sharedNumbers(engagement.facilities).map((shared) => (
+              <li key={`${shared.kind}:${shared.value}`}>{sharedNumberNote(shared)}</li>
+            ))}
+          </ul>
         ) : null}
         {foundFacilities.length ? (
           <div className="s1-fac__found">

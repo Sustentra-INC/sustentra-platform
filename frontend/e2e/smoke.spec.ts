@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 
 import { expect, test, type Page } from "@playwright/test";
 
-import { STATE_FILE } from "./global-setup";
+import { ADMIN_STATE_FILE, STATE_FILE } from "./global-setup";
 import { waitForLink, waitForOtp } from "./mailpit";
 
 /**
@@ -98,4 +98,7 @@ test("provider -> org -> invited admin -> member invite", async ({ page }) => {
     await expect(page.getByText(memberEmail)).toBeVisible();
     await expect(page.getByText("2 / 5 seats used")).toBeVisible();
   });
+
+  // Hand the admin's signed-in session to workpaper.spec.ts, which runs next.
+  await page.context().storageState({ path: ADMIN_STATE_FILE });
 });
