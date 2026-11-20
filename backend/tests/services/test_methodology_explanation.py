@@ -120,3 +120,16 @@ def test_every_kind_of_stored_suggestion_explains_without_an_error() -> None:
         field, suggestion = stored(output)
         shown = ex.explain(field, suggestion)
         assert shown is not None and shown["items"][0]["checks"], field["field_id"]
+
+
+def test_the_assistants_answer_never_carries_the_model_and_matches_by_field_or_value() -> None:
+    from backend.app.services import methodology_assistant as assistant
+
+    field, suggestion = stored(answer(choices=[{"field_id": "consolidation_approach", "value": "Operational Control",
+                                                **cite("L2", "operational control approach"), "reason": REASON}]))
+    records = {"consolidation_approach": {"field_id": "consolidation_approach", "suggestion": suggestion, "decision": None}}
+    for query in ("why was operational control suggested for the consolidation approach", "operational control"):
+        (match,) = assistant.explain_matches(records, query)["matches"]
+        assert match["explanation"]["reason"] == REASON and "model" not in match["explanation"]
+    assert assistant.explain_matches(records, "why was the reporting period suggested")["matches"] == []
+    assert assistant.explain_matches(records, field="reporting_period")["matches"] == []

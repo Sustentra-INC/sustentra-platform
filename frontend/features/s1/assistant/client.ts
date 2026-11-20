@@ -1,6 +1,7 @@
 import type { Block, Message } from "./sanitize";
 import { ASSISTANT_MAX_STEPS } from "./spec";
-import { runAssistantTool, type AssistantData } from "./tools";
+import { runAssistantToolAsync } from "./methodologyTools";
+import type { AssistantData } from "./tools";
 
 /** The assistant could not be reached (not connected, rate-limited, or down). */
 export class AssistantUnavailable extends Error {
@@ -102,17 +103,14 @@ export async function askAssistant(
         .trim();
       return { history: messages, answer };
     }
-    messages = [
-      ...messages,
-      {
-        role: "user",
-        content: calls.map((call) => ({
-          type: "tool_result" as const,
-          tool_use_id: call.id,
-          content: runAssistantTool(call.name, call.input, data),
-        })),
-      },
-    ];
+    const results = await Promise.all(
+      calls.map(async (call) => ({
+        type: "tool_result" as const,
+        tool_use_id: call.id,
+        content: await runAssistantToolAsync(call.name, call.input, data),
+      }))
+    );
+    messages = [...messages, { role: "user", content: results }];
   }
   // Out of steps: ask for the answer with what it has.
   messages = [...messages, { role: "user", content: "Answer now with what you have found." }];
