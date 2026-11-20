@@ -440,6 +440,8 @@ def test_whole_terms_and_their_plurals_are_still_named() -> None:
             ("RECs or other energy attribute certificates", "scope2:instruments", "We buy RECs for the plant."),
             ("RECs or other energy attribute certificates", "scope2:instruments", "Each REC is retired in the registry."),
             ("RECs or other energy attribute certificates", "scope2:instruments", "Renewable energy certificates (EACs) are used."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "We retire renewable energy credits each year."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "A Renewable Energy Credit is bought per MWh."),
             ("PPA or VPPA", "scope2:instruments", "The plant has a virtual power purchase agreement (VPPA)."),
             ("Lease agreements", "calculation:source_records", "Figures come from lease agreements."),
             ("Fuel cards", "calculation:source_records", "Fuel cards are the source of fuel use."),
@@ -501,3 +503,10 @@ def test_the_gas_values_are_separate_from_the_category_values() -> None:
         answer(choices=[{"field_id": "gas:co2", "value": "Yes", **cite("L1", "covers CO₂, CH₄")}])
     with pytest.raises(ValueError):  # and a category does not take a gas value
         answer(choices=[{"field_id": "category:scope1:mobile", "value": "Included", **cite("L1", "covers CO₂")}])
+
+
+def test_a_negated_renewable_energy_credit_is_dropped() -> None:
+    line = "We do not buy renewable energy credits."
+    kept, dropped = check(answer(selections=[selection(
+        "scope2:instruments", "RECs or other energy attribute certificates", line.rstrip("."), "L1")]), [doc([(1, line)])])
+    assert kept == [] and dict(dropped) == {"negated": 1}
