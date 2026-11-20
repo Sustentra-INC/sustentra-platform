@@ -1558,8 +1558,8 @@ class StationaryCombustionExtractor:
 
         label = first.label_cell
         start = next((r for r in rows if label is not None and any(c is label for c in r.cells)), None)
-        if label is None or start is None or label.box is None:
-            return []
+        if label is None or start is None or label.box is None or first.row is start:
+            return []  # the meter was read in the label's own row: what is below the label is something else
         found: list[str] = []
         row, cell = start, label
         for _ in range(25):

@@ -331,3 +331,21 @@ def test_claude_is_not_called_for_a_missing_statement_date_alone() -> None:
     assert {f.name for f in ask_fields(read(), targets, gaps)} == {"meter_number", "statement_date", *{
         f.name for f in ask_fields(read(), targets, gaps) if f.role == "check"}}  # a missing meter is worth a call
     assert ask_fields(read("Meter No: M-55012", "Statement Date\t05/01/2025"), targets, gaps) == []
+
+
+def test_a_meter_in_the_labels_own_row_is_not_lost_to_what_is_printed_below_it() -> None:
+    gas = [("Nordgas Zürich AG – Natural Gas Statement", 0.07, 0.05), ("Account Number", 0.07, 0.10),
+           ("ACC-4417", 0.07, 0.12), ("Fuel", 0.4, 0.2), ("Natural Gas", 0.4, 0.22),
+           ("Service Period", 0.4, 0.10), ("Jan 1, 2025 to Jan 31, 2025", 0.4, 0.12)]
+    street = [*gas, ("Meter No: GM-111222", 0.07, 0.30), ("1200 Main Street", 0.07, 0.32), ("Total Usage", 0.07, 0.6),
+              ("32,400 MMBtu", 0.4, 0.6)]
+    assert _value(_read_boxed(StationaryCombustionExtractor(), GAS, street), "meter_number") == "GM-111222"
+    premise = [*gas, ("Meter No: GM-111222", 0.07, 0.30), ("4417-2290", 0.07, 0.32), ("Total Usage", 0.07, 0.6),
+               ("32,400 MMBtu", 0.4, 0.6)]
+    assert _value(_read_boxed(StationaryCombustionExtractor(), GAS, premise), "meter_number") == "GM-111222"
+    # the label and its value are separate cells of one row (the next cell), with a meter-like value under it
+    electric = [("Müller Strom AG – Zürich Electricity Bill", 0.07, 0.05), ("Account Number", 0.07, 0.10),
+                ("MS-4417-2290", 0.07, 0.12), ("Service Period", 0.4, 0.10), ("Jan 1, 2025 to Jan 31, 2025", 0.4, 0.12),
+                ("Meter No.", 0.07, 0.30), ("M-55012", 0.3, 0.30), ("Total kWh Used", 0.07, 0.6),
+                ("12,450 kWh", 0.4, 0.6)]
+    assert _value(_read_boxed(ElectricityExtractor(), ELEC, electric), "meter_number") == "M-55012"
