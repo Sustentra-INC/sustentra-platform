@@ -18,8 +18,11 @@ Rules
   A notification row is written in the same transaction as the action; its email is sent AFTER the
   commit (``deliver_task_emails``) and its result recorded in ``notifications.email_status``. An email
   failure is logged and recorded, never raised.
-- Emails carry the task title, who, the engagement and an "Open in Sustentra" link - never the note or
-  any document content.
+- Emails say only who did what ("<Requester> assigned you a task in Sustentra") and link to the app, where
+  the details show after sign-in. No title, note, file, client or engagement name is ever in an email.
+- Limits, counted from the database in the last hour under a per-person advisory lock (so every API
+  process shares them): 60 tasks created per person, 20 tasks from one person to one assignee (each is
+  an email), 120 completions and cancellations per person.
 - Audit events (DB-003): task_created, task_completed, task_cancelled. Ids only, never text.
 """
 
@@ -51,6 +54,8 @@ MAX_NOTIFICATION_TITLE = 300
 _TASK_NOT_FOUND = HTTPException(status_code=404, detail="Task not found")
 _NOTIFICATION_NOT_FOUND = HTTPException(status_code=404, detail="Notification not found")
 _NOT_ASSIGNABLE = HTTPException(status_code=422, detail="The assignee must be an active member of this organization")
+_TOO_MANY = HTTPException(status_code=429, detail="Too many tasks in the last hour. Try again later.",
+                          headers={"Retry-After": "3600"})
 _NO_ENGAGEMENT = HTTPException(status_code=422, detail="That engagement does not exist in this organization")
 
 __all__ = ["Actor", "PendingEmail", "assignable_members", "cancel_task", "complete_task", "create_task",
@@ -89,6 +94,21 @@ def _uuid(value: str | uuid.UUID, not_found: HTTPException) -> uuid.UUID:
         return uuid.UUID(str(value))
     except ValueError:
         raise not_found from None
+
+
+async def _lock(db: AsyncSession, key: str) -> None:
+    """Serialize this person's limited actions until the transaction ends (a second request waits)."""
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"), {"k": key})
+
+
+async def _throttle_actions(db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    await _lock(db, f"task-action:{user_id}")
+    used = (await db.execute(
+        text("SELECT count(*) FROM audit_logs WHERE org_id = :org AND actor_user_id = :uid "
+             "AND event_type IN ('task_completed', 'task_cancelled') AND created_at > now() - interval '1 hour'"),
+        {"org": org_id, "uid": user_id})).scalar_one()
+    if used >= get_settings().task_action_per_hour:
+        raise _TOO_MANY
 
 
 def _clip(value: str, limit: int) -> str:
@@ -148,10 +168,6 @@ async def _notify(db: AsyncSession, org_id: uuid.UUID, user_id: uuid.UUID, kind:
     )).scalar_one()
 
 
-def _due_text(due: date | None) -> str:
-    return f"{due.day} {due:%b %Y}" if due else ""
-
-
 # --- members ------------------------------------------------------------------------------------
 
 async def assignable_members(db: AsyncSession, org_id: str) -> list[dict[str, Any]]:
@@ -171,6 +187,14 @@ async def create_task(db: AsyncSession, actor: Actor, org_id: str, *, title: str
                       link: str | None, assignee_user_id: uuid.UUID, engagement_id: uuid.UUID | None,
                       due_date: date | None) -> tuple[dict[str, Any], list[PendingEmail]]:
     oid = _uuid(org_id, HTTPException(status_code=404, detail="Organization not found"))
+    await _lock(db, f"task-create:{actor.user_id}")
+    limits = get_settings()
+    made = (await db.execute(
+        text("SELECT count(*) AS total, count(*) FILTER (WHERE assignee_user_id = :assignee) AS to_assignee "
+             "FROM tasks WHERE org_id = :org AND requested_by_user_id = :uid AND created_at > now() - interval '1 hour'"),
+        {"org": oid, "uid": actor.user_id, "assignee": assignee_user_id})).mappings().one()
+    if made["total"] >= limits.task_create_per_hour or made["to_assignee"] >= limits.task_per_assignee_per_hour:
+        raise _TOO_MANY
     assignee = (await db.execute(
         text("SELECT id, email FROM users WHERE id = :id AND org_id = :org AND status = 'active'"),
         {"id": assignee_user_id, "org": oid})).mappings().first()
@@ -199,11 +223,9 @@ async def create_task(db: AsyncSession, actor: Actor, org_id: str, *, title: str
         requester = await _user_name(db, oid, actor.user_id)
         notification_id = await _notify(db, oid, assignee_user_id, "task_assigned", task_id,
                                         f"{requester} assigned you: {title}", link)
-        path = link or f"/org/{await _org_slug(db, oid)}/tasks"
         emails.append(PendingEmail(notification_id, assignee["email"], "task_assigned", {
-            "email_subject": f"{requester} assigned you a task: {title}", "title": title,
-            "requested_by": requester, "engagement": engagement_name, "due_date": _due_text(due_date),
-            "link": _full_link(path)}))
+            "email_subject": f"{requester} assigned you a task in Sustentra", "requested_by": requester,
+            "link": _full_link(f"/org/{await _org_slug(db, oid)}/tasks")}))
     return await _task_row(db, oid, task_id), emails
 
 
@@ -253,6 +275,7 @@ def _must_be_open(task: dict[str, Any]) -> None:
 
 async def complete_task(db: AsyncSession, actor: Actor, org_id: str, task_id: str) -> tuple[dict[str, Any], list[PendingEmail]]:
     oid = _uuid(org_id, HTTPException(status_code=404, detail="Organization not found"))
+    await _throttle_actions(db, oid, actor.user_id)
     task, is_admin = await _visible_locked(db, actor, oid, task_id)
     if actor.user_id != task["assignee_user_id"] and not is_admin:
         raise HTTPException(status_code=403, detail="Only the person it is assigned to, or an admin, can complete a task")
@@ -270,20 +293,22 @@ async def complete_task(db: AsyncSession, actor: Actor, org_id: str, task_id: st
              "AND (id = :requester OR role = 'org_admin') ORDER BY email"),
         {"org": oid, "completer": actor.user_id, "requester": task["requested_by_user_id"]})).mappings().all()
     completer = await _user_name(db, oid, actor.user_id)
-    path = task["link"] or f"/org/{await _org_slug(db, oid)}/tasks"
+    link = _full_link(f"/org/{await _org_slug(db, oid)}/tasks")
     emails = []
     for person in recipients:
         notification_id = await _notify(db, oid, person["id"], "task_completed", task["id"],
                                         f"{completer} completed: {task['title']}", task["link"])
+        mine = person["id"] == task["requested_by_user_id"]
         emails.append(PendingEmail(notification_id, person["email"], "task_completed", {
-            "email_subject": f"{completer} completed a task: {task['title']}", "title": task["title"],
-            "completed_by": completer, "requested_by": task["requested_by_name"],
-            "engagement": task["engagement_name"], "link": _full_link(path)}))
+            "email_subject": f"{completer} completed a task you requested" if mine
+            else f"{completer} completed a task in Sustentra",
+            "completed_by": completer, "requested_by_you": mine, "link": link}))
     return await _task_row(db, oid, task["id"]), emails
 
 
 async def cancel_task(db: AsyncSession, actor: Actor, org_id: str, task_id: str) -> dict[str, Any]:
     oid = _uuid(org_id, HTTPException(status_code=404, detail="Organization not found"))
+    await _throttle_actions(db, oid, actor.user_id)
     task, is_admin = await _visible_locked(db, actor, oid, task_id)
     if actor.user_id != task["requested_by_user_id"] and not is_admin:
         raise HTTPException(status_code=403, detail="Only the person who asked, or an admin, can cancel a task")

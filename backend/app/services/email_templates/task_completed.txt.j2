@@ -1,17 +1,14 @@
 Hello,
 
-{{ completed_by }} marked a task as complete in Sustentra.
-
-Task: {{ title }}
-Completed by: {{ completed_by }}
-Requested by: {{ requested_by }}
-{% if engagement %}
-Engagement: {{ engagement }}
+{% if requested_by_you %}
+{{ completed_by }} completed a task you requested in Sustentra.
+{% else %}
+{{ completed_by }} completed a task in Sustentra.
 {% endif %}
 
-Open in Sustentra:
+Sign in to see the details:
 {{ link }}
 
-You are receiving this because you requested the task or are an administrator of this organization in Sustentra. Document contents are never included in emails.
+For your security, task details, file names and client names are never sent by email.
 
 - {{ sender_name }}
