@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, CircleCheck, CircleMinus, CircleAlert, Send } from "lucide-react";
+import { Ban, CircleCheck, CircleMinus, CircleAlert, ListChecks, Send } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import type { CoverageRule } from "../types/verification";
@@ -38,10 +38,13 @@ export function CoveragePanel({
   coverage,
   isRequested,
   onRequest,
+  onReview,
 }: {
   coverage: CoverageState;
   isRequested: (rule: CoverageRule) => boolean;
   onRequest: (rule: CoverageRule) => void;
+  /** Opens the first value waiting on a check that awaits review. Without it such a check offers Request, as before. */
+  onReview?: (rule: CoverageRule) => void;
 }) {
   const rules = coverage.rules ?? [];
   const viewOf = new Map(rules.map((r) => [r, coverageView(r)]));
@@ -115,6 +118,11 @@ export function CoveragePanel({
                 <div className="s1-cr-rule__act">
                   {rule.status !== "inputs_missing" ? (
                     <span className={`s1-state s1-state--${status.role}`}>{sentenceCase(status.label)}</span>
+                  ) : view === "awaiting_review" && onReview ? (
+                    // The values are in: the reviewer's job, not the client's.
+                    <button className="s1-button s1-button--compact s1-cr-request" type="button" onClick={() => onReview(rule)}>
+                      <ListChecks aria-hidden /> Review
+                    </button>
                   ) : requested ? (
                     <span className="s1-state s1-state--active">In requests</span>
                   ) : (

@@ -9,7 +9,8 @@ import { coverageFromRecalculation, type RecalcAwaitingReview, type Recalculatio
 import { CoveragePanel } from "../components/CoveragePanel";
 import { coverageRules } from "../fixtures/verification/coverageRules";
 import type { CoverageRule } from "../types/verification";
-import { coverageView, dashboardFigures } from "../utils/engagementActivity";
+import type { ReviewValue } from "../types";
+import { coverageView, dashboardFigures, firstValueToReview } from "../utils/engagementActivity";
 
 afterEach(cleanup);
 
@@ -126,5 +127,77 @@ describe("the Coverage & requests headline", () => {
     const css = readFileSync(join(process.cwd(), "features", "s1", "styles", "s1-workpaper.css"), "utf8");
     const rule = /\.s1-cr-filter__n\s*\{[^}]*\}/.exec(css)?.[0] ?? "";
     expect(rule).not.toContain("--weight-strong"); // values stay regular: bold is for titles and structure
+  });
+});
+
+describe("the action on a Coverage card", () => {
+  const review = vi.fn();
+  const request = vi.fn();
+  const rule = (over: Partial<CoverageRule>): CoverageRule => ({
+    ruleId: "COV-X",
+    assertion: "Something is checked",
+    appliesTo: [],
+    status: "inputs_missing",
+    reason: "",
+    ...over,
+  });
+  const show = (rules: CoverageRule[]) =>
+    render(<CoveragePanel coverage={{ rules }} isRequested={() => false} onRequest={request} onReview={review} />);
+
+  it("is Review on a card awaiting review, and Review opens that card's documents", () => {
+    review.mockClear();
+    const awaiting = rule({ ruleId: "COV-S1-STATIONARY", missingBecause: "awaiting_review", awaitingDocumentIds: ["d-gas", "d-gas-2"] });
+    show([awaiting]);
+    expect(screen.queryByRole("button", { name: /^Request$/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /^Review$/ }));
+    expect(review).toHaveBeenCalledWith(awaiting);
+    expect(review.mock.calls[0][0].awaitingDocumentIds).toEqual(["d-gas", "d-gas-2"]);
+  });
+
+  it("keeps Request on a card with no evidence at all, and on one that needs a choice", () => {
+    show([
+      rule({ ruleId: "COV-A", assertion: "Nothing was uploaded", missingBecause: "no_evidence" }),
+      rule({ ruleId: "COV-B", assertion: "A grid region is needed", missingBecause: "needs_input" }),
+    ]);
+    // Opens on the first open count (a choice); every card is one click away.
+    expect(screen.queryByRole("button", { name: /^Review$/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Request$/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /1 missing/ }));
+    expect(screen.queryByRole("button", { name: /^Review$/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Request$/ })).toBeInTheDocument();
+  });
+
+  it("falls back to Request for an awaiting-review card when the page has no review to open", () => {
+    render(<CoveragePanel coverage={{ rules: [rule({ missingBecause: "awaiting_review" })] }} isRequested={() => false} onRequest={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /^Request$/ })).toBeInTheDocument();
+  });
+
+  it("builds the documents of an awaiting card from the recalculation, once each", () => {
+    const rules = coverageFromRecalculation({
+      ...BASE,
+      awaiting_review: [waiting("CT-S1-FUELQTY", "a"), { ...waiting("CT-S1-FUELQTY", "b"), document_id: "d-a" }, waiting("CT-S2-ELEC", "power.pdf")],
+    });
+    expect(rules.find((r) => r.ruleId === "COV-S1-STATIONARY")?.awaitingDocumentIds).toEqual(["d-a"]);
+    expect(rules.find((r) => r.ruleId === "COV-S2-LOCATION")?.awaitingDocumentIds).toEqual(["d-power.pdf"]);
+  });
+});
+
+describe("where Review opens", () => {
+  const v = (id: string, documentId: string, reviewState: string, withdrawn = false) =>
+    ({ id, documentId, reviewState, withdrawn }) as unknown as ReviewValue;
+  const values = [v("v1", "d1", "accepted"), v("v2", "d2", "to_review"), v("v3", "d3", "to_review"), v("v4", "d3", "to_review", true)];
+
+  it("is the first value to review when no documents are named (the dashboard)", () => {
+    expect(firstValueToReview(values)).toEqual({ documentId: "d2", valueId: "v2" });
+    expect(firstValueToReview([])).toBeNull();
+  });
+
+  it("is the first value waiting in the card's own documents", () => {
+    expect(firstValueToReview(values, ["d3", "d9"])).toEqual({ documentId: "d3", valueId: "v3" });
+  });
+
+  it("is the card's first document when none of its values are loaded, so it never does nothing", () => {
+    expect(firstValueToReview(values, ["d9"])).toEqual({ documentId: "d9" });
+    expect(firstValueToReview([v("v1", "d9", "accepted")], ["d9"])).toEqual({ documentId: "d9" });
   });
 });

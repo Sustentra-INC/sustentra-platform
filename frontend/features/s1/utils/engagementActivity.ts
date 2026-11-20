@@ -185,6 +185,17 @@ export function coverageView(rule: CoverageRule): CoverageView {
   return rule.status === "inputs_present" ? "present" : rule.status;
 }
 
+/**
+ * Where "Review" opens: the first value still to review (of the given documents, when a Coverage card names
+ * them), else the first of those documents, else nothing (the caller opens Evidence).
+ */
+export function firstValueToReview(values: ReviewValue[], documentIds?: string[]): { documentId: string; valueId?: string } | null {
+  const waiting = values.filter((v) => !v.withdrawn && v.reviewState === "to_review");
+  if (!documentIds?.length) return waiting[0] ? { documentId: waiting[0].documentId, valueId: waiting[0].id } : null;
+  const own = waiting.find((v) => documentIds.includes(v.documentId));
+  return own ? { documentId: own.documentId, valueId: own.id } : { documentId: documentIds[0] };
+}
+
 export function dashboardFigures(input: {
   evidence: EvidenceItem[];
   values: ReviewValue[];
