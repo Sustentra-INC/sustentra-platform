@@ -56,10 +56,14 @@ const INCLUSIONS = ["Yes", "No", "Not detected"];
 const GWP_SETS = ["AR4", "AR5", "AR6"];
 const GWP_HORIZONS = ["100-year", "20-year"];
 const YES_NO = ["Yes", "No"];
+/** The gas rows' own values, kept apart from the categories' Yes / No / Not detected. */
+const GAS_STATUSES = ["Included", "Declared absent", "Not mentioned"];
+const GASES: [string, string][] = [["co2", "CO2"], ["ch4", "CH4"], ["n2o", "N2O"], ["hfcs", "HFCs"], ["pfcs", "PFCs"], ["sf6", "SF6"], ["nf3", "NF3"]];
 const MAX_ADDED_ROWS = 200;
 
 const GROUPS: [string, string][] = [
   ["boundary", "Organizational boundary"],
+  ["gases", "Gases covered"],
   ["scope1", "Scope 1 emission categories"],
   ["scope2", "Scope 2 emission categories"],
   ["biogenic", "Biogenic emissions"],
@@ -114,6 +118,8 @@ function staticCatalog(): Def[] {
   const instruments = def("scope2:instruments", "scope2", "Scope 2 instrument types (market-based)", "multiselect", INSTRUMENT_OPTIONS, false);
   instruments.shown_if_yes = MARKET_CATEGORIES;
   fields.push(instruments);
+  // One row per gas, "only if the company has a value".
+  for (const [key, name] of GASES) fields.push(def(`gas:${key}`, "gases", `Gas: ${name}`, "enum", GAS_STATUSES, false));
   const scope1 = { stationary: "Stationary Combustion", mobile: "Mobile Combustion", process: "Process Emissions", fugitive: "Fugitive Emissions" };
   for (const [key, name] of Object.entries(scope1)) fields.push(def(`category:scope1:${key}`, "scope1", `Scope 1 ${name}`, "enum", INCLUSIONS));
   const purchased = { electricity: "Purchased Electricity", heating: "Purchased Heating", steam: "Purchased Steam", cooling: "Purchased Cooling" };

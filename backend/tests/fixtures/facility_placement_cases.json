@@ -1,0 +1,1144 @@
+{
+ "_about": "Shared by backend/tests/services/test_facility_placement_cases.py and frontend/features/s1/tests/facilityPlacementCases.test.ts. Each case is one document with one or more records. A field is [value, status]; status is rule (read by the rules, not reviewed), ai_only (read only by Claude, nobody accepted it), accepted (Claude read it and a reviewer accepted it), rejected or needs_more_evidence (a reviewer decided against using it). expect.facility has one entry per record: the Setup facility id it is placed on, or null. expect.note has one entry per record: null, or text the plain-sentence note must contain. A field may be a list of readings ([[value, status], ...], in the order read). Optional per case: company (a key with null means no company), decision (the reviewer's own facility choice), type (\"electricity\" for a purchased electricity bill; gas by default). expect.reason, when present, is the recalculation's reason for the unplaced record (a single-record case). The company is the engagement's own (client_name); the name and address rules are #282's (match, ambiguous or none).",
+ "company": "Northgate Provisions Inc.",
+ "facilities": [
+  {
+   "facilityId": "fac-tac",
+   "name": "Tacoma Plant",
+   "address": "1100 Port of Tacoma Rd, Tacoma, WA 98421",
+   "accountNumbers": [
+    "2001-7788"
+   ],
+   "meterNumbers": [
+    "M-44021"
+   ],
+   "gridRegion": "NYUP"
+  },
+  {
+   "facilityId": "fac-kent",
+   "name": "Kent Cannery",
+   "address": "450 Valley Freight Rd, Kent, WA 98032",
+   "accountNumbers": [
+    "GRG-77120",
+    "ẞ12-3456"
+   ],
+   "meterNumbers": [
+    "E-55604"
+   ],
+   "gridRegion": "NYUP"
+  },
+  {
+   "facilityId": "fac-spn",
+   "name": "Spokane North",
+   "address": "10 Division St, Spokane, WA 99201",
+   "accountNumbers": [
+    "7700-1234"
+   ],
+   "gridRegion": "NYUP"
+  },
+  {
+   "facilityId": "fac-sps",
+   "name": "Spokane South",
+   "address": "20 Division St, Spokane, WA 99201",
+   "accountNumbers": [
+    "7700 1234"
+   ],
+   "gridRegion": "NYUP"
+  },
+  {
+   "facilityId": "fac-sea1",
+   "name": "Seattle Plant 1",
+   "address": "800 Fourth Ave, Seattle, WA 98104",
+   "accountNumbers": [
+    "5500-1111"
+   ],
+   "gridRegion": "NYUP"
+  },
+  {
+   "facilityId": "fac-sea2",
+   "name": "Seattle Plant 2",
+   "address": "800 Fourth Ave, Seattle, WA 98104",
+   "accountNumbers": [
+    "5500-2222"
+   ],
+   "gridRegion": "NYUP"
+  }
+ ],
+ "cases": [
+  {
+   "id": "annex: an address that is not in Setup is never overridden by an account number",
+   "records": [
+    {
+     "service_address": [
+      "2210 Port of Tacoma Rd",
+      "rule"
+     ],
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     "Account 2001-7788 is listed on Tacoma Plant, but this bill's address (2210 Port of Tacoma Rd) is not in Setup. Choose the facility."
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "a name that is not in Setup is not overridden either",
+   "records": [
+    {
+     "facility_name": [
+      "Müller Käserei – Zürich",
+      "rule"
+     ],
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     "Account 2001-7788 is listed on Tacoma Plant, but this bill's facility name (Müller Käserei – Zürich) is not in Setup"
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "an account number alone places the bill",
+   "records": [
+    {
+     "account_number": [
+      "2001 7788",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-tac"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "an account number only Claude read does not place it",
+   "records": [
+    {
+     "account_number": [
+      "2001-7788",
+      "ai_only"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "an account number Claude read and a reviewer accepted places it",
+   "records": [
+    {
+     "account_number": [
+      "2001-7788",
+      "accepted"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-tac"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a rejected account number does not place the bill",
+   "records": [
+    {
+     "account_number": [
+      "2001-7788",
+      "rejected"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "an account number marked needs more evidence does not place the bill",
+   "records": [
+    {
+     "account_number": [
+      "2001-7788",
+      "needs_more_evidence"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a rejected facility name does not place the bill",
+   "records": [
+    {
+     "facility_name": [
+      "Kent Cannery",
+      "rejected"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "a rejected address does not place the bill",
+   "records": [
+    {
+     "service_address": [
+      "450 Valley Freight Rd, Kent, WA 98032",
+      "rejected"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a rejected name does not hide the account number the bill also gives",
+   "records": [
+    {
+     "facility_name": [
+      "Kent Cannery",
+      "rejected"
+     ],
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-tac"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a facility name only Claude read does not place the bill",
+   "records": [
+    {
+     "facility_name": [
+      "Kent Cannery",
+      "ai_only"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a facility name Claude read and a reviewer accepted places it",
+   "records": [
+    {
+     "facility_name": [
+      "Kent Cannery",
+      "accepted"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-kent"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "the name wins over an account number on another facility",
+   "records": [
+    {
+     "facility_name": [
+      "Kent Cannery",
+      "rule"
+     ],
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-kent"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "the address wins over an account number on another facility",
+   "records": [
+    {
+     "service_address": [
+      "450 Valley Freight Rd, Kent, WA 98032",
+      "rule"
+     ],
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-kent"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a meter number places the bill",
+   "records": [
+    {
+     "meter_number": [
+      "E 55604",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-kent"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "an account and a meter number on different facilities place nothing",
+   "records": [
+    {
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ],
+     "meter_number": [
+      "E-55604",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     "Account 2001-7788 and meter E-55604 are listed on different facilities"
+    ],
+    "reason": "identifier_on_two_facilities"
+   }
+  },
+  {
+   "id": "an account and a meter number on the same facility place the bill",
+   "records": [
+    {
+     "account_number": [
+      "GRG 77120",
+      "rule"
+     ],
+     "meter_number": [
+      "E-55604",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-kent"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a number listed on two facilities places nothing",
+   "records": [
+    {
+     "account_number": [
+      "7700-1234",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     "Account 7700-1234 is listed on two facilities"
+    ],
+    "reason": "identifier_on_two_facilities"
+   }
+  },
+  {
+   "id": "a partial number never matches",
+   "records": [
+    {
+     "account_number": [
+      "2001-77",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "a number written without dashes matches the dashed one",
+   "records": [
+    {
+     "account_number": [
+      "20017788",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-tac"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "different dash groups are different numbers",
+   "records": [
+    {
+     "account_number": [
+      "200-17788",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a number with fewer than four digits never matches",
+   "records": [
+    {
+     "account_number": [
+      "77",
+      "rule"
+     ],
+     "meter_number": [
+      "M-4",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a BOM, a non-breaking hyphen and a capital sharp s fold away",
+   "records": [
+    {
+     "account_number": [
+      "﻿2001‑7788",
+      "rule"
+     ]
+    },
+    {
+     "account_number": [
+      "SS12 3456",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-tac",
+     "fac-kent"
+    ],
+    "note": [
+     null,
+     null
+    ]
+   }
+  },
+  {
+   "id": "a bill with two records: one by name, one by account number",
+   "records": [
+    {
+     "facility_name": [
+      "Kent Cannery",
+      "rule"
+     ]
+    },
+    {
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-kent",
+     "fac-tac"
+    ],
+    "note": [
+     null,
+     null
+    ]
+   }
+  },
+  {
+   "id": "a bill with two records: the annex record is not placed, the other is",
+   "records": [
+    {
+     "service_address": [
+      "2210 Port of Tacoma Rd",
+      "rule"
+     ],
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    },
+    {
+     "facility_name": [
+      "Kent Cannery",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null,
+     "fac-kent"
+    ],
+    "note": [
+     "is not in Setup",
+     null
+    ]
+   }
+  },
+  {
+   "id": "a bill with two records and an account number only on the second",
+   "records": [
+    {
+     "facility_name": [
+      "Somewhere Else Ltd",
+      "rule"
+     ]
+    },
+    {
+     "account_number": [
+      "GRG-77120",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null,
+     "fac-kent"
+    ],
+    "note": [
+     null,
+     null
+    ]
+   }
+  },
+  {
+   "id": "a street two facilities share is ambiguous: the address places nothing and the account number does not settle it",
+   "records": [
+    {
+     "service_address": [
+      "800 Fourth Avenue, Seattle",
+      "rule"
+     ],
+     "account_number": [
+      "5500-1111",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "the same street with a house number that is in Setup is not ambiguous",
+   "records": [
+    {
+     "service_address": [
+      "800 Fourth Avenue, Seattle, WA 98104",
+      "rule"
+     ],
+     "facility_name": [
+      "Seattle Plant 2",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-sea2"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "Road and Rd are the same word in an address",
+   "records": [
+    {
+     "service_address": [
+      "450 Valley Freight Road, Kent, WA 98032",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-kent"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a suite the bill has and Setup does not is ignored",
+   "records": [
+    {
+     "service_address": [
+      "450 Valley Freight Rd Ste 200, Kent, WA 98032",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-kent"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a name written Company - Site is the site when the company is the engagement's own",
+   "records": [
+    {
+     "facility_name": [
+      "Northgate Provisions Inc. - Kent Cannery",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-kent"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "a name with another company in front is not the site",
+   "records": [
+    {
+     "facility_name": [
+      "Other Foods LLC - Kent Cannery",
+      "rule"
+     ],
+     "account_number": [
+      "GRG-77120",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     "Account GRG-77120 is listed on Kent Cannery, but this bill's facility name (Other Foods LLC - Kent Cannery) is not in Setup"
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "one field, two readings: the rules read one number and Claude alone read another (the last reading is Claude's)",
+   "records": [
+    {
+     "account_number": [
+      [
+       "2001-7788",
+       "rule"
+      ],
+      [
+       "GRG-77120",
+       "ai_only"
+      ]
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "one field, two readings: Claude's first and the rules' last (the last reading stands)",
+   "records": [
+    {
+     "account_number": [
+      [
+       "GRG-77120",
+       "ai_only"
+      ],
+      [
+       "2001-7788",
+       "rule"
+      ]
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-tac"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "one field, two rule readings: the last one stands",
+   "records": [
+    {
+     "account_number": [
+      [
+       "2001-7788",
+       "rule"
+      ],
+      [
+       "GRG-77120",
+       "rule"
+      ]
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-kent"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "one field, two readings: the accepted one counts over a later unreviewed one",
+   "records": [
+    {
+     "account_number": [
+      [
+       "2001-7788",
+       "accepted"
+      ],
+      [
+       "GRG-77120",
+       "rule"
+      ]
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-tac"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "one field, two readings: an accepted one is not hidden by a rejected sibling",
+   "records": [
+    {
+     "account_number": [
+      [
+       "2001-7788",
+       "accepted"
+      ],
+      [
+       "GRG-77120",
+       "rejected"
+      ]
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-tac"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "one field, two readings accepted with different values leave nothing to read",
+   "records": [
+    {
+     "account_number": [
+      [
+       "2001-7788",
+       "accepted"
+      ],
+      [
+       "GRG-77120",
+       "accepted"
+      ]
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "one field, two readings: a rule reading and then a rejected one leave nothing to read",
+   "records": [
+    {
+     "account_number": [
+      [
+       "2001-7788",
+       "rule"
+      ],
+      [
+       "GRG-77120",
+       "rejected"
+      ]
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "a facility name read twice: the later Claude-only reading hides the rules' one",
+   "records": [
+    {
+     "facility_name": [
+      [
+       "Kent Cannery",
+       "rule"
+      ],
+      [
+       "Tacoma Plant",
+       "ai_only"
+      ]
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "the reviewer's own facility choice wins over every step",
+   "records": [
+    {
+     "facility_name": [
+      "Kent Cannery",
+      "rule"
+     ],
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    }
+   ],
+   "decision": {
+    "facilityId": "fac-sea1"
+   },
+   "expect": {
+    "facility": [
+     "fac-sea1"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "the reviewer's own facility choice settles an annex bill",
+   "records": [
+    {
+     "service_address": [
+      "2210 Port of Tacoma Rd",
+      "rule"
+     ],
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    }
+   ],
+   "decision": {
+    "facilityId": "fac-tac"
+   },
+   "expect": {
+    "facility": [
+     "fac-tac"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "an electricity bill is placed by its account number like a gas bill",
+   "type": "electricity",
+   "records": [
+    {
+     "account_number": [
+      "GRG 77120",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-kent"
+    ],
+    "note": [
+     null
+    ]
+   }
+  },
+  {
+   "id": "an electricity bill whose address is not in Setup is not placed by its account number",
+   "type": "electricity",
+   "records": [
+    {
+     "service_address": [
+      "2210 Port of Tacoma Rd",
+      "rule"
+     ],
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     "is not in Setup"
+    ]
+   }
+  },
+  {
+   "id": "without a company the Company - Site form is not the site",
+   "company": null,
+   "records": [
+    {
+     "facility_name": [
+      "Northgate Provisions Inc. - Kent Cannery",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "without a company the name that is not in Setup still blocks the account number",
+   "company": null,
+   "records": [
+    {
+     "facility_name": [
+      "Northgate Provisions Inc. - Kent Cannery",
+      "rule"
+     ],
+     "account_number": [
+      "GRG-77120",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     "Account GRG-77120 is listed on Kent Cannery, but this bill's facility name (Northgate Provisions Inc. - Kent Cannery) is not in Setup"
+    ],
+    "reason": "no_facility_match"
+   }
+  },
+  {
+   "id": "records are indexed by record_index: record 2 is read first and still placed on its own",
+   "record_indexes": [
+    2,
+    1
+   ],
+   "records": [
+    {
+     "account_number": [
+      "2001-7788",
+      "rule"
+     ]
+    },
+    {
+     "facility_name": [
+      "Kent Cannery",
+      "rule"
+     ]
+    }
+   ],
+   "expect": {
+    "facility": [
+     "fac-tac",
+     "fac-kent"
+    ],
+    "note": [
+     null,
+     null
+    ]
+   }
+  }
+ ]
+}

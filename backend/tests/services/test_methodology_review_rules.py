@@ -24,7 +24,7 @@ def field(field_id: str) -> dict:
 
 def test_catalog_has_every_field_with_a_valid_unique_key() -> None:
     ids = [f["field_id"] for f in m.CATALOG]
-    assert len(ids) == len(set(ids)) == 27
+    assert len(ids) == len(set(ids)) == 34
     assert all(ITEM_KEY.match(i) for i in ids)
     for expected in ("reporting_period", "consolidation_approach", "category:scope1:fugitive",
                      "category:location:cooling", "category:market:steam", "category:biogenic:indirect",

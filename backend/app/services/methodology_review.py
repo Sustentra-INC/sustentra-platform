@@ -51,6 +51,11 @@ GWP_SET_LABELS = {
     "AR6": "IPCC Sixth Assessment Report (AR6)",
 }
 YES_NO = ("Yes", "No")
+# The gas rows have their own value set; it is kept apart from the category Yes / No / Not detected.
+GAS_STATUSES = ("Included", "Declared absent", "Not mentioned")
+GASES = (("co2", "CO2"), ("ch4", "CH4"), ("n2o", "N2O"), ("hfcs", "HFCs"), ("pfcs", "PFCs"), ("sf6", "SF6"),
+         ("nf3", "NF3"))
+GAS_IDS = tuple(f"gas:{key}" for key, _ in GASES)
 
 PENDING, ACCEPTED, EDITED, REJECTED = "pending", "accepted", "edited", "rejected"
 STATUSES = (PENDING, ACCEPTED, EDITED, REJECTED)
@@ -93,6 +98,7 @@ MAX_SOURCE_REFERENCE_TEXT = 200
 
 GROUPS = (
     ("boundary", "Organizational boundary"),
+    ("gases", "Gases covered"),
     ("scope1", "Scope 1 emission categories"),
     ("scope2", "Scope 2 emission categories"),
     ("biogenic", "Biogenic emissions"),
@@ -180,6 +186,9 @@ def _static_fields() -> list[dict[str, Any]]:
                          list(INSTRUMENT_OPTIONS), required=False)
     instruments["shown_if_yes"] = list(MARKET_CATEGORY_IDS)
     fields.append(instruments)
+    # One row per gas, "Only if the company has a value" (spec row 7).
+    fields += [_field(f"gas:{key}", "gases", f"Gas: {name}", "enum", list(GAS_STATUSES), required=False)
+               for key, name in GASES]
     scope1 = {"stationary": "Stationary Combustion", "mobile": "Mobile Combustion",
               "process": "Process Emissions", "fugitive": "Fugitive Emissions"}
     for key, name in scope1.items():

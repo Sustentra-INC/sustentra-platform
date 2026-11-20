@@ -7,6 +7,7 @@ import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSc
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { ApiError } from "../../../lib/api";
 import { userFacingApiError } from "../api/s1Backend";
+import { AI_VALUE, REREAD } from "../constants/copy";
 import { ContainerStateSurface } from "./ContainerStateSurface";
 
 /**
@@ -345,7 +346,7 @@ const ACTION_WORDS: Record<Exclude<ScheduleHistoryEntry["action"], "extracted">,
 };
 
 /** The history sentence: who, what, the value, and where it came from. The server sends the parts. */
-function historySentence(h: ScheduleHistoryEntry): string {
+export function historySentence(h: ScheduleHistoryEntry): string {
   if (h.action === "extracted") {
     return `System extracted ${plural(h.count ?? 0, "value", "values")} from ${plural(h.documents ?? 0, "document", "documents")} placed in this line`;
   }
@@ -355,7 +356,8 @@ function historySentence(h: ScheduleHistoryEntry): string {
   const value = h.value ? `${h.value}${h.unit ? ` ${h.unit}` : ""}` : "";
   const what = [h.field, value].filter(Boolean).join(" ");
   const from = h.file_name ? ` from ${h.file_name}${h.page ? `, page ${h.page}` : ""}` : "";
-  return `${who} ${verb}${what ? ` ${what}` : " a value"}${from}`;
+  const sentence = `${who} ${verb}${what ? ` ${what}` : " a value"}${from}`;
+  return h.superseded_by_reread ? `${sentence} (no longer applies: the document was re-read)` : sentence;
 }
 
 function reportingYear(period: LineSchedule["reporting_period"]): string | null {
@@ -402,7 +404,15 @@ function isPending(r: ScheduleRow): boolean {
 }
 
 /** The word on a row: why it is not counted, or "Edited" for a corrected value; null for plain accepted rows. */
-function rowFlag(r: ScheduleRow): string | null {
+export function rowFlag(r: ScheduleRow): string | null {
+  const base = baseRowFlag(r);
+  // After a re-read (backend S1-BE-014): an earlier decision no longer applies, or a correction carried over a changed value.
+  if (r.reread_changed) return `${base ?? "Not reviewed"} · ${REREAD.again}`;
+  if (r.value_changed_since_review) return `${base ?? "Accepted"} · Value changed since review`;
+  return base;
+}
+
+function baseRowFlag(r: ScheduleRow): string | null {
   switch (r.decision) {
     case "accepted":
       return null;
@@ -485,10 +495,13 @@ function IdentifierItem({ group, onOpenDocument }: { group: IdentifierGroup; onO
   const all = group.documents_with === group.documents_total;
   const summary = group.values.length > 1 ? `${group.values.length} values` : (group.values[0]?.value.trim() || "Not found");
   const count = (n: number) => `${n} ${n === 1 ? "document" : "documents"}`;
-  const docLink = (d: { document_id: string; file_name: string }) => (
-    <button key={d.document_id} className="s1-linklike" type="button" aria-label={`Open ${d.file_name}`} onClick={() => onOpenDocument(d.document_id)}>
-      {d.file_name}
-    </button>
+  const docLink = (d: { document_id: string; file_name: string; read_by_claude?: boolean }) => (
+    <span key={d.document_id} className="s1-sch-ids__doc">
+      <button className="s1-linklike" type="button" aria-label={`Open ${d.file_name}`} onClick={() => onOpenDocument(d.document_id)}>
+        {d.file_name}
+      </button>
+      {d.read_by_claude ? <span className="s1-muted"> · {AI_VALUE.readBy}</span> : null}
+    </span>
   );
   return (
     <li className={all ? "" : "is-partial"}>

@@ -2,6 +2,21 @@ import { AI_VALUE } from "../constants/copy";
 import type { ReviewValue } from "../types/review";
 import { StateIndicator } from "./StateIndicator";
 
+/** The bill says the utility estimated this reading (backend flag `estimated_read`): the value is as printed. */
+export function EstimatedReadNote({ value }: { value: Pick<ReviewValue, "estimatedRead"> }) {
+  if (!value.estimatedRead) return null;
+  return (
+    <div className="s1-muted" data-testid="estimated-read-note">
+      <StateIndicator
+        dimension="valueProperty"
+        value="estimated_read"
+        label="Estimated read"
+        explain="The utility estimated this reading instead of reading the meter. The value is as printed on the bill."
+      />
+    </div>
+  );
+}
+
 /**
  * What Claude read for a value (backend services/ai_extraction.py), on the value's card.
  * A value Claude read where the rules found nothing carries "Suggested by Claude" with the

@@ -66,6 +66,9 @@ export interface EvidenceItem {
   /** Claude's reading of the type: it set the type (`used`, to confirm) or only disagreed with the rules. */
   aiType?: AiTypeReading;
   facilityState: FacilityState;
+  /** The account and meter number read from the bill, for the provisional placement step (utils/facilityNumbers.ts). */
+  accountNumber?: string | null;
+  meterNumber?: string | null;
   facilityId: string | null;
   facilityName: string | null;
   facilityCount: number | null;

@@ -36,9 +36,8 @@ from backend.app.services.reviewed_evidence import (
     STATIONARY,
     THERMAL,
     ReviewedRecord,
-    match_facility,
+    place_on_facility,
     resolve_fuel_name,
-    resolve_setup_facility,
     to_date,
 )
 from backend.app.services.refrigerant_extractor import DISPOSAL, service_type_of
@@ -228,6 +227,12 @@ def _normalize_entry(entry: Any) -> dict[str, Any]:
     return normal
 
 
+def normalize_line(entry: Any) -> dict[str, Any]:
+    """One line entry checked and completed (``normalize_evidence_lines`` for a single line)."""
+
+    return _normalize_entry(entry)
+
+
 def normalize_evidence_lines(value: Any) -> list[dict[str, Any]]:
     """settings["evidenceLines"] checked and completed; ValueError (a message for the user) otherwise.
 
@@ -335,7 +340,7 @@ class RecordPlacement:
 
 def place_record(record: ReviewedRecord, *, ref: EmissionFactorReference, facilities: list[dict[str, Any]],
                  decisions: dict[str, dict[str, Any]], vehicle_groups: list[dict[str, Any]],
-                 fuel_choices: dict[str, str]) -> RecordPlacement:
+                 fuel_choices: dict[str, str], company: str | None = None) -> RecordPlacement:
     """The line a record belongs on, from what the backend already knows of it.
 
     The fuel is the EPA name the recalculation resolves (``fuel_choices`` included); a biomass
@@ -344,8 +349,7 @@ def place_record(record: ReviewedRecord, *, ref: EmissionFactorReference, facili
     """
 
     kind = record.canonical_type_id
-    facility = resolve_setup_facility(facilities, decisions, record.document_id,
-                                      record.best("facility_name"), record.best("service_address"))
+    facility = place_on_facility(facilities, decisions, record.document_id, record, company).facility
     facility_anchor = facility_anchor_id(facility) if facility else None
     if kind in (STATIONARY, MOBILE):
         source = "stationary" if kind == STATIONARY else "mobile"
@@ -486,6 +490,62 @@ def apply_placements(slots: list[Slot], overrides: Any, known_lines: set[str] | 
     return out
 
 
+MAX_PLACEMENT_MOVES = 200  # a document's saved chain of moves never grows past this
+
+
+def raw_filing(slots: list[Slot]) -> dict[str, frozenset[int]]:
+    """Where each place's records are, one entry per place, with no unknown line resolved to unassigned."""
+
+    return {s.target: frozenset(s.records) for s in merge_slots(slots)}
+
+
+def derive_placements(default: list[Slot], filing: list[Slot]) -> list[dict[str, str]] | None:
+    """The saved chain for a document, derived from where it is filed now, not from its history.
+
+    ``default`` is where the document's records go before any reviewer move, ``filing`` where they are
+    now (``apply_placements`` over the full chain, nothing resolved: a record parked on a line that no
+    longer exists is still on that line's key, so it returns there if the line comes back).
+    Records of one default slot always travel together, so the filing is a map from each default slot
+    to its current place. The chain is one move for each default slot that is not where it started, so
+    it never has more moves than the document has default slots, however many times it was moved.
+
+    The moves are ordered so a move out of a place runs before a move into it (``apply_placements``
+    moves everything that is in a place). Slots that swap places (A to B and B to A, which a reviewer
+    reaches through a third place) go through a free fixed place: A to the free place, B to A, the free
+    place to B. ``None`` when a default slot's records ended up in different places, or when a swap needs
+    a free place and all three fixed ones are taken: the caller then keeps the full chain.
+    """
+
+    where: dict[int, str] = {}
+    for slot in filing:
+        for record in slot.records:
+            where[record] = slot.target
+    pairs: list[tuple[str, str]] = []
+    for slot in default:
+        places = {where.get(record) for record in slot.records}
+        if len(places) != 1 or None in places:
+            return None
+        (place,) = places
+        if place != slot.target:
+            pairs.append((slot.target, str(place)))
+    used = {t for pair in pairs for t in pair} | {slot.target for slot in default} | set(where.values())
+    free = next((t for t in (BLOCK_SUMMARY, BLOCK_UNASSIGNED, SUPPORTING_UNASSIGNED) if t not in used), None)
+    ordered: list[dict[str, str]] = []
+    while pairs:
+        ready = next((p for p in pairs if not any(q is not p and q[0] == p[1] for q in pairs)), None)
+        if ready is None:  # every pair waits on another: a cycle. Park one slot on the free place, finish it last.
+            if free is None:
+                return None
+            ready = pairs[0]
+            pairs.remove(ready)
+            ordered.append({"from": ready[0], "to": free})
+            pairs.append((free, ready[1]))
+            continue
+        pairs.remove(ready)
+        ordered.append({"from": ready[0], "to": ready[1]})
+    return ordered
+
+
 def resolve_target(slot: Slot, known_lines: set[str]) -> Slot:
     """A slot that names a line that does not exist (deleted after documents moved to it, or
     never there) is filed under unassigned supporting evidence, flagged ``unknown_line``."""
@@ -562,20 +622,22 @@ def date_label(canonical_type_id: str | None) -> str:
 
 
 def facility_match(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
-                   record: ReviewedRecord) -> tuple[dict[str, Any], str] | None:
-    """The Setup facility of a record and how it was matched: the reviewer's choice, the
-    facility name, or the service address; None when nothing matches. Same order as
-    ``resolve_setup_facility`` (reviewer's choice, then name, then address), plus the reason."""
+                   record: ReviewedRecord, company: str | None = None) -> tuple[dict[str, Any], str] | None:
+    """The Setup facility of a record and how it was matched: the reviewer's choice, the facility name, the
+    service address, or (provisional) the account or meter number; None when nothing matches. It is the
+    same decision ``place_record`` makes (``place_on_facility``), with the reason."""
 
-    chosen = (decisions.get(document_id) or {}).get("facilityId")
-    for facility in facilities:
-        if chosen and facility.get("facilityId") == chosen:
-            return facility, "Chosen by the reviewer"
-    if (found := match_facility(record.best("facility_name"), None, facilities)) is not None:
-        return found, "Facility name in Setup"
-    if (found := match_facility(None, record.best("service_address"), facilities)) is not None:
-        return found, "Service address in Setup"
-    return None
+    placement = place_on_facility(facilities, decisions, document_id, record, company)
+    return (placement.facility, str(placement.how)) if placement.facility is not None else None
+
+
+def unplaced_note(facilities: list[dict[str, Any]], decisions: dict[str, dict[str, Any]], document_id: str,
+                  record: ReviewedRecord, company: str | None = None) -> str | None:
+    """Why a record with no Setup facility was not placed by its account or meter number, in a plain
+    sentence; None when it has a facility or its numbers say nothing."""
+
+    placement = place_on_facility(facilities, decisions, document_id, record, company)
+    return placement.note if placement.facility is None else None
 
 
 def quantity_field(record: ReviewedRecord) -> str | None:
