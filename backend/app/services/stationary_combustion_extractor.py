@@ -205,7 +205,8 @@ ELECTRIC_UNITS = frozenset({"kWh", "MWh"})
 
 # --- usage tables ----------------------------------------------------------------------
 _QTY_EXCLUDE = ("read", "factor", "heat value", "heat content", "price", "rate", "amount", "charge", "cost",
-                "$", "days", "multiplier", "pressure", "tax", "total amount", "balance")
+                "$", "days", "multiplier", "pressure", "tax", "total amount", "balance",
+                "capacity", "tank", "size", "level", "efficiency")
 _ID_HEADERS = ("meter number", "meter id", "meter #", "meter no", "meter", "tank", "invoice", "ticket", "delivery no")
 _UNIT_HEADERS = ("unit", "units", "uom", "unit of measure")
 _PRODUCT_HEADERS = ("product", "description", "fuel", "commodity", "item")
@@ -225,6 +226,8 @@ _DATE_HEADERS = ("date", "delivery date", "read date", "invoice date", "date pos
                  "transaction date", "date delivered")
 # A usage table ends at its summary row: "Total", or a yearly roll-up such as "Annual quantity" /
 # "Year to date", which would double count the rows above it if read as one more record.
+_QUANTITY_WORDS = ("usage", "consumption", "consumed", "delivered", "billed", "used", "issued", "dispensed",
+                   "pumped", "added", "fuel", "quantity", "qty", "volume")
 _PER_HUNDRED_RE = re.compile(r"/\s*\d+\s*[a-z]+")
 # A "Description" column is the product column only when no column is headed by the fuel itself.
 _GENERIC_PRODUCT_HEADERS = ("description", "item")
@@ -1751,7 +1754,7 @@ class StationaryCombustionExtractor:
                            and t.strip(" :#") in _FUEL_PRODUCT_HEADERS and t.strip(" :#") in self.PRODUCT_HEADERS),
                           None)
             if better is not None:
-                columns["product"] = better
+                columns["product_alt"] = better  # taken only if its cells really name a fuel (_table_records)
         return columns
 
     # Unit lookups, so a subclass can know units the others must not (the thermal
@@ -1767,9 +1770,10 @@ class StationaryCombustionExtractor:
         if any(word in text for word in self.QTY_EXCLUDE) or bare in self.UNIT_HEADERS or bare.endswith(" unit"):
             return 0
         unit = self._canonical_unit(text) or self._find_unit(text)
-        if unit is None:
-            # "Fuel Dispensed (L)": a unit in parentheses ends a header, so even a bare "L" is the unit here.
-            # (A bare "L" in free text stays ambiguous: find_unit skips it.)
+        if unit is None and any(w in text for w in _QUANTITY_WORDS):
+            # "Fuel Dispensed (L)": a unit in parentheses ends a header, so even a bare "L" is the unit here,
+            # but only for a header that also names a quantity ("Tank Capacity (L)" is not one). A bare "L"
+            # in free text stays ambiguous: find_unit skips it.
             paren = re.search(r"\(([^()]{1,20})\)\s*$", text)
             unit = self._canonical_unit(paren.group(1)) if paren else None
         score = 0
@@ -1795,6 +1799,7 @@ class StationaryCombustionExtractor:
         # "Volume (L)": a unit in parentheses may be a single letter
         header_unit_text = paren.group(1) if paren and self._canonical_unit(paren.group(1)) else header_text
         header_unit = self._canonical_unit(header_unit_text) or self._find_unit(header_text)
+        columns = self._product_column(rows, header_row, columns)
         records: list[UsageRecord] = []
         last_top = header_row.top
         header_texts = [_norm(c.text) for c in header_cells]
@@ -1863,6 +1868,24 @@ class StationaryCombustionExtractor:
             self._row_dates(record, row, assigned, columns, header_row)
             records.append(record)
         return records
+
+    def _product_column(self, rows: Sequence[Row], header_row: Row, columns: dict[str, int]) -> dict[str, int]:
+        """A "Description" column is the product column unless a column headed by the fuel itself ("Fuel Type")
+        holds cells that really name a fuel; then that column is. A fuel column of "Y" or a code stays unused."""
+
+        alt = columns.get("product_alt")
+        if alt is None or "product" not in columns:
+            return columns
+        for row in rows[header_row.index + 1:header_row.index + 41]:
+            if row.page != header_row.page:
+                break
+            first = _norm(row.cells[0].text)
+            if any(first == w or first.startswith(w + " ") for w in _TOTAL_ROW_WORDS):
+                break
+            cell = self._assign_columns(row, header_row.cells).get(alt)
+            if cell is not None and self._fuel(cell.text) is not None:
+                return {**columns, "product": alt}
+        return columns
 
     def _row_dates(self, record: UsageRecord, row: Row, assigned: dict[int, Cell], columns: dict[str, int],
                    header_row: Row) -> None:
