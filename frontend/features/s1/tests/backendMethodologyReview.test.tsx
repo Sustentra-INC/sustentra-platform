@@ -142,6 +142,29 @@ describe("Methodology review on real data", () => {
     await waitFor(() => expect(gets()).toBe(before + 1));
   });
 
+  it("opens the explanation from the Suggested by Sustentra's AI button: why, evidence and checks, and an old suggestion says no reason was recorded", async () => {
+    const data = fixture() as { fields: { field_id: string; explanation?: unknown }[] };
+    data.fields[0].explanation = {
+      reason: "The report states it uses the operational control approach under 'Organizational boundary'.",
+      reason_note: null,
+      read_at: "2026-11-01T10:00:00Z",
+      model: "m",
+      items: [{ label: null, reason: "The report states it uses the operational control approach under 'Organizational boundary'.", quote: "We use the operational control approach.", document_id: "d1", file_name: "GHG report.pdf", page: 4, location: "page 4", checks: ["The wording matched: 'operational control' → Operational Control."], implied: [] }],
+    };
+    const { onOpenDocument } = await open(vi.fn(), data);
+    fireEvent.click(within(row("Consolidation approach")).getByRole("button", { name: "Suggested by Sustentra's AI" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(/The report states it uses the operational control approach/)).toBeInTheDocument();
+    expect(within(dialog).getByText("The wording matched: 'operational control' → Operational Control.")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "GHG report.pdf, page 4" }));
+    expect(onOpenDocument).toHaveBeenCalledWith("d1", 4);
+    cleanup();
+    await open(vi.fn()); // the same suggestion, saved with no reason and no explanation
+    fireEvent.click(within(row("Consolidation approach")).getByRole("button", { name: "Suggested by Sustentra's AI" }));
+    expect(screen.getByText("Reason not recorded for this suggestion. Re-read the reports to get one.")).toBeInTheDocument();
+    expect(within(screen.getByRole("dialog")).getByText("We use the operational control approach.")).toBeInTheDocument();
+  });
+
   it("says so when a stored quote was cut", async () => {
     const data = fixture() as { fields: { field_id: string; suggestion: Record<string, unknown> }[] };
     data.fields[0].suggestion.quote_truncated = true;

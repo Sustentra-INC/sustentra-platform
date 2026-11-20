@@ -27,9 +27,10 @@ from datetime import date
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from backend.app.adapters.llm.claude import ClaudeClient, StructuredReply
+from backend.app.services.ai_reason import clean_reason
 from backend.app.services import methodology_review as rules
 from backend.app.services.methodology_gwp import EMBEDDED, GENERAL, REFRIGERANTS, use_of
 from backend.app.services.ai_locator import (
@@ -74,6 +75,16 @@ class _Cited(_Strict):
     document: str  # the document's alias, "D1"
     line: str  # the line's alias in that document, "L12"
     quote: str  # the words printed on that line that support the answer
+    reason: str  # why the quote supports the answer: one plain sentence, at most 240 characters
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reason_may_be_missing(cls, data: Any) -> Any:
+        # The provider schema requires a reason; a reply that lacks one (or a caller that builds an item by
+        # hand) still validates and simply has none recorded.
+        if isinstance(data, dict) and "reason" not in data:
+            return {**data, "reason": ""}
+        return data
 
 
 class ChoiceSuggestion(_Cited):
@@ -94,9 +105,16 @@ class TextSuggestion(_Cited):
 class PeriodSuggestion(_Cited):
     start: str  # YYYY-MM-DD
     end: str  # YYYY-MM-DD, printed in the quote
-    start_implied: bool  # true: the quote prints only the end of a twelve-month period and the start is worked out
     title_line: str  # only when the quote says "calendar year" and prints no date: the document's title line ("" if unused)
     title_quote: str  # the words of that title line that name the year ("" if unused)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_start_implied(cls, data: Any) -> Any:
+        # The server works out whether the start is implied (``verify``); the model is no longer asked.
+        if isinstance(data, dict) and "start_implied" in data:
+            return {k: v for k, v in data.items() if k != "start_implied"}
+        return data
 
 
 class EstimationSuggestion(_Cited):
@@ -121,7 +139,15 @@ class EntitySuggestion(_Cited):
     facilities: list[str]
     equity_share_pct: float | None  # null when the document gives none
     financial_control: float | None  # null when the document gives none
-    operational_control: Literal["Yes", "No"] | None  # null unless the quote says so
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_operational_control(cls, data: Any) -> Any:
+        # The server reads operational control from the quote itself (``entity_statement``); the model is no
+        # longer asked, and its own Yes / No was never used.
+        if isinstance(data, dict) and "operational_control" in data:
+            return {k: v for k, v in data.items() if k != "operational_control"}
+        return data
 
 
 class FactorSuggestion(_Cited):
@@ -668,6 +694,10 @@ Rules
 - For consolidation_approach and the GWP set, the quote must itself name the choice (for example
   "operational control", or "AR5" / "Fifth Assessment"); at least 8 characters.
 - Cite documents by their alias (D1, D2, ...) and lines by their alias (L1, L2, ...), as shown.
+- Every suggestion also has a reason: one plain-English sentence of at most 240 characters that says
+  where the document states it and why that supports the answer, for example "The report states it
+  uses the operational control approach under 'Organizational boundary'." Say only what the quote and
+  the document show: no outside knowledge, no guess about what the company meant.
 
 """
 
@@ -737,10 +767,10 @@ _ITEMS = {
   date must be printed in the quote, and so must the start (for example "January 1 to December 31,
   2024", or "1/1/2025 - 12/31/2025"), unless the document states only the end of a year ("for the
   year ended December 31, 2024", "12 months ending June 30, 2025"): then give the start as the
-  first day of that year (2024-01-01; 2024-07-01) and set start_implied to true. Otherwise
-  start_implied is false. The year wording must sit in the same clause as the end date. Never set
-  start_implied for "three years ended", for a 52 or 53 week year, or for a period the quote does
-  not call a year, and never give an end date the quote does not print. If the quote says "calendar
+  first day of that year (2024-01-01; 2024-07-01); the server marks that start as implied. The
+  year wording must sit in the same clause as the end date. Never do this for "three years
+  ended", for a 52 or 53 week year, or for a period the quote does not call a year, and never give an
+  end date the quote does not print. If the quote says "calendar
   year" or "calendar reporting year" and prints no date at all, and the document's title or heading
   names a single year ("2023 Statement of GHG Emissions"; the document's first heading, not a sentence, and no other year in the first lines), give 1 January to 31 December of that year
   and put the title line in title_line and its words in title_quote; otherwise title_line and
@@ -757,9 +787,8 @@ _ITEMS = {
 """,
     "entities": """\
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
-  equity share (percent, 0 to 100), financial control (percent, 0 to 100) and whether the company
-  has operational control (Yes or No, or null: set it only when the quote says so, never guess; the
-  server marks every kept entity Included and reads operational control from the quote itself).
+  equity share (percent, 0 to 100) and financial control (percent, 0 to 100); the server marks every
+  kept entity Included and reads operational control from the quote itself.
   Give a percentage only when the cited line prints it (the number must be in the quote); otherwise
   null. The entity's name must be printed in the quote, and the quote must say the entity is IN the
   boundary. A sentence that leaves something out ("data centers used by X are excluded", "not
@@ -997,9 +1026,11 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         kept.append(Verified(field_id, row_group, {
             "value": value, "quote": item.quote.strip(), "document_id": document.document_id,
             "file_name": document.file_name, "source_reference": line.source_reference, "origin": "ai",
-            "model": model, "request_id": request_id, "suggested_at": now_iso}))
+            "model": model, "request_id": request_id, "suggested_at": now_iso,
+            **({"reason": reason} if (reason := clean_reason(item.reason)) else {})}))
 
-    def keep_list(field_id: str, parts: list[dict[str, str]], quoted: list[tuple[str, str, PrefillDocument, DocumentLine]],
+    def keep_list(field_id: str, parts: list[dict[str, str]],
+                  quoted: list[tuple[str, str, PrefillDocument, DocumentLine, str]],
                   limit: int = rules.MAX_ENTRIES) -> None:
         """One suggestion for a list field: the entries that hold up, each with the quote it was read from."""
 
@@ -1008,7 +1039,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         good: list[dict[str, str]] = []
         evidence: list[dict[str, Any]] = []
         names: set[str] = set()
-        for part, (label, quote, document, line) in zip(parts, quoted, strict=True):
+        for part, (label, quote, document, line, why) in zip(parts, quoted, strict=True):
             key = " ".join(label.casefold().split())
             if not key or key in names:  # a blank or repeated source type: the first stands
                 dropped["empty_value" if not key else "duplicate_entry"] += 1
@@ -1021,7 +1052,8 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             names.add(key)
             good.append(part)
             evidence.append({"label": label.strip(), "quote": quote.strip(), "document_id": document.document_id,
-                             "file_name": document.file_name, "source_reference": line.source_reference})
+                             "file_name": document.file_name, "source_reference": line.source_reference,
+                             **({"reason": clean_reason(why)} if clean_reason(why) else {})})
         value = checked(field_id, good) if good else None
         if value is None:
             return
@@ -1030,7 +1062,8 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         kept.append(Verified(field_id, None, {
             "value": value, "quote": first["quote"], "document_id": first["document_id"],
             "file_name": first["file_name"], "source_reference": first["source_reference"], "evidence": evidence,
-            "origin": "ai", "model": model, "request_id": request_id, "suggested_at": now_iso}))
+            "origin": "ai", "model": model, "request_id": request_id, "suggested_at": now_iso,
+            **({"reason": first["reason"]} if first.get("reason") else {})}))
 
     def checked(field_id: str, value: Any) -> Any | None:
         definition = rules.catalog_field(field_id)
@@ -1058,8 +1091,8 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         entries.append((estimate, *found))
     if entries:
         keep_list("calculation:estimation", [{"source_type": e.source_type, "method": e.method} for e, _, _ in entries],
-                  [(e.source_type, e.quote, d, ln) for e, d, ln in entries])
-    picked: dict[str, list[tuple[dict[str, str], tuple[str, str, PrefillDocument, DocumentLine]]]] = {}
+                  [(e.source_type, e.quote, d, ln, e.reason) for e, d, ln in entries])
+    picked: dict[str, list[tuple[dict[str, str], tuple[str, str, PrefillDocument, DocumentLine, str]]]] = {}
     for sel in output.selections:
         definition = rules.catalog_field(sel.field_id)
         by_key = {norm(a): a for a in (definition or {}).get("allowed", [])}
@@ -1076,7 +1109,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped["negated" if named == "negated" else "value_not_in_quote"] += 1
             continue
         wording = sel.wording.strip() if sel.wording.strip() and norm(sel.wording) in norm(sel.quote) else ""
-        picked.setdefault(sel.field_id, []).append(({"option": option, "wording": wording}, (option, sel.quote, *found)))
+        picked.setdefault(sel.field_id, []).append(({"option": option, "wording": wording}, (option, sel.quote, *found, sel.reason)))
     for field_id, items in picked.items():
         keep_list(field_id, [part for part, _ in items], [q for _, q in items], limit=len((rules.catalog_field(field_id) or {}).get("allowed", [])) + rules.MAX_FREE_OPTIONS)
     for gas in output.gases:
@@ -1121,7 +1154,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         elif (not printed and words == rules.PERIOD_BASES[0] and (start, end) == (date(start.year, 1, 1), date(start.year, 12, 31))
               and period.title_quote.strip()):
             # "calendar year" with no date printed: the year comes from the document's title, a second quote
-            title = cited(_Cited(document=period.document, line=period.title_line, quote=period.title_quote))
+            title = cited(_Cited(document=period.document, line=period.title_line, quote=period.title_quote, reason=""))
             if title is None:  # the title quote is not on its line (counted by ``cited``)
                 continue
             if title_year(title[0].lines, title[1]) != start.year:
@@ -1139,7 +1172,8 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             first = kept[-1].suggestion
             first["evidence"] = [
                 {"label": "Calendar year", "quote": first["quote"], "document_id": first["document_id"],
-                 "file_name": first["file_name"], "source_reference": first["source_reference"]},
+                 "file_name": first["file_name"], "source_reference": first["source_reference"],
+                 **({"reason": first["reason"]} if first.get("reason") else {})},
                 {"label": "Year from the title", "quote": period.title_quote.strip(), "document_id": document.document_id,
                  "file_name": document.file_name, "source_reference": line.source_reference}]
     gwp_seen: set[tuple[str, str, str]] = set()

@@ -2631,6 +2631,18 @@ html, body { margin: 0; padding: 0; }
   transition: opacity 0.15s var(--ease-out), transform 0.15s var(--ease-out);
 }
 @starting-style { .s1-infotip__panel { opacity: 0; transform: scale(0.96); } }
+/* The AI explanation popover: the info tip's panel, wider, with sections and a link that reads on the dark panel. */
+.s1-explain { margin-left: 0; }
+.s1-explain__btn { font: inherit; cursor: pointer; }
+.s1-explain__btn:hover { text-decoration: underline; }
+.s1-explain__btn:focus-visible, .s1-explain__link:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-explain__panel { left: 0; translate: none; max-width: min(26rem, 80vw); display: flex; flex-direction: column; gap: var(--sp-2); }
+.s1-explain__sec h4 { margin: 0 0 var(--sp-1); font-size: var(--text-sm); font-weight: var(--weight-strong); }
+.s1-explain__sec p, .s1-explain__sec ul { margin: 0; }
+.s1-explain__sec ul { padding-left: var(--sp-4); }
+.s1-explain__sec p + p { margin-top: var(--sp-1); }
+.s1-explain__link { padding: 0; border: 0; background: none; font: inherit; color: inherit; text-decoration: underline; cursor: pointer; text-align: left; }
+.s1-explain__foot { color: var(--sf-sunken); font-size: var(--text-sm); }
 
 /* ===================================================================
    Dashboard: progress only. Timeline, two meters, what needs attention.

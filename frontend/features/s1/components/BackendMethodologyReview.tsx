@@ -13,6 +13,7 @@ import {
   removeRow,
   revealField,
   revertField,
+  explanationOf,
   sourceLocation,
   type AiStatus,
   type CatalogField,
@@ -28,6 +29,7 @@ import type { MaybePromise } from "../requests/maybePromise";
 import { andThen } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import { AiExplainPopover } from "./AiExplainPopover";
 import { InfoTip } from "./InfoTip";
 
 /**
@@ -443,7 +445,7 @@ function FieldRow({
   followUp?: FollowUpSupport;
   onMarkFollowUp: (def: CatalogField) => void;
   onAct: (run: () => Promise<unknown>) => void;
-  onOpenDocument: (documentId: string) => void;
+  onOpenDocument: (documentId: string, page?: number | null) => void;
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "reject">("view");
   const [reason, setReason] = useState("");
@@ -482,7 +484,12 @@ function FieldRow({
 
       {suggestion ? (
         <div className="s1-mb-suggest">
-          <span className="s1-chip s1-mb-chip">Suggested by Sustentra&apos;s AI</span>
+          <AiExplainPopover
+            label="Suggested by Sustentra's AI"
+            className="s1-chip s1-mb-chip"
+            explanation={explanationOf(record)!}
+            onOpenDocument={onOpenDocument}
+          />
           <span className="s1-mr-value">{valueText(suggestion.value)}</span>
           {def.value_note && !entitiesNamed ? <span className="s1-mr-muted">{def.value_note}</span> : null}
           {suggestion.evidence?.length ? (

@@ -484,7 +484,7 @@ def test_a_document_that_states_no_period_gives_no_period() -> None:
 
 
 def test_the_prompt_teaches_the_implied_start() -> None:
-    assert "start_implied" in mp.SYSTEM_PROMPT and "year ended December 31, 2024" in mp.SYSTEM_PROMPT
+    assert "the server marks that start as implied" in mp.SYSTEM_PROMPT and "year ended December 31, 2024" in mp.SYSTEM_PROMPT
 
 
 def test_a_reversed_or_impossible_range_is_invalid() -> None:
@@ -885,7 +885,7 @@ def test_a_document_that_names_no_entity_and_no_boundary_sentence_gives_neither(
 
 def test_the_prompt_separates_named_entities_from_the_boundary_sentence_and_makes_percentages_optional() -> None:
     for words in ("boundary:entities", "Give a percentage only when the cited line prints it", "otherwise\n  null",
-                  "name must be printed in the quote", "gives no entity", "IN the\n  boundary", "or null: set it only when the quote says so"):
+                  "name must be printed in the quote", "gives no entity", "IN the\n  boundary", "reads operational control from the quote itself"):
         assert words in mp.SYSTEM_PROMPT, words
 
 

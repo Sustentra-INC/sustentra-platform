@@ -28,10 +28,11 @@ import logging
 import re
 import uuid
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import text
 
 from backend.app.adapters.llm.claude import ClaudeClient
@@ -39,6 +40,7 @@ from backend.app.core.config import Settings, get_settings
 from backend.app.core.db import tenant_transaction
 from backend.app.core.s1_scope import S1Scope
 from backend.app.services import ai_usage
+from backend.app.services.ai_reason import NO_REASON, clean_reason
 from backend.app.services.ai_locator import DocumentLine, NotLocated, document_lines, locate_quote, norm
 from backend.app.services.ai_routing import DbLedger, Ledger, new_client
 from backend.app.services.reviewed_evidence import (
@@ -83,6 +85,14 @@ class _Reply(BaseModel):
     quote: str  # the words, copied exactly, from the file name or a line, that point at that facility
     source: Literal["file_name", "line"]
     line: str  # the line's alias ("L3") when the source is a line, else ""
+    reason: str  # why that quote points at that facility: one plain sentence, at most 240 characters
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reason_may_be_missing(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "reason" not in data:
+            return {**data, "reason": ""}
+        return data
 
 
 @dataclass(frozen=True)
@@ -91,10 +101,14 @@ class FacilitySuggestion:
     quote: str
     source: Literal["file_name", "line"]
     page_number: int | None = None
+    reason: str = ""  # the AI's own words (``ai_reason.clean_reason``); "" when none was given
+    model: str | None = None
+    read_at: str | None = None
 
     def as_record(self) -> dict[str, Any]:
         return {"facility_id": self.facility_id, "quote": self.quote, "source": self.source,
-                "page_number": self.page_number}
+                "page_number": self.page_number,
+                **{k: v for k, v in (("reason", self.reason), ("model", self.model), ("read_at", self.read_at)) if v}}
 
 
 # --- when to ask ------------------------------------------------------------------------------------------
@@ -148,6 +162,8 @@ Rules
 - quote: the words that point at the facility, copied exactly, at least {MIN_QUOTE} characters, from the file name
   (source "file_name", line "") or from one line (source "line", line is its alias such as L3). A quote that is
   not printed there discards your answer. For "none", give an empty quote, source "file_name" and an empty line.
+- reason: one plain-English sentence of at most 240 characters saying why that quote points at that facility,
+  using only the quote and the facility's name or address. For "none", give an empty reason.
 """
 
 
@@ -272,7 +288,11 @@ class AiFacility:
         logger.info("ai facility: outcome=%s lines=%d cost_microusd=%s", reply.outcome, len(lines), reply.cost_microusd)
         if reply.outcome != "ok" or reply.output is None:
             return None
-        return verified(reply.output, facilities, file_name, lines, company)
+        found = verified(reply.output, facilities, file_name, lines, company)
+        if found is None:
+            return None
+        return replace(found, reason=clean_reason(getattr(reply.output, "reason", "")), model=reply.model or None,
+                       read_at=datetime.now(UTC).isoformat(timespec="seconds"))
 
 
 def _words(text_: str) -> list[str]:
@@ -339,3 +359,27 @@ def verified(output: Any, facilities: Sequence[Mapping[str, Any]], file_name: st
     if _names_an_id_or_an_instruction(found.text, facilities):
         return None  # the quoted line itself is an instruction or names a facility id
     return FacilitySuggestion(facility_id, quote, "line", found.page_number)
+
+
+def explanation(found: Mapping[str, Any], facility_name: str, file_name: str, document_id: str) -> dict[str, Any]:
+    """Why Sustentra's AI suggested this facility, from what is stored with the suggestion (``as_record``) and the
+    document: the same shape as the Methodology explanation (``methodology_explanation.explain``)."""
+
+    quote = str(found.get("quote") or "").strip()
+    page = found.get("page_number") if isinstance(found.get("page_number"), int) else None
+    from_name = found.get("source") == "file_name"
+    where = "the file name" if from_name else (f"page {page}" if page else "the first lines of the text")
+    reason = clean_reason(found.get("reason")) or None
+    checks = [
+        f"The quote was found in {where} of {file_name} when it was read." if file_name else
+        f"The quote was found in {where} when it was read.",
+        f"{facility_name} is one of the facilities in Setup.",
+        f"The quote holds a word that points at {facility_name} and at no other Setup facility.",
+        "The bill names no facility or address of its own, and no account or meter number matched a Setup facility.",
+    ]
+    return {"field_id": "facility", "label": "Facility", "reason": reason, "reason_note": None if reason else NO_REASON,
+            "read_at": found.get("read_at"), "model": found.get("model"),
+            "items": [{"label": None, "reason": reason, "quote": quote, "document_id": document_id,
+                       "file_name": file_name, "page": None if from_name else page,
+                       "location": "" if from_name else (f"page {page}" if page else ""),
+                       "checks": checks, "implied": []}]}

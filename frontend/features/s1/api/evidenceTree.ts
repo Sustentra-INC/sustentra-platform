@@ -1,3 +1,4 @@
+import type { AiExplanation } from "./aiExplanation";
 import { api } from "../../../lib/api";
 import type { DocumentDecision } from "../types";
 
@@ -53,6 +54,8 @@ export interface TreeFacilitySuggestion {
   /** Where the quote is: "the file name", "page 2" or "the text". */
   where: string;
   label: string;
+  /** Why the AI suggested it, built by the server from what is stored (reason, quote, checks). */
+  explanation?: AiExplanation | null;
 }
 
 export interface TreeDocRow {

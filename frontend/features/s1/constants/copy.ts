@@ -36,6 +36,19 @@ export const AI_VALUE = {
   needIndividual: (n: number) => `${n} suggested by Sustentra's AI need individual review`,
 } as const;
 
+/** The popover that explains an AI suggestion (backend services/methodology_explanation.py). */
+export const AI_EXPLAIN = {
+  why: "Why",
+  evidence: "Evidence",
+  checks: "Checks passed",
+  implied: "Implied",
+  noChecks: "No further checks are recorded for this suggestion.",
+  noEvidence: "No quote is recorded for this suggestion.",
+  readBy: (when: string, model?: string | null) =>
+    `Read by Sustentra's AI${when ? ` on ${when}` : ""}${model ? ` (model ${model})` : ""}`,
+  dialog: "Why Sustentra's AI suggested this",
+} as const;
+
 /** A re-read changed what a reviewer had decided on (backend S1-BE-014). */
 export const REREAD = {
   again: "Review it again",

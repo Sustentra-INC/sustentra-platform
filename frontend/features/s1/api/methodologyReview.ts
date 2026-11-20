@@ -1,4 +1,5 @@
 import { api } from "../../../lib/api";
+import { NO_REASON, type AiExplanation } from "./aiExplanation";
 
 /**
  * Methodology review in the backend (docs/api_contract.md, "Methodology review"). One record
@@ -60,6 +61,30 @@ export function sourceLocation(ref: MethodologySuggestion["source_reference"] | 
   return typeof page === "number" && Number.isInteger(page) && page > 0 ? `page ${page}` : "";
 }
 
+/**
+ * The explanation to show for a suggestion: the server's, or (a demo, an older server) one made from the stored
+ * suggestion alone: its reason when it has one, its quote and place, and no checks (none are claimed).
+ */
+export function explanationOf(record: Pick<MethodologyRecord, "suggestion" | "explanation">): AiExplanation | null {
+  if (record.explanation) return record.explanation;
+  const s = record.suggestion;
+  if (!s) return null;
+  const sources = s.evidence?.length ? s.evidence : [{ label: "", ...s }];
+  const items = sources.map((e) => ({
+    label: e.label || null,
+    reason: e.reason || null,
+    quote: e.quote,
+    document_id: e.document_id,
+    file_name: e.file_name,
+    page: typeof e.source_reference === "object" && e.source_reference ? (e.source_reference.page_number ?? null) : null,
+    location: sourceLocation(e.source_reference),
+    checks: [],
+    implied: [],
+  }));
+  const reason = items.find((i) => i.reason)?.reason ?? null;
+  return { reason, reason_note: reason ? null : NO_REASON, read_at: s.suggested_at, model: s.model, items };
+}
+
 /** The quote behind one entry or option of a list suggestion. */
 export interface MethodologyEvidence {
   label: string;
@@ -69,6 +94,8 @@ export interface MethodologyEvidence {
   source_reference?: MethodologySourceReference | string | null;
   /** True when this quote was cut at 1,000 characters. */
   quote_truncated?: boolean;
+  /** The AI's reason for this entry (at most 240 characters); missing on a suggestion saved before reasons were kept. */
+  reason?: string;
 }
 
 export interface MethodologySuggestion {
@@ -88,6 +115,8 @@ export interface MethodologySuggestion {
   model: string;
   request_id: string;
   suggested_at: string;
+  /** The AI's reason (at most 240 characters); missing on a suggestion saved before reasons were kept. */
+  reason?: string;
 }
 
 export interface MethodologyDecision {
@@ -110,6 +139,8 @@ export interface MethodologyRecord {
   /** False for an optional row that is hidden until it has a value or the reviewer adds it. */
   shown?: boolean;
   suggestion: MethodologySuggestion | null;
+  /** Why the AI suggested it, built by the server from the stored suggestion (null with no suggestion). */
+  explanation?: AiExplanation | null;
   decision: MethodologyDecision | null;
   history: {
     at: string;
