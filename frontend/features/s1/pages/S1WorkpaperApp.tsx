@@ -79,11 +79,12 @@ import { makeUploadItem, classifyGuess } from "../fixtures/upload/simulateUpload
 import { loadDemoState, saveDemoState, clearDemoState, loadSignedIn, saveSignedIn, type DemoSnapshot } from "../utils/demoPersistence";
 import { DemoSignIn } from "../components/DemoSignIn";
 import { SessionEndedPanel } from "../components/SessionEndedPanel";
-import { EngagementPicker, type SaveState } from "../components/EngagementPicker";
+import { EngagementPicker } from "../components/EngagementPicker";
+import type { SetupSaveInfo } from "../components/SetupSaveStatus";
 import {
   createEngagement,
   engagementFromBackend,
-  engagementSaveProblem,
+  setupSavePayload,
   listEngagements,
   pickEngagement,
   rememberEngagement,
@@ -110,17 +111,23 @@ import { withDemoGroupIds } from "../demo-backend/groupIds";
 import { demoEngagement, setDemoEngagement } from "../demo-backend/state";
 import { adoptGroupIds } from "../utils/vehicleGroupIds";
 import {
+  createEvidenceFolder,
   createEvidenceLine,
+  deleteEvidenceFolder,
   deleteEvidenceLine,
   getEvidenceActivity,
   moveEvidenceDocument,
   setDocumentFacility,
+  renameEvidenceFolder,
   renameEvidenceLine,
+  setDocumentFolder,
   type CalculationLine,
   type EvidenceActivityItem,
   type EvidenceLineSetting,
+  type FolderAnswer,
   type LineAnswer,
   type Placement,
+  type TreeFolder,
 } from "../api/evidenceTree";
 import { useViewHistory, viewLabel } from "../utils/viewHistory";
 import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
@@ -299,8 +306,19 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       setBackendError({ title: "Your last change wasn't saved", message: userFacingApiError(error) });
     },
   });
-  const [engagementSave, setEngagementSave] = useState<SaveState>("idle");
-  const [engagementSaveMessage, setEngagementSaveMessage] = useState<string | null>(null);
+  const [setupSave, setSetupSave] = useState<Omit<SetupSaveInfo, "onSaveNow">>({
+    state: "idle",
+    savedAt: null,
+    problems: {},
+    message: null,
+  });
+  /** The last Setup save that failed, kept so Retry sends it again. */
+  const failedSave = useRef<EngagementConfig | null>(null);
+  /** The engagements as last loaded or saved, for a save that holds one section back (read from a timer). */
+  const engagementRows = useRef<BackendEngagement[] | null>(null);
+  useEffect(() => {
+    engagementRows.current = engagements;
+  }, [engagements]);
   const saveTimer = useRef<number | null>(null);
   const [inScopeFields, setInScopeFields] = useState<InScopeField[]>(
     persisted?.inScopeFields ?? (dataMode === "fixture" ? inScopeFieldPlaceholders : [])
@@ -526,7 +544,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setEvidenceFacility(null);
     setEvidenceTreeOpen(null);
     rememberEngagement(row.id);
-    setEngagementSave("idle");
+    setSetupSave({ state: "idle", savedAt: null, problems: {}, message: null });
+    failedSave.current = null;
     // Nothing of the engagement just left may show while the new one loads.
     setEvidenceItems([]);
     setWorkspaceFields([]);
@@ -545,7 +564,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       setEvidenceEvents([]);
       setEvidenceOlder(null);
       rememberEngagement(row.id);
-      setEngagementSave("idle");
+      setSetupSave({ state: "idle", savedAt: null, problems: {}, message: null });
+      failedSave.current = null;
       await refreshBackendWorkspace(undefined, row.id);
     } catch (error) {
       if (handleSessionEnded(error)) return;
@@ -568,29 +588,49 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     if (config) void persistEngagement(config);
   }
 
-  async function persistEngagement(config: EngagementConfig) {
-    const problem = engagementSaveProblem(config);
-    if (problem) {
-      setEngagementSave("error");
-      setEngagementSaveMessage(problem);
-      return;
+  /** "Save changes" and Retry: saves what is waiting, or what last failed; with neither, everything is already saved. */
+  function saveSetupNow() {
+    const waiting = pendingSave.current ?? failedSave.current;
+    if (waiting) {
+      pendingSave.current = null;
+      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      void persistEngagement(waiting);
+    } else {
+      setSetupSave((current) => ({ ...current, state: "saved", savedAt: new Date(), message: null }));
     }
-    setEngagementSave("saving");
+  }
+
+  async function persistEngagement(config: EngagementConfig) {
+    // Each section saves on its own: one that cannot be saved yet keeps its last saved value in this save, and the
+    // rest go through. (The vehicle groups hold themselves back in SetupVehicleGroups.)
+    const { payload, problems } = setupSavePayload(config, savedConfigOf(config.engagementId));
+    setSetupSave((current) => ({ ...current, state: "saving", problems, message: null }));
     try {
-      const row = await saveEngagement(config);
+      const row = await saveEngagement(payload);
+      failedSave.current = null;
       setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
       adoptSavedGroups(row);
-      setEngagementSave("saved");
-      setEngagementSaveMessage(null);
+      setSetupSave({ state: "saved", savedAt: new Date(), problems, message: null });
     } catch (error) {
       if (handleSessionEnded(error)) return;
-      setEngagementSave("error");
-      setEngagementSaveMessage(
-        error instanceof ApiError && error.status === 403
-          ? "Your role can view this engagement but not change it."
-          : `Changes not saved. ${userFacingApiError(error)}`
-      );
+      failedSave.current = config;
+      setSetupSave({
+        state: "error",
+        savedAt: null,
+        problems: {},
+        message:
+          error instanceof ApiError && error.status === 403
+            ? "Your role can view this engagement but not change it."
+            : userFacingApiError(error),
+      });
     }
+  }
+
+  /** The engagement as the server last had it, or null if it is not in the list. */
+  function savedConfigOf(engagementId: string): EngagementConfig | null {
+    const row = engagementRows.current?.find((item) => item.id === engagementId);
+    return row ? engagementFromBackend(row) : null;
   }
 
   /** Saves the recalculation inputs now, folding in any Setup edit still waiting to save. */
@@ -660,6 +700,54 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       setDocumentDecisions((cur) => ({ ...cur, ...changed }));
     }
     return answer.documents_moved ?? 0;
+  }
+
+  /** Takes the Block 1 folders the server answered with, the same way as the lines (the server owns them). */
+  function adoptFolders(engagementId: string, answer: FolderAnswer) {
+    if (!stillOpen(engagementId)) return;
+    const evidenceFolders = answer.evidenceFolders;
+    setEngagement((current) => ({ ...current, evidenceFolders }));
+    if (pendingSave.current) pendingSave.current = { ...pendingSave.current, evidenceFolders };
+    setEngagements((current) =>
+      (current ?? []).map((item) => (item.id === engagementId ? { ...item, settings: { ...item.settings, evidenceFolders } } : item))
+    );
+    void refreshEvidenceActivity(engagementId);
+  }
+
+  /** The saved payloads of documents a folder action changed, taken as they are (as a move does). */
+  function adoptDocuments(engagementId: string, changed: Record<string, DocumentDecision>) {
+    if (!stillOpen(engagementId)) return;
+    if (dataMode === "backend") for (const [docId, decision] of Object.entries(changed)) workpaper.markSaved("document", docId, decision);
+    setDocumentDecisions((cur) => ({ ...cur, ...changed }));
+  }
+
+  async function createFolder(name: string) {
+    const id = engagement.engagementId;
+    adoptFolders(id, await createEvidenceFolder(id, name));
+  }
+
+  async function renameFolder(folder: TreeFolder, name: string) {
+    const id = engagement.engagementId;
+    adoptFolders(id, await renameEvidenceFolder(id, folder.folder_id, name));
+  }
+
+  async function deleteFolder(folder: TreeFolder): Promise<number> {
+    const id = engagement.engagementId;
+    const answer = await deleteEvidenceFolder(id, folder.folder_id);
+    adoptFolders(id, answer);
+    if (answer.documents) adoptDocuments(id, answer.documents);
+    return answer.documents_moved ?? 0;
+  }
+
+  async function setFolderOfDocument(documentId: string, folderId: string | null) {
+    const id = engagement.engagementId;
+    if (dataMode === "backend") {
+      if (!workpaper.loaded) throw new Error("Your saved work is still loading. Try again in a moment.");
+      await workpaper.whenSaved("document", documentId);
+    }
+    const { payload } = await setDocumentFolder(id, documentId, folderId);
+    adoptDocuments(id, { [documentId]: payload });
+    void refreshEvidenceActivity(id);
   }
 
   /** What the server recorded on the Evidence page, newest first (the Activity log reads it): the newest page. */
@@ -1242,6 +1330,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             engagement={engagement}
             onChange={changeEngagement}
             teamDirectory={teamDirectory}
+            save={dataMode === "backend" && engagement.engagementId ? { ...setupSave, onSaveNow: saveSetupNow } : undefined}
             picker={
               dataMode === "backend" && engagements !== null ? (
                 <EngagementPicker
@@ -1249,9 +1338,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                   selectedId={engagement.engagementId}
                   onSelect={selectEngagement}
                   onCreate={createAndSelectEngagement}
-                  saveState={engagementSave}
-                  message={engagementSaveMessage}
-                />
+                                  />
               ) : undefined
             }
             inScopeFields={
@@ -1379,6 +1466,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                     onCreateLine: createLine,
                     onRenameLine: renameLine,
                     onDeleteLine: deleteLine,
+                    onCreateFolder: createFolder,
+                    onRenameFolder: renameFolder,
+                    onDeleteFolder: deleteFolder,
+                    onSetDocumentFolder: setFolderOfDocument,
                     onError: handleSessionEnded,
                   }
                 : undefined

@@ -112,9 +112,9 @@ class GwpSuggestion(_Cited):
 class EntitySuggestion(_Cited):
     name: str
     facilities: list[str]
-    equity_share_pct: float
-    financial_control: float
-    operational_control: Literal["Yes", "No"]
+    equity_share_pct: float | None  # null when the document gives none
+    financial_control: float | None  # null when the document gives none
+    operational_control: Literal["Yes", "No"] | None  # null unless the quote says so
 
 
 class FactorSuggestion(_Cited):
@@ -461,6 +461,53 @@ def set_has_horizon(quote: str, set_: str, horizon: str) -> bool:
     return False
 
 
+# An entity row comes from a statement that the entity is IN the boundary; a statement that something is left out
+# belongs to the exclusions. All compared after ``norm``.
+_BOUNDARY_EXCLUSION = re.compile(
+    r"\bexclud\w*|\bexclusions?\b|\boutside\b|\bnot\s+(?:been\s+)?(?:included|covered|consolidated)\b|"
+    r"\bnot\s+(?:a\s+)?part\s+of\b|\bnot\s+within\b|\bnot\s+in\s+(?:the|our|its)\s+(?:boundary|inventory)\b|"
+    r"\b(?:does|do|did)\s+not\s+(?:include|cover|consolidate)\b|\bleft\s+out\b|\bomit\w*|\bexcept\b|\bout\s+of\s+scope\b")
+_INCLUSION = re.compile(
+    r"\bincluded\b|\bincludes?\b|\bincluding\b|\binside\b|\bwithin\b|\bcovered\b|\bcovers?\b|\bconsolidat\w*|"
+    r"\boperational\s+control\b|\bfinancial\s+control\b|\bequity\s+share\b|\bfull\s+authority\b|\bsubsidiar\w*|"
+    r"\bin\s+the\s+(?:boundary|inventory)\b|\b(?:owned|operated)\b")
+_BOUNDARY_COVERAGE = re.compile(r"\bboundar\w*|\bcovers?\b|\bincludes?\b|\bincluded\b|\bconsolidat\w*|\binside\b|\bwithin\b")
+_CONTROL_NO = re.compile(
+    r"\bno\s+operational\s+control\b|\bnot\s+(?:under\s+)?(?:our\s+|its\s+|the\s+company's\s+)?operational(?:ly)?\s+control(?:led)?\b|"
+    r"\b(?:does|do)\s+not\s+(?:have|hold|exercise)\s+operational\s+control\b|\bwithout\s+operational\s+control\b")
+_ENTITY_SENTENCES = re.compile(r"(?<=[.!?;])\s+(?=[A-Z0-9\"(])|\n")
+
+
+def entity_statement(quote: str, name: str) -> tuple[bool, str | None]:
+    """Whether the quote is a statement that the entity is in the boundary, and the per-entity Yes / No it supports.
+    The sentences that name the entity are read (all of them when the name is not printed): one that excludes it
+    ("excluded", "outside", "not included", "does not include") is no inclusion statement, and one that gives no
+    inclusion wording is none either (so "not under operational control" alone, which leaves the entity out, is
+    not one). Yes needs explicit "operational control" wording, not negated ("included" or "inside the boundary" alone does not say who operates it);
+    No needs an explicit "no operational control" / "not under operational control" beside other inclusion
+    wording (an equity share table); otherwise the Yes / No is not stated (None)."""
+
+    sentences = [norm(x) for x in _ENTITY_SENTENCES.split(quote) if x.strip()]  # split before folding: "Inc. and" is no break
+    wanted = norm(name)
+    named = [x for x in sentences if wanted and wanted in x] or sentences
+    joined = " ".join(named)
+    bare = _CONTROL_NO.sub(" ", joined)  # "not under operational control" says who runs it, it is not an exclusion
+    if _BOUNDARY_EXCLUSION.search(bare) or not _INCLUSION.search(bare):
+        return False, None
+    if _CONTROL_NO.search(joined):
+        return True, "No"
+    if names_option(joined, ("operational control",)) == "yes":
+        return True, "Yes"
+    return True, None
+
+
+def states_boundary_coverage(sentence: str) -> bool:
+    """A sentence that says what the boundary covers, not one that leaves something out."""
+
+    text = norm(sentence)
+    return _BOUNDARY_COVERAGE.search(text) is not None and _BOUNDARY_EXCLUSION.search(text) is None
+
+
 _CLAUSE = re.compile(r"[;!?\n]|\.\s")
 
 
@@ -586,8 +633,19 @@ What the items mean
   or "".
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
   equity share (percent, 0 to 100), financial control (percent, 0 to 100) and whether the company
-  has operational control (Yes or No). Include an entity only if the cited line states its equity
-  share and control; the numbers must be printed in the quote.
+  has operational control (Yes or No, or null: set it only when the quote says so, never guess).
+  Give a percentage only when the cited line prints it (the number must be in the quote); otherwise
+  null. The entity's name must be printed in the quote, and the quote must say the entity is IN the
+  boundary. A sentence that leaves something out ("data centers used by X are excluded", "not
+  included", "outside the boundary") gives no entity: it belongs to the exclusion texts. Name only
+  entities the document names: a sentence that describes the boundary without naming an entity gives
+  no entity, it goes in the text field boundary:entities.
+- texts, field_id boundary:entities: the sentence (or sentences, as written, no more than 2000
+  characters) in which the document says which entities, subsidiaries, sites or kinds of assets the
+  boundary covers ("all offices where the company has full authority", "company-owned or leased
+  buildings and vehicles"). The value is those words, copied from the quote. It must be the sentence
+  that says what the boundary covers, never a sentence about what is left out ("excluded", "outside",
+  "not included"). Leave it out if the document has no such sentence.
 - factors: where the company's emission factors come from, per scope (scope1 or scope2): the
   database (for example the U.S. EPA GHG Emission Factors Hub, or eGRID for electricity) and its
   edition or year, "" if not stated. If the edition is given it must be printed in the quote.
@@ -857,7 +915,16 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             continue
         value = checked(text.field_id, text.value)
         if value is not None:
-            keep(text, value, text.field_id, None)
+            # The boundary sentence is shown as written, so it must be printed in its own quote.
+            if text.field_id == rules.BOUNDARY_SENTENCE_ID and not states_boundary_coverage(value):
+                dropped["not_a_boundary_sentence"] += 1  # an exclusion sentence belongs to the exclusions
+            elif text.field_id == rules.BOUNDARY_SENTENCE_ID:
+                def holds_sentence(quote: str, v: str = value) -> bool:
+                    return norm(v) in norm(quote)
+
+                keep(text, value, text.field_id, None, ok=holds_sentence)
+            else:
+                keep(text, value, text.field_id, None)
     for period in output.periods:
         value = checked("reporting_period", {"start": period.start, "end": period.end})
         if value is None:
@@ -943,7 +1010,14 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         except rules.MethodologyInvalid:
             dropped["invalid_value"] += 1
             continue
-        keep(entity, value, None, "entities", numbers=(entity.equity_share_pct, entity.financial_control))
+        included, control = entity_statement(entity.quote, value["name"])
+        if not included:  # an exclusion sentence, or one with no inclusion wording, makes no entity row
+            dropped["not_an_inclusion"] += 1
+            continue
+        value["operational_control"] = control  # only what the quote supports; Claude's own Yes / No is not trusted
+        given = tuple(n for n in (entity.equity_share_pct, entity.financial_control) if n is not None)
+        # A percentage is checked in the quote. With none given, the quote must name the entity, or nothing ties it.
+        keep(entity, value, None, "entities", numbers=given, words=() if given else [value["name"]])
     for factor in output.factors:
         group = f"factor:{factor.scope}"
         definition = rules.row_field(f"{group}:aaaa")

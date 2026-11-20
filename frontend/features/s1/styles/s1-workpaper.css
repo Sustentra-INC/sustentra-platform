@@ -3786,3 +3786,8 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-fac__chip-remove svg { width: 0.85rem; height: 0.85rem; }
 .s1-fac__problem { font-size: var(--text-sm); color: var(--state-blocking-fg); }
 .s1-fac__notes { list-style: none; margin: 0; padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); color: var(--state-open-fg); background: var(--state-open-bg); border: var(--border-hairline); border-color: var(--state-open-line); border-radius: var(--radius-input); }
+
+/* Setup: where the page says whether its edits are saved */
+.s1-setup-savebar { display: flex; align-items: center; gap: var(--sp-3); }
+.s1-setup-save { font-size: var(--text-sm); color: var(--ink-3); white-space: nowrap; }
+.s1-setup-save--error { color: var(--state-blocking-fg); white-space: normal; }
