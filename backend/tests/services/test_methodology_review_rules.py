@@ -456,3 +456,17 @@ def test_the_boundary_sentence_field_is_a_must_appear_text_row_marked_boundary_s
     ran = {**m.new_meta(), "prefill_ran_at": "2026-11-20T09:00:00.000Z", "prefill_covered": [x["field_id"] for x in m.CATALOG]}
     assert m.display_state(record, ran) == "not_detected" and m.display_state(record, m.new_meta()) == "not_checked"
     assert m.validate_value(f, "Alle B\u00fcros und Fahrzeuge") == "Alle B\u00fcros und Fahrzeuge"
+
+
+def test_the_per_entity_yes_no_is_nullable_and_a_new_row_starts_blank() -> None:
+    entity = m.row_field("entity:abcd1234")
+    assert entity is not None
+    base = {"name": "Z\u00fcrich B\u00fcro AG", "facilities": [], "equity_share_pct": None, "financial_control": None}
+    for control in ("Yes", "No", None):
+        assert m.validate_value(entity, {**base, "operational_control": control})["operational_control"] == control  # type: ignore[arg-type]
+    for bad in ("Maybe", "", "yes", 1, True):
+        with pytest.raises(m.MethodologyInvalid, match="Yes or No, or left blank"):
+            m.validate_value(entity, {**base, "operational_control": bad})  # type: ignore[arg-type]
+    assert m.blank_value("entity:abcd1234")["operational_control"] is None
+    part = next(p for p in entity["parts"] if p["key"] == "operational_control")
+    assert part["allowed"] == ["Yes", "No"] and part["optional"] is True

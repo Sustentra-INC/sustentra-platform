@@ -137,7 +137,8 @@ _PARTS: dict[str, list[dict[str, Any]]] = {
         {"key": "facilities", "label": "Facilities", "kind": "list"},
         {"key": "equity_share_pct", "label": "Equity share (%, if stated)", "kind": "percent"},
         {"key": "financial_control", "label": "Financial control (%, if stated)", "kind": "percent"},
-        {"key": "operational_control", "label": "Operational control", "kind": "enum", "allowed": list(YES_NO)},
+        {"key": "operational_control", "label": "Operational control", "kind": "enum", "allowed": list(YES_NO),
+         "optional": True},
     ],
     "factor": [
         {"key": "database", "label": "Database", "kind": "text"},
@@ -274,7 +275,7 @@ def blank_value(field_id: str) -> Any:
 
     if field_id.startswith("entity:"):
         return {"name": "", "facilities": [], "equity_share_pct": None, "financial_control": None,
-                "operational_control": "No"}
+                "operational_control": None}
     if field_id.startswith("gwp:"):
         return {"set": "", "horizon": ""}
     return {"database": "", "edition": ""}
@@ -437,8 +438,8 @@ def validate_value(field: Mapping[str, Any], value: Any) -> Any:
         facilities = data["facilities"]
         if not isinstance(facilities, list) or len(facilities) > MAX_FACILITIES:
             raise _fail(field, f"facilities must be a list of at most {MAX_FACILITIES} names.")
-        if data["operational_control"] not in YES_NO:
-            raise _fail(field, "operational control must be Yes or No.")
+        if data["operational_control"] is not None and data["operational_control"] not in YES_NO:
+            raise _fail(field, "operational control must be Yes or No, or left blank when the document does not say.")
         return {
             "name": _text(field, data["name"], required=True, limit=200, name="the name"),
             "facilities": [_text(field, f, required=True, limit=MAX_FACILITY, name="a facility name") for f in facilities],

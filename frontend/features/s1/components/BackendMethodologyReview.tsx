@@ -42,6 +42,8 @@ const DROP_REASON: Record<string, string> = {
   unknown_document: "Cited a document that wasn't read",
   invalid_value: "Value isn't one of the allowed options",
   unknown_field: "Not a methodology field",
+  not_an_inclusion: "Said an entity is left out, or gave no sign it is in the boundary",
+  not_a_boundary_sentence: "Not a sentence about what the boundary covers",
 };
 
 const ACTION_WORD: Record<string, string> = {
@@ -111,7 +113,7 @@ function valueText(value: MethodologyValue | undefined): string {
     // An entity: each percentage is optional, so each is labelled (a bare "51" would not say which one it is).
     const pct = (v: MethodologyValue | undefined, label: string) => (typeof v === "number" ? [`${label} ${v}%`] : []);
     const facilities = Array.isArray(value.facilities) && value.facilities.length ? [`facilities: ${value.facilities.join(", ")}`] : [];
-    return [value.name, ...facilities, ...pct(value.equity_share_pct, "equity share"), ...pct(value.financial_control, "financial control"), `operational control: ${valueText(value.operational_control)}`]
+    return [value.name, ...facilities, ...pct(value.equity_share_pct, "equity share"), ...pct(value.financial_control, "financial control"), ...(value.operational_control ? [`operational control: ${valueText(value.operational_control)}`] : [])]
       .filter(Boolean)
       .join(" · ");
   }
@@ -256,15 +258,16 @@ function ValueEditor({
         if (t !== "" && !Number.isFinite(Number(t))) return setProblem(`${p.label}: enter a number from 0 to 100.`);
         out[p.key] = t === "" ? null : Number(t);
       }
+      else if (p.kind === "enum" && p.optional && text === "") out[p.key] = null; // optional: the document does not say
       else out[p.key] = text;
     }
     onSave(out);
   }
 
-  const control = (label: string, value: string, set: (v: string) => void, options: string[] | undefined, key: string | null) =>
+  const control = (label: string, value: string, set: (v: string) => void, options: string[] | undefined, key: string | null, optional = false) =>
     options ? (
       <select className="s1-mr-select" aria-label={label} value={value} onChange={(e) => set(e.target.value)}>
-        <option value="">Choose</option>
+        <option value="">{optional ? "Not stated" : "Choose"}</option>
         {options.map((o) => (
           <option key={o} value={o}>
             {optionLabel(def, key, o)}
@@ -355,7 +358,7 @@ function ValueEditor({
             return (
               <label key={p.key} className="s1-mb-part">
                 <span className="s1-mr-muted">{p.label}</span>
-                {control(`${def.label}: ${p.label}`, draft[p.key] ?? "", (v) => setDraft((d) => ({ ...d, [p.key]: v })), options, p.key)}
+                {control(`${def.label}: ${p.label}`, draft[p.key] ?? "", (v) => setDraft((d) => ({ ...d, [p.key]: v })), options, p.key, Boolean(p.optional))}
               </label>
             );
           })

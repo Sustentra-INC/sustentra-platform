@@ -597,7 +597,7 @@ describe("entities and the boundary sentence", () => {
     { key: "facilities", label: "Facilities", kind: "list" },
     { key: "equity_share_pct", label: "Equity share (%, if stated)", kind: "percent" },
     { key: "financial_control", label: "Financial control (%, if stated)", kind: "percent" },
-    { key: "operational_control", label: "Operational control", kind: "enum", allowed: ["Yes", "No"] },
+    { key: "operational_control", label: "Operational control", kind: "enum", allowed: ["Yes", "No"], optional: true },
   ];
   const withBoundary = (sentence: string | null, entity: unknown = null) => {
     const d = fixture() as { catalog: Record<string, unknown>[]; fields: Record<string, unknown>[] };
@@ -648,6 +648,35 @@ describe("entities and the boundary sentence", () => {
     cleanup();
     await open(vi.fn(), withBoundary(null, none));
     expect(within(row("Entity row")).getByText("Zürich Büro AG · operational control: No")).toBeTruthy();
+  });
+
+  it("shows an entity whose Yes / No is not stated without one, and lets the reviewer leave it as Not stated", async () => {
+    const entity = { name: "Zürich Büro AG", facilities: [], equity_share_pct: 51, financial_control: null, operational_control: null };
+    await open(vi.fn(), withBoundary(null, entity));
+    const r = row("Entity row");
+    expect(within(r).getByText("Zürich Büro AG · equity share 51%")).toBeTruthy();
+    fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
+    const control = screen.getByLabelText("Entity row: Operational control") as HTMLSelectElement;
+    expect(Array.from(control.options).map((o) => o.textContent)).toEqual(["Not stated", "Yes", "No"]);
+    expect(control.value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls()).toContainEqual([
+        `${BASE}/entity%3Aabc123/edit`,
+        expect.objectContaining({ body: { value: { name: "Zürich Büro AG", facilities: [], equity_share_pct: 51, financial_control: null, operational_control: null } } }),
+      ])
+    );
+    cleanup();
+    await open(vi.fn(), withBoundary(null, entity));
+    fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
+    fireEvent.change(screen.getByLabelText("Entity row: Operational control"), { target: { value: "No" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls().some(([, o]) => JSON.stringify(o).includes('"operational_control":"No"'))).toBe(true));
+  });
+
+  it("says in words why an exclusion sentence was not kept as an entity or the boundary sentence", () => {
+    expect(dropReasonWords("not_an_inclusion")).toMatch(/left out/);
+    expect(dropReasonWords("not_a_boundary_sentence")).toMatch(/boundary covers/);
   });
 
   it("lets the reviewer correct the name and leave both percentages blank, sending null for each", async () => {
