@@ -112,6 +112,9 @@ class Settings(BaseSettings):
     # adapter sends "anthropic." + AI_MODEL. Prices still come from AI_MODEL.
     ai_bedrock_model_id: str | None = None
     ai_effort: AiEffort = "low"
+    # Automatic methodology read (services/auto_read.py): seconds with no new summary document of an
+    # engagement before Sustentra's AI reads them (one read for a batch of uploads).
+    ai_auto_read_debounce_seconds: float = Field(default=30.0, ge=0, le=600)
     # Per-organization monthly spend cap in USD, checked against the usage ledger (ai_usage) before each call.
     # The Anthropic Console spend limit is the hard ceiling across all organizations.
     ai_monthly_cap_usd: float = Field(default=25.0, ge=0)

@@ -11,6 +11,7 @@ import {
   editField,
   getMethodologyReview,
   prefillMethodology,
+  autoReadActive,
   rejectField,
   removeRow,
   revealField,
@@ -128,6 +129,15 @@ export function statusWord(status: string | undefined | null): string {
 
 export function dropReasonWords(code: string): string {
   return DROP_REASON[code] ?? code.replaceAll("_", " ");
+}
+
+const AUTO_READ_POLL_MS = 3000;
+
+/** "a.pdf", "a.pdf and b.xlsx", "a.pdf, b.xlsx and 2 more": the files a read names. */
+function fileList(names: string[]): string {
+  if (names.length === 0) return "the client's summary documents";
+  if (names.length <= 2) return names.join(" and ");
+  return `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
 }
 
 /** Null when Claude can be asked; otherwise the server's sentence for why not. */
@@ -722,18 +732,34 @@ export function BackendMethodologyReview({
   const [folded, setFolded] = useState<Set<string>>(new Set());
   const prefillRunning = useRef(false);
   const [result, setResult] = useState<PrefillResult | null>(null);
+  // Sustentra's AI reading the summary documents by itself after an upload (the backend's marker, polled while it lasts).
+  const autoActive = autoReadActive(data?.autoRead);
+  const autoFiles = useRef<string[] | null>(null); // the files of a read seen waiting or running, until it is seen finished
+  const [autoDone, setAutoDone] = useState<string[] | null>(null);
+  /** What a loaded page says of the automatic read: a read seen running and now gone has finished. */
+  const trackAutoRead = useCallback((next: MethodologyReviewData) => {
+    const marker = next.autoRead ?? null;
+    if (marker && autoReadActive(marker)) {
+      autoFiles.current = marker.file_names;
+      setAutoDone(null);
+    } else if (autoFiles.current) {
+      if (marker?.state !== "skipped") setAutoDone(autoFiles.current); // it finished: the suggestions are on the page
+      autoFiles.current = null;
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
       const next = await getMethodologyReview(engagementId);
       setData(next);
+      trackAutoRead(next);
       setLoadError(null);
       onActivity?.(methodologyActivityFrom(next));
     } catch (error) {
       if (onError?.(error)) return;
       setLoadError(userFacingApiError(error));
     }
-  }, [engagementId, onError, onActivity]);
+  }, [engagementId, onError, onActivity, trackAutoRead]);
 
   const onErrorRef = useRef(onError);
   const onActivityRef = useRef(onActivity);
@@ -748,6 +774,7 @@ export function BackendMethodologyReview({
       .then((next) => {
         if (!live) return;
         setData(next);
+        trackAutoRead(next);
         setLoadError(null);
         onActivityRef.current?.(methodologyActivityFrom(next));
       })
@@ -758,7 +785,7 @@ export function BackendMethodologyReview({
     return () => {
       live = false;
     };
-  }, [engagementId]);
+  }, [engagementId, trackAutoRead]);
 
   async function act(run: () => Promise<unknown>) {
     setBusy(true);
@@ -794,6 +821,12 @@ export function BackendMethodologyReview({
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!autoActive) return;
+    const timer = setInterval(() => void load(), AUTO_READ_POLL_MS);
+    return () => clearInterval(timer);
+  }, [autoActive, load]);
 
   const records = useMemo(() => new Map((data?.fields ?? []).map((r) => [r.fieldId, r])), [data]);
   // Headings and their order come from the API's groups; rows come in catalog order.
@@ -853,7 +886,7 @@ export function BackendMethodologyReview({
           ))}
         </div>
         <span className="s1-mr-actions">
-          <button type="button" className="s1-button s1-button--pri" disabled={busy || prefilling || aiOff !== null} onClick={() => setConfirming(true)}>
+          <button type="button" className="s1-button s1-button--pri" disabled={busy || prefilling || autoActive || aiOff !== null} onClick={() => setConfirming(true)}>
             {prefilling ? "Reading the reports…" : "Read the client's reports with Sustentra's AI"}
           </button>
           {aiOff ? <span className="s1-mb-ai">{aiOff}</span> : null}
@@ -874,6 +907,24 @@ export function BackendMethodologyReview({
             </button>
           </span>
         </div>
+      ) : null}
+
+      {autoActive && data.autoRead ? (
+        <p className="s1-mb-result" role="status">
+          {data.autoRead.state === "reading"
+            ? `Sustentra's AI is reading ${fileList(data.autoRead.file_names)}…`
+            : `Sustentra's AI will read ${fileList(data.autoRead.file_names)} shortly…`}
+        </p>
+      ) : null}
+      {!autoActive && data.autoRead?.state === "skipped" && data.autoRead.reason ? (
+        <p className="s1-mb-ai" role="status">
+          Not read automatically: {data.autoRead.reason}
+        </p>
+      ) : null}
+      {autoDone && !autoActive ? (
+        <p className="s1-mb-result" role="status">
+          Sustentra&apos;s AI read {fileList(autoDone)}. {pending} suggested, waiting for your review. Nothing counts until you accept or edit it.
+        </p>
       ) : null}
 
       {notice ? (

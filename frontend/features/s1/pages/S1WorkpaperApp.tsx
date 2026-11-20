@@ -18,7 +18,8 @@ import { useTeamDirectory } from "../hooks/useTeamDirectory";
 import { createDocumentBatch } from "../api/documentBatches";
 import { demoBatchAiTypeDocument, registerDemoBatch } from "../demo-backend/batches";
 import { BATCH_NOT_CREATED, useBatchProgress } from "../hooks/useBatchProgress";
-import { readAfterUpload, withReadingState } from "../utils/readingState";
+import { readAfterUpload, withAutoRead, withReadingState } from "../utils/readingState";
+import { useAutoRead } from "../hooks/useAutoRead";
 import { reviewValuesFromFields, withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import {
   getRecalculation,
@@ -465,6 +466,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       return;
     }
     setBackendError(null);
+    setAutoReadNudge((n) => n + 1);
     try {
       const workspace = await listWorkspaceEvidence(engagementId);
       setEvidenceItems(workspace.evidence);
@@ -486,6 +488,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const rereadRuns = useRef(new Map<string, string>());
   // Re-reads a move onto a line of another type asked for, by document id (shown on the document's row).
   const [rereads, setRereads] = useState<Record<string, RereadState>>({});
+  const [autoReadNudge, setAutoReadNudge] = useState(0); // bumped when documents change, so the automatic read's status is looked at
   const movedRereads = useRef(new Set<string>()); // documents whose read a move asked for, until it is reported
 
 
@@ -502,6 +505,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   /** Reads that were queued have finished: settle the upload dialog's rows, load what the reads
    *  produced once, then tell what failed. */
   function handleReadsFinished(runs: ProcessingRunView[]) {
+    setAutoReadNudge((n) => n + 1); // a summary document that just finished reading starts the automatic read
     const batch = uploadBatch.current;
     let problem: WorkspaceProblem | null = null;
     for (const run of runs) {
@@ -547,6 +551,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     onFinished: handleReadsFinished,
     onError: handleSessionEnded,
   });
+
+  // Sustentra's AI reads a summary document by itself after its upload: its rows say "Reading…" meanwhile.
+  const autoRead = useAutoRead({ enabled: dataMode === "backend", engagementId: engagement.engagementId, nudge: autoReadNudge });
 
   const batchProgress = useBatchProgress({
     enabled: dataMode === "backend" || dataMode === "fixture",
@@ -1221,9 +1228,12 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const evidenceView = useMemo(
     () =>
       dataMode === "backend"
-        ? withReadingState(applyDocumentView(evidenceItems, facts, documentDecisions, engagement.facilities, engagement.clientName), reads.runs)
+        ? withAutoRead(
+            withReadingState(applyDocumentView(evidenceItems, facts, documentDecisions, engagement.facilities, engagement.clientName), reads.runs),
+            autoRead
+          )
         : evidenceItems,
-    [dataMode, evidenceItems, facts, documentDecisions, engagement.facilities, engagement.clientName, reads.runs]
+    [dataMode, evidenceItems, facts, documentDecisions, engagement.facilities, engagement.clientName, reads.runs, autoRead]
   );
   // The data quality checks behind the Evidence screen's Issue column (backend mode), fetched
   // again when the documents or the reviewer's decisions change.

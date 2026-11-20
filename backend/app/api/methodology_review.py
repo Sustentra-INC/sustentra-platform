@@ -2,6 +2,7 @@
 exclusions, factor sources, GWP and calculation methods (the page's fields).
 
 * GET    /v1/engagements/{id}/methodology-review                  fields, catalog, AI status (s1_reader)
+* GET    /v1/engagements/{id}/methodology-review/auto-read        the automatic read of summary documents, if one is waiting or running (s1_reader)
 * POST   /v1/engagements/{id}/methodology-review/{field_id}/accept  take the suggestion, or the current value
 * POST   /v1/engagements/{id}/methodology-review/{field_id}/edit    {value}
 * POST   /v1/engagements/{id}/methodology-review/{field_id}/reject  {reason}
@@ -24,17 +25,21 @@ No ``from __future__ import annotations``: FastAPI resolves these at runtime.
 from collections.abc import AsyncIterator, Iterator
 from contextlib import asynccontextmanager, contextmanager
 import asyncio
+import json
 from collections import Counter
 import logging
 import re
 import time
 from datetime import UTC, datetime
-from typing import Any, Literal
+import uuid
+from dataclasses import dataclass
+from typing import Any, Literal, Protocol
 
 import anthropic
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.app.adapters.llm.claude import (
@@ -51,7 +56,8 @@ from backend.app.api.s1_access import can_see, s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.db import get_db_session, get_sessionmaker_dependency, set_tenant
-from backend.app.services import ai_usage
+from backend.app.core.s1_scope import S1Scope, scoped
+from backend.app.services import ai_usage, engagement_service
 from backend.app.services import methodology_explanation as explanation
 from backend.app.services import methodology_prefill as prefill
 from backend.app.services import methodology_review as rules
@@ -83,6 +89,54 @@ class RejectBody(_Body):
 
 class RowBody(_Body):
     group: Literal["entities", "factor:scope1", "factor:scope2", "gwp"]
+
+
+class _Declined(HTTPException):
+    """The prefill did not start (busy, switched off, over the limit, nothing to read): 409 with a
+    sentence, and ``code`` for the automatic read's record."""
+
+    def __init__(self, code: str, detail: str) -> None:
+        super().__init__(status_code=409, detail=detail)
+        self.code = code
+
+
+class _HasId(Protocol):
+    @property
+    def id(self) -> uuid.UUID | None: ...
+
+
+AUTOMATIC_ACTOR = "Sustentra's AI (automatic)"
+# An automatic read's marker older than this is stale (the process that wrote it stopped): not shown.
+AUTO_READ_FRESH_SECONDS = 600
+
+
+@dataclass(frozen=True)
+class _Caller:
+    """Who a prefill is for when no signed-in user asked: Sustentra's AI itself (the automatic read).
+    It has no user id (rows it writes carry none), sees its own organization's records, and is audited by name."""
+
+    org_id: uuid.UUID
+    id: uuid.UUID | None = None
+    role: str | None = None
+
+    def can_see(self, record: dict[str, Any]) -> bool:
+        owner = record.get("org_id")
+        return owner is not None and str(owner) == str(self.org_id)
+
+
+def auto_read_view(marker: Any, now: datetime | None = None) -> dict[str, Any] | None:
+    """What the page shows of an automatic read: ``{state, file_names, reason}`` while one is
+    waiting or running (and recent), a skip with its sentence, else nothing."""
+
+    if not isinstance(marker, dict) or marker.get("state") not in ("waiting", "reading", "skipped"):
+        return None
+    try:
+        age = ((now or _now()) - datetime.fromisoformat(str(marker.get("at")).replace("Z", "+00:00"))).total_seconds()
+    except ValueError:
+        return None
+    if age > AUTO_READ_FRESH_SECONDS:
+        return None
+    return {"state": marker["state"], "file_names": list(marker.get("file_names") or []), "reason": marker.get("reason")}
 
 
 @contextmanager
@@ -208,12 +262,14 @@ def _gate(settings: Settings, spent_microusd: int, candidates: list[dict[str, An
     return None, None
 
 
-async def _candidates(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser) -> list[dict[str, Any]]:
+async def _candidates(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser | _Caller
+                      ) -> list[dict[str, Any]]:
     """The documents Claude would read: summary documents the reviewer has not set aside."""
 
+    sees = user.can_see if isinstance(user, _Caller) else (lambda record: can_see(record, user))
     return prefill.candidate_documents(
         documents_api.current_upload_service(), documents_api.current_pipeline_service(),
-        str(engagement["id"]), lambda record: can_see(record, user), await document_decisions(db, engagement))
+        str(engagement["id"]), sees, await document_decisions(db, engagement))
 
 
 async def ai_status(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser,
@@ -251,9 +307,9 @@ async def _locked(db: AsyncSession, engagement: dict[str, Any], field_id: str, u
     return field, found[0]["payload"]
 
 
-async def _update_meta(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser, *,
+async def _update_meta(db: AsyncSession, engagement: dict[str, Any], user: _HasId, *,
                        prefill_ran_at: str | None = None, covered: list[str] | None = None,
-                       reveal: str | None = None) -> None:
+                       reveal: str | None = None, auto_read: dict[str, Any] | None = None) -> None:
     """The page-state item (prefill marker, revealed rows), created on first use and locked while
     it is changed."""
 
@@ -267,6 +323,8 @@ async def _update_meta(db: AsyncSession, engagement: dict[str, Any], user: Curre
         meta["prefill_covered"] = covered or []
     if reveal and reveal not in meta["revealed"]:
         meta["revealed"] = [*meta["revealed"], reveal]
+    if auto_read is not None:
+        meta["auto_read"] = auto_read
     await workpaper_item_service.update_payload(db, engagement["id"], KIND, rules.META_KEY, meta, user.id)
 
 
@@ -326,12 +384,28 @@ async def get_methodology_review(
             catalog.append(definition)
     return {
         "prefill_ran_at": meta.get("prefill_ran_at"),
+        "auto_read": auto_read_view(meta.get("auto_read")),
         "fields": fields,
         "catalog": catalog,
         "groups": [{"group": g, "label": label} for g, label in rules.GROUPS],
         "row_groups": list(rules.ROW_GROUPS),
         "ai": await ai_status(db, engagement, user),
     }
+
+
+@router.get("/engagements/{engagement_id}/methodology-review/auto-read", response_model=dict[str, Any])
+async def get_auto_read(
+    engagement_id: str,
+    user: CurrentUser = Depends(s1_reader),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict[str, Any]:
+    """Whether Sustentra's AI is about to read, or reading, this engagement's summary documents by itself
+    (``{state: waiting | reading | skipped, file_names, reason}``), else ``null``. Small: the Evidence page polls it."""
+
+    engagement = await _visible(db, engagement_id, user)
+    found = await workpaper_item_service.get_items(db, engagement["id"], KIND, [rules.META_KEY])
+    marker = found[0]["payload"].get("auto_read") if found else None
+    return {"auto_read": auto_read_view(marker)}
 
 
 async def _act(action: str, field_id: str, request: Request, user: CurrentUser, engagement: dict[str, Any],
@@ -512,7 +586,7 @@ _FAILED = {
 }
 
 
-async def _store(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser,
+async def _store(db: AsyncSession, engagement: dict[str, Any], user: _HasId,
                  verified: list[prefill.Verified], dropped: Counter[str]) -> tuple[int, int]:
     """Put each verified suggestion on its field's record: (suggested, kept_reviewer_decision).
     A field the reviewer has decided is left alone. An entity or factor source already on the
@@ -607,14 +681,17 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser
     return suggested, kept
 
 
-async def _audit_prefill(db: AsyncSession, request: Request, user: CurrentUser, engagement: dict[str, Any],
-                         metadata: dict[str, Any]) -> None:
+async def _audit_prefill(db: AsyncSession, request: Request | None, user: CurrentUser | _Caller,
+                         engagement: dict[str, Any], metadata: dict[str, Any]) -> None:
+    if request is None:  # the automatic read: no request, no person; the event names its actor
+        metadata = {**metadata, "actor": AUTOMATIC_ACTOR, "automatic": True}
     await write_audit_event(
         db, "methodology_prefill", org_id=engagement["org_id"], actor_user_id=user.id, actor_role=user.role,
         target_type="engagement", target_id=str(engagement["id"]),
-        request_id=getattr(request.state, "request_id", None),
-        ip_address=request.client.host if request.client else None,
-        user_agent=request.headers.get("user-agent"), metadata=metadata)  # counts and cost only
+        request_id=getattr(request.state, "request_id", None) if request else None,
+        ip_address=(request.client.host if request.client else None) if request else None,
+        user_agent=request.headers.get("user-agent") if request else None,
+        metadata=metadata)  # counts and cost only
 
 
 @asynccontextmanager
@@ -666,7 +743,7 @@ async def prefill_methodology(
 
     settings, org_id = get_settings(), engagement["org_id"]
     if str(org_id) in _RUNNING:
-        raise HTTPException(status_code=409, detail=_BUSY)
+        raise _Declined("busy", _BUSY)
     _RUNNING.add(str(org_id))
     try:
         return await _prefill(request, user, engagement, db, sessions, settings)
@@ -674,15 +751,15 @@ async def prefill_methodology(
         _RUNNING.discard(str(org_id))
 
 
-async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, Any], db: AsyncSession,
-                   sessions: async_sessionmaker[AsyncSession], settings: Settings) -> Any:
+async def _prefill(request: Request | None, user: CurrentUser | _Caller, engagement: dict[str, Any],
+                   db: AsyncSession, sessions: async_sessionmaker[AsyncSession], settings: Settings) -> Any:
     org_id = engagement["org_id"]
     if not await ai_usage.try_lock_org(db, org_id):
-        raise HTTPException(status_code=409, detail=_BUSY)
+        raise _Declined("busy", _BUSY)
     candidates = await _candidates(db, engagement, user)
     code, reason = _gate(settings, await ai_usage.month_spend_microusd(db, org_id), candidates)
     if code is not None:
-        raise HTTPException(status_code=409, detail=reason)
+        raise _Declined(code, str(reason))
     client = new_client(settings)
     assert client is not None
     await db.commit()  # releases the connection and the lock before the slow part
@@ -742,3 +819,111 @@ async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, An
     read = [{"document_id": d.document_id, "file_name": d.file_name, "truncated": d.truncated} for d in documents]
     return {"suggested": suggested, "dropped": dict(dropped), "kept_reviewer_decision": kept,
             "documents_read": read, "cost_usd": cost_usd, "model": reply.model, "failed_sections": failed_sections}
+
+
+# --- the automatic read ---------------------------------------------------------------------------
+# Started by services/auto_read.py after a summary document finishes reading and the engagement has
+# had no new one for the debounce time. It is the button's own code path (``_prefill``) with Sustentra's
+# AI as the caller: the same busy lock, the same switch, client and monthly cap check (``_gate``), the
+# same usage ledger, and ``_store`` never overwrites a reviewer's decision (``kept_reviewer_decision``).
+
+@dataclass(frozen=True)
+class AutoReadResult:
+    state: Literal["done", "skipped", "failed"]
+    reason_code: str | None = None
+    reason: str | None = None
+
+
+async def _mark_auto_read(sessions: async_sessionmaker[AsyncSession], caller: _Caller, engagement: dict[str, Any],
+                          state: str, file_names: list[str], reason: str | None = None) -> None:
+    """The page's "Sustentra's AI is reading ..." marker (engagement page state), in its own transaction."""
+
+    async with _short_transaction(sessions, engagement["org_id"]) as db:
+        await _update_meta(db, engagement, caller, auto_read={
+            "state": state, "file_names": file_names, "reason": reason, "at": stamp(_now())})
+
+
+async def _auto_read_context(sessions: async_sessionmaker[AsyncSession], caller: _Caller, engagement_id: str
+                            ) -> tuple[dict[str, Any] | None, bool | None]:
+    """The engagement (None when it is gone or closed) and the organization's switch."""
+
+    async with _short_transaction(sessions, caller.org_id) as db:
+        engagement = await engagement_service.get_engagement(db, engagement_id)
+        enabled = (await db.execute(text("SELECT auto_read_summaries FROM organizations WHERE id = :id"),
+                                    {"id": caller.org_id})).scalar()
+    if engagement is None or engagement["status"] != "active":
+        return None, enabled
+    return engagement, enabled
+
+
+async def prepare_automatic_prefill(org_id: str, engagement_id: str, file_names: list[str],
+                                    sessions: async_sessionmaker[AsyncSession]) -> bool:
+    """Before the debounce wait: false (and nothing shown) when the organization switched the automatic
+    read off or the engagement is closed; else the page says Sustentra's AI will read the documents shortly."""
+
+    caller = _Caller(org_id=uuid.UUID(str(org_id)))
+    engagement, enabled = await _auto_read_context(sessions, caller, engagement_id)
+    if engagement is None or enabled is False:
+        return False
+    await _mark_auto_read(sessions, caller, engagement, "waiting", file_names)
+    return True
+
+
+async def run_automatic_prefill(org_id: str, engagement_id: str, file_names: list[str],
+                                sessions: async_sessionmaker[AsyncSession],
+                                settings: Settings | None = None) -> AutoReadResult:
+    """Read the engagement's summary documents as Sustentra's AI. Skips, and records why (the page
+    marker and an audit event), when the organization switched it off, the engagement is closed, a
+    prefill is already running, or the gate says no (switch, client, monthly limit, no documents)."""
+
+    settings = settings or get_settings()
+    caller = _Caller(org_id=uuid.UUID(str(org_id)))
+    with scoped(S1Scope.tenant(caller.org_id)):
+        engagement, enabled = await _auto_read_context(sessions, caller, engagement_id)
+        if engagement is None:
+            return AutoReadResult("skipped", "engagement_unavailable", "The engagement is closed or gone.")
+        if enabled is False:
+            await _mark_auto_read(sessions, caller, engagement, "skipped", file_names, None)
+            return AutoReadResult("skipped", "setting_off", "Reading summary documents automatically is off.")
+        await _mark_auto_read(sessions, caller, engagement, "reading", file_names)
+        running = False
+        try:
+            if str(caller.org_id) in _RUNNING:  # the button (or another read) is working for this organization
+                raise _Declined("busy", _BUSY)
+            _RUNNING.add(str(caller.org_id))
+            running = True
+            async with sessions() as db, db.begin():
+                await set_tenant(db, caller.org_id)
+                answer = await _prefill(None, caller, engagement, db, sessions, settings)
+            if isinstance(answer, JSONResponse):  # the call was made but gave nothing, or nothing was saved
+                detail = json.loads(bytes(answer.body)).get("detail")
+                await _mark_auto_read(sessions, caller, engagement, "failed", file_names, str(detail))
+                return AutoReadResult("failed", "not_saved", str(detail))
+            await _mark_auto_read(sessions, caller, engagement, "done", file_names)
+            return AutoReadResult("done")
+        except HTTPException as exc:
+            declined = isinstance(exc, _Declined)
+            code = exc.code if isinstance(exc, _Declined) else ("not_read" if exc.status_code == 409 else "error")
+            await _record_auto_read_skip(sessions, caller, engagement, file_names, code, str(exc.detail),
+                                         "skipped" if declined or exc.status_code == 409 else "failed")
+            return AutoReadResult("skipped" if declined or exc.status_code == 409 else "failed", code, str(exc.detail))
+        except Exception as exc:  # never raises into the scheduler; the type only is logged
+            logger.error("methodology auto read: failed (%s)", type(exc).__name__)
+            await _record_auto_read_skip(sessions, caller, engagement, file_names, "error",
+                                         "Sustentra's AI could not read the documents automatically.", "failed")
+            return AutoReadResult("failed", "error", "Sustentra's AI could not read the documents automatically.")
+        finally:
+            if running:
+                _RUNNING.discard(str(caller.org_id))
+
+
+async def _record_auto_read_skip(sessions: async_sessionmaker[AsyncSession], caller: _Caller,
+                                 engagement: dict[str, Any], file_names: list[str], code: str, reason: str,
+                                 state: str) -> None:
+    try:
+        async with _short_transaction(sessions, caller.org_id) as db:
+            await _audit_prefill(db, None, caller, engagement, {
+                "outcome": state, "reason_code": code, "documents": len(file_names)})
+        await _mark_auto_read(sessions, caller, engagement, state, file_names, reason)
+    except Exception as exc:  # best effort: the read itself is already decided
+        logger.error("methodology auto read: skip not recorded (%s)", type(exc).__name__)

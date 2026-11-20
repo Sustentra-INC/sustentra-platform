@@ -47,7 +47,7 @@ async def save_item(
     kind: str,
     item_key: str,
     payload: dict[str, Any],
-    user_id: uuid.UUID,
+    user_id: uuid.UUID | None,
 ) -> dict[str, Any]:
     """Create the item, or replace its payload if it exists (latest save wins)."""
 
@@ -113,7 +113,7 @@ async def insert_item(
     kind: str,
     item_key: str,
     payload: dict[str, Any],
-    user_id: uuid.UUID,
+    user_id: uuid.UUID | None,
 ) -> dict[str, Any] | None:
     """Create the item. None when one with this key already exists: it is never replaced."""
 
@@ -146,7 +146,7 @@ async def update_payload(
     kind: str,
     item_key: str,
     payload: dict[str, Any],
-    user_id: uuid.UUID,
+    user_id: uuid.UUID | None,
 ) -> dict[str, Any]:
     """Replace an existing item's payload. The caller has locked the row and checked it."""
 

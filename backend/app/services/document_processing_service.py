@@ -42,6 +42,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from backend.app.repositories.processing_run_repository import ProcessingRun
+from backend.app.services import auto_read
 
 logger = logging.getLogger("sustentra.processing")
 
@@ -283,7 +284,19 @@ class DocumentProcessingService:
         if finished is None:
             return self._runs.get(run.run_id) or run
         self._set_status(run.document_id, status)
+        if status == "completed":
+            self._after_completed(finished, outcome)
         return finished
+
+    def _after_completed(self, run: ProcessingRun, outcome: Outcome) -> None:
+        """A summary document finished reading: Sustentra's AI reads it in the background (auto_read)."""
+
+        try:
+            document = self._uploads.get_document(run.document_id) or {}
+            auto_read.notify_completed(run.org_id, run.engagement_id, str(document.get("file_name") or ""),
+                                       outcome.pipeline_run)
+        except Exception as exc:  # never fails the read that already completed
+            logger.error("auto_read_not_requested", extra={"error_type": type(exc).__name__})
 
     def _set_status(self, document_id: str, status: str) -> bool:
         try:
