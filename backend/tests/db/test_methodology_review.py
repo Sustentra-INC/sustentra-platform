@@ -70,7 +70,7 @@ def suggest(engagement_id: str, field_id: str, suggestion: dict[str, Any] = SUGG
 def test_get_lists_every_field_pending_with_the_catalog_and_ai_off() -> None:
     engagement = create()
     body = review(engagement["id"]).json()
-    assert len(body["fields"]) == len(body["catalog"]) == 31
+    assert len(body["fields"]) == len(body["catalog"]) == 32
     assert [f["field_id"] for f in body["fields"]] == [c["field_id"] for c in body["catalog"]]
     assert all(f["suggestion"] is None and f["decision"] is None and f["history"] == [] for f in body["fields"])
     assert body["ai"]["enabled"] is False and body["ai"]["reason_code"] == "off" and body["ai"]["reason"]
@@ -179,7 +179,7 @@ def test_rows_can_be_added_edited_and_removed_when_the_reviewer_added_them() -> 
 
     listed = review(eid).json()
     assert listed["fields"][-1]["field_id"] == field_id and listed["catalog"][-1]["kind"] == "entity"
-    assert len(listed["fields"]) == 32
+    assert len(listed["fields"]) == 33
 
     blank = act(eid, field_id, "accept")
     assert blank.status_code == 422 and "name" in blank.json()["detail"]
@@ -249,7 +249,7 @@ def test_one_engagements_decisions_are_not_another_s() -> None:
 
 # --- optional rows: hidden until there is a value or the reviewer adds them ----------------------
 
-OPTIONAL_FIELDS = ("boundary:acquisitions", "boundary:leased_space", *rules.GAS_IDS)  # the real optional rows
+OPTIONAL_FIELDS = ("boundary:acquisitions", "boundary:leased_space", "calculation:estimation", *rules.GAS_IDS)  # the real optional rows
 OPTIONAL = "optional:test-row"  # the catalog has no optional field yet; the rules are tested with one
 
 
@@ -311,10 +311,25 @@ def test_a_hidden_row_after_a_prefill_that_found_nothing_stays_hidden(optional_f
     asyncio.run(_admin(
         "INSERT INTO workpaper_items (org_id, engagement_id, kind, item_key, payload) "
         "SELECT org_id, id, 'methodology', 'meta:state', $2::jsonb FROM engagements WHERE id = $1::uuid",
-        eid, json.dumps({"prefill_ran_at": "2026-11-18T10:00:00.000Z", "revealed": []})))
+        eid, json.dumps({"prefill_ran_at": "2026-11-18T10:00:00.000Z", "prefill_covered": [optional_field, "gwp"], "revealed": []})))
     row = record(eid, optional_field)
     assert row["display_state"] == "not_detected" and row["shown"] is False
     assert record(eid, "gwp")["display_state"] == "not_detected" and record(eid, "gwp")["shown"] is True
+    # a field the run did not cover says nothing: it was not looked at
+    assert record(eid, "reporting_period")["display_state"] == "not_checked"
+
+
+def test_an_engagement_prefilled_before_the_newer_rows_existed_shows_them_as_not_checked_yet() -> None:
+    eid = create()["id"]
+    asyncio.run(_admin(
+        "INSERT INTO workpaper_items (org_id, engagement_id, kind, item_key, payload) "
+        "SELECT org_id, id, 'methodology', 'meta:state', $2::jsonb FROM engagements WHERE id = $1::uuid",
+        eid, json.dumps({"prefill_ran_at": "2026-11-18T10:00:00.000Z", "revealed": []})))  # no covered list: an older run
+    states = {f["field_id"]: f["display_state"] for f in review(eid).json()["fields"]}
+    assert states["gwp"] == states["reporting_period"] == states["category:market:steam"] == "not_detected"
+    newer = [f for f in states if f not in rules.LEGACY_PREFILL_COVERED]
+    assert newer and all(states[f] == "not_checked" for f in newer)
+    assert "calculation:estimation" in newer and "boundary:acquisitions" in newer
 
 
 # --- migration 0016 ----------------------------------------------------------------------

@@ -28,7 +28,7 @@ def doc(lines: list[tuple[int, str]] = REPORT, alias: str = "D1", document_id: s
 
 
 def answer(**lists: Any) -> mp.PrefillOutput:
-    empty: dict[str, Any] = {"choices": [], "gases": [], "texts": [], "periods": [], "gwp": [], "entities": [], "factors": []}
+    empty: dict[str, Any] = {"choices": [], "gases": [], "texts": [], "estimations": [], "periods": [], "gwp": [], "entities": [], "factors": []}
     return mp.PrefillOutput.model_validate({**empty, **lists})
 
 
@@ -385,6 +385,53 @@ def test_the_set_and_the_horizon_are_whole_tokens_in_the_quote() -> None:
                            ("100-year", "AR5 hundred-year values")):
         kept, dropped = check(answer(gwp=[gwp_item("AR5", horizon, quote, "L1")]), [doc([(1, quote)])])
         assert len(kept) == 1 and not dropped, quote
+# --- estimation method: a list suggestion with a quote per entry -------------------------------
+
+def entry(source: str, method: str) -> dict[str, str]:
+    return {"source_type": source, "method": method}
+
+
+EST_REPORT = [
+    (1, "Missing utility invoices are estimated from the average of the adjacent months."),
+    (1, "Where Käserei fuel cards have gaps, prior-year consumption is used (燃料)."),
+    (1, "Meter readings are never estimated."),
+]
+
+
+def estimate(source: str, method: str, quote: str, line: str) -> dict[str, str]:
+    return {"source_type": source, "method": method, **cite(line, quote)}
+
+
+def test_each_estimation_entry_keeps_its_own_quote_in_one_suggestion() -> None:
+    kept, dropped = check(answer(estimations=[
+        estimate("Utility invoices", "Average of adjacent months", "Missing utility invoices are estimated", "L1"),
+        estimate("Fuel cards", "Prior-year consumption", "fuel cards have gaps, prior-year consumption is used (燃料)", "L2")]), [doc(EST_REPORT)])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["calculation:estimation"]
+    [item] = kept
+    assert item.suggestion["value"] == [entry("Utility invoices", "Average of adjacent months"),
+                                        entry("Fuel cards", "Prior-year consumption")]
+    assert [e["label"] for e in item.suggestion["evidence"]] == ["Utility invoices", "Fuel cards"]
+    assert "燃料" in item.suggestion["evidence"][1]["quote"] and item.suggestion["document_id"] == "DOC-1"
+
+
+def test_one_bad_entry_is_dropped_and_the_others_stand() -> None:
+    kept, dropped = check(answer(estimations=[
+        estimate("Utility invoices", "Average", "Missing utility invoices are estimated", "L1"),
+        estimate("Fuel cards", "Average", "this sentence is not in the document at all", "L2"),  # not on the page
+        estimate("Meter readings", "x" * 301, "Meter readings are never estimated", "L3"),  # too long
+        estimate("Fuel cards", "Use zero", "Missing utility invoices are estimated", "L1"),  # the quote is about something else
+        estimate("utility INVOICES", "Other", "Missing utility invoices are estimated", "L1")]), [doc(EST_REPORT)])
+    assert [e["label"] for e in kept[0].suggestion["evidence"]] == ["Utility invoices"]
+    assert dict(dropped) == {"quote_not_on_document": 1, "invalid_value": 1, "value_not_in_quote": 1, "duplicate_entry": 1}
+
+
+def test_no_entry_that_holds_up_means_no_suggestion_and_more_than_ten_are_capped() -> None:
+    kept, dropped = check(answer(estimations=[estimate("Fuel", "a", "not on the page anywhere", "L1")]), [doc(EST_REPORT)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
+    line = "Gaps for " + ", ".join(f"source type {i}" for i in range(12)) + " are filled the same way."
+    many = [estimate(f"source type {i}", "Average", line, "L1") for i in range(12)]
+    kept, dropped = check(answer(estimations=many), [doc([(1, line)])])
+    assert len(kept[0].suggestion["value"]) == 10 and dict(dropped) == {"too_many_entries": 2}
 # --- gases: their own value set, the gas named in the quote ----------------------------------
 
 def gas(field_id: str, value: str, quote: str, line: str = "L1") -> dict[str, str]:

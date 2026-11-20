@@ -10,7 +10,7 @@
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 
-export type SeedValue = string | number | string[] | { [key: string]: string | number | string[] };
+export type SeedValue = string | number | string[] | { [key: string]: string | number | string[] } | { source_type: string; method: string }[];
 
 /** Document ids come from the Evidence fixtures, so "open document" lands on a real document. */
 function doc(filename: string): { document_id: string; file_name: string } {
@@ -56,6 +56,8 @@ export interface ClaudeItem {
   quote: string;
   source: { document_id: string; file_name: string };
   page: string;
+  /** A list suggestion's quote per entry or option. */
+  evidence?: { label: string; quote: string; page: string }[];
 }
 
 const B = BOUNDARY_DOC;
@@ -65,6 +67,20 @@ const W = WORKBOOK_DOC;
 export const CLAUDE_ITEMS: ClaudeItem[] = [
   // The report shows a second set for comparison: it stays as its own row, beside the decided AR5 field.
   { rowGroup: "gwp", rowKey: "w1", value: { set: "AR6", horizon: "500-year" }, quote: "A 500-year horizon using AR6 is shown for comparison only.", source: B, page: "page 3" },
+  {
+    fieldId: "calculation:estimation",
+    value: [
+      { source_type: "Utility invoices", method: "Average of the adjacent months" },
+      { source_type: "Fuel cards", method: "Prior-year consumption" },
+    ],
+    quote: "Missing utility invoices are estimated from the average of the adjacent months.",
+    source: B,
+    page: "page 3",
+    evidence: [
+      { label: "Utility invoices", quote: "Missing utility invoices are estimated from the average of the adjacent months.", page: "page 3" },
+      { label: "Fuel cards", quote: "Where fuel card data has gaps, prior-year consumption is used.", page: "page 3" },
+    ],
+  },
   { fieldId: "gas:co2", value: "Included", quote: "The 2025 inventory covers CO2, CH4 and N2O.", source: B, page: "page 2" },
   { fieldId: "gas:nf3", value: "Declared absent", quote: "SF6 and NF3 are not emitted at any Cascade Provisions site.", source: B, page: "page 2" },
   { fieldId: "boundary:leased_space", value: "Leased office space at the Tualatin Plant is reported under operational control.", quote: "Leased office space at the Tualatin Plant is reported under operational control.", source: B, page: "page 2" },

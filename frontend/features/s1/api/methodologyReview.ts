@@ -7,7 +7,7 @@ import { api } from "../../../lib/api";
  * is recorded by the server: no body below carries a name, a login or a time.
  */
 
-export type MethodologyValue = string | number | boolean | null | string[] | { [key: string]: MethodologyValue };
+export type MethodologyValue = string | number | boolean | null | string[] | MethodologyValue[] | { [key: string]: MethodologyValue };
 
 export interface FieldPart {
   key: string;
@@ -52,6 +52,17 @@ export function sourceLocation(ref: MethodologySuggestion["source_reference"] | 
   return typeof page === "number" && Number.isInteger(page) && page > 0 ? `page ${page}` : "";
 }
 
+/** The quote behind one entry or option of a list suggestion. */
+export interface MethodologyEvidence {
+  label: string;
+  quote: string;
+  document_id: string;
+  file_name: string;
+  source_reference?: MethodologySourceReference | string | null;
+  /** True when this quote was cut at 1,000 characters. */
+  quote_truncated?: boolean;
+}
+
 export interface MethodologySuggestion {
   value: MethodologyValue;
   quote: string;
@@ -59,6 +70,10 @@ export interface MethodologySuggestion {
   file_name: string;
   /** An object from the backend; an older record may hold a plain string. */
   source_reference: MethodologySourceReference | string | null;
+  /** A list suggestion (entries, options): one quote per entry, in the value's order. */
+  evidence?: MethodologyEvidence[];
+  /** Entries left out because their quotes did not fit the record (the first ones are kept). */
+  entries_omitted?: number;
   /** True when the stored quote was cut at 1,000 characters (it was verified whole). */
   quote_truncated?: boolean;
   origin: string;

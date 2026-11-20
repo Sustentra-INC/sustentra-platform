@@ -41,6 +41,7 @@ GOOD = {
     ],
     "gases": [],
     "texts": [],
+    "estimations": [],
     "periods": [{"start": "2024-01-01", "end": "2024-12-31", **cite("L3", "January 1 to December 31, 2024")}],
     "gwp": [],
     "entities": [{"name": "Acme Foods Kent LLC", "facilities": ["Kent Cannery"], "equity_share_pct": 51,
@@ -168,7 +169,7 @@ def test_an_injected_instruction_changes_nothing_without_a_matching_quote(claude
     eid = create()["id"]
     claude.output = {**GOOD, "choices": [{"field_id": "consolidation_approach", "value": "Equity Share",
                                           **cite("L7", "the company uses the equity share approach")}],
-                     "texts": [], "periods": [], "gases": [], "entities": [], "factors": []}
+                     "texts": [], "estimations": [], "periods": [], "gases": [], "entities": [], "factors": []}
     body = prefill(eid).json()
     assert body["suggested"] == 0 and body["dropped"] == {"quote_not_on_document": 1}
     approach = record(eid, "consolidation_approach")
@@ -212,7 +213,7 @@ def test_rows_read_not_checked_until_a_prefill_finishes_then_not_detected(claude
     before = review(eid).json()
     assert before["prefill_ran_at"] is None and set(states(eid).values()) == {"not_checked"}
     optional = {c["field_id"] for c in before["catalog"] if not c["required"]}
-    assert optional == {"boundary:acquisitions", "boundary:leased_space", *rules.GAS_IDS}
+    assert optional == {"boundary:acquisitions", "boundary:leased_space", "calculation:estimation", *rules.GAS_IDS}
     assert all(f["shown"] is (f["field_id"] not in optional) for f in before["fields"])
     assert prefill(eid).status_code == 200
     after = review(eid).json()
@@ -220,6 +221,7 @@ def test_rows_read_not_checked_until_a_prefill_finishes_then_not_detected(claude
     now = states(eid)
     assert now["consolidation_approach"] == "has_value" and now["reporting_period"] == "has_value"
     assert now["gwp"] == "not_detected" and now["exclusion:boundary"] == "not_detected"
+    assert now["calculation:estimation"] == "not_detected"  # this run covered the newer rows too
     assert "not_checked" not in now.values()
     # the marker is page state, not a field: it is never listed as a workpaper item
     listed = call("GET", f"{BASE}/{eid}/workpaper-items?kind=methodology").json()["items"]
@@ -504,6 +506,43 @@ def test_a_second_run_in_another_order_never_shows_one_set_twice(claude: FakeCla
     assert prefill(eid).status_code == 200
     assert record(eid, "gwp")["suggestion"]["value"]["set"] == "AR5"
     assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
+# --- estimation method for missing data: only if the company has a value -----------------------
+
+EST = "calculation:estimation"
+EST_LINES = ["Missing utility invoices are estimated from the average of the adjacent months.",
+             "Where Käserei fuel cards have gaps, prior-year consumption is used (燃料)."]
+
+
+def test_the_estimation_row_is_hidden_until_prefill_finds_it_and_keeps_a_quote_per_entry(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    assert EST not in shown_ids(eid)
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in EST_LINES])])
+    claude.output = {**GOOD, "estimations": [
+        {"source_type": "Utility invoices", "method": "Average of adjacent months", **cite("L9", "Missing utility invoices are estimated")},
+        {"source_type": "Fuel cards", "method": "Prior-year consumption", **cite("L10", "fuel cards have gaps, prior-year consumption is used (燃料)")}]}
+    assert prefill(eid).status_code == 200
+    assert EST in shown_ids(eid)
+    suggestion = record(eid, EST)["suggestion"]
+    assert [e["label"] for e in suggestion["evidence"]] == ["Utility invoices", "Fuel cards"]
+    assert suggestion["value"][1] == {"source_type": "Fuel cards", "method": "Prior-year consumption"}
+    assert act(eid, EST, "accept").status_code == 200
+    assert record(eid, EST)["decision"]["value"] == suggestion["value"]
+
+
+def test_a_reviewer_adds_edits_and_removes_entries_and_the_list_can_be_emptied(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    assert act(eid, EST, "reveal").status_code == 200 and states(eid)[EST] == "not_checked"
+    one = [{"source_type": "Brändstoff 燃料", "method": "Vorjahr × 1,02"}]
+    assert act(eid, EST, "edit", {"value": one}).status_code == 200
+    two = [*one, {"source_type": "Meter readings", "method": "Interpolated"}]
+    assert act(eid, EST, "edit", {"value": two}).status_code == 200
+    assert record(eid, EST)["decision"]["value"] == two
+    assert act(eid, EST, "edit", {"value": one}).status_code == 200  # remove one
+    assert act(eid, EST, "edit", {"value": []}).status_code == 200  # remove all
+    assert record(eid, EST)["decision"]["value"] == [] and EST in shown_ids(eid)
+    dup = [{"source_type": "Fuel", "method": "a"}, {"source_type": "fuel", "method": "b"}]
+    assert act(eid, EST, "edit", {"value": dup}).status_code == 422
+    assert act(eid, EST, "edit", {"value": "average"}).status_code == 422
 # --- gases covered: one row per gas, "only if the company has a value" -----------------------
 
 GASES = ["gas:co2", "gas:ch4", "gas:n2o", "gas:hfcs", "gas:pfcs", "gas:sf6", "gas:nf3"]
