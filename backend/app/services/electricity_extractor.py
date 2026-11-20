@@ -374,6 +374,8 @@ class ElectricityExtractor(StationaryCombustionExtractor):
             "service_address": self._address(rows) or address_from_facility,
             "supplier_name": self._supplier(rows),
             "account_number": self._account(rows),
+            "meter_number": self._bill_meter(rows),
+            "statement_date": self._statement_date(rows),
         }
         period = self._document_period(rows)
 
@@ -390,6 +392,8 @@ class ElectricityExtractor(StationaryCombustionExtractor):
                     located = document_values.get(field_id)
                     if field_id == "service_address" and record.extra.get("address") is not None:
                         located = record.extra["address"]  # a meter's own row: each meter keeps its address
+                    if field_id == "meter_number" and record.extra.get("meter") is not None:
+                        located = record.extra["meter"]  # and its own meter number
                     record_candidates.append(self._candidate_for_text(
                         target, located, document_id, evidence_id, record_key, record_index, parser_output,
                         field_id))

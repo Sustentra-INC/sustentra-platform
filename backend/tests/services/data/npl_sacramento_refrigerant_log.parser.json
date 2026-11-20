@@ -1,0 +1,2712 @@
+{
+ "document_id": "DOC-FIXTURE",
+ "pages": [
+  {
+   "page_number": 1,
+   "text": "POLAR POINT MECHANICAL SERVICES\nCommercial Refrigeration · 3300 Florin Perkins Road, Sacramento, CA 95826 · (916) 555-0137 · EPA §608 certified\nRefrigerant Service & Leak Log – Calendar Year 2025 (01/01/2025 – 12/31/2025)\nCustomer: Northgate Provisions Inc. · Site: Sacramento Warehouse, 1820 Richards Boulevard, Sacramento, CA 95811 · Service agreement PPM-SA-2291\nDate\nEquipment\nRefrigerant Full Charge (lb)\nAdded (lb)\nRecovered (lb)\nTechnician\nNotes\n02/11/2025\nRACK-A Walk-in freezer rack\nR-404A\n180\n12.5\n0.0\nJosé Muñoz\nLeak at TXV flare fitting – repaired\n04/08/2025\nCH-1 Dock process chiller\nR-134a\n95\n6.0\n0.0\nRenée Côté\nLow charge alarm; valve core replaced\n05/27/2025\nRACK-A Walk-in freezer rack\nR-404A\n180\n8.0\n0.0\nJosé Muñoz\nRoutine top-up, leak check OK\n07/15/2025\nRACK-A Walk-in freezer rack\nR-404A\n180\n18.5\n0.0\nRenée Côté\nCondenser coil leak – coil replaced\n08/19/2025\nCH-1 Dock process chiller\nR-134a\n95\n4.5\n0.0\nZoë Brandão\nTop-up after compressor service\n10/02/2025\nRACK-A Walk-in freezer rack\nR-404A\n180\n5.0\n0.0\nJosé Muñoz\nRoutine top-up\n11/18/2025\nCH-1 Dock process chiller\nR-134a\n95\n3.0\n0.0\nRenée Côté\nLeak test OK, small top-up\n12/09/2025\nRACK-A Walk-in freezer rack\nR-404A\n180\n7.5\n0.0\nZoë Brandão\nSuction line braze repaired\nRefrigerant\nTotal Added 2025 (lb)\nTotal Recovered (lb)\nR-404A\n51.5\n0.0\nR-134a\n13.5\n0.0\nTechnician certification on file. Log certified by: Renée Côté, Service Manager, 01/06/2026.\nSAMPLE – FICTIONAL TEST DOCUMENT\nPolar Point Mechanical refrigerant log  ·  Page 1 of 1\n"
+  }
+ ],
+ "text_blocks": [
+  {
+   "block_id": "pymupdf-p1-b1",
+   "page_number": 1,
+   "text": "POLAR POINT MECHANICAL SERVICES",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.0553,
+    "width": 0.426566,
+    "height": 0.026144
+   },
+   "source_reference_id": "SRC-pymupdf-p1-1"
+  },
+  {
+   "block_id": "pymupdf-p1-b2",
+   "page_number": 1,
+   "text": "Commercial Refrigeration · 3300 Florin Perkins Road, Sacramento, CA 95826 · (916) 555-0137 · EPA §608 certified",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.088108,
+    "width": 0.57894,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-2"
+  },
+  {
+   "block_id": "pymupdf-p1-b3",
+   "page_number": 1,
+   "text": "Refrigerant Service & Leak Log – Calendar Year 2025 (01/01/2025 – 12/31/2025)",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.11909,
+    "width": 0.6805,
+    "height": 0.019608
+   },
+   "source_reference_id": "SRC-pymupdf-p1-3"
+  },
+  {
+   "block_id": "pymupdf-p1-b4",
+   "page_number": 1,
+   "text": "Customer: Northgate Provisions Inc. · Site: Sacramento Warehouse, 1820 Richards Boulevard, Sacramento, CA 95811 · Service agreement PPM-SA-2291",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.14631,
+    "width": 0.820733,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-4"
+  },
+  {
+   "block_id": "pymupdf-p1-b5",
+   "page_number": 1,
+   "text": "Date",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.181245,
+    "width": 0.026879,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-5"
+  },
+  {
+   "block_id": "pymupdf-p1-b6",
+   "page_number": 1,
+   "text": "Equipment",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.121212,
+    "top": 0.181245,
+    "width": 0.061414,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-6"
+  },
+  {
+   "block_id": "pymupdf-p1-b7",
+   "page_number": 1,
+   "text": "RefrigerantFull Charge (lb)",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.292929,
+    "top": 0.181245,
+    "width": 0.159172,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-7"
+  },
+  {
+   "block_id": "pymupdf-p1-b8",
+   "page_number": 1,
+   "text": "Added (lb)",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.464646,
+    "top": 0.181245,
+    "width": 0.059808,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-8"
+  },
+  {
+   "block_id": "pymupdf-p1-b9",
+   "page_number": 1,
+   "text": "Recovered (lb)",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.540404,
+    "top": 0.181245,
+    "width": 0.083495,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-9"
+  },
+  {
+   "block_id": "pymupdf-p1-b10",
+   "page_number": 1,
+   "text": "Technician",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.638889,
+    "top": 0.181245,
+    "width": 0.06104,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-10"
+  },
+  {
+   "block_id": "pymupdf-p1-b11",
+   "page_number": 1,
+   "text": "Notes",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.739899,
+    "top": 0.181245,
+    "width": 0.033081,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-11"
+  },
+  {
+   "block_id": "pymupdf-p1-b12",
+   "page_number": 1,
+   "text": "02/11/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.206735,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-12"
+  },
+  {
+   "block_id": "pymupdf-p1-b13",
+   "page_number": 1,
+   "text": "RACK-A Walk-in freezer rack",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.121212,
+    "top": 0.206735,
+    "width": 0.14304,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-13"
+  },
+  {
+   "block_id": "pymupdf-p1-b14",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.292929,
+    "top": 0.206735,
+    "width": 0.036848,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-14"
+  },
+  {
+   "block_id": "pymupdf-p1-b15",
+   "page_number": 1,
+   "text": "180",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.430215,
+    "top": 0.206735,
+    "width": 0.019273,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-15"
+  },
+  {
+   "block_id": "pymupdf-p1-b16",
+   "page_number": 1,
+   "text": "12.5",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.502762,
+    "top": 0.206735,
+    "width": 0.022485,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-16"
+  },
+  {
+   "block_id": "pymupdf-p1-b17",
+   "page_number": 1,
+   "text": "0.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.607673,
+    "top": 0.206735,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-17"
+  },
+  {
+   "block_id": "pymupdf-p1-b18",
+   "page_number": 1,
+   "text": "José Muñoz",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.638889,
+    "top": 0.206735,
+    "width": 0.056859,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-18"
+  },
+  {
+   "block_id": "pymupdf-p1-b19",
+   "page_number": 1,
+   "text": "Leak at TXV flare fitting – repaired",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.739899,
+    "top": 0.206735,
+    "width": 0.173737,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-19"
+  },
+  {
+   "block_id": "pymupdf-p1-b20",
+   "page_number": 1,
+   "text": "04/08/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.232225,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-20"
+  },
+  {
+   "block_id": "pymupdf-p1-b21",
+   "page_number": 1,
+   "text": "CH-1 Dock process chiller",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.121212,
+    "top": 0.232225,
+    "width": 0.129505,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-21"
+  },
+  {
+   "block_id": "pymupdf-p1-b22",
+   "page_number": 1,
+   "text": "R-134a",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.292929,
+    "top": 0.232225,
+    "width": 0.036131,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-22"
+  },
+  {
+   "block_id": "pymupdf-p1-b23",
+   "page_number": 1,
+   "text": "95",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.436642,
+    "top": 0.232225,
+    "width": 0.012849,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-23"
+  },
+  {
+   "block_id": "pymupdf-p1-b24",
+   "page_number": 1,
+   "text": "6.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.509189,
+    "top": 0.232225,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-24"
+  },
+  {
+   "block_id": "pymupdf-p1-b25",
+   "page_number": 1,
+   "text": "0.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.607673,
+    "top": 0.232225,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-25"
+  },
+  {
+   "block_id": "pymupdf-p1-b26",
+   "page_number": 1,
+   "text": "Renée Côté",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.638889,
+    "top": 0.232225,
+    "width": 0.058677,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-26"
+  },
+  {
+   "block_id": "pymupdf-p1-b27",
+   "page_number": 1,
+   "text": "Low charge alarm; valve core replaced",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.739899,
+    "top": 0.232225,
+    "width": 0.196879,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-27"
+  },
+  {
+   "block_id": "pymupdf-p1-b28",
+   "page_number": 1,
+   "text": "05/27/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.257715,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-28"
+  },
+  {
+   "block_id": "pymupdf-p1-b29",
+   "page_number": 1,
+   "text": "RACK-A Walk-in freezer rack",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.121212,
+    "top": 0.257715,
+    "width": 0.14304,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-29"
+  },
+  {
+   "block_id": "pymupdf-p1-b30",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.292929,
+    "top": 0.257715,
+    "width": 0.036848,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-30"
+  },
+  {
+   "block_id": "pymupdf-p1-b31",
+   "page_number": 1,
+   "text": "180",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.430215,
+    "top": 0.257715,
+    "width": 0.019273,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-31"
+  },
+  {
+   "block_id": "pymupdf-p1-b32",
+   "page_number": 1,
+   "text": "8.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.509189,
+    "top": 0.257715,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-32"
+  },
+  {
+   "block_id": "pymupdf-p1-b33",
+   "page_number": 1,
+   "text": "0.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.607673,
+    "top": 0.257715,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-33"
+  },
+  {
+   "block_id": "pymupdf-p1-b34",
+   "page_number": 1,
+   "text": "José Muñoz",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.638889,
+    "top": 0.257715,
+    "width": 0.056859,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-34"
+  },
+  {
+   "block_id": "pymupdf-p1-b35",
+   "page_number": 1,
+   "text": "Routine top-up, leak check OK",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.739899,
+    "top": 0.257715,
+    "width": 0.153283,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-35"
+  },
+  {
+   "block_id": "pymupdf-p1-b36",
+   "page_number": 1,
+   "text": "07/15/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.283206,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-36"
+  },
+  {
+   "block_id": "pymupdf-p1-b37",
+   "page_number": 1,
+   "text": "RACK-A Walk-in freezer rack",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.121212,
+    "top": 0.283206,
+    "width": 0.14304,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-37"
+  },
+  {
+   "block_id": "pymupdf-p1-b38",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.292929,
+    "top": 0.283206,
+    "width": 0.036848,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-38"
+  },
+  {
+   "block_id": "pymupdf-p1-b39",
+   "page_number": 1,
+   "text": "180",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.430215,
+    "top": 0.283206,
+    "width": 0.019273,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-39"
+  },
+  {
+   "block_id": "pymupdf-p1-b40",
+   "page_number": 1,
+   "text": "18.5",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.502762,
+    "top": 0.283206,
+    "width": 0.022485,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-40"
+  },
+  {
+   "block_id": "pymupdf-p1-b41",
+   "page_number": 1,
+   "text": "0.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.607673,
+    "top": 0.283206,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-41"
+  },
+  {
+   "block_id": "pymupdf-p1-b42",
+   "page_number": 1,
+   "text": "Renée Côté",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.638889,
+    "top": 0.283206,
+    "width": 0.058677,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-42"
+  },
+  {
+   "block_id": "pymupdf-p1-b43",
+   "page_number": 1,
+   "text": "Condenser coil leak – coil replaced",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.739899,
+    "top": 0.283206,
+    "width": 0.175132,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-43"
+  },
+  {
+   "block_id": "pymupdf-p1-b44",
+   "page_number": 1,
+   "text": "08/19/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.308696,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-44"
+  },
+  {
+   "block_id": "pymupdf-p1-b45",
+   "page_number": 1,
+   "text": "CH-1 Dock process chiller",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.121212,
+    "top": 0.308696,
+    "width": 0.129505,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-45"
+  },
+  {
+   "block_id": "pymupdf-p1-b46",
+   "page_number": 1,
+   "text": "R-134a",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.292929,
+    "top": 0.308696,
+    "width": 0.036131,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-46"
+  },
+  {
+   "block_id": "pymupdf-p1-b47",
+   "page_number": 1,
+   "text": "95",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.436642,
+    "top": 0.308696,
+    "width": 0.012849,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-47"
+  },
+  {
+   "block_id": "pymupdf-p1-b48",
+   "page_number": 1,
+   "text": "4.5",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.509189,
+    "top": 0.308696,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-48"
+  },
+  {
+   "block_id": "pymupdf-p1-b49",
+   "page_number": 1,
+   "text": "0.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.607673,
+    "top": 0.308696,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-49"
+  },
+  {
+   "block_id": "pymupdf-p1-b50",
+   "page_number": 1,
+   "text": "Zoë Brandão",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.638889,
+    "top": 0.308696,
+    "width": 0.06499,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-50"
+  },
+  {
+   "block_id": "pymupdf-p1-b51",
+   "page_number": 1,
+   "text": "Top-up after compressor service",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.739899,
+    "top": 0.308696,
+    "width": 0.164334,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-51"
+  },
+  {
+   "block_id": "pymupdf-p1-b52",
+   "page_number": 1,
+   "text": "10/02/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.334186,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-52"
+  },
+  {
+   "block_id": "pymupdf-p1-b53",
+   "page_number": 1,
+   "text": "RACK-A Walk-in freezer rack",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.121212,
+    "top": 0.334186,
+    "width": 0.14304,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-53"
+  },
+  {
+   "block_id": "pymupdf-p1-b54",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.292929,
+    "top": 0.334186,
+    "width": 0.036848,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-54"
+  },
+  {
+   "block_id": "pymupdf-p1-b55",
+   "page_number": 1,
+   "text": "180",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.430215,
+    "top": 0.334186,
+    "width": 0.019273,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-55"
+  },
+  {
+   "block_id": "pymupdf-p1-b56",
+   "page_number": 1,
+   "text": "5.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.509189,
+    "top": 0.334186,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-56"
+  },
+  {
+   "block_id": "pymupdf-p1-b57",
+   "page_number": 1,
+   "text": "0.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.607673,
+    "top": 0.334186,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-57"
+  },
+  {
+   "block_id": "pymupdf-p1-b58",
+   "page_number": 1,
+   "text": "José Muñoz",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.638889,
+    "top": 0.334186,
+    "width": 0.056859,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-58"
+  },
+  {
+   "block_id": "pymupdf-p1-b59",
+   "page_number": 1,
+   "text": "Routine top-up",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.739899,
+    "top": 0.334186,
+    "width": 0.075222,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-59"
+  },
+  {
+   "block_id": "pymupdf-p1-b60",
+   "page_number": 1,
+   "text": "11/18/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.359676,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-60"
+  },
+  {
+   "block_id": "pymupdf-p1-b61",
+   "page_number": 1,
+   "text": "CH-1 Dock process chiller",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.121212,
+    "top": 0.359676,
+    "width": 0.129505,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-61"
+  },
+  {
+   "block_id": "pymupdf-p1-b62",
+   "page_number": 1,
+   "text": "R-134a",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.292929,
+    "top": 0.359676,
+    "width": 0.036131,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-62"
+  },
+  {
+   "block_id": "pymupdf-p1-b63",
+   "page_number": 1,
+   "text": "95",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.436642,
+    "top": 0.359676,
+    "width": 0.012849,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-63"
+  },
+  {
+   "block_id": "pymupdf-p1-b64",
+   "page_number": 1,
+   "text": "3.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.509189,
+    "top": 0.359676,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-64"
+  },
+  {
+   "block_id": "pymupdf-p1-b65",
+   "page_number": 1,
+   "text": "0.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.607673,
+    "top": 0.359676,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-65"
+  },
+  {
+   "block_id": "pymupdf-p1-b66",
+   "page_number": 1,
+   "text": "Renée Côté",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.638889,
+    "top": 0.359676,
+    "width": 0.058677,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-66"
+  },
+  {
+   "block_id": "pymupdf-p1-b67",
+   "page_number": 1,
+   "text": "Leak test OK, small top-up",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.739899,
+    "top": 0.359676,
+    "width": 0.133838,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-67"
+  },
+  {
+   "block_id": "pymupdf-p1-b68",
+   "page_number": 1,
+   "text": "12/09/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.385166,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-68"
+  },
+  {
+   "block_id": "pymupdf-p1-b69",
+   "page_number": 1,
+   "text": "RACK-A Walk-in freezer rack",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.121212,
+    "top": 0.385166,
+    "width": 0.14304,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-69"
+  },
+  {
+   "block_id": "pymupdf-p1-b70",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.292929,
+    "top": 0.385166,
+    "width": 0.036848,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-70"
+  },
+  {
+   "block_id": "pymupdf-p1-b71",
+   "page_number": 1,
+   "text": "180",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.430215,
+    "top": 0.385166,
+    "width": 0.019273,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-71"
+  },
+  {
+   "block_id": "pymupdf-p1-b72",
+   "page_number": 1,
+   "text": "7.5",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.509189,
+    "top": 0.385166,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-72"
+  },
+  {
+   "block_id": "pymupdf-p1-b73",
+   "page_number": 1,
+   "text": "0.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.607673,
+    "top": 0.385166,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-73"
+  },
+  {
+   "block_id": "pymupdf-p1-b74",
+   "page_number": 1,
+   "text": "Zoë Brandão",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.638889,
+    "top": 0.385166,
+    "width": 0.06499,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-74"
+  },
+  {
+   "block_id": "pymupdf-p1-b75",
+   "page_number": 1,
+   "text": "Suction line braze repaired",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.739899,
+    "top": 0.385166,
+    "width": 0.136424,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-75"
+  },
+  {
+   "block_id": "pymupdf-p1-b76",
+   "page_number": 1,
+   "text": "Refrigerant",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.436997,
+    "width": 0.069449,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-76"
+  },
+  {
+   "block_id": "pymupdf-p1-b77",
+   "page_number": 1,
+   "text": "Total Added 2025 (lb)",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.171717,
+    "top": 0.436997,
+    "width": 0.131643,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-77"
+  },
+  {
+   "block_id": "pymupdf-p1-b78",
+   "page_number": 1,
+   "text": "Total Recovered (lb)",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.335859,
+    "top": 0.436997,
+    "width": 0.123196,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-78"
+  },
+  {
+   "block_id": "pymupdf-p1-b79",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.463467,
+    "width": 0.039152,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-79"
+  },
+  {
+   "block_id": "pymupdf-p1-b80",
+   "page_number": 1,
+   "text": "51.5",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.296811,
+    "top": 0.463467,
+    "width": 0.02389,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-80"
+  },
+  {
+   "block_id": "pymupdf-p1-b81",
+   "page_number": 1,
+   "text": "0.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.467781,
+    "top": 0.463467,
+    "width": 0.017064,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-81"
+  },
+  {
+   "block_id": "pymupdf-p1-b82",
+   "page_number": 1,
+   "text": "R-134a",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.489938,
+    "width": 0.03839,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-82"
+  },
+  {
+   "block_id": "pymupdf-p1-b83",
+   "page_number": 1,
+   "text": "13.5",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.296811,
+    "top": 0.489938,
+    "width": 0.02389,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-83"
+  },
+  {
+   "block_id": "pymupdf-p1-b84",
+   "page_number": 1,
+   "text": "0.0",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.467781,
+    "top": 0.489938,
+    "width": 0.017064,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-84"
+  },
+  {
+   "block_id": "pymupdf-p1-b85",
+   "page_number": 1,
+   "text": "Technician certification on file. Log certified by: Renée Côté, Service Manager, 01/06/2026.",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.530918,
+    "width": 0.461798,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-85"
+  },
+  {
+   "block_id": "pymupdf-p1-b86",
+   "page_number": 1,
+   "text": "SAMPLE – FICTIONAL TEST DOCUMENT",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.959251,
+    "width": 0.15861,
+    "height": 0.010621
+   },
+   "source_reference_id": "SRC-pymupdf-p1-86"
+  },
+  {
+   "block_id": "pymupdf-p1-b87",
+   "page_number": 1,
+   "text": "Polar Point Mechanical refrigerant log · Page 1 of 1",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.740588,
+    "top": 0.959251,
+    "width": 0.213991,
+    "height": 0.010621
+   },
+   "source_reference_id": "SRC-pymupdf-p1-87"
+  }
+ ],
+ "tables": [],
+ "key_value_pairs": [],
+ "source_references": [
+  {
+   "source_reference_id": "SRC-pymupdf-p1-1",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "POLAR POINT MECHANICAL SERVICES",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.0553,
+    "width": 0.426566,
+    "height": 0.026144
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b1"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-2",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Commercial Refrigeration · 3300 Florin Perkins Road, Sacramento, CA 95826 · (916) 555-0137 · EPA §608 certified",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.088108,
+    "width": 0.57894,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b2"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-3",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Refrigerant Service & Leak Log – Calendar Year 2025 (01/01/2025 – 12/31/2025)",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.11909,
+    "width": 0.6805,
+    "height": 0.019608
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b3"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-4",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Customer: Northgate Provisions Inc. · Site: Sacramento Warehouse, 1820 Richards Boulevard, Sacramento, CA 95811 · Service agreement PPM-SA-2291",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.14631,
+    "width": 0.820733,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b4"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-5",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Date",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.181245,
+    "width": 0.026879,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b5"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-6",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Equipment",
+   "bounding_box": {
+    "x": 0.121212,
+    "y": 0.181245,
+    "width": 0.061414,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b6"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-7",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "RefrigerantFull Charge (lb)",
+   "bounding_box": {
+    "x": 0.292929,
+    "y": 0.181245,
+    "width": 0.159172,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b7"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-8",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Added (lb)",
+   "bounding_box": {
+    "x": 0.464646,
+    "y": 0.181245,
+    "width": 0.059808,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b8"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-9",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Recovered (lb)",
+   "bounding_box": {
+    "x": 0.540404,
+    "y": 0.181245,
+    "width": 0.083495,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b9"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-10",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Technician",
+   "bounding_box": {
+    "x": 0.638889,
+    "y": 0.181245,
+    "width": 0.06104,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b10"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-11",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Notes",
+   "bounding_box": {
+    "x": 0.739899,
+    "y": 0.181245,
+    "width": 0.033081,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b11"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-12",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "02/11/2025",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.206735,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b12"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-13",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "RACK-A Walk-in freezer rack",
+   "bounding_box": {
+    "x": 0.121212,
+    "y": 0.206735,
+    "width": 0.14304,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b13"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-14",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.292929,
+    "y": 0.206735,
+    "width": 0.036848,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b14"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-15",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "180",
+   "bounding_box": {
+    "x": 0.430215,
+    "y": 0.206735,
+    "width": 0.019273,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b15"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-16",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "12.5",
+   "bounding_box": {
+    "x": 0.502762,
+    "y": 0.206735,
+    "width": 0.022485,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b16"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-17",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.0",
+   "bounding_box": {
+    "x": 0.607673,
+    "y": 0.206735,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b17"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-18",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "José Muñoz",
+   "bounding_box": {
+    "x": 0.638889,
+    "y": 0.206735,
+    "width": 0.056859,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b18"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-19",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Leak at TXV flare fitting – repaired",
+   "bounding_box": {
+    "x": 0.739899,
+    "y": 0.206735,
+    "width": 0.173737,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b19"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-20",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "04/08/2025",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.232225,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b20"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-21",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "CH-1 Dock process chiller",
+   "bounding_box": {
+    "x": 0.121212,
+    "y": 0.232225,
+    "width": 0.129505,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b21"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-22",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-134a",
+   "bounding_box": {
+    "x": 0.292929,
+    "y": 0.232225,
+    "width": 0.036131,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b22"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-23",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "95",
+   "bounding_box": {
+    "x": 0.436642,
+    "y": 0.232225,
+    "width": 0.012849,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b23"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-24",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "6.0",
+   "bounding_box": {
+    "x": 0.509189,
+    "y": 0.232225,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b24"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-25",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.0",
+   "bounding_box": {
+    "x": 0.607673,
+    "y": 0.232225,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b25"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-26",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Renée Côté",
+   "bounding_box": {
+    "x": 0.638889,
+    "y": 0.232225,
+    "width": 0.058677,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b26"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-27",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Low charge alarm; valve core replaced",
+   "bounding_box": {
+    "x": 0.739899,
+    "y": 0.232225,
+    "width": 0.196879,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b27"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-28",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "05/27/2025",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.257715,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b28"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-29",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "RACK-A Walk-in freezer rack",
+   "bounding_box": {
+    "x": 0.121212,
+    "y": 0.257715,
+    "width": 0.14304,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b29"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-30",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.292929,
+    "y": 0.257715,
+    "width": 0.036848,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b30"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-31",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "180",
+   "bounding_box": {
+    "x": 0.430215,
+    "y": 0.257715,
+    "width": 0.019273,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b31"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-32",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "8.0",
+   "bounding_box": {
+    "x": 0.509189,
+    "y": 0.257715,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b32"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-33",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.0",
+   "bounding_box": {
+    "x": 0.607673,
+    "y": 0.257715,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b33"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-34",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "José Muñoz",
+   "bounding_box": {
+    "x": 0.638889,
+    "y": 0.257715,
+    "width": 0.056859,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b34"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-35",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Routine top-up, leak check OK",
+   "bounding_box": {
+    "x": 0.739899,
+    "y": 0.257715,
+    "width": 0.153283,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b35"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-36",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "07/15/2025",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.283206,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b36"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-37",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "RACK-A Walk-in freezer rack",
+   "bounding_box": {
+    "x": 0.121212,
+    "y": 0.283206,
+    "width": 0.14304,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b37"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-38",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.292929,
+    "y": 0.283206,
+    "width": 0.036848,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b38"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-39",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "180",
+   "bounding_box": {
+    "x": 0.430215,
+    "y": 0.283206,
+    "width": 0.019273,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b39"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-40",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "18.5",
+   "bounding_box": {
+    "x": 0.502762,
+    "y": 0.283206,
+    "width": 0.022485,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b40"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-41",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.0",
+   "bounding_box": {
+    "x": 0.607673,
+    "y": 0.283206,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b41"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-42",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Renée Côté",
+   "bounding_box": {
+    "x": 0.638889,
+    "y": 0.283206,
+    "width": 0.058677,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b42"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-43",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Condenser coil leak – coil replaced",
+   "bounding_box": {
+    "x": 0.739899,
+    "y": 0.283206,
+    "width": 0.175132,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b43"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-44",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "08/19/2025",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.308696,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b44"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-45",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "CH-1 Dock process chiller",
+   "bounding_box": {
+    "x": 0.121212,
+    "y": 0.308696,
+    "width": 0.129505,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b45"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-46",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-134a",
+   "bounding_box": {
+    "x": 0.292929,
+    "y": 0.308696,
+    "width": 0.036131,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b46"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-47",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "95",
+   "bounding_box": {
+    "x": 0.436642,
+    "y": 0.308696,
+    "width": 0.012849,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b47"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-48",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "4.5",
+   "bounding_box": {
+    "x": 0.509189,
+    "y": 0.308696,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b48"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-49",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.0",
+   "bounding_box": {
+    "x": 0.607673,
+    "y": 0.308696,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b49"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-50",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Zoë Brandão",
+   "bounding_box": {
+    "x": 0.638889,
+    "y": 0.308696,
+    "width": 0.06499,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b50"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-51",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Top-up after compressor service",
+   "bounding_box": {
+    "x": 0.739899,
+    "y": 0.308696,
+    "width": 0.164334,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b51"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-52",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "10/02/2025",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.334186,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b52"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-53",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "RACK-A Walk-in freezer rack",
+   "bounding_box": {
+    "x": 0.121212,
+    "y": 0.334186,
+    "width": 0.14304,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b53"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-54",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.292929,
+    "y": 0.334186,
+    "width": 0.036848,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b54"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-55",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "180",
+   "bounding_box": {
+    "x": 0.430215,
+    "y": 0.334186,
+    "width": 0.019273,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b55"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-56",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "5.0",
+   "bounding_box": {
+    "x": 0.509189,
+    "y": 0.334186,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b56"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-57",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.0",
+   "bounding_box": {
+    "x": 0.607673,
+    "y": 0.334186,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b57"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-58",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "José Muñoz",
+   "bounding_box": {
+    "x": 0.638889,
+    "y": 0.334186,
+    "width": 0.056859,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b58"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-59",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Routine top-up",
+   "bounding_box": {
+    "x": 0.739899,
+    "y": 0.334186,
+    "width": 0.075222,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b59"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-60",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "11/18/2025",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.359676,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b60"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-61",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "CH-1 Dock process chiller",
+   "bounding_box": {
+    "x": 0.121212,
+    "y": 0.359676,
+    "width": 0.129505,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b61"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-62",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-134a",
+   "bounding_box": {
+    "x": 0.292929,
+    "y": 0.359676,
+    "width": 0.036131,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b62"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-63",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "95",
+   "bounding_box": {
+    "x": 0.436642,
+    "y": 0.359676,
+    "width": 0.012849,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b63"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-64",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "3.0",
+   "bounding_box": {
+    "x": 0.509189,
+    "y": 0.359676,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b64"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-65",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.0",
+   "bounding_box": {
+    "x": 0.607673,
+    "y": 0.359676,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b65"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-66",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Renée Côté",
+   "bounding_box": {
+    "x": 0.638889,
+    "y": 0.359676,
+    "width": 0.058677,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b66"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-67",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Leak test OK, small top-up",
+   "bounding_box": {
+    "x": 0.739899,
+    "y": 0.359676,
+    "width": 0.133838,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b67"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-68",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "12/09/2025",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.385166,
+    "width": 0.058202,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b68"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-69",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "RACK-A Walk-in freezer rack",
+   "bounding_box": {
+    "x": 0.121212,
+    "y": 0.385166,
+    "width": 0.14304,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b69"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-70",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.292929,
+    "y": 0.385166,
+    "width": 0.036848,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b70"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-71",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "180",
+   "bounding_box": {
+    "x": 0.430215,
+    "y": 0.385166,
+    "width": 0.019273,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b71"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-72",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "7.5",
+   "bounding_box": {
+    "x": 0.509189,
+    "y": 0.385166,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b72"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-73",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.0",
+   "bounding_box": {
+    "x": 0.607673,
+    "y": 0.385166,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b73"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-74",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Zoë Brandão",
+   "bounding_box": {
+    "x": 0.638889,
+    "y": 0.385166,
+    "width": 0.06499,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b74"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-75",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Suction line braze repaired",
+   "bounding_box": {
+    "x": 0.739899,
+    "y": 0.385166,
+    "width": 0.136424,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b75"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-76",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Refrigerant",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.436997,
+    "width": 0.069449,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b76"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-77",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Total Added 2025 (lb)",
+   "bounding_box": {
+    "x": 0.171717,
+    "y": 0.436997,
+    "width": 0.131643,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b77"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-78",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Total Recovered (lb)",
+   "bounding_box": {
+    "x": 0.335859,
+    "y": 0.436997,
+    "width": 0.123196,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b78"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-79",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.463467,
+    "width": 0.039152,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b79"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-80",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "51.5",
+   "bounding_box": {
+    "x": 0.296811,
+    "y": 0.463467,
+    "width": 0.02389,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b80"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-81",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.0",
+   "bounding_box": {
+    "x": 0.467781,
+    "y": 0.463467,
+    "width": 0.017064,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b81"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-82",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-134a",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.489938,
+    "width": 0.03839,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b82"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-83",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "13.5",
+   "bounding_box": {
+    "x": 0.296811,
+    "y": 0.489938,
+    "width": 0.02389,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b83"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-84",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.0",
+   "bounding_box": {
+    "x": 0.467781,
+    "y": 0.489938,
+    "width": 0.017064,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b84"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-85",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Technician certification on file. Log certified by: Renée Côté, Service Manager, 01/06/2026.",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.530918,
+    "width": 0.461798,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b85"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-86",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "SAMPLE – FICTIONAL TEST DOCUMENT",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.959251,
+    "width": 0.15861,
+    "height": 0.010621
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b86"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-87",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Polar Point Mechanical refrigerant log · Page 1 of 1",
+   "bounding_box": {
+    "x": 0.740588,
+    "y": 0.959251,
+    "width": 0.213991,
+    "height": 0.010621
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b87"
+   ],
+   "source_kind": "line_text"
+  }
+ ]
+}

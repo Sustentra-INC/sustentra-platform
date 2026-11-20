@@ -13007,6 +13007,10 @@
      "unit": null,
      "value": "natural_gas"
     },
+    "meter_number": {
+     "unit": null,
+     "value": "NFG-BWV-239871"
+    },
     "service_address": {
      "unit": null,
      "value": "4797 River Road, Baldwinsville, NY 13027"
@@ -25192,6 +25196,10 @@
     "fuel_type": {
      "unit": null,
      "value": "natural_gas"
+    },
+    "meter_number": {
+     "unit": null,
+     "value": "NFG-BWV-239871"
     },
     "service_address": {
      "unit": null,

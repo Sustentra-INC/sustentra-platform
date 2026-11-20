@@ -436,6 +436,77 @@ def test_add_an_item_shows_the_row_as_not_detected_after_a_run_and_it_can_be_edi
     assert act(eid, ACQ, "edit", {"value": 5}).status_code == 422
 
 
+# --- GWP: every set the report names stays, as its own row --------------------------------------
+
+GWP_LINES = ["Scope 1 uses the IPCC Fifth Assessment Report (AR5) 100-year GWP values.",
+             "Scope 2 uses AR6 with a 20-year horizon; a 500-year horizon (AR4) is shown for comparison."]
+
+
+def gwp_rows(engagement_id: str) -> list[dict]:
+    return [f for f in review(engagement_id).json()["fields"] if f["field_id"].startswith("gwp:")]
+
+
+def test_every_gwp_set_the_report_names_is_kept_the_first_as_the_field_and_the_rest_as_rows(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
+    claude.output = {**GOOD, "gwp": [
+        {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")},
+        {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")},
+        {"set": "AR4", "horizon": "500-year", **cite("L10", "a 500-year horizon (AR4)")}]}
+    assert prefill(eid).json()["suggested"] == 8  # GOOD's five, the fixed GWP field and two GWP rows
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
+    rows = gwp_rows(eid)
+    assert sorted((r["suggestion"]["value"]["set"], r["suggestion"]["value"]["horizon"]) for r in rows) == [("AR4", "500-year"), ("AR6", "20-year")]
+    assert all(r["user_added"] is False and r["decision"] is None and r["shown"] for r in rows)
+    catalog = {c["field_id"]: c for c in review(eid).json()["catalog"] if c["field_id"].startswith("gwp:")}
+    assert set(catalog) == {r["field_id"] for r in rows} and all(c["label"] == "GWP set" for c in catalog.values())
+    again = prefill(eid).json()  # a second run adds no second copy
+    assert len(gwp_rows(eid)) == 2 and again["suggested"] == 4  # no second copy of a row
+
+
+def test_a_decided_gwp_field_is_kept_and_a_set_it_already_holds_is_not_added_again(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    assert act(eid, "gwp", "edit", {"value": {"set": "AR5", "horizon": "100-year"}}).status_code == 200
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
+    claude.output = {**GOOD, "gwp": [
+        {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")},
+        {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}]}
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["decision"]["value"] == {"set": "AR5", "horizon": "100-year"} and record(eid, "gwp")["suggestion"] is None
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]  # AR5 / 100-year is the decided field
+
+
+def test_a_reviewer_adds_edits_and_removes_gwp_rows_and_the_500_year_horizon_saves(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    assert act(eid, "gwp", "edit", {"value": {"set": "AR6", "horizon": "500-year"}}).status_code == 200
+    added = call("POST", f"{BASE}/{eid}/methodology-review/rows", "a_member", {"group": "gwp"})
+    assert added.status_code == 201, added.text
+    row_id = added.json()["field"]["field_id"]
+    assert row_id.startswith("gwp:") and added.json()["decision"]["value"] == {"set": "", "horizon": ""}
+    assert act(eid, row_id, "accept").status_code == 422  # blank: nothing to accept
+    assert act(eid, row_id, "edit", {"value": {"set": "AR4", "horizon": "20-year"}}).status_code == 200
+    assert act(eid, row_id, "edit", {"value": {"set": "AR4", "horizon": "5-year"}}).status_code == 422
+    removed = call("DELETE", f"{BASE}/{eid}/methodology-review/{row_id}", "a_member")
+    assert removed.status_code == 200 and gwp_rows(eid) == []
+
+
+def test_a_second_run_in_another_order_never_shows_one_set_twice(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
+    ar5 = {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}
+    ar6 = {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")}
+    claude.output = {**GOOD, "gwp": [ar5, ar6]}
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
+    claude.output = {**GOOD, "gwp": [ar6, ar5]}  # the same sets, the other way round
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}  # keeps its set
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
+    claude.output = {**GOOD, "gwp": [ar6]}  # AR6 is already on a row, so it does not go into the fixed field too
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["suggestion"]["value"]["set"] == "AR5"
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
 # --- estimation method for missing data: only if the company has a value -----------------------
 
 EST = "calculation:estimation"
@@ -575,3 +646,23 @@ def test_add_an_item_and_a_reviewer_can_set_not_mentioned_and_decide_a_gas(claud
     assert record(eid, "gas:nf3")["decision"]["value"] == "Not mentioned" and states(eid)["gas:nf3"] == "has_value"
     assert act(eid, "gas:hfcs", "edit", {"value": "Declared absent"}).status_code == 200
     assert shown_ids(eid) & set(GASES) == {"gas:nf3", "gas:hfcs"}
+
+
+def test_a_rejected_fixed_gwp_set_never_comes_back_as_a_row(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
+    ar5 = {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}
+    ar6 = {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")}
+    claude.output = {**GOOD, "gwp": [ar5]}
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
+    assert act(eid, "gwp", "reject", {"reason": "Not the reporting standard"}).status_code == 200
+    assert record(eid, "gwp")["decision"]["status"] == "rejected" and record(eid, "gwp")["decision"]["value"] is None
+    claude.output = {**GOOD, "gwp": [ar5]}  # the report still names the rejected set
+    assert prefill(eid).status_code == 200
+    assert gwp_rows(eid) == []  # the rejection stands: the set is not put back as a row
+    assert record(eid, "gwp")["decision"]["status"] == "rejected"
+    claude.output = {**GOOD, "gwp": [ar5, ar6]}  # another set the report names is still a row
+    assert prefill(eid).status_code == 200
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
+    assert record(eid, "gwp")["decision"]["status"] == "rejected"

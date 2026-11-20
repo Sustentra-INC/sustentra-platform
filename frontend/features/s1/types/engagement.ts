@@ -131,4 +131,7 @@ export interface VehicleGroupSetting {
   fuel_quantity?: number;
   fuel_unit?: "gal" | "L";
   label?: string;
+  /** Set by the server when the group is created and kept through renames, reordering and removal of other
+   *  groups. A mobile line is anchored on it. Send it back unchanged; a new group has none. */
+  group_id?: string;
 }

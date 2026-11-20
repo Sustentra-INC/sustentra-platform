@@ -36,9 +36,11 @@ from backend.app.services.reviewed_evidence import (
 )
 
 IDENTIFIERS = (("Facility", "facility_name"), ("Service address", "service_address"),
-               ("Account number", "account_number"), ("Meter number", "meter_number"))
-# Facility applies to every line; the other three are printed on utility bills, so they apply only
-# to lines fed by one: metered natural gas, electricity, steam, heat and cooling.
+               ("Account number", "account_number"), ("Meter number", "meter_number"),
+               ("Statement date", "statement_date"))
+# Facility and the statement date apply to every line (every bill carries a date); the address, account and
+# meter number are printed on utility bills, so they apply only to lines fed by one: metered natural gas,
+# electricity, steam, heat and cooling.
 UTILITY_ONLY = {"service_address", "account_number", "meter_number"}
 # The schedule's optional columns, in order: (key, label, extracted field name). A column shows
 # only when a row on the line has a value. No extractor produces these fields yet (a column
@@ -59,7 +61,7 @@ ACTIVITY_NOTES = {
 FIELD_LABELS = {"fuel_type": "Fuel type", "activity_quantity": "Activity quantity", "energy_type": "Energy type",
                 "refrigerant_type": "Refrigerant type", "refrigerant_added": "Refrigerant added",
                 "equipment_capacity": "Equipment capacity", "refrigerant_recovered": "Refrigerant recovered",
-                "service_type": "Service type"}
+                "service_type": "Service type", "technician": "Technician"}
 # A review decision -> the history action the page words ("edited" is "corrected", or "added" when the
 # extractor found nothing and the reviewer keyed the value).
 ACTIONS = {"accepted": "accepted", "edited": "corrected", "rejected": "rejected",

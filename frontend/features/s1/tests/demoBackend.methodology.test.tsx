@@ -175,6 +175,37 @@ describe("the demo backend's methodology review", () => {
       expect(within(row("Acquisitions and divestitures")).getByText("Acquired M\u00fcller K\u00e4serei \u2013 Z\u00fcrich (\u745e\u58eb) in March 2025.")).toBeTruthy();
     });
   });
+  describe("GWP sets: the 500-year horizon and one row per extra set", () => {
+    type WireField = { field_id: string; suggestion: { value: unknown } | null; decision: { value: unknown } | null; user_added: boolean };
+    const gwpRows = async () => ((await get()).fields as unknown as WireField[]).filter((f) => f.field_id.startsWith("gwp:"));
+
+    it("a prefill keeps the decided GWP field and adds the report's other set as its own row, once", async () => {
+      await open();
+      await prefillViaUi();
+      const fixed = screen.getAllByText("GWP factors source").map((e) => e.closest("li")).find(Boolean) as HTMLElement; // the heading has the same words
+      expect(within(fixed).getByText("Accepted")).toBeTruthy();
+      expect(within(row("GWP set")).getByText("Suggested by Claude")).toBeTruthy();
+      expect((await gwpRows()).map((r) => r.suggestion?.value)).toEqual([{ set: "AR6", horizon: "500-year" }]);
+      fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+      fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
+      await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/suggested/));
+      expect(await gwpRows()).toHaveLength(1); // a second run adds no second copy
+    });
+
+    it("Add GWP set adds a blank row that takes the 500-year horizon and refuses an unknown one", async () => {
+      await open();
+      fireEvent.click(screen.getByRole("button", { name: "Add GWP set" }));
+      await waitFor(() => expect(screen.getByText("GWP set")).toBeTruthy());
+      const [added] = await gwpRows();
+      expect(added.user_added).toBe(true);
+      const edit = (value: unknown) => demoApi(`${BASE}/${encodeURIComponent(added.field_id)}/edit`, { method: "POST", body: { value } });
+      await expect(edit({ set: "AR6", horizon: "50-year" })).rejects.toMatchObject({ status: 422 });
+      await edit({ set: "AR6", horizon: "500-year" });
+      expect((await gwpRows())[0].decision?.value).toEqual({ set: "AR6", horizon: "500-year" });
+      await demoApi(`${BASE}/gwp/edit`, { method: "POST", body: { value: { set: "AR5", horizon: "500-year" } } });
+    });
+  });
+
   describe("estimation method for missing data (a list, only if the company has a value)", () => {
     const LABEL = "Estimation method for missing data";
     const EST = "calculation:estimation";
