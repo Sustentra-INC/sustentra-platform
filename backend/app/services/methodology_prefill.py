@@ -302,7 +302,7 @@ def dated_tokens(quote: str) -> list[tuple[int, date]]:
     December 31, 2025") take the year of the next dated token. Anything else is not read. Each date comes with
     where it starts in the normalized quote."""
 
-    text = norm(quote)
+    text = match_text(quote)  # a footnote mark stuck to a year ("2024\u00b9") is no digit of it
     found: list[tuple[int, int | None, int, int]] = []  # (position, year or None, month, day)
     for match in _DATE_TOKEN.finditer(text):
         if match["iso"]:
@@ -382,6 +382,9 @@ def _words(text: str) -> list[str]:
     return [t for t in norm(strip_markers(text)).split() if not _MARK_TOKEN.match(t)]
 
 
+_ELLIPSIS = re.compile(r"\s*(?:\[\s*(?:\.{3}|\u2026)\s*\]|\.{3}|\u2026)\s*")
+
+
 def _only_marks(text: str) -> bool:
     return all(not c.isalnum() for c in text)
 
@@ -443,18 +446,20 @@ def locate_quote_across_lines(quote: str, line_alias: str | None, lines: Sequenc
 
 
 def whole_words(quote: str, text: str) -> str:
-    """The quote with a word it cuts in half completed from the line it was read from ("dioxide (CO" -> "dioxide (CO2)")."""
+    """The quote with a word it cuts in half completed from the line it was read from ("dioxide (CO" -> "dioxide (CO2)").
+    The line is read without footnote marks and without regard to case or spacing."""
 
-    q = " ".join(quote.split())
-    at = text.lower().find(q.lower()) if len(text.lower()) == len(text) else -1
-    if at < 0 or not q:
+    plain = strip_markers(text)
+    pattern = r"\s+".join(re.escape(w) for w in quote.split())
+    match = re.search(pattern, plain, re.IGNORECASE) if pattern else None
+    if match is None:
         return quote
-    start, end = at, at + len(q)
-    while start > 0 and q[0].isalnum() and text[start - 1].isalnum() and at - start < 40:
+    start, end = match.start(), match.end()
+    while start > 0 and quote.strip()[:1].isalnum() and plain[start - 1].isalnum() and match.start() - start < 40:
         start -= 1
-    while end < len(text) and q[-1].isalnum() and text[end].isalnum() and end - (at + len(q)) < 40:
+    while end < len(plain) and quote.strip()[-1:].isalnum() and plain[end].isalnum() and end - match.end() < 40:
         end += 1
-    return text[start:end]
+    return plain[start:end]
 
 
 def strip_markers(text: str) -> str:
@@ -510,7 +515,7 @@ def states_a_year(quote: str, end: date | None = None) -> bool:
     A counted span ("three years ended") and a 52 or 53 week year ("52 weeks") never do: the start is not the
     day after the same date a year earlier."""
 
-    text = norm(quote)
+    text = match_text(quote)
     if _COUNTED_YEARS.search(text) or _WEEK_YEAR.search(text):
         return False
     ends = [pos for pos, made in dated_tokens(quote) if end is None or made == end]
@@ -527,7 +532,7 @@ def basis_in_words(quote: str) -> str | None:
     """The period basis the quote's own words give: "calendar (reporting) year" is Calendar year and "fiscal
     year" is Fiscal year (the first one named wins); None when it says neither."""
 
-    text = norm(quote)
+    text = match_text(quote)
     cal, fis = _CALENDAR_WORDS.search(text), _FISCAL_WORDS.search(text)
     if cal and (not fis or cal.start() < fis.start()):
         return rules.PERIOD_BASES[0]
@@ -547,6 +552,17 @@ def single_year_of(quote: str) -> int | None:
     return years.pop() if len(years) == 1 else None
 
 
+# A cover line that only dates the document ("Revision 2, March 2025", "Copyright 2025", "Published ..."): its year
+# is not a comparison year and does not stop a title naming the reporting year.
+_DATE_LINE = re.compile(
+    rf"\b(?:revis\w*|rev\.?|version|v\d+(?:\.\d+)?|copyright|published|publication|updated|issued|effective|dated|"
+    rf"date|approved|released|draft|{_MONTH})\b|\u00a9")
+
+
+def _prints_year(text: str) -> bool:
+    return _TITLE_YEAR.search(norm(text)) is not None and not _DATE_LINE.search(norm(text))
+
+
 def title_year(lines: Sequence[DocumentLine], line: DocumentLine) -> int | None:
     """The year a document's title names, or None when ``line`` is not a clean title. It must be the document's
     first heading: the first of the first 15 lines that prints a year, with that year alone on the WHOLE line (not
@@ -554,12 +570,12 @@ def title_year(lines: Sequence[DocumentLine], line: DocumentLine) -> int | None:
     four digit year (1990 to 2100) on any other of those lines (a comparison year, an audit cycle)."""
 
     head = list(lines[:TITLE_LINES])
-    first = next((x for x in head if _TITLE_YEAR.search(norm(x.text))), None)
+    first = next((x for x in head if x is line and _TITLE_YEAR.search(norm(x.text)) or _prints_year(x.text)), None)
     text = line.text.strip()
     if first is None or first is not line or text.endswith((".", "!", "?")) or _NOT_A_TITLE.match(norm(text)):
         return None
     year = single_year_of(text)
-    if year is None or any(_TITLE_YEAR.search(norm(x.text)) for x in head if x is not line):
+    if year is None or any(_prints_year(x.text) for x in head if x is not line):
         return None
     return year
 
@@ -711,6 +727,7 @@ _INFO_CUE = re.compile(
     r"\bwith\s+the\s+exception\s+of\b|\bexcept(?:ion)?\b|\bembedded\b|\binside\b|\bbuilt\s+into\b|\bincluded\s+in\b|"
     r"\bused\s+(?:by|in)\b|\bthat\s+use[sd]?\b|\bwhich\s+use[sd]?\b|\bapplied\b")
 # Names of emission factor sources: a clause that names one before the set is a factor-source line.
+_EMBEDS_IN_FACTORS = re.compile(r"\bfactors?\b[^;.]*\bembeds?\b|\bembeds?\b[^;.]*\bfactors?\b")  # "the DESNZ factors embed ..."
 _FACTOR_SOURCE = re.compile(
     r"\b(?:DESNZ|DEFRA|CEDA|IEA|EPA|eGRID|ecoinvent|AIB|Green-e|NGA|BEIS)\b", re.IGNORECASE)
 
@@ -730,12 +747,44 @@ def _info_note(gwp: GwpSuggestion, others_general: bool) -> str:
         if not marks:
             continue
         at = min(marks)
-        strong = _INFO_CUE.search(folded[:at]) is not None
+        strong = _INFO_CUE.search(folded[:at]) is not None or _EMBEDS_IN_FACTORS.search(folded[:at]) is not None
         sources = list(dict.fromkeys(m.group(0) for m in _FACTOR_SOURCE.finditer(collapsed)))
         if strong or (others_general and sources and _FACTOR_SOURCE.search(folded[:at])):
-            verb = "embedded in" if "embedded" in folded else "inside"
+            verb = "embedded in" if "embed" in folded else "inside"
             return f"{verb} {', '.join(sources) or 'third-party'} factors"
     return ""
+
+
+def _implied_defaults(suggestions: Sequence[GwpSuggestion]) -> list[GwpSuggestion]:
+    """The general set a sentence names beside the information-only set it is the exception to. "Calculated using the
+    100-year GWPs from the Fifth Assessment Report with the exception of when IEA Emission Factors ... use the Fourth
+    Assessment Report": a reply that gives only AR4 (inside IEA factors) leaves the real default, AR5 100-year, out.
+    Both come out of the one quote: the default is read from the words before the exception, with the same quote
+    and line. Nothing is added for a set the reply already gives, or that the sentence does not name."""
+
+    have: set[str] = {g.set for g in suggestions}
+    added: list[GwpSuggestion] = []
+    for gwp in suggestions:
+        if not _info_note(gwp, False):
+            continue
+        for clause in _CLAUSE.split(gwp.quote):
+            collapsed = " ".join(clause.split())
+            folded = norm(collapsed)
+            if len(folded) != len(collapsed):
+                continue
+            own = [pos for pos in _mentions(folded, _GWP_TERMS[gwp.set])]
+            cue = _INFO_CUE.search(folded)
+            if not own or cue is None or cue.start() > min(own):
+                continue
+            for other, terms in _GWP_TERMS.items():
+                if other in have or other == gwp.set or not any(pos < cue.start() for pos in _mentions(folded, terms)):
+                    continue
+                before = collapsed[:cue.start()]
+                horizon = next((h for h in _HORIZON_TERMS if set_has_horizon(before, other, h)), "Not stated")
+                added.append(GwpSuggestion(set=other, horizon=horizon, applies_to="", document=gwp.document,  # type: ignore[arg-type]
+                                           line=gwp.line, quote=gwp.quote, reason=gwp.reason))
+                have.add(other)
+    return added
 
 
 def _final_note(gwp: GwpSuggestion, suggestions: Sequence[GwpSuggestion]) -> str:
@@ -953,7 +1002,9 @@ _ITEMS = {
     "texts_method": """\
 - texts, one per field, each only if a document states it:
   calculation:approach: how emissions are calculated, in one or two plain sentences (activity data
-  times an emission factor; per category if the document gives it). Do NOT put the estimation of
+  times an emission factor; per category if the document gives it). When the document gives a formula
+  for each category (stationary, mobile, fugitive, electricity, heat and steam), write one short sentence
+  per formula, and quote each formula, the quotes joined by " ... " (each exact and on the document). Do NOT put the estimation of
   missing data here: it has its own item (estimations).
   calculation:process: process-specific calculations, including the tools, models or databases the
   document names for estimates (for example a building performance database, an EPA screening
@@ -996,7 +1047,8 @@ _ITEMS = {
   "Scope 2", "Scope 3", "direct", "indirect"; ISO 14064-1 reports use "Category 1" to "Category 6"),
   often under Operational Boundary, Reporting Boundary, Introduction or Overview. The quote must
   name the scope, as "Scope 1" or in a list ("Scopes 1 and 2"). Choose a scope only when the
-  document says it is reported or covered. A Scope 3 that is reported (a figure, a category, or
+  document says it is reported or covered. Scope 1 and Scope 2 are covered when the report gives their
+  totals, rows or categories, even if no sentence says so: cite the line that reports them. A Scope 3 that is reported (a figure, a category, or
   Scope 3 named beside the location-based Scope 2 figures) is covered, even in a passing sentence. A scope the document calls excluded, outside the
   boundary, or only relevant is not covered: leave it out. Never choose "Not stated": if the
   documents name no scope, leave the field out. "wording" is the company's own label, or "".
@@ -1008,7 +1060,10 @@ _ITEMS = {
   source: "PFCs, NF3 and SF6 emissions have been omitted from reporting as they are not a material
   source" gives gas:pfcs, gas:nf3 and gas:sf6 each "Declared absent"). Give every gas a list names its
   own entry, each with a quote that names that gas (the same sentence may be cited for several gases;
-  copy whole words: "carbon dioxide (CO2)", not "dioxide (CO"). The quote must name the gas. If a
+  copy whole words: "carbon dioxide (CO2)", not "dioxide (CO"). "Any hydrofluorocarbon",
+  "hydrofluorocarbons" and "HFCs" are all gas:hfcs; "perfluorocarbons" and "PFCs" gas:pfcs. A sentence
+  that lists the gases ("carbon dioxide, methane, nitrous oxide and any hydrofluorocarbon") gives each
+  gas it names "Included". The quote must name the gas. If a
   document does not say, leave the gas out: do not guess from the industry.
 """,
     "periods": """\
@@ -1021,7 +1076,9 @@ _ITEMS = {
   ended", for a 52 or 53 week year, or for a period the quote does not call a year, and never give an
   end date the quote does not print. If the quote says "calendar
   year" or "calendar reporting year" and prints no date at all, and the document's title or heading
-  names a single year ("2023 Statement of GHG Emissions"; the document's first heading, not a sentence, and no other year in the first lines), give 1 January to 31 December of that year
+  names a single year ("2023 Statement of GHG Emissions", "2024 Greenhouse Gas Inventory Management
+  Plan"; the document's first heading, not a sentence; a publication, revision or copyright date on the
+  cover does not matter, another reporting year does), give 1 January to 31 December of that year
   and put the title line in title_line and its words in title_quote; otherwise title_line and
   title_quote are "". If the document shows several periods (such as
   the current and the prior year), give only the reporting year of the inventory. At most one.
@@ -1038,7 +1095,9 @@ _ITEMS = {
   the exception of when IEA Emission Factors are applied that use the Fourth Assessment Report", "used
   by the EPA chilled water factors") is information: give it as its own entry with its own quote and
   say so in applies_to; it is never the default. Give the general set even if its sentence is about
-  something else, as long as the quote names the set.
+  something else, as long as the quote names the set. When one sentence names both (the general set,
+  then "with the exception of ..." another), give BOTH entries from that sentence: the general set with
+  its horizon, and the exception as information. Never leave the general set out. Give a horizon only if the quote prints one next to that set; otherwise "Not stated".
 """,
     "entities": """\
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
@@ -1249,8 +1308,10 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     by_alias = {d.alias: d for d in documents}
     seen: set[str] = set()
 
-    def cited(item: _Cited) -> tuple[PrefillDocument, DocumentLine] | None:
-        """The document and line the quote was read from, or None (counted in ``dropped``)."""
+    def cited(item: _Cited, pieces: bool = False) -> tuple[PrefillDocument, DocumentLine] | None:
+        """The document and line the quote was read from, or None (counted in ``dropped``). With ``pieces`` (a text
+        built from several formulas or sentences) the quote may be several quotes joined by "..."; each must be on
+        the document, and the first one's line is the location."""
 
         document = by_alias.get(item.document.strip().upper())
         if document is None:
@@ -1259,6 +1320,18 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         if len(item.quote.strip()) < MIN_QUOTE:  # too short to show anything
             dropped["quote_not_on_document"] += 1
             return None
+        parts = [x.strip() for x in _ELLIPSIS.split(item.quote) if x.strip()] if pieces else []
+        if len(parts) > 1:
+            first: DocumentLine | None = None
+            for index, part in enumerate(parts):
+                found_part = (locate_quote_across_lines(part, item.line if index == 0 else None, document.lines)
+                              if len(part) >= MIN_QUOTE else NotLocated("quote_not_on_document"))
+                if isinstance(found_part, NotLocated):
+                    dropped[found_part.reason] += 1
+                    return None
+                first = first or found_part
+            assert first is not None
+            return document, first
         line = locate_quote_across_lines(item.quote, item.line, document.lines)
         if isinstance(line, NotLocated):
             dropped[line.reason] += 1
@@ -1268,8 +1341,8 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
 
     def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
              numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = (),
-             ok: Callable[[str], bool] | None = None) -> None:
-        found = cited(item)
+             ok: Callable[[str], bool] | None = None, pieces: bool = False) -> None:
+        found = cited(item, pieces)
         if found is None:
             return
         document, line = found
@@ -1338,6 +1411,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped["invalid_value"] += 1
             return None
 
+    category_hits: list[ChoiceSuggestion] = []
     for choice in output.choices:
         value = checked(choice.field_id, choice.value)
         if value == "Yes" and category_terms(choice.field_id):
@@ -1349,7 +1423,33 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
                 dropped["negated"] += 1
                 continue
         if value is not None:
+            before_kept = len(kept)
             keep(choice, value, choice.field_id, None, terms=_CHOICE_TERMS.get(str(value), ()) if choice.field_id == "consolidation_approach" else ())
+            if value == "Yes" and len(kept) > before_kept and category_terms(choice.field_id):
+                category_hits.append(choice)
+    # One quote often names several Scope 2 sources ("steam, district heat and chilled water"): each named source of
+    # the same method is a Yes of its own with the same quote, unless the quote leaves it out.
+    for hit in list(category_hits):
+        parts = hit.field_id.split(":")
+        if parts[1] not in ("location", "market"):
+            continue
+        for other in ("electricity", "heating", "steam", "cooling"):
+            sibling = f"category:{parts[1]}:{other}"
+            if sibling in seen or other == parts[2]:
+                continue
+            if names_option(hit.quote, category_terms(sibling), _EXCLUDING, _INCLUDING) == "yes":
+                derived = hit.model_copy(update={"field_id": sibling})
+                keep(derived, "Yes", sibling, None)
+                category_hits.append(derived)
+    # A Scope 1 or Scope 2 category that is reported and quoted shows that scope is covered: the scope is offered with
+    # the category's own quote (a reviewer sees the same words).
+    scope_of = {"scope1": "Scope 1", "location": "Scope 2", "market": "Scope 2"}
+    scope_evidence: dict[str, tuple[ChoiceSuggestion, PrefillDocument, DocumentLine]] = {}
+    for hit in category_hits:
+        scope = scope_of.get(hit.field_id.split(":")[1])
+        found_hit = cited(hit) if scope else None
+        if scope and found_hit is not None and scope not in scope_evidence:
+            scope_evidence[scope] = (hit, *found_hit)
     entries: list[tuple[EstimationSuggestion, PrefillDocument, DocumentLine]] = []
     for estimate in output.estimations:
         found = cited(estimate)
@@ -1380,6 +1480,12 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             continue
         wording = sel.wording.strip() if sel.wording.strip() and norm(sel.wording) in norm(sel.quote) else ""
         picked.setdefault(sel.field_id, []).append(({"option": option, "wording": wording}, (option, sel.quote, *found, sel.reason)))
+    for scope, (hit, hit_document, hit_line) in scope_evidence.items():
+        listed = {part["option"] for part, _ in picked.get(rules.SCOPES_ID, [])}
+        if scope not in listed:
+            picked.setdefault(rules.SCOPES_ID, []).append((
+                {"option": scope, "wording": ""},
+                (scope, hit.quote, hit_document, hit_line, f"The quote reports a {scope} category, so {scope} is covered.")))
     for field_id, items in picked.items():
         keep_list(field_id, [part for part, _ in items], [q for _, q in items], limit=len((rules.catalog_field(field_id) or {}).get("allowed", [])) + rules.MAX_FREE_OPTIONS)
     for gas in output.gases:
@@ -1401,7 +1507,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
 
                 keep(text, value, text.field_id, None, ok=holds_sentence)
             else:
-                keep(text, value, text.field_id, None)
+                keep(text, value, text.field_id, None, pieces=True)
     for period in output.periods:
         value = checked("reporting_period", {"start": period.start, "end": period.end})
         if value is None:
@@ -1447,9 +1553,10 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
                 {"label": "Year from the title", "quote": period.title_quote.strip(), "document_id": document.document_id,
                  "file_name": document.file_name, "source_reference": line.source_reference}]
     gwp_seen: set[tuple[str, str, str]] = set()
-    for gwp in gwp_in_order(output.gwp):
+    sets_given = [*output.gwp, *_implied_defaults(output.gwp)]
+    for gwp in gwp_in_order(sets_given):
         # The use note is the company's own words, from the clause that names this set, in the quote's casing.
-        note = _final_note(gwp, output.gwp)
+        note = _final_note(gwp, sets_given)
         value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon, "applies_to": note})
         if value is None:
             continue
@@ -1462,7 +1569,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             return set_without_horizon(quote, s_) if h_ == "Not stated" else set_has_horizon(quote, s_, h_)
 
         before = len(kept)
-        if "gwp" not in seen:
+        if "gwp" not in seen and use_of(value.get("applies_to")) != EMBEDDED:  # a set inside other factors is a row
             keep(gwp, value, "gwp", None, ok=ties)
         else:
             keep(gwp, value, None, "gwp", ok=ties)
@@ -1477,7 +1584,11 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         dropped["duplicate_entry"] += len(redundant)
         left = [v for v in sets if v not in redundant]
         kept[:] = [v for v in kept if v not in sets]
-        kept.extend(Verified("gwp" if i == 0 else None, None if i == 0 else "gwp", v.suggestion) for i, v in enumerate(left))
+        field_taken = False
+        for v in left:
+            is_field = not field_taken and use_of(v.suggestion["value"].get("applies_to")) != EMBEDDED
+            field_taken = field_taken or is_field
+            kept.append(Verified("gwp" if is_field else None, None if is_field else "gwp", v.suggestion))
     for entity in output.entities:
         definition = rules.row_field("entity:aaaa")
         assert definition is not None
