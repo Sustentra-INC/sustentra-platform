@@ -28,6 +28,10 @@ export interface CalculationLine {
   created_by_name?: string | null;
   /** The calculation this line feeds; null when none reads it (fugitive, process, steam…). */
   family?: CalculationFamily | null;
+  /** The document type this line holds (id and display name): a document of another type moved here is read again
+   *  as this one. Null when no extractor feeds the line (process, contractual). Absent on an older server. */
+  read_as_id?: string | null;
+  read_as?: string | null;
 }
 
 export type CalculationFamily = "stationary" | "mobile" | "electricity";
@@ -315,12 +319,20 @@ export function deleteEvidenceLine(engagementId: string, lineKey: string): Promi
   return api<LineAnswer>(`${lines(engagementId)}/${encodeURIComponent(lineKey)}`, { method: "DELETE" });
 }
 
-/** Moves one placement of a document. 409 when another tab moved it first. Answers the saved payload. */
+/** The read a move asks for: the document read again as the type of the line it was moved onto. */
+export interface RereadRequest {
+  canonical_type_id: string;
+  type_name: string;
+}
+
+/** Moves one placement of a document. 409 when another tab moved it first. Answers the saved payload, and `reread`
+ *  when the document is of another type than the line it was moved onto: the client then asks the extraction queue
+ *  to read it as that type (`requestRead`). */
 export function moveEvidenceDocument(
   engagementId: string,
   documentId: string,
   move: Placement
-): Promise<{ document_id: string; payload: DocumentDecision }> {
+): Promise<{ document_id: string; payload: DocumentDecision; reread?: RereadRequest | null }> {
   return api(`/engagements/${encodeURIComponent(engagementId)}/documents/${encodeURIComponent(documentId)}/placements`, {
     method: "POST",
     body: move,
@@ -364,6 +376,8 @@ export interface EvidenceActivityItem {
   to_label?: string;
   facility_id?: string;
   facility_name?: string;
+  /** The move had the document read again as this type (display name). */
+  reread_as_label?: string;
   /** The reviewer took Claude's suggestion. */
   suggested?: boolean;
 }

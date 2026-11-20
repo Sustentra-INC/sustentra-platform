@@ -117,7 +117,7 @@ function evidenceEventText(event: EvidenceActivityItem, filename: Map<string, st
       return `deleted the line ${event.label ?? ""}${moved}`;
     }
     case "evidence_document_moved":
-      return `moved ${(event.document_id && filename.get(event.document_id)) || "a document"} from ${event.from_label ?? "its place"} to ${event.to_label ?? "another place"}`;
+      return `moved ${(event.document_id && filename.get(event.document_id)) || "a document"} from ${event.from_label ?? "its place"} to ${event.to_label ?? "another place"}${event.reread_as_label ? `, and had it read again as ${event.reread_as_label}` : ""}`;
     case "evidence_document_facility_set":
       return `placed ${(event.document_id && filename.get(event.document_id)) || "a document"} on ${event.facility_name ?? "a facility"}${event.suggested ? ", as Claude suggested" : ""}`;
   }

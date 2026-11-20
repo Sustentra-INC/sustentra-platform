@@ -48,6 +48,8 @@ BLOCK_NAMES = {
     cl.BLOCK_UNASSIGNED: "Unassigned documents",
     cl.SUPPORTING_UNASSIGNED: "Unassigned supporting evidence",
 }
+# A document in one of these states is already being read: moving it asks for no new read.
+NO_REREAD_STATES = frozenset({"queued", "in_progress"})
 STALE_MOVE = "This document was already moved from there. Reload Evidence to see where it is now."
 
 
@@ -158,6 +160,20 @@ async def _save_chain(db: AsyncSession, engagement: dict[str, Any], user: Curren
         db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind="document", item_key=document_id,
         payload=payload, user_id=user.id)
     return payload
+
+
+def _reread_for(loaded: Loaded, doc: DocState, target: str) -> dict[str, str] | None:
+    """The read a move onto ``target`` asks for: the document read again as the line's type, when that type is
+    not the one it was read as (a summary document, an unidentified one, a bill of another kind). None for a
+    block, a line no extractor feeds, a document of the line's type already, or one being read right now."""
+
+    line = next((ln for ln in loaded.lines if ln.key == target), None)
+    type_id = cl.line_type_id(line) if line is not None else None
+    if type_id is None or doc.canonical_type_id == type_id:
+        return None
+    if str(doc.document.get("processing_status") or "").lower() in NO_REREAD_STATES:
+        return None
+    return {"canonical_type_id": type_id, "type_name": str(cl.type_name(type_id))}
 
 
 def _place_label(loaded: Loaded, key: str) -> str:
@@ -310,7 +326,13 @@ async def move_document(
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict[str, Any]:
     """Move one of a document's placements. ``from`` must be a place the document is in now, or the
-    answer is 409 and nothing is saved (another tab moved it first). Answers with the saved payload."""
+    answer is 409 and nothing is saved (another tab moved it first). Answers with the saved payload.
+
+    A document moved onto a line of another type also answers ``reread``: ``{canonical_type_id, type_name}``,
+    the type the client asks the extraction queue to read it as (POST /documents/{id}/processing-runs with
+    ``canonical_type_id_override``). The earlier extraction stays in the record, and nothing decided on
+    it applies to the new values, which start unreviewed. The saved move then covers every place the
+    document is in (``from`` "*"), since its records will be filed again by the new read."""
 
     if not workpaper_item_service.ITEM_KEY.match(document_id):
         raise HTTPException(status_code=404, detail="That document isn't on the Evidence page for this engagement.")
@@ -329,12 +351,15 @@ async def move_document(
         raise HTTPException(status_code=422, detail="The document is already there.")
     existing = decisions.get(document_id) or {}
     move = {"from": source, "to": target}
-    payload = await _save_chain(db, engagement, user, document_id, existing,
-                                _next_chain(_chain(existing), move, doc, known))
+    reread = _reread_for(loaded, doc, target)
+    chain = [{"from": cl.ALL_PLACES, "to": target}] if reread else _next_chain(_chain(existing), move, doc, known)
+    payload = await _save_chain(db, engagement, user, document_id, existing, chain)
     await _audit(db, request, user, DOCUMENT_MOVED, engagement,
                  {"document_id": document_id, "from": source, "to": target,
-                  "from_label": _place_label(loaded, source), "to_label": _place_label(loaded, target)})
-    return {"document_id": document_id, "payload": payload}
+                  "from_label": _place_label(loaded, source), "to_label": _place_label(loaded, target),
+                  **({"reread_as": reread["canonical_type_id"], "reread_as_label": reread["type_name"]}
+                     if reread else {})})
+    return {"document_id": document_id, "payload": payload, "reread": reread}
 
 
 # --- a document's facility --------------------------------------------------------------------
@@ -431,7 +456,7 @@ async def evidence_activity(
             "actor_name": r["actor_name"] or ("Unknown user" if r["actor_user_id"] else None),
             **{k: meta.get(k) for k in ("line_key", "label", "level2_label", "old_label", "new_label",
                                         "documents_moved", "document_id", "from", "to", "from_label", "to_label",
-                                        "facility_id", "facility_name", "suggested")
+                                        "facility_id", "facility_name", "suggested", "reread_as", "reread_as_label")
                if k in meta},
         })
     next_cursor = audit_query.encode_cursor(rows[-1]["created_at"], rows[-1]["id"], scope) if more and rows else None

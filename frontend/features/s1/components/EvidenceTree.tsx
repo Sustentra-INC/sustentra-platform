@@ -36,6 +36,14 @@ import { ContainerStateSurface } from "./ContainerStateSurface";
  * what is open is kept by the app, so it survives a visit to a document or a schedule.
  */
 
+/** A re-read the reviewer's move asked for, by document id: reading now, or failed (the document stays where it was moved). */
+export interface RereadState {
+  typeId: string;
+  typeName: string;
+  status: "reading" | "failed";
+  message?: string;
+}
+
 export interface EvidenceTreeProps {
   engagement: EngagementConfig;
   /** Changes when the evidence changes (a read finished, a file arrived): the tree loads again. */
@@ -59,6 +67,10 @@ export interface EvidenceTreeProps {
   onRenameLine: (line: CalculationLine, label: string) => Promise<void>;
   /** Resolves with how many documents moved to Unassigned supporting evidence. */
   onDeleteLine: (line: CalculationLine) => Promise<number>;
+  /** Re-reads that moves asked for, by document id. */
+  rereads?: Record<string, RereadState>;
+  /** Asks again for a failed re-read. */
+  onRetryReread?: (documentId: string) => void;
   /** Gives the app a chance to handle an ended session; true when it did. */
   onError?: (error: unknown) => boolean;
   writesEnabled: boolean;
@@ -209,6 +221,19 @@ export function EvidenceTree(props: EvidenceTreeProps) {
             </span>
           ) : null}
           {section === BLOCK_UNASSIGNED ? <span>{processingText(doc.processing_status)}</span> : null}
+          {props.rereads?.[doc.document_id]?.status === "reading" ? (
+            <span role="status">Re-reading as {props.rereads[doc.document_id].typeName}…</span>
+          ) : null}
+          {props.rereads?.[doc.document_id]?.status === "failed" ? (
+            <span role="alert">
+              Couldn&apos;t re-read as {props.rereads[doc.document_id].typeName}. {props.rereads[doc.document_id].message}{" "}
+              {props.onRetryReread ? (
+                <button className="s1-linklike" type="button" onClick={() => props.onRetryReread!(doc.document_id)}>
+                  Try again
+                </button>
+              ) : null}
+            </span>
+          ) : null}
           {doc.flags.includes("unknown_line") ? <span>Its line was deleted</span> : null}
           {also.map((l) => (
             <span key={l.key} className="s1-et-also">
@@ -779,7 +804,8 @@ function MoveDialog({
   const fromSummary = from === BLOCK_SUMMARY || section === BLOCK_SUMMARY;
   // What changes: the values this placement holds, and the lines whose calculations read them.
   let consequence: string | null = null;
-  if (needsConfirm && !fromSummary) {
+  const rereadAs = toLine?.read_as && doc.detected_type !== toLine.read_as ? toLine.read_as : null;
+  if (needsConfirm && !fromSummary && !rereadAs) {
     const n = doc.values;
     const fromName = lineMap.has(from) ? placeLabel(from) : null;
     const toName = toLine ? placeLabel(to) : null;
@@ -788,9 +814,12 @@ function MoveDialog({
     else if (toName) consequence = `${valuesText(n)} to ${toName}. Its calculation changes.`;
     else if (fromName) consequence = `${valuesText(n)} out of ${fromName}. Its calculation changes.`;
   }
-  // Moves that are allowed but whose values will not count where they land.
+  // Moves that are allowed but whose values will not count where they land. A line that holds a document type
+  // reads the document again as that type, so its values are new, and start unreviewed.
   let warning: string | null = null;
-  if (toLine && fromSummary) {
+  if (rereadAs) {
+    warning = `The document will be read again as ${rereadAs}. The values it gives start unreviewed, and the earlier reading stays in the record.`;
+  } else if (toLine && fromSummary) {
     warning = "This is a summary document, and its values don't feed lines. Moving it here changes no calculation.";
   } else if (toLine && doc.value_family && toLine.family !== doc.value_family) {
     const why = toLine.family ? `it calculates ${FAMILY_WORDS[toLine.family]}` : "no calculation reads this kind of line";

@@ -36,6 +36,7 @@ import {
   unmatchedFacilities,
 } from "../utils/documentView";
 import { ExtractionReview } from "../components/ExtractionReview";
+import type { RereadState } from "../components/EvidenceTree";
 import { EvidenceWorkspace, type WorkspaceProblem } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
 import { logout } from "../../auth/api";
@@ -458,6 +459,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   // Reads a reviewer asked for (setting a document's type), by run id, with the banner title to
   // use if one fails after the request has answered.
   const rereadRuns = useRef(new Map<string, string>());
+  // Re-reads a move onto a line of another type asked for, by document id (shown on the document's row).
+  const [rereads, setRereads] = useState<Record<string, RereadState>>({});
 
   /** The Evidence banner for an upload batch: the files that weren't uploaded or weren't read.
    *  `refreshBackendWorkspace` clears the banner as it starts, so this is set after a refresh. */
@@ -479,6 +482,14 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       if (rereadTitle !== undefined) {
         rereadRuns.current.delete(run.run_id);
         if (run.status === "failed") problem = { title: rereadTitle, message: readFailureMessage(run) };
+        setRereads((cur) => {
+          const shown = cur[run.document_id];
+          if (!shown) return cur;
+          if (run.status === "failed") return { ...cur, [run.document_id]: { ...shown, status: "failed", message: readFailureMessage(run) } };
+          const { [run.document_id]: _done, ...rest } = cur;
+          void _done;
+          return rest;
+        });
         continue;
       }
       const name = batch.names.get(run.document_id);
@@ -686,7 +697,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     }
   }
 
-  /** Moves one placement of a document on the server (409 when it was already moved from there). */
+  /** Moves one placement of a document on the server (409 when it was already moved from there). A document moved
+   *  onto a line of another type is then read again as that type: the move is saved first, so if the read fails the
+   *  document stays where it was put and the page says so. */
   async function moveDocumentPlacement(documentId: string, move: Placement) {
     const id = engagement.engagementId;
     if (dataMode === "backend") {
@@ -695,11 +708,12 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       // A save of this document that is already on its way finishes first.
       await workpaper.whenSaved("document", documentId);
     }
-    const { payload } = await moveEvidenceDocument(id, documentId, move);
+    const { payload, reread } = await moveEvidenceDocument(id, documentId, move);
     if (!stillOpen(id)) return;
     if (dataMode === "backend") workpaper.markSaved("document", documentId, payload);
     setDocumentDecisions((cur) => ({ ...cur, [documentId]: payload }));
     void refreshEvidenceActivity(id);
+    if (reread && dataMode === "backend") void rereadAs(documentId, reread.canonical_type_id, reread.type_name);
   }
 
   /** "Place on <facility>": the reviewer takes Claude's suggestion, which is their own facility decision (audited). */
@@ -903,8 +917,19 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   /** Ask for a document to be read as a type the reviewer set. A read that is only queued is
    *  followed by the runs hook; its failure is told when it finishes (handleReadsFinished). */
-  async function rereadAs(documentId: string, typeId: string) {
+  async function rereadAs(documentId: string, typeId: string, typeName?: string) {
     const title = "Couldn't read the document as that type";
+    // A move onto a line of another type shows "Re-reading as <type>…" on the document's row until the read ends.
+    const showOnRow = (state: RereadState | null) =>
+      setRereads((cur) => {
+        const { [documentId]: _gone, ...rest } = cur;
+        void _gone;
+        return state ? { ...rest, [documentId]: state } : rest;
+      });
+    if (typeName) showOnRow({ typeId, typeName, status: "reading" });
+    const failed = (message: string) => {
+      if (typeName) showOnRow({ typeId, typeName, status: "failed", message });
+    };
     try {
       const run = await requestRead(documentId, typeId);
       if (isActiveRun(run)) {
@@ -913,9 +938,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         return;
       }
       await refreshBackendWorkspace("populated");
-      if (run.status === "failed") setBackendError({ title, message: readFailureMessage(run) });
+      if (run.status === "failed") {
+        failed(readFailureMessage(run));
+        setBackendError({ title, message: readFailureMessage(run) });
+      } else showOnRow(null);
     } catch (error) {
       if (handleSessionEnded(error)) return;
+      failed(userFacingApiError(error));
       setBackendError({ title, message: userFacingApiError(error) });
     }
   }
@@ -1375,6 +1404,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                     onCreateLine: createLine,
                     onRenameLine: renameLine,
                     onDeleteLine: deleteLine,
+                    rereads,
+                    onRetryReread: (documentId) => {
+                      const shown = rereads[documentId];
+                      if (shown) void rereadAs(documentId, shown.typeId, shown.typeName);
+                    },
                     onError: handleSessionEnded,
                   }
                 : undefined

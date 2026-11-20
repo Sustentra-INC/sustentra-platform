@@ -665,6 +665,64 @@ describe("the move confirm says what changes", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("This changes the calculation for Natural gas · Kent.");
   });
 
+  describe("a line that holds a document type reads the document again as that type", () => {
+    const READ_AS = "Stationary fuel consumption record";
+    const reading = (l: CalculationLine, over: Partial<CalculationLine> = {}) => ({ ...l, read_as_id: "CT-S1-FUELQTY", read_as: READ_AS, ...over });
+    const withReads: TreeData = { ...TREE, lines: [reading(KENT), reading(PLANT), reading(ELEC, { read_as_id: "CT-S2-ELEC", read_as: "Purchased electricity record" })] };
+
+    it("tells the reviewer a summary document is read again, its values start unreviewed and the earlier reading stays", async () => {
+      mocks.byPath = { [TREE_PATH]: withReads };
+      render(<Harness />);
+      const dialog = await openMove("GHG workbook.xlsx");
+      choose(dialog, KENT.key);
+      expect(within(dialog).getByRole("status")).toHaveTextContent(`The document will be read again as ${READ_AS}.`);
+      expect(within(dialog).getByRole("status")).toHaveTextContent("start unreviewed");
+      expect(within(dialog).getByRole("status")).toHaveTextContent("the earlier reading stays in the record");
+      expect(within(dialog).getByRole("status")).not.toHaveTextContent("changes no calculation");
+    });
+
+    it("says the same for a bill of another kind, and nothing for a line of its own type, a block, or a return to Block 1", async () => {
+      // the bills' type is named as the server names it: the line's own type
+      const named: TreeData = JSON.parse(JSON.stringify(withReads));
+      for (const scope of named.blocks.supporting.scopes) for (const c of scope.categories) for (const l2 of c.level2s) for (const n of l2.lines) for (const d of n.documents) d.detected_type = READ_AS;
+      mocks.byPath = { [TREE_PATH]: named };
+      render(<Harness />);
+      const dialog = await openMove("feb.pdf");
+      choose(dialog, ELEC.key);
+      expect(within(dialog).getByRole("status")).toHaveTextContent("The document will be read again as Purchased electricity record.");
+      // the document's type is the Natural gas bill the tree names; a line of the same type needs no new read
+      choose(dialog, PLANT.key);
+      expect(within(dialog).queryByRole("status")).toBeNull();
+      choose(dialog, "block:summary");
+      expect(within(dialog).queryByRole("status")).toBeNull();
+    });
+
+    it("says nothing about a re-read for a line no extractor feeds", async () => {
+      const process = line("s1:process:x:fac-kc01", "Kiln", { category: "process", level2: "x", level2_label: "Kiln", family: null, read_as_id: null, read_as: null });
+      mocks.byPath = { [TREE_PATH]: { ...TREE, lines: [...TREE.lines, process] } };
+      render(<Harness />);
+      const dialog = await openMove("GHG workbook.xlsx");
+      choose(dialog, process.key);
+      expect(within(dialog).getByRole("status")).not.toHaveTextContent("read again");
+    });
+  });
+
+  it("shows Re-reading as <type>… on the row while it reads, and the error and Try again when it fails", async () => {
+    const onRetryReread = vi.fn();
+    const rereads = {
+      feb: { typeId: "CT-S1-FUELQTY", typeName: "Stationary fuel consumption record", status: "reading" as const },
+      mar: { typeId: "CT-S1-FUELQTY", typeName: "Stationary fuel consumption record", status: "failed" as const, message: "The file could not be read." },
+    };
+    render(<Harness rereads={rereads} onRetryReread={onRetryReread} />);
+    await expandAll();
+    expect(screen.getByText("Re-reading as Stationary fuel consumption record…")).toBeInTheDocument();
+    const failed = screen.getByText(/Couldn't re-read as Stationary fuel consumption record\. The file could not be read\./);
+    expect(failed.closest("[role=alert]")).toBeInTheDocument();
+    expect(screen.getByText("mar.pdf")).toBeInTheDocument(); // the document stays visible
+    fireEvent.click(within(failed.closest("[role=alert]") as HTMLElement).getByRole("button", { name: "Try again" }));
+    expect(onRetryReread).toHaveBeenCalledWith("mar");
+  });
+
   it("says why when the target line is one no calculation reads, with non-ASCII names", async () => {
     const odd = line("s1:fugitive:r-404a:fac-zh", "Müller Käserei – Zürich 東京", { category: "fugitive", level2: "r-404a", level2_label: "R-404A", family: null });
     const tree: TreeData = { ...TREE, lines: [...TREE.lines, odd] };

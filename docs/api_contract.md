@@ -413,7 +413,7 @@ text or file name.
 | `POST /v1/engagements/{id}/evidence-lines` | `{category, level2_label, anchor_kind, anchor_id?, label, scope?}` | 201 `{line, evidenceLines}` |
 | `PATCH /v1/engagements/{id}/evidence-lines/{line_key}` | `{label}` | 200 `{line, evidenceLines}` |
 | `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, documents, evidenceLines}` |
-| `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload, reread}` |
 | `POST /v1/engagements/{id}/documents/{document_id}/facility` | `{facility_id, expected_facility_id?}` | 200 `{document_id, payload}` |
 
 * **Create** checks the same as saving the setting (anchor on a Setup facility, vehicle group or the
@@ -457,8 +457,18 @@ Audit events (`target_type` "engagement", `target_id` the engagement):
 | `evidence_line_created` | `line_key, label, level2_label, category` |
 | `evidence_line_renamed` | `line_key, old_label, new_label` |
 | `evidence_line_deleted` | `line_key, label, documents_moved` |
-| `evidence_document_moved` | `document_id, from, to, from_label, to_label` |
+| `evidence_document_moved` | `document_id, from, to, from_label, to_label, reread_as?, reread_as_label?` |
 | `evidence_document_facility_set` | `document_id, facility_id, facility_name, suggested` |
+
+Re-read on move: a document moved onto a line whose type differs from the document's (a summary or workbook document, an
+unidentified one, a bill of another kind) answers `reread: {canonical_type_id, type_name}`, the type of the line
+(`read_as_id` / `read_as` on each line of the evidence tree); otherwise `reread` is null (a block, a line no extractor feeds
+such as process or contractual, a document of the line's type, or one being read now). The move is saved first, as one move
+from `"*"` (every place the document is in), because the new read files its records again. The client then calls
+`POST /v1/documents/{id}/processing-runs` with `canonical_type_id_override` set to `reread.canonical_type_id`: the existing
+extraction queue. The earlier extraction result and reviewer decisions stay in the record; no earlier decision applies to
+the new values, which start unreviewed. The audit row also holds `reread_as` and `reread_as_label`. If the read fails the
+document stays on the line it was moved to, with the failure on its row.
 
 `POST .../documents/{document_id}/facility` places a document on a Setup facility: it saves the reviewer's own facility
 decision (`payload.facilityId`, which wins over every rule), under the engagement's row lock, and writes

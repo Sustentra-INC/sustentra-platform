@@ -199,6 +199,8 @@ class EvidenceTreeService:
 
         def line_dict(line: cl.CalculationLine) -> dict[str, Any]:
             out = line.to_dict()
+            read_as = cl.line_type_id(line)  # a document of another type moved here is read again as this
+            out["read_as_id"], out["read_as"] = read_as, cl.type_name(read_as)
             if line.created_by_user:
                 out["created_by_name"] = (creator_names or {}).get(str(line.created_by)) if line.created_by else None
             return out

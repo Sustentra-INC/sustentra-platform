@@ -40,4 +40,12 @@ describe("the Activity log shows what the server recorded on the Evidence page",
     });
     expect(log.find((e) => e.what.startsWith("moved"))?.what).toBe("moved feb-bill.pdf from A to B");
   });
+
+  it("says when a move had the document read again", () => {
+    const log = engagementActivity({
+      ...base,
+      evidenceEvents: [event({ event_type: "evidence_document_moved", from_label: "Summary documents and workbook", to_label: "Natural gas · Kent", reread_as_label: "Stationary fuel consumption record" })],
+    });
+    expect(log[0].what).toBe("moved a document from Summary documents and workbook to Natural gas · Kent, and had it read again as Stationary fuel consumption record");
+  });
 });
