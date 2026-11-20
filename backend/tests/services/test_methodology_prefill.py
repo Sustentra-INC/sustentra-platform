@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from backend.app.services import methodology_prefill as mp
+from backend.app.services import methodology_review as rules
 from backend.app.services.ai_locator import document_lines
 from backend.tests.services.test_ai_locator import _pdf_like
 
@@ -744,3 +745,111 @@ def test_the_hundred_year_horizon_is_read_in_its_spelled_out_forms(quote: str) -
     assert dict(dropped) == {} and kept[0].suggestion["value"]["horizon"] == "100-year", quote
     kept, dropped = check(answer(gwp=[gwp_item("AR6", "Not stated", quote, "L1")]), [doc([(1, quote)])])
     assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # a stated horizon cannot be "Not stated"
+
+
+# --- scopes covered: a multi-select with its own quote per scope ------------------------------------
+# Synthetic lines modelled on the shapes of a bank's management assertion, a restaurant group's statement
+# and an engineering firm's plan (paraphrased, not copied).
+
+SCOPE_REPORT = [
+    (1, "Management asserts the Scope 1 and Scope 2 emissions of Café Qüebec Holdings for the year ended December 31, 2024."),  # L1
+    (1, "The statement covers Scope 1, Scope 2 and Scope 3 emissions of the group."),                                        # L2
+    (1, "Scope 3 is reported only for category 6, business air travel."),                                                    # L3
+    (1, "Scope 3 emissions are recognised as relevant but outside the 2024 reporting boundary."),                           # L4
+    (1, "Greenhouse gas emissions are shown in the table below."),                                                           # L5
+    (1, "Direct emissions: Scopes 1 and 2. Scope 3 is excluded."),                                                           # L6
+]
+
+
+def scope(option: str, quote: str, line: str, wording: str = "") -> dict[str, str]:
+    return selection(rules.SCOPES_ID, option, quote, line, wording)
+
+
+def test_scopes_covered_is_a_catalog_multiselect_that_must_appear_and_offers_not_stated() -> None:
+    definition = rules.catalog_field(rules.SCOPES_ID)
+    assert definition is not None and definition["kind"] == "multiselect" and definition["required"] is True
+    assert definition["allowed"] == ["Scope 1", "Scope 2", "Scope 3", "Not stated"] and not definition.get("free")
+    assert rules.SCOPES_ID in mp._MULTI_IDS  # the reply schema takes selections for it
+
+
+def test_each_scope_the_document_names_is_kept_with_its_own_quote_and_wording() -> None:
+    kept, dropped = check(answer(selections=[
+        scope("Scope 1", "Scope 1 and Scope 2 emissions of Café Qüebec Holdings", "L1", "Scope 1"),
+        scope("Scope 2", "Scope 1 and Scope 2 emissions of Café Qüebec Holdings", "L1", "Scope 2"),
+        scope("Scope 3", "Scope 3 is reported only for category 6, business air travel", "L3", "category 6, business air travel")]),
+        [doc(SCOPE_REPORT)])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == [rules.SCOPES_ID]
+    [item] = kept
+    assert [v["option"] for v in item.suggestion["value"]] == ["Scope 1", "Scope 2", "Scope 3"]
+    assert item.suggestion["value"][2]["wording"] == "category 6, business air travel"
+    assert [e["quote"] for e in item.suggestion["evidence"]][0].startswith("Scope 1 and Scope 2")
+    assert rules.validate_value(rules.catalog_field(rules.SCOPES_ID) or {}, item.suggestion["value"])  # it is a valid value
+
+
+def test_a_list_of_scopes_names_each_scope_in_it() -> None:
+    kept, dropped = check(answer(selections=[scope(f"Scope {n}", "Scope 1, Scope 2 and Scope 3 emissions of the group", "L2") for n in (1, 2, 3)]),
+                          [doc(SCOPE_REPORT)])
+    assert dict(dropped) == {} and len(kept[0].suggestion["value"]) == 3
+    for line, option, expected in [("Scopes 1 and 2", "Scope 2", "yes"), ("Scopes 1, 2 & 3", "Scope 3", "yes"),
+                                   ("Scopes 1 to 3", "Scope 2", "yes"), ("scope one and scope two", "Scope 2", "yes"),
+                                   ("Scopes 1 and 2", "Scope 3", "no"), ("Scope 13 sites", "Scope 1", "no"),
+                                   ("Sψ Scope 2 — électricité", "Scope 2", "yes")]:
+        assert mp.names_scope(line, option) == expected, line
+
+
+def test_a_scope_the_document_calls_excluded_or_outside_the_boundary_is_not_chosen() -> None:
+    for line, quote in ((4, "Scope 3 emissions are recognised as relevant but outside the 2024 reporting boundary"),
+                        (6, "Scope 3 is excluded")):
+        kept, dropped = check(answer(selections=[scope("Scope 3", quote, f"L{line}")]), [doc(SCOPE_REPORT)])
+        assert kept == [] and dict(dropped) == {"negated": 1}
+    # the same line still gives the scopes it does cover
+    kept, dropped = check(answer(selections=[scope("Scope 1", "Direct emissions: Scopes 1 and 2. Scope 3 is excluded", "L6"),
+                                             scope("Scope 2", "Direct emissions: Scopes 1 and 2. Scope 3 is excluded", "L6"),
+                                             scope("Scope 3", "Direct emissions: Scopes 1 and 2. Scope 3 is excluded", "L6")]),
+                          [doc(SCOPE_REPORT)])
+    assert [v["option"] for v in kept[0].suggestion["value"]] == ["Scope 1", "Scope 2"] and dict(dropped) == {"negated": 1}
+    assert mp.names_scope("Scope 1 and 2 are included, not Scope 3", "Scope 2") == "yes"
+    assert mp.names_scope("Scope 1 and 2 are reported but Scope 3 is excluded", "Scope 1") == "yes"
+
+
+@pytest.mark.parametrize(("sentence", "negated", "kept"), [
+    ("Scope 1 and Scope 2 are not covered by this statement.", ["Scope 1", "Scope 2"], []),
+    ("Scope 1, Scope 2 and Scope 3 emissions are not included.", ["Scope 1", "Scope 2", "Scope 3"], []),
+    ("Scope 3 is out of scope.", ["Scope 3"], []),
+    ("Scope 3 emissions will be disclosed in 2026.", ["Scope 3"], []),
+    ("Scope 1 and Scope 3 are excluded from the boundary.", ["Scope 1", "Scope 3"], []),   # one verdict for the list
+    ("Scopes 1 and 2 are reported. Scope 3 is excluded.", ["Scope 3"], ["Scope 1", "Scope 2"]),  # sentences are separate
+    ("Scopes 1 and 2 are included, not Scope 3.", ["Scope 3"], ["Scope 1", "Scope 2"]),
+    ("Scope 1 and Scope 2 emissions are reported; Scope 3 is not.", ["Scope 3"], ["Scope 1", "Scope 2"]),
+    ("Emissions for Scope 1, Scope 2 and Scope 3 (category 6) are reported.", [], ["Scope 1", "Scope 2", "Scope 3"]),
+    ("Les \u00e9missions de Scope 1 et Scope 2 (caf\u00e9) sont rapport\u00e9es.", [], ["Scope 1", "Scope 2"]),
+])
+def test_a_negation_covers_every_scope_in_its_clause_and_stops_at_the_sentence(sentence: str, negated: list[str], kept: list[str]) -> None:
+    for option in ("Scope 1", "Scope 2", "Scope 3"):
+        expected = "negated" if option in negated else "yes" if option in kept else "no"
+        assert mp.names_scope(sentence, option) == expected, (sentence, option)
+    picks = [scope(o, sentence.rstrip("."), "L1") for o in (*negated, *kept)]
+    got, dropped = check(answer(selections=picks), [doc([(1, sentence)])])
+    assert [v["option"] for v in got[0].suggestion["value"]] == kept if kept else got == []
+    assert dropped.get("negated", 0) == len(negated)
+
+
+def test_a_scope_the_quote_does_not_name_or_not_stated_is_dropped() -> None:
+    kept, dropped = check(answer(selections=[
+        scope("Scope 2", "Greenhouse gas emissions are shown in the table below", "L5"),  # no scope named
+        scope("Not stated", "Greenhouse gas emissions are shown in the table below", "L5"),  # nothing to quote: the reviewer's answer
+        scope("Scope 4", "Scope 1 and Scope 2 emissions", "L1")]), [doc(SCOPE_REPORT)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1, "invalid_value": 2}
+
+
+def test_a_document_that_names_no_scope_gives_no_scope_suggestion_and_the_row_reads_not_detected() -> None:
+    kept, dropped = check(answer(), [doc([(1, "Our sustainability report covers energy and water.")])])
+    assert kept == [] and dict(dropped) == {}
+    record = rules.new_record(rules.SCOPES_ID)
+    meta = {**rules.new_meta(), "prefill_ran_at": "2026-11-20T09:00:00.000Z", "prefill_covered": [f["field_id"] for f in rules.CATALOG]}
+    assert rules.display_state(record, meta) == "not_detected" and rules.display_state(record, rules.new_meta()) == "not_checked"
+
+
+def test_the_prompt_gives_the_scope_wording_cues_and_forbids_choosing_not_stated() -> None:
+    for cue in ("scopes:covered", "Scope 1", "Category 1", "direct", "indirect", "Operational Boundary", "Never choose \"Not stated\""):
+        assert cue in mp.SYSTEM_PROMPT, cue

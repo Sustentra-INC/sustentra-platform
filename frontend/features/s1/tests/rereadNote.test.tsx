@@ -60,9 +60,9 @@ describe("the schedule after a re-read", () => {
   const row = (over: Record<string, unknown>) =>
     ({ record_key: "BILL-1:2", accepted: false, decision: "not_reviewed", ...over }) as unknown as ScheduleRow;
 
-  it("says Review it again on a row the re-read left unreviewed", () => {
-    expect(rowFlag(row({ reread_changed: true }))).toBe("Not reviewed · Review it again");
-    expect(rowFlag(row({}))).toBe("Not reviewed");
+  it("flags a row whose sibling field was rejected as not counted, and nothing on an unreviewed row (those are hidden)", () => {
+    expect(rowFlag(row({ decision: "awaiting_other_fields", rejected_fields: ["Fuel type"] }))).toBe("Not counted — Fuel type rejected");
+    expect(rowFlag(row({}))).toBeNull();
   });
 
   it("says when a correction carried over a changed value, and marks a voided decision in the history", () => {

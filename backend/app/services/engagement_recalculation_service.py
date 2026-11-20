@@ -39,6 +39,7 @@ from backend.app.reference.emission_factor_loader import (
     EmissionFactorReference,
     default_emission_factor_reference,
 )
+from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
 from backend.app.services import emissions_rollup as rollup
 from backend.app.services import recalculation_lines
@@ -74,6 +75,39 @@ log = logging.getLogger(__name__)
 
 RECALCULATED_TYPES = (STATIONARY, MOBILE, ELECTRICITY, REFRIGERANT, THERMAL)
 # A thermal bill's energy type -> its roll-up source (workbook rows 48, 49, 50).
+PLACEMENT_SOURCES = ("stationary_combustion", "mobile_combustion", "purchased_electricity",
+                     "fugitive_refrigerants", "purchased_steam", "purchased_heating")
+# Why a record is on no line, and what to do about it (the Results open item for its category). In a hint,
+# {it} / {them} / {its} follow the number of records.
+NOT_ON_A_LINE_WHY = {
+    "not_on_a_line": "the document is not on a calculation line",
+    "no_calculation_line": "no calculation line exists for it yet",
+    "no_vehicle_group": "no vehicle group is set up",
+    "fuel_shared_by_vehicle_groups": "more than one vehicle group uses the fuel",
+    "facility_not_in_setup": "its facility is not in Setup",
+    "identifier_on_several_facilities": "the account or meter number is listed on more than one Setup facility",
+    "facility_ambiguous": "more than one Setup facility matches the name or address",
+    "facility_suggested_not_confirmed": "Claude suggested a facility and nobody has confirmed it",
+}
+NOT_ON_A_LINE_HINT = {
+    "not_on_a_line": "Place {them} in Evidence.",
+    "no_calculation_line": "Answer the fuel or energy type question in Evidence.",
+    "no_vehicle_group": "Add {it} in Setup.",
+    "fuel_shared_by_vehicle_groups": "Choose the vehicle group in Evidence.",
+    "facility_not_in_setup": "Add {it} in Setup.",
+    "identifier_on_several_facilities": "Choose the facility in Evidence ({its} account or meter number is on "
+                                        "more than one facility in Setup).",
+    "facility_ambiguous": "Choose the facility in Evidence.",
+    "facility_suggested_not_confirmed": "Confirm the suggested facility in Evidence.",
+}
+
+
+def not_on_a_line_hint(reason: str, count: int) -> str:
+    one = count == 1
+    return NOT_ON_A_LINE_HINT[reason].format(it="it" if one else "them", them="it" if one else "them",
+                                             its="its" if one else "their")
+
+
 THERMAL_SOURCE = {"steam": "purchased_steam", "hot_water": "purchased_heating", "chilled_water": "purchased_cooling"}
 STEAM_BTU_PER_LB_RANGE = (500.0, 1600.0)  # saturated and superheated steam, as delivered
 
@@ -400,6 +434,10 @@ def _proration(start: Any, end: Any, period: tuple[date | None, date | None]) ->
 # =========================================================================================
 # Service
 # =========================================================================================
+def _text_of(value: Any) -> str:
+    return str(value).strip() if value is not None else ""
+
+
 def _suggested(item: dict[str, Any]) -> bool:
     """A value Claude read (flag ai_suggested): the workpaper says so and keeps it out of "values extracted"."""
 
@@ -407,13 +445,15 @@ def _suggested(item: dict[str, Any]) -> bool:
 
 
 def _meter_and_page(record: ReviewedRecord) -> tuple[str | None, int | None]:
-    """The meter id a record was read under (the middle of its ``record_key``, "r3:WEC-1:2025-01-01..2025-01-31")
+    """The meter id a record was read under (from its ``record_key``: "r3:WEC-1:2025-01-01..2025-01-31", or "r3:WEC-1" when it has no period)
     and the page its quantity was read from, for the duplicate check."""
 
     field = record.fields.get("activity_quantity") or next(iter(record.fields.values()), None)
     reference = (field.source_reference if field is not None else None) or {}
-    parts = str(reference.get("record_key") or "").split(":")
-    meter = ":".join(parts[1:-1]).replace("_", " ").strip() if len(parts) >= 3 else None
+    parts = str(reference.get("record_key") or "").split(":")[1:]  # "r3" [":" meter] [":" "start..end"]
+    if parts and ".." in parts[-1]:
+        parts = parts[:-1]
+    meter = ":".join(parts).replace("_", " ").strip() or None
     page = reference.get("page_number")
     return (meter or None), (int(page) if isinstance(page, int) else None)
 
@@ -431,6 +471,8 @@ class EngagementRecalculationService:
         self._decisions: dict[str, dict[str, Any]] = {}
         # Set per recalculation, for the calculation lines.
         self._ledger = Ledger()
+        # Claude's facility suggestions by document, read with the records (a suggestion is not a placement).
+        self._suggested_facilities: dict[str, dict[str, Any]] = {}
 
     @property
     def reference(self) -> EmissionFactorReference:
@@ -491,6 +533,8 @@ class EngagementRecalculationService:
             canonical_type_id = str(latest.get("canonical_type_id") or "")
             if canonical_type_id not in RECALCULATED_TYPES:
                 continue
+            if isinstance(latest.get("facility_suggestion"), dict):
+                self._suggested_facilities[document_id] = latest["facility_suggestion"]
             reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
             records.extend(group_reviewed_records(document, canonical_type_id, latest.get("items") or [], reviews))
         return records
@@ -505,14 +549,37 @@ class EngagementRecalculationService:
         inputs = parse_inputs(engagement.get("settings"))
         period = (_date(engagement.get("reporting_period_start")), _date(engagement.get("reporting_period_end")))
         decisions = decisions or {}
-        records, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
+        self._suggested_facilities = {}
+        placed, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
         self._facilities = setup_facilities(engagement.get("settings"))
         self._company = engagement.get("client_name")
         self._decisions = decisions
         self._ledger = Ledger()
+        # Only values whose document is placed on a calculation line count (Claire, Evidence Screen tab I8):
+        # the rest (Unassigned supporting evidence, or moved off its line) feed nothing until placed.
+        settings = engagement.get("settings") or {}
+        filing: recalculation_lines.Filing | None = None
+        placement_unread = False
+        try:
+            filing = recalculation_lines.file_records(self.reference, placed, inputs, settings, decisions,
+                                                      self._facilities, self._company)
+            held = [r for r in placed if self._held_summary(r)]  # counts 0 until a reviewer decides
+            records = [r for r in placed if filing.on_a_line(r) and r not in held]
+            off_line = [r for r in placed if not filing.on_a_line(r) and r not in held]
+        except Exception as exc:  # noqa: BLE001 - a placement that cannot be read must not take the page down
+            # Fail closed: with no placement nothing is known to be on a line, so nothing from evidence counts.
+            log.warning("record placement failed: %s", type(exc).__name__)
+            filing, records, off_line, placement_unread = None, [], [], True
 
         needs_input: list[dict[str, Any]] = []
         awaiting: list[dict[str, Any]] = []
+        if placement_unread:  # every category is partial, so every comparison reads "inputs incomplete"
+            for number, source in enumerate(PLACEMENT_SOURCES):
+                needs_input.append({
+                    "kind": "record_placement", "key": f"record_placement:{source}", "category": source,
+                    "message": ("Where each document sits could not be read, so no value from the evidence is "
+                                "counted and every total is incomplete. Try again, and report it if it persists."
+                                if number == 0 else "Not calculated: where each document sits could not be read.")})
 
         def tag(source: str, asked: int, waiting: int) -> None:
             """The roll-up source each open item belongs to (it marks only that source partial)."""
@@ -535,7 +602,36 @@ class EngagementRecalculationService:
         fugitive = self._refrigerants(records, inputs, period, needs_input, awaiting, not_counted)
         tag("fugitive_refrigerants", *mark)
         thermal_bills: dict[str, list[dict[str, Any]]] = {}
+        mark = (len(needs_input), len(awaiting))
         thermal = self._thermal(records, inputs, period, needs_input, awaiting, not_counted, thermal_bills)
+        tag("purchased_steam", *mark)  # only what the thermal builder did not already file under its own source
+
+        # A record not on a line still raises its own questions (a fuel to choose, a value awaiting review):
+        # a fuel it cannot resolve is what keeps it off a line, so it must stay answerable.
+        extra_inputs, extra_awaiting = self._off_line_questions(off_line, inputs, period)
+        needs_input.extend(n for n in extra_inputs
+                           if n["kind"] != "fuel_choice" or not any(m.get("key") == n["key"] for m in needs_input))
+        awaiting.extend(extra_awaiting)
+        # Accepted values on no line leave their category incomplete: never a clean difference beside them.
+        left_out = self._uncounted_values(off_line, filing, decisions, inputs, period)
+        for (category, reason), count in left_out.pop("by_category").items():
+            needs_input.append({
+                "kind": "not_on_a_line", "key": f"not_on_a_line:{category}:{reason}",
+                **({"category": category} if category != "None" else {}),
+                "message": f"{count} accepted {'record' if count == 1 else 'records'} not counted in this category: "
+                           f"{NOT_ON_A_LINE_WHY[reason]}. {not_on_a_line_hint(reason, count)}"})
+
+        # A statement of account kept beside invoices it does not add up with may count the same usage twice:
+        # an open item, so the category is never shown as complete.
+        flagged: set[str] = set()
+        for record in placed:
+            evidence = self._evidence_record(record)
+            if evidence is not None and evidence.total_check and record.document_id not in flagged:
+                flagged.add(record.document_id)
+                needs_input.append({
+                    "kind": "statement_total_differs", "key": f"statement_total_differs:{record.document_id}",
+                    "category": evidence.category, "document_id": record.document_id,
+                    "message": f"{evidence.file_name}: {evidence.total_check}"})
 
         categories: dict[str, calc.CategoryResult | None] = {
             "stationary_combustion": stationary,
@@ -593,36 +689,139 @@ class EngagementRecalculationService:
             "comparisons": self._comparisons(inputs, totals, categories, incomplete, tolerance, not_in_scope),
             "needs_input": needs_input,
             "awaiting_review": awaiting,
-            "excluded": set_aside + self._outside_period(records, period) + not_counted,
+            "excluded": set_aside + self._outside_period(records, period) + not_counted + left_out.pop("excluded"),
             "not_recalculated": ["Scope 1 fugitive sources other than refrigerants and fire suppression",
                                  "Scope 1 process sources", "Scope 2 cooling"],
             # Documents read: every document whose records fed the recalculation, reviewed or not.
             "documents_considered": len({r.document_id for r in records}),
+            # Accepted values whose documents are not on a calculation line: counted nowhere (see above).
+            "uncounted_values": left_out,
             # Of those, the fully reviewed documents: nothing open on any record (see _documents_reviewed).
             # A partly reviewed document is not counted here, although its reviewed records feed the totals.
             "documents_reviewed": self._documents_reviewed(records, needs_input, awaiting),
             # Missing months, duplicates, overlapping and cross-year bills (formula library Q-001..Q-005).
-            "quality_checks": run_checks([e for r in records if (e := self._evidence_record(r)) is not None], period),
+            # Over every document that exists, placed or not: a bill not on a line yet is not a missing month.
+            "quality_checks": run_checks([e for r in placed if (e := self._evidence_record(r)) is not None], period),
             "rollup": rollup.build_rollup(categories, open_items=open_items, absent=inputs.absent_sources,
                                           reported=inputs.reported, reported_units=inputs.reported_units,
                                           out_of_scope=not_in_scope, tolerance=tolerance, gwp_set=inputs.gwp_set,
                                           ref=self.reference),
         }
-        try:
-            built = recalculation_lines.build(
-                self.reference, self._ledger, records, inputs, engagement.get("settings") or {}, decisions,
-                tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company)
-        except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
-            log.warning("calculation lines failed: %s", type(exc).__name__)
-            built = recalculation_lines.Built(needs_input=[{
-                "kind": "calculation_lines", "key": "calculation_lines",
-                "message": "The calculation lines could not be built. The totals above are unaffected; "
-                           "try again, and report it if it persists."}])
+        built = recalculation_lines.Built()
+        if filing is not None:
+            try:
+                built = recalculation_lines.build(
+                    self.reference, self._ledger, placed, inputs, settings, decisions,
+                    tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company, filing)
+            except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
+                log.warning("calculation lines failed: %s", type(exc).__name__)
+                built = recalculation_lines.Built(needs_input=[{
+                    "kind": "calculation_lines", "key": "calculation_lines",
+                    "message": "The calculation lines could not be built. Try again, and report it if it persists."}])
         response.update(calculation_lines=built.lines, calculation_unplaced=built.unplaced,
                         calculation_line_inputs=built.inputs)
         # Problems with the company's own figures never change a recalculated number or its status.
-        response["needs_input"] = [*needs_input, *built.needs_input]
+        open_inputs = [*needs_input, *built.needs_input]
+        response["needs_input"] = open_inputs
         return response
+
+    def _off_line_questions(self, records: list[ReviewedRecord], inputs: RecalculationInputs,
+                            period: tuple[date | None, date | None]
+                            ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """What the records that are on no line would ask or await if they counted: the questions that
+        name their document, and the fuel choices. Their numbers are discarded."""
+
+        if not records:
+            return [], []
+        kept = self._ledger
+        self._ledger = Ledger()
+        needs: list[dict[str, Any]] = []
+        wait: list[dict[str, Any]] = []
+        try:
+            for source, build in (
+                ("stationary_combustion", lambda: self._stationary(records, inputs, period, needs, wait)),
+                ("mobile_combustion", lambda: self._mobile(records, inputs, period, needs, wait)),
+                ("purchased_electricity", lambda: self._electricity(records, inputs, period, needs, wait, {}, {})),
+                ("fugitive_refrigerants", lambda: self._refrigerants(records, inputs, period, needs, wait, [])),
+            ):
+                asked, waiting = len(needs), len(wait)
+                build()
+                for item in needs[asked:] + wait[waiting:]:
+                    item.setdefault("category", source)
+            asked, waiting = len(needs), len(wait)
+            self._thermal(records, inputs, period, needs, wait, [], {})
+            for item in needs[asked:] + wait[waiting:]:
+                item.setdefault("category", "purchased_steam")
+        finally:
+            self._ledger = kept
+        return [n for n in needs if n["kind"] == "fuel_choice" or n.get("document_id")], wait
+
+    def _uncounted_values(self, records: list[ReviewedRecord], filing: recalculation_lines.Filing | None,
+                          decisions: dict[str, dict[str, Any]], inputs: RecalculationInputs,
+                          period: tuple[date | None, date | None]) -> dict[str, Any]:
+        """Accepted records whose document is not on a calculation line, with why, per document.
+
+        A record counts here when it has an accepted value. Records outside the reporting period are left out
+        (they are listed as such), and ``by_category`` / ``excluded`` feed the open items and the left-out list."""
+
+        outside = {(e["document_id"], e["record"]) for e in self._outside_period(records, period)}
+        group_count: dict[str, int] = {}
+        for _, group in cl.vehicle_group_anchors(inputs.vehicle_groups):
+            fuel = str(group.get("fuel", "")).strip().lower()
+            group_count[fuel] = group_count.get(fuel, 0) + 1
+        entries: dict[tuple[str, str], dict[str, Any]] = {}
+        by_category: Counter[tuple[str, str]] = Counter()
+        types: dict[str, str] = {}
+        for record in records:
+            if cl.tally([record])["accepted"] == 0 or (record.document_id, record.label) in outside:
+                continue
+            reason = self._off_line_reason(record, filing, decisions, group_count)
+            entry = entries.setdefault((record.document_id, reason), {
+                "document_id": record.document_id, "file_name": record.file_name or record.document_id,
+                "reason": reason, "accepted_records": 0})
+            entry["accepted_records"] += 1
+            types.setdefault(record.document_id, record.canonical_type_id)
+            by_category[(str(rollup_category(record.canonical_type_id, record.best("energy_type"))), reason)] += 1
+        documents = sorted(entries.values(), key=lambda d: (str(d["file_name"]).casefold(), d["document_id"], d["reason"]))
+        listed = {d["document_id"]: d for d in documents}
+        return {
+            "accepted_records": sum(d["accepted_records"] for d in documents), "documents": documents,
+            "by_category": dict(by_category),
+            "excluded": [{"document_id": doc, "record": d["file_name"], "canonical_type_id": types[doc], "period": "",
+                          "reason": "not_on_a_calculation_line"} for doc, d in listed.items()],
+        }
+
+    def _off_line_reason(self, record: ReviewedRecord, filing: recalculation_lines.Filing | None,
+                         decisions: dict[str, dict[str, Any]], group_count: dict[str, int]) -> str:
+        """Why a record is on no line: filed there by a reviewer, no vehicle group, a fuel several vehicle groups
+        share, no Setup facility, or no line for it yet (its fuel or gas is not settled)."""
+
+        place = filing.placements.get(id(record)) if filing is not None else None
+        if place is None or (decisions.get(record.document_id) or {}).get("placements"):
+            return "not_on_a_line"
+        if place.anchor_kind == "vehicle_group" and place.level2 and place.anchor_id is None:
+            return ("fuel_shared_by_vehicle_groups" if group_count.get(str(place.level2_label).lower(), 0) > 1
+                    else "no_vehicle_group")
+        if place.anchor_kind == "facility" and place.level2 and place.anchor_id is None:
+            return self._why_no_facility(record, decisions)
+        if not place.level2 or not place.anchor_kind:
+            return "no_calculation_line"
+        return "not_on_a_line"
+
+    def _why_no_facility(self, record: ReviewedRecord, decisions: dict[str, dict[str, Any]]) -> str:
+        """No facility was chosen for the record: its number is on several facilities, the name or address
+        matches several, Claude only suggested one, or nothing in the document matches a Setup facility."""
+
+        found = place_on_facility(self._facilities, decisions, record.document_id, record, self._company)
+        if found.ambiguous:
+            return "identifier_on_several_facilities" if found.note else "facility_ambiguous"
+        suggestion = self._suggested_facilities.get(record.document_id)
+        names_a_place = any(
+            _text_of(record.for_placement(name)) for name in ("facility_name", "service_address"))
+        if (suggestion and not names_a_place and str(suggestion.get("facility_id") or "") in
+                {str(f.get("facilityId")) for f in self._facilities} and str(suggestion.get("quote") or "").strip()):
+            return "facility_suggested_not_confirmed"
+        return "facility_not_in_setup"
 
     @staticmethod
     def _documents_reviewed(records: list[ReviewedRecord], needs_input: list[dict[str, Any]],
@@ -1243,6 +1442,14 @@ class EngagementRecalculationService:
             return number / 1000, "kg"
         return (number, unit) if unit in ("lb", "kg") else None
 
+    @staticmethod
+    def _held_summary(record: ReviewedRecord) -> bool:
+        """A statement of account flagged for double counting that has no period of its own: with no period it
+        would be taken for a whole year, so it counts nothing until a reviewer decides (the open item stays)."""
+
+        return bool(record.best("statement_total_check")
+                    and not record.best("service_period_start") and not record.best("service_period_end"))
+
     def _evidence_record(self, record: ReviewedRecord) -> EvidenceRecord | None:
         """A record as the data quality checks see it (extracted values count before review:
         the checks are about the documents, not the numbers)."""
@@ -1285,7 +1492,8 @@ class EngagementRecalculationService:
                               revises=str(record.best("supersedes_reference") or "") or None,
                               revises_key=_source_value(record, "supersedes_reference", "reference_key"),
                               bill_ids=tuple(_source_value(record, "activity_quantity", "bill_ids") or ()),
-                              meter=meter, page=page)
+                              meter=meter, page=page,
+                              total_check=str(record.best("statement_total_check") or "") or None)
 
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""

@@ -24,7 +24,7 @@ def field(field_id: str) -> dict:
 
 def test_catalog_has_every_field_with_a_valid_unique_key() -> None:
     ids = [f["field_id"] for f in m.CATALOG]
-    assert len(ids) == len(set(ids)) == 34
+    assert len(ids) == len(set(ids)) == 35  # 34 + scopes:covered
     assert all(ITEM_KEY.match(i) for i in ids)
     for expected in ("reporting_period", "consolidation_approach", "category:scope1:fugitive",
                      "category:location:cooling", "category:market:steam", "category:biogenic:indirect",
@@ -430,3 +430,19 @@ def test_a_gwp_set_can_have_no_stated_horizon_and_a_use_note() -> None:
         with pytest.raises(m.MethodologyInvalid):
             m.validate_value(f, bad)
     assert [p["key"] for p in f["parts"]] == ["set", "horizon", "applies_to"] and f["parts"][2]["kind"] == "text"
+
+
+def test_not_stated_stands_alone_on_the_scopes_field_and_is_never_a_free_option() -> None:
+    scopes = field(m.SCOPES_ID)
+    assert m.validate_value(scopes, [pick("scope 2"), pick("Scope 1")]) == [pick("Scope 2"), pick("Scope 1")]
+    assert m.validate_value(scopes, [pick("not  STATED")]) == [pick("Not stated")]
+    with pytest.raises(m.MethodologyInvalid, match="or Not stated if the document does not say"):
+        m.validate_value(scopes, [])
+    with pytest.raises(m.MethodologyInvalid, match="'Not stated' can't be chosen together"):
+        m.validate_value(scopes, [pick("Not stated"), pick("Scope 3")])
+    with pytest.raises(m.MethodologyInvalid, match="choose options from the list"):
+        m.validate_value(scopes, [pick("Scope 4")])
+    records = field("calculation:source_records")  # a field with free additions refuses it as an option of the reviewer's own
+    with pytest.raises(m.MethodologyInvalid, match="'Not stated' can't be added"):
+        m.validate_value(records, [pick("not stated")])
+    assert m.validate_value(field("scope2:instruments"), [pick("None")]) == [pick("None")]  # None still stands alone there

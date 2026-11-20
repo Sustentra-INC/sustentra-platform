@@ -714,7 +714,12 @@ function gasRows(result: Recalculation): GasResultRow[] {
     const match = GAS_KEY.exec(key);
     const out = match ? outputOf(result, key) : null;
     if (!match || !out) return [];
-    const state = gasState(out, result.tolerance_pct);
+    const node = result.rollup?.final_outputs.find((o) => o.key === key)?.node;
+    const partial = node !== undefined && result.rollup?.nodes[node]?.status === "partial";
+    // A value with no reported figure to compare still says it is a lower bound while its sources are open.
+    const state =
+      gasState(out, result.tolerance_pct) ??
+      (partial ? { tone: "open" as const, label: "Partial", detail: "A source is still open, so this recalculated value is a lower bound." } : undefined);
     return [{
       key,
       group: GAS_GROUP[match[1]],
