@@ -356,6 +356,7 @@ class UsageRecord:
     fuel: Located | None = None
     extra: dict[str, Located] = field(default_factory=dict)  # subclass EXTRA_COLUMNS values
     energy: str | None = None  # thermal bills: the energy type told from this line (steam / hot_water / chilled_water)
+    quantity_header: str | None = None  # table lines: the header of the quantity's own column (not the whole header row)
 
 
 @dataclass
@@ -1824,6 +1825,9 @@ class StationaryCombustionExtractor:
                 unit_located=unit_located,
                 hint=hint_cell.text if hint_cell is not None else None,
                 fuel=fuel,
+                # A row with fewer cells than the header, placed by order only, may have shifted: its quantity
+                # column is then not certain, so the whole header row judges it (as before).
+                quantity_header=None if self._shifted_row(row, header_cells) else header_text,
             )
             for key in self.EXTRA_COLUMNS:
                 cell = assigned.get(columns[key]) if key in columns else None
@@ -1833,6 +1837,19 @@ class StationaryCombustionExtractor:
             self._row_dates(record, row, assigned, columns, header_row)
             records.append(record)
         return records
+
+    @staticmethod
+    def _shifted_row(row: Row, header_cells: Sequence[Cell]) -> bool:
+        """True when ``row`` was placed under the header by order alone and has fewer cells than the header:
+        a blank cell may have moved the others one column to the left."""
+
+        if len(row.cells) >= len(header_cells):
+            return False
+        if all(c.box for c in row.cells) and all(h.box for h in header_cells):
+            return False  # placed by geometry
+        if all(c.column for c in row.cells) and all(h.column for h in header_cells):
+            return False  # placed by spreadsheet column
+        return True
 
     def _row_dates(self, record: UsageRecord, row: Row, assigned: dict[int, Cell], columns: dict[str, int],
                    header_row: Row) -> None:
@@ -1858,6 +1875,11 @@ class StationaryCombustionExtractor:
             by_column = {h.column: index for index, h in enumerate(header_cells)}
             return {by_column[c.column]: c for c in row.cells if c.column in by_column}
         if not all(c.box for c in row.cells) or not all(h.box for h in header_cells):
+            if all(c.part for c in row.cells) and all(h.part for h in header_cells):
+                # A CSV row or a delimited line keeps each cell's place, so a blank cell leaves its column
+                # empty instead of shifting the cells after it left.
+                by_part = {h.part: index for index, h in enumerate(header_cells)}
+                return {by_part[c.part]: c for c in row.cells if c.part in by_part}
             for index, cell in enumerate(row.cells[: len(header_cells)]):
                 assigned[index] = cell
             return assigned
