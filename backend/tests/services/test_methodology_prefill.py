@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from backend.app.services import methodology_prefill as mp
+from backend.app.services import methodology_review as rules
 from backend.app.services.ai_locator import document_lines
 from backend.tests.services.test_ai_locator import _pdf_like
 
@@ -593,3 +594,92 @@ def test_a_negated_renewable_energy_credit_is_dropped() -> None:
     kept, dropped = check(answer(selections=[selection(
         "scope2:instruments", "RECs or other energy attribute certificates", line.rstrip("."), "L1")]), [doc([(1, line)])])
     assert kept == [] and dict(dropped) == {"negated": 1}
+
+
+# --- entities: a boundary sentence with no named entity, and optional percentages --------------------
+# Synthetic lines modelled on the shapes of a bank's assertion, a restaurant group's statement and an
+# engineering firm's plan (paraphrased, not copied).
+
+BOUNDARY = [
+    (1, "The boundary covers company-owned or leased buildings (offices, data centres, ATMs), vehicles and aircraft."),             # L1
+    (1, "Our boundary includes all offices where we have full authority to implement operating policies, such as Houston and Farnborough."),  # L2
+    (1, "Café Québec Holdings Inc. and Zürich Büro AG are inside the boundary; Moscow closed in December 2024."),   # L3
+    (1, "Acme Foods Kent LLC: equity share 51%, operational control: yes"),                                                         # L4
+    (1, "Greenhouse gas emissions are shown in the table below."),                                                                  # L5
+]
+
+
+def boundary_text(sentence: str, line: str, quote: str | None = None) -> dict[str, str]:
+    return {"field_id": rules.BOUNDARY_SENTENCE_ID, "value": sentence, **cite(line, quote or sentence)}
+
+
+def named_entity(name: str, quote: str, line: str, equity: float | None = None, control: float | None = None) -> dict[str, Any]:
+    return {"name": name, "facilities": [], "equity_share_pct": equity, "financial_control": control,
+            "operational_control": "Yes", **cite(line, quote)}
+
+
+def test_a_boundary_sentence_with_no_named_entity_is_kept_as_the_value_with_its_quote() -> None:
+    sentence = BOUNDARY[0][1]
+    kept, dropped = check(answer(texts=[boundary_text(sentence, "L1")]), [doc(BOUNDARY)])
+    assert dict(dropped) == {} and [(k.field_id, k.suggestion["value"]) for k in kept] == [(rules.BOUNDARY_SENTENCE_ID, sentence)]
+    assert kept[0].suggestion["quote"] == sentence and kept[0].row_group is None
+
+
+def test_a_boundary_sentence_must_be_printed_in_its_quote() -> None:
+    # a paraphrase as the value, with a real quote beside it: the value shown would not trace to the quote
+    kept, dropped = check(answer(texts=[boundary_text("Everything the company owns is inside", "L1", "company-owned or leased buildings")]),
+                          [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+    kept, dropped = check(answer(texts=[boundary_text("The boundary covers a sentence that is not there.", "L1")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
+    kept, dropped = check(answer(texts=[boundary_text("  ", "L1", "company-owned or leased buildings")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"empty_value": 1}
+
+
+def test_a_boundary_sentence_with_non_ascii_text_and_extra_spacing_is_kept() -> None:
+    sentence = "Our boundary includes all offices where we have full authority to implement operating policies, such as Houston and Farnborough."
+    kept, dropped = check(answer(texts=[boundary_text(sentence.replace(" all ", "  all "), "L2", sentence)]), [doc(BOUNDARY)])
+    assert dict(dropped) == {} and len(kept) == 1
+
+
+def test_entities_named_in_the_boundary_are_kept_without_percentages_when_the_quote_names_them() -> None:
+    kept, dropped = check(answer(entities=[
+        named_entity("Café Québec Holdings Inc.", "Café Québec Holdings Inc. and Zürich Büro AG are inside the boundary", "L3"),
+        named_entity("Zürich Büro AG", "Café Québec Holdings Inc. and Zürich Büro AG are inside the boundary", "L3")]),
+        [doc(BOUNDARY)])
+    assert dict(dropped) == {} and [k.suggestion["value"]["name"] for k in kept] == ["Café Québec Holdings Inc.", "Zürich Büro AG"]
+    assert all(k.row_group == "entities" and k.suggestion["value"]["equity_share_pct"] is None for k in kept)
+    assert all(k.suggestion["value"]["financial_control"] is None for k in kept)
+
+
+def test_an_entity_with_no_percentage_whose_name_the_quote_does_not_print_is_dropped() -> None:
+    kept, dropped = check(answer(entities=[
+        named_entity("Fluor Moscow Office", "Moscow closed in December 2024", "L3"),  # the name is not in the quote
+        named_entity("Moscow", "Moscow closed in December 2024", "L3")]), [doc(BOUNDARY)])
+    assert [k.suggestion["value"]["name"] for k in kept] == ["Moscow"] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+def test_a_stated_percentage_is_still_checked_in_the_quote_and_the_other_may_be_missing() -> None:
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=51)]), [doc(BOUNDARY)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["equity_share_pct"] == 51 and kept[0].suggestion["value"]["financial_control"] is None
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=60)]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # 60 is not printed
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "equity share 51%", "L4", equity=51, control=100)]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # 100 is not printed
+
+
+def test_a_document_that_names_no_entity_and_no_boundary_sentence_gives_neither() -> None:
+    kept, dropped = check(answer(), [doc([(1, "Greenhouse gas emissions are shown in the table below.")])])
+    assert kept == [] and dict(dropped) == {}
+    # a model that tries anyway has no quote that names an entity or says what the boundary covers
+    kept, dropped = check(answer(texts=[boundary_text("The boundary covers every subsidiary.", "L5", "Greenhouse gas emissions are shown")]),
+                          [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+    kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", "Greenhouse gas emissions are shown", "L5")]), [doc(BOUNDARY)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+def test_the_prompt_separates_named_entities_from_the_boundary_sentence_and_makes_percentages_optional() -> None:
+    for words in ("boundary:entities", "Give a percentage only when the cited line prints it", "otherwise null",
+                  "name must be printed in the quote", "gives no entity"):
+        assert words in mp.SYSTEM_PROMPT, words

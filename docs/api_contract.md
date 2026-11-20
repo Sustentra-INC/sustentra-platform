@@ -221,6 +221,7 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   writes a `methodology_decision` audit event with action `reveal`.
 - `POST .../rows` `{group: "entities"|"factor:scope1"|"factor:scope2"|"gwp"}` adds a row under a server-made id (201, the new record plus `field`, its catalog def). `DELETE .../{field_id}` removes a row the reviewer added (answers the record with `removed: true`); the
   row is marked removed, not deleted. A field from the report answers 409 "Reject it instead".
+- Entities and the boundary sentence. `boundary:entities` (text, must appear, catalog `value_note: "Boundary sentence only"`) holds the sentence in which the document says what the boundary covers, when it names no entity: Claude's value must be printed in its own quote, and a document with no such sentence reads Not detected, never an invented one. An entity row's `equity_share_pct` and `financial_control` are each a number from 0 to 100 or `null` (not stated); a new row starts with both `null`. Claude gives a percentage only when it is printed in the quote; an entity with no percentage is kept only when its name is printed in the quote. `name` and `operational_control` (the per-entity Yes / No) stay editable on every entity row.
 - Writes are s1_writer on an open engagement: another org 404, provider_admin 403, archived 409. A move the
   state does not allow is 409 and bad input 422, both with a sentence in `detail`; an unknown field is 404.
   Bodies forbid unknown fields; who acted and when come from the session. Each action writes one

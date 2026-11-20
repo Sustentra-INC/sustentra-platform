@@ -33,6 +33,8 @@ export interface CatalogField {
   required?: boolean;
   /** A multi-select that also takes options of the reviewer's own. */
   free?: boolean;
+  /** A short note shown beside the value ("Boundary sentence only"). */
+  value_note?: string;
 }
 
 export interface MethodologySourceReference {

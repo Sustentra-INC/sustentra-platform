@@ -107,6 +107,14 @@ function valueText(value: MethodologyValue | undefined): string {
   if (typeof value === "object" && typeof value.start === "string" && typeof value.end === "string" && Object.keys(value).length === 2) {
     return `${value.start} to ${value.end}`; // a date range
   }
+  if (typeof value === "object" && typeof value.name === "string" && "operational_control" in value) {
+    // An entity: each percentage is optional, so each is labelled (a bare "51" would not say which one it is).
+    const pct = (v: MethodologyValue | undefined, label: string) => (typeof v === "number" ? [`${label} ${v}%`] : []);
+    const facilities = Array.isArray(value.facilities) && value.facilities.length ? [`facilities: ${value.facilities.join(", ")}`] : [];
+    return [value.name, ...facilities, ...pct(value.equity_share_pct, "equity share"), ...pct(value.financial_control, "financial control"), `operational control: ${valueText(value.operational_control)}`]
+      .filter(Boolean)
+      .join(" · ");
+  }
   if (typeof value === "object") {
     return Object.entries(value)
       .map(([, v]) => valueText(v))
@@ -370,6 +378,7 @@ function FieldRow({
   def,
   record,
   busy,
+  entitiesNamed,
   onAct,
   onOpenDocument,
 }: {
@@ -377,6 +386,8 @@ function FieldRow({
   def: CatalogField;
   record: MethodologyRecord;
   busy: boolean;
+  /** True when at least one entity row has a name: then a boundary sentence is not "the only" thing the report gives. */
+  entitiesNamed: boolean;
   onAct: (run: () => Promise<unknown>) => void;
   onOpenDocument: (documentId: string) => void;
 }) {
@@ -401,6 +412,7 @@ function FieldRow({
       <div className="s1-mb-main">
         <span className="s1-mr-label">{def.label}</span>
         <span className="s1-mr-value">{oldText ? <span>Recorded as: {oldText}</span> : current || <span className="s1-mr-none">{emptyWords(status, record.displayState)}</span>}</span>
+        {def.value_note && !entitiesNamed && current ? <span className="s1-mr-muted">{def.value_note}</span> : null}
         <span className="s1-mb-status">{statusWord(status)}</span>
         {decision && status !== "pending" ? (
           <span className="s1-mr-muted">
@@ -416,6 +428,7 @@ function FieldRow({
         <div className="s1-mb-suggest">
           <span className="s1-chip s1-mb-chip">Suggested by Claude</span>
           <span className="s1-mr-value">{valueText(suggestion.value)}</span>
+          {def.value_note && !entitiesNamed ? <span className="s1-mr-muted">{def.value_note}</span> : null}
           {suggestion.evidence?.length ? (
             <ul className="s1-mb-evidence">
               {suggestion.evidence.map((item, index) => (
@@ -633,6 +646,13 @@ export function BackendMethodologyReview({
   const suggestedDocs = result?.documents_read ?? [];
   const aiOff = aiStatusWords(data.ai);
   const droppedEntries = result ? Object.entries(result.dropped).filter(([, n]) => n > 0) : [];
+  // An entity row counts once it has a name: the reviewer's decision, or Claude's suggestion while still undecided.
+  const entitiesNamed = data.catalog.some((d) => {
+    if (d.kind !== "entity") return false;
+    const r = records.get(d.fieldId);
+    const v = r?.decision && r.decision.status !== "pending" ? r.decision.value : r?.suggestion?.value;
+    return v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.name === "string" && v.name.trim() !== "";
+  });
   const pending = data.fields.filter((r) => r.suggestion && (!r.decision || r.decision.status === "pending")).length;
 
   return (
@@ -726,7 +746,7 @@ export function BackendMethodologyReview({
           </div>
           <ul className="s1-mb-list">
             {defs.map((def) => (
-              <FieldRow key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
+              <FieldRow key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
             ))}
           </ul>
         </section>

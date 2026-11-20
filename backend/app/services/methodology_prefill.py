@@ -107,8 +107,8 @@ class GwpSuggestion(_Cited):
 class EntitySuggestion(_Cited):
     name: str
     facilities: list[str]
-    equity_share_pct: float
-    financial_control: float
+    equity_share_pct: float | None  # null when the document gives none
+    financial_control: float | None  # null when the document gives none
     operational_control: Literal["Yes", "No"]
 
 
@@ -330,8 +330,15 @@ What the items mean
   horizon, give each one separately; do not pick between them.
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
   equity share (percent, 0 to 100), financial control (percent, 0 to 100) and whether the company
-  has operational control (Yes or No). Include an entity only if the cited line states its equity
-  share and control; the numbers must be printed in the quote.
+  has operational control (Yes or No). Give a percentage only when the cited line prints it (the
+  number must be in the quote); otherwise null. The entity's name must be printed in the quote.
+  Name only entities the document names: a sentence that describes the boundary without naming an
+  entity gives no entity, it goes in the text field boundary:entities.
+- texts, field_id boundary:entities: the sentence (or sentences, as written, no more than 2000
+  characters) in which the document says which entities, subsidiaries, sites or kinds of assets the
+  boundary covers ("all offices where the company has full authority", "company-owned or leased
+  buildings and vehicles"). The value is those words, copied from the quote. Leave it out if the
+  document has no such sentence.
 - factors: where the company's emission factors come from, per scope (scope1 or scope2): the
   database (for example the U.S. EPA GHG Emission Factors Hub, or eGRID for electricity) and its
   edition or year, "" if not stated. If the edition is given it must be printed in the quote.
@@ -588,7 +595,14 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             continue
         value = checked(text.field_id, text.value)
         if value is not None:
-            keep(text, value, text.field_id, None)
+            # The boundary sentence is shown as written, so it must be printed in its own quote.
+            if text.field_id == rules.BOUNDARY_SENTENCE_ID:
+                def holds_sentence(quote: str, v: str = value) -> bool:
+                    return norm(v) in norm(quote)
+
+                keep(text, value, text.field_id, None, ok=holds_sentence)
+            else:
+                keep(text, value, text.field_id, None)
     for period in output.periods:
         value = checked("reporting_period", {"start": period.start, "end": period.end})
         if value is None:
@@ -627,7 +641,9 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         except rules.MethodologyInvalid:
             dropped["invalid_value"] += 1
             continue
-        keep(entity, value, None, "entities", numbers=(entity.equity_share_pct, entity.financial_control))
+        given = tuple(n for n in (entity.equity_share_pct, entity.financial_control) if n is not None)
+        # A percentage is checked in the quote. With none given, the quote must name the entity, or nothing ties it.
+        keep(entity, value, None, "entities", numbers=given, words=() if given else [value["name"]])
     for factor in output.factors:
         group = f"factor:{factor.scope}"
         definition = rules.row_field(f"{group}:aaaa")

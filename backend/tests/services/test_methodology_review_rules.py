@@ -24,7 +24,7 @@ def field(field_id: str) -> dict:
 
 def test_catalog_has_every_field_with_a_valid_unique_key() -> None:
     ids = [f["field_id"] for f in m.CATALOG]
-    assert len(ids) == len(set(ids)) == 34
+    assert len(ids) == len(set(ids)) == 35  # 34 + boundary:entities
     assert all(ITEM_KEY.match(i) for i in ids)
     for expected in ("reporting_period", "consolidation_approach", "category:scope1:fugitive",
                      "category:location:cooling", "category:market:steam", "category:biogenic:indirect",
@@ -416,3 +416,43 @@ def test_a_conditional_row_shown_only_by_claudes_suggestion_says_so() -> None:
     assert m.shown_note(f, {**claude_only, "decision": rec(f["field_id"], [pick("None")])["decision"]}, meta, {}) is None
     assert m.shown_note(f, claude_only, {**meta, "revealed": [f["field_id"]]}, {}) is None  # the reviewer added it
     assert m.shown_note(field("calculation:source_records"), claude_only, meta, {}) is None
+
+
+def test_equity_and_financial_control_percentages_are_optional_per_entity() -> None:
+    entity = m.row_field("entity:abcd1234")
+    named = {"name": "Caf\u00e9 Qu\u00e9bec Holdings", "facilities": [], "equity_share_pct": None, "financial_control": None,
+             "operational_control": "Yes"}
+    assert m.validate_value(entity, named) == named  # type: ignore[arg-type]
+    only_equity = {**named, "equity_share_pct": 51}
+    assert m.validate_value(entity, only_equity)["financial_control"] is None  # type: ignore[arg-type]
+    assert m.validate_value(entity, {**named, "equity_share_pct": 0})["equity_share_pct"] == 0  # type: ignore[arg-type]  # a stated 0 is not "not stated"
+    for bad in ({"equity_share_pct": "50"}, {"equity_share_pct": 101}, {"financial_control": True}, {"financial_control": -0.5}):
+        with pytest.raises(m.MethodologyInvalid, match="number from 0 to 100"):
+            m.validate_value(entity, {**named, **bad})  # type: ignore[arg-type]
+    del named["equity_share_pct"]  # the key itself is still required: the value always has the same shape
+    with pytest.raises(m.MethodologyInvalid):
+        m.validate_value(entity, named)  # type: ignore[arg-type]
+    assert m.blank_value("entity:abcd1234")["equity_share_pct"] is None  # a new row has not been given a percentage
+
+
+def test_a_corrected_entity_name_is_saved_and_the_included_yes_no_is_still_there() -> None:
+    entity = m.row_field("entity:abcd1234")
+    assert entity is not None
+    assert [p["key"] for p in entity["parts"]] == ["name", "facilities", "equity_share_pct", "financial_control", "operational_control"]
+    assert entity["parts"][4]["allowed"] == ["Yes", "No"]  # the per-entity Yes / No stays
+    suggested = {"name": "Acme Foods Kent", "facilities": [], "equity_share_pct": None, "financial_control": None,
+                 "operational_control": "Yes"}
+    record = m.with_suggestion(m.new_record("entity:abcd1234"), entity, {"value": suggested, "quote": "Acme Foods Kent is in the boundary"})
+    fixed = m.edit(record, entity, {**suggested, "name": "Acme Foods K\u00e4serei GmbH"}, ACTOR, NOW)
+    assert fixed["decision"]["value"]["name"] == "Acme Foods K\u00e4serei GmbH" and fixed["suggestion"]["value"]["name"] == "Acme Foods Kent"
+    with pytest.raises(m.MethodologyInvalid):
+        m.edit(record, entity, {**suggested, "name": "  "}, ACTOR, NOW)  # a name can be corrected, not blanked
+
+
+def test_the_boundary_sentence_field_is_a_must_appear_text_row_marked_boundary_sentence_only() -> None:
+    f = field(m.BOUNDARY_SENTENCE_ID)
+    assert f["kind"] == "text" and f["required"] is True and f["value_note"] == "Boundary sentence only"
+    record = m.new_record(m.BOUNDARY_SENTENCE_ID)
+    ran = {**m.new_meta(), "prefill_ran_at": "2026-11-20T09:00:00.000Z", "prefill_covered": [x["field_id"] for x in m.CATALOG]}
+    assert m.display_state(record, ran) == "not_detected" and m.display_state(record, m.new_meta()) == "not_checked"
+    assert m.validate_value(f, "Alle B\u00fcros und Fahrzeuge") == "Alle B\u00fcros und Fahrzeuge"
