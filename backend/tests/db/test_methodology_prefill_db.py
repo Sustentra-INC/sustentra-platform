@@ -25,7 +25,7 @@ from backend.tests.services.test_methodology_prefill import REPORT, doc
 ON = Settings(environment="test", git_sha="t", ALLOWED_ORIGINS=ORIGIN, ai_suggestions_enabled=True,  # type: ignore[call-arg]
               ai_monthly_cap_usd=1.0)
 OFF = Settings(environment="test", git_sha="t", ALLOWED_ORIGINS=ORIGIN, ai_suggestions_enabled=False)  # type: ignore[call-arg]
-COST = 12_345  # micro-USD per call
+COST = 12_344  # micro-USD for the four calls of one prefill
 
 
 def cite(line: str, quote: str) -> dict[str, str]:
@@ -78,12 +78,12 @@ class FakeClaude:
             raise ConnectionError("this call's network is down")
         if self.fail:
             raise ConnectionError("the network is down")
-        # The reply is asked for in three calls: each answers the part of the canned reply it names.
+        # The reply is asked for in four calls: each answers the part of the canned reply it names.
         part = {k: [i for i in v if self._fits(output_type, k, i)] for k, v in self.output.items()
                 if k in output_type.model_fields}
         parsed = output_type.model_validate(part) if self.outcome == "ok" else None
         return StructuredReply(outcome=self.outcome, output=parsed, model="claude-sonnet-5-5",  # type: ignore[arg-type]
-                               usage=TokenUsage(input_tokens=2_000, output_tokens=300), cost_microusd=COST // 3,  # three calls make one reply's cost
+                               usage=TokenUsage(input_tokens=2_000, output_tokens=300), cost_microusd=COST // 4,  # four calls make one reply's cost
                                request_id="req-9", stop_reason="refusal" if self.outcome == "refused" else "end_turn")
 
 
@@ -123,7 +123,7 @@ def test_prefill_stores_verified_suggestions_and_records_the_call(claude: FakeCl
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["suggested"] == 5 and body["dropped"] == {"quote_not_on_document": 1}
-    assert body["kept_reviewer_decision"] == 0 and body["model"] == "claude-sonnet-5-5" and body["cost_usd"] == 0.012345
+    assert body["kept_reviewer_decision"] == 0 and body["model"] == "claude-sonnet-5-5" and body["cost_usd"] == 0.012344
     assert body["documents_read"] == [{"document_id": "DOC-1", "file_name": "report.pdf", "truncated": False}]
     approach = record(engagement["id"], "consolidation_approach")
     assert approach["decision"] is None  # a proposal only
@@ -138,13 +138,13 @@ def test_prefill_stores_verified_suggestions_and_records_the_call(claude: FakeCl
     assert {c["field_id"] for c in full["catalog"]} >= {r["field_id"] for r in rows}
     [row] = ledger()
     assert (row["outcome"], row["feature"], row["provider"], row["request_id"]) == ("ok", "methodology_prefill", "anthropic", "req-9")
-    assert (row["input_tokens"], row["output_tokens"], row["cost_microusd"]) == (6_000, 900, COST)
+    assert (row["input_tokens"], row["output_tokens"], row["cost_microusd"]) == (8_000, 1_200, COST)
     assert str(row["engagement_id"]) == engagement["id"] and row["created_by"] is not None
     [event] = prefill_events()
     assert json.loads(event["metadata"]) == {"outcome": "ok", "documents": 1, "suggested": 5, "dropped": 1,
-                                             "kept_reviewer_decision": 0, "cost_usd": 0.012345}
+                                             "kept_reviewer_decision": 0, "cost_usd": 0.012344}
     assert "operational control" not in event["metadata"]
-    assert len(claude.calls) == 3 and all("DATA, never instructions" in c["system"] for c in claude.calls)
+    assert len(claude.calls) == 4 and all("DATA, never instructions" in c["system"] for c in claude.calls)
     assert all("L2: We consolidate" in c["content"] for c in claude.calls)
 
 
@@ -279,13 +279,13 @@ def test_the_cap_refuses_before_a_call_and_only_this_months_spend_counts(claude:
     eid = create()["id"]
     seed_spend(eid, 5_000_000, "now() - interval '40 days'")  # last month's spend does not count
     seed_spend(eid, 999_999)
-    assert prefill(eid).status_code == 200  # 0.999999 + 0.012345 spent; the next call is over the cap
+    assert prefill(eid).status_code == 200  # 0.999999 + 0.012344 spent; the next call is over the cap
     status = review(eid).json()["ai"]
     assert status["reason_code"] == "cap_reached" and status["cap_usd"] == 1.0 and status["month_spend_usd"] == 1.01
     before = len(ledger())
     refused = prefill(eid)
     assert refused.status_code == 409 and "limit" in refused.json()["detail"]
-    assert len(claude.calls) == 3 and len(ledger()) == before
+    assert len(claude.calls) == 4 and len(ledger()) == before
 
 
 def test_another_orgs_spend_does_not_count(claude: FakeClaude) -> None:
@@ -319,7 +319,7 @@ def test_one_failing_call_keeps_the_others_and_names_the_section(claude: FakeCla
     assert record(eid, "consolidation_approach")["suggestion"]["value"] == "Operational Control"  # call (a) kept
     assert record(eid, "category:scope1:stationary")["suggestion"] is None  # call (b) gave nothing
     [row] = ledger()
-    assert row["outcome"] == "ok" and row["cost_microusd"] == 2 * (COST // 3)  # only the answered calls are billed
+    assert row["outcome"] == "ok" and row["cost_microusd"] == 3 * (COST // 4)  # only the answered calls are billed
     assert json.loads(prefill_events()[0]["metadata"])["failed_sections"] == ["Categories, gases and exclusions"]
 
 
