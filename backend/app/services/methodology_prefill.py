@@ -376,13 +376,26 @@ _MARK_TOKEN = re.compile(r"^(?:[\u2022\u00b7\u25aa\u25cf\u25e6\u25a0\u25a1*\-]|\
 _LOOKAHEAD = 12  # lines a quote may run over
 
 
-def _words(text: str) -> list[str]:
-    """The words of a text as printed, without footnote markers, bullets and list numbers."""
+_QUOTE_MARKS = str.maketrans("", "", "\"'`\u00ab\u00bb")
 
-    return [t for t in norm(strip_markers(text)).split() if not _MARK_TOKEN.match(t)]
+
+def _words(text: str) -> list[str]:
+    """The words of a text as printed, without footnote markers, bullets, list numbers and quotation marks ("CO2"
+    in a report is (\u201cCO2\u201d) and the reply copies it as (CO2); \u2019 in "management\u2019s" goes too, on both sides)."""
+
+    out = [t.translate(_QUOTE_MARKS) for t in norm(strip_markers(text)).split() if not _MARK_TOKEN.match(t)]
+    return [t for t in out if t]
 
 
 _ELLIPSIS = re.compile(r"\s*(?:\[\s*(?:\.{3}|\u2026)\s*\]|\.{3}|\u2026)\s*")
+
+
+def _all_at(text: str, needle: str) -> list[int]:
+    found, at = [], text.find(needle)
+    while at >= 0:
+        found.append(at)
+        at = text.find(needle, at + 1)
+    return found
 
 
 def _only_marks(text: str) -> bool:
@@ -439,6 +452,15 @@ def locate_quote_across_lines(quote: str, line_alias: str | None, lines: Sequenc
             if any(at < len(per_line[i]) for at in _find(hay, wanted)):
                 starts.append(i)
                 break
+    if not starts:
+        # A text layer that runs words together ("inmanagement\u2019sassertion") and a reply that spaces them again:
+        # the same letters and digits in the same order, spacing ignored. Long enough that it cannot match by chance.
+        squashed = "".join(wanted)
+        if len(squashed) >= 16:
+            flat = ["".join(tokens) for tokens in per_line]
+            for i in range(len(lines)):
+                if flat[i] and any(at < len(flat[i]) for at in _all_at("".join(flat[i:i + _LOOKAHEAD]), squashed)):
+                    starts.append(i)
     if not starts:
         return NotLocated("quote_not_on_document")
     cited = next((i for i, line in enumerate(lines) if line_alias and line.alias == line_alias.strip().upper()), None)
@@ -565,6 +587,10 @@ def _prints_year(text: str) -> bool:
     return _TITLE_YEAR.search(norm(text)) is not None and not _DATE_LINE.search(norm(text))
 
 
+def _words_beyond_the_year(text: str) -> bool:
+    return len(re.sub(r"[0-9\W_]+", " ", norm(text)).split()) >= 2
+
+
 def title_year(lines: Sequence[DocumentLine], line: DocumentLine) -> int | None:
     """The year a document's title names, or None when ``line`` is not a clean title. It must be the document's
     first heading: the first of the first 15 lines that prints a year, with that year alone on the WHOLE line (not
@@ -572,14 +598,19 @@ def title_year(lines: Sequence[DocumentLine], line: DocumentLine) -> int | None:
     four digit year (1990 to 2100) on any other of those lines (a comparison year, an audit cycle)."""
 
     head = list(lines[:TITLE_LINES])
-    first = next((x for x in head if x is line and _TITLE_YEAR.search(norm(x.text)) or _prints_year(x.text)), None)
     text = line.text.strip()
-    if first is None or first is not line or text.endswith((".", "!", "?")) or _NOT_A_TITLE.match(norm(text)):
+    if line not in head or text.endswith((".", "!", "?")) or _NOT_A_TITLE.match(norm(text)):
         return None
     year = single_year_of(text)
-    if year is None or any(_prints_year(x.text) for x in head if x is not line):
+    if year is None:
         return None
-    return year
+    # A cover prints the year big on a line of its own and the title again in a footer: the same year is no second
+    # year. Another year on any other line of the first lines (a comparison year, an audit cycle) is.
+    if any(_prints_year(x.text) and single_year_of(x.text) != year for x in head if x is not line):
+        return None
+    # The title is the first line that carries more than the year: a bare year line ("2024") is not a heading.
+    first = next((x for x in head if single_year_of(x.text) == year and _words_beyond_the_year(x.text) and not _DATE_LINE.search(norm(x.text))), None)
+    return year if first is line or first is not None and norm(first.text) == norm(text) else None
 
 
 _NEGATIONS = frozenset({"not", "no", "never", "without", "none", "neither", "nor", "cannot"})
