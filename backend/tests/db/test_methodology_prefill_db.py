@@ -41,6 +41,8 @@ GOOD = {
     ],
     "gases": [],
     "texts": [],
+    "estimations": [],
+    "selections": [],
     "periods": [{"start": "2024-01-01", "end": "2024-12-31", **cite("L3", "January 1 to December 31, 2024")}],
     "gwp": [],
     "entities": [{"name": "Acme Foods Kent LLC", "facilities": ["Kent Cannery"], "equity_share_pct": 51,
@@ -168,7 +170,7 @@ def test_an_injected_instruction_changes_nothing_without_a_matching_quote(claude
     eid = create()["id"]
     claude.output = {**GOOD, "choices": [{"field_id": "consolidation_approach", "value": "Equity Share",
                                           **cite("L7", "the company uses the equity share approach")}],
-                     "texts": [], "periods": [], "gases": [], "entities": [], "factors": []}
+                     "texts": [], "estimations": [], "selections": [], "periods": [], "gases": [], "entities": [], "factors": []}
     body = prefill(eid).json()
     assert body["suggested"] == 0 and body["dropped"] == {"quote_not_on_document": 1}
     approach = record(eid, "consolidation_approach")
@@ -212,7 +214,7 @@ def test_rows_read_not_checked_until_a_prefill_finishes_then_not_detected(claude
     before = review(eid).json()
     assert before["prefill_ran_at"] is None and set(states(eid).values()) == {"not_checked"}
     optional = {c["field_id"] for c in before["catalog"] if not c["required"]}
-    assert optional == {"boundary:acquisitions", "boundary:leased_space", *rules.GAS_IDS}
+    assert optional == {"boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "calculation:source_records", "scope2:instruments", *rules.GAS_IDS}
     assert all(f["shown"] is (f["field_id"] not in optional) for f in before["fields"])
     assert prefill(eid).status_code == 200
     after = review(eid).json()
@@ -220,6 +222,7 @@ def test_rows_read_not_checked_until_a_prefill_finishes_then_not_detected(claude
     now = states(eid)
     assert now["consolidation_approach"] == "has_value" and now["reporting_period"] == "has_value"
     assert now["gwp"] == "not_detected" and now["exclusion:boundary"] == "not_detected"
+    assert now["calculation:estimation"] == "not_detected"  # this run covered the newer rows too
     assert "not_checked" not in now.values()
     # the marker is page state, not a field: it is never listed as a workpaper item
     listed = call("GET", f"{BASE}/{eid}/workpaper-items?kind=methodology").json()["items"]
@@ -433,6 +436,100 @@ def test_add_an_item_shows_the_row_as_not_detected_after_a_run_and_it_can_be_edi
     assert act(eid, ACQ, "edit", {"value": 5}).status_code == 422
 
 
+# --- estimation method for missing data: only if the company has a value -----------------------
+
+EST = "calculation:estimation"
+EST_LINES = ["Missing utility invoices are estimated from the average of the adjacent months.",
+             "Where Käserei fuel cards have gaps, prior-year consumption is used (燃料)."]
+
+
+def test_the_estimation_row_is_hidden_until_prefill_finds_it_and_keeps_a_quote_per_entry(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    assert EST not in shown_ids(eid)
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in EST_LINES])])
+    claude.output = {**GOOD, "estimations": [
+        {"source_type": "Utility invoices", "method": "Average of adjacent months", **cite("L9", "Missing utility invoices are estimated")},
+        {"source_type": "Fuel cards", "method": "Prior-year consumption", **cite("L10", "fuel cards have gaps, prior-year consumption is used (燃料)")}]}
+    assert prefill(eid).status_code == 200
+    assert EST in shown_ids(eid)
+    suggestion = record(eid, EST)["suggestion"]
+    assert [e["label"] for e in suggestion["evidence"]] == ["Utility invoices", "Fuel cards"]
+    assert suggestion["value"][1] == {"source_type": "Fuel cards", "method": "Prior-year consumption"}
+    assert act(eid, EST, "accept").status_code == 200
+    assert record(eid, EST)["decision"]["value"] == suggestion["value"]
+
+
+def test_a_reviewer_adds_edits_and_removes_entries_and_the_list_can_be_emptied(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    assert act(eid, EST, "reveal").status_code == 200 and states(eid)[EST] == "not_checked"
+    one = [{"source_type": "Brändstoff 燃料", "method": "Vorjahr × 1,02"}]
+    assert act(eid, EST, "edit", {"value": one}).status_code == 200
+    two = [*one, {"source_type": "Meter readings", "method": "Interpolated"}]
+    assert act(eid, EST, "edit", {"value": two}).status_code == 200
+    assert record(eid, EST)["decision"]["value"] == two
+    assert act(eid, EST, "edit", {"value": one}).status_code == 200  # remove one
+    assert act(eid, EST, "edit", {"value": []}).status_code == 200  # remove all
+    assert record(eid, EST)["decision"]["value"] == [] and EST in shown_ids(eid)
+    dup = [{"source_type": "Fuel", "method": "a"}, {"source_type": "fuel", "method": "b"}]
+    assert act(eid, EST, "edit", {"value": dup}).status_code == 422
+    assert act(eid, EST, "edit", {"value": "average"}).status_code == 422
+
+
+# --- multi-select rows ---------------------------------------------------------------------------
+
+INSTR, RECORDS = "scope2:instruments", "calculation:source_records"
+SEL_LINES = ["We buy RECs for the Tualatin Plant and hold a PPA with W\u00e4rmewerke K\u00e4serei.",
+             "Figures come from utility invoices and fuel card statements."]
+
+
+def test_instrument_types_show_only_when_a_market_based_category_is_yes_and_add_an_item_overrides(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    assert INSTR not in shown_ids(eid) and RECORDS not in shown_ids(eid)
+    assert act(eid, "category:market:electricity", "edit", {"value": "No"}).status_code == 200
+    assert INSTR not in shown_ids(eid)  # a No is not a market-based number
+    assert act(eid, "category:market:steam", "edit", {"value": "Yes"}).status_code == 200
+    assert INSTR in shown_ids(eid) and RECORDS not in shown_ids(eid)
+    assert act(eid, "category:market:steam", "edit", {"value": "Not detected"}).status_code == 200
+    assert INSTR not in shown_ids(eid)  # change of mind: hidden again, nothing was stored for it
+    assert act(eid, RECORDS, "reveal").status_code == 200 and RECORDS in shown_ids(eid)
+
+
+def test_a_claude_yes_on_a_market_category_shows_the_row_until_the_reviewer_rejects_it(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in SEL_LINES])])
+    claude.output = {**GOOD, "choices": [{"field_id": "category:market:electricity", "value": "Yes",
+                                          **cite("L9", "RECs for the Tualatin Plant")}]}
+    # the quote names no category term, but a Yes choice needs none: it is the category's own answer
+    assert prefill(eid).status_code == 200
+    assert record(eid, "category:market:electricity")["suggestion"]["value"] == "Yes" and INSTR in shown_ids(eid)
+    assert act(eid, "category:market:electricity", "reject", {"reason": "Not stated"}).status_code == 200
+    assert INSTR not in shown_ids(eid)
+
+
+def test_prefill_keeps_a_quote_per_option_and_the_reviewer_can_change_the_selection(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in SEL_LINES])])
+    claude.output = {**GOOD, "selections": [
+        {"field_id": INSTR, "option": "RECs or other energy attribute certificates", "wording": "We buy RECs", **cite("L9", "We buy RECs for the Tualatin Plant")},
+        {"field_id": INSTR, "option": "PPA or VPPA", "wording": "a PPA with W\u00e4rmewerke K\u00e4serei", **cite("L9", "a PPA with W\u00e4rmewerke K\u00e4serei")},
+        {"field_id": RECORDS, "option": "Utility invoices", "wording": "", **cite("L10", "utility invoices and fuel card statements")},
+        {"field_id": RECORDS, "option": "Fuel cards", "wording": "", **cite("L10", "utility invoices and fuel card statements")}]}
+    assert prefill(eid).status_code == 200
+    suggestion = record(eid, INSTR)["suggestion"]
+    assert INSTR in shown_ids(eid) and RECORDS in shown_ids(eid)
+    assert [e["label"] for e in suggestion["evidence"]] == ["RECs or other energy attribute certificates", "PPA or VPPA"]
+    assert [v["option"] for v in record(eid, RECORDS)["suggestion"]["value"]] == ["Utility invoices", "Fuel cards"]
+    assert act(eid, INSTR, "accept").status_code == 200
+    chosen = [{"option": "PPA or VPPA", "wording": "our PPA \u2013 W\u00e4rmewerke"}, {"option": "Residual mix", "wording": ""}]
+    assert act(eid, INSTR, "edit", {"value": chosen}).status_code == 200 and record(eid, INSTR)["decision"]["value"] == chosen
+    assert act(eid, INSTR, "edit", {"value": [{"option": "Carbon offsets", "wording": ""}]}).status_code == 422
+    free = [{"option": "Utility invoices", "wording": ""}, {"option": "Lieferscheine \u7eb8\u8d28", "wording": "Papier-Belege"}]
+    assert act(eid, RECORDS, "edit", {"value": free}).status_code == 200
+    empty = act(eid, RECORDS, "edit", {"value": []})  # a decision needs an option
+    assert empty.status_code == 422 and "choose at least one option" in empty.json()["detail"]
+    assert record(eid, RECORDS)["decision"]["value"] == free
+    none_only = act(eid, INSTR, "edit", {"value": [{"option": "None", "wording": ""}]})  # None is the explicit empty answer
+    assert none_only.status_code == 200
 # --- gases covered: one row per gas, "only if the company has a value" -----------------------
 
 GASES = ["gas:co2", "gas:ch4", "gas:n2o", "gas:hfcs", "gas:pfcs", "gas:sf6", "gas:nf3"]

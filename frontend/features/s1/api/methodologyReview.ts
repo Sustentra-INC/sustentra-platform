@@ -7,7 +7,7 @@ import { api } from "../../../lib/api";
  * is recorded by the server: no body below carries a name, a login or a time.
  */
 
-export type MethodologyValue = string | number | boolean | null | string[] | { [key: string]: MethodologyValue };
+export type MethodologyValue = string | number | boolean | null | string[] | MethodologyValue[] | { [key: string]: MethodologyValue };
 
 export interface FieldPart {
   key: string;
@@ -31,6 +31,8 @@ export interface CatalogField {
   userAdded: boolean;
   /** "Must appear" (true or missing) rows are always on the page; false rows show only once they have a value or were added. */
   required?: boolean;
+  /** A multi-select that also takes options of the reviewer's own. */
+  free?: boolean;
 }
 
 export interface MethodologySourceReference {
@@ -52,6 +54,17 @@ export function sourceLocation(ref: MethodologySuggestion["source_reference"] | 
   return typeof page === "number" && Number.isInteger(page) && page > 0 ? `page ${page}` : "";
 }
 
+/** The quote behind one entry or option of a list suggestion. */
+export interface MethodologyEvidence {
+  label: string;
+  quote: string;
+  document_id: string;
+  file_name: string;
+  source_reference?: MethodologySourceReference | string | null;
+  /** True when this quote was cut at 1,000 characters. */
+  quote_truncated?: boolean;
+}
+
 export interface MethodologySuggestion {
   value: MethodologyValue;
   quote: string;
@@ -59,6 +72,10 @@ export interface MethodologySuggestion {
   file_name: string;
   /** An object from the backend; an older record may hold a plain string. */
   source_reference: MethodologySourceReference | string | null;
+  /** A list suggestion (entries, options): one quote per entry, in the value's order. */
+  evidence?: MethodologyEvidence[];
+  /** Entries left out because their quotes did not fit the record (the first ones are kept). */
+  entries_omitted?: number;
   /** True when the stored quote was cut at 1,000 characters (it was verified whole). */
   quote_truncated?: boolean;
   origin: string;
@@ -82,6 +99,8 @@ export interface MethodologyRecord {
   userAdded: boolean;
   /** What an empty row reads: not checked yet (no Claude run), not detected (a run found nothing), or it has a value. */
   displayState?: "not_checked" | "not_detected" | "has_value" | string;
+  /** Why a conditional row is on the page although its condition is not met (a sentence from the server). */
+  shownNote?: string | null;
   /** False for an optional row that is hidden until it has a value or the reviewer adds it. */
   shown?: boolean;
   suggestion: MethodologySuggestion | null;
@@ -128,14 +147,17 @@ export interface PrefillResult {
 const base = (engagementId: string) => `/engagements/${encodeURIComponent(engagementId)}/methodology-review`;
 const field = (engagementId: string, fieldId: string) => `${base(engagementId)}/${encodeURIComponent(fieldId)}`;
 
-type WireRecord = { field_id: string; user_added?: boolean; display_state?: string } & Omit<MethodologyRecord, "fieldId" | "userAdded" | "displayState">;
+type WireRecord = { field_id: string; user_added?: boolean; display_state?: string; shown_note?: string | null } & Omit<
+  MethodologyRecord,
+  "fieldId" | "userAdded" | "displayState" | "shownNote"
+>;
 type WireDef = { field_id: string; group_label: string; allowed_labels?: CatalogField["allowedLabels"]; user_added?: boolean } & Omit<
   CatalogField,
   "fieldId" | "groupLabel" | "allowedLabels" | "userAdded"
 >;
 
-function readRecord({ field_id, user_added, display_state, ...rest }: WireRecord): MethodologyRecord {
-  return { ...rest, fieldId: field_id, userAdded: Boolean(user_added), displayState: display_state };
+function readRecord({ field_id, user_added, display_state, shown_note, ...rest }: WireRecord): MethodologyRecord {
+  return { ...rest, fieldId: field_id, userAdded: Boolean(user_added), displayState: display_state, shownNote: shown_note ?? null };
 }
 
 function readDef({ field_id, group_label, allowed_labels, user_added, ...rest }: WireDef): CatalogField {

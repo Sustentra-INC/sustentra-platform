@@ -71,7 +71,8 @@ def _store(case: dict[str, Any]) -> FakeStore:
             for reading, (value, status) in enumerate(_readings(raw)):
                 add(name, value, None, index, status, reading)
     store.documents.append({"document_id": "D1", "engagement_id": "ENG-1", "org_id": ORG, "file_name": "D1.pdf"})
-    store.results["D1"] = [{"document_id": "D1", "org_id": ORG, "canonical_type_id": canonical, "items": items}]
+    store.results["D1"] = [{"document_id": "D1", "org_id": ORG, "canonical_type_id": canonical, "items": items,
+                            **({"facility_suggestion": case["suggestion"]} if case.get("suggestion") else {})}]
     store.reviews["D1"] = reviews
     return store
 
@@ -128,6 +129,14 @@ def test_the_tree_the_lines_and_the_recalculation_agree_on_where_a_bill_is_place
                 assert row.get("facility_note") is None
             else:
                 assert want_note in (row.get("facility_note") or "")
+        # Claude's suggestion: shown on the row only while the bill awaits a decision (a suggestion, not a placement)
+        suggested = [(row.get("facility_suggestion") or {}).get("facility_id") for row in rows]
+        assert suggested and set(suggested) == {case["expect"].get("suggestion")}
+        for row in rows:
+            if case["expect"].get("suggestion"):
+                assert row["facility_suggestion"]["quote"] == case["suggestion"]["quote"]
+                assert row["facility_suggestion"]["label"] == "Suggested by Claude"
+                assert row["facility_id"] is None  # still unplaced until the reviewer decides
     result = _recalc(store, FACILITIES, company, decisions)
     assert {line["key"] for line in result["calculation_lines"]} == keys
     if case.get("type", "gas") == "gas":  # an electricity bill with no facility is listed under its category instead

@@ -26,6 +26,7 @@ import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig } from "../types";
 import { addedByText, formatPeriod } from "../utils/formatPeriod";
 import { ActionMenu } from "./ActionMenu";
+import { AiFacilityNote } from "./AiFacilityNote";
 import { ContainerStateSurface } from "./ContainerStateSurface";
 
 /**
@@ -50,6 +51,9 @@ export interface EvidenceTreeProps {
   onOpenSetup?: () => void;
   /** Saves one move of one placement; rejects with the reason when it did not save. */
   onMovePlacement: (documentId: string, move: Placement) => Promise<void>;
+  /** The reviewer takes Claude's facility suggestion: places the document on that Setup facility (their own decision,
+   *  audited on the server); rejects with the reason when it did not save. */
+  onPlaceOnFacility?: (documentId: string, facilityId: string) => Promise<void>;
   /** The three line actions run on the server, each with its own audit event; they reject with the reason. */
   onCreateLine: (entry: EvidenceLineSetting) => Promise<void>;
   onRenameLine: (line: CalculationLine, label: string) => Promise<void>;
@@ -81,6 +85,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
   const [reload, setReload] = useState(0);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
+  const [placing, setPlacing] = useState<string | null>(null);
+  const [placeProblem, setPlaceProblem] = useState<{ documentId: string; message: string } | null>(null);
   // A filter opens every row once, so the matches show; the reviewer can still close any of them.
   const openAllOnLoad = useRef(false);
 
@@ -188,6 +194,20 @@ export function EvidenceTree(props: EvidenceTreeProps) {
             <span className="s1-chip">{doc.facility_name}</span>
           ) : null}
           {doc.facility_note ? <span>{doc.facility_note}</span> : null}
+          {doc.facility_suggestion ? (
+            <AiFacilityNote
+              facilityName={doc.facility_suggestion.facility_name}
+              quote={doc.facility_suggestion.quote}
+              where={doc.facility_suggestion.where}
+              disabled={!props.writesEnabled || !props.onPlaceOnFacility || placing === doc.document_id}
+              onPlace={() => void placeOnFacility(doc.document_id, doc.facility_suggestion!.facility_id)}
+            />
+          ) : null}
+          {placeProblem?.documentId === doc.document_id ? (
+            <span role="alert">
+              Couldn&apos;t place the document. {placeProblem.message}
+            </span>
+          ) : null}
           {section === BLOCK_UNASSIGNED ? <span>{processingText(doc.processing_status)}</span> : null}
           {doc.flags.includes("unknown_line") ? <span>Its line was deleted</span> : null}
           {also.map((l) => (
@@ -292,6 +312,22 @@ export function EvidenceTree(props: EvidenceTreeProps) {
     setDialog(null);
     setReload((n) => n + 1);
   };
+
+  /** "Place on <facility>": the reviewer's own decision. The tree loads again, so the row moves to its facility. */
+  async function placeOnFacility(documentId: string, facilityId: string) {
+    if (!props.onPlaceOnFacility) return;
+    setPlacing(documentId);
+    setPlaceProblem(null);
+    try {
+      await guard(() => props.onPlaceOnFacility!(documentId, facilityId));
+      setReload((n) => n + 1);
+    } catch (e) {
+      if (props.onError?.(e)) return;
+      setPlaceProblem({ documentId, message: userFacingApiError(e) });
+    } finally {
+      setPlacing(null);
+    }
+  }
 
   /** Runs one server action. When the server says the page was out of date (409: moved or changed by someone
    *  else; 404: the line is already gone), the tree loads again and the server's sentence is shown. */

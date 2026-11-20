@@ -1411,3 +1411,34 @@ def test_a_group_whose_figures_are_another_unmatched_groups_does_not_take_its_ne
     out = _with_ids([{**b[0], "label": "Vans"}, b[1], b[2]], stored)
     assert out[2]["group_id"] == stored[2]["group_id"]  # Pickups, unchanged, keeps its id
     assert out[0]["group_id"] != stored[1]["group_id"]  # the group named Vans with Trucks' figures does not take Vans'
+
+
+def test_two_swaps_at_once_each_park_on_a_free_place_of_their_own() -> None:
+    default = [cl.Slot("A", {0}), cl.Slot("B", {1}), cl.Slot("C", {2}), cl.Slot("D", {3})]
+    where = lambda *pairs: [cl.Slot(t, set(r)) for t, r in pairs]  # noqa: E731
+    swapped = where(("B", {0}), ("A", {1}), ("D", {2}), ("C", {3}))  # A and B swap, and so do C and D
+    chain = cl.derive_placements(default, swapped)
+    assert chain is not None  # two cycles, and fixed places to park them on: no fall-back to the full chain
+    known = {"A", "B", "C", "D"}
+    assert _resolved(default, chain, known) == sorted((t, tuple(sorted(r)), ()) for t, r in (("B", {0}), ("A", {1}), ("D", {2}), ("C", {3})))
+    assert len(chain) <= 2 * len(default)
+
+
+def test_every_filing_of_three_default_slots_over_three_places_is_derived_when_a_free_place_exists() -> None:
+    """Every way three default slots (two records each) can be filed on three lines plus the three fixed
+    places: the chain is derived (never the full-chain fall-back) and puts every record where it is filed."""
+
+    import itertools
+
+    default = [cl.Slot("A", {0, 1}), cl.Slot("B", {2, 3}), cl.Slot("C", {4, 5})]
+    places = ["A", "B", "C", cl.BLOCK_SUMMARY, cl.BLOCK_UNASSIGNED, cl.SUPPORTING_UNASSIGNED]
+    known = {"A", "B", "C"}
+    for filing in itertools.product(places, repeat=3):
+        used = set(filing) | {"A", "B", "C"}
+        wanted = [cl.Slot(place, set(slot.records)) for slot, place in zip(default, filing, strict=True)]
+        chain = cl.derive_placements(default, wanted)
+        if len(used) < len(places):  # a free fixed place exists: the chain must be derived
+            assert chain is not None, filing
+        if chain is not None:
+            assert _resolved(default, chain, known) == sorted(
+                (s.target, tuple(sorted(s.records)), ()) for s in cl.merge_slots(wanted)), filing

@@ -41,6 +41,16 @@ export interface TreeCounts {
   pct_accepted: number;
 }
 
+export interface TreeFacilitySuggestion {
+  facility_id: string;
+  facility_name: string;
+  /** The words, from the file name or the text, that point at the facility. */
+  quote: string;
+  /** Where the quote is: "the file name", "page 2" or "the text". */
+  where: string;
+  label: string;
+}
+
 export interface TreeDocRow {
   document_id: string;
   file_name: string;
@@ -50,6 +60,8 @@ export interface TreeDocRow {
   facility_name: string | null;
   /** Why the bill's account or meter number did not place it, e.g. "Account 4417-2290-31 is listed on two facilities". */
   facility_note?: string | null;
+  /** Claude's facility suggestion for a bill that names none, while it awaits a decision (the bill is still unplaced). */
+  facility_suggestion?: TreeFacilitySuggestion | null;
   processing_status: string;
   detected_type: string | null;
   /** Keys of the other calculation lines this document feeds. */
@@ -315,10 +327,30 @@ export function moveEvidenceDocument(
   });
 }
 
+/** The reviewer places a document on a Setup facility (their own decision, audited); answers the saved payload. */
+export function setDocumentFacility(
+  engagementId: string,
+  documentId: string,
+  facilityId: string,
+  /** The facility the page believes the document is on now (null: none): the server refuses (409) when another
+   *  reviewer decided meanwhile, instead of overwriting their choice. */
+  expectedFacilityId: string | null
+): Promise<{ document_id: string; payload: DocumentDecision }> {
+  return api(`/engagements/${encodeURIComponent(engagementId)}/documents/${encodeURIComponent(documentId)}/facility`, {
+    method: "POST",
+    body: { facility_id: facilityId, expected_facility_id: expectedFacilityId },
+  });
+}
+
 /** One change recorded by the server on the Evidence page. */
 export interface EvidenceActivityItem {
   id: string;
-  event_type: "evidence_line_created" | "evidence_line_renamed" | "evidence_line_deleted" | "evidence_document_moved";
+  event_type:
+    | "evidence_line_created"
+    | "evidence_line_renamed"
+    | "evidence_line_deleted"
+    | "evidence_document_moved"
+    | "evidence_document_facility_set";
   at: string;
   actor_name: string | null;
   line_key?: string;
@@ -330,6 +362,10 @@ export interface EvidenceActivityItem {
   document_id?: string;
   from_label?: string;
   to_label?: string;
+  facility_id?: string;
+  facility_name?: string;
+  /** The reviewer took Claude's suggestion. */
+  suggested?: boolean;
 }
 
 /** One page (100 at most) of the Evidence changes on the engagement, newest first. `next_cursor` is null on the last. */

@@ -113,6 +113,7 @@ import {
   deleteEvidenceLine,
   getEvidenceActivity,
   moveEvidenceDocument,
+  setDocumentFacility,
   renameEvidenceLine,
   type CalculationLine,
   type EvidenceActivityItem,
@@ -515,6 +516,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   function selectEngagement(id: string) {
     const row = engagements?.find((item) => item.id === id);
     if (!row) return;
+    stillOpen.markOpen(row.id); // answers for the engagement just left are stale from this moment
     flushEngagementSave();
     setEngagement(engagementFromBackend(row));
     setEvidenceEvents([]);
@@ -535,6 +537,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     try {
       const row = await createEngagement(name);
       setEngagements((current) => [row, ...(current ?? [])]);
+      stillOpen.markOpen(row.id);
       flushEngagementSave();
       setEngagement(engagementFromBackend(row));
       setEvidenceEvents([]);
@@ -693,6 +696,20 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       await workpaper.whenSaved("document", documentId);
     }
     const { payload } = await moveEvidenceDocument(id, documentId, move);
+    if (!stillOpen(id)) return;
+    if (dataMode === "backend") workpaper.markSaved("document", documentId, payload);
+    setDocumentDecisions((cur) => ({ ...cur, [documentId]: payload }));
+    void refreshEvidenceActivity(id);
+  }
+
+  /** "Place on <facility>": the reviewer takes Claude's suggestion, which is their own facility decision (audited). */
+  async function placeDocumentOnFacility(documentId: string, facilityId: string) {
+    const id = engagement.engagementId;
+    if (dataMode === "backend") {
+      if (!workpaper.loaded) throw new Error("Your saved work is still loading. Try again in a moment.");
+      await workpaper.whenSaved("document", documentId);
+    }
+    const { payload } = await setDocumentFacility(id, documentId, facilityId, decisionsRef.current[documentId]?.facilityId ?? null);
     if (!stillOpen(id)) return;
     if (dataMode === "backend") workpaper.markSaved("document", documentId, payload);
     setDocumentDecisions((cur) => ({ ...cur, [documentId]: payload }));
@@ -1355,6 +1372,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                     onOpenIdsChange: setEvidenceTreeOpen,
                     onOpenSchedule: (lineKey) => setActiveView({ name: "schedule", lineKey }),
                     onMovePlacement: moveDocumentPlacement,
+                    onPlaceOnFacility: placeDocumentOnFacility,
                     onCreateLine: createLine,
                     onRenameLine: renameLine,
                     onDeleteLine: deleteLine,
@@ -1403,6 +1421,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             initialDocumentId={activeView.documentId}
             initialDocumentName={evidenceView.find((e) => e.documentId === activeView.documentId)?.filename}
             typeItem={evidenceView.find((e) => e.documentId === activeView.documentId)}
+            onPlaceOnFacility={placeDocumentOnFacility}
             initialValueId={activeView.valueId}
             initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}

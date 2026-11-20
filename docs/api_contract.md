@@ -188,9 +188,9 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     value, reason?, by: {name, login}, at}`; a rejected decision has `value: null`. `history` is
     `[{at, by, action, to?}]` (the newest 50 events, fewer if the record would pass 32 KB; the audit log keeps the
     full trail), `action` one of accept, edit, reject, revert, add_row, remove_row.
-  - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp|date_range, allowed?, parts?, user_added}`, in page order: the fixed
+  - `catalog`: `{field_id, group, group_label, label, kind: text|enum|entity|factor|gwp|date_range|entry_list|multiselect, allowed?, free?, shown_if_yes?, parts?, user_added}`, in page order: the fixed
     fields (reporting_period, consolidation_approach, `category:{scope1|location|market|biogenic}:...`,
-    `boundary:{acquisitions|leased_space}` (text, `required: false`: hidden until a value or "Add an item"), `gas:{co2|ch4|n2o|hfcs|pfcs|sf6|nf3}` (group `gases`, enum Included / Declared absent / Not mentioned, `required: false`; kept apart from the Yes / No / Not detected category values; Claude may suggest only Included or Declared absent, with a quote that names the gas), `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`), then the rows the
+    `boundary:{acquisitions|leased_space}` (text, `required: false`: hidden until a value or "Add an item"), `gas:{co2|ch4|n2o|hfcs|pfcs|sf6|nf3}` (group `gases`, enum Included / Declared absent / Not mentioned, `required: false`; kept apart from the Yes / No / Not detected category values; Claude may suggest only Included or Declared absent, with a quote that names the gas), `exclusion:{boundary|inventory|materiality}`, gwp, `calculation:{approach|process}`, `calculation:estimation` (entry_list, `required: false`), `calculation:source_records` (multiselect with free additions, `required: false`), `scope2:instruments` (multiselect, `required: false`, `shown_if_yes`)), then the rows the
     reviewer added. `allowed` is a list for an enum, `{set, horizon}` for gwp (with `allowed_labels.set`),
     `{operational_control}` for an entity. `parts` (entity, factor, gwp only) lists the value's editors,
     `[{key, label, kind: text|list|percent|enum, allowed?}]`, so a blank new row can be drawn.
@@ -199,10 +199,11 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
     `required` (boolean). `display_state` is `has_value` (a suggestion, or a decision that is not a bare pending
     one), `not_detected` (a prefill finished, and there is no suggestion or decision) or `not_checked` (no prefill has
     finished). `required` true is "Must appear": always `shown`. `required` false is "Only if the company has a
-    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Only `boundary:acquisitions`, `boundary:leased_space` and the seven `gas:*` fields are optional
-    today; every other field is `required`. A refused prefill (no documents, off, over the limit) does not set the marker. The marker and the
+    value": `shown` only once it has a value or the reviewer added it. Rows are always shown. Only `boundary:acquisitions`, `boundary:leased_space`, the seven `gas:*` fields and `calculation:estimation` are optional
+    today; every other field is `required`. A refused prefill (no documents, off, over the limit) does not set the marker. The marker also records which fields the run covered (`prefill_covered`); a field the last run did not cover reads `not_checked`, and a run recorded before this list existed is taken to have covered only the fields the page had then, so a row added since reads "Not checked yet" instead of "Not detected". The marker and the
     added optional rows are kept in one extra `workpaper_items` row (`item_key` `meta:state`), never listed as a field.
-  - Values by kind: date_range (`reporting_period`) is `{start, end}`, each a real calendar date written `YYYY-MM-DD` (ASCII digits), with end not before start (otherwise 422 with a sentence). A record saved before this change may still hold the text it was; the GET returns it unchanged and the screen shows "Recorded as: <text>" until the reviewer enters two dates. Claude's reporting-period suggestion carries both dates in ISO form, and is kept only if both are printed in its quote (English month names, `1/1/2025` read month first, `2025-01-01`); otherwise it is dropped and counted as `value_not_in_quote`. text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
+  - Multi-select rows. `multiselect` (`scope2:instruments`, `calculation:source_records`) holds a list of `{option, wording}`: `option` is one of the catalog's `allowed` (matched ignoring case and spacing; a field with `free: true` also takes up to 10 options of the reviewer's own, at most 60 characters), `wording` is the company's own words beside it (at most 200, may be ""), no option twice, and "None" (instrument types only) stands alone. A decision needs at least one option: an empty list is refused ("None" is the explicit empty answer on the instrument types; source records can be rejected instead), and "None" in any case or spacing is refused as a free option. A free option that is a listed option selects that option. Claude suggests only listed options, never "None"; each option must be named in its own quote as a whole word or phrase ("records" is not REC, "release" is not a lease agreement), and a mention with a negation (not, no, never, without, none) within five words before it is dropped and counted as `negated`; and the suggestion carries `evidence` with one quote per option (the company's wording is kept only if it is in the quote). An option that fails is dropped and counted, and the others stand. Scope 2 instrument types (spec: "only if the company reports a market-based Scope 2 number") are `shown` while at least one market-based category (`shown_if_yes`) is Yes, meaning the reviewer accepted or edited it to Yes or, while it is undecided, Claude suggested Yes; No, Not detected and a rejected category do not count. A value, or "Add an item", keeps the row shown whatever the categories say. A pending Claude suggestion also keeps it shown, so nothing Claude claims is hidden; the field then carries `shown_note`, "Shown because Claude found it, although no market-based category is Yes."
+  - Values by kind: entry_list (`calculation:estimation`, one entry per source type) is a list of at most 10 `{source_type, method}`, each text required (source type at most 60 characters and unique ignoring case and spacing, method at most 300); an empty list is allowed (every entry removed). A list suggestion also carries `evidence`: `[{label, quote, document_id, file_name, source_reference}]`, the quote behind each entry in the value's order (quotes up to 1,000 characters, `quote_truncated: true` when cut; the location keeps only page, sheet and cell; the top-level quote is the first entry's). The quotes of one suggestion share 12 KB: when they do not fit, the suggestion carries fewer entries, the first ones, and `entries_omitted` says how many were left out, so an entry is never shown without its quote. Claude's entries are each checked for their own quote on the page, and the source type must be named in its own quote as a whole token: one that fails is dropped and counted, the others stand; more than 10 are cut (`too_many_entries`). date_range (`reporting_period`) is `{start, end}`, each a real calendar date written `YYYY-MM-DD` (ASCII digits), with end not before start (otherwise 422 with a sentence). A record saved before this change may still hold the text it was; the GET returns it unchanged and the screen shows "Recorded as: <text>" until the reviewer enters two dates. Claude's reporting-period suggestion carries both dates in ISO form, and is kept only if both are printed in its quote (English month names, `1/1/2025` read month first, `2025-01-01`); otherwise it is dropped and counted as `value_not_in_quote`. text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
   - `ai`: `{enabled, reason_code, reason, provider, model, month_spend_usd, cap_usd}`. `enabled` is true when
@@ -275,6 +276,9 @@ same value and unit. An edit, reject or needs-more-evidence carries over when th
 and a changed extracted value adds the validation flag `extracted_value_changed_since_review`.
 A decision that does not apply leaves the item unreviewed for every purpose; it is never deleted.
 
+- `GET /v1/documents/{document_id}/extraction-result/latest` also carries `facility_suggestion`
+  (`{facility_id, quote, source: "file_name" | "line", page_number}`) when Claude suggested a facility for a bill that names
+  none; absent otherwise. A suggestion, never a placement.
 - `GET /v1/documents/{document_id}/extraction-result/latest`: an item whose earlier decision no longer
   applies carries `review_reread_changed: true` (the screen says "The document was re-read and this value
   changed. Review it again."). Absent otherwise.
@@ -320,6 +324,7 @@ engagement is 404). Nothing is stored by this route.
 counts  = {documents, values, accepted, to_review, issues, pct_accepted}
 DocRow  = {document_id, file_name, period_start, period_end, facility_id, facility_name,
            facility_note,    // when facility_id is null: why an account or meter number placed nothing, or null
+           facility_suggestion, // Claude's suggestion while it awaits a decision (see "Claude's facility suggestion"), or null
            processing_status, detected_type, also_in: [lineKey], values, accepted,
            placement_from,   // send this as a move's "from" to move this row
            value_family,     // "stationary" | "mobile" | "electricity" | null: the calculation this row's
@@ -406,6 +411,7 @@ text or file name.
 | `PATCH /v1/engagements/{id}/evidence-lines/{line_key}` | `{label}` | 200 `{line, evidenceLines}` |
 | `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, documents, evidenceLines}` |
 | `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/facility` | `{facility_id, expected_facility_id?}` | 200 `{document_id, payload}` |
 
 * **Create** checks the same as saving the setting (anchor on a Setup facility, vehicle group or the
   company; letters or numbers in the name; at most 200 lines; not a line the system creates), 422 with a
@@ -449,9 +455,45 @@ Audit events (`target_type` "engagement", `target_id` the engagement):
 | `evidence_line_renamed` | `line_key, old_label, new_label` |
 | `evidence_line_deleted` | `line_key, label, documents_moved` |
 | `evidence_document_moved` | `document_id, from, to, from_label, to_label` |
+| `evidence_document_facility_set` | `document_id, facility_id, facility_name, suggested` |
+
+`POST .../documents/{document_id}/facility` places a document on a Setup facility: it saves the reviewer's own facility
+decision (`payload.facilityId`, which wins over every rule), under the engagement's row lock, and writes
+`evidence_document_facility_set` (`suggested` is true when the facility is the one Claude suggested for the document). The
+actor is the session's. Safe to repeat: when the document is already on that facility the answer is 200 with the saved
+payload and nothing is written or logged. `expected_facility_id` (null for none) is the facility the page believes the
+document is on; when it is sent and is not what is saved, 409 ("Another reviewer already chose a facility for this document.
+Reload Evidence to see it.") and nothing is written. A document with saved moves (`placements`) is 409 ("This document was
+moved by hand. Move it back to Unassigned first, or place it from the Evidence tree."). 422 for a facility that is not in Setup,
+for any other key in the body, and for a kind of document that is not placed on a facility (vehicle fuel, summaries); 404 for
+a document that is not on the Evidence page or an engagement of another org; writers only (a provider admin is 403).
+
+#### Claude's facility suggestion (EXT-026)
+For a bill that names no facility, Claude may suggest one. It is asked only when `place_on_facility` would place nothing for
+every record with nothing to go on: no usable name, no usable address, and no account or meter number matched a Setup
+facility (a bill whose own name or address matched nothing, or matched ambiguously, is never sent: "Choose the facility").
+Vehicle fuel is not asked. Claude gets the Setup facilities (id, name, address), the file name and a bounded sample of the
+text (pages 1 to 3, at most 150 lines and 8,000 characters) and answers a facility id or none, with a quote. The suggestion
+is kept only when the id is in Setup, the quote is found in the file name or on a line of the sample as whole words, and the
+quote holds a word that points at the chosen facility and no other: a word of its name or address that is in no other
+facility, not in the company's name, not generic (plant, warehouse, road, a street suffix, a shared city) and not only digits.
+A quote, or a quoted line, that names a facility id or talks to the assistant (AI, Claude, instructions, prompt, ignore) gives
+none, and so does a facility with no such word. A document the reviewer already placed (on a facility still in Setup) is not
+asked about. The prompt carries at most 50 facilities (name and address cut short) and a file name cut to 200 characters.
+A file name or sample that also holds a word that points at another facility gives none (the document points two ways).
+It is shown again when a saved choice's facility has left Setup.
+
+Known limit: a single site's real word used for an unrelated reason (an instruction or a vendor address that names one site,
+with none of the wording above) cannot be told from a bill that mentions the site, so it can still be suggested. That is why
+it stays a suggestion with its quote, never a placement: a reviewer has to confirm it. It is stored with the
+extraction result as `facility_suggestion` and shown, while the bill is unplaced and the reviewer has not chosen, on the
+Evidence tree row as `facility_suggestion: {facility_id, facility_name, quote, where, label: "Suggested by Claude"}` and on
+the review screen, each with one click, "Place on <facility>". Until that click the bill is unplaced, in the Evidence tree and
+in the recalculation. It needs `AI_SUGGESTIONS_ENABLED`, a configured client and room under the organization's monthly cap
+(feature `facility` on the usage ledger); with AI off there is no suggestion and no error.
 
 ### GET /v1/engagements/{engagement_id}/evidence-activity[?limit=50&cursor=]
-The four events above for this engagement, newest first, 1 to 100 per page (an index on `audit_logs (org_id, target_type, target_id, created_at, id)` serves it) (`next_cursor` is null on the
+The five events above for this engagement, newest first, 1 to 100 per page (an index on `audit_logs (org_id, target_type, target_id, created_at, id)` serves it) (`next_cursor` is null on the
 last page; a cursor that does not decode is 400). Any reader of the engagement (`org_admin`,
 `org_member`, `provider_admin`); another org's engagement is 404.
 
