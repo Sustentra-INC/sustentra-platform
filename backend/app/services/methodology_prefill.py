@@ -1007,7 +1007,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         try:
             value = rules.validate_value(definition, {
                 "name": entity.name, "facilities": entity.facilities, "equity_share_pct": entity.equity_share_pct,
-                "financial_control": entity.financial_control, "operational_control": entity.operational_control})
+                "financial_control": entity.financial_control, "included": None})
         except rules.MethodologyInvalid:
             dropped["invalid_value"] += 1
             continue
@@ -1017,7 +1017,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             continue
         # Claire C-M2: a kept entity is Included (it comes from an inclusion statement); what the quote says about
         # operational control is kept apart, only when quoted. Claude's own Yes / No is not trusted.
-        value["operational_control"] = "Yes"
+        value["included"] = "Yes"
         if control is not None:
             value["control_quoted"] = control
         given = tuple(n for n in (entity.equity_share_pct, entity.financial_control) if n is not None)

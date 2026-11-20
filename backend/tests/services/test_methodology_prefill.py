@@ -907,7 +907,7 @@ def test_the_per_entity_yes_no_is_set_only_when_the_quote_supports_it() -> None:
         named_entity("Caf\u00e9 Qu\u00e9bec Holdings Inc.", "Caf\u00e9 Qu\u00e9bec Holdings Inc. and Z\u00fcrich B\u00fcro AG are inside the boundary", "L3", op="No"),
         named_entity("Z\u00fcrich B\u00fcro AG", "Z\u00fcrich B\u00fcro AG are inside the boundary", "L3")]), [doc(BOUNDARY)])
     assert dict(dropped) == {}
-    assert {k.suggestion["value"]["operational_control"] for k in kept} == {"Yes"}  # every kept entity is Included
+    assert {k.suggestion["value"]["included"] for k in kept} == {"Yes"}  # every kept entity is Included
     assert [(k.suggestion["value"]["name"], k.suggestion["value"].get("control_quoted")) for k in kept] == [
         ("Acme Foods Kent LLC", "Yes"), ("Stockton Cold Storage JV", "No"), ("Caf\u00e9 Qu\u00e9bec Holdings Inc.", None),
         ("Z\u00fcrich B\u00fcro AG", None)]  # inclusion alone says nothing about control; Claude's own values are not trusted
@@ -918,7 +918,7 @@ def test_an_entity_whose_quote_does_not_say_yes_or_no_keeps_it_blank_and_claude_
     for claimed in ("Yes", "No", None):
         kept, dropped = check(answer(entities=[named_entity("Moscow", quote, "L6", op=claimed)]), [doc(BOUNDARY)])
         assert dict(dropped) == {} and "control_quoted" not in kept[0].suggestion["value"]  # "within the boundary" is inclusion, not control
-        assert kept[0].suggestion["value"]["operational_control"] == "Yes"  # Included
+        assert kept[0].suggestion["value"]["included"] == "Yes"  # Included
     quote = "Our offices in Moscow and Houston"
     kept, dropped = check(answer(entities=[named_entity("Moscow", quote, "L6", op="Yes")]), [doc([(1, "Our offices in Moscow and Houston, listed in the plan")])])
     assert kept == [] and dict(dropped) == {"not_an_inclusion": 1}
@@ -945,7 +945,7 @@ def test_included_under_the_equity_share_approach_does_not_set_operational_contr
     for claimed in ("Yes", "No", None):
         kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", line.rstrip("."), "L1", op=claimed)]), [doc([(1, line)])])
         assert dict(dropped) == {} and "control_quoted" not in kept[0].suggestion["value"]  # nothing quoted about control
-        assert kept[0].suggestion["value"]["operational_control"] == "Yes"  # but the entity is Included
+        assert kept[0].suggestion["value"]["included"] == "Yes"  # but the entity is Included
     for quote, expected in (("X is included", None), ("X is inside the boundary", None), ("X is within the boundary", None),
                             ("X is included under the operational control approach", "Yes"), ("X: operational control: yes", "Yes")):
         assert mp.entity_statement(quote, "X") == (True, expected), quote
