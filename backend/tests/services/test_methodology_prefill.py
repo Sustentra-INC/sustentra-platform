@@ -657,8 +657,30 @@ def test_a_scope_the_document_calls_excluded_or_outside_the_boundary_is_not_chos
                                              scope("Scope 3", "Direct emissions: Scopes 1 and 2. Scope 3 is excluded", "L6")]),
                           [doc(SCOPE_REPORT)])
     assert [v["option"] for v in kept[0].suggestion["value"]] == ["Scope 1", "Scope 2"] and dict(dropped) == {"negated": 1}
-    assert mp.names_scope("Scope 1 and Scope 3 excluded", "Scope 1") == "yes"
     assert mp.names_scope("Scope 1 and 2 are included, not Scope 3", "Scope 2") == "yes"
+    assert mp.names_scope("Scope 1 and 2 are reported but Scope 3 is excluded", "Scope 1") == "yes"
+
+
+@pytest.mark.parametrize(("sentence", "negated", "kept"), [
+    ("Scope 1 and Scope 2 are not covered by this statement.", ["Scope 1", "Scope 2"], []),
+    ("Scope 1, Scope 2 and Scope 3 emissions are not included.", ["Scope 1", "Scope 2", "Scope 3"], []),
+    ("Scope 3 is out of scope.", ["Scope 3"], []),
+    ("Scope 3 emissions will be disclosed in 2026.", ["Scope 3"], []),
+    ("Scope 1 and Scope 3 are excluded from the boundary.", ["Scope 1", "Scope 3"], []),   # one verdict for the list
+    ("Scopes 1 and 2 are reported. Scope 3 is excluded.", ["Scope 3"], ["Scope 1", "Scope 2"]),  # sentences are separate
+    ("Scopes 1 and 2 are included, not Scope 3.", ["Scope 3"], ["Scope 1", "Scope 2"]),
+    ("Scope 1 and Scope 2 emissions are reported; Scope 3 is not.", ["Scope 3"], ["Scope 1", "Scope 2"]),
+    ("Emissions for Scope 1, Scope 2 and Scope 3 (category 6) are reported.", [], ["Scope 1", "Scope 2", "Scope 3"]),
+    ("Les \u00e9missions de Scope 1 et Scope 2 (caf\u00e9) sont rapport\u00e9es.", [], ["Scope 1", "Scope 2"]),
+])
+def test_a_negation_covers_every_scope_in_its_clause_and_stops_at_the_sentence(sentence: str, negated: list[str], kept: list[str]) -> None:
+    for option in ("Scope 1", "Scope 2", "Scope 3"):
+        expected = "negated" if option in negated else "yes" if option in kept else "no"
+        assert mp.names_scope(sentence, option) == expected, (sentence, option)
+    picks = [scope(o, sentence.rstrip("."), "L1") for o in (*negated, *kept)]
+    got, dropped = check(answer(selections=picks), [doc([(1, sentence)])])
+    assert [v["option"] for v in got[0].suggestion["value"]] == kept if kept else got == []
+    assert dropped.get("negated", 0) == len(negated)
 
 
 def test_a_scope_the_quote_does_not_name_or_not_stated_is_dropped() -> None:

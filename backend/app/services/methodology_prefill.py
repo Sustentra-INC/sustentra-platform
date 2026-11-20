@@ -214,9 +214,15 @@ _NUMBER_WORDS = {"one": 1, "two": 2, "three": 3}
 _SCOPE_MENTION = re.compile(
     r"\bscopes?\s*(?P<list>(?:[123]|one|two|three)(?:\s*(?:,|&|\+|/|and|or|to|through|-)\s*(?:[123]|one|two|three))*)(?![0-9])")
 _SCOPE_RANGE = re.compile(r"\s*(?:to|through|-)\s*")
-_BEFORE_SCOPE = _NEGATIONS | {"excluded", "excluding", "exclude", "excludes", "omit", "omitted", "outside", "except"}
-_AFTER_SCOPE = frozenset({"excluded", "excludes", "excluding", "omitted", "outside", "not", "never", "except"})
+_FUTURE = frozenset({"will", "shall", "plan", "plans", "planned", "intend", "intends", "future", "upcoming", "later", "pending", "tbd"})
+_BEFORE_SCOPE = _NEGATIONS | _FUTURE | {"excluded", "excluding", "exclude", "excludes", "omit", "omitted", "outside", "except"}
+_AFTER_SCOPE = _NEGATIONS | _FUTURE | {"excluded", "excludes", "excluding", "omitted", "outside", "except"}
+_AFTER_PHRASES = ("out of scope", "not in scope", "to be disclosed", "to be reported", "yet to", "not applicable")
 _SCOPE_ID = {"Scope 1": 1, "Scope 2": 2, "Scope 3": 3}
+_SENTENCES = re.compile(r"(?<=[.!?;])\s+")
+_LIST_GAP = re.compile(r"^\s*(?:,|&|\+|/|and|or|,\s*and|,\s*or)?\s*$")
+_AFTER_END = re.compile(r",|:|\bscopes?\s*(?:[123]|one|two|three)\b")  # what a list says about itself ends at a comma or the next scope named
+_CLAUSE_END = re.compile(r",|\bbut\b|\bwhile\b|\bwhereas\b|\bhowever\b|:")
 
 
 def _scope_numbers(listing: str) -> set[int]:
@@ -235,26 +241,45 @@ def _scope_numbers(listing: str) -> set[int]:
     return out
 
 
+def _scope_groups(sentence: str) -> list[tuple[int, int, set[int]]]:
+    """The scopes a sentence names, as groups of (start, end, numbers): mentions joined only by list words
+    ("Scope 1, Scope 2 and Scope 3", "Scopes 1 and 2") are one group, so one verdict covers all of them."""
+
+    groups: list[tuple[int, int, set[int]]] = []
+    for match in _SCOPE_MENTION.finditer(sentence):
+        numbers = _scope_numbers(match["list"])
+        if groups and _LIST_GAP.match(sentence[groups[-1][1]:match.start()]):
+            start, _, before = groups[-1]
+            groups[-1] = (start, match.end(), before | numbers)
+        else:
+            groups.append((match.start(), match.end(), numbers))
+    return groups
+
+
 def names_scope(quote: str, option: str) -> str:
     """How a quote names a scope ("Scope 1", "Scope 2", "Scope 3"): ``yes``, ``negated`` or ``no``. It reads
-    "Scope 1", "Scopes 1 and 2", "scope one" and "Scopes 1 to 3". A mention is negated by a negation or
-    "excluded" / "outside" / "omitted" up to five words before it, or one of the words after it within the
-    same clause (a comma, semicolon or the next scope named ends the clause): "Scope 3 is excluded", "except Scope 3"."""
+    "Scope 1", "Scopes 1 and 2", "scope one" and "Scopes 1 to 3". Sentences are read one by one. The scopes a
+    sentence lists together ("Scope 1, Scope 2 and Scope 3") share one verdict: they are negated when a
+    negation, "excluded" / "outside" / "out of scope" or a future wording ("will be disclosed in 2026") sits up
+    to five words before the list in its clause, or within eight words after it, up to the next comma or the next scope named."""
 
     wanted = _SCOPE_ID.get(option)
-    text = norm(quote)
     negated = False
-    for match in _SCOPE_MENTION.finditer(text):
-        if wanted is None or wanted not in _scope_numbers(match["list"]):
-            continue
-        before = re.findall(r"[a-z0-9'-]+", text[:match.start()])[-5:]
-        clause = re.split(r"[,;.]|\bscopes?\b", text[match.end():], maxsplit=1)[0]  # up to the next scope named
-        after = re.findall(r"[a-z0-9'-]+", clause)[:8]
-        if (any(w in _BEFORE_SCOPE or w.endswith("n't") for w in before)
-                or any(w in _AFTER_SCOPE or w.endswith("n't") for w in after)):
-            negated = True
-        else:
-            return "yes"
+    for sentence in _SENTENCES.split(norm(quote)):
+        for start, end, numbers in _scope_groups(sentence):
+            if wanted is None or wanted not in numbers:
+                continue
+            head = sentence[:start]
+            clause_start = max((m.end() for m in _CLAUSE_END.finditer(head)), default=0)
+            before = re.findall(r"[a-z0-9'-]+", head[clause_start:])[-5:]
+            tail = _AFTER_END.split(sentence[end:], maxsplit=1)[0]
+            after = re.findall(r"[a-z0-9'-]+", tail)[:8]
+            if (any(w in _BEFORE_SCOPE or w.endswith("n't") for w in before)
+                    or any(w in _AFTER_SCOPE or w.endswith("n't") for w in after)
+                    or any(p in " ".join(after) for p in _AFTER_PHRASES)):
+                negated = True
+            else:
+                return "yes"
     return "negated" if negated else "no"
 
 
