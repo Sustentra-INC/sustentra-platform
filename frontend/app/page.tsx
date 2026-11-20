@@ -24,7 +24,7 @@ export default async function HomePage() {
   }
   return (
     <S1WorkpaperApp
-      user={{ email: me.email, firstName: me.first_name ?? null, role: me.role, orgSlug: me.org_slug ?? null }}
+      user={{ email: me.email, firstName: me.first_name ?? null, role: me.role, orgSlug: me.org_slug ?? null, orgId: me.org_id ?? null }}
     />
   );
 }

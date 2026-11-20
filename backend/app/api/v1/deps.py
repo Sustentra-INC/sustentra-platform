@@ -35,3 +35,13 @@ async def require_org_admin(
     if not principal.is_provider and str(principal.org_id) != str(org_id):
         raise HTTPException(status_code=404, detail="Organization not found")
     return principal
+
+
+async def require_org_member(
+    org_id: str,
+    principal: CurrentUser = Depends(require_role("org_admin", "org_member", "provider_admin")),
+) -> CurrentUser:
+    """Any signed-in user of THIS org (or a provider admin). Another org's id -> 404, as above."""
+    if not principal.is_provider and str(principal.org_id) != str(org_id):
+        raise HTTPException(status_code=404, detail="Organization not found")
+    return principal

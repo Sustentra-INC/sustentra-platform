@@ -8,6 +8,7 @@ import type { InScopeField } from "../types/scope";
 import type { VehicleTypeOption } from "../api/recalculation";
 import { InfoTip } from "./InfoTip";
 import { SaveStatus, type SetupSaveInfo } from "./SetupSaveStatus";
+import { TeamMemberPicker, type TeamDirectory } from "./TeamMemberPicker";
 import { SetupVehicleGroups } from "./SetupVehicleGroups";
 import { ZipRegionHint } from "./ZipRegionHint";
 import { FacilityNumbersField } from "./FacilityNumbersField";
@@ -82,10 +83,13 @@ export function SetupScreen({
   lookupZip,
   foundFacilities = [],
   vehicleReference,
+  teamDirectory,
   save,
 }: {
   engagement: EngagementConfig;
   onChange: (next: EngagementConfig) => void;
+  /** Backend mode: the company's people. The team is picked from them (or invited) instead of typed. */
+  teamDirectory?: TeamDirectory;
   inScopeFields: InScopeField[];
   onInScopeChange: (fields: InScopeField[]) => void;
   /** Backend mode: choose / create the engagement being edited (S1-BE-002). */
@@ -448,7 +452,7 @@ export function SetupScreen({
         </h2>
         <SaveStatus info={shownSave} section="team" />
         </div>
-        <TeamRows key={engagement.engagementId} team={team} setTeam={setTeam} />
+        <TeamRows key={engagement.engagementId} team={team} setTeam={setTeam} directory={teamDirectory} />
       </div>
 
       {/* In-scope data points: the workbook's reported data points (live), placeholders (demo) */}
@@ -525,7 +529,7 @@ type Team = NonNullable<EngagementConfig["engagementTeam"]>;
 
 /** The engagement team. Each row has an id of its own (never saved) and is keyed by it, so editing a row's name or
  *  login keeps the cursor in the field. */
-function TeamRows({ team, setTeam }: { team: Team; setTeam: (next: Team) => void }) {
+function TeamRows({ team, setTeam, directory }: { team: Team; setTeam: (next: Team) => void; directory?: TeamDirectory }) {
   const [ids, setIds] = useState<string[]>(() => team.map(() => newTeamRowId()));
   const update = (i: number, patch: Partial<Team[number]>) => setTeam(team.map((t, j) => (j === i ? { ...t, ...patch } : t)));
   return (
@@ -543,6 +547,12 @@ function TeamRows({ team, setTeam }: { team: Team; setTeam: (next: Team) => void
               aria-label="Login"
               className="s1-num s1-setup-row__login"
               value={m.login}
+              readOnly={Boolean(directory)}
+              title={
+                directory?.members.find((p) => p.email.toLowerCase() === m.login.toLowerCase())?.status === "invited"
+                  ? "Invited. Joins the team's sign-ins once they accept."
+                  : undefined
+              }
               onChange={(e) => update(i, { login: e.target.value })}
             />
             <RemoveButton
@@ -555,14 +565,25 @@ function TeamRows({ team, setTeam }: { team: Team; setTeam: (next: Team) => void
           </div>
         ))}
       </div>
-      <AddButton
-        onClick={() => {
-          setIds([...ids, newTeamRowId()]);
-          setTeam([...team, { name: "New member", login: freeLogin(team) }]);
-        }}
-      >
-        Add member
-      </AddButton>
+      {directory ? (
+        <TeamMemberPicker
+          directory={directory}
+          taken={team.map((m) => m.login)}
+          onPick={(member) => {
+            setIds([...ids, newTeamRowId()]);
+            setTeam([...team, member]);
+          }}
+        />
+      ) : (
+        <AddButton
+          onClick={() => {
+            setIds([...ids, newTeamRowId()]);
+            setTeam([...team, { name: "New member", login: freeLogin(team) }]);
+          }}
+        >
+          Add member
+        </AddButton>
+      )}
     </>
   );
 }

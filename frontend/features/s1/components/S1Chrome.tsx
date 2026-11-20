@@ -25,6 +25,8 @@ export interface WorkpaperUser {
   firstName: string | null;
   role: "provider_admin" | "org_admin" | "org_member";
   orgSlug: string | null;
+  /** The user's organisation, for the Setup team picker (backend mode). */
+  orgId?: string | null;
 }
 
 const ROLE_LABEL: Record<WorkpaperUser["role"], string> = {
@@ -243,6 +245,11 @@ function ContextBar({
               {user.role === "org_admin" && user.orgSlug ? (
                 <Link className="s1-linklike" href={`/org/${user.orgSlug}`}>
                   Admin
+                </Link>
+              ) : null}
+              {user.role === "org_admin" && user.orgSlug ? (
+                <Link className="s1-linklike" href={`/org/${user.orgSlug}/admin/people?add=1`}>
+                  Add people
                 </Link>
               ) : null}
               {user.role === "provider_admin" ? (
