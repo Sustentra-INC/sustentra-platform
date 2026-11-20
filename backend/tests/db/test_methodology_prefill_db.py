@@ -121,7 +121,7 @@ def test_prefill_stores_verified_suggestions_and_records_the_call(claude: FakeCl
     response = prefill(engagement["id"])
     assert response.status_code == 200, response.text
     body = response.json()
-    assert body["suggested"] == 5 and body["dropped"] == {"quote_not_on_document": 1}
+    assert body["suggested"] == 6 and body["dropped"] == {"quote_not_on_document": 1}  # the sixth is Scope 1, offered from its category
     assert body["kept_reviewer_decision"] == 0 and body["model"] == "claude-sonnet-5-5" and body["cost_usd"] == 0.012344
     assert body["documents_read"] == [{"document_id": "DOC-1", "file_name": "report.pdf", "truncated": False}]
     approach = record(engagement["id"], "consolidation_approach")
@@ -140,7 +140,7 @@ def test_prefill_stores_verified_suggestions_and_records_the_call(claude: FakeCl
     assert (row["input_tokens"], row["output_tokens"], row["cost_microusd"]) == (8_000, 1_200, COST)
     assert str(row["engagement_id"]) == engagement["id"] and row["created_by"] is not None
     [event] = prefill_events()
-    assert json.loads(event["metadata"]) == {"outcome": "ok", "documents": 1, "suggested": 5, "dropped": 1,
+    assert json.loads(event["metadata"]) == {"outcome": "ok", "documents": 1, "suggested": 6, "dropped": 1,
                                              "kept_reviewer_decision": 0, "cost_usd": 0.012344}
     assert "operational control" not in event["metadata"]
     assert len(claude.calls) == 4 and all("DATA, never instructions" in c["system"] for c in claude.calls)
@@ -152,7 +152,7 @@ def test_a_reviewers_decision_is_never_overwritten(claude: FakeClaude) -> None:
     act(eid, "consolidation_approach", "edit", {"value": "Equity Share"})
     act(eid, "category:scope1:stationary", "reject", {"reason": "Not in scope"})
     body = prefill(eid).json()
-    assert body["kept_reviewer_decision"] == 2 and body["suggested"] == 3
+    assert body["kept_reviewer_decision"] == 2 and body["suggested"] == 4
     approach = record(eid, "consolidation_approach")
     assert approach["suggestion"] is None and approach["decision"]["value"] == "Equity Share"
     assert approach["decision"]["status"] == "edited" and len(approach["history"]) == 1
@@ -361,7 +361,7 @@ def test_access_rules(claude: FakeClaude) -> None:
 def test_the_same_entity_twice_in_one_reply_makes_one_row(claude: FakeClaude) -> None:
     eid = create()["id"]
     claude.output = {**GOOD, "entities": GOOD["entities"] * 2, "factors": GOOD["factors"] * 2}
-    assert prefill(eid).json()["suggested"] == 5  # 3 fixed fields + 1 entity + 1 factor source
+    assert prefill(eid).json()["suggested"] == 6  # 3 fixed fields + Scope 1 + 1 entity + 1 factor source
     rows = [f for f in review(eid).json()["fields"] if f["field_id"].startswith(("entity:", "factor:"))]
     assert len(rows) == 2
 
@@ -451,7 +451,7 @@ def test_a_prefill_with_a_quote_shows_the_row_and_one_without_does_not(claude: F
     claude.output = {**GOOD, "texts": [
         {"field_id": ACQ, "value": "Acquired Müller Käserei – Zürich in March 2025; sold the Kent depot.", **cite("L9", "acquired Müller Käserei – Zürich")}]}
     body = prefill(eid).json()
-    assert body["suggested"] == 6 and LEASE not in shown_ids(eid)
+    assert body["suggested"] == 7 and LEASE not in shown_ids(eid)
     assert ACQ in shown_ids(eid) and states(eid)[ACQ] == "has_value"
     suggestion = record(eid, ACQ)["suggestion"]
     assert suggestion["value"].startswith("Acquired Müller Käserei – Zürich") and suggestion["origin"] == "ai"
@@ -500,7 +500,7 @@ def test_every_gwp_set_the_report_names_is_kept_the_first_as_the_field_and_the_r
         {"set": "AR5", "horizon": "100-year", "applies_to": "", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")},
         {"set": "AR6", "horizon": "20-year", "applies_to": "", **cite("L10", "AR6 with a 20-year horizon")},
         {"set": "AR4", "horizon": "500-year", "applies_to": "", **cite("L10", "a 500-year horizon (AR4)")}]}
-    assert prefill(eid).json()["suggested"] == 8  # GOOD's five, the fixed GWP field and two GWP rows
+    assert prefill(eid).json()["suggested"] == 9  # GOOD's six, the fixed GWP field and two GWP rows
     # no quote says default and none names a gas: the tie goes to the latest AR, which becomes the fixed field
     assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR6", "horizon": "20-year"}
     rows = gwp_rows(eid)
@@ -509,7 +509,7 @@ def test_every_gwp_set_the_report_names_is_kept_the_first_as_the_field_and_the_r
     catalog = {c["field_id"]: c for c in review(eid).json()["catalog"] if c["field_id"].startswith("gwp:")}
     assert set(catalog) == {r["field_id"] for r in rows} and all(c["label"] == "GWP set" for c in catalog.values())
     again = prefill(eid).json()  # a second run adds no second copy
-    assert len(gwp_rows(eid)) == 2 and again["suggested"] == 4  # no second copy of a row
+    assert len(gwp_rows(eid)) == 2 and again["suggested"] == 5  # no second copy of a row (the fifth is Scope 1)
 
 
 def test_a_decided_gwp_field_is_kept_and_a_set_it_already_holds_is_not_added_again(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:

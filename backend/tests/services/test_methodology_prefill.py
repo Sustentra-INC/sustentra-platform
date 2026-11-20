@@ -64,7 +64,7 @@ def test_a_wrong_line_is_dropped_but_a_unique_other_line_is_found() -> None:
         {"field_id": "category:scope1:stationary", "value": "Yes", **cite("L1", "stationary combustion is included")},
     ]))
     assert dict(dropped) == {"unknown_line": 1}
-    assert [k.field_id for k in kept] == ["category:scope1:stationary"]  # the quote is on L5, the only line with it
+    assert [k.field_id for k in kept if k.field_id != "scopes:covered"] == ["category:scope1:stationary"]  # the quote is on L5, the only line with it
 
 
 def test_an_unknown_document_is_dropped() -> None:
@@ -1004,10 +1004,11 @@ def test_a_use_note_is_kept_only_when_it_is_printed_in_the_quote_and_never_costs
     assert dict(dropped) == {} and kept[0].suggestion["value"] == {"set": "AR5", "horizon": "Not stated"}  # an invented note is blank
     kept, _ = check(answer(gwp=[gwp_item("AR5", "Not stated", "Supplier factors from CEDA and DESNZ embed AR5 values", "L2", "x" * 201)]),
                     [doc(GWP_NOTES)])
-    assert "applies_to" not in kept[0].suggestion["value"]  # too long for the field: the note goes, the set stays
+    # a set the quote puts inside other factors is information only; its note is the server's, not the reply's long one
+    assert kept[0].suggestion["value"]["applies_to"] == "embedded in CEDA, DESNZ factors" and kept[0].field_id is None
     kept, _ = check(answer(gwp=[gwp_item("AR5", "Not stated", "Supplier factors from CEDA and DESNZ embed AR5 values", "L2", "  CEDA and  DESNZ ")]),
                     [doc(GWP_NOTES)])
-    assert kept[0].suggestion["value"]["applies_to"] == "CEDA and DESNZ"  # spacing is tidied, the words are the quote's
+    assert kept[0].suggestion["value"]["applies_to"] == "embedded in CEDA, DESNZ factors"
 
 
 def test_every_set_the_document_names_is_kept_up_to_one_fixed_field_and_the_rest_as_rows() -> None:
@@ -1385,7 +1386,7 @@ def category(field_id: str, value: str, quote: str, line: str = "L1") -> dict[st
 def test_mobile_is_read_from_vehicles_and_aircraft() -> None:
     line = "Scope 1 includes company vehicles and aircraft."
     kept, dropped = check(answer(choices=[category("category:scope1:mobile", "Yes", "company vehicles and aircraft")]), [doc([(1, line)])])
-    assert len(kept) == 1 and not dropped
+    assert [k.field_id for k in kept] == ["category:scope1:mobile", "scopes:covered"] and not dropped  # Scope 1 is offered too
 
 
 def test_one_combined_line_supports_heating_steam_and_cooling() -> None:
@@ -1393,7 +1394,8 @@ def test_one_combined_line_supports_heating_steam_and_cooling() -> None:
     kept, dropped = check(answer(choices=[
         category("category:location:heating", "Yes", line), category("category:location:steam", "Yes", line),
         category("category:market:cooling", "Yes", line)]), [doc([(1, line)])])
-    assert [k.field_id for k in kept] == ["category:location:heating", "category:location:steam", "category:market:cooling"]
+    # each source the one line names is a Yes of its own, for the method the reply gave it
+    assert {k.field_id for k in kept} == {f"category:{m}:{c}" for m in ("location", "market") for c in ("heating", "steam", "cooling")} | {"scopes:covered"}
     assert not dropped
     assert kept[0].suggestion["quote"] == line  # the stored quote is the original, markers and all
 
@@ -1401,7 +1403,7 @@ def test_one_combined_line_supports_heating_steam_and_cooling() -> None:
 def test_a_footnote_marker_is_ignored_when_matching() -> None:
     kept, dropped = check(answer(choices=[category("category:scope1:fugitive", "Yes", "Fugitive emissionsii")]),
                           [doc([(1, "Fugitive emissionsii")])])
-    assert len(kept) == 1 and not dropped
+    assert [k.field_id for k in kept] == ["category:scope1:fugitive", "scopes:covered"] and not dropped
     assert mp.match_text("Purchased electricityvii and emissions¹² waterᵃ") == "purchased electricity and emissions water"
     assert mp.match_text("residual mix, six, N₂O") == "residual mix, six, n2o"
 
@@ -1414,7 +1416,7 @@ def test_a_negated_category_is_never_yes() -> None:
     assert len(kept) == 1 and not dropped
     both = "It excludes vehicles and includes boilers."
     kept, _ = check(answer(choices=[category("category:scope1:stationary", "Yes", "includes boilers")]), [doc([(1, both)])])
-    assert len(kept) == 1
+    assert [k.field_id for k in kept] == ["category:scope1:stationary", "scopes:covered"]
 
 
 def test_an_unrelated_word_does_not_match_a_category() -> None:
