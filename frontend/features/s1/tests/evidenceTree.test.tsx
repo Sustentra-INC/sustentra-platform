@@ -1602,6 +1602,9 @@ describe("Assign to… on Evidence and the data point review", () => {
     renderSchedule();
     await screen.findByRole("heading", { name: "Kent · Natural gas" });
     expect(screen.queryByRole("button", { name: "Assign to…" })).toBeNull();
+  });
+});
+
 describe("Block 1 folders", () => {
   const FOLDER_TREE: TreeData = {
     ...TREE,

@@ -948,6 +948,9 @@ describe("Assign to… on a methodology row", () => {
   it("is not offered where assigning is not available", async () => {
     await open();
     expect(screen.queryByRole("button", { name: /^Assign to…/ })).toBeNull();
+  });
+});
+
 describe("Mark for client follow-up", () => {
   const engagement = { reportingPeriod: { start: "2025-01-01", end: "2025-12-31" }, signedInLogin: "ada@acme.test", signedInName: "Ada Admin", engagementTeam: [] } as unknown as EngagementConfig;
   const ask = (over: Partial<Ask> & { fieldKey?: string; origin?: Ask["source"]["origin"] } = {}): Ask => ({
