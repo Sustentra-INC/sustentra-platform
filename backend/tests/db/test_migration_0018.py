@@ -62,11 +62,12 @@ def _active_index() -> str:
 def test_0018_down_and_up_returns_a_parked_run_to_the_queue() -> None:
     try:
         assert _state() == (True, 3)
-        # At or past 0018: later migrations (0019 batches, 0020 audit index) sit on top of it.
+        # At or past 0018: later migrations (0019 batches, 0020 audit index, 0021 vehicle group ids) sit on top of it.
         assert fetch("SELECT version_num FROM alembic_version")[0]["version_num"] in (
             NEW,
             "0019_s1_document_batches",
             "0020_audit_logs_target_index",
+            "0021_vehicle_group_ids",
         )
         fetch("TRUNCATE s1_processing_runs")
         fetch("TRUNCATE users, organizations CASCADE")

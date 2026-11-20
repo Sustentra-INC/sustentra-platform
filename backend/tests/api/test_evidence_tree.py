@@ -67,7 +67,7 @@ def test_a_reader_gets_the_tree(act_as, wired: FakeStore) -> None:
     row = stationary["level2s"][0]["lines"][0]["documents"][0]
     assert row["document_id"] == "G1" and row["file_name"] == "G1.pdf" and row["facility_id"] == "fac-kc01"
     assert set(row) == {"document_id", "file_name", "period_start", "period_end", "facility_id", "facility_name",
-                        "facility_note", "processing_status", "detected_type", "also_in", "values", "accepted", "flags",
+                        "facility_note", "facility_suggestion", "processing_status", "detected_type", "also_in", "values", "accepted", "flags",
                         "placement_from", "value_family"}
 
 

@@ -54,12 +54,15 @@ const ENTRY_PARTS = [
 
 const INCLUSIONS = ["Yes", "No", "Not detected"];
 const GWP_SETS = ["AR4", "AR5", "AR6"];
-const GWP_HORIZONS = ["100-year", "20-year"];
+const GWP_HORIZONS = ["100-year", "20-year", "500-year"];
 const YES_NO = ["Yes", "No"];
 /** The gas rows' own values, kept apart from the categories' Yes / No / Not detected. */
 const GAS_STATUSES = ["Included", "Declared absent", "Not mentioned"];
 const GASES: [string, string][] = [["co2", "CO2"], ["ch4", "CH4"], ["n2o", "N2O"], ["hfcs", "HFCs"], ["pfcs", "PFCs"], ["sf6", "SF6"], ["nf3", "NF3"]];
 const MAX_ADDED_ROWS = 200;
+const GWP_SET_LABELS = {
+  set: { AR4: "IPCC Fourth Assessment Report (AR4)", AR5: "IPCC Fifth Assessment Report (AR5)", AR6: "IPCC Sixth Assessment Report (AR6)" },
+};
 
 const GROUPS: [string, string][] = [
   ["boundary", "Organizational boundary"],
@@ -78,6 +81,8 @@ const ROW_GROUPS: Record<string, { prefix: string; kind: string; group: string; 
   entities: { prefix: "entity", kind: "entity", group: "boundary", label: "Entity" },
   "factor:scope1": { prefix: "factor:scope1", kind: "factor", group: "factors", label: "Scope 1 emission factor source" },
   "factor:scope2": { prefix: "factor:scope2", kind: "factor", group: "factors", label: "Scope 2 emission factor source" },
+  // A report may name more than one GWP set: the first is the fixed "gwp" field, each other is a row.
+  gwp: { prefix: "gwp", kind: "gwp", group: "gwp", label: "GWP set" },
 };
 
 const PARTS: Record<string, Json[]> = {
@@ -132,9 +137,7 @@ function staticCatalog(): Def[] {
   fields.push(def("exclusion:inventory", "exclusions", "Excluded from this inventory", "text"));
   fields.push(def("exclusion:materiality", "exclusions", "Excluded under the materiality threshold", "text"));
   const gwp = def("gwp", "gwp", "GWP factors source", "gwp", { set: GWP_SETS, horizon: GWP_HORIZONS });
-  gwp.allowed_labels = {
-    set: { AR4: "IPCC Fourth Assessment Report (AR4)", AR5: "IPCC Fifth Assessment Report (AR5)", AR6: "IPCC Sixth Assessment Report (AR6)" },
-  };
+  gwp.allowed_labels = GWP_SET_LABELS;
   fields.push(gwp);
   fields.push(def("calculation:approach", "calculation", "Calculation approach", "text"));
   fields.push(def("calculation:process", "calculation", "Process-specific calculations", "text"));
@@ -148,7 +151,9 @@ function staticCatalog(): Def[] {
 
 function rowDef(fieldId: string, group: string): Def {
   const g = ROW_GROUPS[group];
-  const d = def(fieldId, g.group, g.label, g.kind, g.kind === "entity" ? { operational_control: YES_NO } : undefined);
+  const allowed = g.kind === "entity" ? { operational_control: YES_NO } : g.kind === "gwp" ? { set: GWP_SETS, horizon: GWP_HORIZONS } : undefined;
+  const d = def(fieldId, g.group, g.label, g.kind, allowed);
+  if (g.kind === "gwp") d.allowed_labels = GWP_SET_LABELS;
   d.user_added = true;
   return d;
 }
@@ -164,6 +169,7 @@ const toWire = <T extends { fieldId: string }>(item: T): Record<string, unknown>
 };
 
 function blankValue(fieldId: string): Json {
+  if (fieldId.startsWith("gwp:")) return { set: "", horizon: "" };
   if (fieldId.startsWith("entity:")) return { name: "", facilities: [], equity_share_pct: 0, financial_control: 0, operational_control: "No" };
   return { database: "", edition: "" };
 }
@@ -405,7 +411,7 @@ function sameRow(group: string, a: Json, b: Json): boolean {
   const x = a as Record<string, string>;
   const y = b as Record<string, string>;
   const n = (s: string | undefined) => (s ?? "").trim().toLowerCase();
-  const keys = group === "entities" ? ["name"] : ["database", "edition"];
+  const keys = group === "entities" ? ["name"] : group === "gwp" ? ["set", "horizon"] : ["database", "edition"];
   return keys.every((k) => n(x?.[k]) === n(y?.[k]));
 }
 

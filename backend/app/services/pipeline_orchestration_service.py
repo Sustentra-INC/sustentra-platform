@@ -19,6 +19,7 @@ from backend.app.domain.pipeline import (
 from backend.app.repositories import s1_stores
 from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
 from backend.app.services.ai_extraction import AiExtraction
+from backend.app.services.ai_facility import AiFacility
 from backend.app.services.ai_routing import AiRouting, RoutingResult
 from backend.app.services.calculation_lines import SUMMARY_TYPES
 from backend.app.services.document_shape import (
@@ -38,7 +39,7 @@ from backend.app.services.electricity_extractor import (
 from backend.app.services.extraction_service import ExtractionService
 from backend.app.services.thermal_extractor import CANONICAL_TYPE_ID as THERMAL_TYPE_ID
 from backend.app.services.thermal_extractor import ThermalExtractor
-from backend.app.services.extraction_target_service import ExtractionTargetService
+from backend.app.services.extraction_target_service import DISPLAY_ONLY_FIELDS, ExtractionTargetService
 from backend.app.adapters.parsers.email_parser import PARSER_NAME as EMAIL_PARSER_NAME
 from backend.app.adapters.parsers.email_reader import ENCRYPTED_EMAIL
 from backend.app.adapters.parsers.xls_parser import PASSWORD_PROTECTED
@@ -110,11 +111,14 @@ class PipelineOrchestrationService:
         id_factory: Callable[[str, str], str] | None = None,
         ai_routing: Any | None = None,
         ai_extraction: Any | None = None,
+        ai_facility: Any | None = None,
     ) -> None:
         # Claude routing (system 1): a no-op unless AI_SUGGESTIONS_ENABLED and the gate allow it.
         self._ai_routing = ai_routing or AiRouting()
         # Claude reading (system 2): fills what the rule extractors missed; a no-op unless the gate allows it.
         self._ai_extraction = ai_extraction or AiExtraction()
+        # Claude's facility suggestion for a bill that names none (EXT-026): a suggestion only, never a placement.
+        self._ai_facility = ai_facility or AiFacility()
         self._parser_service = parser_service or ParserService()
         self._classification_service = classification_service or ClassificationService()
 
@@ -597,6 +601,12 @@ class PipelineOrchestrationService:
                     extraction_result = assist.result
                     warnings.extend(assist.warnings)
                     warnings.extend(str(note) for note in extraction_result.get("notes") or [])
+                    suggestion = self._ai_facility.suggest(
+                        parser_output=parser_output, extraction_result=extraction_result,
+                        canonical_type_id=canonical_type_id, file_name=resolved_file_name, org_id=org_id,
+                        engagement_id=engagement_id, document_id=resolved_document_id)
+                    if suggestion is not None:
+                        extraction_result = {**extraction_result, "facility_suggestion": suggestion.as_record()}
             else:
                 stage_statuses.candidate_generation = "skipped"
                 overall_status = "partial"
@@ -930,6 +940,8 @@ class PipelineOrchestrationService:
                     "status": run.get("status"),
                     "candidate_count": int(extraction_result.get("candidate_count") or 0),
                     "items": copy.deepcopy(extraction_result.get("items") or []),
+                    **({"facility_suggestion": copy.deepcopy(extraction_result["facility_suggestion"])}
+                       if extraction_result.get("facility_suggestion") else {}),
                     "org_id": run.get("org_id"),
                     "created_at": run.get("completed_at") or run.get("created_at"),
                 }
@@ -992,7 +1004,7 @@ class PipelineOrchestrationService:
             canonical_type_source=cast(CanonicalTypeSource, canonical_type_source),
             classification_status=classification_status,
             parser_status=parser_status,
-            target_count=len(extraction_targets),
+            target_count=len(self._expected_targets(extraction_targets, items)),
             candidate_count=candidate_count,
             found_candidate_count=found_candidate_count,
             missing_candidate_count=missing_candidate_count,
@@ -1033,6 +1045,16 @@ class PipelineOrchestrationService:
         if result.status == "ignored":
             return [f"ai_routing_ignored: {result.ignored_reason}"]
         return []
+
+    @staticmethod
+    def _expected_targets(extraction_targets: list[dict], items: list[Any]) -> list[dict]:
+        """The targets that count in "n of m fields": every one, except a display-only optional field (meter number,
+        statement date) the bill did not print."""
+
+        read = {str(i.get("field_name")) for i in items
+                if isinstance(i, dict) and i.get("normalized_value") is not None}
+        return [t for t in extraction_targets
+                if str(t.get("field_id")) not in DISPLAY_ONLY_FIELDS or str(t.get("field_id")) in read]
 
     @staticmethod
     def _candidate_has_value(candidate: Any) -> bool:

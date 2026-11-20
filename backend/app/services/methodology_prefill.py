@@ -101,7 +101,7 @@ class SelectionSuggestion(_Cited):
 
 class GwpSuggestion(_Cited):
     set: Literal["AR4", "AR5", "AR6"]
-    horizon: Literal["100-year", "20-year"]
+    horizon: Literal["100-year", "20-year", "500-year"]
 
 
 class EntitySuggestion(_Cited):
@@ -193,6 +193,7 @@ _GAS_TERMS = {"gas:co2": ("co2", "carbon dioxide"), "gas:ch4": ("ch4", "methane"
 _OPTION_TERMS = {
     "RECs or other energy attribute certificates": (
         "rec", "recs", "eac", "eacs", "renewable energy certificate", "renewable energy certificates",
+        "renewable energy credit", "renewable energy credits",
         "energy attribute certificate", "energy attribute certificates", "guarantee of origin", "guarantees of origin"),
     "PPA or VPPA": ("ppa", "ppas", "vppa", "vppas", "power purchase agreement", "power purchase agreements"),
     "Green tariff or utility program": ("green tariff", "green tariffs", "green power program", "utility program",
@@ -228,6 +229,43 @@ def names_option(quote: str, terms: Sequence[str]) -> str:
 
 _GWP_TERMS = {"AR4": ("ar4", "fourth assessment"), "AR5": ("ar5", "fifth assessment"),
               "AR6": ("ar6", "sixth assessment")}
+# The horizon the quote must name, as whole tokens ("120-year" is not "20-year").
+_HORIZON_TERMS = {
+    "20-year": ("20-year", "20 year", "20-years", "20 years", "20-yr", "20 yr", "twenty-year", "twenty year",
+                "gwp20", "gwp-20", "gwp 20"),
+    "100-year": ("100-year", "100 year", "100-years", "100 years", "100-yr", "100 yr", "hundred-year", "hundred year",
+                 "gwp100", "gwp-100", "gwp 100"),
+    "500-year": ("500-year", "500 year", "500-years", "500 years", "500-yr", "500 yr", "five-hundred-year",
+                 "five hundred year", "gwp500", "gwp-500", "gwp 500"),
+}
+
+
+def _mentions(text: str, terms: Sequence[str]) -> list[int]:
+    """Where each term starts in the (normalized) text, as a whole word or phrase."""
+
+    out: list[int] = []
+    for term in terms:
+        pattern = r"(?<![0-9a-z.])(?<!\d,)" + re.escape(norm(term)) + r"(?![0-9a-z])(?![.,]\d)"
+        out += [m.start() for m in re.finditer(pattern, text)]
+    return out
+
+
+def set_has_horizon(quote: str, set_: str, horizon: str) -> bool:
+    """Whether the quote ties this set to this horizon: the set is named, and a mention of the horizon sits
+    nearer to a mention of this set than to a mention of any other set. A quote that names two sets with two
+    horizons ("AR5 100-year and AR6 20-year") pairs each set with the horizon next to it."""
+
+    text = norm(quote)
+    sets = [(pos, name) for name, terms in _GWP_TERMS.items() for pos in _mentions(text, terms)]
+    if not any(name == set_ for _, name in sets):
+        return False
+    for name, terms in _HORIZON_TERMS.items():
+        if name != horizon:
+            continue
+        for pos in _mentions(text, terms):
+            if min(sets, key=lambda item: abs(item[0] - pos))[1] == set_:
+                return True
+    return False
 
 
 SYSTEM_PROMPT = """\
@@ -288,7 +326,8 @@ What the items mean
   boundary:leased_space only if a document states something about them; if it is silent, leave
   them out.
 - gwp: the Global Warming Potential set the company uses (IPCC assessment report AR4, AR5 or AR6)
-  and the time horizon (100-year or 20-year). At most one.
+  and the time horizon (20-year, 100-year or 500-year). If the report uses more than one set or
+  horizon, give each one separately; do not pick between them.
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
   equity share (percent, 0 to 100), financial control (percent, 0 to 100) and whether the company
   has operational control (Yes or No). Include an entity only if the cited line states its equity
@@ -437,7 +476,8 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         return document, line
 
     def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
-             numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = ()) -> None:
+             numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = (),
+             ok: Callable[[str], bool] | None = None) -> None:
         found = cited(item)
         if found is None:
             return
@@ -445,7 +485,8 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         quote_text = norm(item.quote)
         if (any(not value_in_quote(_fmt(n), item.quote) for n in numbers)
                 or any(not value_in_quote(w, item.quote) for w in words)
-                or (terms and not any(term in quote_text for term in terms))):
+                or (terms and not any(term in quote_text for term in terms))
+                or (ok is not None and not ok(item.quote))):
             dropped["value_not_in_quote"] += 1
             return
         if field_id is not None:
@@ -558,10 +599,24 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped["value_not_in_quote"] += 1
             continue
         keep(period, value, "reporting_period", None)
+    gwp_pairs: set[tuple[str, str]] = set()
     for gwp in output.gwp:
         value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon})
-        if value is not None:
-            keep(gwp, value, "gwp", None, terms=_GWP_TERMS[gwp.set])
+        if value is None:
+            continue
+        pair = (value["set"], value["horizon"])
+        if pair in gwp_pairs:  # the same set and horizon named again
+            dropped["duplicate_entry"] += 1
+            continue
+        # The first set the report names is the fixed GWP field; every other set is a row of its own.
+        ties = lambda quote, s_=gwp.set, h_=gwp.horizon: set_has_horizon(quote, s_, h_)  # noqa: E731
+        before = len(kept)
+        if "gwp" not in seen:
+            keep(gwp, value, "gwp", None, ok=ties)
+        else:
+            keep(gwp, value, None, "gwp", ok=ties)
+        if len(kept) > before:  # only a pair that held up counts as seen
+            gwp_pairs.add(pair)
     for entity in output.entities:
         definition = rules.row_field("entity:aaaa")
         assert definition is not None
@@ -592,7 +647,7 @@ def same_row_value(group: str, a: Any, b: Any) -> bool:
 
     if not isinstance(a, dict) or not isinstance(b, dict):
         return False
-    keys = ("name",) if group == "entities" else ("database", "edition")
+    keys = ("name",) if group == "entities" else ("set", "horizon") if group == "gwp" else ("database", "edition")
     return all(norm(str(a.get(k) or "")) == norm(str(b.get(k) or "")) for k in keys)
 
 

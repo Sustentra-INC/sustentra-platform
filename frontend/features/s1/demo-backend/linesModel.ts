@@ -330,12 +330,23 @@ export function newLineProblem(engagement: EngagementConfig, lines: EvidenceLine
   return null;
 }
 
+/** The server's `vehicle_group_anchors`: a group's own `group_id`; a group without one (the demo's built-in fleet) takes
+ *  its old anchor, `vg-<label slug>` numbered by order among groups with the same slug. */
 function vehicleGroupAnchors(engagement: EngagementConfig): { anchor_id: string; label: string; fuel: string }[] {
-  return (engagement.recalculation?.vehicle_groups ?? [DEFAULT_VEHICLE_GROUP]).map((g, i, all) => {
-    const label = g.label ?? `${g.vehicle_type} (${g.factor_fuel_type})`;
+  const groups = engagement.recalculation?.vehicle_groups ?? [DEFAULT_VEHICLE_GROUP];
+  const labelOf = (g: { label?: string; vehicle_type: string; factor_fuel_type: string }) => g.label ?? `${g.vehicle_type} (${g.factor_fuel_type})`;
+  const own = new Set(groups.map((g) => (g as { group_id?: string }).group_id).filter((id): id is string => Boolean(id)));
+  const seen = new Map<string, number>();
+  return groups.map((g) => {
+    const label = labelOf(g);
     const base = `vg-${slug(label)}`;
-    const n = all.slice(0, i).filter((o) => `vg-${slug(o.label ?? `${o.vehicle_type} (${o.factor_fuel_type})`)}` === base).length;
-    return { anchor_id: n ? `${base}-${n + 1}` : base, label, fuel: g.fuel };
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    const given = (g as { group_id?: string }).group_id;
+    let anchor = given ?? (n === 1 ? base : `${base}-${n}`);
+    for (let k = 2; !given && own.has(anchor); k += 1) anchor = `${base}-x${k}`;
+    if (!given) own.add(anchor);
+    return { anchor_id: anchor, label, fuel: g.fuel };
   });
 }
 

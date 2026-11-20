@@ -42,6 +42,8 @@ export interface BackendExtractionResult {
   /** When this document's read was recorded (not when it was uploaded). */
   created_at?: string | null;
   items: BackendExtractionCandidateLike[];
+  /** Claude's facility suggestion for a bill that names none (a suggestion, never a placement). */
+  facility_suggestion?: { facility_id: string; quote: string; source: "file_name" | "line"; page_number?: number | null } | null;
 }
 
 export interface BackendReviewDecision {
@@ -147,8 +149,21 @@ export async function listWorkspaceEvidence(engagementId: string): Promise<{
       );
       const canonicalTypeId = extractionResult?.canonical_type_id ?? latestRun?.canonical_type_id ?? null;
 
+      const suggestion = extractionResult?.facility_suggestion;
       return {
-        evidence: mapBackendDocumentToEvidenceItem(document, latestRun),
+        evidence: {
+          ...mapBackendDocumentToEvidenceItem(document, latestRun),
+          ...(suggestion?.facility_id && suggestion.quote
+            ? {
+                facilitySuggestion: {
+                  facilityId: suggestion.facility_id,
+                  quote: suggestion.quote,
+                  where:
+                    suggestion.source === "file_name" ? "the file name" : suggestion.page_number ? `page ${suggestion.page_number}` : "the text",
+                },
+              }
+            : {}),
+        },
         fields: fieldsFromExtraction(extractionResult, reviews ?? [], canonicalTypeId),
       };
     })
