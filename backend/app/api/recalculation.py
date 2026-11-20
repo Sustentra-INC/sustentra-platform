@@ -61,6 +61,30 @@ async def get_recalculation(
     return _service().recalculate(engagement, lambda record: can_see(record, user), decisions)
 
 
+@router.get("/engagements/{engagement_id}/recalculation/lines/{line_key}/trace")
+async def get_line_trace(
+    engagement_id: str,
+    line_key: str,
+    user: CurrentUser = Depends(s1_reader),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict:
+    """The step-level working of one calculation line (``services/calc_trace``), fetched when a panel is opened.
+    The same engine run as the recalculation, so it agrees with it; the recalculation response itself never
+    carries traces. ``trace`` is null when the line cannot be traced."""
+
+    engagement = await _visible(db, engagement_id, user)
+    decisions = {
+        str(item["payload"].get("documentId") or item["item_key"]): item["payload"]
+        for item in await workpaper_item_service.list_items(db, engagement["id"], "document")
+    }
+    engagement = await methodology_gwp.attach_choice(db, engagement)
+    result = _service().recalculate(engagement, lambda record: can_see(record, user), decisions, with_traces=True)
+    line = next((ln for ln in result.get("calculation_lines", []) if ln.get("key") == line_key), None)
+    if line is None:
+        raise HTTPException(status_code=404, detail="No such calculation line.")
+    return {"line_key": line_key, "trace": line.get("trace")}
+
+
 @router.get("/engagements/{engagement_id}/export")
 async def export_workpaper(
     engagement_id: str,

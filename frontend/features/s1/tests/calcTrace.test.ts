@@ -1,6 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("../../../lib/api", () => ({ api: vi.fn(async () => ({ line_key: "k", trace: null })) }));
 
 import fixture from "../api/__fixtures__/calcTraceStationary.json";
+import { api } from "../../../lib/api";
+import { getLineTrace } from "../api/calcTrace";
 import type { LineTrace, TraceOperation } from "../api/calcTrace";
 
 // The JSON is the backend's own trace of Claire's Kent Cannery line (650,000 therm of natural gas); the cast
@@ -56,5 +60,12 @@ describe("calculation trace contract", () => {
     expect(block.company!.terms[1].operand.difference).toBeUndefined();
     expect(block.recomputed!.terms[1].operand).toMatchObject({ difference: 0, differs: false });
     expect(trace.result.difference).toBe(0);
+  });
+
+  it("is fetched per line, with the engagement and the line key encoded", async () => {
+    await getLineTrace("ENG 1", "s1:stationary:natural-gas:fac-kc01");
+    expect(api).toHaveBeenCalledWith(
+      "/engagements/ENG%201/recalculation/lines/s1%3Astationary%3Anatural-gas%3Afac-kc01/trace",
+    );
   });
 });

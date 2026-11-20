@@ -1,5 +1,4 @@
 import { api } from "../../../lib/api";
-import type { LineTrace } from "./calcTrace";
 import { count } from "../utils/count";
 import type {
   CheckOutcome,
@@ -355,9 +354,6 @@ export interface CalculationLine {
   /** The line's category still has open needs_input or awaiting_review items. */
   inputs_incomplete: boolean;
   flags: string[];
-  /** The step-level working of the line (see calcTrace.ts). Additive: no number in the line depends on it. Absent
-   *  from older results; null when the line cannot be traced (and always null on an unplaced item). */
-  trace?: LineTrace | null;
 }
 
 export type CalcUnplacedReason =

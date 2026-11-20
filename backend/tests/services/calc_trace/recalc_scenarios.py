@@ -15,10 +15,10 @@ GROUP_ROAD = {"fuel": "Diesel Fuel", "vehicle_type": "Medium- and Heavy-Duty Veh
               "on_road": True, "model_year": 2018, "distance": 10000, "distance_unit": "mi", "label": "Heavy trucks"}
 
 
-def run(store: FakeStore, **recalculation: Any) -> dict:
+def run(store: FakeStore, with_traces: bool = True, **recalculation: Any) -> dict:
     engagement = {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
                   "settings": {"facilities": [KC, STL], "recalculation": recalculation}}
-    return EngagementRecalculationService(store, store, store).recalculate(engagement, _own, None)
+    return EngagementRecalculationService(store, store, store).recalculate(engagement, _own, None, with_traces=with_traces)
 
 
 def mixed_store() -> FakeStore:
@@ -34,7 +34,7 @@ def mixed_store() -> FakeStore:
     return store
 
 
-def scenarios() -> dict[str, dict]:
+def scenarios(with_traces: bool = True) -> dict[str, dict]:
     """Named recalculation responses: with and without company figures, a consolidated share, no regions."""
 
     kwargs: dict[str, dict[str, Any]] = {
@@ -46,4 +46,4 @@ def scenarios() -> dict[str, dict]:
         "share": {"grid_regions": REGIONS, "vehicle_groups": [GROUP_ROAD], "consolidated_shares": {"fac-kc01": 60.0}},
         "no_regions": {},
     }
-    return {name: run(mixed_store(), **kw) for name, kw in kwargs.items()}
+    return {name: run(mixed_store(), with_traces, **kw) for name, kw in kwargs.items()}

@@ -69,6 +69,34 @@ def test_recalculation_for_my_engagement(act_as, wired: FakeStore) -> None:
     assert electricity["co2e_t"] == location["total_co2e"] and electricity["status"] == "complete"
 
 
+def test_line_trace_is_fetched_per_line_and_the_recalculation_carries_none(act_as, wired: FakeStore) -> None:
+    act_as("org_member", ORG_A)
+    key = "s2:purchased_energy:electricity:name-facility-a"
+    with TestClient(app) as client:
+        body = client.get("/v1/engagements/ENG-1/recalculation").json()
+        assert all("trace" not in line for line in body["calculation_lines"] + body["calculation_unplaced"])
+        keys = [line["key"] for line in body["calculation_lines"]]
+        fetched = client.get(f"/v1/engagements/ENG-1/recalculation/lines/{keys[0]}/trace")
+        missing = client.get("/v1/engagements/ENG-1/recalculation/lines/s1:stationary:nope:none/trace")
+    assert keys, key
+    assert fetched.status_code == 200 and fetched.json()["line_key"] == keys[0]
+    trace = fetched.json()["trace"]
+    assert trace["panel"] == "electricity" and trace["state"] == "complete"
+    line = body["calculation_lines"][0]
+    assert trace["result"]["recomputed"] == line["results"]["total_co2e_t"]
+    assert missing.status_code == 404
+
+
+def test_line_trace_respects_org_and_session(act_as, wired: FakeStore) -> None:
+    path = "/v1/engagements/ENG-1/recalculation/lines/x/trace"
+    act_as("org_member", ORG_B)
+    with TestClient(app) as client:
+        assert client.get(path).status_code == 404
+    act_as(None)
+    with TestClient(app) as client:
+        assert client.get(path).status_code == 401
+
+
 def test_other_org_and_signed_out_cannot_read(act_as, wired: FakeStore) -> None:
     act_as("org_member", ORG_B)
     with TestClient(app) as client:

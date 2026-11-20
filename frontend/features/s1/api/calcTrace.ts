@@ -3,10 +3,14 @@
  * (backend/app/services/calc_trace/model.py; contracts/calculation_trace.schema.json).
  *
  * A trace restates what the calculators already produced, step by step, so one renderer can show any
- * panel. It never feeds a number back into a total. Numbers arrive at full precision; display rounding is
+ * panel. It never feeds a number back into a total. The recalculation response does not carry traces
+ * (it is fetched by Results, the dashboard and the Evidence tree): a panel fetches its own line's trace
+ * with `getLineTrace` when the line is expanded. Numbers arrive at full precision; display rounding is
  * the renderer's (`TraceColumn.display`). A field the backend has no value for is absent, not null, except
  * where null is the answer (a term's first operator, an operand's or side's value, the line result).
  */
+
+import { api } from "../../../lib/api";
 
 export const TRACE_VERSION = 1;
 
@@ -233,4 +237,16 @@ export interface LineTrace {
   result: TraceResult;
   method_mismatch: boolean;
   flags: string[];
+}
+
+/** GET /engagements/{id}/recalculation/lines/{line_key}/trace. `trace` is null when the line cannot be traced. */
+export interface LineTraceResponse {
+  line_key: string;
+  trace: LineTrace | null;
+}
+
+export function getLineTrace(engagementId: string, lineKey: string): Promise<LineTraceResponse> {
+  return api<LineTraceResponse>(
+    `/engagements/${encodeURIComponent(engagementId)}/recalculation/lines/${encodeURIComponent(lineKey)}/trace`,
+  );
 }

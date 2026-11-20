@@ -37,14 +37,20 @@ def _digest(response: dict) -> str:
 
 
 @pytest.mark.parametrize("name", sorted(BEFORE))
-def test_every_total_is_byte_identical_to_before_traces_existed(name: str) -> None:
-    """``recalculation_before_trace.json`` was produced by the code before ``trace`` was added (same scenarios).
-    With the added ``trace`` keys removed the whole response, every total included, hashes the same."""
+def test_the_default_response_is_byte_identical_to_before_traces_existed(name: str) -> None:
+    """``recalculation_before_trace.json`` was produced by the code before traces were added (same scenarios).
+    The default recalculation response, with nothing stripped, hashes the same, every total included."""
 
-    response = scenarios()[name]
-    assert _digest(_strip(response)) == BEFORE[name]["sha256"]
+    response = scenarios(with_traces=False)[name]
+    assert "trace" not in json.dumps(response)
+    assert _digest(response) == BEFORE[name]["sha256"]
     for category, total in BEFORE[name]["categories"].items():
         assert (response["categories"][category] or {}).get("total_co2e") == total  # exact, not approximate
+
+
+@pytest.mark.parametrize("name", sorted(BEFORE))
+def test_asking_for_traces_changes_nothing_but_adds_them(name: str) -> None:
+    assert _digest(_strip(scenarios(with_traces=True)[name])) == BEFORE[name]["sha256"]
 
 
 def test_trace_is_purely_additive_on_the_lines() -> None:
@@ -181,10 +187,9 @@ def test_a_trace_that_cannot_reproduce_the_calculator_is_dropped_not_repaired(mo
         assert line["results"]["total_co2e_t"] > 0
 
 
-def test_a_trace_stays_small_enough_to_ride_on_the_recalculation_response() -> None:
-    """Unset fields are left out and a line with 12 monthly bills and company figures is about 20 KB. The plan's
-    3 MB budget for 200 such lines is not met (about 4 MB of traces); if responses get that large the traces move
-    to their own endpoint with this same shape. This guards against the trace growing beyond that."""
+def test_a_line_trace_stays_small_enough_to_fetch_on_expanding_a_line() -> None:
+    """A line's trace is fetched on its own (never carried on the recalculation response). Unset fields are
+    left out, so a line with 12 monthly bills and company figures is about 20 KB; this guards against growth."""
 
     from backend.tests.services.test_engagement_recalculation_service import FakeStore as Store
 

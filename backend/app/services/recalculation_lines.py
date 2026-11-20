@@ -132,7 +132,8 @@ def _group_miles(sub: _Sub) -> float | None:
 
 class _Builder:
     def __init__(self, ref: EmissionFactorReference, ledger: Ledger, inputs: RecalculationInputs,
-                 tolerance: float, open_sources: dict[str, bool]) -> None:
+                 tolerance: float, open_sources: dict[str, bool], with_traces: bool = False) -> None:
+        self.with_traces = with_traces
         self.ref = ref
         self.ledger = ledger
         self.inputs = inputs
@@ -250,7 +251,8 @@ class _Builder:
         else:
             self._company_and_reported(out, bucket, subs, share_pct)
         out["flags"] = sorted(flags | set(out["flags"]))
-        out["trace"] = self._trace(family, out, bucket, primary) if line is not None else None
+        if self.with_traces:  # opt-in: the default response carries no trace key at all
+            out["trace"] = self._trace(family, out, bucket, primary) if line is not None else None
         return out
 
     def _trace(self, family: str, out: dict[str, Any], bucket: _Bucket, primary: _Sub | None) -> dict[str, Any] | None:
@@ -526,13 +528,13 @@ def file_records(ref: EmissionFactorReference, records: list[ReviewedRecord], in
 def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRecord],
           inputs: RecalculationInputs, settings: dict[str, Any], decisions: dict[str, dict[str, Any]],
           tolerance: float, open_sources: dict[str, bool], facilities: list[dict[str, Any]],
-          company: str | None, filing: Filing) -> Built:
+          company: str | None, filing: Filing, with_traces: bool = False) -> Built:
     """The calculation lines of one recalculation, from what its categories counted (``ledger``).
     ``records`` are all the records the lines are made from (a line exists because a document files
     there, counted or not); ``filing`` is ``file_records`` of them, made once by the caller."""
 
     placements, known, slot_of = filing.placements, filing.known, filing.slot_of
-    builder = _Builder(ref, ledger, inputs, tolerance, open_sources)
+    builder = _Builder(ref, ledger, inputs, tolerance, open_sources, with_traces)
     facility_names = {cl.facility_anchor_id(f): str(f.get("name")) for f in facilities}
     anchors = cl.vehicle_group_anchors(inputs.vehicle_groups)
     biogenic_fuels = calc.biogenic_fuel_names(ref)
