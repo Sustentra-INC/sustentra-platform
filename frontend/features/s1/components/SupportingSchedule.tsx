@@ -7,11 +7,11 @@ import { getLineSchedule, type CoverageStatus, type IdentifierGroup, type LineSc
 import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { ApiError } from "../../../lib/api";
 import { userFacingApiError } from "../api/s1Backend";
-import { AI_VALUE, REREAD } from "../constants/copy";
+import { AI_VALUE } from "../constants/copy";
 import { ContainerStateSurface } from "./ContainerStateSurface";
 
 /**
- * One calculation line's supporting schedule: what covers each month of the year, which
+ * One calculation line's data point review: what covers each month of the year, which
  * identifiers the documents agree on, the extracted values (read only) and the line's history. Everything is
  * computed by the backend; this only lays it out. Sections stack in a fixed order: header, coverage,
  * source identifiers, accepted values, line history (folded).
@@ -46,13 +46,16 @@ const CATEGORY_LABELS: Record<string, string> = {
   biogenic: "Biogenic CO₂",
 };
 
-const STATUS_TEXT: Record<CoverageStatus, string> = {
+type DisplayStatus = CoverageStatus | "rejected";
+const STATUS_TEXT: Record<DisplayStatus, string> = {
+  rejected: "Rejected",
   counted: "Counted",
   counted_in_part: "Counted in part",
   not_reviewed: "Not reviewed",
   no_document: "No document",
 };
-const STATUS_ROLE: Record<CoverageStatus, string> = {
+const STATUS_ROLE: Record<DisplayStatus, string> = {
+  rejected: "na",
   counted: "resolved",
   counted_in_part: "active",
   not_reviewed: "open",
@@ -71,7 +74,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
         if (!live) return;
         // The API and web deploy together: a response without the v2 fields is a failed load, not an empty schedule.
         if (!Array.isArray(next.rows) || !Array.isArray(next.columns) || !Array.isArray(next.identifier_groups)) {
-          setProblem("The schedule came back incomplete. Try again in a moment.");
+          setProblem("The data point review came back incomplete. Try again in a moment.");
           return;
         }
         setSchedule(next);
@@ -99,7 +102,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
           ‹ Back to {backLabel}
         </button>
         <div className="s1-system-banner" role="alert">
-          <strong>Couldn&apos;t load this schedule</strong>
+          <strong>Couldn&apos;t load this data point review</strong>
           <span>{problem} </span>
           <button className="s1-button" type="button" onClick={() => setAttempt((n) => n + 1)}>
             Try again
@@ -111,14 +114,19 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
   if (!schedule) {
     return (
       <section className="s1-content s1-sch">
-        <ContainerStateSurface state="loading" label="Loading the supporting schedule" />
+        <ContainerStateSurface state="loading" label="Loading the data point review" />
       </section>
     );
   }
 
   const { line } = schedule;
   const year = reportingYear(schedule.reporting_period);
-  const { rows, columns, identifier_groups: groups } = schedule;
+  const { columns, identifier_groups: groups } = schedule;
+  // Accepted values only (Claire, C-S1): unreviewed and rejected values do not appear. Documents with values
+  // still waiting are counted in the coverage strip, so nothing disappears silently.
+  const allRows = schedule.rows;
+  const rows = allRows.filter(isShown);
+  const waitingDocuments = countWaitingDocuments(allRows);
   // Numbers are right-aligned; text (vehicle type, on/off road) and dates are left-aligned.
   const isNumeric = (key: string) =>
     key !== "date" && rows.every((r) => {
@@ -128,7 +136,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
   // The date header follows the documents: one label when they all agree, else the column's own.
   const dateLabels = new Set(rows.map((r) => r.date.label).filter(Boolean));
   const headerLabel = (c: { key: string; label: string }) => (c.key === "date" && dateLabels.size === 1 ? [...dateLabels][0] : c.label);
-  const fileNames = new Map<string, string>([...schedule.values, ...rows].map((v) => [v.document_id, v.file_name]));
+  const fileNames = new Map<string, string>([...schedule.values, ...allRows].map((v) => [v.document_id, v.file_name]));
   const crumbs = [SCOPE_LABELS[line.scope] ?? line.scope, CATEGORY_LABELS[line.category] ?? line.category, line.level2_label, line.label];
 
   return (
@@ -150,7 +158,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
               </span>
             ))}
           </nav>
-          <p className="s1-sch-eyebrow">Supporting schedule</p>
+          <p className="s1-sch-eyebrow">Data point review</p>
           {/* "<Line> · <Level 2>", unless the server's label already names the fuel. */}
           <h1>{line.label.toLowerCase().includes(line.level2_label.toLowerCase()) ? line.label : `${line.label} · ${line.level2_label}`}</h1>
           {year ? <p className="s1-muted">Reporting year {year}</p> : null}
@@ -168,7 +176,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
           </button>
           {schedule.calculated === false ? (
             <p id="s1-sch-notcalc" className="s1-muted s1-sch-notcalc">
-              {rows.some((r) => r.waiting_on?.length || r.rejected_fields?.length)
+              {allRows.some(isWaiting)
                 ? "Not calculated yet: values on this line are waiting for review."
                 : "No calculation for this line yet."}
             </p>
@@ -178,18 +186,29 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
 
       <section className="s1-panel s1-sch-cov" aria-label="Coverage by month">
         <h2>Coverage by month</h2>
+        <p className="s1-muted s1-sch-cov__basis">Counts accepted values only.</p>
+        {waitingDocuments > 0 ? (
+          <p className="s1-sch-waiting" role="status">
+            {plural(waitingDocuments, "document", "documents")} on this line {waitingDocuments === 1 ? "has" : "have"} values not yet reviewed.{" "}
+            <button className="s1-linklike" type="button" onClick={onOpenEvidence ?? onBack}>
+              Review in Evidence
+            </button>
+          </p>
+        ) : null}
         {schedule.coverage.length ? (
           <ul className="s1-sch-months">
             {schedule.coverage.map((m) => {
               const doc = m.document_ids[0];
+              const status = displayStatus(m, allRows);
+              const waitingOn = (m.waiting_on ?? []).filter((f) => !decidedFields(m, allRows).has(f));
               const body = (
                 <>
                   <span className="s1-sch-month__name">{monthName(m.month)}</span>
                   <span className="s1-sch-month__status">
-                    {STATUS_TEXT[m.status]}
+                    {STATUS_TEXT[status]}
                     {m.flags?.includes("unconverted") ? " · units differ" : ""}
                   </span>
-                  {m.waiting_on?.length ? <span className="s1-sch-month__waiting">Waiting on: {m.waiting_on.join(", ")}</span> : null}
+                  {waitingOn.length ? <span className="s1-sch-month__waiting">Waiting on: {waitingOn.join(", ")}</span> : null}
                   {m.quantity !== null ? (
                     <span className="s1-sch-month__qty">
                       {formatQuantity(m.quantity)} {m.unit ?? ""}
@@ -197,7 +216,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
                   ) : null}
                 </>
               );
-              const cls = `s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`;
+              const cls = `s1-sch-month s1-sch-month--${STATUS_ROLE[status]}`;
               return (
                 <li key={m.month}>
                   {m.document_ids.length > 1 ? (
@@ -220,15 +239,15 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
                     </div>
                   ) : doc ? (
                     <button
-                      className={`s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`}
+                      className={`s1-sch-month s1-sch-month--${STATUS_ROLE[status]}`}
                       type="button"
-                      aria-label={`${monthName(m.month)}: ${STATUS_TEXT[m.status]}. Open ${m.document_ids.length === 1 ? "the document" : "the first document"}`}
+                      aria-label={`${monthName(m.month)}: ${STATUS_TEXT[status]}. Open ${m.document_ids.length === 1 ? "the document" : "the first document"}`}
                       onClick={() => onOpenDocument(doc)}
                     >
                       {body}
                     </button>
                   ) : (
-                    <span className={`s1-sch-month s1-sch-month--${STATUS_ROLE[m.status]}`}>{body}</span>
+                    <span className={`s1-sch-month s1-sch-month--${STATUS_ROLE[status]}`}>{body}</span>
                   )}
                 </li>
               );
@@ -238,7 +257,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
           <p className="s1-muted">No months to show yet.</p>
         )}
         <ul className="s1-sch-legend" aria-label="Legend">
-          {(Object.keys(STATUS_TEXT) as CoverageStatus[]).map((s) => (
+          {(Object.keys(STATUS_TEXT) as DisplayStatus[]).map((s) => (
             <li key={s}>
               <span className={`s1-sch-swatch s1-sch-swatch--${STATUS_ROLE[s]}`} aria-hidden /> {STATUS_TEXT[s]}
             </li>
@@ -278,7 +297,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.record_key} className={isPending(r) ? "s1-sch-row--pending" : ""}>
+                  <tr key={r.record_key}>
                     {columns.map((c) => (
                       <td key={c.key} className={isNumeric(c.key) ? "s1-num" : ""}>
                         {c.key === "date" ? (
@@ -309,7 +328,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
             </table>
           </div>
         ) : (
-          <p className="s1-muted">No values have been extracted on this line yet.</p>
+          <p className="s1-muted">No accepted values on this line yet.</p>
         )}
       </section>
 
@@ -398,42 +417,69 @@ function cellText(key: string, r: ScheduleRow): string {
   return cell ? formatValue(cell) : "";
 }
 
-/** A row that is not counted: greyed, with a word. */
-function isPending(r: ScheduleRow): boolean {
-  return !r.accepted;
+type CoverageMonth = LineSchedule["coverage"][number];
+
+/** The records read from this month's documents (by date when the record has one). */
+function monthRows(m: CoverageMonth, rows: ScheduleRow[]): ScheduleRow[] {
+  return rows.filter((r) => {
+    if (!m.document_ids.includes(r.document_id)) return false;
+    const a = r.date.start?.slice(0, 7);
+    const b = r.date.end?.slice(0, 7) ?? a;
+    return !a || (a <= m.month && (b ?? a) >= m.month);
+  });
 }
 
-/** The word on a row: why it is not counted, or "Edited" for a corrected value; null for plain accepted rows. */
+/** A month whose only values were rejected reads "Rejected", not "Not reviewed". */
+function displayStatus(m: CoverageMonth, rows: ScheduleRow[]): DisplayStatus {
+  if (m.status !== "not_reviewed") return m.status;
+  // Every document of the month must have rows in it, and all of them rejected; otherwise the server's status stands.
+  const here = monthRows(m, rows);
+  const allRejected = m.document_ids.length > 0 && m.document_ids.every((id) => {
+    const mine = here.filter((r) => r.document_id === id);
+    return mine.length > 0 && mine.every((r) => r.decision === "rejected");
+  });
+  return allRejected ? "rejected" : m.status;
+}
+
+/** Fields a reviewer rejected on some record of the month, that no record of the month still waits on. Checked per record, not pooled. */
+function decidedFields(m: CoverageMonth, rows: ScheduleRow[]): Set<string> {
+  const here = monthRows(m, rows);
+  const stillWaiting = new Set(here.flatMap((r) => r.waiting_on ?? []));
+  return new Set(here.flatMap((r) => r.rejected_fields ?? []).filter((f) => !stillWaiting.has(f)));
+}
+
+/** A value the reviewer accepted or corrected. An older server sends no decision; then `accepted` decides. */
+export function isAccepted(r: ScheduleRow): boolean {
+  return r.decision ? r.decision === "accepted" || r.decision === "edited" : r.accepted;
+}
+
+/** The reviewer accepted this record's values but rejected a sibling field, so the record is not counted. Every field is decided. */
+function isAcceptedWithRejectedSibling(r: ScheduleRow): boolean {
+  return r.decision === "awaiting_other_fields" && !!r.rejected_fields?.length && !r.waiting_on?.length;
+}
+
+/** Shown on the page: accepted or corrected values, and accepted values whose record is not counted because a sibling was rejected. */
+export function isShown(r: ScheduleRow): boolean {
+  return isAccepted(r) || isAcceptedWithRejectedSibling(r);
+}
+
+/** A row still has an undecided field: unreviewed, asked for more evidence, or with other fields to decide. Fully decided rows do not wait. */
+export function isWaiting(r: ScheduleRow): boolean {
+  if (isShown(r) || r.decision === "rejected") return false;
+  return r.decision === "not_reviewed" || r.decision === "needs_more_evidence" || !!r.waiting_on?.length || !r.decision;
+}
+
+/** Documents that have at least one value still waiting for review. */
+export function countWaitingDocuments(rows: ScheduleRow[]): number {
+  return new Set(rows.filter(isWaiting).map((r) => r.document_id)).size;
+}
+
+/** The word on a shown row: "Edited" for a corrected value, "Not counted" when a sibling field was rejected; null for plain accepted rows. */
 export function rowFlag(r: ScheduleRow): string | null {
-  const base = baseRowFlag(r);
-  // After a re-read (backend S1-BE-014): an earlier decision no longer applies, or a correction carried over a changed value.
-  if (r.reread_changed) return `${base ?? "Not reviewed"} · ${REREAD.again}`;
-  if (r.value_changed_since_review) return `${base ?? "Accepted"} · Value changed since review`;
-  return base;
-}
-
-function baseRowFlag(r: ScheduleRow): string | null {
-  switch (r.decision) {
-    case "accepted":
-      return null;
-    case "edited":
-      return "Edited";
-    case "rejected":
-      return "Rejected";
-    case "needs_more_evidence":
-      return "Needs more evidence";
-    case "not_reviewed":
-      return "Not reviewed";
-    case "awaiting_other_fields":
-      return [
-        r.rejected_fields?.length ? `Rejected: ${r.rejected_fields.join(", ")}` : "",
-        r.waiting_on?.length || !r.rejected_fields?.length ? `Waiting on: ${r.waiting_on?.join(", ") || "other fields"}` : "",
-      ]
-        .filter(Boolean)
-        .join(" · ");
-    default:
-      return r.accepted ? null : "Not reviewed";
-  }
+  if (r.value_changed_since_review) return `${r.decision === "edited" ? "Edited" : "Accepted"} · Value changed since review`;
+  if (r.decision === "edited") return "Edited";
+  if (isAcceptedWithRejectedSibling(r)) return `Not counted — ${r.rejected_fields?.join(", ")} rejected`;
+  return null;
 }
 
 function savedByText(r: ScheduleRow): string {

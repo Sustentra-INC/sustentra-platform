@@ -102,7 +102,7 @@ export function viewLabel(view: WorkpaperView): string {
   switch (view.name) {
     case "dashboard": return "dashboard";
     case "evidence": return "evidence";
-    case "schedule": return "schedule";
+    case "schedule": return "data point review";
     case "extraction": return "document review";
     case "results": return "results";
     case "setup": return "setup";

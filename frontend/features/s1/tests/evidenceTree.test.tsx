@@ -1,6 +1,6 @@
 /* @vitest-environment jsdom */
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { useState } from "react";
@@ -223,7 +223,7 @@ describe("the Evidence tree", () => {
     const onOpenSchedule = vi.fn();
     render(<Harness onOpenSchedule={onOpenSchedule} />);
     await expandAll();
-    fireEvent.click(screen.getByRole("button", { name: "Open supporting schedule for Natural gas · Kent" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open data point review for Natural gas · Kent" }));
     expect(onOpenSchedule).toHaveBeenCalledWith(KENT.key);
   });
 
@@ -870,7 +870,7 @@ function renderSchedule(over: Partial<React.ComponentProps<typeof SupportingSche
   return props;
 }
 
-describe("the supporting schedule", () => {
+describe("the data point review", () => {
   beforeEach(() => {
     mocks.byPath = { [SCHEDULE_PATH]: SCHEDULE };
   });
@@ -878,7 +878,8 @@ describe("the supporting schedule", () => {
   it("renders the breadcrumb, title, coverage, identifiers, values and history", async () => {
     renderSchedule();
     expect(await screen.findByRole("heading", { name: "Kent · Natural gas" })).toBeInTheDocument();
-    expect(screen.getByText("Supporting schedule")).toBeInTheDocument();
+    expect(screen.getByText("Data point review")).toBeInTheDocument();
+    expect(screen.queryByText(/supporting schedule|bucket/i)).toBeNull();
     expect(screen.getByText("Reporting year 2025")).toBeInTheDocument();
     const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(crumbs).toHaveTextContent("Evidence › Scope 1 › Stationary combustion › Natural gas › Kent");
@@ -892,22 +893,67 @@ describe("the supporting schedule", () => {
     expect(screen.getByText(/M\. Osei accepted Activity quantity 120 therm from jan\.pdf, page 2/)).toBeInTheDocument();
   });
 
-  it("shows one row per record with units, MM/DD/YY dates, server day counts and a word for each unreviewed row", async () => {
+  it("shows accepted values only, with units, MM/DD/YY dates and server day counts; unreviewed and rejected values are absent", async () => {
     renderSchedule();
     await screen.findByRole("heading", { name: "Kent · Natural gas" });
     const table = screen.getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Date", "Activity quantity", "Heat content (HHV)", "Saved by", "Document"]);
-    const [, jan, feb, mar] = within(table).getAllByRole("row");
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Service period", "Activity quantity", "Heat content (HHV)", "Saved by", "Document"]);
+    const rows = within(table).getAllByRole("row");
+    expect(rows).toHaveLength(2); // header + the one accepted value
+    const jan = rows[1];
     expect(jan).toHaveTextContent("01/01/25 – 01/31/25 · 31 days");
     expect(jan).toHaveTextContent("120 therm");
     expect(jan).toHaveTextContent("Saved by M. Osei · 03/02/25");
-    expect(jan).not.toHaveTextContent("Not reviewed");
-    expect(feb).toHaveTextContent("Not reviewed");
-    expect(feb).toHaveTextContent("1.03 MMBtu/Mcf");
-    expect(mar).toHaveTextContent("03/05/25");
-    expect(mar).not.toHaveTextContent("1 day");
-    expect(mar).toHaveTextContent("Rejected");
+    // The unreviewed (Feb) and rejected (Mar) values are not on the page at all.
+    expect(within(table).queryByText(/99 therm/)).toBeNull();
+    expect(within(table).queryByText(/1\.03 MMBtu/)).toBeNull();
+    expect(within(table).queryByText(/03\/05\/25/)).toBeNull();
+    expect(table).not.toHaveTextContent("Not reviewed");
+    expect(table).not.toHaveTextContent("Rejected");
     expect(within(table).queryByRole("textbox")).toBeNull();
+  });
+
+  it("counts the documents still waiting for review in the coverage strip and links to Evidence", async () => {
+    const onOpenEvidence = vi.fn();
+    renderSchedule({ onOpenEvidence });
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    // feb is unreviewed; mar is rejected (decided), so one document waits.
+    const notice = screen.getByRole("status");
+    expect(notice).toHaveTextContent("1 document on this line has values not yet reviewed");
+    fireEvent.click(within(notice).getByRole("button", { name: "Review in Evidence" }));
+    expect(onOpenEvidence).toHaveBeenCalled();
+  });
+
+  it("says how many documents wait, in the plural, and shows no notice when none do", async () => {
+    const [a, b] = SCHEDULE.rows;
+    const more = (key: string, doc: string, decision: "not_reviewed" | "needs_more_evidence") => ({ ...b, record_key: key, document_id: doc, decision });
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, rows: [a, more("x1", "d1", "not_reviewed"), more("x2", "d1", "needs_more_evidence"), more("x3", "d2", "not_reviewed"), more("x4", "d3", "not_reviewed")] } };
+    const first = renderSchedule();
+    expect(first.onBack).toBeDefined();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    expect(screen.getByRole("status")).toHaveTextContent("3 documents on this line have values not yet reviewed");
+    cleanup();
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, rows: [a] } };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("shows a corrected value with its corrected value and the Edited word", async () => {
+    const [a] = SCHEDULE.rows;
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, rows: [{ ...a, decision: "edited", activity_quantity: { value: 130, unit: "therm" } }] } };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const [, row] = within(screen.getByRole("table")).getAllByRole("row");
+    expect(row).toHaveTextContent("130 therm");
+    expect(row).toHaveTextContent("Edited");
+  });
+
+  it("shows the empty state when no document has an accepted value yet", async () => {
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, rows: SCHEDULE.rows.slice(1) } };
+    renderSchedule();
+    expect(await screen.findByText("No accepted values on this line yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("shows the server's numbers as given, marks edited rows, labels the date and aligns text left", async () => {
@@ -939,7 +985,6 @@ describe("the supporting schedule", () => {
     expect(row).not.toHaveTextContent("2,019");
     expect(row).toHaveTextContent("1.0312345 MMBtu/Mcf");
     expect(row).toHaveTextContent("Edited");
-    expect(row).not.toHaveClass("s1-sch-row--pending");
     expect(within(table).getByRole("columnheader", { name: "Vehicle type" })).not.toHaveClass("s1-num");
     expect(within(table).getByRole("columnheader", { name: "Model year" })).toHaveClass("s1-num");
     fireEvent.click(screen.getByRole("button", { name: /Account number/ }));
@@ -1017,7 +1062,7 @@ describe("the supporting schedule", () => {
     };
     const props = renderSchedule();
     await screen.findByRole("heading", { name: "Kent · Natural gas" });
-    expect(screen.getAllByText("Waiting on: Fuel type")).toHaveLength(2); // the month and the row
+    expect(screen.getAllByText("Waiting on: Fuel type")).toHaveLength(1); // the month; the unaccepted row is not listed
     expect(screen.getByText("Not calculated yet: values on this line are waiting for review.")).toBeInTheDocument();
     const link = screen.getByRole("button", { name: "Open calculation line ›" });
     expect(link).toBeDisabled();
@@ -1026,7 +1071,7 @@ describe("the supporting schedule", () => {
     expect(props.onOpenCalculationLine).not.toHaveBeenCalled();
   });
 
-  it("uses neutral copy for an empty line that is not calculated, and says Rejected for a rejected field", async () => {
+  it("uses neutral copy for an empty line that is not calculated, and when every field is decided", async () => {
     mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, calculated: false, rows: [], coverage: [], values: [] } };
     const { unmount } = render(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />);
     expect(await screen.findByText("No calculation for this line yet.")).toBeInTheDocument();
@@ -1037,8 +1082,86 @@ describe("the supporting schedule", () => {
       [SCHEDULE_PATH]: { ...SCHEDULE, calculated: false, rows: [{ ...first, accepted: false, decision: "awaiting_other_fields", rejected_fields: ["Fuel type"], waiting_on: [] }] },
     };
     renderSchedule();
-    expect(await screen.findByText("Rejected: Fuel type")).toBeInTheDocument();
+    // Every field is decided, so nothing is waiting: neutral copy, and the accepted values still show, flagged as not counted.
+    expect(await screen.findByText("No calculation for this line yet.")).toBeInTheDocument();
+    expect(screen.queryByText(/waiting for review/)).toBeNull();
     expect(screen.queryByText(/Waiting on/)).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(within(screen.getByRole("table")).getAllByRole("row")[1]).toHaveTextContent("Not counted — Fuel type rejected");
+  });
+
+  it("reads Rejected only when every document of the month has rows there and all are rejected", async () => {
+    const [, b, c] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        coverage: [{ month: "2025-03", status: "not_reviewed", quantity: null, unit: null, document_ids: ["mar", "feb"] }],
+        // mar is rejected in March; feb's row is dated in February, so it says nothing about March.
+        rows: [{ ...c, decision: "rejected" }, { ...b, decision: "not_reviewed" }],
+      },
+    };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const march = within(screen.getByRole("region", { name: "Coverage by month" })).getByText("Mar 2025").closest("li") as HTMLElement;
+    expect(march).toHaveTextContent("Not reviewed");
+    expect(march).not.toHaveTextContent("Rejected");
+  });
+
+  it("keeps Waiting on a field while any document of the month still waits on it", async () => {
+    const [, b, c] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        coverage: [{ month: "2025-03", status: "not_reviewed", quantity: null, unit: null, document_ids: ["mar", "feb"], waiting_on: ["Heat content"] }],
+        rows: [
+          { ...c, date: { start: "2025-03-05", end: "2025-03-05", days: 1, label: "Service date" }, decision: "awaiting_other_fields", rejected_fields: ["Heat content"], waiting_on: [] },
+          { ...b, date: { start: "2025-03-01", end: "2025-03-31", days: 31, label: "Service period" }, decision: "awaiting_other_fields", waiting_on: ["Heat content"] },
+        ],
+      },
+    };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const march = within(screen.getByRole("region", { name: "Coverage by month" })).getByText("Mar 2025").closest("li") as HTMLElement;
+    expect(march).toHaveTextContent("Waiting on: Heat content");
+  });
+
+  it("shows a row with a rejected sibling field as not counted, and does not hide its accepted values", async () => {
+    const [a, b] = SCHEDULE.rows;
+    mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, rows: [a, { ...b, accepted: false, decision: "awaiting_other_fields", rejected_fields: ["Heat content"], waiting_on: [] }] } };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const rows = within(screen.getByRole("table")).getAllByRole("row");
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).not.toHaveTextContent("Not counted");
+    expect(rows[2]).toHaveTextContent("99 therm");
+    expect(rows[2]).toHaveTextContent("Not counted — Heat content rejected");
+  });
+
+  it("labels coverage as counting accepted values only, reads Rejected for a month with only rejected values, and drops Waiting on for decided fields", async () => {
+    const [, b, c] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        coverage: [
+          { month: "2025-02", status: "not_reviewed", quantity: null, unit: null, document_ids: ["feb"], waiting_on: ["Heat content"] },
+          { month: "2025-03", status: "not_reviewed", quantity: null, unit: null, document_ids: ["mar"] },
+        ],
+        rows: [
+          { ...b, decision: "awaiting_other_fields", rejected_fields: ["Heat content"], waiting_on: [] },
+          { ...c, decision: "rejected" },
+        ],
+      },
+    };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const cov = screen.getByRole("region", { name: "Coverage by month" });
+    expect(within(cov).getByText("Counts accepted values only.")).toBeInTheDocument();
+    const march = within(cov).getByText("Mar 2025").closest("li") as HTMLElement;
+    expect(march).toHaveTextContent("Rejected");
+    expect(march).not.toHaveTextContent("Not reviewed");
+    const feb = within(cov).getByText("Feb 2025").closest("li") as HTMLElement;
+    expect(feb).toHaveTextContent("Not reviewed");
+    expect(feb).not.toHaveTextContent("Waiting on");
   });
 
   it("stacks the sections in the spec's order: header, coverage, identifiers, values, history", async () => {
@@ -1056,7 +1179,7 @@ describe("the supporting schedule", () => {
     const link = await screen.findByRole("button", { name: "Open calculation line ›" });
     expect(link).toBeDisabled();
     expect(screen.getByText("No calculation for this line yet.")).toBeInTheDocument();
-    expect(screen.getByText("No values have been extracted on this line yet.")).toBeInTheDocument();
+    expect(screen.getByText("No accepted values on this line yet.")).toBeInTheDocument();
   });
 
   it("keeps non-ASCII line names in the title and breadcrumb, and a two-year period readable", async () => {
@@ -1153,7 +1276,7 @@ describe("the supporting schedule", () => {
   it("shows a plain loading line, not placeholder rows, while the schedule loads", () => {
     mocks.byPath = { [SCHEDULE_PATH]: new Promise(() => undefined) as unknown as LineSchedule };
     render(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />);
-    expect(screen.getByRole("status")).toHaveTextContent("Loading the supporting schedule.");
+    expect(screen.getByRole("status")).toHaveTextContent("Loading the data point review.");
     expect(screen.queryByText("Loading row")).toBeNull();
   });
 
@@ -1275,8 +1398,8 @@ describe("the supporting schedule", () => {
     delete old.rows;
     mocks.byPath = { [SCHEDULE_PATH]: old as LineSchedule };
     renderSchedule();
-    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load this schedule");
-    expect(screen.queryByText("No values have been extracted on this line yet.")).toBeNull();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load this data point review");
+    expect(screen.queryByText("No accepted values on this line yet.")).toBeNull();
   });
 
   it("says what went wrong when the schedule does not load", async () => {
