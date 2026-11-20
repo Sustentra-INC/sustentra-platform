@@ -29,6 +29,7 @@ from backend.app.domain import fuel_units
 from backend.app.reference.emission_factor_loader import EmissionFactorNotFoundError, EmissionFactorReference
 from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
+from backend.app.services.calc_trace import build_trace
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.reviewed_evidence import ReviewedRecord, place_on_facility, to_date
 
@@ -249,7 +250,16 @@ class _Builder:
         else:
             self._company_and_reported(out, bucket, subs, share_pct)
         out["flags"] = sorted(flags | set(out["flags"]))
+        out["trace"] = self._trace(family, out, bucket, primary) if line is not None else None
         return out
+
+    def _trace(self, family: str, out: dict[str, Any], bucket: _Bucket, primary: _Sub | None) -> dict[str, Any] | None:
+        """The step-level working of the line (``calc_trace``). Read-only: it restates ``out``, never changes it."""
+
+        context: dict[str, Any] = {}
+        if family == "electricity" and primary is not None:
+            context["grid_region"] = self.ledger.regions.get(primary.sub[0]) or self._region_of(bucket, primary.sub[0])
+        return build_trace(family, out, context)
 
     def _empty_sub(self, bucket: _Bucket) -> tuple[str, ...]:
         """The run a line with no evidence stands on: its fuel in the unit the company gave (or the
