@@ -18,10 +18,10 @@ import pytest
 
 from backend.app.services.document_chunk_service import merge_chunk_outputs
 from backend.app.services.electricity_extractor import TOU_NOTE, ElectricityExtractor
-from backend.app.services.engagement_recalculation_service import EngagementRecalculationService
 from backend.app.services.extraction_target_service import ExtractionTargetService
 from backend.app.services.statement_segments import SPLIT_NOTE, split_statements
 from backend.app.services.thermal_extractor import AMBIGUOUS_ENERGY_NOTE, ThermalExtractor
+from backend.tests.services.recalc_store import RecalcStore, recalculate
 
 # (start, end, total kWh, on-peak kWh) for twelve billing months, 16th to 15th
 MONTHS = [
@@ -635,61 +635,6 @@ def test_a_thermal_bundle_whose_parts_all_name_their_type_has_no_note() -> None:
 
 
 # ---- the duplicate check -------------------------------------------------------------------------------------------
-def _key(index: int, meters: list[str | None] | None, record: dict[str, tuple]) -> dict[str, str]:
-    meter = meters[index - 1] if meters else None
-    period = f"{record.get('service_period_start', (None,))[0]}..{record.get('service_period_end', (None,))[0]}"
-    return {"record_key": f"r{index}:{meter}:{period}" if meter else f"r{index}:{period}"}
-
-
-class _Store:
-    """The three services the recalculation reads: a few documents, each with accepted records."""
-
-    def __init__(self) -> None:
-        self.documents: list[dict] = []
-        self.results: dict[str, list[dict]] = {}
-        self.reviews: dict[str, list[dict]] = {}
-
-    def add(self, document_id: str, records: list[dict[str, tuple]], *, pages: list[int] | None = None,
-            meters: list[str | None] | None = None) -> None:
-        self.documents.append({"document_id": document_id, "engagement_id": "ENG-1", "org_id": "org-a",
-                               "file_name": f"{document_id}.pdf"})
-        items, reviews = [], []
-        for index, record in enumerate(records, start=1):
-            for name, (value, unit) in record.items():
-                candidate_id = f"{document_id}:{index}:{name}"
-                items.append({"candidate_id": candidate_id, "field_name": name, "normalized_value": value,
-                              "unit": unit, "record_index": index if len(records) > 1 else None,
-                              "source_reference": {"document_id": document_id,
-                                                   "page_number": pages[index - 1] if pages else index,
-                                                   **_key(index, meters, record)}})
-                # a decision carries the snapshot of what it was made on, or it cannot apply to a multi-record read
-                reviews.append({"candidate_id": candidate_id, "decision": "accepted", "org_id": "org-a",
-                                "reviewed_value": value, "reviewed_unit": unit,
-                                "candidate_snapshot": {"field_name": name, "normalized_value": value, "unit": unit,
-                                                       "record_index": items[-1]["record_index"],
-                                                       **_key(index, meters, record)}})
-        self.results[document_id] = [{"document_id": document_id, "org_id": "org-a",
-                                      "canonical_type_id": "CT-S2-ELEC", "items": items}]
-        self.reviews[document_id] = reviews
-
-    def list_documents(self, engagement_id: str) -> list[dict]:
-        return [d for d in self.documents if d["engagement_id"] == engagement_id]
-
-    def list_extraction_results_by_document(self, document_id: str) -> list[dict]:
-        return self.results.get(document_id, [])
-
-    def list_by_document(self, document_id: str) -> list[dict]:
-        return self.reviews.get(document_id, [])
-
-
-def _recalculate(store: _Store) -> dict:
-    engagement = {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
-                  "settings": {"facilities": [{"facilityId": "fac-riv", "name": "Riverside Plant",
-                                               "address": "410 Mill Road, Springfield, OR 97477"}]}}
-    return EngagementRecalculationService(store, store, store).recalculate(
-        engagement, lambda record: record.get("org_id") == "org-a")
-
-
 def _electric(start: str, end: str, mwh: float) -> dict[str, tuple]:
     return {"activity_quantity": (mwh, "MWh"), "activity_unit": ("MWh", None), "energy_type": ("electricity", None),
             "service_period_start": (start, None), "service_period_end": (end, None),
@@ -701,30 +646,30 @@ def test_a_scan_of_a_bundled_statement_is_flagged_as_a_possible_duplicate_and_ne
     account. The data-quality check warns; both stay counted until the reviewer marks one a duplicate."""
 
     months = [(f"2025-{m:02d}-16", f"2025-{m + 1:02d}-15", 150.0 + m) for m in range(1, 12)]  # Jan 16 .. Dec 15
-    store = _Store()
+    store = RecalcStore()
     store.add("BUNDLE", [_electric(*m) for m in months])
     store.add("JULY-SCAN", [_electric(*months[5])])  # 06-16 .. 07-15
-    alone = _Store()
+    alone = RecalcStore()
     alone.add("BUNDLE", [_electric(*m) for m in months])
 
-    result = _recalculate(store)
+    result = recalculate(store)
     duplicates = [c for c in result["quality_checks"] if c["check"] == "Q-003"]
     assert len(duplicates) == 1 and duplicates[0]["trigger"] == "duplicate_counting_risk"
     assert duplicates[0]["severity"] == "warning"  # a warning, not a decision
     assert set(duplicates[0]["documents"]) == {"BUNDLE", "JULY-SCAN"}
     assert not result["excluded"]  # nothing was left out
     assert (result["categories"]["purchased_electricity_location_based"]["total_co2e"]
-            > _recalculate(alone)["categories"]["purchased_electricity_location_based"]["total_co2e"])
+            > recalculate(alone)["categories"]["purchased_electricity_location_based"]["total_co2e"])
 
 
 def test_a_month_printed_twice_inside_one_bundle_is_flagged_as_a_possible_duplicate() -> None:
     """A, B, A again: the second A is a statement of its own by its position, so the file gives three
     records; the check names the repeat instead of letting it count twice unseen."""
 
-    store = _Store()
+    store = RecalcStore()
     store.add("BUNDLE", [_electric("2025-01-16", "2025-02-15", 135.63), _electric("2025-02-16", "2025-03-15", 148.56),
                          _electric("2025-01-16", "2025-02-15", 135.63)])
-    findings = [c for c in _recalculate(store)["quality_checks"] if c["check"] == "Q-003"]
+    findings = [c for c in recalculate(store)["quality_checks"] if c["check"] == "Q-003"]
     assert [f["trigger"] for f in findings] == ["duplicate_statement_in_same_file"]
     assert findings[0]["severity"] == "warning" and findings[0]["documents"] == ["BUNDLE"]
     assert "printed twice" in findings[0]["message"]
@@ -734,26 +679,50 @@ def test_two_meters_on_one_bill_with_the_same_reading_are_not_a_repeated_stateme
     """Meter A and meter B share the bill's account and period and both read 50 MWh: two meters, not a repeat.
     The overlap check still sees them, as it did before."""
 
-    store = _Store()
+    store = RecalcStore()
     reading = _electric("2025-01-16", "2025-02-15", 50.0)
     store.add("ONE-BILL", [dict(reading), dict(reading)], pages=[3, 3], meters=["A-111", "B-222"])
-    findings = _recalculate(store)["quality_checks"]
+    findings = recalculate(store)["quality_checks"]
     assert not [c for c in findings if c["check"] == "Q-003"]
     assert [c["trigger"] for c in findings if c["check"] == "Q-004"] == ["overlapping_period"]
 
 
 def test_two_meters_with_the_same_reading_and_no_account_are_not_flagged_as_a_repeat() -> None:
-    store = _Store()
+    store = RecalcStore()
     plain = {k: v for k, v in _electric("2025-01-16", "2025-02-15", 50.0).items() if k != "account_number"}
     store.add("TWO-METERS", [plain, dict(plain)], pages=[3, 3])
-    assert not [c for c in _recalculate(store)["quality_checks"] if c["check"] == "Q-003"]
+    assert not [c for c in recalculate(store)["quality_checks"] if c["check"] == "Q-003"]
+
+
+def test_a_record_key_with_a_meter_but_no_period_still_names_its_meter() -> None:
+    """Two meters on different pages, keys "r1:A-111" and "r2:B-222" (no period): two meters, not a repeat."""
+
+    store = RecalcStore()
+    reading = _electric("2025-01-16", "2025-02-15", 50.0)
+    store.add("TWO-METERS", [dict(reading), dict(reading)], pages=[3, 9], keys=["r1:A-111", "r2:B-222"])
+    assert not [c for c in recalculate(store)["quality_checks"] if c["check"] == "Q-003"]
+    again = RecalcStore()
+    again.add("ONE-METER", [dict(reading), dict(reading)], pages=[3, 9], keys=["r1:A-111", "r2:A-111"])
+    assert [c["trigger"] for c in recalculate(again)["quality_checks"] if c["check"] == "Q-003"] == [
+        "duplicate_statement_in_same_file"]
+
+
+def test_a_record_with_a_meter_and_one_without_on_another_page_are_still_a_repeat() -> None:
+    """The same account, period and usage twice in a file: an invoice and its statement of account. The warning
+    stays (a summary page that is not a record never reaches here; one that cannot be told apart does)."""
+
+    store = RecalcStore()
+    reading = _electric("2025-01-16", "2025-02-15", 50.0)
+    store.add("MIXED", [dict(reading), dict(reading)], pages=[3, 9], keys=["r1:A-111", "r2"])
+    assert [c["trigger"] for c in recalculate(store)["quality_checks"] if c["check"] == "Q-003"] == [
+        "duplicate_statement_in_same_file"]
 
 
 def test_the_same_meter_read_twice_on_different_pages_of_one_file_is_a_repeat() -> None:
-    store = _Store()
+    store = RecalcStore()
     reading = _electric("2025-01-16", "2025-02-15", 50.0)
     store.add("PRINTED-TWICE", [dict(reading), dict(reading)], pages=[3, 9], meters=["A-111", "A-111"])
-    assert [c["trigger"] for c in _recalculate(store)["quality_checks"] if c["check"] == "Q-003"] == [
+    assert [c["trigger"] for c in recalculate(store)["quality_checks"] if c["check"] == "Q-003"] == [
         "duplicate_statement_in_same_file"]
 
 

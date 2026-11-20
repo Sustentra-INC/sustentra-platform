@@ -445,13 +445,15 @@ def _suggested(item: dict[str, Any]) -> bool:
 
 
 def _meter_and_page(record: ReviewedRecord) -> tuple[str | None, int | None]:
-    """The meter id a record was read under (the middle of its ``record_key``, "r3:WEC-1:2025-01-01..2025-01-31")
+    """The meter id a record was read under (from its ``record_key``: "r3:WEC-1:2025-01-01..2025-01-31", or "r3:WEC-1" when it has no period)
     and the page its quantity was read from, for the duplicate check."""
 
     field = record.fields.get("activity_quantity") or next(iter(record.fields.values()), None)
     reference = (field.source_reference if field is not None else None) or {}
-    parts = str(reference.get("record_key") or "").split(":")
-    meter = ":".join(parts[1:-1]).replace("_", " ").strip() if len(parts) >= 3 else None
+    parts = str(reference.get("record_key") or "").split(":")[1:]  # "r3" [":" meter] [":" "start..end"]
+    if parts and ".." in parts[-1]:
+        parts = parts[:-1]
+    meter = ":".join(parts).replace("_", " ").strip() or None
     page = reference.get("page_number")
     return (meter or None), (int(page) if isinstance(page, int) else None)
 
@@ -561,8 +563,9 @@ class EngagementRecalculationService:
         try:
             filing = recalculation_lines.file_records(self.reference, placed, inputs, settings, decisions,
                                                       self._facilities, self._company)
-            records = [r for r in placed if filing.on_a_line(r)]
-            off_line = [r for r in placed if not filing.on_a_line(r)]
+            held = [r for r in placed if self._held_summary(r)]  # counts 0 until a reviewer decides
+            records = [r for r in placed if filing.on_a_line(r) and r not in held]
+            off_line = [r for r in placed if not filing.on_a_line(r) and r not in held]
         except Exception as exc:  # noqa: BLE001 - a placement that cannot be read must not take the page down
             # Fail closed: with no placement nothing is known to be on a line, so nothing from evidence counts.
             log.warning("record placement failed: %s", type(exc).__name__)
@@ -617,6 +620,18 @@ class EngagementRecalculationService:
                 **({"category": category} if category != "None" else {}),
                 "message": f"{count} accepted {'record' if count == 1 else 'records'} not counted in this category: "
                            f"{NOT_ON_A_LINE_WHY[reason]}. {not_on_a_line_hint(reason, count)}"})
+
+        # A statement of account kept beside invoices it does not add up with may count the same usage twice:
+        # an open item, so the category is never shown as complete.
+        flagged: set[str] = set()
+        for record in placed:
+            evidence = self._evidence_record(record)
+            if evidence is not None and evidence.total_check and record.document_id not in flagged:
+                flagged.add(record.document_id)
+                needs_input.append({
+                    "kind": "statement_total_differs", "key": f"statement_total_differs:{record.document_id}",
+                    "category": evidence.category, "document_id": record.document_id,
+                    "message": f"{evidence.file_name}: {evidence.total_check}"})
 
         categories: dict[str, calc.CategoryResult | None] = {
             "stationary_combustion": stationary,
@@ -1427,6 +1442,14 @@ class EngagementRecalculationService:
             return number / 1000, "kg"
         return (number, unit) if unit in ("lb", "kg") else None
 
+    @staticmethod
+    def _held_summary(record: ReviewedRecord) -> bool:
+        """A statement of account flagged for double counting that has no period of its own: with no period it
+        would be taken for a whole year, so it counts nothing until a reviewer decides (the open item stays)."""
+
+        return bool(record.best("statement_total_check")
+                    and not record.best("service_period_start") and not record.best("service_period_end"))
+
     def _evidence_record(self, record: ReviewedRecord) -> EvidenceRecord | None:
         """A record as the data quality checks see it (extracted values count before review:
         the checks are about the documents, not the numbers)."""
@@ -1469,7 +1492,8 @@ class EngagementRecalculationService:
                               revises=str(record.best("supersedes_reference") or "") or None,
                               revises_key=_source_value(record, "supersedes_reference", "reference_key"),
                               bill_ids=tuple(_source_value(record, "activity_quantity", "bill_ids") or ()),
-                              meter=meter, page=page)
+                              meter=meter, page=page,
+                              total_check=str(record.best("statement_total_check") or "") or None)
 
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""
