@@ -374,7 +374,7 @@ class ElectricityExtractor(StationaryCombustionExtractor):
         candidates: list[dict] = []
         multi = len(records) > 1 if multi is None else multi
         for index, record in enumerate(records, start=first_index):
-            values = self._record_values(record, period, doc_energy, unit_hint)
+            values = self._record_values(record, self._record_period(rows, record, period), doc_energy, unit_hint)
             record_index = index if multi else None
             record_key = self._record_key(index, record, values) if multi else None
             record_candidates: list[dict] = []

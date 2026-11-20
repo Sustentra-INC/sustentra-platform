@@ -1139,6 +1139,25 @@ class StationaryCombustionExtractor:
         for name, value in inherited.items():
             document_values[name] = document_values.get(name) or value
 
+    def _record_period(self, rows: Sequence[Row], record: UsageRecord | None,
+                       document_period: tuple[Located | None, Located | None],
+                       ) -> tuple[Located | None, Located | None]:
+        """The period printed with a record's own usage: on the page the quantity was read from, else on the
+        nearest page before it that prints one (a statement's cover page). A page with no usage that sits
+        elsewhere in the file (an interim notice) never supplies it: the file's first period is only the last
+        resort. A record with a period of its own (a table line) keeps that."""
+
+        page = record.quantity.row.page if record is not None and record.quantity.row is not None else None
+        if (record is None or record.start or record.end or page is None
+                or (document_period[0] is None and document_period[1] is None)):
+            return document_period  # a file whose period is unclear stays unclear (the reviewer fills it in)
+        pages = sorted({r.page for r in rows if r.page is not None})
+        for candidate in [page, *reversed([p for p in pages if p < page])]:
+            found = self._document_period([r for r in rows if r.page == candidate])
+            if found[0] is not None or found[1] is not None:
+                return found
+        return document_period
+
     def _total_check_candidate(self, record: UsageRecord, document_id: str, evidence_id: str,
                                record_key: str | None, record_index: int | None, parser_output: dict) -> dict:
         """The open item on a record of a statement of account whose total differs from its invoices'."""
@@ -1271,7 +1290,7 @@ class StationaryCombustionExtractor:
         candidates: list[dict] = []
         multi = len(record_list) > 1 if multi is None else multi
         for index, record in enumerate(record_list, start=first_index):
-            record_values = self._record_values(record, period, doc_fuel, unit_hint)
+            record_values = self._record_values(record, self._record_period(rows, record, period), doc_fuel, unit_hint)
             record_index = index if multi else None
             record_key = self._record_key(index, record, record_values) if multi else None
             record_candidates: list[dict] = []
