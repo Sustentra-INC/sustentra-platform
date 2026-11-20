@@ -52,6 +52,9 @@ export function OrgHome({ me, slug }: { me: Me; slug: string }) {
           <Link className={styles.button} href={`/org/${slug}/admin/users`}>
             Manage users
           </Link>
+          <Link className={`${styles.button} ${styles.ghost}`} href={`/org/${slug}/admin/tasks`}>
+            Tasks
+          </Link>
           <Link className={`${styles.button} ${styles.ghost}`} href={`/org/${slug}/admin/audit-log`}>
             Audit log
           </Link>

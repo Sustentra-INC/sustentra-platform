@@ -48,6 +48,11 @@ export interface AppNotification {
   created_at: string;
 }
 
+export interface OrgNotification extends AppNotification {
+  user_id: string;
+  user_name: string;
+}
+
 export interface NewTask {
   title: string;
   assignee_user_id: string;
@@ -102,6 +107,40 @@ export function markNotificationRead(orgId: string, notificationId: string): Pro
 
 export function markAllNotificationsRead(orgId: string): Promise<{ updated: number }> {
   return api(`${base(orgId)}/notifications/read-all`, { method: "POST" });
+}
+
+/** Every task in the company (org admins). */
+export function listOrgTasks(
+  orgId: string,
+  params: {
+    assignee?: string;
+    requester?: string;
+    status?: TaskStatus | "";
+    engagementId?: string;
+    offset?: number;
+    limit?: number;
+  } = {},
+): Promise<{ items: Task[]; total: number }> {
+  const query = new URLSearchParams();
+  if (params.assignee) query.set("assignee_user_id", params.assignee);
+  if (params.requester) query.set("requested_by_user_id", params.requester);
+  if (params.status) query.set("status", params.status);
+  if (params.engagementId) query.set("engagement_id", params.engagementId);
+  query.set("limit", String(params.limit ?? 100));
+  if (params.offset) query.set("offset", String(params.offset));
+  return api(`${base(orgId)}/tasks?${query}`);
+}
+
+/** Every notification in the company, with who it went to and what happened to its email (org admins). */
+export function listOrgNotifications(
+  orgId: string,
+  params: { userId?: string; offset?: number; limit?: number } = {},
+): Promise<{ items: OrgNotification[]; total: number }> {
+  const query = new URLSearchParams();
+  if (params.userId) query.set("user_id", params.userId);
+  query.set("limit", String(params.limit ?? 100));
+  if (params.offset) query.set("offset", String(params.offset));
+  return api(`${base(orgId)}/notifications/org?${query}`);
 }
 
 /** Today as YYYY-MM-DD in the viewer's own time zone (a due date is a calendar day, not an instant). */
