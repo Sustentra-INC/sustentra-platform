@@ -26,7 +26,7 @@ import copy
 import re
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Sequence
 
 from backend.app.domain import fuel_units
@@ -263,7 +263,8 @@ ELECTRIC_UNITS = frozenset({"kWh", "MWh"})
 
 # --- usage tables ----------------------------------------------------------------------
 _QTY_EXCLUDE = ("read", "factor", "heat value", "heat content", "price", "rate", "amount", "charge", "cost",
-                "$", "days", "multiplier", "pressure", "tax", "total amount", "balance")
+                "$", "days", "multiplier", "pressure", "tax", "total amount", "balance",
+                "capacity", "tank", "size", "level", "efficiency")
 _ID_HEADERS = ("meter number", "meter id", "meter #", "meter no", "meter", "tank", "invoice", "ticket", "delivery no")
 _UNIT_HEADERS = ("unit", "units", "uom", "unit of measure")
 _PRODUCT_HEADERS = ("product", "description", "fuel", "commodity", "item")
@@ -283,6 +284,12 @@ _DATE_HEADERS = ("date", "delivery date", "read date", "invoice date", "date pos
                  "transaction date", "date delivered")
 # A usage table ends at its summary row: "Total", or a yearly roll-up such as "Annual quantity" /
 # "Year to date", which would double count the rows above it if read as one more record.
+_QUANTITY_WORDS = ("usage", "consumption", "consumed", "delivered", "billed", "used", "issued", "dispensed",
+                   "pumped", "added", "fuel", "quantity", "qty", "volume")
+_PER_HUNDRED_RE = re.compile(r"/\s*\d+\s*[a-z]+")
+# A "Description" column is the product column only when no column is headed by the fuel itself.
+_GENERIC_PRODUCT_HEADERS = ("description", "item")
+_FUEL_PRODUCT_HEADERS = ("fuel", "fuel type", "fuel grade", "grade", "product", "commodity")
 _TOTAL_ROW_WORDS = ("total", "totals", "subtotal", "grand total", "annual", "year to date", "ytd", "year total")
 
 _MONTHS = {
@@ -687,6 +694,18 @@ def parse_dates(text: str, day_first: bool | None = None) -> list[str]:
             return found
         found.append(hit[0])
         remaining = remaining[hit[2]:]
+
+
+def _whole_month(text: str) -> list[str]:
+    """[first day, last day] when ``text`` is exactly a year and month ("2025-01"), as a report's Month
+    column writes it; nothing otherwise."""
+
+    match = re.fullmatch(r"\s*(\d{4})-(0[1-9]|1[0-2])\s*", text)
+    if match is None:
+        return []
+    year, month = int(match.group(1)), int(match.group(2))
+    last = (date(year + month // 12, month % 12 + 1, 1) - timedelta(days=1))
+    return [date(year, month, 1).isoformat(), last.isoformat()]
 
 
 def slash_dates_are_day_first(texts: Sequence[str]) -> bool:
@@ -1945,7 +1964,8 @@ class StationaryCombustionExtractor:
             return None
         texts = [_norm(c.text) for c in row.cells]
         # "Read on January 1, 2025" is a label that names a date, not a value: blank dates first.
-        undated = [_blank_dates(t) for t in texts]
+        # "L/100 km" is a rate header, not a value
+        undated = [_PER_HUNDRED_RE.sub(" ", _blank_dates(t)) for t in texts]
         if any(re.search(r"\d{3}|\d,\d|\d\.\d|\d/\d", t) for t in undated):
             return None  # header rows carry labels, not values
         scores: list[tuple[int, int]] = []
@@ -1984,6 +2004,13 @@ class StationaryCombustionExtractor:
                 columns["date"] = index
             if "meter" not in columns and _METER_HEADER.fullmatch(bare):
                 columns["meter"] = index  # the row's own meter number, for a bill of several meters
+        if columns.get("product") is not None and texts[columns["product"]].strip(" :#") in _GENERIC_PRODUCT_HEADERS:
+            taken = set(columns.values())
+            better = next((i for i, t in enumerate(texts) if i not in taken
+                           and t.strip(" :#") in _FUEL_PRODUCT_HEADERS and t.strip(" :#") in self.PRODUCT_HEADERS),
+                          None)
+            if better is not None:
+                columns["product_alt"] = better  # taken only if its cells really name a fuel (_table_records)
         return columns
 
     # Unit lookups, so a subclass can know units the others must not (the thermal
@@ -1999,8 +2026,15 @@ class StationaryCombustionExtractor:
         if any(word in text for word in self.QTY_EXCLUDE) or bare in self.UNIT_HEADERS or bare.endswith(" unit"):
             return 0
         unit = self._canonical_unit(text) or self._find_unit(text)
+        if unit is None and any(w in text for w in _QUANTITY_WORDS):
+            # "Fuel Dispensed (L)": a unit in parentheses ends a header, so even a bare "L" is the unit here,
+            # but only for a header that also names a quantity ("Tank Capacity (L)" is not one). A bare "L"
+            # in free text stays ambiguous: find_unit skips it.
+            paren = re.search(r"\(([^()]{1,20})\)\s*$", text)
+            unit = self._canonical_unit(paren.group(1)) if paren else None
         score = 0
-        if any(w in text for w in ("usage", "consumption", "consumed", "delivered", "billed", "used", "issued")):
+        if any(w in text for w in ("usage", "consumption", "consumed", "delivered", "billed", "used", "issued",
+                                   "dispensed", "pumped")):
             score += 4
         if any(w in text for w in ("qty", "quantity")):
             score += 3
@@ -2021,6 +2055,7 @@ class StationaryCombustionExtractor:
         # "Volume (L)": a unit in parentheses may be a single letter
         header_unit_text = paren.group(1) if paren and self._canonical_unit(paren.group(1)) else header_text
         header_unit = self._canonical_unit(header_unit_text) or self._find_unit(header_text)
+        columns = self._product_column(rows, header_row, columns)
         records: list[UsageRecord] = []
         last_top = header_row.top
         header_texts = [_norm(c.text) for c in header_cells]
@@ -2097,6 +2132,24 @@ class StationaryCombustionExtractor:
             records.append(record)
         return records
 
+    def _product_column(self, rows: Sequence[Row], header_row: Row, columns: dict[str, int]) -> dict[str, int]:
+        """A "Description" column is the product column unless a column headed by the fuel itself ("Fuel Type")
+        holds cells that really name a fuel; then that column is. A fuel column of "Y" or a code stays unused."""
+
+        alt = columns.get("product_alt")
+        if alt is None or "product" not in columns:
+            return columns
+        for row in rows[header_row.index + 1:header_row.index + 41]:
+            if row.page != header_row.page:
+                break
+            first = _norm(row.cells[0].text)
+            if any(first == w or first.startswith(w + " ") for w in _TOTAL_ROW_WORDS):
+                break
+            cell = self._assign_columns(row, header_row.cells).get(alt)
+            if cell is not None and self._fuel(cell.text) is not None:
+                return {**columns, "product": alt}
+        return columns
+
     @staticmethod
     def _shifted_row(row: Row, header_cells: Sequence[Cell]) -> bool:
         """True when ``row`` was placed under the header by order alone and has fewer cells than the header:
@@ -2122,7 +2175,7 @@ class StationaryCombustionExtractor:
             record.end = Located(cell.text, [cell], row, CONF_TABLE, context=context)
         if record.start is None and record.end is None and "date" in columns:
             cell = assigned.get(columns["date"])
-            if cell is not None and parse_date(cell.text):
+            if cell is not None and (parse_date(cell.text) or _whole_month(cell.text)):
                 record.start = record.end = Located(cell.text, [cell], row, CONF_TABLE, context=context)
 
     @staticmethod
@@ -2416,7 +2469,7 @@ class StationaryCombustionExtractor:
     def _date_value(located: Located | None, *, first: bool, inherited: bool) -> tuple[Located, str] | None:
         if located is None:
             return None
-        dates = parse_dates(located.raw)
+        dates = parse_dates(located.raw) or _whole_month(located.raw)
         if not dates:
             return None
         value = dates[0] if first else dates[-1]
