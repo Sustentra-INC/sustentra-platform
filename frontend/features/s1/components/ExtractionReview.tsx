@@ -5,6 +5,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type KeyboardEvent, typ
 
 import { withRequestsFromAsks } from "../adapters/reviewValueAdapter";
 import type { EngagementConfig, EvidenceItem } from "../types";
+import { AiFacilityNote } from "./AiFacilityNote";
 import { AiTypeNote } from "./AiTypeNote";
 import { AiValueNote, EstimatedReadNote } from "./AiValueNote";
 import { RereadNote } from "./RereadNote";
@@ -38,6 +39,8 @@ interface ExtractionReviewProps {
   initialDocumentName?: string;
   /** The opened document's evidence row: its header says when Claude suggested the type. */
   typeItem?: EvidenceItem;
+  /** The reviewer takes Claude's facility suggestion for this document (their own decision, audited). */
+  onPlaceOnFacility?: (documentId: string, facilityId: string) => Promise<void>;
   /** Open with this value selected (a link from the assistant). */
   initialValueId?: string;
   /** Facility->type (or entity/not-yet-known) node the clicked row maps to, so
@@ -102,6 +105,7 @@ export function ExtractionReview({
   initialDocumentId,
   initialDocumentName,
   typeItem,
+  onPlaceOnFacility,
   initialValueId,
   initialNodeKey,
   onSaveAsk,
@@ -639,6 +643,13 @@ export function ExtractionReview({
               ) : null}
             </div>
             {typeItem ? <AiTypeNote item={typeItem} /> : null}
+            {typeItem?.facilitySuggestion && onPlaceOnFacility ? (
+              <FacilitySuggestion
+                item={typeItem}
+                facilities={engagement.facilities}
+                onPlace={(facilityId) => onPlaceOnFacility(typeItem.documentId, facilityId)}
+              />
+            ) : null}
             <div className="s1-xr-filters" role="group" aria-label="Show cards by review state">
               {(["to_review", "accepted", "corrected", "requested"] as ValueReviewState[]).map((k) => (
                 <button
@@ -1535,4 +1546,40 @@ function initials(name: string): string {
   const base = name.includes("@") ? name.split("@")[0] : name;
   const parts = base.split(/[\s._-]+/).filter(Boolean);
   return (parts.length > 1 ? parts[0][0] + parts[1][0] : (parts[0] ?? "?").slice(0, 2)).toUpperCase();
+}
+
+
+/** Claude's facility suggestion on the review screen, with the one-click "Place on <facility>" (and its failure, in words). */
+function FacilitySuggestion({
+  item,
+  facilities,
+  onPlace,
+}: {
+  item: EvidenceItem;
+  facilities: EngagementConfig["facilities"];
+  onPlace: (facilityId: string) => Promise<void>;
+}) {
+  const suggestion = item.facilitySuggestion;
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  const facility = facilities.find((f) => f.facilityId === suggestion?.facilityId);
+  if (!suggestion || !facility) return null;
+  return (
+    <>
+      <AiFacilityNote
+        facilityName={facility.name}
+        quote={suggestion.quote}
+        where={suggestion.where}
+        disabled={busy}
+        onPlace={() => {
+          setBusy(true);
+          setProblem(null);
+          onPlace(facility.facilityId)
+            .catch((error: unknown) => setProblem(error instanceof Error ? error.message : "Try again in a moment."))
+            .finally(() => setBusy(false));
+        }}
+      />
+      {problem ? <div role="alert">Couldn&apos;t place the document. {problem}</div> : null}
+    </>
+  );
 }

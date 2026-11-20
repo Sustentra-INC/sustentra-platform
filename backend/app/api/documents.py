@@ -306,6 +306,8 @@ def latest_extraction_result(document_id: str, user: CurrentUser = Depends(s1_re
         "candidate_count": latest.get("candidate_count", 0),
         "items": items,
         "created_at": latest.get("created_at"),
+        # Claude's facility suggestion for a bill that names none (a suggestion, not a placement); absent otherwise
+        **({"facility_suggestion": latest["facility_suggestion"]} if latest.get("facility_suggestion") else {}),
     }
 
 
