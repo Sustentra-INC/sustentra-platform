@@ -34,8 +34,8 @@ UNSUPPORTED = "not supported for calculation"
 KEEP_ONE = "Two GWP sets confirmed in Methodology review — keep one"
 
 GENERAL, REFRIGERANTS, EMBEDDED = "general", "refrigerants", "embedded"
-# Embedded in third-party factors: needs "embedded", "included in" or "built into", and a mention of factors.
-_EMBEDDED = re.compile(r"\b(embedded|included|built)\b[^;.]*\bfactors?\b", re.I)
+# Embedded in third-party factors: needs "embedded", "included in", "built into" or "inside", and a mention of factors.
+_EMBEDDED = re.compile(r"\b(embedded|included|built|inside|within)\b[^;.]*\bfactors?\b", re.I)
 # Limited to refrigerants: refrigerant, HFC, HCFC, an R-number, or cooling / AC equipment wording.
 _REFRIGERANT = re.compile(
     r"\b(refrigerants?|hfcs?|hcfcs?|r-?\d{2,3}[a-z]?|(air[- ]conditioning|cooling|a/?c|hvac)\s+equipment)\b", re.I)
