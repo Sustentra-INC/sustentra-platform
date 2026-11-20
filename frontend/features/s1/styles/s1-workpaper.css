@@ -3525,18 +3525,31 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-cp-expanded > td { padding: 0; background: var(--sf-page); }
 .s1-cp-detail { display: flex; flex-direction: column; gap: var(--sp-3); padding: var(--sp-3) var(--sp-4); }
 .s1-cp-route { margin: 0; color: var(--ink-2); }
-.s1-cp-tabs { display: flex; flex-wrap: wrap; gap: var(--sp-1); border-bottom: var(--border-hairline); }
-.s1-cp-tab { padding: var(--sp-2) var(--sp-3); font: inherit; font-size: var(--text-sm); color: var(--ink-3); background: none; border: 0; border-bottom: var(--active-row-marker-width) solid transparent; cursor: pointer; }
-.s1-cp-tab.is-on { font-weight: var(--weight-strong); color: var(--ink); border-bottom-color: var(--accent); }
-.s1-cp-tab:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.s1-cp-tabpanel { display: flex; flex-direction: column; gap: var(--sp-3); }
-.s1-cp-gwp { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-sm); color: var(--ink-3); }
+.s1-cp-gwp { padding: var(--sp-2) var(--sp-3) 0; display: flex; align-items: center; gap: var(--sp-2); font-size: var(--text-sm); color: var(--ink-3); }
 .s1-cp-fields { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
 .s1-cp-src-wrap { position: relative; display: inline-block; }
 .s1-cp-src { padding: 0; font: inherit; color: inherit; background: none; border: 0; border-bottom: var(--hairline-width) dotted var(--ink-3); cursor: pointer; font-variant-numeric: tabular-nums; }
 .s1-cp-src:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .s1-cp-src:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
-.s1-cp-pop { position: absolute; right: 0; top: 100%; z-index: 2; min-width: 14rem; max-width: 22rem; padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); text-align: left; white-space: normal; color: var(--ink); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input); }
+.s1-cp-pop { position: absolute; z-index: 2; min-width: 14rem; max-width: 22rem; padding: var(--sp-2) var(--sp-3); font-size: var(--text-sm); text-align: left; white-space: normal; color: var(--ink); background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input); }
+.s1-cp-line-title { margin: 0; font-size: var(--text-md); font-weight: var(--weight-strong); }
+.s1-cp-flags { margin: 0; }
+.s1-cp-step { background: var(--sf-card); border: var(--border-hairline); border-radius: var(--radius-input); }
+.s1-cp-step__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--sp-2); padding: var(--sp-2) var(--sp-3); border-bottom: var(--border-hairline); font-size: var(--text-sm); }
+.s1-cp-step__head h5 { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-strong); letter-spacing: 0.04em; text-transform: uppercase; }
+.s1-cp-step > .s1-vw-scroll, .s1-cp-step > .s1-cp-eqs, .s1-cp-step > .s1-cp-ref { margin: var(--sp-2) var(--sp-3); }
+.s1-cp-eqs { padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--sp-1); }
+.s1-cp-ref { font-size: var(--text-sm); }
+.s1-cp-grid .s1-cp-rec { background: var(--sf-page); }
+.s1-cp-grid .s1-cp-out { border-inline: var(--border-hairline); font-weight: var(--weight-strong); }
+.s1-cp-op { width: 1%; padding-inline: var(--sp-1); text-align: center; color: var(--ink-3); }
+.s1-cp-paren { font-weight: var(--weight-regular); color: var(--ink-2); }
+.s1-cp-pop p { margin: 0; }
+.s1-cp-pop__kind { font-size: var(--text-sm); letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-3); }
+.s1-cp-pop__open { margin-top: var(--sp-2); padding: 0; font: inherit; color: var(--accent); background: none; border: 0; cursor: pointer; }
+.s1-cp-pop__open:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-cp-sr { position: absolute; width: var(--hairline-width); height: var(--hairline-width); overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.s1-cp-hint { margin-inline-start: auto; font-size: var(--text-sm); }
 
 /* Evidence tree (backend mode): Scope > Category > fuel > calculation line, folds that stay where you left them. */
 .s1-et { display: flex; flex-direction: column; gap: var(--sp-2); }
