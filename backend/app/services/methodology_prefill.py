@@ -178,11 +178,41 @@ _GWP_TERMS = {"AR4": ("ar4", "fourth assessment"), "AR5": ("ar5", "fifth assessm
               "AR6": ("ar6", "sixth assessment")}
 # The horizon the quote must name, as whole tokens ("120-year" is not "20-year").
 _HORIZON_TERMS = {
-    "20-year": ("20-year", "20 year", "20-years", "20 years", "20-yr", "20 yr", "twenty-year", "twenty year"),
-    "100-year": ("100-year", "100 year", "100-years", "100 years", "100-yr", "100 yr", "hundred-year", "hundred year"),
+    "20-year": ("20-year", "20 year", "20-years", "20 years", "20-yr", "20 yr", "twenty-year", "twenty year",
+                "gwp20", "gwp-20", "gwp 20"),
+    "100-year": ("100-year", "100 year", "100-years", "100 years", "100-yr", "100 yr", "hundred-year", "hundred year",
+                 "gwp100", "gwp-100", "gwp 100"),
     "500-year": ("500-year", "500 year", "500-years", "500 years", "500-yr", "500 yr", "five-hundred-year",
-                 "five hundred year"),
+                 "five hundred year", "gwp500", "gwp-500", "gwp 500"),
 }
+
+
+def _mentions(text: str, terms: Sequence[str]) -> list[int]:
+    """Where each term starts in the (normalized) text, as a whole word or phrase."""
+
+    out: list[int] = []
+    for term in terms:
+        pattern = r"(?<![0-9a-z.])(?<!\d,)" + re.escape(norm(term)) + r"(?![0-9a-z])(?![.,]\d)"
+        out += [m.start() for m in re.finditer(pattern, text)]
+    return out
+
+
+def set_has_horizon(quote: str, set_: str, horizon: str) -> bool:
+    """Whether the quote ties this set to this horizon: the set is named, and a mention of the horizon sits
+    nearer to a mention of this set than to a mention of any other set. A quote that names two sets with two
+    horizons ("AR5 100-year and AR6 20-year") pairs each set with the horizon next to it."""
+
+    text = norm(quote)
+    sets = [(pos, name) for name, terms in _GWP_TERMS.items() for pos in _mentions(text, terms)]
+    if not any(name == set_ for _, name in sets):
+        return False
+    for name, terms in _HORIZON_TERMS.items():
+        if name != horizon:
+            continue
+        for pos in _mentions(text, terms):
+            if min(sets, key=lambda item: abs(item[0] - pos))[1] == set_:
+                return True
+    return False
 
 
 SYSTEM_PROMPT = """\
@@ -366,7 +396,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
 
     def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
              numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = (),
-             groups: Sequence[Sequence[str]] = ()) -> None:
+             ok: Callable[[str], bool] | None = None) -> None:
         document = by_alias.get(item.document.strip().upper())
         if document is None:
             dropped["unknown_document"] += 1
@@ -382,8 +412,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         if (any(not value_in_quote(_fmt(n), item.quote) for n in numbers)
                 or any(not value_in_quote(w, item.quote) for w in words)
                 or (terms and not any(term in quote_text for term in terms))
-                # each group needs one of its terms as a whole token (a set and a horizon, for GWP)
-                or any(not any(value_in_quote(t, item.quote) for t in group) for group in groups)):
+                or (ok is not None and not ok(item.quote))):
             dropped["value_not_in_quote"] += 1
             return
         if field_id is not None:
@@ -442,12 +471,12 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped["duplicate_entry"] += 1
             continue
         # The first set the report names is the fixed GWP field; every other set is a row of its own.
-        needs = [_GWP_TERMS[gwp.set], _HORIZON_TERMS[gwp.horizon]]
+        ties = lambda quote, s_=gwp.set, h_=gwp.horizon: set_has_horizon(quote, s_, h_)  # noqa: E731
         before = len(kept)
         if "gwp" not in seen:
-            keep(gwp, value, "gwp", None, groups=needs)
+            keep(gwp, value, "gwp", None, ok=ties)
         else:
-            keep(gwp, value, None, "gwp", groups=needs)
+            keep(gwp, value, None, "gwp", ok=ties)
         if len(kept) > before:  # only a pair that held up counts as seen
             gwp_pairs.add(pair)
     for entity in output.entities:

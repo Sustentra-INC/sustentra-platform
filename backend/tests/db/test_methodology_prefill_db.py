@@ -549,3 +549,23 @@ def test_add_an_item_and_a_reviewer_can_set_not_mentioned_and_decide_a_gas(claud
     assert record(eid, "gas:nf3")["decision"]["value"] == "Not mentioned" and states(eid)["gas:nf3"] == "has_value"
     assert act(eid, "gas:hfcs", "edit", {"value": "Declared absent"}).status_code == 200
     assert shown_ids(eid) & set(GASES) == {"gas:nf3", "gas:hfcs"}
+
+
+def test_a_rejected_fixed_gwp_set_never_comes_back_as_a_row(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
+    ar5 = {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}
+    ar6 = {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")}
+    claude.output = {**GOOD, "gwp": [ar5]}
+    assert prefill(eid).status_code == 200
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
+    assert act(eid, "gwp", "reject", {"reason": "Not the reporting standard"}).status_code == 200
+    assert record(eid, "gwp")["decision"]["status"] == "rejected" and record(eid, "gwp")["decision"]["value"] is None
+    claude.output = {**GOOD, "gwp": [ar5]}  # the report still names the rejected set
+    assert prefill(eid).status_code == 200
+    assert gwp_rows(eid) == []  # the rejection stands: the set is not put back as a row
+    assert record(eid, "gwp")["decision"]["status"] == "rejected"
+    claude.output = {**GOOD, "gwp": [ar5, ar6]}  # another set the report names is still a row
+    assert prefill(eid).status_code == 200
+    assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
+    assert record(eid, "gwp")["decision"]["status"] == "rejected"

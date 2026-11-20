@@ -404,11 +404,15 @@ async def _store(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser
     if gwp_items:
         record = locked["gwp"]
         if rules.status_of(record) != rules.PENDING:
+            # The decision's value, and the set that was suggested when it was decided: a rejected field has
+            # no value, but the set it rejected must never come back as a row.
             decided = (record.get("decision") or {}).get("value")
-            gwp_fixed_values.append(decided)
-            if any(same(decided, g.suggestion["value"]) for g in gwp_items):
+            suggested_then = (record.get("suggestion") or {}).get("value")
+            gwp_fixed_values += [decided, suggested_then]
+            held = lambda g: same(decided, g.suggestion["value"]) or same(suggested_then, g.suggestion["value"])  # noqa: E731
+            if any(held(g) for g in gwp_items):
                 kept += 1
-            moved = [prefill.Verified(None, "gwp", g.suggestion) for g in gwp_items if not same(decided, g.suggestion["value"])]
+            moved = [prefill.Verified(None, "gwp", g.suggestion) for g in gwp_items if not held(g)]
             fixed.pop("gwp")
         else:
             current = (record.get("suggestion") or {}).get("value")

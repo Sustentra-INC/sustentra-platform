@@ -421,3 +421,27 @@ def test_the_gas_values_are_separate_from_the_category_values() -> None:
         answer(choices=[{"field_id": "gas:co2", "value": "Yes", **cite("L1", "covers CO₂, CH₄")}])
     with pytest.raises(ValueError):  # and a category does not take a gas value
         answer(choices=[{"field_id": "category:scope1:mobile", "value": "Included", **cite("L1", "covers CO₂")}])
+
+
+def test_gwp_horizon_shorthand_is_read_as_a_whole_token() -> None:
+    for horizon, quote in (("100-year", "AR5 GWP100 values"), ("100-year", "AR5 GWP-100 values"), ("100-year", "AR5 GWP 100 values"),
+                           ("20-year", "AR6 GWP20"), ("500-year", "AR6 gwp-500 for comparison")):
+        set_ = "AR5" if "AR5" in quote else "AR6"
+        kept, dropped = check(answer(gwp=[gwp_item(set_, horizon, quote, "L1")]), [doc([(1, quote)])])
+        assert len(kept) == 1 and not dropped, quote
+    kept, dropped = check(answer(gwp=[gwp_item("AR5", "100-year", "AR5 GWP 1000 values", "L1")]), [doc([(1, "AR5 GWP 1000 values")])])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+def test_a_quote_with_two_sets_and_two_horizons_pairs_each_set_with_the_horizon_next_to_it() -> None:
+    line = "We report AR5 over 100-year and AR6 over 20-year horizons."
+    right = [gwp_item("AR5", "100-year", line.rstrip("."), "L1"), gwp_item("AR6", "20-year", line.rstrip("."), "L1")]
+    kept, dropped = check(answer(gwp=right), [doc([(1, line)])])
+    assert [k.suggestion["value"] for k in kept] == [{"set": "AR5", "horizon": "100-year"}, {"set": "AR6", "horizon": "20-year"}]
+    assert not dropped
+    swapped = [gwp_item("AR5", "20-year", line.rstrip("."), "L1"), gwp_item("AR6", "100-year", line.rstrip("."), "L1")]
+    kept, dropped = check(answer(gwp=swapped), [doc([(1, line)])])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 2}  # the horizon belongs to the other set
+    # one set in the quote: any horizon in it belongs to that set
+    kept, _ = check(answer(gwp=[gwp_item("AR5", "20-year", "AR5 results are shown for 20-year", "L3")]), [doc(GWP_REPORT)])
+    assert len(kept) == 1
