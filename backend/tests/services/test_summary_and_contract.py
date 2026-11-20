@@ -41,15 +41,47 @@ def test_an_inventory_summary_is_recognised_whatever_it_is_called(file_name: str
     assert "CT-GHG-WORKBOOK" in SUMMARY_TYPES  # the type Methodology prefill reads as the client's reports
 
 
-@pytest.mark.parametrize("text", [
-    SUMMARY_TEXT.replace("2025 GHG Inventory Summary", "Quarterly note"),  # no inventory title
-    SUMMARY_TEXT.replace("Scope 2", "Scope two"),  # no Scope 2 totals
-    SUMMARY_TEXT.replace("tCO₂e", "units"),  # no tonnes-CO2e unit
-    SUMMARY_TEXT.replace("2025", "").replace("2026", ""),  # no year
+CUE = "cue: GHG inventory summary"
+
+
+def credited(text: str, file_name: str = "report.xlsx") -> bool:
+    """Whether the classifier credited the summary type for this text (the cue fired)."""
+
+    result = classify(text, file_name)
+    return any(CUE in " ".join(c["matched_signals"]["key_phrases"]) for c in result.get("candidate_matches") or [])
+
+
+def test_the_cue_fires_for_the_full_summary() -> None:
+    assert credited(SUMMARY_TEXT)
+
+
+@pytest.mark.parametrize(("what", "text"), [
+    ("title", SUMMARY_TEXT.replace("2025 GHG Inventory Summary", "Quarterly note")),
+    ("scope 1", SUMMARY_TEXT.replace("Scope 1", "Scope one")),
+    ("scope 2", SUMMARY_TEXT.replace("Scope 2", "Scope two")),
+    ("unit", SUMMARY_TEXT.replace("tCO₂e", "units")),
+    ("year", SUMMARY_TEXT.replace("2025", "").replace("2026", "")),
 ])
-def test_without_all_the_cues_it_is_not_taken_for_a_summary(text: str) -> None:
-    assert classify(text, "report.xlsx")["primary_canonical_type_id"] != "CT-GHG-WORKBOOK" or \
-        classify(text, "report.xlsx")["status"] != "classified"
+def test_each_missing_cue_stops_the_summary_cue(what: str, text: str) -> None:
+    assert not credited(text), what
+
+
+@pytest.mark.parametrize("unit", ["tCO2e", "t CO2e", "tCO₂e", "metric tons CO2e", "metric tonnes CO2e", "tonnes CO2-eq",
+                                  "t CO2-eq", "MT CO2e", "tons CO₂e"])
+def test_the_unit_variants_are_accepted(unit: str) -> None:
+    assert credited(SUMMARY_TEXT.replace("tCO₂e", unit)), unit
+
+
+def test_a_fuel_log_with_emissions_columns_is_not_outranked_by_the_summary_cue() -> None:
+    log = ("Emissions Report 2025\nScope 1 (tCO2e)   Scope 2 (tCO2e)\nCedarline Gas & Power\n"
+           "Account Number: 3305-778-1102\nBilling Period: 10/01/2025 - 10/31/2025\nFuel: Natural gas\n"
+           "Usage: 1,486 therms\nAmount Due: $1,474.33\n")
+    assert not credited(log, "Emissions Report 2025.pdf")
+    result = classify(log, "Emissions Report 2025.pdf")
+    assert result["primary_canonical_type_id"] != "CT-GHG-WORKBOOK" or result["status"] != "classified"
+    delivery = ("Emissions Report 2025\nScope 1 (tCO2e)   Scope 2 (tCO2e)\nDate Fuel type Gallons Operator\n"
+                "2025-01-03 Diesel 120 gal Müller\n")
+    assert not credited(delivery, "log.csv")
 
 
 def test_a_fuel_bill_is_never_taken_for_a_summary() -> None:
@@ -79,9 +111,9 @@ def test_an_inventory_workbook_is_typed_as_a_summary_and_never_read_as_fuel(tmp_
         sheet.append(line.split(" ", 0))
     path = tmp_path / "Zusammenfassung_GHG_Inventory_2025 電気.xlsx"
     book.save(path)
-    run = _run(path)["pipeline_run"]
+    read = _run(path)
+    run, result = read["pipeline_run"], read["extraction_result"]
     assert run["canonical_type_id"] == "CT-GHG-WORKBOOK" and run["halt_reason"] is None
-    result = _run(path)["extraction_result"]
     assert not [i for i in result["items"] if i["field_name"] in ("activity_quantity", "fuel_type")]  # #258: no fuel values
 
 
@@ -153,3 +185,45 @@ def test_the_pipeline_stops_a_contract_as_not_evidence_but_reads_a_bill_with_ter
     assert result["pipeline_run"]["canonical_type_id"] == "CT-S1-FUELQTY"
     assert result["pipeline_run"]["halt_reason"] is None
     assert any(i["field_name"] == "activity_quantity" and i["normalized_value"] for i in result["extraction_result"]["items"])
+
+
+# --- a real bill is never stopped as a contract (round 1) ----------------------------------
+BACK_PAGE = """By and between the parties, the supplier shall deliver and the customer shall pay. Neither party may
+assign this Agreement. The Effective Date is the date of the first delivery. The term renews each year. Notices
+shall be in writing. This Agreement is governed by the laws of Oregon. Limitation of liability applies. The
+entire agreement of the parties is stated here. Force majeure excuses delay."""
+
+
+@pytest.mark.parametrize("heading", ["Fuel Supply Agreement", "Contract Account", "Contract Number", "Contract #4471",
+                                     "Contract Date: 10/01/2025"])
+def test_a_table_less_delivery_ticket_with_contract_terms_is_not_halted(heading: str) -> None:
+    ticket = (f"{heading}\nHarbor Fuel Oil Co.\nDelivery Ticket\nQty\n500 gal\nProduct\nHeating oil\n"
+              f"Delivery Date\n11/05/2025\nTotal\n$1,250.00\n{BACK_PAGE}\n")
+    assert looks_like_a_contract(output(ticket, tables=[], key_value_pairs=[])) is False
+
+
+def test_a_ticket_with_only_a_quantity_label_or_a_unit_is_not_halted() -> None:
+    base = f"Fuel Supply Agreement\nHarbor Fuel Oil Co.\nDelivery\n{BACK_PAGE}\n"
+    assert looks_like_a_contract(output(base + "Qty 500\n")) is False
+    assert looks_like_a_contract(output(base + "Delivered 1,200 L of diesel\n")) is False
+    assert looks_like_a_contract(output(base + "Total 38.5 Dth\n")) is False
+
+
+def test_a_utility_bill_with_space_gapped_labels_and_empty_tables_is_not_halted() -> None:
+    bill = ("Rainier Sound Power & Light\nSERVICE AGREEMENT\nAccount Number   3305-778-1102\n"
+            "Billing Period 10/01-10/31\nCustomer   Müller Käserei – Zürich\n" + BACK_PAGE + "\n")
+    assert looks_like_a_contract(output(bill, tables=[], key_value_pairs=[])) is False
+    assert looks_like_a_contract(output("SERVICE AGREEMENT\nAmount Due $44.10\n" + BACK_PAGE)) is False
+    assert looks_like_a_contract(output("SERVICE AGREEMENT\nInvoice 4471\n" + BACK_PAGE)) is False
+    assert looks_like_a_contract(output("SERVICE AGREEMENT\nStatement Date: 10/31/2025\n" + BACK_PAGE)) is False
+
+
+def test_a_wrapped_sentence_that_starts_with_statement_date_is_not_a_bill_row() -> None:
+    # The NPL contract wraps "...within twenty-one (21) days of the / statement date. Late payments accrue."
+    wrapped = CONTRACT.replace("5. Entire", "4b. Payment\\nPayment is due within twenty-one (21) days of the\\n"
+                               "statement date. Late payments accrue charges.\\n5. Entire")
+    assert looks_like_a_contract(output(wrapped, tables=[], key_value_pairs=[])) is True
+
+
+def test_the_contract_still_halts_with_empty_tables() -> None:
+    assert looks_like_a_contract(output(CONTRACT, tables=[], key_value_pairs=[])) is True

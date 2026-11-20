@@ -42,8 +42,14 @@ GHG_SUMMARY_TITLE_RE = re.compile(
     r"\b(?:ghg|greenhouse gas|emissions?|carbon)\s+(?:inventory|summary|report)\b|\binventory\s+summary\b")
 GHG_SCOPE_1_RE = re.compile(r"\bscope\s*1\b")
 GHG_SCOPE_2_RE = re.compile(r"\bscope\s*2\b")
-GHG_TONNES_RE = re.compile(r"\b(?:m?t|tonnes?)\s?co[2\u2082]\s?-?e(?:q)?\b|\btonnes?\s+co[2\u2082]\b")
+GHG_TONNES_RE = re.compile(
+    r"\b(?:m?t|tonnes?|(?:metric\s+)?tons?)\s?co[2\u2082]\s?-?\s?e(?:q)?\b|\b(?:tonnes?|(?:metric\s+)?tons?)\s+co[2\u2082]\b")
 GHG_YEAR_RE = re.compile(r"\b20\d{2}\b|\breporting year\b")
+# A fuel bill, delivery ticket or fuel log that happens to carry emissions columns is still activity data: bill
+# rows, or a quantity of fuel with its unit, keep the summary cue from outranking the fuel type.
+GHG_ACTIVITY_RE = re.compile(
+    r"\bamount due\b|\btotal due\b|\bbilling period\b|\bservice period\b|\baccount number\b|\binvoice\b|\bpay by\b"
+    r"|\d[\d,.]*\s*(?:gal(?:lons?)?|therms?|ccf|mcf|mmbtu|dth|litres?|liters?)\b")
 WORKBOOK_TYPE = "CT-GHG-WORKBOOK"
 SUMMARY_PREFIX = "CT-GHG-"
 STATIONARY_TYPE = "CT-S1-FUELQTY"
@@ -271,7 +277,7 @@ class ClassificationService:
             credits[REFRIGERANT_TYPE] = "cue: refrigerant name with a mass or cylinders"
         if (GHG_SUMMARY_TITLE_RE.search(search_text) and GHG_SCOPE_1_RE.search(search_text)
                 and GHG_SCOPE_2_RE.search(search_text) and GHG_TONNES_RE.search(search_text)
-                and GHG_YEAR_RE.search(search_text)):
+                and GHG_YEAR_RE.search(search_text) and not GHG_ACTIVITY_RE.search(search_text)):
             credits[WORKBOOK_TYPE] = "cue: GHG inventory summary (title, Scope 1 and 2, tonnes CO2e, year)"
 
         for type_id, label in credits.items():

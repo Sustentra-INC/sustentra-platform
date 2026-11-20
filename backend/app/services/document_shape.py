@@ -78,8 +78,10 @@ CONTRACT_MESSAGE = (
     "This reads as a contract or agreement, not a bill, a log or a record, so it is not used as evidence. "
     "If it is one of those, set the document type."
 )
-# The heading of an agreement: "ELECTRIC SERVICE AGREEMENT", "Supply Contract", near the top.
-_CONTRACT_TITLE = re.compile(r"\b(?:agreement|contract)\b", re.I)
+# The heading of an agreement: a short line with no colon and no digit whose last word is "agreement" or
+# "contract" ("ELECTRIC SERVICE AGREEMENT", "Fuel Supply Agreement"). "Contract Account", "Contract Number",
+# "Contract #4471" and "Contract Date:" are bill labels, not headings.
+_CONTRACT_TITLE = re.compile(r"^[^:\d#]{0,58}\b(?:agreement|contract)\W*$", re.I)
 # Wording an agreement has and a bill does not (each counted once).
 _CONTRACT_CUES = tuple(re.compile(p, re.I) for p in (
     r"\bby and between\b|\bentered into\b",
@@ -95,20 +97,28 @@ _CONTRACT_CUES = tuple(re.compile(p, re.I) for p in (
     r"\bnotices shall\b|\bnotice of non-renewal\b",
 ))
 _MIN_CONTRACT_CUES = 5
-# A usage figure or a labelled bill row: what a contract does not have.
-_USAGE_ROW = re.compile(
-    r"\b(?:total|usage|consumption|used|delivered)\b[^\n]{0,40}\d[\d,.]*\s*(?:k?wh|mwh|therms?|ccf|mcf|gal(?:lons?)?|lbs?|mmbtu)\b",
-    re.I)
-_BILL_LABEL = re.compile(
-    r"^\s*(?:account (?:number|no)|billing period|service period|amount due|meter (?:number|no))\s*[:\t]", re.I | re.M)
+# What a contract does not have, found in the text alone (the parser may leave tables and key-value pairs empty):
+# a quantity with a unit, a quantity label, a bill-row label (with a colon, a tab or only spaces after it), or the
+# words of an invoice.
+_UNITS = r"(?:gal(?:lons?)?|k?wh|mwh|therms?|ccf|mmbtu|dth|l|litres?|liters?)"
+_QUANTITY_WITH_UNIT = re.compile(rf"\d[\d,.]*\s*{_UNITS}\b", re.I)
+_QUANTITY_LABEL = re.compile(r"\b(?:quantity|qty|gallons?|kwh|therms?)\b", re.I)
+_BILL_ROW_LABEL = re.compile(
+    r"^\s*(?:account\s+(?:number|no\.?|#)|billing\s+period|service\s+period|meter\s+(?:number|no\.?)|"
+    r"invoice\s+(?:number|no\.?|date|#)|statement\s+date|due\s+date)\b(?=$|[:#\t]|\s+\S)", re.I | re.M)
+# (a label at the start of a line that is followed by a value or a colon, or stands alone; not "statement date." at
+# the start of a wrapped sentence)
+_INVOICE_WORDS = re.compile(r"\bamount\s+due\b|\binvoice\b|\bstatement\s+date\s*[:\t ]\s*\d", re.I)
 
 
 def looks_like_a_contract(parser_output: dict[str, Any]) -> bool:
     """Whether the document is an agreement: a heading that names one, plenty of contract wording
-    (parties, "shall", term, governing law, liability) and no consumption table or bill rows.
+    (parties, "shall", term, governing law, liability) and nothing a bill has: no quantity with a unit, no
+    quantity label, no bill-row label, no "amount due" or "invoice", whatever the parser made of the layout.
 
-    A bill that mentions "agreement" in its terms has labelled bill rows and no such heading, so it is
-    not one; a contract that names a rate schedule or "monthly statements" has no usage figures."""
+    A bill or delivery ticket that mentions an agreement in its terms has such rows (and "Contract Account" is a
+    label, not a heading), so it is never stopped as a contract; a contract that names a rate schedule or
+    "monthly statements" has no usage figures."""
 
     if parser_output.get("tables") or parser_output.get("key_value_pairs"):
         return False
@@ -120,8 +130,9 @@ def looks_like_a_contract(parser_output: dict[str, Any]) -> bool:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if len(lines) < _MIN_LINES:
         return False
-    heading = any(_CONTRACT_TITLE.search(line) and len(line) <= 80 for line in lines[:12])
+    heading = any(_CONTRACT_TITLE.match(line) for line in lines[:12])
     cues = sum(1 for cue in _CONTRACT_CUES if cue.search(text))
     if not heading or cues < _MIN_CONTRACT_CUES:
         return False
-    return not _USAGE_ROW.search(text) and not _BILL_LABEL.search(text)
+    return not any(veto.search(text) for veto in (
+        _QUANTITY_WITH_UNIT, _QUANTITY_LABEL, _BILL_ROW_LABEL, _INVOICE_WORDS))
