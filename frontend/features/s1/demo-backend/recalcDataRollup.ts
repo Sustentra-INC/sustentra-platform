@@ -11,6 +11,7 @@ import type {
 import { verificationLines } from "../fixtures/verification/resultsDataset";
 import { COMPARISON_POINTS, LAYOUT_CATEGORIES, LAYOUT_NODES, LAYOUT_OUTPUTS, LAYOUT_STEPS } from "./recalcDataLayout";
 import { CALCULABLE, buildCategories, calculate, gwpOf, typeId, type Calculated } from "./recalcDataCalc";
+import { demoDecisions } from "./state";
 import { monthCoverage, recordsOn, shareInPeriod } from "./linesModel";
 
 const GROUPS: GasGroup[] = ["CO2", "CH4", "N2O", "HFCs", "PFCs", "SF6", "NF3"];
@@ -269,16 +270,27 @@ export function qualityChecks(c: Calculated): QualityCheck[] {
 
 /** Accepted records whose document sits on no calculation line: counted nowhere (Claire, Evidence Screen tab I8). */
 function uncountedValues(c: Calculated): NonNullable<Recalculation["uncounted_values"]> {
+  type Entry = NonNullable<Recalculation["uncounted_values"]>["documents"][number];
   const lineKeys = new Set(c.model.lines.map((l) => l.key));
-  const byDocument = new Map<string, NonNullable<Recalculation["uncounted_values"]>["documents"][number]>();
+  // Vehicle groups using a record's fuel (its target's level 2), as the live rule counts them per fuel.
+  const groupsUsing = (r: (typeof c.model.records)[number]) => {
+    const fuel = r.defaultTarget.split(":")[2];
+    return c.model.lines.filter((l) => l.anchor_kind === "vehicle_group" && l.level2 === fuel).length;
+  };
+  const moved = (id: string) => (demoDecisions().get(id)?.placements?.length ?? 0) > 0;
+  // The live rule (EngagementRecalculationService._off_line_reason): a reviewer's move first, then what the record lacks.
+  const reasonOf = (r: (typeof c.model.records)[number]): Entry["reason"] =>
+    moved(r.documentId) ? "not_on_a_line" : r.kind === "fleet" && groupsUsing(r) !== 1 ? (groupsUsing(r) > 1 ? "fuel_shared_by_vehicle_groups" : "no_vehicle_group") : r.kind !== "fleet" && r.facilityId === null ? "facility_not_in_setup" : "not_on_a_line";
+  const byDocument = new Map<string, Entry>();
   for (const r of c.model.records) {
     if (!CALCULABLE.includes(r.kind) || !r.accepted || r.quantity === null) continue;
     if (c.model.slots.get(r.documentId)?.some((s) => lineKeys.has(s.target))) continue;
-    const entry = byDocument.get(r.documentId) ?? { document_id: r.documentId, file_name: r.fileName, reason: "not_on_a_line" as const, accepted_records: 0 };
+    const reason = reasonOf(r);
+    const entry = byDocument.get(`${r.documentId}|${reason}`) ?? { document_id: r.documentId, file_name: r.fileName, reason, accepted_records: 0 };
     entry.accepted_records += 1;
-    byDocument.set(r.documentId, entry);
+    byDocument.set(`${r.documentId}|${reason}`, entry);
   }
-  const documents = [...byDocument.values()].sort((a, b) => a.file_name.localeCompare(b.file_name) || a.document_id.localeCompare(b.document_id));
+  const documents = [...byDocument.values()].sort((a, b) => a.file_name.localeCompare(b.file_name) || a.document_id.localeCompare(b.document_id) || a.reason.localeCompare(b.reason));
   return { accepted_records: documents.reduce((n, d) => n + d.accepted_records, 0), documents };
 }
 

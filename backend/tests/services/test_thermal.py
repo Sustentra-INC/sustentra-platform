@@ -180,7 +180,7 @@ def test_reviewer_typed_energy_types_are_normalized_and_an_unknown_one_is_asked(
     assert result["categories"]["purchased_heating_location_based"]["lines"][0]["key"] == "Facility A"
     asks = [(i["kind"], i["key"]) for i in result["needs_input"]]
     # The unknown type has no line, so Results also says its record is not counted (its category stays incomplete).
-    assert asks == [("thermal_type", "ODD-MAR.pdf"), ("not_on_a_line", "not_on_a_line:purchased_steam")]
+    assert asks == [("thermal_type", "ODD-MAR.pdf"), ("not_on_a_line", "not_on_a_line:purchased_steam:no_calculation_line")]
     assert all(i["category"] == "purchased_steam" for i in result["needs_input"] if i["kind"] == "thermal_type")
 
 
