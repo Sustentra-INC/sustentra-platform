@@ -67,7 +67,7 @@ def test_a_wrong_line_is_dropped_but_a_unique_other_line_is_found() -> None:
 
 
 def test_an_unknown_document_is_dropped() -> None:
-    kept, dropped = check(answer(periods=[{"start": "2024-01-01", "end": "2024-12-31", "start_implied": False, **cite("L3", "January 1 to December 31, 2024", "D9")}]))
+    kept, dropped = check(answer(periods=[{"start": "2024-01-01", "end": "2024-12-31", "start_implied": False, "title_line": "", "title_quote": "", **cite("L3", "January 1 to December 31, 2024", "D9")}]))
     assert kept == [] and dict(dropped) == {"unknown_document": 1}
 
 
@@ -270,8 +270,10 @@ def test_values_over_the_store_limits_are_invalid() -> None:
 
 # --- reporting period: two dates, both printed in the quote ----------------------------------
 
-def period(start: str, end: str, quote: str, line: str = "L3", implied: bool = False) -> dict[str, Any]:
-    return {"start": start, "end": end, "start_implied": implied, **cite(line, quote)}
+def period(start: str, end: str, quote: str, line: str = "L3", implied: bool = False,
+           title: tuple[str, str] = ("", "")) -> dict[str, Any]:
+    return {"start": start, "end": end, "start_implied": implied, "title_line": title[0], "title_quote": title[1],
+            **cite(line, quote)}
 
 
 def test_a_period_with_both_dates_in_long_form_is_kept_as_iso() -> None:
@@ -359,6 +361,89 @@ def test_other_year_wordings_and_non_ascii_text_give_the_implied_start(line: str
 def test_an_implied_start_needs_a_printed_end_a_year_wording_and_the_year_the_end_closes(line: str, quote: str, start: str, end: str) -> None:
     kept, dropped = check(answer(periods=[period(start, end, quote, "L1", True)]), [doc([(1, line)])])
     assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+@pytest.mark.parametrize("line", [
+    "Emissions for the three years ended December 31, 2024 are summarised.",   # a counted span is not one year
+    "Emissions for the 2 years ended December 31, 2024 are summarised.",
+    "Emissions for the 52 weeks ended December 28, 2024 (fiscal year 2024).",  # a 52 week year: the start is not implied
+    "The 53-week fiscal year ended January 3, 2025.",
+    "Fiscal year results are shown below. Data as of December 31, 2024.",     # the cue and the date are in different sentences
+    "The calendar year is described in section 2; the figures are dated December 31, 2024.",  # a semicolon between them
+])
+def test_an_implied_start_is_refused_for_counted_years_week_years_and_cues_in_another_clause(line: str) -> None:
+    end = "2025-01-03" if "January 3" in line else "2024-12-28" if "December 28" in line else "2024-12-31"
+    start = "2024-01-01"
+    kept, dropped = check(answer(periods=[period(start, end, line.rstrip("."), "L1", True)]), [doc([(1, line)])])
+    assert kept == [] and dict(dropped) in ({"value_not_in_quote": 1}, {"quote_not_on_document": 1}), line
+
+
+def test_the_year_wording_is_tied_to_the_end_date_in_one_clause() -> None:
+    line = "Our fiscal year 2024 (the year ended December 31, 2024), is reported here; the prior year ended 2023-12-31."
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "fiscal year 2024 (the year ended December 31, 2024)", "L1", True)]),
+                          [doc([(1, line)])])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["start_implied"] is True
+
+
+def test_the_basis_comes_from_the_quotes_own_words_before_the_dates() -> None:
+    # "fiscal year" gives Fiscal year even when the dates happen to be 1 January to 31 December
+    kept, _ = check(answer(periods=[period("2024-01-01", "2024-12-31", "fiscal year ended December 31, 2024", "L1", True)]),
+                    [doc([(1, "Data covers the fiscal year ended December 31, 2024.")])])
+    assert kept[0].suggestion["value"]["basis"] == "Fiscal year"
+    kept, _ = check(answer(periods=[period("2024-01-01", "2024-12-31", "calendar year ended December 31, 2024", "L1", True)]),
+                    [doc([(1, "Data covers the calendar year ended December 31, 2024.")])])
+    assert kept[0].suggestion["value"]["basis"] == "Calendar year"
+    kept, _ = check(answer(periods=[period("2024-01-01", "2024-12-31", "year ended December 31, 2024", "L1", True)]),
+                    [doc([(1, "Data covers the year ended December 31, 2024.")])])
+    assert kept[0].suggestion["value"]["basis"] == "Calendar year"  # no word: from the dates
+
+
+TITLE_DOC = [
+    (1, "2023 Statement of GHG Emissions"),                                                    # L1, the title
+    (1, "Management asserts the emissions are stated on the calendar reporting year basis."),  # L2
+    (1, "Prepared for the 2024 audit cycle."),                                                 # L3
+    (1, "Greenhouse gas emissions and water use, 2022 and 2023"),                              # L4, two years
+]
+
+
+def test_calendar_year_with_no_date_takes_the_year_from_the_title_and_keeps_both_quotes() -> None:
+    # Yum! Brands shape: "calendar reporting year", no date, the year is only in the title
+    kept, dropped = check(answer(periods=[period("2023-01-01", "2023-12-31", "calendar reporting year basis", "L2", True,
+                                                 ("L1", "2023 Statement of GHG Emissions"))]), [doc(TITLE_DOC)])
+    assert dict(dropped) == {}
+    [item] = kept
+    assert item.suggestion["value"] == {"start": "2023-01-01", "end": "2023-12-31", "start_implied": True, "end_implied": True,
+                                        "implied_from": "calendar year, year from title", "basis": "Calendar year"}
+    assert [(e["label"], e["quote"]) for e in item.suggestion["evidence"]] == [
+        ("Calendar year", "calendar reporting year basis"), ("Year from the title", "2023 Statement of GHG Emissions")]
+    # Fluor shape, with non-ASCII text in the heading
+    lines = [(1, "2024 Greenhouse Gas Inventory Management Plan \u2014 Z\u00fcrich"), (1, "Calendar year emissions are reported.")]
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "Calendar year emissions", "L2", True,
+                                                 ("L1", "2024 Greenhouse Gas Inventory Management Plan"))]), [doc(lines)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["start"] == "2024-01-01"
+
+
+@pytest.mark.parametrize(("title", "start", "end", "quote"), [
+    (("L1", "2023 Statement of GHG Emissions"), "2024-01-01", "2024-12-31", "calendar reporting year basis"),  # title year is 2023
+    (("L4", "Greenhouse gas emissions and water use, 2022 and 2023"), "2023-01-01", "2023-12-31", "calendar reporting year basis"),  # two years
+    (("", ""), "2023-01-01", "2023-12-31", "calendar reporting year basis"),                              # no title quoted
+    (("L1", "2023 Statement of GHG Emissions"), "2023-01-01", "2023-12-31", "on the fiscal year basis"),  # not a calendar year
+    (("L1", "2023 Statement of GHG Emissions"), "2023-02-01", "2024-01-31", "calendar reporting year basis"),  # not Jan 1 to Dec 31
+])
+def test_the_title_year_is_refused_unless_it_is_one_year_on_a_title_line_and_the_quote_says_calendar_year(
+        title: tuple[str, str], start: str, end: str, quote: str) -> None:
+    kept, dropped = check(answer(periods=[period(start, end, quote, "L2", True, title)]), [doc(TITLE_DOC)])
+    assert kept == [] and sum(dropped.values()) >= 1
+
+
+def test_the_title_must_be_early_in_the_document_and_printed_on_its_line() -> None:
+    late = [(1, f"Row {i}") for i in range(20)] + [(1, "2023 Statement of GHG Emissions"), (1, "calendar year emissions")]
+    kept, dropped = check(answer(periods=[period("2023-01-01", "2023-12-31", "calendar year emissions", "L22", True,
+                                                 ("L21", "2023 Statement of GHG Emissions"))]), [doc(late)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+    kept, dropped = check(answer(periods=[period("2023-01-01", "2023-12-31", "calendar reporting year basis", "L2", True,
+                                                 ("L1", "2023 Statement of Emissions"))]), [doc(TITLE_DOC)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
 
 
 def test_a_document_that_states_no_period_gives_no_period() -> None:

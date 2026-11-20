@@ -347,13 +347,17 @@ def period_basis(start: date, end: date) -> str:
     return PERIOD_BASES[1] if start == year_start_for(end) else PERIOD_BASES[2]
 
 
+IMPLIED_FROM_TITLE = "calendar year, year from title"
+
+
 def _date_range(field: Mapping[str, Any], value: Any) -> dict[str, Any]:
-    """Start and end dates. ``start_implied`` (true only) marks a start the report does not print, worked out
-    from an end date it states as a year; ``basis`` is always worked out from the two dates here, whatever
-    the caller sent, so an edit that moves the dates also moves the basis."""
+    """Start and end dates. ``start_implied`` / ``end_implied`` (true only) mark a date the report does not print;
+    ``implied_from`` says how both were worked out (only ``IMPLIED_FROM_TITLE``). ``basis`` is one of PERIOD_BASES:
+    the one the caller gives when it is valid (Claude's, from the quote's own words: "fiscal year" gives Fiscal
+    year), else worked out from the two dates, so a reviewer's edit of two dates always gets a fresh basis."""
 
     if (not isinstance(value, dict) or not {"start", "end"} <= set(value)
-            or not set(value) <= {"start", "end", "start_implied", "basis"}):
+            or not set(value) <= {"start", "end", "start_implied", "end_implied", "implied_from", "basis"}):
         raise _fail(field, "enter both a start date and an end date, written YYYY-MM-DD.")
     start, end = parse_iso_date(value["start"]), parse_iso_date(value["end"])
     if start is None:
@@ -362,13 +366,19 @@ def _date_range(field: Mapping[str, Any], value: Any) -> dict[str, Any]:
         raise _fail(field, "the end date is not a real date. Write it as YYYY-MM-DD, for example 2025-12-31.")
     if end < start:
         raise _fail(field, "the end date can't be before the start date.")
-    implied = value.get("start_implied", False)
-    if not isinstance(implied, bool):
-        raise _fail(field, "the start date's implied flag must be true or false.")
     out: dict[str, Any] = {"start": start.isoformat(), "end": end.isoformat()}
-    if implied:
-        out["start_implied"] = True
-    out["basis"] = period_basis(start, end)
+    for key in ("start_implied", "end_implied"):
+        flag = value.get(key, False)
+        if not isinstance(flag, bool):
+            raise _fail(field, "an implied flag must be true or false.")
+        if flag:
+            out[key] = True
+    if "implied_from" in value:
+        if value["implied_from"] != IMPLIED_FROM_TITLE:
+            raise _fail(field, "the implied-from note is not one this page writes.")
+        out["implied_from"] = IMPLIED_FROM_TITLE
+    given = value.get("basis")
+    out["basis"] = given if given in PERIOD_BASES else period_basis(start, end)
     return out
 
 
@@ -670,6 +680,8 @@ def bound_suggestion(field: Mapping[str, Any], suggestion: Mapping[str, Any]) ->
         out["evidence"] = kept_evidence
         if len(entries) < total:
             out["entries_omitted"] = total - len(entries)
+    elif isinstance(evidence, list) and isinstance(out["value"], dict):
+        out["evidence"] = _bound_evidence(evidence)  # a value made from two quotes (a period from its wording and its title)
     if payload_size({k: v for k, v in out.items() if k != "evidence"}) > MAX_SUGGESTION_BYTES:
         raise MethodologyInvalid(f"The suggestion for '{field['label']}' is too long to record.")
     return out

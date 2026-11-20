@@ -207,14 +207,18 @@ def test_the_period_basis_is_derived_from_the_two_dates() -> None:
     assert m.year_start_for(date(2024, 2, 28)) == date(2023, 3, 1)
 
 
-def test_the_implied_flag_is_kept_only_when_true_and_the_basis_is_never_taken_from_the_caller() -> None:
+def test_the_implied_flags_are_kept_only_when_true_and_a_valid_basis_is_kept_else_derived() -> None:
     f = field("reporting_period")
     kept = m.validate_value(f, {"start": "2024-01-01", "end": "2024-12-31", "start_implied": True, "basis": "Fiscal year"})
-    assert kept == {"start": "2024-01-01", "end": "2024-12-31", "start_implied": True, "basis": "Calendar year"}
+    assert kept == {"start": "2024-01-01", "end": "2024-12-31", "start_implied": True, "basis": "Fiscal year"}  # the quote said fiscal
+    assert m.validate_value(f, {"start": "2024-01-01", "end": "2024-12-31", "basis": "Moon cycle"})["basis"] == "Calendar year"
     assert "start_implied" not in m.validate_value(f, {"start": "2024-01-01", "end": "2024-12-31", "start_implied": False})
-    with pytest.raises(m.MethodologyInvalid):
-        m.validate_value(f, {"start": "2024-01-01", "end": "2024-12-31", "start_implied": "yes"})
-    # a reviewer's edit sends two dates only: the flag does not survive a typed start
+    both = {"start": "2023-01-01", "end": "2023-12-31", "start_implied": True, "end_implied": True, "implied_from": m.IMPLIED_FROM_TITLE}
+    assert m.validate_value(f, both) == {**both, "basis": "Calendar year"}
+    for bad in ({"start_implied": "yes"}, {"end_implied": 1}, {"implied_from": "because I said so"}):
+        with pytest.raises(m.MethodologyInvalid):
+            m.validate_value(f, {"start": "2024-01-01", "end": "2024-12-31", **bad})
+    # a reviewer's edit sends two dates only: no flag survives a typed date, and the basis is worked out again
     edited = m.edit(m.new_record("reporting_period"), f, {"start": "2024-02-01", "end": "2024-12-31"}, ACTOR, NOW)
     assert "start_implied" not in edited["decision"]["value"] and edited["decision"]["value"]["basis"] == "Not stated"
 

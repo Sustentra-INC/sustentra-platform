@@ -87,6 +87,8 @@ class PeriodSuggestion(_Cited):
     start: str  # YYYY-MM-DD
     end: str  # YYYY-MM-DD, printed in the quote
     start_implied: bool  # true: the quote prints only the end of a twelve-month period and the start is worked out
+    title_line: str  # only when the quote says "calendar year" and prints no date: the document's title line ("" if unused)
+    title_quote: str  # the words of that title line that name the year ("" if unused)
 
 
 class EstimationSuggestion(_Cited):
@@ -153,10 +155,17 @@ def _make(year: int, month: int, day: int) -> date | None:
 
 
 def dates_in(quote: str) -> set[date]:
+    """The calendar dates printed in a quote (see ``dated_tokens``)."""
+
+    return {made for _, made in dated_tokens(quote)}
+
+
+def dated_tokens(quote: str) -> list[tuple[int, date]]:
     """The calendar dates printed in a quote, in the forms a report uses: 2025-01-01, 1/1/2025,
     January 1, 2025 and 1 January 2025 (English month names). A numeric date reads month first
     unless the first number cannot be a month. A day and month with no year ("January 1 to
-    December 31, 2025") take the year of the next dated token. Anything else is not read."""
+    December 31, 2025") take the year of the next dated token. Anything else is not read. Each date comes with
+    where it starts in the normalized quote."""
 
     text = norm(quote)
     found: list[tuple[int, int | None, int, int]] = []  # (position, year or None, month, day)
@@ -172,12 +181,12 @@ def dates_in(quote: str) -> set[date]:
         else:
             year = int(match["dy"]) if match["dy"] else None
             found.append((match.start(), year, _MONTHS[match["dm"]], int(match["dd"])))
-    dates: set[date] = set()
-    for index, (_, year, month, day) in enumerate(found):
+    dates: list[tuple[int, date]] = []
+    for index, (position, year, month, day) in enumerate(found):
         if year is None:
             year = next((later for _, later, _, _ in found[index + 1:] if later is not None), None)
         if year is not None and (made := _make(year, month, day)) is not None:
-            dates.add(made)
+            dates.append((position, made))
     return dates
 
 
@@ -208,16 +217,58 @@ _OPTION_TERMS = {
     "Landlord reports": ("landlord report", "landlord reports", "landlord"),
     "Lease agreements": ("lease agreement", "lease agreements"),
 }
-# What a quote must say for a start date it does not print to be taken from its end date: that the period is a year.
+# What a quote must say for a start date it does not print to be taken from its end date: that the period is ONE
+# year ("year ended"; not "three years ended") or twelve months, in the same clause as the printed end date.
 _YEAR_CUES = re.compile(
-    r"\b(?:years?\s+(?:ended|ending|end)|(?:12|twelve)[- ]months?\s+(?:ended|ending|to)|"
-    r"(?:fiscal|calendar|reporting)\s+year)\b")
+    r"(?<![a-z0-9-])(?:(?:fiscal|calendar|reporting)\s+year|year\s+(?:ended|ending|end)|"
+    r"(?:12|twelve)[- ]months?\s+(?:ended|ending|to))(?![a-z0-9])")
+_COUNTED_YEARS = re.compile(r"\b(?:two|three|four|five|six|seven|eight|nine|ten|[2-9]|[1-9][0-9]+)[- ]years?\s+(?:ended|ending|end)\b")
+_WEEK_YEAR = re.compile(r"\b5[23][- ]weeks?\b|\b(?:fifty[- ](?:two|three))[- ]weeks?\b")
+_CALENDAR_WORDS = re.compile(r"\bcalendar(?:\s+reporting)?\s+year\b")
+_FISCAL_WORDS = re.compile(r"\bfiscal\s+year\b")
+_CLAUSE_BREAK = re.compile(r"[;!?]|\.\s")
+_NEAR = 80  # characters between the year wording and the printed end date
 
 
-def states_a_year(quote: str) -> bool:
-    """Whether the quote calls the period a year ("year ended December 31, 2024", "12 months ending June 30")."""
+def states_a_year(quote: str, end: date | None = None) -> bool:
+    """Whether the quote calls the period one year ("year ended December 31, 2024", "12 months ending June 30")
+    in the same clause as the printed ``end`` date (no sentence break and at most 80 characters between them).
+    A counted span ("three years ended") and a 52 or 53 week year ("52 weeks") never do: the start is not the
+    day after the same date a year earlier."""
 
-    return _YEAR_CUES.search(norm(quote)) is not None
+    text = norm(quote)
+    if _COUNTED_YEARS.search(text) or _WEEK_YEAR.search(text):
+        return False
+    ends = [pos for pos, made in dated_tokens(quote) if end is None or made == end]
+    for cue in _YEAR_CUES.finditer(text):
+        for pos in ends:
+            lo, hi = (cue.end(), pos) if cue.end() <= pos else (pos, cue.start())
+            gap = text[lo:hi]
+            if len(gap) <= _NEAR and not _CLAUSE_BREAK.search(gap):
+                return True
+    return False
+
+
+def basis_in_words(quote: str) -> str | None:
+    """The period basis the quote's own words give: "calendar (reporting) year" is Calendar year and "fiscal
+    year" is Fiscal year (the first one named wins); None when it says neither."""
+
+    text = norm(quote)
+    cal, fis = _CALENDAR_WORDS.search(text), _FISCAL_WORDS.search(text)
+    if cal and (not fis or cal.start() < fis.start()):
+        return rules.PERIOD_BASES[0]
+    return rules.PERIOD_BASES[1] if fis else None
+
+
+_TITLE_YEAR = re.compile(r"(?<![0-9])((?:19|20)[0-9]{2})(?![0-9])")
+TITLE_LINES = 15  # a title or heading is among the first lines of the document
+
+
+def single_year_of(quote: str) -> int | None:
+    """The one four digit year a heading prints ("2023 Statement of GHG Emissions"); None for none or several."""
+
+    years = {int(y) for y in _TITLE_YEAR.findall(norm(quote))}
+    return years.pop() if len(years) == 1 else None
 
 
 _NEGATIONS = frozenset({"not", "no", "never", "without", "none", "neither", "nor", "cannot"})
@@ -331,8 +382,13 @@ What the items mean
   2024", or "1/1/2025 - 12/31/2025"), unless the document states only the end of a year ("for the
   year ended December 31, 2024", "12 months ending June 30, 2025"): then give the start as the
   first day of that year (2024-01-01; 2024-07-01) and set start_implied to true. Otherwise
-  start_implied is false. Never set start_implied for a period the quote does not call a year, and
-  never give an end date the quote does not print. If the document shows several periods (such as
+  start_implied is false. The year wording must sit in the same clause as the end date. Never set
+  start_implied for "three years ended", for a 52 or 53 week year, or for a period the quote does
+  not call a year, and never give an end date the quote does not print. If the quote says "calendar
+  year" or "calendar reporting year" and prints no date at all, and the document's title or heading
+  names a single year ("2023 Statement of GHG Emissions"), give 1 January to 31 December of that year
+  and put the title line in title_line and its words in title_quote; otherwise title_line and
+  title_quote are "". If the document shows several periods (such as
   the current and the prior year), give only the reporting year of the inventory. At most one.
 - texts: exclusion:* fields
   (what is left out of the organizational boundary, of this inventory, or under a materiality
@@ -613,17 +669,42 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         printed = dates_in(period.quote)
         start, end = rules.parse_iso_date(value["start"]), rules.parse_iso_date(value["end"])
         assert start is not None and end is not None  # validated above
-        if end not in printed:  # the end date is always printed in the quote
-            dropped["value_not_in_quote"] += 1
-            continue
-        if start in printed:  # both printed: nothing is implied, whatever the reply says
-            value.pop("start_implied", None)
-        elif start == rules.year_start_for(end) and states_a_year(period.quote):
-            value["start_implied"] = True  # the start is worked out from the stated year, and shown as implied
+        words = basis_in_words(period.quote)
+        if words is not None:  # the quote's own words decide the basis
+            value["basis"] = words
+        title_found: tuple[PrefillDocument, DocumentLine] | None = None
+        if end in printed:
+            if start in printed:  # both printed: nothing is implied, whatever the reply says
+                value.pop("start_implied", None)
+            elif start == rules.year_start_for(end) and states_a_year(period.quote, end):
+                value["start_implied"] = True  # worked out from the stated year, and shown as implied
+            else:
+                dropped["value_not_in_quote"] += 1
+                continue
+        elif (not printed and words == rules.PERIOD_BASES[0] and (start, end) == (date(start.year, 1, 1), date(start.year, 12, 31))
+              and period.title_quote.strip()):
+            # "calendar year" with no date printed: the year comes from the document's title, a second quote
+            title = cited(_Cited(document=period.document, line=period.title_line, quote=period.title_quote))
+            if title is None:  # the title quote is not on its line (counted by ``cited``)
+                continue
+            if single_year_of(period.title_quote) != start.year or title[0].lines.index(title[1]) >= TITLE_LINES:
+                dropped["value_not_in_quote"] += 1
+                continue
+            title_found = title
+            value.update({"start_implied": True, "end_implied": True, "implied_from": rules.IMPLIED_FROM_TITLE})
         else:
             dropped["value_not_in_quote"] += 1
             continue
+        before = len(kept)
         keep(period, value, "reporting_period", None)
+        if title_found is not None and len(kept) > before:
+            document, line = title_found
+            first = kept[-1].suggestion
+            first["evidence"] = [
+                {"label": "Calendar year", "quote": first["quote"], "document_id": first["document_id"],
+                 "file_name": first["file_name"], "source_reference": first["source_reference"]},
+                {"label": "Year from the title", "quote": period.title_quote.strip(), "document_id": document.document_id,
+                 "file_name": document.file_name, "source_reference": line.source_reference}]
     gwp_pairs: set[tuple[str, str]] = set()
     for gwp in output.gwp:
         value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon})

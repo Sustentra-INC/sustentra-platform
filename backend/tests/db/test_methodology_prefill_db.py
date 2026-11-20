@@ -43,7 +43,7 @@ GOOD = {
     "texts": [],
     "estimations": [],
     "selections": [],
-    "periods": [{"start": "2024-01-01", "end": "2024-12-31", "start_implied": False, **cite("L3", "January 1 to December 31, 2024")}],
+    "periods": [{"start": "2024-01-01", "end": "2024-12-31", "start_implied": False, "title_line": "", "title_quote": "", **cite("L3", "January 1 to December 31, 2024")}],
     "gwp": [],
     "entities": [{"name": "Acme Foods Kent LLC", "facilities": ["Kent Cannery"], "equity_share_pct": 51,
                   "financial_control": 51, "operational_control": "Yes",
