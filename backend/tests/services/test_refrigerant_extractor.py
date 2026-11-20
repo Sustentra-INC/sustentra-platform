@@ -823,3 +823,67 @@ def test_a_leak_detector_is_a_tool_not_work_so_a_suppliers_cylinders_stay_a_purc
 def test_the_suppliers_letterhead_is_what_makes_a_per_pound_sale_a_purchase(targets: list[dict], letterhead: str) -> None:
     text = (f"{letterhead}    INVOICE\nInvoice Date    09/17/2025\n" + CONTRACTOR_TABLE)
     assert _purchase_flags(text, targets)[0] == [True]
+
+
+# --- fix round 3: a line with an amount is never dropped for lacking a date or equipment --------------------
+def _amounts(outcome: Any) -> list[Any]:
+    return [c["normalized_value"] for c in outcome.candidates if c["field_name"] == "refrigerant_added"]
+
+
+def test_a_continuation_line_is_its_own_record_with_the_date_and_equipment_above(targets: list[dict]) -> None:
+    from backend.app.services.refrigerant_extractor import CONTINUATION_NOTE
+
+    text = (LOG_H + "01/15/2025    RTU-1    R-410A    2.0    0.0\n"
+            "R-22    3.0    0.0\n")
+    outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
+    records = _by_record(outcome.candidates)
+    assert _amounts(outcome) == [2, 3]  # the second gas is not lost
+    second = records[2]
+    assert second["refrigerant_type"]["normalized_value"] == "HCFC-22"
+    assert second["service_date"]["normalized_value"] == "2025-01-15"  # the line above's date
+    assert second["equipment_id"]["normalized_value"] == "RTU-1"
+    assert CONTINUATION_NOTE in outcome.notes
+
+
+def test_a_boxed_continuation_line_takes_the_date_and_equipment_above(targets: list[dict]) -> None:
+    from backend.app.services.refrigerant_extractor import CONTINUATION_NOTE
+
+    cont = [("", 0, 0), ("", 0, 0), ("R-134a", 0.293, 0.04), ("180", 0.43, 0.02), ("3.0", 0.50, 0.025),
+            ("0.0", 0.607, 0.016)]
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, LOG_LINES[0], cont]), targets, "EV-1")
+    second = _by_record(outcome.candidates)[2]
+    assert _value(second, "refrigerant_added") == (3, "lb")
+    assert second["service_date"]["normalized_value"] == "2025-02-11"
+    assert second["equipment_id"]["normalized_value"] == "RACK-A Walk-in freezer rack"
+    assert CONTINUATION_NOTE in outcome.notes
+
+
+def test_undated_rows_that_really_are_the_sum_of_the_lines_above_are_a_summary_not_services(
+        targets: list[dict]) -> None:
+    from backend.app.services.refrigerant_extractor import CONTINUATION_NOTE, TOTALS_NOTE
+
+    text = (LOG_H + "01/15/2025    RTU-1    R-410A    2.0    0.0\n"
+            "04/15/2025    RTU-1    R-410A    2.0    0.0\n"
+            "R-410A    4.0    0.0\n")
+    outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
+    assert _amounts(outcome) == [2, 2]  # not 8: the last row is their sum
+    assert TOTALS_NOTE in outcome.notes and CONTINUATION_NOTE not in outcome.notes
+
+
+def test_an_undated_row_that_is_not_the_sum_is_kept_as_a_line(targets: list[dict]) -> None:
+    text = (LOG_H + "01/15/2025    RTU-1    R-410A    2.0    0.0\n"
+            "04/15/2025    RTU-1    R-410A    2.0    0.0\n"
+            "R-410A    1.5    0.0\n")
+    outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
+    assert _amounts(outcome) == [2, 2, 1.5]
+
+
+def test_a_gap_between_a_dated_line_and_an_undated_one_is_not_a_continuation(targets: list[dict]) -> None:
+    from backend.app.services.refrigerant_extractor import CONTINUATION_NOTE
+
+    rows = [*LOG_HEAD, LOG_LINES[0], [("Notes carried over", 0.05, 0.2)],
+            [("", 0, 0), ("", 0, 0), ("R-134a", 0.293, 0.04), ("95", 0.43, 0.02), ("3.0", 0.50, 0.025), ("0.0", 0.607, 0.016)]]
+    outcome = RefrigerantServiceExtractor().extract(_grid_output(rows), targets, "EV-1")
+    assert _amounts(outcome) == [12.5, 3]  # the line is kept (it has an amount); it is not given the date above
+    assert _by_record(outcome.candidates)[2]["service_date"]["normalized_value"] is None
+    assert CONTINUATION_NOTE not in outcome.notes

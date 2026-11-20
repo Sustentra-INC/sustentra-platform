@@ -58,6 +58,8 @@ CANONICAL_TYPE_ID = "CT-S1-REFRSVC"
 # emission until then, so the reader names it as a purchase and flags it for the reviewer.
 PURCHASE_FLAG = "purchase_not_equipment_charge"
 PURCHASE_LABEL = "Refrigerant purchased"
+CONTINUATION_NOTE = ("A line with an amount but no date or equipment, directly under a dated line, was read as a "
+                     "continuation of that line: it takes that line's date and equipment. Check it.")
 TOTALS_NOTE = ("A totals table under the service lines was not read as service lines: its amounts are the sums of "
                "the lines above, so reading it too would count them twice.")
 PURCHASE_NOTE = ("This document is a supplier invoice: the refrigerant was bought, not recorded as added to equipment. "
@@ -197,6 +199,7 @@ class ServiceRecord:
     technician: Located | None = None  # the person who did the work (a log's Technician column)
     service_type: tuple[Located, str] | None = None
     # A line on a supplier's invoice (priced, counted in cylinders): refrigerant bought, not yet added to equipment.
+    continuation: bool = False  # an amount with no date or equipment directly under a dated line
     priced: bool = False  # the table has a price column
     packaged: bool = False  # counted in cylinders or named by a package size
     purchase: bool = False
@@ -325,16 +328,32 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
 
     def _records_and_notes(self, rows: Sequence[Row]) -> tuple[list[ServiceRecord], list[str]]:
         document_unit = self._document_mass_unit(rows)
-        groups, skipped = self._service_table_groups(rows, document_unit)
+        groups = self._service_table_groups(rows, document_unit)
         notes: list[str] = []
         table: list[ServiceRecord] = []
+        skipped = continued = 0
         for group in groups:
             if table and self._is_totals_table(group, table):
                 skipped += len(group)  # the amounts of this table are the sums of the lines above
                 continue
+            # undated rows without equipment that are the sums of the lines above them are a summary, not services
+            undated = [r for r in group if r.date is None and r.equipment is None]
+            undated_ids = {id(r) for r in undated}
+            dated = [r for r in group if id(r) not in undated_ids]
+            if undated and self._is_totals_table(undated, [*table, *dated]):
+                skipped += len(undated)
+                group = dated
+            previous: ServiceRecord | None = None
+            for r in group:
+                if r.continuation and previous is not None:
+                    r.date, r.equipment = previous.date, previous.equipment
+                    continued += 1
+                previous = r
             table.extend(group)
         if skipped:
             notes.append(TOTALS_NOTE)
+        if continued:
+            notes.append(CONTINUATION_NOTE)
         if table:
             self._fill_from_document(table, rows)
             self._decide_purchase(table, rows)
@@ -348,7 +367,8 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
     def _is_totals_table(group: Sequence[ServiceRecord], earlier: Sequence[ServiceRecord]) -> bool:
         """A table whose amounts per refrigerant are the sums of the lines above it: the log's own totals,
         however its columns are lined up. Every refrigerant in it must be one of the lines, and the added
-        and the recovered sums must both match (in pounds, so a table in kg still compares)."""
+        and the recovered sums must both match (in pounds, so a table in kg still compares, within the rounding a
+        printed total has: a hundredth of a kilogram)."""
 
         def pounds(hit: tuple[Located, Mass] | None) -> float:
             if hit is None:
@@ -370,8 +390,8 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             return False
         mine, theirs = sums(group), sums(earlier)
         return bool(mine) and all(
-            gas in theirs and abs(a - theirs[gas][0]) <= 1e-6 * max(1.0, theirs[gas][0])
-            and abs(r - theirs[gas][1]) <= 1e-6 * max(1.0, theirs[gas][1])
+            gas in theirs and abs(a - theirs[gas][0]) <= max(0.012, 1e-4 * theirs[gas][0])
+            and abs(r - theirs[gas][1]) <= max(0.012, 1e-4 * theirs[gas][1])
             for gas, (a, r) in mine.items())
 
     def _decide_purchase(self, table: list[ServiceRecord], rows: Sequence[Row]) -> None:
@@ -465,13 +485,13 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
         return Row(cells, row.page, row.index) if changed else row
 
     def _service_table_groups(self, rows: Sequence[Row], document_unit: str | None
-                              ) -> tuple[list[list[ServiceRecord]], int]:
-        """The records under each header, one list per header, and how many rows were left out as not being
-        service lines: once the lines of a log carry dates, a later line with no date and no equipment is a
-        summary row (a totals line under the columns, with or without a header), not a service."""
+                              ) -> list[list[ServiceRecord]]:
+        """The records under each header, one list per header. A line with an amount is never left out for
+        lacking a date or an equipment id: directly under a dated line of the same table it is that line's
+        continuation (marked; ``_records_and_notes`` gives it the line's date and equipment, or drops it
+        when it is a summary of the lines above)."""
 
         groups: list[list[ServiceRecord]] = []
-        skipped = 0
         position = 0
         while position < len(rows):
             header_row = rows[position]
@@ -489,28 +509,36 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             misses = 0
             group: list[ServiceRecord] = []
             groups.append(group)
+            last_row = -1  # the row of the last record, to tell a continuation (the next row) from a gap
             while position < len(rows) and misses < 3:
                 row = rows[position]
                 if self._header(row) is not None:
                     break
                 record = self._service_table_record(row, header_row, columns, units, document_unit)
-                if (record is not None and record.date is None and record.equipment is None
-                        and any(r.date is not None for g in groups for r in g)):
-                    record = None
-                    skipped += 1
                 if record is None:
                     misses += 1
                 else:
                     misses = 0
+                    if (record.date is None and record.equipment is None and group and last_row == position - 1
+                            and (group[-1].date is not None or group[-1].continuation)):
+                        record.continuation = True
                     group.append(record)
+                    last_row = position
                 position += 1
-        return [g for g in groups if g], skipped
+        return [g for g in groups if g]
 
     def _service_table_record(self, row: Row, header_row: Row, columns: dict[str, int], units: dict[str, str],
                       document_unit: str | None) -> ServiceRecord | None:
         if any(_norm(c.text).startswith(_TOTAL_ROW_WORDS) for c in row.cells[:2]):
             return None  # totals repeat the lines above
         assigned = self._assign_columns(row, header_row.cells)
+        gas_at = columns.get("refrigerant")
+        shift = len(header_row.cells) - len(row.cells)
+        if (gas_at is not None and shift > 0 and not any(c.box for c in row.cells)
+                and find_refrigerant(assigned[gas_at].text if gas_at in assigned else "") is None
+                and gas_at - shift >= 0 and find_refrigerant(row.cells[gas_at - shift].text) is not None):
+            # text with no positions and the leading cells (date, equipment) left blank: the cells are the last columns
+            assigned = {i + shift: c for i, c in enumerate(row.cells)}
         context = f"{header_row.text} | {row.text}"
 
         def cell(name: str) -> Cell | None:
