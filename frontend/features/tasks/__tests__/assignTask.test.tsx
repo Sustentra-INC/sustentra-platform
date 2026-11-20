@@ -38,7 +38,7 @@ function Opener() {
     <button
       type="button"
       onClick={() =>
-        assign({ kind: "Document", label: "Rechnung März 電気.pdf", link: "/?view=review&doc=D1&e=E1", title: "Review Rechnung März 電気.pdf" })
+        assign({ kind: "Document", label: "Rechnung März 電気.pdf", target: { kind: "document", item_id: "D1" }, title: "Review Rechnung März 電気.pdf" })
       }
     >
       open
@@ -92,7 +92,7 @@ describe("Assign to… window", () => {
     expect(screen.getByRole("button", { name: "Assign" })).toBeDisabled();
   });
 
-  it("sends the person, note, due date, link and engagement, then confirms", async () => {
+  it("sends the person, note, due date, target and engagement, then confirms", async () => {
     await openDialog();
     await screen.findByRole("option", { name: /Vivian Reyes/ });
     fireEvent.change(screen.getByLabelText("Assign to"), { target: { value: "u-viv" } });
@@ -106,8 +106,8 @@ describe("Assign to… window", () => {
       title: "Review Rechnung März 電気.pdf",
       assignee_user_id: "u-viv",
       note: "Check the totals",
-      link: "/?view=review&doc=D1&e=E1",
       engagement_id: "E1",
+      target: { kind: "document", item_id: "D1" },
       due_date: "2999-12-01",
     });
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
@@ -121,6 +121,7 @@ describe("Assign to… window", () => {
     fireEvent.click(screen.getByRole("button", { name: "Assign" }));
     await screen.findByRole("status");
     const body = mock.calls.find((c) => c.method === "POST")?.body as Record<string, unknown>;
+    expect(body).not.toHaveProperty("link"); // the server builds the link from the checked target
     expect(body.note).toBeNull();
     expect(body.due_date).toBeNull();
   });
@@ -160,8 +161,8 @@ describe("Assign to… window", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("never promises the note goes out by email", async () => {
+  it("says the email carries no details", async () => {
     const dialog = await openDialog();
-    expect(dialog).toHaveTextContent(/never includes your note or document contents/);
+    expect(dialog).toHaveTextContent(/only that you assigned them a task/);
   });
 });

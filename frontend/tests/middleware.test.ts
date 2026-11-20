@@ -77,6 +77,17 @@ describe("middleware auth guard", () => {
       );
     });
 
+    it("keeps a task's deep link whole (view, doc, engagement) through the sign-in", () => {
+      const link = "/?view=review&e=E%201&doc=D1&node=a%26b";
+      const next = location(link, false, "org:acme")?.searchParams.get("next");
+      expect(next).toBe(link);
+    });
+
+    it("keeps the query on org pages too", () => {
+      expect(location("/org/acme/tasks?x=1")?.searchParams.get("next")).toBe("/org/acme/tasks?x=1");
+      expect(location("/provider-admin/orgs?page=2")?.searchParams.get("next")).toBe("/provider-admin/orgs?page=2");
+    });
+
     it("passes through with a session", () => {
       expect(location("/", true)).toBeNull();
     });

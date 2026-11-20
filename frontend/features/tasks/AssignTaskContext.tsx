@@ -10,8 +10,8 @@ export interface AssignTarget {
   kind: string;
   /** The thing's name: the file name, the line, the methodology row, the engagement. */
   label: string;
-  /** The in-app path the task opens. */
-  link: string;
+  /** What it is, for the server to check and link to. The client never sends a link. */
+  target: { kind: "document" | "line" | "methodology_row" | "engagement"; item_id?: string };
   /** Pre-filled task title; the person can change it. */
   title: string;
 }

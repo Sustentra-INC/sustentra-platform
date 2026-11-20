@@ -57,8 +57,9 @@ export interface NewTask {
   title: string;
   assignee_user_id: string;
   note?: string | null;
-  link?: string | null;
   engagement_id?: string | null;
+  /** What it is about; the server checks it exists in the engagement and builds the link. */
+  target?: { kind: "document" | "line" | "methodology_row" | "engagement"; item_id?: string } | null;
   due_date?: string | null;
 }
 

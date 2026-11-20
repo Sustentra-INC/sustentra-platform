@@ -9,26 +9,23 @@ No `from __future__ import annotations`: FastAPI resolves these annotations at r
 wraps the create endpoint.
 """
 
-import re
 from datetime import date, datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from ...core.db import get_db_session, get_sessionmaker_dependency
-from ...core.rate_limit import session_rate_limit, task_create_rate_limit
+from ...core.rate_limit import session_rate_limit
 from ...services import task_service as tasks
 from ...services.otp_delivery import TaskEmailSender, get_task_email_sender
 from .deps import Principal, require_org_admin, require_org_member
+from .task_targets import TargetKind, resolve_link
 
 router = APIRouter(prefix="/orgs/{org_id}/tasks", tags=["org-tasks"])
 notifications_router = APIRouter(prefix="/orgs/{org_id}/notifications", tags=["org-notifications"])
-
-# An in-app path only ("/org/acme/..."): never a full URL, so an email link cannot point off-site.
-_APP_PATH = re.compile(r"^/(?!/)[^\s\\\x00-\x1f\x7f]*$")
 
 Member = Annotated[Principal, Depends(require_org_member)]
 OrgAdmin = Annotated[Principal, Depends(require_org_admin)]
@@ -38,15 +35,34 @@ Sender = Annotated[TaskEmailSender, Depends(get_task_email_sender)]
 TaskStatus = Literal["open", "done", "cancelled"]
 
 
+class TaskTarget(BaseModel):
+    """What the task is about. The server checks it exists and builds the link; the client sends no link."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: TargetKind
+    # document id, line key or methodology field id; not used for the engagement itself.
+    item_id: str | None = Field(default=None, min_length=1, max_length=300)
+
+
 class CreateTaskRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     title: str = Field(min_length=1, max_length=200)
     note: str | None = Field(default=None, max_length=2000)
-    link: str | None = Field(default=None, max_length=500)
     assignee_user_id: UUID
     engagement_id: UUID | None = None
+    target: TaskTarget | None = None
     due_date: date | None = None
+
+    @model_validator(mode="after")
+    def _target_needs_engagement(self) -> "CreateTaskRequest":
+        if self.target is not None:
+            if self.engagement_id is None:
+                raise ValueError("a target needs an engagement_id")
+            if self.target.kind != "engagement" and not self.target.item_id:
+                raise ValueError("this kind of target needs an item_id")
+        return self
 
     @field_validator("title")
     @classmethod
@@ -60,16 +76,6 @@ class CreateTaskRequest(BaseModel):
     @classmethod
     def _note(cls, value: str | None) -> str | None:
         return (value.strip() or None) if value is not None else None
-
-    @field_validator("link")
-    @classmethod
-    def _link(cls, value: str | None) -> str | None:
-        if value is None or not value.strip():
-            return None
-        value = value.strip()
-        if not _APP_PATH.match(value):
-            raise ValueError("must be a path inside the app, starting with a single /")
-        return value
 
 
 class TaskResponse(BaseModel):
@@ -168,21 +174,22 @@ async def list_assignees(org_id: str, principal: Member, db: Db) -> AssigneeList
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-@task_create_rate_limit
 async def create_task(
     org_id: str,
     payload: CreateTaskRequest,
     principal: Member,
     db: Db,
     request: Request,
-    response: Response,  # slowapi adds its rate-limit headers to it
     background: BackgroundTasks,
     sessions: Sessions,
     send_email: Sender,
 ) -> TaskResponse:
     _person(principal, org_id)
+    link = None
+    if payload.target is not None and payload.engagement_id is not None:
+        link = await resolve_link(db, principal, str(payload.engagement_id), payload.target.kind, payload.target.item_id)
     row, emails = await tasks.create_task(
-        db, _actor(principal, request), org_id, title=payload.title, note=payload.note, link=payload.link,
+        db, _actor(principal, request), org_id, title=payload.title, note=payload.note, link=link,
         assignee_user_id=payload.assignee_user_id, engagement_id=payload.engagement_id, due_date=payload.due_date,
     )
     if emails:  # after the response = after the commit
