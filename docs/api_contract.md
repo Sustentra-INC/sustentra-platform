@@ -514,7 +514,7 @@ for another org's engagement).
   coverage: [{month: "YYYY-MM", status: "counted" | "counted_in_part" | "not_reviewed" | "no_document",
               quantity, unit, document_ids, flags: [],     // flags: "unconverted"
               waiting_on: [string]}],                      // field labels the recalculation still awaits
-  identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter
+  identifiers: [{label, value, documents_with, documents_total}],   // facility, service address, account, meter, statement date
   values: [{service_period_start, service_period_end, days, quantity, unit, document_id, file_name,
             page, candidate_id, decided_by, decided_at, decision, waiting_on: [string]}],
   history: [{action, actor_name, at, field, value, unit, file_name, page, count, documents?}],
@@ -558,11 +558,11 @@ fields `heat_content`, `carbon_content`, `vehicle_type`, `model_year`, `on_or_no
 no extractor produces them yet, so today a line shows only Date and Activity quantity. Every value in a row (the quantity and each extra cell) says where it was read: `candidate_id` (to open the review at that value), and `page` (PDF or image) or `sheet` and `cell` (workbook or CSV); missing parts are null, and the page then opens the document at page 1 and says so. `identifier_groups`
 group the line's documents by identifier value; `not_found` holds documents without the identifier.
 Facility is the Setup facility, and `matched_by` says how: "Chosen by the reviewer", "Facility name in
-Setup" or "Service address in Setup". Facility is listed for every line; Service address, Account number
+Setup" or "Service address in Setup". Facility and Statement date are listed for every line; Service address, Account number
 and Meter number only for utility-bill lines (stationary natural gas, electricity, steam, heating, cooling).
 Values that differ only by case, spacing or Unicode form (NFKC, so full-width digits match ASCII) fall in one group, shown in the first
 spelling seen; a whitespace-only value counts as not found. `identifiers` (one entry per value) is kept for older clients.
-Identifiers never feed a number, so a meter number, account number or service address that Claude read counts here before a reviewer has decided it, and its document says `read_by_claude: true` (a value a rule also read is not marked; a rejected reading does not count). Everything that feeds a calculation still ignores a reading until a reviewer accepts it.
+Identifiers never feed a number, so a meter number, account number, statement date or service address that Claude read counts here before a reviewer has decided it, and its document says `read_by_claude: true` (a value a rule also read is not marked; a rejected reading does not count). Everything that feeds a calculation still ignores a reading until a reviewer accepts it.
 
 A row counts (`accepted` true) only when its record is not in the recalculation's `awaiting_review`. When
 the quantity is reviewed but another required field is not (for example `fuel_type`), the row has
@@ -736,3 +736,22 @@ and `reviewed_evidence.place_on_facility` (the one placement decision); the fron
 `frontend/features/s1/utils/facilityNumbers.ts` and `placeRecord` in `utils/documentView.ts`. Both sides run the shared
 cases in `backend/tests/fixtures/facility_placement_cases.json` and the name and address probes in
 `facility_match_probes.json`.
+
+### Meter number and statement date (EXT-027)
+
+Both are extraction targets (optional, display only) on every bill type: `meter_number` on stationary fuel
+(`CT-S1-FUELQTY`), electricity and steam/heat/cooling bills, and `statement_date` (ISO date) on those and on mobile
+fuel statements and refrigerant service invoices. The rule readers fill them; Claude fills one the rules missed, like
+any other optional field. Neither ever feeds a calculation, and neither decides which facility a bill belongs to,
+except that a meter number a Setup facility lists can place a bill (the provisional step above).
+
+- **Statement date:** read only from a labelled field ("Statement Date", "Bill Date", "Invoice Date", "Billing Date",
+  "Date Issued", "Stmt Date", "Report Date"). Never the service period (a range after the label is refused) and never
+  a due date. A bare "Date" is not one.
+- **Meter number:** read from "Meter No.", "Meter Number", "Meter #", "Meter ID", "Meter: ..." or a Meter column
+  (also "Steam Meter"), with the account number's guard: at least 3 characters, a digit, not a date, an amount or a
+  phone number ("Meter Reader Line: (555) 123-4567" is never read). On a bill of several meters each record keeps the
+  meter of its own row; a bill that prints two different meters in prose has no single meter.
+- They show on the review screen with the bill's other identifiers, and in the schedule's identifier groups ("Meter
+  number" on utility lines, "Statement date" on every line). The workpaper export's Reviewed values sheet lists them
+  like any extracted value.

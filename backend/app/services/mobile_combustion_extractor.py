@@ -355,6 +355,7 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
                                                  accept_bare=self._looks_like_id),
             "account_number": self._find_labeled(rows, CARD_LABELS, accept=self._looks_like_id,
                                                  accept_bare=self._looks_like_id),
+            "statement_date": self._statement_date(rows),
             # A card statement: the issuer on the letterhead and the account printed on it
             "issuer": self._issuer(rows),
             "statement_account": self._statement_account(rows),
@@ -428,6 +429,8 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
                 return self._missing(target, *args)
             return self._candidate(target, fuel_loc, normalized_fuel[2], normalized_fuel[1], "%", *args,
                                    parser_output, [])
+        if field_id == "statement_date":  # the statement's own date (display only), never a transaction date
+            return self._candidate_for_text(target, document.get("statement_date"), *args, parser_output, field_id)
         column = {"merchant_or_supplier": "merchant", "fueling_location": "location",
                   "vehicle_or_equipment_id": "vehicle", "transaction_id": "transaction",
                   "account_number": "card", "card_number": "card"}.get(field_id)

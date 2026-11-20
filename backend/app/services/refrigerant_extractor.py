@@ -242,6 +242,7 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             "service_provider": (self._find_labeled(rows, PROVIDER_LABELS, accept=self._looks_like_org_name,
                                                     allow_next_row=False)
                                  or self._letterhead_name(rows)),
+            "statement_date": self._statement_date(rows),
         }
 
         candidates: list[dict] = []
@@ -561,7 +562,7 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
         if field_id == "service_provider":
             return self._candidate_for_text(target, record.provider or document.get("service_provider"), *args,
                                             parser_output, field_id)
-        if field_id in DOCUMENT_FIELDS:
+        if field_id in DOCUMENT_FIELDS or field_id == "statement_date":
             return self._candidate_for_text(target, document.get(field_id), *args, parser_output, field_id)
         return self._missing(target, *args, ["unsupported_extraction_method"])
 

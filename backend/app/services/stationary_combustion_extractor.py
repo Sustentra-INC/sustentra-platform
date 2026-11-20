@@ -31,6 +31,7 @@ from typing import Any, Sequence
 
 from backend.app.domain import fuel_units
 from backend.app.services import bill_notes
+from backend.app.services.extraction_target_service import DISPLAY_ONLY_FIELDS
 
 CANONICAL_TYPE_ID = "CT-S1-FUELQTY"
 
@@ -38,7 +39,8 @@ HALT_UNREADABLE = "unreadable_document"
 HALT_UNSUPPORTED = "unsupported_document"
 
 RECORD_FIELDS = ("fuel_type", "activity_quantity", "activity_unit", "service_period_start", "service_period_end")
-DOCUMENT_FIELDS = ("facility_name", "service_address", "supplier_name", "account_number")
+DOCUMENT_FIELDS = ("facility_name", "service_address", "supplier_name", "account_number", "meter_number",
+                   "statement_date")
 KNOWN_FIELDS = RECORD_FIELDS + DOCUMENT_FIELDS
 
 # Confidence by how a value was located (then capped by the parser's own confidence).
@@ -99,14 +101,69 @@ ACCOUNT_LABELS: tuple[tuple[str, ...], ...] = (
      "customer no.", "customer #", "cust no", "cust no.", "cust. no.", "cust #", "client number", "client no",
      "client no.", "billing account", "service account", "account id", "account"),
 )
+# A meter number is read from a labelled field only. A bare "meter" label also starts "Meter Reading", "Meter
+# Charges" and "Meter 1 - Tacoma" (a heading): none of those has a value that looks like an identifier, so they are
+# never read. The labels that name the number (without the bare word) are what the other fields' lookups treat as a
+# label when they look for their own value in the next cell.
+METER_NUMBER_LABELS: tuple[tuple[str, ...], ...] = (
+    ("meter number", "meter no", "meter no.", "meter #", "meter id", "meter serial number", "meter serial no",
+     "meter serial", "meter nbr", "meter num"),
+)
+METER_LABELS: tuple[tuple[str, ...], ...] = (METER_NUMBER_LABELS[0] + ("meter",),)
+# Only so that a due date next to a statement date is recognised as another label, never read as a value.
+DUE_DATE_LABELS: tuple[tuple[str, ...], ...] = (
+    ("due date", "payment due date", "payment due", "pay by", "due by", "due on", "amount due by"),
+)
+# A usage table's meter column ("Meter", "Steam Meter", "Meter No."): not "Hour Meter" (a run-time reading).
+_METER_HEADER = re.compile(
+    r"(?:(?:steam|gas|electric|electricity|chilled water|hot water|heat|btu|utility|service) )?meter"
+    r"(?: (?:number|no|id|#))?")
+_RANGE_AFTER_DATE = re.compile(r"\s*(?:[-\u2010-\u2015\u2212]|to\b|through\b|thru\b|until\b)", re.IGNORECASE)
 _PHONE = re.compile(r"^\+?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}$|^\+\d[\d\s().-]{8,}$|^\d{3}[\s.-]\d{4}$")
 BILL_DATE_LABELS: tuple[tuple[str, ...], ...] = (
     ("statement date", "invoice date", "bill date", "billing date", "date issued", "issue date", "date of issue"),
 )
+# What a bill calls its own date: the labels the data quality check already knows, an abbreviation, and a report date.
+# Never a bare "Date" (a delivery ticket's date is its delivery date) and never a due date.
+STATEMENT_DATE_LABELS: tuple[tuple[str, ...], ...] = (BILL_DATE_LABELS[0] + ("stmt date", "stmt. date", "report date"),)
 BILL_NUMBER_LABELS: tuple[tuple[str, ...], ...] = (
     ("invoice number", "invoice no", "invoice no.", "invoice #", "statement number", "statement no", "statement no.",
      "statement #", "bill number", "bill no", "bill no.", "invoice id"),
 )
+
+
+_READING_UNITS = frozenset({"kwh", "mwh", "kw", "wh", "therm", "therms", "thm", "thms", "ccf", "mcf", "scf", "cf", "mmbtu",
+                            "btu", "kbtu", "mlb", "lb", "lbs", "kg", "gal", "gals", "gallon", "gallons", "l", "liters",
+                            "litres", "m3", "m\u00b3", "gj", "hcf"})
+
+
+def meter_value(value: str) -> str | None:
+    """The meter number at the start of ``value`` ("GM-0127764 PREV 40,211 CURR 41,447" gives "GM-0127764"), or None.
+    The same guard as an account number: at least 3 characters, a digit, not a date or an amount, and not a phone
+    number ("Meter Reader Line: (555) 123-4567")."""
+
+    tokens = value.split()
+    if not tokens:
+        return None
+    first = tokens[0].strip(".,;:()[]")
+    if len(first) < 3 or not re.search(r"\d", first) or first.startswith("$") or parse_date(first) is not None:
+        return None
+    # A reading is not a number: comma grouping, a decimal, or a unit after it ("45,210", "3,701.1", "45210 kWh").
+    if re.fullmatch(r"[\d,]*\d[,.]\d[\d,.]*", first) or (len(tokens) > 1 and tokens[1].strip(".,;:()").lower() in _READING_UNITS):
+        return None
+    if any(_PHONE.match(" ".join(tokens[:n])) for n in (1, 2, 3)):
+        return None
+    return first
+
+
+def statement_date_value(value: str) -> tuple[str, str] | None:
+    """(printed text, ISO date) when ``value`` starts with a single date. A range ("01/01/2025 - 01/31/2025", a
+    service period) is not a statement date, and neither is a date with other words in front of it."""
+
+    hit = parse_date(value)
+    if hit is None or value[:hit[1]].strip(" :#-") != "" or _RANGE_AFTER_DATE.match(value[hit[2]:]):
+        return None
+    return value[hit[1]:hit[2]], hit[0]
 
 
 def _plausible_account(value: str) -> bool:
@@ -383,6 +440,12 @@ class ExtractionOutcome:
     halt_reason: dict[str, str] | None = None
     records: int = 0
     notes: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # A display-only field the bill does not print is left out, not kept as a missing placeholder.
+        self.candidates = [c for c in self.candidates if not (
+            c.get("field_name") in DISPLAY_ONLY_FIELDS and c.get("raw_value") is None
+            and c.get("normalized_value") is None)]
 
 
 def _blank_dates(text: str) -> str:
@@ -891,6 +954,8 @@ class StationaryCombustionExtractor:
             "service_address": None,
             "supplier_name": self._supplier(rows),
             "account_number": self._account(rows),
+            "meter_number": self._bill_meter(rows),
+            "statement_date": self._statement_date(rows),
         }
         facility, address_from_facility = self._facility(rows)
         document_values["facility_name"] = facility
@@ -931,6 +996,8 @@ class StationaryCombustionExtractor:
                         located = record.extra["site"]
                     if field_id == "account_number" and located is None and record is not None:
                         located = record.extra.get("account")
+                    if field_id == "meter_number" and record is not None and record.extra.get("meter") is not None:
+                        located = record.extra["meter"]  # a meter's own row: each meter keeps its number
                     if field_id == "service_address" and record is not None and record.extra.get("address") is not None:
                         located = record.extra["address"]
                     record_candidates.append(self._candidate_for_text(
@@ -1482,6 +1549,67 @@ class StationaryCombustionExtractor:
                                   accept_bare=lambda v: accept_bare(v) and _plausible_account(v), inline=True,
                                   inline_gap=True)
 
+    def _meter(self, rows: Sequence[Row]) -> Located | None:
+        """A meter number from a labelled field ("Meter No.", "Meter #", "Meter: GM-0083315"), never from prose."""
+
+        rows = [r for r in rows if not _EMAIL_HEADING.match(r.text)]
+        found = self._find_labeled(rows, METER_LABELS, accept=lambda v: meter_value(v) is not None,
+                                   accept_bare=lambda v: meter_value(v) is not None, inline=True, inline_gap=True)
+        if found is None or (number := meter_value(found.raw)) is None:
+            return None
+        return Located(number, found.cells, found.row, found.confidence, label_cell=found.label_cell,
+                       context=found.context)
+
+    def _bill_meter(self, rows: Sequence[Row]) -> Located | None:
+        """The bill's one meter number. A bill that prints two different meter numbers (a bill of several meters)
+        has no single one: each of its records keeps its own, from its own row."""
+
+        first = self._meter(rows)
+        if first is None:
+            return None
+        others = {_name_key(m.raw) for row in rows if (m := self._meter([row])) is not None}
+        others |= {_name_key(raw) for raw in self._meters_below(rows, first)}
+        return first if others <= {_name_key(first.raw)} else None
+
+    def _meters_below(self, rows: Sequence[Row], first: Located) -> list[str]:
+        """The meter numbers listed further down the column of the label ``first`` was read under: "Meter" over
+        GM-111222 and GM-333444 is a bill of two meters, not of GM-111222 alone."""
+
+        label = first.label_cell
+        start = next((r for r in rows if label is not None and any(c is label for c in r.cells)), None)
+        if label is None or start is None or label.box is None or first.row is start:
+            return []  # the meter was read in the label's own row: what is below the label is something else
+        found: list[str] = []
+        row, cell = start, label
+        for _ in range(25):
+            below = self._cell_below(rows, row, cell)
+            if below is None:
+                break
+            row, cell = below
+            number = meter_value(cell.text)
+            if number is None:
+                break
+            found.append(number)
+        return found
+
+    def _statement_date(self, rows: Sequence[Row]) -> Located | None:
+        """The date the bill itself carries ("Statement Date", "Bill Date", "Invoice Date"). Only from a labelled field:
+        never the service period, and never a due date (a label that starts "Due" is not one of these labels)."""
+
+        rows = [r for r in rows if not _EMAIL_HEADING.match(r.text)]
+        found = self._find_labeled(rows, STATEMENT_DATE_LABELS, accept=lambda v: statement_date_value(v) is not None,
+                                   accept_bare=lambda v: statement_date_value(v) is not None, inline=True,
+                                   inline_gap=True)
+        if found is None or (hit := statement_date_value(found.raw)) is None:
+            return None
+        if found.label_cell is not None:  # "Due Date / Bill Date: 05/21/2025 / 05/01/2025": the first date is the due date
+            text = _norm(found.label_cell.text)
+            at = min((text.find(label) for label in STATEMENT_DATE_LABELS[0] if label in text), default=0)
+            if any(label in text[:at] for label in DUE_DATE_LABELS[0]):
+                return None
+        return Located(hit[0], found.cells, found.row, found.confidence, label_cell=found.label_cell,
+                       context=found.context)
+
     def _supplier(self, rows: Sequence[Row]) -> Located | None:
         """The company that issued the bill. Never the customer: the name a Bill To, Sold To, Customer or Service For
         label gives is the other party, whether the name repeats it exactly, with a suffix or branch added
@@ -1854,6 +1982,8 @@ class StationaryCombustionExtractor:
                 columns["end"] = index
             elif "date" not in columns and bare in self.DATE_HEADERS:
                 columns["date"] = index
+            if "meter" not in columns and _METER_HEADER.fullmatch(bare):
+                columns["meter"] = index  # the row's own meter number, for a bill of several meters
         return columns
 
     # Unit lookups, so a subclass can know units the others must not (the thermal
@@ -1958,6 +2088,10 @@ class StationaryCombustionExtractor:
                 cell = assigned.get(columns[key]) if key in columns else None
                 if cell is not None and cell.text.strip():
                     record.extra[key] = Located(cell.text, [cell], row, CONF_TABLE,
+                                                context=self._row_context(header_row, row))
+            meter_cell = assigned.get(columns["meter"]) if "meter" in columns else None
+            if meter_cell is not None and (meter := meter_value(meter_cell.text)) is not None:
+                record.extra["meter"] = Located(meter, [meter_cell], row, CONF_TABLE,
                                                 context=self._row_context(header_row, row))
             self._row_dates(record, row, assigned, columns, header_row)
             records.append(record)
@@ -2375,6 +2509,11 @@ class StationaryCombustionExtractor:
         if located is None:
             return self._missing(target, document_id, evidence_id, record_key, record_index)
         value = " ".join(located.raw.split())
+        if field_id == "statement_date":
+            hit = parse_date(located.raw)
+            if hit is None:
+                return self._missing(target, document_id, evidence_id, record_key, record_index)
+            value = hit[0]
         return self._candidate(target, located, located.raw, value, None, document_id, evidence_id, record_key,
                                record_index, parser_output, [])
 
@@ -2499,6 +2638,7 @@ class StationaryCombustionExtractor:
 ALL_LABEL_GROUPS: tuple[tuple[str, ...], ...] = (
     FACILITY_LABELS + SITE_LOCATION_LABELS + BILL_TO_LABELS + ADDRESS_LABELS + ACCOUNT_LABELS + SUPPLIER_LABELS + FUEL_LABELS + RANGE_PERIOD_LABELS
     + START_LABELS + END_LABELS + DELIVERY_DATE_LABELS + QUANTITY_LABELS
+    + METER_NUMBER_LABELS + STATEMENT_DATE_LABELS + DUE_DATE_LABELS
 )
 _ALL_LABELS: tuple[str, ...] = tuple(label for group in ALL_LABEL_GROUPS for label in group)
 StationaryCombustionExtractor.ALL_LABELS = _ALL_LABELS
