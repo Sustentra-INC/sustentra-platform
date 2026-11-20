@@ -169,6 +169,22 @@ export interface DashboardFigures {
   findings: number;
 }
 
+/** What a coverage check is, in the words both the dashboard and Coverage & requests use. */
+export type CoverageView = "awaiting_review" | "needs_choice" | "missing" | "present" | "not_applicable" | "out_of_scope" | "method_open" | "method_done";
+
+/**
+ * Sorts a check into one view. An evidence check that is not ready is awaiting review (the documents are in,
+ * the values wait for a reviewer), needs a choice (grid region, fuel, vehicle groups, a GWP) or is missing (no
+ * evidence at all). Method checks (reporting period, GWP basis, reported totals, decisions) are not evidence.
+ */
+export function coverageView(rule: CoverageRule): CoverageView {
+  if (METHOD_CHECK_RULE_IDS.includes(rule.ruleId)) return rule.status === "inputs_missing" ? "method_open" : "method_done";
+  if (rule.status === "inputs_missing") {
+    return rule.missingBecause === "awaiting_review" ? "awaiting_review" : rule.missingBecause === "needs_input" ? "needs_choice" : "missing";
+  }
+  return rule.status === "inputs_present" ? "present" : rule.status;
+}
+
 export function dashboardFigures(input: {
   evidence: EvidenceItem[];
   values: ReviewValue[];
@@ -183,11 +199,13 @@ export function dashboardFigures(input: {
   const values = input.values.filter((v) => !v.withdrawn);
   const rules = input.coverage?.filter((r) => !METHOD_CHECK_RULE_IDS.includes(r.ruleId)) ?? null;
   const calculated = input.calculatedIds ?? [];
-  const notReady = rules?.filter((r) => r.status === "inputs_missing") ?? [];
-  const waiting = notReady.filter((r) => r.missingBecause === "awaiting_review").length;
-  const choice = notReady.filter((r) => r.missingBecause === "needs_input").length;
-  const absent = notReady.length - waiting - choice;
-  const present = rules?.filter((r) => r.status === "inputs_present").length ?? 0;
+  const views = rules?.map(coverageView) ?? [];
+  const count = (view: CoverageView) => views.filter((v) => v === view).length;
+  const waiting = count("awaiting_review");
+  const choice = count("needs_choice");
+  const absent = count("missing");
+  const notReady = waiting + choice + absent;
+  const present = count("present");
   return {
     documents: documents.length,
     documentsReadable: documents.filter((e) => e.processingState === "extracted").length,
@@ -208,9 +226,9 @@ export function dashboardFigures(input: {
           needsChoice: choice,
           missing: absent,
           obtained: present + waiting + choice,
-          inScope: present + notReady.length,
-          notApplicable: rules.filter((r) => r.status === "not_applicable").length,
-          outOfScope: rules.filter((r) => r.status === "out_of_scope").length,
+          inScope: present + notReady,
+          notApplicable: count("not_applicable"),
+          outOfScope: count("out_of_scope"),
         }
       : null,
     dataPointsCalculated: calculated.length,
