@@ -671,3 +671,76 @@ def test_a_document_that_names_no_gwp_set_gives_none() -> None:
 
 def test_the_prompt_allows_not_stated_and_asks_for_a_use_note_from_the_quote() -> None:
     assert '"Not stated"' in mp.SYSTEM_PROMPT and "applies_to" in mp.SYSTEM_PROMPT and "each with its own quote" in mp.SYSTEM_PROMPT
+
+
+# --- GWP: the use note belongs to its own set's clause, keeps the quote's casing; entries dedupe and collapse ---
+
+NOTE_DOC = [
+    (1, "AR5 for energy; AR6 for refrigerants."),                                                   # L1
+    (1, "We apply AR6 For Refrigerants and Fugitive Gases (CH\\u2084 rounded to 30), 100-year basis."),  # L2
+    (1, "GWP values use the AR5 100-year horizon, and AR5 is also named without one in the factor table."),  # L3
+    (1, "Values use the one hundred-year horizon of AR6."),                                          # L4
+]
+
+
+def test_a_use_note_must_come_from_the_clause_that_names_its_own_set() -> None:
+    both = "AR5 for energy; AR6 for refrigerants"
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR5", "Not stated", both, "L1", "for energy"),
+        gwp_item("AR6", "Not stated", both, "L1", "for refrigerants")]), [doc(NOTE_DOC)])
+    assert dict(dropped) == {}
+    assert [k.suggestion["value"] for k in kept] == [
+        {"set": "AR5", "horizon": "Not stated", "applies_to": "for energy"},
+        {"set": "AR6", "horizon": "Not stated", "applies_to": "for refrigerants"}]
+    # the other set's note is blanked, not attached: AR6 does not get "for energy", AR5 does not get "for refrigerants"
+    kept, _ = check(answer(gwp=[gwp_item("AR6", "Not stated", both, "L1", "for energy"),
+                                gwp_item("AR5", "Not stated", both, "L1", "for refrigerants")]), [doc(NOTE_DOC)])
+    assert [k.suggestion["value"] for k in kept] == [{"set": "AR6", "horizon": "Not stated"}, {"set": "AR5", "horizon": "Not stated"}]
+    # within one clause naming two sets the note stops before the next set
+    line = "AR5 for energy and AR6 for refrigerants"
+    kept, _ = check(answer(gwp=[gwp_item("AR6", "Not stated", line, "L1", "for energy and AR6 for refrigerants")]), [doc([(1, line)])])
+    assert "applies_to" not in kept[0].suggestion["value"]
+
+
+def test_the_use_note_is_stored_in_the_quotes_own_casing_and_spacing() -> None:
+    quote = "We apply AR6 For Refrigerants and Fugitive Gases"
+    kept, dropped = check(answer(gwp=[gwp_item("AR6", "Not stated", quote, "L2", "for  refrigerants and fugitive gases")]), [doc(NOTE_DOC)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["applies_to"] == "For Refrigerants and Fugitive Gases"
+    kept, _ = check(answer(gwp=[gwp_item("AR6", "Not stated", quote, "L2", "we apply")]), [doc(NOTE_DOC)])
+    assert kept[0].suggestion["value"]["applies_to"] == "We apply"  # a single set in the clause: the note may come first
+
+
+def test_entries_dedupe_on_set_horizon_and_note() -> None:
+    q = "We apply AR6 For Refrigerants and Fugitive Gases (CH\\u2084 rounded to 30), 100-year basis"
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR6", "100-year", q, "L2", "For Refrigerants"),
+        gwp_item("AR6", "100-year", q, "L2", "for refrigerants"),          # same note, other casing: a repeat
+        gwp_item("AR6", "100-year", q, "L2", "Fugitive Gases")]), [doc(NOTE_DOC)])  # same set and horizon, another note: kept
+    assert [k.suggestion["value"].get("applies_to") for k in kept] == ["For Refrigerants", "Fugitive Gases"]
+    assert dict(dropped) == {"duplicate_entry": 1}
+
+
+@pytest.mark.parametrize("order", [("100-year", "Not stated"), ("Not stated", "100-year")])
+def test_a_not_stated_entry_collapses_into_a_stated_horizon_for_the_same_set(order: tuple[str, str]) -> None:
+    by_horizon = {"100-year": gwp_item("AR5", "100-year", "the AR5 100-year horizon", "L3"),
+                  "Not stated": gwp_item("AR5", "Not stated", "AR5 is also named without one", "L3")}
+    other = gwp_item("AR6", "Not stated", "AR6 For Refrigerants", "L2")
+    kept, dropped = check(answer(gwp=[by_horizon[order[0]], by_horizon[order[1]], other]), [doc(NOTE_DOC)])
+    assert [(k.suggestion["value"]["set"], k.suggestion["value"]["horizon"]) for k in kept] == [("AR5", "100-year"), ("AR6", "Not stated")]
+    assert [(k.field_id, k.row_group) for k in kept] == [("gwp", None), (None, "gwp")]  # the first left is the fixed field
+    assert dict(dropped) == {"duplicate_entry": 1}
+
+
+def test_when_the_first_entry_collapses_the_next_becomes_the_fixed_field() -> None:
+    kept, _ = check(answer(gwp=[gwp_item("AR5", "Not stated", "AR5 is also named without one", "L3"),
+                                gwp_item("AR5", "100-year", "the AR5 100-year horizon", "L3")]), [doc(NOTE_DOC)])
+    assert [(k.field_id, k.row_group, k.suggestion["value"]["horizon"]) for k in kept] == [("gwp", None, "100-year")]
+
+
+@pytest.mark.parametrize("quote", ["the one hundred-year horizon of AR6", "AR6 one hundred year values", "AR6, 100 year GWP",
+                                   "AR6 (100-yr)", "AR6 over one hundred years", "AR6 100-year", "AR6 GWP100"])
+def test_the_hundred_year_horizon_is_read_in_its_spelled_out_forms(quote: str) -> None:
+    kept, dropped = check(answer(gwp=[gwp_item("AR6", "100-year", quote, "L1")]), [doc([(1, quote)])])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["horizon"] == "100-year", quote
+    kept, dropped = check(answer(gwp=[gwp_item("AR6", "Not stated", quote, "L1")]), [doc([(1, quote)])])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # a stated horizon cannot be "Not stated"
