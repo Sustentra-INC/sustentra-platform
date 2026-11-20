@@ -48,6 +48,10 @@ MAX_DOCUMENTS = 5
 MAX_LINES = 1_500
 MAX_CHARS = 150_000
 MAX_OUTPUT_TOKENS = 8_000
+# The call is not streamed, so the provider sends nothing until the whole reply is written and the
+# SDK's read timeout is the time to write it. Up to 8,000 tokens of structured output after reading
+# up to MAX_CHARS of documents takes well over the 90 s that fits the short extraction calls.
+REQUEST_TIMEOUT_S = 300.0
 MIN_QUOTE = 8  # characters
 NO_DOCUMENTS = "Upload the company's GHG inventory report, boundary statement or methodology document first."
 
@@ -1046,6 +1050,6 @@ def same_row_value(group: str, a: Any, b: Any) -> bool:
     return all(norm(str(a.get(k) or "")) == norm(str(b.get(k) or "")) for k in keys)
 
 
-__all__ = ["FEATURE", "MAX_DOCUMENTS", "MAX_LINES", "MAX_CHARS", "MAX_OUTPUT_TOKENS", "NO_DOCUMENTS", "SYSTEM_PROMPT",
+__all__ = ["REQUEST_TIMEOUT_S", "FEATURE", "MAX_DOCUMENTS", "MAX_LINES", "MAX_CHARS", "MAX_OUTPUT_TOKENS", "NO_DOCUMENTS", "SYSTEM_PROMPT",
            "PrefillOutput", "PrefillDocument", "Verified", "candidate_documents", "read_documents",
            "render_documents", "verify", "same_row_value"]
