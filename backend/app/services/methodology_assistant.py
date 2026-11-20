@@ -45,28 +45,28 @@ def _item(field: Mapping[str, Any], record: Mapping[str, Any]) -> dict[str, Any]
     if shown is None or not isinstance(suggestion, Mapping):
         return None
     shown = {k: v for k, v in shown.items() if k != "model"}  # the model id is not for the assistant to say
-    return {"field_id": str(field["field_id"]), "field": str(field.get("label") or field["field_id"]),
+    return {"field_key": str(field["field_id"]), "field": str(field.get("label") or field["field_id"]),
             "suggested_value": value_text(suggestion.get("value")), "review_status": rules.status_of(record),
             "ref": f"doc:{suggestion.get('document_id')}" if suggestion.get("document_id") else None,
             "explanation": shown}
 
 
-def explain_matches(records: Mapping[str, Mapping[str, Any]], query: str = "", field_id: str = "") -> dict[str, Any]:
-    """The explanation of the suggestion the question is about: the field ``field_id`` when given, else the records
+def explain_matches(records: Mapping[str, Mapping[str, Any]], query: str = "", field: str = "") -> dict[str, Any]:
+    """The explanation of the suggestion the question is about: the field ``field`` (its id) when given, else the records
     whose field name or suggested value share the most words with ``query`` (at most three, the best ones)."""
 
-    if field_id:
-        field, record = _field(field_id), records.get(field_id)
-        found = _item(field, record) if field and record else None
+    if field:
+        definition, record = _field(field), records.get(field)
+        found = _item(definition, record) if definition and record else None
         return {"matches": [found]} if found else {"matches": [], "note": NOT_FOUND_NOTE}
     wanted = _words(query)
     scored: list[tuple[int, dict[str, Any]]] = []
     for key, record in records.items():
-        field = _field(key)
-        item = _item(field, record) if field else None
-        if item is None or field is None:
+        defined = _field(key)
+        item = _item(defined, record) if defined else None
+        if item is None or defined is None:
             continue
-        label = _words(f"{field.get('label', '')} {field.get('group_label', '')}")
+        label = _words(f"{defined.get('label', '')} {defined.get('group_label', '')}")
         score = 2 * len(wanted & label) + len(wanted & _words(item["suggested_value"]))
         if score:
             scored.append((score, item))
@@ -94,7 +94,7 @@ def summary(records: Mapping[str, Mapping[str, Any]], document: str = "") -> dic
         if item is None:
             continue
         first = item["explanation"]["items"][0]
-        rows.append({"field_id": item["field_id"], "group": field.get("group_label"), "field": item["field"],
+        rows.append({"field_key": item["field_key"], "group": field.get("group_label"), "field": item["field"],
                      "suggested_value": item["suggested_value"], "review_status": item["review_status"],
                      "ref": item["ref"], "file": first["file_name"], "location": first["location"],
                      "reason_recorded": item["explanation"]["reason"] is not None})

@@ -21,7 +21,7 @@ export async function runAssistantToolAsync(name: string, input: Record<string, 
     const query = new URLSearchParams();
     if (name === "explain_methodology_suggestion") {
       if (typeof input.question === "string") query.set("q", input.question.slice(0, 300));
-      if (typeof input.field_id === "string") query.set("field_id", input.field_id.slice(0, 100));
+      if (typeof input.field === "string") query.set("field", input.field.slice(0, 100));
       return clip(JSON.stringify(await api<unknown>(`${base(data)}/explain?${query}`)));
     }
     if (typeof input.document === "string") query.set("document", input.document.slice(0, 200));

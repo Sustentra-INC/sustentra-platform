@@ -32,7 +32,7 @@ def test_why_was_the_consolidation_approach_suggested_cites_the_stored_reason_qu
     assert response.status_code == 200
     (match,) = response.json()["matches"]
     item = match["explanation"]["items"][0]
-    assert match["field_id"] == "consolidation_approach" and match["suggested_value"] == "Operational Control"
+    assert match["field_key"] == "consolidation_approach" and match["suggested_value"] == "Operational Control"
     assert item["reason"] == REASON
     assert item["quote"] == "we use the operational control approach." and item["page"] == 4
     assert item["file_name"] == "GHG statement.pdf" and match["ref"] == "doc:doc-1"
@@ -61,7 +61,7 @@ def test_the_summary_lists_what_sustentras_ai_found_and_can_be_limited_to_a_docu
     eid = create()["id"]
     suggest(eid, "consolidation_approach", {**APPROACH, "reason": REASON})
     rows = summary(eid).json()["suggestions"]
-    assert [r["field_id"] for r in rows] == ["consolidation_approach"]
+    assert [r["field_key"] for r in rows] == ["consolidation_approach"]
     assert rows[0]["file"] == "GHG statement.pdf" and rows[0]["location"] == "page 4" and rows[0]["reason_recorded"] is True
     assert summary(eid, "?document=statement").json()["count"] == 1
     other = summary(eid, "?document=invoice").json()

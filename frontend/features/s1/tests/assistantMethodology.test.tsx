@@ -59,10 +59,10 @@ describe("the assistant's Methodology tools", () => {
     resetDemoMethodology();
     const base = "/engagements/ENG-CASCADE-2025";
     await demoApi(`${base}/methodology-review/prefill`, { method: "POST", body: {} });
-    const out = await demoApi<{ matches: { field_id: string; explanation: { reason: string | null; reason_note: string | null; items: { quote: string; location: string }[] } }[] }>(
+    const out = await demoApi<{ matches: { field_key: string; explanation: { reason: string | null; reason_note: string | null; items: { quote: string; location: string }[] } }[] }>(
       `${base}/methodology-assistant/explain?q=${encodeURIComponent("why was operational control suggested for the consolidation approach")}`
     );
-    expect(out.matches[0].field_id).toBe("consolidation_approach");
+    expect(out.matches[0].field_key).toBe("consolidation_approach");
     expect(out.matches[0].explanation.reason).toBeNull();
     expect(out.matches[0].explanation.reason_note).toMatch(/Reason not recorded/);
     expect(out.matches[0].explanation.items[0].quote).toMatch(/operational control approach/);

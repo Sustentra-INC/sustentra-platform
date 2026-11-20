@@ -132,4 +132,4 @@ def test_the_assistants_answer_never_carries_the_model_and_matches_by_field_or_v
         (match,) = assistant.explain_matches(records, query)["matches"]
         assert match["explanation"]["reason"] == REASON and "model" not in match["explanation"]
     assert assistant.explain_matches(records, "why was the reporting period suggested")["matches"] == []
-    assert assistant.explain_matches(records, field_id="reporting_period")["matches"] == []
+    assert assistant.explain_matches(records, field="reporting_period")["matches"] == []

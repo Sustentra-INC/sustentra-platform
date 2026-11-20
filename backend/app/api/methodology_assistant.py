@@ -32,13 +32,13 @@ async def _records(db: AsyncSession, engagement_id: str, user: CurrentUser) -> d
 async def explain_suggestion(
     engagement_id: str,
     q: str = Query("", max_length=300),
-    field_id: str = Query("", max_length=100),
+    field: str = Query("", max_length=100),
     user: CurrentUser = Depends(s1_reader),
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict[str, Any]:
     """Why Sustentra's AI suggested what the question names (a field id, or words from its name or value)."""
 
-    return assistant.explain_matches(await _records(db, engagement_id, user), q, field_id)
+    return assistant.explain_matches(await _records(db, engagement_id, user), q, field)
 
 
 @router.get("/engagements/{engagement_id}/methodology-assistant/summary", response_model=dict[str, Any])

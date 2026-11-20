@@ -561,7 +561,7 @@ function assistantItem(state: State, r: Rec): Record<string, unknown> | null {
   const { items, reason, reason_note, read_at } = explanationOf(wire)!;
   const value = typeof suggestion.value === "string" ? suggestion.value : JSON.stringify(suggestion.value);
   return {
-    field_id: r.fieldId,
+    field_key: r.fieldId,
     field: d.label,
     suggested_value: value,
     review_status: statusOf(r),
@@ -577,7 +577,7 @@ export const methodologyRoutes: DemoRoute[] = [
     handle: ({ params, query }) => {
       const state = stateFor(params.id);
       const wanted = WORDS((query.get("q") ?? ""));
-      const byId = (query.get("field_id") ?? "");
+      const byId = (query.get("field") ?? "");
       const scored = state.records
         .filter((r) => !r.removed && (byId ? r.fieldId === byId : true))
         .map((r) => ({ item: assistantItem(state, r), r }))
@@ -600,7 +600,7 @@ export const methodologyRoutes: DemoRoute[] = [
         .filter(({ item }) => item && (!document || String((item.explanation as { items: { file_name: string }[] }).items[0].file_name).toLowerCase().includes(document)))
         .map(({ item }) => {
           const first = (item!.explanation as { reason: string | null; items: { file_name: string; location: string }[] });
-          return { field_id: item!.field_id, field: item!.field, suggested_value: item!.suggested_value, review_status: item!.review_status, ref: item!.ref, file: first.items[0].file_name, location: first.items[0].location, reason_recorded: first.reason !== null };
+          return { field_key: item!.field_key, field: item!.field, suggested_value: item!.suggested_value, review_status: item!.review_status, ref: item!.ref, file: first.items[0].file_name, location: first.items[0].location, reason_recorded: first.reason !== null };
         });
       return clone(rows.length ? { suggestions: rows, count: rows.length } : { suggestions: [], count: 0, note: "Sustentra's AI has no stored suggestions here. Say so; do not guess." });
     },

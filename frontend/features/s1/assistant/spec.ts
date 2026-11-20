@@ -150,7 +150,7 @@ export const ASSISTANT_TOOLS: ToolSpec[] = [
       type: "object",
       properties: {
         question: text("Words naming the field or its suggested value."),
-        field_id: text("A Methodology field id, if known (e.g. consolidation_approach)."),
+        field: text("A Methodology field id, if known (e.g. consolidation_approach)."),
       },
     },
   },
