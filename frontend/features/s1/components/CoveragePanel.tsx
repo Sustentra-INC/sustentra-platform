@@ -1,9 +1,10 @@
 "use client";
 
-import { Ban, CircleCheck, CircleMinus, CircleAlert, Send } from "lucide-react";
+import { Ban, CircleCheck, CircleMinus, CircleAlert, ListChecks, Send } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
-import type { CoverageRule, CoverageStatus } from "../types/verification";
+import type { CoverageRule } from "../types/verification";
+import { coverageView, type CoverageView } from "../utils/engagementActivity";
 
 /**
  * What can and cannot be checked with the evidence held. The status states input
@@ -17,29 +18,46 @@ export interface CoverageState {
   message?: string;
 }
 
-const STATUS: Record<CoverageStatus, { label: string; role: string; icon: ReactNode }> = {
-  inputs_missing: { label: "Inputs missing", role: "open", icon: <CircleAlert /> },
-  inputs_present: { label: "Inputs present", role: "resolved", icon: <CircleCheck /> },
-  not_applicable: { label: "Not applicable", role: "na", icon: <CircleMinus /> },
-  out_of_scope: { label: "Out of scope", role: "unverifiable", icon: <Ban /> },
+/** Each count reads as a plain phrase after its number: "4 awaiting review", "0 missing". */
+const VIEWS: Record<CoverageView, { label: string; role: string; icon: ReactNode }> = {
+  awaiting_review: { label: "awaiting review", role: "open", icon: <CircleAlert /> },
+  needs_choice: { label: "need a choice", role: "open", icon: <CircleAlert /> },
+  missing: { label: "missing", role: "open", icon: <CircleAlert /> },
+  present: { label: "present", role: "resolved", icon: <CircleCheck /> },
+  not_applicable: { label: "not applicable", role: "na", icon: <CircleMinus /> },
+  out_of_scope: { label: "out of scope", role: "unverifiable", icon: <Ban /> },
+  method_open: { label: "method checks to do", role: "open", icon: <CircleAlert /> },
+  method_done: { label: "method checks done", role: "resolved", icon: <CircleCheck /> },
 };
-const ORDER: CoverageStatus[] = ["inputs_missing", "inputs_present", "not_applicable", "out_of_scope"];
+/** The counts shown, in order. Method checks show only when one is still to do. */
+const ORDER: CoverageView[] = ["awaiting_review", "needs_choice", "missing", "present", "not_applicable", "out_of_scope", "method_open"];
+/** What the list is sorted by: what needs someone first. */
+const SORT: CoverageView[] = [...ORDER, "method_done"];
 
 export function CoveragePanel({
   coverage,
   isRequested,
   onRequest,
+  onReview,
 }: {
   coverage: CoverageState;
   isRequested: (rule: CoverageRule) => boolean;
   onRequest: (rule: CoverageRule) => void;
+  /** Opens the first value waiting on a check that awaits review. Without it such a check offers Request, as before. */
+  onReview?: (rule: CoverageRule) => void;
 }) {
   const rules = coverage.rules ?? [];
-  const missing = rules.filter((r) => r.status === "inputs_missing").length;
-  const [filter, setFilter] = useState<CoverageStatus | "all">(missing ? "inputs_missing" : "all");
+  const viewOf = new Map(rules.map((r) => [r, coverageView(r)]));
+  const countOf = (view: CoverageView) => rules.filter((r) => viewOf.get(r) === view).length;
+  const [filter, setFilter] = useState<CoverageView | "all">(() => {
+    const open = (["awaiting_review", "needs_choice", "missing", "method_open"] as CoverageView[]).find((v) =>
+      (coverage.rules ?? []).some((r) => coverageView(r) === v)
+    );
+    return open ?? "all";
+  });
   const shown = rules
-    .filter((r) => filter === "all" || r.status === filter)
-    .sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
+    .filter((r) => filter === "all" || viewOf.get(r) === filter)
+    .sort((a, b) => SORT.indexOf(viewOf.get(a)!) - SORT.indexOf(viewOf.get(b)!));
 
   return (
     <section className="s1-cr-cov" aria-labelledby="s1-cr-cov-title">
@@ -47,22 +65,21 @@ export function CoveragePanel({
         <h2 id="s1-cr-cov-title">What can be checked</h2>
         {coverage.rules ? (
           <div className="s1-cr-filters" role="group" aria-label="Show checks">
-            {ORDER.map((status) => {
-              const n = rules.filter((r) => r.status === status).length;
-              const on = filter === status;
+            {ORDER.filter((view) => view !== "method_open" || countOf(view) > 0).map((view) => {
+              const n = countOf(view);
+              const on = filter === view;
               return (
                 <button
-                  key={status}
-                  className={`s1-cr-filter s1-cr-filter--${STATUS[status].role}${on ? " is-on" : ""}`}
+                  key={view}
+                  className={`s1-cr-filter s1-cr-filter--${VIEWS[view].role}${on ? " is-on" : ""}`}
                   type="button"
                   aria-pressed={on}
-                  onClick={() => setFilter(on ? "all" : status)}
+                  onClick={() => setFilter(on ? "all" : view)}
                 >
                   <span className="s1-cr-filter__icon" aria-hidden>
-                    {STATUS[status].icon}
+                    {VIEWS[view].icon}
                   </span>
-                  <span className="s1-cr-filter__n">{n}</span>
-                  {STATUS[status].label}
+                  <span className="s1-cr-filter__n">{n}</span> {VIEWS[view].label}
                 </button>
               );
             })}
@@ -77,7 +94,8 @@ export function CoveragePanel({
       ) : (
         <ul className="s1-cr-rules" key={filter}>
           {shown.map((rule, index) => {
-            const status = STATUS[rule.status];
+            const view = viewOf.get(rule) ?? "present";
+            const status = VIEWS[view];
             const requested = rule.status === "inputs_missing" && isRequested(rule);
             return (
               <li
@@ -85,7 +103,7 @@ export function CoveragePanel({
                 className={`s1-cr-rule s1-cr-rule--${status.role}`}
                 style={{ transitionDelay: `${Math.min(index, 8) * 24}ms` }}
               >
-                <span className="s1-cr-rule__icon" aria-hidden title={status.label}>
+                <span className="s1-cr-rule__icon" aria-hidden title={sentenceCase(status.label)}>
                   {status.icon}
                 </span>
                 <div className="s1-cr-rule__main">
@@ -99,7 +117,12 @@ export function CoveragePanel({
                 <div className="s1-cr-rule__why">{rule.reason}</div>
                 <div className="s1-cr-rule__act">
                   {rule.status !== "inputs_missing" ? (
-                    <span className={`s1-state s1-state--${status.role}`}>{status.label}</span>
+                    <span className={`s1-state s1-state--${status.role}`}>{sentenceCase(status.label)}</span>
+                  ) : view === "awaiting_review" && onReview ? (
+                    // The values are in: the reviewer's job, not the client's.
+                    <button className="s1-button s1-button--compact s1-cr-request" type="button" onClick={() => onReview(rule)}>
+                      <ListChecks aria-hidden /> Review
+                    </button>
                   ) : requested ? (
                     <span className="s1-state s1-state--active">In requests</span>
                   ) : (
@@ -116,3 +139,5 @@ export function CoveragePanel({
     </section>
   );
 }
+
+const sentenceCase = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);

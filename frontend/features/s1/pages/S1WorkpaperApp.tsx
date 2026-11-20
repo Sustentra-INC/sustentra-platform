@@ -102,7 +102,7 @@ import type {
 } from "../types";
 import { setAuditActor, type SessionAuditEntry } from "../utils/auditIntent";
 import { useOpenEngagement } from "../utils/useOpenEngagement";
-import { dashboardFigures, engagementActivity } from "../utils/engagementActivity";
+import { dashboardFigures, engagementActivity, firstValueToReview } from "../utils/engagementActivity";
 import { SupportingSchedule } from "../components/SupportingSchedule";
 import { setDemoEngagement } from "../demo-backend/state";
 import {
@@ -821,9 +821,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const navCurrent: NavKey = navForView(activeView);
   const uploadSetupWarning = setupGapWarning(engagement);
   /** The dashboard's "values waiting for review": the review, at the first such value (Evidence if none are loaded). */
-  function openFirstReview() {
-    const next = reviewValuesView.find((v) => !v.withdrawn && v.reviewState === "to_review");
-    if (next) openExtraction(next.documentId, next.id);
+  function openFirstReview(documentIds?: string[]) {
+    const next = firstValueToReview(reviewValuesView, documentIds);
+    if (next) openExtraction(next.documentId, next.valueId);
     else setActiveView({ name: "evidence" });
   }
 
@@ -1198,7 +1198,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               findings={verification.findings}
               examinations={verification.examinations}
               onNavigate={onNavigate}
-              onOpenReview={openFirstReview}
+              onOpenReview={() => openFirstReview()}
               onError={handleSessionEnded}
             />
           ) : (
@@ -1214,7 +1214,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 calculatedIds: testedExaminationKeys(verificationLines),
               })}
               onNavigate={onNavigate}
-              onOpenReview={openFirstReview}
+              onOpenReview={() => openFirstReview()}
             />
           )
         ) : activeView.name === "setup" ? (
@@ -1256,10 +1256,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             asks={requests.asks}
             coverage={dataMode === "backend" ? backendCoverage : { rules: coverageRules }}
             valuesToReview={reviewValuesView.filter((v) => !v.withdrawn && v.reviewState === "to_review").length}
-            onReview={() => {
-              const next = reviewValuesView.find((v) => !v.withdrawn && v.reviewState === "to_review");
-              if (next) openExtraction(next.documentId);
-            }}
+            onReview={() => openFirstReview()}
+            onReviewRule={(rule) => openFirstReview(rule.awaitingDocumentIds)}
             onSaveAsk={requests.saveAsk}
             onSend={(ids, lineNumbers) => andThen(requests.sendAsks(ids, lineNumbers), (sent) => sent.requestNumber)}
             onResolve={requests.resolveAsk}
