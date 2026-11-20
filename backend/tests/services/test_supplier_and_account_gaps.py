@@ -166,10 +166,10 @@ def _fleet(extra_top: list[tuple[str, float, float, float, float]] | None = None
 
 
 @pytest.fixture
-def issuer_mode(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A fleet card statement read as the issuer's (the switch is off by default: see MobileCombustionExtractor)."""
+def station_mode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A fleet card statement read the old way: the station as the merchant, the card as the account."""
 
-    monkeypatch.setattr(MobileCombustionExtractor, "CARD_STATEMENT_AS_ISSUER", True)
+    monkeypatch.setattr(MobileCombustionExtractor, "CARD_STATEMENT_AS_ISSUER", False)
 
 
 def _records(layout: list[tuple[str, float, float, float, float]], targets: list[dict]) -> dict[int | None, dict[str, Any]]:
@@ -180,29 +180,38 @@ def _records(layout: list[tuple[str, float, float, float, float]], targets: list
     return records
 
 
-def test_a_fleet_statements_supplier_is_the_issuer_and_its_account_the_labelled_one(mobile: list[dict], issuer_mode: None) -> None:
+def test_a_fleet_statements_supplier_is_the_issuer_and_its_account_the_labelled_one(mobile: list[dict]) -> None:
     records = _records(_fleet(), mobile)
 
     assert len(records) == 2
     for fields in records.values():
         assert fields["merchant_or_supplier"] == "QUILLFIELD FLEET CARD SERVICES – Zürich"
         assert fields["account_number"] == "QF-6620-1187"  # not the card numbers 4471, 4497
+    assert [records[i]["card_number"] for i in sorted(k for k in records if k is not None)] == ["4471", "4497"]
 
 
-def test_the_station_of_each_transaction_is_where_it_was_fuelled(mobile: list[dict], issuer_mode: None) -> None:
+def test_the_issuer_is_on_by_default_and_a_card_is_its_own_field_only_on_a_card_statement(mobile: list[dict]) -> None:
+    assert MobileCombustionExtractor.CARD_STATEMENT_AS_ISSUER is True
+    receipt = MobileCombustionExtractor().extract(
+        _text_output("ROUTE 9 FUEL STOP ÅRE\nDiesel 12.457 G @ $3.459/G\nCard ****1234\n"), mobile, "EV-1")
+
+    assert _value(_by_field(receipt.candidates), "card_number") is None
+
+
+def test_the_station_of_each_transaction_is_where_it_was_fuelled(mobile: list[dict]) -> None:
     records = _records(_fleet(), mobile)
 
     assert [records[i]["fueling_location"] for i in sorted(k for k in records if k is not None)] == [
         "Puyallup Express Fuel, Puyallup WA", "Lakewood Corner Fuel, Lakewood WA"]
 
 
-def test_a_statement_with_no_sized_letterhead_or_no_card_column_keeps_its_merchants(mobile: list[dict], issuer_mode: None) -> None:
+def test_a_statement_with_no_sized_letterhead_or_no_card_column_keeps_its_merchants(mobile: list[dict]) -> None:
     for layout in (_fleet(sized=False), _fleet(card_column=False)):
         merchants = {r["merchant_or_supplier"] for r in _records(layout, mobile).values()}
         assert "QUILLFIELD FLEET CARD SERVICES – Zürich" not in merchants
 
 
-def test_a_card_statement_with_no_labelled_account_keeps_the_card_numbers_as_before(mobile: list[dict], issuer_mode: None) -> None:
+def test_a_card_statement_with_no_labelled_account_keeps_the_card_numbers_as_before(mobile: list[dict]) -> None:
     layout = [row for row in _fleet() if not row[0].startswith("Account QF")]
 
     accounts = {r.get("account_number") for r in _records(layout, mobile).values()}
@@ -258,9 +267,8 @@ def test_the_footer_ranks_below_the_letterhead_the_labels_and_the_payee(gas: lis
     assert _value(_gas(_export(footer, head=["Acme Gas Company"]), gas), "supplier_name") == "Acme Gas Company"
 
 
-def test_by_default_a_fleet_statement_keeps_each_transactions_merchant_and_card(mobile: list[dict]) -> None:
-    # what the golden set expects (MF-01); the issuer reading is a switch on the mobile reader
-    assert MobileCombustionExtractor.CARD_STATEMENT_AS_ISSUER is False
+def test_with_the_issuer_switch_off_a_fleet_statement_keeps_each_transactions_merchant_and_card(
+        mobile: list[dict], station_mode: None) -> None:
     records = _records(_fleet(), mobile)
 
     assert {r["merchant_or_supplier"] for r in records.values()} == {

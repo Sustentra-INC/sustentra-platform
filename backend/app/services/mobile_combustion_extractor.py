@@ -47,7 +47,7 @@ from backend.app.services.stationary_combustion_extractor import (
 CANONICAL_TYPE_ID = "CT-S1-MOBFUEL"
 
 RECORD_FIELDS = ("fuel_type", "activity_quantity", "activity_unit", "transaction_date", "merchant_or_supplier",
-                 "fueling_location", "vehicle_or_equipment_id", "transaction_id", "biofuel_blend_pct")
+                 "fueling_location", "vehicle_or_equipment_id", "transaction_id", "biofuel_blend_pct", "card_number")
 DOCUMENT_FIELDS = ("account_number",)
 
 # --- fuel vocabulary ------------------------------------------------------------------
@@ -245,10 +245,11 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
     """Builds CT-S1-MOBFUEL candidates: one record per fuel transaction."""
 
     CANONICAL_TYPE_ID = CANONICAL_TYPE_ID
-    # A fleet card statement read as the issuer's: its supplier is the issuer on the letterhead and its account the
-    # one printed in the header, with each transaction's station as where it was fuelled. False keeps what the
-    # golden set (MF-01) expects: the station of each transaction as the merchant and each card as the account.
-    CARD_STATEMENT_AS_ISSUER = False
+    # A fleet card statement is read as the issuer's (19 Nov ruling): the party that bills the client is the issuer
+    # on the letterhead, so it is the supplier and the account printed in the header is the account. The station of
+    # each transaction (and its city) is where the fuel was dispensed, and each masked card is its own field; both
+    # are kept per transaction and feed no number. False reads the station as the merchant and the card as the account.
+    CARD_STATEMENT_AS_ISSUER = True
     HEADLINE_QUANTITY = False  # only the natural gas reader reads a number in large type over a unit
     INLINE_TOTAL_QUANTITY = False  # ... or "TOTAL 1,273.1 THERMS" inside a line of a statement
     FUEL_LABEL_GROUPS = FUEL_LABELS
@@ -404,26 +405,39 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
                                    parser_output, [])
         column = {"merchant_or_supplier": "merchant", "fueling_location": "location",
                   "vehicle_or_equipment_id": "vehicle", "transaction_id": "transaction",
-                  "account_number": "card"}.get(field_id)
+                  "account_number": "card", "card_number": "card"}.get(field_id)
         if column is None:
             return self._missing(target, *args, ["unsupported_extraction_method"])
         located = record.extra.get(column) if record is not None else None
         statement = (self.CARD_STATEMENT_AS_ISSUER and record is not None and "card" in record.extra
                      and document.get("issuer") is not None)
+        if field_id == "card_number" and not statement:
+            return self._missing(target, *args)  # a card is its own field only on a card statement
         if statement and field_id == "merchant_or_supplier":
             located = document["issuer"]  # the card issuer, not the station of each transaction
-        elif statement and field_id == "fueling_location" and located is None:
-            located = record.extra.get("merchant") if record is not None else None  # where it was fuelled
+        elif statement and field_id == "fueling_location":
+            located = self._station(record.extra.get("merchant") if record is not None else None, located)
         elif statement and field_id == "account_number" and document.get("statement_account") is not None:
             located = document["statement_account"]  # the account, not each transaction's card number
         if located is None:
             located = document.get(field_id)
         masked: list[str] = []
-        if located is not None and field_id == "account_number" and _PAN_RE.search(located.raw):
+        if located is not None and field_id in ("account_number", "card_number") and _PAN_RE.search(located.raw):
             masked.append("card_number_masked")
         candidate = self._candidate_for_text(target, located, *args, parser_output, field_id)
         candidate["validation_flags"].extend(masked)
         return candidate
+
+    @staticmethod
+    def _station(merchant: Located | None, place: Located | None) -> Located | None:
+        """Where a card transaction was fuelled: the station's name and its city, as the statement prints them."""
+
+        if merchant is None or place is None:
+            return merchant or place
+        if place.raw.casefold() in merchant.raw.casefold():
+            return merchant
+        return Located(f"{merchant.raw}, {place.raw}", [*merchant.cells, *place.cells], merchant.row,
+                       min(merchant.confidence, place.confidence), context=merchant.context)
 
     def _issuer(self, rows: Sequence[Row]) -> Located | None:
         """The organisation at the top of a laid-out card statement: the largest text near the top of page 1 (a
