@@ -18,6 +18,12 @@ export const AI_TYPE = {
     `The rules chose ${rulesType}, but Claude read the first pages as ${claudeType}. The type was not changed.`,
 } as const;
 
+/** Claude's facility suggestion for a bill that names none (backend services/ai_facility.py). */
+export const AI_FACILITY = {
+  suggested: "Facility suggested by Claude",
+  place: (facilityName: string) => `Place on ${facilityName}`,
+} as const;
+
 /** Claude's reading of a value (backend services/ai_extraction.py). */
 export const AI_VALUE = {
   suggested: "Suggested by Claude",

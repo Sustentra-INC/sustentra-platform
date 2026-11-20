@@ -4,6 +4,7 @@
 * PATCH  /v1/engagements/{id}/evidence-lines/{line_key}            rename a line
 * DELETE /v1/engagements/{id}/evidence-lines/{line_key}            delete a line
 * POST   /v1/engagements/{id}/documents/{document_id}/placements   move a document ({from, to})
+* POST   /v1/engagements/{id}/documents/{document_id}/facility     place a document on a Setup facility ({facility_id})
 * GET    /v1/engagements/{id}/evidence-activity                     what was changed, newest first
 
 Writers only (archived engagement: 409, another org: 404). Every write takes the engagement's
@@ -30,7 +31,8 @@ from backend.app.core.db import get_db_session
 from backend.app.services import audit_query, engagement_service, workpaper_item_service
 from backend.app.services import calculation_lines as cl
 from backend.app.services.audit_log import write_audit_event
-from backend.app.services.evidence_tree_service import DocState, Loaded
+from backend.app.services.ai_facility import FACILITY_TYPES
+from backend.app.services.evidence_tree_service import DocState, EvidenceTreeService, Loaded
 
 router = APIRouter(prefix="/v1", tags=["evidence-actions"])
 
@@ -38,7 +40,8 @@ LINE_CREATED = "evidence_line_created"
 LINE_RENAMED = "evidence_line_renamed"
 LINE_DELETED = "evidence_line_deleted"
 DOCUMENT_MOVED = "evidence_document_moved"
-EVENT_TYPES = (LINE_CREATED, LINE_RENAMED, LINE_DELETED, DOCUMENT_MOVED)
+FACILITY_SET = "evidence_document_facility_set"
+EVENT_TYPES = (LINE_CREATED, LINE_RENAMED, LINE_DELETED, DOCUMENT_MOVED, FACILITY_SET)
 
 BLOCK_NAMES = {
     cl.BLOCK_SUMMARY: "Summary documents and workbook",
@@ -73,6 +76,15 @@ class PlacementMove(BaseModel):
 
     from_: str = Field(alias="from", min_length=1, max_length=200)
     to: str = Field(min_length=1, max_length=200)
+
+
+class FacilityChoice(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    facility_id: str = Field(min_length=1, max_length=200)
+    # The facility the page believes the document is on now (null: none). When sent and it is not what is saved, another
+    # reviewer decided meanwhile and nothing is written (409).
+    expected_facility_id: str | None = Field(default=None, max_length=200)
 
 
 # --- shared steps -------------------------------------------------------------------------
@@ -325,6 +337,59 @@ async def move_document(
     return {"document_id": document_id, "payload": payload}
 
 
+# --- a document's facility --------------------------------------------------------------------
+@router.post("/engagements/{engagement_id}/documents/{document_id}/facility")
+async def set_document_facility(
+    engagement_id: str,
+    document_id: str,
+    body: FacilityChoice,
+    request: Request,
+    user: CurrentUser = Depends(s1_writer),
+    _open: dict[str, Any] = Depends(require_open_engagement),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict[str, Any]:
+    """The reviewer places a document on a Setup facility: saved as the document's own facility decision (it wins over
+    every rule) and audited. ``suggested`` in the audit row says it was Claude's suggestion the reviewer took. The
+    actor is the session's. 422 when the facility is not in Setup; 404 for a document that is not on the page."""
+
+    if not workpaper_item_service.ITEM_KEY.match(document_id):
+        raise HTTPException(status_code=404, detail="That document isn't on the Evidence page for this engagement.")
+    engagement = await _locked(db, engagement_id)
+    loaded, decisions = await _load(db, engagement, user)
+    doc = next((d for d in loaded.docs if d.document_id == document_id), None)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="That document isn't on the Evidence page for this engagement.")
+    if doc.canonical_type_id not in FACILITY_TYPES:
+        raise HTTPException(status_code=422, detail="That kind of document is not placed on a facility.")
+    facility = next((f for f in loaded.facilities if str(f.get("facilityId")) == body.facility_id), None)
+    if facility is None:
+        raise HTTPException(status_code=422, detail="That facility is not in Setup. Reload Evidence and pick another.")
+    existing = decisions.get(document_id) or {}
+    # Claude's suggestion as the page shows it (the same rule as the Evidence tree row), judged before this decision
+    shown = EvidenceTreeService._suggestion(
+        doc, {str(f.get("facilityId")): str(f.get("name")) for f in loaded.facilities}, decisions)
+    suggested = shown is not None and shown["facility_id"] == body.facility_id
+    if existing.get("facilityId") == body.facility_id:  # already there: nothing to write, nothing to log
+        return {"document_id": document_id, "payload": existing}
+    if "expected_facility_id" in body.model_fields_set and (existing.get("facilityId") or None) != (
+            body.expected_facility_id or None):
+        raise HTTPException(status_code=409, detail="Another reviewer already chose a facility for this document. "
+                                                     "Reload Evidence to see it.")
+    if existing.get("placements"):
+        raise HTTPException(status_code=409, detail="This document was moved by hand. Move it back to Unassigned first, "
+                                                     "or place it from the Evidence tree.")
+    payload = {**existing, "documentId": document_id, "facilityId": body.facility_id}
+    if workpaper_item_service.payload_size(payload) > workpaper_item_service.MAX_PAYLOAD_BYTES:
+        raise HTTPException(status_code=409, detail="This document has too many saved changes to save another.")
+    await workpaper_item_service.save_item(
+        db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind="document", item_key=document_id,
+        payload=payload, user_id=user.id)
+    await _audit(db, request, user, FACILITY_SET, engagement,
+                 {"document_id": document_id, "facility_id": body.facility_id, "facility_name": str(facility.get("name")),
+                  "suggested": suggested})
+    return {"document_id": document_id, "payload": payload}
+
+
 # --- reading the log --------------------------------------------------------------------------
 @router.get("/engagements/{engagement_id}/evidence-activity")
 async def evidence_activity(
@@ -365,7 +430,8 @@ async def evidence_activity(
             "id": str(r["id"]), "event_type": r["event_type"], "at": r["created_at"].isoformat(),
             "actor_name": r["actor_name"] or ("Unknown user" if r["actor_user_id"] else None),
             **{k: meta.get(k) for k in ("line_key", "label", "level2_label", "old_label", "new_label",
-                                        "documents_moved", "document_id", "from", "to", "from_label", "to_label")
+                                        "documents_moved", "document_id", "from", "to", "from_label", "to_label",
+                                        "facility_id", "facility_name", "suggested")
                if k in meta},
         })
     next_cursor = audit_query.encode_cursor(rows[-1]["created_at"], rows[-1]["id"], scope) if more and rows else None
