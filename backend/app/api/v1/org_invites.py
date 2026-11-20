@@ -24,7 +24,9 @@ from .deps import Principal, require_org_admin
 router = APIRouter(prefix="/orgs/{org_id}/invites", tags=["org-invites"])
 
 # Deliberately simple (no email-validator dependency): one @, no spaces, a dot in the domain.
-_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Never accepted anywhere: , ; < > " ' \\ and whitespace/control characters (nothing odd reaches the To header).
+_PART = r"[^@\s,;<>\"'\\\x00-\x1f\x7f]+"
+_EMAIL = re.compile(rf"^{_PART}@{_PART}\.{_PART}\Z")
 
 
 class CreateInviteRequest(BaseModel):
@@ -111,6 +113,7 @@ async def create_invite(
     background: BackgroundTasks,
     send_invite: Sender,
 ) -> InviteResponse:
+    await invites.enforce_invite_quota(db, _actor(principal, request), org_id, 1)
     row, pending = await invites.create_invite(
         db, _actor(principal, request), org_id, email=payload.email, role=payload.role,
         first_name=payload.first_name, last_name=payload.last_name,

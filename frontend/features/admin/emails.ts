@@ -1,5 +1,5 @@
 // Deliberately the same shape the API checks: one @, no spaces, a dot in the domain.
-const EMAIL = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const EMAIL = /^[^@\s,;<>"'\\\x00-\x1f\x7f]+@[^@\s,;<>"'\\\x00-\x1f\x7f]+\.[^@\s,;<>"'\\\x00-\x1f\x7f]+$/;
 
 export function isEmail(value: string): boolean {
   return value.length <= 320 && EMAIL.test(value);

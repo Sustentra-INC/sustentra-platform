@@ -50,7 +50,7 @@ _ORG_NOT_FOUND = HTTPException(status_code=404, detail="Organization not found")
 _USER_NOT_FOUND = HTTPException(status_code=404, detail="User not found")
 _SEATED = ", ".join(f"'{s}'" for s in SEATED_USER_STATUSES)
 
-__all__ = ["Actor", "BULK_INVITE_MAX", "INVITE_TTL", "PendingInvite", "accept_invite", "create_bulk_invites",
+__all__ = ["Actor", "BULK_INVITE_MAX", "INVITE_TTL", "PendingInvite", "accept_invite", "create_bulk_invites", "enforce_invite_quota",
            "create_invite", "create_invited_user", "invite_link", "resend_invite", "validate_invite"]
 
 # Most emails one bulk request may carry (the route's schema enforces it; 422 above).
@@ -169,11 +169,64 @@ async def create_invite(db: AsyncSession, actor: Actor, org_id: str, *, email: s
     return await _invite_row(db, oid, user_id, expires), pending
 
 
+# Invite emails are the costly thing to abuse (they go out from our domain), so they are capped per org
+# and per user. Counted from audit_logs: one row per recipient, and a cancelled invite still counts.
+QUOTA_ORG_INVITES_PER_HOUR = 100
+QUOTA_ORG_INVITES_PER_DAY = 300
+QUOTA_ORG_RESENDS_PER_HOUR = 30
+QUOTA_USER_EMAILS_PER_HOUR = 60
+
+
+def _wait(seconds: float) -> str:
+    minutes = max(1, int(seconds // 60) + 1)
+    return f"{minutes} minute{'s' if minutes != 1 else ''}" if minutes < 120 else f"{minutes // 60 + 1} hours"
+
+
+async def enforce_invite_quota(db: AsyncSession, actor: Actor, org_id: str, count: int, *, resend: bool = False) -> None:
+    """429 (with Retry-After and a plain message) when sending `count` more invite emails would pass a limit:
+    invites 100 / org / hour and 300 / org / day, resends 30 / org / hour, and 60 emails / user / hour."""
+    oid = _uuid(org_id, _ORG_NOT_FOUND)
+    # Serialize with other senders in this org so two requests cannot both squeeze under the limit.
+    if (await db.execute(text("SELECT 1 FROM organizations WHERE id = :id FOR UPDATE"), {"id": oid})).first() is None:
+        raise _ORG_NOT_FOUND
+    now = utcnow()
+    rows = (await db.execute(
+        text("SELECT event_type, actor_user_id, created_at FROM audit_logs WHERE org_id = :org_id "
+             "AND event_type IN ('user_invited', 'user_invite_resent') AND created_at > :since ORDER BY created_at"),
+        {"org_id": oid, "since": now - timedelta(days=1)},
+    )).all()
+    hour = now - timedelta(hours=1)
+    checks = [
+        ("resend", [r.created_at for r in rows if r.event_type == "user_invite_resent" and r.created_at > hour],
+         QUOTA_ORG_RESENDS_PER_HOUR, 3600, resend),
+        ("invite_h", [r.created_at for r in rows if r.event_type == "user_invited" and r.created_at > hour],
+         QUOTA_ORG_INVITES_PER_HOUR, 3600, not resend),
+        ("invite_d", [r.created_at for r in rows if r.event_type == "user_invited"],
+         QUOTA_ORG_INVITES_PER_DAY, 86400, not resend),
+        ("user", [r.created_at for r in rows if r.actor_user_id == actor.user_id and r.created_at > hour],
+         QUOTA_USER_EMAILS_PER_HOUR, 3600, True),
+    ]
+    for _name, times, limit, window, applies in checks:
+        if not applies or len(times) + count <= limit:
+            continue
+        # The wait is until enough of the oldest sends age out of the window.
+        keep = max(limit - count, 0)
+        free_at = times[len(times) - keep - 1] if len(times) > keep else now
+        seconds = max((free_at + timedelta(seconds=window) - now).total_seconds(), 1)
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many invitation emails sent recently. Try again in about {_wait(seconds)}.",
+            headers={"Retry-After": str(int(seconds))},
+        )
+
+
 def name_from_email(email: str) -> tuple[str, str]:
-    """A first/last name guessed from the address (jane.doe@x -> Jane, Doe), for invites that give no name."""
-    parts = [p for p in re.split(r"[._\-+\d]+", email.split("@", 1)[0]) if p]
+    """A first/last name guessed from the address (jane.doe@x -> Jane, Doe), for invites that give no name.
+    Only letters, digits and . _ - and space survive, so nothing odd lands in a display name."""
+    local = re.sub(r"[^\w.\- ]", "", email.split("@", 1)[0])
+    parts = [p for p in re.split(r"[._\-\d ]+", local) if p]
     if not parts:
-        return email.split("@", 1)[0][:100] or "New", ""
+        return "New", ""
     return parts[0].capitalize()[:100], " ".join(p.capitalize() for p in parts[1:])[:100]
 
 
@@ -183,6 +236,7 @@ async def create_bulk_invites(db: AsyncSession, actor: Actor, org_id: str, *, em
     status is invited | already_member | duplicate | invalid | seat_limit. `valid[i]` is the route's email check.
     Every invite goes through create_invite, so it gets the same lock, seat check and `user_invited` audit event;
     one `users_bulk_invited` summary event (counts only, no emails) is added on top."""
+    await enforce_invite_quota(db, actor, org_id, len({e for e, ok in zip(emails, valid, strict=True) if ok}))
     results: list[dict[str, Any]] = []
     pending: list[PendingInvite] = []
     seen: set[str] = set()
@@ -226,6 +280,7 @@ async def resend_invite(db: AsyncSession, actor: Actor, org_id: str, user_id: st
                                                                                               PendingInvite]:
     oid = _uuid(org_id, _ORG_NOT_FOUND)
     uid = _uuid(user_id, _USER_NOT_FOUND)
+    await enforce_invite_quota(db, actor, org_id, 1, resend=True)
     if (await db.execute(text("SELECT 1 FROM organizations WHERE id = :id"), {"id": oid})).first() is None:
         raise _ORG_NOT_FOUND
     user = (await db.execute(
