@@ -72,7 +72,7 @@ jobs:
         run: ruff check backend
 
       - name: mypy
-        run: mypy -p backend.app
+        run: mypy -p backend.app -p backend.tools
 
       - name: Migrations upgrade -> downgrade -> upgrade
         working-directory: backend

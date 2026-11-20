@@ -1,0 +1,939 @@
+{
+ "mode": "rules-only",
+ "note": "Aggregate counts only. Regenerate with: python -m backend.tools.accuracy --write-baseline <path>",
+ "schema": 1,
+ "sets": {
+  "LHF": {
+   "families": {
+    "account": {
+     "exact": 11,
+     "match": 11,
+     "missed": 2,
+     "not_targeted": 0,
+     "scored": 13,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "activity_quantity": {
+     "exact": 120,
+     "match": 120,
+     "missed": 2,
+     "not_targeted": 0,
+     "scored": 122,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "activity_total": {
+     "exact": 3,
+     "match": 3,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 3,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "activity_unit": {
+     "exact": 120,
+     "match": 120,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 120,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "conversion_factor": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 3,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "converted_quantity": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 3,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "document_recognition": {
+     "exact": 0,
+     "match": 15,
+     "missed": 2,
+     "not_targeted": 0,
+     "scored": 17,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "document_reference": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 2,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 1,
+     "wrong": 0
+    },
+    "facility": {
+     "exact": 0,
+     "match": 0,
+     "missed": 4,
+     "not_targeted": 2,
+     "scored": 4,
+     "silent": 0,
+     "unscored": 11,
+     "wrong": 0
+    },
+    "meta": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 3,
+     "wrong": 0
+    },
+    "meter": {
+     "exact": 11,
+     "match": 11,
+     "missed": 1,
+     "not_targeted": 0,
+     "scored": 12,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "meter_read_end": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 7,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "meter_read_start": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 7,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "period_end": {
+     "exact": 11,
+     "match": 11,
+     "missed": 1,
+     "not_targeted": 2,
+     "scored": 12,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "period_start": {
+     "exact": 11,
+     "match": 11,
+     "missed": 1,
+     "not_targeted": 2,
+     "scored": 12,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "refrigerant_recovered": {
+     "exact": 7,
+     "match": 7,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 7,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "refrigerant_type": {
+     "exact": 7,
+     "match": 7,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 7,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "reporting": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 156,
+     "wrong": 0
+    },
+    "run_hours": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 15,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "service_address": {
+     "exact": 11,
+     "match": 11,
+     "missed": 2,
+     "not_targeted": 0,
+     "scored": 13,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "statement_date": {
+     "exact": 11,
+     "match": 11,
+     "missed": 2,
+     "not_targeted": 0,
+     "scored": 13,
+     "silent": 0,
+     "unscored": 2,
+     "wrong": 0
+    },
+    "supplier": {
+     "exact": 11,
+     "match": 11,
+     "missed": 2,
+     "not_targeted": 0,
+     "scored": 13,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "total_amount": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 13,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "unmapped": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 30,
+     "wrong": 0
+    }
+   },
+   "totals": {
+    "exact": 334,
+    "match": 349,
+    "missed": 19,
+    "not_targeted": 56,
+    "scored": 368,
+    "silent": 0,
+    "unscored": 203,
+    "wrong": 0
+   }
+  },
+  "NPL": {
+   "families": {
+    "account": {
+     "exact": 18,
+     "match": 18,
+     "missed": 5,
+     "not_targeted": 2,
+     "scored": 23,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "activity_quantity": {
+     "exact": 117,
+     "match": 117,
+     "missed": 14,
+     "not_targeted": 0,
+     "scored": 131,
+     "silent": 0,
+     "unscored": 1,
+     "wrong": 0
+    },
+    "activity_total": {
+     "exact": 11,
+     "match": 13,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 13,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "activity_unit": {
+     "exact": 115,
+     "match": 115,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 115,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "billed_demand": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 9,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "conversion_factor": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 17,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "converted_quantity": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 95,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "distance": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 23,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "document_recognition": {
+     "exact": 0,
+     "match": 24,
+     "missed": 3,
+     "not_targeted": 0,
+     "scored": 27,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "document_reference": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 3,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "equipment_id": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 2,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "facility": {
+     "exact": 0,
+     "match": 11,
+     "missed": 6,
+     "not_targeted": 2,
+     "scored": 17,
+     "silent": 0,
+     "unscored": 7,
+     "wrong": 0
+    },
+    "heat_content": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 2,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "meta": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 54,
+     "wrong": 0
+    },
+    "meter": {
+     "exact": 17,
+     "match": 17,
+     "missed": 3,
+     "not_targeted": 0,
+     "scored": 20,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "meter_read_end": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 24,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "meter_read_start": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 24,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "non_evidence_rejected": {
+     "exact": 0,
+     "match": 3,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 3,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "period_end": {
+     "exact": 30,
+     "match": 30,
+     "missed": 15,
+     "not_targeted": 4,
+     "scored": 45,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "period_start": {
+     "exact": 30,
+     "match": 30,
+     "missed": 15,
+     "not_targeted": 4,
+     "scored": 45,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "period_usage": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 22,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "reporting": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 3,
+     "wrong": 0
+    },
+    "run_hours": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 26,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "service_address": {
+     "exact": 2,
+     "match": 2,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 2,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "statement_date": {
+     "exact": 30,
+     "match": 30,
+     "missed": 16,
+     "not_targeted": 0,
+     "scored": 46,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "supplier": {
+     "exact": 21,
+     "match": 21,
+     "missed": 3,
+     "not_targeted": 0,
+     "scored": 25,
+     "silent": 1,
+     "unscored": 1,
+     "wrong": 1
+    },
+    "technician": {
+     "exact": 8,
+     "match": 8,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 8,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "total_amount": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 50,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "unmapped": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 8,
+     "wrong": 0
+    }
+   },
+   "totals": {
+    "exact": 399,
+    "match": 439,
+    "missed": 80,
+    "not_targeted": 309,
+    "scored": 520,
+    "silent": 1,
+    "unscored": 74,
+    "wrong": 1
+   }
+  },
+  "STG": {
+   "families": {
+    "account": {
+     "exact": 10,
+     "match": 10,
+     "missed": 3,
+     "not_targeted": 1,
+     "scored": 14,
+     "silent": 1,
+     "unscored": 1,
+     "wrong": 1
+    },
+    "activity_quantity": {
+     "exact": 136,
+     "match": 136,
+     "missed": 2,
+     "not_targeted": 0,
+     "scored": 141,
+     "silent": 3,
+     "unscored": 12,
+     "wrong": 3
+    },
+    "activity_total": {
+     "exact": 15,
+     "match": 15,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 15,
+     "silent": 0,
+     "unscored": 1,
+     "wrong": 0
+    },
+    "activity_unit": {
+     "exact": 132,
+     "match": 132,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 135,
+     "silent": 3,
+     "unscored": 0,
+     "wrong": 3
+    },
+    "billed_demand": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 17,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "conversion_factor": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 1,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "converted_quantity": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 2,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "distance": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 52,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "distance_total": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 4,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "document_recognition": {
+     "exact": 0,
+     "match": 17,
+     "missed": 3,
+     "not_targeted": 0,
+     "scored": 20,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "document_reference": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 6,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "equipment_capacity": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 3,
+     "wrong": 0
+    },
+    "equipment_id": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 1,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "facility": {
+     "exact": 0,
+     "match": 8,
+     "missed": 7,
+     "not_targeted": 2,
+     "scored": 15,
+     "silent": 0,
+     "unscored": 3,
+     "wrong": 0
+    },
+    "fuel_type": {
+     "exact": 15,
+     "match": 15,
+     "missed": 1,
+     "not_targeted": 0,
+     "scored": 16,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "heat_content": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 2,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "meta": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 24,
+     "wrong": 0
+    },
+    "meter": {
+     "exact": 7,
+     "match": 7,
+     "missed": 5,
+     "not_targeted": 0,
+     "scored": 12,
+     "silent": 0,
+     "unscored": 1,
+     "wrong": 0
+    },
+    "meter_read_end": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 22,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "meter_read_start": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 21,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "model_year": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 8,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "non_evidence_rejected": {
+     "exact": 0,
+     "match": 2,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 2,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "period_end": {
+     "exact": 22,
+     "match": 22,
+     "missed": 2,
+     "not_targeted": 1,
+     "scored": 24,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "period_start": {
+     "exact": 22,
+     "match": 22,
+     "missed": 2,
+     "not_targeted": 1,
+     "scored": 24,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "period_usage": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 28,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "refrigerant_recovered": {
+     "exact": 8,
+     "match": 8,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 8,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "refrigerant_recovered_total": {
+     "exact": 2,
+     "match": 2,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 2,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "refrigerant_type": {
+     "exact": 4,
+     "match": 4,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 4,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "reporting": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 3,
+     "wrong": 0
+    },
+    "run_hours": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 1,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "statement_date": {
+     "exact": 9,
+     "match": 9,
+     "missed": 2,
+     "not_targeted": 0,
+     "scored": 11,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "supplier": {
+     "exact": 10,
+     "match": 10,
+     "missed": 6,
+     "not_targeted": 0,
+     "scored": 17,
+     "silent": 1,
+     "unscored": 1,
+     "wrong": 1
+    },
+    "technician": {
+     "exact": 8,
+     "match": 8,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 8,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "total_amount": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 28,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    },
+    "unmapped": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 0,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 16,
+     "wrong": 0
+    },
+    "vehicle_type": {
+     "exact": 0,
+     "match": 0,
+     "missed": 0,
+     "not_targeted": 8,
+     "scored": 0,
+     "silent": 0,
+     "unscored": 0,
+     "wrong": 0
+    }
+   },
+   "totals": {
+    "exact": 400,
+    "match": 427,
+    "missed": 33,
+    "not_targeted": 206,
+    "scored": 468,
+    "silent": 8,
+    "unscored": 65,
+    "wrong": 8
+   }
+  }
+ }
+}
