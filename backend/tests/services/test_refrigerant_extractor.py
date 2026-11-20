@@ -510,6 +510,34 @@ def test_a_work_order_with_materials_is_not_a_purchase(targets: list[dict]) -> N
     assert added["display_label"] != "Refrigerant purchased"
 
 
+def test_lines_that_take_their_date_and_equipment_from_the_document_are_flagged_when_there_are_several(
+        targets: list[dict]) -> None:
+    """R4 minor: a table of several lines under one "Service Date" and "Equipment ID" label is filled from the
+    document, and each line says so, because the label may not be for every line. A single line is not flagged."""
+
+    head = "Equipment ID: RTU-3\nService Date: 09/12/2025\nWork Performed: Leak repaired and recharged\n"
+    two = head + ("Description    Qty    Unit    Unit Price    Amount\n"
+                  "R-410A refrigerant 25 lb cylinder    1    cyl    $395.00    $395.00\n"
+                  "R-22 refrigerant 30 lb cylinder    1    cyl    $450.00    $450.00\n")
+    records = _by_record(RefrigerantServiceExtractor().extract(_text_output(two), targets, "EV-1").candidates)
+    assert len(records) == 2
+    for fields in records.values():
+        assert fields["service_date"]["normalized_value"] == "2025-09-12"
+        assert "filled_from_document" in fields["service_date"]["validation_flags"]
+        assert fields["equipment_id"]["normalized_value"] == "RTU-3"
+        assert "filled_from_document" in fields["equipment_id"]["validation_flags"]
+    one = head + two.splitlines()[3] + "\n" + two.splitlines()[4] + "\n"
+    alone = _by_field(RefrigerantServiceExtractor().extract(_text_output(one), targets, "EV-1").candidates)
+    assert alone["service_date"]["normalized_value"] == "2025-09-12"
+    assert all("filled_from_document" not in c["validation_flags"]
+               for c in RefrigerantServiceExtractor().extract(_text_output(one), targets, "EV-1").candidates)
+
+
+def test_a_log_whose_lines_carry_their_own_date_and_equipment_is_not_flagged_filled(targets: list[dict]) -> None:
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, *LOG_LINES]), targets, "EV-1")
+    assert all("filled_from_document" not in c["validation_flags"] for c in outcome.candidates)
+
+
 def test_a_log_is_never_a_purchase(targets: list[dict]) -> None:
     outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, *LOG_LINES]), targets, "EV-1")
     added = [c for c in outcome.candidates if c["field_name"] == "refrigerant_added"]
@@ -894,11 +922,50 @@ def test_a_second_circuit_line_equal_to_the_one_above_is_kept(targets: list[dict
     assert _amounts(outcome) == [12.5, 12.5] and _flagged(outcome) == [False, True]
 
 
-@pytest.mark.parametrize("cell", ["2 trips", "see note", "approx 3", "GWP 3922"])
+@pytest.mark.parametrize("cell", ["2 trips", "see note", "TBD", "GWP 3922"])
 def test_a_note_row_with_words_in_an_amount_cell_is_not_a_service_line(targets: list[dict], cell: str) -> None:
     rows = [*LOG_HEAD, *LOG_LINES, _summary_row("R-404A", cell)]
     outcome = RefrigerantServiceExtractor().extract(_grid_output(rows), targets, "EV-1")
     assert len(_by_record(outcome.candidates)) == 4
+
+
+@pytest.mark.parametrize("words", ["TBD", "N/R", "not recovered", "pending"])
+def test_an_amount_beside_a_cell_with_words_is_kept_and_the_worded_cell_is_flagged(targets: list[dict], words: str) -> None:
+    """R4: 12.5 lb added with the recovered cell "TBD" is a service line; the 12.5 is not lost and nothing is
+    guessed for the cell with words, which is left empty and flagged."""
+
+    line = _log_row("02/11/2025", "RACK-A", "R-404A", "180", "12.5", words, "José Muñoz", "Top-up")
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, line]), targets, "EV-1")
+    fields = _by_record(outcome.candidates)[1] if _by_record(outcome.candidates) else _by_field(outcome.candidates)
+    assert _amounts(outcome) == [12.5]
+    recovered = fields["refrigerant_recovered"]
+    assert recovered["normalized_value"] is None and "amount_not_a_number" in recovered["validation_flags"]
+    assert "amount_not_a_number" not in fields["refrigerant_added"]["validation_flags"]
+
+
+def test_the_same_holds_for_a_worded_added_cell_beside_a_recovered_amount(targets: list[dict]) -> None:
+    line = _log_row("02/11/2025", "RACK-A", "R-404A", "180", "TBD", "4.0", "José Muñoz", "Recovered at decommission")
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, line]), targets, "EV-1")
+    fields = _by_record(outcome.candidates)[1] if _by_record(outcome.candidates) else _by_field(outcome.candidates)
+    assert fields["refrigerant_recovered"]["normalized_value"] == 4
+    assert fields["refrigerant_added"]["normalized_value"] is None
+    assert "amount_not_a_number" in fields["refrigerant_added"]["validation_flags"]
+
+
+@pytest.mark.parametrize("cell", ["~3", "approx. 3", "3 (est.)", "3*", "approx 3", "\u2248 3", "3 est."])
+def test_an_approximate_amount_is_read_and_flagged(targets: list[dict], cell: str) -> None:
+    line = _log_row("02/11/2025", "RACK-A", "R-404A", "180", cell, "0.0", "José Muñoz", "Top-up")
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, line]), targets, "EV-1")
+    assert _amounts(outcome) == [3]
+    added = next(c for c in outcome.candidates if c["field_name"] == "refrigerant_added")
+    assert "approximate" in added["validation_flags"] and added["unit"] == "lb"
+    assert added["raw_value"] == cell  # the reviewer sees what the page says
+
+
+def test_an_exact_amount_is_not_flagged_approximate(targets: list[dict]) -> None:
+    line = _log_row("02/11/2025", "RACK-A", "R-404A", "180", "3.0", "0.0", "José Muñoz", "Top-up")
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, line]), targets, "EV-1")
+    assert all("approximate" not in c["validation_flags"] for c in outcome.candidates)
 
 
 def test_a_footnote_naming_a_gas_and_a_page_number_row_are_not_service_lines(targets: list[dict]) -> None:

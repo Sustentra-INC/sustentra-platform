@@ -186,6 +186,8 @@ _TOTALS_TITLE_RE = re.compile(r"^\W*(?:grand\s+total|sub-?total|totals?|summary)
 _NO_AMOUNT_RE = re.compile(r"\s*(?:[-\u2013\u2014]+|n/?a|none|nil)?\s*", re.I)
 # Cooling capacity, airflow and fuel units: a "Capacity: 5 tons" is tonnage, not a refrigerant charge.
 _NOT_A_CHARGE_RE = re.compile(r"\b(?:tons?|btu\w*|mbh|kw|hp|cfm|gallons?|gal)\b", re.I)
+# An approximate amount: "~3", "approx. 3", "3 (est.)", "3*" is read as 3 and flagged.
+_APPROX_RE = re.compile(r"[~\u2248*]|\bapprox(?:imately|imate)?\b\.?|\(\s*est(?:imated|\.)?\s*\)|\bestimated\b|\best\.", re.I)
 _TOTAL_KEYS = ("total", "total qty", "total quantity")
 _BUSINESS_WORD_RE = re.compile(
     r"\b(?:supply|supplies|services?|mechanical|refrigeration|company|co\.?|inc\.?|llc|ltd\.?|corp\.?|systems|"
@@ -212,6 +214,7 @@ class ServiceRecord:
     purchase: bool = False
     unit_missing: set[str] = field(default_factory=set)
     flags: dict[str, list[str]] = field(default_factory=dict)  # field -> extra validation flags
+    not_a_number: set[str] = field(default_factory=set)  # amount cells holding words ("TBD"), left empty
 
 
 def classify_service(text: str, notes: bool = False) -> str | None:
@@ -539,30 +542,42 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             c = cell(name)
             if c is None or not c.text.strip() or _NOT_A_CHARGE_RE.search(c.text):
                 continue
-            bare = re.fullmatch(r"\s*(\d[\d,]*(?:\.\d+)?)\s*", c.text)
+            text = _APPROX_RE.sub(" ", c.text).strip()
+            approximate = text != c.text.strip()
+            bare = re.fullmatch(r"\s*(\d[\d,]*(?:\.\d+)?)\s*", text)
             # A header that names the unit ("Total Lbs") says the cell is already a mass, not a count of packages.
             if name == "added" and package is not None and bare and name not in units:
                 count = float(bare.group(1).replace(",", ""))
                 packaged = Mass(count * package.value, package.unit, f"{bare.group(1)} x {package.raw}",
                                 converted=package.converted)
                 record.flags.setdefault(name, []).append("quantity_times_package_size")
+                if approximate:
+                    record.flags[name].append("approximate")
                 setattr(record, name, (located(c), packaged))
                 continue
             line_unit = mass_unit(gas_cell.text) if name == "added" and package is None else None
             default = units.get(name) or row_unit or line_unit or document_unit
-            mass = parse_mass(c.text, default)
+            mass = parse_mass(text, default)
             if mass is None and bare:
-                mass = parse_mass(c.text, "lb")
+                mass = parse_mass(text, "lb")
                 if mass is not None:
                     record.unit_missing.add(name)
             if mass is not None:
+                if approximate:
+                    mass = replace(mass, raw=c.text.strip())
+                    record.flags.setdefault(name, []).append("approximate")
                 setattr(record, name, (located(c), mass))
-        if record.added is None and record.recovered is None:
-            return None
-        for name in ("added", "recovered"):  # an amount cell holding words ("2 trips") makes the row a note, not a line
+        # An amount cell holding words ("TBD", "2 trips") is not read; it stays empty and is flagged. A row whose
+        # amounts are all words (or zero beside words) is a note, not a line; one amount that reads as a number keeps it.
+        for name in ("added", "recovered"):
             c = cell(name)
             if c is not None and getattr(record, name) is None and c.text.strip() and not _NO_AMOUNT_RE.fullmatch(c.text):
-                return None
+                record.not_a_number.add(name)
+        numbers = [m.value for m in (record.added and record.added[1], record.recovered and record.recovered[1]) if m]
+        if not any(numbers) and record.not_a_number:
+            return None
+        if record.added is None and record.recovered is None:
+            return None
         record.priced = priced
         record.packaged = in_packages or package is not None
         date_cell = cell("date")
@@ -593,11 +608,16 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
         parsed = parse_date(date.raw) if date is not None else None
         equipment = None if any(r.equipment for r in records) else self._equipment(rows)
         service = None if any(r.service_type for r in records) else self._service_type(rows)
+        shared = len(records) > 1  # one order's lines share its date and unit; a table of many lines is to be checked
         for record in records:
             if date is not None and parsed is not None:
                 record.date = (date, parsed[0])
+                if shared:
+                    record.flags.setdefault("date", []).append("filled_from_document")
             if equipment is not None:
                 record.equipment = equipment
+                if shared:
+                    record.flags.setdefault("equipment", []).append("filled_from_document")
             if service is not None:
                 record.service_type = service
 
@@ -687,14 +707,17 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
         if field_id in MASS_FIELDS:
             hit = {"refrigerant_added": record.added, "refrigerant_recovered": record.recovered,
                    "equipment_capacity": record.capacity}[field_id]
+            name = {"refrigerant_added": "added", "refrigerant_recovered": "recovered",
+                    "equipment_capacity": "capacity"}[field_id]
             if hit is None:
-                return self._missing(target, *args)
+                if name not in record.not_a_number:
+                    return self._missing(target, *args)
+                required = target.get("required_status") in {"core", "conditional"}
+                return self._missing(target, *args, [*(["field_not_found"] if required else []), "amount_not_a_number"])
             located, mass = hit
             flags = []
             if mass.converted:
                 flags.append("unit_converted")
-            name = {"refrigerant_added": "added", "refrigerant_recovered": "recovered",
-                    "equipment_capacity": "capacity"}[field_id]
             flags.extend(record.flags.get(name, []))
             if name == "added" and record.purchase:
                 flags.append(PURCHASE_FLAG)
@@ -712,14 +735,17 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             if record.date is None:
                 return self._missing(target, *args)
             located, iso = record.date
-            return self._candidate(target, located, located.raw, iso, None, *args, parser_output, [])
+            return self._candidate(target, located, located.raw, iso, None, *args, parser_output,
+                                   record.flags.get("date", []))
         if field_id == "service_type":
             if record.service_type is None:
                 return self._missing(target, *args)
             located, kind = record.service_type
             return self._candidate(target, located, located.raw, kind, None, *args, parser_output, [])
         if field_id == "equipment_id":
-            return self._candidate_for_text(target, record.equipment, *args, parser_output, field_id)
+            candidate = self._candidate_for_text(target, record.equipment, *args, parser_output, field_id)
+            candidate["validation_flags"].extend(record.flags.get("equipment", []))
+            return candidate
         if field_id == "facility_name":
             return self._candidate_for_text(target, record.site or document.get("facility_name"), *args,
                                             parser_output, field_id)
