@@ -12,6 +12,8 @@ import type { VehicleGroupSetting } from "../types";
  * EPA factor depends on it), non-road groups by the fuel they used.
  */
 export interface VehicleGroupDraft {
+  /** The server's id for a saved group (absent on a new one): sent back so a rename keeps the group's line. */
+  groupId?: string;
   label: string;
   fuel: string;
   onRoad: boolean;
@@ -26,6 +28,7 @@ export interface VehicleGroupDraft {
 
 export function draftsFrom(groups: VehicleGroupSetting[] | undefined): VehicleGroupDraft[] {
   return (groups ?? []).map((g) => ({
+    ...(g.group_id ? { groupId: g.group_id } : {}),
     label: g.label ?? "",
     fuel: g.fuel,
     onRoad: g.on_road,
@@ -37,6 +40,42 @@ export function draftsFrom(groups: VehicleGroupSetting[] | undefined): VehicleGr
     fuelQuantity: g.fuel_quantity != null ? String(g.fuel_quantity) : "",
     fuelUnit: g.fuel_unit ?? "gal",
   }));
+}
+
+const numberOrNone = (text: string): number | undefined => (text.trim() === "" ? undefined : Number(text));
+
+/** Whether a draft is the saved group: the same in every field the group saves. */
+function draftIsSaved(d: VehicleGroupDraft, s: VehicleGroupSetting): boolean {
+  if (s.fuel !== d.fuel || s.vehicle_type !== d.vehicleType || s.factor_fuel_type !== d.factorFuel || s.on_road !== d.onRoad) return false;
+  if ((s.label ?? "") !== d.label.trim()) return false;
+  return d.onRoad
+    ? numberOrNone(d.distance) === s.distance && (s.distance_unit ?? "mi") === d.distanceUnit && numberOrNone(d.modelYear) === s.model_year
+    : numberOrNone(d.fuelQuantity) === s.fuel_quantity && (s.fuel_unit ?? "gal") === d.fuelUnit;
+}
+
+/**
+ * The ids the server gave groups added in this session. A draft has no id until the save answers. It takes the id of
+ * a saved group that is the same group in every field, whatever the order, and only an id no other draft has and
+ * that did not belong to a group removed in these drafts (`removed`): so two drafts never share an id, and a new group
+ * never inherits the line of one that was removed. Returns the drafts as they were when nothing changed.
+ */
+export function withSavedIds(
+  drafts: VehicleGroupDraft[],
+  saved: VehicleGroupSetting[] | undefined,
+  removed: readonly string[] = []
+): VehicleGroupDraft[] {
+  if (!saved) return drafts;
+  const taken = new Set([...drafts.map((d) => d.groupId).filter((id): id is string => Boolean(id)), ...removed]);
+  let changed = false;
+  const next = drafts.map((d) => {
+    if (d.groupId) return d;
+    const match = saved.find((s) => s.group_id && !taken.has(s.group_id) && draftIsSaved(d, s));
+    if (!match?.group_id) return d;
+    taken.add(match.group_id);
+    changed = true;
+    return { ...d, groupId: match.group_id };
+  });
+  return changed ? next : drafts;
 }
 
 function optionFor(types: VehicleTypeOption[], draft: VehicleGroupDraft): VehicleTypeOption | undefined {
@@ -67,6 +106,7 @@ export function draftProblem(draft: VehicleGroupDraft, types: VehicleTypeOption[
  *  typed before switching to a type without one (hidden from then on) is not sent. */
 export function settingsFrom(drafts: VehicleGroupDraft[], types: VehicleTypeOption[]): VehicleGroupSetting[] {
   return drafts.map((d) => ({
+    ...(d.groupId ? { group_id: d.groupId } : {}),
     fuel: d.fuel,
     vehicle_type: d.vehicleType,
     factor_fuel_type: d.factorFuel,

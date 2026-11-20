@@ -24,7 +24,7 @@ from backend.app.api.s1_access import s1_reader, s1_writer
 from backend.app.core.auth import CurrentUser
 from backend.app.core.db import get_db_session
 from backend.app.services import engagement_service
-from backend.app.services.calculation_lines import check_new_lines
+from backend.app.services.calculation_lines import assign_group_ids, check_new_lines
 from backend.app.services.engagement_recalculation_service import (
     setup_facilities,
     validate_facilities,
@@ -196,6 +196,18 @@ async def require_open_engagement(
     return row
 
 
+def _give_group_ids(settings: dict[str, Any] | None, stored: dict[str, Any] | None) -> None:
+    """Every vehicle group of a save has a ``group_id``: the one it has, or a new one the server makes."""
+
+    recalculation = (settings or {}).get("recalculation")
+    if isinstance(recalculation, dict) and isinstance(recalculation.get("vehicle_groups"), list):
+        before = (stored or {}).get("recalculation")
+        settings["recalculation"] = {  # type: ignore[index]
+            **recalculation,
+            "vehicle_groups": assign_group_ids(recalculation["vehicle_groups"],
+                                               before.get("vehicle_groups") if isinstance(before, dict) else None)}
+
+
 def _check_line_anchors(settings: dict[str, Any] | None, current: dict[str, Any] | None) -> None:
     """New reviewer lines must sit on a facility or vehicle group in the same settings (422 otherwise)."""
 
@@ -257,6 +269,7 @@ async def create_engagement(
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> EngagementResponse:
     assert user.org_id is not None  # s1_writer excludes provider_admin
+    _give_group_ids(payload.settings, None)
     row = await engagement_service.create_engagement(
         db,
         org_id=user.org_id,
@@ -304,6 +317,7 @@ async def update_engagement(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if not changes:
         return EngagementResponse(**current)
+    _give_group_ids(changes.get("settings"), current.get("settings"))
     row = await engagement_service.update_engagement(db, current["id"], changes)
     event = "engagement_archived" if changes.get("status") == "archived" else "engagement_updated"
     await _audit(db, request, user, event, row, sorted(changes))
