@@ -127,10 +127,12 @@ RANGE_PERIOD_LABELS: tuple[tuple[str, ...], ...] = (
      "usage period", "read period", "statement period", "period"),
 )
 START_LABELS: tuple[tuple[str, ...], ...] = (
-    ("period start", "service start", "start date", "service from", "from date", "from"),
+    ("bill start date", "billing start date", "billing period start", "period start date", "service start date",
+     "period start", "service start", "start date", "service from", "from date", "from"),
 )
 END_LABELS: tuple[tuple[str, ...], ...] = (
-    ("period end", "service end", "end date", "service to", "through", "to date", "to"),
+    ("bill end date", "billing end date", "billing period end", "period end date", "service end date",
+     "period end", "service end", "end date", "service to", "through", "to date", "to"),
 )
 DELIVERY_DATE_LABELS: tuple[tuple[str, ...], ...] = (("delivery date", "date delivered", "delivered on", "fill date"),)
 QUANTITY_LABELS: tuple[tuple[str, ...], ...] = (
@@ -208,9 +210,16 @@ _ID_HEADERS = ("meter number", "meter id", "meter #", "meter no", "meter", "tank
 _UNIT_HEADERS = ("unit", "units", "uom", "unit of measure")
 _PRODUCT_HEADERS = ("product", "description", "fuel", "commodity", "item")
 _START_HEADERS = ("from", "start", "previous read date", "prev read date", "start date", "period start",
-                  "cycle start", "service start", "from date")
+                  "cycle start", "service start", "from date",
+                  # portal exports: "Bill Start Date", "Billing Period Start", "Service From"
+                  "bill start", "bill start date", "billing start", "billing start date", "bill period start",
+                  "billing period start", "billing period start date", "period start date", "service start date",
+                  "service from", "service from date", "usage start date")
 _END_HEADERS = ("to", "end", "current read date", "pres read date", "end date", "period end", "through",
-                "cycle end", "service end", "to date")
+                "cycle end", "service end", "to date",
+                "bill end", "bill end date", "billing end", "billing end date", "bill period end",
+                "billing period end", "billing period end date", "period end date", "service end date",
+                "service to", "service to date", "through date", "usage end date")
 _RANGE_HEADERS = ("service period", "period", "billing period", "service dates")
 _DATE_HEADERS = ("date", "delivery date", "read date", "invoice date", "date posted", "posting date",
                  "transaction date", "date delivered")
@@ -1697,6 +1706,7 @@ class StationaryCombustionExtractor:
             if index == columns["quantity"]:
                 continue
             bare = text.strip(" :#")
+            spaced = " ".join(bare.replace("_", " ").split())  # "bill_start_date" as exported
             extra = next(
                 (key for key, names in self.EXTRA_COLUMNS.items()
                  if key not in columns and any(text == n or bare == n or text.startswith(n + " ") for n in names)),
@@ -1712,9 +1722,9 @@ class StationaryCombustionExtractor:
                 columns["product"] = index
             elif "range" not in columns and bare in _RANGE_HEADERS:
                 columns["range"] = index
-            elif "start" not in columns and bare in _START_HEADERS:
+            elif "start" not in columns and spaced in _START_HEADERS:
                 columns["start"] = index
-            elif "end" not in columns and bare in _END_HEADERS:
+            elif "end" not in columns and spaced in _END_HEADERS:
                 columns["end"] = index
             elif "date" not in columns and bare in self.DATE_HEADERS:
                 columns["date"] = index
