@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { gwpLabel, leftOutMessage, type Recalculation, type RecalculationReference } from "../api/recalculation";
+import { gwpLabel, leftOutMessage, reportedSourceWords, type Recalculation, type RecalculationReference, type ReportedSource } from "../api/recalculation";
 import type { RecalculationCertificate, RecalculationSettings } from "../types";
 import { draftProblem, draftsFrom, settingsFrom, VehicleGroupsFieldset, withSavedIds, type VehicleGroupDraft } from "./VehicleGroupsFieldset";
 
@@ -357,14 +357,28 @@ export function RecalculationInputs({
                       <input
                         inputMode="decimal"
                         value={reportedText[p.key] ?? ""}
+                        placeholder={result.reported_sources?.[p.key]?.used === "document" ? String(result.reported_sources[p.key].document?.value ?? "") : undefined}
                         aria-invalid={badReported.some(([key]) => key === p.key)}
                         onChange={(e) => setReportedText({ ...reportedText, [p.key]: e.target.value })}
                       />
                       <span className="s1-muted">{p.unit === "t CO2e" ? "tCO₂e" : p.unit}</span>
                     </span>
+                    <ReportedSourceNote source={result.reported_sources?.[p.key]} />
                   </label>
                 ))}
               </div>
+              {result.reported_only?.length ? (
+                <div className="s1-rc__reported-only" role="note">
+                  <strong>Reported only, not compared (not recalculated)</strong>
+                  <ul>
+                    {result.reported_only.map((f) => (
+                      <li key={f.key}>
+                        {f.label}: {f.printed} <span className="s1-muted">· {reportedSourceWords(f)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </fieldset>
           </div>
 
@@ -386,5 +400,29 @@ export function RecalculationInputs({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** Under a Reported row: where an accepted document figure came from, and that it differs from the typed one. */
+export function ReportedSourceNote({ source }: { source?: ReportedSource }) {
+  if (!source) return null;
+  if (source.conflict?.length) {
+    return (
+      <span className="s1-muted s1-rc__source" role="note">
+        Two documents give different figures ({source.conflict.map((f) => `${f.printed}, ${reportedSourceWords(f)}`).join("; ")}): none is used.
+      </span>
+    );
+  }
+  const figure = source.document;
+  if (!figure) return null;
+  return (
+    <span className="s1-muted s1-rc__source" role="note">
+      {reportedSourceWords(figure)} · {figure.printed}
+      {source.used === "manual"
+        ? source.differs
+          ? " · differs from the figure entered here, which is used"
+          : " · matches the figure entered here"
+        : " · used as reported"}
+    </span>
   );
 }

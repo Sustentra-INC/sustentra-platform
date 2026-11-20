@@ -43,6 +43,7 @@ from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
 from backend.app.services import emissions_rollup as rollup
 from backend.app.services import recalculation_lines
+from backend.app.services import reported_totals
 from backend.app.services.methodology_gwp import GwpChoice, default_choice
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.data_quality_checks import EvidenceRecord, run_checks
@@ -577,6 +578,17 @@ class EngagementRecalculationService:
         period = (_date(engagement.get("reporting_period_start")), _date(engagement.get("reporting_period_end")))
         decisions = decisions or {}
         self._suggested_facilities = {}
+        # The company's own reported figures, read from its summary documents and accepted by a reviewer, join the
+        # Reported side beside any figure typed in (which always wins). They are claims: nothing below the
+        # comparison (the recalculated side, the evidence that counts) reads them.
+        try:
+            figures = self._document_figures(engagement_id, can_see, decisions)
+        except Exception as exc:  # noqa: BLE001 - a summary document that cannot be read must not take the page down
+            log.warning("reported figures from documents failed: %s", type(exc).__name__)
+            figures = []
+        reported, reported_units, reported_sources, reported_only = reported_totals.overlay(
+            inputs.reported, inputs.reported_units, figures)
+        inputs.reported, inputs.reported_units = reported, reported_units
         placed, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
         if not gwp_choice["supported"]:
             placed = []  # blocked: no number is calculated on a set or horizon the data does not hold
@@ -760,7 +772,35 @@ class EngagementRecalculationService:
         # Problems with the company's own figures never change a recalculated number or its status.
         open_inputs = [*needs_input, *built.needs_input]
         response["needs_input"] = open_inputs
+        response["reported_sources"] = reported_sources
+        response["reported_only"] = reported_only
+        for item in response["comparisons"] + (response["rollup"].get("final_outputs") or []):
+            if item.get("key") in reported_sources:
+                item["reported_source"] = reported_sources[item["key"]]
         return response
+
+    def _document_figures(self, engagement_id: str, can_see: Callable[[dict], bool],
+                          decisions: dict[str, dict[str, Any]]) -> list[reported_totals.DocumentFigure]:
+        """The accepted or corrected reported figures of the engagement's company summary documents (a document
+        the reviewer set aside is left out). Only a reviewer's decision makes a figure count."""
+
+        superseded = superseded_ids(decisions)
+        found: list[reported_totals.DocumentFigure] = []
+        for document in self._upload.list_documents(engagement_id):
+            document_id = str(document.get("document_id"))
+            if not can_see(document) or set_aside_reason(decisions, document_id, superseded) is not None:
+                continue
+            results = [r for r in self._pipeline.list_extraction_results_by_document(document_id) if can_see(r)]
+            if not results or str(results[-1].get("canonical_type_id") or "") not in reported_totals.REPORTED_TYPES:
+                continue
+            items = results[-1].get("items") or []
+            reviews = reviews_for_latest_type(
+                results, [d for d in self._reviews.list_by_document(document_id) if can_see(d)])
+            for item, resolved in zip(items, resolve_decisions(items, reviews)):
+                figure = reported_totals.figure_of(item, resolved.decision, document)
+                if figure is not None:
+                    found.append(figure)
+        return found
 
     def _off_line_questions(self, records: list[ReviewedRecord], inputs: RecalculationInputs,
                             period: tuple[date | None, date | None]
