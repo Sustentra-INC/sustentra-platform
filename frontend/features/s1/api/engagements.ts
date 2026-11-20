@@ -43,7 +43,7 @@ export const SETTINGS_KEYS = [
 
 /** Read from `settings` but never sent back. The reviewers' Evidence lines change only through the Evidence
  *  actions (the server keeps them and ignores a save's copy), so a Setup save from a stale tab cannot undo them. */
-const READ_ONLY_KEYS = ["evidenceLines"] as const satisfies readonly (keyof EngagementConfig)[];
+const READ_ONLY_KEYS = ["evidenceLines", "evidenceFolders"] as const satisfies readonly (keyof EngagementConfig)[];
 
 export interface EngagementPayload {
   name: string;

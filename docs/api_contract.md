@@ -415,6 +415,10 @@ text or file name.
 | `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, documents, evidenceLines}` |
 | `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload}` |
 | `POST /v1/engagements/{id}/documents/{document_id}/facility` | `{facility_id, expected_facility_id?}` | 200 `{document_id, payload}` |
+| `POST /v1/engagements/{id}/evidence-folders` | `{name}` | 201 `{folder, evidenceFolders}` |
+| `PATCH /v1/engagements/{id}/evidence-folders/{folder_id}` | `{name}` | 200 `{folder, evidenceFolders}` |
+| `DELETE /v1/engagements/{id}/evidence-folders/{folder_id}` | none | 200 `{documents_moved, documents, evidenceFolders}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/folder` | `{folder_id}` (null: out of any folder) | 200 `{document_id, payload}` |
 
 * **Create** checks the same as saving the setting (anchor on a Setup facility, vehicle group or the
   company; letters or numbers in the name; at most 200 lines; not a line the system creates), 422 with a
@@ -459,6 +463,18 @@ Audit events (`target_type` "engagement", `target_id` the engagement):
 | `evidence_line_deleted` | `line_key, label, documents_moved` |
 | `evidence_document_moved` | `document_id, from, to, from_label, to_label` |
 | `evidence_document_facility_set` | `document_id, facility_id, facility_name, suggested` |
+| `evidence_folder_created` | `folder_id, folder_name` |
+| `evidence_folder_renamed` | `folder_id, old_label, new_label` |
+| `evidence_folder_deleted` | `folder_id, folder_name, documents_moved` |
+| `evidence_document_folder_set` | `document_id, folder_id, from_label, to_label` |
+
+Block 1 folders (Summary documents and workbook), one level: `settings.evidenceFolders` holds `{id, name, created_by,
+created_at}` (changed only by these actions; a settings save's copy is dropped, as for `evidenceLines`), and a document's
+folder is `payload.folderId` (kept by the server on a document save, like `placements`). Names are Unicode NFC, trimmed,
+at most 120 characters, unique ignoring case (409), at most 50 folders. Only a document in Block 1 can go in a folder
+(422); one moved out of Block 1 leaves its folder. Deleting a folder keeps its documents and puts them at the top of Block 1,
+in one transaction, answering the changed payloads. The evidence tree sends `blocks.summary_folders` (`folder_id, name,
+documents`) and `folder_id` on each Block 1 row.
 
 `POST .../documents/{document_id}/facility` places a document on a Setup facility: it saves the reviewer's own facility
 decision (`payload.facilityId`, which wins over every rule), under the engagement's row lock, and writes

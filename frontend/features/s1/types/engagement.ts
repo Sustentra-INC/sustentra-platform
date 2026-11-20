@@ -1,4 +1,4 @@
-import type { EvidenceLineSetting } from "../api/evidenceTree";
+import type { EvidenceFolderSetting, EvidenceLineSetting } from "../api/evidenceTree";
 
 export interface Actor {
   id: string;
@@ -79,6 +79,8 @@ export interface EngagementConfig {
   outOfScopeDataPoints?: string[];
   /** Calculation lines a reviewer added in Evidence (the system's own lines are not stored). */
   evidenceLines?: EvidenceLineSetting[];
+  /** Folders a reviewer made in Evidence Block 1 (summary documents). Changed only through the Evidence actions. */
+  evidenceFolders?: EvidenceFolderSetting[];
 }
 
 /** A renewable energy certificate applied to the market-based Scope 2 total. */

@@ -1409,3 +1409,115 @@ describe("the data point review", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 });
+
+describe("Block 1 folders", () => {
+  const FOLDER_TREE: TreeData = {
+    ...TREE,
+    blocks: {
+      ...TREE.blocks,
+      summary: [
+        doc("workbook", { file_name: "GHG workbook.xlsx", values: 0, accepted: 0, folder_id: "fld-1" }),
+        doc("loose", { file_name: "Facility list.xlsx", values: 0, accepted: 0, folder_id: null }),
+      ],
+      summary_folders: [
+        { folder_id: "fld-1", name: "Données 排放", documents: 1 },
+        { folder_id: "fld-2", name: "Empty one", documents: 0 },
+      ],
+    },
+  };
+  const withFolders = (over: Partial<EvidenceTreeProps> = {}) => ({
+    onCreateFolder: vi.fn().mockResolvedValue(undefined),
+    onRenameFolder: vi.fn().mockResolvedValue(undefined),
+    onDeleteFolder: vi.fn().mockResolvedValue(1),
+    onSetDocumentFolder: vi.fn().mockResolvedValue(undefined),
+    ...over,
+  });
+
+  it("shows folders with their documents and the loose documents at the top level, and an empty folder says so", async () => {
+    mocks.byPath = { [TREE_PATH]: FOLDER_TREE };
+    render(<Harness {...withFolders()} />);
+    await expandAll();
+    const folder = screen.getByText("Données 排放").closest("section") as HTMLElement;
+    expect(within(folder).getByText("GHG workbook.xlsx")).toBeInTheDocument();
+    expect(within(folder).queryByText("Facility list.xlsx")).toBeNull();
+    expect(screen.getByText("Facility list.xlsx")).toBeInTheDocument();
+    expect(within(screen.getByText("Empty one").closest("section") as HTMLElement).getByText("This folder is empty.")).toBeInTheDocument();
+  });
+
+  it("creates a folder with a non-ASCII name", async () => {
+    mocks.byPath = { [TREE_PATH]: FOLDER_TREE };
+    const props = withFolders();
+    render(<Harness {...props} />);
+    await expandAll();
+    fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Folder name"), { target: { value: "  Ünïcode 表 🌱 " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create folder" }));
+    await waitFor(() => expect(props.onCreateFolder).toHaveBeenCalledWith("Ünïcode 表 🌱"));
+  });
+
+  it("shows the server's sentence when a folder name is refused, and keeps the window open", async () => {
+    mocks.byPath = { [TREE_PATH]: FOLDER_TREE };
+    const props = withFolders({ onCreateFolder: vi.fn().mockRejectedValue(new ApiError(409, "A folder with that name already exists. Use another name.", {}, null)) });
+    render(<Harness {...props} />);
+    await expandAll();
+    fireEvent.click(screen.getByRole("button", { name: "New folder" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Folder name"), { target: { value: "Données 排放" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create folder" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("already exists");
+  });
+
+  it("deleting a non-empty folder says its documents are kept and move to the top of Block 1", async () => {
+    mocks.byPath = { [TREE_PATH]: FOLDER_TREE };
+    const props = withFolders();
+    render(<Harness {...props} />);
+    await expandAll();
+    fireEvent.click(screen.getByRole("button", { name: "Actions for folder Données 排放" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    const dialog = screen.getByRole("dialog");
+    expect(dialog).toHaveTextContent("Its 1 document is not deleted. It moves to the top of Summary documents and workbook.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Delete folder" }));
+    await waitFor(() => expect(props.onDeleteFolder).toHaveBeenCalledWith(expect.objectContaining({ folder_id: "fld-1" })));
+  });
+
+  it("renames a folder", async () => {
+    mocks.byPath = { [TREE_PATH]: FOLDER_TREE };
+    const props = withFolders();
+    render(<Harness {...props} />);
+    await expandAll();
+    fireEvent.click(screen.getByRole("button", { name: "Actions for folder Empty one" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Folder name"), { target: { value: "Nouveau" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
+    await waitFor(() => expect(props.onRenameFolder).toHaveBeenCalledWith(expect.objectContaining({ folder_id: "fld-2" }), "Nouveau"));
+  });
+
+  it("moves a document into a folder and back out to the top of Block 1", async () => {
+    mocks.byPath = { [TREE_PATH]: FOLDER_TREE };
+    const props = withFolders();
+    render(<Harness {...props} />);
+    await expandAll();
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Facility list.xlsx" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to folder…" }));
+    let dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Folder"), { target: { value: "fld-2" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    await waitFor(() => expect(props.onSetDocumentFolder).toHaveBeenCalledWith("loose", "fld-2"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Actions for GHG workbook.xlsx" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move to folder…" }));
+    dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Folder"), { target: { value: "" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    await waitFor(() => expect(props.onSetDocumentFolder).toHaveBeenCalledWith("workbook", null));
+  });
+
+  it("stays flat, with no folder controls, on a server that sends no folders", async () => {
+    render(<Harness {...withFolders()} />);
+    await expandAll();
+    expect(screen.queryByRole("button", { name: "New folder" })).toBeNull();
+    expect(screen.getByText("GHG workbook.xlsx")).toBeInTheDocument();
+  });
+});

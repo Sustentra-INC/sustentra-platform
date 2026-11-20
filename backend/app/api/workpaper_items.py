@@ -101,9 +101,11 @@ async def save_workpaper_item(
         # save keeps whatever is stored, so a stale tab cannot put a document back where it was.
         await engagement_service.lock_engagement(db, str(engagement["id"]))
         stored = await workpaper_item_service.get_items(db, engagement["id"], "document", [item_key], for_update=True)
-        payload = {k: v for k, v in payload.items() if k != "placements"}
-        if stored and "placements" in stored[0]["payload"]:
-            payload["placements"] = stored[0]["payload"]["placements"]
+        # The same goes for the folder a summary document sits in (Evidence Block 1 folders).
+        payload = {k: v for k, v in payload.items() if k not in ("placements", "folderId")}
+        for kept_key in ("placements", "folderId"):
+            if stored and kept_key in stored[0]["payload"]:
+                payload[kept_key] = stored[0]["payload"][kept_key]
     row = await workpaper_item_service.save_item(
         db,
         org_id=engagement["org_id"],
