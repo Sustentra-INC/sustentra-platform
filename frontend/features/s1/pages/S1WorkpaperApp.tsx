@@ -78,11 +78,12 @@ import { makeUploadItem, classifyGuess } from "../fixtures/upload/simulateUpload
 import { loadDemoState, saveDemoState, clearDemoState, loadSignedIn, saveSignedIn, type DemoSnapshot } from "../utils/demoPersistence";
 import { DemoSignIn } from "../components/DemoSignIn";
 import { SessionEndedPanel } from "../components/SessionEndedPanel";
-import { EngagementPicker, type SaveState } from "../components/EngagementPicker";
+import { EngagementPicker } from "../components/EngagementPicker";
+import type { SetupSaveInfo } from "../components/SetupSaveStatus";
 import {
   createEngagement,
   engagementFromBackend,
-  engagementSaveProblem,
+  setupSavePayload,
   listEngagements,
   pickEngagement,
   rememberEngagement,
@@ -303,8 +304,19 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       setBackendError({ title: "Your last change wasn't saved", message: userFacingApiError(error) });
     },
   });
-  const [engagementSave, setEngagementSave] = useState<SaveState>("idle");
-  const [engagementSaveMessage, setEngagementSaveMessage] = useState<string | null>(null);
+  const [setupSave, setSetupSave] = useState<Omit<SetupSaveInfo, "onSaveNow">>({
+    state: "idle",
+    savedAt: null,
+    problems: {},
+    message: null,
+  });
+  /** The last Setup save that failed, kept so Retry sends it again. */
+  const failedSave = useRef<EngagementConfig | null>(null);
+  /** The engagements as last loaded or saved, for a save that holds one section back (read from a timer). */
+  const engagementRows = useRef<BackendEngagement[] | null>(null);
+  useEffect(() => {
+    engagementRows.current = engagements;
+  }, [engagements]);
   const saveTimer = useRef<number | null>(null);
   const [inScopeFields, setInScopeFields] = useState<InScopeField[]>(
     persisted?.inScopeFields ?? (dataMode === "fixture" ? inScopeFieldPlaceholders : [])
@@ -530,7 +542,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setEvidenceFacility(null);
     setEvidenceTreeOpen(null);
     rememberEngagement(row.id);
-    setEngagementSave("idle");
+    setSetupSave({ state: "idle", savedAt: null, problems: {}, message: null });
+    failedSave.current = null;
     // Nothing of the engagement just left may show while the new one loads.
     setEvidenceItems([]);
     setWorkspaceFields([]);
@@ -549,7 +562,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       setEvidenceEvents([]);
       setEvidenceOlder(null);
       rememberEngagement(row.id);
-      setEngagementSave("idle");
+      setSetupSave({ state: "idle", savedAt: null, problems: {}, message: null });
+      failedSave.current = null;
       await refreshBackendWorkspace(undefined, row.id);
     } catch (error) {
       if (handleSessionEnded(error)) return;
@@ -572,29 +586,49 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     if (config) void persistEngagement(config);
   }
 
-  async function persistEngagement(config: EngagementConfig) {
-    const problem = engagementSaveProblem(config);
-    if (problem) {
-      setEngagementSave("error");
-      setEngagementSaveMessage(problem);
-      return;
+  /** "Save changes" and Retry: saves what is waiting, or what last failed; with neither, everything is already saved. */
+  function saveSetupNow() {
+    const waiting = pendingSave.current ?? failedSave.current;
+    if (waiting) {
+      pendingSave.current = null;
+      if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+      void persistEngagement(waiting);
+    } else {
+      setSetupSave((current) => ({ ...current, state: "saved", savedAt: new Date(), message: null }));
     }
-    setEngagementSave("saving");
+  }
+
+  async function persistEngagement(config: EngagementConfig) {
+    // Each section saves on its own: one that cannot be saved yet keeps its last saved value in this save, and the
+    // rest go through. (The vehicle groups hold themselves back in SetupVehicleGroups.)
+    const { payload, problems } = setupSavePayload(config, savedConfigOf(config.engagementId));
+    setSetupSave((current) => ({ ...current, state: "saving", problems, message: null }));
     try {
-      const row = await saveEngagement(config);
+      const row = await saveEngagement(payload);
+      failedSave.current = null;
       setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
       adoptSavedGroups(row);
-      setEngagementSave("saved");
-      setEngagementSaveMessage(null);
+      setSetupSave({ state: "saved", savedAt: new Date(), problems, message: null });
     } catch (error) {
       if (handleSessionEnded(error)) return;
-      setEngagementSave("error");
-      setEngagementSaveMessage(
-        error instanceof ApiError && error.status === 403
-          ? "Your role can view this engagement but not change it."
-          : `Changes not saved. ${userFacingApiError(error)}`
-      );
+      failedSave.current = config;
+      setSetupSave({
+        state: "error",
+        savedAt: null,
+        problems: {},
+        message:
+          error instanceof ApiError && error.status === 403
+            ? "Your role can view this engagement but not change it."
+            : userFacingApiError(error),
+      });
     }
+  }
+
+  /** The engagement as the server last had it, or null if it is not in the list. */
+  function savedConfigOf(engagementId: string): EngagementConfig | null {
+    const row = engagementRows.current?.find((item) => item.id === engagementId);
+    return row ? engagementFromBackend(row) : null;
   }
 
   /** Saves the recalculation inputs now, folding in any Setup edit still waiting to save. */
@@ -1293,6 +1327,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           <SetupScreen
             engagement={engagement}
             onChange={changeEngagement}
+            save={dataMode === "backend" && engagement.engagementId ? { ...setupSave, onSaveNow: saveSetupNow } : undefined}
             picker={
               dataMode === "backend" && engagements !== null ? (
                 <EngagementPicker
@@ -1300,9 +1335,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                   selectedId={engagement.engagementId}
                   onSelect={selectEngagement}
                   onCreate={createAndSelectEngagement}
-                  saveState={engagementSave}
-                  message={engagementSaveMessage}
-                />
+                                  />
               ) : undefined
             }
             inScopeFields={

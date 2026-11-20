@@ -12,6 +12,8 @@ import type { VehicleGroupSetting } from "../types";
  * EPA factor depends on it), non-road groups by the fuel they used.
  */
 export interface VehicleGroupDraft {
+  /** A stable id for the row on this page (never saved): React keys the row by it, so typing keeps focus. */
+  uid?: string;
   /** The server's id for a saved group (absent on a new one): sent back so a rename keeps the group's line. */
   groupId?: string;
   label: string;
@@ -26,8 +28,16 @@ export interface VehicleGroupDraft {
   fuelUnit: "gal" | "L";
 }
 
+let draftSeq = 0;
+/** A new row id: unique on this page. */
+export function newDraftUid(): string {
+  draftSeq += 1;
+  return `vg-${draftSeq}`;
+}
+
 export function draftsFrom(groups: VehicleGroupSetting[] | undefined): VehicleGroupDraft[] {
   return (groups ?? []).map((g) => ({
+    uid: newDraftUid(),
     ...(g.group_id ? { groupId: g.group_id } : {}),
     label: g.label ?? "",
     fuel: g.fuel,
@@ -78,6 +88,21 @@ export function withSavedIds(
   return changed ? next : drafts;
 }
 
+/** A row nobody has touched: nothing typed or chosen (a fuel the page filled in alone does not count). */
+export function isBlankDraft(d: VehicleGroupDraft, fuels: string[] = []): boolean {
+  const defaultFuel = fuels.length === 1 ? fuels[0] : "";
+  return (
+    !d.groupId &&
+    !d.label.trim() &&
+    !d.vehicleType &&
+    !d.factorFuel &&
+    !d.modelYear.trim() &&
+    !d.distance.trim() &&
+    !d.fuelQuantity.trim() &&
+    (d.fuel === "" || d.fuel === defaultFuel)
+  );
+}
+
 function optionFor(types: VehicleTypeOption[], draft: VehicleGroupDraft): VehicleTypeOption | undefined {
   return types.find(
     (t) => t.on_road === draft.onRoad && t.vehicle_type === draft.vehicleType && t.fuel_type === draft.factorFuel
@@ -89,6 +114,7 @@ const isNumber = (text: string) => text.trim() !== "" && Number.isFinite(Number(
 /** What is wrong with a group, in words, or null when it can be saved. */
 export function draftProblem(draft: VehicleGroupDraft, types: VehicleTypeOption[]): string | null {
   if (!draft.fuel || !draft.vehicleType || !draft.factorFuel) return "Choose the fuel, vehicle type and EPA fuel.";
+  if (draft.label.trim().length > 200) return "The group name is at most 200 characters.";
   const option = optionFor(types, draft);
   if (draft.onRoad) {
     if (!isNumber(draft.distance)) return "On-road groups need the distance driven.";
@@ -102,8 +128,17 @@ export function draftProblem(draft: VehicleGroupDraft, types: VehicleTypeOption[
   return null;
 }
 
-/** The groups as saved. A model year is sent only where the EPA factor uses one, so a year
- *  typed before switching to a type without one (hidden from then on) is not sent. */
+/** Whether the group's model year is saved: a real year, on a type that uses one (or one not in the loaded list, so a
+ *  saved group comes back as it was even before the vehicle types have loaded). */
+function keepsModelYear(d: VehicleGroupDraft, types: VehicleTypeOption[]): boolean {
+  const text = d.modelYear.trim();
+  if (!/^\d{4}$/.test(text) || Number(text) < 1900 || Number(text) > 2100) return false;
+  const option = optionFor(types, d);
+  return option === undefined || option.by_model_year;
+}
+
+/** The groups as saved. A model year is sent only where the EPA factor uses one, so a year typed before switching to
+ *  a type without one (hidden from then on) is not sent. */
 export function settingsFrom(drafts: VehicleGroupDraft[], types: VehicleTypeOption[]): VehicleGroupSetting[] {
   return drafts.map((d) => ({
     ...(d.groupId ? { group_id: d.groupId } : {}),
@@ -116,7 +151,7 @@ export function settingsFrom(drafts: VehicleGroupDraft[], types: VehicleTypeOpti
       ? {
           distance: Number(d.distance),
           distance_unit: d.distanceUnit,
-          ...(d.modelYear.trim() && optionFor(types, d)?.by_model_year ? { model_year: Number(d.modelYear) } : {}),
+          ...(keepsModelYear(d, types) ? { model_year: Number(d.modelYear) } : {}),
         }
       : d.fuelQuantity.trim()
         ? { fuel_quantity: Number(d.fuelQuantity), fuel_unit: d.fuelUnit }
@@ -167,11 +202,11 @@ export function VehicleGroupsFieldset({
         </p>
       ))}
       {drafts.map((draft, index) => {
-        const problem = draftProblem(draft, types);
+        const problem = isBlankDraft(draft, fuels) ? null : draftProblem(draft, types);
         const option = optionFor(types, draft);
         const fuelChoices = factorFuels(draft.onRoad, draft.vehicleType);
         return (
-          <div key={index} className="s1-rc__vg" role="group" aria-label={`Vehicle group ${index + 1}`}>
+          <div key={draft.uid ?? index} className="s1-rc__vg" role="group" aria-label={`Vehicle group ${index + 1}`}>
             <label className="s1-rc__field">
               <span>Group</span>
               <input
@@ -195,7 +230,7 @@ export function VehicleGroupsFieldset({
               <span>Road</span>
               <select
                 value={draft.onRoad ? "on" : "off"}
-                onChange={(e) => update(index, { onRoad: e.target.value === "on", vehicleType: "", factorFuel: "" })}
+                onChange={(e) => update(index, { onRoad: e.target.value === "on", vehicleType: "", factorFuel: "", modelYear: "" })}
               >
                 <option value="on">On-road (by distance)</option>
                 <option value="off">Non-road (by fuel used)</option>
@@ -207,7 +242,7 @@ export function VehicleGroupsFieldset({
                 value={draft.vehicleType}
                 onChange={(e) => {
                   const choices = factorFuels(draft.onRoad, e.target.value);
-                  update(index, { vehicleType: e.target.value, factorFuel: choices.length === 1 ? choices[0] : "" });
+                  update(index, { vehicleType: e.target.value, factorFuel: choices.length === 1 ? choices[0] : "", modelYear: "" });
                 }}
               >
                 <option value="">Choose a vehicle type</option>
@@ -322,6 +357,7 @@ export function VehicleGroupsFieldset({
           onChange([
             ...drafts,
             {
+              uid: newDraftUid(),
               label: "",
               fuel: fuels.length === 1 ? fuels[0] : "",
               onRoad: true,

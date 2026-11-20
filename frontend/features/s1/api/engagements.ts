@@ -107,6 +107,23 @@ export function engagementSaveProblem(config: EngagementConfig): string | null {
   return null;
 }
 
+/**
+ * What a Setup save sends. Each section saves on its own: one that cannot be saved yet (a reporting period that ends
+ * before it starts) keeps the value the server has, and the rest of the page is saved. `problems` says which
+ * sections were held back and why.
+ */
+export function setupSavePayload(
+  config: EngagementConfig,
+  saved: EngagementConfig | null
+): { payload: EngagementConfig; problems: Partial<Record<"company", string>> } {
+  const periodProblem = engagementSaveProblem(config);
+  if (!periodProblem) return { payload: config, problems: {} };
+  return {
+    payload: { ...config, reportingPeriod: saved?.reportingPeriod ?? { start: "", end: "" } },
+    problems: { company: periodProblem },
+  };
+}
+
 export async function listEngagements(): Promise<BackendEngagement[]> {
   return (await api<{ items: BackendEngagement[] }>("/engagements")).items;
 }
