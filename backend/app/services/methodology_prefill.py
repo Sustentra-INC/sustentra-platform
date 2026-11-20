@@ -101,7 +101,8 @@ class SelectionSuggestion(_Cited):
 
 class GwpSuggestion(_Cited):
     set: Literal["AR4", "AR5", "AR6"]
-    horizon: Literal["100-year", "20-year", "500-year"]
+    horizon: Literal["100-year", "20-year", "500-year", "Not stated"]  # "Not stated": the quote names the set, no horizon
+    applies_to: str  # what the set is used for, in the company's words copied from the quote ("" if not said)
 
 
 class EntitySuggestion(_Cited):
@@ -268,6 +269,18 @@ def set_has_horizon(quote: str, set_: str, horizon: str) -> bool:
     return False
 
 
+def set_named(quote: str, set_: str) -> bool:
+    """Whether the quote names this GWP set as a whole token ("AR5", "Fifth Assessment")."""
+
+    return bool(_mentions(norm(quote), _GWP_TERMS[set_]))
+
+
+def set_without_horizon(quote: str, set_: str) -> bool:
+    """The quote names the set and ties no horizon to it (a horizon next to another set does not count)."""
+
+    return set_named(quote, set_) and not any(set_has_horizon(quote, set_, h) for h in _HORIZON_TERMS)
+
+
 SYSTEM_PROMPT = """\
 You help an assurance reviewer fill in the Methodology review of a greenhouse gas (GHG) inventory.
 You are given documents the company prepared (inventory reports, boundary statements, methodology
@@ -326,8 +339,11 @@ What the items mean
   boundary:leased_space only if a document states something about them; if it is silent, leave
   them out.
 - gwp: the Global Warming Potential set the company uses (IPCC assessment report AR4, AR5 or AR6)
-  and the time horizon (20-year, 100-year or 500-year). If the report uses more than one set or
-  horizon, give each one separately; do not pick between them.
+  and the time horizon (20-year, 100-year or 500-year), or "Not stated" when the quote names the set
+  and gives no horizon for it. If the report uses more than one set or horizon, give each one
+  separately, each with its own quote; do not pick between them. applies_to is what that set is used
+  for, in the company's words copied from the quote ("default", "embedded in the supplier factors"),
+  or "".
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
   equity share (percent, 0 to 100), financial control (percent, 0 to 100) and whether the company
   has operational control (Yes or No). Include an entity only if the cited line states its equity
@@ -601,7 +617,11 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         keep(period, value, "reporting_period", None)
     gwp_pairs: set[tuple[str, str]] = set()
     for gwp in output.gwp:
-        value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon})
+        # The use note is the company's own words: kept only when it is printed in the quote.
+        note = " ".join(gwp.applies_to.split())
+        if not note or len(note) > rules.MAX_APPLIES_TO or norm(note) not in norm(gwp.quote):
+            note = ""
+        value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon, "applies_to": note})
         if value is None:
             continue
         pair = (value["set"], value["horizon"])
@@ -609,7 +629,9 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped["duplicate_entry"] += 1
             continue
         # The first set the report names is the fixed GWP field; every other set is a row of its own.
-        ties = lambda quote, s_=gwp.set, h_=gwp.horizon: set_has_horizon(quote, s_, h_)  # noqa: E731
+        def ties(quote: str, s_: str = gwp.set, h_: str = gwp.horizon) -> bool:
+            return set_without_horizon(quote, s_) if h_ == "Not stated" else set_has_horizon(quote, s_, h_)
+
         before = len(kept)
         if "gwp" not in seen:
             keep(gwp, value, "gwp", None, ok=ties)

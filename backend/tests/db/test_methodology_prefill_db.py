@@ -450,9 +450,9 @@ def test_every_gwp_set_the_report_names_is_kept_the_first_as_the_field_and_the_r
     eid = create()["id"]
     monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
     claude.output = {**GOOD, "gwp": [
-        {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")},
-        {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")},
-        {"set": "AR4", "horizon": "500-year", **cite("L10", "a 500-year horizon (AR4)")}]}
+        {"set": "AR5", "horizon": "100-year", "applies_to": "", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")},
+        {"set": "AR6", "horizon": "20-year", "applies_to": "", **cite("L10", "AR6 with a 20-year horizon")},
+        {"set": "AR4", "horizon": "500-year", "applies_to": "", **cite("L10", "a 500-year horizon (AR4)")}]}
     assert prefill(eid).json()["suggested"] == 8  # GOOD's five, the fixed GWP field and two GWP rows
     assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
     rows = gwp_rows(eid)
@@ -469,8 +469,8 @@ def test_a_decided_gwp_field_is_kept_and_a_set_it_already_holds_is_not_added_aga
     assert act(eid, "gwp", "edit", {"value": {"set": "AR5", "horizon": "100-year"}}).status_code == 200
     monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
     claude.output = {**GOOD, "gwp": [
-        {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")},
-        {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}]}
+        {"set": "AR6", "horizon": "20-year", "applies_to": "", **cite("L10", "AR6 with a 20-year horizon")},
+        {"set": "AR5", "horizon": "100-year", "applies_to": "", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}]}
     assert prefill(eid).status_code == 200
     assert record(eid, "gwp")["decision"]["value"] == {"set": "AR5", "horizon": "100-year"} and record(eid, "gwp")["suggestion"] is None
     assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]  # AR5 / 100-year is the decided field
@@ -493,8 +493,8 @@ def test_a_reviewer_adds_edits_and_removes_gwp_rows_and_the_500_year_horizon_sav
 def test_a_second_run_in_another_order_never_shows_one_set_twice(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
     eid = create()["id"]
     monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
-    ar5 = {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}
-    ar6 = {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")}
+    ar5 = {"set": "AR5", "horizon": "100-year", "applies_to": "", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}
+    ar6 = {"set": "AR6", "horizon": "20-year", "applies_to": "", **cite("L10", "AR6 with a 20-year horizon")}
     claude.output = {**GOOD, "gwp": [ar5, ar6]}
     assert prefill(eid).status_code == 200
     assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
@@ -651,8 +651,8 @@ def test_add_an_item_and_a_reviewer_can_set_not_mentioned_and_decide_a_gas(claud
 def test_a_rejected_fixed_gwp_set_never_comes_back_as_a_row(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
     eid = create()["id"]
     monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, t) for t in GWP_LINES])])
-    ar5 = {"set": "AR5", "horizon": "100-year", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}
-    ar6 = {"set": "AR6", "horizon": "20-year", **cite("L10", "AR6 with a 20-year horizon")}
+    ar5 = {"set": "AR5", "horizon": "100-year", "applies_to": "", **cite("L9", "IPCC Fifth Assessment Report (AR5) 100-year")}
+    ar6 = {"set": "AR6", "horizon": "20-year", "applies_to": "", **cite("L10", "AR6 with a 20-year horizon")}
     claude.output = {**GOOD, "gwp": [ar5]}
     assert prefill(eid).status_code == 200
     assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR5", "horizon": "100-year"}
@@ -666,3 +666,29 @@ def test_a_rejected_fixed_gwp_set_never_comes_back_as_a_row(claude: FakeClaude, 
     assert prefill(eid).status_code == 200
     assert [r["suggestion"]["value"]["set"] for r in gwp_rows(eid)] == ["AR6"]
     assert record(eid, "gwp")["decision"]["status"] == "rejected"
+
+
+def test_a_gwp_set_without_a_horizon_is_stored_with_its_note_and_can_be_accepted(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    eid = create()["id"]
+    lines = [(1, "Refrigerants use the AR6 100-year GWP by default."),
+             (1, "Supplier factors (CEDA, DESNZ) embed AR5 values; Zürich data in tCO₂e.")]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(lines)])
+    empty: dict[str, Any] = {k: [] for k in GOOD}
+    claude.output = {**empty, "gwp": [
+        {"set": "AR6", "horizon": "100-year", "applies_to": "by default", **cite("L1", "AR6 100-year GWP by default")},
+        {"set": "AR5", "horizon": "Not stated", "applies_to": "embed AR5 values", **cite("L2", "embed AR5 values")}]}
+    assert prefill(eid).json()["suggested"] == 2
+    assert record(eid, "gwp")["suggestion"]["value"] == {"set": "AR6", "horizon": "100-year", "applies_to": "by default"}
+    [row] = gwp_rows(eid)
+    assert row["suggestion"]["value"] == {"set": "AR5", "horizon": "Not stated", "applies_to": "embed AR5 values"}
+    assert row["suggestion"]["quote"] == "embed AR5 values"
+    assert act(eid, row["field_id"], "accept").json()["decision"]["value"] == row["suggestion"]["value"]
+    # a reviewer can edit the note and pick Not stated as the horizon
+    edited = act(eid, "gwp", "edit", {"value": {"set": "AR6", "horizon": "Not stated", "applies_to": "Kältemittel"}})
+    assert edited.status_code == 200 and edited.json()["decision"]["value"]["applies_to"] == "Kältemittel"
+    # a document that names no set: nothing is suggested
+    other = create()["id"]
+    monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc([(1, "Energy use is reported in MWh.")])])
+    claude.output = empty
+    assert prefill(other).json()["suggested"] == 0 and record(other, "gwp")["suggestion"] is None
+    assert record(other, "gwp")["display_state"] == "not_detected"
