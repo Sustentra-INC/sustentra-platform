@@ -173,7 +173,7 @@ def test_rows_can_be_added_edited_and_removed_when_the_reviewer_added_them() -> 
     assert field_id.startswith("entity:") and added.json()["field"]["user_added"] is True
     assert added.json()["user_added"] is True
     assert [p["key"] for p in added.json()["field"]["parts"]] == [
-        "name", "facilities", "equity_share_pct", "financial_control", "operational_control", "control_quoted"]
+        "name", "facilities", "equity_share_pct", "financial_control", "included", "control_quoted"]
     assert added.json()["decision"]["status"] == "pending"
     assert added.json()["decision"]["by"]["login"] == "member@acme.test"
 
@@ -184,7 +184,7 @@ def test_rows_can_be_added_edited_and_removed_when_the_reviewer_added_them() -> 
     blank = act(eid, field_id, "accept")
     assert blank.status_code == 422 and "name" in blank.json()["detail"]
     entity = {"name": "Stockton JV", "facilities": ["Cold storage"], "equity_share_pct": 50,
-              "financial_control": 50, "operational_control": "No"}
+              "financial_control": 50, "included": "No"}
     assert act(eid, field_id, "edit", {"value": entity}).json()["decision"]["value"] == entity
     assert act(eid, field_id, "edit", {"value": {**entity, "equity_share_pct": 150}}).status_code == 422
 
@@ -529,19 +529,101 @@ def test_the_value_history_is_per_field_bounded_and_cannot_be_written_or_forged_
     assert act(eid, f, "revert").json()["decision"]["value"] == "v12"
 
 
-def test_a_stored_history_with_a_value_that_no_longer_validates_is_skipped_not_restored() -> None:
+def stored_payload(eid: str, field_id: str, payload: dict[str, Any]) -> None:
+    asyncio.run(_admin(
+        "INSERT INTO workpaper_items (org_id, engagement_id, kind, item_key, payload) "
+        "SELECT org_id, id, 'methodology', $3, $2::jsonb FROM engagements WHERE id = $1::uuid "
+        "ON CONFLICT (engagement_id, kind, item_key) DO UPDATE SET payload = EXCLUDED.payload",
+        eid, json.dumps(payload), field_id))
+
+
+def test_a_previous_value_that_no_longer_validates_refuses_the_revert_with_a_409_and_changes_nothing() -> None:
     eid = create()["id"]
     f = "category:scope1:fugitive"
     assert act(eid, f, "edit", {"value": "Yes"}).status_code == 200
     assert act(eid, f, "edit", {"value": "No"}).status_code == 200
-    payload = record(eid, f)
-    payload = {k: payload[k] for k in ("field_id", "suggestion", "decision", "history", "value_history")}
+    before = record(eid, f)
+    payload = {k: before[k] for k in ("field_id", "suggestion", "decision", "history", "value_history")}
     payload["value_history"] = [{"status": "edited", "value": "Maybe <script> \u202e\u7eb8", "by": {"name": "x", "login": "y"}, "at": "t"}]
-    asyncio.run(_admin("UPDATE workpaper_items SET payload = $2::jsonb WHERE engagement_id = $1::uuid AND kind = 'methodology' "
-                       "AND item_key = $3", eid, json.dumps(payload), f))
-    back = act(eid, f, "revert")
-    assert back.status_code == 200 and back.json()["decision"]["value"] is None and back.json()["decision"]["status"] == "pending"
-    assert revert_events()[-1]["restored"] == "empty"
+    stored_payload(eid, f, payload)
+    refused = act(eid, f, "revert")
+    assert refused.status_code == 409
+    assert refused.json()["detail"].startswith("The previous value can no longer be restored (")
+    assert refused.json()["detail"].endswith("). Edit the value instead.")
+    after = record(eid, f)
+    assert after["decision"]["value"] == "No" and after["history"] == payload["history"]  # nothing changed
+    assert revert_events() == []  # and no revert was logged
+    payload["value_history"] = "not even a list"
+    stored_payload(eid, f, payload)
+    assert act(eid, f, "revert").status_code == 409 and record(eid, f)["decision"]["value"] == "No"
+
+
+def test_a_previous_value_too_large_to_keep_refuses_the_revert_and_the_audit_says_what_a_revert_restored() -> None:
+    eid = create()["id"]
+    f = "calculation:approach"
+    big = "\U0001F600" * 2000  # 8 KB of text, four bytes per character
+    alt = big[:-1] + "!"
+    suggest(eid, f, {**SUGGESTION, "value": big, "quote": "q" * 900})
+    assert act(eid, f, "edit", {"value": big}).status_code == 200  # from pending: nothing replaced, nothing to keep
+    assert act(eid, f, "edit", {"value": alt}).status_code == 200  # replaces a decision too large to keep with room left
+    stored = record(eid, f)
+    assert stored["value_history"] == [] and stored["decision"]["value"] == alt
+    refused = act(eid, f, "revert")
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == ("The previous value can no longer be restored (it was too large to keep). "
+                                        "Edit the value instead.")
+    assert record(eid, f)["decision"]["value"] == alt and revert_events() == []  # nothing changed, nothing logged
+    assert act(eid, f, "edit", {"value": "short"}).status_code == 200  # the way out the sentence names
+    assert act(eid, f, "revert").json()["decision"]["value"] == alt  # now the previous one fits, so it is restored
+    # what a revert did is what the audit says
+    other = create()["id"]
+    suggest(other, f, {**SUGGESTION, "value": "Detected"})
+    act(other, f, "edit", {"value": "One"})
+    act(other, f, "edit", {"value": "Two"})
+    assert [act(other, f, "revert").json()["decision"]["value"], act(other, f, "revert").json()["decision"]["value"]] == ["One", None]
+    assert [e["restored"] for e in revert_events()][-2:] == ["previous", "detected"]
+
+
+def test_reverting_a_reviewer_added_gwp_row_to_blank_leaves_results_on_the_default_label() -> None:
+    eid = create()["id"]
+    results = lambda: call("GET", f"{BASE}/{eid}/recalculation", "a_member").json()  # noqa: E731
+    default = "AR5 (default \u2014 not set in Methodology review)"
+    row = add_row(eid, "gwp").json()["field"]["field_id"]
+    assert act(eid, row, "edit", {"value": {"set": "AR6", "horizon": "100-year"}}).status_code == 200
+    assert results()["gwp_label"] == "AR6 \u00b7 100-year (Methodology review)"
+    assert act(eid, row, "revert").status_code == 200  # no previous value: the row goes back to blank, pending
+    assert results()["gwp_label"] == default and results()["gwp_set"] == "AR5" and not results()["gwp_blocked"]
+    assert [e["restored"] for e in revert_events()] == ["empty"]
+    # and the fixed field: edit, edit, revert, revert ends on pending and the default again
+    assert act(eid, "gwp", "edit", {"value": {"set": "AR6", "horizon": "100-year"}}).status_code == 200
+    assert act(eid, "gwp", "edit", {"value": {"set": "AR4", "horizon": "20-year"}}).status_code == 200
+    assert act(eid, "gwp", "revert").status_code == 200 and results()["gwp_set"] == "AR6"
+    assert act(eid, "gwp", "revert").status_code == 200 and results()["gwp_label"] == default
+    assert [e["restored"] for e in revert_events()] == ["empty", "previous", "empty"]
+
+
+def test_an_entity_stored_before_included_had_its_own_key_reads_as_quoted_control_never_included_no() -> None:
+    eid = create()["id"]
+    key = "entity:legacy0001"
+    legacy = {"name": "St\u00e4dtische Werke \u7eb8", "facilities": ["Kent"], "equity_share_pct": 50, "financial_control": None,
+              "operational_control": "No"}
+    stored_payload(eid, key, {"field_id": key, "user_added": True, "suggestion": {"value": legacy, "quote": "q" * 10},
+                              "decision": {"status": "edited", "value": legacy, "by": {"name": "A", "login": "a"}, "at": "t"},
+                              "history": [], "value_history": [{"status": "accepted", "value": {**legacy, "operational_control": "Yes"},
+                                                                 "by": {}, "at": "t"}]})
+    row = record(eid, key)
+    for value in (row["suggestion"]["value"], row["decision"]["value"]):
+        assert value["included"] is None and value["control_quoted"] == "No" and "operational_control" not in value
+    assert row["value_history"][0]["value"]["control_quoted"] == "Yes"
+    listed = call("GET", f"{BASE}/{eid}/workpaper-items?kind=methodology").json()["items"]
+    assert next(i for i in listed if i["item_key"] == key)["payload"]["decision"]["value"]["included"] is None
+    reverted = act(eid, key, "revert")  # restores the previous value, read in the new shape
+    assert reverted.status_code == 200 and reverted.json()["decision"]["value"]["control_quoted"] == "Yes"
+    assert reverted.json()["decision"]["value"]["included"] is None
+    ok = act(eid, key, "edit", {"value": {**legacy, "operational_control": "Yes"}})  # an old client still sends the old key
+    assert ok.status_code == 200 and ok.json()["decision"]["value"]["control_quoted"] == "Yes" and ok.json()["decision"]["value"]["included"] is None
+    confirmed = act(eid, key, "edit", {"value": {**ok.json()["decision"]["value"], "included": "Yes"}})
+    assert confirmed.status_code == 200 and confirmed.json()["decision"]["value"]["included"] == "Yes"
 
 
 def test_an_old_record_with_no_value_history_still_reverts_and_the_api_lists_an_empty_history() -> None:

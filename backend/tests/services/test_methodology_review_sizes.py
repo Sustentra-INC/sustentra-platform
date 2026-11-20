@@ -28,7 +28,7 @@ def test_text_with_a_null_character_is_refused() -> None:
     with pytest.raises(m.MethodologyInvalid):
         m.validate_value(m.row_field("entity:abcd1234"), {  # type: ignore[arg-type]
             "name": "a\x00", "facilities": [], "equity_share_pct": 1, "financial_control": 1,
-            "operational_control": "Yes"})
+            "included": "Yes"})
 
 
 def test_payload_size_counts_utf8_bytes() -> None:
@@ -55,7 +55,12 @@ def test_a_worst_case_record_fits_and_history_is_trimmed_to_make_room() -> None:
         record = m.edit(record, f, big, ACTOR, NOW)
         assert payload_size(record) <= MAX_PAYLOAD_BYTES
     assert 0 < len(record["history"]) <= m.MAX_HISTORY
-    assert m.revert(record, f, ACTOR, NOW)["decision"]["status"] == "pending"
+    # the previous value was too large to keep: Revert says so (409) instead of quietly going somewhere else
+    assert record.get("previous_lost") is True and "value_history" not in record
+    with pytest.raises(m.MethodologyConflict, match=r"can no longer be restored \(it was too large to keep\)\. Edit the value instead\."):
+        m.revert(record, f, ACTOR, NOW)
+    small = m.edit(record, f, "short", ACTOR, NOW)  # a new decision whose predecessor does fit clears the flag
+    assert small.get("previous_lost") is not True or "value_history" not in small
 
 
 def test_history_keeps_only_the_newest_50_events() -> None:
@@ -69,7 +74,7 @@ def test_history_keeps_only_the_newest_50_events() -> None:
 def test_the_largest_entity_value_fits_twice_with_a_quote() -> None:
     entity = m.row_field("entity:abcd1234")
     value = {"name": "😀" * 200, "facilities": ["😀" * m.MAX_FACILITY] * m.MAX_FACILITIES,
-             "equity_share_pct": 100, "financial_control": 100, "operational_control": "Yes"}
+             "equity_share_pct": 100, "financial_control": 100, "included": "Yes"}
     record = {**m.new_row("entity:abcd1234", ACTOR, NOW),
               "suggestion": {**SUGGESTION, "value": value, "quote": "😀" * 1000}}
     edited = m.edit(record, entity, value, ACTOR, NOW)  # type: ignore[arg-type]
@@ -112,7 +117,7 @@ def test_a_short_quote_is_not_flagged_and_a_string_reference_is_clipped() -> Non
 def test_a_suggestion_that_stays_too_big_is_refused() -> None:
     entity = m.row_field("entity:abcd1234")
     value = {"name": "😀" * 200, "facilities": ["😀" * 100] * 20, "equity_share_pct": 1, "financial_control": 1,
-             "operational_control": "Yes"}
+             "included": "Yes"}
     with pytest.raises(m.MethodologyInvalid, match="too long"):
         m.bound_suggestion(entity, {**SUGGESTION, "value": value})  # type: ignore[arg-type]
 

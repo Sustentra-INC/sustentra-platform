@@ -204,8 +204,15 @@ async def _methodology_follow_up(
     is closed: asking again starts a new one under the next key."""
 
     field_id = (body.source.fieldKey or "").strip()
-    if methodology_review.catalog_field(field_id) is None and methodology_review.row_field(field_id) is None:
+    if not ITEM_KEY.match(field_id):
         raise HTTPException(status_code=422, detail="Choose a Methodology row to follow up on.")
+    if methodology_review.catalog_field(field_id) is None:
+        # Not one of the fixed rows: it must be a row stored on THIS engagement and not removed (an entity, a factor
+        # source or a GWP set that was added by the reviewer or found by Claude).
+        stored = (await workpaper_item_service.get_items(db, engagement["id"], methodology_review.KIND, [field_id])
+                  if methodology_review.row_field(field_id) is not None else [])
+        if not stored or stored[0]["payload"].get("removed"):
+            raise HTTPException(status_code=404, detail="That Methodology row is not on this engagement.")
     base = "ASK-METH-" + _UNSAFE_KEY.sub("_", field_id)[:150]
     for number in range(1, 200):
         key = base if number == 1 else f"{base}-{number}"

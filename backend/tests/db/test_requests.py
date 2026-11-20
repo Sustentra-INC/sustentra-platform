@@ -347,15 +347,27 @@ def test_a_resolved_or_withdrawn_follow_up_is_closed_so_asking_again_starts_a_ne
     assert [a["state"] for a in asks(eid)] == ["withdrawn", "resolved", "not_yet_sent"]
 
 
-def test_only_a_real_methodology_row_can_be_followed_up_and_hostile_keys_are_refused_or_made_safe() -> None:
+def test_only_a_methodology_row_on_this_engagement_can_be_followed_up_and_hostile_keys_are_refused() -> None:
     eid = create()["id"]
-    for bad in ("", "nonsense", "../../etc/passwd", "reporting_period; DROP TABLE x", "entity:", "纸" * 20):
-        assert mark(eid, bad).status_code == 422, bad
-    assert mark(eid, "x" * 600).status_code == 422
+    for bad in ("", "../../etc/passwd", "reporting_period; DROP TABLE x", "\u7eb8" * 20, "x" * 600):
+        assert mark(eid, bad).status_code == 422, bad  # not even the shape of a row id
+    for missing in ("nonsense", "entity:", "entity:abcd1234", "gwp:zzzz9999", "factor:scope1:abcd1234"):
+        assert mark(eid, missing).status_code == 404, missing  # well formed, but no such row here
+    assert asks(eid) == []
     row = call("POST", f"{BASE}/{eid}/methodology-review/rows", "a_member", {"group": "entities"}).json()["field"]["field_id"]
     made = mark(eid, row)  # a row the reviewer added is a real row
     assert made.status_code == 201 and made.json()["source"]["fieldKey"] == row and made.json()["id"].startswith("ASK-METH-entity:")
-    assert asks(eid)[0]["source"]["origin"] == "methodology_row" and len(asks(eid)) == 1
+    assert len(asks(eid)) == 1
+
+
+def test_a_removed_row_and_another_engagements_row_cannot_be_followed_up() -> None:
+    eid, other = create()["id"], create()["id"]
+    row = call("POST", f"{BASE}/{eid}/methodology-review/rows", "a_member", {"group": "factor:scope1"}).json()["field"]["field_id"]
+    assert mark(other, row).status_code == 404  # the row belongs to the first engagement only
+    assert call("DELETE", f"{BASE}/{eid}/methodology-review/{row}").status_code == 200
+    assert mark(eid, row).status_code == 404  # removed rows stay in the store, marked, but are gone from the page
+    assert asks(eid) == [] and asks(other) == []
+    assert mark(eid, "consolidation_approach").status_code == 201  # the fixed rows are always there
 
 
 def test_methodology_follow_ups_follow_the_same_access_rules_as_every_request() -> None:
