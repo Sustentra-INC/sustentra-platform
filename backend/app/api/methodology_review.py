@@ -36,7 +36,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from backend.app.adapters.llm.claude import AiNotConfiguredError, ClaudeClient, get_claude
+from backend.app.adapters.llm.claude import (
+    AiNotConfiguredError,
+    ClaudeClient,
+    StructuredReply,
+    TokenUsage,
+    get_claude,
+)
 from backend.app.api import documents as documents_api
 from backend.app.api.engagements import _visible, require_open_engagement
 from backend.app.api.evidence_tree import document_decisions
@@ -123,7 +129,7 @@ def _reason(exc: BaseException) -> str:
     return f"{kind}: {message[:120]}".strip()
 
 
-def _log_call_failure(exc: BaseException) -> None:
+def _log_call_failure(exc: BaseException, part: str = "") -> None:
     """Exception type, and for a provider answer its status, error type, message and request id.
 
     The provider's message describes the request's shape (for example a schema limit), not the
@@ -134,11 +140,42 @@ def _log_call_failure(exc: BaseException) -> None:
         body: dict[str, Any] = exc.body if isinstance(exc.body, dict) else {}
         inner = body.get("error")
         error: dict[str, Any] = inner if isinstance(inner, dict) else body
-        logger.warning("methodology prefill: Claude call failed (%s) status=%s error_type=%s request_id=%s message=%s",
+        logger.warning("methodology prefill: Claude call failed part=" + part + " (%s) status=%s error_type=%s request_id=%s message=%s",
                        type(exc).__name__, exc.status_code, error.get("type"), exc.request_id,
                        str(error.get("message", ""))[:500])
     else:
-        logger.warning("methodology prefill: Claude call failed (%s)", type(exc).__name__)
+        logger.warning("methodology prefill: Claude call failed part=%s (%s)", part, type(exc).__name__)
+
+
+def _combine(results: list[prefill.PartResult]) -> tuple[StructuredReply[prefill.PrefillOutput] | None, list[dict[str, str]]]:
+    """The three calls as one reply (for the ledger and ``verify``), and the sections that gave nothing.
+
+    The reply is "ok" when at least one part is; otherwise it carries the first part's outcome. None
+    when every call raised. Usage and cost are the sum of the calls that were answered.
+    """
+
+    failed: list[dict[str, str]] = []
+    replies: list[StructuredReply[Any]] = []
+    for result in results:
+        label = prefill.PART_LABELS[result.part]
+        if result.reply is None:
+            failed.append({"section": label, "reason": _reason(result.error) if result.error else "no answer"})
+        elif result.reply.outcome == "ok" and result.reply.output is not None:
+            replies.append(result.reply)
+        else:
+            failed.append({"section": label, "reason": result.reply.outcome})
+            replies.append(result.reply)
+    if not replies:
+        return None, failed
+    good = {r.part: r.reply.output for r in results if r.reply and r.reply.outcome == "ok" and r.reply.output is not None}
+    first = next((r for r in replies if r.outcome == "ok"), replies[0])
+    costs = [r.cost_microusd for r in replies]
+    usage = sum((r.usage for r in replies), TokenUsage())
+    combined = StructuredReply(
+        outcome=first.outcome, output=prefill.merge_parts(good) if good else None, model=first.model, usage=usage,
+        cost_microusd=None if any(c is None for c in costs) else sum(c for c in costs if c is not None),
+        request_id=first.request_id, stop_reason=first.stop_reason, refusal_category=first.refusal_category)
+    return combined, failed
 
 
 def _gate(settings: Settings, spent_microusd: int, candidates: list[dict[str, Any]]) -> tuple[str | None, str | None]:
@@ -604,16 +641,19 @@ async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, An
         raise HTTPException(status_code=409, detail="The company's summary documents could not be read. "
                                                     "Upload a readable copy of the report or methodology document.")
     started = time.monotonic()
-    try:
-        reply = await asyncio.to_thread(
-            client.structured, system=prefill.SYSTEM_PROMPT, content=prefill.render_documents(documents),
-            output_type=prefill.PrefillOutput, max_tokens=prefill.MAX_OUTPUT_TOKENS)
-    except Exception as exc:  # no usage to record; type, status and provider message are logged, never content
-        _log_call_failure(exc)
-        if _is_request_rejected(exc):
-            raise HTTPException(status_code=500, detail=f"{_CONFIG[:-1]} (provider: {_reason(exc)}).") from exc
+    results = await asyncio.to_thread(prefill.run_parts, client, documents)
+    for result in results:
+        if result.error is not None:  # no usage to record; type, status and provider message are logged, never content
+            _log_call_failure(result.error, result.part)
+    reply, failed_sections = _combine(results)
+    if reply is None:  # every call raised: nothing was billed
+        errors = [r.error for r in results if r.error is not None]
+        rejected = next((e for e in errors if _is_request_rejected(e)), None)
+        if rejected is not None:
+            raise HTTPException(status_code=500, detail=f"{_CONFIG[:-1]} (provider: {_reason(rejected)}).") from rejected
         raise HTTPException(
-            status_code=502, detail=f"Sustentra's AI could not be reached. Try again in a moment. ({_reason(exc)})") from exc
+            status_code=502, detail=f"Sustentra's AI could not be reached. Try again in a moment. ({_reason(errors[0])})"
+        ) from errors[0]
     cost_usd = round((reply.cost_microusd or 0) / ai_usage.MICRO, 6)
     ok = reply.outcome == "ok" and reply.output is not None
     async with _short_transaction(sessions, org_id) as ledger:  # committed whatever happens next
@@ -635,7 +675,8 @@ async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, An
                                covered=[f["field_id"] for f in rules.CATALOG])
             await _audit_prefill(work, request, user, engagement, {
                 "outcome": "ok", "documents": len(documents), "suggested": suggested,
-                "dropped": sum(dropped.values()), "kept_reviewer_decision": kept, "cost_usd": cost_usd})
+                "dropped": sum(dropped.values()), "kept_reviewer_decision": kept, "cost_usd": cost_usd,
+                **({"failed_sections": [f["section"] for f in failed_sections]} if failed_sections else {})})
     except Exception as exc:  # the call is already recorded; keep nothing and say so
         logger.error("methodology prefill: suggestions not saved (%s)", type(exc).__name__)
         try:
@@ -647,4 +688,4 @@ async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, An
         return JSONResponse(status_code=502, content={"detail": _NOT_SAVED})
     read = [{"document_id": d.document_id, "file_name": d.file_name, "truncated": d.truncated} for d in documents]
     return {"suggested": suggested, "dropped": dict(dropped), "kept_reviewer_decision": kept,
-            "documents_read": read, "cost_usd": cost_usd, "model": reply.model}
+            "documents_read": read, "cost_usd": cost_usd, "model": reply.model, "failed_sections": failed_sections}
