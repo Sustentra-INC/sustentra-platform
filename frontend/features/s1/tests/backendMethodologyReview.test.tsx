@@ -1125,9 +1125,9 @@ describe("row declutter: quote, source link, filter and accept all", () => {
       const r = row("Excluded from boundary");
       const quote = r.querySelector("q") as HTMLElement;
       expect(quote.className).toContain("is-clamped");
-      fireEvent.click(within(r).getByRole("button", { name: "Show more" }));
+      fireEvent.click(within(r.querySelector(".s1-mb-quote-wrap") as HTMLElement).getByRole("button", { name: "Show more" }));
       expect(quote.className).not.toContain("is-clamped");
-      expect(within(r).getByRole("button", { name: "Show less" })).toBeTruthy();
+      expect(within(r.querySelector(".s1-mb-quote-wrap") as HTMLElement).getByRole("button", { name: "Show less" })).toBeTruthy();
     } finally {
       sh.mockRestore();
       ch.mockRestore();
@@ -1260,11 +1260,11 @@ describe("the summary of the read and the tables", () => {
     await open(vi.fn(), summaryFixture());
     const gases = screen.getByRole("heading", { name: "Gases covered" }).closest(".s1-mr-group") as HTMLElement;
     const table = within(gases).getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Gas", "Value", "Source", "Status", "Actions"]);
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Gas", "Value", "Source", "Actions"]  /* no Status column while no row has a status */);
     expect(within(table).getByRole("rowheader", { name: "CO₂" })).toBeTruthy();
     expect(within(table).getByRole("rowheader", { name: "N₂O" })).toBeTruthy();
     const scope1 = screen.getByRole("heading", { name: "Scope 1 emission categories" }).closest(".s1-mr-group") as HTMLElement;
-    expect(within(within(scope1).getByRole("table")).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Category", "Included", "Source", "Status", "Actions"]);
+    expect(within(within(scope1).getByRole("table")).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Category", "Included", "Source", "Actions"]);
   });
 });
 
@@ -1369,5 +1369,19 @@ describe("the matrix, entity and factor tables and the Add buttons in their head
     expect(within(gwp).getAllByRole("columnheader").map((h) => h.textContent).slice(0, 4)).toEqual(["GWP set", "Time horizon", "Source", "Actions"]);
     expect(within(gwp).getByText("IPCC Fifth Assessment Report (AR5)")).toBeTruthy();
     expect(within(gwp).getByText("100-year (assumed — not stated)")).toBeTruthy();
+  });
+});
+
+describe("the Status column", () => {
+  it("shows only in a table where some row is accepted, edited or rejected, with the chip", async () => {
+    await open();
+    const boundary = screen.getByRole("button", { name: "Organizational boundary" }).closest(".s1-mr-group") as HTMLElement;
+    expect(within(boundary).getAllByRole("columnheader").map((h) => h.textContent)).toContain("Status");
+    expect(within(row("Reporting period")).getByText("Edited")).toBeTruthy();
+  });
+
+  it("gives the long-text expand control an accessible name", async () => {
+    await open();
+    for (const b of document.querySelectorAll(".s1-mb-expand")) expect(b.getAttribute("aria-label")).toMatch(/Show (more|less)/);
   });
 });

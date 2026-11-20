@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { ChevronRight, SquareDashed, TextAlignJustify } from "lucide-react";
+import { ChevronDown, ChevronRight, SquareDashed, TextAlignJustify } from "lucide-react";
 
 import { userFacingApiError } from "../api/s1Backend";
 import {
@@ -428,11 +428,35 @@ function Quote({ text, truncated, trail }: { text: string; truncated?: boolean; 
       </q>
       {truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
       {trail}
-      {clipped || open ? (
-        <button type="button" className="s1-mr-link" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? "Show less" : "Show more"}
-        </button>
-      ) : null}
+      {clipped || open ? <ExpandButton open={open} onClick={() => setOpen(!open)} /> : null}
+    </span>
+  );
+}
+
+/** A small icon button that opens or closes a cut-off text. */
+function ExpandButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="s1-mb-expand" aria-expanded={open} aria-label={open ? "Show less" : "Show more"} title={open ? "Show less" : "Show more"} onClick={onClick}>
+      <ChevronDown aria-hidden />
+    </button>
+  );
+}
+
+/** Long text cut to three lines, with the expand button after it. */
+function ClampText({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && !open) setClipped(el.scrollHeight > el.clientHeight + 1);
+  }, [children, open]);
+  return (
+    <span className="s1-mb-clamp">
+      <span ref={ref} className={`s1-mr-value s1-mb-clamp__text${open ? "" : " is-clamped"}`}>
+        {children}
+      </span>
+      {clipped || open ? <ExpandButton open={open} onClick={() => setOpen(!open)} /> : null}
     </span>
   );
 }
@@ -451,9 +475,12 @@ export function FieldRow({
   onSelect,
   quoteNote,
   layout = "list",
+  statusCol = true,
 }: {
   /** How the row is drawn: a list item (the document page's side panel), or a table body, an entity, factor or GWP table, or one cell of the Scope 2 matrix. */
   layout?: "list" | "table" | "entity" | "factor" | "gwp" | "cell";
+  /** Table layout: the section has a Status column (only when some row in it has a status). */
+  statusCol?: boolean;
   /** On a document's own page: this row is the one whose quote is highlighted, and a click on the row selects it. */
   selected?: boolean;
   onSelect?: () => void;
@@ -671,8 +698,8 @@ export function FieldRow({
             {statusBlock}
           </th>
           <td className="s1-mb-valuecell">
-            {valueText(parts.included as MethodologyValue) || <span className="s1-mr-muted">—</span>}
-            {controlQuoted ? <span className="s1-mr-muted"> · operational control (as quoted): {controlQuoted}</span> : null}
+            {valueText(parts.included as MethodologyValue) || (controlQuoted ? null : <span className="s1-mr-muted">—</span>)}
+            {controlQuoted ? <span className="s1-mr-muted">{valueText(parts.included as MethodologyValue) ? " · " : ""}operational control (as quoted): {controlQuoted}</span> : null}
           </td>
           <td className="s1-mb-valuecell">{equity || <span className="s1-mr-muted">—</span>}</td>
           <td className="s1-mb-sourcecell">{sourceLines}</td>
@@ -751,16 +778,16 @@ export function FieldRow({
             {itemLabel(def)}
           </th>
           <td className="s1-mb-valuecell">
-            <span className="s1-mr-value">{valueCell}</span> {marker}
+            <ClampText>{valueCell}</ClampText> {marker}
             {def.value_note && !entitiesNamed && (current || suggestion) ? <span className="s1-mr-muted"> {def.value_note}</span> : null}
             {oldText ? <span className="s1-mr-muted"> Enter the start and end dates with Edit.</span> : null}
             {record.shownNote ? <span className="s1-mr-muted"> {record.shownNote}</span> : null}
           </td>
           <td className="s1-mb-sourcecell">{sourceLines}</td>
-          <td className="s1-mb-statuscell">{statusBlock}</td>
+          {statusCol ? <td className="s1-mb-statuscell">{statusBlock}</td> : null}
           <td className="s1-mb-actionscell">{actions}</td>
         </tr>
-        {editRow(5)}
+        {editRow(statusCol ? 5 : 4)}
       </tbody>
     );
   }
@@ -948,8 +975,8 @@ export function BackendMethodologyReview({
     }, 0);
   }
 
-  const rowFor = (def: CatalogField, layout: "table" | "entity" | "factor" | "gwp" | "cell") => (
-    <FieldRow layout={layout} key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} followUp={followUp} onMarkFollowUp={setRequestFor} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
+  const rowFor = (def: CatalogField, layout: "table" | "entity" | "factor" | "gwp" | "cell", statusCol = true) => (
+    <FieldRow layout={layout} statusCol={statusCol} key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} followUp={followUp} onMarkFollowUp={setRequestFor} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
   );
   const addButton = (rowGroup: string) =>
     data.rowGroups.includes(rowGroup) ? (
@@ -978,14 +1005,19 @@ export function BackendMethodologyReview({
       </table>
     </div>
   );
-  const genericTable = (group: string, defs: CatalogField[]) =>
-    defs.length
-      ? tableOf(
-          [GROUP_ITEM[group] ?? "Item", INCLUDED_GROUPS.includes(group) ? "Included" : "Value", "Source", "Status", "Actions"],
-          defs.map((d) => rowFor(d, "table")),
-          ["s1-mb-col-item", "s1-mb-col-value", "", "s1-mb-col-status", "s1-mb-col-actions"]
-        )
-      : null;
+  const genericTable = (group: string, defs: CatalogField[]) => {
+    if (!defs.length) return null;
+    // The Status column appears only when some row in the table has a status to show.
+    const statusCol = defs.some((d) => {
+      const st = records.get(d.fieldId)?.decision?.status ?? "pending";
+      return st !== "pending";
+    });
+    return tableOf(
+      [GROUP_ITEM[group] ?? "Item", INCLUDED_GROUPS.includes(group) ? "Included" : "Value", "Source", ...(statusCol ? ["Status"] : []), "Actions"],
+      defs.map((d) => rowFor(d, "table", statusCol)),
+      ["s1-mb-col-item", "s1-mb-col-value", "", ...(statusCol ? ["s1-mb-col-status"] : []), "s1-mb-col-actions"]
+    );
+  };
   const block = (title: string, add: ReactNode, body: ReactNode) => (
     <div className="s1-mb-block">
       <div className="s1-mb-subhead">
