@@ -92,7 +92,7 @@ describe("the demo backend's methodology review", () => {
     await open();
     expect(within(row("Indirect Biogenic")).getByText("Not checked yet")).toBeTruthy();
     expect(document.body.textContent).not.toContain("Not set");
-    expect((await get()).fields.filter((f) => !(f as unknown as { shown: boolean }).shown).map((f) => (f as unknown as { field_id: string }).field_id).sort()).toEqual(["boundary:acquisitions", "boundary:leased_space", "gas:ch4", "gas:co2", "gas:hfcs", "gas:n2o", "gas:nf3", "gas:pfcs", "gas:sf6"]);
+    expect((await get()).fields.filter((f) => !(f as unknown as { shown: boolean }).shown).map((f) => (f as unknown as { field_id: string }).field_id).sort()).toEqual(["boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "gas:ch4", "gas:co2", "gas:hfcs", "gas:n2o", "gas:nf3", "gas:pfcs", "gas:sf6"]);
     await prefillViaUi();
     expect(within(row("Indirect Biogenic")).getByText("Not detected")).toBeTruthy();
     expect(within(row("Consolidation approach")).getByText("Suggested by Claude")).toBeTruthy();
@@ -175,6 +175,63 @@ describe("the demo backend's methodology review", () => {
       expect(within(row("Acquisitions and divestitures")).getByText("Acquired M\u00fcller K\u00e4serei \u2013 Z\u00fcrich (\u745e\u58eb) in March 2025.")).toBeTruthy();
     });
   });
+  describe("estimation method for missing data (a list, only if the company has a value)", () => {
+    const LABEL = "Estimation method for missing data";
+    const EST = "calculation:estimation";
+    const edit = (value: unknown) => demoApi(`${BASE}/${EST}/edit`, { method: "POST", body: { value } });
+
+    it("is hidden on a fresh engagement and offered under Add an item", async () => {
+      await open();
+      expect(screen.queryByText(LABEL, { selector: "span" })).toBeNull();
+      expect(within(screen.getByRole("combobox", { name: "Add an item" })).getByRole("option", { name: LABEL })).toBeTruthy();
+    });
+
+    it("a prefill shows the entries with a quote and a link each", async () => {
+      const onOpenDocument = await open();
+      await prefillViaUi();
+      const entries = row(LABEL);
+      expect(within(entries).getByText("Utility invoices: Average of the adjacent months; Fuel cards: Prior-year consumption")).toBeTruthy();
+      expect(within(entries).getByText(/Where fuel card data has gaps/)).toBeTruthy();
+      expect(within(entries).getAllByRole("button", { name: /cascade_org_boundary_statement/ })).toHaveLength(2);
+      fireEvent.click(within(entries).getAllByRole("button", { name: /cascade_org_boundary_statement/ })[1]);
+      expect(onOpenDocument).toHaveBeenCalled();
+    });
+
+    it("adds, edits and removes entries in the editor, with non-ASCII text, and can empty the list", async () => {
+      await open();
+      fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: EST } });
+      await waitFor(() => expect(within(row(LABEL)).getByText("Not checked yet")).toBeTruthy());
+      fireEvent.click(within(row(LABEL)).getByRole("button", { name: `Edit: ${LABEL}` }));
+      fireEvent.click(screen.getByRole("button", { name: "Add entry" }));
+      fireEvent.change(screen.getByLabelText(`Source type 1: ${LABEL}`), { target: { value: "Br\u00e4ndstoff \u71c3\u6599" } });
+      fireEvent.change(screen.getByLabelText(`Method 1: ${LABEL}`), { target: { value: "Vorjahr \u00d7 1,02" } });
+      fireEvent.click(screen.getByRole("button", { name: "Add entry" }));
+      fireEvent.change(screen.getByLabelText(`Source type 2: ${LABEL}`), { target: { value: "Meter readings" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" })); // the second entry has no method
+      expect((await screen.findByRole("alert")).textContent).toContain("Give every entry a source type and a method");
+      fireEvent.click(screen.getByRole("button", { name: `Remove entry 2: ${LABEL}` }));
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row(LABEL)).getByText("Br\u00e4ndstoff \u71c3\u6599: Vorjahr \u00d7 1,02")).toBeTruthy());
+      fireEvent.click(within(row(LABEL)).getByRole("button", { name: `Edit: ${LABEL}` }));
+      fireEvent.click(screen.getByRole("button", { name: `Remove entry 1: ${LABEL}` }));
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row(LABEL)).getByText("No entries")).toBeTruthy());
+    });
+
+    it("folds case like the server: Stra\u00dfe and STRASSE are one source type", async () => {
+      await open();
+      await expect(edit([{ source_type: "Stra\u00dfe", method: "a" }, { source_type: "  STRASSE ", method: "b" }])).rejects.toMatchObject({ status: 422 });
+    });
+
+    it("refuses a repeated source type, a blank part and an eleventh entry", async () => {
+      await open();
+      await expect(edit([{ source_type: "Fuel", method: "a" }, { source_type: " fuel ", method: "b" }])).rejects.toMatchObject({ status: 422 });
+      await expect(edit([{ source_type: "Fuel", method: "" }])).rejects.toMatchObject({ status: 422 });
+      await expect(edit(Array.from({ length: 11 }, (_, i) => ({ source_type: `S${i}`, method: "a" })))).rejects.toMatchObject({ status: 422 });
+      await expect(edit("average")).rejects.toMatchObject({ status: 422 });
+    });
+  });
+
   describe("gases covered (one row per gas, only if the company has a value)", () => {
     const GAS_LABELS = ["Gas: CO2", "Gas: CH4", "Gas: N2O", "Gas: HFCs", "Gas: PFCs", "Gas: SF6", "Gas: NF3"];
 

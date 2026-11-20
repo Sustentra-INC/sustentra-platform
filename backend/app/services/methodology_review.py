@@ -66,7 +66,15 @@ MAX_FACILITIES = 20
 MAX_FACILITY = 100
 MAX_HISTORY = 50
 MAX_ADDED_ROWS = 200
-MAX_SUGGESTION_BYTES = 8 * 1024
+MAX_SUGGESTION_BYTES = 8 * 1024  # the value and its quote; the per-entry quotes have their own room
+MAX_ENTRIES = 10  # entries in an entry_list value
+MAX_SOURCE_TYPE = 60
+MAX_METHOD = 300
+MAX_EVIDENCE = 20  # per-entry quotes on one suggestion
+MAX_EVIDENCE_QUOTE = 1000  # as long as the quote Claude is checked against
+# The quotes of one list suggestion. Sized so the record always fits MAX_PAYLOAD_BYTES with a decision of the
+# same field: when the quotes do not fit, the suggestion carries fewer entries, never an entry without its quote.
+MAX_EVIDENCE_BYTES = 12 * 1024
 MAX_QUOTE = 1000
 # What a suggestion may carry: key -> longest text. Anything else is dropped.
 _SUGGESTION_TEXT = {"quote": MAX_QUOTE, "document_id": 100, "file_name": 255, "model": 100, "request_id": 100,
@@ -123,6 +131,10 @@ _PARTS: dict[str, list[dict[str, Any]]] = {
     "factor": [
         {"key": "database", "label": "Database", "kind": "text"},
         {"key": "edition", "label": "Edition", "kind": "text"},
+    ],
+    "entry_list": [
+        {"key": "source_type", "label": "Source type", "kind": "text"},
+        {"key": "method", "label": "Estimation method", "kind": "text"},
     ],
     "gwp": [
         {"key": "set", "label": "GWP set", "kind": "enum", "allowed": list(GWP_SETS)},
@@ -181,6 +193,9 @@ def _static_fields() -> list[dict[str, Any]]:
     fields += [
         _field("calculation:approach", "calculation", "Calculation approach", "text"),
         _field("calculation:process", "calculation", "Process-specific calculations", "text"),
+        # "Only if the company has a value" (spec row 19): one entry per source type.
+        _field("calculation:estimation", "calculation", "Estimation method for missing data", "entry_list",
+               required=False),
     ]
     return fields
 
@@ -288,10 +303,31 @@ def _date_range(field: Mapping[str, Any], value: Any) -> dict[str, str]:
     return {"start": start.isoformat(), "end": end.isoformat()}
 
 
+def _entry_list(field: Mapping[str, Any], value: Any) -> list[dict[str, str]]:
+    """Entries of {source_type, method}: one per source type (compared ignoring case and spacing)."""
+
+    if not isinstance(value, list) or len(value) > MAX_ENTRIES:
+        raise _fail(field, f"enter a list of at most {MAX_ENTRIES} entries.")
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for entry in value:
+        data = _only(field, entry, ("source_type", "method"))
+        source = _text(field, data["source_type"], required=True, limit=MAX_SOURCE_TYPE, name="the source type")
+        key = " ".join(source.casefold().split())
+        if key in seen:
+            raise _fail(field, f"'{source}' appears twice. Keep one entry per source type.")
+        seen.add(key)
+        out.append({"source_type": source,
+                    "method": _text(field, data["method"], required=True, limit=MAX_METHOD, name="the method")})
+    return out
+
+
 def validate_value(field: Mapping[str, Any], value: Any) -> Any:
     """The value cleaned for its field, or MethodologyInvalid with a sentence."""
 
     kind = field["kind"]
+    if kind == "entry_list":
+        return _entry_list(field, value)
     if kind == "date_range":
         return _date_range(field, value)
     if kind == "text":
@@ -455,6 +491,45 @@ def _clip(value: Any, limit: int) -> str | None:
     return value.replace("\x00", "").encode("utf-8", "replace").decode("utf-8")[:limit]
 
 
+def _bound_reference(reference: Any) -> Any:
+    if isinstance(reference, Mapping):
+        kept: dict[str, Any] = {k: _clip(reference[k], MAX_SOURCE_REFERENCE_TEXT)
+                                for k in _SOURCE_REFERENCE_TEXT if isinstance(reference.get(k), str)}
+        page = reference.get("page_number")
+        if isinstance(page, int) and not isinstance(page, bool):
+            kept["page_number"] = page
+        return kept
+    return _clip(reference, MAX_SOURCE_REFERENCE_TEXT)
+
+
+def _bound_evidence(items: list[Any]) -> list[dict[str, Any]]:
+    """The quote behind each entry or option of a list suggestion: label, quote and where it was read."""
+
+    out: list[dict[str, Any]] = []
+    for item in items[:MAX_EVIDENCE]:
+        if not isinstance(item, Mapping):
+            continue
+        raw_quote = item.get("quote")
+        entry: dict[str, Any] = {"label": _clip(item.get("label"), 100) or "",
+                                 "quote": _clip(raw_quote, MAX_EVIDENCE_QUOTE) or "",
+                                 "document_id": _clip(item.get("document_id"), 100) or "",
+                                 "file_name": _clip(item.get("file_name"), 255) or ""}
+        if isinstance(raw_quote, str) and len(raw_quote) > MAX_EVIDENCE_QUOTE:
+            entry["quote_truncated"] = True
+        reference = item.get("source_reference")
+        if isinstance(reference, Mapping):  # only where it was read: page, sheet, cell (no snippet or box)
+            kept: dict[str, Any] = {k: _clip(reference[k], 100) for k in ("sheet_name", "cell_or_range")
+                                    if isinstance(reference.get(k), str)}
+            page = reference.get("page_number")
+            if isinstance(page, int) and not isinstance(page, bool):
+                kept["page_number"] = page
+            entry["source_reference"] = kept
+        elif isinstance(reference, str):
+            entry["source_reference"] = _clip(reference, 100)
+        out.append(entry)
+    return out
+
+
 def bound_suggestion(field: Mapping[str, Any], suggestion: Mapping[str, Any]) -> dict[str, Any]:
     """The suggestion with a validated value and every other part bounded: the quote is cut to
     MAX_QUOTE characters (``quote_truncated: true``), the other texts to their limits, the
@@ -468,17 +543,24 @@ def bound_suggestion(field: Mapping[str, Any], suggestion: Mapping[str, Any]) ->
             out[key] = _clip(raw, limit)
             if key == "quote" and isinstance(raw, str) and len(raw) > limit:
                 out["quote_truncated"] = True
-    reference = suggestion.get("source_reference")
-    if isinstance(reference, Mapping):
-        kept: dict[str, Any] = {k: _clip(reference[k], MAX_SOURCE_REFERENCE_TEXT)
-                                for k in _SOURCE_REFERENCE_TEXT if isinstance(reference.get(k), str)}
-        page = reference.get("page_number")
-        if isinstance(page, int) and not isinstance(page, bool):
-            kept["page_number"] = page
-        out["source_reference"] = kept
-    elif "source_reference" in suggestion:
-        out["source_reference"] = _clip(reference, MAX_SOURCE_REFERENCE_TEXT)
-    if payload_size(out) > MAX_SUGGESTION_BYTES:
+    if "source_reference" in suggestion:
+        out["source_reference"] = _bound_reference(suggestion["source_reference"])
+    evidence = suggestion.get("evidence")
+    if isinstance(evidence, list) and isinstance(out["value"], list):
+        kept_evidence = _bound_evidence(evidence)
+        entries: list[Any] = out["value"]
+        total = len(entries)
+        del entries[len(kept_evidence):]  # an entry without a quote is never kept
+        del kept_evidence[len(entries):]
+        while kept_evidence and payload_size({"e": kept_evidence}) > MAX_EVIDENCE_BYTES:
+            kept_evidence.pop()  # the last entry goes with its quote
+            entries.pop()
+        if not entries and total:
+            raise MethodologyInvalid(f"The suggestion for '{field['label']}' is too long to record.")
+        out["evidence"] = kept_evidence
+        if len(entries) < total:
+            out["entries_omitted"] = total - len(entries)
+    if payload_size({k: v for k, v in out.items() if k != "evidence"}) > MAX_SUGGESTION_BYTES:
         raise MethodologyInvalid(f"The suggestion for '{field['label']}' is too long to record.")
     return out
 
@@ -513,8 +595,20 @@ META_KEY = "meta:state"  # one extra item per engagement, never a field: {prefil
 NOT_CHECKED, NOT_DETECTED, HAS_VALUE = "not_checked", "not_detected", "has_value"
 
 
+# The fields the page had when prefill first shipped. A prefill recorded before it stored which fields
+# it covered is taken to have covered these and no others, so a row added later reads "Not checked yet".
+LEGACY_PREFILL_COVERED = frozenset({
+    "reporting_period", "consolidation_approach",
+    *(f"category:scope1:{k}" for k in ("stationary", "mobile", "process", "fugitive")),
+    *(f"category:{b}:{k}" for b in ("location", "market") for k in ("electricity", "heating", "steam", "cooling")),
+    "category:biogenic:direct", "category:biogenic:indirect",
+    "exclusion:boundary", "exclusion:inventory", "exclusion:materiality",
+    "gwp", "calculation:approach", "calculation:process",
+})
+
+
 def new_meta() -> dict[str, Any]:
-    return {"prefill_ran_at": None, "revealed": []}
+    return {"prefill_ran_at": None, "prefill_covered": [], "revealed": []}
 
 
 def has_value(record: Mapping[str, Any]) -> bool:
@@ -535,7 +629,11 @@ def display_state(record: Mapping[str, Any], meta: Mapping[str, Any]) -> str:
 
     if has_value(record):
         return HAS_VALUE
-    return NOT_DETECTED if meta.get("prefill_ran_at") else NOT_CHECKED
+    if not meta.get("prefill_ran_at"):
+        return NOT_CHECKED
+    covered = meta.get("prefill_covered")
+    covered_ids = set(covered) if covered else LEGACY_PREFILL_COVERED  # a run that did not look at this field says nothing
+    return NOT_DETECTED if record.get("field_id") in covered_ids else NOT_CHECKED
 
 
 def is_shown(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mapping[str, Any]) -> bool:

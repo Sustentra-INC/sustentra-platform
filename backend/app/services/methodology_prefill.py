@@ -87,6 +87,11 @@ class PeriodSuggestion(_Cited):
     end: str  # YYYY-MM-DD
 
 
+class EstimationSuggestion(_Cited):
+    source_type: str  # for example "Utility invoices"
+    method: str  # how missing data for that source type is estimated
+
+
 class GwpSuggestion(_Cited):
     set: Literal["AR4", "AR5", "AR6"]
     horizon: Literal["100-year", "20-year"]
@@ -110,6 +115,7 @@ class PrefillOutput(_Strict):
     choices: list[ChoiceSuggestion]
     gases: list[GasSuggestion]
     texts: list[TextSuggestion]
+    estimations: list[EstimationSuggestion]
     periods: list[PeriodSuggestion]
     gwp: list[GwpSuggestion]
     entities: list[EntitySuggestion]
@@ -207,6 +213,9 @@ What the items mean
   Scope 1 categories: stationary combustion, mobile combustion, process emissions, fugitive emissions.
   Scope 2: purchased electricity, heating, steam, cooling, each location-based and market-based.
   Biogenic: direct and indirect biogenic CO2.
+- estimations: how the company estimates missing or incomplete data, one entry per source type
+  (for example utility invoices, meter readings, fuel records): the source type and the method in a
+  few words. Each entry cites its own line. Leave it out if the documents do not say.
 - gases: for each greenhouse gas (field_id gas:co2, gas:ch4, gas:n2o, gas:hfcs, gas:pfcs, gas:sf6,
   gas:nf3) the document states, "Included" (the gas is covered by the inventory) or "Declared absent"
   (the document says the gas is not emitted or not applicable). The quote must name the gas. If a
@@ -356,19 +365,28 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     by_alias = {d.alias: d for d in documents}
     seen: set[str] = set()
 
-    def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
-             numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = ()) -> None:
+    def cited(item: _Cited) -> tuple[PrefillDocument, DocumentLine] | None:
+        """The document and line the quote was read from, or None (counted in ``dropped``)."""
+
         document = by_alias.get(item.document.strip().upper())
         if document is None:
             dropped["unknown_document"] += 1
-            return
+            return None
         if len(item.quote.strip()) < MIN_QUOTE:  # too short to show anything
             dropped["quote_not_on_document"] += 1
-            return
+            return None
         line = locate_quote(item.quote, item.line, document.lines)
         if isinstance(line, NotLocated):
             dropped[line.reason] += 1
+            return None
+        return document, line
+
+    def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
+             numbers: Sequence[float] = (), words: Sequence[str] = (), terms: Sequence[str] = ()) -> None:
+        found = cited(item)
+        if found is None:
             return
+        document, line = found
         quote_text = norm(item.quote)
         if (any(not value_in_quote(_fmt(n), item.quote) for n in numbers)
                 or any(not value_in_quote(w, item.quote) for w in words)
@@ -385,6 +403,39 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             "file_name": document.file_name, "source_reference": line.source_reference, "origin": "ai",
             "model": model, "request_id": request_id, "suggested_at": now_iso}))
 
+    def keep_list(field_id: str, parts: list[dict[str, str]], quoted: list[tuple[str, str, PrefillDocument, DocumentLine]]
+                  ) -> None:
+        """One suggestion for a list field: the entries that hold up, each with the quote it was read from."""
+
+        if field_id in seen:
+            return
+        good: list[dict[str, str]] = []
+        evidence: list[dict[str, Any]] = []
+        names: set[str] = set()
+        for part, (label, quote, document, line) in zip(parts, quoted, strict=True):
+            key = " ".join(label.casefold().split())
+            if not key or key in names:  # a blank or repeated source type: the first stands
+                dropped["empty_value" if not key else "duplicate_entry"] += 1
+                continue
+            if checked(field_id, [part]) is None:  # this entry alone is invalid: the others stand
+                continue
+            if len(good) >= rules.MAX_ENTRIES:
+                dropped["too_many_entries"] += 1
+                continue
+            names.add(key)
+            good.append(part)
+            evidence.append({"label": label.strip(), "quote": quote.strip(), "document_id": document.document_id,
+                             "file_name": document.file_name, "source_reference": line.source_reference})
+        value = checked(field_id, good) if good else None
+        if value is None:
+            return
+        seen.add(field_id)
+        first = evidence[0]
+        kept.append(Verified(field_id, None, {
+            "value": value, "quote": first["quote"], "document_id": first["document_id"],
+            "file_name": first["file_name"], "source_reference": first["source_reference"], "evidence": evidence,
+            "origin": "ai", "model": model, "request_id": request_id, "suggested_at": now_iso}))
+
     def checked(field_id: str, value: Any) -> Any | None:
         definition = rules.catalog_field(field_id)
         try:
@@ -400,6 +451,18 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         value = checked(choice.field_id, choice.value)
         if value is not None:
             keep(choice, value, choice.field_id, None, terms=_CHOICE_TERMS.get(str(value), ()) if choice.field_id == "consolidation_approach" else ())
+    entries: list[tuple[EstimationSuggestion, PrefillDocument, DocumentLine]] = []
+    for estimate in output.estimations:
+        found = cited(estimate)
+        if found is None:
+            continue
+        if not value_in_quote(estimate.source_type, estimate.quote):  # the entry is about what its quote names
+            dropped["value_not_in_quote"] += 1
+            continue
+        entries.append((estimate, *found))
+    if entries:
+        keep_list("calculation:estimation", [{"source_type": e.source_type, "method": e.method} for e, _, _ in entries],
+                  [(e.source_type, e.quote, d, ln) for e, d, ln in entries])
     for gas in output.gases:
         value = checked(gas.field_id, gas.value)
         if value is not None:
