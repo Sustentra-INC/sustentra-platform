@@ -118,11 +118,11 @@ describe("a methodology source link opens the document at its page with the quot
     mock.review = review();
     const onOpenDocument = vi.fn();
     render(<BackendMethodologyReview engagementId="e1" onOpenDocument={onOpenDocument} />);
-    await screen.findByText("Gas: CO2");
-    const co2 = screen.getByText("Gas: CO2").closest("li") as HTMLElement;
+    await screen.findByText("CO₂");
+    const co2 = screen.getByText("CO₂").closest("tbody") as HTMLElement;
     fireEvent.click(co2.querySelector("button.s1-mr-link") as HTMLElement);
     expect(onOpenDocument).toHaveBeenCalledWith("d1", { fieldId: "gas:co2", entry: null, page: 5 });
-    const ch4 = screen.getByText("Gas: CH4").closest("li") as HTMLElement;
+    const ch4 = screen.getByText("CH₄").closest("tbody") as HTMLElement;
     fireEvent.click(ch4.querySelector("button.s1-mr-link") as HTMLElement);
     expect(onOpenDocument).toHaveBeenLastCalledWith("d1", { fieldId: "gas:ch4", entry: null, page: 5 });
   });
