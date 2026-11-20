@@ -7,6 +7,7 @@ Task emails are captured by overriding the sender, so no mail leaves the test.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -16,9 +17,17 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.app.core import db, rate_limit
+from backend.app.api import documents as documents_api
+from backend.app.core import db
+from urllib.parse import quote
+
 from backend.app.core.config import Settings, get_settings
 from backend.app.core.rate_limit import limiter
+from backend.app.repositories.document_repository import InMemoryDocumentRepository
+from backend.app.services import calculation_lines as cl
+from backend.app.services import task_service
+from backend.app.services.document_upload_service import DocumentUploadService
+from backend.app.services.local_storage_service import LocalStorageService
 from backend.app.core.security_primitives import hash_token
 from backend.app.main import create_app
 from backend.app.services.otp_delivery import get_task_email_sender
@@ -116,12 +125,29 @@ async def _seed() -> None:
         await conn.close()
 
 
+DOCS = InMemoryDocumentRepository()
+LINE = {"category": "stationary", "level2_label": "Propane", "anchor_kind": "facility", "anchor_id": "F1",
+        "label": "Propane at the cannery"}
+LINE_KEY = cl.normalize_line(LINE)["key"]
+
+
 @pytest.fixture(autouse=True)
-def seeded() -> None:
+def seeded(tmp_path: Any) -> Any:
     limiter.reset()
     SENT.clear()
     SENDER_MODE["mode"] = "ok"
     asyncio.run(_seed())
+    asyncio.run(_admin("UPDATE engagements SET settings = CAST($2 AS jsonb) WHERE id = $1", ENG_A,
+                       json.dumps({"evidenceLines": [LINE]})))
+    original = documents_api.current_upload_service()
+    DOCS._store.clear()
+    DOCS.save({"document_id": "doc-1", "engagement_id": str(ENG_A), "org_id": str(ORG_A), "file_name": "secret.pdf"})
+    DOCS.save({"document_id": "doc-b", "engagement_id": str(ENG_B), "org_id": str(ORG_B), "file_name": "b.pdf"})
+    DOCS.save({"document_id": "doc-other", "engagement_id": "someone-else", "org_id": str(ORG_A), "file_name": "o.pdf"})
+    documents_api.configure_services(upload_service=DocumentUploadService(
+        storage_service=LocalStorageService(tmp_path / "uploads"), document_repository=DOCS))
+    yield
+    documents_api.configure_services(upload_service=original)
 
 
 def _app(engine: Any) -> Any:
@@ -183,28 +209,69 @@ def events() -> list[str]:
 # --- create ---------------------------------------------------------------------------------
 
 def test_admin_assigns_debo_who_gets_a_notification_and_an_email() -> None:
-    task = assign("ann", DEBO, note="Please check the totals", link="/org/acme/evidence?doc=d1",
-                  engagement_id=str(ENG_A), due_date="2026-12-01")
+    task = assign("ann", DEBO, note="Please check the totals", engagement_id=str(ENG_A),
+                  target={"kind": "document", "item_id": "doc-1"}, due_date="2026-12-01")
     assert (task["status"], task["assignee_name"], task["requested_by_name"], task["engagement_name"]) == (
         "open", "Debo Okafor", "Ann Admin", "FY25 Footprint")
-    assert task["due_date"] == "2026-12-01" and task["link"] == "/org/acme/evidence?doc=d1"
+    assert task["due_date"] == "2026-12-01" and task["link"] == f"/?view=review&e={ENG_A}&doc=doc-1"
 
     assert recipients("task_assigned") == ["debo@acme.test"] and recipients("task_completed") == []
     [(_, _, variables)] = SENT
-    assert variables["title"] == "Review the boiler fuel invoice"
-    assert variables["requested_by"] == "Ann Admin" and variables["engagement"] == "FY25 Footprint"
-    assert variables["link"] == get_settings().public_base_url.rstrip("/") + "/org/acme/evidence?doc=d1"
-    assert "Please check the totals" not in str(variables)  # the note stays in the app
-
+    # The email says who did what and links to the app: no title, file, client, engagement or note.
+    assert variables["email_subject"] == "Ann Admin assigned you a task in Sustentra"
+    assert variables["link"] == get_settings().public_base_url.rstrip("/") + "/org/acme/tasks"
+    assert not {"title", "engagement", "note", "due_date"} & set(variables)
+    for text in map(str, variables.values()):
+        for secret in ("boiler", "FY25", "Acme", "secret.pdf", "Please check", "doc-1"):
+            assert secret not in text
     [n] = admin("SELECT user_id, kind, title, link, read_at, email_status FROM notifications")
     assert (n["user_id"], n["kind"], n["read_at"], n["email_status"]) == (DEBO, "task_assigned", None, "sent")
     assert n["title"] == "Ann Admin assigned you: Review the boiler fuel invoice"
     assert events() == ["task_created"]
 
 
-def test_without_a_link_the_email_opens_the_tasks_page() -> None:
-    assign("ann", DEBO)
-    assert SENT[0][2]["link"] == get_settings().public_base_url.rstrip("/") + "/org/acme/tasks"
+def test_the_server_builds_every_kind_of_link_from_a_checked_target() -> None:
+    eng = str(ENG_A)
+    links = {
+        "engagement": assign("ann", DEBO, engagement_id=eng, target={"kind": "engagement"})["link"],
+        "line": assign("ann", DEBO, engagement_id=eng, target={"kind": "line", "item_id": LINE_KEY})["link"],
+        "row": assign("ann", DEBO, engagement_id=eng, target={"kind": "methodology_row",
+                                                               "item_id": "consolidation_approach"})["link"],
+        "none": assign("ann", DEBO)["link"],
+    }
+    assert links["engagement"] == f"/?view=dashboard&e={eng}"
+    assert links["line"] == f"/?view=schedule&e={eng}&line={quote(LINE_KEY, safe='')}"
+    assert links["row"] == f"/?view=methodology&e={eng}&row=consolidation_approach"
+    assert links["none"] is None
+    # Whatever the target, the email only points at the tasks page.
+    assert {v["link"] for _, _, v in SENT} == {get_settings().public_base_url.rstrip("/") + "/org/acme/tasks"}
+
+
+def test_a_target_that_is_not_in_this_engagement_is_refused() -> None:
+    eng = str(ENG_A)
+    bad = [
+        {"engagement_id": eng, "target": {"kind": "document", "item_id": "nope"}},
+        {"engagement_id": eng, "target": {"kind": "document", "item_id": "doc-other"}},  # another engagement
+        {"engagement_id": eng, "target": {"kind": "document", "item_id": "doc-b"}},  # another org's document
+        {"engagement_id": eng, "target": {"kind": "line", "item_id": "s1:stationary:propane:facility:zzz"}},
+        {"engagement_id": eng, "target": {"kind": "methodology_row", "item_id": "not-a-field"}},
+        {"engagement_id": str(ENG_B), "target": {"kind": "engagement"}},  # another org's engagement
+        {"engagement_id": str(ENG_B), "target": {"kind": "document", "item_id": "doc-b"}},
+        {"engagement_id": eng, "target": {"kind": "document"}},  # no item
+        {"target": {"kind": "engagement"}},  # no engagement
+        {"engagement_id": eng, "target": {"kind": "engagement", "path": "/x"}},
+    ]
+    for extra in bad:
+        response = call("POST", tasks_url(), "ann", {"title": "x", "assignee_user_id": str(DEBO), **extra})
+        assert response.status_code in (404, 422), (extra, response.text)
+    assert admin("SELECT count(*) AS n FROM tasks")[0]["n"] == 0 and SENT == []
+
+
+def test_a_client_cannot_send_its_own_link() -> None:
+    for link in ("https://evil.example/phish", "//evil.example", "/org/beta/anything"):
+        response = call("POST", tasks_url(), "ann", {"title": "x", "assignee_user_id": str(DEBO), "link": link})
+        assert response.status_code == 422
+    assert admin("SELECT count(*) AS n FROM tasks")[0]["n"] == 0
 
 
 def test_debo_asks_vivian_and_everyone_who_should_hear_is_told() -> None:
@@ -281,28 +348,58 @@ def test_platform_admins_have_no_tasks_of_their_own() -> None:
 def test_validation() -> None:
     base = {"assignee_user_id": str(DEBO)}
     for bad in ({"title": "  "}, {"title": "x" * 201}, {"title": "x", "note": "n" * 2001},
-                {"title": "x", "link": "https://evil.example/phish"}, {"title": "x", "link": "//evil.example"},
-                {"title": "x", "link": "/ok\nbad"}, {"title": "x", "link": "/a\\b"}, {"title": "x", "due_date": "soon"},
+                {"title": "x", "due_date": "soon"},
                 {"title": "x", "surprise": 1}):
         assert call("POST", tasks_url(), "ann", {**base, **bad}).status_code == 422, bad
     assert SENT == []
 
 
-def test_non_ascii_titles_and_multiline_titles_are_safe() -> None:
-    title = "Überprüfen: Rechnung — 排放数据 \U0001F69B\nBcc: attacker@evil.test"
+def test_non_ascii_titles_are_stored_but_never_emailed() -> None:
+    title = "Überprüfen: Rechnung \u2014 排放数据 \U0001F69B\nBcc: attacker@evil.test"
     task = assign("ann", DEBO, title=title)
-    assert task["title"] == "Überprüfen: Rechnung — 排放数据 \U0001F69B Bcc: attacker@evil.test"
+    assert task["title"] == "Überprüfen: Rechnung \u2014 排放数据 \U0001F69B Bcc: attacker@evil.test"
     [(_, _, variables)] = SENT
-    assert "\n" not in variables["email_subject"] and "排放数据" in variables["email_subject"]
+    assert "排放数据" not in str(variables) and "Überprüfen" not in str(variables)
     assert admin("SELECT title FROM notifications")[0]["title"].endswith("排放数据 \U0001F69B Bcc: attacker@evil.test")
 
 
-def test_creating_tasks_is_rate_limited_per_user(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(rate_limit, "get_settings", lambda: Settings(task_create_rate_limit="2/hour"))
-    limiter.reset()
+def _limits(monkeypatch: pytest.MonkeyPatch, **limits: int) -> None:
+    monkeypatch.setattr(task_service, "get_settings", lambda: Settings(**limits))  # type: ignore[arg-type]
+
+
+def test_creating_tasks_is_limited_per_person_from_the_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    _limits(monkeypatch, task_create_per_hour=3, task_per_assignee_per_hour=50)
     body = {"title": "x", "assignee_user_id": str(DEBO)}
-    assert [call("POST", tasks_url(), "ann", body).status_code for _ in range(3)] == [201, 201, 429]
-    assert call("POST", tasks_url(), "vivian", body).status_code == 201  # someone else's bucket
+    # A fresh app (a second process) and a reset in-process limiter change nothing: the count is in Postgres.
+    codes = []
+    for _ in range(4):
+        limiter.reset()
+        codes.append(call("POST", tasks_url(), "ann", body).status_code)
+    assert codes == [201, 201, 201, 429]
+    assert call("POST", tasks_url(), "vivian", body).status_code == 201  # someone else's allowance
+    # An hour later it is open again.
+    admin("UPDATE tasks SET created_at = now() - interval '61 minutes'")
+    assert call("POST", tasks_url(), "ann", body).status_code == 201
+    assert len(SENT) == 5  # the refused one sent nothing
+
+
+def test_one_person_cannot_flood_one_assignee_with_emails(monkeypatch: pytest.MonkeyPatch) -> None:
+    _limits(monkeypatch, task_create_per_hour=50, task_per_assignee_per_hour=2)
+    to_debo = {"title": "x", "assignee_user_id": str(DEBO)}
+    assert [call("POST", tasks_url(), "ann", to_debo).status_code for _ in range(3)] == [201, 201, 429]
+    assert call("POST", tasks_url(), "ann", {"title": "x", "assignee_user_id": str(VIVIAN)}).status_code == 201
+    assert call("POST", tasks_url(), "zed", to_debo).status_code == 201  # another requester
+    assert len(recipients("task_assigned")) == 4
+
+
+def test_completing_and_cancelling_are_limited_per_person(monkeypatch: pytest.MonkeyPatch) -> None:
+    _limits(monkeypatch, task_action_per_hour=2)
+    ids = [assign("ann", DEBO)["id"] for _ in range(4)]
+    assert call("POST", tasks_url(tail=f"/{ids[0]}/done"), "debo").status_code == 200
+    assert call("POST", tasks_url(tail=f"/{ids[1]}/cancel"), "ann").status_code == 200
+    assert call("POST", tasks_url(tail=f"/{ids[2]}/done"), "debo").status_code == 200
+    assert call("POST", tasks_url(tail=f"/{ids[3]}/done"), "debo").status_code == 429  # Debo's third
+    assert call("POST", tasks_url(tail=f"/{ids[3]}/cancel"), "ann").status_code == 200  # Ann has used one of two
 
 
 # --- email failures -------------------------------------------------------------------------
