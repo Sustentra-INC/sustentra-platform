@@ -221,9 +221,9 @@ def _static_fields() -> list[dict[str, Any]]:
                          list(INSTRUMENT_OPTIONS), required=False)
     instruments["shown_if_yes"] = list(MARKET_CATEGORY_IDS)
     fields.append(instruments)
-    # One row per gas, "Only if the company has a value" (spec row 7).
-    fields += [_field(f"gas:{key}", "gases", f"Gas: {name}", "enum", list(GAS_STATUSES), required=False)
-               for key, name in GASES]
+    # One row per gas. All seven are always on the page (Claire, 20 Nov: never hide a gas); a gas the
+    # documents do not mention reads "Not mentioned" on the page.
+    fields += [_field(f"gas:{key}", "gases", f"Gas: {name}", "enum", list(GAS_STATUSES)) for key, name in GASES]
     scope1 = {"stationary": "Stationary Combustion", "mobile": "Mobile Combustion",
               "process": "Process Emissions", "fugitive": "Fugitive Emissions"}
     for key, name in scope1.items():
@@ -829,7 +829,7 @@ def bound_suggestion(field: Mapping[str, Any], suggestion: Mapping[str, Any]) ->
 
 
 async def save_suggestion(db: AsyncSession, *, org_id: uuid.UUID, engagement_id: uuid.UUID, field_id: str,
-                          suggestion: Mapping[str, Any], user_id: uuid.UUID) -> dict[str, Any] | None:
+                          suggestion: Mapping[str, Any], user_id: uuid.UUID | None) -> dict[str, Any] | None:
     """Put a proposal on a field's stored record under a row lock, so it cannot overwrite a
     reviewer's concurrent decision. A fixed field gets its row if it has none. None when the
     field does not exist (an unknown id, or a row that is missing or removed). Raises

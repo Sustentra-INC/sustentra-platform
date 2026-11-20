@@ -249,7 +249,7 @@ def test_one_engagements_decisions_are_not_another_s() -> None:
 
 # --- optional rows: hidden until there is a value or the reviewer adds them ----------------------
 
-OPTIONAL_FIELDS = ("boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "calculation:source_records", "scope2:instruments", *rules.GAS_IDS)  # the real optional rows
+OPTIONAL_FIELDS = ("boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "calculation:source_records", "scope2:instruments")  # the real optional rows (every gas row is always shown)
 OPTIONAL = "optional:test-row"  # the catalog has no optional field yet; the rules are tested with one
 
 

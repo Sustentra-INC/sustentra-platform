@@ -84,6 +84,13 @@ def _display(name: str | None, email: str | None, role: str | None, user_id: Any
     return None if user_id is None else "Unknown user"
 
 
+def _system_actor(user_id: Any, metadata: Any) -> str | None:
+    """An event no signed-in person caused (an automatic read) names its actor in its metadata."""
+
+    actor = _metadata(metadata).get("actor") if user_id is None else None
+    return actor if isinstance(actor, str) and actor else None
+
+
 async def list_events(db: AsyncSession, org_id: str, *, event_type: str | None, user_id: uuid.UUID | None,
                       from_date: date | None, to_date: date | None, cursor: str | None,
                       limit: int) -> tuple[list[dict[str, Any]], str | None]:
@@ -140,7 +147,8 @@ async def list_events(db: AsyncSession, org_id: str, *, event_type: str | None, 
         "created_at": r["created_at"],
         "actor_user_id": r["actor_user_id"],
         "actor_role": r["actor_role"],
-        "actor": _display(r["actor_name"], r["actor_email"], r["actor_role"], r["actor_user_id"]),
+        "actor": (_display(r["actor_name"], r["actor_email"], r["actor_role"], r["actor_user_id"])
+                  or _system_actor(r["actor_user_id"], r["metadata"])),
         "target_type": r["target_type"],
         "target_id": r["target_id"],
         "target": (_display(r["target_name"], r["target_email"], r["target_role"], r["target_id"])

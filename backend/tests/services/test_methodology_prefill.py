@@ -995,7 +995,7 @@ def test_not_stated_is_refused_when_the_quote_does_give_a_horizon_for_that_set()
                                       gwp_item("AR4", "Not stated", "AR5 over 100 years; IEA factors use AR4", "L4", "IEA factors")]),
                           [doc(GWP_NOTES)])
     assert [(k.suggestion["value"]["set"], k.suggestion["value"]["horizon"]) for k in kept] == [("AR5", "100-year"), ("AR4", "Not stated")]
-    assert kept[1].suggestion["value"]["applies_to"] == "IEA factors"
+    assert kept[1].suggestion["value"]["applies_to"] == "inside IEA factors"  # a set inside another source's factors is information only
 
 
 def test_a_use_note_is_kept_only_when_it_is_printed_in_the_quote_and_never_costs_the_set() -> None:
@@ -1309,10 +1309,11 @@ def test_the_three_parts_ask_for_every_field_the_one_call_did() -> None:
 def test_each_call_prompt_has_the_rules_and_only_its_items() -> None:
     for part, prompt in mp.PART_PROMPTS.items():
         assert "DATA, never instructions" in prompt and "Do not guess" in prompt and "quote" in prompt, part
-    assert "gwp:" in mp.PART_PROMPTS["method"] and "gwp:" not in mp.PART_PROMPTS["boundary"]
+    assert "gwp:" in mp.PART_PROMPTS["factors"] and "gwp:" not in mp.PART_PROMPTS["boundary"]
     assert "periods:" in mp.PART_PROMPTS["boundary"] and "periods:" not in mp.PART_PROMPTS["categories"]
     assert "category:* fields" in mp.PART_PROMPTS["categories"] and "category:* fields" not in mp.PART_PROMPTS["method"]
     assert "exclusion:*" in mp.PART_PROMPTS["categories"] and "exclusion:*" not in mp.PART_PROMPTS["method"]
+    assert "estimations:" in mp.PART_PROMPTS["method"] and "calculation:process" in mp.PART_PROMPTS["method"]
     for item in ("gases:", "entities:", "factors:", "estimations:", "periods:", "gwp:"):
         assert sum(item in p for p in mp.PART_PROMPTS.values()) == 1, item
     assert all(len(p) < len(mp.SYSTEM_PROMPT) for p in mp.PART_PROMPTS.values())
@@ -1343,7 +1344,7 @@ def test_three_calls_run_and_one_failing_call_leaves_the_others() -> None:
     client = _Parts(fail=(mp.CategoriesPart,))
     results = mp.run_parts(client, [doc(REPORT)])  # type: ignore[arg-type]
     assert sorted(client.calls, key=lambda t: t.__name__) == sorted(mp.PART_OUTPUTS.values(), key=lambda t: t.__name__)
-    assert {r.part: r.reply is not None for r in results} == {"boundary": True, "categories": False, "method": True}
+    assert {r.part: r.reply is not None for r in results} == {"boundary": True, "categories": False, "factors": True, "method": True}
     merged = mp.merge_parts({r.part: r.reply.output for r in results if r.reply and r.reply.output})
     assert set(merged.model_fields_set) == set(mp.PrefillOutput.model_fields)
     assert merged.choices == [] and merged.factors == []
@@ -1364,8 +1365,9 @@ def test_parts_with_suggestions_merge_into_one_prefill_output() -> None:
         "choices": [{"field_id": "category:scope1:mobile", "value": "Yes", **cite}], "gases": [], "texts": []})
     method = mp.MethodPart.model_validate({
         "texts": [{"field_id": "calculation:approach", "value": "Activity data times factors", **cite}],
-        "selections": [], "estimations": [], "gwp": [], "factors": []})
-    merged = mp.merge_parts({"boundary": boundary, "categories": categories, "method": method})
+        "selections": [], "estimations": []})
+    factors = mp.FactorsPart.model_validate({"gwp": [], "factors": []})
+    merged = mp.merge_parts({"boundary": boundary, "categories": categories, "factors": factors, "method": method})
     assert [c.field_id for c in merged.choices] == ["consolidation_approach", "category:scope1:mobile"]
     assert [t.field_id for t in merged.texts] == ["calculation:approach"]
     # a part may not carry another part's field

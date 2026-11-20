@@ -123,8 +123,8 @@ function staticCatalog(): Def[] {
   const instruments = def("scope2:instruments", "scope2", "Scope 2 instrument types (market-based)", "multiselect", INSTRUMENT_OPTIONS, false);
   instruments.shown_if_yes = MARKET_CATEGORIES;
   fields.push(instruments);
-  // One row per gas, "only if the company has a value".
-  for (const [key, name] of GASES) fields.push(def(`gas:${key}`, "gases", `Gas: ${name}`, "enum", GAS_STATUSES, false));
+  // One row per gas, always shown (a gas the documents do not mention reads "Not mentioned").
+  for (const [key, name] of GASES) fields.push(def(`gas:${key}`, "gases", `Gas: ${name}`, "enum", GAS_STATUSES));
   const scope1 = { stationary: "Stationary Combustion", mobile: "Mobile Combustion", process: "Process Emissions", fugitive: "Fugitive Emissions" };
   for (const [key, name] of Object.entries(scope1)) fields.push(def(`category:scope1:${key}`, "scope1", `Scope 1 ${name}`, "enum", INCLUSIONS));
   const purchased = { electricity: "Purchased Electricity", heating: "Purchased Heating", steam: "Purchased Steam", cooling: "Purchased Cooling" };

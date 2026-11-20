@@ -17,7 +17,6 @@ from backend.app.adapters.llm.claude import StructuredReply, TokenUsage
 from backend.app.api import methodology_review as api
 from backend.app.core.config import Settings
 from backend.app.services import methodology_prefill as mp
-from backend.app.services import methodology_review as rules
 from backend.tests.db.test_engagements import ORIGIN, _admin, call, create, pytestmark, seeded  # noqa: F401
 from backend.tests.db.test_methodology_review import BASE, act, record, review
 from backend.tests.services.test_methodology_prefill import REPORT, doc
@@ -25,7 +24,7 @@ from backend.tests.services.test_methodology_prefill import REPORT, doc
 ON = Settings(environment="test", git_sha="t", ALLOWED_ORIGINS=ORIGIN, ai_suggestions_enabled=True,  # type: ignore[call-arg]
               ai_monthly_cap_usd=1.0)
 OFF = Settings(environment="test", git_sha="t", ALLOWED_ORIGINS=ORIGIN, ai_suggestions_enabled=False)  # type: ignore[call-arg]
-COST = 12_345  # micro-USD per call
+COST = 12_344  # micro-USD for the four calls of one prefill
 
 
 def cite(line: str, quote: str) -> dict[str, str]:
@@ -78,12 +77,12 @@ class FakeClaude:
             raise ConnectionError("this call's network is down")
         if self.fail:
             raise ConnectionError("the network is down")
-        # The reply is asked for in three calls: each answers the part of the canned reply it names.
+        # The reply is asked for in four calls: each answers the part of the canned reply it names.
         part = {k: [i for i in v if self._fits(output_type, k, i)] for k, v in self.output.items()
                 if k in output_type.model_fields}
         parsed = output_type.model_validate(part) if self.outcome == "ok" else None
         return StructuredReply(outcome=self.outcome, output=parsed, model="claude-sonnet-5-5",  # type: ignore[arg-type]
-                               usage=TokenUsage(input_tokens=2_000, output_tokens=300), cost_microusd=COST // 3,  # three calls make one reply's cost
+                               usage=TokenUsage(input_tokens=2_000, output_tokens=300), cost_microusd=COST // 4,  # four calls make one reply's cost
                                request_id="req-9", stop_reason="refusal" if self.outcome == "refused" else "end_turn")
 
 
@@ -123,7 +122,7 @@ def test_prefill_stores_verified_suggestions_and_records_the_call(claude: FakeCl
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["suggested"] == 5 and body["dropped"] == {"quote_not_on_document": 1}
-    assert body["kept_reviewer_decision"] == 0 and body["model"] == "claude-sonnet-5-5" and body["cost_usd"] == 0.012345
+    assert body["kept_reviewer_decision"] == 0 and body["model"] == "claude-sonnet-5-5" and body["cost_usd"] == 0.012344
     assert body["documents_read"] == [{"document_id": "DOC-1", "file_name": "report.pdf", "truncated": False}]
     approach = record(engagement["id"], "consolidation_approach")
     assert approach["decision"] is None  # a proposal only
@@ -138,13 +137,13 @@ def test_prefill_stores_verified_suggestions_and_records_the_call(claude: FakeCl
     assert {c["field_id"] for c in full["catalog"]} >= {r["field_id"] for r in rows}
     [row] = ledger()
     assert (row["outcome"], row["feature"], row["provider"], row["request_id"]) == ("ok", "methodology_prefill", "anthropic", "req-9")
-    assert (row["input_tokens"], row["output_tokens"], row["cost_microusd"]) == (6_000, 900, COST)
+    assert (row["input_tokens"], row["output_tokens"], row["cost_microusd"]) == (8_000, 1_200, COST)
     assert str(row["engagement_id"]) == engagement["id"] and row["created_by"] is not None
     [event] = prefill_events()
     assert json.loads(event["metadata"]) == {"outcome": "ok", "documents": 1, "suggested": 5, "dropped": 1,
-                                             "kept_reviewer_decision": 0, "cost_usd": 0.012345}
+                                             "kept_reviewer_decision": 0, "cost_usd": 0.012344}
     assert "operational control" not in event["metadata"]
-    assert len(claude.calls) == 3 and all("DATA, never instructions" in c["system"] for c in claude.calls)
+    assert len(claude.calls) == 4 and all("DATA, never instructions" in c["system"] for c in claude.calls)
     assert all("L2: We consolidate" in c["content"] for c in claude.calls)
 
 
@@ -231,7 +230,7 @@ def test_rows_read_not_checked_until_a_prefill_finishes_then_not_detected(claude
     before = review(eid).json()
     assert before["prefill_ran_at"] is None and set(states(eid).values()) == {"not_checked"}
     optional = {c["field_id"] for c in before["catalog"] if not c["required"]}
-    assert optional == {"boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "calculation:source_records", "scope2:instruments", *rules.GAS_IDS}
+    assert optional == {"boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "calculation:source_records", "scope2:instruments"}  # every gas row is always shown
     assert all(f["shown"] is (f["field_id"] not in optional) for f in before["fields"])
     assert prefill(eid).status_code == 200
     after = review(eid).json()
@@ -279,13 +278,13 @@ def test_the_cap_refuses_before_a_call_and_only_this_months_spend_counts(claude:
     eid = create()["id"]
     seed_spend(eid, 5_000_000, "now() - interval '40 days'")  # last month's spend does not count
     seed_spend(eid, 999_999)
-    assert prefill(eid).status_code == 200  # 0.999999 + 0.012345 spent; the next call is over the cap
+    assert prefill(eid).status_code == 200  # 0.999999 + 0.012344 spent; the next call is over the cap
     status = review(eid).json()["ai"]
     assert status["reason_code"] == "cap_reached" and status["cap_usd"] == 1.0 and status["month_spend_usd"] == 1.01
     before = len(ledger())
     refused = prefill(eid)
     assert refused.status_code == 409 and "limit" in refused.json()["detail"]
-    assert len(claude.calls) == 3 and len(ledger()) == before
+    assert len(claude.calls) == 4 and len(ledger()) == before
 
 
 def test_another_orgs_spend_does_not_count(claude: FakeClaude) -> None:
@@ -319,7 +318,7 @@ def test_one_failing_call_keeps_the_others_and_names_the_section(claude: FakeCla
     assert record(eid, "consolidation_approach")["suggestion"]["value"] == "Operational Control"  # call (a) kept
     assert record(eid, "category:scope1:stationary")["suggestion"] is None  # call (b) gave nothing
     [row] = ledger()
-    assert row["outcome"] == "ok" and row["cost_microusd"] == 2 * (COST // 3)  # only the answered calls are billed
+    assert row["outcome"] == "ok" and row["cost_microusd"] == 3 * (COST // 4)  # only the answered calls are billed
     assert json.loads(prefill_events()[0]["metadata"])["failed_sections"] == ["Categories, gases and exclusions"]
 
 
@@ -367,14 +366,13 @@ def test_the_same_entity_twice_in_one_reply_makes_one_row(claude: FakeClaude) ->
     assert len(rows) == 2
 
 
-def test_a_prefill_already_running_for_the_org_is_refused(claude: FakeClaude) -> None:
+def test_a_prefill_already_running_for_the_engagement_is_refused(claude: FakeClaude) -> None:
     eid = create()["id"]
-    org = asyncio.run(_admin("SELECT org_id FROM engagements WHERE id = $1::uuid", eid))[0]["org_id"]
-    api._RUNNING.add(str(org))
+    api._RUNNING.add(eid)
     try:
         refused = prefill(eid)
     finally:
-        api._RUNNING.discard(str(org))
+        api._RUNNING.discard(eid)
     assert refused.status_code == 409 and "already being prepared" in refused.json()["detail"]
     assert claude.calls == [] and ledger() == []
     assert prefill(eid).status_code == 200  # and it is free again afterwards
@@ -654,29 +652,29 @@ def test_prefill_keeps_a_quote_per_option_and_the_reviewer_can_change_the_select
     assert record(eid, RECORDS)["decision"]["value"] == free
     none_only = act(eid, INSTR, "edit", {"value": [{"option": "None", "wording": ""}]})  # None is the explicit empty answer
     assert none_only.status_code == 200
-# --- gases covered: one row per gas, "only if the company has a value" -----------------------
+# --- gases covered: one row per gas, always shown (never hidden) -----------------------
 
 GASES = ["gas:co2", "gas:ch4", "gas:n2o", "gas:hfcs", "gas:pfcs", "gas:sf6", "gas:nf3"]
 GAS_LINE = "The inventory covers CO₂, CH₄ and N₂O; SF6 and NF3 are not emitted at our Käserei sites (瑞士)."
 
 
-def test_the_seven_gas_rows_are_hidden_until_there_is_a_value_and_keep_their_own_values(claude: FakeClaude) -> None:
+def test_the_seven_gas_rows_are_always_shown_and_keep_their_own_values(claude: FakeClaude) -> None:
     eid = create()["id"]
     body = review(eid).json()
     defs = {c["field_id"]: c for c in body["catalog"] if c["field_id"].startswith("gas:")}
     assert list(defs) == GASES
-    assert all(d["required"] is False and d["allowed"] == ["Included", "Declared absent", "Not mentioned"] for d in defs.values())
+    assert all(d["required"] is True and d["allowed"] == ["Included", "Declared absent", "Not mentioned"] for d in defs.values())
     assert [d["label"] for d in defs.values()] == ["Gas: CO2", "Gas: CH4", "Gas: N2O", "Gas: HFCs", "Gas: PFCs", "Gas: SF6", "Gas: NF3"]
-    assert not set(GASES) & shown_ids(eid)
+    assert set(GASES) <= shown_ids(eid)  # all seven, from the start
     assert {"group": "gases", "label": "Gases covered"} in body["groups"]
     # the category set and the gas set stay apart
     assert act(eid, "gas:co2", "edit", {"value": "Yes"}).status_code == 422
     assert act(eid, "gas:co2", "edit", {"value": "Not detected"}).status_code == 422
     assert act(eid, "category:scope1:mobile", "edit", {"value": "Included"}).status_code == 422
-    assert not set(GASES) & shown_ids(eid)  # refused edits reveal nothing
+    assert set(GASES) <= shown_ids(eid)
 
 
-def test_prefill_with_a_quote_shows_only_the_gases_it_found(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_prefill_with_a_quote_suggests_only_the_gases_it_found(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
     eid = create()["id"]
     monkeypatch.setattr(mp, "read_documents", lambda candidates, **kw: [doc(REPORT + [(3, GAS_LINE)])])
     claude.output = {**GOOD, "gases": [
@@ -685,20 +683,21 @@ def test_prefill_with_a_quote_shows_only_the_gases_it_found(claude: FakeClaude, 
         {"field_id": "gas:pfcs", "value": "Declared absent", **cite("L9", "PFCs are not emitted")}]}  # not on the page
     body = prefill(eid).json()
     assert body["dropped"] == {"quote_not_on_document": 2}  # the PFC quote, and GOOD's mobile combustion quote
-    assert shown_ids(eid) & set(GASES) == {"gas:co2", "gas:sf6"}
+    assert set(GASES) <= shown_ids(eid)  # every gas stays on the page
+    assert {g for g in GASES if record(eid, g)["suggestion"]} == {"gas:co2", "gas:sf6"}
     assert record(eid, "gas:co2")["suggestion"]["value"] == "Included"
     assert record(eid, "gas:sf6")["suggestion"]["value"] == "Declared absent"
-    assert states(eid)["gas:pfcs"] == "not_detected" and not record(eid, "gas:pfcs")["shown"]
+    assert states(eid)["gas:pfcs"] == "not_detected" and record(eid, "gas:pfcs")["shown"]
 
 
-def test_add_an_item_and_a_reviewer_can_set_not_mentioned_and_decide_a_gas(claude: FakeClaude) -> None:
+def test_a_gas_needs_no_reveal_and_a_reviewer_can_set_not_mentioned_and_decide_a_gas(claude: FakeClaude) -> None:
     eid = create()["id"]
-    assert act(eid, "gas:nf3", "reveal").status_code == 200
+    assert act(eid, "gas:nf3", "reveal").status_code == 422  # already shown: nothing to add
     assert record(eid, "gas:nf3")["shown"] and states(eid)["gas:nf3"] == "not_checked"
     assert act(eid, "gas:nf3", "edit", {"value": "Not mentioned"}).status_code == 200
     assert record(eid, "gas:nf3")["decision"]["value"] == "Not mentioned" and states(eid)["gas:nf3"] == "has_value"
     assert act(eid, "gas:hfcs", "edit", {"value": "Declared absent"}).status_code == 200
-    assert shown_ids(eid) & set(GASES) == {"gas:nf3", "gas:hfcs"}
+    assert set(GASES) <= shown_ids(eid)
 
 
 def test_a_rejected_fixed_gwp_set_never_comes_back_as_a_row(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:

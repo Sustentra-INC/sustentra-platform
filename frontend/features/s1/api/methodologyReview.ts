@@ -164,7 +164,20 @@ export interface AiStatus {
   cap_usd?: number | null;
 }
 
+/** Sustentra's AI reading the engagement's summary documents by itself, after an upload (`waiting`: until the batch
+ *  is complete; `reading`: the call is made; `skipped`: it did not start, `failed`: it started and did not finish, including a stopped read ("Reading was interrupted"); `reason` says why). */
+export interface AutoRead {
+  state: "waiting" | "reading" | "skipped" | "failed";
+  file_names: string[];
+  reason: string | null;
+}
+
+/** Whether a read is waiting or running now. */
+export const autoReadActive = (a: AutoRead | null | undefined): boolean => a?.state === "waiting" || a?.state === "reading";
+
 export interface MethodologyReviewData {
+  /** The automatic read of summary documents, when one is waiting, running or was skipped just now. */
+  autoRead?: AutoRead | null;
   fields: MethodologyRecord[];
   catalog: CatalogField[];
   groups: { group: string; label: string }[];
@@ -203,10 +216,21 @@ function readDef({ field_id, group_label, allowed_labels, user_added, ...rest }:
 
 /** The server names a field `field_id`; the screen reads it as `fieldId`, the methodology review's own id (not an extraction field). */
 export async function getMethodologyReview(engagementId: string): Promise<MethodologyReviewData> {
-  const wire = await api<{ fields: WireRecord[]; catalog: WireDef[]; groups: { group: string; label: string }[]; row_groups: string[]; ai: AiStatus }>(
-    base(engagementId)
-  );
-  return { ai: wire.ai, groups: wire.groups, rowGroups: wire.row_groups, catalog: wire.catalog.map(readDef), fields: wire.fields.map(readRecord) };
+  const wire = await api<{
+    fields: WireRecord[];
+    catalog: WireDef[];
+    groups: { group: string; label: string }[];
+    row_groups: string[];
+    ai: AiStatus;
+    auto_read?: AutoRead | null;
+  }>(base(engagementId));
+  return { autoRead: wire.auto_read ?? null, ai: wire.ai, groups: wire.groups, rowGroups: wire.row_groups, catalog: wire.catalog.map(readDef), fields: wire.fields.map(readRecord) };
+}
+
+/** The small status the Evidence page polls: is Sustentra's AI reading summary documents by itself? */
+export async function getAutoRead(engagementId: string): Promise<AutoRead | null> {
+  const wire = await api<{ auto_read?: AutoRead | null }>(`${base(engagementId)}/auto-read`);
+  return wire.auto_read ?? null;
 }
 
 export const acceptField = (engagementId: string, fieldId: string) =>
