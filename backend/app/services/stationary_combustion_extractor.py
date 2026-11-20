@@ -226,9 +226,10 @@ _DATE_HEADERS = ("date", "delivery date", "read date", "invoice date", "date pos
 # A usage table ends at its summary row: "Total", or a yearly roll-up such as "Annual quantity" /
 # "Year to date", which would double count the rows above it if read as one more record.
 _TOTAL_ROW_WORDS = ("total", "totals", "subtotal", "grand total", "annual", "year to date", "ytd", "year total")
-# A carried-forward or balance line repeats figures already counted: it is skipped, and the table goes on.
-_CARRIED_ROW_WORDS = ("b/f", "c/f", "bf", "cf", "balance", "bal", "brought forward", "carried forward",
-                      "opening balance", "closing balance", "opening stock", "closing stock")
+# In a run log, a carried-forward line (no date) repeats figures already counted: it is skipped and the table
+# goes on. Whole phrases only: a meter "BAL 7" or a run called "Balance test" is a real line.
+_CARRIED_ROW_PHRASES = ("b/f", "c/f", "brought forward", "carried forward", "opening balance", "closing balance",
+                        "balance b/f", "balance c/f")
 
 # A generator run log: one line per run, with the hours it ran and the fuel added afterwards. It names no
 # fuel in its columns, so the fuel is left for the reviewer rather than guessed.
@@ -241,10 +242,11 @@ _FUEL_ADDED_RE = re.compile(
 _NOT_ADDED_RE = re.compile(r"\b(?:level|before|after|on hand|remaining|balance|capacity|start|end|opening|closing)\b")
 # What a run log is about, and what rules it out: a vehicle, a machine or a fleet is not a standby generator.
 _RUN_LOG_STATIONARY_RE = re.compile(
-    r"\b(?:generators?|gensets?|standby|day tank|boilers?|furnaces?|fire pump|emergency power)\b")
+    r"\b(?:generators?|gensets?|gen|standby|day tank|boilers?|furnaces?|fire pump|emergency power|emergency gen|"
+    r"dg set)\b|\bgen[- ]?\d")
 _RUN_LOG_MOBILE_RE = re.compile(
     r"\b(?:vehicles?|fleet|odometer|miles?|mileage|mpg|telematics|excavators?|loaders?|bulldozers?|backhoes?|"
-    r"forklifts?|tractors?|trucks?|cranes?|drivers?|fuel card)\b")
+    r"forklifts?|tractors?|trucks?|cranes?|fuel card)\b")
 
 _MONTHS = {
     m: i
@@ -784,7 +786,12 @@ class StationaryCombustionExtractor:
         if not (self.RUN_LOG_WITHOUT_FUEL and self._is_run_log(rows)):
             return False
         text = " ".join(c.text for r in rows for c in r.cells).lower().replace("_", " ")
-        return bool(_RUN_LOG_STATIONARY_RE.search(text)) and not _RUN_LOG_MOBILE_RE.search(text)
+        # "driver" counts only as a column heading (a person called Driver is not a vehicle)
+        headings = " ".join(
+            c.text for r in rows if any(_RUN_HOURS_RE.search(_norm(x.text).replace("_", " ")) for x in r.cells)
+            for c in r.cells).lower().replace("_", " ")
+        return (bool(_RUN_LOG_STATIONARY_RE.search(text)) and not _RUN_LOG_MOBILE_RE.search(text)
+                and not re.search(r"\bdrivers?\b", headings))
 
     def reads_as_fuelless_run_log(self, parser_output: dict) -> bool:
         """True when the document is a run log that names no fuel (so the reviewer must pick it)."""
@@ -1833,6 +1840,8 @@ class StationaryCombustionExtractor:
         # "Volume (L)": a unit in parentheses may be a single letter
         header_unit_text = paren.group(1) if paren and self._canonical_unit(paren.group(1)) else header_text
         header_unit = self._canonical_unit(header_unit_text) or self._find_unit(header_text)
+        run_log = self.RUN_LOG_WITHOUT_FUEL and any(
+            _RUN_HOURS_RE.search(_norm(c.text).replace("_", " ")) for c in header_cells)
         records: list[UsageRecord] = []
         last_top = header_row.top
         header_texts = [_norm(c.text) for c in header_cells]
@@ -1860,7 +1869,8 @@ class StationaryCombustionExtractor:
             first = _norm(row.cells[0].text)
             if any(first == w or first.startswith(w + " ") for w in _TOTAL_ROW_WORDS):
                 break
-            if any(first == w or first.startswith(w + " ") for w in _CARRIED_ROW_WORDS):
+            if (run_log and any(first == w or first.startswith(w + " ") for w in _CARRIED_ROW_PHRASES)
+                    and not any(parse_date(c.text) for c in row.cells)):
                 continue
             qty_cell = assigned.get(columns["quantity"])
             number = parse_number(qty_cell.text) if qty_cell is not None else None
