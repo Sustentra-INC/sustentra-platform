@@ -3864,11 +3864,6 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-setup-save { font-size: var(--text-sm); color: var(--ink-3); white-space: nowrap; }
 .s1-setup-save--error { color: var(--state-blocking-fg); white-space: normal; }
 
-/* A summary document opened on its own: the methodology facts read from it beside the page. */
-.s1-sd { display: grid; grid-template-columns: minmax(20rem, 2fr) minmax(0, 3fr); gap: var(--sp-5); align-items: start; }
-.s1-sd__facts { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
-.s1-sd__page { position: sticky; top: var(--sp-4); min-width: 0; }
-.s1-sd__note { margin: 0; }
 .s1-mb-row[data-selected] { background: var(--sf-card); box-shadow: inset 0.2rem 0 0 var(--state-active-line); }
 .s1-mb-notlocated { font-size: var(--text-sm); color: var(--state-blocking-fg); }
 @media (max-width: 60rem) { .s1-sd { grid-template-columns: minmax(0, 1fr); } .s1-sd__page { position: static; } }
@@ -3885,3 +3880,4 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-mb-summary__chip:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .s1-mb-summary__foot { margin: 0; }
 .s1-mb-summary__reasons { margin: 0; padding-left: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); }
+.s1-xr-values .s1-sd__note { margin: 0; }
