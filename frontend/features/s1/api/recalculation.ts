@@ -417,6 +417,8 @@ export { plural as pluralCount };
 export interface Recalculation {
   engagement_id: string;
   gwp_set: string;
+  /** How the GWP basis is worded (set, horizon, and whether Methodology review chose it); absent until the backend sends it. */
+  gwp_label?: string;
   reporting_period: { start: string | null; end: string | null };
   tolerance_pct: number;
   /** Later categories (refrigerants, steam, heating) are missing from results computed before them. */

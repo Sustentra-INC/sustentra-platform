@@ -181,6 +181,7 @@ export function BackendVerificationResults({
             inputs={result.calculation_line_inputs}
             comparisons={result.comparisons}
             gwpSet={result.gwp_set}
+            gwpLabel={result.gwp_label}
             settings={engagement.recalculation ?? {}}
             onSave={(next) => save(next, { quiet: true })}
             store={store}
