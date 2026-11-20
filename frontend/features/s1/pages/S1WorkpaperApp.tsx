@@ -1310,6 +1310,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               onOpenDocument={openExtraction}
               focusLineKey={activeView.lineKey}
               onOpenEvidence={(key) => setActiveView(scheduleViewForLine(key))}
+              onOpenEvidenceTree={() => setActiveView({ name: "evidence" })}
             />
           ) : (
             <VerificationResults
@@ -1399,7 +1400,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             onOpenEvidence={() => setActiveView({ name: "evidence" })}
             onMissing={() => {
               history.replaceView({ name: "evidence" });
-              setBackendError({ title: "Couldn't open that schedule", message: "That schedule is no longer in this engagement." });
+              setBackendError({ title: "Couldn't open that data point review", message: "That data point review is no longer in this engagement." });
             }}
             onOpenDocument={openExtraction}
             onOpenCalculationLine={(key) => setActiveView(resultsViewForLine(key))}
