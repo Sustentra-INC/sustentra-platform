@@ -105,7 +105,7 @@ _QUANTITY_WITH_UNIT = re.compile(rf"\d[\d,.]*\s*{_UNITS}\b", re.I)
 _QUANTITY_LABEL = re.compile(r"\b(?:quantity|qty|gallons?|kwh|therms?)\b", re.I)
 _BILL_ROW_LABEL = re.compile(
     # "Account Number   3305", "Account No. 3305", "Account #3305", "Meter No. 12": the label, then anything or nothing
-    r"^\s*(?:(?:account|meter|invoice)\s+(?:number|no\.?|#)\s*(?:$|[:#\t]|\S)"
+    r"^\s*(?:(?:account|meter|invoice)\s+(?:number\b|no\b\.?|#)\s*(?:$|[:#\t]|\S)"
     # a label of words, not abbreviations: followed by a colon, a tab, a value or the end of the line, so a wrapped
     # sentence that starts "statement date. Late payments..." is not a bill row
     r"|(?:billing\s+period|service\s+period|invoice\s+date|statement\s+date|due\s+date)\b(?=$|[:#\t]|\s+\S))",

@@ -249,18 +249,24 @@ def test_a_utility_bill_with_space_gapped_labels_and_empty_tables_is_not_halted(
 @pytest.mark.parametrize("label", ["Account No. 3305", "Account #3305", "Meter No. 12", "Meter # 12", "Invoice No. 889",
                                    "Account Number   3305", "Billing Period 10/01-10/31"])
 def test_abbreviated_and_space_gapped_bill_labels_block_the_contract(label: str) -> None:
-    assert looks_like_a_contract(output(CONTRACT + label + "\\n", tables=[], key_value_pairs=[])) is False, label
+    assert looks_like_a_contract(output(CONTRACT + label + "\n", tables=[], key_value_pairs=[])) is False, label
 
 
 @pytest.mark.parametrize("quantity", ["12 mcf", "300 lb", "300 lbs", "250 kg", "500 gal", "38.5 Dth", "1,200 L"])
 def test_a_quantity_with_a_unit_blocks_the_contract(quantity: str) -> None:
-    assert looks_like_a_contract(output(CONTRACT + f"Delivered {quantity}\\n")) is False, quantity
+    assert looks_like_a_contract(output(CONTRACT + f"Delivered {quantity}\n")) is False, quantity
+
+
+@pytest.mark.parametrize("sentence", ["Meter notices shall be sent in writing.", "Account notes are kept by the Company.",
+                                      "Meter noting is done monthly.", "Account numbers are assigned by the Company."])
+def test_a_sentence_that_only_starts_like_a_label_is_not_a_bill_row(sentence: str) -> None:
+    assert looks_like_a_contract(output(CONTRACT + sentence + "\n", tables=[], key_value_pairs=[])) is True, sentence
 
 
 def test_a_wrapped_sentence_that_starts_with_statement_date_is_not_a_bill_row() -> None:
     # The NPL contract wraps "...within twenty-one (21) days of the / statement date. Late payments accrue."
-    wrapped = CONTRACT.replace("5. Entire", "4b. Payment\\nPayment is due within twenty-one (21) days of the\\n"
-                               "statement date. Late payments accrue charges.\\n5. Entire")
+    wrapped = CONTRACT.replace("5. Entire", "4b. Payment\nPayment is due within twenty-one (21) days of the\n"
+                               "statement date. Late payments accrue charges.\n5. Entire")
     assert looks_like_a_contract(output(wrapped, tables=[], key_value_pairs=[])) is True
 
 
