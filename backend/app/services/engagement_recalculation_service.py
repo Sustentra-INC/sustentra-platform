@@ -77,21 +77,37 @@ RECALCULATED_TYPES = (STATIONARY, MOBILE, ELECTRICITY, REFRIGERANT, THERMAL)
 # A thermal bill's energy type -> its roll-up source (workbook rows 48, 49, 50).
 PLACEMENT_SOURCES = ("stationary_combustion", "mobile_combustion", "purchased_electricity",
                      "fugitive_refrigerants", "purchased_steam", "purchased_heating")
-# Why a record is on no line, and what to do about it (the Results open item for its category).
+# Why a record is on no line, and what to do about it (the Results open item for its category). In a hint,
+# {it} / {them} / {its} follow the number of records.
 NOT_ON_A_LINE_WHY = {
     "not_on_a_line": "the document is not on a calculation line",
     "no_calculation_line": "no calculation line exists for it yet",
     "no_vehicle_group": "no vehicle group is set up",
     "fuel_shared_by_vehicle_groups": "more than one vehicle group uses the fuel",
     "facility_not_in_setup": "its facility is not in Setup",
+    "identifier_on_several_facilities": "the account or meter number is listed on more than one Setup facility",
+    "facility_ambiguous": "more than one Setup facility matches the name or address",
+    "facility_suggested_not_confirmed": "Claude suggested a facility and nobody has confirmed it",
 }
 NOT_ON_A_LINE_HINT = {
-    "not_on_a_line": "Place it in Evidence.",
-    "no_calculation_line": "Place it in Evidence.",
-    "no_vehicle_group": "Add it in Setup.",
+    "not_on_a_line": "Place {them} in Evidence.",
+    "no_calculation_line": "Answer the fuel or energy type question in Evidence.",
+    "no_vehicle_group": "Add {it} in Setup.",
     "fuel_shared_by_vehicle_groups": "Choose the vehicle group in Evidence.",
-    "facility_not_in_setup": "Add it in Setup.",
+    "facility_not_in_setup": "Add {it} in Setup.",
+    "identifier_on_several_facilities": "Choose the facility in Evidence ({its} account or meter number is on "
+                                        "more than one facility in Setup).",
+    "facility_ambiguous": "Choose the facility in Evidence.",
+    "facility_suggested_not_confirmed": "Confirm the suggested facility in Evidence.",
 }
+
+
+def not_on_a_line_hint(reason: str, count: int) -> str:
+    one = count == 1
+    return NOT_ON_A_LINE_HINT[reason].format(it="it" if one else "them", them="it" if one else "them",
+                                             its="its" if one else "their")
+
+
 THERMAL_SOURCE = {"steam": "purchased_steam", "hot_water": "purchased_heating", "chilled_water": "purchased_cooling"}
 STEAM_BTU_PER_LB_RANGE = (500.0, 1600.0)  # saturated and superheated steam, as delivered
 
@@ -418,6 +434,10 @@ def _proration(start: Any, end: Any, period: tuple[date | None, date | None]) ->
 # =========================================================================================
 # Service
 # =========================================================================================
+def _text_of(value: Any) -> str:
+    return str(value).strip() if value is not None else ""
+
+
 def _suggested(item: dict[str, Any]) -> bool:
     """A value Claude read (flag ai_suggested): the workpaper says so and keeps it out of "values extracted"."""
 
@@ -449,6 +469,8 @@ class EngagementRecalculationService:
         self._decisions: dict[str, dict[str, Any]] = {}
         # Set per recalculation, for the calculation lines.
         self._ledger = Ledger()
+        # Claude's facility suggestions by document, read with the records (a suggestion is not a placement).
+        self._suggested_facilities: dict[str, dict[str, Any]] = {}
 
     @property
     def reference(self) -> EmissionFactorReference:
@@ -509,6 +531,8 @@ class EngagementRecalculationService:
             canonical_type_id = str(latest.get("canonical_type_id") or "")
             if canonical_type_id not in RECALCULATED_TYPES:
                 continue
+            if isinstance(latest.get("facility_suggestion"), dict):
+                self._suggested_facilities[document_id] = latest["facility_suggestion"]
             reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
             records.extend(group_reviewed_records(document, canonical_type_id, latest.get("items") or [], reviews))
         return records
@@ -523,6 +547,7 @@ class EngagementRecalculationService:
         inputs = parse_inputs(engagement.get("settings"))
         period = (_date(engagement.get("reporting_period_start")), _date(engagement.get("reporting_period_end")))
         decisions = decisions or {}
+        self._suggested_facilities = {}
         placed, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
         self._facilities = setup_facilities(engagement.get("settings"))
         self._company = engagement.get("client_name")
@@ -591,7 +616,7 @@ class EngagementRecalculationService:
                 "kind": "not_on_a_line", "key": f"not_on_a_line:{category}:{reason}",
                 **({"category": category} if category != "None" else {}),
                 "message": f"{count} accepted {'record' if count == 1 else 'records'} not counted in this category: "
-                           f"{NOT_ON_A_LINE_WHY[reason]}. {NOT_ON_A_LINE_HINT[reason]}"})
+                           f"{NOT_ON_A_LINE_WHY[reason]}. {not_on_a_line_hint(reason, count)}"})
 
         categories: dict[str, calc.CategoryResult | None] = {
             "stationary_combustion": stationary,
@@ -751,8 +776,7 @@ class EngagementRecalculationService:
                           "reason": "not_on_a_calculation_line"} for doc, d in listed.items()],
         }
 
-    @staticmethod
-    def _off_line_reason(record: ReviewedRecord, filing: recalculation_lines.Filing | None,
+    def _off_line_reason(self, record: ReviewedRecord, filing: recalculation_lines.Filing | None,
                          decisions: dict[str, dict[str, Any]], group_count: dict[str, int]) -> str:
         """Why a record is on no line: filed there by a reviewer, no vehicle group, a fuel several vehicle groups
         share, no Setup facility, or no line for it yet (its fuel or gas is not settled)."""
@@ -764,10 +788,25 @@ class EngagementRecalculationService:
             return ("fuel_shared_by_vehicle_groups" if group_count.get(str(place.level2_label).lower(), 0) > 1
                     else "no_vehicle_group")
         if place.anchor_kind == "facility" and place.level2 and place.anchor_id is None:
-            return "facility_not_in_setup"
+            return self._why_no_facility(record, decisions)
         if not place.level2 or not place.anchor_kind:
             return "no_calculation_line"
         return "not_on_a_line"
+
+    def _why_no_facility(self, record: ReviewedRecord, decisions: dict[str, dict[str, Any]]) -> str:
+        """No facility was chosen for the record: its number is on several facilities, the name or address
+        matches several, Claude only suggested one, or nothing in the document matches a Setup facility."""
+
+        found = place_on_facility(self._facilities, decisions, record.document_id, record, self._company)
+        if found.ambiguous:
+            return "identifier_on_several_facilities" if found.note else "facility_ambiguous"
+        suggestion = self._suggested_facilities.get(record.document_id)
+        names_a_place = any(
+            _text_of(record.for_placement(name)) for name in ("facility_name", "service_address"))
+        if (suggestion and not names_a_place and str(suggestion.get("facility_id") or "") in
+                {str(f.get("facilityId")) for f in self._facilities} and str(suggestion.get("quote") or "").strip()):
+            return "facility_suggested_not_confirmed"
+        return "facility_not_in_setup"
 
     @staticmethod
     def _documents_reviewed(records: list[ReviewedRecord], needs_input: list[dict[str, Any]],

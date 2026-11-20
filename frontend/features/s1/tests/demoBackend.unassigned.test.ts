@@ -2,7 +2,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { EvidenceTree } from "../api/evidenceTree";
-import { uncountedGroups, uncountedMessage, type Recalculation } from "../api/recalculation";
+import { uncountedGroups, uncountedHint, uncountedMessage, type Recalculation } from "../api/recalculation";
 import { demoApi } from "../demo-backend";
 import { setDemoEngagement } from "../demo-backend/state";
 import { engagementConfig } from "../fixtures/engagementConfig";
@@ -56,5 +56,17 @@ describe("demo backend: values off a calculation line are not counted", () => {
     const groups = uncountedGroups({ accepted_records: 12, documents: [doc("A", 5), doc("B", 7)] });
     expect(groups).toHaveLength(1);
     expect(groups[0]).toMatchObject({ reason: "no_vehicle_group", records: 12 });
+  });
+
+  it("words each reason's hint for one record or several", () => {
+    expect(uncountedHint("facility_not_in_setup", 1)).toBe("Add it in Setup.");
+    expect(uncountedHint("no_vehicle_group", 3)).toBe("Add them in Setup.");
+    expect(uncountedHint("not_on_a_line", 2)).toBe("Place them in Evidence.");
+    expect(uncountedHint("fuel_shared_by_vehicle_groups", 2)).toBe("Choose the vehicle group in Evidence.");
+    expect(uncountedHint("facility_suggested_not_confirmed", 1)).toBe("Confirm the suggested facility in Evidence.");
+    expect(uncountedHint("no_calculation_line", 1)).toBe("Answer the fuel or energy type question in Evidence.");
+    expect(uncountedHint("identifier_on_several_facilities", 1)).toBe(
+      "Choose the facility in Evidence (its account or meter number is on more than one facility in Setup).",
+    );
   });
 });

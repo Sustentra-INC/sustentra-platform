@@ -9,6 +9,7 @@ import {
   getRecalculationReference,
   pluralCount,
   UNCOUNTED_REASON,
+  uncountedHint,
   uncountedGroups,
   uncountedMessage,
   type Recalculation,
@@ -211,7 +212,7 @@ export function BackendVerificationResults({
                 <ul>
                   {uncountedGroups(result.uncounted_values).map((g) => (
                     <li key={g.reason}>
-                      {pluralCount(g.records, "record", "records")}: {UNCOUNTED_REASON[g.reason]}
+                      {pluralCount(g.records, "record", "records")}: {UNCOUNTED_REASON[g.reason]}. {uncountedHint(g.reason, g.records)}
                       <ul>
                         {g.documents.map((d) => (
                           <li key={d.document_id}>

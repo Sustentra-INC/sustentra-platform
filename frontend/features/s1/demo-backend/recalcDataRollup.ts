@@ -272,11 +272,15 @@ export function qualityChecks(c: Calculated): QualityCheck[] {
 function uncountedValues(c: Calculated): NonNullable<Recalculation["uncounted_values"]> {
   type Entry = NonNullable<Recalculation["uncounted_values"]>["documents"][number];
   const lineKeys = new Set(c.model.lines.map((l) => l.key));
-  const hasGroup = c.model.lines.some((l) => l.anchor_kind === "vehicle_group");
+  // Vehicle groups using a record's fuel (its target's level 2), as the live rule counts them per fuel.
+  const groupsUsing = (r: (typeof c.model.records)[number]) => {
+    const fuel = r.defaultTarget.split(":")[2];
+    return c.model.lines.filter((l) => l.anchor_kind === "vehicle_group" && l.level2 === fuel).length;
+  };
   const moved = (id: string) => (demoDecisions().get(id)?.placements?.length ?? 0) > 0;
   // The live rule (EngagementRecalculationService._off_line_reason): a reviewer's move first, then what the record lacks.
   const reasonOf = (r: (typeof c.model.records)[number]): Entry["reason"] =>
-    moved(r.documentId) ? "not_on_a_line" : r.kind === "fleet" && !hasGroup ? "no_vehicle_group" : r.kind !== "fleet" && r.facilityId === null ? "facility_not_in_setup" : "not_on_a_line";
+    moved(r.documentId) ? "not_on_a_line" : r.kind === "fleet" && groupsUsing(r) !== 1 ? (groupsUsing(r) > 1 ? "fuel_shared_by_vehicle_groups" : "no_vehicle_group") : r.kind !== "fleet" && r.facilityId === null ? "facility_not_in_setup" : "not_on_a_line";
   const byDocument = new Map<string, Entry>();
   for (const r of c.model.records) {
     if (!CALCULABLE.includes(r.kind) || !r.accepted || r.quantity === null) continue;

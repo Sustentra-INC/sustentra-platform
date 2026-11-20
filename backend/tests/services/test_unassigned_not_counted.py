@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 
 from backend.app.services import calculation_lines as cl
-from backend.tests.services.test_calculation_lines import GAS_KC, GAS_STL, KC
+from backend.tests.services.test_calculation_lines import GAS_KC, GAS_STL, KC, STL
 from backend.tests.services.test_calculation_lines import _gas
 from backend.tests.services.test_engagement_recalculation_service import FakeStore
 from backend.tests.services.test_recalculation_lines import _by_key, _engagement, _service
@@ -252,18 +252,56 @@ def test_the_workpaper_lists_the_left_out_documents() -> None:
     assert summary["Documents read"] == 1
 
 
+def _hint(result: dict) -> str:
+    (item,) = [i for i in result["needs_input"] if i["kind"] == "not_on_a_line"]
+    return item["message"]
+
+
+def _reason(result: dict) -> str:
+    (doc,) = result["uncounted_values"]["documents"]
+    return doc["reason"]
+
+
 def test_the_open_item_hint_matches_each_reason() -> None:
     from backend.tests.services.test_recalculation_lines import GROUP_OFF, GROUP_ROAD, _mobile_store
 
-    def hint(result: dict) -> str:
-        (item,) = [i for i in result["needs_input"] if i["kind"] == "not_on_a_line"]
-        return item["message"]
-
-    assert hint(_service(_mobile_store()).recalculate(_engagement_with(), _own)).endswith("Add it in Setup.")
-    assert hint(_run(_store(("X", [NOWHERE])))).endswith("Add it in Setup.")
+    # two records, so the hint is plural
+    assert _hint(_service(_mobile_store()).recalculate(_engagement_with(), _own)).endswith("Add them in Setup.")
+    assert _hint(_run(_store(("X", [NOWHERE])))).endswith("Add it in Setup.")
     shared = _service(_mobile_store()).recalculate(
         _engagement_with(recalculation={"vehicle_groups": [GROUP_ROAD, GROUP_OFF]}), _own)
-    assert hint(shared).endswith("Choose the vehicle group in Evidence.")
+    assert _hint(shared).endswith("Choose the vehicle group in Evidence.")
     moved = _run(_store(("GAS-STL", [_stl()])), {"GAS-STL": {"placements": [
         {"from": GAS_STL, "to": cl.SUPPORTING_UNASSIGNED}]}})
-    assert hint(moved).endswith("Place it in Evidence.")
+    assert _hint(moved).endswith("Place it in Evidence.")
+    unsettled = _run(_store(("COAL", [_gas(5, fuel="unobtainium")])))
+    assert _reason(unsettled) == "no_calculation_line"
+    assert _hint(unsettled).endswith("Answer the fuel or energy type question in Evidence.")
+
+
+def test_a_number_on_several_facilities_is_not_a_facility_missing_from_setup() -> None:
+    bill = {**_gas(100), "facility_name": (None, None), "account_number": ("4417 2290 31", None)}
+    both = [{**KC, "accountNumbers": ["4417 2290 31"]}, {**STL, "accountNumbers": ["4417-2290-31"]}]
+    result = _run(_store(("D", [bill])), facilities=both)
+    assert _reason(result) == "identifier_on_several_facilities"
+    assert _hint(result).endswith(
+        "Choose the facility in Evidence (its account or meter number is on more than one facility in Setup).")
+    # the same number on one facility only places the bill: counted, nothing left out
+    one = _run(_store(("D", [bill])), facilities=[{**KC, "accountNumbers": ["4417 2290 31"]}, STL])
+    assert one["uncounted_values"]["accepted_records"] == 0
+
+
+def test_a_facility_only_claude_suggested_asks_for_confirmation() -> None:
+    store = _store(("D", [{**_gas(100), "facility_name": (None, None)}]))
+    store.results["D"][0]["facility_suggestion"] = {"facility_id": "fac-kc01", "quote": "Kent", "source": "file_name"}
+    result = _run(store)
+    assert _reason(result) == "facility_suggested_not_confirmed"
+    assert _hint(result).endswith("Confirm the suggested facility in Evidence.")
+    # a suggestion for a facility that left Setup is nothing to confirm; nothing in the bill matches Setup
+    gone = _store(("D", [{**_gas(100), "facility_name": (None, None)}]))
+    gone.results["D"][0]["facility_suggestion"] = {"facility_id": "fac-gone", "quote": "Kent", "source": "file_name"}
+    assert _reason(_run(gone)) == "facility_not_in_setup"
+    # the bill names a place Setup does not have: that is for the reviewer, not Claude's suggestion
+    named = _store(("D", [NOWHERE]))
+    named.results["D"][0]["facility_suggestion"] = {"facility_id": "fac-kc01", "quote": "Kent", "source": "file_name"}
+    assert _reason(_run(named)) == "facility_not_in_setup"
