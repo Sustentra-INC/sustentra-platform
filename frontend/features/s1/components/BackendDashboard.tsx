@@ -29,6 +29,7 @@ export function BackendDashboard({
   onNavigate,
   onOpenReview,
   onError,
+  methodologyKey,
 }: {
   engagement: EngagementConfig;
   evidence: EvidenceItem[];
@@ -39,6 +40,8 @@ export function BackendDashboard({
   onNavigate?: (key: NavKey) => void;
   onOpenReview?: () => void;
   onError: (error: unknown) => boolean;
+  /** Changes whenever Methodology review changes (it can change the GWP set the figures use). */
+  methodologyKey?: string;
 }) {
   const [result, setResult] = useState<Recalculation | null>(null);
   // The engagement whose recalculation failed to load: then the dashboard shows what it has.
@@ -63,7 +66,7 @@ export function BackendDashboard({
     return () => {
       live = false;
     };
-  }, [engagement.engagementId, reviewedCount, evidence.length]);
+  }, [engagement.engagementId, reviewedCount, evidence.length, methodologyKey]);
 
   const { start, end } = engagement.reportingPeriod;
   const figures = useMemo(() => {

@@ -12,6 +12,7 @@ import { verificationLines } from "../fixtures/verification/resultsDataset";
 import { COMPARISON_POINTS, LAYOUT_CATEGORIES, LAYOUT_NODES, LAYOUT_OUTPUTS, LAYOUT_STEPS } from "./recalcDataLayout";
 import { CALCULABLE, buildCategories, calculate, gwpOf, typeId, type Calculated } from "./recalcDataCalc";
 import { demoDecisions } from "./state";
+import { demoGwpChoice } from "./methodology";
 import { monthCoverage, recordsOn, shareInPeriod } from "./linesModel";
 
 const GROUPS: GasGroup[] = ["CO2", "CH4", "N2O", "HFCs", "PFCs", "SF6", "NF3"];
@@ -296,6 +297,7 @@ function uncountedValues(c: Calculated): NonNullable<Recalculation["uncounted_va
 
 export function buildRecalculation(engagementId: string): Recalculation {
   const c = calculate();
+  const gwpChoice = demoGwpChoice(engagementId);
   const categories = buildCategories(c);
   const reported = defaultReported(c);
   const rollup = buildRollup(c, reported);
@@ -307,7 +309,10 @@ export function buildRecalculation(engagementId: string): Recalculation {
   const fill = (key: string) => categories[key as keyof typeof categories] ?? null;
   void typeId;
   return {
-    engagement_id: engagementId, gwp_set: c.inputs.gwp_set, reporting_period: { start: c.model.period.start, end: c.model.period.end }, tolerance_pct: c.inputs.tolerance_pct,
+    engagement_id: engagementId,
+    gwp_set: gwpChoice.blocked ? null : c.inputs.gwp_set, gwp_label: gwpChoice.label, gwp_blocked: gwpChoice.blocked, gwp_row: gwpChoice.row,
+    gwp_refrigerant_set: gwpChoice.refrigerantSet, gwp_refrigerant_row: gwpChoice.refrigerantRow, gwp_info: gwpChoice.info,
+    reporting_period: { start: c.model.period.start, end: c.model.period.end }, tolerance_pct: c.inputs.tolerance_pct,
     categories: {
       stationary_combustion: fill("stationary_combustion"), mobile_combustion: fill("mobile_combustion"), fugitive_refrigerants: fill("fugitive_refrigerants"),
       purchased_electricity_location_based: fill("purchased_electricity_location_based"), purchased_electricity_market_based: fill("purchased_electricity_market_based"),

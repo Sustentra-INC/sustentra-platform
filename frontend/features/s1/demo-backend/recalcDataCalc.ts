@@ -10,6 +10,7 @@ import type {
   RecalcAwaitingReview, RecalcCategory, RecalcLine, RecalcStep, RollupSourceKey,
 } from "../api/recalculation";
 import type { RecalculationSettings } from "../types/engagement";
+import { demoGwpChoice } from "./methodology";
 import { DEFAULT_VEHICLE_GROUP, buildModel, engagementNow, recordsOn, shareInPeriod, type Model, type ModelLine, type ModelRecord } from "./linesModel";
 
 const HUB = "EPA GHG Emission Factors Hub 2025";
@@ -62,7 +63,7 @@ export function inputsNow(): Inputs {
   const settings = engagement.recalculation ?? {};
   const tolerance = Number.parseFloat(engagement.materialityThreshold ?? "5");
   return {
-    gwp_set: settings.gwp_set ?? "AR5",
+    gwp_set: demoGwpChoice(engagement.engagementId).set ?? "AR5",
     tolerance_pct: Number.isFinite(tolerance) ? tolerance : 5,
     settings,
     vehicleGroup: { ...DEFAULT_VEHICLE_GROUP, ...(settings.vehicle_groups?.[0] ?? {}) } as typeof DEFAULT_VEHICLE_GROUP,

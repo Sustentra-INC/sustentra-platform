@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { leftOutMessage, type Recalculation, type RecalculationReference } from "../api/recalculation";
+import { gwpLabel, leftOutMessage, type Recalculation, type RecalculationReference } from "../api/recalculation";
 import type { RecalculationCertificate, RecalculationSettings } from "../types";
 import { draftProblem, draftsFrom, settingsFrom, VehicleGroupsFieldset, withSavedIds, type VehicleGroupDraft } from "./VehicleGroupsFieldset";
 
@@ -47,8 +47,18 @@ export function RecalculationInputs({
     if (gone.length) setRemovedVehicles((current) => [...current, ...gone]);
     setVehicleDrafts(next);
   }
+  // A refrigerant GWP belongs to the set it was entered under; a plain number (saved without a set) belongs to
+  // none and is asked about again. Only entries of the set the refrigerants use show here; the others stay as entered.
+  const activeSet = result.gwp_refrigerant_set ?? result.gwp_set;
+  const entryOf = (v: number | { value: number; gwp_set: string }) =>
+    typeof v === "number" ? { value: v, gwp_set: "" } : v;
   const [gwpText, setGwpText] = useState<Record<string, string>>(() =>
-    Object.fromEntries(Object.entries(settings.refrigerant_gwps ?? {}).map(([gas, value]) => [gas, String(value)]))
+    Object.fromEntries(
+      Object.entries(settings.refrigerant_gwps ?? {})
+        .map(([gas, v]) => [gas, entryOf(v)] as const)
+        .filter(([, e]) => e.gwp_set === activeSet)
+        .map(([gas, e]) => [gas, String(e.value)])
+    )
   );
   const [steamText, setSteamText] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(settings.steam_heat_content ?? {}).map(([site, value]) => [site, String(value)]))
@@ -95,8 +105,15 @@ export function RecalculationInputs({
       label: c.label.trim(),
       mwh: Number(c.mwh),
     }));
-    const refrigerant_gwps: Record<string, number> = {};
-    for (const [gas, text] of Object.entries(gwpText)) if (text.trim()) refrigerant_gwps[gas] = Number(text);
+    const refrigerant_gwps: Record<string, number | { value: number; gwp_set: string }> = {};
+    for (const [gas, v] of Object.entries(settings.refrigerant_gwps ?? {})) {
+      const entry = entryOf(v);
+      if (entry.gwp_set !== activeSet) refrigerant_gwps[gas] = v; // another set's, or one saved without a set, stays as entered
+    }
+    for (const [gas, text] of Object.entries(gwpText)) {
+      if (text.trim() && activeSet) refrigerant_gwps[gas] = { value: Number(text), gwp_set: activeSet };
+      else delete refrigerant_gwps[gas];
+    }
     const steam_heat_content: Record<string, number> = {};
     for (const [site, text] of Object.entries(steamText)) if (text.trim()) steam_heat_content[site] = steamNumber(text);
     onSave({
@@ -133,7 +150,7 @@ export function RecalculationInputs({
           <span className="s1-state s1-state--unverifiable">{result.awaiting_review.length} awaiting review</span>
         ) : null}
         <span className="s1-muted s1-rc__meta">
-          {reference.dataset} · {result.gwp_set} GWPs · ±{result.tolerance_pct}% tolerance
+          {reference.dataset} · GWP set: {gwpLabel(result)} · ±{result.tolerance_pct}% tolerance
         </span>
       </button>
 
@@ -194,16 +211,10 @@ export function RecalculationInputs({
 
             <fieldset className="s1-rc__group">
               <legend>Method</legend>
-              <label className="s1-rc__field">
+              <p className="s1-rc__field">
                 <span>GWP set</span>
-                <select value={draft.gwp_set ?? reference.default_gwp_set} onChange={(e) => setDraft({ ...draft, gwp_set: e.target.value })}>
-                  {reference.gwp_sets.map((g) => (
-                    <option key={g} value={g}>
-                      {g === "AR5" ? "AR5 (EPA Hub, Table 11)" : `${g} (IPCC)`}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <span>{gwpLabel(result)}. Change it in Methodology review.</span>
+              </p>
               {fuelAsks.map((a) => (
                 <label key={a.key} className="s1-rc__field">
                   <span>
@@ -235,7 +246,7 @@ export function RecalculationInputs({
 
             {gases.length ? (
               <fieldset className="s1-rc__group">
-                <legend>Refrigerant GWP (not in the EPA Hub)</legend>
+                <legend>Refrigerant GWP (not in the reference data for {gwpLabel(result)})</legend>
                 {gases.map((gas) => {
                   const ask = gwpAsks.find((a) => a.key === gas);
                   return (
@@ -246,7 +257,7 @@ export function RecalculationInputs({
                       </span>
                       <input
                         inputMode="decimal"
-                        placeholder={`${result.gwp_set} 100-year GWP`}
+                        placeholder={`${activeSet ?? ""} 100-year GWP`}
                         value={gwpText[gas] ?? ""}
                         aria-invalid={badGwps.some(([key]) => key === gas)}
                         onChange={(e) => setGwpText({ ...gwpText, [gas]: e.target.value })}

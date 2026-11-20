@@ -522,15 +522,31 @@ def gwp_item(set_: str, horizon: str, quote: str, line: str, applies_to: str = "
     return {"set": set_, "horizon": horizon, "applies_to": applies_to, **cite(line, quote)}
 
 
-def test_the_first_set_is_the_fixed_field_and_every_other_set_is_a_row() -> None:
+def test_the_latest_ar_is_the_fixed_field_when_nothing_else_decides_and_every_other_set_is_a_row() -> None:
     kept, dropped = check(answer(gwp=[
         gwp_item("AR5", "100-year", "IPCC Fifth Assessment Report (AR5) 100-year", "L1"),
         gwp_item("AR6", "20-year", "AR6 with a 20-year horizon", "L2"),
         gwp_item("AR4", "500-year", "a 500-year horizon (AR4)", "L2")]), [doc(GWP_REPORT)])
     assert dict(dropped) == {}
     assert [(k.field_id, k.row_group) for k in kept] == [("gwp", None), (None, "gwp"), (None, "gwp")]
+    # no quote says default or primary and none names a gas: the tie goes to the latest AR, whatever the model's order
     assert [k.suggestion["value"] for k in kept] == [
-        {"set": "AR5", "horizon": "100-year"}, {"set": "AR6", "horizon": "20-year"}, {"set": "AR4", "horizon": "500-year"}]
+        {"set": "AR6", "horizon": "20-year"}, {"set": "AR5", "horizon": "100-year"}, {"set": "AR4", "horizon": "500-year"}]
+
+
+def test_the_set_the_document_calls_default_is_the_fixed_field_then_the_one_used_for_most_gases() -> None:
+    lines = [(1, "The default GWP set is the IPCC Fifth Assessment Report (AR5) 100-year."),
+             (1, "AR6 100-year GWPs are used for methane and nitrous oxide; AR5 for carbon dioxide.")]
+    kept, _ = check(answer(gwp=[
+        gwp_item("AR6", "100-year", "AR6 100-year GWPs are used for methane and nitrous oxide", "L2"),
+        gwp_item("AR5", "100-year", "The default GWP set is the IPCC Fifth Assessment Report (AR5) 100-year", "L1")]),
+        [doc(lines)])
+    assert kept[0].field_id == "gwp" and kept[0].suggestion["value"]["set"] == "AR5"  # default beats latest
+    more = [(1, "AR5 100-year is used for methane and nitrous oxide and HFCs."), (1, "AR6 100-year is used for methane.")]
+    kept, _ = check(answer(gwp=[
+        gwp_item("AR6", "100-year", "AR6 100-year is used for methane", "L2"),
+        gwp_item("AR5", "100-year", "AR5 100-year is used for methane and nitrous oxide and HFCs", "L1")]), [doc(more)])
+    assert kept[0].suggestion["value"]["set"] == "AR5"  # most gases beats latest
 
 
 def test_a_repeated_set_and_horizon_is_dropped_but_the_same_set_with_another_horizon_is_kept() -> None:
@@ -760,7 +776,8 @@ def test_a_quote_with_two_sets_and_two_horizons_pairs_each_set_with_the_horizon_
     line = "We report AR5 over 100-year and AR6 over 20-year horizons."
     right = [gwp_item("AR5", "100-year", line.rstrip("."), "L1"), gwp_item("AR6", "20-year", line.rstrip("."), "L1")]
     kept, dropped = check(answer(gwp=right), [doc([(1, line)])])
-    assert [k.suggestion["value"] for k in kept] == [{"set": "AR5", "horizon": "100-year"}, {"set": "AR6", "horizon": "20-year"}]
+    # the same quote and gases for both: the later AR leads
+    assert [k.suggestion["value"] for k in kept] == [{"set": "AR6", "horizon": "20-year"}, {"set": "AR5", "horizon": "100-year"}]
     assert not dropped
     swapped = [gwp_item("AR5", "20-year", line.rstrip("."), "L1"), gwp_item("AR6", "100-year", line.rstrip("."), "L1")]
     kept, dropped = check(answer(gwp=swapped), [doc([(1, line)])])
@@ -897,7 +914,8 @@ def test_entries_dedupe_on_set_horizon_and_note() -> None:
         gwp_item("AR6", "100-year", q, "L2", "For Refrigerants"),
         gwp_item("AR6", "100-year", q, "L2", "for refrigerants"),          # same note, other casing: a repeat
         gwp_item("AR6", "100-year", q, "L2", "Fugitive Gases")]), [doc(NOTE_DOC)])  # same set and horizon, another note: kept
-    assert [k.suggestion["value"].get("applies_to") for k in kept] == ["For Refrigerants", "Fugitive Gases"]
+    # "Fugitive Gases" no longer limits a set to refrigerants: it is general and leads
+    assert [k.suggestion["value"].get("applies_to") for k in kept] == ["Fugitive Gases", "For Refrigerants"]
     assert dict(dropped) == {"duplicate_entry": 1}
 
 
@@ -905,7 +923,7 @@ def test_entries_dedupe_on_set_horizon_and_note() -> None:
 def test_a_not_stated_entry_collapses_into_a_stated_horizon_for_the_same_set(order: tuple[str, str]) -> None:
     by_horizon = {"100-year": gwp_item("AR5", "100-year", "the AR5 100-year horizon", "L3"),
                   "Not stated": gwp_item("AR5", "Not stated", "AR5 is also named without one", "L3")}
-    other = gwp_item("AR6", "Not stated", "AR6 For Refrigerants", "L2")
+    other = gwp_item("AR6", "Not stated", "AR6 For Refrigerants", "L2", "For Refrigerants")
     kept, dropped = check(answer(gwp=[by_horizon[order[0]], by_horizon[order[1]], other]), [doc(NOTE_DOC)])
     assert [(k.suggestion["value"]["set"], k.suggestion["value"]["horizon"]) for k in kept] == [("AR5", "100-year"), ("AR6", "Not stated")]
     assert [(k.field_id, k.row_group) for k in kept] == [("gwp", None), (None, "gwp")]  # the first left is the fixed field
@@ -1033,3 +1051,15 @@ def test_a_document_that_names_no_scope_gives_no_scope_suggestion_and_the_row_re
 def test_the_prompt_gives_the_scope_wording_cues_and_forbids_choosing_not_stated() -> None:
     for cue in ("scopes:covered", "Scope 1", "Category 1", "direct", "indirect", "Operational Boundary", "Never choose \"Not stated\""):
         assert cue in mp.SYSTEM_PROMPT, cue
+
+
+def test_the_use_note_orders_the_gwp_sets_before_anything_else() -> None:
+    def item(set_: str, quote: str, note: str) -> Any:
+        return mp.GwpSuggestion(**gwp_item(set_, "100-year", quote, "L1", note))
+
+    embedded = item("AR6", "AR6 is default and primary embedded in third-party factors", "embedded in third-party factors")
+    fridge = item("AR5", "AR5 for refrigerants", "for refrigerants")
+    general = item("AR4", "AR4 unless otherwise stated", "")
+    assert [g.set for g in mp.gwp_in_order([embedded, fridge, general])] == ["AR4", "AR5", "AR6"]
+    # "standard" no longer marks a primary set
+    assert "standard" not in mp._PRIMARY_WORDS

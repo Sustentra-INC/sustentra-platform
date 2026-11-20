@@ -1,7 +1,8 @@
 """Emissions recalculation for an engagement, and the reference lists its inputs use.
 
 GET /v1/engagements/{engagement_id}/recalculation runs the recalculation on the reviewed
-evidence (see services/engagement_recalculation_service.py). Its inputs (GWP set, grid
+evidence (see services/engagement_recalculation_service.py). The GWP set is the one chosen on
+the Methodology review (services/methodology_gwp.py), not an input here. Its inputs (grid
 region per facility, fuel choices, certificates, reported totals) are saved through
 PATCH /v1/engagements/{engagement_id} under settings["recalculation"].
 """
@@ -26,7 +27,7 @@ from backend.app.reference.emission_factor_loader import (
     GWP_SETS,
     default_emission_factor_reference,
 )
-from backend.app.services import emissions_rollup, workpaper_export_service, workpaper_item_service
+from backend.app.services import emissions_rollup, methodology_gwp, workpaper_export_service, workpaper_item_service
 from backend.app.services.audit_log import write_audit_event
 from backend.app.services.engagement_recalculation_service import (
     DATA_POINT_CATALOGUE,
@@ -56,6 +57,7 @@ async def get_recalculation(
         str(item["payload"].get("documentId") or item["item_key"]): item["payload"]
         for item in await workpaper_item_service.list_items(db, engagement["id"], "document")
     }
+    engagement = await methodology_gwp.attach_choice(db, engagement)  # the Methodology review's GWP set
     return _service().recalculate(engagement, lambda record: can_see(record, user), decisions)
 
 
@@ -74,7 +76,10 @@ async def export_workpaper(
                  for i in items if i["kind"] == "document"}
     service = _service()
     visible = lambda record: can_see(record, user)  # noqa: E731
+    engagement = await methodology_gwp.attach_choice(db, engagement)
     recalculation = service.recalculate(engagement, visible, decisions)
+    if recalculation.get("gwp_blocked"):  # the workpaper must not state numbers Results does not show
+        raise HTTPException(status_code=409, detail=recalculation["gwp_blocked"])
     register = service.evidence_register(str(engagement["id"]), visible)
     content = workpaper_export_service.build_workbook(
         engagement=engagement, recalculation=recalculation, register=register, items=items,

@@ -415,6 +415,8 @@ class EvidenceTreeService:
         return {
             "line": line.to_dict(),
             "calculated": calculated,
+            # why nothing is calculated when Methodology review chose a GWP set the data cannot calculate
+            "calculation_blocked": recalculation.get("gwp_blocked"),
             "reporting_period": {"start": _iso(loaded.period[0]), "end": _iso(loaded.period[1])},
             "coverage": cl.month_coverage(loaded.period, covered),
             "identifiers": self._identifiers(line, on_line),

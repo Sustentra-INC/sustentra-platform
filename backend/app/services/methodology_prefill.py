@@ -29,6 +29,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict
 
 from backend.app.services import methodology_review as rules
+from backend.app.services.methodology_gwp import EMBEDDED, GENERAL, REFRIGERANTS, use_of
 from backend.app.services.ai_locator import (
     DocumentLine,
     NotLocated,
@@ -406,6 +407,40 @@ def _mentions(text: str, terms: Sequence[str]) -> list[int]:
         pattern = r"(?<![0-9a-z.])(?<!\d,)" + re.escape(norm(term)) + r"(?![0-9a-z])(?![.,]\d)"
         out += [m.start() for m in re.finditer(pattern, text)]
     return out
+
+
+_PRIMARY_WORDS = ("default", "primary", "principal", "main", "primarily", "mainly")
+_GAS_WORDS = (("co2", "carbon dioxide"), ("ch4", "methane"), ("n2o", "nitrous oxide"), ("hfc", "hydrofluorocarbon"),
+              ("pfc", "perfluorocarbon"), ("sf6", "sulfur hexafluoride", "sulphur hexafluoride"),
+              ("nf3", "nitrogen trifluoride"))
+
+
+def _use_note(gwp: GwpSuggestion) -> str:
+    """The set's use note: the company's words from the clause that names it, in the quote's casing ("" when
+    the quote does not carry the model's note, or it is too long)."""
+
+    note = note_for_set(gwp.quote, gwp.set, " ".join(gwp.applies_to.split()))
+    return "" if len(note) > rules.MAX_APPLIES_TO else note
+
+
+def gwp_in_order(suggestions: Sequence[GwpSuggestion]) -> list[GwpSuggestion]:
+    """The GWP suggestions in the order they are kept: the first becomes the fixed field, the rest rows. The
+    document decides, not the model's output order. First the use note (``applies_to``): a set with no note or
+    a general one leads, a set limited to refrigerants follows, one embedded in third-party factors comes last
+    (see methodology_gwp.use_of). Within a kind: the set the quote calls the default or primary one, then the
+    one whose quote names the most gases, then the latest AR, then the 100-year horizon, then the order given."""
+
+    kinds = {GENERAL: 0, REFRIGERANTS: 1, EMBEDDED: 2}
+
+    def rank(item: tuple[int, GwpSuggestion]) -> tuple[int, int, int, int, int, int]:
+        index, gwp = item
+        text = norm(gwp.quote)
+        primary = any(_mentions(text, (word,)) for word in _PRIMARY_WORDS)
+        gases = sum(1 for words in _GAS_WORDS if any(_mentions(text, (w,)) for w in words))
+        return (kinds[use_of(_use_note(gwp))], 0 if primary else 1, -gases, -int(gwp.set[2:]),
+                0 if gwp.horizon != "20-year" and gwp.horizon != "500-year" else 1, index)
+
+    return [gwp for _, gwp in sorted(enumerate(suggestions), key=rank)]
 
 
 def set_has_horizon(quote: str, set_: str, horizon: str) -> bool:
@@ -867,11 +902,9 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
                 {"label": "Year from the title", "quote": period.title_quote.strip(), "document_id": document.document_id,
                  "file_name": document.file_name, "source_reference": line.source_reference}]
     gwp_seen: set[tuple[str, str, str]] = set()
-    for gwp in output.gwp:
+    for gwp in gwp_in_order(output.gwp):
         # The use note is the company's own words, from the clause that names this set, in the quote's casing.
-        note = note_for_set(gwp.quote, gwp.set, " ".join(gwp.applies_to.split()))
-        if len(note) > rules.MAX_APPLIES_TO:
-            note = ""
+        note = _use_note(gwp)
         value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon, "applies_to": note})
         if value is None:
             continue

@@ -141,16 +141,14 @@ describe("calculation panels in Verification results", () => {
     expect(screen.getByText("Source: EPA GHG Emission Factors Hub 2025, Table 1")).toBeTruthy();
   });
 
-  it("saves a GWP set change through the existing save path and refetches", async () => {
-    const saved: unknown[] = [];
-    renderScreen({ onSaveInputs: async (next) => void saved.push(next) });
+  it("names the GWP set chosen in Methodology review and offers no picker of its own", async () => {
+    renderScreen({});
     await panel(/Scope 1 › Stationary combustion/);
     fireEvent.click(screen.getByRole("button", { name: "Kent Cannery · MMBtu" }));
     fireEvent.click(screen.getByRole("tab", { name: /Step 3/ }));
-    const before = recalcCalls();
-    fireEvent.change(within(screen.getByRole("tabpanel")).getByRole("combobox", { name: "GWP set" }), { target: { value: "AR6" } });
-    await waitFor(() => expect(saved).toEqual([expect.objectContaining({ gwp_set: "AR6" })]));
-    await waitFor(() => expect(recalcCalls()).toBe(before + 1));
+    const step = within(screen.getByRole("tabpanel"));
+    expect(step.queryByRole("combobox", { name: "GWP set" })).toBeNull();
+    expect(step.getByText(/GWP set: AR5/)).toBeTruthy();
   });
 
   it("saves company figures for the line, and says in words what is wrong", async () => {

@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from backend.app.services.methodology_gwp import choice_from_record
 from backend.app.services.recalculation_lines import DISTANCE_SOURCE
 from backend.app.services.engagement_recalculation_service import (
     EngagementRecalculationService,
@@ -30,7 +31,12 @@ def _engagement(**settings: Any) -> dict:
 
 
 def _run(store: FakeStore, decisions: dict | None = None, **recalculation: Any) -> dict:
-    return _service(store).recalculate(_engagement(recalculation=recalculation), _own, decisions)
+    gwp_set = recalculation.pop("gwp_set", None)  # chosen in Methodology review, not saved in the inputs
+    engagement = _engagement(recalculation=recalculation)
+    if gwp_set:
+        engagement["methodology_gwp"] = choice_from_record(
+            {"decision": {"status": "accepted", "value": {"set": gwp_set, "horizon": "100-year"}}})
+    return _service(store).recalculate(engagement, _own, decisions)
 
 
 def _by_key(result: dict) -> dict[str, dict]:
@@ -295,7 +301,7 @@ def test_existing_response_keys_are_unchanged_and_new_ones_added() -> None:
 
 def test_line_inputs_are_validated() -> None:
     validate_recalculation_settings({
-        "gwp_set": "AR4", "reported_lines": {GAS_KC: 12.5},
+        "reported_lines": {GAS_KC: 12.5},
         "reported_activity": {GAS_KC: {"quantity": 650000, "unit": "therms"}},
         "consolidated_shares": {"fac-kc01": 80}})
     for bad in ({"reported_lines": {GAS_KC: -1}}, {"reported_lines": [1]}, {"reported_lines": {GAS_KC: "x"}},
