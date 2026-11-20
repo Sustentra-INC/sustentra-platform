@@ -1134,7 +1134,9 @@ def test_a_new_group_gets_an_opaque_id_and_names_do_not_matter() -> None:
     groups = _with_ids([_group("Diesel Fuel", n) for n in names])
     ids = _ids(groups)
     assert len(set(ids)) == len(names)  # distinct, even for the same name and for names that slug alike
-    assert all(cl.GROUP_ID.match(i) and i.startswith("vg-") for i in ids)
+    assert all(cl.GROUP_ID.match(i) and i.startswith("vgid-") for i in ids)
+    # a new id is its own slug (the line key keeps it) and can never be an old ``vg-<slug>`` anchor
+    assert all(cl.slug(i) == i and not i.startswith("vg-") for i in ids)
     assert all(a == i for (a, _), i in zip(cl.vehicle_group_anchors(groups), ids, strict=True))
     assert not any("none" in i or "z-rich" in i for i in ids)  # no longer built from the name
 
@@ -1330,3 +1332,56 @@ def test_an_existing_engagement_files_and_recalculates_exactly_the_same_after_th
          "settings": {"facilities": [KC], "recalculation": {"vehicle_groups": migrated}}}, _own)
     assert legacy_result == migrated_result
     assert legacy_result["categories"]["mobile_combustion"] is not None
+
+
+# --- fix round 1: groups with the same name, and a rename plus a reorder, with no ids sent -----------------------
+def _bare(groups: list[dict]) -> list[dict]:
+    return [{k: v for k, v in g.items() if k != "group_id"} for g in groups]
+
+
+def _g(label: str, **more: Any) -> dict:
+    return {**_group("Diesel Fuel", label), "distance": 1000, "distance_unit": "mi", **more}
+
+
+def test_two_groups_with_one_name_and_different_figures_keep_their_own_ids_when_reordered_without_ids() -> None:
+    stored = _with_ids([_g("Trucks", distance=1000), _g("Trucks", distance=5000)])
+    out = _with_ids(_bare(stored)[::-1], stored)
+    assert [(g["distance"], g["group_id"]) for g in out] == [(5000, stored[1]["group_id"]), (1000, stored[0]["group_id"])]
+
+
+def test_a_rename_plus_a_reorder_without_ids_never_hands_a_group_the_id_of_the_group_whose_name_it_took() -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2)])
+    trucks, vans = stored
+    b = _bare(stored)
+    out = _with_ids([{**b[1], "label": "Lorries"}, {**b[0], "label": "Vans"}], stored)
+    lorries, new_vans = out
+    assert new_vans["group_id"] == trucks["group_id"]  # the group with Trucks' figures, now named Vans
+    assert lorries["group_id"] not in (trucks["group_id"], vans["group_id"])  # Vans' id is not given to a rival
+    assert len({g["group_id"] for g in out}) == 2
+
+
+def test_a_rename_without_ids_keeps_the_id_only_when_one_group_fits() -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2)])
+    b = _bare(stored)
+    renamed = _with_ids([{**b[0], "label": "Haulers"}, b[1]], stored)
+    assert _ids(renamed) == _ids(stored)  # unique figures: the same group, renamed
+    twins = _with_ids([_g("Trucks"), _g("Trucks")], None)
+    both = _with_ids([{**g, "label": "Haulers"} for g in _bare(twins)], twins)
+    assert set(_ids(both)).isdisjoint(_ids(twins))  # two groups equally good: neither claims an id
+
+
+def test_a_group_whose_figures_changed_keeps_its_id_when_it_is_the_only_one_with_that_name() -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2)])
+    b = _bare(stored)
+    out = _with_ids([{**b[0], "distance": 99}, b[1]], stored)
+    assert _ids(out) == _ids(stored)
+    same_name = _with_ids([_g("Trucks", distance=1), _g("Trucks", distance=2)])
+    ambiguous = _with_ids([{**g, "distance": g["distance"] + 100} for g in _bare(same_name)], same_name)
+    assert set(_ids(ambiguous)).isdisjoint(_ids(same_name))  # which is which: not guessed
+
+
+def test_an_old_anchor_and_a_new_id_are_never_equal_even_for_a_label_that_looks_like_an_id() -> None:
+    old = [_group("Diesel Fuel", "id 0123456789ab")]  # legacy anchor: vg-id-0123456789ab
+    assert cl.legacy_group_anchors(old) == ["vg-id-0123456789ab"]
+    fresh = cl.new_group_id({"vg-id-0123456789ab"})
+    assert fresh.startswith("vgid-") and fresh != "vg-id-0123456789ab" and cl.slug(fresh) == fresh

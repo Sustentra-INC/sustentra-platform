@@ -204,6 +204,34 @@ def test_migration_0021_gives_existing_groups_their_anchor_as_id_and_changes_not
         asyncio.run(_admin("TRUNCATE workpaper_items, engagements CASCADE"))
 
 
+def _downgrade_attempt() -> subprocess.CompletedProcess[str]:
+    env = {**os.environ, "DATABASE_URL": ADMIN_URL or ""}
+    return subprocess.run([sys.executable, "-m", "alembic", "downgrade", "0020_audit_logs_target_index"], cwd=BACKEND,
+                          env=env, capture_output=True, text=True)
+
+
+@pytest.mark.parametrize("change", ["first group deleted", "group added after the upgrade", "reordered"])
+def test_the_downgrade_refuses_when_taking_the_ids_out_would_move_documents(change: str) -> None:
+    """Two groups named 配送トラック are vg-none and vg-none-2. After the first is deleted the survivor would be
+    renumbered vg-none by the old code, and the deleted group's parked documents would land on it."""
+
+    migrated = [{**g, "group_id": a} for g, a in zip(LEGACY, legacy_group_anchors(LEGACY), strict=True)]
+    after = {"first group deleted": migrated[1:], "reordered": migrated[::-1],
+             "group added after the upgrade": [*migrated, {**_group("Diesel Fuel", "New"), "group_id": "vgid-0123456789ab"}]}[change]
+    settings = {"facilities": [KENT], "recalculation": {"vehicle_groups": after}}
+    try:
+        engagement_id = asyncio.run(_insert(settings, [{"from": UNASSIGNED, "to": "s1:mobile:diesel-fuel:vg-none"}]))
+        refused = _downgrade_attempt()
+        assert refused.returncode != 0
+        assert "cannot downgrade" in refused.stderr and engagement_id in refused.stderr
+        row = asyncio.run(_admin("SELECT settings FROM engagements WHERE id = $1::uuid", engagement_id))[0]["settings"]
+        row = json.loads(row) if isinstance(row, str) else row
+        assert row["recalculation"]["vehicle_groups"] == after  # nothing was rewritten
+        assert asyncio.run(_admin("SELECT version_num FROM alembic_version"))[0]["version_num"] == "0021_vehicle_group_ids"
+    finally:
+        asyncio.run(_admin("TRUNCATE workpaper_items, engagements CASCADE"))
+
+
 def test_a_migrated_engagement_saves_and_keeps_its_ids(store: FakeStore) -> None:
     """Groups with the ids the migration gave them are the stored data: a save sending them back keeps them."""
 

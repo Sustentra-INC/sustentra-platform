@@ -6,7 +6,7 @@
  */
 import type { EngagementConfig, VehicleGroupSetting } from "../types";
 
-const GROUP_ID = /^vg-[a-z0-9](?:[a-z0-9-]{0,66}[a-z0-9])?$/;
+const GROUP_ID = /^vg(?:id)?-[a-z0-9](?:[a-z0-9-]{0,66}[a-z0-9])?$/;
 const SAME = ["fuel", "vehicle_type", "factor_fuel_type", "on_road", "label"] as const;
 
 let counter = 0;
@@ -14,29 +14,46 @@ let counter = 0;
 function newId(taken: Set<string>): string {
   for (;;) {
     counter += 1;
-    const candidate = `vg-${(Date.now() % 0xffffff).toString(16).padStart(6, "0")}${counter.toString(16).padStart(6, "0")}`;
+    // "vgid-" and 12 hex digits: never an old `vg-<slug>` anchor, and its own slug
+    const candidate = `vgid-${(Date.now() % 0xffffff).toString(16).padStart(6, "0")}${counter.toString(16).padStart(6, "0")}`;
     if (!taken.has(candidate)) return candidate;
   }
 }
 
-/** The groups of the stored engagement, each with the anchor it has (an id, else its old `vg-<slug>` anchor). */
+/** The groups of the stored engagement, each with the anchor it has: its id, else its old `vg-<slug>` anchor numbered by
+ *  order, moved on (`-x2`, ...) when an id already uses it (the server's `vehicle_group_anchors`). */
 function storedWithAnchors(stored: VehicleGroupSetting[]): { anchor: string; group: VehicleGroupSetting }[] {
   const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/g, "") || "none";
+  const own = new Set(stored.map((g) => g.group_id).filter((id): id is string => Boolean(id && GROUP_ID.test(id))));
   const seen = new Map<string, number>();
   return stored.map((group) => {
     const base = `vg-${slug(group.label ?? `${group.vehicle_type} (${group.factor_fuel_type})`)}`;
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
-    return { anchor: group.group_id ?? (n === 1 ? base : `${base}-${n}`), group };
+    if (group.group_id && GROUP_ID.test(group.group_id)) return { anchor: group.group_id, group };
+    const old = n === 1 ? base : `${base}-${n}`;
+    let anchor = old;
+    for (let k = 2; own.has(anchor); k += 1) anchor = `${old}-x${k}`;
+    own.add(anchor);
+    return { anchor, group };
   });
 }
 
+const same = (a: VehicleGroupSetting, b: VehicleGroupSetting, ...skip: string[]): boolean => {
+  const left = Object.entries(a).filter(([k]) => k !== "group_id" && !skip.includes(k)).sort();
+  const right = Object.entries(b).filter(([k]) => k !== "group_id" && !skip.includes(k)).sort();
+  return JSON.stringify(left) === JSON.stringify(right);
+};
+
+/** The server's `assign_group_ids`: a group keeps the id it has when that is a stored group's; one that sends no id is
+ *  matched to a stored group the same in every field, then (renamed, or changed figures) to the one stored group
+ *  that differs only there, never when another group of the save is as good a match; otherwise it is new. */
 export function assignDemoGroupIds(groups: VehicleGroupSetting[], stored: VehicleGroupSetting[] | undefined): VehicleGroupSetting[] {
   const known = storedWithAnchors(stored ?? []);
   const knownIds = new Set(known.map((k) => k.anchor));
   const used = new Set<string>();
   const out: VehicleGroupSetting[] = [];
-  const pending: number[] = [];
+  let waiting: number[] = [];
   groups.forEach((group, i) => {
     const given = group.group_id;
     if (given && GROUP_ID.test(given) && knownIds.has(given) && !used.has(given)) {
@@ -46,16 +63,28 @@ export function assignDemoGroupIds(groups: VehicleGroupSetting[], stored: Vehicl
       const { group_id: _dropped, ...rest } = group;
       void _dropped;
       out.push(rest);
-      pending.push(i);
+      if (!group.group_id) waiting.push(i);
     }
   });
-  for (const i of pending) {
-    if (groups[i].group_id) continue; // an id this engagement never had is not trusted
-    const match = known.find((k) => !used.has(k.anchor) && SAME.every((key) => k.group[key] === out[i][key]));
-    if (match) {
-      used.add(match.anchor);
-      out[i].group_id = match.anchor;
-    }
+  const free = () => known.filter((k) => !used.has(k.anchor));
+  const claim = (i: number, anchor: string) => {
+    used.add(anchor);
+    out[i].group_id = anchor;
+    waiting = waiting.filter((w) => w !== i);
+  };
+  for (const i of [...waiting]) {
+    const match = free().find((k) => same(k.group, out[i]));
+    if (match) claim(i, match.anchor);
+  }
+  for (const i of [...waiting]) {
+    const fits = free().filter((k) => same(k.group, out[i], "label"));
+    const rivals = waiting.filter((j) => same(out[j], out[i], "label"));
+    if (fits.length === 1 && rivals.length === 1 && !out.some((o, j) => j !== i && o.label === fits[0].group.label)) claim(i, fits[0].anchor);
+  }
+  for (const i of [...waiting]) {
+    const fits = free().filter((k) => SAME.every((key) => k.group[key] === out[i][key]));
+    const rivals = waiting.filter((j) => SAME.every((key) => out[j][key] === out[i][key]));
+    if (fits.length === 1 && rivals.length === 1) claim(i, fits[0].anchor);
   }
   const taken = new Set([...knownIds, ...used]);
   for (const group of out) {

@@ -42,10 +42,15 @@ export function SetupVehicleGroups({
 }) {
   const [typed, setDrafts] = useState<VehicleGroupDraft[]>(() => draftsFrom(engagement.recalculation?.vehicle_groups));
   // A group added here has no id until the save answers: show it with the id the server gave, so a rename keeps the line.
-  const drafts = withSavedIds(typed, engagement.recalculation?.vehicle_groups);
+  // ids of groups removed in this session: a group added later never takes one of them
+  const [removed, setRemoved] = useState<string[]>([]);
+  const drafts = withSavedIds(typed, engagement.recalculation?.vehicle_groups, removed);
   const unfinished = drafts.filter((d) => draftProblem(d, types) !== null).length;
 
   function change(next: VehicleGroupDraft[]) {
+    const kept = new Set(next.map((d) => d.groupId));
+    const gone = drafts.map((d) => d.groupId).filter((id): id is string => Boolean(id) && !kept.has(id));
+    if (gone.length) setRemoved((current) => [...current, ...gone]);
     setDrafts(next);
     if (next.every((d) => draftProblem(d, types) === null)) {
       onChange({ ...engagement, recalculation: { ...(engagement.recalculation ?? {}), vehicle_groups: settingsFrom(next, types) } });

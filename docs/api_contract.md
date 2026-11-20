@@ -640,22 +640,28 @@ gwp_set:              "AR4" | "AR5" (default) | "AR6"                // one set 
 ```
 
 **Vehicle group ids.** Every group in `settings.recalculation.vehicle_groups` carries a `group_id`
-(`vg-` and 12 hex digits for a new group) that is also its line anchor: a mobile line is
+(`vgid-` and 12 hex digits for a new group) that is also its line anchor: a mobile line is
 `<scope>:mobile:<fuel>:<group_id>`. The server makes the id when the group is first saved (POST or PATCH of an
 engagement) and keeps it through a rename, a reorder and the removal of other groups, so a document placed by hand
 on a group's line stays on it. The id is not built from the name any more (`vg-none` and `z-rich` came from names
 with no ASCII letters). Rules of a save:
-- a group that sends the `group_id` of one of the engagement's stored groups keeps it; a client that sends no ids
-  back keeps the ids of the groups it did not change (matched on fuel, vehicle type, fuel type and name, in order);
+- a group that sends the `group_id` of one of the engagement's stored groups keeps it. A client that sends no ids
+  back is matched to the stored groups: first a group the same in every field (equal groups in order), then a
+  renamed group (the same in every other field as exactly one stored group, and no other group of the save has
+  that stored group's name), then a group with changed figures (the same fuel, vehicle type, fuel type and name as
+  exactly one stored group). Anything less certain is a new group, so a rename plus a reorder never hands a group
+  the id of another;
 - a group with an id the engagement never had is a new group and gets a new id (the id sent is not trusted);
 - a new group never takes the id of a group that was removed, so adding a removed group again gives a new line;
-- an id that is not `vg-` followed by lower-case letters, digits and hyphens (at most 70) is 422, and so is the same
-  id twice. Send `group_id` back unchanged, or leave it out for a new group.
+- an id that is not `vg-` or `vgid-` followed by lower-case letters, digits and hyphens (at most 70) is 422, and so
+  is the same id twice. New ids use `vgid-`, which an old `vg-<slug>` anchor can never equal. Send `group_id` back unchanged, or leave it out for a new group.
 
 Migration 0021 gave every stored group the anchor it had as its id (`vg-<label slug>`, numbered by order among equal
 slugs), so every line key, user line, document placement (chains and documents parked on a removed line) and
 recalculation reads exactly as before. Groups without an id (data written by older code) are read as if they had that
-anchor. Downgrading removes the ids again.
+anchor. The downgrade removes the ids again only when that moves nothing: if any group's id is not the anchor the
+older code would give it (a group was deleted or reordered, or added, since the upgrade) it refuses with an error
+naming the engagement, and rewrites nothing.
 
 AR4 (IPCC AR4 WG1 Table 2.14: CO2 1, CH4 25, N2O 298) has no HFC, PFC, SF6 or NF3 values, like AR6:
 a refrigerant gas needs `refrigerant_gwps` under AR4 (an open `needs_input` item says so).

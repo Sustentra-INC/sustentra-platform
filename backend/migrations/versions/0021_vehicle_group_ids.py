@@ -11,8 +11,10 @@ moves: every line key, user line, document placement (chains and parked document
 figure and recalculation reads exactly as before, because each key already contains that anchor.
 A group that already has a ``group_id`` is left alone, so the migration can run twice.
 
-The downgrade takes the ids out again (the older code rejects the key); the lines then number as they
-did, by label and order.
+The downgrade takes the ids out again (the older code rejects the key), and only when that moves nothing: the old
+code numbers a group by its label and its order, so if any group's id is not the anchor the old code would give it
+(a group was removed or reordered, or added, since the upgrade), the downgrade REFUSES with an error naming the
+engagement. It never rewrites a key, which could put one group's documents on another group's line.
 
 Revision ID: 0021_vehicle_group_ids
 Revises: 0020_audit_logs_target_index
@@ -70,7 +72,10 @@ def _rewrite(change) -> int:  # noqa: ANN001 - a function from the settings to t
         groups = settings["recalculation"]["vehicle_groups"]
         if not all(isinstance(g, dict) for g in groups):
             continue  # not data this migration understands: left as it is
-        new = change(groups)
+        try:
+            new = change(groups)
+        except DowngradeRefused as exc:
+            raise DowngradeRefused(f"engagement {row['id']}: {exc}") from exc
         if new is None:
             continue
         settings["recalculation"]["vehicle_groups"] = new
@@ -99,9 +104,21 @@ def _add_ids(groups: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
     return out
 
 
+class DowngradeRefused(RuntimeError):
+    """The ids no longer match the old numbering: taking them out would move documents between groups."""
+
+
 def _remove_ids(groups: list[dict[str, Any]]) -> list[dict[str, Any]] | None:
     if not any("group_id" in g for g in groups):
         return None
+    stripped = [{k: v for k, v in g.items() if k != "group_id"} for g in groups]
+    old = _legacy_anchors(stripped)
+    changed = [(g["group_id"], a) for g, a in zip(groups, old, strict=True)
+               if g.get("group_id") is not None and g["group_id"] != a]
+    if changed:
+        raise DowngradeRefused(
+            "cannot downgrade: vehicle groups whose id differs from the anchor the older code would give them "
+            f"(id, old anchor): {changed[:5]}. Removing the ids would put documents on other groups' lines.")
     return [{k: v for k, v in g.items() if k != "group_id"} for g in groups]
 
 

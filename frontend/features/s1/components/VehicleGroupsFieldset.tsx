@@ -42,20 +42,38 @@ export function draftsFrom(groups: VehicleGroupSetting[] | undefined): VehicleGr
   }));
 }
 
+const numberOrNone = (text: string): number | undefined => (text.trim() === "" ? undefined : Number(text));
+
+/** Whether a draft is the saved group: the same in every field the group saves. */
+function draftIsSaved(d: VehicleGroupDraft, s: VehicleGroupSetting): boolean {
+  if (s.fuel !== d.fuel || s.vehicle_type !== d.vehicleType || s.factor_fuel_type !== d.factorFuel || s.on_road !== d.onRoad) return false;
+  if ((s.label ?? "") !== d.label.trim()) return false;
+  return d.onRoad
+    ? numberOrNone(d.distance) === s.distance && (s.distance_unit ?? "mi") === d.distanceUnit && numberOrNone(d.modelYear) === s.model_year
+    : numberOrNone(d.fuelQuantity) === s.fuel_quantity && (s.fuel_unit ?? "gal") === d.fuelUnit;
+}
+
 /**
- * The ids the server gave groups added in this session. A draft has no id until the save answers; the saved
- * groups are in the drafts' order, so a draft with none takes the id of the saved group at its place when that
- * group is the same group (same fuel, vehicle type and name). Returns the drafts as they were when nothing
- * changed.
+ * The ids the server gave groups added in this session. A draft has no id until the save answers. It takes the id of
+ * a saved group that is the same group in every field, whatever the order, and only an id no other draft has and
+ * that did not belong to a group removed in these drafts (`removed`): so two drafts never share an id, and a new group
+ * never inherits the line of one that was removed. Returns the drafts as they were when nothing changed.
  */
-export function withSavedIds(drafts: VehicleGroupDraft[], saved: VehicleGroupSetting[] | undefined): VehicleGroupDraft[] {
-  if (!saved || saved.length !== drafts.length) return drafts;
+export function withSavedIds(
+  drafts: VehicleGroupDraft[],
+  saved: VehicleGroupSetting[] | undefined,
+  removed: readonly string[] = []
+): VehicleGroupDraft[] {
+  if (!saved) return drafts;
+  const taken = new Set([...drafts.map((d) => d.groupId).filter((id): id is string => Boolean(id)), ...removed]);
   let changed = false;
-  const next = drafts.map((d, i) => {
-    const s = saved[i];
-    if (d.groupId || !s.group_id || s.fuel !== d.fuel || s.vehicle_type !== d.vehicleType || (s.label ?? "") !== d.label.trim()) return d;
+  const next = drafts.map((d) => {
+    if (d.groupId) return d;
+    const match = saved.find((s) => s.group_id && !taken.has(s.group_id) && draftIsSaved(d, s));
+    if (!match?.group_id) return d;
+    taken.add(match.group_id);
     changed = true;
-    return { ...d, groupId: s.group_id };
+    return { ...d, groupId: match.group_id };
   });
   return changed ? next : drafts;
 }

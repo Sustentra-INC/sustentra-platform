@@ -39,7 +39,14 @@ export function RecalculationInputs({
   );
   const [typedVehicles, setVehicleDrafts] = useState<VehicleGroupDraft[]>(() => draftsFrom(settings.vehicle_groups));
   // Groups added here have no id until the save answers: show them with the id the server gave.
-  const vehicleDrafts = withSavedIds(typedVehicles, settings.vehicle_groups);
+  const [removedVehicles, setRemovedVehicles] = useState<string[]>([]);
+  const vehicleDrafts = withSavedIds(typedVehicles, settings.vehicle_groups, removedVehicles);
+  function changeVehicles(next: VehicleGroupDraft[]) {
+    const kept = new Set(next.map((d) => d.groupId));
+    const gone = vehicleDrafts.map((d) => d.groupId).filter((id): id is string => Boolean(id) && !kept.has(id));
+    if (gone.length) setRemovedVehicles((current) => [...current, ...gone]);
+    setVehicleDrafts(next);
+  }
   const [gwpText, setGwpText] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(settings.refrigerant_gwps ?? {}).map(([gas, value]) => [gas, String(value)]))
   );
@@ -323,7 +330,7 @@ export function RecalculationInputs({
                 fuels={mobileFuels}
                 types={vehicleTypes}
                 asks={vehicleAsks}
-                onChange={setVehicleDrafts}
+                onChange={changeVehicles}
               />
             ) : null}
 

@@ -20,7 +20,7 @@ describe("the demo gives vehicle groups ids like the server", () => {
   it("makes distinct ids for new groups, whatever their names", () => {
     const made = assignDemoGroupIds(["配送トラック", "配送トラック", "Lieferwagen – Zürich", ""].map((l) => group(l)), undefined);
     expect(new Set(ids(made)).size).toBe(4);
-    expect(ids(made).every((id) => /^vg-[a-z0-9-]+$/.test(id ?? ""))).toBe(true);
+    expect(ids(made).every((id) => /^vgid-[a-f0-9]{12}$/.test(id ?? ""))).toBe(true); // never an old vg-<slug> anchor
     expect(ids(made).join(" ")).not.toMatch(/none|z-rich/);
   });
 
@@ -51,7 +51,7 @@ describe("the demo gives vehicle groups ids like the server", () => {
   it("gives the engagement's groups ids when it is saved", () => {
     const config = { recalculation: { vehicle_groups: [group("Trucks")] } } as unknown as EngagementConfig;
     const saved = withDemoGroupIds(config, null);
-    expect(saved.recalculation?.vehicle_groups?.[0].group_id).toMatch(/^vg-/);
+    expect(saved.recalculation?.vehicle_groups?.[0].group_id).toMatch(/^vgid-/);
     expect(withDemoGroupIds({} as EngagementConfig, null)).toEqual({});
   });
 });
@@ -67,13 +67,33 @@ describe("the page keeps the ids the server gave", () => {
     expect("group_id" in settingsFrom([{ ...drafts[0], groupId: undefined }], TYPES)[0]).toBe(false);
   });
 
-  it("shows a group added this session with the id the save answered", () => {
+  it("shows a group added this session with the id the save answered, whatever the order", () => {
     const typed = draftsFrom([group("Trucks"), group("Vans")]);
-    const savedAnswer = [group("Trucks", { group_id: "vg-aaaaaaaaaaaa" }), group("Vans", { group_id: "vg-bbbbbbbbbbbb" })];
-    expect(withSavedIds(typed, savedAnswer).map((d) => d.groupId)).toEqual(["vg-aaaaaaaaaaaa", "vg-bbbbbbbbbbbb"]);
-    expect(withSavedIds(typed, [savedAnswer[0]])).toBe(typed); // a different number of groups: nothing is guessed
+    const savedAnswer = [group("Vans", { group_id: "vgid-bbbbbbbbbbbb" }), group("Trucks", { group_id: "vgid-aaaaaaaaaaaa" })];
+    expect(withSavedIds(typed, savedAnswer).map((d) => d.groupId)).toEqual(["vgid-aaaaaaaaaaaa", "vgid-bbbbbbbbbbbb"]);
     const edited = [{ ...typed[0], label: "Edited" }, typed[1]];
-    expect(withSavedIds(edited, savedAnswer).map((d) => d.groupId)).toEqual([undefined, "vg-bbbbbbbbbbbb"]);
+    expect(withSavedIds(edited, savedAnswer).map((d) => d.groupId)).toEqual([undefined, "vgid-bbbbbbbbbbbb"]);
+  });
+
+  it("never gives two drafts the same id, after a removal and a same-named add", () => {
+    // saved: Trucks (id A) and Vans (id B). Trucks is removed and a new Trucks added; the saved list is still the old one.
+    const saved = [group("Trucks", { group_id: "vgid-aaaaaaaaaaaa" }), group("Vans", { group_id: "vgid-bbbbbbbbbbbb" })];
+    const drafts = [...draftsFrom([saved[1]]), ...draftsFrom([group("Trucks")])];
+    const shown = withSavedIds(drafts, saved, ["vgid-aaaaaaaaaaaa"]); // A was removed in these drafts
+    expect(shown.map((d) => d.groupId)).toEqual(["vgid-bbbbbbbbbbbb", undefined]); // the new group does not inherit A
+    const ids = withSavedIds(drafts, saved).map((d) => d.groupId).filter(Boolean);
+    expect(new Set(ids).size).toBe(ids.length); // and without the list of removed ones, still no id twice
+    // two identical new drafts take two different saved ids, never one id twice
+    const twins = draftsFrom([group("Vans"), group("Vans")]);
+    const both = [group("Vans", { group_id: "vgid-111111111111" }), group("Vans", { group_id: "vgid-222222222222" })];
+    expect(withSavedIds(twins, both).map((d) => d.groupId)).toEqual(["vgid-111111111111", "vgid-222222222222"]);
+    expect(withSavedIds(twins, [both[0]]).map((d) => d.groupId)).toEqual(["vgid-111111111111", undefined]);
+  });
+
+  it("does not match a group on its place in the list", () => {
+    const typed = draftsFrom([group("Trucks", { distance: 5 })]);
+    expect(withSavedIds(typed, [group("Trucks", { distance: 6, group_id: "vgid-aaaaaaaaaaaa" })])).toBe(typed); // other figures
+    expect(withSavedIds(typed, [group("Vans", { group_id: "vgid-bbbbbbbbbbbb" }), group("Trucks", { distance: 5, group_id: "vgid-cccccccccccc" })])[0].groupId).toBe("vgid-cccccccccccc");
   });
 
   it("adopts the saved ids into the engagement without touching groups that have one or were edited since", () => {
@@ -84,5 +104,32 @@ describe("the page keeps the ids the server gave", () => {
     expect(out.recalculation?.vehicle_groups?.map((g) => g.group_id)).toEqual(["vg-first0000000", "vg-second000000", "vg-kept00000000", undefined]);
     expect(adoptGroupIds(out, saved).recalculation?.vehicle_groups).toEqual(out.recalculation?.vehicle_groups);
     expect(adoptGroupIds({} as EngagementConfig, saved)).toEqual({});
+  });
+});
+
+describe("the demo matches groups like the server when no ids are sent", () => {
+  const bare = (g: VehicleGroupSetting) => {
+    const { group_id: _id, ...rest } = g;
+    void _id;
+    return rest;
+  };
+
+  it("keeps same-named groups' ids when they are reordered", () => {
+    const stored = assignDemoGroupIds([group("Trucks", { distance: 1000 }), group("Trucks", { distance: 5000 })], undefined);
+    const out = assignDemoGroupIds(stored.map(bare).reverse(), stored);
+    expect(out.map((g) => [g.distance, g.group_id])).toEqual([[5000, stored[1].group_id], [1000, stored[0].group_id]]);
+  });
+
+  it("never hands a group the id of the group whose name it took in a rename plus a reorder", () => {
+    const [trucks, vans] = assignDemoGroupIds([group("Trucks", { distance: 1 }), group("Vans", { distance: 2 })], undefined);
+    const out = assignDemoGroupIds([{ ...bare(vans), label: "Lorries" }, { ...bare(trucks), label: "Vans" }], [trucks, vans]);
+    expect(out[1].group_id).toBe(trucks.group_id);
+    expect([trucks.group_id, vans.group_id]).not.toContain(out[0].group_id);
+  });
+
+  it("moves an old anchor on when an id already uses it, like the server", () => {
+    const old = [group("Trucks"), { ...group("Trucks"), group_id: "vg-trucks" }];
+    const out = assignDemoGroupIds(old.map((g, i) => (i === 0 ? { ...g, group_id: "vg-trucks" } : g)), old);
+    expect(out[0].group_id).toBe("vg-trucks");
   });
 });
