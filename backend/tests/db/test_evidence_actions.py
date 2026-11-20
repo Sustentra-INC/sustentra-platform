@@ -878,3 +878,292 @@ def test_at_most_fifty_folders(store: FakeStore) -> None:
         assert make_folder(engagement_id, f"F{i}").status_code == 201
     over = make_folder(engagement_id, "one more")
     assert over.status_code == 422 and "at most 50" in over.json()["detail"]
+
+
+# --- a move onto a line of another type re-reads the document as that type (C-E2b) ---------------
+STATIONARY_NAME = "Stationary fuel consumption record"
+ELEC_KENT = "s2:purchased_energy:electricity:f1"
+ELECTRICITY = {"category": "purchased_energy", "level2_label": "Electricity", "anchor_kind": "facility",
+               "anchor_id": "F1", "label": "Kent power"}
+
+
+def add_summary_doc(store: FakeStore, document_id: str, engagement_id: str) -> None:
+    store.add_document(document_id, "CT-GHG-WORKBOOK", [{"reported_total": (500, "t")}], engagement_id=engagement_id,
+                       org_id=str(ORG_A))
+    store.documents[-1]["file_name"] = f"{SECRET}-{document_id}.xlsx"
+
+
+def finish_reread(store: FakeStore, document_id: str, type_id: str, records: list[dict], engagement_id: str) -> None:
+    """The read the client asked for has finished: a new extraction result is stored after the old one, and the
+    reviewer's earlier decisions stay (they simply apply to nothing in the new read)."""
+
+    old_results, old_reviews = list(store.results[document_id]), list(store.reviews[document_id])
+    store.add_document(document_id, type_id, records, engagement_id=engagement_id, org_id=str(ORG_A), decision=None)
+    store.documents.pop()  # the same document, not a new one
+    store.results[document_id] = [*old_results, *store.results[document_id]]
+    store.reviews[document_id] = old_reviews
+
+
+def test_a_summary_document_moved_onto_a_line_asks_to_be_read_as_that_lines_type(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    add_summary_doc(store, "WB", engagement_id)
+    moved = move(engagement_id, "WB", "block:summary", GAS_KENT)
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["reread"] == {"canonical_type_id": "CT-S1-FUELQTY", "type_name": STATIONARY_NAME}
+    assert moved.json()["payload"]["placements"] == [{"from": "*", "to": GAS_KENT}]
+    assert "WB" in tree_lines(engagement_id)[GAS_KENT]
+    [event] = events(engagement_id)
+    assert event["metadata"]["reread_as"] == "CT-S1-FUELQTY" and event["metadata"]["reread_as_label"] == STATIONARY_NAME
+    assert SECRET not in json.dumps(event["metadata"])
+
+
+def test_after_the_read_finishes_the_new_values_sit_on_the_chosen_line_unreviewed_and_the_old_extraction_stays(
+        store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    add_summary_doc(store, "WB", engagement_id)
+    assert move(engagement_id, "WB", "block:summary", GAS_KENT).status_code == 200
+    # the read as stationary fuel finds a bill for a plant that is NOT Kent: by default it would not be on this line
+    finish_reread(store, "WB", "CT-S1-FUELQTY", [_gas(plant="Nowhere Mill")], engagement_id)
+    assert "WB" in tree_lines(engagement_id)[GAS_KENT]  # the reviewer's choice holds
+    row = next(r for r in doc_rows(engagement_id).values() if r["document_id"] == "WB")
+    assert row["values"] > 0 and row["accepted"] == 0  # the values start unreviewed
+    assert len(store.results["WB"]) == 2  # the earlier extraction is still in the record
+    assert store.results["WB"][0]["canonical_type_id"] == "CT-GHG-WORKBOOK"
+    assert len(store.reviews["WB"]) == 1  # and so is the earlier decision, applied to nothing new
+
+
+def test_moving_it_back_after_the_read_puts_it_in_block_1_again_and_asks_for_no_new_read(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    add_summary_doc(store, "WB", engagement_id)
+    assert move(engagement_id, "WB", "block:summary", GAS_KENT).status_code == 200
+    finish_reread(store, "WB", "CT-S1-FUELQTY", [_gas()], engagement_id)
+    back = move(engagement_id, "WB", GAS_KENT, "block:summary")
+    assert back.status_code == 200, back.text
+    assert back.json()["reread"] is None
+    tree = call("GET", path(engagement_id, "evidence-tree"), "a_member").json()["blocks"]
+    assert "WB" in [d["document_id"] for d in tree["summary"]]
+    assert "WB" not in tree_lines(engagement_id)[GAS_KENT]
+
+
+def test_a_bill_moved_to_a_line_of_another_kind_is_read_again_but_one_moved_within_its_kind_is_not(
+        store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    assert create_line(engagement_id).status_code == 201  # propane: stationary, like the bill
+    assert create_line(engagement_id, **ELECTRICITY).status_code == 201
+    same_kind = move(engagement_id, "D0", GAS_KENT, PROPANE_KEY)
+    assert same_kind.status_code == 200 and same_kind.json()["reread"] is None
+    assert same_kind.json()["payload"]["placements"] == [{"from": GAS_KENT, "to": PROPANE_KEY}]  # an ordinary move
+    other_kind = move(engagement_id, "D0", PROPANE_KEY, ELEC_KENT)
+    assert other_kind.status_code == 200, other_kind.text
+    assert other_kind.json()["reread"] == {"canonical_type_id": "CT-S2-ELEC",
+                                           "type_name": "Purchased electricity record"}
+    assert "D0" in tree_lines(engagement_id)[ELEC_KENT]
+
+
+def test_an_unidentified_document_moved_onto_a_line_is_read_as_its_type_but_a_block_asks_for_nothing(
+        store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    store.add_document("SCAN", None, [], engagement_id=engagement_id, org_id=str(ORG_A))
+    to_block = move(engagement_id, "SCAN", "block:unassigned", UNASSIGNED)
+    assert to_block.status_code == 200 and to_block.json()["reread"] is None
+    onto_line = move(engagement_id, "SCAN", UNASSIGNED, GAS_KENT)
+    assert onto_line.json()["reread"]["canonical_type_id"] == "CT-S1-FUELQTY"
+
+
+def test_a_document_that_is_being_read_right_now_asks_for_no_second_read(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    add_summary_doc(store, "WB", engagement_id)
+    store.documents[-1]["processing_status"] = "in_progress"
+    moved = move(engagement_id, "WB", "block:summary", GAS_KENT)
+    assert moved.status_code == 200 and moved.json()["reread"] is None
+    assert moved.json()["payload"]["placements"] == [{"from": "block:summary", "to": GAS_KENT}]
+
+
+def test_a_failed_read_leaves_the_document_on_the_line_it_was_moved_to(store: FakeStore) -> None:
+    """The read is asked for by the client after the move is saved: if it fails, the move and the document stay."""
+
+    engagement_id = make_engagement(store, docs=1)
+    add_summary_doc(store, "WB", engagement_id)
+    assert move(engagement_id, "WB", "block:summary", GAS_KENT).json()["reread"] is not None
+    store.documents[-1]["processing_status"] = "failed"  # the run failed; no new extraction result was stored
+    assert "WB" in tree_lines(engagement_id)[GAS_KENT]
+    row = next(r for r in doc_rows(engagement_id).values() if r["document_id"] == "WB")
+    assert row["processing_status"] == "failed"
+    # the tree tells the page which type each line reads as
+    lines = call("GET", path(engagement_id, "evidence-tree"), "a_member").json()["lines"]
+    assert {ln["key"]: ln["read_as"] for ln in lines}[GAS_KENT] == STATIONARY_NAME
+
+
+# --- a document on several lines: the reviewer chooses; the wait for the read is kept on the server ----------------
+GAS_TACOMA_KEY = GAS_TACOMA
+ELEC_TACOMA = "s2:purchased_energy:electricity:f2"
+
+
+def two_plant_doc(store: FakeStore, engagement_id: str, document_id: str = "TWO") -> None:
+    """A bill with a record at Kent and one at Tacoma, both accepted: it sits on both gas lines."""
+
+    store.add_document(document_id, "CT-S1-FUELQTY", [_gas(plant="Kent Cannery"), _gas(plant="Tacoma Works")],
+                       engagement_id=engagement_id, org_id=str(ORG_A))
+    store.documents[-1]["file_name"] = f"{SECRET}-{document_id}.pdf"
+
+
+def decisions_of(engagement_id: str) -> dict[str, dict]:
+    items = call("GET", path(engagement_id, "workpaper-items?kind=document"), "a_member")
+    assert items.status_code == 200, items.text
+    return {i["item_key"]: i["payload"] for i in items.json()["items"]}
+
+
+def recalculate(store: FakeStore, engagement_id: str) -> dict:
+    from backend.app.services.engagement_recalculation_service import EngagementRecalculationService
+
+    engagement = call("GET", f"{BASE}/{engagement_id}", "a_member").json()
+    return EngagementRecalculationService(store, store, store).recalculate(
+        {**engagement, "id": engagement_id}, lambda record: True, decisions_of(engagement_id))
+
+
+def uncounted(result: dict) -> dict[str, str]:
+    return {d["document_id"]: d["reason"] for d in result["uncounted_values"]["documents"]}
+
+
+def tacoma_setup(store: FakeStore) -> str:
+    engagement_id = make_engagement(store, facilities=[KENT, TACOMA])
+    assert create_line(engagement_id, **{**ELECTRICITY, "anchor_id": "F1"}).status_code == 201
+    return engagement_id
+
+
+def test_a_document_on_two_lines_must_choose_between_re_reading_and_moving_only_this_placement(
+        store: FakeStore) -> None:
+    engagement_id = tacoma_setup(store)
+    two_plant_doc(store, engagement_id)
+    assert {GAS_KENT, GAS_TACOMA} <= {k for k, docs in tree_lines(engagement_id).items() if "TWO" in docs}
+    ask = move(engagement_id, "TWO", GAS_KENT, ELEC_KENT)
+    assert ask.status_code == 409, ask.text
+    assert "is also on" in ask.json()["detail"] and "Tacoma Works" in ask.json()["detail"]
+    assert "Purchased electricity record" in ask.json()["detail"] and "re-read" in ask.json()["detail"].lower()
+    assert events(engagement_id) == [e for e in events(engagement_id) if e["event_type"] != "evidence_document_moved"]
+    assert "rereadPending" not in decisions_of(engagement_id).get("TWO", {})
+
+    only = call("POST", path(engagement_id, "documents/TWO/placements"), "a_member",
+                {"from": GAS_KENT, "to": ELEC_KENT, "reread": "move_only"})
+    assert only.status_code == 200, only.text
+    assert only.json()["reread"] is None
+    assert only.json()["payload"]["placements"] == [{"from": GAS_KENT, "to": ELEC_KENT}]  # one placement, an ordinary move
+    assert "rereadPending" not in only.json()["payload"]
+    on = tree_lines(engagement_id)
+    assert "TWO" in on[ELEC_KENT] and "TWO" in on[GAS_TACOMA] and "TWO" not in on[GAS_KENT]
+    [moved] = [e for e in events(engagement_id) if e["event_type"] == "evidence_document_moved"]
+    assert moved["metadata"]["reread_choice"] == "move_only" and moved["metadata"]["reread_as"] == "CT-S2-ELEC"
+
+
+def test_choosing_to_re_read_takes_a_document_off_its_other_lines_and_waits_for_the_read(store: FakeStore) -> None:
+    engagement_id = tacoma_setup(store)
+    two_plant_doc(store, engagement_id)
+    add_gas(store, "OTHER", engagement_id)  # another bill on Kent gas, accepted: not touched by any of this
+    chosen = call("POST", path(engagement_id, "documents/TWO/placements"), "a_member",
+                  {"from": GAS_KENT, "to": ELEC_KENT, "reread": "reread"})
+    assert chosen.status_code == 200, chosen.text
+    assert chosen.json()["reread"]["canonical_type_id"] == "CT-S2-ELEC"
+    assert chosen.json()["payload"]["placements"] == [{"from": "*", "to": ELEC_KENT}]
+    on = tree_lines(engagement_id)
+    assert "TWO" in on[ELEC_KENT] and "TWO" not in on[GAS_KENT] and "TWO" not in on[GAS_TACOMA]
+    [moved] = [e for e in events(engagement_id) if e["event_type"] == "evidence_document_moved"]
+    assert moved["metadata"]["reread_choice"] == "reread"
+
+
+def test_while_the_read_is_pending_or_failed_the_old_type_records_count_nowhere_and_the_wait_survives_a_reload(
+        store: FakeStore) -> None:
+    engagement_id = tacoma_setup(store)
+    add_gas(store, "BILL", engagement_id)
+    add_gas(store, "OTHER", engagement_id)
+    before = recalculate(store, engagement_id)
+    assert "OTHER" not in uncounted(before)
+    chosen = move(engagement_id, "BILL", GAS_KENT, ELEC_KENT)
+    assert chosen.status_code == 200 and chosen.json()["reread"] is not None
+    pending = decisions_of(engagement_id)["BILL"]["rereadPending"]
+    assert pending["canonical_type_id"] == "CT-S2-ELEC" and pending["error"] is None and pending["requested_at"]
+    row = doc_rows(engagement_id)["BILL"]
+    assert row["reread"] == {"canonical_type_id": "CT-S2-ELEC", "type_name": "Purchased electricity record",
+                             "status": "pending", "error": None}
+    assert uncounted(recalculate(store, engagement_id)).get("BILL") == "awaiting_reread"
+
+    failed = call("POST", path(engagement_id, "documents/BILL/reread-state"), "a_member",
+                  {"state": "failed", "error": "The file could not be read. 工作簿"})
+    assert failed.status_code == 200, failed.text
+    row = doc_rows(engagement_id)["BILL"]  # a fresh read of the tree, as after a page reload
+    assert row["reread"]["status"] == "failed" and row["reread"]["error"] == "The file could not be read. 工作簿"
+    assert "BILL" in tree_lines(engagement_id)[ELEC_KENT]  # still visible on the line
+    assert uncounted(recalculate(store, engagement_id)).get("BILL") == "awaiting_reread"
+    assert "OTHER" not in uncounted(recalculate(store, engagement_id))  # other documents are untouched
+
+    # a stale tab's document save cannot clear or change it
+    put = call("PUT", path(engagement_id, "workpaper-items/document/BILL"), "a_admin",
+               {"payload": {"documentId": "BILL", "rereadPending": None, "note": "n"}})
+    assert put.status_code == 200 and put.json()["payload"]["rereadPending"]["error"] is not None
+
+    again = call("POST", path(engagement_id, "documents/BILL/reread-state"), "a_member", {"state": "pending"})
+    assert again.status_code == 200 and doc_rows(engagement_id)["BILL"]["reread"]["status"] == "pending"
+    finish_reread(store, "BILL", "CT-S2-ELEC", [{"facility_name": ("Kent Cannery", None)}], engagement_id)
+    assert doc_rows(engagement_id)["BILL"]["reread"] is None  # a read of that type arrived: the wait is over
+    gone = call("POST", path(engagement_id, "documents/BILL/reread-state"), "a_member", {"state": "done"})
+    assert gone.status_code == 200 and "rereadPending" not in gone.json()["payload"]
+    assert call("POST", path(engagement_id, "documents/OTHER/reread-state"), "a_member",
+                {"state": "failed", "error": "x"}).status_code == 409
+    assert call("POST", path(engagement_id, "documents/BILL/reread-state"), "a_member",
+                {"state": "failed", "error": "x" * 501}).status_code == 422
+
+
+def test_values_from_the_re_read_start_unreviewed_and_no_earlier_decision_carries_over_by_record_index(
+        store: FakeStore) -> None:
+    """The earlier accepted decisions share candidate ids, field names, record index and values with the new read
+    (same period, same plant): by the old rules they would apply. They must not, and they stay in the record."""
+
+    engagement_id = tacoma_setup(store)
+    two_plant_doc(store, engagement_id)
+    add_gas(store, "OTHER", engagement_id)
+    for review in store.reviews["TWO"]:
+        review["reviewed_at"] = "2026-01-01T00:00:00+00:00"
+    store.results["TWO"][0]["created_at"] = "2026-01-01T00:00:00+00:00"
+    accepted_before = doc_rows(engagement_id)["TWO"]
+    assert accepted_before["accepted"] > 0
+    other_before = doc_rows(engagement_id)["OTHER"]
+
+    assert call("POST", path(engagement_id, "documents/TWO/placements"), "a_member",
+                {"from": GAS_KENT, "to": ELEC_KENT, "reread": "reread"}).status_code == 200
+    # the read as electricity finds the very same fields and values under the very same candidate ids
+    old_items = store.results["TWO"][0]["items"]
+    store.results["TWO"].append({**store.results["TWO"][0], "canonical_type_id": "CT-S2-ELEC",
+                                 "created_at": "2026-02-01T00:00:00+00:00", "items": [dict(i) for i in old_items]})
+    assert len(store.reviews["TWO"]) == len(old_items)  # every earlier decision is still stored
+    row = doc_rows(engagement_id)["TWO"]
+    assert row["values"] > 0 and row["accepted"] == 0  # unreviewed
+    assert row["reread"] is None
+    schedule = call("GET", path(engagement_id, f"calculation-lines/{ELEC_KENT}/schedule"), "a_member").json()
+    assert all(not r["accepted"] and r["decision"] in (None, "not_reviewed") for r in schedule["rows"] if r["document_id"] == "TWO")
+    # the other document's accepted values are untouched
+    assert doc_rows(engagement_id)["OTHER"] == other_before
+    assert "OTHER" not in uncounted(recalculate(store, engagement_id))
+
+    # a decision made after the new read applies as usual
+    later = {**store.reviews["TWO"][0], "reviewed_at": "2026-03-01T00:00:00+00:00"}
+    store.reviews["TWO"].append(later)
+    assert doc_rows(engagement_id)["TWO"]["accepted"] > 0
+
+
+def test_a_summary_document_in_a_folder_leaves_it_whether_a_move_onto_a_line_re_reads_or_not(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, docs=1)
+    for name in ("A", "B"):
+        add_summary(store, name, engagement_id)
+    folder = make_folder(engagement_id).json()["folder"]["id"]
+    for name in ("A", "B"):
+        assert put_in_folder(engagement_id, name, folder).status_code == 200
+    reread = call("POST", path(engagement_id, "documents/A/placements"), "a_member",
+                  {"from": "block:summary", "to": GAS_KENT, "reread": "reread"})
+    assert reread.status_code == 200 and reread.json()["reread"] is not None
+    assert "folderId" not in reread.json()["payload"]
+    only = call("POST", path(engagement_id, "documents/B/placements"), "a_member",
+                {"from": "block:summary", "to": GAS_KENT, "reread": "move_only"})
+    assert only.status_code == 200 and only.json()["reread"] is None and "folderId" not in only.json()["payload"]
+    assert block1(engagement_id)["rows"] == {} and block1(engagement_id)["folders"] == {folder: ("Workbooks", 0)}
+    # back to Block 1: top level, not the old folder
+    assert move(engagement_id, "B", GAS_KENT, "block:summary").status_code == 200
+    assert block1(engagement_id)["rows"] == {"B": None}

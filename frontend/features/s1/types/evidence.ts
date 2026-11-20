@@ -134,6 +134,8 @@ export interface DocumentDecision {
   /** Moves of this document between calculation lines and blocks, applied in order to where the
    *  backend first placed it. Saved with the rest of this payload, which must be merged, not replaced. */
   placements?: { from: string; to: string }[];
+  /** A re-read a move asked for that has not finished; set and cleared by the server only (a save never sends it). */
+  rereadPending?: { canonical_type_id: string; type_name: string; requested_at: string; error: string | null } | null;
   /** The Block 1 folder this summary document sits in; set only by the Evidence folder actions (the server keeps it). */
   folderId?: string;
 }

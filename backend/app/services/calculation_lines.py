@@ -49,6 +49,7 @@ from backend.app.services.thermal_extractor import thermal_kind
 BLOCK_SUMMARY = "block:summary"  # Block 1: Summary documents and workbook
 BLOCK_UNASSIGNED = "block:unassigned"  # Block 2: Unassigned documents
 SUPPORTING_UNASSIGNED = "supporting:unassigned"  # Block 3: Unassigned supporting evidence
+ALL_PLACES = "*"  # a move's ``from`` that means every place the document is in (see ``apply_placements``)
 FIXED_TARGETS = frozenset({BLOCK_SUMMARY, BLOCK_UNASSIGNED, SUPPORTING_UNASSIGNED})
 
 SCOPES: tuple[tuple[str, str], ...] = (("s1", "Scope 1"), ("s2", "Scope 2"), ("biogenic", "Biogenic"))
@@ -88,6 +89,28 @@ LINE_TYPE_NAMES: dict[str, str] = {
     THERMAL: "Purchased steam, heat or cooling record",
 }
 THERMAL_LEVEL2 = {"steam": ("steam", "Steam"), "hot_water": ("heating", "Heating"), "chilled_water": ("cooling", "Cooling")}
+
+
+def line_type_id(line: CalculationLine) -> str | None:
+    """The document type whose records a line holds, so a document of another type moved onto it is
+    read again as this one; None when no extractor feeds that line (process, contractual)."""
+
+    if line.category in ("stationary", "biogenic"):
+        return MOBILE if line.anchor_kind == "vehicle_group" else STATIONARY
+    return {"mobile": MOBILE, "fugitive": REFRIGERANT,
+            "purchased_energy": ELECTRICITY if line.level2 == "electricity" else THERMAL}.get(line.category)
+
+
+def reread_pending(decision: dict[str, Any] | None, canonical_type_id: str | None) -> dict[str, Any] | None:
+    """The re-read a move asked for that has not produced its values yet: the decision's ``rereadPending``
+    (``canonical_type_id``, ``type_name``, ``requested_at``, ``error``), while the document's latest extraction
+    is still not of that type. Once a read of that type is stored it no longer applies. A failed read keeps
+    it (``error`` is the reason), so the document stays out of the calculation until it is read or moved."""
+
+    pending = (decision or {}).get("rereadPending")
+    if not isinstance(pending, dict) or not isinstance(pending.get("canonical_type_id"), str):
+        return None
+    return None if pending["canonical_type_id"] == canonical_type_id else pending
 
 
 def type_name(canonical_type_id: str | None) -> str | None:
@@ -628,7 +651,9 @@ def apply_placements(slots: list[Slot], overrides: Any, known_lines: set[str] | 
     """The reviewer's moves, in order: each ``{"from", "to"}`` moves the document's placement
     named ``from`` to ``to`` (its records with it). ``from`` is what the row showed
     (``DocRow.placement_from``): a line key, a block, or ``supporting:unassigned``, which also
-    covers placements on a line that no longer exists (given ``known_lines``). A move whose
+    covers placements on a line that no longer exists (given ``known_lines``), or ``ALL_PLACES``: every
+    place the document is in (saved when a move onto a line of another type has the document read
+    again, so its new records are filed where the reviewer put it). A move whose
     ``from`` the document no longer has is ignored; a move onto a place the document already
     has merges the two."""
 
@@ -640,7 +665,8 @@ def apply_placements(slots: list[Slot], overrides: Any, known_lines: set[str] | 
         source, target = move.get("from"), move.get("to")
         if not isinstance(source, str) or not isinstance(target, str) or source == target:
             continue
-        moving = [s for s in out if s.target == source or _effective(s, known) == source]
+        moving = list(out) if source == ALL_PLACES else [
+            s for s in out if s.target == source or _effective(s, known) == source]
         if not moving:
             continue
         stay = [s for s in out if s not in moving]

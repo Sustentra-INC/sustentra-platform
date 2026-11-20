@@ -117,7 +117,7 @@ function evidenceEventText(event: EvidenceActivityItem, filename: Map<string, st
       return `deleted the line ${event.label ?? ""}${moved}`;
     }
     case "evidence_document_moved":
-      return `moved ${(event.document_id && filename.get(event.document_id)) || "a document"} from ${event.from_label ?? "its place"} to ${event.to_label ?? "another place"}`;
+      return `moved ${(event.document_id && filename.get(event.document_id)) || "a document"} from ${event.from_label ?? "its place"} to ${event.to_label ?? "another place"}${event.reread_as_label ? (event.reread_choice === "move_only" ? `, without reading it again as ${event.reread_as_label}` : `, and had it read again as ${event.reread_as_label}`) : ""}`;
     case "evidence_folder_created":
       return `added the folder ${event.folder_name ?? ""}`.trim();
     case "evidence_folder_renamed":

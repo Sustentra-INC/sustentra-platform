@@ -48,6 +48,7 @@ from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, L
 from backend.app.services.data_quality_checks import EvidenceRecord, run_checks
 from backend.app.services.calculation_lines import GROUP_ID, LINE_KEY
 from backend.app.services.reviewed_evidence import (  # noqa: F401 - re-exported: callers import them here
+    reviews_for_latest_type,
     STATIONARY,
     MOBILE,
     ELECTRICITY,
@@ -82,6 +83,7 @@ PLACEMENT_SOURCES = ("stationary_combustion", "mobile_combustion", "purchased_el
 # {it} / {them} / {its} follow the number of records.
 NOT_ON_A_LINE_WHY = {
     "not_on_a_line": "the document is not on a calculation line",
+    "awaiting_reread": "the document was moved onto a line of another type and has not been read as that type yet",
     "no_calculation_line": "no calculation line exists for it yet",
     "no_vehicle_group": "no vehicle group is set up",
     "fuel_shared_by_vehicle_groups": "more than one vehicle group uses the fuel",
@@ -92,6 +94,7 @@ NOT_ON_A_LINE_WHY = {
 }
 NOT_ON_A_LINE_HINT = {
     "not_on_a_line": "Place {them} in Evidence.",
+    "awaiting_reread": "Re-read in Evidence.",
     "no_calculation_line": "Answer the fuel or energy type question in Evidence.",
     "no_vehicle_group": "Add {it} in Setup.",
     "fuel_shared_by_vehicle_groups": "Choose the vehicle group in Evidence.",
@@ -519,7 +522,8 @@ class EngagementRecalculationService:
                 "candidate_count": sum(1 for i in latest.get("items") or [] if not _suggested(i)),
                 "suggested_count": sum(1 for i in latest.get("items") or [] if _suggested(i)),
             })
-            reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
+            reviews = reviews_for_latest_type(
+                results, [d for d in self._reviews.list_by_document(document_id) if can_see(d)])
             read_items = latest.get("items") or []
             for item, resolved in zip(read_items, resolve_decisions(read_items, reviews)):
                 review = resolved.decision or {}
@@ -554,7 +558,8 @@ class EngagementRecalculationService:
                 continue
             if isinstance(latest.get("facility_suggestion"), dict):
                 self._suggested_facilities[document_id] = latest["facility_suggestion"]
-            reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
+            reviews = reviews_for_latest_type(
+                results, [d for d in self._reviews.list_by_document(document_id) if can_see(d)])
             records.extend(group_reviewed_records(document, canonical_type_id, latest.get("items") or [], reviews))
         return records
 
@@ -829,6 +834,8 @@ class EngagementRecalculationService:
         share, no Setup facility, or no line for it yet (its fuel or gas is not settled)."""
 
         place = filing.placements.get(id(record)) if filing is not None else None
+        if filing is not None and record.document_id in filing.awaiting_reread:
+            return "awaiting_reread"
         if place is None or (decisions.get(record.document_id) or {}).get("placements"):
             return "not_on_a_line"
         if place.anchor_kind == "vehicle_group" and place.level2 and place.anchor_id is None:

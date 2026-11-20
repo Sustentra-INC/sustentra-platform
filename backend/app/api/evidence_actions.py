@@ -20,7 +20,7 @@ document text. No ``from __future__ import annotations``: FastAPI resolves these
 import json
 import uuid
 from datetime import datetime, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
@@ -58,6 +58,8 @@ BLOCK_NAMES = {
     cl.BLOCK_UNASSIGNED: "Unassigned documents",
     cl.SUPPORTING_UNASSIGNED: "Unassigned supporting evidence",
 }
+# A document in one of these states is already being read: moving it asks for no new read.
+NO_REREAD_STATES = frozenset({"queued", "in_progress"})
 STALE_MOVE = "This document was already moved from there. Reload Evidence to see where it is now."
 
 
@@ -100,6 +102,18 @@ class PlacementMove(BaseModel):
 
     from_: str = Field(alias="from", min_length=1, max_length=200)
     to: str = Field(min_length=1, max_length=200)
+    # A document that sits in other places too, moved onto a line of another type: "reread" reads it again as that
+    # type, which takes it off those places; "move_only" moves just this placement and leaves its type alone.
+    reread: Literal["reread", "move_only"] | None = None
+
+
+class RereadState(BaseModel):
+    """What became of a read a move asked for: ``pending`` (asked again), ``failed`` (with the reason), ``done``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    state: Literal["pending", "failed", "done"]
+    error: str | None = Field(default=None, max_length=500)
 
 
 class FacilityChoice(BaseModel):
@@ -182,6 +196,20 @@ async def _save_chain(db: AsyncSession, engagement: dict[str, Any], user: Curren
         db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind="document", item_key=document_id,
         payload=payload, user_id=user.id)
     return payload
+
+
+def _reread_for(loaded: Loaded, doc: DocState, target: str) -> dict[str, str] | None:
+    """The read a move onto ``target`` asks for: the document read again as the line's type, when that type is
+    not the one it was read as (a summary document, an unidentified one, a bill of another kind). None for a
+    block, a line no extractor feeds, a document of the line's type already, or one being read right now."""
+
+    line = next((ln for ln in loaded.lines if ln.key == target), None)
+    type_id = cl.line_type_id(line) if line is not None else None
+    if type_id is None or doc.canonical_type_id == type_id:
+        return None
+    if str(doc.document.get("processing_status") or "").lower() in NO_REREAD_STATES:
+        return None
+    return {"canonical_type_id": type_id, "type_name": str(cl.type_name(type_id))}
 
 
 def _place_label(loaded: Loaded, key: str) -> str:
@@ -334,7 +362,16 @@ async def move_document(
     db: AsyncSession = Depends(get_db_session, scope="function"),
 ) -> dict[str, Any]:
     """Move one of a document's placements. ``from`` must be a place the document is in now, or the
-    answer is 409 and nothing is saved (another tab moved it first). Answers with the saved payload."""
+    answer is 409 and nothing is saved (another tab moved it first). Answers with the saved payload.
+
+    A document moved onto a line of another type also answers ``reread``: ``{canonical_type_id, type_name}``,
+    the type the client asks the extraction queue to read it as (POST /documents/{id}/processing-runs with
+    ``canonical_type_id_override``). The earlier extraction stays in the record, and nothing decided on
+    it applies to the new values, which start unreviewed. The saved move then covers every place the
+    document is in (``from`` "*"), since its records will be filed again by the new read, and the decision
+    holds ``rereadPending`` until a read of that type arrives: its old-type records count on no line meanwhile.
+    A re-read takes the document off its other places, so a document that has any must say which it wants
+    (``reread``: "reread" or "move_only"): 409 without it. "move_only" moves just this placement."""
 
     if not workpaper_item_service.ITEM_KEY.match(document_id):
         raise HTTPException(status_code=404, detail="That document isn't on the Evidence page for this engagement.")
@@ -352,14 +389,71 @@ async def move_document(
     if source == target:
         raise HTTPException(status_code=422, detail="The document is already there.")
     existing = decisions.get(document_id) or {}
-    if source == cl.BLOCK_SUMMARY and "folderId" in existing:  # it leaves Block 1, so it leaves its folder
-        existing = {k: v for k, v in existing.items() if k != "folderId"}
     move = {"from": source, "to": target}
-    payload = await _save_chain(db, engagement, user, document_id, existing,
-                                _next_chain(_chain(existing), move, doc, known))
+    hint = _reread_for(loaded, doc, target)
+    others = sorted({s.target for s in doc.slots} - {source})
+    if hint and others and body.reread is None:
+        name = doc.document.get("file_name") or document_id
+        raise HTTPException(status_code=409, detail=(
+            f"{name} is also on {' and '.join(_place_label(loaded, k) for k in others)}. Re-reading it as "
+            f"{hint['type_name']} takes it off those places. Choose to re-read it or to move it without re-reading."))
+    reread = hint if hint and body.reread != "move_only" else None
+    if reread:
+        chain = [{"from": cl.ALL_PLACES, "to": target}]
+        existing = {**existing, "rereadPending": {"canonical_type_id": reread["canonical_type_id"],
+                                                  "type_name": reread["type_name"], "requested_at": _now(),
+                                                  "error": None}}
+    else:
+        chain = _next_chain(_chain(existing), move, doc, known)
+    if "folderId" in existing and not any(
+            s.target == cl.BLOCK_SUMMARY for s in cl.apply_placements(doc.default_slots, chain, known)):
+        existing = {k: v for k, v in existing.items() if k != "folderId"}  # it leaves Block 1, so it leaves its folder
+    payload = await _save_chain(db, engagement, user, document_id, existing, chain)
     await _audit(db, request, user, DOCUMENT_MOVED, engagement,
                  {"document_id": document_id, "from": source, "to": target,
-                  "from_label": _place_label(loaded, source), "to_label": _place_label(loaded, target)})
+                  "from_label": _place_label(loaded, source), "to_label": _place_label(loaded, target),
+                  **({"reread_as": hint["canonical_type_id"], "reread_as_label": hint["type_name"],
+                      "reread_choice": "reread" if reread else "move_only"} if hint else {})})
+    return {"document_id": document_id, "payload": payload, "reread": reread}
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+@router.post("/engagements/{engagement_id}/documents/{document_id}/reread-state")
+async def set_reread_state(
+    engagement_id: str,
+    document_id: str,
+    body: RereadState,
+    user: CurrentUser = Depends(s1_writer),
+    _open: dict[str, Any] = Depends(require_open_engagement),
+    db: AsyncSession = Depends(get_db_session, scope="function"),
+) -> dict[str, Any]:
+    """What became of the read a move asked for, kept on the server so it survives a reload: ``failed`` stores the
+    reason (the document stays out of the calculation), ``pending`` clears it for another try, ``done`` ends the wait.
+    409 when no re-read is waiting on the document (``done`` is always fine)."""
+
+    if not workpaper_item_service.ITEM_KEY.match(document_id):
+        raise HTTPException(status_code=404, detail="That document isn't on the Evidence page for this engagement.")
+    engagement = await _locked(db, engagement_id)
+    decisions = await tree_api.document_decisions(db, engagement)
+    existing = decisions.get(document_id) or {}
+    pending = existing.get("rereadPending")
+    if not isinstance(pending, dict):
+        if body.state == "done":
+            return {"document_id": document_id, "payload": existing}
+        raise HTTPException(status_code=409, detail="No re-read is waiting for this document.")
+    if body.state == "done":
+        payload = {k: v for k, v in existing.items() if k != "rereadPending"}
+    else:
+        error = " ".join((body.error or "").split())[:500] or None if body.state == "failed" else None
+        payload = {**existing, "rereadPending": {**pending, "error": error or ("The read failed." if body.state == "failed" else None),
+                                                 **({"requested_at": _now()} if body.state == "pending" else {})}}
+    payload["documentId"] = document_id
+    await workpaper_item_service.save_item(
+        db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind="document", item_key=document_id,
+        payload=payload, user_id=user.id)
     return {"document_id": document_id, "payload": payload}
 
 
@@ -621,7 +715,8 @@ async def evidence_activity(
             "actor_name": r["actor_name"] or ("Unknown user" if r["actor_user_id"] else None),
             **{k: meta.get(k) for k in ("line_key", "label", "level2_label", "old_label", "new_label",
                                         "documents_moved", "document_id", "from", "to", "from_label", "to_label",
-                                        "facility_id", "facility_name", "suggested", "folder_id", "folder_name")
+                                        "facility_id", "facility_name", "suggested", "folder_id", "folder_name",
+                                        "reread_as", "reread_as_label", "reread_choice")
                if k in meta},
         })
     next_cursor = audit_query.encode_cursor(rows[-1]["created_at"], rows[-1]["id"], scope) if more and rows else None
