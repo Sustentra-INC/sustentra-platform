@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .document_shape import narrative_ghg_document_type
 from ..reference.vocabulary_loader import (
     VocabularyLibrary,
     VocabularyVariant,
@@ -129,7 +130,10 @@ class ClassificationService:
             search_text = self._build_search_text(payload)
             raw_file_name = payload.get("file_name")
             file_name = raw_file_name if isinstance(raw_file_name, str) else ""
-            scored_candidates = self._score_candidates(vocabulary_library, search_text, file_name)
+            narrative_type = narrative_ghg_document_type(
+                payload.get("parser_output") if isinstance(payload.get("parser_output"), dict) else None,
+                str(payload["extracted_text"]) if isinstance(payload.get("extracted_text"), str) else "")
+            scored_candidates = self._score_candidates(vocabulary_library, search_text, file_name, narrative_type)
 
             if not scored_candidates:
                 base_result["status"] = "unclassified"
@@ -215,6 +219,7 @@ class ClassificationService:
         vocabulary_library: VocabularyLibrary,
         search_text: str,
         file_name: str = "",
+        narrative_type: str | None = None,
     ) -> list[dict[str, Any]]:
         candidates: list[dict[str, Any]] = []
 
@@ -250,6 +255,8 @@ class ClassificationService:
             candidates.append(candidate)
 
         candidates = self._apply_content_cues(vocabulary_library, search_text, candidates)
+        if narrative_type:
+            candidates = self._credit_narrative(vocabulary_library, narrative_type, candidates)
         candidates.sort(
             key=lambda item: (
                 -item["confidence"],
@@ -318,6 +325,37 @@ class ClassificationService:
                 candidate["review_required"] = True
             kept.append(candidate)
         return kept
+
+    def _credit_narrative(
+        self,
+        vocabulary_library: VocabularyLibrary,
+        type_id: str,
+        candidates: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """A company's narrative GHG document (see ``narrative_ghg_document_type``) is that summary type, whatever
+        kWh, MWh or "invoice" its sentences mention: its type passes the threshold and every other type stays below."""
+
+        label = "cue: company GHG document (title or heading, mostly prose, no bill or log rows)"
+        of_type = [c for c in candidates if c["canonical_type_id"] == type_id]
+        if of_type:
+            target = max(of_type, key=lambda c: c["confidence"])
+        else:
+            variants = [v for v in vocabulary_library.variants if v.canonical_type_id == type_id]
+            if not variants:
+                return candidates
+            target = {"canonical_type_id": type_id, "variant_id": variants[0].variant_id, "confidence": 0.0,
+                      "threshold": min(variants[0].confidence_threshold_default, self._threshold_cap),
+                      "matched_signals": self._empty_matched_signals(), "reason": "", "review_required": True}
+            candidates.append(target)
+        target["matched_signals"]["key_phrases"].append(label)
+        target["confidence"] = round(min(max(target["confidence"] + CUE_BONUS, target["threshold"] + 0.15), 1.0), 4)
+        target["reason"] = self._build_reason(target["matched_signals"])
+        target["review_required"] = False
+        for candidate in candidates:
+            if candidate is not target:
+                candidate["confidence"] = round(min(candidate["confidence"], candidate["threshold"] - 0.01), 4)
+                candidate["review_required"] = True
+        return candidates
 
     def _build_search_text(self, payload: dict[str, Any]) -> str:
         text_parts: list[str] = []

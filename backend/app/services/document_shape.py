@@ -138,3 +138,83 @@ def looks_like_a_contract(parser_output: dict[str, Any]) -> bool:
         return False
     return not any(veto.search(text) for veto in (
         _QUANTITY_WITH_UNIT, _QUANTITY_LABEL, _BILL_ROW_LABEL, _INVOICE_WORDS))
+
+
+# --- a company's own narrative GHG document ----------------------------------------------------
+# A published GHG statement, a management assertion, an inventory management plan, a basis of reporting or an
+# accountants' review report is prose about the inventory, not source evidence. It always says kWh, MWh and
+# "invoices" in passing, so those words cannot veto it; what vetoes it is the shape of a bill or a log near the top.
+WORKBOOK_TYPE_ID = "CT-GHG-WORKBOOK"
+METHODDOC_TYPE_ID = "CT-S1-METHODDOC"
+_APOS = "['’ʼ`]"
+_GHG = r"(?:greenhouse\s+gas|ghg)"
+_NARRATIVE_METHOD_HEADING = re.compile(
+    r"\bbasis\s+of\s+(?:reporting|preparation)\b|\bmethodology\b|\bmethods\s+and\s+assumptions\b", re.I)
+_NARRATIVE_HEADING = re.compile(
+    rf"\bstatement\s+of\s+{_GHG}\s+emissions\b|\bmanagement{_APOS}?s?\s+assertion\b"
+    rf"|\b{_GHG}\s+inventory\s+(?:management\s+plan|report)\b|\bclimate\s+accounting\s+statement\b"
+    rf"|\bindependent\s+accountants?{_APOS}?s?{_APOS}?\s+(?:review|examination)\s+report\b"
+    rf"|\b(?:limited\s+|reasonable\s+)?assurance\s+(?:statement|report)\b|\blimited\s+assurance\b"
+    rf"|\boperational\s+{_GHG}\s+emissions\b|\bannual\s+{_GHG}\s+(?:emissions\s+)?report\b", re.I)
+_TOP_LINES = 40  # where a title or heading cue is looked for
+_BILL_TOP_LINES = 30  # where bill rows and quantity tables veto
+_HEADING_WORDS = 16
+_NARRATIVE_MIN_LINES = 12
+_NARRATIVE_MIN_PROSE = 0.4
+_ACTIVITY_UNIT = re.compile(
+    r"\d[\d,.]*\s*(?:gal(?:lons?)?|k?wh|mwh|therms?|ccf|mcf|mmbtu|dth|litres?|liters?)\b"
+    r"|\b(?:gallons?|litres?|liters?|therms?|ccf|mcf|kwh|mwh|mmbtu|dth|odometer|meter reading)\b", re.I)
+_TABULAR = re.compile(r"\||\t|\s{3,}|^[^,]*(?:,[^,]*){3,}$")
+_BILL_TOP = re.compile(r"\bamount\s+due\b|\btotal\s+due\b|\bpay\s+by\b|\bpay\s+this\s+amount\b", re.I)
+
+
+def _document_lines(parser_output: dict[str, Any] | None, text: str) -> tuple[list[str], int | None]:
+    """The document's non-empty lines in reading order, and its page count when the parser gave one."""
+
+    raw = ""
+    pages = None
+    if isinstance(parser_output, dict):
+        page_list = [p for p in parser_output.get("pages") or [] if isinstance(p, dict)]
+        pages = len(page_list) or None
+        raw = "\n".join(str(p.get("text") or "") for p in page_list)
+        if not raw.strip():
+            raw = "\n".join(str(b.get("text") or "") for b in parser_output.get("text_blocks") or []
+                            if isinstance(b, dict))
+    if not raw.strip():
+        raw = text
+    return [line.strip() for line in raw.splitlines() if line.strip()], pages
+
+
+def narrative_ghg_document_type(parser_output: dict[str, Any] | None = None, text: str = "") -> str | None:
+    """The summary type (``CT-GHG-WORKBOOK`` or ``CT-S1-METHODDOC``) of a company's narrative GHG document, or
+    ``None``.
+
+    It needs a title or heading cue near the top (statement of GHG emissions, management assertion, inventory
+    management plan, basis of reporting, climate accounting statement, accountants' review report, assurance
+    statement, GHG inventory report, methodology), mostly prose across several pages, and none of a bill's or a
+    log's shape near the top: bill rows (account number, billing period, amount due) or a table of quantities.
+    kWh, MWh and "invoices" inside sentences do not count against it. A contract is never one."""
+
+    if isinstance(parser_output, dict):
+        if parser_output.get("tables") or any(
+                isinstance(r, dict) and r.get("sheet_name") for r in parser_output.get("source_references") or []):
+            return None  # a spreadsheet or a document with tables: the summary cue for workbooks decides
+        if looks_like_a_contract(parser_output):
+            return None
+    lines, pages = _document_lines(parser_output, text)
+    if len(lines) < _NARRATIVE_MIN_LINES or (pages is not None and pages < 2):
+        return None
+    top = lines[:_TOP_LINES]
+    headings = [line for line in top if len(line.split()) <= _HEADING_WORDS]
+    report = any(_NARRATIVE_HEADING.search(line) for line in headings)
+    if not report and not any(_NARRATIVE_METHOD_HEADING.search(line) for line in headings):
+        return None
+    for line in lines[:_BILL_TOP_LINES]:
+        if _BILL_ROW_LABEL.search(line) or _BILL_TOP.search(line):
+            return None
+        if _TABULAR.search(line) and _ACTIVITY_UNIT.search(line):
+            return None
+    prose = sum(1 for line in lines if len(line.split()) >= 8 or _is_sentence(line))
+    if prose < 3 or prose / len(lines) < _NARRATIVE_MIN_PROSE:
+        return None
+    return WORKBOOK_TYPE_ID if report else METHODDOC_TYPE_ID

@@ -27,6 +27,13 @@ Low-confidence and multi-type outcomes route to review. v0 does not implement LL
   is credited `CT-GHG-WORKBOOK` whatever its file is called. It is then a client-prepared summary document
   (`calculation_lines.SUMMARY_TYPES`), which Methodology review and Claude prefill read as the client's reports.
   It is read as itself and never as fuel evidence.
+- **Company narrative GHG document.** `document_shape.narrative_ghg_document_type`: a title or heading near the top
+  (statement of GHG emissions, management assertion, inventory management plan, basis of reporting, climate
+  accounting statement, accountants' review report, assurance statement, GHG inventory report, methodology), mostly
+  prose over several pages, and no bill rows or quantity table near the top. kWh, MWh and "invoices" inside
+  sentences do not veto it (the spreadsheet cue above still does). Typed `CT-GHG-WORKBOOK`, or `CT-S1-METHODDOC` for
+  a basis of reporting or methodology; never a contract. A document the reviewer moves into Block 1 is read by
+  prefill whatever its type.
 - **Contract.** `document_shape.looks_like_a_contract` (a heading that names an agreement or contract, at least five
   kinds of contract wording, and no usage figure or bill rows) stops a document as not-evidence, with a plain
   reason, after the classifier: it is never typed as a fuel or electricity record. A fuel bill that mentions an
