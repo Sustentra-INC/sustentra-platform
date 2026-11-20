@@ -413,7 +413,8 @@ text or file name.
 | `POST /v1/engagements/{id}/evidence-lines` | `{category, level2_label, anchor_kind, anchor_id?, label, scope?}` | 201 `{line, evidenceLines}` |
 | `PATCH /v1/engagements/{id}/evidence-lines/{line_key}` | `{label}` | 200 `{line, evidenceLines}` |
 | `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, documents, evidenceLines}` |
-| `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload, reread}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to, reread?}` | 200 `{document_id, payload, reread}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/reread-state` | `{state: "pending"\|"failed"\|"done", error?}` | 200 `{document_id, payload}` |
 | `POST /v1/engagements/{id}/documents/{document_id}/facility` | `{facility_id, expected_facility_id?}` | 200 `{document_id, payload}` |
 
 * **Create** checks the same as saving the setting (anchor on a Setup facility, vehicle group or the
@@ -469,6 +470,15 @@ from `"*"` (every place the document is in), because the new read files its reco
 extraction queue. The earlier extraction result and reviewer decisions stay in the record; no earlier decision applies to
 the new values, which start unreviewed. The audit row also holds `reread_as` and `reread_as_label`. If the read fails the
 document stays on the line it was moved to, with the failure on its row.
+
+A document that is also on other places must choose (`reread` in the move body, 409 without it): `"reread"` takes it off
+those places (the move is `from "*"`), `"move_only"` moves just that placement as an ordinary move and asks for no read;
+the audit row holds `reread_choice`. A re-read keeps `payload.rereadPending` (`canonical_type_id, type_name, requested_at,
+error`; set by the move, changed only by `.../reread-state`, kept by a document save) until a read of that type is stored. While
+it is set the document's old-type records count on no line (uncounted reason `awaiting_reread`, hint "Re-read in
+Evidence.") and are left out of the line schedule; the tree row carries `reread: {canonical_type_id, type_name, status:
+"pending"|"failed", error}`, so a failure survives a reload. Decisions made before the latest read of a different document
+type was stored do not apply to its values (they stay in the record).
 
 `POST .../documents/{document_id}/facility` places a document on a Setup facility: it saves the reviewer's own facility
 decision (`payload.facilityId`, which wins over every rule), under the engagement's row lock, and writes

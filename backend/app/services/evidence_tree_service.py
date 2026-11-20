@@ -29,6 +29,7 @@ from backend.app.services.reviewed_evidence import (
     ReviewedRecord,
     _norm_text as norm_text,
     group_reviewed_records,
+    reviews_for_latest_type,
     set_aside_reason,
     superseded_ids,
     to_date,
@@ -145,7 +146,8 @@ class EvidenceTreeService:
             results = [r for r in self._pipeline.list_extraction_results_by_document(document_id) if can_see(r)]
             latest = results[-1] if results else {}
             canonical = str(latest.get("canonical_type_id") or "") or None
-            reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
+            reviews = reviews_for_latest_type(
+                results, [d for d in self._reviews.list_by_document(document_id) if can_see(d)])
             records = group_reviewed_records(document, canonical or "", latest.get("items") or [], reviews,
                                              with_history=True)
             state = DocState(document, document_id, canonical, _iso(latest.get("created_at")), records,
@@ -337,7 +339,18 @@ class EvidenceTreeService:
             "value_family": families.pop() if len(families) == 1 else None,
             # what the UI sends as a move's "from" to move this row
             "placement_from": slot.target,
+            # a re-read this document's move asked for that has not finished (or failed): its values do not count
+            "reread": self._reread_of(doc, decisions),
         }
+
+    @staticmethod
+    def _reread_of(doc: DocState, decisions: dict[str, dict[str, Any]] | None) -> dict[str, Any] | None:
+        pending = cl.reread_pending((decisions or {}).get(doc.document_id), doc.canonical_type_id)
+        if pending is None:
+            return None
+        error = pending.get("error")
+        return {"canonical_type_id": pending["canonical_type_id"], "type_name": pending.get("type_name"),
+                "status": "failed" if error else "pending", "error": error or None}
 
     # ------------------------------------------------------------------------------------
     def schedule(self, engagement: dict[str, Any], can_see: Callable[[dict], bool], key: str,
@@ -357,7 +370,8 @@ class EvidenceTreeService:
                              for a in recalculation["awaiting_review"]}
         calculated = key in {str(ln["key"]) for ln in recalculation["calculation_lines"]}
         on_line = [(doc, [doc.records[i] for i in sorted(slot.records)])
-                   for doc in loaded.docs for slot in doc.slots if slot.target == key]
+                   for doc in loaded.docs for slot in doc.slots if slot.target == key
+                   and cl.reread_pending((decisions or {}).get(doc.document_id), doc.canonical_type_id) is None]
         values: list[dict[str, Any]] = []
         rows: list[dict[str, Any]] = []
         covered: list[cl.Covered] = []

@@ -14,6 +14,7 @@ import {
   type EvidenceLineSetting,
   type EvidenceTree as EvidenceTreeData,
   type Placement,
+  type RereadChoice,
   type TreeCategory,
   type TreeCounts,
   type TreeDocRow,
@@ -58,7 +59,7 @@ export interface EvidenceTreeProps {
   onOpenSchedule: (lineKey: string) => void;
   onOpenSetup?: () => void;
   /** Saves one move of one placement; rejects with the reason when it did not save. */
-  onMovePlacement: (documentId: string, move: Placement) => Promise<void>;
+  onMovePlacement: (documentId: string, move: Placement, reread?: RereadChoice) => Promise<void>;
   /** The reviewer takes Claude's facility suggestion: places the document on that Setup facility (their own decision,
    *  audited on the server); rejects with the reason when it did not save. */
   onPlaceOnFacility?: (documentId: string, facilityId: string) => Promise<void>;
@@ -69,8 +70,8 @@ export interface EvidenceTreeProps {
   onDeleteLine: (line: CalculationLine) => Promise<number>;
   /** Re-reads that moves asked for, by document id. */
   rereads?: Record<string, RereadState>;
-  /** Asks again for a failed re-read. */
-  onRetryReread?: (documentId: string) => void;
+  /** Asks again for a re-read that failed (or whose wait was lost): the type to read it as comes from the row. */
+  onRetryReread?: (documentId: string, typeId: string, typeName: string) => void;
   /** Gives the app a chance to handle an ended session; true when it did. */
   onError?: (error: unknown) => boolean;
   writesEnabled: boolean;
@@ -193,6 +194,11 @@ export function EvidenceTree(props: EvidenceTreeProps) {
     const id = `${section}|${doc.document_id}`;
     const from = doc.placement_from ?? section;
     const period = doc.period_start && doc.period_end ? formatPeriod(doc.period_start, doc.period_end) : null;
+    // This session's own state wins; else what the server kept (so a reload still shows it, and the way to try again).
+    const local = props.rereads?.[doc.document_id];
+    const kept = doc.reread;
+    const rereadStatus: RereadState | null =
+      local ?? (kept ? { typeId: kept.canonical_type_id, typeName: kept.type_name, status: kept.status === "failed" ? "failed" : "reading", message: kept.error ?? undefined } : null);
     const also = doc.also_in.map((key) => lineMap.get(key)).filter((l): l is CalculationLine => Boolean(l));
     return (
       <div key={id} className="s1-et-doc">
@@ -221,18 +227,30 @@ export function EvidenceTree(props: EvidenceTreeProps) {
             </span>
           ) : null}
           {section === BLOCK_UNASSIGNED ? <span>{processingText(doc.processing_status)}</span> : null}
-          {props.rereads?.[doc.document_id]?.status === "reading" ? (
-            <span role="status">Re-reading as {props.rereads[doc.document_id].typeName}…</span>
-          ) : null}
-          {props.rereads?.[doc.document_id]?.status === "failed" ? (
-            <span role="alert">
-              Couldn&apos;t re-read as {props.rereads[doc.document_id].typeName}. {props.rereads[doc.document_id].message}{" "}
-              {props.onRetryReread ? (
-                <button className="s1-linklike" type="button" onClick={() => props.onRetryReread!(doc.document_id)}>
-                  Try again
-                </button>
-              ) : null}
-            </span>
+          {rereadStatus ? (
+            rereadStatus.status === "failed" ? (
+              <span role="alert">
+                Couldn&apos;t re-read as {rereadStatus.typeName}.{rereadStatus.message ? ` ${rereadStatus.message}` : ""}{" "}
+                {props.onRetryReread ? (
+                  <button className="s1-linklike" type="button" onClick={() => props.onRetryReread!(doc.document_id, rereadStatus.typeId, rereadStatus.typeName)}>
+                    Try again
+                  </button>
+                ) : null}
+              </span>
+            ) : (
+              <span role="status">
+                Re-reading as {rereadStatus.typeName}…
+                {/* After a reload nothing in this session is waiting for the read: it can be asked for again. */}
+                {!local && props.onRetryReread ? (
+                  <>
+                    {" "}
+                    <button className="s1-linklike" type="button" onClick={() => props.onRetryReread!(doc.document_id, rereadStatus.typeId, rereadStatus.typeName)}>
+                      Try again
+                    </button>
+                  </>
+                ) : null}
+              </span>
+            )
           ) : null}
           {doc.flags.includes("unknown_line") ? <span>Its line was deleted</span> : null}
           {also.map((l) => (
@@ -505,9 +523,13 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           placeLabel={placeLabel}
           onError={onError}
           onCancel={() => setDialog(null)}
-          onMove={async (to) => {
+          onMove={async (to, reread) => {
             // The server refuses a move from a place the document is no longer in (409), saving nothing.
-            await guard(() => props.onMovePlacement(dialog.doc.document_id, { from: dialog.from, to }));
+            await guard(() =>
+              reread
+                ? props.onMovePlacement(dialog.doc.document_id, { from: dialog.from, to }, reread)
+                : props.onMovePlacement(dialog.doc.document_id, { from: dialog.from, to })
+            );
             done();
           }}
         />
@@ -775,7 +797,7 @@ function MoveDialog({
   placeLabel: (key: string) => string;
   onError: OnError;
   onCancel: () => void;
-  onMove: (to: string) => Promise<void>;
+  onMove: (to: string, reread?: RereadChoice) => Promise<void>;
 }) {
   const [to, setTo] = useState("");
   const [confirming, setConfirming] = useState(false);
@@ -814,6 +836,9 @@ function MoveDialog({
     else if (toName) consequence = `${valuesText(n)} to ${toName}. Its calculation changes.`;
     else if (fromName) consequence = `${valuesText(n)} out of ${fromName}. Its calculation changes.`;
   }
+  // A re-read takes the document off every other line it is on, so the reviewer chooses.
+  const alsoOn = rereadAs ? doc.also_in.filter((k) => k !== to && k !== from && lineMap.has(k)).map(placeLabel) : [];
+  const choosing = confirming && alsoOn.length > 0;
   // Moves that are allowed but whose values will not count where they land. A line that holds a document type
   // reads the document again as that type, so its values are new, and start unreviewed.
   let warning: string | null = null;
@@ -858,7 +883,11 @@ function MoveDialog({
           {warning}
         </p>
       ) : null}
-      {confirming ? (
+      {choosing ? (
+        <p className="s1-modal__note" role="alert">
+          {doc.file_name} is also on {alsoOn.join(" and ")}. Re-reading it as {rereadAs} takes it off those lines.
+        </p>
+      ) : confirming ? (
         <p className="s1-modal__note" role="alert">
           {consequence ?? `This changes the calculation for ${affected.join(" and ")}.`}
         </p>
@@ -869,6 +898,17 @@ function MoveDialog({
         </p>
       ) : null}
       <div className="s1-modal__actions">
+        {choosing ? (
+          <>
+            {/* The safe choice has the focus: it moves only this placement and leaves the document as it is. */}
+            <button className="s1-button s1-button--pri" type="button" autoFocus disabled={busy} onClick={() => void run(() => onMove(to, "move_only"))}>
+              Move without re-reading
+            </button>
+            <button className="s1-button" type="button" disabled={busy} onClick={() => void run(() => onMove(to, "reread"))}>
+              Re-read and move
+            </button>
+          </>
+        ) : (
         <button
           className="s1-button s1-button--pri"
           type="button"
@@ -880,6 +920,7 @@ function MoveDialog({
         >
           {confirming ? "Confirm move" : "Move"}
         </button>
+        )}
         <button className="s1-linklike" type="button" onClick={confirming ? () => setConfirming(false) : onCancel}>
           {confirming ? "Back" : "Cancel"}
         </button>

@@ -115,12 +115,14 @@ import {
   getEvidenceActivity,
   moveEvidenceDocument,
   setDocumentFacility,
+  setRereadState,
   renameEvidenceLine,
   type CalculationLine,
   type EvidenceActivityItem,
   type EvidenceLineSetting,
   type LineAnswer,
   type Placement,
+  type RereadChoice,
 } from "../api/evidenceTree";
 import { useViewHistory, viewLabel } from "../utils/viewHistory";
 import { resultsViewForLine, scheduleViewForLine } from "./lineLinks";
@@ -461,6 +463,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const rereadRuns = useRef(new Map<string, string>());
   // Re-reads a move onto a line of another type asked for, by document id (shown on the document's row).
   const [rereads, setRereads] = useState<Record<string, RereadState>>({});
+  const movedRereads = useRef(new Set<string>()); // documents whose read a move asked for, until it is reported
+
 
   /** The Evidence banner for an upload batch: the files that weren't uploaded or weren't read.
    *  `refreshBackendWorkspace` clears the banner as it starts, so this is set after a refresh. */
@@ -482,6 +486,11 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       if (rereadTitle !== undefined) {
         rereadRuns.current.delete(run.run_id);
         if (run.status === "failed") problem = { title: rereadTitle, message: readFailureMessage(run) };
+        if (movedRereads.current.has(run.document_id) && dataMode === "backend") {
+          const finished = run.status === "failed" ? "failed" : "done";
+          void setRereadState(engagement.engagementId, run.document_id, finished, finished === "failed" ? readFailureMessage(run) : undefined).catch(() => undefined);
+          movedRereads.current.delete(run.document_id);
+        }
         setRereads((cur) => {
           const shown = cur[run.document_id];
           if (!shown) return cur;
@@ -700,7 +709,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   /** Moves one placement of a document on the server (409 when it was already moved from there). A document moved
    *  onto a line of another type is then read again as that type: the move is saved first, so if the read fails the
    *  document stays where it was put and the page says so. */
-  async function moveDocumentPlacement(documentId: string, move: Placement) {
+  async function moveDocumentPlacement(documentId: string, move: Placement, choice?: RereadChoice) {
     const id = engagement.engagementId;
     if (dataMode === "backend") {
       // Until the saved decisions have loaded, a move here could be judged against a stale document.
@@ -708,7 +717,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       // A save of this document that is already on its way finishes first.
       await workpaper.whenSaved("document", documentId);
     }
-    const { payload, reread } = await moveEvidenceDocument(id, documentId, move);
+    const { payload, reread } = await moveEvidenceDocument(id, documentId, move, choice);
     if (!stillOpen(id)) return;
     if (dataMode === "backend") workpaper.markSaved("document", documentId, payload);
     setDocumentDecisions((cur) => ({ ...cur, [documentId]: payload }));
@@ -926,9 +935,23 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
         void _gone;
         return state ? { ...rest, [documentId]: state } : rest;
       });
-    if (typeName) showOnRow({ typeId, typeName, status: "reading" });
+    const engagementId = engagement.engagementId;
+    // The server keeps what became of the read, so the wait and a failure survive a reload (best effort: the
+    // row already shows it, and a document that was not moved by a re-read has nothing to keep).
+    const keep = (state: "pending" | "failed" | "done", message?: string) => {
+      if (typeName) movedRereads.current.add(documentId);
+      if (dataMode === "backend" && movedRereads.current.has(documentId)) {
+        void setRereadState(engagementId, documentId, state, message).catch(() => undefined);
+        if (state === "done" || state === "failed") movedRereads.current.delete(documentId);
+      }
+    };
+    if (typeName) {
+      showOnRow({ typeId, typeName, status: "reading" });
+      keep("pending");
+    }
     const failed = (message: string) => {
       if (typeName) showOnRow({ typeId, typeName, status: "failed", message });
+      keep("failed", message);
     };
     try {
       const run = await requestRead(documentId, typeId);
@@ -941,7 +964,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       if (run.status === "failed") {
         failed(readFailureMessage(run));
         setBackendError({ title, message: readFailureMessage(run) });
-      } else showOnRow(null);
+      } else {
+        showOnRow(null);
+        keep("done");
+      }
     } catch (error) {
       if (handleSessionEnded(error)) return;
       failed(userFacingApiError(error));
@@ -1405,9 +1431,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                     onRenameLine: renameLine,
                     onDeleteLine: deleteLine,
                     rereads,
-                    onRetryReread: (documentId) => {
-                      const shown = rereads[documentId];
-                      if (shown) void rereadAs(documentId, shown.typeId, shown.typeName);
+                    onRetryReread: (documentId, typeId, typeName) => {
+                      movedRereads.current.add(documentId);
+                      void rereadAs(documentId, typeId, typeName);
                     },
                     onError: handleSessionEnded,
                   }

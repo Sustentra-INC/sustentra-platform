@@ -100,6 +100,18 @@ def line_type_id(line: CalculationLine) -> str | None:
             "purchased_energy": ELECTRICITY if line.level2 == "electricity" else THERMAL}.get(line.category)
 
 
+def reread_pending(decision: dict[str, Any] | None, canonical_type_id: str | None) -> dict[str, Any] | None:
+    """The re-read a move asked for that has not produced its values yet: the decision's ``rereadPending``
+    (``canonical_type_id``, ``type_name``, ``requested_at``, ``error``), while the document's latest extraction
+    is still not of that type. Once a read of that type is stored it no longer applies. A failed read keeps
+    it (``error`` is the reason), so the document stays out of the calculation until it is read or moved."""
+
+    pending = (decision or {}).get("rereadPending")
+    if not isinstance(pending, dict) or not isinstance(pending.get("canonical_type_id"), str):
+        return None
+    return None if pending["canonical_type_id"] == canonical_type_id else pending
+
+
 def type_name(canonical_type_id: str | None) -> str | None:
     """Display name for a canonical type id (the id itself when it has no friendlier name)."""
 

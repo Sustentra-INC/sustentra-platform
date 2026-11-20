@@ -720,7 +720,71 @@ describe("the move confirm says what changes", () => {
     expect(failed.closest("[role=alert]")).toBeInTheDocument();
     expect(screen.getByText("mar.pdf")).toBeInTheDocument(); // the document stays visible
     fireEvent.click(within(failed.closest("[role=alert]") as HTMLElement).getByRole("button", { name: "Try again" }));
-    expect(onRetryReread).toHaveBeenCalledWith("mar");
+    expect(onRetryReread).toHaveBeenCalledWith("mar", "CT-S1-FUELQTY", "Stationary fuel consumption record");
+  });
+
+  it("shows a re-read the server kept after a reload: pending, and failed with its reason, each with Try again", async () => {
+    const onRetryReread = vi.fn();
+    const kept = (d: TreeDocRow, status: "pending" | "failed", error: string | null): TreeDocRow => ({
+      ...d, reread: { canonical_type_id: "CT-S1-FUELQTY", type_name: "Stationary fuel consumption record", status, error },
+    });
+    const tree: TreeData = JSON.parse(JSON.stringify(TREE));
+    const [feb, jan] = [tree.blocks.supporting.scopes[0].categories[0].level2s[0].lines[0].documents[1], tree.blocks.supporting.scopes[0].categories[0].level2s[0].lines[0].documents[0]];
+    Object.assign(feb, kept(feb, "failed", "The file could not be read. 工作簿"));
+    Object.assign(jan, kept(jan, "pending", null));
+    mocks.byPath = { [TREE_PATH]: tree };
+    render(<Harness onRetryReread={onRetryReread} />);
+    await expandAll();
+    const failed = screen.getByText(/Couldn't re-read as Stationary fuel consumption record\. The file could not be read\. 工作簿/);
+    fireEvent.click(within(failed.closest("[role=alert]") as HTMLElement).getByRole("button", { name: "Try again" }));
+    expect(onRetryReread).toHaveBeenCalledWith("feb", "CT-S1-FUELQTY", "Stationary fuel consumption record");
+    const pending = screen.getAllByText(/Re-reading as Stationary fuel consumption record…/)[0];
+    fireEvent.click(within(pending.closest("[role=status]") as HTMLElement).getByRole("button", { name: "Try again" }));
+    expect(onRetryReread).toHaveBeenCalledWith("jan", "CT-S1-FUELQTY", "Stationary fuel consumption record");
+  });
+
+  it("a document on other lines too asks which to do, with the safe choice focused, and sends the choice", async () => {
+    const READ_AS = "Purchased electricity record";
+    const tree: TreeData = JSON.parse(JSON.stringify(TREE));
+    tree.lines = tree.lines.map((l) => (l.key === ELEC.key ? { ...l, read_as_id: "CT-S2-ELEC", read_as: READ_AS } : l));
+    for (const scope of tree.blocks.supporting.scopes) for (const c of scope.categories) for (const l2 of c.level2s) for (const n of l2.lines) for (const d of n.documents) d.detected_type = "Stationary fuel consumption record";
+    // "mar" sits on Plant 2 and also on Kent gas
+    tree.blocks.supporting.scopes[0].categories[0].level2s[0].lines[1].documents[0].also_in = [KENT.key];
+    mocks.byPath = { [TREE_PATH]: tree };
+    const onMovePlacement = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onMovePlacement={onMovePlacement} />);
+    const dialog = await openMove("mar.pdf");
+    choose(dialog, ELEC.key);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(`mar.pdf is also on Natural gas · Kent. Re-reading it as ${READ_AS} takes it off those lines.`);
+    const safe = within(dialog).getByRole("button", { name: "Move without re-reading" });
+    expect(safe).toHaveFocus();
+    fireEvent.click(safe);
+    await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("mar", { from: PLANT.key, to: ELEC.key }, "move_only"));
+  });
+
+  it("sends reread when the reviewer chooses Re-read and move, and nothing extra for a document on one line", async () => {
+    const tree: TreeData = JSON.parse(JSON.stringify(TREE));
+    tree.lines = tree.lines.map((l) => (l.key === ELEC.key ? { ...l, read_as_id: "CT-S2-ELEC", read_as: "Purchased electricity record" } : l));
+    for (const scope of tree.blocks.supporting.scopes) for (const c of scope.categories) for (const l2 of c.level2s) for (const n of l2.lines) for (const d of n.documents) d.detected_type = "Stationary fuel consumption record";
+    tree.blocks.supporting.scopes[0].categories[0].level2s[0].lines[1].documents[0].also_in = [KENT.key];
+    mocks.byPath = { [TREE_PATH]: tree };
+    const onMovePlacement = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onMovePlacement={onMovePlacement} />);
+    let dialog = await openMove("mar.pdf");
+    choose(dialog, ELEC.key);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Re-read and move" }));
+    await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("mar", { from: PLANT.key, to: ELEC.key }, "reread"));
+    cleanup();
+    onMovePlacement.mockClear();
+    render(<Harness onMovePlacement={onMovePlacement} />);
+    dialog = await openMove("feb.pdf"); // on one line only
+    choose(dialog, ELEC.key);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    expect(within(dialog).queryByRole("button", { name: "Move without re-reading" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
+    await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("feb", { from: KENT.key, to: ELEC.key }));
   });
 
   it("says why when the target line is one no calculation reads, with non-ASCII names", async () => {

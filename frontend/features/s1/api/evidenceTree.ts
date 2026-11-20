@@ -78,6 +78,9 @@ export interface TreeDocRow {
   value_family?: CalculationFamily | null;
   /** The placement this row stands for, sent as `from` when the row is moved (else the row's line key). */
   placement_from?: string;
+  /** A re-read this document's move asked for that has not finished, or failed (kept by the server, so it survives
+   *  a reload). Its values count on no line until a read of that type arrives. */
+  reread?: { canonical_type_id: string; type_name: string; status: "pending" | "failed"; error: string | null } | null;
 }
 
 export interface TreeLineNode {
@@ -331,11 +334,30 @@ export interface RereadRequest {
 export function moveEvidenceDocument(
   engagementId: string,
   documentId: string,
-  move: Placement
+  move: Placement,
+  /** A document that is also on other places must say: "reread" reads it again as the line's type (taking it off
+   *  those places), "move_only" moves just this placement and leaves its type alone. */
+  reread?: RereadChoice
 ): Promise<{ document_id: string; payload: DocumentDecision; reread?: RereadRequest | null }> {
   return api(`/engagements/${encodeURIComponent(engagementId)}/documents/${encodeURIComponent(documentId)}/placements`, {
     method: "POST",
-    body: move,
+    body: reread ? { ...move, reread } : move,
+  });
+}
+
+export type RereadChoice = "reread" | "move_only";
+
+/** Keeps on the server what became of the read a move asked for: `failed` with the reason (the document stays out of
+ *  the calculation), `pending` to try again, `done` when the wait is over. */
+export function setRereadState(
+  engagementId: string,
+  documentId: string,
+  state: "pending" | "failed" | "done",
+  error?: string
+): Promise<{ document_id: string; payload: DocumentDecision }> {
+  return api(`/engagements/${encodeURIComponent(engagementId)}/documents/${encodeURIComponent(documentId)}/reread-state`, {
+    method: "POST",
+    body: error ? { state, error } : { state },
   });
 }
 
@@ -378,6 +400,8 @@ export interface EvidenceActivityItem {
   facility_name?: string;
   /** The move had the document read again as this type (display name). */
   reread_as_label?: string;
+  /** "reread" or "move_only": what the reviewer chose for a document that is also on other places. */
+  reread_choice?: "reread" | "move_only";
   /** The reviewer took Claude's suggestion. */
   suggested?: boolean;
 }

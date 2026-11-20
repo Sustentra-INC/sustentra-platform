@@ -48,4 +48,12 @@ describe("the Activity log shows what the server recorded on the Evidence page",
     });
     expect(log[0].what).toBe("moved a document from Summary documents and workbook to Natural gas · Kent, and had it read again as Stationary fuel consumption record");
   });
+
+  it("says when the reviewer moved a document without reading it again", () => {
+    const log = engagementActivity({
+      ...base,
+      evidenceEvents: [event({ event_type: "evidence_document_moved", from_label: "A", to_label: "B", reread_as_label: "Purchased electricity record", reread_choice: "move_only" })],
+    });
+    expect(log[0].what).toBe("moved a document from A to B, without reading it again as Purchased electricity record");
+  });
 });

@@ -90,6 +90,7 @@ const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => 
       reread: { canonical_type_id: "CT-S1-FUELQTY", type_name: "Stationary fuel consumption record" },
     });
   }
+  if (path === "/engagements/ENG-1/documents/WB/reread-state" && method === "POST") return json(200, { document_id: "WB", payload: {} });
   if (path === "/documents/WB/processing-runs" && method === "POST") return server.readRequest();
   return json(404, { detail: "Not found." });
 });
@@ -158,6 +159,10 @@ describe("a move onto a line of another type asks for a read as that type", () =
     const failure = screen.getByText(/Couldn't re-read as Stationary fuel consumption record\./);
     expect(failure.closest("[role=alert]")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "GHG workbook 工作簿.xlsx" })).toBeInTheDocument(); // still on the page
+    // the failure is kept on the server, with the reason, so it survives a reload
+    const kept = server.requests.filter((r) => r.key === "POST /engagements/ENG-1/documents/WB/reread-state");
+    expect(kept.map((r) => (r.body as { state: string }).state)).toEqual(["pending", "failed"]);
+    expect((kept[1].body as { error: string }).error).toContain("could not be read");
     const reads = () => server.requests.filter((r) => r.key === "POST /documents/WB/processing-runs").length;
     expect(reads()).toBe(1);
     server.readRequest = () => json(200, queuedRun({ status: "completed" }));

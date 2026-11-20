@@ -472,10 +472,15 @@ class Filing:
     placements: dict[int, cl.RecordPlacement]
     known: dict[str, cl.CalculationLine]
     slot_of: dict[int, cl.Slot]
+    # Documents moved onto a line of another type whose re-read has not finished (or failed): their records, still
+    # of the old type, count on no line until the new read arrives.
+    awaiting_reread: frozenset[str] = frozenset()
 
     def on_a_line(self, record: ReviewedRecord) -> bool:
         """True when the record's document is placed on a calculation line (not unassigned, not a block)."""
 
+        if record.document_id in self.awaiting_reread:
+            return False
         slot = self.slot_of.get(id(record))
         return slot is not None and slot.target in self.known
 
@@ -503,7 +508,9 @@ def file_records(ref: EmissionFactorReference, records: list[ReviewedRecord], in
         for slot in slots:
             for index in slot.records:
                 slot_of[id(by_document[doc][index])] = slot
-    return Filing(placements, known, slot_of)
+    awaiting = frozenset(doc for doc, recs in by_document.items()
+                         if cl.reread_pending(decisions.get(doc), recs[0].canonical_type_id) is not None)
+    return Filing(placements, known, slot_of, awaiting)
 
 
 def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRecord],

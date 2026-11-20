@@ -58,8 +58,8 @@ export function saveWorkpaperItem(
 ): Promise<WorkpaperItem> {
   // A document's placements change only through the Evidence move and delete actions; the server keeps what
   // it has stored, so they are not sent here (a stale copy could never undo a move).
-  const { placements: _placements, ...rest } = payload as { placements?: unknown };
-  void _placements;
+  const { placements: _placements, rereadPending: _pending, ...rest } = payload as { placements?: unknown; rereadPending?: unknown };
+  void [_placements, _pending];
   return api<WorkpaperItem>(
     `/engagements/${encodeURIComponent(engagementId)}/workpaper-items/${kind}/${encodeURIComponent(workpaperKey(id))}`,
     { method: "PUT", body: { payload: kind === "document" ? rest : payload } }
