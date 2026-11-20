@@ -141,3 +141,43 @@ def test_lines_repeated_in_the_csv_reach_the_duplicate_check() -> None:
     dupes = [f for f in findings if f["check"] == "Q-003"]
     assert len(dupes) == 1
     assert dupes[0]["detail"]["matching_records"] == 4  # all four lines of the xls sit in the CSV too
+
+
+def _quantities(parsed: dict[str, Any]) -> list[Any]:
+    return [r["activity_quantity"]["normalized_value"] for r in _records(_read(parsed)).values()]
+
+
+def test_the_quantity_is_the_fuel_added_never_a_tank_level() -> None:
+    tank = _parsed(TITLE, "date | run_hours | tank_level_before_gal | gallons_added | tank_level_after_gal",
+                   "01/05/2025 | 3.2 | 400 | 85 | 485")
+    assert _quantities(tank) == [85]
+    used = _parsed(TITLE, "date | run_hours | fuel_used_gal | gallons_added", "01/05/2025 | 3.2 | 40 | 85")
+    assert _quantities(used) == [85]
+
+
+def test_carried_forward_and_balance_lines_are_not_runs() -> None:
+    for first in ("Balance b/f", "B/F", "Brought forward", "Carried forward", "Closing balance", "C/F"):
+        parsed = _parsed(TITLE, HEADER, f"{first} | GEN-ZH-01 | 7.3 | 203 | -", *LINES[2:])
+        assert _quantities(parsed) == [118, 34], first
+    assert _quantities(_parsed(TITLE, HEADER, *LINES[2:], "Brought forward | | 7.3 | 203 | -")) == [118, 34]
+
+
+def _confirmed(*lines: str) -> bool:
+    parsed = _parsed(*lines)
+    return StationaryCombustionExtractor().confirms(parsed) or _low_confidence(parsed) == FUELQTY_TYPE_ID
+
+
+def test_fleet_equipment_and_telematics_logs_never_type_as_a_stationary_run_log() -> None:
+    assert not _confirmed("Fleet Mileage Log", "Date | Vehicle | Odometer | Miles | Run Time (hrs) | Gallons Added",
+                          "01/05/2025 | V-12 | 45012 | 210 | 5.1 | 18.2")
+    assert not _confirmed("Telematics export – Zürich", "Date | Vehicle | Engine Run Time (hrs) | Gallons Added",
+                          "01/05/2025 | Truck 12 | 5.1 | 18.2")
+    assert not _confirmed("Equipment Hours Log – Excavator EX-200 – Site 4",
+                          "Date | Equipment | Run Hours | Fuel Added (gal)", "01/05/2025 | EX-200 | 7.5 | 40")
+    assert not _confirmed("Rental Activity Report", "Date | Equipment | Run Hours | Gallons Added | Charge",
+                          "01/05/2025 | Towable generator 45kVA | 7.5 | 40 | 120.00",
+                          "01/06/2025 | Excavator EX-200 | 8.0 | 55 | 160.00")
+
+
+def test_a_run_log_with_no_generator_cue_is_not_assumed_stationary() -> None:
+    assert not _confirmed("Run log", "date | run_hours | gallons_added", "01/05/2025 | 3.2 | 85")

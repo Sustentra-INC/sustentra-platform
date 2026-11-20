@@ -226,6 +226,9 @@ _DATE_HEADERS = ("date", "delivery date", "read date", "invoice date", "date pos
 # A usage table ends at its summary row: "Total", or a yearly roll-up such as "Annual quantity" /
 # "Year to date", which would double count the rows above it if read as one more record.
 _TOTAL_ROW_WORDS = ("total", "totals", "subtotal", "grand total", "annual", "year to date", "ytd", "year total")
+# A carried-forward or balance line repeats figures already counted: it is skipped, and the table goes on.
+_CARRIED_ROW_WORDS = ("b/f", "c/f", "bf", "cf", "balance", "bal", "brought forward", "carried forward",
+                      "opening balance", "closing balance", "opening stock", "closing stock")
 
 # A generator run log: one line per run, with the hours it ran and the fuel added afterwards. It names no
 # fuel in its columns, so the fuel is left for the reviewer rather than guessed.
@@ -234,6 +237,14 @@ _FUEL_ADDED_RE = re.compile(
     r"\b(?:gal(?:lon)?s?|lit(?:re|er)s?|fuel)\s*(?:added|refilled|filled|put in)\b"
     r"|\b(?:added|refill(?:ed)?)\s*\(?(?:gal(?:lon)?s?|lit(?:re|er)s?)\b"
 )
+# A level, a before/after reading or a stock figure is not fuel added.
+_NOT_ADDED_RE = re.compile(r"\b(?:level|before|after|on hand|remaining|balance|capacity|start|end|opening|closing)\b")
+# What a run log is about, and what rules it out: a vehicle, a machine or a fleet is not a standby generator.
+_RUN_LOG_STATIONARY_RE = re.compile(
+    r"\b(?:generators?|gensets?|standby|day tank|boilers?|furnaces?|fire pump|emergency power)\b")
+_RUN_LOG_MOBILE_RE = re.compile(
+    r"\b(?:vehicles?|fleet|odometer|miles?|mileage|mpg|telematics|excavators?|loaders?|bulldozers?|backhoes?|"
+    r"forklifts?|tractors?|trucks?|cranes?|drivers?|fuel card)\b")
 
 _MONTHS = {
     m: i
@@ -744,6 +755,16 @@ class StationaryCombustionExtractor:
         finally:
             _DAY_FIRST.reset(token)
 
+    @staticmethod
+    def _fuel_added_index(texts: Sequence[str]) -> int | None:
+        """The column of a run log that holds the fuel added (never a level, before/after or stock column)."""
+
+        keyed = [" ".join(t.lower().replace("_", " ").split()) for t in texts]
+        for index, text in enumerate(keyed):
+            if _FUEL_ADDED_RE.search(text) and not _NOT_ADDED_RE.search(text):
+                return index
+        return None
+
     def _is_run_log(self, rows: Sequence[Row]) -> bool:
         """A header row with a run-hours column and a fuel-added column: a generator (or pump, or boiler)
         run log."""
@@ -752,12 +773,18 @@ class StationaryCombustionExtractor:
             if len(row.cells) < 3:
                 continue
             texts = [" ".join(_norm(c.text).replace("_", " ").split()) for c in row.cells]
-            if any(_RUN_HOURS_RE.search(t) for t in texts) and any(_FUEL_ADDED_RE.search(t) for t in texts):
+            if any(_RUN_HOURS_RE.search(t) for t in texts) and self._fuel_added_index(texts) is not None:
                 return True
         return False
 
     def _is_fuelless_run_log(self, rows: Sequence[Row]) -> bool:
-        return self.RUN_LOG_WITHOUT_FUEL and self._is_run_log(rows)
+        """A run log that reads as a stationary one: some generator-type cue, and no vehicle, fleet or
+        machine cue (an excavator's hours log is mobile equipment, not a standby generator)."""
+
+        if not (self.RUN_LOG_WITHOUT_FUEL and self._is_run_log(rows)):
+            return False
+        text = " ".join(c.text for r in rows for c in r.cells).lower().replace("_", " ")
+        return bool(_RUN_LOG_STATIONARY_RE.search(text)) and not _RUN_LOG_MOBILE_RE.search(text)
 
     def reads_as_fuelless_run_log(self, parser_output: dict) -> bool:
         """True when the document is a run log that names no fuel (so the reviewer must pick it)."""
@@ -1739,6 +1766,10 @@ class StationaryCombustionExtractor:
         if not scores:
             return None
         columns: dict[str, int] = {"quantity": max(scores)[1]}
+        if self.RUN_LOG_WITHOUT_FUEL and any(_RUN_HOURS_RE.search(t.replace("_", " ")) for t in texts):
+            added = self._fuel_added_index(texts)
+            if added is not None:
+                columns["quantity"] = added  # a run log's quantity is the fuel added, not a tank level
         for index, text in enumerate(texts):
             if index == columns["quantity"]:
                 continue
@@ -1829,6 +1860,8 @@ class StationaryCombustionExtractor:
             first = _norm(row.cells[0].text)
             if any(first == w or first.startswith(w + " ") for w in _TOTAL_ROW_WORDS):
                 break
+            if any(first == w or first.startswith(w + " ") for w in _CARRIED_ROW_WORDS):
+                continue
             qty_cell = assigned.get(columns["quantity"])
             number = parse_number(qty_cell.text) if qty_cell is not None else None
             if qty_cell is None or number is None:
