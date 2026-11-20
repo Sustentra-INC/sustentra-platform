@@ -118,6 +118,8 @@ function evidenceEventText(event: EvidenceActivityItem, filename: Map<string, st
     }
     case "evidence_document_moved":
       return `moved ${(event.document_id && filename.get(event.document_id)) || "a document"} from ${event.from_label ?? "its place"} to ${event.to_label ?? "another place"}`;
+    case "evidence_document_facility_set":
+      return `placed ${(event.document_id && filename.get(event.document_id)) || "a document"} on ${event.facility_name ?? "a facility"}${event.suggested ? ", as Claude suggested" : ""}`;
   }
 }
 

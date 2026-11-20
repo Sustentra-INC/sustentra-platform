@@ -19,6 +19,7 @@ from backend.app.domain.pipeline import (
 from backend.app.repositories import s1_stores
 from backend.app.repositories.extraction_result_repository import InMemoryExtractionResultRepository
 from backend.app.services.ai_extraction import AiExtraction
+from backend.app.services.ai_facility import AiFacility
 from backend.app.services.ai_routing import AiRouting, RoutingResult
 from backend.app.services.calculation_lines import SUMMARY_TYPES
 from backend.app.services.document_shape import NOT_EVIDENCE_MESSAGE, looks_like_a_note
@@ -105,11 +106,14 @@ class PipelineOrchestrationService:
         id_factory: Callable[[str, str], str] | None = None,
         ai_routing: Any | None = None,
         ai_extraction: Any | None = None,
+        ai_facility: Any | None = None,
     ) -> None:
         # Claude routing (system 1): a no-op unless AI_SUGGESTIONS_ENABLED and the gate allow it.
         self._ai_routing = ai_routing or AiRouting()
         # Claude reading (system 2): fills what the rule extractors missed; a no-op unless the gate allows it.
         self._ai_extraction = ai_extraction or AiExtraction()
+        # Claude's facility suggestion for a bill that names none (EXT-026): a suggestion only, never a placement.
+        self._ai_facility = ai_facility or AiFacility()
         self._parser_service = parser_service or ParserService()
         self._classification_service = classification_service or ClassificationService()
 
@@ -579,6 +583,12 @@ class PipelineOrchestrationService:
                     extraction_result = assist.result
                     warnings.extend(assist.warnings)
                     warnings.extend(str(note) for note in extraction_result.get("notes") or [])
+                    suggestion = self._ai_facility.suggest(
+                        parser_output=parser_output, extraction_result=extraction_result,
+                        canonical_type_id=canonical_type_id, file_name=resolved_file_name, org_id=org_id,
+                        engagement_id=engagement_id, document_id=resolved_document_id)
+                    if suggestion is not None:
+                        extraction_result = {**extraction_result, "facility_suggestion": suggestion.as_record()}
             else:
                 stage_statuses.candidate_generation = "skipped"
                 overall_status = "partial"
@@ -912,6 +922,8 @@ class PipelineOrchestrationService:
                     "status": run.get("status"),
                     "candidate_count": int(extraction_result.get("candidate_count") or 0),
                     "items": copy.deepcopy(extraction_result.get("items") or []),
+                    **({"facility_suggestion": copy.deepcopy(extraction_result["facility_suggestion"])}
+                       if extraction_result.get("facility_suggestion") else {}),
                     "org_id": run.get("org_id"),
                     "created_at": run.get("completed_at") or run.get("created_at"),
                 }

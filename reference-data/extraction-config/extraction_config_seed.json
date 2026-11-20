@@ -576,6 +576,53 @@
     "last_reviewed": null
   },
   {
+    "extraction_config_id": "EC-S1-MOBFUEL-CARD-NUMBER",
+    "field_id": "card_number",
+    "field_label": "Fuel card number (masked)",
+    "description": "The fuel card a transaction was made with, masked to the last 4 digits. Kept per transaction; it feeds no number.",
+    "canonical_type_id": "CT-S1-MOBFUEL",
+    "value_type": "string",
+    "required_status": "optional",
+    "expected_units": [],
+    "source_reference_required": true,
+    "anchor_labels": [
+      "Card",
+      "Card Number",
+      "Card #"
+    ],
+    "value_patterns": [],
+    "unit_patterns": [],
+    "table_hints": [
+      "transaction detail",
+      "fuel purchase summary"
+    ],
+    "sheet_hints": [],
+    "validation_hints": [
+      "Never store full card numbers."
+    ],
+    "extraction_methods": [
+      "anchor_text",
+      "table_lookup",
+      "key_value_pair",
+      "llm_structured",
+      "manual_entry"
+    ],
+    "normalization": {
+      "target_unit": null,
+      "date_format": null,
+      "number_format": null,
+      "allowed_values": [],
+      "unit_conversion_allowed": false,
+      "trim_whitespace": true,
+      "remove_thousands_separators": false
+    },
+    "regulatory_field_id": null,
+    "notes": "Kept per transaction on a fleet card statement, where the account is the issuer's (19 Nov ruling).",
+    "population_status": "provisional",
+    "version": "v0.1",
+    "last_reviewed": null
+  },
+  {
     "extraction_config_id": "EC-S1-MOBFUEL-BIOFUEL-BLEND-PCT",
     "field_id": "biofuel_blend_pct",
     "field_label": "Biofuel blend (%)",

@@ -193,6 +193,7 @@ _GAS_TERMS = {"gas:co2": ("co2", "carbon dioxide"), "gas:ch4": ("ch4", "methane"
 _OPTION_TERMS = {
     "RECs or other energy attribute certificates": (
         "rec", "recs", "eac", "eacs", "renewable energy certificate", "renewable energy certificates",
+        "renewable energy credit", "renewable energy credits",
         "energy attribute certificate", "energy attribute certificates", "guarantee of origin", "guarantees of origin"),
     "PPA or VPPA": ("ppa", "ppas", "vppa", "vppas", "power purchase agreement", "power purchase agreements"),
     "Green tariff or utility program": ("green tariff", "green tariffs", "green power program", "utility program",
