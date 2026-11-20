@@ -250,3 +250,20 @@ def test_the_workpaper_lists_the_left_out_documents() -> None:
     summary = {r[0]: r[1] for r in book["Summary"].iter_rows(min_row=2, values_only=True)}
     assert summary["Documents left out: not on a calculation line (see Left out)"] == 1
     assert summary["Documents read"] == 1
+
+
+def test_the_open_item_hint_matches_each_reason() -> None:
+    from backend.tests.services.test_recalculation_lines import GROUP_OFF, GROUP_ROAD, _mobile_store
+
+    def hint(result: dict) -> str:
+        (item,) = [i for i in result["needs_input"] if i["kind"] == "not_on_a_line"]
+        return item["message"]
+
+    assert hint(_service(_mobile_store()).recalculate(_engagement_with(), _own)).endswith("Add it in Setup.")
+    assert hint(_run(_store(("X", [NOWHERE])))).endswith("Add it in Setup.")
+    shared = _service(_mobile_store()).recalculate(
+        _engagement_with(recalculation={"vehicle_groups": [GROUP_ROAD, GROUP_OFF]}), _own)
+    assert hint(shared).endswith("Choose the vehicle group in Evidence.")
+    moved = _run(_store(("GAS-STL", [_stl()])), {"GAS-STL": {"placements": [
+        {"from": GAS_STL, "to": cl.SUPPORTING_UNASSIGNED}]}})
+    assert hint(moved).endswith("Place it in Evidence.")

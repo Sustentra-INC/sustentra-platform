@@ -77,6 +77,21 @@ RECALCULATED_TYPES = (STATIONARY, MOBILE, ELECTRICITY, REFRIGERANT, THERMAL)
 # A thermal bill's energy type -> its roll-up source (workbook rows 48, 49, 50).
 PLACEMENT_SOURCES = ("stationary_combustion", "mobile_combustion", "purchased_electricity",
                      "fugitive_refrigerants", "purchased_steam", "purchased_heating")
+# Why a record is on no line, and what to do about it (the Results open item for its category).
+NOT_ON_A_LINE_WHY = {
+    "not_on_a_line": "the document is not on a calculation line",
+    "no_calculation_line": "no calculation line exists for it yet",
+    "no_vehicle_group": "no vehicle group is set up",
+    "fuel_shared_by_vehicle_groups": "more than one vehicle group uses the fuel",
+    "facility_not_in_setup": "its facility is not in Setup",
+}
+NOT_ON_A_LINE_HINT = {
+    "not_on_a_line": "Place it in Evidence.",
+    "no_calculation_line": "Place it in Evidence.",
+    "no_vehicle_group": "Add it in Setup.",
+    "fuel_shared_by_vehicle_groups": "Choose the vehicle group in Evidence.",
+    "facility_not_in_setup": "Add it in Setup.",
+}
 THERMAL_SOURCE = {"steam": "purchased_steam", "hot_water": "purchased_heating", "chilled_water": "purchased_cooling"}
 STEAM_BTU_PER_LB_RANGE = (500.0, 1600.0)  # saturated and superheated steam, as delivered
 
@@ -571,11 +586,12 @@ class EngagementRecalculationService:
         awaiting.extend(extra_awaiting)
         # Accepted values on no line leave their category incomplete: never a clean difference beside them.
         left_out = self._uncounted_values(off_line, filing, decisions, inputs, period)
-        for category, count in left_out.pop("by_category").items():
+        for (category, reason), count in left_out.pop("by_category").items():
             needs_input.append({
-                "kind": "not_on_a_line", "key": f"not_on_a_line:{category}", **({"category": category} if category != "None" else {}),
+                "kind": "not_on_a_line", "key": f"not_on_a_line:{category}:{reason}",
+                **({"category": category} if category != "None" else {}),
                 "message": f"{count} accepted {'record' if count == 1 else 'records'} not counted in this category: "
-                           "the documents are not on a calculation line yet. Place them in Evidence."})
+                           f"{NOT_ON_A_LINE_WHY[reason]}. {NOT_ON_A_LINE_HINT[reason]}"})
 
         categories: dict[str, calc.CategoryResult | None] = {
             "stationary_combustion": stationary,
@@ -714,7 +730,7 @@ class EngagementRecalculationService:
             fuel = str(group.get("fuel", "")).strip().lower()
             group_count[fuel] = group_count.get(fuel, 0) + 1
         entries: dict[tuple[str, str], dict[str, Any]] = {}
-        by_category: Counter[str] = Counter()
+        by_category: Counter[tuple[str, str]] = Counter()
         types: dict[str, str] = {}
         for record in records:
             if cl.tally([record])["accepted"] == 0 or (record.document_id, record.label) in outside:
@@ -725,7 +741,7 @@ class EngagementRecalculationService:
                 "reason": reason, "accepted_records": 0})
             entry["accepted_records"] += 1
             types.setdefault(record.document_id, record.canonical_type_id)
-            by_category[str(rollup_category(record.canonical_type_id, record.best("energy_type")))] += 1
+            by_category[(str(rollup_category(record.canonical_type_id, record.best("energy_type"))), reason)] += 1
         documents = sorted(entries.values(), key=lambda d: (str(d["file_name"]).casefold(), d["document_id"], d["reason"]))
         listed = {d["document_id"]: d for d in documents}
         return {

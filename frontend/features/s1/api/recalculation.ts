@@ -360,11 +360,11 @@ export interface UncountedValues {
 }
 
 export const UNCOUNTED_REASON: Record<UncountedReason, string> = {
-  not_on_a_line: "not on a calculation line yet",
-  no_vehicle_group: "no vehicle group set up in Setup",
-  fuel_shared_by_vehicle_groups: "more than one vehicle group uses the fuel, so none was chosen",
-  facility_not_in_setup: "facility not in Setup",
-  no_calculation_line: "no calculation line for it yet (fuel or gas not settled)",
+  not_on_a_line: "not on a calculation line yet. Place it in Evidence",
+  no_vehicle_group: "no vehicle group set up in Setup. Add it in Setup",
+  fuel_shared_by_vehicle_groups: "more than one vehicle group uses the fuel, so none was chosen. Choose the vehicle group in Evidence",
+  facility_not_in_setup: "facility not in Setup. Add it in Setup",
+  no_calculation_line: "no calculation line for it yet (fuel or gas not settled). Place it in Evidence",
 };
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
