@@ -3673,7 +3673,7 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-sch-ids .s1-sch-ids__groups li { display: flex; flex-direction: column; border: 0; padding: var(--sp-1) 0 0; }
 .s1-sch-ids__gname { font-size: var(--text-sm); color: var(--ink-2); }
 .s1-sch-ids__docs { display: flex; flex-direction: column; align-items: flex-start; }
-.s1-sch-row--pending td { color: var(--ink-3); }
+.s1-sch-waiting { margin: 0 0 var(--sp-3); font-size: var(--text-sm); }
 .s1-sch-row__flag { font-size: var(--text-sm); }
 .s1-sch-nopage { font-size: var(--text-sm); }
 .s1-sch-values .s1-linklike { font-size: inherit; text-align: right; }

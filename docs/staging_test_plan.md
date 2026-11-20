@@ -181,7 +181,7 @@ sips -s format heic backend/tests/services/data/textract_regression/electric_bil
 9. A reader (not a writer) cannot change anything: actions answer with a sentence, not an error page.
 
 
-## 9. Evidence tree and supporting schedule
+## 9. Evidence tree and data point review
 
 Needs the evidence-tree API (feat/evidence-tree-api) deployed.
 

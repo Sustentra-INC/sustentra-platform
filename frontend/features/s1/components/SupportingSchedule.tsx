@@ -11,7 +11,7 @@ import { AI_VALUE, REREAD } from "../constants/copy";
 import { ContainerStateSurface } from "./ContainerStateSurface";
 
 /**
- * One calculation line's supporting schedule: what covers each month of the year, which
+ * One calculation line's data point review: what covers each month of the year, which
  * identifiers the documents agree on, the extracted values (read only) and the line's history. Everything is
  * computed by the backend; this only lays it out. Sections stack in a fixed order: header, coverage,
  * source identifiers, accepted values, line history (folded).
@@ -71,7 +71,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
         if (!live) return;
         // The API and web deploy together: a response without the v2 fields is a failed load, not an empty schedule.
         if (!Array.isArray(next.rows) || !Array.isArray(next.columns) || !Array.isArray(next.identifier_groups)) {
-          setProblem("The schedule came back incomplete. Try again in a moment.");
+          setProblem("The data point review came back incomplete. Try again in a moment.");
           return;
         }
         setSchedule(next);
@@ -99,7 +99,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
           ‹ Back to {backLabel}
         </button>
         <div className="s1-system-banner" role="alert">
-          <strong>Couldn&apos;t load this schedule</strong>
+          <strong>Couldn&apos;t load this data point review</strong>
           <span>{problem} </span>
           <button className="s1-button" type="button" onClick={() => setAttempt((n) => n + 1)}>
             Try again
@@ -111,14 +111,19 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
   if (!schedule) {
     return (
       <section className="s1-content s1-sch">
-        <ContainerStateSurface state="loading" label="Loading the supporting schedule" />
+        <ContainerStateSurface state="loading" label="Loading the data point review" />
       </section>
     );
   }
 
   const { line } = schedule;
   const year = reportingYear(schedule.reporting_period);
-  const { rows, columns, identifier_groups: groups } = schedule;
+  const { columns, identifier_groups: groups } = schedule;
+  // Accepted values only (Claire, C-S1): unreviewed and rejected values do not appear. Documents with values
+  // still waiting are counted in the coverage strip, so nothing disappears silently.
+  const allRows = schedule.rows;
+  const rows = allRows.filter(isAccepted);
+  const waitingDocuments = countWaitingDocuments(allRows);
   // Numbers are right-aligned; text (vehicle type, on/off road) and dates are left-aligned.
   const isNumeric = (key: string) =>
     key !== "date" && rows.every((r) => {
@@ -128,7 +133,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
   // The date header follows the documents: one label when they all agree, else the column's own.
   const dateLabels = new Set(rows.map((r) => r.date.label).filter(Boolean));
   const headerLabel = (c: { key: string; label: string }) => (c.key === "date" && dateLabels.size === 1 ? [...dateLabels][0] : c.label);
-  const fileNames = new Map<string, string>([...schedule.values, ...rows].map((v) => [v.document_id, v.file_name]));
+  const fileNames = new Map<string, string>([...schedule.values, ...allRows].map((v) => [v.document_id, v.file_name]));
   const crumbs = [SCOPE_LABELS[line.scope] ?? line.scope, CATEGORY_LABELS[line.category] ?? line.category, line.level2_label, line.label];
 
   return (
@@ -150,7 +155,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
               </span>
             ))}
           </nav>
-          <p className="s1-sch-eyebrow">Supporting schedule</p>
+          <p className="s1-sch-eyebrow">Data point review</p>
           {/* "<Line> · <Level 2>", unless the server's label already names the fuel. */}
           <h1>{line.label.toLowerCase().includes(line.level2_label.toLowerCase()) ? line.label : `${line.label} · ${line.level2_label}`}</h1>
           {year ? <p className="s1-muted">Reporting year {year}</p> : null}
@@ -168,7 +173,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
           </button>
           {schedule.calculated === false ? (
             <p id="s1-sch-notcalc" className="s1-muted s1-sch-notcalc">
-              {rows.some((r) => r.waiting_on?.length || r.rejected_fields?.length)
+              {allRows.some((r) => r.waiting_on?.length || r.rejected_fields?.length)
                 ? "Not calculated yet: values on this line are waiting for review."
                 : "No calculation for this line yet."}
             </p>
@@ -178,6 +183,14 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
 
       <section className="s1-panel s1-sch-cov" aria-label="Coverage by month">
         <h2>Coverage by month</h2>
+        {waitingDocuments > 0 ? (
+          <p className="s1-sch-waiting" role="status">
+            {plural(waitingDocuments, "document", "documents")} on this line {waitingDocuments === 1 ? "has" : "have"} values not yet reviewed.{" "}
+            <button className="s1-linklike" type="button" onClick={onOpenEvidence ?? onBack}>
+              Review in Evidence
+            </button>
+          </p>
+        ) : null}
         {schedule.coverage.length ? (
           <ul className="s1-sch-months">
             {schedule.coverage.map((m) => {
@@ -278,7 +291,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <tr key={r.record_key} className={isPending(r) ? "s1-sch-row--pending" : ""}>
+                  <tr key={r.record_key}>
                     {columns.map((c) => (
                       <td key={c.key} className={isNumeric(c.key) ? "s1-num" : ""}>
                         {c.key === "date" ? (
@@ -309,7 +322,7 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
             </table>
           </div>
         ) : (
-          <p className="s1-muted">No values have been extracted on this line yet.</p>
+          <p className="s1-muted">No accepted values on this line yet.</p>
         )}
       </section>
 
@@ -398,9 +411,14 @@ function cellText(key: string, r: ScheduleRow): string {
   return cell ? formatValue(cell) : "";
 }
 
-/** A row that is not counted: greyed, with a word. */
-function isPending(r: ScheduleRow): boolean {
-  return !r.accepted;
+/** A value the reviewer accepted or corrected. An older server sends no decision; then `accepted` decides. */
+export function isAccepted(r: ScheduleRow): boolean {
+  return r.decision ? r.decision === "accepted" || r.decision === "edited" : r.accepted;
+}
+
+/** Documents that have at least one value still waiting for review (rejected values are decided, so they do not wait). */
+export function countWaitingDocuments(rows: ScheduleRow[]): number {
+  return new Set(rows.filter((r) => !isAccepted(r) && r.decision !== "rejected").map((r) => r.document_id)).size;
 }
 
 /** The word on a row: why it is not counted, or "Edited" for a corrected value; null for plain accepted rows. */

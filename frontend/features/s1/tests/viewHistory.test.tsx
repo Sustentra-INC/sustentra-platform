@@ -75,7 +75,7 @@ describe("workpaper browser history", () => {
     act(() => result.current.navigate({ name: "evidence" }));
     act(() => result.current.navigate({ name: "schedule", lineKey: "scope1" }));
     act(() => result.current.navigate({ name: "extraction", documentId: "DOC-1" }));
-    expect(viewLabel(result.current.previous!)).toBe("schedule");
+    expect(viewLabel(result.current.previous!)).toBe("data point review");
     act(() => result.current.back({ name: "evidence" }));
     expect(result.current.view).toEqual({ name: "schedule", lineKey: "scope1" });
     expect(viewLabel(result.current.previous!)).toBe("evidence");
