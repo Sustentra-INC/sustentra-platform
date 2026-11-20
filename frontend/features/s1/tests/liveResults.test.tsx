@@ -149,7 +149,7 @@ describe("the live recalculation as Verification results lines", () => {
     const co2 = gasRows.find((r) => r.key === "scope1_co2");
     expect(co2).toMatchObject({ group: "Scope 1", gas: "CO₂", unit: "t", reported: 1580, state: { label: "Incomplete" } });
     expect(gasRows.find((r) => r.key === "scope1_ch4")).toMatchObject({ reported: null });
-    expect(gasRows.find((r) => r.key === "scope1_ch4")?.state).toBeUndefined();
+    expect(gasRows.find((r) => r.key === "scope1_ch4")?.state).toMatchObject({ label: "Partial" }); // a lower bound, nothing to compare
     expect(gasRows.filter((r) => r.group === "Scope 2, market-based")).toHaveLength(7);
   });
 
@@ -777,6 +777,16 @@ describe("Verification results in backend mode", () => {
     const market = within(boxes).getByRole("button", { name: /^Scope 2, market-based/ });
     expect(market.textContent).toContain("+8.9% · above materiality");
     expect(within(boxes).getByRole("button", { name: /^By gas/ }).textContent).toContain("1 of 21 reported values entered");
+  });
+
+  it("shows partial on the By gas rows whose sources are still partial", async () => {
+    renderScreen();
+    const boxes = await screen.findByRole("region", { name: "Reported vs recomputed" });
+    fireEvent.click(within(boxes).getByRole("button", { name: /^By gas/ }));
+    const rows = Array.from(boxes.querySelectorAll(".s1-vw-gasrow")).map((r) => r.textContent ?? "");
+    // Natural gas is partial, so Scope 1 CO₂ (reported) reads Incomplete and an unreported Scope 1 gas reads Partial.
+    expect(rows[0]).toContain("Incomplete");
+    expect(rows.filter((t) => t.endsWith("Partial")).length).toBeGreaterThan(0);
   });
 
   it("opens the calculation panel on a row and records the signed-in person as examiner", async () => {

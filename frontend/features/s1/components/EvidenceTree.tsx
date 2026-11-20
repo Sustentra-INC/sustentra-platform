@@ -253,8 +253,8 @@ export function EvidenceTree(props: EvidenceTreeProps) {
             <button
               className="s1-icon-tile"
               type="button"
-              aria-label={`Open supporting schedule for ${lineTitle(line)}`}
-              title="Open supporting schedule"
+              aria-label={`Open data point review for ${lineTitle(line)}`}
+              title="Open data point review"
               onClick={() => props.onOpenSchedule(line.key)}
             >
               <PanelsTopLeft aria-hidden />

@@ -140,7 +140,8 @@ export type ExcludedReason =
   | "duplicate"
   | "superseded"
   | "montreal_protocol_gas"
-  | "purchased_cooling_not_calculated";
+  | "purchased_cooling_not_calculated"
+  | "not_on_a_calculation_line";
 
 const EXCLUDED_LABEL: Record<ExcludedReason, string> = {
   outside_reporting_period: "outside the reporting period",
@@ -149,6 +150,7 @@ const EXCLUDED_LABEL: Record<ExcludedReason, string> = {
   superseded: "superseded by a newer document",
   montreal_protocol_gas: "a CFC or HCFC, which Scope 1 leaves out",
   purchased_cooling_not_calculated: "purchased cooling, which is not calculated yet",
+  not_on_a_calculation_line: "not on a calculation line",
 };
 
 export interface ExcludedRecord {
@@ -343,6 +345,75 @@ export interface CalcLineInputs {
   unknown_facility_ids: string[];
 }
 
+export type UncountedReason =
+  | "not_on_a_line"
+  | "no_vehicle_group"
+  | "fuel_shared_by_vehicle_groups"
+  | "facility_not_in_setup"
+  | "identifier_on_several_facilities"
+  | "facility_ambiguous"
+  | "facility_suggested_not_confirmed"
+  | "no_calculation_line";
+
+export interface UncountedValues {
+  /** Records with an accepted value whose document is on no calculation line (records outside the period excluded). */
+  accepted_records: number;
+  /** One entry per document and reason. */
+  documents: { document_id: string; file_name: string; reason: UncountedReason; accepted_records: number }[];
+}
+
+export const UNCOUNTED_REASON: Record<UncountedReason, string> = {
+  not_on_a_line: "not on a calculation line yet",
+  no_vehicle_group: "no vehicle group set up",
+  fuel_shared_by_vehicle_groups: "more than one vehicle group uses the fuel, so none was chosen",
+  facility_not_in_setup: "facility not in Setup",
+  identifier_on_several_facilities: "the account or meter number is listed on more than one Setup facility",
+  facility_ambiguous: "more than one Setup facility matches the name or address",
+  facility_suggested_not_confirmed: "Claude suggested a facility and nobody has confirmed it",
+  no_calculation_line: "no calculation line for it yet",
+};
+
+/** What to do about it (the backend's NOT_ON_A_LINE_HINT), worded for one record or several. */
+export function uncountedHint(reason: UncountedReason, records: number): string {
+  const one = records === 1;
+  const it = one ? "it" : "them";
+  const hints: Record<UncountedReason, string> = {
+    not_on_a_line: `Place ${it} in Evidence.`,
+    no_calculation_line: "Answer the fuel or energy type question in Evidence.",
+    no_vehicle_group: `Add ${it} in Setup.`,
+    fuel_shared_by_vehicle_groups: "Choose the vehicle group in Evidence.",
+    facility_not_in_setup: `Add ${it} in Setup.`,
+    identifier_on_several_facilities: `Choose the facility in Evidence (${one ? "its" : "their"} account or meter number is on more than one facility in Setup).`,
+    facility_ambiguous: "Choose the facility in Evidence.",
+    facility_suggested_not_confirmed: "Confirm the suggested facility in Evidence.",
+  };
+  return hints[reason];
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** The Results notice for accepted records the totals leave out; null when there are none. */
+export function uncountedMessage(uncounted: UncountedValues | undefined): string | null {
+  const records = uncounted?.accepted_records ?? 0;
+  if (!uncounted || records <= 0) return null;
+  const documents = new Set(uncounted.documents.map((d) => d.document_id)).size;
+  return `${plural(records, "accepted record", "accepted records")} in ${plural(documents, "document", "documents")} not counted in the totals.`;
+}
+
+/** The left-out documents grouped by why, in a stable order. */
+export function uncountedGroups(uncounted: UncountedValues | undefined) {
+  const groups = new Map<UncountedReason, { reason: UncountedReason; records: number; documents: UncountedValues["documents"] }>();
+  for (const d of uncounted?.documents ?? []) {
+    const group = groups.get(d.reason) ?? { reason: d.reason, records: 0, documents: [] };
+    group.records += d.accepted_records;
+    group.documents.push(d);
+    groups.set(d.reason, group);
+  }
+  return [...groups.values()].sort((a, b) => a.reason.localeCompare(b.reason));
+}
+
+export { plural as pluralCount };
+
 export interface Recalculation {
   engagement_id: string;
   gwp_set: string;
@@ -370,6 +441,9 @@ export interface Recalculation {
   /** Category results to Scope 1, Scope 2 and inventory totals, then the final outputs.
    *  Absent from results computed before the roll-up; fall back to `comparisons`. */
   rollup?: Rollup;
+  /** Accepted values whose documents are not on a calculation line (Unassigned supporting evidence, or
+   *  moved off their line): counted nowhere until the document is placed. Absent from older results. */
+  uncounted_values?: UncountedValues;
   /** Per-line calculations behind stationary, mobile and electricity. Absent from older results. */
   calculation_lines?: CalculationLine[];
   /** Records on no calculation line, with why. */

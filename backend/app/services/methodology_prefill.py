@@ -98,13 +98,14 @@ class EstimationSuggestion(_Cited):
 
 class SelectionSuggestion(_Cited):
     field_id: Literal[_MULTI_IDS]  # type: ignore[valid-type]
-    option: str  # one of the field's listed options (never "None": that has nothing to quote)
+    option: str  # one of the field's listed options (never "None" or "Not stated": nothing to quote)
     wording: str  # the company's own words for it, copied from the quote ("" if none)
 
 
 class GwpSuggestion(_Cited):
     set: Literal["AR4", "AR5", "AR6"]
-    horizon: Literal["100-year", "20-year", "500-year"]
+    horizon: Literal["100-year", "20-year", "500-year", "Not stated"]  # "Not stated": the quote names the set, no horizon
+    applies_to: str  # what the set is used for, in the company's words copied from the quote ("" if not said)
 
 
 class EntitySuggestion(_Cited):
@@ -293,6 +294,79 @@ def title_year(lines: Sequence[DocumentLine], line: DocumentLine) -> int | None:
 _NEGATIONS = frozenset({"not", "no", "never", "without", "none", "neither", "nor", "cannot"})
 
 
+_NUMBER_WORDS = {"one": 1, "two": 2, "three": 3}
+_SCOPE_MENTION = re.compile(
+    r"\bscopes?\s*(?P<list>(?:[123]|one|two|three)(?:\s*(?:,|&|\+|/|and|or|to|through|-)\s*(?:[123]|one|two|three))*)(?![0-9])")
+_SCOPE_RANGE = re.compile(r"\s*(?:to|through|-)\s*")
+_FUTURE = frozenset({"will", "shall", "plan", "plans", "planned", "intend", "intends", "future", "upcoming", "later", "pending", "tbd"})
+_BEFORE_SCOPE = _NEGATIONS | _FUTURE | {"excluded", "excluding", "exclude", "excludes", "omit", "omitted", "outside", "except"}
+_AFTER_SCOPE = _NEGATIONS | _FUTURE | {"excluded", "excludes", "excluding", "omitted", "outside", "except"}
+_AFTER_PHRASES = ("out of scope", "not in scope", "to be disclosed", "to be reported", "yet to", "not applicable")
+_SCOPE_ID = {"Scope 1": 1, "Scope 2": 2, "Scope 3": 3}
+_SENTENCES = re.compile(r"(?<=[.!?;])\s+")
+_LIST_GAP = re.compile(r"^\s*(?:,|&|\+|/|and|or|,\s*and|,\s*or)?\s*$")
+_AFTER_END = re.compile(r",|:|\bscopes?\s*(?:[123]|one|two|three)\b")  # what a list says about itself ends at a comma or the next scope named
+_CLAUSE_END = re.compile(r",|\bbut\b|\bwhile\b|\bwhereas\b|\bhowever\b|:")
+
+
+def _scope_numbers(listing: str) -> set[int]:
+    """The scope numbers in "1", "1 and 2", "1, 2 and 3", "1 to 3", "one"."""
+
+    def number(token: str) -> int:
+        return _NUMBER_WORDS.get(token) or int(token)
+
+    out: set[int] = set()
+    for piece in re.split(r"\s*(?:,|&|\+|/|and|or)\s*", listing.strip()):
+        bounds = [number(t) for t in re.findall(r"[123]|one|two|three", piece)]
+        if _SCOPE_RANGE.search(piece) and len(bounds) == 2:
+            out |= set(range(bounds[0], bounds[1] + 1))
+        else:
+            out |= set(bounds)
+    return out
+
+
+def _scope_groups(sentence: str) -> list[tuple[int, int, set[int]]]:
+    """The scopes a sentence names, as groups of (start, end, numbers): mentions joined only by list words
+    ("Scope 1, Scope 2 and Scope 3", "Scopes 1 and 2") are one group, so one verdict covers all of them."""
+
+    groups: list[tuple[int, int, set[int]]] = []
+    for match in _SCOPE_MENTION.finditer(sentence):
+        numbers = _scope_numbers(match["list"])
+        if groups and _LIST_GAP.match(sentence[groups[-1][1]:match.start()]):
+            start, _, before = groups[-1]
+            groups[-1] = (start, match.end(), before | numbers)
+        else:
+            groups.append((match.start(), match.end(), numbers))
+    return groups
+
+
+def names_scope(quote: str, option: str) -> str:
+    """How a quote names a scope ("Scope 1", "Scope 2", "Scope 3"): ``yes``, ``negated`` or ``no``. It reads
+    "Scope 1", "Scopes 1 and 2", "scope one" and "Scopes 1 to 3". Sentences are read one by one. The scopes a
+    sentence lists together ("Scope 1, Scope 2 and Scope 3") share one verdict: they are negated when a
+    negation, "excluded" / "outside" / "out of scope" or a future wording ("will be disclosed in 2026") sits up
+    to five words before the list in its clause, or within eight words after it, up to the next comma or the next scope named."""
+
+    wanted = _SCOPE_ID.get(option)
+    negated = False
+    for sentence in _SENTENCES.split(norm(quote)):
+        for start, end, numbers in _scope_groups(sentence):
+            if wanted is None or wanted not in numbers:
+                continue
+            head = sentence[:start]
+            clause_start = max((m.end() for m in _CLAUSE_END.finditer(head)), default=0)
+            before = re.findall(r"[a-z0-9'-]+", head[clause_start:])[-5:]
+            tail = _AFTER_END.split(sentence[end:], maxsplit=1)[0]
+            after = re.findall(r"[a-z0-9'-]+", tail)[:8]
+            if (any(w in _BEFORE_SCOPE or w.endswith("n't") for w in before)
+                    or any(w in _AFTER_SCOPE or w.endswith("n't") for w in after)
+                    or any(p in " ".join(after) for p in _AFTER_PHRASES)):
+                negated = True
+            else:
+                return "yes"
+    return "negated" if negated else "no"
+
+
 def names_option(quote: str, terms: Sequence[str]) -> str:
     """How a quote names an option: ``yes`` (a term as a whole word or phrase, not negated), ``negated``
     (every mention has a negation within five words before it: "we do not buy RECs") or ``no``."""
@@ -315,11 +389,12 @@ _GWP_TERMS = {"AR4": ("ar4", "fourth assessment"), "AR5": ("ar5", "fifth assessm
 # The horizon the quote must name, as whole tokens ("120-year" is not "20-year").
 _HORIZON_TERMS = {
     "20-year": ("20-year", "20 year", "20-years", "20 years", "20-yr", "20 yr", "twenty-year", "twenty year",
-                "gwp20", "gwp-20", "gwp 20"),
+                "twenty-years", "twenty years", "gwp20", "gwp-20", "gwp 20"),
     "100-year": ("100-year", "100 year", "100-years", "100 years", "100-yr", "100 yr", "hundred-year", "hundred year",
-                 "gwp100", "gwp-100", "gwp 100"),
+                 "hundred-years", "hundred years", "one hundred-year", "one hundred year", "one-hundred-year",
+                 "one hundred years", "gwp100", "gwp-100", "gwp 100"),
     "500-year": ("500-year", "500 year", "500-years", "500 years", "500-yr", "500 yr", "five-hundred-year",
-                 "five hundred year", "gwp500", "gwp-500", "gwp 500"),
+                 "five hundred year", "five-hundred-years", "five hundred years", "gwp500", "gwp-500", "gwp 500"),
 }
 
 
@@ -349,6 +424,48 @@ def set_has_horizon(quote: str, set_: str, horizon: str) -> bool:
             if min(sets, key=lambda item: abs(item[0] - pos))[1] == set_:
                 return True
     return False
+
+
+_CLAUSE = re.compile(r"[;!?\n]|\.\s")
+
+
+def note_for_set(quote: str, set_: str, note: str) -> str:
+    """The use note for ``set_`` as the quote prints it (the quote's own casing and spacing), or "" when it is
+    not the words that follow this set's mention in the same clause. A clause ends at ";", a sentence end or a
+    line break ("AR5 for energy; AR6 for refrigerants" gives AR6 "for refrigerants", never "for energy"); where
+    a clause names several sets the note must start at this set's mention or after it, and end before the next
+    mention of another set. A clause with a single set may have its note anywhere ("embed AR5 values")."""
+
+    wanted = norm(note)
+    if not wanted:
+        return ""
+    for clause in _CLAUSE.split(quote):
+        collapsed = " ".join(clause.split())
+        folded = norm(collapsed)
+        if len(folded) != len(collapsed):  # a letter that changes length when folded: positions would drift
+            continue
+        marks = sorted((pos, name) for name, terms in _GWP_TERMS.items() for pos in _mentions(folded, terms))
+        for index, (pos, name) in enumerate(marks):
+            if name != set_:
+                continue
+            hi = next((p for p, other in marks[index + 1:] if other != set_), len(folded))
+            alone = len({n for _, n in marks}) == 1  # one set in the clause: the note may come before it too
+            at = folded.find(wanted) if alone else folded.find(wanted, pos, hi)
+            if at >= 0:
+                return collapsed[at:at + len(wanted)]
+    return ""
+
+
+def set_named(quote: str, set_: str) -> bool:
+    """Whether the quote names this GWP set as a whole token ("AR5", "Fifth Assessment")."""
+
+    return bool(_mentions(norm(quote), _GWP_TERMS[set_]))
+
+
+def set_without_horizon(quote: str, set_: str) -> bool:
+    """The quote names the set and ties no horizon to it (a horizon next to another set does not count)."""
+
+    return set_named(quote, set_) and not any(set_has_horizon(quote, set_, h) for h in _HORIZON_TERMS)
 
 
 SYSTEM_PROMPT = """\
@@ -392,6 +509,15 @@ What the items mean
   own line, and the quote must name the option. "wording" is the company's own words for it, copied
   from the quote, or "". Do not choose an option the documents do not mention, or say the company does
   not use.
+- scopes covered (selections with field_id scopes:covered): one item per scope the inventory covers,
+  with the option exactly "Scope 1", "Scope 2" or "Scope 3", each citing its own line. Look for the
+  row labels of the main emissions table or one sentence or list that names the scopes ("Scope 1",
+  "Scope 2", "Scope 3", "direct", "indirect"; ISO 14064-1 reports use "Category 1" to "Category 6"),
+  often under Operational Boundary, Reporting Boundary, Introduction or Overview. The quote must
+  name the scope, as "Scope 1" or in a list ("Scopes 1 and 2"). Choose a scope only when the
+  document says it is reported or covered. A scope the document calls excluded, outside the
+  boundary, or only relevant is not covered: leave it out. Never choose "Not stated": if the
+  documents name no scope, leave the field out. "wording" is the company's own label, or "".
 - gases: for each greenhouse gas (field_id gas:co2, gas:ch4, gas:n2o, gas:hfcs, gas:pfcs, gas:sf6,
   gas:nf3) the document states, "Included" (the gas is covered by the inventory) or "Declared absent"
   (the document says the gas is not emitted or not applicable). The quote must name the gas. If a
@@ -418,8 +544,11 @@ What the items mean
   boundary:leased_space only if a document states something about them; if it is silent, leave
   them out.
 - gwp: the Global Warming Potential set the company uses (IPCC assessment report AR4, AR5 or AR6)
-  and the time horizon (20-year, 100-year or 500-year). If the report uses more than one set or
-  horizon, give each one separately; do not pick between them.
+  and the time horizon (20-year, 100-year or 500-year), or "Not stated" when the quote names the set
+  and gives no horizon for it. If the report uses more than one set or horizon, give each one
+  separately, each with its own quote; do not pick between them. applies_to is what that set is used
+  for, in the company's words copied from the quote ("default", "embedded in the supplier factors"),
+  or "".
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
   equity share (percent, 0 to 100), financial control (percent, 0 to 100) and whether the company
   has operational control (Yes or No). Include an entity only if the cited line states its equity
@@ -656,13 +785,14 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         definition = rules.catalog_field(sel.field_id)
         by_key = {norm(a): a for a in (definition or {}).get("allowed", [])}
         option = by_key.get(norm(sel.option))
-        if option is None or option == "None":
+        if option is None or option in rules.STANDALONE_OPTIONS:  # "None", "Not stated": nothing to quote
             dropped["invalid_value"] += 1
             continue
         found = cited(sel)
         if found is None:
             continue
-        named = names_option(sel.quote, _OPTION_TERMS.get(option, ()))
+        named = (names_scope(sel.quote, option) if sel.field_id == rules.SCOPES_ID
+                 else names_option(sel.quote, _OPTION_TERMS.get(option, ())))
         if named != "yes":  # the quote does not name the option, or says the company does not have it
             dropped["negated" if named == "negated" else "value_not_in_quote"] += 1
             continue
@@ -724,24 +854,40 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
                  "file_name": first["file_name"], "source_reference": first["source_reference"]},
                 {"label": "Year from the title", "quote": period.title_quote.strip(), "document_id": document.document_id,
                  "file_name": document.file_name, "source_reference": line.source_reference}]
-    gwp_pairs: set[tuple[str, str]] = set()
+    gwp_seen: set[tuple[str, str, str]] = set()
     for gwp in output.gwp:
-        value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon})
+        # The use note is the company's own words, from the clause that names this set, in the quote's casing.
+        note = note_for_set(gwp.quote, gwp.set, " ".join(gwp.applies_to.split()))
+        if len(note) > rules.MAX_APPLIES_TO:
+            note = ""
+        value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon, "applies_to": note})
         if value is None:
             continue
-        pair = (value["set"], value["horizon"])
-        if pair in gwp_pairs:  # the same set and horizon named again
+        identity = (value["set"], value["horizon"], norm(value.get("applies_to", "")))
+        if identity in gwp_seen:  # the same set, horizon and note named again
             dropped["duplicate_entry"] += 1
             continue
         # The first set the report names is the fixed GWP field; every other set is a row of its own.
-        ties = lambda quote, s_=gwp.set, h_=gwp.horizon: set_has_horizon(quote, s_, h_)  # noqa: E731
+        def ties(quote: str, s_: str = gwp.set, h_: str = gwp.horizon) -> bool:
+            return set_without_horizon(quote, s_) if h_ == "Not stated" else set_has_horizon(quote, s_, h_)
+
         before = len(kept)
         if "gwp" not in seen:
             keep(gwp, value, "gwp", None, ok=ties)
         else:
             keep(gwp, value, None, "gwp", ok=ties)
-        if len(kept) > before:  # only a pair that held up counts as seen
-            gwp_pairs.add(pair)
+        if len(kept) > before:  # only an entry that held up counts as seen
+            gwp_seen.add(identity)
+    # A set the report states a horizon for needs no "Not stated" entry beside it: that one collapses into it.
+    # The first entry left is the fixed field, the others are rows.
+    sets = [v for v in kept if v.field_id == "gwp" or v.row_group == "gwp"]
+    stated = {v.suggestion["value"]["set"] for v in sets if v.suggestion["value"]["horizon"] != "Not stated"}
+    redundant = [v for v in sets if v.suggestion["value"]["horizon"] == "Not stated" and v.suggestion["value"]["set"] in stated]
+    if redundant:
+        dropped["duplicate_entry"] += len(redundant)
+        left = [v for v in sets if v not in redundant]
+        kept[:] = [v for v in kept if v not in sets]
+        kept.extend(Verified("gwp" if i == 0 else None, None if i == 0 else "gwp", v.suggestion) for i, v in enumerate(left))
     for entity in output.entities:
         definition = rules.row_field("entity:aaaa")
         assert definition is not None
@@ -772,7 +918,7 @@ def same_row_value(group: str, a: Any, b: Any) -> bool:
 
     if not isinstance(a, dict) or not isinstance(b, dict):
         return False
-    keys = ("name",) if group == "entities" else ("set", "horizon") if group == "gwp" else ("database", "edition")
+    keys = ("name",) if group == "entities" else ("set", "horizon", "applies_to") if group == "gwp" else ("database", "edition")
     return all(norm(str(a.get(k) or "")) == norm(str(b.get(k) or "")) for k in keys)
 
 

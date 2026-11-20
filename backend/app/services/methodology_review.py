@@ -44,7 +44,8 @@ KIND = "methodology"
 CONSOLIDATION_APPROACHES = ("Equity Share", "Financial Control", "Operational Control")
 INCLUSIONS = ("Yes", "No", "Not detected")
 GWP_SETS = ("AR4", "AR5", "AR6")
-GWP_HORIZONS = ("100-year", "20-year", "500-year")
+# "Not stated": the set is named and the document gives no horizon for it ("AR5" alone).
+GWP_HORIZONS = ("100-year", "20-year", "500-year", "Not stated")
 GWP_SET_LABELS = {
     "AR4": "IPCC Fourth Assessment Report (AR4)",
     "AR5": "IPCC Fifth Assessment Report (AR5)",
@@ -62,6 +63,7 @@ STATUSES = (PENDING, ACCEPTED, EDITED, REJECTED)
 
 MAX_TEXT = 2000
 MAX_REASON = 500
+MAX_APPLIES_TO = 200  # a GWP set's use note, in the company's words
 MAX_FACILITIES = 20
 MAX_FACILITY = 100
 MAX_HISTORY = 50
@@ -78,6 +80,11 @@ INSTRUMENT_OPTIONS = ("RECs or other energy attribute certificates", "PPA or VPP
                       "Green tariff or utility program", "Supplier-specific rate", "Residual mix", "None")
 SOURCE_RECORD_OPTIONS = ("Utility invoices", "Meter readings", "Fuel cards", "Fuel receipts or logs",
                          "Landlord reports", "Lease agreements")
+SCOPE_OPTIONS = ("Scope 1", "Scope 2", "Scope 3", "Not stated")
+# Options that stand alone: the explicit answer for "the document names none", chosen by the reviewer (there is
+# nothing to quote for it), never together with another option and never one of the reviewer's own additions.
+STANDALONE_OPTIONS = ("None", "Not stated")
+SCOPES_ID = "scopes:covered"
 MARKET_CATEGORY_IDS = tuple(f"category:market:{key}" for key in ("electricity", "heating", "steam", "cooling"))
 MAX_EVIDENCE_QUOTE = 1000  # as long as the quote Claude is checked against
 # The quotes of one list suggestion. Sized so the record always fits MAX_PAYLOAD_BYTES with a decision of the
@@ -153,6 +160,7 @@ _PARTS: dict[str, list[dict[str, Any]]] = {
     "gwp": [
         {"key": "set", "label": "GWP set", "kind": "enum", "allowed": list(GWP_SETS)},
         {"key": "horizon", "label": "Time horizon", "kind": "enum", "allowed": list(GWP_HORIZONS)},
+        {"key": "applies_to", "label": "Applies to (use note)", "kind": "text"},
     ],
 }
 
@@ -178,6 +186,8 @@ def _static_fields() -> list[dict[str, Any]]:
         _field("reporting_period", "boundary", "Reporting period", "date_range"),
         _field("consolidation_approach", "boundary", "Consolidation approach", "enum",
                list(CONSOLIDATION_APPROACHES)),
+        # Spec row 17: Scope 1 / Scope 2 / Scope 3 the inventory covers; "Not stated" is the reviewer's answer.
+        _field(SCOPES_ID, "boundary", "Scopes covered", "multiselect", list(SCOPE_OPTIONS)),
         # "Only if the company has a value" (spec rows 5 and 6): hidden until there is a value or "Add an item".
         _field("boundary:acquisitions", "boundary", "Acquisitions and divestitures", "text", required=False),
         _field("boundary:leased_space", "boundary", "Treatment of leased space", "text", required=False),
@@ -420,8 +430,9 @@ def _multiselect(field: Mapping[str, Any], value: Any) -> list[dict[str, str]]:
         if key in by_key:
             option = by_key[key]
         elif free:
-            if key == "none":  # "None" is a listed answer on the fields that have it, never a free option
-                raise _fail(field, "'None' can't be added as an option of your own.")
+            alone = next((o for o in STANDALONE_OPTIONS if o.casefold() == key), None)
+            if alone:  # a listed answer where the field has it, never a free option
+                raise _fail(field, f"'{alone}' can't be added as an option of your own.")
             extra += 1
             if extra > MAX_FREE_OPTIONS:
                 raise _fail(field, f"add at most {MAX_FREE_OPTIONS} options of your own.")
@@ -432,11 +443,14 @@ def _multiselect(field: Mapping[str, Any], value: Any) -> list[dict[str, str]]:
         seen.add(key)
         out.append({"option": option, "wording": _text(field, data["wording"], limit=MAX_WORDING,
                                                           name="the company's wording")})
-    if not out:  # a decision needs an option: "None" is the explicit empty answer where the field has it
-        raise _fail(field, "choose at least one option" + (", or None if there are none." if "None" in allowed else
-                                                              ", or reject this row if the company has none."))
-    if len(out) > 1 and any(o["option"] == "None" for o in out):
-        raise _fail(field, "'None' can't be chosen together with other options.")
+    standalone = [a for a in STANDALONE_OPTIONS if a in allowed]
+    if not out:  # a decision needs an option: "None" / "Not stated" is the explicit empty answer where the field has it
+        raise _fail(field, "choose at least one option" + (f", or {standalone[0]} if " + (
+            "there are none." if standalone[0] == "None" else "the document does not say.") if standalone else
+            ", or reject this row if the company has none."))
+    if len(out) > 1 and any(o["option"] in STANDALONE_OPTIONS for o in out):
+        alone = next(o["option"] for o in out if o["option"] in STANDALONE_OPTIONS)
+        raise _fail(field, f"'{alone}' can't be chosen together with other options.")
     return out
 
 
@@ -457,11 +471,16 @@ def validate_value(field: Mapping[str, Any], value: Any) -> Any:
             raise _fail(field, "choose one of " + ", ".join(field["allowed"]) + ".")
         return value
     if kind == "gwp":
-        data = _only(field, value, ("set", "horizon"))
-        if data["set"] not in GWP_SETS or data["horizon"] not in GWP_HORIZONS:
+        if not isinstance(value, dict) or not {"set", "horizon"} <= set(value) or not set(value) <= {"set", "horizon", "applies_to"}:
+            raise _fail(field, "the value must be an object with set and horizon, and optionally applies_to.")
+        if value["set"] not in GWP_SETS or value["horizon"] not in GWP_HORIZONS:
             raise _fail(field, f"the set must be one of {', '.join(GWP_SETS)} and the horizon one of "
                                f"{', '.join(GWP_HORIZONS)}.")
-        return {"set": data["set"], "horizon": data["horizon"]}
+        out = {"set": value["set"], "horizon": value["horizon"]}
+        note = _text(field, value.get("applies_to", ""), limit=MAX_APPLIES_TO, name="the use note")
+        if note:  # left out when blank, so a value without one keeps the shape it always had
+            out["applies_to"] = note
+        return out
     if kind == "factor":
         data = _only(field, value, ("database", "edition"))
         return {"database": _text(field, data["database"], required=True, limit=200, name="the database"),
