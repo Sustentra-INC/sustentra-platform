@@ -14,8 +14,10 @@ import {
   rejectField,
   removeRow,
   revealField,
+  pageOf,
   revertField,
   sourceLocation,
+  type SourceAt,
   type AiStatus,
   type CatalogField,
   type MethodologyRecord,
@@ -132,7 +134,7 @@ export function aiStatusWords(ai: AiStatus): string | null {
   return ai.reason ?? "AI suggestions are not available";
 }
 
-function valueText(value: MethodologyValue | undefined): string {
+export function valueText(value: MethodologyValue | undefined): string {
   if (value === null || value === undefined || value === "") return "";
   if (Array.isArray(value)) {
     // A list of entries ({source_type, method}) reads "Source: method"; a list of names reads as a comma list.
@@ -449,10 +451,10 @@ export function acceptable(def: CatalogField, record: MethodologyRecord): boolea
 }
 
 /** The small "p. N" link that opens the document where the quote is. */
-function SourceLink({ fileName, reference, documentId, onOpen }: { fileName: string; reference: MethodologySuggestion["source_reference"] | undefined; documentId: string; onOpen: (documentId: string) => void }) {
+function SourceLink({ fileName, reference, documentId, at, onOpen }: { fileName: string; reference: MethodologySuggestion["source_reference"] | undefined; documentId: string; at: SourceAt; onOpen: (documentId: string, at?: SourceAt) => void }) {
   const place = sourceLocation(reference);
   return (
-    <button type="button" className="s1-mr-link s1-mb-source" aria-label={place ? `${fileName}, ${place}` : fileName} title={place ? `${fileName}, ${place}` : fileName} onClick={() => onOpen(documentId)}>
+    <button type="button" className="s1-mr-link s1-mb-source" aria-label={place ? `${fileName}, ${place}` : fileName} title={place ? `${fileName}, ${place}` : fileName} onClick={() => onOpen(documentId, at)}>
       {sourceShort(reference) || fileName}
     </button>
   );
@@ -482,7 +484,7 @@ function Quote({ text, truncated }: { text: string; truncated?: boolean }) {
   );
 }
 
-function FieldRow({
+export function FieldRow({
   engagementId,
   def,
   record,
@@ -492,7 +494,15 @@ function FieldRow({
   onMarkFollowUp,
   onAct,
   onOpenDocument,
+  selected,
+  onSelect,
+  quoteNote,
 }: {
+  /** On a document's own page: this row is the one whose quote is highlighted, and a click on the row selects it. */
+  selected?: boolean;
+  onSelect?: () => void;
+  /** A line under a quote (entry null: the suggestion's own), such as "Quote not located on this page". */
+  quoteNote?: (entry: number | null) => string | null;
   engagementId: string;
   def: CatalogField;
   record: MethodologyRecord;
@@ -502,7 +512,7 @@ function FieldRow({
   followUp?: FollowUpSupport;
   onMarkFollowUp: (def: CatalogField) => void;
   onAct: (run: () => Promise<unknown>) => void;
-  onOpenDocument: (documentId: string) => void;
+  onOpenDocument: (documentId: string, at?: SourceAt) => void;
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "reject">("view");
   const [reason, setReason] = useState("");
@@ -550,7 +560,7 @@ function FieldRow({
   const showEmpty = !(suggestion && pendingStatus);
 
   return (
-    <li className="s1-mb-row" data-status={status}>
+    <li className="s1-mb-row" data-status={status} data-field-id={def.fieldId} data-selected={selected || undefined} onClick={onSelect}>
       <div className="s1-mb-body">
         <div className="s1-mb-main">
           <span className="s1-mr-label">{def.label}</span>
@@ -586,7 +596,8 @@ function FieldRow({
                   <li key={index} className="s1-mb-evidence-item">
                     <span className="s1-mr-muted">{item.label}</span>
                     <Quote text={item.quote} truncated={item.quote_truncated} />
-                    <SourceLink fileName={item.file_name} reference={item.source_reference} documentId={item.document_id} onOpen={onOpenDocument} />
+                    {quoteNote?.(index) ? <span className="s1-mb-notlocated">{quoteNote(index)}</span> : null}
+                    <SourceLink fileName={item.file_name} reference={item.source_reference} documentId={item.document_id} at={{ fieldId: def.fieldId, entry: index, page: pageOf(item.source_reference) }} onOpen={onOpenDocument} />
                   </li>
                 ))}
                 {suggestion.entries_omitted ? (
@@ -598,7 +609,8 @@ function FieldRow({
             ) : (
               <>
                 <Quote text={suggestion.quote} truncated={suggestion.quote_truncated} />
-                <SourceLink fileName={suggestion.file_name} reference={suggestion.source_reference} documentId={suggestion.document_id} onOpen={onOpenDocument} />
+                {quoteNote?.(null) ? <span className="s1-mb-notlocated">{quoteNote(null)}</span> : null}
+                <SourceLink fileName={suggestion.file_name} reference={suggestion.source_reference} documentId={suggestion.document_id} at={{ fieldId: def.fieldId, entry: null, page: pageOf(suggestion.source_reference) }} onOpen={onOpenDocument} />
               </>
             )}
           </div>
@@ -684,7 +696,7 @@ export function BackendMethodologyReview({
   followUp,
 }: {
   engagementId: string;
-  onOpenDocument: (documentId: string) => void;
+  onOpenDocument: (documentId: string, at?: SourceAt) => void;
   onError?: (error: unknown) => boolean;
   onActivity?: (entries: { at: string; who: string; what: string }[]) => void;
   /** Present on pages that can raise client requests: adds "Mark for client follow-up" to every row. */
