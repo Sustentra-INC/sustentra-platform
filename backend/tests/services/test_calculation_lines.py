@@ -1385,3 +1385,29 @@ def test_an_old_anchor_and_a_new_id_are_never_equal_even_for_a_label_that_looks_
     assert cl.legacy_group_anchors(old) == ["vg-id-0123456789ab"]
     fresh = cl.new_group_id({"vg-id-0123456789ab"})
     assert fresh.startswith("vgid-") and fresh != "vg-id-0123456789ab" and cl.slug(fresh) == fresh
+
+
+@pytest.mark.parametrize("reverse", [False, True], ids=["in order", "reordered too"])
+def test_two_groups_that_swap_names_without_ids_do_not_trade_ids(reverse: bool) -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2)])
+    trucks, vans = stored
+    b = _bare(stored)
+    swapped = [{**b[0], "label": "Vans"}, {**b[1], "label": "Trucks"}]  # the 1 mi group is now Vans, the 2 mi one Trucks
+    out = _with_ids(swapped[::-1] if reverse else swapped, stored)
+    assert not {g["group_id"] for g in out} & {trucks["group_id"], vans["group_id"]}  # neither takes an old id
+    assert len({g["group_id"] for g in out}) == 2  # and they differ
+
+
+def test_a_name_swap_where_the_client_sends_ids_still_keeps_them() -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2)])
+    swapped = [{**stored[0], "label": "Vans"}, {**stored[1], "label": "Trucks"}]
+    assert _ids(_with_ids(swapped, stored)) == _ids(stored)  # the ids sent are what a rename keeps
+
+
+def test_a_group_whose_figures_are_another_unmatched_groups_does_not_take_its_neighbours_id() -> None:
+    stored = _with_ids([_g("Trucks", distance=1), _g("Vans", distance=2), _g("Pickups", distance=3)])
+    b = _bare(stored)
+    # Trucks (1 mi) is renamed Pickups and Pickups (3 mi) kept: the 1 mi group has the figures of stored Trucks
+    out = _with_ids([{**b[0], "label": "Vans"}, b[1], b[2]], stored)
+    assert out[2]["group_id"] == stored[2]["group_id"]  # Pickups, unchanged, keeps its id
+    assert out[0]["group_id"] != stored[1]["group_id"]  # the group named Vans with Trucks' figures does not take Vans'

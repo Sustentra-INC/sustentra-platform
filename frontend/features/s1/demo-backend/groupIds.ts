@@ -76,15 +76,21 @@ export function assignDemoGroupIds(groups: VehicleGroupSetting[], stored: Vehicl
     const match = free().find((k) => same(k.group, out[i]));
     if (match) claim(i, match.anchor);
   }
+  const refused = new Set<number>(); // turned down in step 2: another group of the save has the stored group's name
   for (const i of [...waiting]) {
     const fits = free().filter((k) => same(k.group, out[i], "label"));
     const rivals = waiting.filter((j) => same(out[j], out[i], "label"));
-    if (fits.length === 1 && rivals.length === 1 && !out.some((o, j) => j !== i && o.label === fits[0].group.label)) claim(i, fits[0].anchor);
+    if (fits.length === 1 && rivals.length === 1) {
+      if (out.some((o, j) => j !== i && o.label === fits[0].group.label)) refused.add(i);
+      else claim(i, fits[0].anchor);
+    }
   }
+  // changed figures; not for a refused group, and not when the figures are another unmatched stored group's (a name swap)
   for (const i of [...waiting]) {
     const fits = free().filter((k) => SAME.every((key) => k.group[key] === out[i][key]));
     const rivals = waiting.filter((j) => SAME.every((key) => out[j][key] === out[i][key]));
-    if (fits.length === 1 && rivals.length === 1) claim(i, fits[0].anchor);
+    const figuresOfAnother = free().some((k) => same(k.group, out[i], "label") && !fits.some((f) => f.anchor === k.anchor));
+    if (fits.length === 1 && rivals.length === 1 && !refused.has(i) && !figuresOfAnother) claim(i, fits[0].anchor);
   }
   const taken = new Set([...knownIds, ...used]);
   for (const group of out) {

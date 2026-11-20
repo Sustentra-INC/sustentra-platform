@@ -90,6 +90,12 @@ describe("the page keeps the ids the server gave", () => {
     expect(withSavedIds(twins, [both[0]]).map((d) => d.groupId)).toEqual(["vgid-111111111111", undefined]);
   });
 
+  it("gives a group that swapped names with another no id (full content only)", () => {
+    const saved = [group("Trucks", { distance: 1, group_id: "vgid-aaaaaaaaaaaa" }), group("Vans", { distance: 2, group_id: "vgid-bbbbbbbbbbbb" })];
+    const swapped = draftsFrom([group("Vans", { distance: 1 }), group("Trucks", { distance: 2 })]);
+    expect(withSavedIds(swapped, saved)).toBe(swapped); // no draft takes an id
+  });
+
   it("does not match a group on its place in the list", () => {
     const typed = draftsFrom([group("Trucks", { distance: 5 })]);
     expect(withSavedIds(typed, [group("Trucks", { distance: 6, group_id: "vgid-aaaaaaaaaaaa" })])).toBe(typed); // other figures
@@ -113,6 +119,17 @@ describe("the demo matches groups like the server when no ids are sent", () => {
     void _id;
     return rest;
   };
+
+  it("does not trade ids between two groups that swapped names", () => {
+    const [trucks, vans] = assignDemoGroupIds([group("Trucks", { distance: 1 }), group("Vans", { distance: 2 })], undefined);
+    for (const reverse of [false, true]) {
+      const swapped = [{ ...bare(trucks), label: "Vans" }, { ...bare(vans), label: "Trucks" }];
+      const out = assignDemoGroupIds(reverse ? swapped.reverse() : swapped, [trucks, vans]);
+      expect(out.map((g) => g.group_id)).not.toContain(trucks.group_id);
+      expect(out.map((g) => g.group_id)).not.toContain(vans.group_id);
+      expect(new Set(out.map((g) => g.group_id)).size).toBe(2);
+    }
+  });
 
   it("keeps same-named groups' ids when they are reordered", () => {
     const stored = assignDemoGroupIds([group("Trucks", { distance: 1000 }), group("Trucks", { distance: 5000 })], undefined);

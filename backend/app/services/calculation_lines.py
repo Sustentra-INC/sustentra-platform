@@ -269,20 +269,27 @@ def assign_group_ids(groups: list[dict[str, Any]], stored: list[dict[str, Any]] 
     # 2. a group whose name changed: the same in every other field as exactly one stored group, and no other group
     #    of this save has that stored group's name now (a rename plus a reorder must not hand one group the id of the
     #    group whose name it took).
+    refused: set[int] = set()  # turned down in step 2 because another group of the save has the stored group's name
     for i in list(waiting):
         same = [(a, g) for a, g in free() if body(g, "label") == body(out[i], "label")]
         rivals = [j for j in waiting if body(out[j], "label") == body(out[i], "label")]
         if len(same) == 1 and rivals == [i]:
             anchor, stored_group = same[0]
-            if not any(j != i and out[j].get("label") == stored_group.get("label") for j in range(len(out))):
+            if any(j != i and out[j].get("label") == stored_group.get("label") for j in range(len(out))):
+                refused.add(i)
+            else:
                 claim(i, anchor)
     # 3. a group whose figures changed (distance, model year): the same fuel, vehicle type, fuel type and name as
     #    exactly one stored group
     key = ("fuel", "vehicle_type", "factor_fuel_type", "on_road", "label")
+    #    Not for a group step 2 refused, and not when the group's figures are another unmatched stored group's: two
+    #    groups that swapped names would otherwise trade ids, and their documents would land on each other's lines.
     for i in list(waiting):
         same = [(a, g) for a, g in free() if all(g.get(k) == out[i].get(k) for k in key)]
         rivals = [j for j in waiting if all(out[j].get(k) == out[i].get(k) for k in key)]
-        if len(same) == 1 and rivals == [i]:
+        figures_of_another = any(body(g, "label") == body(out[i], "label") and a not in {x for x, _ in same}
+                                 for a, g in free())
+        if len(same) == 1 and rivals == [i] and i not in refused and not figures_of_another:
             claim(i, same[0][0])
     taken = known | used
     for group in out:
