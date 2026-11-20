@@ -29,7 +29,7 @@ from __future__ import annotations
 import copy
 import re
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from typing import Any
 
@@ -71,6 +71,14 @@ MAX_ENTRIES = 10  # entries in an entry_list value
 MAX_SOURCE_TYPE = 60
 MAX_METHOD = 300
 MAX_EVIDENCE = 20  # per-entry quotes on one suggestion
+MAX_OPTION = 60
+MAX_WORDING = 200  # the company's own wording beside a selected option
+MAX_FREE_OPTIONS = 10  # free additions beside the listed options
+INSTRUMENT_OPTIONS = ("RECs or other energy attribute certificates", "PPA or VPPA",
+                      "Green tariff or utility program", "Supplier-specific rate", "Residual mix", "None")
+SOURCE_RECORD_OPTIONS = ("Utility invoices", "Meter readings", "Fuel cards", "Fuel receipts or logs",
+                         "Landlord reports", "Lease agreements")
+MARKET_CATEGORY_IDS = tuple(f"category:market:{key}" for key in ("electricity", "heating", "steam", "cooling"))
 MAX_EVIDENCE_QUOTE = 1000  # as long as the quote Claude is checked against
 # The quotes of one list suggestion. Sized so the record always fits MAX_PAYLOAD_BYTES with a decision of the
 # same field: when the quotes do not fit, the suggestion carries fewer entries, never an entry without its quote.
@@ -134,6 +142,10 @@ _PARTS: dict[str, list[dict[str, Any]]] = {
         {"key": "database", "label": "Database", "kind": "text"},
         {"key": "edition", "label": "Edition", "kind": "text"},
     ],
+    "multiselect": [
+        {"key": "option", "label": "Option", "kind": "text"},
+        {"key": "wording", "label": "The company's wording", "kind": "text"},
+    ],
     "entry_list": [
         {"key": "source_type", "label": "Source type", "kind": "text"},
         {"key": "method", "label": "Estimation method", "kind": "text"},
@@ -170,6 +182,12 @@ def _static_fields() -> list[dict[str, Any]]:
         _field("boundary:acquisitions", "boundary", "Acquisitions and divestitures", "text", required=False),
         _field("boundary:leased_space", "boundary", "Treatment of leased space", "text", required=False),
     ]
+    # Spec row 11: only if the company reports a market-based Scope 2 number, which this page reads
+    # as at least one market-based category that is Yes (see ``market_based_reported``).
+    instruments = _field("scope2:instruments", "scope2", "Scope 2 instrument types (market-based)", "multiselect",
+                         list(INSTRUMENT_OPTIONS), required=False)
+    instruments["shown_if_yes"] = list(MARKET_CATEGORY_IDS)
+    fields.append(instruments)
     # One row per gas, "Only if the company has a value" (spec row 7).
     fields += [_field(f"gas:{key}", "gases", f"Gas: {name}", "enum", list(GAS_STATUSES), required=False)
                for key, name in GASES]
@@ -199,6 +217,11 @@ def _static_fields() -> list[dict[str, Any]]:
         _field("calculation:estimation", "calculation", "Estimation method for missing data", "entry_list",
                required=False),
     ]
+    # Spec row 20: the listed records, and any the company names beyond them.
+    records = _field("calculation:source_records", "calculation", "Source records", "multiselect",
+                     list(SOURCE_RECORD_OPTIONS), required=False)
+    records["free"] = True
+    fields.append(records)
     return fields
 
 
@@ -333,10 +356,51 @@ def _entry_list(field: Mapping[str, Any], value: Any) -> list[dict[str, str]]:
     return out
 
 
+def _multiselect(field: Mapping[str, Any], value: Any) -> list[dict[str, str]]:
+    """Selected options, each with the company's own wording (may be blank). A field with free
+    additions also takes options that are not in its list. "None" stands alone."""
+
+    allowed: list[str] = field["allowed"]
+    free = bool(field.get("free"))
+    if not isinstance(value, list) or len(value) > len(allowed) + (MAX_FREE_OPTIONS if free else 0):
+        raise _fail(field, "choose from the listed options" + (f", and add at most {MAX_FREE_OPTIONS} of your own." if free else "."))
+    by_key = {" ".join(a.casefold().split()): a for a in allowed}
+    out: list[dict[str, str]] = []
+    seen: set[str] = set()
+    extra = 0
+    for entry in value:
+        data = _only(field, entry, ("option", "wording"))
+        option = _text(field, data["option"], required=True, limit=MAX_OPTION, name="the option")
+        key = " ".join(option.casefold().split())
+        if key in by_key:
+            option = by_key[key]
+        elif free:
+            if key == "none":  # "None" is a listed answer on the fields that have it, never a free option
+                raise _fail(field, "'None' can't be added as an option of your own.")
+            extra += 1
+            if extra > MAX_FREE_OPTIONS:
+                raise _fail(field, f"add at most {MAX_FREE_OPTIONS} options of your own.")
+        else:
+            raise _fail(field, "choose options from the list: " + ", ".join(allowed) + ".")
+        if key in seen:
+            raise _fail(field, f"'{option}' is chosen twice.")
+        seen.add(key)
+        out.append({"option": option, "wording": _text(field, data["wording"], limit=MAX_WORDING,
+                                                          name="the company's wording")})
+    if not out:  # a decision needs an option: "None" is the explicit empty answer where the field has it
+        raise _fail(field, "choose at least one option" + (", or None if there are none." if "None" in allowed else
+                                                              ", or reject this row if the company has none."))
+    if len(out) > 1 and any(o["option"] == "None" for o in out):
+        raise _fail(field, "'None' can't be chosen together with other options.")
+    return out
+
+
 def validate_value(field: Mapping[str, Any], value: Any) -> Any:
     """The value cleaned for its field, or MethodologyInvalid with a sentence."""
 
     kind = field["kind"]
+    if kind == "multiselect":
+        return _multiselect(field, value)
     if kind == "entry_list":
         return _entry_list(field, value)
     if kind == "date_range":
@@ -647,11 +711,47 @@ def display_state(record: Mapping[str, Any], meta: Mapping[str, Any]) -> str:
     return NOT_DETECTED if record.get("field_id") in covered_ids else NOT_CHECKED
 
 
-def is_shown(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mapping[str, Any]) -> bool:
-    """Must-appear rows always show; an optional one shows once it has a value or the reviewer
-    revealed it with "Add an item"."""
+def market_based_reported(records: Mapping[str, Mapping[str, Any]], ids: Sequence[str] = MARKET_CATEGORY_IDS) -> bool:
+    """Whether the company reports a market-based Scope 2 number, read from the page: at least one
+    of the market-based categories is Yes. A category counts when the reviewer accepted or edited
+    it to Yes, or, while still undecided, when Claude suggested Yes. A rejected category, or one
+    that is No or Not detected, does not."""
 
-    return bool(field.get("required", True)) or has_value(record) or field["field_id"] in meta.get("revealed", [])
+    for field_id in ids:
+        record = records.get(field_id)
+        if not record:
+            continue
+        decision = record.get("decision")
+        if decision and decision.get("status") in (ACCEPTED, EDITED):
+            if decision.get("value") == "Yes":
+                return True
+        elif (not decision or decision.get("status") == PENDING) and (record.get("suggestion") or {}).get("value") == "Yes":
+            return True
+    return False
+
+
+def is_shown(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mapping[str, Any],
+             records: Mapping[str, Mapping[str, Any]] | None = None) -> bool:
+    """Must-appear rows always show. An optional one shows once it has a value or the reviewer
+    revealed it with "Add an item"; a conditional one (``shown_if_yes``) also shows while one of
+    the categories it depends on is Yes."""
+
+    if bool(field.get("required", True)) or has_value(record) or field["field_id"] in meta.get("revealed", []):
+        return True
+    depends: list[str] = field.get("shown_if_yes") or []
+    return bool(depends) and market_based_reported(records or {}, depends)
+
+
+def shown_note(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mapping[str, Any],
+               records: Mapping[str, Mapping[str, Any]] | None = None) -> str | None:
+    """Why a conditional row is on the page when its condition is not met: only Claude's suggestion
+    is there (no decision, not added by the reviewer), so it is shown rather than hidden."""
+
+    depends: list[str] = field.get("shown_if_yes") or []
+    if (depends and record.get("suggestion") and not record.get("decision")
+            and field["field_id"] not in meta.get("revealed", []) and not market_based_reported(records or {}, depends)):
+        return "Shown because Claude found it, although no market-based category is Yes."
+    return None
 
 
 def public(record: Mapping[str, Any]) -> dict[str, Any]:

@@ -10,7 +10,13 @@
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 
-export type SeedValue = string | number | string[] | { [key: string]: string | number | string[] } | { source_type: string; method: string }[];
+export type SeedValue =
+  | string
+  | number
+  | string[]
+  | { [key: string]: string | number | string[] }
+  | { source_type: string; method: string }[]
+  | { option: string; wording: string }[];
 
 /** Document ids come from the Evidence fixtures, so "open document" lands on a real document. */
 function doc(filename: string): { document_id: string; file_name: string } {
@@ -67,6 +73,34 @@ const W = WORKBOOK_DOC;
 export const CLAUDE_ITEMS: ClaudeItem[] = [
   // The report shows a second set for comparison: it stays as its own row, beside the decided AR5 field.
   { rowGroup: "gwp", rowKey: "w1", value: { set: "AR6", horizon: "500-year" }, quote: "A 500-year horizon using AR6 is shown for comparison only.", source: B, page: "page 3" },
+  {
+    fieldId: "scope2:instruments",
+    value: [
+      { option: "PPA or VPPA", wording: "the Tualatin Plant PPA" },
+      { option: "Residual mix", wording: "" },
+    ],
+    quote: "Market-based electricity applies the Tualatin Plant PPA; other sites use the eGRID subregion rate.",
+    source: W,
+    page: "Scope 2 sheet, cell C4",
+    evidence: [
+      { label: "PPA or VPPA", quote: "Market-based electricity applies the Tualatin Plant PPA", page: "Scope 2 sheet, cell C4" },
+      { label: "Residual mix", quote: "Remaining market-based electricity uses the residual mix factor.", page: "Scope 2 sheet, cell C5" },
+    ],
+  },
+  {
+    fieldId: "calculation:source_records",
+    value: [
+      { option: "Utility invoices", wording: "" },
+      { option: "Fuel cards", wording: "fuel card statements" },
+    ],
+    quote: "Activity data comes from utility invoices and fuel card statements.",
+    source: B,
+    page: "page 3",
+    evidence: [
+      { label: "Utility invoices", quote: "Activity data comes from utility invoices", page: "page 3" },
+      { label: "Fuel cards", quote: "fuel card statements", page: "page 3" },
+    ],
+  },
   {
     fieldId: "calculation:estimation",
     value: [

@@ -216,8 +216,12 @@ async def get_methodology_review(
     fields = []
     for f in rules.CATALOG:
         record = stored.get(f["field_id"]) or rules.new_record(f["field_id"])
-        fields.append({**rules.public(record), "display_state": rules.display_state(record, meta),
-                       "shown": rules.is_shown(f, record, meta)})
+        item = {**rules.public(record), "display_state": rules.display_state(record, meta),
+                "shown": rules.is_shown(f, record, meta, stored)}
+        note = rules.shown_note(f, record, meta, stored)
+        if note:
+            item["shown_note"] = note
+        fields.append(item)
     catalog = [dict(f) for f in rules.CATALOG]
     for key, record in stored.items():  # rows the reviewer added, oldest first
         definition = rules.row_field(key)
