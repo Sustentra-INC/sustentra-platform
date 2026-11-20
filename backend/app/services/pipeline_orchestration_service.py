@@ -586,7 +586,7 @@ class PipelineOrchestrationService:
                     suggestion = self._ai_facility.suggest(
                         parser_output=parser_output, extraction_result=extraction_result,
                         canonical_type_id=canonical_type_id, file_name=resolved_file_name, org_id=org_id,
-                        engagement_id=engagement_id)
+                        engagement_id=engagement_id, document_id=resolved_document_id)
                     if suggestion is not None:
                         extraction_result = {**extraction_result, "facility_suggestion": suggestion.as_record()}
             else:

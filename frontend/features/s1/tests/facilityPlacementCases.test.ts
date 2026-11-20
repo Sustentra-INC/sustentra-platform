@@ -74,7 +74,8 @@ describe("the Evidence screen places a bill where the backend does (shared cases
       // Claude's suggestion is shown only while the bill awaits a decision: the Evidence screen and the backend tree agree
       expect(row.facilitySuggestion?.facilityId ?? null).toBe(c.expect.suggestion ?? null);
 
-      if (c.decision) {
+      // A decision for a facility that left Setup places nothing: the case is read as if there were none.
+      if (c.decision && shared.facilities.some((f) => f.facilityId === c.decision!.facilityId)) {
         expect(row.facilityId).toBe(c.decision.facilityId); // the reviewer's choice comes first
         return;
       }

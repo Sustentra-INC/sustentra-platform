@@ -31,7 +31,8 @@ from backend.app.core.db import get_db_session
 from backend.app.services import audit_query, engagement_service, workpaper_item_service
 from backend.app.services import calculation_lines as cl
 from backend.app.services.audit_log import write_audit_event
-from backend.app.services.evidence_tree_service import DocState, Loaded
+from backend.app.services.ai_facility import FACILITY_TYPES
+from backend.app.services.evidence_tree_service import DocState, EvidenceTreeService, Loaded
 
 router = APIRouter(prefix="/v1", tags=["evidence-actions"])
 
@@ -81,6 +82,9 @@ class FacilityChoice(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     facility_id: str = Field(min_length=1, max_length=200)
+    # The facility the page believes the document is on now (null: none). When sent and it is not what is saved, another
+    # reviewer decided meanwhile and nothing is written (409).
+    expected_facility_id: str | None = Field(default=None, max_length=200)
 
 
 # --- shared steps -------------------------------------------------------------------------
@@ -355,20 +359,34 @@ async def set_document_facility(
     doc = next((d for d in loaded.docs if d.document_id == document_id), None)
     if doc is None:
         raise HTTPException(status_code=404, detail="That document isn't on the Evidence page for this engagement.")
+    if doc.canonical_type_id not in FACILITY_TYPES:
+        raise HTTPException(status_code=422, detail="That kind of document is not placed on a facility.")
     facility = next((f for f in loaded.facilities if str(f.get("facilityId")) == body.facility_id), None)
     if facility is None:
         raise HTTPException(status_code=422, detail="That facility is not in Setup. Reload Evidence and pick another.")
     existing = decisions.get(document_id) or {}
+    # Claude's suggestion as the page shows it (the same rule as the Evidence tree row), judged before this decision
+    shown = EvidenceTreeService._suggestion(
+        doc, {str(f.get("facilityId")): str(f.get("name")) for f in loaded.facilities}, decisions)
+    suggested = shown is not None and shown["facility_id"] == body.facility_id
+    if existing.get("facilityId") == body.facility_id:  # already there: nothing to write, nothing to log
+        return {"document_id": document_id, "payload": existing}
+    if "expected_facility_id" in body.model_fields_set and (existing.get("facilityId") or None) != (
+            body.expected_facility_id or None):
+        raise HTTPException(status_code=409, detail="Another reviewer already chose a facility for this document. "
+                                                     "Reload Evidence to see it.")
+    if existing.get("placements"):
+        raise HTTPException(status_code=409, detail="This document was moved by hand. Move it back to Unassigned first, "
+                                                     "or place it from the Evidence tree.")
     payload = {**existing, "documentId": document_id, "facilityId": body.facility_id}
     if workpaper_item_service.payload_size(payload) > workpaper_item_service.MAX_PAYLOAD_BYTES:
         raise HTTPException(status_code=409, detail="This document has too many saved changes to save another.")
     await workpaper_item_service.save_item(
         db, org_id=engagement["org_id"], engagement_id=engagement["id"], kind="document", item_key=document_id,
         payload=payload, user_id=user.id)
-    suggestion = doc.facility_suggestion if isinstance(doc.facility_suggestion, dict) else {}
     await _audit(db, request, user, FACILITY_SET, engagement,
                  {"document_id": document_id, "facility_id": body.facility_id, "facility_name": str(facility.get("name")),
-                  "suggested": str(suggestion.get("facility_id") or "") == body.facility_id})
+                  "suggested": suggested})
     return {"document_id": document_id, "payload": payload}
 
 

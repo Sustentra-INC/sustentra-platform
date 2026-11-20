@@ -691,7 +691,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       if (!workpaper.loaded) throw new Error("Your saved work is still loading. Try again in a moment.");
       await workpaper.whenSaved("document", documentId);
     }
-    const { payload } = await setDocumentFacility(id, documentId, facilityId);
+    const { payload } = await setDocumentFacility(id, documentId, facilityId, decisionsRef.current[documentId]?.facilityId ?? null);
     if (!stillOpen(id)) return;
     if (dataMode === "backend") workpaper.markSaved("document", documentId, payload);
     setDocumentDecisions((cur) => ({ ...cur, [documentId]: payload }));

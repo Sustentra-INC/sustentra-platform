@@ -331,11 +331,14 @@ export function moveEvidenceDocument(
 export function setDocumentFacility(
   engagementId: string,
   documentId: string,
-  facilityId: string
+  facilityId: string,
+  /** The facility the page believes the document is on now (null: none): the server refuses (409) when another
+   *  reviewer decided meanwhile, instead of overwriting their choice. */
+  expectedFacilityId: string | null
 ): Promise<{ document_id: string; payload: DocumentDecision }> {
   return api(`/engagements/${encodeURIComponent(engagementId)}/documents/${encodeURIComponent(documentId)}/facility`, {
     method: "POST",
-    body: { facility_id: facilityId },
+    body: { facility_id: facilityId, expected_facility_id: expectedFacilityId },
   });
 }
 

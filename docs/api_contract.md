@@ -409,7 +409,7 @@ text or file name.
 | `PATCH /v1/engagements/{id}/evidence-lines/{line_key}` | `{label}` | 200 `{line, evidenceLines}` |
 | `DELETE /v1/engagements/{id}/evidence-lines/{line_key}` | none | 200 `{documents_moved, documents, evidenceLines}` |
 | `POST /v1/engagements/{id}/documents/{document_id}/placements` | `{from, to}` | 200 `{document_id, payload}` |
-| `POST /v1/engagements/{id}/documents/{document_id}/facility` | `{facility_id}` | 200 `{document_id, payload}` |
+| `POST /v1/engagements/{id}/documents/{document_id}/facility` | `{facility_id, expected_facility_id?}` | 200 `{document_id, payload}` |
 
 * **Create** checks the same as saving the setting (anchor on a Setup facility, vehicle group or the
   company; letters or numbers in the name; at most 200 lines; not a line the system creates), 422 with a
@@ -458,8 +458,13 @@ Audit events (`target_type` "engagement", `target_id` the engagement):
 `POST .../documents/{document_id}/facility` places a document on a Setup facility: it saves the reviewer's own facility
 decision (`payload.facilityId`, which wins over every rule), under the engagement's row lock, and writes
 `evidence_document_facility_set` (`suggested` is true when the facility is the one Claude suggested for the document). The
-actor is the session's. 422 for a facility that is not in Setup (and for any other key in the body), 404 for a document that
-is not on the Evidence page, writers only.
+actor is the session's. Safe to repeat: when the document is already on that facility the answer is 200 with the saved
+payload and nothing is written or logged. `expected_facility_id` (null for none) is the facility the page believes the
+document is on; when it is sent and is not what is saved, 409 ("Another reviewer already chose a facility for this document.
+Reload Evidence to see it.") and nothing is written. A document with saved moves (`placements`) is 409 ("This document was
+moved by hand. Move it back to Unassigned first, or place it from the Evidence tree."). 422 for a facility that is not in Setup,
+for any other key in the body, and for a kind of document that is not placed on a facility (vehicle fuel, summaries); 404 for
+a document that is not on the Evidence page or an engagement of another org; writers only (a provider admin is 403).
 
 #### Claude's facility suggestion (EXT-026)
 For a bill that names no facility, Claude may suggest one. It is asked only when `place_on_facility` would place nothing for
@@ -467,7 +472,13 @@ every record with nothing to go on: no usable name, no usable address, and no ac
 facility (a bill whose own name or address matched nothing, or matched ambiguously, is never sent: "Choose the facility").
 Vehicle fuel is not asked. Claude gets the Setup facilities (id, name, address), the file name and a bounded sample of the
 text (pages 1 to 3, at most 150 lines and 8,000 characters) and answers a facility id or none, with a quote. The suggestion
-is kept only when the id is in Setup and the quote is found in the file name or on a line of the sample. It is stored with the
+is kept only when the id is in Setup, the quote is found in the file name or on a line of the sample as whole words, and the
+quote holds a word that points at the chosen facility and no other: a word of its name or address that is in no other
+facility, not in the company's name, not generic (plant, warehouse, road, a street suffix, a shared city) and not only digits.
+A quote, or a quoted line, that names a facility id or talks to the assistant (AI, Claude, instructions, prompt, ignore) gives
+none, and so does a facility with no such word. A document the reviewer already placed (on a facility still in Setup) is not
+asked about. The prompt carries at most 50 facilities (name and address cut short) and a file name cut to 200 characters.
+It is shown again when a saved choice's facility has left Setup. It is stored with the
 extraction result as `facility_suggestion` and shown, while the bill is unplaced and the reviewer has not chosen, on the
 Evidence tree row as `facility_suggestion: {facility_id, facility_name, quote, where, label: "Suggested by Claude"}` and on
 the review screen, each with one click, "Place on <facility>". Until that click the bill is unplaced, in the Evidence tree and

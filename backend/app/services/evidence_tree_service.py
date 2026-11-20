@@ -281,7 +281,9 @@ class EvidenceTreeService:
         reviewer has not chosen a facility for it, and the suggested facility is still in Setup."""
 
         found = doc.facility_suggestion
-        if not isinstance(found, dict) or (decisions.get(doc.document_id) or {}).get("facilityId"):
+        decided = (decisions.get(doc.document_id) or {}).get("facilityId")
+        # a decision whose facility has left Setup places nothing: the suggestion shows again
+        if not isinstance(found, dict) or (decided and str(decided) in setup_names):
             return None
         if any(norm_text(r.for_placement("facility_name")) or norm_text(r.for_placement("service_address"))
                for r in doc.records):

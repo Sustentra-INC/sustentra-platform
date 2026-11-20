@@ -1276,6 +1276,31 @@
     ],
     "suggestion": null
    }
+  },
+  {
+   "id": "a decision for a facility that left Setup places nothing: the suggestion shows again",
+   "records": [
+    {}
+   ],
+   "suggestion": {
+    "facility_id": "fac-kent",
+    "quote": "Kent",
+    "source": "file_name",
+    "page_number": null
+   },
+   "decision": {
+    "facilityId": "fac-gone"
+   },
+   "expect": {
+    "facility": [
+     null
+    ],
+    "note": [
+     null
+    ],
+    "suggestion": "fac-kent",
+    "reason": "no_facility_match"
+   }
   }
  ]
 }

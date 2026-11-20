@@ -631,3 +631,83 @@ def test_a_suggestion_for_a_facility_that_left_setup_is_not_shown(store: FakeSto
     engagement_id = make_engagement(store, facilities=[KENT])
     add_unplaced(store, "D0", engagement_id, SUGGESTION)  # F2 is not in this Setup
     assert doc_rows(engagement_id)["D0"]["facility_suggestion"] is None
+
+
+# --- fix round 1: placing a document is safe to repeat, to race and to combine with a move ----------------------------
+def facility_events(engagement_id: str) -> list[dict]:
+    return [e for e in events(engagement_id) if e["event_type"] == "evidence_document_facility_set"]
+
+
+def place(engagement_id: str, facility_id: str, token: str = "a_member", **extra: Any) -> Any:
+    return call("POST", path(engagement_id, "documents/D0/facility"), token, {"facility_id": facility_id, **extra})
+
+
+def test_placing_twice_is_one_write_and_one_event(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, facilities=[KENT, TACOMA])
+    add_unplaced(store, "D0", engagement_id, SUGGESTION)
+    first = place(engagement_id, "F2", expected_facility_id=None)
+    again = place(engagement_id, "F2", expected_facility_id=None)
+    assert first.status_code == again.status_code == 200
+    assert again.json()["payload"] == first.json()["payload"]
+    assert len(facility_events(engagement_id)) == 1  # the repeat wrote nothing and logged nothing
+    # a stale click that now asks for what is already saved is the same no-op, whatever it expected
+    assert place(engagement_id, "F2", expected_facility_id="F1").status_code == 200
+    assert len(facility_events(engagement_id)) == 1
+
+
+def test_a_stale_click_does_not_overwrite_another_reviewers_choice(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, facilities=[KENT, TACOMA])
+    add_unplaced(store, "D0", engagement_id, SUGGESTION)
+    assert place(engagement_id, "F1", expected_facility_id=None).status_code == 200  # another reviewer chose Kent
+    stale = place(engagement_id, "F2", expected_facility_id=None)  # this page still believes there is none
+    assert stale.status_code == 409 and "Another reviewer already chose a facility" in stale.json()["detail"]
+    assert tree_lines(engagement_id)[GAS_KENT] == ["D0"] and tree_lines(engagement_id)[GAS_TACOMA] == []
+    assert [e["metadata"]["facility_id"] for e in facility_events(engagement_id)] == ["F1"]
+    # a click that knows the current choice may change it
+    assert place(engagement_id, "F2", expected_facility_id="F1").status_code == 200
+    assert tree_lines(engagement_id)[GAS_TACOMA] == ["D0"]
+    # without the field the old behaviour stands (a caller that does not guard)
+    assert place(engagement_id, "F1").status_code == 200
+
+
+def test_a_document_that_was_moved_by_hand_is_not_silently_re_placed(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, facilities=[KENT, TACOMA])
+    create_line(engagement_id)
+    add_unplaced(store, "D0", engagement_id, SUGGESTION)
+    assert move(engagement_id, "D0", UNASSIGNED, PROPANE_KEY).status_code == 200  # a #260 move by hand
+    refused = place(engagement_id, "F2")
+    assert refused.status_code == 409
+    assert refused.json()["detail"] == ("This document was moved by hand. Move it back to Unassigned first, "
+                                        "or place it from the Evidence tree.")
+    assert tree_lines(engagement_id)[PROPANE_KEY] == ["D0"] and facility_events(engagement_id) == []
+    assert move(engagement_id, "D0", PROPANE_KEY, UNASSIGNED).status_code == 200  # move it back: the chain is empty again
+    assert place(engagement_id, "F2").status_code == 200
+
+
+def test_only_documents_that_are_placed_on_a_facility_can_be_placed(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, facilities=[KENT, TACOMA])
+    store.add_document("D0", "CT-S1-MOBFUEL", [{"activity_quantity": (50, "gal")}], engagement_id=engagement_id, org_id=str(ORG_A))
+    refused = place(engagement_id, "F2")
+    assert refused.status_code == 422 and "not placed on a facility" in refused.json()["detail"]
+    assert facility_events(engagement_id) == []
+
+
+def test_another_org_a_provider_and_a_reader_cannot_place_a_document(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, facilities=[KENT, TACOMA])
+    add_unplaced(store, "D0", engagement_id, SUGGESTION)
+    assert place(engagement_id, "F2", "b_member").status_code == 404  # another org's engagement
+    assert place(engagement_id, "F2", "provider").status_code == 403  # a provider admin reads every org and writes none
+    assert place(engagement_id, "F2", None).status_code == 401
+    assert facility_events(engagement_id) == []
+    assert doc_rows(engagement_id)["D0"]["facility_suggestion"] is not None
+
+
+def test_a_saved_choice_whose_facility_left_setup_shows_the_suggestion_again(store: FakeStore) -> None:
+    engagement_id = make_engagement(store, facilities=[KENT, TACOMA])
+    add_unplaced(store, "D0", engagement_id, SUGGESTION)
+    assert place(engagement_id, "F1").status_code == 200  # the reviewer chose Kent
+    assert doc_rows(engagement_id)["D0"]["facility_suggestion"] is None
+    asyncio.run(_admin("UPDATE engagements SET settings = jsonb_set(settings, '{facilities}', $1::jsonb) WHERE id = $2::uuid",
+                       json.dumps([TACOMA]), engagement_id))  # Kent leaves Setup
+    row = doc_rows(engagement_id)["D0"]
+    assert row["facility_id"] is None and row["facility_suggestion"]["facility_id"] == "F2"

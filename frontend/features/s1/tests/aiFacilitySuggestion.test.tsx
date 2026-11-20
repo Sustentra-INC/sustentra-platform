@@ -20,6 +20,7 @@ import { EvidenceTree } from "../components/EvidenceTree";
 import { ExtractionReview } from "../components/ExtractionReview";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import { manufacturerValues } from "../fixtures/extraction/manufacturerValues";
+import { setDocumentFacility } from "../api/evidenceTree";
 import { engagementActivity } from "../utils/engagementActivity";
 import type { EngagementConfig } from "../types";
 
@@ -203,5 +204,36 @@ describe("demo backend: place on a facility", () => {
     await expect(
       demoApi(`/engagements/${id}/documents/${first.document_id}/facility`, { method: "POST", body: { facility_id: "nope" } })
     ).rejects.toMatchObject({ status: 422 });
+  });
+
+  it("is safe to repeat and refuses a stale click", async () => {
+    const id = engagementConfig.engagementId;
+    const tree = await demoApi<TreeData>(`/engagements/${id}/evidence-tree`);
+    const docs = tree.blocks.supporting.scopes.flatMap((s) => s.categories.flatMap((c) => c.level2s.flatMap((l) => l.lines.flatMap((n) => n.documents))));
+    const target = docs[docs.length - 1];
+    const [a, b] = engagementConfig.facilities;
+    const post = (facility: string, expected?: string | null) =>
+      demoApi<{ payload: { facilityId?: string } }>(`/engagements/${id}/documents/${target.document_id}/facility`, {
+        method: "POST",
+        body: expected === undefined ? { facility_id: facility } : { facility_id: facility, expected_facility_id: expected },
+      });
+    const events = async () =>
+      (await demoApi<{ items: { event_type: string }[] }>(`/engagements/${id}/evidence-activity`)).items.filter((e) => e.event_type === "evidence_document_facility_set").length;
+    const before = await events();
+    await post(a.facilityId, null);
+    await post(a.facilityId, null); // the repeat writes and logs nothing
+    expect(await events()).toBe(before + 1);
+    await expect(post(b.facilityId, null)).rejects.toMatchObject({ status: 409 }); // this page believed there was no choice
+    expect((await post(b.facilityId, a.facilityId)).payload.facilityId).toBe(b.facilityId);
+  });
+
+  it("sends the facility the page believes the document is on, so the server can refuse a stale click", async () => {
+    mocks.calls = [];
+    await setDocumentFacility("eng-1", "LOG", "fac-zh", null);
+    await setDocumentFacility("eng-1", "LOG2", "fac-zh", "fac-old");
+    expect(mocks.calls.map((c) => c.options?.body)).toEqual([
+      { facility_id: "fac-zh", expected_facility_id: null },
+      { facility_id: "fac-zh", expected_facility_id: "fac-old" },
+    ]);
   });
 });
