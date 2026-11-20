@@ -187,6 +187,7 @@ function DiffChip({
 type SourceRef =
   | { kind: "document"; file: string; documentId: string; candidateId?: string }
   | { kind: "reference"; entry: string }
+  | { kind: "entered"; by: string }
   | { kind: "company" };
 
 /** The kind of reference a citation names, read from its own words. */
@@ -257,13 +258,17 @@ function SourceNote({
               ) : source.kind === "reference" ? (
                 <>
                   <p className="s1-cp-pop__kind">{referenceKind(source.entry)}</p>
-                  <p>Source: {source.entry}</p>
+                  <p>Citation: {source.entry}</p>
+                </>
+              ) : source.kind === "entered" ? (
+                <>
+                  <p className="s1-cp-pop__kind">Entered input</p>
+                  <p>Entered by {source.by}</p>
                 </>
               ) : (
                 <>
-                  <p className="s1-cp-pop__kind">Company figures</p>
-                  <p>Source: Company figures entered under Edit company figures.</p>
-                  <p className="s1-muted">Workbook cell: Not available</p>
+                  <p className="s1-cp-pop__kind">Company-reported</p>
+                  <p className="s1-muted">Source: Not available</p>
                 </>
               )}
               {onOpen ? (
@@ -308,20 +313,21 @@ function StepBlock({ title, note, children }: { title: string; note?: string; ch
 }
 
 /** The company side of a block that has none: said once, in words. */
-function NoCompany({ cols }: { cols: number }) {
+function NoCompany({ cols, text = "not reported" }: { cols: number; text?: string }) {
   return (
     <tr className="s1-cp-co">
       <td>Company</td>
       <td colSpan={cols}>
-        <em className="s1-muted">not reported</em>
+        <em className="s1-muted">{text}</em>
       </td>
     </tr>
   );
 }
 
-function MethodBlock({ line, onOpenEvidence }: { line: CalculationLine; onOpenEvidence?: (lineKey: string) => void }) {
+function MethodBlock({ line }: { line: CalculationLine }) {
   const equations = GASES.filter((g) => line.method.equations[g]);
   const references = [...new Set(line.step3.gases.map((g) => g.ef.source))];
+  const gwpSources = [...new Set(line.step3.gases.map((g) => g.gwp.source))];
   return (
     <StepBlock title="Calculation method" note={line.method.route}>
       <ul className="s1-cp-eqs">
@@ -337,9 +343,15 @@ function MethodBlock({ line, onOpenEvidence }: { line: CalculationLine; onOpenEv
           {references.map((r, i) => (
             <Fragment key={r}>
               {i ? ", " : null}
-              <SourceNote label={r} source={{ kind: "reference", entry: r }} onOpen={onOpenEvidence ? () => onOpenEvidence(line.key) : undefined} />
+              <SourceNote label={r} source={{ kind: "reference", entry: r }} />
             </Fragment>
           ))}
+        </p>
+      ) : null}
+      {gwpSources.length ? (
+        <p className="s1-cp-ref">
+          <span className="s1-muted">GWP </span>
+          {gwpSources.join(", ")}
         </p>
       ) : null}
     </StepBlock>
@@ -424,8 +436,7 @@ function Step1Block({
   );
 }
 
-function Step2Block({ line, onOpenEvidence }: { line: CalculationLine; onOpenEvidence?: (lineKey: string) => void }) {
-  const openLine = onOpenEvidence ? () => onOpenEvidence(line.key) : undefined;
+function Step2Block({ line }: { line: CalculationLine }) {
   const row = (side: "Company" | "Recomputed", activity: { quantity: number; unit: string }, s: CalcLineStep2) => (
     <tr key={side} className={side === "Recomputed" ? "s1-cp-rec" : "s1-cp-co"}>
       <td>{side}</td>
@@ -435,7 +446,7 @@ function Step2Block({ line, onOpenEvidence }: { line: CalculationLine; onOpenEvi
       <td className="s1-cp-op">×</td>
       <td className="s1-vw-num">
         {s.from_unit} → {s.to_unit}{" "}
-        {s.factor === 1 ? "×1" : <SourceNote label={factorText(s.factor)} source={{ kind: "reference", entry: s.source ?? "Unit conversion table." }} onOpen={openLine} />}
+        {s.factor === 1 ? "×1" : <SourceNote label={factorText(s.factor)} source={{ kind: "reference", entry: s.source ?? "Unit conversion table." }} />}
       </td>
       <td className="s1-cp-op">=</td>
       <td className="s1-vw-num s1-cp-out">
@@ -467,7 +478,7 @@ function Step2Block({ line, onOpenEvidence }: { line: CalculationLine; onOpenEvi
                 <td>Distance (input)</td>
                 <td className="s1-vw-num" colSpan={3}>
                   {qty(distance.quantity)} {distance.unit}{" "}
-                  <SourceNote label="Entered" source={{ kind: "reference", entry: distance.source }} onOpen={openLine} />
+                  <SourceNote label="Entered" source={{ kind: "entered", by: distance.source }} />
                 </td>
                 <td />
                 <td />
@@ -494,14 +505,11 @@ function Step3Block({
   line,
   gwpLabel,
   gwpControl,
-  onOpenEvidence,
 }: {
   line: CalculationLine;
   gwpLabel: string;
   gwpControl?: ReactNode;
-  onOpenEvidence?: (lineKey: string) => void;
 }) {
-  const openLine = onOpenEvidence ? () => onOpenEvidence(line.key) : undefined;
   const equations = line.method.equations;
   const company = line.company?.step3.gases;
   const row = (g: CalcLineGas, side: "Company" | "Recomputed") => (
@@ -512,7 +520,7 @@ function Step3Block({
       </td>
       <td className="s1-cp-op">×</td>
       <td className="s1-vw-num">
-        <SourceNote label={`${qty(g.ef.value)} ${g.ef.unit}`} source={{ kind: "reference", entry: g.ef.source }} onOpen={openLine} />
+        <SourceNote label={`${qty(g.ef.value)} ${g.ef.unit}`} source={{ kind: "reference", entry: g.ef.source }} />
       </td>
       <td className="s1-cp-op">×</td>
       <td className="s1-vw-num">{factorText(g.unit_conversion)}</td>
@@ -523,7 +531,7 @@ function Step3Block({
       </td>
       <td className="s1-cp-op">×</td>
       <td className="s1-vw-num">
-        <SourceNote label={qty(g.gwp.value)} source={{ kind: "reference", entry: g.gwp.source }} onOpen={openLine} />
+        <SourceNote label={qty(g.gwp.value)} source={{ kind: "reference", entry: g.gwp.source }} />
       </td>
       <td className="s1-cp-op">=</td>
       <td className="s1-vw-num s1-cp-out">
@@ -540,7 +548,12 @@ function Step3Block({
         {gwpControl}
       </div>
       {line.step3.gases.map((g, index) => {
-        const theirs = company?.find((c) => c.gas === g.gas);
+        // Pair by occurrence: the nth run of a gas on our side with the nth on theirs. A different count can't be paired.
+        const ours = line.step3.gases.filter((x) => x.gas === g.gas);
+        const same = company?.filter((c) => c.gas === g.gas) ?? [];
+        const nth = ours.indexOf(g);
+        const theirs = same.length === ours.length ? same[nth] : undefined;
+        const unpaired = Boolean(company) && same.length !== ours.length;
         return (
           <div className="s1-vw-scroll" key={`${g.gas}:${index}`}>
             <table className="s1-vw-steps s1-cp-grid" aria-label={`${GAS_LABEL[g.gas]} emissions`}>
@@ -564,7 +577,7 @@ function Step3Block({
                 </tr>
               </thead>
               <tbody>
-                {theirs ? row(theirs, "Company") : <NoCompany cols={11} />}
+                {theirs ? row(theirs, "Company") : unpaired ? <NoCompany cols={11} text="Not available" /> : <NoCompany cols={11} />}
                 {row(g, "Recomputed")}
               </tbody>
             </table>
@@ -616,7 +629,6 @@ function ResultsBlock({ line }: { line: CalculationLine }) {
     </StepBlock>
   );
 }
-
 
 /** An unplaced item's flag sentences. A fuel shared by vehicle groups says so already, so the no-group flag is left out. */
 function unplacedFlags(u: CalcUnplaced): string[] {
@@ -795,10 +807,10 @@ function LineDetail({
     <div className="s1-cp-detail">
       <h4 className="s1-cp-line-title">{title}</h4>
       {flags.length ? <p className="s1-muted s1-cp-flags">{flags.join(" ")}</p> : null}
-      <MethodBlock line={line} onOpenEvidence={onOpenEvidence} />
+      <MethodBlock line={line} />
       <Step1Block line={line} onOpenDocument={onOpenDocument} />
-      <Step2Block line={line} onOpenEvidence={onOpenEvidence} />
-      <Step3Block line={line} gwpLabel={gwpLabel} gwpControl={gwpControl} onOpenEvidence={onOpenEvidence} />
+      <Step2Block line={line} />
+      <Step3Block line={line} gwpLabel={gwpLabel} gwpControl={gwpControl} />
       <ResultsBlock line={line} />
       <div className="s1-vw-actions">
         {examined ? (
@@ -831,7 +843,7 @@ function LineDetail({
             Open in Evidence
           </button>
         ) : null}
-        <span className="s1-muted s1-cp-hint">Dotted-underlined inputs open their source document or reference entry.</span>
+        <span className="s1-muted s1-cp-hint">Dotted-underlined inputs open their source. Document-backed inputs link to Evidence; reference entries show their citation.</span>
       </div>
       {box === "examination" ? (
         <RecordExamination
@@ -890,7 +902,6 @@ function LineDetail({
     </div>
   );
 }
-
 
 export function CalculationPanels({
   lines,

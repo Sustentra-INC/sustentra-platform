@@ -149,21 +149,39 @@ describe("calculation panels in Verification results", () => {
     expect(wording()).toBe("AR5 (default — not set in Methodology review)");
   });
 
-  it("opens a reference input's source in a popover that ends with Open in Evidence", async () => {
-    const opened: string[] = [];
-    renderScreen({ onOpenEvidence: (key) => opened.push(key) });
+  it("opens a reference input's citation in a popover, with no Open in Evidence", async () => {
+    renderScreen({ onOpenEvidence: () => {}, onOpenDocument: () => {} });
     await panel(/Scope 1 › Stationary combustion/);
     fireEvent.click(screen.getByRole("button", { name: "Kent Cannery · MMBtu" }));
     const step3 = screen.getByRole("region", { name: "Step 3 · Emissions by gas" });
     fireEvent.click(within(step3).getAllByRole("button", { name: "53.06 kg CO₂/MMBtu" })[0]);
     const pop = screen.getByRole("dialog", { name: "Source of 53.06 kg CO₂/MMBtu" });
     expect(within(pop).getByText("EPA Hub table")).toBeTruthy();
-    expect(within(pop).getByText("Source: EPA GHG Emission Factors Hub 2025, Table 1")).toBeTruthy();
-    const link = within(pop).getByRole("button", { name: "Open in Evidence →" });
-    expect(pop.lastElementChild).toBe(link);
-    fireEvent.click(link);
-    expect(opened).toEqual([STATIONARY]);
-    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(within(pop).getByText("Citation: EPA GHG Emission Factors Hub 2025, Table 1")).toBeTruthy();
+    expect(within(pop).queryByRole("button")).toBeNull();
+  });
+
+  it("does not name a source for the company's annual figure that the API does not give", async () => {
+    renderScreen();
+    await panel(/Scope 1 › Stationary combustion/);
+    fireEvent.click(screen.getByRole("button", { name: "Kent Cannery · MMBtu" }));
+    fireEvent.click(within(block("Step 1 · Activity data")).getByRole("button", { name: "650,000 therms" }));
+    const pop = screen.getByRole("dialog");
+    expect(within(pop).getByText("Company-reported")).toBeTruthy();
+    expect(pop.textContent).not.toContain("Edit company figures");
+  });
+
+  it("shows Not available for a gas whose company rows can't be paired with ours", async () => {
+    const lines = LINES.map((l) =>
+      l.key === STATIONARY && l.company ? { ...l, company: { ...l.company, step3: { gases: l.company.step3.gases.filter((g) => g.gas !== "CH4") } } } : l
+    );
+    responses.byPath["/engagements/ENG-1/recalculation"] = { ...RESULT, calculation_lines: lines };
+    responses.byPath["/reference/recalculation"] = REFERENCE;
+    const store = renderHook(() => useVerificationStore()).result;
+    render(<BackendVerificationResults engagement={ENGAGEMENT} store={store.current} onSaveInputs={async () => {}} onError={() => false} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Kent Cannery · MMBtu" }));
+    const ch4 = within(block("Step 3 · Emissions by gas")).getByRole("table", { name: "CH₄ emissions" });
+    expect(within(ch4).getByText("Not available")).toBeTruthy();
   });
 
   it("opens an evidence row's popover with the file and page, and Open in Evidence goes to its value", async () => {
