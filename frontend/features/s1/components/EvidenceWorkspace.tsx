@@ -15,7 +15,6 @@ import type {
 import type { QualityCheck } from "../api/recalculation";
 import { qualityIssueLines } from "./QualityChecksPanel";
 import { useAssignTask } from "../../tasks/AssignTaskContext";
-import { documentLink } from "../../tasks/taskLinks";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -926,7 +925,7 @@ function WorkspaceRow(props: {
                   assign({
                     kind: "Document",
                     label: item.filename,
-                    link: documentLink(item.documentId, engagement.engagementId),
+                    target: { kind: "document", item_id: item.documentId },
                     title: `Review ${item.filename}`,
                   })
               : undefined

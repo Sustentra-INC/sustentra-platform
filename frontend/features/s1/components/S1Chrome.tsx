@@ -8,7 +8,6 @@ import type { EngagementConfig } from "../types";
 import { formatReportingPeriod } from "../utils/formatPeriod";
 import { useAssignTask } from "../../tasks/AssignTaskContext";
 import { NotificationBell } from "../../tasks/NotificationBell";
-import { engagementLink } from "../../tasks/taskLinks";
 import { AssistantWidget, type AssistantConnection } from "./AssistantWidget";
 
 export type NavKey =
@@ -234,7 +233,7 @@ function ContextBar({
                 assign({
                   kind: "Engagement",
                   label: contextTitle.title,
-                  link: engagementLink(engagement.engagementId),
+                  target: { kind: "engagement" },
                   title: `Review engagement: ${engagement.clientName?.trim() || engagement.engagementName?.trim() || "this engagement"}`,
                 })
               }

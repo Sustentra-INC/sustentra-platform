@@ -22,7 +22,6 @@ import {
   type PrefillResult,
 } from "../api/methodologyReview";
 import { useAssignTask } from "../../tasks/AssignTaskContext";
-import { methodologyRowLink } from "../../tasks/taskLinks";
 import { InfoTip } from "./InfoTip";
 
 /**
@@ -552,7 +551,7 @@ function FieldRow({
                 assign({
                   kind: "Methodology row",
                   label: def.label,
-                  link: methodologyRowLink(def.fieldId, engagementId),
+                  target: { kind: "methodology_row", item_id: def.fieldId },
                   title: `Review methodology: ${def.label}`,
                 })
               }

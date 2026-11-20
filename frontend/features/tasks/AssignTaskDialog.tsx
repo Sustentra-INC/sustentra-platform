@@ -8,8 +8,7 @@ import { createTask, listAssignees, todayIso, type Assignee } from "./tasksApi";
 
 /**
  * "Assign to…": pick a teammate, add a note and an optional due date. The person is told in Sustentra
- * and by email (the email carries the title, who asked and a link, never the note or any document
- * content). Uses the same window as Add to requests.
+ * and by email (the email says only who assigned a task, with a link to the app; nothing about the work). Uses the same window as Add to requests.
  */
 export function AssignTaskDialog({
   orgId,
@@ -63,8 +62,8 @@ export function AssignTaskDialog({
         title: title.trim(),
         assignee_user_id: assigneeId,
         note: note.trim() || null,
-        link: target.link,
         engagement_id: engagementId,
+        target: engagementId ? target.target : null,
         due_date: due || null,
       });
       setAssignedTo(task.assignee_name);
@@ -164,8 +163,7 @@ export function AssignTaskDialog({
 
             <div className="s1-atr__foot">
               <p className="s1-muted s1-modal__note">
-                They are told in Sustentra and by email. The email names the task and links here; it never includes
-                your note or document contents.
+                They are told in Sustentra and by email. The email says only that you assigned them a task and links to Sustentra; the details show after they sign in.
               </p>
               <div className="s1-modal__actions">
                 <button className="s1-button" type="button" disabled={pending} onClick={close}>

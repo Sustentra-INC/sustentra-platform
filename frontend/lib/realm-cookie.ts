@@ -27,8 +27,20 @@ export function parseRealm(raw: string | null | undefined): RealmValue | null {
   return null;
 }
 
-/** The login page for a realm (or the realm-agnostic `/sign-in`), returning to `next`. */
+/**
+ * A post-login destination, only if it is a path inside this app: starts with a single "/", has no
+ * backslash and no control characters. Anything else (another site, a protocol-relative "//host") is
+ * not a destination, so `?next=` cannot be used as an open redirect.
+ */
+export function sameOriginPath(next: string | null | undefined): string | null {
+  if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return null;
+  if (/[\u0000-\u001f\u007f]/.test(next)) return null;
+  return next;
+}
+
+/** The login page for a realm (or the realm-agnostic `/sign-in`), returning to `next` (a path, query included). */
 export function loginUrlFor(realm: RealmValue | null, next: string): string {
+  next = sameOriginPath(next) ?? "/";
   const base = realm === null ? "/sign-in" : realm.kind === "org" ? `/org/${realm.slug}/login` : "/provider-admin/login";
   return `${base}?next=${encodeURIComponent(next)}`;
 }

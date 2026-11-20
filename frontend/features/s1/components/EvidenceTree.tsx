@@ -26,7 +26,6 @@ import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig } from "../types";
 import { addedByText, formatPeriod } from "../utils/formatPeriod";
 import { useAssignTask } from "../../tasks/AssignTaskContext";
-import { documentLink } from "../../tasks/taskLinks";
 import { ActionMenu } from "./ActionMenu";
 import { AiFacilityNote } from "./AiFacilityNote";
 import { ContainerStateSurface } from "./ContainerStateSurface";
@@ -233,7 +232,7 @@ export function EvidenceTree(props: EvidenceTreeProps) {
                     assign({
                       kind: "Document",
                       label: doc.file_name,
-                      link: documentLink(doc.document_id, engagementId),
+                      target: { kind: "document", item_id: doc.document_id },
                       title: `Review ${doc.file_name}`,
                     }),
                 }]
