@@ -33,7 +33,6 @@ from backend.app.services.stationary_combustion_extractor import (
 from backend.app.services.stationary_combustion_extractor import (
     _ALL_LABELS as _BASE_LABELS,
 )
-from backend.app.services.statement_segments import SPLIT_NOTE, split_statements
 from backend.app.services.stationary_combustion_extractor import (
     CONF_LETTERHEAD,
     DOCUMENT_FIELDS,
@@ -328,34 +327,25 @@ class ElectricityExtractor(StationaryCombustionExtractor):
                           document_id: str, unit_hint: Located | None, doc_energy: Located,
                           notes: list[str]) -> ExtractionOutcome | None:
         """One record per statement for a file holding several (EXT-015), numbered in file order and
-        read from each statement's own pages. None when the file is read whole: it is a single statement,
-        a clean cut is not possible, or fewer than two of its parts hold a reading. A file that looks like
-        several statements but is read whole says so in ``notes``."""
+        read from each statement's own pages; None when the file is read whole (see ``_statement_parts``)."""
 
-        split = split_statements(rows)
-        if split.parts is None:
-            if split.note:
-                notes.append(split.note)
+        parts, split_note = self._statement_parts(rows, unit_hint)
+        if parts is None:
+            if split_note:
+                notes.append(split_note)
             return None
-        bundle_notes = [split.note] if split.note else []
-        found: list[tuple[list[Row], Located | None, list[UsageRecord]]] = []
-        part_notes: list[str] = []
-        for part in split.parts:
-            part_hint = self._document_unit(part) or unit_hint
-            records, more = self._part_records(part, part_hint)
-            if records:
-                found.append((part, part_hint, records))
-                part_notes.extend(n for n in more if n not in part_notes)
-        if len(found) < 2:
-            notes.append(SPLIT_NOTE)
-            return None
+        bundle_notes = [split_note] if split_note else []
         candidates: list[dict] = []
+        part_notes: list[str] = []
         first_index = 1
-        for part, part_hint, records in found:
+        inherited = self._inherited_values(rows, [part for part, *_ in parts])
+        for part, part_hint, records, more in parts:
             energy = self._part_energy(part) or doc_energy
             outcome = self._records_to_candidates(part, parser_output, targets, evidence_id, document_id, records,
-                                                  energy, part_hint, first_index=first_index, multi=True)
+                                                  energy, part_hint, first_index=first_index, multi=True,
+                                                  inherited=inherited)
             candidates.extend(outcome.candidates)
+            part_notes.extend(n for n in more if n not in part_notes)
             first_index += len(records)
         return ExtractionOutcome(candidates=candidates, records=first_index - 1,
                                  notes=[*bundle_notes, *(n for n in part_notes if n not in bundle_notes)])
@@ -363,7 +353,8 @@ class ElectricityExtractor(StationaryCombustionExtractor):
     def _records_to_candidates(self, rows: list[Row], parser_output: dict, targets: Sequence[dict],
                                evidence_id: str, document_id: str, records: list[UsageRecord],
                                doc_energy: Located, unit_hint: Located | None, *, first_index: int = 1,
-                               multi: bool | None = None) -> ExtractionOutcome:
+                               multi: bool | None = None,
+                               inherited: dict[str, Located | None] | None = None) -> ExtractionOutcome:
         """One candidate per target for each usage record; the bill's own fields (facility,
         address, supplier, account) are shared by its records. A statement of a bundle is numbered
         on from the statements before it (``first_index``, ``multi``)."""
@@ -377,12 +368,13 @@ class ElectricityExtractor(StationaryCombustionExtractor):
             "meter_number": self._bill_meter(rows),
             "statement_date": self._statement_date(rows),
         }
+        self._apply_inherited(document_values, rows, inherited)
         period = self._document_period(rows)
 
         candidates: list[dict] = []
         multi = len(records) > 1 if multi is None else multi
         for index, record in enumerate(records, start=first_index):
-            values = self._record_values(record, period, doc_energy, unit_hint)
+            values = self._record_values(record, self._record_period(rows, record, period), doc_energy, unit_hint)
             record_index = index if multi else None
             record_key = self._record_key(index, record, values) if multi else None
             record_candidates: list[dict] = []
@@ -406,6 +398,9 @@ class ElectricityExtractor(StationaryCombustionExtractor):
                 else:
                     record_candidates.append(self._missing(target, document_id, evidence_id, record_key,
                                                            record_index, ["unsupported_extraction_method"]))
+            if record.total_check:
+                record_candidates.append(self._total_check_candidate(
+                    record, document_id, evidence_id, record_key, record_index, parser_output))
             if multi:
                 label = self._record_display(index, record, values)
                 for candidate in record_candidates:

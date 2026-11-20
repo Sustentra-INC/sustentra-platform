@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from backend.app.services import methodology_prefill as mp
+from backend.app.services import methodology_review as rules
 from backend.app.services.ai_locator import document_lines
 from backend.tests.services.test_ai_locator import _pdf_like
 
@@ -105,7 +106,7 @@ def test_the_schema_refuses_a_field_outside_the_catalog() -> None:
 def test_a_factor_source_and_gwp_are_kept_and_an_unprinted_edition_is_dropped() -> None:
     factor = {"scope": "scope1", "database": "U.S. EPA GHG Emission Factors Hub", **cite("L6", "EPA GHG Emission Factors Hub, 2024 edition")}
     kept, dropped = check(answer(factors=[{**factor, "edition": "2024"}],
-                                 gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "IPCC Fifth Assessment Report (AR5) 100-year")}]))
+                                 gwp=[{"set": "AR5", "horizon": "100-year", "applies_to": "", **cite("L8", "IPCC Fifth Assessment Report (AR5) 100-year")}]))
     assert not dropped
     assert {(k.row_group, k.field_id) for k in kept} == {("factor:scope1", None), (None, "gwp")}
     kept, dropped = check(answer(factors=[{**factor, "edition": "2019"}]))
@@ -240,13 +241,13 @@ def test_a_long_quote_is_cut_for_storage_only_after_it_was_found_whole() -> None
 def test_a_quote_must_name_the_choice_and_be_long_enough() -> None:
     kept, dropped = check(answer(
         choices=[{"field_id": "consolidation_approach", "value": "Financial Control", **cite("L2", "operational control approach")}],
-        gwp=[{"set": "AR6", "horizon": "100-year", **cite("L8", "IPCC Fifth Assessment Report (AR5)")}]))
+        gwp=[{"set": "AR6", "horizon": "100-year", "applies_to": "", **cite("L8", "IPCC Fifth Assessment Report (AR5)")}]))
     assert kept == [] and dict(dropped) == {"value_not_in_quote": 2}
     kept, dropped = check(answer(texts=[{"field_id": "exclusion:boundary", "value": "2024", **cite("L3", "2024.")}]))
     assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}  # under 8 characters
-    kept, dropped = check(answer(gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "Fifth Assessment Report")}]))
+    kept, dropped = check(answer(gwp=[{"set": "AR5", "horizon": "100-year", "applies_to": "", **cite("L8", "Fifth Assessment Report")}]))
     assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # the set is named, the horizon is not
-    kept, _ = check(answer(gwp=[{"set": "AR5", "horizon": "100-year", **cite("L8", "Fifth Assessment Report (AR5) 100-year")}]))
+    kept, _ = check(answer(gwp=[{"set": "AR5", "horizon": "100-year", "applies_to": "", **cite("L8", "Fifth Assessment Report (AR5) 100-year")}]))
     assert len(kept) == 1
 
 
@@ -337,8 +338,8 @@ GWP_REPORT = [
 ]
 
 
-def gwp_item(set_: str, horizon: str, quote: str, line: str) -> dict[str, str]:
-    return {"set": set_, "horizon": horizon, **cite(line, quote)}
+def gwp_item(set_: str, horizon: str, quote: str, line: str, applies_to: str = "") -> dict[str, str]:
+    return {"set": set_, "horizon": horizon, "applies_to": applies_to, **cite(line, quote)}
 
 
 def test_the_latest_ar_is_the_fixed_field_when_nothing_else_decides_and_every_other_set_is_a_row() -> None:
@@ -385,8 +386,9 @@ def test_a_set_the_quote_does_not_name_is_dropped_and_the_next_one_becomes_the_f
     assert dict(dropped) == {"value_not_in_quote": 1} and [(k.field_id, k.row_group) for k in kept] == [("gwp", None)]
 
 
-def test_the_schema_takes_the_500_year_horizon_and_no_other() -> None:
+def test_the_schema_takes_the_500_year_horizon_not_stated_and_no_other() -> None:
     answer(gwp=[gwp_item("AR6", "500-year", "a 500-year horizon (AR4)", "L2")])
+    answer(gwp=[gwp_item("AR6", "Not stated", "AR6", "L2")])
     with pytest.raises(ValueError):
         answer(gwp=[gwp_item("AR6", "50-year", "a 500-year horizon (AR4)", "L2")])
 
@@ -610,3 +612,273 @@ def test_a_negated_renewable_energy_credit_is_dropped() -> None:
     kept, dropped = check(answer(selections=[selection(
         "scope2:instruments", "RECs or other energy attribute certificates", line.rstrip("."), "L1")]), [doc([(1, line)])])
     assert kept == [] and dict(dropped) == {"negated": 1}
+
+
+# --- GWP: a set named without a horizon, and every set the document names, with its use note ----------
+# Synthetic lines modelled on the shapes of a bank's assertion, a restaurant group's statement and an
+# engineering firm's plan (paraphrased, not copied).
+
+GWP_NOTES = [
+    (1, "Refrigerants and other gases use the AR6 100-year GWP by default, unless a factor already embeds one."),     # L1
+    (1, "Supplier factors from CEDA and DESNZ embed AR5 values; Zürich site data are in tCO₂e."),             # L2
+    (1, "GWP values follow the IPCC AR6 report (CH₄ rounded from 29.8 to 30)."),                                  # L3
+    (1, "Global warming potentials: AR5 over 100 years; IEA factors use AR4."),                                        # L4
+    (1, "No global warming potential is mentioned in this section."),                                                  # L5
+]
+
+
+def test_a_set_named_without_a_horizon_is_kept_as_not_stated_beside_one_that_has_it() -> None:
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR6", "100-year", "the AR6 100-year GWP by default", "L1", "by default"),
+        gwp_item("AR5", "Not stated", "embed AR5 values", "L2", "embed AR5 values")]), [doc(GWP_NOTES)])
+    assert dict(dropped) == {}
+    assert [(k.field_id, k.row_group) for k in kept] == [("gwp", None), (None, "gwp")]  # the first fills the fixed field
+    assert [k.suggestion["value"] for k in kept] == [
+        {"set": "AR6", "horizon": "100-year", "applies_to": "by default"},
+        {"set": "AR5", "horizon": "Not stated", "applies_to": "embed AR5 values"}]
+    assert all("AR" in k.suggestion["quote"] for k in kept)  # every value traces to its own quote
+
+
+def test_an_ar6_only_line_gives_not_stated_and_the_set_is_still_a_whole_token() -> None:
+    kept, dropped = check(answer(gwp=[gwp_item("AR6", "Not stated", "IPCC AR6 report", "L3")]), [doc(GWP_NOTES)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"] == {"set": "AR6", "horizon": "Not stated"}
+    for quote in ("AR60 values are used", "the AR66 report"):  # a piece of another token is not the set
+        kept, dropped = check(answer(gwp=[gwp_item("AR6", "Not stated", quote, "L1")]), [doc([(1, quote)])])
+        assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}, quote
+
+
+def test_not_stated_is_refused_when_the_quote_does_give_a_horizon_for_that_set() -> None:
+    kept, dropped = check(answer(gwp=[gwp_item("AR5", "Not stated", "AR5 over 100 years", "L4")]), [doc(GWP_NOTES)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # the document does state it: 100-year
+    # a horizon that belongs to the other set does not stop AR4 from being stated without one
+    kept, dropped = check(answer(gwp=[gwp_item("AR4", "Not stated", "AR5 over 100 years; IEA factors use AR4", "L4")]), [doc(GWP_NOTES)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["set"] == "AR4"
+    kept, dropped = check(answer(gwp=[gwp_item("AR5", "100-year", "AR5 over 100 years", "L4"),
+                                      gwp_item("AR4", "Not stated", "AR5 over 100 years; IEA factors use AR4", "L4", "IEA factors")]),
+                          [doc(GWP_NOTES)])
+    assert [(k.suggestion["value"]["set"], k.suggestion["value"]["horizon"]) for k in kept] == [("AR5", "100-year"), ("AR4", "Not stated")]
+    assert kept[1].suggestion["value"]["applies_to"] == "IEA factors"
+
+
+def test_a_use_note_is_kept_only_when_it_is_printed_in_the_quote_and_never_costs_the_set() -> None:
+    kept, dropped = check(answer(gwp=[gwp_item("AR5", "Not stated", "embed AR5 values", "L2", "used for every supplier in Zürich")]),
+                          [doc(GWP_NOTES)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"] == {"set": "AR5", "horizon": "Not stated"}  # an invented note is blank
+    kept, _ = check(answer(gwp=[gwp_item("AR5", "Not stated", "Supplier factors from CEDA and DESNZ embed AR5 values", "L2", "x" * 201)]),
+                    [doc(GWP_NOTES)])
+    assert "applies_to" not in kept[0].suggestion["value"]  # too long for the field: the note goes, the set stays
+    kept, _ = check(answer(gwp=[gwp_item("AR5", "Not stated", "Supplier factors from CEDA and DESNZ embed AR5 values", "L2", "  CEDA and  DESNZ ")]),
+                    [doc(GWP_NOTES)])
+    assert kept[0].suggestion["value"]["applies_to"] == "CEDA and DESNZ"  # spacing is tidied, the words are the quote's
+
+
+def test_every_set_the_document_names_is_kept_up_to_one_fixed_field_and_the_rest_as_rows() -> None:
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR6", "100-year", "the AR6 100-year GWP by default", "L1", "by default"),
+        gwp_item("AR5", "Not stated", "embed AR5 values", "L2", "embed AR5 values"),
+        gwp_item("AR4", "Not stated", "IEA factors use AR4", "L4", "IEA factors use AR4")]), [doc(GWP_NOTES)])
+    assert dict(dropped) == {} and [k.suggestion["value"]["set"] for k in kept] == ["AR6", "AR5", "AR4"]
+
+
+def test_a_document_that_names_no_gwp_set_gives_none() -> None:
+    kept, dropped = check(answer(gwp=[gwp_item("AR5", "Not stated", "No global warming potential is mentioned", "L5")]), [doc(GWP_NOTES)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # an invented set has no quote naming it
+    kept, dropped = check(answer(), [doc(GWP_NOTES)])
+    assert kept == [] and dict(dropped) == {}
+
+
+def test_the_prompt_allows_not_stated_and_asks_for_a_use_note_from_the_quote() -> None:
+    assert '"Not stated"' in mp.SYSTEM_PROMPT and "applies_to" in mp.SYSTEM_PROMPT and "each with its own quote" in mp.SYSTEM_PROMPT
+
+
+# --- GWP: the use note belongs to its own set's clause, keeps the quote's casing; entries dedupe and collapse ---
+
+NOTE_DOC = [
+    (1, "AR5 for energy; AR6 for refrigerants."),                                                   # L1
+    (1, "We apply AR6 For Refrigerants and Fugitive Gases (CH\\u2084 rounded to 30), 100-year basis."),  # L2
+    (1, "GWP values use the AR5 100-year horizon, and AR5 is also named without one in the factor table."),  # L3
+    (1, "Values use the one hundred-year horizon of AR6."),                                          # L4
+]
+
+
+def test_a_use_note_must_come_from_the_clause_that_names_its_own_set() -> None:
+    both = "AR5 for energy; AR6 for refrigerants"
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR5", "Not stated", both, "L1", "for energy"),
+        gwp_item("AR6", "Not stated", both, "L1", "for refrigerants")]), [doc(NOTE_DOC)])
+    assert dict(dropped) == {}
+    assert [k.suggestion["value"] for k in kept] == [
+        {"set": "AR5", "horizon": "Not stated", "applies_to": "for energy"},
+        {"set": "AR6", "horizon": "Not stated", "applies_to": "for refrigerants"}]
+    # the other set's note is blanked, not attached: AR6 does not get "for energy", AR5 does not get "for refrigerants"
+    kept, _ = check(answer(gwp=[gwp_item("AR6", "Not stated", both, "L1", "for energy"),
+                                gwp_item("AR5", "Not stated", both, "L1", "for refrigerants")]), [doc(NOTE_DOC)])
+    assert [k.suggestion["value"] for k in kept] == [{"set": "AR6", "horizon": "Not stated"}, {"set": "AR5", "horizon": "Not stated"}]
+    # within one clause naming two sets the note stops before the next set
+    line = "AR5 for energy and AR6 for refrigerants"
+    kept, _ = check(answer(gwp=[gwp_item("AR6", "Not stated", line, "L1", "for energy and AR6 for refrigerants")]), [doc([(1, line)])])
+    assert "applies_to" not in kept[0].suggestion["value"]
+
+
+def test_the_use_note_is_stored_in_the_quotes_own_casing_and_spacing() -> None:
+    quote = "We apply AR6 For Refrigerants and Fugitive Gases"
+    kept, dropped = check(answer(gwp=[gwp_item("AR6", "Not stated", quote, "L2", "for  refrigerants and fugitive gases")]), [doc(NOTE_DOC)])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["applies_to"] == "For Refrigerants and Fugitive Gases"
+    kept, _ = check(answer(gwp=[gwp_item("AR6", "Not stated", quote, "L2", "we apply")]), [doc(NOTE_DOC)])
+    assert kept[0].suggestion["value"]["applies_to"] == "We apply"  # a single set in the clause: the note may come first
+
+
+def test_entries_dedupe_on_set_horizon_and_note() -> None:
+    q = "We apply AR6 For Refrigerants and Fugitive Gases (CH\\u2084 rounded to 30), 100-year basis"
+    kept, dropped = check(answer(gwp=[
+        gwp_item("AR6", "100-year", q, "L2", "For Refrigerants"),
+        gwp_item("AR6", "100-year", q, "L2", "for refrigerants"),          # same note, other casing: a repeat
+        gwp_item("AR6", "100-year", q, "L2", "Fugitive Gases")]), [doc(NOTE_DOC)])  # same set and horizon, another note: kept
+    assert [k.suggestion["value"].get("applies_to") for k in kept] == ["For Refrigerants", "Fugitive Gases"]
+    assert dict(dropped) == {"duplicate_entry": 1}
+
+
+@pytest.mark.parametrize("order", [("100-year", "Not stated"), ("Not stated", "100-year")])
+def test_a_not_stated_entry_collapses_into_a_stated_horizon_for_the_same_set(order: tuple[str, str]) -> None:
+    by_horizon = {"100-year": gwp_item("AR5", "100-year", "the AR5 100-year horizon", "L3"),
+                  "Not stated": gwp_item("AR5", "Not stated", "AR5 is also named without one", "L3")}
+    other = gwp_item("AR6", "Not stated", "AR6 For Refrigerants", "L2", "For Refrigerants")
+    kept, dropped = check(answer(gwp=[by_horizon[order[0]], by_horizon[order[1]], other]), [doc(NOTE_DOC)])
+    assert [(k.suggestion["value"]["set"], k.suggestion["value"]["horizon"]) for k in kept] == [("AR5", "100-year"), ("AR6", "Not stated")]
+    assert [(k.field_id, k.row_group) for k in kept] == [("gwp", None), (None, "gwp")]  # the first left is the fixed field
+    assert dict(dropped) == {"duplicate_entry": 1}
+
+
+def test_when_the_first_entry_collapses_the_next_becomes_the_fixed_field() -> None:
+    kept, _ = check(answer(gwp=[gwp_item("AR5", "Not stated", "AR5 is also named without one", "L3"),
+                                gwp_item("AR5", "100-year", "the AR5 100-year horizon", "L3")]), [doc(NOTE_DOC)])
+    assert [(k.field_id, k.row_group, k.suggestion["value"]["horizon"]) for k in kept] == [("gwp", None, "100-year")]
+
+
+@pytest.mark.parametrize("quote", ["the one hundred-year horizon of AR6", "AR6 one hundred year values", "AR6, 100 year GWP",
+                                   "AR6 (100-yr)", "AR6 over one hundred years", "AR6 100-year", "AR6 GWP100"])
+def test_the_hundred_year_horizon_is_read_in_its_spelled_out_forms(quote: str) -> None:
+    kept, dropped = check(answer(gwp=[gwp_item("AR6", "100-year", quote, "L1")]), [doc([(1, quote)])])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["horizon"] == "100-year", quote
+    kept, dropped = check(answer(gwp=[gwp_item("AR6", "Not stated", quote, "L1")]), [doc([(1, quote)])])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}  # a stated horizon cannot be "Not stated"
+
+
+# --- scopes covered: a multi-select with its own quote per scope ------------------------------------
+# Synthetic lines modelled on the shapes of a bank's management assertion, a restaurant group's statement
+# and an engineering firm's plan (paraphrased, not copied).
+
+SCOPE_REPORT = [
+    (1, "Management asserts the Scope 1 and Scope 2 emissions of Café Qüebec Holdings for the year ended December 31, 2024."),  # L1
+    (1, "The statement covers Scope 1, Scope 2 and Scope 3 emissions of the group."),                                        # L2
+    (1, "Scope 3 is reported only for category 6, business air travel."),                                                    # L3
+    (1, "Scope 3 emissions are recognised as relevant but outside the 2024 reporting boundary."),                           # L4
+    (1, "Greenhouse gas emissions are shown in the table below."),                                                           # L5
+    (1, "Direct emissions: Scopes 1 and 2. Scope 3 is excluded."),                                                           # L6
+]
+
+
+def scope(option: str, quote: str, line: str, wording: str = "") -> dict[str, str]:
+    return selection(rules.SCOPES_ID, option, quote, line, wording)
+
+
+def test_scopes_covered_is_a_catalog_multiselect_that_must_appear_and_offers_not_stated() -> None:
+    definition = rules.catalog_field(rules.SCOPES_ID)
+    assert definition is not None and definition["kind"] == "multiselect" and definition["required"] is True
+    assert definition["allowed"] == ["Scope 1", "Scope 2", "Scope 3", "Not stated"] and not definition.get("free")
+    assert rules.SCOPES_ID in mp._MULTI_IDS  # the reply schema takes selections for it
+
+
+def test_each_scope_the_document_names_is_kept_with_its_own_quote_and_wording() -> None:
+    kept, dropped = check(answer(selections=[
+        scope("Scope 1", "Scope 1 and Scope 2 emissions of Café Qüebec Holdings", "L1", "Scope 1"),
+        scope("Scope 2", "Scope 1 and Scope 2 emissions of Café Qüebec Holdings", "L1", "Scope 2"),
+        scope("Scope 3", "Scope 3 is reported only for category 6, business air travel", "L3", "category 6, business air travel")]),
+        [doc(SCOPE_REPORT)])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == [rules.SCOPES_ID]
+    [item] = kept
+    assert [v["option"] for v in item.suggestion["value"]] == ["Scope 1", "Scope 2", "Scope 3"]
+    assert item.suggestion["value"][2]["wording"] == "category 6, business air travel"
+    assert [e["quote"] for e in item.suggestion["evidence"]][0].startswith("Scope 1 and Scope 2")
+    assert rules.validate_value(rules.catalog_field(rules.SCOPES_ID) or {}, item.suggestion["value"])  # it is a valid value
+
+
+def test_a_list_of_scopes_names_each_scope_in_it() -> None:
+    kept, dropped = check(answer(selections=[scope(f"Scope {n}", "Scope 1, Scope 2 and Scope 3 emissions of the group", "L2") for n in (1, 2, 3)]),
+                          [doc(SCOPE_REPORT)])
+    assert dict(dropped) == {} and len(kept[0].suggestion["value"]) == 3
+    for line, option, expected in [("Scopes 1 and 2", "Scope 2", "yes"), ("Scopes 1, 2 & 3", "Scope 3", "yes"),
+                                   ("Scopes 1 to 3", "Scope 2", "yes"), ("scope one and scope two", "Scope 2", "yes"),
+                                   ("Scopes 1 and 2", "Scope 3", "no"), ("Scope 13 sites", "Scope 1", "no"),
+                                   ("Sψ Scope 2 — électricité", "Scope 2", "yes")]:
+        assert mp.names_scope(line, option) == expected, line
+
+
+def test_a_scope_the_document_calls_excluded_or_outside_the_boundary_is_not_chosen() -> None:
+    for line, quote in ((4, "Scope 3 emissions are recognised as relevant but outside the 2024 reporting boundary"),
+                        (6, "Scope 3 is excluded")):
+        kept, dropped = check(answer(selections=[scope("Scope 3", quote, f"L{line}")]), [doc(SCOPE_REPORT)])
+        assert kept == [] and dict(dropped) == {"negated": 1}
+    # the same line still gives the scopes it does cover
+    kept, dropped = check(answer(selections=[scope("Scope 1", "Direct emissions: Scopes 1 and 2. Scope 3 is excluded", "L6"),
+                                             scope("Scope 2", "Direct emissions: Scopes 1 and 2. Scope 3 is excluded", "L6"),
+                                             scope("Scope 3", "Direct emissions: Scopes 1 and 2. Scope 3 is excluded", "L6")]),
+                          [doc(SCOPE_REPORT)])
+    assert [v["option"] for v in kept[0].suggestion["value"]] == ["Scope 1", "Scope 2"] and dict(dropped) == {"negated": 1}
+    assert mp.names_scope("Scope 1 and 2 are included, not Scope 3", "Scope 2") == "yes"
+    assert mp.names_scope("Scope 1 and 2 are reported but Scope 3 is excluded", "Scope 1") == "yes"
+
+
+@pytest.mark.parametrize(("sentence", "negated", "kept"), [
+    ("Scope 1 and Scope 2 are not covered by this statement.", ["Scope 1", "Scope 2"], []),
+    ("Scope 1, Scope 2 and Scope 3 emissions are not included.", ["Scope 1", "Scope 2", "Scope 3"], []),
+    ("Scope 3 is out of scope.", ["Scope 3"], []),
+    ("Scope 3 emissions will be disclosed in 2026.", ["Scope 3"], []),
+    ("Scope 1 and Scope 3 are excluded from the boundary.", ["Scope 1", "Scope 3"], []),   # one verdict for the list
+    ("Scopes 1 and 2 are reported. Scope 3 is excluded.", ["Scope 3"], ["Scope 1", "Scope 2"]),  # sentences are separate
+    ("Scopes 1 and 2 are included, not Scope 3.", ["Scope 3"], ["Scope 1", "Scope 2"]),
+    ("Scope 1 and Scope 2 emissions are reported; Scope 3 is not.", ["Scope 3"], ["Scope 1", "Scope 2"]),
+    ("Emissions for Scope 1, Scope 2 and Scope 3 (category 6) are reported.", [], ["Scope 1", "Scope 2", "Scope 3"]),
+    ("Les \u00e9missions de Scope 1 et Scope 2 (caf\u00e9) sont rapport\u00e9es.", [], ["Scope 1", "Scope 2"]),
+])
+def test_a_negation_covers_every_scope_in_its_clause_and_stops_at_the_sentence(sentence: str, negated: list[str], kept: list[str]) -> None:
+    for option in ("Scope 1", "Scope 2", "Scope 3"):
+        expected = "negated" if option in negated else "yes" if option in kept else "no"
+        assert mp.names_scope(sentence, option) == expected, (sentence, option)
+    picks = [scope(o, sentence.rstrip("."), "L1") for o in (*negated, *kept)]
+    got, dropped = check(answer(selections=picks), [doc([(1, sentence)])])
+    assert [v["option"] for v in got[0].suggestion["value"]] == kept if kept else got == []
+    assert dropped.get("negated", 0) == len(negated)
+
+
+def test_a_scope_the_quote_does_not_name_or_not_stated_is_dropped() -> None:
+    kept, dropped = check(answer(selections=[
+        scope("Scope 2", "Greenhouse gas emissions are shown in the table below", "L5"),  # no scope named
+        scope("Not stated", "Greenhouse gas emissions are shown in the table below", "L5"),  # nothing to quote: the reviewer's answer
+        scope("Scope 4", "Scope 1 and Scope 2 emissions", "L1")]), [doc(SCOPE_REPORT)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1, "invalid_value": 2}
+
+
+def test_a_document_that_names_no_scope_gives_no_scope_suggestion_and_the_row_reads_not_detected() -> None:
+    kept, dropped = check(answer(), [doc([(1, "Our sustainability report covers energy and water.")])])
+    assert kept == [] and dict(dropped) == {}
+    record = rules.new_record(rules.SCOPES_ID)
+    meta = {**rules.new_meta(), "prefill_ran_at": "2026-11-20T09:00:00.000Z", "prefill_covered": [f["field_id"] for f in rules.CATALOG]}
+    assert rules.display_state(record, meta) == "not_detected" and rules.display_state(record, rules.new_meta()) == "not_checked"
+
+
+def test_the_prompt_gives_the_scope_wording_cues_and_forbids_choosing_not_stated() -> None:
+    for cue in ("scopes:covered", "Scope 1", "Category 1", "direct", "indirect", "Operational Boundary", "Never choose \"Not stated\""):
+        assert cue in mp.SYSTEM_PROMPT, cue
+
+
+def test_the_use_note_orders_the_gwp_sets_before_anything_else() -> None:
+    def item(set_: str, quote: str, note: str) -> Any:
+        return mp.GwpSuggestion(**gwp_item(set_, "100-year", quote, "L1", note))
+
+    embedded = item("AR6", "AR6 is default and primary embedded in third-party factors", "embedded in third-party factors")
+    fridge = item("AR5", "AR5 for refrigerants", "for refrigerants")
+    general = item("AR4", "AR4 unless otherwise stated", "")
+    assert [g.set for g in mp.gwp_in_order([embedded, fridge, general])] == ["AR4", "AR5", "AR6"]
+    # "standard" no longer marks a primary set
+    assert "standard" not in mp._PRIMARY_WORDS

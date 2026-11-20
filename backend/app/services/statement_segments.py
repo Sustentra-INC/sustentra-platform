@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, timedelta
 
 from backend.app.domain import fuel_units
 from backend.app.services.stationary_combustion_extractor import (
@@ -74,10 +74,11 @@ class Split:
     """``parts``: one row list per statement; None when the file is read whole. ``note``: to tell the
     reviewer when the file may hold more statements than were told apart (it was not cut, periods that
     differ were taken for one statement, or period lines were left out as restatements); None when the
-    periods leave no doubt."""
+    periods leave no doubt. ``summaries``: which parts are statements of account (see ``split_statements``)."""
 
     parts: list[list[Row]] | None
     note: str | None = None
+    summaries: tuple[bool, ...] = ()  # per part: a statement of account listing the file's invoices
 
 
 def _labelled_period(row: Row) -> tuple[str, tuple[str, str]] | None:
@@ -226,7 +227,7 @@ def _has_usage_table_row(row: Row) -> bool:
         re.search(r"\d", cell.text) and fuel_units.find_unit(cell.text) is not None for cell in row.cells)
 
 
-def split_statements(rows: Sequence[Row]) -> Split:
+def _split_invoices(rows: Sequence[Row]) -> Split:
     """The rows cut into one list per statement, or ``Split(None)`` (with a note when the file looks like
     several statements but could not be cut cleanly)."""
 
@@ -244,10 +245,16 @@ def split_statements(rows: Sequence[Row]) -> Split:
     periods = [(at, period) for at, (name, period) in labelled if name == label]
 
     # where each new statement's period line sits (a period the current statement already states is not new)
+    def page_accounts(at: int) -> set[str]:
+        return _accounts([r for r in rows if r.page == rows[at].page])
+
     firsts = [periods[0]]
     merged = False  # a period that differs from its statement's but was taken for the same statement
     for at, period in periods[1:]:
-        if not _same_statement(firsts[-1][1], period):
+        before, here = page_accounts(firsts[-1][0]), page_accounts(at)
+        if before and here and not before & here:
+            firsts.append((at, period))  # another account is another statement, whatever its period
+        elif not _same_statement(firsts[-1][1], period):
             if _runs_backward(firsts[-1][1], period):
                 return Split(None, SPLIT_NOTE)  # a bundle runs forward in time; this one does not
             firsts.append((at, period))
@@ -290,3 +297,151 @@ def split_statements(rows: Sequence[Row]) -> Split:
         if not ((title is not None and title in titles) or (first_accounts & _accounts(part))):
             return Split(None, SPLIT_NOTE)
     return Split(parts, note)
+
+
+# A "Statement of Account" lists the invoices it summarises: it is not a statement of usage of its own, and it
+# is never part of an invoice. Only that heading, as a title line near the top of a page that lists two or more
+# invoices (their numbers or billing periods), is one: a real bill headed "Your Account Statement" or "Account
+# Summary" is not.
+_ACCOUNT_SUMMARY_RE = re.compile(r"^(?:your |the )?statements? of accounts?$")
+_INVOICE_NUMBER_RE = re.compile(r"\binvoice\s*(?:no\.?|number|#)?\s*[:#]?\s*([a-z0-9][a-z0-9-]{2,})", re.IGNORECASE)
+
+
+def _page_ranges(page_rows: Sequence[Row]) -> set[tuple[str, str]]:
+    """The billing periods (two dates in one cell or one row) a page prints."""
+
+    found: set[tuple[str, str]] = set()
+    for row in page_rows:
+        for cell in [*row.cells, None]:
+            dates = parse_dates(cell.text if cell is not None else row.text)
+            if len(dates) >= 2:
+                found.add((dates[0], dates[1]))
+    return found
+
+
+def account_summary_pages(rows: Sequence[Row]) -> set[int]:
+    """The pages of a file that are a statement of account (whole file, before any cut)."""
+
+    by_page: dict[int, list[Row]] = {}
+    for row in rows:
+        by_page.setdefault(row.page or 0, []).append(row)
+    found: set[int] = set()
+    for page, page_rows in by_page.items():
+        titled = any(len(row.cells) <= 3 and any(_ACCOUNT_SUMMARY_RE.match(_norm(c.text)) for c in row.cells)
+                     for row in page_rows[:_PAGE_HEADING_ROWS])
+        if not titled:
+            continue
+        numbers = {m.group(1).lower() for row in page_rows for m in _INVOICE_NUMBER_RE.finditer(row.text)}
+        if len(numbers) >= 2 or len(_page_ranges(page_rows)) >= 2:
+            found.add(page)
+            continue
+        # one period, spanning the periods of two or more other statements of the same account in the file
+        period, accounts = summary_period(page_rows), _accounts(page_rows)
+        if period is None or not accounts:
+            continue
+        spanned = {p for other, other_rows in by_page.items() if other != page and accounts & _accounts(other_rows)
+                   and (p := next((q for r in other_rows if (q := statement_period(r)) is not None), None)) is not None
+                   and p != period and inside(p, period)}
+        if len(spanned) >= 2:
+            found.add(page)
+    return found
+
+
+def summary_period(rows: Sequence[Row]) -> tuple[str, str] | None:
+    """What a statement of account covers: its own period line, else the span of the periods it lists."""
+
+    own = next((p for r in rows if (p := statement_period(r)) is not None), None)
+    listed = _page_ranges(rows)
+    if own is not None:
+        listed = listed | {own}
+    if not listed:
+        return None
+    return min(start for start, _ in listed), max(end for _, end in listed)
+
+
+def split_statements(rows: Sequence[Row]) -> Split:
+    """The rows cut into one list per statement, or ``Split(None)`` (with a note when the file looks like
+    several statements but could not be cut cleanly). A statement of account is found on the whole file first and
+    is always a part of its own (``Split.summaries``), wherever it sits; the invoices are cut around it."""
+
+    summary_pages = account_summary_pages(rows)
+    if not summary_pages:
+        return _split_invoices(rows)
+    rest = [row for row in rows if (row.page or 0) not in summary_pages]
+    if not rest:
+        return Split(None)
+    inner = _split_invoices(rest)
+    segments: list[tuple[int, bool, list[Row]]] = []
+    for part in inner.parts or [rest]:
+        segments.append((part[0].page or 0, False, part))
+    for page in sorted(summary_pages):
+        segments.append((page, True, [row for row in rows if (row.page or 0) == page]))
+    segments.sort(key=lambda seg: (seg[0], seg[1]))
+    parts = [[replace(row, index=n) for n, row in enumerate(rows_)] for _, _, rows_ in segments]
+    return Split(parts, inner.note, tuple(flag for _, flag, _ in segments))
+
+
+def _covered(period: tuple[str, str], invoices: list[tuple[str, str]]) -> bool:
+    """Whether the invoices' periods, end to end, run across the whole of ``period`` (give or take the few days a
+    summary and its invoices state differently)."""
+
+    try:
+        reach = _days(period[0]) - timedelta(days=1)
+        for start, end in sorted(invoices):
+            if _days(start) - reach > timedelta(days=SAME_STATEMENT_START_DAYS + 1):
+                return False  # a gap before this invoice
+            reach = max(reach, _days(end))
+        return reach >= _days(period[1]) - timedelta(days=SAME_STATEMENT_START_DAYS)
+    except ValueError:
+        return False
+
+
+def inside(inner: tuple[str, str], outer: tuple[str, str]) -> bool:
+    """Whether ``inner`` lies within ``outer``, or states it a few days off (a summary and its invoice)."""
+
+    try:
+        return (_days(outer[0]) <= _days(inner[0]) and _days(inner[1]) <= _days(outer[1])) \
+            or _same_statement(outer, inner)
+    except ValueError:
+        return False
+
+
+def covers(period: tuple[str, str], invoices: list[tuple[str, str]]) -> bool:
+    return _covered(period, invoices)
+
+
+def accounts_of(rows: Sequence[Row]) -> set[str]:
+    return _accounts(rows)
+
+
+# What a page prints as its own period, as opposed to a period it merely mentions: only a labelled range at the
+# start of a cell ("Billing Period: ...", "Service Period", "Statement Period", "Read period"), on a row that
+# does not look back (previous, last, prior, compared, same month last year, budget), and not under a heading
+# that does. "Rates effective 01/01/2025 through 12/31/2025" or "Compared with your previous billing period:"
+# supply nothing.
+_WEAK_PERIOD_RE = re.compile(
+    r"\b(previous|prior|last|compared|compare|comparison|same month|rates? effective|effective|budget|history|"
+    r"average|adjustment|restated|restatement)\b")
+_NOTICE_RE = re.compile(r"\b(notice|reminder|estimate|estimated|advice|interim|preview|quote|proforma|pro forma)\b")
+
+
+def strong_period_row(page_rows: Sequence[Row]) -> Row | None:
+    """The row of a page that states the page's own period (see above), else None."""
+
+    for at, row in enumerate(page_rows):
+        if _labelled_period(row) is None or _WEAK_PERIOD_RE.search(_row_text(row)):
+            continue
+        if _restating_heading(page_rows, at) is not None:
+            continue
+        return row
+    for at, row in enumerate(page_rows):  # "Service From: ..." and "Service To: ..." on rows of their own
+        if any(_norm(c.text).startswith("service from") for c in row.cells) and not _WEAK_PERIOD_RE.search(_row_text(row)) \
+                and _restating_heading(page_rows, at) is None:
+            return row
+    return None
+
+
+def is_notice_page(page_rows: Sequence[Row]) -> bool:
+    """A page whose heading names it a notice, reminder or estimate: it states a period but is not a statement."""
+
+    return any(_NOTICE_RE.search(_row_text(r)) for r in page_rows[:_PAGE_HEADING_ROWS])

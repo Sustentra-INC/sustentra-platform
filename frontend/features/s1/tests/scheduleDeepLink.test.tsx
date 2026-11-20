@@ -137,7 +137,7 @@ describe("a schedule link opened cold", () => {
     await settle();
     expect(window.location.search).toContain("view=schedule");
     expect(screen.queryByRole("heading", { name: "Evidence" })).toBeNull();
-    expect(screen.queryByText("Couldn't open that schedule")).toBeNull();
+    expect(screen.queryByText("Couldn't open that data point review")).toBeNull();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(LINE_LABEL);
     expect(requested.filter((p) => p.includes("//"))).toEqual([]);
   });
@@ -150,7 +150,7 @@ describe("a schedule link opened cold", () => {
     releaseDocuments();
     await settle();
     expect(window.location.search).toContain("view=evidence");
-    expect(screen.getByText("Couldn't open that schedule")).toBeInTheDocument();
+    expect(screen.getByText("Couldn't open that data point review")).toBeInTheDocument();
   });
 });
 

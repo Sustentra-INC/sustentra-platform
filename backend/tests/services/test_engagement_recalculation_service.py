@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import pytest
@@ -60,8 +61,88 @@ class FakeStore:
         return self.reviews.get(document_id, [])
 
 
+class SetupFromStoreService(EngagementRecalculationService):
+    """The service with every document placed on a calculation line, for tests of the arithmetic.
+
+    A value counts only when its document is on a calculation line (Claire, Evidence Screen tab I8),
+    and these tests are about the numbers, not placement. When the engagement lists no Setup
+    ``facilities``, each facility the store's documents name is put in Setup, a document naming none goes
+    to a "Test Site" facility, and a mobile fuel record no vehicle group takes is filed on a line the test
+    adds (its first vehicle group using the fuel, else ``vg-none``). An engagement that lists its own
+    facilities is left exactly as written: such a test is about placement.
+    """
+
+    TEST_SITE = {"facilityId": "fac-test-site", "name": "Test Site"}
+
+    def __init__(self, store: "FakeStore") -> None:
+        super().__init__(store, store, store)
+        self._store = store
+
+    def _named_facilities(self) -> tuple[list[dict], set[str]]:
+        names: dict[str, str | None] = {}
+        nameless: set[str] = set()
+        for document_id, results in self._store.results.items():
+            items = results[-1]["items"]
+            named = False
+            for item in items:
+                if item["field_name"] == "facility_name" and item["normalized_value"]:
+                    names.setdefault(str(item["normalized_value"]), None)
+                    named = True
+            for item in items:
+                if item["field_name"] == "service_address" and item["normalized_value"]:
+                    facility = next((i["normalized_value"] for i in items if i["field_name"] == "facility_name"
+                                     and i["record_index"] == item["record_index"]), None)
+                    if facility:
+                        names[str(facility)] = str(item["normalized_value"])
+            if not named:
+                nameless.add(document_id)
+        facilities = [{"facilityId": "fac-" + re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-"), "name": name,
+                       **({"address": address} if address else {})} for name, address in names.items()]
+        return facilities, nameless
+
+    def recalculate(self, engagement: dict, can_see: Any, decisions: dict | None = None) -> dict:
+        from backend.app.services import calculation_lines as cl
+        from backend.app.services import recalculation_lines as lines
+        from backend.app.services.engagement_recalculation_service import parse_inputs, setup_facilities
+
+        settings = dict(engagement.get("settings") or {})
+        if "facilities" in settings:
+            return super().recalculate(engagement, can_see, decisions)
+        facilities, nameless = self._named_facilities()
+        decisions = {key: dict(value) for key, value in (decisions or {}).items()}
+        if nameless:
+            facilities.append(self.TEST_SITE)
+            for document_id in nameless:
+                decisions.setdefault(document_id, {}).setdefault("facilityId", self.TEST_SITE["facilityId"])
+        settings["facilities"] = facilities
+        engagement = {**engagement, "settings": settings}
+        # Mobile records: a line for the ones no vehicle group takes.
+        inputs = parse_inputs(settings)
+        records = self._apply_decisions(self.reviewed_records(str(engagement.get("id")), can_see), decisions)[0]
+        filing = lines.file_records(self.reference, records, inputs, settings, decisions, setup_facilities(settings),
+                                    engagement.get("client_name"))
+        added: list[dict] = []
+        for record in records:
+            place = filing.placements[id(record)]
+            if filing.on_a_line(record) or place.category not in ("mobile", "biogenic") or not place.level2:
+                continue
+            if place.anchor_kind != "vehicle_group" or "placements" in decisions.get(record.document_id, {}):
+                continue
+            anchors = [a for a, g in cl.vehicle_group_anchors(inputs.vehicle_groups)
+                       if str(g.get("fuel", "")).strip().lower() == str(place.level2_label).lower()]
+            anchor = anchors[0] if anchors else "vg-none"
+            if not anchors:
+                added.append({"category": place.category, "level2_label": place.level2_label,
+                              "anchor_kind": "vehicle_group", "anchor_id": anchor, "label": "Test vehicles"})
+            key = cl.line_key(cl.CATEGORY_SCOPE[place.category], place.category, place.level2, "vehicle_group", anchor)
+            decisions.setdefault(record.document_id, {})["placements"] = [{"from": cl.SUPPORTING_UNASSIGNED, "to": key}]
+        if added:
+            settings["evidenceLines"] = cl.normalize_evidence_lines(added)
+        return super().recalculate(engagement, can_see, decisions)
+
+
 def _service(store: FakeStore) -> EngagementRecalculationService:
-    return EngagementRecalculationService(store, store, store)
+    return SetupFromStoreService(store)
 
 
 def _engagement(**settings: Any) -> dict:
@@ -428,7 +509,12 @@ def test_hcfcs_are_listed_not_counted_and_unknown_gases_ask_for_a_gwp() -> None:
     asks = [n for n in result["needs_input"] if n["kind"] == "refrigerant_gwp"]
     assert [a["key"] for a in asks] == ["R-454B"] and "safety data sheet" in asks[0]["message"]
 
-    entered = {"recalculation": {"refrigerant_gwps": {"R-454B": 466}}}
+    plain = {"recalculation": {"refrigerant_gwps": {"R-454B": 466}}}  # no set recorded: none is assumed
+    unsure = _service(store).recalculate(_engagement(**plain), _own)
+    ask = next(n for n in unsure["needs_input"] if n["kind"] == "refrigerant_gwp")
+    assert ask["message"].startswith("Confirm which GWP set this refrigerant value uses")
+    assert unsure["categories"]["fugitive_refrigerants"] is None
+    entered = {"recalculation": {"refrigerant_gwps": {"R-454B": {"value": 466, "gwp_set": "AR5"}}}}
     result = _service(store).recalculate(_engagement(**entered), _own)
     fugitive = result["categories"]["fugitive_refrigerants"]
     assert fugitive["total_co2e"] == pytest.approx(8 * LB * 466)

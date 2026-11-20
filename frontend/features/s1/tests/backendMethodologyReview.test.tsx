@@ -578,3 +578,129 @@ describe("Methodology review on real data", () => {
     });
   });
 });
+
+describe("the Scopes covered row", () => {
+  const SCOPES = "Scopes covered";
+  const withScopes = (record: Record<string, unknown> = {}, displayState = "not_detected") => {
+    const d = fixture() as { catalog: Record<string, unknown>[]; fields: Record<string, unknown>[] };
+    d.catalog.push({
+      group_label: "x",
+      user_added: false,
+      field_id: "scopes:covered",
+      group: "boundary",
+      label: SCOPES,
+      kind: "multiselect",
+      allowed: ["Scope 1", "Scope 2", "Scope 3", "Not stated"],
+      required: true,
+    });
+    d.fields.push({ field_id: "scopes:covered", user_added: false, display_state: displayState, shown: true, suggestion: null, decision: null, history: [], ...record });
+    return d;
+  };
+  const suggestion = {
+    value: [
+      { option: "Scope 1", wording: "Scope 1" },
+      { option: "Scope 3", wording: "category 6, business air travel" },
+    ],
+    quote: "Scope 1 and Scope 2 emissions of Café Québec",
+    document_id: "d1",
+    file_name: "Plan.pdf",
+    source_reference: { page_number: 3 },
+    evidence: [
+      { label: "Scope 1", quote: "Scope 1 emissions of Café Québec", document_id: "d1", file_name: "Plan.pdf", source_reference: { page_number: 3 } },
+      { label: "Scope 3", quote: "Scope 3 is reported only for category 6", document_id: "d1", file_name: "Plan.pdf", source_reference: { page_number: 4 } },
+    ],
+    origin: "ai",
+    model: "m",
+    request_id: "r",
+    suggested_at: "2026-11-01T10:00:00Z",
+  };
+
+  it("shows each suggested scope with the company's wording and its own quote", async () => {
+    await open(vi.fn(), withScopes({ suggestion }, "has_value"));
+    const r = row(SCOPES);
+    expect(within(r).getByText("Scope 1 (Scope 1); Scope 3 (category 6, business air travel)")).toBeTruthy();
+    expect(within(r).getByText("Scope 1 emissions of Café Québec")).toBeTruthy();
+    expect(within(r).getByText("Scope 3 is reported only for category 6")).toBeTruthy();
+    expect(within(r).getByRole("button", { name: "Plan.pdf, page 4" })).toBeTruthy();
+  });
+
+  it("reads Not detected when the document names no scope", async () => {
+    await open(vi.fn(), withScopes());
+    expect(within(row(SCOPES)).getByText("Not detected")).toBeTruthy();
+  });
+
+  it("Not stated stands alone: choosing it clears the scopes and choosing a scope clears it; it can't be a free option", async () => {
+    await open(vi.fn(), withScopes());
+    const r = row(SCOPES);
+    fireEvent.click(within(r).getByRole("button", { name: `Edit: ${SCOPES}` }));
+    fireEvent.click(screen.getByRole("checkbox", { name: `Scope 1: ${SCOPES}` }));
+    fireEvent.click(screen.getByRole("checkbox", { name: `Scope 2: ${SCOPES}` }));
+    fireEvent.click(screen.getByRole("checkbox", { name: `Not stated: ${SCOPES}` }));
+    expect((screen.getByRole("checkbox", { name: `Scope 1: ${SCOPES}` }) as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByLabelText(`Company's wording for Not stated: ${SCOPES}`)).toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: `Scope 3: ${SCOPES}` }));
+    expect((screen.getByRole("checkbox", { name: `Not stated: ${SCOPES}` }) as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByLabelText(`Add another option: ${SCOPES}`)).toBeNull(); // no free additions on this field
+  });
+
+  it("refuses to save nothing, naming Not stated, and saves the chosen scopes", async () => {
+    await open(vi.fn(), withScopes());
+    const r = row(SCOPES);
+    fireEvent.click(within(r).getByRole("button", { name: `Edit: ${SCOPES}` }));
+    fireEvent.click(within(r).getByRole("button", { name: "Save" }));
+    expect(within(r).getByRole("alert").textContent).toBe("Choose at least one option, or Not stated if the document does not say.");
+    expect(calls()).toHaveLength(0);
+    fireEvent.click(screen.getByRole("checkbox", { name: `Scope 2: ${SCOPES}` }));
+    fireEvent.click(within(r).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls()).toContainEqual([`${BASE}/scopes%3Acovered/edit`, expect.objectContaining({ body: { value: [{ option: "Scope 2", wording: "" }] } })])
+    );
+  });
+});
+
+describe("a GWP set with no stated horizon and a use note", () => {
+  const gwpFixture = () => {
+    const d = fixture() as { catalog: Record<string, unknown>[]; fields: Record<string, unknown>[] };
+    const def = d.catalog.find((c) => c.field_id === "gwp")!;
+    def.allowed = { set: ["AR4", "AR5", "AR6"], horizon: ["100-year", "20-year", "500-year", "Not stated"] };
+    def.parts = [
+      { key: "set", label: "Set", kind: "enum" },
+      { key: "horizon", label: "Horizon", kind: "enum" },
+      { key: "applies_to", label: "Applies to", kind: "text" },
+    ];
+    const record = d.fields.find((f) => f.field_id === "gwp")!;
+    record.decision = null;
+    record.suggestion = {
+      value: { set: "AR5", horizon: "Not stated", applies_to: "embed AR5 values" },
+      quote: "Supplier factors (CEDA, DESNZ) embed AR5 values",
+      document_id: "d1",
+      file_name: "Plan.pdf",
+      source_reference: { page_number: 5 },
+      origin: "ai",
+      model: "m",
+      request_id: "r",
+      suggested_at: "2026-11-01T10:00:00Z",
+    };
+    return d;
+  };
+
+  it("shows the set, 'Not stated' as its horizon and the use note, beside the quote", async () => {
+    await open(vi.fn(), gwpFixture());
+    const gwp = row("GWP");
+    expect(within(gwp).getByText("AR5 · Not stated · embed AR5 values")).toBeTruthy();
+    expect(within(gwp).getByText("Supplier factors (CEDA, DESNZ) embed AR5 values")).toBeTruthy();
+  });
+
+  it("offers Not stated as a horizon and sends the use note with the edit", async () => {
+    await open(vi.fn(), gwpFixture());
+    fireEvent.click(within(row("GWP")).getByRole("button", { name: "Edit: GWP" }));
+    const horizon = screen.getByLabelText("GWP: Horizon") as HTMLSelectElement;
+    expect(Array.from(horizon.options).map((o) => o.textContent)).toEqual(["Choose", "100-year", "20-year", "500-year", "Not stated"]);
+    expect(horizon.value).toBe("Not stated");
+    fireEvent.change(screen.getByLabelText("GWP: Applies to"), { target: { value: "Zürich 排放 factors" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls()).toContainEqual([`${BASE}/gwp/edit`, expect.objectContaining({ body: { value: { set: "AR5", horizon: "Not stated", applies_to: "Zürich 排放 factors" } } })])
+    );
+  });
+});

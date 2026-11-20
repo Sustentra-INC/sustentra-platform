@@ -67,6 +67,7 @@ class EvidenceRecord:
     bill_ids: tuple[str, ...] = ()  # this bill's own statement date (ISO) and invoice or statement number
     meter: str | None = None  # the meter or line id the record was read under, when it has one
     page: int | None = None  # the page the quantity was read from, when known
+    total_check: str | None = None  # a statement of account whose total differs from its invoices' (kept, flagged)
 
 
 def _span(record: EvidenceRecord) -> tuple[date, date] | None:
@@ -166,7 +167,8 @@ def _completeness(groups: dict[tuple[str, str, str | None], list[EvidenceRecord]
 # =========================================================================================
 def _repeat_in_file(first: EvidenceRecord, other: EvidenceRecord) -> bool:
     """Two records of one file that read as the same statement printed twice: the same account, and the same
-    meter, or (when a meter is missing) on different pages. Two meters of one bill share its account, period and
+    meter, or (when a meter is missing from either) on different pages: a statement of account that repeats an
+    invoice's period and usage has no meter of its own, and is still a repeat. Two meters of one bill share its account, period and
     maybe a reading; that is not a repeat."""
 
     if not first.account or not same_number(first.account, other.account):

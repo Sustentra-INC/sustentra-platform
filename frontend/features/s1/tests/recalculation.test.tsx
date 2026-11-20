@@ -496,7 +496,7 @@ describe("purchased steam billed by weight", () => {
 });
 
 describe("the GWP set is Methodology review's", () => {
-  it("keeps a GWP entered under another set as it was, and shows only the active set's", () => {
+  it("keeps a GWP entered under another set, or without one, as it was, and shows only the active set's", () => {
     const onSave = vi.fn();
     const result: Recalculation = { ...RESULT, gwp_set: "AR6", gwp_label: "AR6 · 100-year (Methodology review)",
       needs_input: [{ kind: "refrigerant_gwp", key: "R-454B", message: "No AR6 GWP for R-454B in Sustentra's reference data." }] };
@@ -507,7 +507,7 @@ describe("the GWP set is Methodology review's", () => {
     fireEvent.change(within(field).getByRole("textbox"), { target: { value: "467" } });
     fireEvent.click(screen.getByRole("button", { name: "Save and recalculate" }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
-      refrigerant_gwps: { "R-454B": { value: 467, gwp_set: "AR6" }, "R-32": { value: 2088, gwp_set: "AR5" } },
+      refrigerant_gwps: { "R-454B": { value: 467, gwp_set: "AR6" }, "R-32": 2088 },
     }));
   });
 

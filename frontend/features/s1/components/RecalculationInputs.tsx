@@ -47,11 +47,11 @@ export function RecalculationInputs({
     if (gone.length) setRemovedVehicles((current) => [...current, ...gone]);
     setVehicleDrafts(next);
   }
-  // A refrigerant GWP belongs to the set it was entered under (a number saved before the set was recorded is an
-  // AR5 value). Only those of the active set show here; the others are kept as they are until replaced.
-  const activeSet = result.gwp_set;
+  // A refrigerant GWP belongs to the set it was entered under; a plain number (saved without a set) belongs to
+  // none and is asked about again. Only entries of the set the refrigerants use show here; the others stay as entered.
+  const activeSet = result.gwp_refrigerant_set ?? result.gwp_set;
   const entryOf = (v: number | { value: number; gwp_set: string }) =>
-    typeof v === "number" ? { value: v, gwp_set: "AR5" } : v;
+    typeof v === "number" ? { value: v, gwp_set: "" } : v;
   const [gwpText, setGwpText] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       Object.entries(settings.refrigerant_gwps ?? {})
@@ -108,7 +108,7 @@ export function RecalculationInputs({
     const refrigerant_gwps: Record<string, number | { value: number; gwp_set: string }> = {};
     for (const [gas, v] of Object.entries(settings.refrigerant_gwps ?? {})) {
       const entry = entryOf(v);
-      if (entry.gwp_set !== activeSet) refrigerant_gwps[gas] = entry; // another set's entry stays as entered
+      if (entry.gwp_set !== activeSet) refrigerant_gwps[gas] = v; // another set's, or one saved without a set, stays as entered
     }
     for (const [gas, text] of Object.entries(gwpText)) {
       if (text.trim() && activeSet) refrigerant_gwps[gas] = { value: Number(text), gwp_set: activeSet };
@@ -257,7 +257,7 @@ export function RecalculationInputs({
                       </span>
                       <input
                         inputMode="decimal"
-                        placeholder={`${result.gwp_set ?? ""} 100-year GWP`}
+                        placeholder={`${activeSet ?? ""} 100-year GWP`}
                         value={gwpText[gas] ?? ""}
                         aria-invalid={badGwps.some(([key]) => key === gas)}
                         onChange={(e) => setGwpText({ ...gwpText, [gas]: e.target.value })}

@@ -86,6 +86,7 @@ def test_an_unknown_set_is_blocked() -> None:
 # --- several GWP rows: one source of truth --------------------------------------------------
 from backend.app.services.methodology_gwp import choice_from_records  # noqa: E402
 from backend.tests.services.test_engagement_recalculation_service import FakeStore, _refrigerant  # noqa: E402
+from backend.tests.services.test_engagement_recalculation_service import _engagement as _plain_engagement  # noqa: E402
 from backend.tests.services.test_engagement_recalculation_service import _service as _plain_service  # noqa: E402
 
 
@@ -135,7 +136,7 @@ def _fridge_store() -> FakeStore:
 
 
 def _fridge(choice: Any, **recalculation: Any) -> dict:
-    engagement = _engagement(recalculation=recalculation)
+    engagement = _plain_engagement(**({"recalculation": recalculation} if recalculation else {}))
     engagement["methodology_gwp"] = choice
     return _plain_service(_fridge_store()).recalculate(engagement, _own)
 
@@ -158,9 +159,12 @@ def test_an_entered_gwp_applies_only_under_the_set_it_was_entered_under() -> Non
     assert other["categories"]["fugitive_refrigerants"] is None
     ask = next(n for n in other["needs_input"] if n["kind"] == "refrigerant_gwp")
     assert "AR6 value" in ask["message"] and "chose AR4" in ask["message"]
-    legacy = {"refrigerant_gwps": {"R-410A": 2088}}  # saved before sets were recorded: an AR5 value
-    assert _fridge(ar6, **legacy)["categories"]["fugitive_refrigerants"] is None
-    assert _fridge(default_choice(), **legacy)["categories"]["fugitive_refrigerants"]["gwp"]["R-410A"]["value"] == 2088
+    legacy = {"refrigerant_gwps": {"R-410A": 2088}}  # saved without a set: none is assumed, under any set
+    for choice in (ar6, default_choice()):
+        unsure = _fridge(choice, **legacy)
+        assert unsure["categories"]["fugitive_refrigerants"] is None
+        ask = next(n for n in unsure["needs_input"] if n["kind"] == "refrigerant_gwp")
+        assert ask["message"].startswith("Confirm which GWP set this refrigerant value uses")
 
 
 def test_a_blocked_gwp_choice_reaches_the_line_schedule_and_is_never_called_calculated() -> None:
@@ -175,3 +179,56 @@ def test_a_blocked_gwp_choice_reaches_the_line_schedule_and_is_never_called_calc
     engagement["methodology_gwp"] = default_choice()
     schedule = _tree_service(_schedule_store()).schedule(engagement, _own, GAS_KC)
     assert schedule is not None and schedule["calculated"] is True and schedule["calculation_blocked"] is None
+
+
+# --- use notes (applies_to) and "Not stated" ---------------------------------------------------
+def _row(gwp_set: str, note: str = "", horizon: str = "100-year", status: str = "accepted") -> dict[str, Any]:
+    value = {"set": gwp_set, "horizon": horizon, **({"applies_to": note} if note else {})}
+    return {"field_id": "gwp", "suggestion": None, "decision": {"status": status, "value": value}, "history": []}
+
+
+def test_a_not_stated_horizon_is_taken_as_100_year_and_labelled_assumed_never_blocked() -> None:
+    choice = choice_from_record(_row("AR5", horizon="Not stated"))
+    assert choice["supported"] and choice["set"] == "AR5" and choice["horizon"] == "100-year"
+    assert choice["label"] == "AR5 · 100-year (assumed — horizon not stated)"
+    assert _run(choice)["gwp_label"] == choice["label"]
+    assert _kc_gas_co2e(_run(choice))["CH4"] == pytest.approx(1.82)
+    assert choice_from_record(_row("AR5", horizon="20-year"))["supported"] is False
+
+
+def test_the_general_set_drives_and_a_set_embedded_in_factors_is_information_only() -> None:
+    choice = choice_from_records({
+        "gwp": _row("AR6", "default"),
+        "gwp:aa11bb": _row("AR5", "embedded in the supplier emission factors")})
+    assert choice["set"] == "AR6" and choice["row"] == "gwp" and choice["supported"]
+    assert choice["refrigerant_set"] == "AR6"
+    assert len(choice["info"]) == 1 and choice["info"][0].startswith("AR5") and "information only" in choice["info"][0]
+    result = _run(choice)
+    assert result["gwp_set"] == "AR6" and result["gwp_info"] == choice["info"]
+    assert _kc_gas_co2e(result)["CH4"] == pytest.approx(1.755)  # AR6 for the fuels
+
+
+def test_a_set_limited_to_refrigerants_drives_only_the_refrigerant_gwps() -> None:
+    choice = choice_from_records({"gwp": _row("AR5"), "gwp:aa11bb": _row("AR6", "for refrigerants")})
+    assert (choice["set"], choice["refrigerant_set"], choice["refrigerant_row"]) == ("AR5", "AR6", "gwp:aa11bb")
+    assert choice["label"] == ("AR5 · 100-year (Methodology review) for fuels and electricity; "
+                               "AR6 · 100-year (Methodology review, GWP set row 2) for refrigerants")
+    result = _run(choice)
+    assert result["gwp_set"] == "AR5" and result["gwp_refrigerant_set"] == "AR6"
+    assert result["gwp_refrigerant_row"] == "gwp:aa11bb"
+    assert _kc_gas_co2e(result)["CH4"] == pytest.approx(1.82)  # AR5 for the fuels
+    tagged = {"refrigerant_gwps": {"R-410A": {"value": 2256, "gwp_set": "AR6"}}}
+    used = _fridge(choice, **tagged)["categories"]["fugitive_refrigerants"]
+    assert used["gwp"]["R-410A"]["value"] == 2256  # AR6 for the HFCs
+    assert _fridge(choice)["categories"]["fugitive_refrigerants"] is None  # no AR6 HFC value in the data
+
+
+def test_two_general_sets_block_but_a_general_and_a_refrigerant_set_do_not() -> None:
+    both = choice_from_records({"gwp": _row("AR5", "default"), "gwp:aa11bb": _row("AR6")})
+    assert both["supported"] is False and both["message"] == "Two GWP sets confirmed in Methodology review — keep one"
+    assert choice_from_records({"gwp": _row("AR5"), "gwp:aa11bb": _row("AR6", "HFCs only")})["supported"]
+
+
+def test_an_embedded_set_with_an_unsupported_horizon_blocks_nothing() -> None:
+    choice = choice_from_records({"gwp": _row("AR5"), "gwp:aa11bb": _row("AR6", "embedded in third-party factors", "500-year")})
+    assert choice["supported"] and choice["set"] == "AR5"

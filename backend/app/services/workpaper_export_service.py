@@ -61,6 +61,7 @@ _LEFT_OUT = {
     "withdrawn": "Withdrawn by the reviewer",
     "duplicate": "Marked as a duplicate",
     "superseded": "Superseded by a newer document",
+    "not_on_a_calculation_line": "Not on a calculation line",
     "montreal_protocol_gas": "A CFC or HCFC (Montreal Protocol gas), reported outside Scope 1",
 }
 
@@ -212,6 +213,11 @@ def build_workbook(
            ["Inventory total, market-based (t CO2e)", node("inventory_market_total")]] if rollup else []),
         ["Documents read", recalculation.get("documents_considered")],
         ["Documents fully reviewed", recalculation.get("documents_reviewed")],
+        ["Documents left out: not on a calculation line (see Left out)",
+         len({d.get("document_id") for d in (recalculation.get("uncounted_values") or {}).get("documents") or []})],
+        *([["WARNING", "Where each document sits could not be read: no value from the evidence is counted and "
+                       "every total and difference is incomplete."]]
+          if any(i.get("kind") == "record_placement" for i in recalculation.get("needs_input") or []) else []),
         ["Status", "Draft working paper, not an assurance opinion"],
         ["Exported", f"{datetime.now(UTC):%Y-%m-%d %H:%M} UTC by {exported_by}"],
     ]
