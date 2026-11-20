@@ -789,7 +789,8 @@ describe("entities and the boundary sentence", () => {
     { key: "facilities", label: "Facilities", kind: "list" },
     { key: "equity_share_pct", label: "Equity share (%, if stated)", kind: "percent" },
     { key: "financial_control", label: "Financial control (%, if stated)", kind: "percent" },
-    { key: "operational_control", label: "Operational control", kind: "enum", allowed: ["Yes", "No"], optional: true },
+    { key: "operational_control", label: "Included", kind: "enum", allowed: ["Yes", "No"], optional: true },
+    { key: "control_quoted", label: "Operational control (as quoted)", kind: "enum", allowed: ["Yes", "No"], optional: true, show_if_present: true },
   ];
   const withBoundary = (sentence: string | null, entity: unknown = null) => {
     const d = fixture() as { catalog: Record<string, unknown>[]; fields: Record<string, unknown>[] };
@@ -835,11 +836,11 @@ describe("entities and the boundary sentence", () => {
     const entity = { name: "Café Québec Holdings Inc.", facilities: ["Kent"], equity_share_pct: 51, financial_control: null, operational_control: "Yes" };
     await open(vi.fn(), withBoundary(null, entity));
     const r = row("Entity row");
-    expect(within(r).getByText("Café Québec Holdings Inc. · facilities: Kent · equity share 51% · operational control: Yes")).toBeTruthy();
+    expect(within(r).getByText("Café Québec Holdings Inc. · facilities: Kent · equity share 51% · included: Yes")).toBeTruthy();
     const none = { name: "Zürich Büro AG", facilities: [], equity_share_pct: null, financial_control: null, operational_control: "No" };
     cleanup();
     await open(vi.fn(), withBoundary(null, none));
-    expect(within(row("Entity row")).getByText("Zürich Büro AG · operational control: No")).toBeTruthy();
+    expect(within(row("Entity row")).getByText("Zürich Büro AG · included: No")).toBeTruthy();
   });
 
   it("shows an entity whose Yes / No is not stated without one, and lets the reviewer leave it as Not stated", async () => {
@@ -848,7 +849,7 @@ describe("entities and the boundary sentence", () => {
     const r = row("Entity row");
     expect(within(r).getByText("Zürich Büro AG · equity share 51%")).toBeTruthy();
     fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
-    const control = screen.getByLabelText("Entity row: Operational control") as HTMLSelectElement;
+    const control = screen.getByLabelText("Entity row: Included") as HTMLSelectElement;
     expect(Array.from(control.options).map((o) => o.textContent)).toEqual(["Not stated", "Yes", "No"]);
     expect(control.value).toBe("");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -861,9 +862,33 @@ describe("entities and the boundary sentence", () => {
     cleanup();
     await open(vi.fn(), withBoundary(null, entity));
     fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
-    fireEvent.change(screen.getByLabelText("Entity row: Operational control"), { target: { value: "No" } });
+    fireEvent.change(screen.getByLabelText("Entity row: Included"), { target: { value: "No" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls().some(([, o]) => JSON.stringify(o).includes('"operational_control":"No"'))).toBe(true));
+  });
+
+  it("labels the per-entity Yes / No 'Included' and shows operational control separately, only when it was quoted", async () => {
+    const quoted = { name: "Stockton Cold Storage JV", facilities: [], equity_share_pct: 50, financial_control: null, operational_control: "Yes", control_quoted: "No" };
+    await open(vi.fn(), withBoundary(null, quoted));
+    const r = row("Entity row");
+    expect(within(r).getByText("Stockton Cold Storage JV · equity share 50% · included: Yes · operational control (as quoted): No")).toBeTruthy();
+    fireEvent.click(within(r).getByRole("button", { name: "Edit: Entity row" }));
+    expect(screen.queryByLabelText("Entity row: Operational control")).toBeNull(); // the old label is gone
+    const asQuoted = screen.getByLabelText("Entity row: Operational control (as quoted)") as HTMLSelectElement;
+    expect(asQuoted.value).toBe("No");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls()).toContainEqual([
+        `${BASE}/entity%3Aabc123/edit`,
+        expect.objectContaining({ body: { value: { name: "Stockton Cold Storage JV", facilities: [], equity_share_pct: 50, financial_control: null, operational_control: "Yes", control_quoted: "No" } } }),
+      ])
+    );
+    cleanup();
+    const plain = { name: "Zürich Büro AG", facilities: [], equity_share_pct: null, financial_control: null, operational_control: "Yes" };
+    await open(vi.fn(), withBoundary(null, plain));
+    fireEvent.click(within(row("Entity row")).getByRole("button", { name: "Edit: Entity row" }));
+    expect(screen.queryByLabelText("Entity row: Operational control (as quoted)")).toBeNull(); // not quoted: not shown
+    expect(screen.getByLabelText("Entity row: Included")).toBeTruthy();
   });
 
   it("says in words why an exclusion sentence was not kept as an entity or the boundary sentence", () => {

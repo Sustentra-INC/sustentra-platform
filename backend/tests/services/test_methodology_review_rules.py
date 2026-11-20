@@ -181,7 +181,7 @@ def test_only_reviewer_added_rows_can_be_removed() -> None:
 
 def test_public_shape() -> None:
     row = m.new_row("factor:scope1:abcd1234", ACTOR, NOW)
-    assert set(m.public(row)) == {"field_id", "suggestion", "decision", "history", "user_added"}
+    assert set(m.public(row)) == {"field_id", "suggestion", "decision", "history", "value_history", "user_added"}
     assert m.public(m.new_record("gwp"))["user_added"] is False
 
 
@@ -467,8 +467,9 @@ def test_equity_and_financial_control_percentages_are_optional_per_entity() -> N
 def test_a_corrected_entity_name_is_saved_and_the_included_yes_no_is_still_there() -> None:
     entity = m.row_field("entity:abcd1234")
     assert entity is not None
-    assert [p["key"] for p in entity["parts"]] == ["name", "facilities", "equity_share_pct", "financial_control", "operational_control"]
-    assert entity["parts"][4]["allowed"] == ["Yes", "No"]  # the per-entity Yes / No stays
+    assert [p["key"] for p in entity["parts"]] == ["name", "facilities", "equity_share_pct", "financial_control", "operational_control", "control_quoted"]
+    assert entity["parts"][4]["allowed"] == ["Yes", "No"] and entity["parts"][4]["label"] == "Included"  # the per-entity Yes / No stays, as "Included"
+    assert entity["parts"][5]["label"] == "Operational control (as quoted)" and entity["parts"][5]["show_if_present"] is True
     suggested = {"name": "Acme Foods Kent", "facilities": [], "equity_share_pct": None, "financial_control": None,
                  "operational_control": "Yes"}
     record = m.with_suggestion(m.new_record("entity:abcd1234"), entity, {"value": suggested, "quote": "Acme Foods Kent is in the boundary"})
@@ -529,3 +530,88 @@ def test_not_stated_stands_alone_on_the_scopes_field_and_is_never_a_free_option(
     with pytest.raises(m.MethodologyInvalid, match="'Not stated' can't be added"):
         m.validate_value(records, [pick("not stated")])
     assert m.validate_value(field("scope2:instruments"), [pick("None")]) == [pick("None")]  # None still stands alone there
+
+
+# --- Revert goes back to the PREVIOUS value (Claire C-M3) ---------------------------------------
+
+def test_revert_restores_the_previous_value_one_step_at_a_time() -> None:
+    f = field("calculation:approach")
+    a = m.edit(m.new_record("calculation:approach"), f, "Fuel \u00d7 factor (\u0e17\u0e14\u0e2a\u0e2d\u0e1a)", ACTOR, NOW)
+    b = m.edit(a, f, "Activity data \u00d7 emission factor", ACTOR, NOW)
+    c = m.edit(b, f, "Spend-based", ACTOR, NOW)
+    assert [d["value"] for d in c["value_history"]] == ["Fuel \u00d7 factor (\u0e17\u0e14\u0e2a\u0e2d\u0e1a)", "Activity data \u00d7 emission factor"]
+    r1 = m.revert(c, f, ACTOR, NOW)
+    assert r1["decision"]["value"] == "Activity data \u00d7 emission factor" and m.status_of(r1) == "edited"
+    r2 = m.revert(r1, f, ACTOR, NOW)
+    assert r2["decision"]["value"] == "Fuel \u00d7 factor (\u0e17\u0e14\u0e2a\u0e2d\u0e1a)" and "value_history" not in r2
+    r3 = m.revert(r2, f, ACTOR, NOW)  # nothing before it and nothing detected: empty
+    assert m.status_of(r3) == "pending" and r3["decision"]["value"] is None
+    assert [h.get("restored") for h in r3["history"] if h["action"] == "revert"] == ["previous", "previous", "empty"]
+    assert c["decision"]["value"] == "Spend-based"  # the input is not changed
+
+
+def test_revert_keeps_the_status_of_the_previous_decision_and_never_revives_a_reason_into_a_value() -> None:
+    f = field("calculation:approach")
+    accepted = m.accept(m.with_suggestion(m.new_record("calculation:approach"), f, {**SUGGESTION, "value": "Detected text"}), f, ACTOR, NOW)
+    edited = m.edit(accepted, f, "Reviewer text", ACTOR, NOW)
+    back = m.revert(edited, f, ACTOR, NOW)
+    assert m.status_of(back) == "accepted" and back["decision"]["value"] == "Detected text"
+    rejected = m.reject(m.new_record("calculation:approach"), f, "Wrong section", ACTOR, NOW)
+    edited2 = m.edit(rejected, f, "Typed after rejecting", ACTOR, NOW)
+    back2 = m.revert(edited2, f, ACTOR, NOW)
+    assert m.status_of(back2) == "rejected" and back2["decision"]["value"] is None and back2["decision"]["reason"] == "Wrong section"
+
+
+def test_with_no_previous_decision_revert_restores_the_detected_value_else_empty_else_the_blank_row() -> None:
+    f = field("calculation:approach")
+    detected = m.with_suggestion(m.new_record("calculation:approach"), f, {**SUGGESTION, "value": "Detected text"})
+    edited = m.edit(detected, f, "Reviewer text", ACTOR, NOW)
+    back = m.revert(edited, f, ACTOR, NOW)
+    assert m.status_of(back) == "pending" and back["suggestion"]["value"] == "Detected text"  # ready to accept again
+    assert [h["restored"] for h in back["history"] if h["action"] == "revert"] == ["detected"]
+    accepted_again = m.accept(back, f, ACTOR, NOW)
+    assert accepted_again["decision"]["value"] == "Detected text"
+    row = m.new_row("factor:scope2:abcd1234", ACTOR, NOW)
+    d = m.row_field("factor:scope2:abcd1234")
+    edited_row = m.edit(row, d, {"database": "EPA", "edition": "1"}, ACTOR, NOW)  # type: ignore[arg-type]
+    assert m.revert(edited_row, d, ACTOR, NOW)["decision"]["value"] == {"database": "", "edition": ""}  # type: ignore[arg-type]
+
+
+def test_the_value_history_is_bounded_and_pending_decisions_are_not_kept() -> None:
+    f = field("calculation:approach")
+    record = m.new_record("calculation:approach")
+    for i in range(25):
+        record = m.edit(record, f, f"v{i} \u00e9\u7eb8", ACTOR, NOW)
+    assert len(record["value_history"]) == m.MAX_VALUE_HISTORY and record["value_history"][-1]["value"] == "v23 \u00e9\u7eb8"
+    assert m.revert(record, f, ACTOR, NOW)["decision"]["value"] == "v23 \u00e9\u7eb8"
+    blank_row = m.new_row("factor:scope1:abcd1234", ACTOR, NOW)  # its pending blank value is not a previous value
+    d = m.row_field("factor:scope1:abcd1234")
+    first = m.edit(blank_row, d, {"database": "EPA", "edition": "1"}, ACTOR, NOW)  # type: ignore[arg-type]
+    assert "value_history" not in first
+
+
+def test_a_hostile_stored_history_cannot_break_a_revert_or_grow_the_record() -> None:
+    f = field("calculation:approach")
+    record = m.edit(m.new_record("calculation:approach"), f, "ok", ACTOR, NOW)
+    record["value_history"] = [{"status": "edited", "value": "\x00<script>\ud83d\ude00", "by": {"name": "x", "login": "y"}, "at": "t", "evil": 1}]
+    back = m.revert(record, f, ACTOR, NOW)  # the stored entry fails validation: skipped, so nothing before it
+    assert m.status_of(back) == "pending" and back["decision"]["value"] is None
+    assert [h["restored"] for h in back["history"] if h["action"] == "revert"] == ["empty"]
+    record["value_history"] = [{"status": "edited", "value": "kept <b>\u00e9</b>", "by": {}, "at": "t", "evil": 1},
+                               {"status": "weird", "value": "x"}, "not a decision", {"status": "edited", "value": 5}]
+    back = m.revert(record, f, ACTOR, NOW)  # bad entries are skipped from the newest back
+    assert back["decision"]["value"] == "kept <b>\u00e9</b>" and "evil" not in back["decision"]
+
+
+def test_a_quoted_operational_control_is_a_separate_optional_part_of_an_entity() -> None:
+    entity = m.row_field("entity:abcd1234")
+    base = {"name": "Z\u00fcrich B\u00fcro AG", "facilities": [], "equity_share_pct": None, "financial_control": None,
+            "operational_control": "Yes"}
+    assert "control_quoted" not in m.validate_value(entity, base)  # type: ignore[arg-type]
+    assert "control_quoted" not in m.validate_value(entity, {**base, "control_quoted": None})  # type: ignore[arg-type]
+    assert m.validate_value(entity, {**base, "control_quoted": "No"})["control_quoted"] == "No"  # type: ignore[arg-type]
+    for bad in ("Maybe", "", 1, True):
+        with pytest.raises(m.MethodologyInvalid, match="operational control must be Yes or No"):
+            m.validate_value(entity, {**base, "control_quoted": bad})  # type: ignore[arg-type]
+    with pytest.raises(m.MethodologyInvalid):
+        m.validate_value(entity, {**base, "control_quoted": "Yes", "other": 1})  # type: ignore[arg-type]

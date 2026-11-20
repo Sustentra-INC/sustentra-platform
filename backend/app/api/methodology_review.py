@@ -5,7 +5,7 @@ exclusions, factor sources, GWP and calculation methods (the page's fields).
 * POST   /v1/engagements/{id}/methodology-review/{field_id}/accept  take the suggestion, or the current value
 * POST   /v1/engagements/{id}/methodology-review/{field_id}/edit    {value}
 * POST   /v1/engagements/{id}/methodology-review/{field_id}/reject  {reason}
-* POST   /v1/engagements/{id}/methodology-review/{field_id}/revert  back to pending
+* POST   /v1/engagements/{id}/methodology-review/{field_id}/revert  back to the previous value
 * POST   /v1/engagements/{id}/methodology-review/rows               {group}: add an entity or factor row (201)
 * DELETE /v1/engagements/{id}/methodology-review/{field_id}         remove a row the reviewer added
 
@@ -187,7 +187,7 @@ async def _save(db: AsyncSession, engagement: dict[str, Any], field_id: str, rec
 
 
 async def _audit(db: AsyncSession, request: Request, user: CurrentUser, engagement: dict[str, Any],
-                 field_id: str, action: str, status: str | None) -> None:
+                 field_id: str, action: str, status: str | None, restored: str | None = None) -> None:
     await write_audit_event(
         db,
         "methodology_decision",
@@ -199,7 +199,8 @@ async def _audit(db: AsyncSession, request: Request, user: CurrentUser, engageme
         request_id=getattr(request.state, "request_id", None),
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        metadata={"field_id": field_id, "action": action, "status": status},  # never a value or reason
+        # never a value or reason; a revert also says what it restored: previous, detected or empty
+        metadata={"field_id": field_id, "action": action, "status": status, **({"restored": restored} if restored else {})},
     )
 
 
@@ -253,7 +254,8 @@ async def _act(action: str, field_id: str, request: Request, user: CurrentUser, 
         else:
             updated = rules.revert(record, field, actor, now)
     saved = await _save(db, engagement, field_id, updated, user)
-    await _audit(db, request, user, engagement, field_id, action, rules.status_of(saved))
+    restored = (saved.get("history") or [{}])[-1].get("restored") if action == "revert" else None
+    await _audit(db, request, user, engagement, field_id, action, rules.status_of(saved), restored=restored)
     return rules.public(saved)
 
 

@@ -173,7 +173,7 @@ def test_rows_can_be_added_edited_and_removed_when_the_reviewer_added_them() -> 
     assert field_id.startswith("entity:") and added.json()["field"]["user_added"] is True
     assert added.json()["user_added"] is True
     assert [p["key"] for p in added.json()["field"]["parts"]] == [
-        "name", "facilities", "equity_share_pct", "financial_control", "operational_control"]
+        "name", "facilities", "equity_share_pct", "financial_control", "operational_control", "control_quoted"]
     assert added.json()["decision"]["status"] == "pending"
     assert added.json()["decision"]["by"]["login"] == "member@acme.test"
 
@@ -418,7 +418,9 @@ def test_the_gwp_set_chosen_in_methodology_drives_the_recalculation_and_the_work
     assert blocked["gwp_label"] == "AR5 500-year — not supported for calculation" and blocked["gwp_blocked"]
     assert call("GET", f"{BASE}/{eid}/export", "a_member").status_code == 409
 
-    assert act(eid, "gwp", "revert").status_code == 200
+    assert act(eid, "gwp", "revert").status_code == 200  # back to the PREVIOUS value (C-M3): the AR6 choice
+    assert results()["gwp_label"] == "AR6 · 100-year (Methodology review)" and not results()["gwp_blocked"]
+    assert act(eid, "gwp", "revert").status_code == 200  # nothing before that: the detected value, pending
     assert results()["gwp_label"] == default
 
 
@@ -455,3 +457,101 @@ def _workpaper_basis(content: bytes) -> str:
 
     summary = dict(load_workbook(io.BytesIO(content))["Summary"].iter_rows(min_row=2, values_only=True))
     return str(summary["GWP basis"])
+
+
+# --- Revert goes back to the PREVIOUS value (Claire C-M3) ---------------------------------------------
+
+def revert_events() -> list[dict[str, Any]]:
+    return [json.loads(r["metadata"]) for r in events() if json.loads(r["metadata"])["action"] == "revert"]
+
+
+def test_revert_goes_back_one_value_at_a_time_then_to_the_detected_value_then_to_empty_and_each_is_audited() -> None:
+    eid = create()["id"]
+    f = "calculation:approach"
+    suggest(eid, f, {**SUGGESTION, "value": "Detected: fuel \u00d7 factor"})
+    assert act(eid, f, "edit", {"value": "Edit one \u2014 caf\u00e9"}).status_code == 200
+    assert act(eid, f, "edit", {"value": "Edit two \u7eb8"}).status_code == 200
+    assert [d["value"] for d in record(eid, f)["value_history"]] == ["Edit one \u2014 caf\u00e9"]
+    first = act(eid, f, "revert").json()
+    assert (first["decision"]["status"], first["decision"]["value"]) == ("edited", "Edit one \u2014 caf\u00e9")
+    assert record(eid, f)["decision"]["value"] == "Edit one \u2014 caf\u00e9"  # stored, not just answered
+    second = act(eid, f, "revert").json()  # nothing before the first edit: the detected value comes back to decide
+    assert second["decision"]["status"] == "pending" and second["decision"]["value"] is None
+    assert second["suggestion"]["value"] == "Detected: fuel \u00d7 factor"
+    assert act(eid, f, "revert").status_code == 409  # pending: nothing to revert
+    assert act(eid, f, "accept").json()["decision"]["value"] == "Detected: fuel \u00d7 factor"  # the detected value is back
+    empty = create()["id"]
+    assert act(empty, f, "edit", {"value": "only one"}).status_code == 200
+    gone = act(empty, f, "revert").json()  # no previous value and nothing detected
+    assert gone["decision"]["status"] == "pending" and gone["decision"]["value"] is None and gone["suggestion"] is None
+    assert [e["restored"] for e in revert_events()] == ["previous", "detected", "empty"]
+    assert all(set(e) == {"field_id", "action", "status", "restored"} for e in revert_events())  # no value in the audit log
+
+
+def test_revert_restores_a_previous_rejection_and_an_accepted_value_with_their_own_status() -> None:
+    eid = create()["id"]
+    suggest(eid, "category:scope1:mobile", {**SUGGESTION, "value": "No"})
+    assert act(eid, "category:scope1:mobile", "reject", {"reason": "R\u00e9sum\u00e9 says yes"}).status_code == 200
+    assert act(eid, "category:scope1:mobile", "edit", {"value": "Yes"}).status_code == 200
+    back = act(eid, "category:scope1:mobile", "revert").json()
+    assert back["decision"]["status"] == "rejected" and back["decision"]["value"] is None
+    assert back["decision"]["reason"] == "R\u00e9sum\u00e9 says yes"
+    suggest(eid, "category:scope1:stationary")
+    assert act(eid, "category:scope1:stationary", "accept").status_code == 200
+    assert act(eid, "category:scope1:stationary", "edit", {"value": "No"}).status_code == 200
+    again = act(eid, "category:scope1:stationary", "revert").json()
+    assert (again["decision"]["status"], again["decision"]["value"]) == ("accepted", "Yes")
+
+
+def test_a_reviewer_added_row_reverts_to_its_previous_value_then_to_blank() -> None:
+    eid = create()["id"]
+    row = add_row(eid, "factor:scope1").json()["field"]["field_id"]
+    one = {"database": "EPA Hub", "edition": "2024"}
+    two = {"database": "DEFRA \u00e9", "edition": "2025"}
+    assert act(eid, row, "edit", {"value": one}).status_code == 200
+    assert act(eid, row, "edit", {"value": two}).status_code == 200
+    assert act(eid, row, "revert").json()["decision"]["value"] == one
+    assert act(eid, row, "revert").json()["decision"]["value"] == {"database": "", "edition": ""}
+
+
+def test_the_value_history_is_per_field_bounded_and_cannot_be_written_or_forged_through_the_api() -> None:
+    eid = create()["id"]
+    f = "exclusion:boundary"
+    for i in range(14):
+        assert act(eid, f, "edit", {"value": f"v{i}"}).status_code == 200
+    stored = record(eid, f)
+    assert len(stored["value_history"]) == 10 and stored["value_history"][-1]["value"] == "v12"
+    assert record(eid, "exclusion:inventory")["value_history"] == []  # another field's history is its own
+    for body in ({"value": "x", "value_history": [{"status": "edited", "value": "forged"}]},):
+        assert act(eid, f, "edit", body).status_code == 422  # bodies forbid unknown fields
+    put = call("PUT", f"{BASE}/{eid}/workpaper-items/methodology/{f}", body={"payload": {"value_history": []}})
+    assert put.status_code == 422  # decisions change only through the actions
+    assert act(eid, f, "revert").json()["decision"]["value"] == "v12"
+
+
+def test_a_stored_history_with_a_value_that_no_longer_validates_is_skipped_not_restored() -> None:
+    eid = create()["id"]
+    f = "category:scope1:fugitive"
+    assert act(eid, f, "edit", {"value": "Yes"}).status_code == 200
+    assert act(eid, f, "edit", {"value": "No"}).status_code == 200
+    payload = record(eid, f)
+    payload = {k: payload[k] for k in ("field_id", "suggestion", "decision", "history", "value_history")}
+    payload["value_history"] = [{"status": "edited", "value": "Maybe <script> \u202e\u7eb8", "by": {"name": "x", "login": "y"}, "at": "t"}]
+    asyncio.run(_admin("UPDATE workpaper_items SET payload = $2::jsonb WHERE engagement_id = $1::uuid AND kind = 'methodology' "
+                       "AND item_key = $3", eid, json.dumps(payload), f))
+    back = act(eid, f, "revert")
+    assert back.status_code == 200 and back.json()["decision"]["value"] is None and back.json()["decision"]["status"] == "pending"
+    assert revert_events()[-1]["restored"] == "empty"
+
+
+def test_an_old_record_with_no_value_history_still_reverts_and_the_api_lists_an_empty_history() -> None:
+    eid = create()["id"]
+    old = {"field_id": "category:scope1:process", "suggestion": None, "history": [],
+           "decision": {"status": "edited", "value": "Yes", "by": {"name": "A", "login": "a"}, "at": "2026-11-01T10:00:00.000Z"}}
+    asyncio.run(_admin(
+        "INSERT INTO workpaper_items (org_id, engagement_id, kind, item_key, payload) "
+        "SELECT org_id, id, 'methodology', 'category:scope1:process', $2::jsonb FROM engagements WHERE id = $1::uuid",
+        eid, json.dumps(old)))
+    assert record(eid, "category:scope1:process")["value_history"] == []
+    back = act(eid, "category:scope1:process", "revert").json()
+    assert back["decision"]["status"] == "pending" and back["decision"]["value"] is None
