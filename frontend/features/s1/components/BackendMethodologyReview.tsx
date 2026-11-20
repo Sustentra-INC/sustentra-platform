@@ -123,11 +123,11 @@ function valueText(value: MethodologyValue | undefined): string {
     const basis = typeof value.basis === "string" && value.basis ? `, ${value.basis.toLowerCase()}` : "";
     return `${value.start}${flag(value.start_implied)} to ${value.end}${flag(value.end_implied)}${basis}`;
   }
-  if (typeof value === "object" && typeof value.name === "string" && "operational_control" in value) {
+  if (typeof value === "object" && typeof value.name === "string" && ("included" in value || "operational_control" in value)) {
     // An entity: each percentage is optional, so each is labelled (a bare "51" would not say which one it is).
     const pct = (v: MethodologyValue | undefined, label: string) => (typeof v === "number" ? [`${label} ${v}%`] : []);
     const facilities = Array.isArray(value.facilities) && value.facilities.length ? [`facilities: ${value.facilities.join(", ")}`] : [];
-    return [value.name, ...facilities, ...pct(value.equity_share_pct, "equity share"), ...pct(value.financial_control, "financial control"), ...(value.operational_control ? [`operational control: ${valueText(value.operational_control)}`] : [])]
+    return [value.name, ...facilities, ...pct(value.equity_share_pct, "equity share"), ...pct(value.financial_control, "financial control"), ...(value.included ? [`included: ${valueText(value.included)}`] : []), ...(value.control_quoted || value.operational_control ? [`operational control (as quoted): ${valueText((value.control_quoted ?? value.operational_control) as MethodologyValue)}`] : [])]
       .filter(Boolean)
       .join(" · ");
   }
@@ -187,8 +187,9 @@ function ValueEditor({
   onCancel: () => void;
   busy: boolean;
 }) {
-  const parts = def.parts ?? null;
   const current = start !== null && typeof start === "object" && !Array.isArray(start) ? start : {};
+  // A part flagged show_if_present (operational control as quoted) is shown, and kept, only when the value has it.
+  const parts = def.parts ? def.parts.filter((p) => !p.show_if_present || (current[p.key] !== undefined && current[p.key] !== null)) : null;
   const [draft, setDraft] = useState<Record<string, string>>(() =>
     Object.fromEntries((parts ?? []).map((p) => [p.key, valueText(current[p.key] as MethodologyValue)]))
   );

@@ -8,7 +8,9 @@ Each field is one ``workpaper_items`` row (kind ``methodology``, item_key = fiel
     {field_id, suggestion: null | {value, quote, document_id, file_name, source_reference,
                                    origin: "ai", model, request_id, suggested_at},
      decision: null | {status: pending|accepted|edited|rejected, value, reason?, by, at},
-     history: [{at, by, action, to?}] (newest 50), user_added?: true, removed?: true}
+     history: [{at, by, action, to?}] (newest 50),
+     value_history: [decision, ...] (the decisions before the current one, oldest first, at most 10),
+     user_added?: true, removed?: true}
 
 A suggestion is only a proposal (written by the AI task through ``save_suggestion``). The workpaper value
 of a field is its decision's ``value`` when the status is accepted or edited; a rejected
@@ -16,8 +18,16 @@ decision keeps no value.
 
     from \\ action        accept     edit     reject     revert
     none / pending        accepted   edited   rejected   409
-    accepted / edited     409        edited   409        pending
-    rejected              409        edited   409        pending
+    accepted / edited     409        edited   409        the decision before this one
+    rejected              409        edited   409        the decision before this one
+
+Revert goes back to the PREVIOUS value: every accept, edit or reject pushes the decision it replaces onto
+``value_history``, and a revert pops the last one and makes it the decision again (its own status and value). With no
+previous decision it restores the detected value (the suggestion stays on the field, pending, ready to accept), and with
+no suggestion either the field is empty (a reviewer-added row goes back to its blank value). A previous decision that
+was saved but cannot be restored (it no longer validates, or was too large to keep: ``previous_lost``) refuses the
+revert with a 409 sentence; it never quietly falls back. The history event of a revert says what was actually
+restored: ``restored`` is previous, detected or empty.
 
 Rows (entities, emission-factor sources) are added by the reviewer under a server-made id
 and removed only if the reviewer added them; a removed row is marked, never deleted, so the
@@ -68,6 +78,8 @@ MAX_APPLIES_TO = 200  # a GWP set's use note, in the company's words
 MAX_FACILITIES = 20
 MAX_FACILITY = 100
 MAX_HISTORY = 50
+MAX_VALUE_HISTORY = 10  # earlier decisions kept per field, for Revert
+HISTORY_ROOM = 10 * 1024  # bytes of event history a record keeps room for before it keeps earlier decisions
 MAX_ADDED_ROWS = 200
 MAX_SUGGESTION_BYTES = 8 * 1024  # the value and its quote; the per-entry quotes have their own room
 MAX_ENTRIES = 10  # entries in an entry_list value
@@ -144,8 +156,12 @@ _PARTS: dict[str, list[dict[str, Any]]] = {
         {"key": "facilities", "label": "Facilities", "kind": "list"},
         {"key": "equity_share_pct", "label": "Equity share (%, if stated)", "kind": "percent"},
         {"key": "financial_control", "label": "Financial control (%, if stated)", "kind": "percent"},
-        {"key": "operational_control", "label": "Operational control", "kind": "enum", "allowed": list(YES_NO),
-         "optional": True},
+        # Claire C-M2: the per-entity Yes / No is "Included". It has its own key: before this change
+        # ``operational_control`` held what the report quoted about operational control, which must not read as Included.
+        {"key": "included", "label": "Included", "kind": "enum", "allowed": list(YES_NO), "optional": True},
+        # What the report quoted about operational control, shown separately and only when it was quoted.
+        {"key": "control_quoted", "label": "Operational control (as quoted)", "kind": "enum", "allowed": list(YES_NO),
+         "optional": True, "show_if_present": True},
     ],
     "factor": [
         {"key": "database", "label": "Database", "kind": "text"},
@@ -262,7 +278,7 @@ def row_field(field_id: str) -> dict[str, Any] | None:
     prefix, kind, group, label = next(g for g in ROW_GROUPS.values() if g[0] == match.group(1))
     allowed: Any = None
     if kind == "entity":
-        allowed = {"operational_control": list(YES_NO)}
+        allowed = {"included": list(YES_NO), "control_quoted": list(YES_NO)}
     elif kind == "gwp":
         allowed = {"set": list(GWP_SETS), "horizon": list(GWP_HORIZONS)}
     field = _field(field_id, group, label, kind, allowed)
@@ -280,12 +296,26 @@ def new_row_id(group: str) -> str:
     return f"{ROW_GROUPS[group][0]}:{uuid.uuid4().hex[:12]}"
 
 
+def upgrade_entity_value(value: Any) -> Any:
+    """An entity value saved before "Included" had its own key: its ``operational_control`` was what the report
+    quoted about operational control, so it moves to ``control_quoted`` and ``included`` stays null until a reviewer
+    confirms it. Anything else is returned unchanged. Applied when a value is read and when it is validated."""
+
+    if not isinstance(value, dict) or "included" in value or "operational_control" not in value:
+        return value
+    out = {k: v for k, v in value.items() if k != "operational_control"}
+    out["included"] = None
+    if value["operational_control"] in YES_NO and "control_quoted" not in value:
+        out["control_quoted"] = value["operational_control"]
+    return out
+
+
 def blank_value(field_id: str) -> Any:
     """What a new row holds until the reviewer fills it in."""
 
     if field_id.startswith("entity:"):
         return {"name": "", "facilities": [], "equity_share_pct": None, "financial_control": None,
-                "operational_control": None}
+                "included": None}
     if field_id.startswith("gwp:"):
         return {"set": "", "horizon": ""}
     return {"database": "", "edition": ""}
@@ -497,21 +527,29 @@ def validate_value(field: Mapping[str, Any], value: Any) -> Any:
         return {"database": _text(field, data["database"], required=True, limit=200, name="the database"),
                 "edition": _text(field, data["edition"], limit=100, name="the edition")}
     if kind == "entity":
-        data = _only(field, value, ("name", "facilities", "equity_share_pct", "financial_control",
-                                    "operational_control"))
+        value = upgrade_entity_value(value)
+        keys: tuple[str, ...] = ("name", "facilities", "equity_share_pct", "financial_control", "included")
+        if isinstance(value, dict) and "control_quoted" in value:
+            keys = (*keys, "control_quoted")
+        data = _only(field, value, keys)
         facilities = data["facilities"]
         if not isinstance(facilities, list) or len(facilities) > MAX_FACILITIES:
             raise _fail(field, f"facilities must be a list of at most {MAX_FACILITIES} names.")
-        if data["operational_control"] is not None and data["operational_control"] not in YES_NO:
-            raise _fail(field, "operational control must be Yes or No, or left blank when the document does not say.")
-        return {
+        if data["included"] is not None and data["included"] not in YES_NO:
+            raise _fail(field, "included must be Yes or No, or left blank when the document does not say.")
+        if data.get("control_quoted") is not None and data["control_quoted"] not in YES_NO:
+            raise _fail(field, "operational control must be Yes or No, or left out when the document does not quote it.")
+        entity = {
             "name": _text(field, data["name"], required=True, limit=200, name="the name"),
             "facilities": [_text(field, f, required=True, limit=MAX_FACILITY, name="a facility name") for f in facilities],
             # Both percentages are optional: null means the document does not give it.
             "equity_share_pct": _percent(field, data["equity_share_pct"], "equity share", optional=True),
             "financial_control": _percent(field, data["financial_control"], "financial control", optional=True),
-            "operational_control": data["operational_control"],
+            "included": data["included"],
         }
+        if data.get("control_quoted") is not None:  # only when quoted, so a value keeps the shape it always had
+            entity["control_quoted"] = data["control_quoted"]
+        return entity
     raise AssertionError(f"unknown field kind {kind}")  # pragma: no cover
 
 
@@ -548,9 +586,33 @@ def _transition(record: Mapping[str, Any], action: str, decision: dict[str, Any]
     event: dict[str, Any] = {"at": stamp(now), "by": _by(actor), "action": action}
     if to is not None:
         event["to"] = to
+    previous = record.get("decision")
+    if previous and previous.get("status") != PENDING and action != "revert":  # the decision this one replaces, for Revert
+        out["value_history"] = [*record.get("value_history", []), copy.deepcopy(previous)]
     out["decision"] = {**decision, "by": _by(actor), "at": stamp(now)}
+    pushed = out.get("value_history", [])[-1:] if previous and previous.get("status") != PENDING and action != "revert" else []
+    _trim_value_history(out)
+    if pushed:  # the decision just replaced could not be kept (too large): Revert must say so, not go elsewhere
+        if out.get("value_history", [])[-1:] == pushed:
+            out.pop("previous_lost", None)
+        else:
+            out["previous_lost"] = True
     out["history"] = _fit([*record.get("history", []), event], out)
     return out
+
+
+def _trim_value_history(record: dict[str, Any]) -> None:
+    """At most MAX_VALUE_HISTORY earlier decisions, fewer (oldest first) if the record would pass MAX_PAYLOAD_BYTES
+    once room (HISTORY_ROOM) is left for the event history, so a field can always take one more change."""
+
+    prior: list[dict[str, Any]] = record.get("value_history") or []
+    del prior[:-MAX_VALUE_HISTORY]
+    while prior and payload_size({**record, "history": []}) + HISTORY_ROOM > MAX_PAYLOAD_BYTES:
+        prior.pop(0)
+    if prior:
+        record["value_history"] = prior
+    else:
+        record.pop("value_history", None)
 
 
 def _fit(history: list[dict[str, Any]], record: dict[str, Any]) -> list[dict[str, Any]]:
@@ -603,12 +665,58 @@ def reject(record: Mapping[str, Any], field: Mapping[str, Any], reason: Any, act
     return _transition(record, "reject", {"status": REJECTED, "value": None, "reason": reason}, actor, now)
 
 
+def _cannot_restore(reason: str) -> MethodologyConflict:
+    return MethodologyConflict(f"The previous value can no longer be restored ({reason}). Edit the value instead.")
+
+
+def _restorable(field: Mapping[str, Any], entry: Any) -> dict[str, Any]:
+    """An earlier decision as Revert restores it: only its status, value and reason, with the value checked against
+    the field again. A stored entry that is not a decision the field accepts is refused (409), never skipped."""
+
+    if not isinstance(entry, Mapping) or entry.get("status") not in (ACCEPTED, EDITED, REJECTED):
+        raise _cannot_restore("the saved entry is not a decision")
+    if entry["status"] == REJECTED:
+        reason = entry.get("reason")
+        return {"status": REJECTED, "value": None,
+                "reason": reason[:MAX_REASON] if isinstance(reason, str) and "\x00" not in reason else ""}
+    try:
+        return {"status": entry["status"], "value": validate_value(field, entry.get("value"))}
+    except MethodologyInvalid as exc:
+        detail = str(exc).split(": ", 1)[-1].rstrip(".")
+        raise _cannot_restore(f"it no longer fits the field: {detail}") from None
+
+
 def revert(record: Mapping[str, Any], field: Mapping[str, Any], actor: Actor, now: datetime) -> dict[str, Any]:
+    """Go back to the PREVIOUS value (see the module docstring). When the previous decision was saved but cannot be
+    restored (it no longer validates, is not a decision, or was too large to keep) the revert is refused with 409:
+    it never quietly falls back to the detected value or to empty."""
+
     if status_of(record) == PENDING:
         raise MethodologyConflict(f"'{field['label']}' is already pending, so there is nothing to revert.")
-    # A row the reviewer added goes back to its blank value; a field from the report to nothing.
-    blank = blank_value(field["field_id"]) if record.get("user_added") else None
-    return _transition(record, "revert", {"status": PENDING, "value": blank}, actor, now)
+    out = copy.deepcopy(dict(record))
+    prior: list[dict[str, Any]] = out.get("value_history") or []
+    if prior:
+        decision = _restorable(field, prior[-1])
+        prior.pop()
+        source = "previous"
+    elif record.get("previous_lost"):
+        raise _cannot_restore("it was too large to keep")
+    else:
+        # No earlier decision was ever saved: the detected value (the suggestion stays, pending) or nothing. A row
+        # the reviewer added goes back to its blank value.
+        blank = blank_value(field["field_id"]) if record.get("user_added") else None
+        decision = {"status": PENDING, "value": blank}
+        source = "detected" if record.get("suggestion") else "empty"
+    if prior:
+        out["value_history"] = prior
+    else:
+        out.pop("value_history", None)
+    event: dict[str, Any] = {"at": stamp(now), "by": _by(actor), "action": "revert", "restored": source}
+    if decision.get("value") is not None:
+        event["to"] = decision["value"]
+    out["decision"] = {**decision, "by": _by(actor), "at": stamp(now)}
+    out["history"] = _fit([*record.get("history", []), event], out)
+    return out
 
 
 def remove(record: Mapping[str, Any], field: Mapping[str, Any], actor: Actor, now: datetime) -> dict[str, Any]:
@@ -835,6 +943,14 @@ def shown_note(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mappin
 def public(record: Mapping[str, Any]) -> dict[str, Any]:
     """A stored record as the API returns it."""
 
-    return {"field_id": record["field_id"], "suggestion": record.get("suggestion"),
-            "decision": record.get("decision"), "history": record.get("history", []),
-            "user_added": bool(record.get("user_added"))}
+    out = {"field_id": record["field_id"], "suggestion": record.get("suggestion"),
+           "decision": record.get("decision"), "history": record.get("history", []),
+           "value_history": record.get("value_history", []),
+           "user_added": bool(record.get("user_added"))}
+    if str(record["field_id"]).startswith("entity:"):  # entity values saved before "Included" had its own key
+        for key in ("suggestion", "decision"):
+            if isinstance(out[key], dict) and "value" in out[key]:
+                out[key] = {**out[key], "value": upgrade_entity_value(out[key]["value"])}
+        out["value_history"] = [{**e, "value": upgrade_entity_value(e.get("value"))} if isinstance(e, dict) else e
+                                for e in out["value_history"]]
+    return out

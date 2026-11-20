@@ -714,8 +714,8 @@ def test_an_entity_without_percentages_is_stored_a_reviewer_can_correct_its_name
     assert prefill(eid).json()["suggested"] == 1
     [row] = entity_rows(eid)
     assert row["suggestion"]["value"] == {"name": "Café Québec Holdings Inc.", "facilities": [], "equity_share_pct": None,
-                                          "financial_control": None, "operational_control": None}  # "inside the boundary" does not say who operates it
-    corrected = {**row["suggestion"]["value"], "name": "Café Québec Holdings, Inc.", "operational_control": "No"}
+                                          "financial_control": None, "included": "Yes"}  # Included; nothing was quoted about operational control
+    corrected = {**row["suggestion"]["value"], "name": "Café Québec Holdings, Inc.", "included": "No"}
     edited = act(eid, row["field_id"], "edit", {"value": corrected})
     assert edited.status_code == 200 and edited.json()["decision"]["value"] == corrected  # name correctable; Yes / No stays
     assert act(eid, row["field_id"], "edit", {"value": {**corrected, "equity_share_pct": 140}}).status_code == 422
