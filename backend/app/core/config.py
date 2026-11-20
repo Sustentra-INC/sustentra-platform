@@ -88,6 +88,9 @@ class Settings(BaseSettings):
     # render, so it is kept out of the brute-force bucket below.
     session_rate_limit: str = "600/minute"
 
+    # Per-user limit on creating tasks (assigning work also sends an email, so it is bounded).
+    task_create_rate_limit: str = "60/hour"
+
     # Per-IP limit shared by all /api/v1/auth/* endpoints except /me.
     auth_rate_limit: str = "100/5 minutes"
 

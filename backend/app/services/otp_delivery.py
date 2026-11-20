@@ -41,7 +41,7 @@ RESET_TTL_MINUTES = 15
 INVITE_TTL_HOURS = 24
 SENDER_NAME = "Sustentra Team"
 
-EmailTemplateName = Literal["login_otp", "invite", "password_reset"]
+EmailTemplateName = Literal["login_otp", "invite", "password_reset", "task_assigned", "task_completed"]
 
 
 @dataclass(frozen=True)
@@ -67,6 +67,17 @@ TEMPLATE_SPECS: dict[str, _TemplateSpec] = {
         text_template="password_reset.txt.j2",
         html_template="password_reset.html.j2",
     ),
+    # Task emails: the subject carries the task title, passed as variables["email_subject"].
+    "task_assigned": _TemplateSpec(
+        subject="A task was assigned to you in Sustentra",
+        text_template="task_assigned.txt.j2",
+        html_template="task_assigned.html.j2",
+    ),
+    "task_completed": _TemplateSpec(
+        subject="A task was completed in Sustentra",
+        text_template="task_completed.txt.j2",
+        html_template="task_completed.html.j2",
+    ),
 }
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent / "email_templates"
@@ -74,6 +85,8 @@ _TEMPLATE_DIR = Path(__file__).resolve().parent / "email_templates"
 OtpSender = Callable[[str, str], None]  # (to, code)
 ResetSender = Callable[[str, str], None]  # (to, link)
 InviteSender = Callable[[str, str], None]  # (to, invite_link)
+TaskEmailSender = Callable[[str, str, dict[str, Any]], bool]  # (template, to, variables) -> delivered?
+MAX_SUBJECT_CHARS = 160
 
 
 @dataclass(frozen=True)
@@ -123,7 +136,18 @@ def render_email(template: str, variables: dict[str, Any]) -> RenderedEmail:
     environment = _template_environment()
     text_body = environment.get_template(spec.text_template).render(**variables)
     html_body = environment.get_template(spec.html_template).render(**variables)
-    return RenderedEmail(subject=spec.subject, text_body=text_body, html_body=html_body)
+    return RenderedEmail(subject=_subject(spec, variables), text_body=text_body, html_body=html_body)
+
+
+def _subject(spec: _TemplateSpec, variables: dict[str, Any]) -> str:
+    """The template's subject, or variables["email_subject"] as ONE line (no header injection)."""
+    custom = variables.get("email_subject")
+    if not custom:
+        return spec.subject
+    line = " ".join(str(custom).split())  # newlines, tabs and runs of spaces -> single spaces
+    if len(line) > MAX_SUBJECT_CHARS:
+        line = line[: MAX_SUBJECT_CHARS - 1].rstrip() + "\u2026"
+    return line or spec.subject
 
 
 def _from_header(settings: Settings) -> str:
@@ -184,10 +208,11 @@ def send_email(template: str, to: str, variables: dict[str, Any]) -> None:
     _send_smtp(settings, to, rendered)
 
 
-def _deliver(template: str, to: str, variables: dict[str, Any]) -> None:
-    """Send one email. Runs in a background task; never raises."""
+def _deliver(template: str, to: str, variables: dict[str, Any]) -> bool:
+    """Send one email. Runs in a background task; never raises. True when it was handed to the transport."""
     try:
         send_email(template, to, variables)
+        return True
     except Exception as exc:  # noqa: BLE001 - delivery must never crash the request
         response = getattr(exc, "response", None)
         error_code = response.get("Error", {}).get("Code") if isinstance(response, dict) else None
@@ -203,6 +228,7 @@ def _deliver(template: str, to: str, variables: dict[str, Any]) -> None:
                 "recipient": mask_email(to),
             },
         )
+        return False
 
 
 def deliver_login_otp(to: str, code: str) -> None:
@@ -241,6 +267,18 @@ def deliver_invite(to: str, link: str) -> None:
             "sender_name": SENDER_NAME,
         },
     )
+
+
+def deliver_task_email(template: str, to: str, variables: dict[str, Any]) -> bool:
+    """Task assigned / completed email. Returns whether it was sent; never raises."""
+    if template not in ("task_assigned", "task_completed"):
+        raise ValueError(f"Not a task email template: {template!r}")
+    return _deliver(template, to, {**variables, "sender_name": SENDER_NAME})
+
+
+def get_task_email_sender() -> TaskEmailSender:
+    """FastAPI dependency; tests override it to capture task emails (or to fail them)."""
+    return deliver_task_email
 
 
 def get_otp_sender() -> OtpSender:

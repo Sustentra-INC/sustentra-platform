@@ -1,0 +1,19 @@
+Hello,
+
+{{ requested_by }} assigned you a task in Sustentra.
+
+Task: {{ title }}
+Assigned by: {{ requested_by }}
+{% if engagement %}
+Engagement: {{ engagement }}
+{% endif %}
+{% if due_date %}
+Due: {{ due_date }}
+{% endif %}
+
+Open in Sustentra:
+{{ link }}
+
+You are receiving this because you are a member of this organization in Sustentra. Document contents are never included in emails.
+
+- {{ sender_name }}

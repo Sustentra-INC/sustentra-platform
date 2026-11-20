@@ -40,3 +40,13 @@ def session_key(request: Request) -> str:
 
 
 session_rate_limit = limiter.limit(lambda: get_settings().session_rate_limit, key_func=session_key)
+
+
+def user_key(request: Request) -> str:
+    """Rate-limit key for actions by a signed-in user: their id (set by get_current_user), else the IP."""
+
+    user_id = getattr(request.state, "user_id", None)
+    return f"user:{user_id}" if user_id else f"ip:{get_remote_address(request)}"
+
+
+task_create_rate_limit = limiter.limit(lambda: get_settings().task_create_rate_limit, key_func=user_key)
