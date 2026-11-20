@@ -45,10 +45,10 @@ describe("the AI explanation popover", () => {
     expect(within(dialog).getByText("operational control approach")).toBeInTheDocument();
     expect(within(dialog).getByText("The wording matched: 'operational control' → Operational Control.")).toBeInTheDocument();
     expect(within(dialog).getByText(/Start date implied/)).toBeInTheDocument();
-    expect(within(dialog).getByText(/Read by Sustentra's AI on Nov 11, 2026/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Read by Sustentra's AI · Nov 11, 2026/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: "GHG report.pdf, page 4" }));
     expect(onOpen).toHaveBeenCalledWith("d1", 4);
-    expect(document.body.textContent).not.toMatch(/Claude/);
+    expect(document.body.textContent).not.toMatch(/Claude|model-x/);
   });
 
   it("opens with Enter, closes with Escape and gives focus back to the button", () => {

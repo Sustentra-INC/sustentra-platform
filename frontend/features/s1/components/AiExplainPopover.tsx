@@ -58,7 +58,7 @@ export function AiExplainPopover({
   const items = explanation.items;
   const many = items.length > 1;
   const tag = (label: string | null) => (many && label ? <strong>{label}: </strong> : null);
-  const read = AI_EXPLAIN.readBy(when(explanation.read_at), explanation.model);
+  const read = AI_EXPLAIN.readBy(when(explanation.read_at));
 
   return (
     <span
@@ -147,7 +147,7 @@ export function AiExplainPopover({
               <p>{AI_EXPLAIN.noChecks}</p>
             )}
           </section>
-          {explanation.read_at || explanation.model ? <p className="s1-explain__foot">{read}</p> : null}
+          {explanation.read_at ? <p className="s1-explain__foot">{read}</p> : null}
         </span>
       ) : null}
     </span>

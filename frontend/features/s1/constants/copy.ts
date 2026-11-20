@@ -44,8 +44,7 @@ export const AI_EXPLAIN = {
   implied: "Implied",
   noChecks: "No further checks are recorded for this suggestion.",
   noEvidence: "No quote is recorded for this suggestion.",
-  readBy: (when: string, model?: string | null) =>
-    `Read by Sustentra's AI${when ? ` on ${when}` : ""}${model ? ` (model ${model})` : ""}`,
+  readBy: (when: string) => `Read by Sustentra's AI${when ? ` \u00b7 ${when}` : ""}`,
   dialog: "Why Sustentra's AI suggested this",
 } as const;
 
