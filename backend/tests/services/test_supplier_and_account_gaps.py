@@ -49,7 +49,11 @@ def _supplier(layout: list[tuple[str, float, float, float, float]], targets: lis
 @pytest.mark.parametrize(("first", "second", "full"), [
     ("RAINIER SOUND", "POWER & LIGHT", "RAINIER SOUND POWER & LIGHT"),
     ("RAINIER SÖUND", "POWER & LIGHT", "RAINIER SÖUND POWER & LIGHT"),
-    ("SIERRA BASIN", "ENERGY CO", "SIERRA BASIN ENERGY CO"),
+    ("SIERRA BASIN", "UTILITIES", "SIERRA BASIN UTILITIES"),
+    ("GRAND VALLEY", "GAS & ELECTRIC", "GRAND VALLEY GAS & ELECTRIC"),
+    ("PUGET LAKE", "LIGHT & POWER", "PUGET LAKE LIGHT & POWER"),
+    ("COLUMBIA RIVER", "WATER & POWER", "COLUMBIA RIVER WATER & POWER"),
+    ("EAST COUNTY", "UTILITY DISTRICT", "EAST COUNTY UTILITY DISTRICT"),
     ("MÜLLER 東京", "UTILITIES", "MÜLLER 東京 UTILITIES"),
 ])
 def test_a_letterhead_name_on_two_lines_is_read_whole(electric: list[dict], first: str, second: str, full: str) -> None:
@@ -58,11 +62,24 @@ def test_a_letterhead_name_on_two_lines_is_read_whole(electric: list[dict], firs
     assert _supplier(layout, electric) == full
 
 
-@pytest.mark.parametrize("second", ["Natural gas service", "PO BOX 3310 TACOMA", "100 MAIN STREET", "ACCOUNTS PAYABLE 98401"])
+@pytest.mark.parametrize("second", [
+    "Natural gas service", "PO BOX 3310 TACOMA", "100 MAIN STREET", "ACCOUNTS PAYABLE 98401",
+    "ACME MANUFACTURING CO",           # the customer's name block
+    "BILLING DEPARTMENT", "NATURAL GAS SERVICE", "ENERGY FOR LIFE", "CUSTOMER CARE", "NORTHGATE PROVISIONS INC",
+    "DEPT OF ACCOUNTS", "MÜLLER KÄSEREI LLC", "POWER & LIGHT SERVICES", "ELECTRIC CORP",
+])
 def test_a_tagline_an_address_or_a_digit_line_under_the_name_is_not_part_of_it(electric: list[dict], second: str) -> None:
     layout = _electric_bill([("RAINIER SOUND", 0.085, 0.045, 0.2, 0.02), (second, 0.085, 0.07, 0.2, 0.014)])
 
     assert _supplier(layout, electric) == "RAINIER SOUND"
+
+
+def test_a_second_line_more_than_half_a_line_below_does_not_join(electric: list[dict]) -> None:
+    apart = _electric_bill([("RAINIER SOUND", 0.085, 0.045, 0.2, 0.02), ("POWER & LIGHT", 0.085, 0.085, 0.2, 0.014)])
+    touching = _electric_bill([("RAINIER SOUND", 0.085, 0.045, 0.2, 0.02), ("POWER & LIGHT", 0.085, 0.07, 0.2, 0.014)])
+
+    assert _supplier(apart, electric) == "RAINIER SOUND"
+    assert _supplier(touching, electric) == "RAINIER SOUND POWER & LIGHT"
 
 
 def test_a_name_that_already_ends_in_an_organisation_word_takes_nothing_from_below(electric: list[dict]) -> None:
@@ -187,7 +204,7 @@ def test_a_fleet_statements_supplier_is_the_issuer_and_its_account_the_labelled_
     for fields in records.values():
         assert fields["merchant_or_supplier"] == "QUILLFIELD FLEET CARD SERVICES – Zürich"
         assert fields["account_number"] == "QF-6620-1187"  # not the card numbers 4471, 4497
-    assert [records[i]["card_number"] for i in sorted(k for k in records if k is not None)] == ["4471", "4497"]
+    assert [records[i]["card_number"] for i in sorted(k for k in records if k is not None)] == ["****4471", "****4497"]
 
 
 def test_the_issuer_is_on_by_default_and_a_card_is_its_own_field_only_on_a_card_statement(mobile: list[dict]) -> None:
@@ -274,3 +291,101 @@ def test_with_the_issuer_switch_off_a_fleet_statement_keeps_each_transactions_me
     assert {r["merchant_or_supplier"] for r in records.values()} == {
         "Puyallup Express Fuel, Puyallup WA", "Lakewood Corner Fuel, Lakewood WA"}
     assert {r["account_number"] for r in records.values()} == {"4471", "4497"}
+
+
+# --- fix round 1 of #289: vendors, forwarded mail, cards ------------------------------------------------------
+@pytest.mark.parametrize("footer", [
+    "\u00a9 Oracle Utilities", "\u00a9 2025 Itron Energy Inc.", "Powered by Opower Energy Co.", "Built by Zuora Systems Inc.",
+    "Developed by Hansen Software Inc.", "\u00a9 2025 Landis Power Co. All rights reserved",
+    "\u00a9 2025 Müller Cloud Platform Inc. All rights reserved", "\u00a9 2025 Bidgely Technologies Inc.",
+    "Data exported 07/08/2025 from Oracle Utilities Co. portal",
+])
+def test_a_software_vendor_in_a_footer_is_never_the_supplier(gas: list[dict], footer: str) -> None:
+    assert _value(_gas(_export(footer), gas), "supplier_name") is None
+
+
+@pytest.mark.parametrize("line", ["Powered by Itron Energy Inc.", "Built by SAP Utilities Co.", "\u00a9 Oracle Utilities Co."])
+def test_a_vendor_line_at_the_top_is_not_a_letterhead(gas: list[dict], line: str) -> None:
+    assert _value(_gas(_export("Page 1 of 1", head=[line]), gas), "supplier_name") is None
+
+
+def test_a_footer_name_is_the_last_resort_and_flagged_low_confidence(gas: list[dict]) -> None:
+    footer = "Data exported 07/08/2025 from Sierra Basin Energy Co. MyAccount portal"
+    candidate = _gas(_export(footer), gas)["supplier_name"]
+
+    assert candidate["normalized_value"] == "Sierra Basin Energy Co."
+    assert candidate["confidence"] < 0.5  # under the review threshold: a reviewer confirms it
+
+
+def test_a_from_header_ranks_above_a_footer(electric: list[dict]) -> None:
+    lines = _email_bill("From: Rainier Sound Power & Light <ebill@rainiersoundpower.example>", [])
+    lines.append("\u00a9 2025 Sierra Basin Energy Co. All rights reserved")
+
+    assert _value(_email(lines, electric), "supplier_name") == "Rainier Sound Power & Light"
+
+
+@pytest.mark.parametrize("marker", ["Subject: Fwd: Your April 2025 electric statement", "---------- Forwarded message ----------",
+                                    "-----Original Message-----"])
+def test_the_from_header_of_a_forwarded_email_is_not_the_supplier(electric: list[dict], marker: str) -> None:
+    lines = _email_bill("From: Maria Müller Energy Co <maria@northgateprovisions.example>", [])
+    lines.insert(2, marker)
+
+    assert _value(_email(lines, electric), "supplier_name") is None
+
+
+def test_a_from_name_that_is_the_customer_is_not_the_supplier(electric: list[dict]) -> None:
+    lines = _email_bill("From: Northgate Provisions Inc <ap@northgateprovisions.example>", [])
+
+    assert _value(_email(lines, electric), "supplier_name") is None
+
+
+# cards: always "****" and the last four digits of the card's own digits, whatever the length
+def _card_statement(card: str) -> list[tuple[str, float, float, float, float]]:
+    layout = _fleet()
+    return [("4471" if row[0] == "4471" else row[0], *row[1:]) if row[0] != "4471" else (card, *row[1:]) for row in layout]
+
+
+@pytest.mark.parametrize(("card", "masked"), [
+    ("4111222233334", "****3334"),            # 13 digits
+    ("41112222333344", "****3344"),           # 14 digits (Diners)
+    ("4111222233334444", "****4444"),         # 16
+    ("4111 2222 3333 4444", "****4444"),
+    ("4111-2222-3333-4444-123", "****4444"),  # a grouped number with a trailing group: its own last four, not 4123
+    ("4111 2222 3333 4444 12", "****4444"),
+    ("****0417", "****0417"), ("4471", "****4471"), ("x-4471", "****4471"),
+])
+def test_a_card_is_stored_as_stars_and_its_own_last_four_digits(mobile: list[dict], card: str, masked: str) -> None:
+    records = _records(_card_statement(card), mobile)
+
+    first = records[1]
+    assert first["card_number"] == masked
+    if len(card.replace(" ", "").replace("-", "")) > 8:
+        assert card not in str(records) and card.replace(" ", "") not in str(records)  # the full number is nowhere
+
+
+@pytest.mark.parametrize("card", ["4111222233334", "41112222333344", "4111222233334444", "4111 2222 3333 4444 123"])
+def test_a_card_number_is_masked_in_the_context_label_and_snippet_too(mobile: list[dict], card: str) -> None:
+    outcome = MobileCombustionExtractor().extract(_measured_output(_card_statement(card)), mobile, "EV-1")
+
+    for candidate in outcome.candidates:
+        for text in (candidate["raw_value"], candidate["normalized_value"], candidate.get("display_label"),
+                     *[v for v in candidate["source_reference"].values() if isinstance(v, str)]):
+            assert not isinstance(text, str) or card not in text, (candidate["field_name"], text)
+            assert not isinstance(text, str) or card.replace(" ", "") not in text.replace(" ", "").replace("-", "")
+
+
+def test_a_document_that_is_not_a_card_statement_gets_no_card_placeholder(mobile: list[dict]) -> None:
+    receipt = MobileCombustionExtractor().extract(
+        _text_output("ROUTE 9 FUEL STOP ÅRE\nDiesel 12.457 G @ $3.459/G\nCard ****1234\n"), mobile, "EV-1")
+    statement = MobileCombustionExtractor().extract(_measured_output(_fleet()), mobile, "EV-1")
+
+    assert "card_number" not in {c["field_name"] for c in receipt.candidates}
+    assert "card_number" in {c["field_name"] for c in statement.candidates}
+
+
+def test_masked_card_helper() -> None:
+    from backend.app.services.mobile_combustion_extractor import masked_card, mask_card_numbers
+
+    assert masked_card("no digits here") is None
+    assert masked_card("4111-2222-3333-4444-12") == "****4444"
+    assert mask_card_numbers("paid with 41112222333344 and 4111 2222 3333 4444 12") == "paid with ****3344 and ****4444"

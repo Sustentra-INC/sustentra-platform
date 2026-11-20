@@ -185,7 +185,7 @@ PRODUCT_HEADERS = ("product", "description", "fuel", "fuel type", "grade", "fuel
 
 # Card-number shapes only: 15-19 contiguous digits, or 4-4-4-4(-3) groups with one
 # separator. Column-joined text ("03/02/2026  1012  4471 2209") is not a card.
-_PAN_RE = re.compile(r"(?<![\d/.-])(?:\d{15,19}|\d{4}([ -])\d{4}\1\d{4}\1\d{4}(?:\1\d{1,3})?)(?![\d/.-])")
+_PAN_RE = re.compile(r"(?<![\d/.-])(?:\d{13,19}|\d{4}([ -])\d{4}\1\d{4}\1(\d{4})(?:\1\d{1,3})?)(?![\d/.-])")
 _RECEIPT_QTY_RE = re.compile(
     r"(?<![\d.,])(?P<qty>\d{1,4}(?:[.,]\d{1,3}))\s*(?P<unit>gallons?|gals?|g|litres?|liters?|ltrs?|l|gge|dge)\b"
     r"\s*(?:@|x\b|at\b)",
@@ -238,7 +238,25 @@ def mask_card_numbers(text: Any) -> Any:
 
     if not isinstance(text, str):
         return text
-    return _PAN_RE.sub(lambda m: "****" + re.sub(r"\D", "", m.group(0))[-4:], text)
+    return _PAN_RE.sub(lambda m: "****" + _last4(m), text)
+
+
+def _last4(match: re.Match[str]) -> str:
+    """The last four digits of a card number: the fourth group of a grouped number (a trailing group is not part of
+    the card), otherwise the last four digits of the run."""
+
+    return match.group(2) if match.group(2) else re.sub(r"\D", "", match.group(0))[-4:]
+
+
+def masked_card(text: str) -> str | None:
+    """A card as "****" and its last four digits, whatever its length ("4471", "****0417", a 13-, 14- or 16-digit
+    number, a grouped one with a trailing group); None when the text holds no digits."""
+
+    found = _PAN_RE.search(text)
+    if found is not None:
+        return "****" + _last4(found)
+    digits = re.sub(r"\D", "", text)
+    return "****" + digits[-4:] if digits else None
 
 
 class MobileCombustionExtractor(StationaryCombustionExtractor):
@@ -357,6 +375,10 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
             record_candidates: list[dict] = []
             for target in targets:
                 field_id = str(target.get("field_id") or "")
+                if field_id == "card_number" and not (
+                        self.CARD_STATEMENT_AS_ISSUER and record is not None and "card" in record.extra
+                        and document.get("issuer") is not None):
+                    continue  # optional and display-only: a placeholder only where there is a card to show
                 record_candidates.append(self._mobile_candidate(
                     target, field_id, record, values, document, normalized_fuel, fuel_loc, document_id,
                     evidence_id, record_key, record_index, parser_output))
@@ -369,8 +391,11 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
         for candidate in candidates:  # never keep full card numbers anywhere
             candidate["raw_value"] = mask_card_numbers(candidate["raw_value"])
             candidate["normalized_value"] = mask_card_numbers(candidate["normalized_value"])
+            candidate["display_label"] = mask_card_numbers(candidate.get("display_label"))
             ref = candidate["source_reference"]
-            ref["text_snippet"] = mask_card_numbers(ref.get("text_snippet"))
+            for key in ("text_snippet", "context"):
+                if key in ref:
+                    ref[key] = mask_card_numbers(ref.get(key))
         return ExtractionOutcome(candidates=candidates, records=len(record_list) if records else 0)
 
     # ---------------------------------------------------------------------------------
@@ -411,8 +436,6 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
         located = record.extra.get(column) if record is not None else None
         statement = (self.CARD_STATEMENT_AS_ISSUER and record is not None and "card" in record.extra
                      and document.get("issuer") is not None)
-        if field_id == "card_number" and not statement:
-            return self._missing(target, *args)  # a card is its own field only on a card statement
         if statement and field_id == "merchant_or_supplier":
             located = document["issuer"]  # the card issuer, not the station of each transaction
         elif statement and field_id == "fueling_location":
@@ -422,7 +445,14 @@ class MobileCombustionExtractor(StationaryCombustionExtractor):
         if located is None:
             located = document.get(field_id)
         masked: list[str] = []
-        if located is not None and field_id in ("account_number", "card_number") and _PAN_RE.search(located.raw):
+        if located is not None and field_id == "card_number":
+            card = masked_card(located.raw)  # always "****" and the card's own last four digits
+            if card is None:
+                return self._missing(target, *args)
+            located = Located(card, located.cells, located.row, located.confidence, located.label_cell,
+                              context=mask_card_numbers(located.context))
+            masked.append("card_number_masked")
+        elif located is not None and field_id == "account_number" and _PAN_RE.search(located.raw):
             masked.append("card_number_masked")
         candidate = self._candidate_for_text(target, located, *args, parser_output, field_id)
         candidate["validation_flags"].extend(masked)
