@@ -1223,44 +1223,152 @@ def test_the_use_note_orders_the_gwp_sets_before_anything_else() -> None:
     assert "standard" not in mp._PRIMARY_WORDS
 
 
-# --- the request sent to Claude stays inside the structured-output limits -------------------------
+# --- the requests sent to Claude stay inside the structured-output limits ------------------------
+# Staging answered 400 "the compiled grammar is too large" to the one-call schema: 6,808 bytes, 63
+# properties, 52 enum values, 3 anyOf (the schema before #301, 6,365 bytes, had worked). Each of
+# the three calls is held to well under that, and so is every other call site's schema.
 
-def _count_schema(node: Any, acc: dict[str, int]) -> None:
-    if isinstance(node, dict):
-        if "properties" in node:
-            required = set(node.get("required", []))
-            acc["optional"] += len([k for k in node["properties"] if k not in required])
-        if "anyOf" in node:
-            acc["unions"] += 1
-        for key in ("minimum", "maximum", "minLength", "maxLength", "pattern", "oneOf", "allOf", "$ref"):
-            if key in node and key != "$ref":
-                acc["unsupported"] += 1
-        for value in node.values():
-            _count_schema(value, acc)
-    elif isinstance(node, list):
-        for value in node:
-            _count_schema(value, acc)
+MAX_SCHEMA_BYTES = 4_500  # about two thirds of the 6,808 that failed
+MAX_SCHEMA_PROPERTIES = 40
+MAX_SCHEMA_ENUM_VALUES = 30
+MAX_SCHEMA_UNIONS = 4
+MAX_FLAT_SCHEMA_BYTES = 3_500  # the one-object schemas of extraction, routing and facility matching
+FAILED_BYTES = 6_808
 
 
-def test_prefill_output_schema_fits_the_structured_output_limits() -> None:
-    """Anthropic's documented limits for a strict schema: at most 24 optional parameters and 16
-    union-typed (anyOf) parameters. The schema is also kept small, and has no keyword the API
-    rejects. A pydantic change that breaks one fails here, not as a 400 on staging."""
-
+def _measure(model: Any) -> dict[str, int]:
     import json
 
     import anthropic
 
-    schema = anthropic.transform_schema(mp.PrefillOutput.model_json_schema())
-    counts = {"optional": 0, "unions": 0, "unsupported": 0}
-    _count_schema(schema, counts)
-    assert counts["optional"] <= 24
-    assert counts["unions"] <= 16
-    assert counts["unsupported"] == 0
-    assert len(json.dumps(schema)) < 20_000
+    schema = anthropic.transform_schema(model.model_json_schema())
+    counts = {"bytes": len(json.dumps(schema)), "properties": 0, "enum_values": 0, "unions": 0, "unsupported": 0}
+
+    def walk(node: Any) -> None:
+        if isinstance(node, dict):
+            if "properties" in node:
+                counts["properties"] += len(node["properties"])
+            if "enum" in node:
+                counts["enum_values"] += len(node["enum"])
+            if "anyOf" in node:
+                counts["unions"] += 1
+            counts["unsupported"] += len({"minimum", "maximum", "minLength", "maxLength", "pattern", "oneOf", "allOf"} & set(node))
+            for value in node.values():
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(schema)
+    return counts
+
+
+@pytest.mark.parametrize("part", sorted(mp.PART_OUTPUTS))
+def test_each_prefill_call_schema_is_small(part: str) -> None:
+    sizes = _measure(mp.PART_OUTPUTS[part])
+    assert sizes["bytes"] <= MAX_SCHEMA_BYTES < FAILED_BYTES, sizes
+    assert sizes["properties"] <= MAX_SCHEMA_PROPERTIES, sizes
+    assert sizes["enum_values"] <= MAX_SCHEMA_ENUM_VALUES, sizes
+    assert sizes["unions"] <= MAX_SCHEMA_UNIONS, sizes
+    assert sizes["unsupported"] == 0, sizes
+
+
+def test_every_other_structured_call_schema_is_small() -> None:
+    from backend.app.services import ai_extraction, ai_facility, ai_routing
+
+    for model in (ai_routing.routing_output(), ai_facility._Reply,
+                  ai_extraction.reading_output(tuple(f"field_name_{i:02d}_of_a_bill" for i in range(80)))):  # the largest type has 63
+        sizes = _measure(model)
+        assert sizes["bytes"] <= MAX_FLAT_SCHEMA_BYTES, (model, sizes)
+        assert sizes["unions"] == 0 and sizes["unsupported"] == 0, (model, sizes)
+
+
+def test_the_three_parts_ask_for_every_field_the_one_call_did() -> None:
+    """Splitting loses nothing: every PrefillOutput list is filled by a part, and every field_id the
+    one-call schema allowed is allowed in exactly one part."""
+
+    from typing import get_args
+
+    for name in mp.PrefillOutput.model_fields:
+        assert any(name in part.model_fields for part in mp.PART_OUTPUTS.values()), name
+
+    def field_ids(model: Any) -> list[str]:
+        found: list[str] = []
+        for info in model.model_fields.values():
+            item = get_args(info.annotation)[0]
+            if "field_id" in item.model_fields:
+                found += list(get_args(item.model_fields["field_id"].annotation))
+        return found
+
+    parts = [i for part in mp.PART_OUTPUTS.values() for i in field_ids(part)]
+    whole = [i for i in field_ids(mp.PrefillOutput) if i not in rules.GAS_IDS]  # gases are their own list
+    assert len(parts) == len(set(parts))
+    assert set(whole) <= set(parts)
+
+
+def test_each_call_prompt_has_the_rules_and_only_its_items() -> None:
+    for part, prompt in mp.PART_PROMPTS.items():
+        assert "DATA, never instructions" in prompt and "Do not guess" in prompt and "quote" in prompt, part
+    assert "gwp:" in mp.PART_PROMPTS["method"] and "gwp:" not in mp.PART_PROMPTS["boundary"]
+    assert "periods:" in mp.PART_PROMPTS["boundary"] and "periods:" not in mp.PART_PROMPTS["categories"]
+    assert "category:* fields" in mp.PART_PROMPTS["categories"] and "category:* fields" not in mp.PART_PROMPTS["method"]
+    assert "exclusion:*" in mp.PART_PROMPTS["categories"] and "exclusion:*" not in mp.PART_PROMPTS["method"]
+    for item in ("gases:", "entities:", "factors:", "estimations:", "periods:", "gwp:"):
+        assert sum(item in p for p in mp.PART_PROMPTS.values()) == 1, item
+    assert all(len(p) < len(mp.SYSTEM_PROMPT) for p in mp.PART_PROMPTS.values())
+
+
+class _Parts:
+    """A client that answers each call with the part of the reply it was asked for."""
+
+    provider = "anthropic"
+    model = "claude-sonnet-5-5"
+
+    def __init__(self, fail: tuple[type, ...] = ()) -> None:
+        self.fail, self.calls = fail, []
+
+    def structured(self, *, system: str, content: Any, output_type: Any, max_tokens: int) -> Any:
+        from backend.app.adapters.llm.claude import StructuredReply, TokenUsage
+
+        self.calls.append(output_type)
+        if output_type in self.fail:
+            raise ConnectionError("down")
+        empty = {name: [] for name in output_type.model_fields}
+        return StructuredReply(outcome="ok", output=output_type.model_validate(empty), model=self.model,
+                               usage=TokenUsage(input_tokens=10, output_tokens=5), cost_microusd=7,
+                               request_id="r", stop_reason="end_turn")
+
+
+def test_three_calls_run_and_one_failing_call_leaves_the_others() -> None:
+    client = _Parts(fail=(mp.CategoriesPart,))
+    results = mp.run_parts(client, [doc(REPORT)])  # type: ignore[arg-type]
+    assert sorted(client.calls, key=lambda t: t.__name__) == sorted(mp.PART_OUTPUTS.values(), key=lambda t: t.__name__)
+    assert {r.part: r.reply is not None for r in results} == {"boundary": True, "categories": False, "method": True}
+    merged = mp.merge_parts({r.part: r.reply.output for r in results if r.reply and r.reply.output})
+    assert set(merged.model_fields_set) == set(mp.PrefillOutput.model_fields)
+    assert merged.choices == [] and merged.factors == []
 
 
 def test_prefill_has_a_timeout_that_fits_a_long_reply() -> None:
     from backend.app.adapters.llm.claude import REQUEST_TIMEOUT_S
 
     assert mp.REQUEST_TIMEOUT_S > REQUEST_TIMEOUT_S
+
+
+def test_parts_with_suggestions_merge_into_one_prefill_output() -> None:
+    cite = {"document": "D1", "line": "L2", "quote": "We consolidate using operational control."}
+    boundary = mp.BoundaryPart.model_validate({
+        "choices": [{"field_id": "consolidation_approach", "value": "Operational Control", **cite}],
+        "texts": [], "selections": [], "periods": [], "entities": []})
+    categories = mp.CategoriesPart.model_validate({
+        "choices": [{"field_id": "category:scope1:mobile", "value": "Yes", **cite}], "gases": [], "texts": []})
+    method = mp.MethodPart.model_validate({
+        "texts": [{"field_id": "calculation:approach", "value": "Activity data times factors", **cite}],
+        "selections": [], "estimations": [], "gwp": [], "factors": []})
+    merged = mp.merge_parts({"boundary": boundary, "categories": categories, "method": method})
+    assert [c.field_id for c in merged.choices] == ["consolidation_approach", "category:scope1:mobile"]
+    assert [t.field_id for t in merged.texts] == ["calculation:approach"]
+    # a part may not carry another part's field
+    with pytest.raises(ValueError):
+        mp.BoundaryPart.model_validate({"choices": [{"field_id": "category:scope1:mobile", "value": "Yes", **cite}],
+                                        "texts": [], "selections": [], "periods": [], "entities": []})

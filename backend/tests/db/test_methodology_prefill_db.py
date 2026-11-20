@@ -59,14 +59,31 @@ class FakeClaude:
 
     def __init__(self, output: dict[str, Any] | None = None, outcome: str = "ok", fail: bool = False) -> None:
         self.output, self.outcome, self.fail, self.calls = output if output is not None else GOOD, outcome, fail, []
+        self.fail_parts: tuple[str, ...] = ()  # output model names whose call raises
+
+    @staticmethod
+    def _fits(output_type: Any, name: str, item: dict[str, Any]) -> bool:
+        """Whether this part may carry the item: its field_id (if any) is one the part allows."""
+
+        from typing import get_args
+
+        element = get_args(output_type.model_fields[name].annotation)[0]
+        if "field_id" not in element.model_fields:
+            return True
+        return item["field_id"] in get_args(element.model_fields["field_id"].annotation)
 
     def structured(self, *, system: str, content: Any, output_type: Any, max_tokens: int) -> StructuredReply[Any]:
         self.calls.append({"system": system, "content": content, "max_tokens": max_tokens})
+        if output_type.__name__ in self.fail_parts:
+            raise ConnectionError("this call's network is down")
         if self.fail:
             raise ConnectionError("the network is down")
-        parsed = output_type.model_validate(self.output) if self.outcome == "ok" else None
+        # The reply is asked for in three calls: each answers the part of the canned reply it names.
+        part = {k: [i for i in v if self._fits(output_type, k, i)] for k, v in self.output.items()
+                if k in output_type.model_fields}
+        parsed = output_type.model_validate(part) if self.outcome == "ok" else None
         return StructuredReply(outcome=self.outcome, output=parsed, model="claude-sonnet-5-5",  # type: ignore[arg-type]
-                               usage=TokenUsage(input_tokens=2_000, output_tokens=300), cost_microusd=COST,
+                               usage=TokenUsage(input_tokens=2_000, output_tokens=300), cost_microusd=COST // 3,  # three calls make one reply's cost
                                request_id="req-9", stop_reason="refusal" if self.outcome == "refused" else "end_turn")
 
 
@@ -121,14 +138,14 @@ def test_prefill_stores_verified_suggestions_and_records_the_call(claude: FakeCl
     assert {c["field_id"] for c in full["catalog"]} >= {r["field_id"] for r in rows}
     [row] = ledger()
     assert (row["outcome"], row["feature"], row["provider"], row["request_id"]) == ("ok", "methodology_prefill", "anthropic", "req-9")
-    assert (row["input_tokens"], row["output_tokens"], row["cost_microusd"]) == (2_000, 300, COST)
+    assert (row["input_tokens"], row["output_tokens"], row["cost_microusd"]) == (6_000, 900, COST)
     assert str(row["engagement_id"]) == engagement["id"] and row["created_by"] is not None
     [event] = prefill_events()
     assert json.loads(event["metadata"]) == {"outcome": "ok", "documents": 1, "suggested": 5, "dropped": 1,
                                              "kept_reviewer_decision": 0, "cost_usd": 0.012345}
     assert "operational control" not in event["metadata"]
-    assert len(claude.calls) == 1 and "DATA, never instructions" in claude.calls[0]["system"]
-    assert "L2: We consolidate" in claude.calls[0]["content"]
+    assert len(claude.calls) == 3 and all("DATA, never instructions" in c["system"] for c in claude.calls)
+    assert all("L2: We consolidate" in c["content"] for c in claude.calls)
 
 
 def test_a_reviewers_decision_is_never_overwritten(claude: FakeClaude) -> None:
@@ -268,7 +285,7 @@ def test_the_cap_refuses_before_a_call_and_only_this_months_spend_counts(claude:
     before = len(ledger())
     refused = prefill(eid)
     assert refused.status_code == 409 and "limit" in refused.json()["detail"]
-    assert len(claude.calls) == 1 and len(ledger()) == before
+    assert len(claude.calls) == 3 and len(ledger()) == before
 
 
 def test_another_orgs_spend_does_not_count(claude: FakeClaude) -> None:
@@ -289,6 +306,38 @@ def test_a_call_that_ends_badly_is_recorded_and_stores_nothing(claude: FakeClaud
     assert row["outcome"] == outcome and row["cost_microusd"] == COST
     assert json.loads(prefill_events()[0]["metadata"])["outcome"] == outcome
     assert all(f["suggestion"] is None for f in review(eid).json()["fields"])
+
+
+def test_one_failing_call_keeps_the_others_and_names_the_section(claude: FakeClaude) -> None:
+    eid = create()["id"]
+    claude.fail_parts = ("CategoriesPart",)
+    response = prefill(eid)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [f["section"] for f in body["failed_sections"]] == ["Categories, gases and exclusions"]
+    assert "ConnectionError" in body["failed_sections"][0]["reason"]
+    assert record(eid, "consolidation_approach")["suggestion"]["value"] == "Operational Control"  # call (a) kept
+    assert record(eid, "category:scope1:stationary")["suggestion"] is None  # call (b) gave nothing
+    [row] = ledger()
+    assert row["outcome"] == "ok" and row["cost_microusd"] == 2 * (COST // 3)  # only the answered calls are billed
+    assert json.loads(prefill_events()[0]["metadata"])["failed_sections"] == ["Categories, gases and exclusions"]
+
+
+def test_a_request_the_provider_rejects_names_the_reason(claude: FakeClaude, monkeypatch: pytest.MonkeyPatch) -> None:
+    import anthropic
+    import httpx2
+
+    eid = create()["id"]
+    response = httpx2.Response(400, request=httpx2.Request("POST", "https://api.anthropic.com/v1/messages"), json={
+        "type": "error", "error": {"type": "invalid_request_error", "message": "The compiled grammar is too large."}})
+
+    def reject(**kwargs: Any) -> Any:
+        raise anthropic.BadRequestError("bad", response=response, body=response.json())
+
+    monkeypatch.setattr(claude, "structured", reject)
+    result = prefill(eid)
+    assert result.status_code == 500 and "invalid_request_error: The compiled grammar is too large." in result.text
+    assert ledger() == []
 
 
 def test_a_failed_request_is_a_502_and_not_in_the_ledger(claude: FakeClaude) -> None:

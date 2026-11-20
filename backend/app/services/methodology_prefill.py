@@ -20,7 +20,8 @@ from __future__ import annotations
 import logging
 import re
 from collections import Counter
-from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -28,6 +29,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from backend.app.adapters.llm.claude import ClaudeClient, StructuredReply
 from backend.app.services import methodology_review as rules
 from backend.app.services.methodology_gwp import EMBEDDED, GENERAL, REFRIGERANTS, use_of
 from backend.app.services.ai_locator import (
@@ -47,7 +49,8 @@ FEATURE = "methodology_prefill"
 MAX_DOCUMENTS = 5
 MAX_LINES = 1_500
 MAX_CHARS = 150_000
-MAX_OUTPUT_TOKENS = 8_000
+MAX_OUTPUT_TOKENS = 8_000  # all three parts together
+PART_MAX_OUTPUT_TOKENS = 4_000  # one part
 # The call is not streamed, so the provider sends nothing until the whole reply is written and the
 # SDK's read timeout is the time to write it. Up to 8,000 tokens of structured output after reading
 # up to MAX_CHARS of documents takes well over the 90 s that fits the short extraction calls.
@@ -137,6 +140,99 @@ class PrefillOutput(_Strict):
     gwp: list[GwpSuggestion]
     entities: list[EntitySuggestion]
     factors: list[FactorSuggestion]
+
+
+# --- the three calls -----------------------------------------------------------------------------
+# One call for the whole reply made a compiled grammar the API refused ("the compiled grammar is too
+# large"). The reply is asked for in three smaller calls, each with its own output model; the
+# results are merged into one PrefillOutput, which is what ``verify`` reads. Each part names only the
+# fields it is asked for, so a part's field_id enum is small too. Keep every part small: the limits
+# are tested in tests/services/test_methodology_prefill.py.
+
+_BOUNDARY_TEXT = ("boundary:entities",)
+_EXCLUSION_TEXTS = tuple(i for i in _TEXT_IDS if i.startswith("exclusion:"))
+_CATEGORY_IDS = tuple(i for i in _CHOICE_IDS if i.startswith("category:"))
+_METHOD_TEXTS = tuple(i for i in _TEXT_IDS if i not in _BOUNDARY_TEXT and i not in _EXCLUSION_TEXTS)
+
+
+class _BoundaryChoice(_Cited):
+    field_id: Literal["consolidation_approach"]
+    value: Literal[rules.CONSOLIDATION_APPROACHES]  # type: ignore[valid-type]
+
+
+class _BoundaryText(_Cited):
+    field_id: Literal["boundary:entities"]
+    value: str
+
+
+class _ScopeSelection(_Cited):
+    field_id: Literal["scopes:covered"]
+    option: Literal["Scope 1", "Scope 2", "Scope 3"]
+    wording: str
+
+
+class _CategoryChoice(_Cited):
+    field_id: Literal[_CATEGORY_IDS]  # type: ignore[valid-type]
+    value: Literal["Yes", "No", "Not detected"]
+
+
+class _ExclusionText(_Cited):
+    field_id: Literal[_EXCLUSION_TEXTS]  # type: ignore[valid-type]
+    value: str
+
+
+class _MethodText(_Cited):
+    field_id: Literal[_METHOD_TEXTS]  # type: ignore[valid-type]
+    value: str
+
+
+class _MethodSelection(_Cited):
+    field_id: Literal["scope2:instruments", "calculation:source_records"]
+    option: str
+    wording: str
+
+
+class BoundaryPart(_Strict):
+    """Call (a): the organizational boundary, the period, the scopes covered and the entities."""
+
+    choices: list[_BoundaryChoice]
+    texts: list[_BoundaryText]
+    selections: list[_ScopeSelection]
+    periods: list[PeriodSuggestion]
+    entities: list[EntitySuggestion]
+
+
+class CategoriesPart(_Strict):
+    """Call (b): the Scope 1 and 2 and biogenic categories, the gases and the exclusions."""
+
+    choices: list[_CategoryChoice]
+    gases: list[GasSuggestion]
+    texts: list[_ExclusionText]
+
+
+class MethodPart(_Strict):
+    """Call (c): emission factor sources, GWP, how emissions are calculated, estimation, records."""
+
+    texts: list[_MethodText]
+    selections: list[_MethodSelection]
+    estimations: list[EstimationSuggestion]
+    gwp: list[GwpSuggestion]
+    factors: list[FactorSuggestion]
+
+
+PART_OUTPUTS: dict[str, type[_Strict]] = {"boundary": BoundaryPart, "categories": CategoriesPart, "method": MethodPart}
+PART_LABELS = {"boundary": "Boundary, period, scopes and entities", "categories": "Categories, gases and exclusions",
+               "method": "Factors, GWP and calculation"}
+
+
+def merge_parts(parts: Mapping[str, _Strict]) -> PrefillOutput:
+    """The parts that came back, as one PrefillOutput (a part that failed contributes nothing)."""
+
+    merged: dict[str, list[Any]] = {name: [] for name in PrefillOutput.model_fields}
+    for part in parts.values():
+        for name in type(part).model_fields:
+            merged[name].extend(item.model_dump() for item in getattr(part, name))
+    return PrefillOutput.model_validate(merged)
 
 
 # --- dates printed in a quote ------------------------------------------------------------------
@@ -554,7 +650,7 @@ def set_without_horizon(quote: str, set_: str) -> bool:
     return set_named(quote, set_) and not any(set_has_horizon(quote, set_, h) for h in _HORIZON_TERMS)
 
 
-SYSTEM_PROMPT = """\
+_RULES = """\
 You help an assurance reviewer fill in the Methodology review of a greenhouse gas (GHG) inventory.
 You are given documents the company prepared (inventory reports, boundary statements, methodology
 documents), as numbered lines, and you propose what they state about the company's methodology.
@@ -573,19 +669,42 @@ Rules
   "operational control", or "AR5" / "Fifth Assessment"); at least 8 characters.
 - Cite documents by their alias (D1, D2, ...) and lines by their alias (L1, L2, ...), as shown.
 
-What the items mean
-- choices: for each field_id, one value.
+"""
+
+_ITEMS = {
+    "choice_boundary": """\
+- choices: field_id consolidation_approach, one value.
   consolidation_approach is the GHG Protocol approach used to set the organizational boundary:
   Equity Share, Financial Control or Operational Control.
+""",
+    "choice_categories": """\
+- choices: for each category field_id, one value.
   category:* fields say whether an emission category is included in the inventory: Yes (included),
   No (stated as not included or not applicable) or Not detected (the document does not address it,
   use this only when the document clearly lists the category's status as absent; otherwise omit).
   Scope 1 categories: stationary combustion, mobile combustion, process emissions, fugitive emissions.
   Scope 2: purchased electricity, heating, steam, cooling, each location-based and market-based.
   Biogenic: direct and indirect biogenic CO2.
+""",
+    "texts_exclusion": """\
+- texts: exclusion:* fields
+  (what is left out of the organizational boundary, of this inventory, or under a materiality
+  threshold, in the company's own words).
+""",
+    "texts_method": """\
+- texts: calculation:* fields (how emissions are calculated,
+  in one or two plain sentences), boundary:acquisitions (acquisitions, divestitures or other
+  structural changes during the period and how they are treated) and boundary:leased_space (how
+  leased space or leased assets are treated in the boundary). Include boundary:acquisitions and
+  boundary:leased_space only if a document states something about them; if it is silent, leave
+  them out.
+""",
+    "est": """\
 - estimations: how the company estimates missing or incomplete data, one entry per source type
   (for example utility invoices, meter readings, fuel records): the source type and the method in a
   few words. Each entry cites its own line. Leave it out if the documents do not say.
+""",
+    "sel": """\
 - selections: for the multi-select fields (field_id scope2:instruments, the contractual instruments the
   company uses for market-based Scope 2; calculation:source_records, the records its figures come
   from), one item per option the documents state, with the option exactly as listed (instruments:
@@ -595,6 +714,8 @@ What the items mean
   own line, and the quote must name the option. "wording" is the company's own words for it, copied
   from the quote, or "". Do not choose an option the documents do not mention, or say the company does
   not use.
+""",
+    "scopes": """\
 - scopes covered (selections with field_id scopes:covered): one item per scope the inventory covers,
   with the option exactly "Scope 1", "Scope 2" or "Scope 3", each citing its own line. Look for the
   row labels of the main emissions table or one sentence or list that names the scopes ("Scope 1",
@@ -604,10 +725,14 @@ What the items mean
   document says it is reported or covered. A scope the document calls excluded, outside the
   boundary, or only relevant is not covered: leave it out. Never choose "Not stated": if the
   documents name no scope, leave the field out. "wording" is the company's own label, or "".
+""",
+    "gases": """\
 - gases: for each greenhouse gas (field_id gas:co2, gas:ch4, gas:n2o, gas:hfcs, gas:pfcs, gas:sf6,
   gas:nf3) the document states, "Included" (the gas is covered by the inventory) or "Declared absent"
   (the document says the gas is not emitted or not applicable). The quote must name the gas. If a
   document does not say, leave the gas out: do not guess from the industry.
+""",
+    "periods": """\
 - periods: the inventory's reporting period: its start and end dates, each as YYYY-MM-DD. The end
   date must be printed in the quote, and so must the start (for example "January 1 to December 31,
   2024", or "1/1/2025 - 12/31/2025"), unless the document states only the end of a year ("for the
@@ -621,20 +746,16 @@ What the items mean
   and put the title line in title_line and its words in title_quote; otherwise title_line and
   title_quote are "". If the document shows several periods (such as
   the current and the prior year), give only the reporting year of the inventory. At most one.
-- texts: exclusion:* fields
-  (what is left out of the organizational boundary, of this inventory, or under a materiality
-  threshold, in the company's own words), calculation:* fields (how emissions are calculated,
-  in one or two plain sentences), boundary:acquisitions (acquisitions, divestitures or other
-  structural changes during the period and how they are treated) and boundary:leased_space (how
-  leased space or leased assets are treated in the boundary). Include boundary:acquisitions and
-  boundary:leased_space only if a document states something about them; if it is silent, leave
-  them out.
+""",
+    "gwp": """\
 - gwp: the Global Warming Potential set the company uses (IPCC assessment report AR4, AR5 or AR6)
   and the time horizon (20-year, 100-year or 500-year), or "Not stated" when the quote names the set
   and gives no horizon for it. If the report uses more than one set or horizon, give each one
   separately, each with its own quote; do not pick between them. applies_to is what that set is used
   for, in the company's words copied from the quote ("default", "embedded in the supplier factors"),
   or "".
+""",
+    "entities": """\
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
   equity share (percent, 0 to 100), financial control (percent, 0 to 100) and whether the company
   has operational control (Yes or No, or null: set it only when the quote says so, never guess; the
@@ -645,16 +766,64 @@ What the items mean
   included", "outside the boundary") gives no entity: it belongs to the exclusion texts. Name only
   entities the document names: a sentence that describes the boundary without naming an entity gives
   no entity, it goes in the text field boundary:entities.
+""",
+    "ent_text": """\
 - texts, field_id boundary:entities: the sentence (or sentences, as written, no more than 2000
   characters) in which the document says which entities, subsidiaries, sites or kinds of assets the
   boundary covers ("all offices where the company has full authority", "company-owned or leased
   buildings and vehicles"). The value is those words, copied from the quote. It must be the sentence
   that says what the boundary covers, never a sentence about what is left out ("excluded", "outside",
   "not included"). Leave it out if the document has no such sentence.
+""",
+    "factors": """\
 - factors: where the company's emission factors come from, per scope (scope1 or scope2): the
   database (for example the U.S. EPA GHG Emission Factors Hub, or eGRID for electricity) and its
   edition or year, "" if not stated. If the edition is given it must be printed in the quote.
-"""
+""",
+}
+
+# The sections each call is asked about, in the order the items are explained.
+_PART_ITEMS = {
+    "boundary": ("choice_boundary", "ent_text", "scopes", "periods", "entities"),
+    "categories": ("choice_categories", "gases", "texts_exclusion"),
+    "method": ("texts_method", "sel", "est", "gwp", "factors"),
+}
+
+
+def _prompt(names: Sequence[str]) -> str:
+    return _RULES + "What the items mean\n" + "".join(_ITEMS[name] for name in names)
+
+
+PART_PROMPTS = {part: _prompt(names) for part, names in _PART_ITEMS.items()}
+# Every item, as one prompt: what the three calls together are asked.
+SYSTEM_PROMPT = _prompt(tuple(dict.fromkeys(n for names in _PART_ITEMS.values() for n in names)))
+
+
+@dataclass(frozen=True)
+class PartResult:
+    """One of the three calls: its reply, or the reason it produced none."""
+
+    part: str
+    reply: StructuredReply[Any] | None = None
+    error: BaseException | None = None
+
+
+def run_parts(client: ClaudeClient, documents: Sequence[PrefillDocument]) -> list[PartResult]:
+    """Ask the three questions at once (one thread each) and say how each went. A call that raises
+    does not stop the others. Runs in a worker thread: the client is synchronous."""
+
+    content = render_documents(documents)
+
+    def ask(part: str) -> PartResult:
+        try:
+            reply = client.structured(system=PART_PROMPTS[part], content=content, output_type=PART_OUTPUTS[part],
+                                      max_tokens=PART_MAX_OUTPUT_TOKENS)
+        except Exception as exc:  # reported per part by the caller
+            return PartResult(part, error=exc)
+        return PartResult(part, reply=reply)
+
+    with ThreadPoolExecutor(max_workers=len(PART_OUTPUTS)) as pool:
+        return list(pool.map(ask, PART_OUTPUTS))
 
 
 def render_documents(documents: Sequence[PrefillDocument]) -> str:
@@ -1050,6 +1219,6 @@ def same_row_value(group: str, a: Any, b: Any) -> bool:
     return all(norm(str(a.get(k) or "")) == norm(str(b.get(k) or "")) for k in keys)
 
 
-__all__ = ["REQUEST_TIMEOUT_S", "FEATURE", "MAX_DOCUMENTS", "MAX_LINES", "MAX_CHARS", "MAX_OUTPUT_TOKENS", "NO_DOCUMENTS", "SYSTEM_PROMPT",
+__all__ = ["PartResult", "run_parts", "merge_parts", "PART_OUTPUTS", "PART_LABELS", "PART_PROMPTS", "PART_MAX_OUTPUT_TOKENS", "REQUEST_TIMEOUT_S", "FEATURE", "MAX_DOCUMENTS", "MAX_LINES", "MAX_CHARS", "MAX_OUTPUT_TOKENS", "NO_DOCUMENTS", "SYSTEM_PROMPT",
            "PrefillOutput", "PrefillDocument", "Verified", "candidate_documents", "read_documents",
            "render_documents", "verify", "same_row_value"]
