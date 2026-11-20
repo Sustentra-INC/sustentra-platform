@@ -8,6 +8,7 @@
  * Claude's prefill is a canned, verified answer: every suggestion carries a quote and a page
  * from a real fixture document, and nothing is ever pre-accepted.
  */
+import { explanationOf } from "../api/methodologyReview";
 import { demoError } from "./index";
 import {
   AI_MODEL,
@@ -545,7 +546,65 @@ function prefill(state: State) {
 
 const BASE = "/engagements/(?<id>[^/]+)/methodology-review";
 
+/** The demo's version of the assistant's Methodology tools (the live ones are backend/app/api/methodology_assistant.py):
+ * what is stored with each demo suggestion, and "reason not recorded" where the demo keeps none. */
+const WORDS = (text: string) => new Set(text.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+const STOP = new Set("why was were is are the a an and or of for to by in on at it its this that what which who how did does do suggested suggest suggestion ai sustentra s find found".split(" "));
+const overlap = (a: Set<string>, b: Set<string>) => [...a].filter((w) => !STOP.has(w) && b.has(w)).length;
+const NO_SUGGESTION = "No suggestion from Sustentra's AI is stored for that on this engagement. Say so plainly; do not guess a reason.";
+
+function assistantItem(state: State, r: Rec): Record<string, unknown> | null {
+  const suggestion = r.suggestion as Record<string, unknown> | null;
+  const d = state.defs.find((x) => x.fieldId === r.fieldId);
+  if (!suggestion || !d) return null;
+  const wire = listedRecord(state, r) as unknown as Parameters<typeof explanationOf>[0];
+  const { items, reason, reason_note, read_at } = explanationOf(wire)!;
+  const value = typeof suggestion.value === "string" ? suggestion.value : JSON.stringify(suggestion.value);
+  return {
+    field_id: r.fieldId,
+    field: d.label,
+    suggested_value: value,
+    review_status: statusOf(r),
+    ref: `doc:${String(suggestion.document_id)}`,
+    explanation: { reason, reason_note, read_at, items },
+  };
+}
+
 export const methodologyRoutes: DemoRoute[] = [
+  {
+    method: "GET",
+    path: new RegExp(`^/engagements/(?<id>[^/]+)/methodology-assistant/explain$`),
+    handle: ({ params, query }) => {
+      const state = stateFor(params.id);
+      const wanted = WORDS((query.get("q") ?? ""));
+      const byId = (query.get("field_id") ?? "");
+      const scored = state.records
+        .filter((r) => !r.removed && (byId ? r.fieldId === byId : true))
+        .map((r) => ({ item: assistantItem(state, r), r }))
+        .map(({ item, r }) => ({ item, score: byId ? 1 : item ? 2 * overlap(wanted, WORDS(String(item.field))) + overlap(wanted, WORDS(String(item.suggested_value))) : 0, r }))
+        .filter((x) => x.item && x.score > 0);
+      const top = Math.max(0, ...scored.map((x) => x.score));
+      const matches = scored.filter((x) => x.score === top).slice(0, 3).map((x) => x.item);
+      return clone(matches.length ? { matches } : { matches: [], note: NO_SUGGESTION });
+    },
+  },
+  {
+    method: "GET",
+    path: new RegExp(`^/engagements/(?<id>[^/]+)/methodology-assistant/summary$`),
+    handle: ({ params, query }) => {
+      const state = stateFor(params.id);
+      const document = (query.get("document") ?? "").toLowerCase();
+      const rows = state.records
+        .filter((r) => !r.removed)
+        .map((r) => ({ item: assistantItem(state, r), r }))
+        .filter(({ item }) => item && (!document || String((item.explanation as { items: { file_name: string }[] }).items[0].file_name).toLowerCase().includes(document)))
+        .map(({ item }) => {
+          const first = (item!.explanation as { reason: string | null; items: { file_name: string; location: string }[] });
+          return { field_id: item!.field_id, field: item!.field, suggested_value: item!.suggested_value, review_status: item!.review_status, ref: item!.ref, file: first.items[0].file_name, location: first.items[0].location, reason_recorded: first.reason !== null };
+        });
+      return clone(rows.length ? { suggestions: rows, count: rows.length } : { suggestions: [], count: 0, note: "Sustentra's AI has no stored suggestions here. Say so; do not guess." });
+    },
+  },
   {
     method: "GET",
     path: new RegExp(`^${BASE}$`),

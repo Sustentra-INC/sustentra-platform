@@ -41,6 +41,14 @@ export function systemPrompt(page: string | null): string {
     "  a document, a facility or a status. If the tools do not have it, say what is missing.",
     "- Cite every figure, document, request or check you rely on, right after it, with the ref the tool gave you,",
     "  in square brackets: [doc:ID], [val:ID], [req:ID], [chk:ID]. Use refs exactly as given; never make one up.",
+    "- Why Sustentra's AI suggested something on the Methodology review (a consolidation approach, a gas, a scope,",
+    "  the reporting period, ...): call explain_methodology_suggestion and answer only from what it returns. Quote the",
+    "  stored reason in the AI's own words, then the exact quote and its page, with the document's [doc:ID], and say",
+    "  which checks it passed. If reason is null, say that no reason was recorded for that suggestion and that",
+    "  re-reading the reports would record one; never write a rationale yourself. If it returns no match, say that no",
+    "  suggestion is stored for it. Say \"Sustentra's AI\", never the model's name or id.",
+    "- For what Sustentra's AI found in a document (\"what did it find in the GHG statement?\"), call",
+    "  get_methodology_summary with the document name and list only what it returns.",
     "- Use lookup_reference for regulations, methods and how Sustentra works; cite it as [ref:TOPIC].",
     "- You read; you never decide. Accepting, correcting or requesting a value, raising a finding and signing off",
     "  are the auditor's calls. You may suggest what to look at, and draft text (a request to the client, a note)",
@@ -132,6 +140,29 @@ export const ASSISTANT_TOOLS: ToolSpec[] = [
     input_schema: { type: "object", properties: { limit: { type: "number", description: "How many entries (default 25)." } } },
   },
   {
+    name: "explain_methodology_suggestion",
+    description:
+      "Why Sustentra's AI suggested a value on the Methodology review: the AI's stored reason (null when none was " +
+      "recorded), the exact quote, the document and page, the checks it passed and anything implied, and the field's " +
+      "review status. Give words from the field or the suggested value (e.g. 'consolidation approach', " +
+      "'operational control'), or a field id. Read-only; returns no match when nothing is stored.",
+    input_schema: {
+      type: "object",
+      properties: {
+        question: text("Words naming the field or its suggested value."),
+        field_id: text("A Methodology field id, if known (e.g. consolidation_approach)."),
+      },
+    },
+  },
+  {
+    name: "get_methodology_summary",
+    description:
+      "Everything Sustentra's AI suggested on the Methodology review, one line each: field, suggested value, review " +
+      "status, document and page, and whether a reason was recorded. Optionally only from documents whose file name " +
+      "contains the given words (e.g. 'GHG statement'). Read-only.",
+    input_schema: { type: "object", properties: { document: text("Words from a document's file name.") } },
+  },
+  {
     name: "lookup_reference",
     description:
       "Reference material on regulations, methods and how Sustentra works. Topics: sb253, ghg_protocol_scopes, " +
@@ -152,5 +183,7 @@ export const TOOL_ACTIVITY: Record<string, string> = {
   get_requests: "Reading the requests",
   get_results: "Reading the verification results",
   get_activity: "Reading the activity log",
+  explain_methodology_suggestion: "Reading why it was suggested",
+  get_methodology_summary: "Reading the methodology suggestions",
   lookup_reference: "Looking up the reference",
 };

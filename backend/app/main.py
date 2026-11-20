@@ -17,6 +17,7 @@ from .api import (
     evidence_actions,
     evidence_tree,
     methodology,
+    methodology_assistant,
     methodology_review,
     pipeline,
     processing_runs,
@@ -51,6 +52,7 @@ S1_ROUTERS = (
     evidence_actions.router,
     workpaper_items.router,
     requests.router,
+    methodology_assistant.router,
     methodology_review.router,
     assistant.router,
 )
