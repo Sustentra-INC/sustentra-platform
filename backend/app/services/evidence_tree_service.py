@@ -61,7 +61,7 @@ ACTIVITY_NOTES = {
 FIELD_LABELS = {"fuel_type": "Fuel type", "activity_quantity": "Activity quantity", "energy_type": "Energy type",
                 "refrigerant_type": "Refrigerant type", "refrigerant_added": "Refrigerant added",
                 "equipment_capacity": "Equipment capacity", "refrigerant_recovered": "Refrigerant recovered",
-                "service_type": "Service type"}
+                "service_type": "Service type", "technician": "Technician"}
 # A review decision -> the history action the page words ("edited" is "corrected", or "added" when the
 # extractor found nothing and the reviewer keyed the value).
 ACTIONS = {"accepted": "accepted", "edited": "corrected", "rejected": "rejected",

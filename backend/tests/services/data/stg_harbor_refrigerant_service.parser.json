@@ -1,0 +1,3332 @@
+{
+ "document_id": "DOC-FIXTURE",
+ "pages": [
+  {
+   "page_number": 1,
+   "text": "ColdCrest Mechanical Services\nCommercial refrigeration & HVAC  ·  8120 Lakewood Industrial Dr, Lakewood, WA 98499  ·  (253) 555-0154\nREFRIGERANT SERVICE LOG  -  2025\nService agreement SA-1182  ·  Customer no. CC-2207\nCustomer:\nStaging-Test Foods Inc.\nSite:\nHarbor Warehouse, 22 Dock Street, Tacoma, WA 98421\nLog period:\n01/01/2025 - 12/31/2025\nEquipment Register\nEquipment ID\nDescription\nRefrigerant\nFull Charge (kg)\nHW-RC-01\nWalk-in cooler, condensing unit\nR-404A\n18.2\nHW-RF-02\nBlast freezer, rack system\nR-404A\n24.5\nHW-AC-03\nRooftop unit, office HVAC\nR-410A\n9.8\nService Entries\nDate\nEquipment ID\nRefrigerant Full Charge (kg)\nAdded (kg) Recovered (kg)\nTechnician\nWork Performed\n01/22/2025\nHW-RC-01\nR-404A\n18.2\n2.40\n0.00\nT. Vasquez-Hale\nLeak check, tightened flare at TXV\n03/14/2025\nHW-AC-03\nR-410A\n9.8\n0.00\n0.00\nM. Ibekwe\nAnnual PM, no leak found\n04/09/2025\nHW-RF-02\nR-404A\n24.5\n24.50\n21.30\nT. Vasquez-Hale\nLeak at evaporator coil; recovered charge, brazed repair, recharged\n06/27/2025\nHW-RC-01\nR-404A\n18.2\n3.15\n0.00\nR. Delacroix\nLow charge alarm, leak at Schrader core replaced\n08/05/2025\nHW-AC-03\nR-410A\n9.8\n9.80\n8.95\nM. Ibekwe\nCompressor replacement, recovered and recharged\n09/18/2025\nHW-RF-02\nR-404A\n24.5\n1.85\n0.00\nR. Delacroix\nTop-off after seasonal load\n11/03/2025\nHW-RC-01\nR-404A\n18.2\n0.00\n0.00\nT. Vasquez-Hale\nQuarterly leak inspection, no leak found\n12/12/2025\nHW-RF-02\nR-404A\n24.5\n1.20\n0.00\nM. Ibekwe\nLeak check, valve packing tightened\nTotal R-404A\n33.10\n21.30\nTotal R-410A\n9.80\n8.95\nQuantities weighed on calibrated scale (±0.05 kg). Recovered refrigerant returned to supplier for reclaim. Technicians hold EPA Section 608 Universal certification.\nSAMPLE – FICTIONAL TEST DOCUMENT\n"
+  }
+ ],
+ "text_blocks": [
+  {
+   "block_id": "pymupdf-p1-b1",
+   "page_number": 1,
+   "text": "ColdCrest Mechanical Services",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.048764,
+    "width": 0.34798,
+    "height": 0.026144
+   },
+   "source_reference_id": "SRC-pymupdf-p1-1"
+  },
+  {
+   "block_id": "pymupdf-p1-b2",
+   "page_number": 1,
+   "text": "Commercial refrigeration & HVAC · 8120 Lakewood Industrial Dr, Lakewood, WA 98499 · (253) 555-0154",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.080951,
+    "width": 0.57639,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-2"
+  },
+  {
+   "block_id": "pymupdf-p1-b3",
+   "page_number": 1,
+   "text": "REFRIGERANT SERVICE LOG - 2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.648837,
+    "top": 0.05373,
+    "width": 0.305697,
+    "height": 0.019608
+   },
+   "source_reference_id": "SRC-pymupdf-p1-3"
+  },
+  {
+   "block_id": "pymupdf-p1-b4",
+   "page_number": 1,
+   "text": "Service agreement SA-1182 · Customer no. CC-2207",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.664678,
+    "top": 0.080951,
+    "width": 0.289859,
+    "height": 0.013889
+   },
+   "source_reference_id": "SRC-pymupdf-p1-4"
+  },
+  {
+   "block_id": "pymupdf-p1-b5",
+   "page_number": 1,
+   "text": "Customer:",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.122814,
+    "width": 0.066125,
+    "height": 0.014706
+   },
+   "source_reference_id": "SRC-pymupdf-p1-5"
+  },
+  {
+   "block_id": "pymupdf-p1-b6",
+   "page_number": 1,
+   "text": "Staging-Test Foods Inc.",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.133838,
+    "top": 0.122814,
+    "width": 0.133068,
+    "height": 0.014706
+   },
+   "source_reference_id": "SRC-pymupdf-p1-6"
+  },
+  {
+   "block_id": "pymupdf-p1-b7",
+   "page_number": 1,
+   "text": "Site:",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.144056,
+    "width": 0.029761,
+    "height": 0.014706
+   },
+   "source_reference_id": "SRC-pymupdf-p1-7"
+  },
+  {
+   "block_id": "pymupdf-p1-b8",
+   "page_number": 1,
+   "text": "Harbor Warehouse, 22 Dock Street, Tacoma, WA 98421",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.133838,
+    "top": 0.144056,
+    "width": 0.317352,
+    "height": 0.014706
+   },
+   "source_reference_id": "SRC-pymupdf-p1-8"
+  },
+  {
+   "block_id": "pymupdf-p1-b9",
+   "page_number": 1,
+   "text": "Log period:",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.165298,
+    "width": 0.072966,
+    "height": 0.014706
+   },
+   "source_reference_id": "SRC-pymupdf-p1-9"
+  },
+  {
+   "block_id": "pymupdf-p1-b10",
+   "page_number": 1,
+   "text": "01/01/2025 - 12/31/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.133838,
+    "top": 0.165298,
+    "width": 0.142284,
+    "height": 0.014706
+   },
+   "source_reference_id": "SRC-pymupdf-p1-10"
+  },
+  {
+   "block_id": "pymupdf-p1-b11",
+   "page_number": 1,
+   "text": "Equipment Register",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.195723,
+    "width": 0.134092,
+    "height": 0.015523
+   },
+   "source_reference_id": "SRC-pymupdf-p1-11"
+  },
+  {
+   "block_id": "pymupdf-p1-b12",
+   "page_number": 1,
+   "text": "Equipment ID",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.224546,
+    "width": 0.077071,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-12"
+  },
+  {
+   "block_id": "pymupdf-p1-b13",
+   "page_number": 1,
+   "text": "Description",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.15404,
+    "top": 0.224546,
+    "width": 0.065333,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-13"
+  },
+  {
+   "block_id": "pymupdf-p1-b14",
+   "page_number": 1,
+   "text": "Refrigerant",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.406566,
+    "top": 0.224546,
+    "width": 0.065364,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-14"
+  },
+  {
+   "block_id": "pymupdf-p1-b15",
+   "page_number": 1,
+   "text": "Full Charge (kg)",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.501721,
+    "top": 0.224546,
+    "width": 0.091717,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-15"
+  },
+  {
+   "block_id": "pymupdf-p1-b16",
+   "page_number": 1,
+   "text": "HW-RC-01",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.248402,
+    "width": 0.051798,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-16"
+  },
+  {
+   "block_id": "pymupdf-p1-b17",
+   "page_number": 1,
+   "text": "Walk-in cooler, condensing unit",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.15404,
+    "top": 0.248402,
+    "width": 0.159273,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-17"
+  },
+  {
+   "block_id": "pymupdf-p1-b18",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.406566,
+    "top": 0.248402,
+    "width": 0.036849,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-18"
+  },
+  {
+   "block_id": "pymupdf-p1-b19",
+   "page_number": 1,
+   "text": "18.2",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.570944,
+    "top": 0.248402,
+    "width": 0.022485,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-19"
+  },
+  {
+   "block_id": "pymupdf-p1-b20",
+   "page_number": 1,
+   "text": "HW-RF-02",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.272258,
+    "width": 0.050556,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-20"
+  },
+  {
+   "block_id": "pymupdf-p1-b21",
+   "page_number": 1,
+   "text": "Blast freezer, rack system",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.15404,
+    "top": 0.272258,
+    "width": 0.132061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-21"
+  },
+  {
+   "block_id": "pymupdf-p1-b22",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.406566,
+    "top": 0.272258,
+    "width": 0.036849,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-22"
+  },
+  {
+   "block_id": "pymupdf-p1-b23",
+   "page_number": 1,
+   "text": "24.5",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.570944,
+    "top": 0.272258,
+    "width": 0.022485,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-23"
+  },
+  {
+   "block_id": "pymupdf-p1-b24",
+   "page_number": 1,
+   "text": "HW-AC-03",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.296114,
+    "width": 0.051687,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-24"
+  },
+  {
+   "block_id": "pymupdf-p1-b25",
+   "page_number": 1,
+   "text": "Rooftop unit, office HVAC",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.15404,
+    "top": 0.296114,
+    "width": 0.128253,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-25"
+  },
+  {
+   "block_id": "pymupdf-p1-b26",
+   "page_number": 1,
+   "text": "R-410A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.406566,
+    "top": 0.296114,
+    "width": 0.036849,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-26"
+  },
+  {
+   "block_id": "pymupdf-p1-b27",
+   "page_number": 1,
+   "text": "9.8",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.57737,
+    "top": 0.296114,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "source_reference_id": "SRC-pymupdf-p1-27"
+  },
+  {
+   "block_id": "pymupdf-p1-b28",
+   "page_number": 1,
+   "text": "Service Entries",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.327095,
+    "width": 0.101801,
+    "height": 0.015523
+   },
+   "source_reference_id": "SRC-pymupdf-p1-28"
+  },
+  {
+   "block_id": "pymupdf-p1-b29",
+   "page_number": 1,
+   "text": "Date",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.355722,
+    "width": 0.025199,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-29"
+  },
+  {
+   "block_id": "pymupdf-p1-b30",
+   "page_number": 1,
+   "text": "Equipment ID",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.126263,
+    "top": 0.355722,
+    "width": 0.072254,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-30"
+  },
+  {
+   "block_id": "pymupdf-p1-b31",
+   "page_number": 1,
+   "text": "Refrigerant Full Charge (kg)",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.209596,
+    "top": 0.355722,
+    "width": 0.148994,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-31"
+  },
+  {
+   "block_id": "pymupdf-p1-b32",
+   "page_number": 1,
+   "text": "Added (kg)",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.370177,
+    "top": 0.355722,
+    "width": 0.059119,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-32"
+  },
+  {
+   "block_id": "pymupdf-p1-b33",
+   "page_number": 1,
+   "text": "Recovered (kg)",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.436347,
+    "top": 0.355722,
+    "width": 0.081326,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-33"
+  },
+  {
+   "block_id": "pymupdf-p1-b34",
+   "page_number": 1,
+   "text": "Technician",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.532828,
+    "top": 0.355722,
+    "width": 0.057225,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-34"
+  },
+  {
+   "block_id": "pymupdf-p1-b35",
+   "page_number": 1,
+   "text": "Work Performed",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.636364,
+    "top": 0.355722,
+    "width": 0.087604,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-35"
+  },
+  {
+   "block_id": "pymupdf-p1-b36",
+   "page_number": 1,
+   "text": "01/22/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.378598,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-36"
+  },
+  {
+   "block_id": "pymupdf-p1-b37",
+   "page_number": 1,
+   "text": "HW-RC-01",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.126263,
+    "top": 0.378598,
+    "width": 0.048561,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-37"
+  },
+  {
+   "block_id": "pymupdf-p1-b38",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.209596,
+    "top": 0.378598,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-38"
+  },
+  {
+   "block_id": "pymupdf-p1-b39",
+   "page_number": 1,
+   "text": "18.2",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.337501,
+    "top": 0.378598,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-39"
+  },
+  {
+   "block_id": "pymupdf-p1-b40",
+   "page_number": 1,
+   "text": "2.40",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.408208,
+    "top": 0.378598,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-40"
+  },
+  {
+   "block_id": "pymupdf-p1-b41",
+   "page_number": 1,
+   "text": "0.00",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.496592,
+    "top": 0.378598,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-41"
+  },
+  {
+   "block_id": "pymupdf-p1-b42",
+   "page_number": 1,
+   "text": "T. Vasquez-Hale",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.532828,
+    "top": 0.378598,
+    "width": 0.076638,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-42"
+  },
+  {
+   "block_id": "pymupdf-p1-b43",
+   "page_number": 1,
+   "text": "Leak check, tightened flare at TXV",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.636364,
+    "top": 0.378598,
+    "width": 0.163674,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-43"
+  },
+  {
+   "block_id": "pymupdf-p1-b44",
+   "page_number": 1,
+   "text": "03/14/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.401473,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-44"
+  },
+  {
+   "block_id": "pymupdf-p1-b45",
+   "page_number": 1,
+   "text": "HW-AC-03",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.126263,
+    "top": 0.401473,
+    "width": 0.048456,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-45"
+  },
+  {
+   "block_id": "pymupdf-p1-b46",
+   "page_number": 1,
+   "text": "R-410A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.209596,
+    "top": 0.401473,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-46"
+  },
+  {
+   "block_id": "pymupdf-p1-b47",
+   "page_number": 1,
+   "text": "9.8",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.343526,
+    "top": 0.401473,
+    "width": 0.015057,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-47"
+  },
+  {
+   "block_id": "pymupdf-p1-b48",
+   "page_number": 1,
+   "text": "0.00",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.408208,
+    "top": 0.401473,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-48"
+  },
+  {
+   "block_id": "pymupdf-p1-b49",
+   "page_number": 1,
+   "text": "0.00",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.496592,
+    "top": 0.401473,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-49"
+  },
+  {
+   "block_id": "pymupdf-p1-b50",
+   "page_number": 1,
+   "text": "M. Ibekwe",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.532828,
+    "top": 0.401473,
+    "width": 0.047879,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-50"
+  },
+  {
+   "block_id": "pymupdf-p1-b51",
+   "page_number": 1,
+   "text": "Annual PM, no leak found",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.636364,
+    "top": 0.401473,
+    "width": 0.120559,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-51"
+  },
+  {
+   "block_id": "pymupdf-p1-b52",
+   "page_number": 1,
+   "text": "04/09/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.424349,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-52"
+  },
+  {
+   "block_id": "pymupdf-p1-b53",
+   "page_number": 1,
+   "text": "HW-RF-02",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.126263,
+    "top": 0.424349,
+    "width": 0.047396,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-53"
+  },
+  {
+   "block_id": "pymupdf-p1-b54",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.209596,
+    "top": 0.424349,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-54"
+  },
+  {
+   "block_id": "pymupdf-p1-b55",
+   "page_number": 1,
+   "text": "24.5",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.337501,
+    "top": 0.424349,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-55"
+  },
+  {
+   "block_id": "pymupdf-p1-b56",
+   "page_number": 1,
+   "text": "24.50",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.402183,
+    "top": 0.424349,
+    "width": 0.027102,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-56"
+  },
+  {
+   "block_id": "pymupdf-p1-b57",
+   "page_number": 1,
+   "text": "21.30",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.490567,
+    "top": 0.424349,
+    "width": 0.027102,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-57"
+  },
+  {
+   "block_id": "pymupdf-p1-b58",
+   "page_number": 1,
+   "text": "T. Vasquez-Hale",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.532828,
+    "top": 0.424349,
+    "width": 0.076638,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-58"
+  },
+  {
+   "block_id": "pymupdf-p1-b59",
+   "page_number": 1,
+   "text": "Leak at evaporator coil; recovered charge, brazed repair, recharged",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.636364,
+    "top": 0.424349,
+    "width": 0.323296,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-59"
+  },
+  {
+   "block_id": "pymupdf-p1-b60",
+   "page_number": 1,
+   "text": "06/27/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.447225,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-60"
+  },
+  {
+   "block_id": "pymupdf-p1-b61",
+   "page_number": 1,
+   "text": "HW-RC-01",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.126263,
+    "top": 0.447225,
+    "width": 0.048561,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-61"
+  },
+  {
+   "block_id": "pymupdf-p1-b62",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.209596,
+    "top": 0.447225,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-62"
+  },
+  {
+   "block_id": "pymupdf-p1-b63",
+   "page_number": 1,
+   "text": "18.2",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.337501,
+    "top": 0.447225,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-63"
+  },
+  {
+   "block_id": "pymupdf-p1-b64",
+   "page_number": 1,
+   "text": "3.15",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.408208,
+    "top": 0.447225,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-64"
+  },
+  {
+   "block_id": "pymupdf-p1-b65",
+   "page_number": 1,
+   "text": "0.00",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.496592,
+    "top": 0.447225,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-65"
+  },
+  {
+   "block_id": "pymupdf-p1-b66",
+   "page_number": 1,
+   "text": "R. Delacroix",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.532828,
+    "top": 0.447225,
+    "width": 0.057292,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-66"
+  },
+  {
+   "block_id": "pymupdf-p1-b67",
+   "page_number": 1,
+   "text": "Low charge alarm, leak at Schrader core replaced",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.636364,
+    "top": 0.447225,
+    "width": 0.236856,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-67"
+  },
+  {
+   "block_id": "pymupdf-p1-b68",
+   "page_number": 1,
+   "text": "08/05/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.470101,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-68"
+  },
+  {
+   "block_id": "pymupdf-p1-b69",
+   "page_number": 1,
+   "text": "HW-AC-03",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.126263,
+    "top": 0.470101,
+    "width": 0.048456,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-69"
+  },
+  {
+   "block_id": "pymupdf-p1-b70",
+   "page_number": 1,
+   "text": "R-410A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.209596,
+    "top": 0.470101,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-70"
+  },
+  {
+   "block_id": "pymupdf-p1-b71",
+   "page_number": 1,
+   "text": "9.8",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.343526,
+    "top": 0.470101,
+    "width": 0.015057,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-71"
+  },
+  {
+   "block_id": "pymupdf-p1-b72",
+   "page_number": 1,
+   "text": "9.80",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.408208,
+    "top": 0.470101,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-72"
+  },
+  {
+   "block_id": "pymupdf-p1-b73",
+   "page_number": 1,
+   "text": "8.95",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.496592,
+    "top": 0.470101,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-73"
+  },
+  {
+   "block_id": "pymupdf-p1-b74",
+   "page_number": 1,
+   "text": "M. Ibekwe",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.532828,
+    "top": 0.470101,
+    "width": 0.047879,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-74"
+  },
+  {
+   "block_id": "pymupdf-p1-b75",
+   "page_number": 1,
+   "text": "Compressor replacement, recovered and recharged",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.636364,
+    "top": 0.470101,
+    "width": 0.246108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-75"
+  },
+  {
+   "block_id": "pymupdf-p1-b76",
+   "page_number": 1,
+   "text": "09/18/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.492977,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-76"
+  },
+  {
+   "block_id": "pymupdf-p1-b77",
+   "page_number": 1,
+   "text": "HW-RF-02",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.126263,
+    "top": 0.492977,
+    "width": 0.047396,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-77"
+  },
+  {
+   "block_id": "pymupdf-p1-b78",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.209596,
+    "top": 0.492977,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-78"
+  },
+  {
+   "block_id": "pymupdf-p1-b79",
+   "page_number": 1,
+   "text": "24.5",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.337501,
+    "top": 0.492977,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-79"
+  },
+  {
+   "block_id": "pymupdf-p1-b80",
+   "page_number": 1,
+   "text": "1.85",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.408208,
+    "top": 0.492977,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-80"
+  },
+  {
+   "block_id": "pymupdf-p1-b81",
+   "page_number": 1,
+   "text": "0.00",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.496592,
+    "top": 0.492977,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-81"
+  },
+  {
+   "block_id": "pymupdf-p1-b82",
+   "page_number": 1,
+   "text": "R. Delacroix",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.532828,
+    "top": 0.492977,
+    "width": 0.057292,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-82"
+  },
+  {
+   "block_id": "pymupdf-p1-b83",
+   "page_number": 1,
+   "text": "Top-off after seasonal load",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.636364,
+    "top": 0.492977,
+    "width": 0.127055,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-83"
+  },
+  {
+   "block_id": "pymupdf-p1-b84",
+   "page_number": 1,
+   "text": "11/03/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.515853,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-84"
+  },
+  {
+   "block_id": "pymupdf-p1-b85",
+   "page_number": 1,
+   "text": "HW-RC-01",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.126263,
+    "top": 0.515853,
+    "width": 0.048561,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-85"
+  },
+  {
+   "block_id": "pymupdf-p1-b86",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.209596,
+    "top": 0.515853,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-86"
+  },
+  {
+   "block_id": "pymupdf-p1-b87",
+   "page_number": 1,
+   "text": "18.2",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.337501,
+    "top": 0.515853,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-87"
+  },
+  {
+   "block_id": "pymupdf-p1-b88",
+   "page_number": 1,
+   "text": "0.00",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.408208,
+    "top": 0.515853,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-88"
+  },
+  {
+   "block_id": "pymupdf-p1-b89",
+   "page_number": 1,
+   "text": "0.00",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.496592,
+    "top": 0.515853,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-89"
+  },
+  {
+   "block_id": "pymupdf-p1-b90",
+   "page_number": 1,
+   "text": "T. Vasquez-Hale",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.532828,
+    "top": 0.515853,
+    "width": 0.076638,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-90"
+  },
+  {
+   "block_id": "pymupdf-p1-b91",
+   "page_number": 1,
+   "text": "Quarterly leak inspection, no leak found",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.636364,
+    "top": 0.515853,
+    "width": 0.190085,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-91"
+  },
+  {
+   "block_id": "pymupdf-p1-b92",
+   "page_number": 1,
+   "text": "12/12/2025",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.538728,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-92"
+  },
+  {
+   "block_id": "pymupdf-p1-b93",
+   "page_number": 1,
+   "text": "HW-RF-02",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.126263,
+    "top": 0.538728,
+    "width": 0.047396,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-93"
+  },
+  {
+   "block_id": "pymupdf-p1-b94",
+   "page_number": 1,
+   "text": "R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.209596,
+    "top": 0.538728,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-94"
+  },
+  {
+   "block_id": "pymupdf-p1-b95",
+   "page_number": 1,
+   "text": "24.5",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.337501,
+    "top": 0.538728,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-95"
+  },
+  {
+   "block_id": "pymupdf-p1-b96",
+   "page_number": 1,
+   "text": "1.20",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.408208,
+    "top": 0.538728,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-96"
+  },
+  {
+   "block_id": "pymupdf-p1-b97",
+   "page_number": 1,
+   "text": "0.00",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.496592,
+    "top": 0.538728,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-97"
+  },
+  {
+   "block_id": "pymupdf-p1-b98",
+   "page_number": 1,
+   "text": "M. Ibekwe",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.532828,
+    "top": 0.538728,
+    "width": 0.047879,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-98"
+  },
+  {
+   "block_id": "pymupdf-p1-b99",
+   "page_number": 1,
+   "text": "Leak check, valve packing tightened",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.636364,
+    "top": 0.538728,
+    "width": 0.173542,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-99"
+  },
+  {
+   "block_id": "pymupdf-p1-b100",
+   "page_number": 1,
+   "text": "Total R-404A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.561604,
+    "width": 0.06875,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-100"
+  },
+  {
+   "block_id": "pymupdf-p1-b101",
+   "page_number": 1,
+   "text": "33.10",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.39934,
+    "top": 0.561604,
+    "width": 0.029962,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-101"
+  },
+  {
+   "block_id": "pymupdf-p1-b102",
+   "page_number": 1,
+   "text": "21.30",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.487723,
+    "top": 0.561604,
+    "width": 0.029962,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-102"
+  },
+  {
+   "block_id": "pymupdf-p1-b103",
+   "page_number": 1,
+   "text": "Total R-410A",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.05303,
+    "top": 0.58448,
+    "width": 0.06875,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-103"
+  },
+  {
+   "block_id": "pymupdf-p1-b104",
+   "page_number": 1,
+   "text": "9.80",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.405929,
+    "top": 0.58448,
+    "width": 0.023371,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-104"
+  },
+  {
+   "block_id": "pymupdf-p1-b105",
+   "page_number": 1,
+   "text": "8.95",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.494312,
+    "top": 0.58448,
+    "width": 0.023371,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-105"
+  },
+  {
+   "block_id": "pymupdf-p1-b106",
+   "page_number": 1,
+   "text": "Quantities weighed on calibrated scale (±0.05 kg). Recovered refrigerant returned to supplier for reclaim. Technicians hold EPA Section 608 Universal certification.",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.045455,
+    "top": 0.613892,
+    "width": 0.776487,
+    "height": 0.012255
+   },
+   "source_reference_id": "SRC-pymupdf-p1-106"
+  },
+  {
+   "block_id": "pymupdf-p1-b107",
+   "page_number": 1,
+   "text": "SAMPLE – FICTIONAL TEST DOCUMENT",
+   "confidence": null,
+   "bounding_box": {
+    "left": 0.4146,
+    "top": 0.95863,
+    "width": 0.170811,
+    "height": 0.011438
+   },
+   "source_reference_id": "SRC-pymupdf-p1-107"
+  }
+ ],
+ "tables": [],
+ "key_value_pairs": [],
+ "source_references": [
+  {
+   "source_reference_id": "SRC-pymupdf-p1-1",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "ColdCrest Mechanical Services",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.048764,
+    "width": 0.34798,
+    "height": 0.026144
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b1"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-2",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Commercial refrigeration & HVAC · 8120 Lakewood Industrial Dr, Lakewood, WA 98499 · (253) 555-0154",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.080951,
+    "width": 0.57639,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b2"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-3",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "REFRIGERANT SERVICE LOG - 2025",
+   "bounding_box": {
+    "x": 0.648837,
+    "y": 0.05373,
+    "width": 0.305697,
+    "height": 0.019608
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b3"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-4",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Service agreement SA-1182 · Customer no. CC-2207",
+   "bounding_box": {
+    "x": 0.664678,
+    "y": 0.080951,
+    "width": 0.289859,
+    "height": 0.013889
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b4"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-5",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Customer:",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.122814,
+    "width": 0.066125,
+    "height": 0.014706
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b5"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-6",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Staging-Test Foods Inc.",
+   "bounding_box": {
+    "x": 0.133838,
+    "y": 0.122814,
+    "width": 0.133068,
+    "height": 0.014706
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b6"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-7",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Site:",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.144056,
+    "width": 0.029761,
+    "height": 0.014706
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b7"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-8",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Harbor Warehouse, 22 Dock Street, Tacoma, WA 98421",
+   "bounding_box": {
+    "x": 0.133838,
+    "y": 0.144056,
+    "width": 0.317352,
+    "height": 0.014706
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b8"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-9",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Log period:",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.165298,
+    "width": 0.072966,
+    "height": 0.014706
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b9"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-10",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "01/01/2025 - 12/31/2025",
+   "bounding_box": {
+    "x": 0.133838,
+    "y": 0.165298,
+    "width": 0.142284,
+    "height": 0.014706
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b10"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-11",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Equipment Register",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.195723,
+    "width": 0.134092,
+    "height": 0.015523
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b11"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-12",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Equipment ID",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.224546,
+    "width": 0.077071,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b12"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-13",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Description",
+   "bounding_box": {
+    "x": 0.15404,
+    "y": 0.224546,
+    "width": 0.065333,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b13"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-14",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Refrigerant",
+   "bounding_box": {
+    "x": 0.406566,
+    "y": 0.224546,
+    "width": 0.065364,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b14"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-15",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Full Charge (kg)",
+   "bounding_box": {
+    "x": 0.501721,
+    "y": 0.224546,
+    "width": 0.091717,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b15"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-16",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "HW-RC-01",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.248402,
+    "width": 0.051798,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b16"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-17",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Walk-in cooler, condensing unit",
+   "bounding_box": {
+    "x": 0.15404,
+    "y": 0.248402,
+    "width": 0.159273,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b17"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-18",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.406566,
+    "y": 0.248402,
+    "width": 0.036849,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b18"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-19",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "18.2",
+   "bounding_box": {
+    "x": 0.570944,
+    "y": 0.248402,
+    "width": 0.022485,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b19"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-20",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "HW-RF-02",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.272258,
+    "width": 0.050556,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b20"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-21",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Blast freezer, rack system",
+   "bounding_box": {
+    "x": 0.15404,
+    "y": 0.272258,
+    "width": 0.132061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b21"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-22",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.406566,
+    "y": 0.272258,
+    "width": 0.036849,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b22"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-23",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "24.5",
+   "bounding_box": {
+    "x": 0.570944,
+    "y": 0.272258,
+    "width": 0.022485,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b23"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-24",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "HW-AC-03",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.296114,
+    "width": 0.051687,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b24"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-25",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Rooftop unit, office HVAC",
+   "bounding_box": {
+    "x": 0.15404,
+    "y": 0.296114,
+    "width": 0.128253,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b25"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-26",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-410A",
+   "bounding_box": {
+    "x": 0.406566,
+    "y": 0.296114,
+    "width": 0.036849,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b26"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-27",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "9.8",
+   "bounding_box": {
+    "x": 0.57737,
+    "y": 0.296114,
+    "width": 0.016061,
+    "height": 0.013072
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b27"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-28",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Service Entries",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.327095,
+    "width": 0.101801,
+    "height": 0.015523
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b28"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-29",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Date",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.355722,
+    "width": 0.025199,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b29"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-30",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Equipment ID",
+   "bounding_box": {
+    "x": 0.126263,
+    "y": 0.355722,
+    "width": 0.072254,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b30"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-31",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Refrigerant Full Charge (kg)",
+   "bounding_box": {
+    "x": 0.209596,
+    "y": 0.355722,
+    "width": 0.148994,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b31"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-32",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Added (kg)",
+   "bounding_box": {
+    "x": 0.370177,
+    "y": 0.355722,
+    "width": 0.059119,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b32"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-33",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Recovered (kg)",
+   "bounding_box": {
+    "x": 0.436347,
+    "y": 0.355722,
+    "width": 0.081326,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b33"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-34",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Technician",
+   "bounding_box": {
+    "x": 0.532828,
+    "y": 0.355722,
+    "width": 0.057225,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b34"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-35",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Work Performed",
+   "bounding_box": {
+    "x": 0.636364,
+    "y": 0.355722,
+    "width": 0.087604,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b35"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-36",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "01/22/2025",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.378598,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b36"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-37",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "HW-RC-01",
+   "bounding_box": {
+    "x": 0.126263,
+    "y": 0.378598,
+    "width": 0.048561,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b37"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-38",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.209596,
+    "y": 0.378598,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b38"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-39",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "18.2",
+   "bounding_box": {
+    "x": 0.337501,
+    "y": 0.378598,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b39"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-40",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "2.40",
+   "bounding_box": {
+    "x": 0.408208,
+    "y": 0.378598,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b40"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-41",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.00",
+   "bounding_box": {
+    "x": 0.496592,
+    "y": 0.378598,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b41"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-42",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "T. Vasquez-Hale",
+   "bounding_box": {
+    "x": 0.532828,
+    "y": 0.378598,
+    "width": 0.076638,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b42"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-43",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Leak check, tightened flare at TXV",
+   "bounding_box": {
+    "x": 0.636364,
+    "y": 0.378598,
+    "width": 0.163674,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b43"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-44",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "03/14/2025",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.401473,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b44"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-45",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "HW-AC-03",
+   "bounding_box": {
+    "x": 0.126263,
+    "y": 0.401473,
+    "width": 0.048456,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b45"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-46",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-410A",
+   "bounding_box": {
+    "x": 0.209596,
+    "y": 0.401473,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b46"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-47",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "9.8",
+   "bounding_box": {
+    "x": 0.343526,
+    "y": 0.401473,
+    "width": 0.015057,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b47"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-48",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.00",
+   "bounding_box": {
+    "x": 0.408208,
+    "y": 0.401473,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b48"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-49",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.00",
+   "bounding_box": {
+    "x": 0.496592,
+    "y": 0.401473,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b49"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-50",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "M. Ibekwe",
+   "bounding_box": {
+    "x": 0.532828,
+    "y": 0.401473,
+    "width": 0.047879,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b50"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-51",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Annual PM, no leak found",
+   "bounding_box": {
+    "x": 0.636364,
+    "y": 0.401473,
+    "width": 0.120559,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b51"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-52",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "04/09/2025",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.424349,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b52"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-53",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "HW-RF-02",
+   "bounding_box": {
+    "x": 0.126263,
+    "y": 0.424349,
+    "width": 0.047396,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b53"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-54",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.209596,
+    "y": 0.424349,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b54"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-55",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "24.5",
+   "bounding_box": {
+    "x": 0.337501,
+    "y": 0.424349,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b55"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-56",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "24.50",
+   "bounding_box": {
+    "x": 0.402183,
+    "y": 0.424349,
+    "width": 0.027102,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b56"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-57",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "21.30",
+   "bounding_box": {
+    "x": 0.490567,
+    "y": 0.424349,
+    "width": 0.027102,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b57"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-58",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "T. Vasquez-Hale",
+   "bounding_box": {
+    "x": 0.532828,
+    "y": 0.424349,
+    "width": 0.076638,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b58"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-59",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Leak at evaporator coil; recovered charge, brazed repair, recharged",
+   "bounding_box": {
+    "x": 0.636364,
+    "y": 0.424349,
+    "width": 0.323296,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b59"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-60",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "06/27/2025",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.447225,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b60"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-61",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "HW-RC-01",
+   "bounding_box": {
+    "x": 0.126263,
+    "y": 0.447225,
+    "width": 0.048561,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b61"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-62",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.209596,
+    "y": 0.447225,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b62"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-63",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "18.2",
+   "bounding_box": {
+    "x": 0.337501,
+    "y": 0.447225,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b63"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-64",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "3.15",
+   "bounding_box": {
+    "x": 0.408208,
+    "y": 0.447225,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b64"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-65",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.00",
+   "bounding_box": {
+    "x": 0.496592,
+    "y": 0.447225,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b65"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-66",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R. Delacroix",
+   "bounding_box": {
+    "x": 0.532828,
+    "y": 0.447225,
+    "width": 0.057292,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b66"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-67",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Low charge alarm, leak at Schrader core replaced",
+   "bounding_box": {
+    "x": 0.636364,
+    "y": 0.447225,
+    "width": 0.236856,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b67"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-68",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "08/05/2025",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.470101,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b68"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-69",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "HW-AC-03",
+   "bounding_box": {
+    "x": 0.126263,
+    "y": 0.470101,
+    "width": 0.048456,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b69"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-70",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-410A",
+   "bounding_box": {
+    "x": 0.209596,
+    "y": 0.470101,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b70"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-71",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "9.8",
+   "bounding_box": {
+    "x": 0.343526,
+    "y": 0.470101,
+    "width": 0.015057,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b71"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-72",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "9.80",
+   "bounding_box": {
+    "x": 0.408208,
+    "y": 0.470101,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b72"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-73",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "8.95",
+   "bounding_box": {
+    "x": 0.496592,
+    "y": 0.470101,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b73"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-74",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "M. Ibekwe",
+   "bounding_box": {
+    "x": 0.532828,
+    "y": 0.470101,
+    "width": 0.047879,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b74"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-75",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Compressor replacement, recovered and recharged",
+   "bounding_box": {
+    "x": 0.636364,
+    "y": 0.470101,
+    "width": 0.246108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b75"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-76",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "09/18/2025",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.492977,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b76"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-77",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "HW-RF-02",
+   "bounding_box": {
+    "x": 0.126263,
+    "y": 0.492977,
+    "width": 0.047396,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b77"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-78",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.209596,
+    "y": 0.492977,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b78"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-79",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "24.5",
+   "bounding_box": {
+    "x": 0.337501,
+    "y": 0.492977,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b79"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-80",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "1.85",
+   "bounding_box": {
+    "x": 0.408208,
+    "y": 0.492977,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b80"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-81",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.00",
+   "bounding_box": {
+    "x": 0.496592,
+    "y": 0.492977,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b81"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-82",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R. Delacroix",
+   "bounding_box": {
+    "x": 0.532828,
+    "y": 0.492977,
+    "width": 0.057292,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b82"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-83",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Top-off after seasonal load",
+   "bounding_box": {
+    "x": 0.636364,
+    "y": 0.492977,
+    "width": 0.127055,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b83"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-84",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "11/03/2025",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.515853,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b84"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-85",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "HW-RC-01",
+   "bounding_box": {
+    "x": 0.126263,
+    "y": 0.515853,
+    "width": 0.048561,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b85"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-86",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.209596,
+    "y": 0.515853,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b86"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-87",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "18.2",
+   "bounding_box": {
+    "x": 0.337501,
+    "y": 0.515853,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b87"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-88",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.00",
+   "bounding_box": {
+    "x": 0.408208,
+    "y": 0.515853,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b88"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-89",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.00",
+   "bounding_box": {
+    "x": 0.496592,
+    "y": 0.515853,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b89"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-90",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "T. Vasquez-Hale",
+   "bounding_box": {
+    "x": 0.532828,
+    "y": 0.515853,
+    "width": 0.076638,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b90"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-91",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Quarterly leak inspection, no leak found",
+   "bounding_box": {
+    "x": 0.636364,
+    "y": 0.515853,
+    "width": 0.190085,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b91"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-92",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "12/12/2025",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.538728,
+    "width": 0.054564,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b92"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-93",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "HW-RF-02",
+   "bounding_box": {
+    "x": 0.126263,
+    "y": 0.538728,
+    "width": 0.047396,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b93"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-94",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "R-404A",
+   "bounding_box": {
+    "x": 0.209596,
+    "y": 0.538728,
+    "width": 0.034545,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b94"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-95",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "24.5",
+   "bounding_box": {
+    "x": 0.337501,
+    "y": 0.538728,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b95"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-96",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "1.20",
+   "bounding_box": {
+    "x": 0.408208,
+    "y": 0.538728,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b96"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-97",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "0.00",
+   "bounding_box": {
+    "x": 0.496592,
+    "y": 0.538728,
+    "width": 0.02108,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b97"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-98",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "M. Ibekwe",
+   "bounding_box": {
+    "x": 0.532828,
+    "y": 0.538728,
+    "width": 0.047879,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b98"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-99",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Leak check, valve packing tightened",
+   "bounding_box": {
+    "x": 0.636364,
+    "y": 0.538728,
+    "width": 0.173542,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b99"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-100",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Total R-404A",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.561604,
+    "width": 0.06875,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b100"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-101",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "33.10",
+   "bounding_box": {
+    "x": 0.39934,
+    "y": 0.561604,
+    "width": 0.029962,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b101"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-102",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "21.30",
+   "bounding_box": {
+    "x": 0.487723,
+    "y": 0.561604,
+    "width": 0.029962,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b102"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-103",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Total R-410A",
+   "bounding_box": {
+    "x": 0.05303,
+    "y": 0.58448,
+    "width": 0.06875,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b103"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-104",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "9.80",
+   "bounding_box": {
+    "x": 0.405929,
+    "y": 0.58448,
+    "width": 0.023371,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b104"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-105",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "8.95",
+   "bounding_box": {
+    "x": 0.494312,
+    "y": 0.58448,
+    "width": 0.023371,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b105"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-106",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "Quantities weighed on calibrated scale (±0.05 kg). Recovered refrigerant returned to supplier for reclaim. Technicians hold EPA Section 608 Universal certification.",
+   "bounding_box": {
+    "x": 0.045455,
+    "y": 0.613892,
+    "width": 0.776487,
+    "height": 0.012255
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b106"
+   ],
+   "source_kind": "line_text"
+  },
+  {
+   "source_reference_id": "SRC-pymupdf-p1-107",
+   "document_id": "DOC-FIXTURE",
+   "page_number": 1,
+   "sheet_name": null,
+   "cell_or_range": null,
+   "text_snippet": "SAMPLE – FICTIONAL TEST DOCUMENT",
+   "bounding_box": {
+    "x": 0.4146,
+    "y": 0.95863,
+    "width": 0.170811,
+    "height": 0.011438
+   },
+   "parser_block_ids": [
+    "pymupdf-p1-b107"
+   ],
+   "source_kind": "line_text"
+  }
+ ]
+}
