@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>A task was assigned to you</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f5f7fb;font-family:Arial,sans-serif;color:#1f2937;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f7fb;padding:16px 8px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;">
+            <tr>
+              <td style="padding:20px;line-height:1.5;font-size:15px;word-break:break-word;overflow-wrap:anywhere;">
+                <p style="margin:0 0 12px 0;">Hello,</p>
+                <p style="margin:0 0 12px 0;">{{ requested_by }} assigned you a task in Sustentra.</p>
+                <p style="margin:0 0 12px 0;"><a href="{{ link }}" style="color:#0f4c81;word-break:break-all;overflow-wrap:anywhere;">Sign in to see the details</a></p>
+                <p style="margin:0 0 12px 0;color:#6b7280;font-size:13px;">For your security, task details, file names and client names are never sent by email.</p>
+                <p style="margin:20px 0 0 0;">- {{ sender_name }}</p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

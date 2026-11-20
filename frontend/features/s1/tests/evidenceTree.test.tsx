@@ -21,6 +21,7 @@ import { type CalculationLine, type ScheduleHistoryEntry, type EvidenceTree as T
 import { engagementFromBackend, engagementToBackend } from "../api/engagements";
 import { EvidenceTree, type EvidenceTreeProps } from "../components/EvidenceTree";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
+import { AssignTaskProvider } from "../../tasks/AssignTaskContext";
 import { SupportingSchedule } from "../components/SupportingSchedule";
 import { resultsViewForLine, scheduleViewForLine } from "../pages/lineLinks";
 import { engagementConfig } from "../fixtures/engagementConfig";
@@ -1529,6 +1530,78 @@ describe("the data point review", () => {
     renderSchedule();
     expect(await screen.findByRole("alert")).toHaveTextContent("That calculation line does not exist.");
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+  });
+});
+
+
+/* =============================== Assign to… =============================== */
+
+describe("Assign to… on Evidence and the data point review", () => {
+  const withAssign = (children: React.ReactNode) => (
+    <AssignTaskProvider orgId="org-1" engagementId={ENG}>
+      {children}
+    </AssignTaskProvider>
+  );
+  const dialog = () => screen.findByRole("dialog", { name: "Assign to…" });
+
+  beforeEach(() => {
+    mocks.byPath = { [TREE_PATH]: TREE, [SCHEDULE_PATH]: SCHEDULE, "/orgs/org-1/tasks/assignees": { items: [] } };
+  });
+
+  it("is on a document's menu in the Evidence tree and links to that document", async () => {
+    render(withAssign(<Harness />));
+    await expandAll();
+    const row = screen.getByRole("button", { name: "feb.pdf" }).closest(".s1-et-doc") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Actions for feb.pdf" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Assign to…" }));
+    const window = await dialog();
+    expect(window).toHaveTextContent("feb.pdf");
+    expect(screen.getByLabelText("Task")).toHaveValue("Review feb.pdf");
+  });
+
+  it("is not on the menu when assigning is not available", async () => {
+    render(<Harness />);
+    await expandAll();
+    const row = screen.getByRole("button", { name: "feb.pdf" }).closest(".s1-et-doc") as HTMLElement;
+    fireEvent.click(within(row).getByRole("button", { name: "Actions for feb.pdf" }));
+    await screen.findByRole("menuitem", { name: "Move to…" });
+    expect(screen.queryByRole("menuitem", { name: "Assign to…" })).toBeNull();
+  });
+
+  it("is on a document row's menu in the Evidence workspace", async () => {
+    const view = render(
+      withAssign(
+        <EvidenceWorkspace
+          engagement={{ ...engagementConfig, engagementId: ENG }}
+          evidence={manufacturerEvidence}
+          asks={[]}
+          onSaveAsk={vi.fn()}
+          onEvidenceChange={vi.fn()}
+          onOpenExtraction={vi.fn()}
+        />,
+      ),
+    );
+    for (const head of view.container.querySelectorAll(".s1-ws-gr__head")) fireEvent.click(head);
+    const first = manufacturerEvidence.find((item) => item.disposition !== "withdrawn")!;
+    fireEvent.click(screen.getAllByRole("button", { name: `Actions for ${first.filename}` })[0]);
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Assign to…" }));
+    expect(await dialog()).toHaveTextContent(first.filename);
+  });
+
+  it("is on the data point review, naming the line", async () => {
+    render(withAssign(<SupportingSchedule engagementId={ENG} lineKey={KENT.key} onBack={vi.fn()} onOpenDocument={vi.fn()} onOpenCalculationLine={vi.fn()} />));
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    fireEvent.click(screen.getByRole("button", { name: "Assign to…" }));
+    const window = await dialog();
+    expect(window).toHaveTextContent("Data point line");
+    expect(window).toHaveTextContent("Kent · Natural gas");
+    expect(screen.getByLabelText("Task")).toHaveValue("Review Kent · Natural gas");
+  });
+
+  it("is left off the data point review where assigning is not available", async () => {
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    expect(screen.queryByRole("button", { name: "Assign to…" })).toBeNull();
   });
 });
 

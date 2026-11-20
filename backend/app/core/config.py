@@ -88,6 +88,13 @@ class Settings(BaseSettings):
     # render, so it is kept out of the brute-force bucket below.
     session_rate_limit: str = "600/minute"
 
+    # Task limits, counted from the database in the last hour (so every process shares them):
+    # tasks one person may create; task emails one person may send to one assignee; task completions
+    # and cancellations one person may make.
+    task_create_per_hour: int = Field(default=60, ge=1)
+    task_per_assignee_per_hour: int = Field(default=20, ge=1)
+    task_action_per_hour: int = Field(default=120, ge=1)
+
     # Per-IP limit shared by all /api/v1/auth/* endpoints except /me.
     auth_rate_limit: str = "100/5 minutes"
 

@@ -1,0 +1,14 @@
+Hello,
+
+{% if requested_by_you %}
+{{ completed_by }} completed a task you requested in Sustentra.
+{% else %}
+{{ completed_by }} completed a task in Sustentra.
+{% endif %}
+
+Sign in to see the details:
+{{ link }}
+
+For your security, task details, file names and client names are never sent by email.
+
+- {{ sender_name }}

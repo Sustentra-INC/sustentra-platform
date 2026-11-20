@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { loginUrlFor, parseRealm, REALM_COOKIE } from "./lib/realm-cookie";
+import { loginUrlFor, parseRealm, REALM_COOKIE, sameOriginPath } from "./lib/realm-cookie";
 import { SESSION_COOKIE } from "./lib/session-cookie";
 
 /**
@@ -62,7 +62,8 @@ function redirectTo(request: NextRequest, loginPath: string, from: string): Next
   const url = request.nextUrl.clone();
   url.pathname = loginPath;
   url.search = "";
-  url.searchParams.set("next", from);
+  // The whole address, query included: a link to a screen of the workpaper must survive the sign-in.
+  url.searchParams.set("next", sameOriginPath(from + request.nextUrl.search) ?? from);
   return NextResponse.redirect(url);
 }
 

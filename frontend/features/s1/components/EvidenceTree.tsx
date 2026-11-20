@@ -27,6 +27,7 @@ import { ApiError } from "../../../lib/api";
 import { userFacingApiError } from "../api/s1Backend";
 import type { EngagementConfig } from "../types";
 import { addedByText, formatPeriod } from "../utils/formatPeriod";
+import { useAssignTask } from "../../tasks/AssignTaskContext";
 import { ActionMenu } from "./ActionMenu";
 import { AiFacilityNote } from "./AiFacilityNote";
 import { ContainerStateSurface } from "./ContainerStateSurface";
@@ -106,6 +107,7 @@ const UNKNOWN_LINE_LABEL = "Unassigned supporting evidence (its line was deleted
 export function EvidenceTree(props: EvidenceTreeProps) {
   const { engagement, reloadKey, facilityId, openIds, onOpenIdsChange, onError } = props;
   const engagementId = engagement.engagementId;
+  const assign = useAssignTask();
   const [tree, setTree] = useState<EvidenceTreeData | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
@@ -283,6 +285,18 @@ export function EvidenceTree(props: EvidenceTreeProps) {
           onOpenChange={(o) => setMenuId(o ? id : null)}
           entries={[
             { label: "Open document", action: () => props.onOpenExtraction(doc.document_id) },
+            ...(assign
+              ? [{
+                  label: "Assign to…",
+                  action: () =>
+                    assign({
+                      kind: "Document",
+                      label: doc.file_name,
+                      target: { kind: "document", item_id: doc.document_id },
+                      title: `Review ${doc.file_name}`,
+                    }),
+                }]
+              : []),
             { label: "Move to…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "move", doc, from, section }) },
             ...(section === BLOCK_SUMMARY && folderList.length > 0 && props.onSetDocumentFolder
               ? [{ label: "Move to folder…", disabled: !props.writesEnabled, action: () => setDialog({ kind: "folderOf", doc }) }]

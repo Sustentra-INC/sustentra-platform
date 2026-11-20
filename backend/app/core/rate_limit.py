@@ -40,3 +40,4 @@ def session_key(request: Request) -> str:
 
 
 session_rate_limit = limiter.limit(lambda: get_settings().session_rate_limit, key_func=session_key)
+

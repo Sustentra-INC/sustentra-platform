@@ -1,8 +1,17 @@
 /* @vitest-environment jsdom */
 import { describe, expect, it, vi } from "vitest";
-import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
 
+vi.mock("../../../lib/api", () => ({
+  api: vi.fn((path: string) => {
+    if (path.endsWith("/unread-count")) return Promise.resolve({ unread_count: 3 });
+    if (path.endsWith("/tasks/assignees")) return Promise.resolve({ items: [] });
+    return Promise.resolve({});
+  }),
+}));
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+
+import { AssignTaskProvider } from "../../tasks/AssignTaskContext";
 import { S1Chrome, type WorkpaperUser } from "../components/S1Chrome";
 import type { EngagementConfig } from "../types";
 
@@ -61,5 +70,44 @@ describe("workpaper chrome: signed-in user (FE-006)", () => {
   it("has no user area in the fixture demo", () => {
     renderChrome(undefined);
     expect(screen.queryByLabelText("Signed in")).toBeNull();
+  });
+});
+
+
+describe("workpaper chrome: tasks", () => {
+  const withOrg: WorkpaperUser = { ...member, orgId: "org-1" };
+
+  it("shows the bell with the unread count, and a My tasks link", async () => {
+    renderChrome(withOrg);
+    expect(await screen.findByRole("button", { name: "Notifications, 3 unread" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "My tasks" })).toHaveAttribute("href", "/org/acme/tasks");
+  });
+
+  it("has no bell without an organisation, and none for a provider admin", () => {
+    renderChrome(member);
+    expect(screen.queryByRole("button", { name: /Notifications/ })).toBeNull();
+    cleanup();
+    renderChrome({ email: "ops@sustentra.test", firstName: null, role: "provider_admin", orgSlug: null });
+    expect(screen.queryByRole("link", { name: "My tasks" })).toBeNull();
+  });
+
+  it("assigns the engagement as a whole", async () => {
+    render(
+      <AssignTaskProvider orgId="org-1" engagementId={ENGAGEMENT.engagementId}>
+        <S1Chrome engagement={ENGAGEMENT} user={withOrg} onSignOut={vi.fn()}>
+          <p>content</p>
+        </S1Chrome>
+      </AssignTaskProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Assign engagement" }));
+    const dialog = await screen.findByRole("dialog", { name: "Assign to…" });
+    expect(dialog).toHaveTextContent("Engagement");
+    expect(dialog).toHaveTextContent("Acme Foods");
+    expect(screen.getByLabelText("Task")).toHaveValue("Review engagement: Acme Foods");
+  });
+
+  it("offers no engagement action where assigning is not available", () => {
+    renderChrome(member);
+    expect(screen.queryByRole("button", { name: "Assign engagement" })).toBeNull();
   });
 });

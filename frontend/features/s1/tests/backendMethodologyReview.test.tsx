@@ -1,4 +1,5 @@
 /* @vitest-environment jsdom */
+import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -14,6 +15,7 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 }));
 
 import { api, ApiError } from "../../../lib/api";
+import { AssignTaskProvider } from "../../tasks/AssignTaskContext";
 import type { EngagementConfig } from "../types";
 import type { Ask } from "../types/requests";
 import type { AskDraft } from "../requests/requestsStore";
@@ -923,6 +925,29 @@ describe("entities and the boundary sentence", () => {
         }),
       ])
     );
+  });
+});
+
+
+describe("Assign to… on a methodology row", () => {
+  it("opens the window for that row, with the row's name", async () => {
+    mock.data = fixture();
+    render(
+      <AssignTaskProvider orgId="org-1" engagementId="e1">
+        <BackendMethodologyReview engagementId="e1" onOpenDocument={vi.fn()} onActivity={vi.fn()} />
+      </AssignTaskProvider>,
+    );
+    await screen.findByText("Consolidation approach");
+    fireEvent.click(screen.getByRole("button", { name: "Assign to…: Consolidation approach" }));
+    const dialog = await screen.findByRole("dialog", { name: "Assign to…" });
+    expect(dialog).toHaveTextContent("Methodology row");
+    expect(dialog).toHaveTextContent("Consolidation approach");
+    expect(screen.getByLabelText("Task")).toHaveValue("Review methodology: Consolidation approach");
+  });
+
+  it("is not offered where assigning is not available", async () => {
+    await open();
+    expect(screen.queryByRole("button", { name: /^Assign to…/ })).toBeNull();
   });
 });
 

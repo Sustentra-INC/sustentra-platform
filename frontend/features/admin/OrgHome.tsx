@@ -40,6 +40,13 @@ export function OrgHome({ me, slug }: { me: Me; slug: string }) {
           Open workpaper
         </Link>
       </div>
+      {me.role !== "provider_admin" ? (
+        <div className={styles.actions}>
+          <Link className={`${styles.button} ${styles.ghost}`} href={`/org/${slug}/tasks`}>
+            My tasks
+          </Link>
+        </div>
+      ) : null}
       {isAdmin ? (
         <div className={styles.actions}>
           <Link className={styles.button} href={`/org/${slug}/admin/people?add=1`}>
@@ -50,6 +57,9 @@ export function OrgHome({ me, slug }: { me: Me; slug: string }) {
           </Link>
           <Link className={`${styles.button} ${styles.ghost}`} href={`/org/${slug}/admin/users`}>
             Manage users
+          </Link>
+          <Link className={`${styles.button} ${styles.ghost}`} href={`/org/${slug}/admin/tasks`}>
+            Tasks
           </Link>
           <Link className={`${styles.button} ${styles.ghost}`} href={`/org/${slug}/admin/audit-log`}>
             Audit log
