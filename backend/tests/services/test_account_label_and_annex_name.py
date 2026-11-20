@@ -14,6 +14,7 @@ import pytest
 from backend.app.services.electricity_extractor import CANONICAL_TYPE_ID, ElectricityExtractor
 from backend.app.services.extraction_target_service import ExtractionTargetService
 from backend.app.services.facility_identifiers import clean_account
+from backend.tests.services.test_calculation_lines import GAS_KC, KC, _gas, _lines_with_docs, _tree
 from backend.tests.services.test_data_quality_checks import YEAR, bill, run_checks, triggers
 from backend.tests.services.test_engagement_recalculation_service import FakeStore, _own
 from backend.tests.services.test_facility_placement_layouts import _meter_bill
@@ -37,6 +38,18 @@ def targets() -> list[dict]:
     ("8830-1174-562", "8830-1174-562"),            # nothing to take off
     ("ACCT-1", "ACCT-1"),                           # a value that starts like a label but has no colon
     ("Account Number:", "Account Number:"),         # nothing left after the label: kept as read
+    ("ACCT#12", "ACCT#12"),                         # a real prefix: "#" with no space is not a label ending
+    ("AC#12", "AC#12"),
+    ("Account#5521", "Account#5521"),
+    ("Customer#4417", "Customer#4417"),
+    ("Meter#3", "Meter#3"),
+    ("GAS-118204-3", "GAS-118204-3"),
+    ("Account # 8830", "8830"),
+    ("ACCT# 12", "12"),
+    ("Account #: 8830", "8830"),
+    ("SERVICE FOR：8830-1174-562", "8830-1174-562"),  # fullwidth colon
+    ("SERVICE​ FOR:‍ 8830", "8830"),         # zero-width characters in the label
+    ("Account：Ｚürich-77", "Zürich-77"),
     ("  ", ""),
     (None, ""),
 ])
@@ -147,3 +160,18 @@ def test_a_label_left_in_the_account_does_not_make_two_bills_different_accounts(
     findings = _service(store).recalculate(ENGAGEMENT, _own)["quality_checks"]
     assert "duplicate_period_amount_with_different_invoice_id" not in [f["trigger"] for f in findings]
     assert "duplicate_counting_risk" in [f["trigger"] for f in findings]
+
+
+@pytest.mark.parametrize(("first", "second"), [("12-345", "1234-5"), ("1-234", "12-34"), ("12-345", "123-45")])
+def test_accounts_that_share_only_their_digits_are_still_different_accounts(first: str, second: str) -> None:
+    findings = [f for f in run_checks(_pair(first, second), YEAR) if f["check"] == "Q-003"]
+    assert [f["trigger"] for f in findings] == ["duplicate_period_amount_with_different_invoice_id"]
+    assert first in findings[0]["message"] and second in findings[0]["message"]
+
+
+def test_an_account_saved_with_its_label_before_this_change_still_places_the_bill_by_number() -> None:
+    store = FakeStore()
+    store.add_document("D1", "CT-S1-FUELQTY", [{**_gas(1000, account_number="SERVICE FOR: 4417-2290-31"),
+                                                 "facility_name": (None, None)}])
+    facilities = [{**KC, "accountNumbers": ["4417-2290-31"]}]
+    assert _lines_with_docs(_tree(store, facilities=facilities)) == {GAS_KC: ["D1"]}

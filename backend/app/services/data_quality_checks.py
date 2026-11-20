@@ -28,7 +28,7 @@ superseded decisions) and passes them in.
 from __future__ import annotations
 
 import re
-from backend.app.services.facility_identifiers import normalise, same_number
+from backend.app.services.facility_identifiers import same_number
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -225,12 +225,12 @@ def _duplicates(records: list[EvidenceRecord]) -> tuple[list[dict[str, Any]], se
         a, b = matches[0]
         pairs.add(frozenset((first, second)))
         whole = len(matches) == per_document[first] == per_document[second]
-        shown: dict[str, str] = {}  # one entry per account, however it is written (spaces, dashes, case)
+        shown: list[str] = []  # one entry per account: two are one only when same_number says so, as in the pairing
         for pair in matches:
             for r in pair:
-                if r.account:
-                    shown.setdefault(normalise(r.account), r.account)
-        accounts = set(shown.values())
+                if r.account and not any(same_number(r.account, seen) for seen in shown):
+                    shown.append(r.account)
+        accounts = set(shown)
         if whole and a.file_name != b.file_name:
             trigger = "same_document_reuploaded_with_different_file_name"
             message = (f"{a.file_name} and {b.file_name} hold the same {len(matches)} "
