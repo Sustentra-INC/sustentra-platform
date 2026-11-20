@@ -232,6 +232,7 @@ describe("Setup save: the save state", () => {
 
   it("shows Saved with the time", () => {
     render(<Harness save={info({ state: "saved", savedAt: new Date(2026, 10, 20, 14, 41) })} />);
+    expect(screen.getByRole("status", { name: "Setup save state" })).toHaveTextContent("Saved · 2:41 PM"); // one, named
     expect(screen.getAllByText("Saved · 2:41 PM")).toHaveLength(5);
   });
 

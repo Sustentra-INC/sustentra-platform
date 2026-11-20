@@ -43,7 +43,10 @@ export function SaveStatus({ info, section }: { info: SetupSaveInfo | undefined;
   const line = saveLine(info, section);
   if (!line) return null;
   return (
-    <span className={`s1-setup-save s1-setup-save--${line.kind}`} role={line.kind === "error" ? "alert" : "status"}>
+    <span
+      className={`s1-setup-save s1-setup-save--${line.kind}`}
+      aria-label={section ? undefined : "Setup save state"}
+      role={line.kind === "error" ? "alert" : "status"}>
       {line.text}
       {line.kind === "error" ? (
         <>
