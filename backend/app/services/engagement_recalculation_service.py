@@ -587,7 +587,8 @@ class EngagementRecalculationService:
             log.warning("reported figures from documents failed: %s", type(exc).__name__)
             figures = []
         reported, reported_units, reported_sources, reported_only = reported_totals.overlay(
-            inputs.reported, inputs.reported_units, figures)
+            inputs.reported, inputs.reported_units, figures,
+            reported_totals.period_years(period[0], period[1]))
         inputs.reported, inputs.reported_units = reported, reported_units
         placed, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
         if not gwp_choice["supported"]:
@@ -796,8 +797,10 @@ class EngagementRecalculationService:
             items = results[-1].get("items") or []
             reviews = reviews_for_latest_type(
                 results, [d for d in self._reviews.list_by_document(document_id) if can_see(d)])
-            for item, resolved in zip(items, resolve_decisions(items, reviews)):
-                figure = reported_totals.figure_of(item, resolved.decision, document)
+            resolved_all = resolve_decisions(items, reviews)
+            doc_year = reported_totals.document_year(items, [r.decision for r in resolved_all])
+            for item, resolved in zip(items, resolved_all):
+                figure = reported_totals.figure_of(item, resolved.decision, document, doc_year)
                 if figure is not None:
                     found.append(figure)
         return found

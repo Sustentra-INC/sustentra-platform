@@ -176,12 +176,13 @@ export function ExtractionReview({
   const [pageFilter, setPageFilter] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
   // A summary document with both: its reported figures to review come first; otherwise (or from a Methodology
-  // source link) the Methodology facts.
-  const [tab, setTab] = useState<"values" | "facts">(() =>
+  // source link) the Methodology facts. The default follows the values as they load; a tab the reviewer picked stays.
+  const [picked, setTab] = useState<"values" | "facts" | null>(null);
+  const defaultTab =
     facts && (factsDeepLinked || !items.some((v) => v.documentId === initialDocumentId && v.reviewState === "to_review" && !v.withdrawn && !v.missing))
       ? "facts"
-      : "values"
-  );
+      : "values";
+  const tab = facts ? (picked ?? defaultTab) : "values";
   // Highlight mode, for one document: it ends when another document is selected.
   const [highlightDoc, setHighlightDoc] = useState<string | null>(null);
   // A pick on the document asks the values pane to bring the picked card into view.

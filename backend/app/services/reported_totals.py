@@ -29,7 +29,7 @@ import math
 import re
 import unicodedata
 from collections import defaultdict
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -42,6 +42,7 @@ WORKBOOK_TYPE_ID = "CT-GHG-WORKBOOK"
 METHODDOC_TYPE_ID = "CT-S1-METHODDOC"
 REPORTED_TYPES = frozenset({WORKBOOK_TYPE_ID, METHODDOC_TYPE_ID})
 REVIEWED = ("accepted", "edited")
+YEAR_FLAG = "year:"  # validation flag of a figure: the one year its table names
 
 GASES = ("co2", "ch4", "n2o", "hfcs", "pfcs", "sf6", "nf3")
 # (row prefix, key of the row's total). Scope 3 is reported only: no recalculation compares it.
@@ -84,7 +85,7 @@ _RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"(?<![A-Za-z])kt\s?CO2\s?-?\s?e(?:q)?(?![A-Za-z])"), "ktCO2e"),
     (re.compile(rf"(?i:(?<![a-z])(?:thousand|kilo)\s*(?:metric\s+)?(?:tons?|tonnes?)\s+(?:of\s+)?{_E})"), "ktCO2e"),
     (re.compile(rf"(?i:(?<![a-z])kg\s?{_E})"), "kgCO2e"),
-    (re.compile(rf"(?:(?i:(?<![a-z])(?:t|tonnes?|metric\s+tons?|metric\s+tonnes?)\s?(?:of\s+)?)|(?<![A-Za-z])MT\s?(?:of\s+)?)"
+    (re.compile(rf"(?:(?i:(?<![a-z])(?:t|tonnes?|metric\s+tons?|metric\s+tonnes?)\s?(?:of\s+)?)|(?<![A-Za-z])(?:MT|mT)\s?(?:of\s+)?)"
                 rf"(?i:{_E})(?![a-z])"), "tCO2e"),
 )
 _MASS_FULL: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -98,8 +99,8 @@ def _text(value: Any) -> str:
     return " ".join(unicodedata.normalize("NFKC", str(value or "")).replace(" ", " ").split())
 
 
-def find_units(text: str) -> set[str]:
-    """Every CO2e unit printed inside ``text`` (a header or caption: "Emissions MTCO2e"). A longer unit
+def _scan_units(text: str) -> tuple[set[str], str]:
+    """The CO2e units printed in ``text`` and what is left of it once they are taken out. A longer unit
     ("million metric tons CO2e") hides the shorter one inside it ("metric tons CO2e")."""
 
     clean = _text(text)
@@ -107,8 +108,71 @@ def find_units(text: str) -> set[str]:
     for pattern, label in _RULES:
         if pattern.search(clean):
             found.add(label)
-            clean = pattern.sub(" ", clean)
-    return found
+            clean = pattern.sub(" \x00 ", clean)  # where a unit was: a scale word is read beside it
+    return found, clean
+
+
+def find_units(text: str) -> set[str]:
+    """Every CO2e unit printed inside ``text`` (a header or caption: "Emissions MTCO2e")."""
+
+    return _scan_units(text)[0]
+
+
+# A scale printed beside a unit: "thousand tCO2e", "tCO2e (in thousands)", "'000 tCO2e", "m tCO2e", "MM tCO2e".
+_SCALES: tuple[tuple[re.Pattern[str], float], ...] = (
+    (re.compile(r"(?i:\b(?:in\s+)?thousands?\b)|['\u2019]000s?|\(\s*000s?\s*\)|\b000s\b"
+                r"|(?<![A-Za-z])k\s+(?=\x00)"), 1e3),
+    (re.compile(r"(?i:\b(?:in\s+)?millions?\b)|\bMM\b|(?<![A-Za-z])m\s+(?=\x00)"), 1e6),
+)
+# A measure that is not an amount of emissions: an intensity ("tCO2e / $M revenue"), a ratio, "per" anything.
+_BAD_MEASURE = re.compile(r"(?i)intensity|\bper\b|revenue|/")
+# Reasons a column is some other measure than the emissions total.
+_NOT_A_TOTAL = re.compile(r"(?i)intensity|\bper\b|revenue|/|biogenic|%|percent|change|target|baseline|reduction|share|ratio|yoy")
+_NAMES_TOTAL = re.compile(r"(?i)\btotal\b|\bemissions?\b")
+# Unit-like words that are not unambiguous: a lowercase "mt", "tons" (short tons?), "short tons".
+_UNCLEAR = re.compile(r"(?i)(?<![a-z])(?:mt|tons?|short\s+tons?)\s?(?:of\s+)?(?:co2|carbon\s+dioxide)")
+SCALED_LABEL = {1e3: "ktCO2e", 1e6: "MtCO2e"}
+
+
+def read_unit(texts: Sequence[str]) -> tuple[str | None, str | None, str | None]:
+    """(unit, the words it was read from, problem) from the header and caption texts around a table, nearest first.
+
+    The unit is one CO2e unit, with a printed scale applied ("thousand tCO2e" is ktCO2e). A problem says why there is
+    none: "measure" (a header with a "/" denominator, "intensity", "per" or "revenue": the table is about something
+    other than an amount of emissions and is not read at all), "scale" (several scales, or a scale printed beside a unit
+    that is already scaled), "units" (several units), "unclear" (a unit that could mean two things)."""
+
+    labels: set[str] = set()
+    scales: set[float] = set()
+    unclear = False
+    source: str | None = None
+    for raw in texts:
+        text = _text(raw)
+        found, rest = _scan_units(text)
+        factors = {f for pattern, f in _SCALES if pattern.search(rest)}
+        if not found:
+            if factors and len(text) <= 80:  # a short caption of its own: "(in thousands)"
+                scales |= factors
+            elif _UNCLEAR.search(text):
+                unclear = True
+                source = source or text
+            continue
+        if _BAD_MEASURE.search(text):
+            return None, text, "measure"
+        labels |= found
+        scales |= factors
+        source = source or text
+    if len(scales) > 1:
+        return None, source, "scale"
+    if len(labels) > 1:
+        return None, source, "units"
+    if not labels:
+        return None, source, "unclear" if unclear else None
+    label = next(iter(labels))
+    if scales:
+        factor = next(iter(scales))
+        return (SCALED_LABEL[factor], source, None) if label == "tCO2e" else (None, source, "scale")
+    return label, source, None
 
 
 def parse_unit(text: Any, *, mass: bool = False) -> Unit | None:
@@ -212,6 +276,8 @@ class Hit:
     unit_text: str | None  # the words the unit was read from
     reference: dict[str, Any]
     context: dict[str, Any] = field(default_factory=dict)
+    year: int | None = None  # the one year the table's header or caption names
+    unit_problem: str | None = None  # why there is no unit: see read_unit
 
 
 @dataclass
@@ -258,6 +324,13 @@ def _median(values: Sequence[float]) -> float:
     return ordered[len(ordered) // 2] if ordered else 0.0
 
 
+_YEAR_IN = re.compile(r"(?<![\d,.])(?:19|20)\d\d(?![\d,])")
+
+
+def years_in(texts: Iterable[str]) -> set[int]:
+    return {int(y) for t in texts for y in _YEAR_IN.findall(_text(t))}
+
+
 def _numeric_rows(cells: Sequence[_Cell]) -> list[list[_Cell]]:
     """Value cells put in rows by the height of their centre."""
 
@@ -272,9 +345,39 @@ def _numeric_rows(cells: Sequence[_Cell]) -> list[list[_Cell]]:
     return [sorted(r, key=lambda c: c.x0) for r in rows]
 
 
+def _total_ok(context: Sequence[str], unit: str | None) -> bool:
+    """A lone value column is read as the row's Total only when its header or caption names a total or emissions, the
+    unit is one of CO2e, and nothing there says it is another measure (intensity, biogenic, a change, a target...)."""
+
+    joined = " ".join(context)
+    return bool(unit in CO2E_UNITS and _NAMES_TOTAL.search(joined) and not _NOT_A_TOTAL.search(joined))
+
+
+def _segment(matched: list[tuple[list[_Cell], str]], texts: Sequence[_Cell], row_h: float
+             ) -> list[list[tuple[list[_Cell], str]]]:
+    """Scope rows put into tables: a new table starts after a vertical gap of more than a couple of rows, or where
+    a column header (a gas, a year) is printed again between two rows."""
+
+    groups: list[list[tuple[list[_Cell], str]]] = []
+    tops = [min(c.y0 for c in row) for row, _ in matched]
+    pitch = _median([b - a for a, b in zip(tops, tops[1:])])
+    limit = max(4 * row_h, 2.2 * pitch)  # rows of one table are about a pitch apart, whatever their height
+    for row, key in matched:
+        top = min(c.y0 for c in row)
+        if groups:
+            above = max(c.y1 for c in groups[-1][-1][0])
+            header_between = any(above - 1e-4 <= t.cy <= top + 1e-4 and (column_of(t.text) or _is_year(t.text)) for t in texts)
+            if top - above > limit or header_between:
+                groups.append([])
+        else:
+            groups.append([])
+        groups[-1].append((row, key))
+    return groups
+
+
 def read_page_cells(cells: Sequence[_Cell]) -> tuple[list[Hit], list[str]]:
-    """The scope rows of every table on one page. A table is a run of value rows whose labels name scopes; the
-    columns are named by the text above them."""
+    """The scope rows of every table on one page. A table is a run of value rows whose labels name scopes; its
+    columns are named by the text above it, and only by that (two tables stacked on a page do not share a header)."""
 
     hits: list[Hit] = []
     notes: list[str] = []
@@ -301,95 +404,162 @@ def read_page_cells(cells: Sequence[_Cell]) -> tuple[list[Hit], list[str]]:
         key = scope_row(" ".join(c.text for c in pieces)) if pieces else None
         if key is not None:
             matched.append((row, key))
-    if not matched:
-        return hits, notes
-    top = min(min(c.y0 for c in row) for row, _ in matched)
-    bottom = max(max(c.y1 for c in row) for row, _ in matched)
-    reference = max((row for row, _ in matched), key=len)
+    groups = _segment(matched, texts, row_h)
+    spans = [(min(c.y0 for r, _ in g for c in r), max(c.y1 for r, _ in g for c in r)) for g in groups]
+    for index, group in enumerate(groups):
+        previous = spans[index - 1][1] if index else 0.0
+        following = spans[index + 1][0] if index + 1 < len(groups) else 1.0
+        found, more = _read_table_cells(group, texts, value_ids, cells, previous, following)
+        hits.extend(found)
+        notes.extend(more)
+    return hits, notes
+
+
+def _read_table_cells(group: list[tuple[list[_Cell], str]], texts: Sequence[_Cell], value_ids: set[int],
+                      cells: Sequence[_Cell], previous: float, following: float) -> tuple[list[Hit], list[str]]:
+    """One table of scope rows, read through its own header and caption."""
+
+    hits: list[Hit] = []
+    notes: list[str] = []
+    top = min(c.y0 for row, _ in group for c in row)
+    bottom = max(c.y1 for row, _ in group for c in row)
+    reference = max((row for row, _ in group), key=len)
     pitch = min((b.cx - a.cx for a, b in zip(reference, reference[1:])), default=0.1) or 0.1
+    floor = max(previous, top - 0.2)
 
     def column_cells(centre: float, within: float) -> list[_Cell]:
         # a header sits over its own column: a title or caption spanning several columns names none of them
-        return [c for c in texts if top - 0.2 <= c.y1 <= top + 1e-4 and abs(c.cx - centre) <= within
+        return [c for c in texts if floor < c.y1 <= top + 1e-4 and abs(c.cx - centre) <= within
                 and c.x1 - c.x0 <= 2.4 * within]
 
     headers = {id(cell): " ".join(c.text for c in sorted(column_cells(cell.cx, 0.5 * pitch), key=lambda c: c.cy))
                for cell in reference}
-    named = {id(cell): column_of(headers[id(cell)]) for cell in reference}
-    years = [c for c in texts if top - 0.2 <= c.y1 <= top and _is_year(c.text)]
-    if len(years) >= 2:
-        notes.append("A table here has several year columns, so none of its figures were read: the document would "
-                     "have to say which year is the reporting year.")
-        return [], notes
-    single = not any(named.values()) and all(len(row) == 1 for row, _ in matched)
-    units_found: set[str] = set()
-    unit_text: str | None = None
-    nearest: float | None = None
-    for c in cells:
-        if top - 0.3 <= c.y1 <= bottom + 0.05 and id(c) not in value_ids:
-            found = find_units(c.text)
-            if found:
-                units_found |= found
-                if nearest is None or c.y1 > nearest:  # the caption closest above the table names its unit
-                    nearest, unit_text = c.y1, c.text
-    unit = next(iter(units_found)) if len(units_found) == 1 else None
-    if len(units_found) > 1:
-        notes.append("More than one unit is printed near a table, so its values were read with no unit.")
-    for row, key in matched:
+    # a column about another measure ("tCO2e / $M revenue") names nothing, and takes no part in the unit
+    named = {id(cell): (None if _BAD_MEASURE.search(headers[id(cell)]) else column_of(headers[id(cell)])) for cell in reference}
+    band = [c for c in texts if floor < c.y1 <= top + 1e-4]
+    if sum(1 for c in band if _is_year(c.text)) >= 2:
+        return [], ["A table here has several year columns, so none of its figures were read: the document would "
+                    "have to say which year is the reporting year."]
+    years = years_in(c.text for c in band)
+    year = next(iter(years)) if len(years) == 1 else None
+    year_cell = next((c for c in band if year is not None and year in years_in([c.text])), None)
+
+    def near(c: _Cell) -> float:
+        return top - c.y1 if c.y1 <= top else max(c.y0 - bottom, 0.0)
+
+    bad_headers = {id(c) for cell in reference for c in column_cells(cell.cx, 0.5 * pitch) if _BAD_MEASURE.search(headers[id(cell)])}
+    context = sorted((c for c in cells if id(c) not in value_ids and id(c) not in bad_headers
+                      and max(previous, top - 0.3) <= c.y1 <= min(bottom + 0.05, following - 0.005)), key=near)
+    unit, unit_text, problem = read_unit([c.text for c in context])
+    if problem == "measure":
+        return [], ["A table here is about another measure (an intensity or a ratio), so none of its figures were read."]
+    single = not any(named.values()) and all(len(row) == 1 for row, _ in group)
+    if single and not _total_ok([c.text for c in band], unit):
+        return [], ["A table here has one value column that is not named as a total in a CO2e unit, so it was not read."]
+    for row, key in group:
         for cell in row:
             column = "total" if single else None
             if not single:
-                near = min(reference, key=lambda r: abs(r.cx - cell.cx))
-                if abs(near.cx - cell.cx) <= 0.5 * pitch:
-                    column = named.get(id(near))
+                nearest = min(reference, key=lambda r: abs(r.cx - cell.cx))
+                if abs(nearest.cx - cell.cx) <= 0.5 * pitch:
+                    column = named.get(id(nearest))
             if column is None:
                 continue
             number = number_of(cell.text)
             hits.append(Hit(field_for(key, column), cell.text, number, unit if number is not None else None,
-                            unit_text if number is not None else None, {}, {"block": cell.block, "page_number": cell.page}))
+                            unit_text if number is not None else None, {}, {"block": cell.block, "page_number": cell.page},
+                            year if number is not None else None, problem if number is not None else None))
+    if hits and year_cell is not None and year is not None:
+        hits.append(Hit("reporting_year", str(year), float(year), None, None, {},
+                        {"block": year_cell.block, "page_number": year_cell.page}, year))
     return hits, notes
 
 
-_TABLE_LABEL_ROWS = 8
+@dataclass
+class TableRead:
+    cells: list[tuple[str, str, str]]  # (row, column, the cell as printed)
+    unit: str | None
+    unit_text: str | None
+    problem: str | None
+    year: int | None
+    notes: list[str]
 
 
-def read_table(rows: Sequence[Sequence[Any]]) -> tuple[list[tuple[str, str, Any]], set[str], list[str]]:
-    """(row, column, cell) for each value of a table given as rows of cells, the units named above or in it, and
-    notes. The header is the first rows up to the first scope row; columns are the same position in every row."""
+def _segments(grid: list[list[str]]) -> list[tuple[list[list[str]], list[list[str]]]]:
+    """(header rows, scope rows) per table: a table ends where a row that is not a scope row follows its scope rows."""
 
-    notes: list[str] = []
-    grid = [[_text(c) for c in row] for row in rows]
-    first = next((i for i, row in enumerate(grid) if row and scope_row(row[0] if row[0] else next((c for c in row if c), "")) is not None), None)
-    if first is None:
-        return [], set(), notes
-    header = grid[:first]
-    width = max(len(r) for r in grid)
-    years = [c for row in header for c in row if _is_year(c)]
-    names: dict[int, str | None] = {}
-    for index in range(width):
-        text = " ".join(row[index] for row in header[-4:] if index < len(row) and row[index])
-        names[index] = column_of(text)
-    if len(years) >= 2 and not any(names.values()):
-        notes.append("A table here has several year columns, so none of its figures were read.")
-        return [], set(), notes
-    units: set[str] = set()
-    for row in header:
-        for cell in row:
-            units |= find_units(cell)
-    out: list[tuple[str, str, Any]] = []
-    for row in grid[first:]:
-        label_at = next((i for i, c in enumerate(row) if c), None)
-        key = scope_row(row[label_at]) if label_at is not None else None
-        if key is None or label_at is None:
+    out: list[tuple[list[list[str]], list[list[str]]]] = []
+    header: list[list[str]] = []
+    body: list[list[str]] = []
+    for row in grid:
+        lead = next((c for c in row if c), "")
+        if not any(row):
             continue
-        numbers = [i for i, c in enumerate(row) if i > label_at and _value_cell(c)]
-        single = not any(names.values()) and len(numbers) == 1
-        for index in numbers:
-            column = "total" if single else names.get(index)
-            if column is not None:
-                out.append((key, column, (index, row[index])))
-        units |= {u for c in row[label_at + 1:] for u in find_units(c)}
-    return out, units, notes
+        if scope_row(lead) is not None:
+            body.append(row)
+            continue
+        if body:
+            out.append((header, body))
+            header, body = [], []
+        header.append(row)
+    if body:
+        out.append((header, body))
+    return out
+
+
+def read_tables(rows: Sequence[Sequence[Any]]) -> list[TableRead]:
+    """The tables in a grid of rows (a workbook sheet, a Textract table): each is read through its own header, and the
+    columns are the same position in every row."""
+
+    grid = [[_text(c) for c in row] for row in rows]
+    reads: list[TableRead] = []
+    for header, body in _segments(grid):
+        notes: list[str] = []
+        width = max(len(r) for r in [*header, *body])
+        names: dict[int, str | None] = {}
+        other_measure: set[int] = set()  # a column about an intensity, a ratio, "per ...": it names nothing
+        label_column = min((next((i for i, c in enumerate(r) if c), width) for r in body), default=0)
+        for index in range(width):
+            text = " ".join(row[index] for row in header[-4:] if index < len(row) and row[index])
+            if _BAD_MEASURE.search(text) and index != label_column:  # the label column's header is the caption
+                other_measure.add(index)
+            names[index] = None if index in other_measure else column_of(text)
+        header_texts = [c for row in header for c in row if c]
+        year_cells = [c for c in header_texts if _is_year(c)]
+        if len(year_cells) >= 2 and not any(names.values()):
+            reads.append(TableRead([], None, None, None, None,
+                                   ["A table here has several year columns, so none of its figures were read."]))
+            continue
+        years = years_in(header_texts)
+        year = next(iter(years)) if len(years) == 1 else None
+        # nearest the rows first; a column about another measure takes no part in the unit
+        unit, unit_text, problem = read_unit([row[i] for row in reversed(header) for i in range(len(row))
+                                              if row[i] and i not in other_measure])
+        if problem == "measure":
+            reads.append(TableRead([], None, None, "measure", None,
+                                   ["A table here is about another measure (an intensity or a ratio), so none of its figures were read."]))
+            continue
+        out: list[tuple[str, str, str]] = []
+        single_ok = _total_ok(header_texts, unit)
+        refused = False
+        for row in body:
+            label_at = next((i for i, c in enumerate(row) if c), None)
+            key = scope_row(row[label_at]) if label_at is not None else None
+            if key is None or label_at is None:
+                continue
+            numbers = [i for i, c in enumerate(row) if i > label_at and _value_cell(c)]
+            single = not any(names.values()) and len(numbers) == 1
+            if single and not single_ok:
+                refused = True
+                continue
+            for index in numbers:
+                column = "total" if single else names.get(index)
+                if column is not None:
+                    out.append((key, column, row[index]))
+        if refused:
+            notes.append("A table here has one value column that is not named as a total in a CO2e unit, so it was not read.")
+        reads.append(TableRead(out, unit, unit_text, problem, year, notes))
+    return reads
 
 
 # =========================================================================================
@@ -441,15 +611,19 @@ class ReportedTotalsExtractor:
         for table in parser_output.get("tables") or []:
             if not isinstance(table, dict):
                 continue
-            found_cells, units, more = read_table(table.get("rows") or [])
-            notes.extend(more)
-            unit = next(iter(units)) if len(units) == 1 else None
             reference = self._service._source_reference_for_table(parser_output, table, document_id)
-            for row, column, (_index, raw) in found_cells:
-                number = number_of(raw)
-                located = self._service._with_position(parser_output, reference, raw, {"row_text": raw})
-                hits.append(Hit(field_for(row, column), raw, number, unit if number is not None else None,
-                                None, located, {"page_number": table.get("page_number")}))
+            for read in read_tables(table.get("rows") or []):
+                notes.extend(read.notes)
+                for row, column, raw in read.cells:
+                    number = number_of(raw)
+                    located = self._service._with_position(parser_output, reference, raw, {"row_text": raw})
+                    hits.append(Hit(field_for(row, column), raw, number, read.unit if number is not None else None,
+                                    read.unit_text if number is not None else None, located,
+                                    {"page_number": table.get("page_number")}, read.year if number is not None else None,
+                                    read.problem if number is not None else None))
+                if read.cells and read.year is not None:
+                    hits.append(Hit("reporting_year", str(read.year), float(read.year), None, None, reference,
+                                    {"page_number": table.get("page_number")}, read.year))
         return hits, list(dict.fromkeys(notes))
 
     # --- candidates ----------------------------------------------------------------------------
@@ -472,12 +646,15 @@ class ReportedTotalsExtractor:
                          source_reference=reference, validation_flags=flags)
         allowed = [str(u) for u in target.get("expected_units") or ()]
         unit = hit.unit if hit.unit in allowed else None
-        if hit.unit is None:
-            flags.append("unit_missing")
-        elif unit is None:
-            flags.append("unit_not_expected")
-        else:
-            flags.append(f"unit_as_printed:{hit.unit_text or unit}"[:120])
+        if target.get("value_type") == "quantity":
+            if hit.unit is None:
+                flags.append("unit_unclear" if hit.unit_problem else "unit_missing")
+            elif unit is None:
+                flags.append("unit_not_expected")
+            else:
+                flags.append(f"unit_as_printed:{hit.unit_text or unit}"[:120])
+        if hit.year is not None and name != "reporting_year":
+            flags.append(f"{YEAR_FLAG}{hit.year}")
         number: float | int = int(hit.number) if float(hit.number).is_integer() else hit.number
         return build(evidence_id=evidence_id, document_id=document_id, field_id=name, display_label=label,
                      raw_value=hit.raw, normalized_value=number, unit=unit, confidence=CONFIDENCE,
@@ -497,14 +674,36 @@ class DocumentFigure:
     page: int | None
     printed: str  # "34,128 tCO2e" / "1.2 MtCO2e", as the reviewer accepted it
     label: str
+    year: int | None = None  # the year its table names, else the document's accepted reporting year
 
     def public(self) -> dict[str, Any]:
         return {"value": self.value_t, "unit": self.unit_choice, "document_id": self.document_id,
-                "file_name": self.file_name, "page": self.page, "printed": self.printed, "label": self.label}
+                "file_name": self.file_name, "page": self.page, "printed": self.printed, "label": self.label,
+                "year": self.year}
 
 
-def figure_of(item: Mapping[str, Any], review: Mapping[str, Any] | None, document: Mapping[str, Any]
-              ) -> DocumentFigure | None:
+def document_year(items: Sequence[Mapping[str, Any]], reviews: Sequence[Mapping[str, Any] | None]) -> int | None:
+    """The reporting year the reviewer accepted (or typed) for the document, if any."""
+
+    for item, review in zip(items, reviews):
+        if item.get("field_name") != "reporting_year" or not review or str(review.get("decision")) not in REVIEWED:
+            continue
+        value = review.get("reviewed_value") if str(review.get("decision")) == "edited" else item.get("normalized_value")
+        year = number_of(value) if not isinstance(value, (int, float)) or isinstance(value, bool) else float(value)
+        if year is not None and float(year).is_integer() and 1900 <= year <= 2100:
+            return int(year)
+    return None
+
+
+def _year_flag(item: Mapping[str, Any]) -> int | None:
+    for flag in item.get("validation_flags") or []:
+        if isinstance(flag, str) and flag.startswith(YEAR_FLAG) and flag[len(YEAR_FLAG):].isdigit():
+            return int(flag[len(YEAR_FLAG):])
+    return None
+
+
+def figure_of(item: Mapping[str, Any], review: Mapping[str, Any] | None, document: Mapping[str, Any],
+              doc_year: int | None = None) -> DocumentFigure | None:
     """The reviewer-accepted (or corrected) figure of one extracted item, in tonnes. None for anything not
     accepted, not a number, with no single known unit, or not a data point of the roll-up (Scope 3 is returned
     by ``reported_only_figure``)."""
@@ -531,31 +730,61 @@ def figure_of(item: Mapping[str, Any], review: Mapping[str, Any] | None, documen
         key=name, value_t=to_tonnes(float(number), unit), unit_choice="t CO2e" if unit.co2e else "t",
         document_id=str(document.get("document_id")), file_name=str(document.get("file_name") or ""),
         page=page if isinstance(page, int) else None, printed=f"{_trim(float(number))} {unit.label}",
-        label=str(item.get("display_label") or name))
+        label=str(item.get("display_label") or name), year=_year_flag(item) or doc_year)
 
 
 def _trim(number: float) -> str:
     return f"{number:,.0f}" if float(number).is_integer() else f"{number:,}"
 
 
-def overlay(manual: Mapping[str, float], manual_units: Mapping[str, str], figures: Iterable[DocumentFigure]
+def year_problem(figure: DocumentFigure, years: Collection[int] | None) -> str | None:
+    """Why a figure is not compared: its year is not the engagement's, or not stated, or the period is not set."""
+
+    if figure.year is None:
+        return "Year not stated"
+    if years is None:
+        return "Reporting period not set, so the year was not compared"
+    return None if figure.year in years else f"Different year ({figure.year}) \u2014 not compared"
+
+
+def period_years(start: Any, end: Any) -> set[int] | None:
+    """The year a figure for the engagement's reporting period carries: the year it ends in (a fiscal year is named by
+    the year it ends), or its own year when it is one calendar year. None when the period is not set."""
+
+    if end is None:
+        return None
+    years = {end.year}
+    if start is not None and start.year == end.year:
+        years.add(start.year)
+    return years
+
+
+def overlay(manual: Mapping[str, float], manual_units: Mapping[str, str], figures: Iterable[DocumentFigure],
+            years: Collection[int] | None = None
             ) -> tuple[dict[str, float], dict[str, str], dict[str, dict[str, Any]], list[dict[str, Any]]]:
     """The reported values the comparison uses, the units of its per-gas rows, what each came from, and the
     figures that are reported only (Scope 3).
 
     A manual entry always wins and is never changed; the document's figure is shown beside it and flagged when it
-    differs. Two accepted figures for one data point that disagree feed nothing (listed as a conflict)."""
+    differs. Two accepted figures for one data point that disagree feed nothing (listed as a conflict). A figure of
+    another year than the engagement's, or of no stated year, is never fed: it is listed as not compared."""
 
     by_key: dict[str, list[DocumentFigure]] = defaultdict(list)
     reported_only: list[dict[str, Any]] = []
     for figure in figures:
         if is_reported_only(figure.key):
-            reported_only.append({**figure.public(), "key": figure.key})
+            reported_only.append({**figure.public(), "key": figure.key, "excluded": year_problem(figure, years)})
         else:
             by_key[figure.key].append(figure)
     reported, units = dict(manual), dict(manual_units)
     sources: dict[str, dict[str, Any]] = {}
-    for key, found in by_key.items():
+    for key, every in by_key.items():
+        found = [f for f in every if year_problem(f, years) is None]
+        if not found:
+            first = every[0]
+            sources[key] = {"document": first.public(), "manual": manual.get(key), "used": "manual" if key in manual else None,
+                            "differs": False, "excluded": year_problem(first, years)}
+            continue
         agreed = [f for f in found if math.isclose(f.value_t, found[0].value_t, rel_tol=1e-9, abs_tol=1e-9)
                   and f.unit_choice == found[0].unit_choice]
         figure = found[0]

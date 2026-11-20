@@ -99,6 +99,8 @@ export interface ReportedDocumentFigure {
   /** The figure as the reviewer accepted it ("1.2 MtCO2e"), before it was normalised to tonnes. */
   printed: string;
   label: string;
+  /** The year its table (or the accepted reporting year) names; null when none is stated. */
+  year?: number | null;
 }
 
 /** Where a Reported value came from. A typed figure always wins; the document's is shown beside it. */
@@ -110,6 +112,8 @@ export interface ReportedSource {
   differs: boolean;
   /** Two accepted documents disagree: nothing from documents is used. */
   conflict?: ReportedDocumentFigure[];
+  /** Why the document's figure is not compared: "Different year (2023) \u2014 not compared", "Year not stated". */
+  excluded?: string | null;
 }
 
 /** "From <file>, page N": where a reported figure was read. */
@@ -492,7 +496,7 @@ export interface Recalculation {
   /** Reported figures from accepted summary documents, by data point key (Verification results' Reported side). */
   reported_sources?: Record<string, ReportedSource>;
   /** Reported, never compared (Scope 3: it is not recalculated). */
-  reported_only?: (ReportedDocumentFigure & { key: string })[];
+  reported_only?: (ReportedDocumentFigure & { key: string; excluded?: string | null })[];
   /** Accepted values whose documents are not on a calculation line (Unassigned supporting evidence, or
    *  moved off their line): counted nowhere until the document is placed. Absent from older results. */
   uncounted_values?: UncountedValues;

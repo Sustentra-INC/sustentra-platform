@@ -8,6 +8,7 @@ import { mapBackendCandidateToExtractedField, type BackendExtractionCandidateLik
 import { reviewValuesFromFields } from "../adapters/reviewValueAdapter";
 import { ExtractionReview, type SourcePick } from "../components/ExtractionReview";
 import type { MethodologyFacts } from "../components/SummaryDocumentReview";
+import { parseViewFromSearch, viewToSearch } from "../utils/viewHistory";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import type { EvidenceItem } from "../types";
 import type { PageMark, ReviewSpan, ReviewValue } from "../types/review";
@@ -63,9 +64,8 @@ interface Seen {
   pickBox?: (box: { x: number; y: number; w: number; h: number }, id?: string) => void;
 }
 
-function open(values: ReviewValue[], facts: MethodologyFacts | undefined, deep = false) {
-  const seen: Seen = { span: null, marks: [] };
-  render(
+function element(values: ReviewValue[], facts: MethodologyFacts | undefined, deep: boolean, seen: Seen) {
+  return (
     <ExtractionReview
       engagement={engagementConfig}
       values={values}
@@ -82,6 +82,11 @@ function open(values: ReviewValue[], facts: MethodologyFacts | undefined, deep =
       }}
     />
   );
+}
+
+function open(values: ReviewValue[], facts: MethodologyFacts | undefined, deep = false) {
+  const seen: Seen = { span: null, marks: [] };
+  render(element(values, facts, deep, seen));
   return seen;
 }
 
@@ -143,6 +148,29 @@ describe("a summary document with reported figures and Methodology facts", () =>
     expect(tab("Methodology facts")).toHaveAttribute("aria-selected", "true");
     const own = seen.marks.find((m) => m.id !== factMark.id) as PageMark;
     act(() => seen.pickBox?.(own.span as ReviewSpan, own.id));
+    expect(tab("Reported figures")).toHaveAttribute("aria-selected", "true");
+  });
+});
+
+describe("the default tab follows the values as they load", () => {
+  it("is recomputed when the values change, until the reviewer picks a tab", () => {
+    const seen: Seen = { span: null, marks: [] };
+    const facts = makeFacts();
+    const view = render(element(reported(true), facts, false, seen));
+    expect(tab("Methodology facts")).toHaveAttribute("aria-selected", "true"); // nothing left to review
+    view.rerender(element(reported(false), facts, false, seen)); // the figures arrive as to review
+    expect(tab("Reported figures")).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(tab("Methodology facts")); // the reviewer chose
+    view.rerender(element(reported(false), facts, false, seen));
+    expect(tab("Methodology facts")).toHaveAttribute("aria-selected", "true");
+    view.rerender(element(reported(true), facts, false, seen));
+    expect(tab("Methodology facts")).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("a link that is not a Methodology source link never opens the facts tab", () => {
+    expect(parseViewFromSearch("?view=review&doc=DOC-1&value=scope1_total")).not.toHaveProperty("field");
+    expect(viewToSearch({ name: "extraction", documentId: "DOC-1", valueId: "scope1_total" }, "e1")).not.toContain("field=");
+    open(reported(), makeFacts()); // not deep-linked: the figures to review come first
     expect(tab("Reported figures")).toHaveAttribute("aria-selected", "true");
   });
 });

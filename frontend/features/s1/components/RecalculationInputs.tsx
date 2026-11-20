@@ -373,7 +373,7 @@ export function RecalculationInputs({
                   <ul>
                     {result.reported_only.map((f) => (
                       <li key={f.key}>
-                        {f.label}: {f.printed} <span className="s1-muted">· {reportedSourceWords(f)}</span>
+                        {f.label}: {f.printed} <span className="s1-muted">· {reportedSourceWords(f)}{f.excluded ? ` · ${f.excluded}` : ""}</span>
                       </li>
                     ))}
                   </ul>
@@ -418,7 +418,9 @@ export function ReportedSourceNote({ source }: { source?: ReportedSource }) {
   return (
     <span className="s1-muted s1-rc__source" role="note">
       {reportedSourceWords(figure)} · {figure.printed}
-      {source.used === "manual"
+      {source.excluded
+        ? ` · ${source.excluded}${source.used === "manual" ? "; the figure entered here is used" : ""}`
+        : source.used === "manual"
         ? source.differs
           ? " · differs from the figure entered here, which is used"
           : " · matches the figure entered here"

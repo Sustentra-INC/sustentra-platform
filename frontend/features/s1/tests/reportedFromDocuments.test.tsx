@@ -53,6 +53,18 @@ describe("Reported values read from accepted summary documents", () => {
     expect(within(row).getByRole("note")).toHaveTextContent("differs from the figure entered here, which is used");
   });
 
+  it("says when a figure is of another year, or states none, and is not compared", () => {
+    show({
+      scope1_total: { document: { ...figure(38922, "38,922 tCO2e"), year: 2023 }, manual: null, used: null, differs: false, excluded: "Different year (2023) \u2014 not compared" },
+      scope2_location_total: { document: figure(100, "100 tCO2e"), manual: 90, used: "manual", differs: false, excluded: "Year not stated" },
+    });
+    const one = screen.getByText(/Scope 1 \(Total\)/).closest("label") as HTMLElement;
+    expect(within(one).getByRole("note")).toHaveTextContent("Different year (2023) \u2014 not compared");
+    expect(within(one).getByRole("note")).not.toHaveTextContent("used as reported");
+    const two = screen.getByText(/Scope 2 \(Total\), location-based/).closest("label") as HTMLElement;
+    expect(within(two).getByRole("note")).toHaveTextContent("Year not stated; the figure entered here is used");
+  });
+
   it("says when two documents disagree and none is used", () => {
     show({
       scope1_total: { document: null, manual: null, used: null, differs: false, conflict: [figure(1, "1 tCO2e"), figure(2, "2 tCO2e")] },

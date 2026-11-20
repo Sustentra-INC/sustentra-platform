@@ -960,7 +960,11 @@ export function CalculationPanels({
                   {head?.reported_source?.document ? (
                     <span className="s1-muted s1-cp-source">
                       {" "}· {reportedSourceWords(head.reported_source.document)}
-                      {head.reported_source.used === "manual" && head.reported_source.differs ? " (the figure entered differs)" : ""}
+                      {head.reported_source.excluded
+                        ? ` \u00b7 ${head.reported_source.excluded}`
+                        : head.reported_source.used === "manual" && head.reported_source.differs
+                          ? " (the figure entered differs)"
+                          : ""}
                     </span>
                   ) : null}
                 </span>

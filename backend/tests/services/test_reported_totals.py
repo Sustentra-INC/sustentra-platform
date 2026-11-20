@@ -36,7 +36,7 @@ COLS = [0.40, 0.50, 0.60, 0.70, 0.82]  # CO2 CH4 N2O HFC Total
 
 
 def yum_blocks(scope2_label: tuple[str, ...] = ("Scope 2", "(location-based)"), unit: str = "Emissions MTCO₂e") -> list[dict[str, Any]]:
-    out = [block(1, "GHG Emissions by scope and type of gas in metric tons of carbon dioxide equivalent", 0.1, 0.20, 0.8),
+    out = [block(1, "2023 GHG Emissions by scope and type of gas in metric tons of carbon dioxide equivalent", 0.1, 0.20, 0.8),
            block(2, unit, 0.40, 0.25, 0.4)]
     for i, head in enumerate(["CO₂", "CH₄", "N₂O", "HFC", "Total CO₂e"]):
         out.append(block(10 + i, head, COLS[i], 0.28, 0.07))
@@ -70,6 +70,7 @@ def test_the_yum_table_is_read_cell_by_cell_with_a_highlight_each() -> None:
     box = got["scope1_co2"]["source_reference"]["bounding_box"]  # the cell's own box: it is outlined on the PDF
     assert box["x"] == pytest.approx(0.40) and box["y"] == pytest.approx(0.32)
     assert got["scope1_co2"]["source_reference"]["text_snippet"] == "34,128"
+    assert "year:2023" in got["scope1_total"]["validation_flags"] and got["reporting_year"]["normalized_value"] == 2023
 
 
 def test_na_is_not_reported_never_zero() -> None:
@@ -118,8 +119,8 @@ def test_year_columns_are_not_read_because_the_year_is_not_chosen() -> None:  # 
 
 def test_a_workbook_or_textract_table_with_one_value_per_row_reads_totals_with_the_unit_in_its_header() -> None:
     table = {"table_id": "t1", "page_number": 4, "sheet_name": None, "source_reference_id": None, "rows": [
-        ["Emissions (metric tons CO2e)", "2023"], ["Scope 1", "2,100"], ["Scope 2 – market-based", "900"],
-        ["Scope 3", "N/A"]]}
+        ["Emissions (metric tons CO2e)", "2023"], ["Scope 1", "2,100"], ["Scope 3", "N/A"],
+        ["Scope 2 – market-based", "900"]]}
     got = read([], [table])
     assert got["scope1_total"]["normalized_value"] == 2100 and got["scope1_total"]["unit"] == "tCO2e"
     # "Scope 2 - market-based" with an en dash is not an exact row name here: nothing is guessed
@@ -165,9 +166,11 @@ def test_mtco2e_normalises_to_tonnes_and_plain_mass_only_for_a_gas() -> None:
 DOC = {"document_id": "d1", "file_name": "statement.pdf"}
 
 
-def item(name: str, value: Any, unit: str | None = "tCO2e", page: int = 3, flags: list[str] | None = None) -> dict[str, Any]:
+def item(name: str, value: Any, unit: str | None = "tCO2e", page: int = 3, flags: list[str] | None = None,
+         year: int | None = 2025) -> dict[str, Any]:
     return {"field_name": name, "normalized_value": value, "unit": unit, "display_label": name,
-            "validation_flags": flags or [], "source_reference": {"page_number": page}}
+            "validation_flags": [*(flags or []), *([f"year:{year}"] if year else [])],
+            "source_reference": {"page_number": page}}
 
 
 def accepted(**over: Any) -> dict[str, Any]:
@@ -201,34 +204,37 @@ def test_not_reported_unitless_and_wrong_unit_figures_feed_nothing() -> None:
     assert rt.figure_of(item("scope1_ch4", 19, "tCO2e"), accepted(), DOC).unit_choice == "t CO2e"  # type: ignore[union-attr]
 
 
+YEARS = {2025}
+
+
 def figures(*items: tuple[str, float, str]) -> list[rt.DocumentFigure]:
     return [f for name, value, unit in items if (f := rt.figure_of(item(name, value, unit), accepted(), DOC))]
 
 
 def test_a_manual_entry_wins_and_a_difference_is_flagged() -> None:
-    reported, units, sources, only = rt.overlay({"scope1_total": 40000.0}, {}, figures(("scope1_total", 38922, "tCO2e")))
+    reported, units, sources, only = rt.overlay({"scope1_total": 40000.0}, {}, figures(("scope1_total", 38922, "tCO2e")), YEARS)
     assert reported["scope1_total"] == 40000.0
     assert sources["scope1_total"]["used"] == "manual" and sources["scope1_total"]["differs"] is True
     assert sources["scope1_total"]["document"]["page"] == 3 and only == []
-    same = rt.overlay({"scope1_total": 38922.0}, {}, figures(("scope1_total", 38922, "tCO2e")))[2]
+    same = rt.overlay({"scope1_total": 38922.0}, {}, figures(("scope1_total", 38922, "tCO2e")), YEARS)[2]
     assert same["scope1_total"]["differs"] is False
 
 
 def test_a_document_figure_fills_what_nobody_typed_and_sets_its_unit() -> None:
-    reported, units, sources, _ = rt.overlay({}, {}, figures(("scope1_total", 38922, "tCO2e"), ("scope1_ch4", 19, "t")))
+    reported, units, sources, _ = rt.overlay({}, {}, figures(("scope1_total", 38922, "tCO2e"), ("scope1_ch4", 19, "t")), YEARS)
     assert reported == {"scope1_total": 38922, "scope1_ch4": 19}
     assert units == {"scope1_ch4": "t"} and sources["scope1_ch4"]["used"] == "document"
 
 
 def test_scope_3_is_reported_only_never_a_comparison_input() -> None:
-    reported, _, sources, only = rt.overlay({}, {}, figures(("scope3_total", 30660751, "tCO2e")))
+    reported, _, sources, only = rt.overlay({}, {}, figures(("scope3_total", 30660751, "tCO2e")), YEARS)
     assert reported == {} and sources == {} and [o["key"] for o in only] == ["scope3_total"]
 
 
 def test_two_documents_that_disagree_feed_nothing() -> None:
     other = rt.figure_of(item("scope1_total", 99), accepted(), {"document_id": "d2", "file_name": "b.pdf"})
     assert other is not None
-    reported, _, sources, _ = rt.overlay({}, {}, [*figures(("scope1_total", 38922, "tCO2e")), other])
+    reported, _, sources, _ = rt.overlay({}, {}, [*figures(("scope1_total", 38922, "tCO2e")), other], YEARS)
     assert "scope1_total" not in reported and len(sources["scope1_total"]["conflict"]) == 2
 
 
@@ -303,3 +309,162 @@ def test_the_template_covers_both_summary_types_with_roll_up_keys_and_small_sche
 
     sizes = _measure(ai_extraction.reading_output(tuple(names)))
     assert sizes["bytes"] <= MAX_FLAT_SCHEMA_BYTES and sizes["unions"] == 0 and sizes["unsupported"] == 0, sizes
+
+
+# --- review findings: scale words, headers about another measure, years, single columns, stacked tables, MT -------
+def with_unit_text(text: str) -> list[dict[str, Any]]:
+    return [b for b in yum_blocks() if b["block_id"] not in ("b1", "b2")] + [block(2, text, 0.40, 0.25, 0.4)]
+
+
+@pytest.mark.parametrize("caption,label", [
+    ("Emissions (thousand tCO2e)", "ktCO2e"), ("tCO2e (in thousands)", "ktCO2e"), ("Emissions tCO2e '000", "ktCO2e"),
+    ("Emissions (000s) tCO2e", "ktCO2e"), ("Emissions (thousands of metric tons CO2e)", "ktCO2e"),
+    ("Emissions (million tCO2e)", "MtCO2e"), ("tCO2e (in millions)", "MtCO2e"), ("MM tCO2e", "MtCO2e"),
+    ("m tCO2e", "MtCO2e"), ("k tCO2e", "ktCO2e"), ("million metric tons CO2e", "MtCO2e")])
+def test_a_printed_scale_is_never_read_as_plain_tonnes(caption: str, label: str) -> None:
+    unit, _, problem = rt.read_unit([caption])
+    assert (unit, problem) == (label, None)
+    cell = read(with_unit_text(caption))["scope1_total"]  # through the page reader: kt of 38,922, not t
+    assert cell["unit"] == label and cell["normalized_value"] == 38922
+    figure = rt.figure_of(item("scope1_total", 38922, label), accepted(), DOC)
+    assert figure is not None and figure.value_t == 38922 * rt.UNITS[label].factor
+
+
+@pytest.mark.parametrize("captions", [["Emissions (thousand ktCO2e)"], ["Emissions (thousand tCO2e)", "(in millions)"],
+                                      ["Emissions (thousand kgCO2e)"]])
+def test_an_ambiguous_scale_reads_no_unit_and_says_so(captions: list[str]) -> None:
+    unit, _, problem = rt.read_unit(captions)
+    assert unit is None and problem == "scale"
+    cell = read(with_unit_text(captions[0]) + [block(91, c, 0.1, 0.46, 0.3) for c in captions[1:]])["scope1_total"]
+    assert cell["unit"] is None and cell["normalized_value"] == 38922 and "unit_unclear" in cell["validation_flags"]
+
+
+@pytest.mark.parametrize("caption", ["Emissions intensity (tCO2e per $M revenue)", "Emissions (tCO2e / $M revenue)",
+                                     "tCO2e per employee", "Revenue-based emissions tCO2e", "Intensity tCO2e"])
+def test_a_header_with_a_denominator_or_intensity_is_not_read_at_all(caption: str) -> None:
+    assert rt.read_unit([caption])[2] == "measure"
+    assert all(c["raw_value"] is None for c in read(with_unit_text(caption)).values())
+    table = {"table_id": "t", "page_number": 1, "sheet_name": None, "source_reference_id": None,
+             "rows": [[caption, "Total CO₂e"], ["Scope 1", "5"]]}
+    assert all(c["raw_value"] is None for c in read([], [table]).values())
+
+
+def test_a_column_about_another_measure_names_nothing_but_the_others_are_read() -> None:
+    table = {"table_id": "t", "page_number": 1, "sheet_name": None, "source_reference_id": None, "rows": [
+        ["tCO2e", "CO2", "Total CO2e", "tCO2e / $M revenue"], ["Scope 1", "10", "12", "3"]]}
+    got = read([], [table])
+    assert got["scope1_co2"]["normalized_value"] == 10 and got["scope1_total"]["normalized_value"] == 12
+    assert all(got[f]["raw_value"] is None for f in ("scope2_total",) if f in got)
+
+
+@pytest.mark.parametrize("text,label", [("MT CO2e", "tCO2e"), ("mT CO2e", "tCO2e"), ("MTCO2e", "tCO2e"),
+                                        ("Mt CO2e", "MtCO2e"), ("MtCO2e", "MtCO2e"), ("million tonnes CO2e", "MtCO2e")])
+def test_mt_is_metric_tonnes_and_mt_is_megatonnes(text: str, label: str) -> None:
+    assert rt.read_unit([text])[:3:2] == (label, None)
+
+
+@pytest.mark.parametrize("text", ["mt CO2e", "tons CO2e", "short tons CO2e", "tons of carbon dioxide equivalent"])
+def test_an_unclear_unit_is_not_converted_and_is_flagged(text: str) -> None:
+    assert rt.read_unit([text]) == (None, text, "unclear")
+    cell = read(with_unit_text(text))["scope1_total"]
+    assert cell["unit"] is None and "unit_unclear" in cell["validation_flags"] and cell["normalized_value"] == 38922
+
+
+def test_a_single_value_column_is_a_total_only_when_it_says_so() -> None:
+    def table(*header: list[str]) -> dict[str, Any]:
+        return {"table_id": "t", "page_number": 1, "sheet_name": None, "source_reference_id": None,
+                "rows": [*header, ["Scope 1", "2,100"]]}
+
+    assert read([], [table(["Emissions (tCO2e)", "2023"])])["scope1_total"]["normalized_value"] == 2100
+    assert read([], [table(["Total (metric tons CO2e)"])])["scope1_total"]["normalized_value"] == 2100
+    for header in (["Biogenic emissions (tCO2e)", "2023"], ["Emissions intensity (tCO2e)", "2023"],
+                   ["Change in emissions (tCO2e)", "2023"], ["Target emissions (tCO2e)", "2023"], ["Scope", "2023"],
+                   ["Emissions", "2023"], ["Share of emissions (%)", "2023"]):
+        assert read([], [table(header)])["scope1_total"]["raw_value"] is None, header
+    assert any("not named as a total" in n for n in read.notes)  # type: ignore[attr-defined]
+
+
+def test_two_tables_stacked_on_a_page_are_read_each_through_its_own_header() -> None:
+    first = yum_blocks()
+    second = [block(300, "Emissions (thousand tCO2e)", 0.40, 0.58, 0.4)]
+    for i, head in enumerate(["CO\u2082", "N\u2082O", "Total CO\u2082e"]):  # other columns, in other places
+        second.append(block(310 + i, head, [0.40, 0.55, 0.82][i], 0.62, 0.07))
+    second += [block(320, "Scope 2 (market-based)", 0.10, 0.66, 0.2)] + [block(321 + i, t, [0.40, 0.55, 0.82][i], 0.66, 0.07)
+                                                                       for i, t in enumerate(["7", "8", "9"])]
+    got = read(first + second)
+    assert got["scope1_co2"]["normalized_value"] == 34128 and got["scope1_n2o"]["normalized_value"] == 21
+    assert got["scope1_total"]["unit"] == "tCO2e"  # the first table keeps its own unit
+    assert (got["scope2_market_n2o"]["normalized_value"], got["scope2_market_total"]["normalized_value"]) == (8, 9)
+    assert got["scope2_market_total"]["unit"] == "ktCO2e"  # the second has its own: nothing is shared
+    assert got["scope2_market_ch4"]["raw_value"] is None  # CH4 is not a column of the second table
+
+
+def test_stacked_tables_of_a_grid_do_not_share_a_header_or_a_unit() -> None:
+    rows = [["Emissions (thousand tCO2e)", "CO2", "Total CO2e"], ["Scope 1", "1", "2"],
+            ["Emissions (tCO2e)", "CH4", "Total CO2e"], ["Scope 2 (location-based)", "5", "6"]]
+    got = read([], [{"table_id": "t", "page_number": 1, "sheet_name": None, "source_reference_id": None, "rows": rows}])
+    assert got["scope1_total"]["unit"] == "ktCO2e" and got["scope1_co2"]["normalized_value"] == 1
+    assert got["scope2_location_total"]["unit"] == "tCO2e" and got["scope2_ch4"]["normalized_value"] == 5
+    assert got["scope2_co2"]["raw_value"] is None  # CO2 is not a column of the second table
+
+
+# --- the reporting year ----------------------------------------------------------------------------------------
+def test_a_figure_of_another_year_is_never_fed_and_says_so() -> None:
+    old = rt.figure_of(item("scope1_total", 38922, year=2023), accepted(), DOC)
+    assert old is not None and old.year == 2023
+    reported, _, sources, _ = rt.overlay({}, {}, [old], {2025})
+    assert reported == {} and sources["scope1_total"]["excluded"] == "Different year (2023) — not compared"
+    assert sources["scope1_total"]["used"] is None and sources["scope1_total"]["document"]["year"] == 2023
+
+
+def test_a_figure_with_no_year_is_not_fed_unless_the_document_states_one() -> None:
+    bare = rt.figure_of(item("scope1_total", 38922, year=None), accepted(), DOC)
+    assert bare is not None and bare.year is None
+    assert rt.overlay({}, {}, [bare], {2025})[2]["scope1_total"]["excluded"] == "Year not stated"
+    stated = rt.figure_of(item("scope1_total", 38922, year=None), accepted(), DOC, doc_year=2025)
+    assert stated is not None and rt.overlay({}, {}, [stated], {2025})[0] == {"scope1_total": 38922}
+    assert rt.overlay({}, {}, [rt.figure_of(item("scope1_total", 1, year=None), accepted(), DOC, doc_year=2023)], {2025})[0] == {}  # type: ignore[list-item]
+
+
+def test_the_year_the_reviewer_accepted_for_the_document_is_used() -> None:
+    items = [item("reporting_year", 2025, None, year=None), item("scope1_total", 5, year=None)]
+    assert rt.document_year(items, [accepted(), accepted()]) == 2025
+    assert rt.document_year(items, [{"decision": "rejected"}, accepted()]) is None
+    assert rt.document_year(items, [None, None]) is None
+    assert rt.document_year(items, [{"decision": "edited", "reviewed_value": 2024}, None]) == 2024
+
+
+def test_without_a_reporting_period_nothing_is_compared() -> None:
+    figure = rt.figure_of(item("scope1_total", 38922), accepted(), DOC)
+    assert figure is not None and rt.overlay({}, {}, [figure], None)[0] == {}
+    assert "period" in rt.overlay({}, {}, [figure], None)[2]["scope1_total"]["excluded"]
+
+
+def test_the_periods_years() -> None:
+    from datetime import date
+
+    assert rt.period_years(date(2025, 1, 1), date(2025, 12, 31)) == {2025}
+    assert rt.period_years(date(2024, 7, 1), date(2025, 6, 30)) == {2025}  # a fiscal year is named by the year it ends
+    assert rt.period_years(None, None) is None
+
+
+def test_a_wrong_year_figure_stays_off_the_reported_side_through_the_recalculation() -> None:
+    store = summary_store("accepted")
+    for it in store.results["sum"][0]["items"]:
+        it["validation_flags"] = ["year:2023"]
+    result = recalculate(store)
+    assert comparison(result, "scope1_total")["reported"] is None
+    shown = comparison(result, "scope1_total")["reported_source"]
+    assert shown["excluded"] == "Different year (2023) — not compared" and shown["used"] is None
+    for it in store.results["sum"][0]["items"]:
+        it["validation_flags"] = []
+    assert comparison(recalculate(store), "scope1_total")["reported_source"]["excluded"] == "Year not stated"
+
+
+def test_a_bare_single_year_column_that_is_not_the_period_is_not_fed() -> None:
+    table = {"table_id": "t", "page_number": 1, "sheet_name": None, "source_reference_id": None,
+             "rows": [["Emissions (tCO2e)", "2023"], ["Scope 1", "2,100"]]}
+    cell = read([], [table])["scope1_total"]
+    assert "year:2023" in cell["validation_flags"] and read([], [table])["reporting_year"]["normalized_value"] == 2023
+    figure = rt.figure_of({**cell, "field_name": "scope1_total"}, accepted(), DOC)
+    assert figure is not None and rt.overlay({}, {}, [figure], {2025})[0] == {}
