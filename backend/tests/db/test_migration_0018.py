@@ -70,6 +70,7 @@ def test_0018_down_and_up_returns_a_parked_run_to_the_queue() -> None:
             "0021_vehicle_group_ids",
             "0022_tasks",
             "0023_notifications",
+            "0024_org_auto_read_summaries",
         )
         fetch("TRUNCATE s1_processing_runs")
         fetch("TRUNCATE users, organizations CASCADE")
