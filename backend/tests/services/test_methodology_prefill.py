@@ -1372,3 +1372,59 @@ def test_parts_with_suggestions_merge_into_one_prefill_output() -> None:
     with pytest.raises(ValueError):
         mp.BoundaryPart.model_validate({"choices": [{"field_id": "category:scope1:mobile", "value": "Yes", **cite}],
                                         "texts": [], "selections": [], "periods": [], "entities": []})
+
+
+# --- category synonyms, footnote markers, negation ---------------------------------------------
+
+def category(field_id: str, value: str, quote: str, line: str = "L1") -> dict[str, str]:
+    return {"field_id": field_id, "value": value, **cite(line, quote)}
+
+
+def test_mobile_is_read_from_vehicles_and_aircraft() -> None:
+    line = "Scope 1 includes company vehicles and aircraft."
+    kept, dropped = check(answer(choices=[category("category:scope1:mobile", "Yes", "company vehicles and aircraft")]), [doc([(1, line)])])
+    assert len(kept) == 1 and not dropped
+
+
+def test_one_combined_line_supports_heating_steam_and_cooling() -> None:
+    line = "Purchased steam, district heat and chilled waterv"
+    kept, dropped = check(answer(choices=[
+        category("category:location:heating", "Yes", line), category("category:location:steam", "Yes", line),
+        category("category:market:cooling", "Yes", line)]), [doc([(1, line)])])
+    assert [k.field_id for k in kept] == ["category:location:heating", "category:location:steam", "category:market:cooling"]
+    assert not dropped
+    assert kept[0].suggestion["quote"] == line  # the stored quote is the original, markers and all
+
+
+def test_a_footnote_marker_is_ignored_when_matching() -> None:
+    kept, dropped = check(answer(choices=[category("category:scope1:fugitive", "Yes", "Fugitive emissionsii")]),
+                          [doc([(1, "Fugitive emissionsii")])])
+    assert len(kept) == 1 and not dropped
+    assert mp.match_text("Purchased electricityvii and emissions¹² waterᵃ") == "purchased electricity and emissions water"
+    assert mp.match_text("residual mix, six, N₂O") == "residual mix, six, n2o"
+
+
+def test_a_negated_category_is_never_yes() -> None:
+    line = "The inventory excludes vehicles."
+    kept, dropped = check(answer(choices=[category("category:scope1:mobile", "Yes", "excludes vehicles")]), [doc([(1, line)])])
+    assert kept == [] and dict(dropped) == {"negated": 1}
+    kept, dropped = check(answer(choices=[category("category:scope1:mobile", "No", "excludes vehicles")]), [doc([(1, line)])])
+    assert len(kept) == 1 and not dropped
+    both = "It excludes vehicles and includes boilers."
+    kept, _ = check(answer(choices=[category("category:scope1:stationary", "Yes", "includes boilers")]), [doc([(1, both)])])
+    assert len(kept) == 1
+
+
+def test_an_unrelated_word_does_not_match_a_category() -> None:
+    quote = "Our mobile phone policy covers all offices and heating oilseed crops."
+    for field_id in ("category:scope1:mobile", "category:scope1:process", "category:location:cooling", "category:market:heating"):
+        assert mp.names_option(quote, mp.category_terms(field_id), mp._EXCLUDING, mp._INCLUDING) == "no", field_id
+    assert mp.names_option("company vehicles", mp.category_terms("category:scope1:mobile")) == "yes"
+    assert mp.category_terms("scopes:covered") == ()
+
+
+def test_gas_formulas_match_with_subscripts_and_markers() -> None:
+    line = "Gases: N₂Oiv and NF₃ᵇ are reported."
+    kept, dropped = check(answer(gases=[gas("gas:n2o", "Included", "N₂Oiv and NF₃ᵇ are reported"),
+                                        gas("gas:nf3", "Included", "N₂Oiv and NF₃ᵇ are reported")]), [doc([(1, line)])])
+    assert len(kept) == 2 and not dropped

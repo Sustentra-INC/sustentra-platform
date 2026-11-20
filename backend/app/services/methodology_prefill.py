@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Callable, Mapping, Sequence
@@ -295,11 +296,60 @@ def dated_tokens(quote: str) -> list[tuple[int, date]]:
 # What a quote must say for a choice to be tied to it (compared after ``norm``).
 _CHOICE_TERMS = {"Equity Share": ("equity share", "equity"), "Financial Control": ("financial control",),
                  "Operational Control": ("operational control",)}
-# What a quote must name for a gas row (compared after ``norm``, which folds CO\u2082 to co2).
-_GAS_TERMS = {"gas:co2": ("co2", "carbon dioxide"), "gas:ch4": ("ch4", "methane"),
-              "gas:n2o": ("n2o", "nitrous oxide"), "gas:hfcs": ("hfc", "hydrofluorocarbon"),
-              "gas:pfcs": ("pfc", "perfluorocarbon"), "gas:sf6": ("sf6", "sulfur hexafluoride", "sulphur hexafluoride"),
-              "gas:nf3": ("nf3", "nitrogen trifluoride")}
+# What a quote must name for a gas row (compared after ``match_text``, which folds CO\u2082 / N\u2082O to co2 / n2o).
+# Reviewed list: the name, the formula, and the formula as a PDF extractor sometimes spaces it ("N 2 O").
+_GAS_TERMS = {"gas:co2": ("co2", "co 2", "carbon dioxide"), "gas:ch4": ("ch4", "ch 4", "methane"),
+              "gas:n2o": ("n2o", "n 2 o", "nitrous oxide"), "gas:hfcs": ("hfc", "hydrofluorocarbon"),
+              "gas:pfcs": ("pfc", "perfluorocarbon"),
+              "gas:sf6": ("sf6", "sf 6", "sulfur hexafluoride", "sulphur hexafluoride"),
+              "gas:nf3": ("nf3", "nf 3", "nitrogen trifluoride")}
+# Reviewed synonyms for the emission categories: what a quote may say instead of the category's own name. Whole
+# words or phrases only, each one a real name for that source in a GHG report. Kept small on purpose: a bare
+# "mobile" is NOT here ("mobile phone"), nor a bare "process". One quote may name several categories
+# ("Purchased steam, district heat and chilled water" names steam, heating and cooling), and each category is
+# checked on its own against the same quote.
+_CATEGORY_TERMS = {
+    # Scope 1
+    "stationary": ("stationary", "stationary combustion", "natural gas", "fuel oil", "diesel generator",
+                   "diesel generators", "boiler", "boilers"),
+    "mobile": ("mobile combustion", "mobile source", "mobile sources", "vehicle", "vehicles", "fleet", "aircraft"),
+    "process": ("process emission", "process emissions"),
+    "fugitive": ("fugitive", "fugitive emission", "fugitive emissions"),
+    # Scope 2 (the same words serve the location- and the market-based rows)
+    "electricity": ("electricity", "purchased electricity"),
+    "heating": ("heating", "district heat", "district heating", "purchased heat", "hot water"),
+    "steam": ("steam", "purchased steam"),
+    "cooling": ("cooling", "chilled water", "district cooling", "purchased cooling"),
+    # Biogenic
+    "direct": ("direct biogenic", "biogenic"),
+    "indirect": ("indirect biogenic", "biogenic"),
+}
+
+
+def category_terms(field_id: str) -> tuple[str, ...]:
+    """The reviewed terms for a ``category:*`` field id ("category:market:steam" -> steam's terms), or ()."""
+
+    return _CATEGORY_TERMS.get(field_id.rsplit(":", 1)[-1], ()) if field_id.startswith("category:") else ()
+
+
+# Footnote markers stuck to a word: lowercase roman numerals ("emissionsii", "chilled waterv"), and superscript
+# letters or digits ("emissions\u00b2", "water\u1d43", "electricity\u00b9\u00b2"). Only the matching copy of the text
+# loses them, never the quote that is stored or searched on the document. The stem must be four letters or
+# more, so "mix" and "six" are left alone; a lone "x" is never taken as a marker.
+_ROMAN_MARKER = re.compile(r"(?<=[A-Za-z]{4})(?:xi{1,3}|xiv|xv|ix|iv|vi{1,3}|v|i{1,3})(?![A-Za-z0-9])")
+
+
+def strip_markers(text: str) -> str:
+    text = "".join(c for c in text if not unicodedata.name(c, "").startswith(("SUPERSCRIPT", "MODIFIER LETTER SMALL")))
+    return _ROMAN_MARKER.sub("", text)
+
+
+def match_text(text: str) -> str:
+    """``norm`` of the text without its footnote markers: what quotes are matched on."""
+
+    return norm(strip_markers(text))
+
+
 # What a quote must name for an option to be tied to it: whole words or whole phrases, never a piece of
 # another word ("records" is not "REC", "release" is not a lease agreement).
 _OPTION_TERMS = {
@@ -468,17 +518,27 @@ def names_scope(quote: str, option: str) -> str:
     return "negated" if negated else "no"
 
 
-def names_option(quote: str, terms: Sequence[str]) -> str:
-    """How a quote names an option: ``yes`` (a term as a whole word or phrase, not negated), ``negated``
-    (every mention has a negation within five words before it: "we do not buy RECs") or ``no``."""
+# What an excluded category looks like: the plain negations, and the words reports use to leave a source out.
+_EXCLUDING = _NEGATIONS | {"exclude", "excludes", "excluded", "excluding", "omit", "omits", "omitted", "omitting",
+                           "outside", "except", "excl"}
+# Words that bring a source back in after an exclusion ("excludes vehicles and includes boilers").
+_INCLUDING = frozenset({"include", "includes", "included", "including", "cover", "covers", "covered", "covering"})
 
-    text = norm(quote)
+
+def names_option(quote: str, terms: Sequence[str], negations: frozenset[str] | set[str] = _NEGATIONS,
+                 resets: frozenset[str] = frozenset()) -> str:
+    """How a quote names an option: ``yes`` (a term as a whole word or phrase, not negated), ``negated``
+    (every mention has a negation within five words before it: "we do not buy RECs") or ``no``. Footnote
+    markers stuck to a word are ignored. A word in ``resets`` after the negation ends it."""
+
+    text = match_text(quote)
     negated = False
     for term in terms:
         pattern = r"(?<![0-9a-z.])(?<!\d,)" + re.escape(norm(term)) + r"(?![0-9a-z])(?![.,]\d)"
         for match in re.finditer(pattern, text):
             before = re.findall(r"[a-z0-9'-]+", text[:match.start()])[-5:]
-            if any(word in _NEGATIONS or word.endswith("n't") for word in before):
+            last = max((i for i, word in enumerate(before) if word in negations or word.endswith("n't")), default=-1)
+            if last >= 0 and not any(word in resets for word in before[last + 1:]):
                 negated = True
             else:
                 return "yes"
@@ -982,7 +1042,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         if found is None:
             return
         document, line = found
-        quote_text = norm(item.quote)
+        quote_text = match_text(item.quote)
         if (any(not value_in_quote(_fmt(n), item.quote) for n in numbers)
                 or any(not value_in_quote(w, item.quote) for w in words)
                 or (terms and not any(term in quote_text for term in terms))
@@ -1045,6 +1105,14 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
 
     for choice in output.choices:
         value = checked(choice.field_id, choice.value)
+        if value == "Yes" and category_terms(choice.field_id):
+            # A Yes needs no term of its own (the quote may be the category's own answer, "Scope 2 ... RECs"), but a
+            # quote that names the category by its name or a reviewed synonym and leaves it out never gives a Yes.
+            if cited(choice) is None:
+                continue
+            if names_option(choice.quote, category_terms(choice.field_id), _EXCLUDING, _INCLUDING) == "negated":
+                dropped["negated"] += 1
+                continue
         if value is not None:
             keep(choice, value, choice.field_id, None, terms=_CHOICE_TERMS.get(str(value), ()) if choice.field_id == "consolidation_approach" else ())
     entries: list[tuple[EstimationSuggestion, PrefillDocument, DocumentLine]] = []
