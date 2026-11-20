@@ -3523,28 +3523,30 @@ textarea.s1-mr-input { resize: vertical; line-height: var(--leading-body); }
 .s1-mb-suggest { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); }
 .s1-mb-suggest__head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
 .s1-mb-quote-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-1); max-width: 100%; }
-.s1-mb-quote-wrap { flex-direction: row; align-items: baseline; flex-wrap: nowrap; gap: var(--sp-1); min-width: 0; }
-.s1-mb-quote { flex: 0 1 auto; min-width: 0; }
+.s1-mb-quote-wrap { display: flex; flex-direction: row; align-items: center; flex-wrap: nowrap; gap: var(--sp-1); min-width: 0; max-width: 100%; }
+.s1-mb-quote { flex: 0 1 auto; min-width: 0; margin: 0; }
 .s1-mb-quote.is-clamped { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .s1-mb-quote-wrap.is-open { flex-wrap: wrap; }
+.s1-mb-quote-wrap.is-open .s1-mb-quote { order: 3; flex: 1 1 100%; white-space: normal; overflow: visible; }
 .s1-mb-trail { flex: none; white-space: nowrap; color: var(--ink-3); font-size: var(--text-sm); }
 .s1-mb-sources { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; }
 .s1-mb-srcline { display: flex; align-items: baseline; gap: var(--sp-2); min-width: 0; }
 .s1-mb-srclabel { flex: none; }
 .s1-sr-only { position: absolute; width: 0.0625rem; height: 0.0625rem; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 /* Methodology tables: one body per field, left-aligned, the same column widths in every section. */
-.s1-mb-table { table-layout: fixed; min-width: 56rem; text-align: left; }
+.s1-mb-table { table-layout: fixed; width: 100%; min-width: 0; text-align: left; }
 .s1-mb-table th, .s1-mb-table td { text-align: left; vertical-align: middle; padding: var(--sp-2) var(--sp-3); }
 .s1-mb-table thead th { border-bottom: var(--border-hairline); }
 .s1-mb-table tbody tr > * { border-bottom: 0; }
 .s1-mb-table tbody + tbody { border-top: var(--hairline-width) solid var(--mr-row-line); }
-.s1-mb-col-item { width: 15rem; }
-.s1-mb-col-value { width: 17rem; }
+.s1-mb-col-item { width: 22%; }
+.s1-mb-col-value { width: 28%; }
 .s1-mb-col-status { width: 9rem; }
-.s1-mb-col-actions { width: 12rem; }
-.s1-mb-item { font-size: var(--text-md); font-weight: var(--weight-regular); letter-spacing: normal; text-transform: none; color: var(--ink); white-space: normal; }
+.s1-mb-col-actions { width: 10.5rem; }
+.s1-mb-table th.s1-mb-item { font-size: var(--text-md); font-weight: var(--weight-regular); letter-spacing: normal; text-transform: none; color: var(--ink-2); white-space: normal; overflow-wrap: anywhere; min-width: 0; }
 .s1-mb-valuecell, .s1-mb-sourcecell { min-width: 0; overflow-wrap: anywhere; }
-.s1-mb-statuscell { display: table-cell; }
+.s1-mb-statuscell { white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+.s1-mb-sourcecell { overflow: hidden; }
 .s1-mb-statuscell > * { display: block; width: fit-content; }
 .s1-mb-actionscell .s1-mr-actions { justify-content: flex-end; }
 .s1-mb-tbody[data-selected] { background: var(--sf-card); box-shadow: inset 0.2rem 0 0 var(--state-active-line); }
@@ -3881,3 +3883,41 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-mb-summary__foot { margin: 0; }
 .s1-mb-summary__reasons { margin: 0; padding-left: var(--sp-4); display: flex; flex-direction: column; gap: var(--sp-1); }
 .s1-xr-values .s1-sd__note { margin: 0; }
+
+/* Methodology: entity, factor, GWP and Scope 2 tables */
+.s1-mb-groupbody { display: flex; flex-direction: column; gap: var(--sp-4); padding: var(--sp-3) var(--sp-4); }
+.s1-mb-block { display: flex; flex-direction: column; border: var(--border-hairline); border-radius: var(--radius-card); overflow: hidden; }
+.s1-mb-subhead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-bottom: var(--border-hairline); }
+.s1-mb-col-name { width: 20rem; }
+.s1-mb-col-pct { width: 7rem; }
+.s1-mb-col-matrix { width: 22rem; }
+.s1-mb-cell { vertical-align: top; }
+.s1-mb-cellline { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.s1-mb-cellline + .s1-mb-cellline, .s1-mb-celledit { margin-top: var(--sp-1); }
+.s1-mb-item > .s1-mr-muted, .s1-mb-item > .s1-mr-chip { margin-left: var(--sp-1); }
+
+.s1-mb-expand { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 1.25rem; height: 1.25rem; padding: 0; color: var(--ink-3); background: none; border: 0; border-radius: var(--radius-input); cursor: pointer; }
+.s1-mb-expand svg { width: 0.875rem; height: 0.875rem; transition: transform 120ms ease; }
+.s1-mb-expand[aria-expanded="true"] svg { transform: rotate(180deg); }
+.s1-mb-expand:hover { color: var(--ink); background: var(--sf-sunken); }
+.s1-mb-expand:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.s1-mb-clamp { display: inline-flex; align-items: flex-start; gap: var(--sp-1); min-width: 0; max-width: 100%; }
+.s1-mb-clamp__text.is-clamped { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.s1-mb-table .s1-button, .s1-mb-table .s1-mr-actions { white-space: nowrap; }
+.s1-mb-actionscell { white-space: nowrap; text-align: right; }
+.s1-mb-actionscell .s1-mr-actions { flex-wrap: nowrap; justify-content: flex-end; }
+.s1-mb-source { white-space: nowrap; }
+.s1-mb-groupbody { container-type: inline-size; }
+/* Narrow content area: the source drops under the value instead of being squeezed. */
+@container (max-width: 56rem) {
+  .s1-mb-table thead { position: absolute; width: 0.0625rem; height: 0.0625rem; overflow: hidden; clip-path: inset(50%); }
+  .s1-mb-table, .s1-mb-table tbody { display: block; }
+  .s1-mb-table colgroup { display: none; }
+  .s1-mb-table tbody > tr { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--sp-1) var(--sp-3); padding: var(--sp-2) var(--sp-3); }
+  .s1-mb-table tbody > tr > * { display: block; padding: 0; min-width: 0; }
+  .s1-mb-table tbody > tr > th.s1-mb-item { flex: 1 1 14rem; }
+  .s1-mb-table tbody > tr > .s1-mb-valuecell { flex: 1 1 100%; order: 3; }
+  .s1-mb-table tbody > tr > .s1-mb-sourcecell { flex: 1 1 100%; order: 4; }
+  .s1-mb-table tbody > tr > .s1-mb-statuscell, .s1-mb-table tbody > tr > .s1-mb-actionscell { flex: none; order: 2; }
+  .s1-mb-table .s1-mr-editrow > td { flex: 1 1 100%; }
+}

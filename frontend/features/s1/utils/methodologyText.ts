@@ -76,6 +76,7 @@ export function chemical(text: string): string {
 
 /** The row's name as the table shows it: sentence case, a gas without its "Gas:" prefix and with subscripts. */
 export function itemLabel(def: CatalogField): string {
-  return chemical(def.group === "gases" ? def.label.replace(/^Gas:\s*/i, "") : def.label);
+  const bare = def.group === "gases" ? def.label.replace(/^Gas:\s*/i, "") : def.group === "scope1" ? def.label.replace(/^Scope 1\s+/i, "") : def.label;
+  return chemical(bare);
 }
 

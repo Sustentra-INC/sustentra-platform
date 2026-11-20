@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import { ChevronRight, SquareDashed, TextAlignJustify } from "lucide-react";
+import { ChevronDown, ChevronRight, SquareDashed, TextAlignJustify } from "lucide-react";
 
 import { userFacingApiError } from "../api/s1Backend";
 import {
@@ -62,6 +62,14 @@ const ACTION_WORD: Record<string, string> = {
 /** What each section's first column is called, and which sections hold Yes / No answers (their value column reads "Included"). */
 const GROUP_ITEM: Record<string, string> = { gases: "Gas", scope1: "Category", scope2: "Category", biogenic: "Type", gwp: "GWP set", factors: "Database" };
 const INCLUDED_GROUPS = ["scope1", "scope2", "biogenic"];
+/** What a GWP row reads when the document gives no horizon: the GHG Protocol default, labelled as assumed. */
+export const GWP_ASSUMED = "100-year (assumed — not stated)";
+const isObjectValue = (v: MethodologyValue | undefined): v is { [key: string]: MethodologyValue } => v !== null && typeof v === "object" && !Array.isArray(v);
+/** Where each row group's "Add" button lives: the header of the block that holds those rows. */
+const ADD_ROW_TEXT: Record<string, string> = { entities: "Add entity", "factor:scope1": "Add source", "factor:scope2": "Add source", gwp: "Add GWP set" };
+const ADD_ROW_HOME = ["entities", "factor:scope1", "factor:scope2", "gwp"];
+/** Boundary rows that come after the entities (Claire's order: period, approach, entities, exclusions, acquisitions, leased space). */
+const BOUNDARY_TAIL = ["exclusion:boundary", "boundary:acquisitions", "boundary:leased_space"];
 const METHODS_GROUPS = ["factors", "gwp", "calculation"];
 const CARDS = [
   { key: "boundary", title: "Inventory Boundary" },
@@ -420,11 +428,35 @@ function Quote({ text, truncated, trail }: { text: string; truncated?: boolean; 
       </q>
       {truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
       {trail}
-      {clipped || open ? (
-        <button type="button" className="s1-mr-link" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? "Show less" : "Show more"}
-        </button>
-      ) : null}
+      {clipped || open ? <ExpandButton open={open} onClick={() => setOpen(!open)} /> : null}
+    </span>
+  );
+}
+
+/** A small icon button that opens or closes a cut-off text. */
+function ExpandButton({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button type="button" className="s1-mb-expand" aria-expanded={open} aria-label={open ? "Show less" : "Show more"} title={open ? "Show less" : "Show more"} onClick={onClick}>
+      <ChevronDown aria-hidden />
+    </button>
+  );
+}
+
+/** Long text cut to three lines, with the expand button after it. */
+function ClampText({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && !open) setClipped(el.scrollHeight > el.clientHeight + 1);
+  }, [children, open]);
+  return (
+    <span className="s1-mb-clamp">
+      <span ref={ref} className={`s1-mr-value s1-mb-clamp__text${open ? "" : " is-clamped"}`}>
+        {children}
+      </span>
+      {clipped || open ? <ExpandButton open={open} onClick={() => setOpen(!open)} /> : null}
     </span>
   );
 }
@@ -442,10 +474,13 @@ export function FieldRow({
   selected,
   onSelect,
   quoteNote,
-  table,
+  layout = "list",
+  statusCol = true,
 }: {
-  /** Draw the row as a table body (the review page); otherwise as a list item (the document page's side panel). */
-  table?: boolean;
+  /** How the row is drawn: a list item (the document page's side panel), or a table body, an entity, factor or GWP table, or one cell of the Scope 2 matrix. */
+  layout?: "list" | "table" | "entity" | "factor" | "gwp" | "cell";
+  /** Table layout: the section has a Status column (only when some row in it has a status). */
+  statusCol?: boolean;
   /** On a document's own page: this row is the one whose quote is highlighted, and a click on the row selects it. */
   selected?: boolean;
   onSelect?: () => void;
@@ -634,33 +669,125 @@ export function FieldRow({
     </>
   );
 
-  if (table) {
-    const valueCell = oldText ? <span>Recorded as: {oldText}</span> : current ? current : suggestion ? valueText(suggestion.value) : <span className="s1-mr-none">{emptyWords(status, record.displayState)}</span>;
+  const shown = decided ? decision?.value : suggestion?.value;
+  const parts = isObjectValue(shown) ? shown : {};
+  const str = (v: MethodologyValue | undefined) => (typeof v === "string" ? v : "");
+  const emptyText = def.group === "gases" && status !== "rejected" ? "Not mentioned" : emptyWords(status, record.displayState);
+  const statusBlock = (
+    <>
+      {statusChip}
+      {decidedBy}
+      {status === "rejected" && decision?.reason ? <span className="s1-mr-muted">Reason: {decision.reason}</span> : null}
+    </>
+  );
+  const bodyProps = { className: "s1-mb-tbody", "data-status": status, "data-field-id": def.fieldId, "data-selected": selected || undefined, onClick: onSelect };
+  const editRow = (cols: number) => (mode !== "view" ? <tr className="s1-mr-editrow"><td colSpan={cols}>{editor}</td></tr> : null);
+
+  if (layout === "entity") {
+    const name = str(parts.name);
+    const facilities = Array.isArray(parts.facilities) ? parts.facilities.length : 0;
+    const controlQuoted = valueText((parts.control_quoted ?? parts.operational_control) as MethodologyValue);
+    const equity = typeof parts.equity_share_pct === "number" ? `${parts.equity_share_pct}%` : "";
     return (
-      <tbody className="s1-mb-tbody" data-status={status} data-field-id={def.fieldId} data-selected={selected || undefined} onClick={onSelect}>
+      <tbody {...bodyProps}>
+        <tr>
+          <th scope="row" className="s1-mb-item">
+            <span className="s1-sr-only">{def.label}</span>
+            {name ? name : <span className="s1-mr-none">{oldText ? `Recorded as: ${oldText}` : "New entity"}</span>}
+            {facilities ? <span className="s1-mr-muted"> · {facilities} {facilities === 1 ? "facility" : "facilities"}</span> : null} {marker}
+            {statusBlock}
+          </th>
+          <td className="s1-mb-valuecell">
+            {valueText(parts.included as MethodologyValue) || (controlQuoted ? null : <span className="s1-mr-muted">—</span>)}
+            {controlQuoted ? <span className="s1-mr-muted">{valueText(parts.included as MethodologyValue) ? " · " : ""}operational control (as quoted): {controlQuoted}</span> : null}
+          </td>
+          <td className="s1-mb-valuecell">{equity || <span className="s1-mr-muted">—</span>}</td>
+          <td className="s1-mb-sourcecell">{sourceLines}</td>
+          <td className="s1-mb-actionscell">{actions}</td>
+        </tr>
+        {editRow(5)}
+      </tbody>
+    );
+  }
+
+  if (layout === "factor") {
+    const database = str(parts.database);
+    return (
+      <tbody {...bodyProps}>
+        <tr>
+          <th scope="row" className="s1-mb-item">
+            <span className="s1-sr-only">{def.label}</span>
+            {database ? database : <span className="s1-mr-none">New source</span>} {marker}
+            {statusBlock}
+          </th>
+          <td className="s1-mb-valuecell">{str(parts.edition) || <span className="s1-mr-muted">—</span>}</td>
+          <td className="s1-mb-sourcecell">{sourceLines}</td>
+          <td className="s1-mb-actionscell">{actions}</td>
+        </tr>
+        {editRow(4)}
+      </tbody>
+    );
+  }
+
+  if (layout === "gwp") {
+    const set = str(parts.set);
+    const horizon = str(parts.horizon);
+    const hasSet = Boolean(set);
+    return (
+      <tbody {...bodyProps}>
+        <tr>
+          <th scope="row" className="s1-mb-item">
+            <span className="s1-sr-only">{def.label}</span>
+            {hasSet ? def.allowedLabels?.set?.[set] ?? set : <span className="s1-mr-none">{oldText ? `Recorded as: ${oldText}` : emptyText}</span>} {marker}
+            {statusBlock}
+          </th>
+          <td className="s1-mb-valuecell">{hasSet ? (horizon && horizon !== "Not stated" ? horizon : GWP_ASSUMED) : <span className="s1-mr-muted">—</span>}{hasSet && str(parts.applies_to) ? <span className="s1-mr-muted"> · {str(parts.applies_to)}</span> : null}</td>
+          <td className="s1-mb-sourcecell">{sourceLines}</td>
+          <td className="s1-mb-actionscell">{actions}</td>
+        </tr>
+        {editRow(4)}
+      </tbody>
+    );
+  }
+
+  if (layout === "cell") {
+    const link = suggestion ? (
+      <SourceLink fileName={suggestion.file_name} reference={suggestion.source_reference} documentId={suggestion.document_id} at={{ fieldId: def.fieldId, entry: null, page: pageOf(suggestion.source_reference) }} onOpen={onOpenDocument} />
+    ) : null;
+    return (
+      <td className="s1-mb-cell" data-status={status} data-field-id={def.fieldId} data-selected={selected || undefined} onClick={onSelect}>
+        <span className="s1-sr-only">{def.label}</span>
+        <div className="s1-mb-cellline">
+          <span className="s1-mr-value" title={suggestion?.quote}>{current || (suggestion ? valueText(suggestion.value) : <span className="s1-mr-none">{emptyText}</span>)}</span>
+          {marker}
+          {statusChip}
+          {link}
+        </div>
+        <div className="s1-mb-cellline">{actions}</div>
+        {mode !== "view" ? <div className="s1-mb-celledit">{editor}</div> : null}
+      </td>
+    );
+  }
+
+  if (layout === "table") {
+    const valueCell = oldText ? <span>Recorded as: {oldText}</span> : current ? current : suggestion ? valueText(suggestion.value) : <span className="s1-mr-none">{emptyText}</span>;
+    return (
+      <tbody {...bodyProps}>
         <tr>
           <th scope="row" className="s1-mb-item">
             {itemLabel(def)}
           </th>
           <td className="s1-mb-valuecell">
-            <span className="s1-mr-value">{valueCell}</span> {marker}
+            <ClampText>{valueCell}</ClampText> {marker}
             {def.value_note && !entitiesNamed && (current || suggestion) ? <span className="s1-mr-muted"> {def.value_note}</span> : null}
             {oldText ? <span className="s1-mr-muted"> Enter the start and end dates with Edit.</span> : null}
             {record.shownNote ? <span className="s1-mr-muted"> {record.shownNote}</span> : null}
           </td>
           <td className="s1-mb-sourcecell">{sourceLines}</td>
-          <td className="s1-mb-statuscell">
-            {statusChip}
-            {decidedBy}
-            {status === "rejected" && decision?.reason ? <span className="s1-mr-muted">Reason: {decision.reason}</span> : null}
-          </td>
+          {statusCol ? <td className="s1-mb-statuscell">{statusBlock}</td> : null}
           <td className="s1-mb-actionscell">{actions}</td>
         </tr>
-        {mode !== "view" ? (
-          <tr className="s1-mr-editrow">
-            <td colSpan={5}>{editor}</td>
-          </tr>
-        ) : null}
+        {editRow(statusCol ? 5 : 4)}
       </tbody>
     );
   }
@@ -803,7 +930,11 @@ export function BackendMethodologyReview({
     () =>
       (data?.groups ?? [])
         .map((g) => {
-          const all = (data?.catalog ?? []).filter((d) => d.group === g.group && records.get(d.fieldId)?.shown !== false && records.has(d.fieldId));
+          const visible = (d: CatalogField) => records.get(d.fieldId)?.shown !== false && records.has(d.fieldId);
+          let all = (data?.catalog ?? []).filter((d) => d.group === g.group && visible(d));
+          // Claire's order: the exclusion of the boundary sits with the boundary, after the entities.
+          if (g.group === "exclusions") all = all.filter((d) => d.fieldId !== "exclusion:boundary");
+          if (g.group === "boundary") all = [...all, ...(data?.catalog ?? []).filter((d) => d.fieldId === "exclusion:boundary" && d.group === "exclusions" && visible(d))];
           const toAccept = all.filter((d) => acceptable(d, records.get(d.fieldId)!));
           // "Needs review": a suggestion still waiting for the reviewer.
           const defs = show === "review" ? all.filter((d) => records.get(d.fieldId)?.suggestion && (records.get(d.fieldId)?.decision?.status ?? "pending") === "pending") : all;
@@ -842,6 +973,142 @@ export function BackendMethodologyReview({
       const el = Array.from(document.querySelectorAll("[data-field-id]")).find((e) => e.getAttribute("data-field-id") === fieldId);
       el?.scrollIntoView?.({ block: "center", behavior: "smooth" });
     }, 0);
+  }
+
+  const rowFor = (def: CatalogField, layout: "table" | "entity" | "factor" | "gwp" | "cell", statusCol = true) => (
+    <FieldRow layout={layout} statusCol={statusCol} key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} followUp={followUp} onMarkFollowUp={setRequestFor} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
+  );
+  const addButton = (rowGroup: string) =>
+    data.rowGroups.includes(rowGroup) ? (
+      <button type="button" className="s1-button s1-button--compact" disabled={busy} aria-label={ADD_ROW_LABEL[rowGroup] ?? "Add row"} onClick={() => void act(() => addRow(engagementId, rowGroup))}>
+        + {ADD_ROW_TEXT[rowGroup] ?? "Add row"}
+      </button>
+    ) : null;
+  const tableOf = (heads: string[], rows: ReactNode, cols: string[]) => (
+    <div className="s1-mr-scroll">
+      <table className="s1-mr-table s1-mb-table">
+        <colgroup>
+          {cols.map((c, i) => (
+            <col key={i} className={c} />
+          ))}
+        </colgroup>
+        <thead>
+          <tr>
+            {heads.map((h) => (
+              <th key={h} scope="col">
+                {h === "Actions" ? <span className="s1-sr-only">Actions</span> : h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        {rows}
+      </table>
+    </div>
+  );
+  const genericTable = (group: string, defs: CatalogField[]) => {
+    if (!defs.length) return null;
+    // The Status column appears only when some row in the table has a status to show.
+    const statusCol = defs.some((d) => {
+      const st = records.get(d.fieldId)?.decision?.status ?? "pending";
+      return st !== "pending";
+    });
+    return tableOf(
+      [GROUP_ITEM[group] ?? "Item", INCLUDED_GROUPS.includes(group) ? "Included" : "Value", "Source", ...(statusCol ? ["Status"] : []), "Actions"],
+      defs.map((d) => rowFor(d, "table", statusCol)),
+      ["s1-mb-col-item", "s1-mb-col-value", "", ...(statusCol ? ["s1-mb-col-status"] : []), "s1-mb-col-actions"]
+    );
+  };
+  const block = (title: string, add: ReactNode, body: ReactNode) => (
+    <div className="s1-mb-block">
+      <div className="s1-mb-subhead">
+        <span className="s1-mr-label">{title}</span>
+        {add}
+      </div>
+      {body}
+    </div>
+  );
+  /** One section's body: its rows as tables, with the entities, factor sources, GWP sets and the Scope 2 matrix as tables of their own. */
+  function renderBody(group: string, defs: CatalogField[]): ReactNode {
+    const kind = (k: string) => defs.filter((d) => d.kind === k);
+    const plain = defs.filter((d) => !["entity", "factor", "gwp"].includes(d.kind));
+    const review = show === "review";
+    if (group === "boundary") {
+      const tail = plain.filter((d) => BOUNDARY_TAIL.includes(d.fieldId)).sort((a, b) => BOUNDARY_TAIL.indexOf(a.fieldId) - BOUNDARY_TAIL.indexOf(b.fieldId));
+      const head = plain.filter((d) => !BOUNDARY_TAIL.includes(d.fieldId));
+      const entities = kind("entity");
+      const addEntity = addButton("entities");
+      return (
+        <>
+          {genericTable(group, head)}
+          {entities.length || (addEntity && !review)
+            ? block(
+                "Entities",
+                addEntity,
+                tableOf(["Name", "Included", "Equity %", "Source", "Actions"], entities.map((d) => rowFor(d, "entity")), ["s1-mb-col-name", "s1-mb-col-value", "s1-mb-col-pct", "", "s1-mb-col-actions"])
+              )
+            : null}
+          {genericTable(group, tail)}
+        </>
+      );
+    }
+    if (group === "scope2") {
+      const find = (basis: string, k: string) => defs.find((d) => d.fieldId === `category:${basis}:${k}`);
+      const keys = ["electricity", "steam", "heating", "cooling"].filter((k) => find("location", k) || find("market", k));
+      const rest = plain.filter((d) => !d.fieldId.startsWith("category:location:") && !d.fieldId.startsWith("category:market:"));
+      return (
+        <>
+          {keys.length
+            ? tableOf(
+                ["Category", "Location-based", "Market-based"],
+                <tbody className="s1-mb-tbody">
+                  {keys.map((k) => {
+                    const loc = find("location", k);
+                    const mkt = find("market", k);
+                    const any = (loc ?? mkt)!;
+                    return (
+                      <tr key={k}>
+                        <th scope="row" className="s1-mb-item">
+                          {any.label.replace(/^(Location|Market)-based\s+/i, "")}
+                        </th>
+                        {loc ? rowFor(loc, "cell") : <td />}
+                        {mkt ? rowFor(mkt, "cell") : <td />}
+                      </tr>
+                    );
+                  })}
+                </tbody>,
+                ["s1-mb-col-item", "s1-mb-col-matrix", "s1-mb-col-matrix"]
+              )
+            : null}
+          {genericTable(group, rest)}
+        </>
+      );
+    }
+    if (group === "factors") {
+      const s1 = kind("factor").filter((d) => d.fieldId.startsWith("factor:scope1"));
+      const s2 = kind("factor").filter((d) => !d.fieldId.startsWith("factor:scope1"));
+      const factor = (title: string, rows: CatalogField[], rowGroup: string) => {
+        const add = addButton(rowGroup);
+        return rows.length || (add && !review)
+          ? block(title, add, tableOf(["Database", "Edition", "Source", "Actions"], rows.map((d) => rowFor(d, "factor")), ["s1-mb-col-name", "s1-mb-col-value", "", "s1-mb-col-actions"]))
+          : null;
+      };
+      return (
+        <>
+          {factor("Scope 1", s1, "factor:scope1")}
+          {factor("Scope 2", s2, "factor:scope2")}
+          {genericTable(group, plain)}
+        </>
+      );
+    }
+    if (group === "gwp") {
+      return (
+        <>
+          {tableOf(["GWP set", "Time horizon", "Source", "Actions"], kind("gwp").map((d) => rowFor(d, "gwp")), ["s1-mb-col-name", "s1-mb-col-value", "", "s1-mb-col-actions"])}
+          {genericTable(group, plain)}
+        </>
+      );
+    }
+    return genericTable(group, defs);
   }
 
   return (
@@ -894,9 +1161,9 @@ export function BackendMethodologyReview({
 
       <MethodologySummary engagementId={engagementId} data={data} result={result} onOpenDocument={onOpenDocument} onJump={jump} />
 
-      {data.rowGroups.length ? (
+      {data.rowGroups.some((g) => !ADD_ROW_HOME.includes(g)) ? (
         <span className="s1-mr-actions">
-          {data.rowGroups.map((rowGroup) => (
+          {data.rowGroups.filter((g) => !ADD_ROW_HOME.includes(g)).map((rowGroup) => (
             <button key={rowGroup} type="button" className="s1-button s1-button--compact" disabled={busy} onClick={() => void act(() => addRow(engagementId, rowGroup))}>
               {ADD_ROW_LABEL[rowGroup] ?? "Add row"}
             </button>
@@ -949,6 +1216,7 @@ export function BackendMethodologyReview({
                           <span className="s1-mr-group__title">{label}</span>
                         </button>
                       </h3>
+                      {group === "gwp" ? addButton("gwp") : null}
                       {toAccept.length ? (
                         <button type="button" className="s1-button s1-button--compact" disabled={busy} onClick={() => setAcceptingAll(group)}>
                           Accept all suggestions in this section
@@ -981,31 +1249,7 @@ export function BackendMethodologyReview({
                       </div>
                     ) : null}
                     {open ? (
-                      <div className="s1-mr-scroll">
-                        <table className="s1-mr-table s1-mb-table">
-                          <colgroup>
-                            <col className="s1-mb-col-item" />
-                            <col className="s1-mb-col-value" />
-                            <col />
-                            <col className="s1-mb-col-status" />
-                            <col className="s1-mb-col-actions" />
-                          </colgroup>
-                          <thead>
-                            <tr>
-                              <th scope="col">{GROUP_ITEM[group] ?? "Item"}</th>
-                              <th scope="col">{INCLUDED_GROUPS.includes(group) ? "Included" : "Value"}</th>
-                              <th scope="col">Source</th>
-                              <th scope="col">Status</th>
-                              <th scope="col">
-                                <span className="s1-sr-only">Actions</span>
-                              </th>
-                            </tr>
-                          </thead>
-                          {defs.map((def) => (
-                            <FieldRow table key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} followUp={followUp} onMarkFollowUp={setRequestFor} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
-                          ))}
-                        </table>
-                      </div>
+                      <div className="s1-mb-groupbody">{renderBody(group, defs)}</div>
                     ) : null}
                   </div>
                 );
