@@ -240,6 +240,41 @@ def test_the_same_value_as_the_rules_says_nothing() -> None:
     assert after["validation_flags"] == [] and "ai_alternative" not in after
 
 
+@pytest.mark.parametrize("a, b, unit_a, unit_b", [
+    ("9011.3", "9013.1", None, None),
+    ("1,204", "1.204", None, None),  # ambiguous separator: different
+    ("12.5", "125", None, None),
+    ("1000", "1000", "kWh", "MWh"),
+    (9011.3, "9013.1", "kWh", "kWh"),
+])
+def test_a_real_difference_in_two_reads_still_warns(a: Any, b: Any, unit_a: Any, unit_b: Any) -> None:
+    assert not ai_extraction.same_value(a, b, unit_a, unit_b)
+
+
+@pytest.mark.parametrize("a, b", [
+    ("9,011.3", "9011.3"),
+    ("1 204 880", "1204880"),
+    ("1\u202f204\u00a0880", "1204880"),
+    ("1'204'880", "1204880"),
+    ("9011.30", "9011.3"),
+    ("9011,3", "9011.3"),
+    ("9.011,3", "9,011.3"),
+    (9011.3, "9,011.3"),
+    ("Meridian  Power", "meridian power"),
+])
+def test_two_spellings_of_one_number_do_not_warn(a: Any, b: Any) -> None:
+    assert ai_extraction.same_value(a, b)
+    assert ai_extraction.same_value(a, b, "kWh", "kwh")
+
+
+def test_a_thousands_separator_difference_on_a_rule_value_says_nothing() -> None:
+    claude = FakeClaude([read("supplier_name", "9011.3", "Supplier 9011.3", "L3"),
+                         read("account_number", "5521-8890", "Account Number 5521-8890", "L2")])
+    outcome, _ = assist(claude, [candidate("account_number"), candidate("supplier_name", "9,011.3")])
+    (after,) = by_field(outcome, "supplier_name")
+    assert after["validation_flags"] == [] and "ai_alternative" not in after
+
+
 # --- windows: overlap, dedup, conflict, header --------------------------------------------------
 
 def test_windows_overlap_by_one_page_and_are_capped() -> None:

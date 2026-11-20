@@ -44,6 +44,7 @@ import uuid
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Any, Literal
 
@@ -365,11 +366,77 @@ def _checked(field_: AskField, reading: Any, found: Located, confidence_of: Call
     return Verified(field_, raw, normalized, unit, found.source_reference, confidence_of(found.line))
 
 
+_GROUPED = re.compile(r"-?\d{1,3}(?:[ '\u2019]\d{3})+(?:[.,]\d+)?")
+_PLAIN = re.compile(r"-?(?:\d+(?:[.,]\d+)?|[.,]\d+)")
+_COMMA_GROUPS = re.compile(r"-?\d{1,3}(?:,\d{3})+")
+_DOT_GROUPS = re.compile(r"-?\d{1,3}(?:\.\d{3})+")
+
+
+def _read_number(value: Any) -> tuple[Decimal, int | None] | None:
+    """A value as a number, with the decimals it shows (None for a real number, which has no
+    printed form), or None when it is not one. Thousands separators (comma, space, thin space,
+    NBSP, apostrophe) are dropped. A lone comma followed by exactly three digits ("1,204") is a
+    thousands separator, so it is not the same as "1.204"; any other lone comma is a decimal point."""
+
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return (Decimal(repr(value)), None) if math.isfinite(float(value)) else None
+    if not isinstance(value, str):
+        return None
+    text = re.sub(r"[\u00a0\u2009\u202f]", " ", value).strip()
+    if _GROUPED.fullmatch(text):
+        text = re.sub(r"[ '\u2019]", "", text)
+    if not text or not re.fullmatch(r"[-\d.,]+", text):
+        return None
+    if "," in text and "." in text:
+        decimal_mark = "," if text.rfind(",") > text.rfind(".") else "."
+        thousands = "." if decimal_mark == "," else ","
+        head, _, tail = text.rpartition(decimal_mark)
+        if thousands in tail or decimal_mark in head or not re.fullmatch(
+                rf"-?\d{{1,3}}(?:{re.escape(thousands)}\d{{3}})*", head):
+            return None
+        text = head.replace(thousands, "") + "." + tail
+    elif "," in text:
+        if _COMMA_GROUPS.fullmatch(text):
+            text = text.replace(",", "")
+        elif _PLAIN.fullmatch(text):
+            text = text.replace(",", ".")
+        else:
+            return None
+    elif text.count(".") > 1:
+        if not _DOT_GROUPS.fullmatch(text):
+            return None
+        text = text.replace(".", "")
+    if not re.fullmatch(r"-?(?:\d+(?:\.\d+)?|\.\d+)", text):
+        return None
+    try:
+        number = Decimal(text)
+    except InvalidOperation:
+        return None
+    return number, (len(text.partition(".")[2]) if isinstance(value, str) else None)
+
+
+def _same_number(a: tuple[Decimal, int | None], b: tuple[Decimal, int | None]) -> bool:
+    (x, dx), (y, dy) = a, b
+    if math.isclose(float(x), float(y), rel_tol=1e-9, abs_tol=1e-9):
+        return True
+    shown = [d for d in (dx, dy) if d is not None]
+    if len(shown) == 2:  # both printed: equal when they match at the fewer decimals shown
+        step = Decimal(1).scaleb(-min(shown))
+        return x.quantize(step, rounding=ROUND_HALF_UP) == y.quantize(step, rounding=ROUND_HALF_UP)
+    return False
+
+
 def same_value(a: Any, b: Any, unit_a: str | None = None, unit_b: str | None = None) -> bool:
+    """Two reads of one value. Numbers (or text that is one: "9,011.3" and "9011.3") compare as
+    numbers; the rest as text with case and spacing ignored. A unit given on both sides must match."""
+
     if isinstance(a, bool) or isinstance(b, bool):
         return a == b
-    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
-        same = math.isclose(float(a), float(b), rel_tol=1e-9, abs_tol=1e-9)
+    na, nb = _read_number(a), _read_number(b)
+    if na is not None and nb is not None:
+        same = _same_number(na, nb)
     else:
         same = norm(str(a)) == norm(str(b))
     return same and (unit_a is None or unit_b is None or norm(unit_a) == norm(unit_b))
