@@ -84,6 +84,22 @@ interface ExtractionReviewProps {
    *  key above the cards offers the switch to highlight a figure on it. The key itself shows
    *  for any document the source pane draws (renderPage), in both data modes. */
   drawnWhole?: (documentId: string) => boolean;
+  /** Opens Methodology review, where a summary document's facts are read. */
+  onOpenMethodology?: () => void;
+}
+
+/** Company-prepared summary documents (Block 1): their facts are read in Methodology review, not value-extracted. */
+const SUMMARY_DOCUMENT_TYPES = new Set([
+  "Inventory workbook",
+  "Organizational boundary statement",
+  "Inventory methodology statement",
+  "Facility list",
+  "Emission factor source list",
+  "Prior-year inventory or report",
+]);
+
+export function isSummaryDocument(item?: EvidenceItem): boolean {
+  return Boolean(item?.detectedType && SUMMARY_DOCUMENT_TYPES.has(item.detectedType));
 }
 
 const SCOPE_LABEL: Record<ScopePlacement, string> = {
@@ -120,6 +136,7 @@ export function ExtractionReview({
   allowAddValue = false,
   onValueAdded,
   drawnWhole,
+  onOpenMethodology,
 }: ExtractionReviewProps) {
   // Review data lives in app state (via onValuesChange); selection below is
   // local, ephemeral UI. So accepts/corrections/requests survive navigation.
@@ -574,6 +591,45 @@ export function ExtractionReview({
       card?.scrollIntoView?.({ block: "nearest" });
       card?.focus({ preventScroll: true });
     });
+  }
+
+  // A document with no values (a summary document is not value-extracted) is still a document:
+  // draw it whole, with a note on why there is nothing to review.
+  if (initialDocumentId && !docHasValues(items)) {
+    const stillReading =
+      typeItem !== undefined &&
+      (typeItem.reading !== undefined || ["not_ingested", "ingested"].includes(typeItem.processingState));
+    const viewer = stillReading || !renderPage ? null : renderPage(initialDocumentId, null, undefined, [], undefined);
+    const summary = isSummaryDocument(typeItem);
+    if (stillReading || viewer || summary || items.length === 0) {
+      return (
+        <section className="s1-content s1-xr s1-xr--doconly">
+          <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
+            ‹ Back to {backLabel}
+          </button>
+          {unreadDocument ? <h2 className="s1-xr-doconly__name">{unreadDocument}</h2> : null}
+          {stillReading ? (
+            <p className="s1-xr-unread" role="status">
+              This document is still being read. It will open here when it is ready.
+            </p>
+          ) : summary ? (
+            <p className="s1-xr-unread" role="status">
+              Company-prepared summary document. Its facts are read in Methodology review, not here.{" "}
+              {onOpenMethodology ? (
+                <button className="s1-button s1-button--compact" type="button" onClick={onOpenMethodology}>
+                  Open Methodology review
+                </button>
+              ) : null}
+            </p>
+          ) : (
+            <p className="s1-xr-unread" role="status">
+              No values were read from this document. You can set its document type or move it from {backLabel}.
+            </p>
+          )}
+          {stillReading ? <div className="s1-ws-empty" aria-busy="true">Loading document…</div> : viewer}
+        </section>
+      );
+    }
   }
 
   if (items.length === 0) {

@@ -1573,6 +1573,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             initialDocumentName={evidenceView.find((e) => e.documentId === activeView.documentId)?.filename}
             typeItem={evidenceView.find((e) => e.documentId === activeView.documentId)}
             onPlaceOnFacility={placeDocumentOnFacility}
+            onOpenMethodology={() => setActiveView({ name: "methodology" })}
             initialValueId={activeView.valueId}
             initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}
