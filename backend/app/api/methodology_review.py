@@ -29,6 +29,7 @@ import time
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+import anthropic
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
@@ -93,9 +94,36 @@ def new_client(settings: Settings) -> ClaudeClient | None:
     """The Claude client, or None when this deployment has none set up (tests replace this)."""
 
     try:
-        return get_claude(settings)
+        return get_claude(settings, timeout_s=prefill.REQUEST_TIMEOUT_S)
     except AiNotConfiguredError:
         return None
+
+
+_CONFIG = "Sustentra's AI couldn't process this request (configuration)."
+
+
+def _is_request_rejected(exc: BaseException) -> bool:
+    """True when the provider answered 400 or 422: the request itself is wrong, so retrying cannot help."""
+
+    return isinstance(exc, anthropic.APIStatusError) and exc.status_code in (400, 422)
+
+
+def _log_call_failure(exc: BaseException) -> None:
+    """Exception type, and for a provider answer its status, error type, message and request id.
+
+    The provider's message describes the request's shape (for example a schema limit), not the
+    document; the prompt and the documents are never logged.
+    """
+
+    if isinstance(exc, anthropic.APIStatusError):
+        body: dict[str, Any] = exc.body if isinstance(exc.body, dict) else {}
+        inner = body.get("error")
+        error: dict[str, Any] = inner if isinstance(inner, dict) else body
+        logger.warning("methodology prefill: Claude call failed (%s) status=%s error_type=%s request_id=%s message=%s",
+                       type(exc).__name__, exc.status_code, error.get("type"), exc.request_id,
+                       str(error.get("message", ""))[:500])
+    else:
+        logger.warning("methodology prefill: Claude call failed (%s)", type(exc).__name__)
 
 
 def _gate(settings: Settings, spent_microusd: int, candidates: list[dict[str, Any]]) -> tuple[str | None, str | None]:
@@ -563,8 +591,10 @@ async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, An
         reply = await asyncio.to_thread(
             client.structured, system=prefill.SYSTEM_PROMPT, content=prefill.render_documents(documents),
             output_type=prefill.PrefillOutput, max_tokens=prefill.MAX_OUTPUT_TOKENS)
-    except Exception as exc:  # network, auth, rate limit: no usage to record; the type only is logged
-        logger.warning("methodology prefill: Claude call failed (%s)", type(exc).__name__)
+    except Exception as exc:  # no usage to record; type, status and provider message are logged, never content
+        _log_call_failure(exc)
+        if _is_request_rejected(exc):
+            raise HTTPException(status_code=500, detail=_CONFIG) from exc
         raise HTTPException(status_code=502, detail="Claude could not be reached. Try again in a moment.") from exc
     cost_usd = round((reply.cost_microusd or 0) / ai_usage.MICRO, 6)
     ok = reply.outcome == "ok" and reply.output is not None

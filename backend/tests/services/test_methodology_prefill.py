@@ -1218,3 +1218,46 @@ def test_the_use_note_orders_the_gwp_sets_before_anything_else() -> None:
     assert [g.set for g in mp.gwp_in_order([embedded, fridge, general])] == ["AR4", "AR5", "AR6"]
     # "standard" no longer marks a primary set
     assert "standard" not in mp._PRIMARY_WORDS
+
+
+# --- the request sent to Claude stays inside the structured-output limits -------------------------
+
+def _count_schema(node: Any, acc: dict[str, int]) -> None:
+    if isinstance(node, dict):
+        if "properties" in node:
+            required = set(node.get("required", []))
+            acc["optional"] += len([k for k in node["properties"] if k not in required])
+        if "anyOf" in node:
+            acc["unions"] += 1
+        for key in ("minimum", "maximum", "minLength", "maxLength", "pattern", "oneOf", "allOf", "$ref"):
+            if key in node and key != "$ref":
+                acc["unsupported"] += 1
+        for value in node.values():
+            _count_schema(value, acc)
+    elif isinstance(node, list):
+        for value in node:
+            _count_schema(value, acc)
+
+
+def test_prefill_output_schema_fits_the_structured_output_limits() -> None:
+    """Anthropic's documented limits for a strict schema: at most 24 optional parameters and 16
+    union-typed (anyOf) parameters. The schema is also kept small, and has no keyword the API
+    rejects. A pydantic change that breaks one fails here, not as a 400 on staging."""
+
+    import json
+
+    import anthropic
+
+    schema = anthropic.transform_schema(mp.PrefillOutput.model_json_schema())
+    counts = {"optional": 0, "unions": 0, "unsupported": 0}
+    _count_schema(schema, counts)
+    assert counts["optional"] <= 24
+    assert counts["unions"] <= 16
+    assert counts["unsupported"] == 0
+    assert len(json.dumps(schema)) < 20_000
+
+
+def test_prefill_has_a_timeout_that_fits_a_long_reply() -> None:
+    from backend.app.adapters.llm.claude import REQUEST_TIMEOUT_S
+
+    assert mp.REQUEST_TIMEOUT_S > REQUEST_TIMEOUT_S
