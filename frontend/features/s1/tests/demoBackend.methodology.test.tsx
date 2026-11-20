@@ -16,7 +16,7 @@ import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence"
 import type { MethodologyRecord } from "../api/methodologyReview";
 
 const BASE = "/engagements/ENG-CASCADE-2025/methodology-review";
-const row = (label: string) => screen.getByText(label).closest("li") as HTMLElement;
+const row = (label: string) => screen.getAllByText(label).map((e) => e.closest("li, tbody")).find(Boolean) as HTMLElement;
 
 type Wire = { fields: (MethodologyRecord & { field_id: string })[]; ai: { enabled: boolean } };
 const get = () => demoApi<Wire>(BASE);
@@ -183,20 +183,20 @@ describe("the demo backend's methodology review", () => {
     it("a prefill keeps the decided GWP field and adds the report's other set as its own row, once", async () => {
       await open();
       await prefillViaUi();
-      const fixed = screen.getAllByText("GWP factors source").map((e) => e.closest("li")).find(Boolean) as HTMLElement; // the heading has the same words
+      const fixed = screen.getAllByText("GWP factors source").map((e) => e.closest("li, tbody")).find(Boolean) as HTMLElement; // the heading has the same words
       expect(within(fixed).getByText("Accepted")).toBeTruthy();
       expect(within(row("GWP set")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
       expect((await gwpRows()).map((r) => r.suggestion?.value)).toEqual([{ set: "AR6", horizon: "500-year" }]);
       fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
       fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
-      await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/suggested/));
+      await waitFor(() => expect(screen.getByRole("region", { name: "Summary of the read" }).textContent).toMatch(/suggested/));
       expect(await gwpRows()).toHaveLength(1); // a second run adds no second copy
     });
 
     it("Add GWP set adds a blank row that takes the 500-year horizon and refuses an unknown one", async () => {
       await open();
       fireEvent.click(screen.getByRole("button", { name: "Add GWP set" }));
-      await waitFor(() => expect(screen.getByText("GWP set")).toBeTruthy());
+      await waitFor(() => expect(screen.getAllByText("GWP set")[0]).toBeTruthy());
       const [added] = await gwpRows();
       expect(added.user_added).toBe(true);
       const edit = (value: unknown) => demoApi(`${BASE}/${encodeURIComponent(added.field_id)}/edit`, { method: "POST", body: { value } });
@@ -391,21 +391,21 @@ describe("the demo backend's methodology review", () => {
     it("Add an item shows a gas row with its own three choices, and it saves Not mentioned", async () => {
       await open();
       fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: "gas:pfcs" } });
-      await waitFor(() => expect(within(row("Gas: PFCs")).getByText("Not checked yet")).toBeTruthy());
-      rowAction(row("Gas: PFCs"), "Edit", "Gas: PFCs");
+      await waitFor(() => expect(within(row("PFCs")).getByText("Not checked yet")).toBeTruthy());
+      rowAction(row("PFCs"), "Edit", "Gas: PFCs");
       const choices = within(screen.getByLabelText("Value: Gas: PFCs")).getAllByRole("option").map((o) => o.textContent);
       expect(choices).toEqual(["Choose", "Included", "Declared absent", "Not mentioned"]);
       fireEvent.change(screen.getByLabelText("Value: Gas: PFCs"), { target: { value: "Not mentioned" } });
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
-      await waitFor(() => expect(within(row("Gas: PFCs")).getByText("Not mentioned")).toBeTruthy());
+      await waitFor(() => expect(within(row("PFCs")).getByText("Not mentioned")).toBeTruthy());
     });
 
     it("a prefill shows only the gases it found, and the category values are refused for a gas", async () => {
       await open();
       await prefillViaUi();
-      expect(within(row("Gas: CO2")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
-      expect(within(row("Gas: NF3")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
-      expect(screen.queryByText("Gas: CH4", { selector: "span" })).toBeNull();
+      expect(within(row("CO₂")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
+      expect(within(row("NF₃")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
+      expect(screen.queryByText("CH₄", { selector: "th" })).toBeNull();
       const edit = (id: string, value: unknown) => demoApi(`${BASE}/${id}/edit`, { method: "POST", body: { value } });
       await expect(edit("gas:co2", "Yes")).rejects.toMatchObject({ status: 422 });
       await expect(edit("gas:co2", "Not detected")).rejects.toMatchObject({ status: 422 });
