@@ -23,7 +23,17 @@ export type WorkpaperView =
   | { name: "results"; lineKey?: string }
   | { name: "output" }
   | { name: "schedule"; lineKey: string }
-  | { name: "extraction"; documentId: string; mode?: "snippet" | "manual"; nodeKey?: string; valueId?: string }
+  | {
+      name: "extraction";
+      documentId: string;
+      mode?: "snippet" | "manual";
+      nodeKey?: string;
+      valueId?: string;
+      /** Opened from a methodology source: the cited page, the methodology field and its list entry whose quote is highlighted. */
+      page?: number;
+      field?: string;
+      entry?: number;
+    }
   | { name: "glossary"; previous: Exclude<WorkpaperView, { name: "glossary" }> };
 
 const NAMES = [
@@ -54,9 +64,18 @@ export function viewToSearch(view: WorkpaperView, engagementId = ""): string {
     p.set("doc", view.documentId);
     if (view.valueId) p.set("value", view.valueId);
     if (view.nodeKey) p.set("node", view.nodeKey);
+    if (view.page) p.set("page", String(view.page));
+    if (view.field) p.set("field", view.field);
+    if (view.field && view.entry !== undefined) p.set("entry", String(view.entry));
   }
   // A reload on the glossary opens the dashboard behind it (see parseViewFromSearch).
   return p.toString();
+}
+
+/** `{key: n}` for a whole number of at least `min` in the query, else nothing. */
+function positive<K extends string>(raw: string | null, key: K, min = 1): { [P in K]?: number } {
+  const n = raw !== null && /^\d{1,6}$/.test(raw) ? Number(raw) : NaN;
+  return (Number.isInteger(n) && n >= min ? { [key]: n } : {}) as { [P in K]?: number };
 }
 
 /** The view a query string names, or null when it names none (or an unusable one). */
@@ -78,6 +97,8 @@ export function parseViewFromSearch(search: string): WorkpaperView | null {
         mode: "snippet",
         nodeKey: p.get("node") ?? undefined,
         valueId: p.get("value") ?? undefined,
+        ...positive(p.get("page"), "page"),
+        ...(p.get("field") ? { field: p.get("field") as string, ...positive(p.get("entry"), "entry", 0) } : {}),
       };
     }
     case "results":

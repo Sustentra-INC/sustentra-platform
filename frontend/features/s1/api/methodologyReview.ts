@@ -203,3 +203,42 @@ export const revealField = (engagementId: string, fieldId: string) =>
 
 export const prefillMethodology = (engagementId: string) =>
   api<PrefillResult>(`${base(engagementId)}/prefill`, { method: "POST", body: {} });
+
+/** Where a methodology source was clicked from: which field, which of its list entries, and the page it cites. */
+export interface SourceAt {
+  fieldId: string;
+  /** The index of the list entry the quote belongs to; null for the suggestion's own quote. */
+  entry: number | null;
+  page: number | null;
+}
+
+/** The cited page of a source reference, or null when it names none. */
+export function pageOf(ref: MethodologySuggestion["source_reference"] | undefined): number | null {
+  if (!ref || typeof ref !== "object") return null;
+  const page = ref.page_number;
+  return typeof page === "number" && Number.isInteger(page) && page > 0 ? page : null;
+}
+
+export interface PageRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** One quote read from a document, and where the document's own text puts it (nothing when it is not printed there). */
+export interface QuoteLocation {
+  fieldId: string;
+  entry: number | null;
+  page: number | null;
+  located: boolean;
+  rects: PageRect[];
+}
+
+/** The methodology suggestions read from one document, each located on its PDF page. */
+export async function getDocumentLocations(engagementId: string, documentId: string): Promise<QuoteLocation[]> {
+  const wire = await api<{ items: { field_id: string; entry: number | null; page: number | null; located: boolean; rects: PageRect[] }[] }>(
+    `${base(engagementId)}/documents/${encodeURIComponent(documentId)}/locations`
+  );
+  return wire.items.map(({ field_id, ...rest }) => ({ ...rest, fieldId: field_id }));
+}

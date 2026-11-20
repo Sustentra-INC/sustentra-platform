@@ -12,8 +12,10 @@ import {
   rejectField,
   removeRow,
   revealField,
+  pageOf,
   revertField,
   sourceLocation,
+  type SourceAt,
   type AiStatus,
   type CatalogField,
   type MethodologyRecord,
@@ -121,7 +123,7 @@ export function aiStatusWords(ai: AiStatus): string | null {
   return ai.reason ?? "AI suggestions are not available";
 }
 
-function valueText(value: MethodologyValue | undefined): string {
+export function valueText(value: MethodologyValue | undefined): string {
   if (value === null || value === undefined || value === "") return "";
   if (Array.isArray(value)) {
     // A list of entries ({source_type, method}) reads "Source: method"; a list of names reads as a comma list.
@@ -423,7 +425,7 @@ function ValueEditor({
   );
 }
 
-function FieldRow({
+export function FieldRow({
   engagementId,
   def,
   record,
@@ -433,7 +435,15 @@ function FieldRow({
   onMarkFollowUp,
   onAct,
   onOpenDocument,
+  selected,
+  onSelect,
+  quoteNote,
 }: {
+  /** On a document's own page: this row is the one whose quote is highlighted, and a click on the row selects it. */
+  selected?: boolean;
+  onSelect?: () => void;
+  /** A line under a quote (entry null: the suggestion's own), such as "Quote not located on this page". */
+  quoteNote?: (entry: number | null) => string | null;
   engagementId: string;
   def: CatalogField;
   record: MethodologyRecord;
@@ -443,7 +453,7 @@ function FieldRow({
   followUp?: FollowUpSupport;
   onMarkFollowUp: (def: CatalogField) => void;
   onAct: (run: () => Promise<unknown>) => void;
-  onOpenDocument: (documentId: string) => void;
+  onOpenDocument: (documentId: string, at?: SourceAt) => void;
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "reject">("view");
   const [reason, setReason] = useState("");
@@ -464,7 +474,7 @@ function FieldRow({
   };
 
   return (
-    <li className="s1-mb-row" data-status={status}>
+    <li className="s1-mb-row" data-status={status} data-field-id={def.fieldId} data-selected={selected || undefined} onClick={onSelect}>
       <div className="s1-mb-main">
         <span className="s1-mr-label">{def.label}</span>
         <span className="s1-mr-value">{oldText ? <span>Recorded as: {oldText}</span> : current || <span className="s1-mr-none">{emptyWords(status, record.displayState)}</span>}</span>
@@ -492,7 +502,8 @@ function FieldRow({
                   <span className="s1-mr-muted">{item.label}</span>
                   <q className="s1-mb-quote">{item.quote}</q>
                   {item.quote_truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
-                  <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(item.document_id)}>
+                  {quoteNote?.(index) ? <span className="s1-mb-notlocated">{quoteNote(index)}</span> : null}
+                  <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(item.document_id, { fieldId: def.fieldId, entry: index, page: pageOf(item.source_reference) })}>
                     {item.file_name}
                     {sourceLocation(item.source_reference) ? `, ${sourceLocation(item.source_reference)}` : ""}
                   </button>
@@ -508,7 +519,8 @@ function FieldRow({
             <>
               <q className="s1-mb-quote">{suggestion.quote}</q>
               {suggestion.quote_truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
-              <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(suggestion.document_id)}>
+              {quoteNote?.(null) ? <span className="s1-mb-notlocated">{quoteNote(null)}</span> : null}
+              <button type="button" className="s1-mr-link" onClick={() => onOpenDocument(suggestion.document_id, { fieldId: def.fieldId, entry: null, page: pageOf(suggestion.source_reference) })}>
                 {suggestion.file_name}
                 {sourceLocation(suggestion.source_reference) ? `, ${sourceLocation(suggestion.source_reference)}` : ""}
               </button>
@@ -627,7 +639,7 @@ export function BackendMethodologyReview({
   followUp,
 }: {
   engagementId: string;
-  onOpenDocument: (documentId: string) => void;
+  onOpenDocument: (documentId: string, at?: SourceAt) => void;
   onError?: (error: unknown) => boolean;
   onActivity?: (entries: { at: string; who: string; what: string }[]) => void;
   /** Present on pages that can raise client requests: adds "Mark for client follow-up" to every row. */
