@@ -118,11 +118,11 @@ describe("a methodology source link opens the document at its page with the quot
     mock.review = review();
     const onOpenDocument = vi.fn();
     render(<BackendMethodologyReview engagementId="e1" onOpenDocument={onOpenDocument} />);
-    await screen.findByText("Gas: CO2");
-    const co2 = screen.getByText("Gas: CO2").closest("li") as HTMLElement;
+    await screen.findByText("CO₂");
+    const co2 = screen.getByText("CO₂").closest("tbody") as HTMLElement;
     fireEvent.click(co2.querySelector("button.s1-mr-link") as HTMLElement);
     expect(onOpenDocument).toHaveBeenCalledWith("d1", { fieldId: "gas:co2", entry: null, page: 5 });
-    const ch4 = screen.getByText("Gas: CH4").closest("li") as HTMLElement;
+    const ch4 = screen.getByText("CH₄").closest("tbody") as HTMLElement;
     fireEvent.click(ch4.querySelector("button.s1-mr-link") as HTMLElement);
     expect(onOpenDocument).toHaveBeenLastCalledWith("d1", { fieldId: "gas:ch4", entry: null, page: 5 });
   });
@@ -150,7 +150,8 @@ describe("a methodology source link opens the document at its page with the quot
 
   it("Back returns to where the user came from", async () => {
     const { onBack } = open({ fieldId: "gas:co2", page: 5 });
-    fireEvent.click(await screen.findByRole("button", { name: /Back to methodology/ }));
+    await screen.findByText("Gas: CO2");
+    fireEvent.click(screen.getByRole("button", { name: /Back to methodology/ }));
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 });
@@ -190,5 +191,22 @@ describe("the facts are the Methodology review decisions", () => {
     open();
     fireEvent.click(await screen.findByRole("button", { name: "Read with Sustentra's AI" }));
     await waitFor(() => expect(api).toHaveBeenCalledWith(`${BASE}/prefill`, { method: "POST", body: {} }));
+  });
+});
+
+describe("the page uses the same layout as every other document's review", () => {
+  it("is the extraction grid: navigator, the document, then the facts panel in the right-hand slot", async () => {
+    open({ fieldId: "gas:co2", page: 5 });
+    await screen.findByText("Gas: CO2");
+    const grid = document.querySelector(".s1-xr-grid") as HTMLElement;
+    expect(grid).not.toBeNull();
+    const [nav, source, values] = Array.from(grid.children) as HTMLElement[];
+    expect(nav).toHaveClass("s1-xr-nav");
+    expect(source).toHaveClass("s1-xr-source");
+    expect(values).toHaveClass("s1-xr-values");
+    expect(source.contains(screen.getByTestId("viewer"))).toBe(true);
+    expect(values.contains(screen.getByText("Gas: CO2"))).toBe(true);
+    expect(source.compareDocumentPosition(values) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(grid.querySelector(".s1-sd")).toBeNull();
   });
 });

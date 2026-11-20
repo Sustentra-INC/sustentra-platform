@@ -1538,6 +1538,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             demoState={demoState}
             onOpenExtraction={openExtraction}
             onOpenSetup={() => setActiveView({ name: "setup" })}
+            onOpenMethodology={() => setActiveView({ name: "methodology" })}
             tree={
               STAGING_SCREENS
                 ? {

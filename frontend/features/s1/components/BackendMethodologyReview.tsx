@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { ChevronRight, SquareDashed, TextAlignJustify } from "lucide-react";
 
@@ -34,6 +34,8 @@ import type { Ask } from "../types/requests";
 import type { MaybePromise } from "../requests/maybePromise";
 import { andThen } from "../requests/maybePromise";
 import type { AskDraft } from "../requests/requestsStore";
+import { dropReasonWords, itemLabel, valueText } from "../utils/methodologyText";
+import { MethodologySummary, waitingForReview } from "./MethodologySummary";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { AiExplainPopover } from "./AiExplainPopover";
@@ -48,20 +50,6 @@ import { InfoTip } from "./InfoTip";
 
 const STATUS_WORD: Record<string, string> = { pending: "Pending", accepted: "Accepted", edited: "Edited", rejected: "Rejected" };
 
-/** Plain words for why a suggestion batch was dropped; an unknown code shows as its own words. */
-const DROP_REASON: Record<string, string> = {
-  empty_value: "No value given",
-  unknown_line: "Cited a line that isn't in the document",
-  quote_not_on_document: "Quote not found in the document, or shorter than 8 characters",
-  ambiguous_quote: "Quote appears in more than one place",
-  value_not_in_quote: "Value isn't in the quoted text",
-  unknown_document: "Cited a document that wasn't read",
-  invalid_value: "Value isn't one of the allowed options",
-  unknown_field: "Not a methodology field",
-  not_an_inclusion: "Said an entity is left out, or gave no sign it is in the boundary",
-  not_a_boundary_sentence: "Not a sentence about what the boundary covers",
-};
-
 const ACTION_WORD: Record<string, string> = {
   accept: "Accepted",
   edit: "Edited",
@@ -72,6 +60,9 @@ const ACTION_WORD: Record<string, string> = {
 };
 
 /** The page is two cards. The API's groups under Methods; every other group sits in Inventory Boundary. */
+/** What each section's first column is called, and which sections hold Yes / No answers (their value column reads "Included"). */
+const GROUP_ITEM: Record<string, string> = { gases: "Gas", scope1: "Category", scope2: "Category", biogenic: "Type", gwp: "GWP set", factors: "Database" };
+const INCLUDED_GROUPS = ["scope1", "scope2", "biogenic"];
 const METHODS_GROUPS = ["factors", "gwp", "calculation"];
 const CARDS = [
   { key: "boundary", title: "Inventory Boundary" },
@@ -127,10 +118,6 @@ export function statusWord(status: string | undefined | null): string {
   return STATUS_WORD[status] ?? "Status unknown";
 }
 
-export function dropReasonWords(code: string): string {
-  return DROP_REASON[code] ?? code.replaceAll("_", " ");
-}
-
 const AUTO_READ_POLL_MS = 3000;
 
 /** "a.pdf", "a.pdf and b.xlsx", "a.pdf, b.xlsx and 2 more": the files a read names. */
@@ -141,56 +128,11 @@ function fileList(names: string[]): string {
 }
 
 /** Null when Claude can be asked; otherwise the server's sentence for why not. */
+export { dropReasonWords, itemLabel, valueText };
+
 export function aiStatusWords(ai: AiStatus): string | null {
   if (ai.enabled && ai.reason_code === null) return null;
   return ai.reason ?? "AI suggestions are not available";
-}
-
-export function valueText(value: MethodologyValue | undefined): string {
-  if (value === null || value === undefined || value === "") return "";
-  if (Array.isArray(value)) {
-    // A list of entries ({source_type, method}) reads "Source: method"; a list of names reads as a comma list.
-    if (value.some((v) => v !== null && typeof v === "object")) {
-      return value
-        .map((v) =>
-          v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.source_type === "string"
-            ? `${v.source_type}: ${valueText(v.method as MethodologyValue)}`
-            : v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.option === "string"
-              ? `${v.option}${v.wording ? ` (${valueText(v.wording as MethodologyValue)})` : ""}`
-              : valueText(v as MethodologyValue)
-        )
-        .join("; ");
-    }
-    return value.join(", ");
-  }
-  if (
-    typeof value === "object" &&
-    typeof value.start === "string" &&
-    typeof value.end === "string" &&
-    Object.keys(value).every((k) => ["start", "end", "start_implied", "end_implied", "implied_from", "basis"].includes(k))
-  ) {
-    // A date range: a date the report does not print reads "implied" (with how it was worked out when the year came
-    // from the title); the derived basis follows ("calendar year").
-    const how = typeof value.implied_from === "string" && value.implied_from ? ` (${value.implied_from})` : "";
-    const flag = (implied: unknown) => (implied === true ? ` implied${how}` : "");
-    const basis = typeof value.basis === "string" && value.basis ? `, ${value.basis.toLowerCase()}` : "";
-    return `${value.start}${flag(value.start_implied)} to ${value.end}${flag(value.end_implied)}${basis}`;
-  }
-  if (typeof value === "object" && typeof value.name === "string" && ("included" in value || "operational_control" in value)) {
-    // An entity: each percentage is optional, so each is labelled (a bare "51" would not say which one it is).
-    const pct = (v: MethodologyValue | undefined, label: string) => (typeof v === "number" ? [`${label} ${v}%`] : []);
-    const facilities = Array.isArray(value.facilities) && value.facilities.length ? [`facilities: ${value.facilities.join(", ")}`] : [];
-    return [value.name, ...facilities, ...pct(value.equity_share_pct, "equity share"), ...pct(value.financial_control, "financial control"), ...(value.included ? [`included: ${valueText(value.included)}`] : []), ...(value.control_quoted || value.operational_control ? [`operational control (as quoted): ${valueText((value.control_quoted ?? value.operational_control) as MethodologyValue)}`] : [])]
-      .filter(Boolean)
-      .join(" · ");
-  }
-  if (typeof value === "object") {
-    return Object.entries(value)
-      .map(([, v]) => valueText(v))
-      .filter(Boolean)
-      .join(" · ");
-  }
-  return String(value);
 }
 
 function when(iso: string): string {
@@ -472,21 +414,22 @@ function SourceLink({ fileName, reference, documentId, at, onOpen }: { fileName:
   );
 }
 
-/** A quote in a muted style, clamped to two lines, with Show more when it is longer. */
-function Quote({ text, truncated }: { text: string; truncated?: boolean }) {
+/** A quote in a muted style on one line (the full text on hover), with Show more when it is cut; `trail` follows it on the same line. */
+function Quote({ text, truncated, trail }: { text: string; truncated?: boolean; trail?: ReactNode }) {
   const ref = useRef<HTMLQuoteElement>(null);
   const [open, setOpen] = useState(false);
   const [clipped, setClipped] = useState(false);
   useLayoutEffect(() => {
     const el = ref.current;
-    if (el && !open) setClipped(el.scrollHeight > el.clientHeight + 1);
+    if (el && !open) setClipped(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
   }, [text, open]);
   return (
-    <span className="s1-mb-quote-wrap">
-      <q ref={ref} className={`s1-mb-quote${open ? "" : " is-clamped"}`}>
+    <span className={`s1-mb-quote-wrap${open ? " is-open" : ""}`}>
+      <q ref={ref} className={`s1-mb-quote${open ? "" : " is-clamped"}`} title={text}>
         {text}
       </q>
       {truncated ? <span className="s1-mr-muted">(quote shortened)</span> : null}
+      {trail}
       {clipped || open ? (
         <button type="button" className="s1-mr-link" aria-expanded={open} onClick={() => setOpen(!open)}>
           {open ? "Show less" : "Show more"}
@@ -509,7 +452,10 @@ export function FieldRow({
   selected,
   onSelect,
   quoteNote,
+  table,
 }: {
+  /** Draw the row as a table body (the review page); otherwise as a list item (the document page's side panel). */
+  table?: boolean;
   /** On a document's own page: this row is the one whose quote is highlighted, and a click on the row selects it. */
   selected?: boolean;
   onSelect?: () => void;
@@ -571,70 +517,63 @@ export function FieldRow({
   // With a suggestion showing, "Not decided yet" would only repeat it.
   const showEmpty = !(suggestion && pendingStatus);
 
-  return (
-    <li className="s1-mb-row" data-status={status} data-field-id={def.fieldId} data-selected={selected || undefined} onClick={onSelect}>
-      <div className="s1-mb-body">
-        <div className="s1-mb-main">
-          <span className="s1-mr-label">{def.label}</span>
-          {oldText || current || showEmpty ? (
-            <span className="s1-mr-value">{oldText ? <span>Recorded as: {oldText}</span> : current || <span className="s1-mr-none">{emptyWords(status, record.displayState)}</span>}</span>
-          ) : null}
-          {def.value_note && !entitiesNamed && current ? <span className="s1-mr-muted">{def.value_note}</span> : null}
-          {chip ? (
-            <span className={`s1-mr-chip s1-mr-chip--${chip}`}>{statusWord(status)}</span>
-          ) : !pendingStatus ? (
-            <span className="s1-chip">{statusWord(status)}</span>
-          ) : null}
-          {decision && status !== "pending" ? (
-            <span className="s1-mr-muted">
-              {decision.by.name} · {when(decision.at)}
-            </span>
-          ) : null}
-          {oldText ? <span className="s1-mr-muted">Enter the start and end dates with Edit.</span> : null}
-          {record.shownNote ? <span className="s1-mr-muted">{record.shownNote}</span> : null}
-          {status === "rejected" && decision?.reason ? <span className="s1-mr-muted">Reason: {decision.reason}</span> : null}
-        </div>
-
-        {suggestion ? (
-          <div className="s1-mb-suggest">
-            <div className="s1-mb-suggest__head">
-              <span className="s1-mr-value">{valueText(suggestion.value)}</span>
-              <AiExplainPopover
-                label="Suggested by Sustentra's AI"
-                className="s1-chip s1-mb-chip"
-                explanation={explanationOf(record)!}
-                onOpenDocument={(documentId, at) => onOpenDocument(documentId, { fieldId: def.fieldId, entry: at.entry, page: at.page })}
-              />
-              {def.value_note && !entitiesNamed ? <span className="s1-mr-muted">{def.value_note}</span> : null}
-            </div>
-            {suggestion.evidence?.length ? (
-              <ul className="s1-mb-evidence">
-                {suggestion.evidence.map((item, index) => (
-                  <li key={index} className="s1-mb-evidence-item">
-                    <span className="s1-mr-muted">{item.label}</span>
-                    <Quote text={item.quote} truncated={item.quote_truncated} />
-                    {quoteNote?.(index) ? <span className="s1-mb-notlocated">{quoteNote(index)}</span> : null}
-                    <SourceLink fileName={item.file_name} reference={item.source_reference} documentId={item.document_id} at={{ fieldId: def.fieldId, entry: index, page: pageOf(item.source_reference) }} onOpen={onOpenDocument} />
-                  </li>
-                ))}
-                {suggestion.entries_omitted ? (
-                  <li className="s1-mr-muted">
-                    {suggestion.entries_omitted} more {suggestion.entries_omitted === 1 ? "entry was" : "entries were"} found but not shown: their quotes were too long to keep.
-                  </li>
-                ) : null}
-              </ul>
-            ) : (
-              <>
-                <Quote text={suggestion.quote} truncated={suggestion.quote_truncated} />
-                {quoteNote?.(null) ? <span className="s1-mb-notlocated">{quoteNote(null)}</span> : null}
-                <SourceLink fileName={suggestion.file_name} reference={suggestion.source_reference} documentId={suggestion.document_id} at={{ fieldId: def.fieldId, entry: null, page: pageOf(suggestion.source_reference) }} onOpen={onOpenDocument} />
-              </>
-            )}
+  const sourceLines = suggestion ? (
+    suggestion.evidence?.length ? (
+      <div className="s1-mb-sources">
+        {suggestion.evidence.map((item, index) => (
+          <div key={index} className="s1-mb-srcline">
+            <span className="s1-mr-muted s1-mb-srclabel">{item.label}</span>
+            <Quote
+              text={item.quote}
+              truncated={item.quote_truncated}
+              trail={
+                <span className="s1-mb-trail">
+                  <span aria-hidden> · </span>
+                  <SourceLink fileName={item.file_name} reference={item.source_reference} documentId={item.document_id} at={{ fieldId: def.fieldId, entry: index, page: pageOf(item.source_reference) }} onOpen={onOpenDocument} />
+                </span>
+              }
+            />
+            {quoteNote?.(index) ? <span className="s1-mb-notlocated">{quoteNote(index)}</span> : null}
           </div>
+        ))}
+        {suggestion.entries_omitted ? (
+          <span className="s1-mr-muted">
+            {suggestion.entries_omitted} more {suggestion.entries_omitted === 1 ? "entry was" : "entries were"} found but not shown: their quotes were too long to keep.
+          </span>
         ) : null}
       </div>
-
-      {mode === "view" ? (
+    ) : (
+      <div className="s1-mb-srcline">
+        <Quote
+          text={suggestion.quote}
+          truncated={suggestion.quote_truncated}
+          trail={
+            <span className="s1-mb-trail">
+              <span aria-hidden> · </span>
+              <SourceLink fileName={suggestion.file_name} reference={suggestion.source_reference} documentId={suggestion.document_id} at={{ fieldId: def.fieldId, entry: null, page: pageOf(suggestion.source_reference) }} onOpen={onOpenDocument} />
+            </span>
+          }
+        />
+        {quoteNote?.(null) ? <span className="s1-mb-notlocated">{quoteNote(null)}</span> : null}
+      </div>
+    )
+  ) : null;
+  const marker = suggestion ? (
+    <AiExplainPopover
+      label="Suggested by Sustentra's AI"
+      className="s1-chip s1-mb-chip"
+      explanation={explanationOf(record)!}
+      onOpenDocument={(documentId, at) => onOpenDocument(documentId, { fieldId: def.fieldId, entry: at.entry, page: at.page })}
+    />
+  ) : null;
+  const statusChip = chip ? <span className={`s1-mr-chip s1-mr-chip--${chip}`}>{statusWord(status)}</span> : !pendingStatus ? <span className="s1-chip">{statusWord(status)}</span> : null;
+  const decidedBy = decision && status !== "pending" ? (
+    <span className="s1-mr-muted">
+      {decision.by.name} · {when(decision.at)}
+    </span>
+  ) : null;
+  const actions =
+    mode === "view" ? (
         <span className="s1-mr-actions s1-mb-actions">
           {pendingStatus && suggestion && !suggestionIsOldText ? (
             <button
@@ -664,8 +603,9 @@ export function FieldRow({
           ) : null}
           {entries.length ? <ActionMenu label={`More actions: ${def.label}`} entries={entries} isOpen={menuOpen} onOpenChange={setMenuOpen} /> : null}
         </span>
-      ) : null}
-
+      ) : null;
+  const editor = (
+    <>
       {mode === "edit" ? (
         <div className="s1-mb-wide">
           <ValueEditor
@@ -701,6 +641,68 @@ export function FieldRow({
           </span>
         </div>
       ) : null}
+    </>
+  );
+
+  if (table) {
+    const valueCell = oldText ? <span>Recorded as: {oldText}</span> : current ? current : suggestion ? valueText(suggestion.value) : <span className="s1-mr-none">{emptyWords(status, record.displayState)}</span>;
+    return (
+      <tbody className="s1-mb-tbody" data-status={status} data-field-id={def.fieldId} data-selected={selected || undefined} onClick={onSelect}>
+        <tr>
+          <th scope="row" className="s1-mb-item">
+            {itemLabel(def)}
+          </th>
+          <td className="s1-mb-valuecell">
+            <span className="s1-mr-value">{valueCell}</span> {marker}
+            {def.value_note && !entitiesNamed && (current || suggestion) ? <span className="s1-mr-muted"> {def.value_note}</span> : null}
+            {oldText ? <span className="s1-mr-muted"> Enter the start and end dates with Edit.</span> : null}
+            {record.shownNote ? <span className="s1-mr-muted"> {record.shownNote}</span> : null}
+          </td>
+          <td className="s1-mb-sourcecell">{sourceLines}</td>
+          <td className="s1-mb-statuscell">
+            {statusChip}
+            {decidedBy}
+            {status === "rejected" && decision?.reason ? <span className="s1-mr-muted">Reason: {decision.reason}</span> : null}
+          </td>
+          <td className="s1-mb-actionscell">{actions}</td>
+        </tr>
+        {mode !== "view" ? (
+          <tr className="s1-mr-editrow">
+            <td colSpan={5}>{editor}</td>
+          </tr>
+        ) : null}
+      </tbody>
+    );
+  }
+
+  return (
+    <li className="s1-mb-row" data-status={status} data-field-id={def.fieldId} data-selected={selected || undefined} onClick={onSelect}>
+      <div className="s1-mb-body">
+        <div className="s1-mb-main">
+          <span className="s1-mr-label">{def.label}</span>
+          {oldText || current || showEmpty ? (
+            <span className="s1-mr-value">{oldText ? <span>Recorded as: {oldText}</span> : current || <span className="s1-mr-none">{emptyWords(status, record.displayState)}</span>}</span>
+          ) : null}
+          {def.value_note && !entitiesNamed && current ? <span className="s1-mr-muted">{def.value_note}</span> : null}
+          {statusChip}
+          {decidedBy}
+          {oldText ? <span className="s1-mr-muted">Enter the start and end dates with Edit.</span> : null}
+          {record.shownNote ? <span className="s1-mr-muted">{record.shownNote}</span> : null}
+          {status === "rejected" && decision?.reason ? <span className="s1-mr-muted">Reason: {decision.reason}</span> : null}
+        </div>
+        {suggestion ? (
+          <div className="s1-mb-suggest">
+            <div className="s1-mb-suggest__head">
+              <span className="s1-mr-value">{valueText(suggestion.value)}</span>
+              {marker}
+              {def.value_note && !entitiesNamed ? <span className="s1-mr-muted">{def.value_note}</span> : null}
+            </div>
+            {sourceLines}
+          </div>
+        ) : null}
+      </div>
+      {actions}
+      {editor}
     </li>
   );
 }
@@ -734,32 +736,18 @@ export function BackendMethodologyReview({
   const [result, setResult] = useState<PrefillResult | null>(null);
   // Sustentra's AI reading the summary documents by itself after an upload (the backend's marker, polled while it lasts).
   const autoActive = autoReadActive(data?.autoRead);
-  const autoFiles = useRef<string[] | null>(null); // the files of a read seen waiting or running, until it is seen finished
-  const [autoDone, setAutoDone] = useState<string[] | null>(null);
-  /** What a loaded page says of the automatic read: a read seen running and now gone has finished. */
-  const trackAutoRead = useCallback((next: MethodologyReviewData) => {
-    const marker = next.autoRead ?? null;
-    if (marker && autoReadActive(marker)) {
-      autoFiles.current = marker.file_names;
-      setAutoDone(null);
-    } else if (autoFiles.current) {
-      if (marker?.state !== "skipped" && marker?.state !== "failed") setAutoDone(autoFiles.current); // it finished: the suggestions are on the page
-      autoFiles.current = null;
-    }
-  }, []);
 
   const load = useCallback(async () => {
     try {
       const next = await getMethodologyReview(engagementId);
       setData(next);
-      trackAutoRead(next);
       setLoadError(null);
       onActivity?.(methodologyActivityFrom(next));
     } catch (error) {
       if (onError?.(error)) return;
       setLoadError(userFacingApiError(error));
     }
-  }, [engagementId, onError, onActivity, trackAutoRead]);
+  }, [engagementId, onError, onActivity]);
 
   const onErrorRef = useRef(onError);
   const onActivityRef = useRef(onActivity);
@@ -774,8 +762,7 @@ export function BackendMethodologyReview({
       .then((next) => {
         if (!live) return;
         setData(next);
-        trackAutoRead(next);
-        setLoadError(null);
+          setLoadError(null);
         onActivityRef.current?.(methodologyActivityFrom(next));
       })
       .catch((error: unknown) => {
@@ -785,7 +772,7 @@ export function BackendMethodologyReview({
     return () => {
       live = false;
     };
-  }, [engagementId, trackAutoRead]);
+  }, [engagementId]);
 
   async function act(run: () => Promise<unknown>) {
     setBusy(true);
@@ -855,9 +842,7 @@ export function BackendMethodologyReview({
     );
   }
 
-  const suggestedDocs = result?.documents_read ?? [];
   const aiOff = aiStatusWords(data.ai);
-  const droppedEntries = result ? Object.entries(result.dropped).filter(([, n]) => n > 0) : [];
   // An entity row counts once it has a name: the reviewer's decision, or Claude's suggestion while still undecided.
   const entitiesNamed = data.catalog.some((d) => {
     if (d.kind !== "entity") return false;
@@ -865,7 +850,17 @@ export function BackendMethodologyReview({
     const v = r?.decision && r.decision.status !== "pending" ? r.decision.value : r?.suggestion?.value;
     return v !== null && typeof v === "object" && !Array.isArray(v) && typeof v.name === "string" && v.name.trim() !== "";
   });
-  const pending = data.fields.filter((r) => r.suggestion && (!r.decision || r.decision.status === "pending")).length;
+  const pending = waitingForReview(data);
+  // A chip in the summary: open the row's section, drop the filter and bring the row into view.
+  function jump(fieldId: string) {
+    const def = data?.catalog.find((d) => d.fieldId === fieldId);
+    setShow("all");
+    if (def) setFolded((f) => new Set([...f].filter((g) => g !== def.group)));
+    window.setTimeout(() => {
+      const el = Array.from(document.querySelectorAll("[data-field-id]")).find((e) => e.getAttribute("data-field-id") === fieldId);
+      el?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+    }, 0);
+  }
 
   return (
     <section className="s1-content s1-mb">
@@ -929,11 +924,7 @@ export function BackendMethodologyReview({
           Not read automatically: {data.autoRead.reason}
         </p>
       ) : null}
-      {autoDone && !autoActive ? (
-        <p className="s1-mb-result" role="status">
-          Sustentra&apos;s AI read {fileList(autoDone)}. {pending} suggested, waiting for your review. Nothing counts until you accept or edit it.
-        </p>
-      ) : null}
+      {/* A finished read shows as the summary below (MethodologySummary), built from the stored suggestions. */}
 
       {notice ? (
         <p className="s1-mb-notice" role="alert">
@@ -941,19 +932,7 @@ export function BackendMethodologyReview({
         </p>
       ) : null}
 
-      {result ? (
-        <p className="s1-mb-result" role="status">
-          {result.suggested} suggested
-          {droppedEntries.length
-            ? `, dropped: ${droppedEntries.map(([code, n]) => `${n}: ${dropReasonWords(code)}`).join("; ")}`
-            : ", none dropped"}
-          {result.kept_reviewer_decision
-            ? `, ${result.kept_reviewer_decision} ${result.kept_reviewer_decision === 1 ? "field kept" : "fields kept"} your decision`
-            : ""}
-          . Read {suggestedDocs.length}{" "}
-          {suggestedDocs.length === 1 ? "document" : "documents"}: {suggestedDocs.map((d) => d.file_name + (d.truncated ? " (only the start was read)" : "")).join(", ")}. Cost ${result.cost_usd.toFixed(result.cost_usd < 0.01 ? 4 : 2)} ({result.model}).
-        </p>
-      ) : null}
+      <MethodologySummary engagementId={engagementId} data={data} result={result} onOpenDocument={onOpenDocument} onJump={jump} />
 
       {data.rowGroups.length ? (
         <span className="s1-mr-actions">
@@ -1042,11 +1021,31 @@ export function BackendMethodologyReview({
                       </div>
                     ) : null}
                     {open ? (
-                      <ul className="s1-mb-list">
-                        {defs.map((def) => (
-                          <FieldRow key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} followUp={followUp} onMarkFollowUp={setRequestFor} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
-                        ))}
-                      </ul>
+                      <div className="s1-mr-scroll">
+                        <table className="s1-mr-table s1-mb-table">
+                          <colgroup>
+                            <col className="s1-mb-col-item" />
+                            <col className="s1-mb-col-value" />
+                            <col />
+                            <col className="s1-mb-col-status" />
+                            <col className="s1-mb-col-actions" />
+                          </colgroup>
+                          <thead>
+                            <tr>
+                              <th scope="col">{GROUP_ITEM[group] ?? "Item"}</th>
+                              <th scope="col">{INCLUDED_GROUPS.includes(group) ? "Included" : "Value"}</th>
+                              <th scope="col">Source</th>
+                              <th scope="col">Status</th>
+                              <th scope="col">
+                                <span className="s1-sr-only">Actions</span>
+                              </th>
+                            </tr>
+                          </thead>
+                          {defs.map((def) => (
+                            <FieldRow table key={def.fieldId} engagementId={engagementId} def={def} record={records.get(def.fieldId)!} busy={busy} entitiesNamed={entitiesNamed} followUp={followUp} onMarkFollowUp={setRequestFor} onAct={(run) => void act(run)} onOpenDocument={onOpenDocument} />
+                          ))}
+                        </table>
+                      </div>
                     ) : null}
                   </div>
                 );

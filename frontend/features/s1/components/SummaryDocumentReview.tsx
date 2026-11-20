@@ -190,14 +190,44 @@ export function SummaryDocumentReview({
   const aiOff = aiStatusWords(data.ai);
   const aiBlocker = aiOff;
 
+  // The same grid as every other document's review (ExtractionReview): navigator, the document in the
+  // middle, the values on the right (the stylesheet orders the panes; the document comes first in the markup).
   return (
-    <section className="s1-content s1-xr s1-xr--doconly">
-      <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
-        ‹ Back to {backLabel}
-      </button>
-      {fileName ? <h2 className="s1-xr-doconly__name">{fileName}</h2> : null}
-      <div className="s1-sd">
-        <div className="s1-sd__facts">
+    <section className="s1-content s1-xr">
+      <div className="s1-xr-grid">
+        <aside className="s1-xr-nav" aria-label="Navigator">
+          <button className="s1-linklike s1-backlink s1-xr-back" type="button" onClick={onBack}>
+            ‹ Back to {backLabel}
+          </button>
+        </aside>
+        <aside className="s1-xr-source" aria-label="Source">
+          <div className="s1-xr-src">
+            <div className="s1-xr-src-head">
+              <div className="s1-xr-src-fn">{fileName}</div>
+              <div className="s1-muted">The uploaded document, each fact outlined where it was read.</div>
+            </div>
+            <div className="s1-xr-src-body">
+              <div className="s1-xr-page s1-xr-realpage">
+                {renderViewer({
+                  page,
+                  span: firstBox,
+                  marks,
+                  selectedMarkIds,
+                  pageNote,
+                  viewerKey: `${sel?.fieldId ?? ""}|${sel?.entry ?? ""}|${page ?? ""}`,
+                  onPickMark: (mark) => {
+                    const [fieldId, entry] = mark.id.split("#");
+                    select(fieldId, entry === "" ? null : Number(entry));
+                    window.requestAnimationFrame(() =>
+                      document.querySelector<HTMLElement>(`[data-field-id="${CSS.escape(fieldId)}"]`)?.scrollIntoView?.({ block: "nearest" })
+                    );
+                  },
+                })}
+              </div>
+            </div>
+          </div>
+        </aside>
+        <div className="s1-xr-values" aria-label="Methodology facts">
           {notice ? (
             <p className="s1-mb-notice" role="alert">
               {notice}
@@ -250,23 +280,6 @@ export function SummaryDocumentReview({
               </section>
             ))
           )}
-        </div>
-        <div className="s1-sd__page">
-          {renderViewer({
-            page,
-            span: firstBox,
-            marks,
-            selectedMarkIds,
-            pageNote,
-            viewerKey: `${sel?.fieldId ?? ""}|${sel?.entry ?? ""}|${page ?? ""}`,
-            onPickMark: (mark) => {
-              const [fieldId, entry] = mark.id.split("#");
-              select(fieldId, entry === "" ? null : Number(entry));
-              window.requestAnimationFrame(() =>
-                document.querySelector<HTMLElement>(`[data-field-id="${CSS.escape(fieldId)}"]`)?.scrollIntoView?.({ block: "nearest" })
-              );
-            },
-          })}
         </div>
       </div>
     </section>

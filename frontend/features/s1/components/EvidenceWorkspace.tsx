@@ -100,6 +100,7 @@ interface EvidenceWorkspaceProps {
   onOpenExtraction: (documentId: string) => void;
   onOpenRequests?: () => void;
   onOpenSetup?: () => void;
+  onOpenMethodology?: () => void;
   onUploadFiles?: (files: FileList) => void;
   /** Opens the upload pop-up. */
   onOpenUpload?: () => void;
@@ -139,6 +140,7 @@ export function EvidenceWorkspace({
   onOpenExtraction,
   onOpenRequests,
   onOpenSetup,
+  onOpenMethodology,
   onUploadFiles,
   onOpenUpload,
   isUploading = false,
@@ -473,6 +475,7 @@ export function EvidenceWorkspace({
               reloadKey={treeReloadKey}
               onOpenExtraction={onOpenExtraction}
               onOpenSetup={onOpenSetup}
+              onOpenMethodology={onOpenMethodology}
               writesEnabled={writesEnabled}
             />
           ) : showFilteredEmpty ? (

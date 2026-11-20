@@ -30,7 +30,7 @@ function review(autoRead: unknown, pending = false): Record<string, unknown> {
       {
         field_id: "consolidation_approach",
         user_added: false,
-        suggestion: pending ? { value: "Operational Control", quote: "q", document_id: "D1", file_name: "ghg.pdf", origin: "ai", at: "2026-11-02T10:00:00Z" } : null,
+        suggestion: pending ? { value: "Operational Control", quote: "q", document_id: "D1", file_name: "ghg.pdf", origin: "ai", at: "2026-11-02T10:00:00Z", suggested_at: "2026-11-02T10:00:00Z" } : null,
         decision: null,
         history: [],
       },
@@ -60,7 +60,7 @@ describe("Methodology review while Sustentra's AI reads by itself", () => {
 
     // the page polls the review endpoint (every 3 s) and the finished read's suggestions appear
     await waitFor(() => expect(screen.queryByText("Sustentra's AI is reading ghg.pdf…")).toBeNull(), { timeout: 6000 });
-    expect(await screen.findByText(/Sustentra's AI read ghg\.pdf\. 1 suggested, waiting for your review/)).toBeInTheDocument();
+    expect(await screen.findByLabelText("Summary of the read")).toHaveTextContent(/ghg\.pdf/); // the finished read shows as the summary
     expect(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" })).toBeEnabled(); // manual re-reads stay
   }, 15000);
 
@@ -83,7 +83,7 @@ describe("Methodology review while Sustentra's AI reads by itself", () => {
     expect(await screen.findByText("Sustentra's AI is reading ghg.pdf…")).toBeInTheDocument();
     const alert = await screen.findByText(/could not be reached/, undefined, { timeout: 6000 });
     expect(alert).toBeInTheDocument();
-    expect(screen.queryByText(/Sustentra's AI read ghg/)).toBeNull(); // not the success sentence
+    expect(screen.queryByLabelText("Summary of the read")).toBeNull(); // not the success summary
     expect(screen.getByRole("button", { name: "Try again" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" })).toBeEnabled();
   }, 15000);
