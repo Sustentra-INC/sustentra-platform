@@ -244,6 +244,9 @@ def test_the_same_value_as_the_rules_says_nothing() -> None:
     ("9011.3", "9013.1", None, None),
     ("1,204", "1.204", None, None),  # ambiguous separator: different
     ("12.5", "125", None, None),
+    ("9011.3", "9011", None, None),  # a dropped decimal is a different read
+    ("12.4", "12", None, None),
+    ("1,204.5", "1204", None, None),
     ("1000", "1000", "kWh", "MWh"),
     (9011.3, "9013.1", "kWh", "kWh"),
 ])

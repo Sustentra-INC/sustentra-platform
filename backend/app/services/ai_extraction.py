@@ -44,7 +44,7 @@ import uuid
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Any, Literal
 
@@ -418,14 +418,10 @@ def _read_number(value: Any) -> tuple[Decimal, int | None] | None:
 
 
 def _same_number(a: tuple[Decimal, int | None], b: tuple[Decimal, int | None]) -> bool:
-    (x, dx), (y, dy) = a, b
-    if math.isclose(float(x), float(y), rel_tol=1e-9, abs_tol=1e-9):
-        return True
-    shown = [d for d in (dx, dy) if d is not None]
-    if len(shown) == 2:  # both printed: equal when they match at the fewer decimals shown
-        step = Decimal(1).scaleb(-min(shown))
-        return x.quantize(step, rounding=ROUND_HALF_UP) == y.quantize(step, rounding=ROUND_HALF_UP)
-    return False
+    """Equal values only: "9011.30" equals "9011.3", but "9011" does not equal "9011.3"."""
+
+    (x, _), (y, _) = a, b
+    return x == y or math.isclose(float(x), float(y), rel_tol=1e-9, abs_tol=1e-9)
 
 
 def same_value(a: Any, b: Any, unit_a: str | None = None, unit_b: str | None = None) -> bool:
