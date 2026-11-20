@@ -17,10 +17,12 @@ HEAD = (
 )
 
 
-def _read(*table_lines: str) -> Any:
+def _read(*table_lines: str, csv: bool = False, spaced: bool = False) -> Any:
     text = "\n".join([HEAD, *table_lines])
     blocks = [
-        {"block_id": f"B{i}", "page_number": 1, "text": line, "source_reference_id": f"S{i}", "confidence": 0.99}
+        {"block_id": f"csv_parser-{i}" if csv else f"B{i}", "page_number": 1,
+         "text": line.replace(" | ", "      ") if spaced else line,
+         "source_reference_id": f"S{i}", "confidence": 0.99}
         for i, line in enumerate(text.splitlines())
     ]
     parsed = {"document_id": "DOC-1", "text_blocks": blocks, "pages": [], "tables": [], "source_references": []}
@@ -71,3 +73,28 @@ def test_a_demand_row_inside_a_usage_table_does_not_count() -> None:
         "STM-0417-A | Peak demand 1.42 Mlb/hr | 1.42",
     )
     assert _quantities(outcome) == []
+
+
+BLANK_USAGE = (
+    "Meter | Steam Used (Mlb) | Peak Demand (Mlb/hr)",
+    "STM-1 | 218.5 | 1.42",
+    "STM-2 |  | 1.10",
+)
+
+
+@pytest.mark.parametrize("kind", ["pipe", "csv", "spaced"])
+def test_a_blank_usage_cell_never_lets_the_demand_value_count_as_steam_used(kind: str) -> None:
+    outcome = _read(*BLANK_USAGE, csv=kind == "csv", spaced=kind == "spaced")
+    assert _quantities(outcome) == [(218.5, "klb")]
+
+
+@pytest.mark.parametrize("kind", ["pipe", "csv", "spaced"])
+def test_a_short_row_beside_a_demand_column_is_not_read_as_usage(kind: str) -> None:
+    # the row has fewer cells than the header, so which column holds 1.10 is not certain
+    outcome = _read(*BLANK_USAGE[:2], "STM-2 | 1.10", csv=kind == "csv", spaced=kind == "spaced")
+    assert _quantities(outcome) == [(218.5, "klb")]
+
+
+def test_a_short_row_in_a_table_with_no_demand_column_still_reads() -> None:
+    outcome = _read("Meter | Steam Used (Mlb) | Read Date", "STM-1 | 218.5")
+    assert _quantities(outcome) == [(218.5, "klb")]
