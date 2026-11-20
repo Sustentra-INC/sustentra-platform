@@ -7,6 +7,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from . import observability
+from .services import auto_read
 from .api import (
     assistant,
     document_batches,
@@ -64,6 +65,7 @@ LEGACY_ROUTERS = S1_ROUTERS
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     # The DB engine is created lazily on first use; close its pool on shutdown.
     yield
+    auto_read.shutdown()  # the automatic read's own loop and pool
     await dispose_engine()
 
 

@@ -366,14 +366,13 @@ def test_the_same_entity_twice_in_one_reply_makes_one_row(claude: FakeClaude) ->
     assert len(rows) == 2
 
 
-def test_a_prefill_already_running_for_the_org_is_refused(claude: FakeClaude) -> None:
+def test_a_prefill_already_running_for_the_engagement_is_refused(claude: FakeClaude) -> None:
     eid = create()["id"]
-    org = asyncio.run(_admin("SELECT org_id FROM engagements WHERE id = $1::uuid", eid))[0]["org_id"]
-    api._RUNNING.add(str(org))
+    api._RUNNING.add(eid)
     try:
         refused = prefill(eid)
     finally:
-        api._RUNNING.discard(str(org))
+        api._RUNNING.discard(eid)
     assert refused.status_code == 409 and "already being prepared" in refused.json()["detail"]
     assert claude.calls == [] and ledger() == []
     assert prefill(eid).status_code == 200  # and it is free again afterwards

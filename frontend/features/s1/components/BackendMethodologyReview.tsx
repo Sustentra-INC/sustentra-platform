@@ -11,6 +11,7 @@ import {
   editField,
   getMethodologyReview,
   prefillMethodology,
+  autoReadActive,
   rejectField,
   removeRow,
   revealField,
@@ -123,6 +124,15 @@ export function emptyWords(status: string, displayState: string | undefined): st
 export function statusWord(status: string | undefined | null): string {
   if (!status) return "Pending";
   return STATUS_WORD[status] ?? "Status unknown";
+}
+
+const AUTO_READ_POLL_MS = 3000;
+
+/** "a.pdf", "a.pdf and b.xlsx", "a.pdf, b.xlsx and 2 more": the files a read names. */
+function fileList(names: string[]): string {
+  if (names.length === 0) return "the client's summary documents";
+  if (names.length <= 2) return names.join(" and ");
+  return `${names.slice(0, 2).join(", ")} and ${names.length - 2} more`;
 }
 
 /** Null when Claude can be asked; otherwise the server's sentence for why not. */
@@ -851,6 +861,8 @@ export function BackendMethodologyReview({
   const [folded, setFolded] = useState<Set<string>>(new Set());
   const prefillRunning = useRef(false);
   const [result, setResult] = useState<PrefillResult | null>(null);
+  // Sustentra's AI reading the summary documents by itself after an upload (the backend's marker, polled while it lasts).
+  const autoActive = autoReadActive(data?.autoRead);
 
   const load = useCallback(async () => {
     try {
@@ -877,7 +889,7 @@ export function BackendMethodologyReview({
       .then((next) => {
         if (!live) return;
         setData(next);
-        setLoadError(null);
+          setLoadError(null);
         onActivityRef.current?.(methodologyActivityFrom(next));
       })
       .catch((error: unknown) => {
@@ -923,6 +935,12 @@ export function BackendMethodologyReview({
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!autoActive) return;
+    const timer = setInterval(() => void load(), AUTO_READ_POLL_MS);
+    return () => clearInterval(timer);
+  }, [autoActive, load]);
 
   const records = useMemo(() => new Map((data?.fields ?? []).map((r) => [r.fieldId, r])), [data]);
   // Headings and their order come from the API's groups; rows come in catalog order.
@@ -1130,7 +1148,7 @@ export function BackendMethodologyReview({
           ))}
         </div>
         <span className="s1-mr-actions">
-          <button type="button" className="s1-button s1-button--pri" disabled={busy || prefilling || aiOff !== null} onClick={() => setConfirming(true)}>
+          <button type="button" className="s1-button s1-button--pri" disabled={busy || prefilling || data.autoRead?.state === "reading" || aiOff !== null} onClick={() => setConfirming(true)}>
             {prefilling ? "Reading the reports…" : "Read the client's reports with Sustentra's AI"}
           </button>
           {aiOff ? <span className="s1-mb-ai">{aiOff}</span> : null}
@@ -1152,6 +1170,28 @@ export function BackendMethodologyReview({
           </span>
         </div>
       ) : null}
+
+      {autoActive && data.autoRead ? (
+        <p className="s1-mb-result" role="status">
+          {data.autoRead.state === "reading"
+            ? `Sustentra's AI is reading ${fileList(data.autoRead.file_names)}…`
+            : `Sustentra's AI will read ${fileList(data.autoRead.file_names)} shortly…`}
+        </p>
+      ) : null}
+      {!autoActive && data.autoRead?.state === "failed" ? (
+        <p className="s1-mb-notice" role="alert">
+          {data.autoRead.reason ?? "Sustentra's AI could not read the documents."}{" "}
+          <button type="button" className="s1-button" disabled={busy || prefilling || aiOff !== null} onClick={() => void runPrefill()}>
+            Try again
+          </button>
+        </p>
+      ) : null}
+      {!autoActive && data.autoRead?.state === "skipped" && data.autoRead.reason ? (
+        <p className="s1-mb-ai" role="status">
+          Not read automatically: {data.autoRead.reason}
+        </p>
+      ) : null}
+      {/* A finished read shows as the summary below (MethodologySummary), built from the stored suggestions. */}
 
       {notice ? (
         <p className="s1-mb-notice" role="alert">

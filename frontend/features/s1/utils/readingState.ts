@@ -1,4 +1,5 @@
 import type { BackendDocumentLike } from "../adapters/evidenceAdapter";
+import { autoReadActive, type AutoRead } from "../api/methodologyReview";
 import { isActiveRun, readFailureMessage, requestRead, type ProcessingRunView } from "../api/processingRuns";
 import type { EvidenceItem } from "../types";
 
@@ -31,6 +32,23 @@ export function withReadingState(items: EvidenceItem[], runs: Record<string, Pro
       return { ...item, haltReason: readFailureMessage(run) };
     }
     return item;
+  });
+  return changed ? next : items;
+}
+
+/**
+ * Lays Sustentra's AI's automatic read of summary documents over the Evidence rows: while it is waiting for the rest of
+ * a batch or reading, each document it was asked to read (by file name) shows as being read. The same array comes
+ * back when nothing changed.
+ */
+export function withAutoRead(items: EvidenceItem[], autoRead: AutoRead | null): EvidenceItem[] {
+  if (!autoRead || !autoReadActive(autoRead) || autoRead.file_names.length === 0) return items;
+  const names = new Set(autoRead.file_names);
+  let changed = false;
+  const next = items.map((item) => {
+    if (item.reading || item.disposition === "withdrawn" || !names.has(item.filename)) return item;
+    changed = true;
+    return { ...item, reading: "in_progress" as const };
   });
   return changed ? next : items;
 }
