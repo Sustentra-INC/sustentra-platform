@@ -91,11 +91,12 @@ describe("the demo backend's methodology review", () => {
   });
   it("rows Claude has not looked at read Not checked yet, then Not detected after a prefill that found nothing for them", async () => {
     await open();
-    expect(within(row("Indirect Biogenic")).getByText("Not checked yet")).toBeTruthy();
+    const biogenic = () => within(row("Indirect Biogenic")).getByRole("combobox") as HTMLSelectElement;
+    expect(biogenic().selectedOptions[0].textContent).toBe("Choose…");
     expect(document.body.textContent).not.toContain("Not set");
     expect((await get()).fields.filter((f) => !(f as unknown as { shown: boolean }).shown).map((f) => (f as unknown as { field_id: string }).field_id).sort()).toEqual(["boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "calculation:source_records", "scope2:instruments"]);
     await prefillViaUi();
-    expect(within(row("Indirect Biogenic")).getByText("Not detected")).toBeTruthy();
+    expect(biogenic().selectedOptions[0].textContent).toBe("Not detected"); // still undecided
     expect(within(row("Consolidation approach")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
   });
 

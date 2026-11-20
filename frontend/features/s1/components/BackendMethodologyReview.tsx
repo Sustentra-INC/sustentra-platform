@@ -679,6 +679,26 @@ export function FieldRow({
     </>
   );
 
+  // A row with a fixed list of answers is chosen from inline (C-M1: selection only, no free text).
+  const choices = def.kind === "enum" && Array.isArray(def.allowed) && !oldText && !suggestionIsOldText ? def.allowed : null;
+  const chosen = current || (suggestion && typeof suggestion.value === "string" ? suggestion.value : "");
+  const blankLabel = def.group === "gases" ? "Not mentioned" : record.displayState === "not_detected" ? "Not detected" : "Choose…";
+  const pick = (value: string) => {
+    if (!value || value === current) return;
+    // The suggestion's own value is an Accept; any other choice is an Edit. Both go to the existing endpoints.
+    if (pendingStatus && suggestion && suggestion.value === value) finish(() => acceptField(engagementId, def.fieldId));
+    else finish(() => editField(engagementId, def.fieldId, value));
+  };
+  const selectNode = choices ? (
+    <select className="s1-mr-select s1-mb-select" aria-label={`Choose: ${def.label}`} disabled={busy} value={chosen} onChange={(e) => pick(e.target.value)}>
+      {chosen ? null : <option value="">{blankLabel}</option>}
+      {choices.filter((o) => chosen || o !== blankLabel).map((o) => (
+        <option key={o} value={o}>
+          {o}
+        </option>
+      ))}
+    </select>
+  ) : null;
   const shown = decided ? decision?.value : suggestion?.value;
   const parts = isObjectValue(shown) ? shown : {};
   const str = (v: MethodologyValue | undefined) => (typeof v === "string" ? v : "");
@@ -695,6 +715,23 @@ export function FieldRow({
 
   if (layout === "entity") {
     const name = str(parts.name);
+    // The whole entity goes back as the editor sends it, with one part changed; control as quoted only when it was quoted.
+    const saveEntity = (change: { [key: string]: MethodologyValue }) =>
+      finish(() =>
+        editField(engagementId, def.fieldId, {
+          name,
+          facilities: Array.isArray(parts.facilities) ? parts.facilities : [],
+          equity_share_pct: typeof parts.equity_share_pct === "number" ? parts.equity_share_pct : null,
+          financial_control: typeof parts.financial_control === "number" ? parts.financial_control : null,
+          included: typeof parts.included === "string" && parts.included ? parts.included : null,
+          ...(parts.control_quoted !== undefined && parts.control_quoted !== null ? { control_quoted: parts.control_quoted } : {}),
+          ...change,
+        })
+      );
+    const saveName = (typed: string) => {
+      const next = typed.trim();
+      if (next && next !== name) saveEntity({ name: next });
+    };
     const facilities = Array.isArray(parts.facilities) ? parts.facilities.length : 0;
     const controlQuoted = valueText((parts.control_quoted ?? parts.operational_control) as MethodologyValue);
     const equity = typeof parts.equity_share_pct === "number" ? `${parts.equity_share_pct}%` : "";
@@ -703,13 +740,33 @@ export function FieldRow({
         <tr>
           <th scope="row" className="s1-mb-item">
             <span className="s1-sr-only">{def.label}</span>
-            {name ? name : <span className="s1-mr-none">{oldText ? `Recorded as: ${oldText}` : "New entity"}</span>}
+            <input
+              key={name}
+              className="s1-mr-input s1-mb-nameinput"
+              aria-label={`Name: ${def.label}`}
+              placeholder={oldText ? `Recorded as: ${oldText}` : "New entity"}
+              maxLength={200}
+              disabled={busy}
+              defaultValue={name}
+              onBlur={(e) => saveName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+                if (e.key === "Escape") {
+                  e.currentTarget.value = name;
+                  e.currentTarget.blur();
+                }
+              }}
+            />
             {facilities ? <span className="s1-mr-muted"> · {facilities} {facilities === 1 ? "facility" : "facilities"}</span> : null} {marker}
             {statusBlock}
           </th>
           <td className="s1-mb-valuecell">
-            {valueText(parts.included as MethodologyValue) || (controlQuoted ? null : <span className="s1-mr-muted">—</span>)}
-            {controlQuoted ? <span className="s1-mr-muted">{valueText(parts.included as MethodologyValue) ? " · " : ""}operational control (as quoted): {controlQuoted}</span> : null}
+            <select className="s1-mr-select s1-mb-select" aria-label={`Included: ${def.label}`} disabled={busy || !name} value={str(parts.included)} onChange={(e) => saveEntity({ included: e.target.value === "" ? null : e.target.value })}>
+              <option value="">Not stated</option>
+              <option value="Yes">Yes</option>
+              <option value="No">No</option>
+            </select>
+            {controlQuoted ? <div className="s1-mr-muted">operational control (as quoted): {controlQuoted}</div> : null}
           </td>
           <td className="s1-mb-valuecell">{equity || <span className="s1-mr-muted">—</span>}</td>
           <td className="s1-mb-sourcecell">{sourceLines}</td>
@@ -768,7 +825,7 @@ export function FieldRow({
       <td className="s1-mb-cell" data-status={status} data-field-id={def.fieldId} data-selected={selected || undefined} onClick={onSelect}>
         <span className="s1-sr-only">{def.label}</span>
         <div className="s1-mb-cellline">
-          <span className="s1-mr-value" title={suggestion?.quote}>{current || (suggestion ? valueText(suggestion.value) : <span className="s1-mr-none">{emptyText}</span>)}</span>
+          {selectNode ?? <span className="s1-mr-value" title={suggestion?.quote}>{current || (suggestion ? valueText(suggestion.value) : <span className="s1-mr-none">{emptyText}</span>)}</span>}
           {marker}
           {statusChip}
           {link}
@@ -780,7 +837,7 @@ export function FieldRow({
   }
 
   if (layout === "table") {
-    const valueCell = oldText ? <span>Recorded as: {oldText}</span> : current ? current : suggestion ? valueText(suggestion.value) : <span className="s1-mr-none">{emptyText}</span>;
+    const valueCell = selectNode ?? (oldText ? <span>Recorded as: {oldText}</span> : current ? current : suggestion ? valueText(suggestion.value) : <span className="s1-mr-none">{emptyText}</span>);
     return (
       <tbody {...bodyProps}>
         <tr>
@@ -788,7 +845,7 @@ export function FieldRow({
             {itemLabel(def)}
           </th>
           <td className="s1-mb-valuecell">
-            <ClampText>{valueCell}</ClampText> {marker}
+            {selectNode ? valueCell : <ClampText>{valueCell}</ClampText>} {marker}
             {def.value_note && !entitiesNamed && (current || suggestion) ? <span className="s1-mr-muted"> {def.value_note}</span> : null}
             {oldText ? <span className="s1-mr-muted"> Enter the start and end dates with Edit.</span> : null}
             {record.shownNote ? <span className="s1-mr-muted"> {record.shownNote}</span> : null}
@@ -1062,7 +1119,7 @@ export function BackendMethodologyReview({
             ? block(
                 "Entities",
                 addEntity,
-                tableOf(["Name", "Included", "Equity %", "Source", "Actions"], entities.map((d) => rowFor(d, "entity")), ["s1-mb-col-name", "s1-mb-col-value", "s1-mb-col-pct", "", "s1-mb-col-actions"])
+                tableOf(["Name", "Included", "Equity %", "Source", `Review · ${entities.filter((d) => ["accepted", "edited"].includes(records.get(d.fieldId)?.decision?.status ?? "")).length} of ${entities.length}`], entities.map((d) => rowFor(d, "entity")), ["s1-mb-col-name", "s1-mb-col-value", "s1-mb-col-pct", "", "s1-mb-col-actions"])
               )
             : null}
           {genericTable(group, tail)}
