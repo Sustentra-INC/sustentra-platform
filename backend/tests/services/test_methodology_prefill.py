@@ -28,7 +28,7 @@ def doc(lines: list[tuple[int, str]] = REPORT, alias: str = "D1", document_id: s
 
 
 def answer(**lists: Any) -> mp.PrefillOutput:
-    empty: dict[str, Any] = {"choices": [], "gases": [], "texts": [], "periods": [], "gwp": [], "entities": [], "factors": []}
+    empty: dict[str, Any] = {"choices": [], "gases": [], "texts": [], "estimations": [], "selections": [], "periods": [], "gwp": [], "entities": [], "factors": []}
     return mp.PrefillOutput.model_validate({**empty, **lists})
 
 
@@ -326,6 +326,145 @@ def test_ambiguous_numeric_dates_are_read_month_first() -> None:
     assert mp.dates_in("٢٠٢٥-01-01 CO₂ 2025-01-01") == {date(2025, 1, 1)}
 
 
+# --- estimation method: a list suggestion with a quote per entry -------------------------------
+
+def entry(source: str, method: str) -> dict[str, str]:
+    return {"source_type": source, "method": method}
+
+
+EST_REPORT = [
+    (1, "Missing utility invoices are estimated from the average of the adjacent months."),
+    (1, "Where Käserei fuel cards have gaps, prior-year consumption is used (燃料)."),
+    (1, "Meter readings are never estimated."),
+]
+
+
+def estimate(source: str, method: str, quote: str, line: str) -> dict[str, str]:
+    return {"source_type": source, "method": method, **cite(line, quote)}
+
+
+def test_each_estimation_entry_keeps_its_own_quote_in_one_suggestion() -> None:
+    kept, dropped = check(answer(estimations=[
+        estimate("Utility invoices", "Average of adjacent months", "Missing utility invoices are estimated", "L1"),
+        estimate("Fuel cards", "Prior-year consumption", "fuel cards have gaps, prior-year consumption is used (燃料)", "L2")]), [doc(EST_REPORT)])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["calculation:estimation"]
+    [item] = kept
+    assert item.suggestion["value"] == [entry("Utility invoices", "Average of adjacent months"),
+                                        entry("Fuel cards", "Prior-year consumption")]
+    assert [e["label"] for e in item.suggestion["evidence"]] == ["Utility invoices", "Fuel cards"]
+    assert "燃料" in item.suggestion["evidence"][1]["quote"] and item.suggestion["document_id"] == "DOC-1"
+
+
+def test_one_bad_entry_is_dropped_and_the_others_stand() -> None:
+    kept, dropped = check(answer(estimations=[
+        estimate("Utility invoices", "Average", "Missing utility invoices are estimated", "L1"),
+        estimate("Fuel cards", "Average", "this sentence is not in the document at all", "L2"),  # not on the page
+        estimate("Meter readings", "x" * 301, "Meter readings are never estimated", "L3"),  # too long
+        estimate("Fuel cards", "Use zero", "Missing utility invoices are estimated", "L1"),  # the quote is about something else
+        estimate("utility INVOICES", "Other", "Missing utility invoices are estimated", "L1")]), [doc(EST_REPORT)])
+    assert [e["label"] for e in kept[0].suggestion["evidence"]] == ["Utility invoices"]
+    assert dict(dropped) == {"quote_not_on_document": 1, "invalid_value": 1, "value_not_in_quote": 1, "duplicate_entry": 1}
+
+
+def test_no_entry_that_holds_up_means_no_suggestion_and_more_than_ten_are_capped() -> None:
+    kept, dropped = check(answer(estimations=[estimate("Fuel", "a", "not on the page anywhere", "L1")]), [doc(EST_REPORT)])
+    assert kept == [] and dict(dropped) == {"quote_not_on_document": 1}
+    line = "Gaps for " + ", ".join(f"source type {i}" for i in range(12)) + " are filled the same way."
+    many = [estimate(f"source type {i}", "Average", line, "L1") for i in range(12)]
+    kept, dropped = check(answer(estimations=many), [doc([(1, line)])])
+    assert len(kept[0].suggestion["value"]) == 10 and dict(dropped) == {"too_many_entries": 2}
+
+
+# --- multi-select: a quote per selected option -------------------------------------------------
+
+SEL_REPORT = [
+    (1, "We buy RECs for our Tualatin Plant and have a PPA with W\u00e4rmewerke K\u00e4serei for steam."),
+    (1, "Figures come from utility invoices and fuel card statements."),
+    (1, "Our residual mix factor is used for the rest."),
+]
+
+
+def selection(field_id: str, option: str, quote: str, line: str, wording: str = "") -> dict[str, str]:
+    return {"field_id": field_id, "option": option, "wording": wording, **cite(line, quote)}
+
+
+def test_each_selected_option_keeps_its_own_quote_and_wording() -> None:
+    kept, dropped = check(answer(selections=[
+        selection("scope2:instruments", "RECs or other energy attribute certificates", "We buy RECs", "L1", "We buy RECs"),
+        selection("scope2:instruments", "PPA or VPPA", "a PPA with W\u00e4rmewerke K\u00e4serei", "L1", "a PPA with W\u00e4rmewerke K\u00e4serei"),
+        selection("scope2:instruments", "Residual mix", "residual mix factor is used", "L3", "invented words")]), [doc(SEL_REPORT)])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["scope2:instruments"]
+    [item] = kept
+    assert item.suggestion["value"] == [
+        {"option": "RECs or other energy attribute certificates", "wording": "We buy RECs"},
+        {"option": "PPA or VPPA", "wording": "a PPA with W\u00e4rmewerke K\u00e4serei"},
+        {"option": "Residual mix", "wording": ""}]  # wording that is not in the quote is not kept
+    assert [e["label"] for e in item.suggestion["evidence"]] == [v["option"] for v in item.suggestion["value"]]
+
+
+def test_an_option_the_quote_does_not_name_or_that_is_not_listed_is_dropped_alone() -> None:
+    kept, dropped = check(answer(selections=[
+        selection("calculation:source_records", "Utility invoices", "utility invoices and fuel card statements", "L2"),
+        selection("calculation:source_records", "Meter readings", "utility invoices and fuel card statements", "L2"),  # not named
+        selection("calculation:source_records", "Fuel cards", "this sentence is not in the document", "L2"),  # not on the page
+        selection("calculation:source_records", "Carbon offsets", "utility invoices and fuel card statements", "L2"),  # not listed
+        selection("scope2:instruments", "None", "residual mix factor is used", "L3")]), [doc(SEL_REPORT)])
+    assert [v["option"] for v in kept[0].suggestion["value"]] == ["Utility invoices"]
+    assert dict(dropped) == {"value_not_in_quote": 1, "quote_not_on_document": 1, "invalid_value": 2}
+
+
+def test_the_selection_schema_only_knows_the_multiselect_fields() -> None:
+    with pytest.raises(ValueError):
+        answer(selections=[selection("exclusion:boundary", "Utility invoices", "utility invoices", "L2")])
+    with pytest.raises(ValueError):
+        answer(choices=[{"field_id": "scope2:instruments", "value": "Yes", **cite("L1", "We buy RECs")}])
+
+
+# --- option names are whole words or phrases, and a negated mention is not a selection ------------
+
+def test_an_option_is_named_by_whole_words_not_by_a_piece_of_another_word() -> None:
+    for option, field_id, line in (
+            ("RECs or other energy attribute certificates", "scope2:instruments", "Our records are reconciled each quarter."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "We check each site every month."),  # "each" holds "eac"
+            ("RECs or other energy attribute certificates", "scope2:instruments", "The directory records the receipts."),
+            ("Lease agreements", "calculation:source_records", "Please release the report after the review."),
+            ("Lease agreements", "calculation:source_records", "The leaseholder is named in the file."),
+            ("PPA or VPPA", "scope2:instruments", "The happa festival is held in May."),
+            ("Fuel cards", "calculation:source_records", "Our fuel cardholders are listed.")):
+        kept, dropped = check(answer(selections=[selection(field_id, option, line.rstrip("."), "L1")]), [doc([(1, line)])])
+        assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}, line
+
+
+def test_whole_terms_and_their_plurals_are_still_named() -> None:
+    for option, field_id, line in (
+            ("RECs or other energy attribute certificates", "scope2:instruments", "We buy RECs for the plant."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "Each REC is retired in the registry."),
+            ("RECs or other energy attribute certificates", "scope2:instruments", "Renewable energy certificates (EACs) are used."),
+            ("PPA or VPPA", "scope2:instruments", "The plant has a virtual power purchase agreement (VPPA)."),
+            ("Lease agreements", "calculation:source_records", "Figures come from lease agreements."),
+            ("Fuel cards", "calculation:source_records", "Fuel cards are the source of fuel use."),
+            ("Landlord reports", "calculation:source_records", "Landlord reports give the shared energy use.")):
+        kept, dropped = check(answer(selections=[selection(field_id, option, line.rstrip("."), "L1")]), [doc([(1, line)])])
+        assert len(kept) == 1 and not dropped, line
+
+
+def test_a_negated_mention_is_dropped_and_counted_but_a_far_away_negation_is_not() -> None:
+    for line in ("We do not buy RECs for any site.", "No PPA is in place.", "The company has never used RECs.",
+                 "Sites without a PPA use the grid mix.", "We don't hold any RECs."):
+        kept, dropped = check(answer(selections=[selection(
+            "scope2:instruments", "PPA or VPPA" if "PPA" in line else "RECs or other energy attribute certificates",
+            line.rstrip("."), "L1")]), [doc([(1, line)])])
+        assert kept == [] and dict(dropped) == {"negated": 1}, line
+    far = "Not all of our many sites are covered, but the Tualatin plant does buy RECs."  # "not" is more than 5 words back
+    kept, dropped = check(answer(selections=[selection(
+        "scope2:instruments", "RECs or other energy attribute certificates", far.rstrip("."), "L1")]), [doc([(1, far)])])
+    assert len(kept) == 1 and not dropped
+    both = "We do not buy PPAs, but we do buy RECs."  # the RECs mention is far enough from "not"
+    kept, dropped = check(answer(selections=[
+        selection("scope2:instruments", "PPA or VPPA", both.rstrip("."), "L1"),
+        selection("scope2:instruments", "RECs or other energy attribute certificates", both.rstrip("."), "L1")]), [doc([(1, both)])])
+    assert [v["option"] for v in kept[0].suggestion["value"]] == ["RECs or other energy attribute certificates"]
+    assert dict(dropped) == {"negated": 1}
 # --- gases: their own value set, the gas named in the quote ----------------------------------
 
 def gas(field_id: str, value: str, quote: str, line: str = "L1") -> dict[str, str]:
