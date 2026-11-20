@@ -306,7 +306,7 @@ class EvidenceTreeService:
         page = found.get("page_number")
         where = "the file name" if found.get("source") == "file_name" else (f"page {page}" if page else "the text")
         return {"facility_id": facility_id, "facility_name": name, "quote": quote, "where": where,
-                "label": "Suggested by Claude"}
+                "label": "Suggested by Sustentra's AI"}
 
     def _row(self, doc: DocState, slot: cl.Slot, lines: dict[str, cl.CalculationLine],
              facility_names: dict[str, str], setup_names: dict[str, str] | None = None,

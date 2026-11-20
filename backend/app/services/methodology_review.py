@@ -828,7 +828,7 @@ def shown_note(field: Mapping[str, Any], record: Mapping[str, Any], meta: Mappin
     depends: list[str] = field.get("shown_if_yes") or []
     if (depends and record.get("suggestion") and not record.get("decision")
             and field["field_id"] not in meta.get("revealed", []) and not market_based_reported(records or {}, depends)):
-        return "Shown because Claude found it, although no market-based category is Yes."
+        return "Shown because Sustentra's AI found it, although no market-based category is Yes."
     return None
 
 

@@ -155,7 +155,7 @@ export function methodologyActivityFrom(data: MethodologyReviewData): { at: stri
       who: h.by?.name ?? "Reviewer",
       what: `${ACTION_WORD[h.action] ?? h.action.replaceAll("_", " ")} on methodology: ${name}`,
     }));
-    if (record.suggestion) entries.push({ at: record.suggestion.suggested_at, who: "Claude", what: `Suggested by Claude on methodology: ${name}` });
+    if (record.suggestion) entries.push({ at: record.suggestion.suggested_at, who: "Sustentra's AI", what: `Suggested by Sustentra's AI on methodology: ${name}` });
     return entries;
   });
 }
@@ -447,7 +447,7 @@ function FieldRow({
 
       {suggestion ? (
         <div className="s1-mb-suggest">
-          <span className="s1-chip s1-mb-chip">Suggested by Claude</span>
+          <span className="s1-chip s1-mb-chip">Suggested by Sustentra&apos;s AI</span>
           <span className="s1-mr-value">{valueText(suggestion.value)}</span>
           {def.value_note && !entitiesNamed ? <span className="s1-mr-muted">{def.value_note}</span> : null}
           {suggestion.evidence?.length ? (
@@ -682,13 +682,13 @@ export function BackendMethodologyReview({
         <h2 className="s1-mr-card__title">
           Methodology review
           <InfoTip label="Methodology review">
-            Claude reads the client&apos;s reports and suggests what they state, each with a quote. Nothing counts until you accept or edit it.
+            Sustentra&apos;s AI reads the client&apos;s reports and suggests what they state, each with a quote. Nothing counts until you accept or edit it.
           </InfoTip>
         </h2>
         <span className="s1-mr-muted">{pending} suggested, waiting for review</span>
         <span className="s1-mr-actions">
           <button type="button" className="s1-button s1-button--pri" disabled={busy || prefilling || aiOff !== null} onClick={() => setConfirming(true)}>
-            {prefilling ? "Reading the reports…" : "Read the client's reports with Claude"}
+            {prefilling ? "Reading the reports…" : "Read the client's reports with Sustentra's AI"}
           </button>
           {aiOff ? <span className="s1-mb-ai">{aiOff}</span> : null}
         </span>
@@ -697,7 +697,7 @@ export function BackendMethodologyReview({
       {confirming ? (
         <div className="s1-mb-confirm" role="alertdialog" aria-label="Read the client's reports">
           <p>
-            Claude will read this engagement&apos;s report documents (the GHG inventory report, boundary statement and methodology documents, up to five) and suggest values with quotes. Suggestions need your review before they count. The result will list the documents it read.
+            Sustentra&apos;s AI will read this engagement&apos;s report documents (the GHG inventory report, boundary statement and methodology documents, up to five) and suggest values with quotes. Suggestions need your review before they count. The result will list the documents it read.
           </p>
           <span className="s1-mr-actions">
             <button type="button" className="s1-button s1-button--pri" disabled={prefilling} onClick={() => void runPrefill()}>

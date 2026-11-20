@@ -369,7 +369,7 @@ export const UNCOUNTED_REASON: Record<UncountedReason, string> = {
   facility_not_in_setup: "facility not in Setup",
   identifier_on_several_facilities: "the account or meter number is listed on more than one Setup facility",
   facility_ambiguous: "more than one Setup facility matches the name or address",
-  facility_suggested_not_confirmed: "Claude suggested a facility and nobody has confirmed it",
+  facility_suggested_not_confirmed: "Sustentra's AI suggested a facility and nobody has confirmed it",
   no_calculation_line: "no calculation line for it yet",
 };
 

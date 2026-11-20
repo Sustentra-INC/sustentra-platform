@@ -65,16 +65,16 @@ _COST = re.compile(r",? cost \$[0-9.]+")
 # (pattern, replacement) in order; the first match wins. Codes are kept as the sentence's prefix.
 _WARNING_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
     (re.compile(r"^ai_type_disagrees:"),
-     "ai_type_disagrees: Claude read the first pages as a different type than the rules chose. "
+     "ai_type_disagrees: Sustentra's AI read the first pages as a different type than the rules chose. "
      "The type was not changed."),
-    (re.compile(r"^ai_routing_ignored:"), "ai_routing_ignored: Claude's type suggestion was not used."),
+    (re.compile(r"^ai_routing_ignored:"), "ai_routing_ignored: Sustentra AI's type suggestion was not used."),
     (re.compile(r"^The classifier chose "),
      "type_corrected: The document's content pointed to a different type than the first guess, "
      "so the type was corrected."),
     (re.compile(r"^Classifier confidence "),
      "type_accepted: The type was not certain; it was accepted because of what the document says."),
-    (re.compile(r"^Claude suggested "),
-     "ai_type_suggested: Claude suggested a type from the first pages; the rules could not place this "
+    (re.compile(r"^(?:Claude|Sustentra's AI) suggested "),
+     "ai_type_suggested: Sustentra's AI suggested a type from the first pages; the rules could not place this "
      "document. Confirm the type."),
     (re.compile(r"^No confident canonical_type_id"),
      "no_type: No document type was found with enough confidence, so no values were read."),
@@ -96,10 +96,22 @@ def plain_halt_reason(halt: dict[str, Any] | None) -> dict[str, str] | None:
     return {"code": code, "message": plain_halt(code, str(halt.get("message") or "")) or GENERIC_HALT}
 
 
+_VENDOR_NAME = re.compile(r"\bClaude(?:'s)?")
+
+
+def _ai_name(text: str) -> str:
+    """Notes saved before the rename still say "Claude": show the product's name for the AI at display time."""
+
+    return _VENDOR_NAME.sub(lambda m: "Sustentra AI's" if m.group(0).endswith("'s") else "Sustentra's AI", text)
+
+
 def plain_note(text: str, halt: dict[str, Any] | None = None) -> str:
     """One warning or error of a run, with its code and without internal ids, scores or parser output."""
 
-    text = str(text)
+    return _ai_name(_plain_note(str(text), halt))
+
+
+def _plain_note(text: str, halt: dict[str, Any] | None) -> str:
     if halt and text == str(halt.get("message") or ""):
         plain = plain_halt_reason(halt)
         return f"{plain['code']}: {plain['message']}" if plain else GENERIC_HALT

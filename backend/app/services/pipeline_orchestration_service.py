@@ -481,7 +481,7 @@ class PipelineOrchestrationService:
                         )
                         ai_routing = routed.as_record(used=True, disagrees=False)
                         warnings.append(
-                            f"Claude suggested {canonical_type_id} from the first pages; the rules could not place "
+                            f"Sustentra's AI suggested {canonical_type_id} from the first pages; the rules could not place "
                             "this document. Confirm the type."
                         )
                     else:
@@ -527,7 +527,7 @@ class PipelineOrchestrationService:
                     warnings.extend(self._routing_warnings(shadow))
                     if shadow.status == "suggested" and shadow.canonical_type_id != canonical_type_id:
                         warnings.append(
-                            f"ai_type_disagrees: the rules chose {canonical_type_id}, Claude read the first pages "
+                            f"ai_type_disagrees: the rules chose {canonical_type_id}, Sustentra's AI read the first pages "
                             f"as {shadow.canonical_type_id}. The type was not changed."
                         )
                         ai_routing = shadow.as_record(used=False, disagrees=True)

@@ -88,7 +88,7 @@ NOT_ON_A_LINE_WHY = {
     "facility_not_in_setup": "its facility is not in Setup",
     "identifier_on_several_facilities": "the account or meter number is listed on more than one Setup facility",
     "facility_ambiguous": "more than one Setup facility matches the name or address",
-    "facility_suggested_not_confirmed": "Claude suggested a facility and nobody has confirmed it",
+    "facility_suggested_not_confirmed": "Sustentra's AI suggested a facility and nobody has confirmed it",
 }
 NOT_ON_A_LINE_HINT = {
     "not_on_a_line": "Place {them} in Evidence.",
@@ -528,7 +528,7 @@ class EngagementRecalculationService:
                     "field": item.get("display_label") or item.get("field_name"),
                     "extracted": item.get("normalized_value"), "unit": item.get("unit"),
                     "decision": review.get("decision")
-                    or ("Suggested by Claude (not reviewed)" if _suggested(item)
+                    or ("Suggested by Sustentra's AI (not reviewed)" if _suggested(item)
                         else "not reviewed (re-read, value changed)" if resolved.reread_changed else "not reviewed"),
                     "suggested_by_claude": _suggested(item),
                     "reviewed_value": review.get("reviewed_value"),
