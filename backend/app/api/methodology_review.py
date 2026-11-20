@@ -25,6 +25,7 @@ from contextlib import asynccontextmanager, contextmanager
 import asyncio
 from collections import Counter
 import logging
+import re
 import time
 from datetime import UTC, datetime
 from typing import Any, Literal
@@ -105,7 +106,21 @@ _CONFIG = "Sustentra's AI couldn't process this request (configuration)."
 def _is_request_rejected(exc: BaseException) -> bool:
     """True when the provider answered 400 or 422: the request itself is wrong, so retrying cannot help."""
 
-    return isinstance(exc, anthropic.APIStatusError) and exc.status_code in (400, 422)
+    return isinstance(exc, anthropic.APIStatusError) and exc.status_code in (400, 401, 403, 404, 422)
+
+
+def _reason(exc: BaseException) -> str:
+    """A short, safe reason for the response: provider error type and the first 120 characters of its
+    message (which describes the request, never the documents), with anything key-shaped removed."""
+
+    if not isinstance(exc, anthropic.APIStatusError):
+        return type(exc).__name__
+    body: dict[str, Any] = exc.body if isinstance(exc.body, dict) else {}
+    inner = body.get("error")
+    error: dict[str, Any] = inner if isinstance(inner, dict) else body
+    message = re.sub(r"sk-[A-Za-z0-9_\-]+|[A-Za-z0-9_\-]{32,}", "[removed]", str(error.get("message", "")))
+    kind = "billing" if "credit balance" in message.lower() else str(error.get("type") or exc.status_code)
+    return f"{kind}: {message[:120]}".strip()
 
 
 def _log_call_failure(exc: BaseException) -> None:
@@ -594,8 +609,9 @@ async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, An
     except Exception as exc:  # no usage to record; type, status and provider message are logged, never content
         _log_call_failure(exc)
         if _is_request_rejected(exc):
-            raise HTTPException(status_code=500, detail=_CONFIG) from exc
-        raise HTTPException(status_code=502, detail="Claude could not be reached. Try again in a moment.") from exc
+            raise HTTPException(status_code=500, detail=f"{_CONFIG[:-1]} (provider: {_reason(exc)}).") from exc
+        raise HTTPException(
+            status_code=502, detail=f"Claude could not be reached. Try again in a moment. ({_reason(exc)})") from exc
     cost_usd = round((reply.cost_microusd or 0) / ai_usage.MICRO, 6)
     ok = reply.outcome == "ok" and reply.output is not None
     async with _short_transaction(sessions, org_id) as ledger:  # committed whatever happens next

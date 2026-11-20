@@ -35,3 +35,10 @@ def test_the_log_has_status_provider_type_and_message(caplog: pytest.LogCaptureF
     text = caplog.text
     assert "APIStatusError" in text and "status=400" in text
     assert "error_type=invalid_request_error" in text and "too many union types" in text
+
+
+def test_the_response_reason_is_short_and_has_no_keys() -> None:
+    text = api._reason(_status_error(401, "invalid x-api-key sk-ant-api03-abcdefghijklmnop " + "x" * 300))
+    assert text.startswith("invalid_request_error:") and "sk-ant" not in text and len(text) <= 150
+    assert api._reason(_status_error(400, "Your credit balance is too low")).startswith("billing:")
+    assert api._reason(RuntimeError("boom")) == "RuntimeError"
