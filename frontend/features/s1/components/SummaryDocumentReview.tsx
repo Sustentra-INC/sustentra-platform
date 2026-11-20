@@ -52,26 +52,38 @@ function reviewState(status: string | undefined): ValueReviewState {
   return "to_review";
 }
 
-export function SummaryDocumentReview({
+/** What the facts of one summary document give a page: the highlights, the selection, and the panel of rows. */
+export interface MethodologyFacts {
+  ready: boolean;
+  loadError: string | null;
+  /** Methodology fields with a quote read from this document. */
+  count: number;
+  marks: PageMark[];
+  selectedMarkIds: string[];
+  span: ReviewSpan | null;
+  page: number | null;
+  pageNote: string | null;
+  /** True once a fact was selected (a deep link, a click on a row or on its highlight). */
+  hasSelection: boolean;
+  viewerKey: string;
+  /** Selects the fact a highlight belongs to (its row scrolls into view). */
+  pick: (mark: PageMark) => void;
+  /** The rows (or the "Read with Sustentra's AI" offer when nothing was read). */
+  panel: ReactNode;
+}
+
+export function useMethodologyFacts({
   engagementId,
   documentId,
-  fileName,
   at,
-  backLabel,
-  onBack,
   onError,
-  renderViewer,
 }: {
   engagementId: string;
   documentId: string;
-  fileName?: string;
   /** Opened from a methodology source: the field and quote to select, and the page it cites. */
   at?: { fieldId?: string; entry?: number; page?: number };
-  backLabel: string;
-  onBack: () => void;
   onError?: (error: unknown) => boolean;
-  renderViewer: (props: SummaryViewerProps) => ReactNode;
-}) {
+}): MethodologyFacts {
   const [data, setData] = useState<MethodologyReviewData | null>(null);
   const [locations, setLocations] = useState<QuoteLocation[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -165,17 +177,7 @@ export function SummaryDocumentReview({
     );
   }, [locations, data, records]);
 
-  if (!data || !locations) {
-    return (
-      <section className="s1-content s1-xr s1-xr--doconly">
-        <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
-          ‹ Back to {backLabel}
-        </button>
-        <p role={loadError ? "alert" : "status"}>{loadError ?? "Opening the document."}</p>
-      </section>
-    );
-  }
-
+  const ready = Boolean(data && locations);
   const selected = sel ? byKey.get(locKey(sel.fieldId, sel.entry)) : undefined;
   const selectedMarkIds = sel && selected?.located ? marks.filter((m) => m.id.startsWith(`${sel.fieldId}#${sel.entry ?? ""}#`)).map((m) => m.id) : [];
   const firstBox = selectedMarkIds.length ? marks.find((m) => m.id === selectedMarkIds[0])?.span ?? null : null;
@@ -187,9 +189,115 @@ export function SummaryDocumentReview({
     setCitedPage(cited ?? byKey.get(locKey(fieldId, entry))?.page ?? null);
   }
 
-  const aiOff = aiStatusWords(data.ai);
-  const aiBlocker = aiOff;
+  const aiBlocker = data ? aiStatusWords(data.ai) : null;
+  const panel = (
+    <>
+      {notice ? (
+        <p className="s1-mb-notice" role="alert">
+          {notice}
+        </p>
+      ) : null}
+      {groups.length === 0 ? (
+        <div className="s1-mb-confirm">
+          <p className="s1-sd__note">
+            No methodology facts have been read from this document yet. Sustentra&apos;s AI reads the engagement&apos;s company-prepared documents (up to five) and suggests what they state, each with a quote. Nothing counts until you accept or edit it.
+          </p>
+          <span className="s1-mr-actions">
+            <button type="button" className="s1-button s1-button--pri" disabled={busy || aiBlocker !== null} onClick={() => void readWithAi()}>
+              {busy ? "Reading…" : "Read with Sustentra's AI"}
+            </button>
+            {aiBlocker ? <span className="s1-mb-ai">{aiBlocker}</span> : null}
+          </span>
+        </div>
+      ) : (
+        groups.map(({ group, label, defs }) => (
+          <section key={group} className="s1-mr-card">
+            <div className="s1-mr-card__head">
+              <h3 className="s1-mr-card__title">{label}</h3>
+            </div>
+            <ul className="s1-mb-list">
+              {defs.map((def) => {
+                const first = (locations ?? []).find((l) => l.fieldId === def.fieldId);
+                return (
+                  <FieldRow
+                    key={def.fieldId}
+                    engagementId={engagementId}
+                    def={def}
+                    record={records.get(def.fieldId)!}
+                    busy={busy}
+                    entitiesNamed={false}
+                    onMarkFollowUp={() => undefined}
+                    onAct={(run) => void act(run)}
+                    onOpenDocument={(_id, source: SourceAt | undefined) => select(def.fieldId, source?.entry ?? first?.entry ?? null, source?.page)}
+                    selected={sel?.fieldId === def.fieldId}
+                    onSelect={() => {
+                      if (sel?.fieldId !== def.fieldId) select(def.fieldId, first?.entry ?? null);
+                    }}
+                    quoteNote={(entry) => {
+                      const place = byKey.get(locKey(def.fieldId, entry));
+                      return place && !place.located ? (place.page ? `${NOT_LOCATED} on page ${place.page}` : NOT_LOCATED) : null;
+                    }}
+                  />
+                );
+              })}
+            </ul>
+          </section>
+        ))
+      )}
+    </>
+  );
+  return {
+    ready,
+    loadError,
+    count: fieldIds.size,
+    marks,
+    selectedMarkIds,
+    span: firstBox,
+    page,
+    pageNote,
+    hasSelection: sel !== null,
+    viewerKey: `${sel?.fieldId ?? ""}|${sel?.entry ?? ""}|${page ?? ""}`,
+    pick: (mark) => {
+      const [fieldId, entry] = mark.id.split("#");
+      select(fieldId, entry === "" ? null : Number(entry));
+      window.requestAnimationFrame(() =>
+        document.querySelector<HTMLElement>(`[data-field-id="${CSS.escape(fieldId)}"]`)?.scrollIntoView?.({ block: "nearest" })
+      );
+    },
+    panel,
+  };
+}
 
+export function SummaryDocumentReview({
+  engagementId,
+  documentId,
+  fileName,
+  at,
+  backLabel,
+  onBack,
+  onError,
+  renderViewer,
+}: {
+  engagementId: string;
+  documentId: string;
+  fileName?: string;
+  at?: { fieldId?: string; entry?: number; page?: number };
+  backLabel: string;
+  onBack: () => void;
+  onError?: (error: unknown) => boolean;
+  renderViewer: (props: SummaryViewerProps) => ReactNode;
+}) {
+  const facts = useMethodologyFacts({ engagementId, documentId, at, onError });
+  if (!facts.ready) {
+    return (
+      <section className="s1-content s1-xr s1-xr--doconly">
+        <button className="s1-linklike s1-backlink" type="button" onClick={onBack}>
+          ‹ Back to {backLabel}
+        </button>
+        <p role={facts.loadError ? "alert" : "status"}>{facts.loadError ?? "Opening the document."}</p>
+      </section>
+    );
+  }
   // The same grid as every other document's review (ExtractionReview): navigator, the document in the
   // middle, the values on the right (the stylesheet orders the panes; the document comes first in the markup).
   return (
@@ -209,79 +317,48 @@ export function SummaryDocumentReview({
             <div className="s1-xr-src-body">
               <div className="s1-xr-page s1-xr-realpage">
                 {renderViewer({
-                  page,
-                  span: firstBox,
-                  marks,
-                  selectedMarkIds,
-                  pageNote,
-                  viewerKey: `${sel?.fieldId ?? ""}|${sel?.entry ?? ""}|${page ?? ""}`,
-                  onPickMark: (mark) => {
-                    const [fieldId, entry] = mark.id.split("#");
-                    select(fieldId, entry === "" ? null : Number(entry));
-                    window.requestAnimationFrame(() =>
-                      document.querySelector<HTMLElement>(`[data-field-id="${CSS.escape(fieldId)}"]`)?.scrollIntoView?.({ block: "nearest" })
-                    );
-                  },
+                  page: facts.page,
+                  span: facts.span,
+                  marks: facts.marks,
+                  selectedMarkIds: facts.selectedMarkIds,
+                  pageNote: facts.pageNote,
+                  viewerKey: facts.viewerKey,
+                  onPickMark: facts.pick,
                 })}
               </div>
             </div>
           </div>
         </aside>
         <div className="s1-xr-values" aria-label="Methodology facts">
-          {notice ? (
-            <p className="s1-mb-notice" role="alert">
-              {notice}
-            </p>
-          ) : null}
-          {groups.length === 0 ? (
-            <div className="s1-mb-confirm">
-              <p className="s1-sd__note">
-                No methodology facts have been read from this document yet. Sustentra&apos;s AI reads the engagement&apos;s company-prepared documents (up to five) and suggests what they state, each with a quote. Nothing counts until you accept or edit it.
-              </p>
-              <span className="s1-mr-actions">
-                <button type="button" className="s1-button s1-button--pri" disabled={busy || aiBlocker !== null} onClick={() => void readWithAi()}>
-                  {busy ? "Reading…" : "Read with Sustentra's AI"}
-                </button>
-                {aiBlocker ? <span className="s1-mb-ai">{aiBlocker}</span> : null}
-              </span>
-            </div>
-          ) : (
-            groups.map(({ group, label, defs }) => (
-              <section key={group} className="s1-mr-card">
-                <div className="s1-mr-card__head">
-                  <h3 className="s1-mr-card__title">{label}</h3>
-                </div>
-                <ul className="s1-mb-list">
-                  {defs.map((def) => {
-                    const first = (locations ?? []).find((l) => l.fieldId === def.fieldId);
-                    return (
-                      <FieldRow
-                        key={def.fieldId}
-                        engagementId={engagementId}
-                        def={def}
-                        record={records.get(def.fieldId)!}
-                        busy={busy}
-                        entitiesNamed={false}
-                        onMarkFollowUp={() => undefined}
-                        onAct={(run) => void act(run)}
-                        onOpenDocument={(_id, source: SourceAt | undefined) => select(def.fieldId, source?.entry ?? first?.entry ?? null, source?.page)}
-                        selected={sel?.fieldId === def.fieldId}
-                        onSelect={() => {
-                          if (sel?.fieldId !== def.fieldId) select(def.fieldId, first?.entry ?? null);
-                        }}
-                        quoteNote={(entry) => {
-                          const place = byKey.get(locKey(def.fieldId, entry));
-                          return place && !place.located ? (place.page ? `${NOT_LOCATED} on page ${place.page}` : NOT_LOCATED) : null;
-                        }}
-                      />
-                    );
-                  })}
-                </ul>
-              </section>
-            ))
-          )}
+          {facts.panel}
         </div>
       </div>
     </section>
   );
+}
+
+/** Reads a summary document's Methodology facts for a page that also shows its reported figures. The page opens once they
+ *  are read, so a deep link or the default tab can be decided; when they cannot be read the page opens without them. */
+export function WithMethodologyFacts({
+  engagementId,
+  documentId,
+  at,
+  onError,
+  children,
+}: {
+  engagementId: string;
+  documentId: string;
+  at?: { fieldId?: string; entry?: number; page?: number };
+  onError?: (error: unknown) => boolean;
+  children: (facts: MethodologyFacts | undefined) => ReactNode;
+}) {
+  const facts = useMethodologyFacts({ engagementId, documentId, at, onError });
+  if (!facts.ready && !facts.loadError) {
+    return (
+      <section className="s1-content">
+        <p role="status">Opening the document.</p>
+      </section>
+    );
+  }
+  return <>{children(facts.ready ? facts : undefined)}</>;
 }

@@ -15,7 +15,7 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 
 import { api } from "../../../lib/api";
 import { BackendMethodologyReview } from "../components/BackendMethodologyReview";
-import { SummaryDocumentReview, type SummaryViewerProps } from "../components/SummaryDocumentReview";
+import { SummaryDocumentReview, WithMethodologyFacts, type MethodologyFacts, type SummaryViewerProps } from "../components/SummaryDocumentReview";
 import { parseViewFromSearch, viewToSearch } from "../utils/viewHistory";
 
 afterEach(cleanup);
@@ -208,5 +208,25 @@ describe("the page uses the same layout as every other document's review", () =>
     expect(values.contains(screen.getByText("Gas: CO2"))).toBe(true);
     expect(source.compareDocumentPosition(values) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(grid.querySelector(".s1-sd")).toBeNull();
+  });
+});
+
+describe("the facts beside a document that also has reported figures", () => {
+  it("are read before the page opens, so a deep link to page 5 selects its quote", async () => {
+    const seen: (MethodologyFacts | undefined)[] = [];
+    render(
+      <WithMethodologyFacts engagementId="e1" documentId="d1" at={{ fieldId: "gas:co2", page: 5 }}>
+        {(facts) => {
+          seen.push(facts);
+          return <div data-testid="page">{facts ? facts.selectedMarkIds.join(",") : "no facts"}</div>;
+        }}
+      </WithMethodologyFacts>
+    );
+    expect(screen.queryByTestId("page")).toBeNull();
+    await screen.findByTestId("page");
+    expect(screen.getByTestId("page")).toHaveTextContent("gas:co2##0");
+    expect(seen.every((f) => f !== undefined)).toBe(true);
+    expect(seen[0]?.page).toBe(5);
+    expect(seen[0]?.count).toBe(3);
   });
 });
