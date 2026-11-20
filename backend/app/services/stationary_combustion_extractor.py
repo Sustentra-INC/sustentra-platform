@@ -31,6 +31,7 @@ from typing import Any, Sequence
 
 from backend.app.domain import fuel_units
 from backend.app.services import bill_notes
+from backend.app.services.extraction_target_service import DISPLAY_ONLY_FIELDS
 
 CANONICAL_TYPE_ID = "CT-S1-FUELQTY"
 
@@ -130,6 +131,11 @@ BILL_NUMBER_LABELS: tuple[tuple[str, ...], ...] = (
 )
 
 
+_READING_UNITS = frozenset({"kwh", "mwh", "kw", "wh", "therm", "therms", "thm", "thms", "ccf", "mcf", "scf", "cf", "mmbtu",
+                            "btu", "kbtu", "mlb", "lb", "lbs", "kg", "gal", "gals", "gallon", "gallons", "l", "liters",
+                            "litres", "m3", "m\u00b3", "gj", "hcf"})
+
+
 def meter_value(value: str) -> str | None:
     """The meter number at the start of ``value`` ("GM-0127764 PREV 40,211 CURR 41,447" gives "GM-0127764"), or None.
     The same guard as an account number: at least 3 characters, a digit, not a date or an amount, and not a phone
@@ -140,6 +146,9 @@ def meter_value(value: str) -> str | None:
         return None
     first = tokens[0].strip(".,;:()[]")
     if len(first) < 3 or not re.search(r"\d", first) or first.startswith("$") or parse_date(first) is not None:
+        return None
+    # A reading is not a number: comma grouping, a decimal, or a unit after it ("45,210", "3,701.1", "45210 kWh").
+    if re.fullmatch(r"[\d,]*\d[,.]\d[\d,.]*", first) or (len(tokens) > 1 and tokens[1].strip(".,;:()").lower() in _READING_UNITS):
         return None
     if any(_PHONE.match(" ".join(tokens[:n])) for n in (1, 2, 3)):
         return None
@@ -412,6 +421,12 @@ class ExtractionOutcome:
     halt_reason: dict[str, str] | None = None
     records: int = 0
     notes: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # A display-only field the bill does not print is left out, not kept as a missing placeholder.
+        self.candidates = [c for c in self.candidates if not (
+            c.get("field_name") in DISPLAY_ONLY_FIELDS and c.get("raw_value") is None
+            and c.get("normalized_value") is None)]
 
 
 def _blank_dates(text: str) -> str:
@@ -1534,7 +1549,29 @@ class StationaryCombustionExtractor:
         if first is None:
             return None
         others = {_name_key(m.raw) for row in rows if (m := self._meter([row])) is not None}
+        others |= {_name_key(raw) for raw in self._meters_below(rows, first)}
         return first if others <= {_name_key(first.raw)} else None
+
+    def _meters_below(self, rows: Sequence[Row], first: Located) -> list[str]:
+        """The meter numbers listed further down the column of the label ``first`` was read under: "Meter" over
+        GM-111222 and GM-333444 is a bill of two meters, not of GM-111222 alone."""
+
+        label = first.label_cell
+        start = next((r for r in rows if label is not None and any(c is label for c in r.cells)), None)
+        if label is None or start is None or label.box is None:
+            return []
+        found: list[str] = []
+        row, cell = start, label
+        for _ in range(25):
+            below = self._cell_below(rows, row, cell)
+            if below is None:
+                break
+            row, cell = below
+            number = meter_value(cell.text)
+            if number is None:
+                break
+            found.append(number)
+        return found
 
     def _statement_date(self, rows: Sequence[Row]) -> Located | None:
         """The date the bill itself carries ("Statement Date", "Bill Date", "Invoice Date"). Only from a labelled field:
@@ -1546,6 +1583,11 @@ class StationaryCombustionExtractor:
                                    inline_gap=True)
         if found is None or (hit := statement_date_value(found.raw)) is None:
             return None
+        if found.label_cell is not None:  # "Due Date / Bill Date: 05/21/2025 / 05/01/2025": the first date is the due date
+            text = _norm(found.label_cell.text)
+            at = min((text.find(label) for label in STATEMENT_DATE_LABELS[0] if label in text), default=0)
+            if any(label in text[:at] for label in DUE_DATE_LABELS[0]):
+                return None
         return Located(hit[0], found.cells, found.row, found.confidence, label_cell=found.label_cell,
                        context=found.context)
 
@@ -1804,7 +1846,6 @@ class StationaryCombustionExtractor:
                 columns["unit"] = index
             elif "id" not in columns and any(bare == h or bare.startswith(h + " ") for h in self.ID_HEADERS):
                 columns["id"] = index
-
             elif "product" not in columns and bare in self.PRODUCT_HEADERS:
                 columns["product"] = index
             elif "range" not in columns and bare in _RANGE_HEADERS:

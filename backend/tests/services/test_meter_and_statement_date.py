@@ -12,7 +12,7 @@ import pytest
 
 from backend.app.reference.extraction_config_loader import load_default_extraction_configs
 from backend.app.services.electricity_extractor import ElectricityExtractor
-from backend.app.services.extraction_target_service import ExtractionTargetService
+from backend.app.services.extraction_target_service import DISPLAY_ONLY_FIELDS, ExtractionTargetService
 from backend.app.services.mobile_combustion_extractor import MobileCombustionExtractor
 from backend.app.services.refrigerant_extractor import RefrigerantServiceExtractor
 from backend.app.services.stationary_combustion_extractor import (
@@ -45,6 +45,8 @@ def _read(extractor: Any, canonical: str, text: str) -> list[dict]:
 
 def _value(candidates: list[dict], field: str, record_index: int | None = None) -> Any:
     found = [c for c in candidates if c["field_name"] == field and c["record_index"] == record_index]
+    if field in DISPLAY_ONLY_FIELDS and not found:
+        return None  # a display-only field the bill does not print has no placeholder
     assert found, f"no {field} candidate"
     return found[0]["normalized_value"]
 
@@ -142,6 +144,8 @@ def test_a_meter_number_is_read_from_a_labelled_field(line: str, expected: str) 
     "Meter Reading\t04512", "Meter Charges\t$45.00", "Meter & Service Charge\t1 month\t$65.00",
     "Meter Totalizer\t10,442", "Meter: 12", "Meter: ABC", "Meter: 05/01/2025", "Your meter could not be read on 10/31/2025 (access).",
     "Meter 1 – Tacoma Distribution Center · Service Address: 2200 PORT OF TACOMA RD",
+    "Meter\t40,211\t41,447\t1,236", "Meter: 45210 kWh", "Meter: 3,701.1", "Meter: 218.5 Mlb", "Meter: 1,236 CCF",
+    "Meter: 12.5", "Meter: 1,027,540", "Meter: 32400 MMBtu", "Meter: 118 therms", "Meter: 640 gal", "Meter: 12 MWh",
 ])
 def test_a_meter_number_never_comes_from_a_phone_number_a_reading_or_prose(line: str) -> None:
     assert _value(_read(ElectricityExtractor(), ELEC, _bill(line)), "meter_number") is None
@@ -224,3 +228,106 @@ def test_the_schedule_shows_the_meter_number_and_the_statement_date() -> None:
     assert [v["value"] for v in meter["values"]] == ["GM-0083315"]  # spelled alike once
     date = groups["Statement date"]
     assert date["documents_with"] == 1 and [v["value"] for v in date["values"]] == ["2025-02-04"]
+
+
+# --- a meter heading with several meters listed under it, readings, and a due date in the label ---------------------
+def _boxed(blocks: list[tuple[str, float, float]]) -> dict[str, Any]:
+    return {"document_id": "DOC-1", "pages": [], "tables": [], "key_value_pairs": [], "source_references": [],
+            "text_blocks": [{"block_id": f"b{i}", "page_number": 1, "text": text, "confidence": None,
+                             "bounding_box": {"left": left, "top": top, "width": 0.2, "height": 0.012},
+                             "source_reference_id": None} for i, (text, left, top) in enumerate(blocks)]}
+
+
+def _gas_boxed(*meters: str) -> list[tuple[str, float, float]]:
+    return [("Nordgas Zürich AG – Natural Gas Statement", 0.07, 0.05), ("Account Number", 0.07, 0.10),
+            ("ACC-4417", 0.07, 0.12), ("Fuel", 0.4, 0.2), ("Natural Gas", 0.4, 0.22),
+            ("Service Period", 0.4, 0.10), ("Jan 1, 2025 to Jan 31, 2025", 0.4, 0.12), ("Meter", 0.07, 0.30),
+            *[(m, 0.07, 0.32 + 0.02 * i) for i, m in enumerate(meters)],
+            ("Total Usage", 0.07, 0.6), ("32,400 MMBtu", 0.4, 0.6)]
+
+
+def _electric_boxed(*meters: str) -> list[tuple[str, float, float]]:
+    return [("Müller Strom AG – Zürich Electricity Bill", 0.07, 0.05), ("Account Number", 0.07, 0.10),
+            ("MS-4417-2290", 0.07, 0.12), ("Service Period", 0.4, 0.10), ("Jan 1, 2025 to Jan 31, 2025", 0.4, 0.12),
+            ("Meter", 0.07, 0.30), *[(m, 0.07, 0.32 + 0.02 * i) for i, m in enumerate(meters)],
+            ("Total kWh Used", 0.07, 0.6), ("12,450 kWh", 0.4, 0.6)]
+
+
+def _read_boxed(extractor: Any, canonical: str, blocks: list[tuple[str, float, float]]) -> list[dict]:
+    outcome = extractor.extract(_boxed(blocks), _targets(canonical), "EV-1")
+    assert outcome.halt_reason is None, outcome.halt_reason
+    return outcome.candidates
+
+
+def test_a_single_meter_under_its_heading_is_read() -> None:
+    assert _value(_read_boxed(StationaryCombustionExtractor(), GAS, _gas_boxed("GM-111222")), "meter_number") == "GM-111222"
+    assert _value(_read_boxed(ElectricityExtractor(), ELEC, _electric_boxed("M-55012")), "meter_number") == "M-55012"
+
+
+def test_two_meters_listed_under_a_meter_heading_are_not_one_meter_on_a_gas_bill() -> None:
+    candidates = _read_boxed(StationaryCombustionExtractor(), GAS, _gas_boxed("GM-111222", "GM-333444"))
+    assert _value(candidates, "meter_number") is None  # it would place the whole bill on the first meter's facility
+
+
+def test_two_meters_listed_under_a_meter_heading_are_not_one_meter_on_an_electricity_bill() -> None:
+    candidates = _read_boxed(ElectricityExtractor(), ELEC, _electric_boxed("RS-7781204", "RS-7781266"))
+    assert _value(candidates, "meter_number") is None
+
+
+def test_the_same_meter_listed_twice_is_one_meter() -> None:
+    candidates = _read_boxed(StationaryCombustionExtractor(), GAS, _gas_boxed("GM-111222", "GM-111222"))
+    assert _value(candidates, "meter_number") == "GM-111222"
+
+
+def test_a_readings_column_under_a_meter_heading_is_not_a_meter_number() -> None:
+    candidates = _read_boxed(StationaryCombustionExtractor(), GAS, _gas_boxed("40,211", "41,447", "1,236"))
+    assert _value(candidates, "meter_number") is None
+
+
+@pytest.mark.parametrize("value, expected", [("GM-0083315", "GM-0083315"), ("45210", "45210"), ("40,211", None),
+                                             ("3,701.1", None), ("12.5", None), ("45210 kWh", None),
+                                             ("218.5 Mlb", None), ("1236 CCF", None), ("32,400 MMBtu", None)])
+def test_a_reading_is_not_a_meter_number(value: str, expected: str | None) -> None:
+    assert meter_value(value) == expected
+
+
+def test_a_due_date_in_front_of_the_label_is_not_a_statement_date() -> None:
+    refused = _read(ElectricityExtractor(), ELEC, _bill("Due Date / Bill Date: 05/21/2025 / 05/01/2025"))
+    assert _value(refused, "statement_date") is None
+
+
+# --- display-only: no placeholder, not counted, Claude not called for the date alone -------------------------------
+def test_a_bill_that_prints_neither_field_has_no_placeholder_for_them() -> None:
+    candidates = _read(ElectricityExtractor(), ELEC, _bill())
+    assert not [c for c in candidates if c["field_name"] in DISPLAY_ONLY_FIELDS]
+    # and so none of them is a missing or low-confidence candidate
+    assert all(c["raw_value"] is not None or c["field_name"] not in DISPLAY_ONLY_FIELDS for c in candidates)
+
+
+def test_the_two_fields_count_in_n_of_m_only_when_they_were_found() -> None:
+    from backend.app.services.pipeline_orchestration_service import PipelineOrchestrationService
+
+    targets = _targets(ELEC)
+    plain = [c for c in _read(ElectricityExtractor(), ELEC, _bill())]
+    found = [c for c in _read(ElectricityExtractor(), ELEC, _bill("Meter No: M-55012", "Statement Date\t05/01/2025"))]
+    count = PipelineOrchestrationService._expected_targets
+    assert len(count(targets, plain)) == len(targets) - 2
+    assert len(count(targets, found)) == len(targets)
+    only_meter = [c for c in _read(ElectricityExtractor(), ELEC, _bill("Meter No: M-55012"))]
+    assert len(count(targets, only_meter)) == len(targets) - 1
+
+
+def test_claude_is_not_called_for_a_missing_statement_date_alone() -> None:
+    from backend.app.services.ai_extraction import ask_fields
+
+    targets = _targets(ELEC)
+    gaps = [t for t in targets if t["field_id"] in DISPLAY_ONLY_FIELDS]
+
+    def read(*lines: str) -> list[dict]:  # every other field filled in, so only the display-only ones can be missing
+        return [{**c, "raw_value": c["raw_value"] or "x", "normalized_value": c["normalized_value"] or "x"}
+                for c in _read(ElectricityExtractor(), ELEC, _bill(*lines))]
+
+    assert ask_fields(read("Meter No: M-55012"), targets, gaps) == []  # only the date is missing: no call
+    assert {f.name for f in ask_fields(read(), targets, gaps)} == {"meter_number", "statement_date", *{
+        f.name for f in ask_fields(read(), targets, gaps) if f.role == "check"}}  # a missing meter is worth a call
+    assert ask_fields(read("Meter No: M-55012", "Statement Date\t05/01/2025"), targets, gaps) == []
