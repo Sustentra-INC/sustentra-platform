@@ -58,10 +58,10 @@ CANONICAL_TYPE_ID = "CT-S1-REFRSVC"
 # emission until then, so the reader names it as a purchase and flags it for the reviewer.
 PURCHASE_FLAG = "purchase_not_equipment_charge"
 PURCHASE_LABEL = "Refrigerant purchased"
-CONTINUATION_NOTE = ("A line with an amount but no date or equipment, directly under a dated line, was read as a "
-                     "continuation of that line: it takes that line's date and equipment. Check it.")
-TOTALS_NOTE = ("A totals table under the service lines was not read as service lines: its amounts are the sums of "
-               "the lines above, so reading it too would count them twice.")
+POSSIBLE_SUMMARY_FLAG = "possible_summary_or_continuation"
+POSSIBLE_SUMMARY_NOTE = ("This line has no date or equipment. It may be a total or a continuation. Accept it only if it is "
+                         "a separate service.")
+TOTALS_NOTE = ("Rows under a totals heading (Total, Summary, Subtotal) were not read as service lines.")
 PURCHASE_NOTE = ("This document is a supplier invoice: the refrigerant was bought, not recorded as added to equipment. "
                  "A purchase is not an emission until it is charged into equipment, so accept these amounts only if "
                  "the refrigerant went into equipment, and check them against the service records.")
@@ -176,7 +176,14 @@ _SUPPLIER_RE = re.compile(r"\b(?:refrigerant supply|refrigerants? (?:supplier|di
 # Work done, anywhere on the document: "Leak repair labor", "Recharged system", "Adjusted charge per superheat". A tool
 # or a product ("leak detector") is not work, so "leak" alone is not a word here, only "leak check".
 _WORK_DONE_RE = re.compile(
-    r"\b(?:repair\w*|recharg\w+|charged|adjust\w*|leak[- ]?check\w*|service[ds]?|servicing|labou?r)\b", re.I)
+    r"\b(?:repair\w*|recharg\w+|charged|adjust\w*|leak[- ]?check\w*|serviced|servicing|service (?:call|performed|work|"
+    r"provided|rendered)|labou?r)\b", re.I)
+# A phone number: "service call (800) 555-0100" is a contact line, not work done.
+_PHONE_RE = re.compile(r"\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b")
+# A heading that starts a block of totals: the rows under it are sums, not services.
+_TOTALS_TITLE_RE = re.compile(r"^\W*(?:grand\s+total|sub-?total|totals?|summary)\b", re.I)
+# A blank amount: a dash or "n/a" is "none", not a note.
+_NO_AMOUNT_RE = re.compile(r"\s*(?:[-\u2013\u2014]+|n/?a|none|nil)?\s*", re.I)
 # Cooling capacity, airflow and fuel units: a "Capacity: 5 tons" is tonnage, not a refrigerant charge.
 _NOT_A_CHARGE_RE = re.compile(r"\b(?:tons?|btu\w*|mbh|kw|hp|cfm|gallons?|gal)\b", re.I)
 _TOTAL_KEYS = ("total", "total qty", "total quantity")
@@ -199,7 +206,7 @@ class ServiceRecord:
     technician: Located | None = None  # the person who did the work (a log's Technician column)
     service_type: tuple[Located, str] | None = None
     # A line on a supplier's invoice (priced, counted in cylinders): refrigerant bought, not yet added to equipment.
-    continuation: bool = False  # an amount with no date or equipment directly under a dated line
+    possible_summary: bool = False  # an amount with no date and no equipment: a total or a continuation, or a service
     priced: bool = False  # the table has a price column
     packaged: bool = False  # counted in cylinders or named by a package size
     purchase: bool = False
@@ -328,71 +335,25 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
 
     def _records_and_notes(self, rows: Sequence[Row]) -> tuple[list[ServiceRecord], list[str]]:
         document_unit = self._document_mass_unit(rows)
-        groups = self._service_table_groups(rows, document_unit)
+        groups, skipped = self._service_table_groups(rows, document_unit)
         notes: list[str] = []
-        table: list[ServiceRecord] = []
-        skipped = continued = 0
-        for group in groups:
-            if table and self._is_totals_table(group, table):
-                skipped += len(group)  # the amounts of this table are the sums of the lines above
-                continue
-            # undated rows without equipment that are the sums of the lines above them are a summary, not services
-            undated = [r for r in group if r.date is None and r.equipment is None]
-            undated_ids = {id(r) for r in undated}
-            dated = [r for r in group if id(r) not in undated_ids]
-            if undated and self._is_totals_table(undated, [*table, *dated]):
-                skipped += len(undated)
-                group = dated
-            previous: ServiceRecord | None = None
-            for r in group:
-                if r.continuation and previous is not None:
-                    r.date, r.equipment = previous.date, previous.equipment
-                    continued += 1
-                previous = r
-            table.extend(group)
+        table = [r for group in groups for r in group]
         if skipped:
             notes.append(TOTALS_NOTE)
-        if continued:
-            notes.append(CONTINUATION_NOTE)
         if table:
             self._fill_from_document(table, rows)
+            # No date and no equipment even from the document: it may be a total or a continuation, so it is flagged
+            # for the reviewer (it counts only if accepted); the date and equipment are never filled in by guessing.
+            for r in table:
+                r.possible_summary = r.date is None and r.equipment is None
+            if any(r.possible_summary for r in table):
+                notes.append(POSSIBLE_SUMMARY_NOTE)
             self._decide_purchase(table, rows)
             if any(r.purchase for r in table):
                 notes.append(PURCHASE_NOTE)
             return table, notes
         single = self._labeled_record(rows, document_unit)
         return ([single] if single is not None else []), notes
-
-    @staticmethod
-    def _is_totals_table(group: Sequence[ServiceRecord], earlier: Sequence[ServiceRecord]) -> bool:
-        """A table whose amounts per refrigerant are the sums of the lines above it: the log's own totals,
-        however its columns are lined up. Every refrigerant in it must be one of the lines, and the added
-        and the recovered sums must both match (in pounds, so a table in kg still compares, within the rounding a
-        printed total has: a hundredth of a kilogram)."""
-
-        def pounds(hit: tuple[Located, Mass] | None) -> float:
-            if hit is None:
-                return 0.0
-            return hit[1].value * (2.2046226218487757 if hit[1].unit == "kg" else 1.0)
-
-        def sums(records: Sequence[ServiceRecord]) -> dict[str, tuple[float, float]]:
-            out: dict[str, tuple[float, float]] = {}
-            for r in records:
-                if r.refrigerant is None:
-                    continue
-                added, recovered = out.get(r.refrigerant[1].name, (0.0, 0.0))
-                out[r.refrigerant[1].name] = (added + pounds(r.added), recovered + pounds(r.recovered))
-            return out
-
-        # A table with a dated line or an equipment id is service lines (a log's next page repeats the header, and
-        # two equal top-ups are not totals); totals carry neither.
-        if any(r.date is not None or r.equipment is not None for r in group):
-            return False
-        mine, theirs = sums(group), sums(earlier)
-        return bool(mine) and all(
-            gas in theirs and abs(a - theirs[gas][0]) <= max(0.012, 1e-4 * theirs[gas][0])
-            and abs(r - theirs[gas][1]) <= max(0.012, 1e-4 * theirs[gas][1])
-            for gas, (a, r) in mine.items())
 
     def _decide_purchase(self, table: list[ServiceRecord], rows: Sequence[Row]) -> None:
         """Priced lines counted in cylinders, or a supplier's price list, are refrigerant bought. Not when
@@ -407,7 +368,8 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
         work = (self._equipment(rows) is not None
                 or self._find_labeled(rows, SERVICE_TYPE_LABELS, accept=lambda v: classify_service(v) is not None)
                 is not None
-                or any(_WORK_DONE_RE.search(c.text) for row in rows for c in row.cells))
+                or any(_WORK_DONE_RE.search(c.text) and not _PHONE_RE.search(c.text)
+                       for row in rows for c in row.cells))
         if work:
             for r in priced:
                 r.purchase = False
@@ -485,13 +447,14 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
         return Row(cells, row.page, row.index) if changed else row
 
     def _service_table_groups(self, rows: Sequence[Row], document_unit: str | None
-                              ) -> list[list[ServiceRecord]]:
-        """The records under each header, one list per header. A line with an amount is never left out for
-        lacking a date or an equipment id: directly under a dated line of the same table it is that line's
-        continuation (marked; ``_records_and_notes`` gives it the line's date and equipment, or drops it
-        when it is a summary of the lines above)."""
+                              ) -> tuple[list[list[ServiceRecord]], int]:
+        """The records under each header, one list per header, and how many rows were left out. Rows are left out
+        only under an explicit totals heading (a row reading Total, Totals, Summary, Grand total or Subtotal): the
+        undated, equipment-less rows right under it. Nothing else is guessed: a line with an amount is a record."""
 
         groups: list[list[ServiceRecord]] = []
+        skipped = 0
+        under_totals = False
         position = 0
         while position < len(rows):
             header_row = rows[position]
@@ -502,6 +465,8 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
                 if header is not None:
                     header_row = split
             if header is None:
+                if header_row.cells and _TOTALS_TITLE_RE.match(header_row.cells[0].text):
+                    under_totals = True
                 position += 1
                 continue
             columns, units = header
@@ -509,23 +474,24 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             misses = 0
             group: list[ServiceRecord] = []
             groups.append(group)
-            last_row = -1  # the row of the last record, to tell a continuation (the next row) from a gap
             while position < len(rows) and misses < 3:
                 row = rows[position]
                 if self._header(row) is not None:
                     break
                 record = self._service_table_record(row, header_row, columns, units, document_unit)
                 if record is None:
+                    if row.cells and _TOTALS_TITLE_RE.match(row.cells[0].text):
+                        under_totals = True
                     misses += 1
-                else:
+                elif under_totals and record.date is None and record.equipment is None:
+                    skipped += 1  # a row under a totals heading
                     misses = 0
-                    if (record.date is None and record.equipment is None and group and last_row == position - 1
-                            and (group[-1].date is not None or group[-1].continuation)):
-                        record.continuation = True
+                else:
+                    under_totals = False
+                    misses = 0
                     group.append(record)
-                    last_row = position
                 position += 1
-        return [g for g in groups if g]
+        return [g for g in groups if g], skipped
 
     def _service_table_record(self, row: Row, header_row: Row, columns: dict[str, int], units: dict[str, str],
                       document_unit: str | None) -> ServiceRecord | None:
@@ -593,6 +559,10 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
                 setattr(record, name, (located(c), mass))
         if record.added is None and record.recovered is None:
             return None
+        for name in ("added", "recovered"):  # an amount cell holding words ("2 trips") makes the row a note, not a line
+            c = cell(name)
+            if c is not None and getattr(record, name) is None and c.text.strip() and not _NO_AMOUNT_RE.fullmatch(c.text):
+                return None
         record.priced = priced
         record.packaged = in_packages or package is not None
         date_cell = cell("date")
@@ -728,6 +698,8 @@ class RefrigerantServiceExtractor(StationaryCombustionExtractor):
             flags.extend(record.flags.get(name, []))
             if name == "added" and record.purchase:
                 flags.append(PURCHASE_FLAG)
+            if name in ("added", "recovered") and record.possible_summary:
+                flags.append(POSSIBLE_SUMMARY_FLAG)
             unit = None if name in record.unit_missing else mass.unit
             if name in record.unit_missing:
                 flags.append("unit_missing")

@@ -825,65 +825,118 @@ def test_the_suppliers_letterhead_is_what_makes_a_per_pound_sale_a_purchase(targ
     assert _purchase_flags(text, targets)[0] == [True]
 
 
-# --- fix round 3: a line with an amount is never dropped for lacking a date or equipment --------------------
+# --- fix round 3: nothing is guessed. A line with an amount is a record; only an explicit totals heading drops rows ----
 def _amounts(outcome: Any) -> list[Any]:
     return [c["normalized_value"] for c in outcome.candidates if c["field_name"] == "refrigerant_added"]
 
 
-def test_a_continuation_line_is_its_own_record_with_the_date_and_equipment_above(targets: list[dict]) -> None:
-    from backend.app.services.refrigerant_extractor import CONTINUATION_NOTE
+def _flagged(outcome: Any) -> list[bool]:
+    return [("possible_summary_or_continuation" in c["validation_flags"]) for c in outcome.candidates
+            if c["field_name"] == "refrigerant_added"]
+
+
+def _summary_row(gas: str, added: str, recovered: str = "0.0") -> list[tuple]:
+    return _log_row("", "", gas, "", added, recovered, "", "")
+
+
+def test_an_undated_line_with_an_amount_is_its_own_record_flagged_and_never_given_a_date(targets: list[dict]) -> None:
+    from backend.app.services.refrigerant_extractor import POSSIBLE_SUMMARY_NOTE
 
     text = (LOG_H + "01/15/2025    RTU-1    R-410A    2.0    0.0\n"
             "R-22    3.0    0.0\n")
     outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
     records = _by_record(outcome.candidates)
-    assert _amounts(outcome) == [2, 3]  # the second gas is not lost
+    assert _amounts(outcome) == [2, 3] and _flagged(outcome) == [False, True]  # the second gas is not lost
     second = records[2]
-    assert second["refrigerant_type"]["normalized_value"] == "HCFC-22"
-    assert second["service_date"]["normalized_value"] == "2025-01-15"  # the line above's date
-    assert second["equipment_id"]["normalized_value"] == "RTU-1"
-    assert CONTINUATION_NOTE in outcome.notes
+    assert second["service_date"]["normalized_value"] is None  # not the date above: that would be a guess
+    assert second["equipment_id"]["normalized_value"] is None
+    assert POSSIBLE_SUMMARY_NOTE in outcome.notes
+    assert "separate service" in POSSIBLE_SUMMARY_NOTE and "total or a continuation" in POSSIBLE_SUMMARY_NOTE
 
 
-def test_a_boxed_continuation_line_takes_the_date_and_equipment_above(targets: list[dict]) -> None:
-    from backend.app.services.refrigerant_extractor import CONTINUATION_NOTE
+def test_summary_rows_with_rounded_totals_are_flagged_lines_not_dated_service_lines(targets: list[dict]) -> None:
+    """R1 and R1b: rows of totals under the last line, with no heading. The sums are 20.5 and 10.5; the rows say 21
+    and 11, or 20.5 and 10.5. Nothing is decided by matching sums: each is a flagged record for the reviewer."""
 
-    cont = [("", 0, 0), ("", 0, 0), ("R-134a", 0.293, 0.04), ("180", 0.43, 0.02), ("3.0", 0.50, 0.025),
-            ("0.0", 0.607, 0.016)]
-    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, LOG_LINES[0], cont]), targets, "EV-1")
-    second = _by_record(outcome.candidates)[2]
-    assert _value(second, "refrigerant_added") == (3, "lb")
-    assert second["service_date"]["normalized_value"] == "2025-02-11"
-    assert second["equipment_id"]["normalized_value"] == "RACK-A Walk-in freezer rack"
-    assert CONTINUATION_NOTE in outcome.notes
-
-
-def test_undated_rows_that_really_are_the_sum_of_the_lines_above_are_a_summary_not_services(
-        targets: list[dict]) -> None:
-    from backend.app.services.refrigerant_extractor import CONTINUATION_NOTE, TOTALS_NOTE
-
-    text = (LOG_H + "01/15/2025    RTU-1    R-410A    2.0    0.0\n"
-            "04/15/2025    RTU-1    R-410A    2.0    0.0\n"
-            "R-410A    4.0    0.0\n")
-    outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
-    assert _amounts(outcome) == [2, 2]  # not 8: the last row is their sum
-    assert TOTALS_NOTE in outcome.notes and CONTINUATION_NOTE not in outcome.notes
+    for gas_a, gas_b in [("20.5", "10.5"), ("21", "11")]:
+        rows = [*LOG_HEAD, *LOG_LINES, _summary_row("R-404A", gas_a), _summary_row("R-134a", gas_b)]
+        outcome = RefrigerantServiceExtractor().extract(_grid_output(rows), targets, "EV-1")
+        records = _by_record(outcome.candidates)
+        assert len(records) == 6 and _flagged(outcome) == [False] * 4 + [True, True]
+        for r in (records[5], records[6]):
+            assert r["service_date"]["normalized_value"] is None and r["equipment_id"]["normalized_value"] is None
 
 
-def test_an_undated_row_that_is_not_the_sum_is_kept_as_a_line(targets: list[dict]) -> None:
-    text = (LOG_H + "01/15/2025    RTU-1    R-410A    2.0    0.0\n"
-            "04/15/2025    RTU-1    R-410A    2.0    0.0\n"
-            "R-410A    1.5    0.0\n")
-    outcome = RefrigerantServiceExtractor().extract(_text_output(text), targets, "EV-1")
-    assert _amounts(outcome) == [2, 2, 1.5]
+@pytest.mark.parametrize("heading", ["Summary", "Totals", "Total", "Grand total", "Subtotal", "Totals by refrigerant"])
+def test_rows_under_an_explicit_totals_heading_are_dropped_with_a_note(targets: list[dict], heading: str) -> None:
+    from backend.app.services.refrigerant_extractor import TOTALS_NOTE
 
-
-def test_a_gap_between_a_dated_line_and_an_undated_one_is_not_a_continuation(targets: list[dict]) -> None:
-    from backend.app.services.refrigerant_extractor import CONTINUATION_NOTE
-
-    rows = [*LOG_HEAD, LOG_LINES[0], [("Notes carried over", 0.05, 0.2)],
-            [("", 0, 0), ("", 0, 0), ("R-134a", 0.293, 0.04), ("95", 0.43, 0.02), ("3.0", 0.50, 0.025), ("0.0", 0.607, 0.016)]]
+    rows = [*LOG_HEAD, *LOG_LINES, [(heading, 0.05, 0.2)], _summary_row("R-404A", "21"), _summary_row("R-134a", "11")]
     outcome = RefrigerantServiceExtractor().extract(_grid_output(rows), targets, "EV-1")
-    assert _amounts(outcome) == [12.5, 3]  # the line is kept (it has an amount); it is not given the date above
-    assert _by_record(outcome.candidates)[2]["service_date"]["normalized_value"] is None
-    assert CONTINUATION_NOTE not in outcome.notes
+    assert len(_by_record(outcome.candidates)) == 4 and _flagged(outcome) == [False] * 4
+    assert TOTALS_NOTE in outcome.notes
+
+
+def test_a_dated_line_after_a_totals_heading_is_a_service_line_again(targets: list[dict]) -> None:
+    more = _log_row("09/01/2025", "RACK-B", "R-404A", "180", "7.0", "0.0", "José Muñoz", "Top-up")
+    rows = [*LOG_HEAD, *LOG_LINES[:2], [("Subtotal – first half", 0.05, 0.3)], _summary_row("R-404A", "12.5"),
+            more]
+    outcome = RefrigerantServiceExtractor().extract(_grid_output(rows), targets, "EV-1")
+    assert _amounts(outcome) == [12.5, 6, 7]  # the subtotal row is dropped, the next dated line is read
+
+
+def test_a_second_circuit_line_equal_to_the_one_above_is_kept(targets: list[dict]) -> None:
+    """R2: 12.5 lb on circuit 1 and 12.5 lb on circuit 2 for the same visit: 25 lb. It is flagged, never dropped."""
+
+    rows = [*LOG_HEAD, _log_row("02/11/2025", "RACK-A Walk-in freezer rack", "R-404A", "180", "12.5", "0.0",
+                                "José Muñoz", "circuit 1"), _summary_row("R-404A", "12.5")]
+    outcome = RefrigerantServiceExtractor().extract(_grid_output(rows), targets, "EV-1")
+    assert _amounts(outcome) == [12.5, 12.5] and _flagged(outcome) == [False, True]
+
+
+@pytest.mark.parametrize("cell", ["2 trips", "see note", "approx 3", "GWP 3922"])
+def test_a_note_row_with_words_in_an_amount_cell_is_not_a_service_line(targets: list[dict], cell: str) -> None:
+    rows = [*LOG_HEAD, *LOG_LINES, _summary_row("R-404A", cell)]
+    outcome = RefrigerantServiceExtractor().extract(_grid_output(rows), targets, "EV-1")
+    assert len(_by_record(outcome.candidates)) == 4
+
+
+def test_a_footnote_naming_a_gas_and_a_page_number_row_are_not_service_lines(targets: list[dict]) -> None:
+    rows = [*LOG_HEAD, *LOG_LINES, [("Page 1 of 2", 0.6, 0.06)],
+            [("* R-404A", 0.293, 0.04), ("GWP 3922", 0.50, 0.04)]]
+    assert len(_by_record(RefrigerantServiceExtractor().extract(_grid_output(rows), targets, "EV-1").candidates)) == 4
+
+
+@pytest.mark.parametrize("dash", ["-", "\u2013", "\u2014", "n/a", "N/A", "none"])
+def test_a_dash_or_n_a_in_an_amount_cell_is_a_blank_not_a_note(targets: list[dict], dash: str) -> None:
+    line = _log_row("09/01/2025", "RACK-B", "R-404A", "180", "5.0", dash, "José Muñoz", "Top-up")
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, line]), targets, "EV-1")
+    assert _amounts(outcome) == [5]
+
+
+def test_a_service_line_with_a_date_or_equipment_alone_is_not_flagged(targets: list[dict]) -> None:
+    only_date = _log_row("09/01/2025", "", "R-404A", "180", "5.0", "0.0", "José Muñoz", "Top-up")
+    only_equipment = _log_row("", "RACK-A", "R-404A", "180", "6.0", "0.0", "José Muñoz", "Top-up")
+    outcome = RefrigerantServiceExtractor().extract(_grid_output([*LOG_HEAD, only_date, only_equipment]), targets, "EV-1")
+    assert _amounts(outcome) == [5, 6] and _flagged(outcome) == [False, False]
+
+
+@pytest.mark.parametrize("footer", [
+    "Questions? Customer Service (800) 555-0100",
+    "For service call (800) 555-0100 any day",  # a phone line, not work done
+    "Service hours 8 to 5, Monday to Friday",
+])
+def test_the_word_service_in_a_footer_or_near_a_phone_number_is_not_work(targets: list[dict], footer: str) -> None:
+    text = ("WESTBAY REFRIGERANT SUPPLY    INVOICE\nInvoice Date    09/17/2025\n"
+            "Item    Description    Qty    Unit    Unit Price    Amount\n"
+            "R410A-25    Refrigerant R-410A, 25 lb disposable cylinder    4    cyl    $395.00    $1,580.00\n" + footer + "\n")
+    flags, _ = _purchase_flags(text, targets)
+    assert flags == [True]  # a supplier's cylinders are still a purchase
+
+
+def test_a_work_context_around_service_clears_the_purchase_label(targets: list[dict]) -> None:
+    base = ("ACME MECHANICAL    INVOICE\nInvoice Date    09/12/2025\n{work}\n"
+            "Description    Qty    Unit    Unit Price    Amount\n"
+            "R-410A refrigerant 25 lb cylinder    1    cyl    $395.00    $395.00\n")
+    for work in ["Serviced rooftop unit RTU-3", "Service performed: leak found", "Service call, 2 hours"]:
+        assert _purchase_flags(base.format(work=work), targets) == ([False], []), work
