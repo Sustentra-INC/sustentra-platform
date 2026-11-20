@@ -89,6 +89,7 @@ def project_approved_evidence(
             org_id=org_of(user),
             current_items=current_items,
             read_documents=read_documents,
+            read_results=results,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

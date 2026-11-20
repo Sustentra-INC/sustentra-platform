@@ -765,11 +765,13 @@ def reviews_for_latest_type(results: list[dict[str, Any]], reviews: list[dict[st
     """The decisions that can apply to the document's latest read. A read as another document type
     (a re-read after a move onto a line of another type, or a type the reviewer set) is a new set of values:
     a decision made before it was stored does not apply to it, whatever record index or field name it shares.
-    It stays in the record. ``results`` oldest first. A decision or read with no usable time is kept."""
+    It stays in the record. ``results`` oldest first. A decision or read with no usable time is kept, and a read
+    that had no type (nothing was identified) is not a type change."""
 
     cutoff = None
     for earlier, later in zip(results, results[1:]):
-        if earlier.get("canonical_type_id") != later.get("canonical_type_id"):
+        before, after = earlier.get("canonical_type_id"), later.get("canonical_type_id")
+        if before and after and before != after:
             cutoff = _moment(later.get("created_at")) or cutoff
     if cutoff is None:
         return reviews
@@ -783,6 +785,21 @@ def reviews_for_latest_type(results: list[dict[str, Any]], reviews: list[dict[st
         if made is None or made >= cutoff:
             out.append(decision)
     return out
+
+
+def reviews_for_latest_types(results: list[dict[str, Any]], reviews: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """``reviews_for_latest_type`` for the reads of several documents (an evidence's): each document's decisions are
+    judged by that document's own reads. Decisions on a document with no read here are kept."""
+
+    by_document: dict[str, list[dict[str, Any]]] = {}
+    for result in results:
+        by_document.setdefault(str(result.get("document_id")), []).append(result)
+    kept = []
+    for document_id, own in by_document.items():
+        theirs = [d for d in reviews if str(d.get("document_id")) == document_id]
+        kept.extend(reviews_for_latest_type(own, theirs))
+    kept_ids = {id(d) for d in kept}
+    return [d for d in reviews if id(d) in kept_ids or str(d.get("document_id")) not in by_document]
 
 
 def mark_reread_items(items: list[dict[str, Any]], reviews: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
