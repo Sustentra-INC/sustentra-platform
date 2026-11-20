@@ -157,7 +157,7 @@ describe("Setup: vehicle groups", () => {
     render(<Harness groups={Array.from({ length: 200 }, (_, i) => group(`Fleet ${i + 1}`))} />);
     expect(screen.getByRole("button", { name: "Add vehicle group" })).toBeDisabled();
     expect(screen.getByText("A company can have at most 200 vehicle groups.")).toBeInTheDocument();
-  });
+  }, 30_000); // renders 250 groups inside the whole Setup screen; slow on a busy machine
 
   it("offers only the fuels the recalculation accepts", () => {
     render(<Harness groups={[group("Delivery trucks")]} />);

@@ -65,6 +65,7 @@ export function buildTree(facilityId: string | null): EvidenceTree {
       const row: TreeDocRow = {
         document_id: record.documentId, file_name: record.fileName, period_start: p.start, period_end: p.end,
         facility_id: fid, facility_name: fid ? facilityName.get(fid) ?? null : null,
+        facility_note: fid ? null : record.facilityNote,
         processing_status: record.processingStatus, detected_type: record.detectedType,
         also_in: slots.filter((s) => s.target !== slot.target && byKey.has(s.target)).map((s) => s.target),
         values: record.values, accepted: record.acceptedValues, flags: [...slot.flags], placement_from: slot.target,
@@ -178,7 +179,7 @@ export function buildSchedule(lineKey: string): LineSchedule | null {
       date: { start: r.start, end: r.end, days, label },
       // As the bill prints it: the backend returns the value's text, separators included.
       activity_quantity: { value: r.quantity === null ? null : r.quantity.toLocaleString("en-US"), unit: r.quantity === null ? null : r.unit },
-      cells: r.distance !== null ? { distance: { value: r.distance.toLocaleString("en-US"), unit: "mi" } } : {},
+      cells: r.distance !== null ? { distance: { value: r.distance.toLocaleString("en-US"), unit: "mi", candidate_id: r.candidateId, page: r.page } } : {},
       saved_by: r.accepted && r.reviewer ? { name: r.reviewer, at: r.reviewedAt } : null,
       document_id: r.documentId, file_name: r.fileName, page: r.quantity === null ? null : r.page, candidate_id: r.candidateId,
     });

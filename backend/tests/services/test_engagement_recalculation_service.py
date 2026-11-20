@@ -38,7 +38,11 @@ class FakeStore:
                               "unit": unit, "record_index": index if multi else None,
                               "source_reference": {"document_id": document_id, "page_number": 1}})
                 if decision:
+                    # A real decision always carries the snapshot of the candidate it was made on.
+                    snapshot = {k: v for k, v in items[-1].items() if k != "record_index"}
                     reviews.append({"candidate_id": candidate_id, "decision": decision, "org_id": org_id,
+                                    "document_id": document_id, "field_name": field_name,
+                                    "candidate_snapshot": snapshot,
                                     "reviewed_value": value if decision == "accepted" else None,
                                     "reviewed_unit": unit if decision == "accepted" else None})
         self.results[document_id] = [{"document_id": document_id, "org_id": org_id,
@@ -354,7 +358,7 @@ def test_bills_take_their_setup_facility_and_its_grid_region() -> None:
 
 
 def test_match_facility_needs_a_clear_name_or_address() -> None:
-    from backend.app.services.engagement_recalculation_service import match_facility
+    from backend.app.services.reviewed_evidence import match_facility
 
     facilities = [{"facilityId": "F1", "name": "Kent Cannery", "address": "88 Mill Road, Kent, WA"}]
     assert match_facility("KENT CANNERY", None, facilities)["facilityId"] == "F1"

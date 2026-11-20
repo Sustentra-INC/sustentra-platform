@@ -28,7 +28,7 @@ def doc(lines: list[tuple[int, str]] = REPORT, alias: str = "D1", document_id: s
 
 
 def answer(**lists: Any) -> mp.PrefillOutput:
-    empty: dict[str, Any] = {"choices": [], "texts": [], "periods": [], "gwp": [], "entities": [], "factors": []}
+    empty: dict[str, Any] = {"choices": [], "gases": [], "texts": [], "periods": [], "gwp": [], "entities": [], "factors": []}
     return mp.PrefillOutput.model_validate({**empty, **lists})
 
 
@@ -385,3 +385,39 @@ def test_the_set_and_the_horizon_are_whole_tokens_in_the_quote() -> None:
                            ("100-year", "AR5 hundred-year values")):
         kept, dropped = check(answer(gwp=[gwp_item("AR5", horizon, quote, "L1")]), [doc([(1, quote)])])
         assert len(kept) == 1 and not dropped, quote
+# --- gases: their own value set, the gas named in the quote ----------------------------------
+
+def gas(field_id: str, value: str, quote: str, line: str = "L1") -> dict[str, str]:
+    return {"field_id": field_id, "value": value, **cite(line, quote)}
+
+
+GAS_REPORT = [
+    (1, "The inventory covers CO₂, CH₄ and N₂O."),
+    (1, "HFCs, PFCs and sulfur hexafluoride (SF6) are not emitted at our sites."),
+    (1, "Nitrogen trifluoride is not applicable to a cannery."),
+]
+
+
+def test_a_gas_is_kept_with_its_own_values_when_the_quote_names_it() -> None:
+    kept, dropped = check(answer(gases=[
+        gas("gas:co2", "Included", "covers CO₂, CH₄"),
+        gas("gas:ch4", "Included", "covers CO₂, CH₄"),
+        gas("gas:hfcs", "Declared absent", "HFCs, PFCs and sulfur hexafluoride (SF6) are not emitted", "L2"),
+        gas("gas:nf3", "Declared absent", "Nitrogen trifluoride is not applicable", "L3")]), [doc(GAS_REPORT)])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["gas:co2", "gas:ch4", "gas:hfcs", "gas:nf3"]
+    assert {k.suggestion["value"] for k in kept} == {"Included", "Declared absent"}
+
+
+def test_a_gas_not_named_in_the_quote_is_dropped() -> None:
+    kept, dropped = check(answer(gases=[gas("gas:sf6", "Included", "covers CO₂, CH₄")]), [doc(GAS_REPORT)])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+def test_the_gas_values_are_separate_from_the_category_values() -> None:
+    for bad in ("Yes", "Not detected", "Not mentioned"):  # Claude may only say Included or Declared absent
+        with pytest.raises(ValueError):
+            answer(gases=[gas("gas:co2", bad, "covers CO₂, CH₄")])
+    with pytest.raises(ValueError):  # a gas is not a choice field
+        answer(choices=[{"field_id": "gas:co2", "value": "Yes", **cite("L1", "covers CO₂, CH₄")}])
+    with pytest.raises(ValueError):  # and a category does not take a gas value
+        answer(choices=[{"field_id": "category:scope1:mobile", "value": "Included", **cite("L1", "covers CO₂")}])

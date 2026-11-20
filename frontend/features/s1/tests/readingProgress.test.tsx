@@ -44,14 +44,14 @@ const MANUFACTURER_STATUS_CELLS = [
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
-  "Extracted", "Extracted", "ExtractedConflicts with modesto_electric_aug_2025.pdf", "Extracted", "Extracted",
+  "Extracted", "Extracted", "Extracted", "ExtractedConflicts with modesto_electric_aug_2025.pdf", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
   "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted", "Extracted",
-  "Extracted", "Extracted", "Extracted", "Extracted",
+  "Extracted", "Extracted", "Extracted", "Extracted", "Extracted"
 ];
 
 const MANUFACTURER_GROUP_MIX = [
-  "2 to review", "5 extracted", "1 blocked3 to review33 extracted", "3 to review33 extracted1 withdrawn", "4 extracted",
+  "2 to review", "5 extracted", "1 blocked3 to review33 extracted", "4 to review33 extracted1 withdrawn", "4 extracted",
   "1 to review11 extracted", "3 extracted", "1 to review36 extracted", "2 extracted", "3 extracted", "1 extracted",
   "2 extracted", "1 extracted", "1 extracted",
 ];
@@ -105,6 +105,10 @@ function run(overrides: Partial<ProcessingRunView> = {}): ProcessingRunView {
 }
 
 const TIMED_OUT = "Reading stopped before it finished. Try again later, or upload a smaller file.";
+
+// These render the real app or a whole screen: about 1-2 s alone, but over the 5 s default when the
+// full suite runs on a loaded machine. A longer limit for this file only; a hang still fails.
+vi.setConfig({ testTimeout: 30_000 });
 
 describe("withReadingState", () => {
   const rows = [uploadedRow(), uploadedRow({ documentId: "DOC-2", filename: "other.pdf" })];

@@ -17,7 +17,7 @@ vi.mock("../../../lib/api", async (importOriginal) => ({
 }));
 
 import { ApiError } from "../../../lib/api";
-import { saveDocumentPlacement, withPlacement, type CalculationLine, type ScheduleHistoryEntry, type EvidenceTree as TreeData, type LineSchedule, type TreeDocRow } from "../api/evidenceTree";
+import { type CalculationLine, type ScheduleHistoryEntry, type EvidenceTree as TreeData, type LineSchedule, type TreeDocRow } from "../api/evidenceTree";
 import { engagementFromBackend, engagementToBackend } from "../api/engagements";
 import { EvidenceTree, type EvidenceTreeProps } from "../components/EvidenceTree";
 import { EvidenceWorkspace } from "../components/EvidenceWorkspace";
@@ -155,8 +155,9 @@ function Harness(over: Partial<EvidenceTreeProps> = {}) {
       onOpenExtraction={vi.fn()}
       onOpenSchedule={vi.fn()}
       onMovePlacement={vi.fn().mockResolvedValue(undefined)}
-      onSaveLines={vi.fn().mockResolvedValue(undefined)}
-      onAudit={vi.fn()}
+      onCreateLine={vi.fn().mockResolvedValue(undefined)}
+      onRenameLine={vi.fn().mockResolvedValue(undefined)}
+      onDeleteLine={vi.fn().mockResolvedValue(0)}
       writesEnabled
       {...over}
     />
@@ -228,8 +229,7 @@ describe("the Evidence tree", () => {
 
   it("asks before a move that changes a calculation, then saves it once", async () => {
     const onMovePlacement = vi.fn().mockResolvedValue(undefined);
-    const onAudit = vi.fn();
-    render(<Harness onMovePlacement={onMovePlacement} onAudit={onAudit} />);
+    render(<Harness onMovePlacement={onMovePlacement} />);
     await expandAll();
     const row = screen.getByRole("button", { name: "feb.pdf" }).closest(".s1-et-doc") as HTMLElement;
     fireEvent.click(within(row).getByRole("button", { name: "Actions for feb.pdf" }));
@@ -241,7 +241,6 @@ describe("the Evidence tree", () => {
     expect(onMovePlacement).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
     await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("feb", { from: KENT.key, to: PLANT.key }));
-    expect(onAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "move_placement", documentId: "feb" }));
   });
 
   it("moves between blocks without asking", async () => {
@@ -256,25 +255,24 @@ describe("the Evidence tree", () => {
     await waitFor(() => expect(onMovePlacement).toHaveBeenCalledWith("scan", { from: "block:unassigned", to: "supporting:unassigned" }));
   });
 
-  it("adds a calculation line to the engagement's evidenceLines", async () => {
-    const onSaveLines = vi.fn().mockResolvedValue(undefined);
-    render(<Harness onSaveLines={onSaveLines} />);
+  it("adds a calculation line through the server action", async () => {
+    const onCreateLine = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onCreateLine={onCreateLine} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "New calculation line in Natural gas" }));
     const dialog = screen.getByRole("dialog", { name: "New calculation line in Natural gas" });
     fireEvent.change(within(dialog).getByLabelText("Facility"), { target: { value: "FAC-NW03" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Add line" }));
     await waitFor(() =>
-      expect(onSaveLines).toHaveBeenCalledWith([
-        ...ENGAGEMENT.evidenceLines!,
-        { scope: "s1", category: "stationary", level2_label: "Natural gas", anchor_kind: "facility", anchor_id: "FAC-NW03", label: "North works" },
-      ])
+      expect(onCreateLine).toHaveBeenCalledWith({
+        scope: "s1", category: "stationary", level2_label: "Natural gas", anchor_kind: "facility", anchor_id: "FAC-NW03", label: "North works",
+      })
     );
   });
 
   it("shows the server's message when a line is refused", async () => {
-    const onSaveLines = vi.fn().mockRejectedValue(new ApiError(422, "The system already creates this line.", null, null));
-    render(<Harness onSaveLines={onSaveLines} />);
+    const onCreateLine = vi.fn().mockRejectedValue(new ApiError(422, "The system already creates this line.", null, null));
+    render(<Harness onCreateLine={onCreateLine} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "New calculation line in Natural gas" }));
     const dialog = screen.getByRole("dialog", { name: "New calculation line in Natural gas" });
@@ -284,31 +282,29 @@ describe("the Evidence tree", () => {
   });
 
   it("deletes only a reviewer's own line, and says its documents move to Unassigned", async () => {
-    const onSaveLines = vi.fn().mockResolvedValue(undefined);
-    const onAudit = vi.fn();
-    render(<Harness onSaveLines={onSaveLines} onAudit={onAudit} />);
+    const onDeleteLine = vi.fn().mockResolvedValue(2);
+    render(<Harness onDeleteLine={onDeleteLine} />);
     await expandAll();
     // The system line has no menu; the reviewer's line has Rename and Delete.
     expect(screen.queryByRole("button", { name: "Actions for Natural gas · Kent" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Actions for Natural gas · Plant 2" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     const dialog = screen.getByRole("dialog");
-    expect(dialog).toHaveTextContent("Its documents move to Unassigned supporting evidence");
+    expect(dialog).toHaveTextContent(/Its \d+ documents? moves? to Unassigned supporting evidence|No documents are on this line/);
     fireEvent.click(within(dialog).getByRole("button", { name: "Delete line" }));
-    await waitFor(() => expect(onSaveLines).toHaveBeenCalledWith([]));
-    expect(onAudit).toHaveBeenCalledWith(expect.objectContaining({ action: "delete_line" }));
+    await waitFor(() => expect(onDeleteLine).toHaveBeenCalledWith(expect.objectContaining({ key: PLANT.key })));
   });
 
   it("renames a reviewer's own line", async () => {
-    const onSaveLines = vi.fn().mockResolvedValue(undefined);
-    render(<Harness onSaveLines={onSaveLines} />);
+    const onRenameLine = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onRenameLine={onRenameLine} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "Actions for Natural gas · Plant 2" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Line name"), { target: { value: "Plant 2 boilers" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
-    await waitFor(() => expect(onSaveLines).toHaveBeenCalledWith([{ ...ENGAGEMENT.evidenceLines![0], label: "Plant 2 boilers" }]));
+    await waitFor(() => expect(onRenameLine).toHaveBeenCalledWith(expect.objectContaining({ key: PLANT.key }), "Plant 2 boilers"));
   });
 
   it("filters by facility through the server, which recounts, and opens the matches", async () => {
@@ -345,6 +341,35 @@ describe("the Evidence tree", () => {
     expect(screen.getByRole("button", { name: "Scope 1" })).toHaveAttribute("aria-expanded", "false");
   });
 
+  it("names the documents a delete moves from the whole tree, not the facility-filtered one", async () => {
+    const whole: TreeData = JSON.parse(JSON.stringify(TREE));
+    for (const scope of whole.blocks.supporting.scopes) {
+      for (const category of scope.categories) {
+        for (const l2 of category.level2s) {
+          for (const node of l2.lines) if (node.line.key === PLANT.key) node.counts = counts(7, 7, 28);
+        }
+      }
+    }
+    const filtered: TreeData = JSON.parse(JSON.stringify(whole));
+    for (const scope of filtered.blocks.supporting.scopes) {
+      for (const category of scope.categories) {
+        for (const l2 of category.level2s) {
+          for (const node of l2.lines) if (node.line.key === PLANT.key) node.counts = counts(1, 1, 4);
+        }
+      }
+    }
+    mocks.byPath = { [TREE_PATH]: whole, [`${TREE_PATH}?facility_id=FAC-PL02`]: filtered };
+    function Filtered() {
+      const [facility, setFacility] = useState<string | null>("FAC-PL02");
+      return <Harness facilityId={facility} onFacilityChange={setFacility} />;
+    }
+    render(<Filtered />);
+    await expandAll();
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Natural gas · Plant 2" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    expect(await screen.findByText(/Its 7 documents move to Unassigned supporting evidence/)).toBeInTheDocument();
+  });
+
   it("moves a row whose line was deleted, sending its placement as from and asking nothing", async () => {
     const DEAD = "s1:stationary:natural-gas:fac-gone";
     const orphan = doc("orph", { flags: ["unknown_line"], placement_from: DEAD });
@@ -374,8 +399,8 @@ describe("the Evidence tree", () => {
       lines: [MOBILE],
     };
     mocks.byPath = { [TREE_PATH]: tree };
-    const onSaveLines = vi.fn().mockResolvedValue(undefined);
-    render(<Harness onSaveLines={onSaveLines} />);
+    const onCreateLine = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onCreateLine={onCreateLine} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "New fuel" }));
     const dialog = screen.getByRole("dialog", { name: "New fuel in Mobile combustion" });
@@ -383,10 +408,9 @@ describe("the Evidence tree", () => {
     fireEvent.change(within(dialog).getByLabelText("Vehicle group"), { target: { value: "vg-fleet-a" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Add fuel" }));
     await waitFor(() =>
-      expect(onSaveLines).toHaveBeenCalledWith([
-        ...ENGAGEMENT.evidenceLines!,
-        { scope: "s1", category: "mobile", level2_label: "Biodiesel", anchor_kind: "vehicle_group", anchor_id: "vg-fleet-a", label: "Fleet A (diesel)" },
-      ])
+      expect(onCreateLine).toHaveBeenCalledWith({
+        scope: "s1", category: "mobile", level2_label: "Biodiesel", anchor_kind: "vehicle_group", anchor_id: "vg-fleet-a", label: "Fleet A (diesel)",
+      })
     );
   });
 
@@ -403,7 +427,7 @@ describe("the Evidence tree", () => {
   it("hands an ended session to the app instead of showing a message", async () => {
     const ended = new ApiError(401, "Session ended.", null, null);
     const onError = vi.fn().mockReturnValue(true);
-    render(<Harness onError={onError} onSaveLines={vi.fn().mockRejectedValue(ended)} />);
+    render(<Harness onError={onError} onDeleteLine={vi.fn().mockRejectedValue(ended)} />);
     await expandAll();
     fireEvent.click(screen.getByRole("button", { name: "Actions for Natural gas · Plant 2" }));
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
@@ -665,54 +689,55 @@ describe("the move confirm says what changes", () => {
     expect(options).not.toContain(KENT.key);
   });
 
-  it("says plainly when the document was already moved elsewhere, and saves nothing", async () => {
-    const onMovePlacement = vi.fn().mockResolvedValue(undefined);
+  it("shows the server's sentence when the document was already moved elsewhere, and loads the tree again", async () => {
+    const stale = new ApiError(409, "This document was already moved from there. Reload Evidence to see where it is now.", null, null);
+    const onMovePlacement = vi.fn().mockRejectedValue(stale);
     render(<Harness onMovePlacement={onMovePlacement} />);
     const dialog = await openMove("feb.pdf");
     choose(dialog, PLANT.key);
-    // Meanwhile, in another tab, feb.pdf left Kent.
-    const moved: TreeData = JSON.parse(JSON.stringify(TREE));
-    moved.blocks.supporting.scopes[0].categories[0].level2s[0].lines[0].documents = [];
-    mocks.byPath = { [TREE_PATH]: moved };
+    const loads = () => mocks.calls.filter((c) => c.path === TREE_PATH).length;
+    const before = loads();
     fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Confirm move" }));
-    expect(await within(dialog).findByText(/no longer where this page showed it, so nothing was changed/)).toBeInTheDocument();
-    expect(onMovePlacement).not.toHaveBeenCalled();
-  });
-});
-
-describe("moving a placement saves a merged payload", () => {
-  it("keeps every other key of the document's saved decision", async () => {
-    const before = { documentId: "feb", facilityId: "FAC-PL02", disposition: "active" as const, note: "check", placements: [{ from: "block:unassigned", to: KENT.key }] };
-    const saved = await saveDocumentPlacement(ENG, before, "feb", { from: KENT.key, to: PLANT.key });
-    const put = mocks.calls.find((c) => c.options?.method === "PUT")!;
-    expect(put.path).toBe(`/engagements/${ENG}/workpaper-items/document/feb`);
-    expect(put.options?.body).toEqual({
-      payload: {
-        documentId: "feb",
-        facilityId: "FAC-PL02",
-        disposition: "active",
-        note: "check",
-        placements: [
-          { from: "block:unassigned", to: KENT.key },
-          { from: KENT.key, to: PLANT.key },
-        ],
-      },
-    });
-    expect(saved.placements).toHaveLength(2);
+    expect(await within(dialog).findByText(/This document was already moved from there/)).toBeInTheDocument();
+    expect(onMovePlacement).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(loads()).toBeGreaterThan(before));
   });
 
-  it("starts a decision when the document has none", () => {
-    expect(withPlacement(undefined, "x", { from: "a", to: "b" })).toEqual({ documentId: "x", placements: [{ from: "a", to: "b" }] });
+  it("makes no extra tree request before a move", async () => {
+    const onMovePlacement = vi.fn().mockResolvedValue(undefined);
+    render(<Harness onMovePlacement={onMovePlacement} />);
+    const dialog = await openMove("feb.pdf");
+    choose(dialog, "supporting:unassigned");
+    const before = mocks.calls.filter((c) => c.path === TREE_PATH).length;
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move" }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: "Confirm move" }));
+    await waitFor(() => expect(onMovePlacement).toHaveBeenCalled());
+    expect(mocks.calls.filter((c) => c.path === TREE_PATH).length).toBeLessThanOrEqual(before + 1); // the reload after the move only
+  });
+
+  it("keeps a window open on Escape while its request is running", async () => {
+    let finish: () => void = () => undefined;
+    const onDeleteLine = vi.fn().mockReturnValue(new Promise<number>((resolve) => { finish = () => resolve(1); }));
+    render(<Harness onDeleteLine={onDeleteLine} />);
+    await expandAll();
+    fireEvent.click(screen.getByRole("button", { name: "Actions for Natural gas · Plant 2" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete line" }));
+    await waitFor(() => expect(onDeleteLine).toHaveBeenCalled());
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    finish();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });
 
 describe("the evidenceLines setting", () => {
-  it("is sent back with every engagement save, so a Setup save does not wipe it", () => {
-    expect(engagementToBackend(ENGAGEMENT).settings.evidenceLines).toEqual(ENGAGEMENT.evidenceLines);
+  it("is never sent with an engagement save: the lines are changed only by the Evidence actions", () => {
+    expect(engagementToBackend(ENGAGEMENT).settings).not.toHaveProperty("evidenceLines");
   });
 
-  it("survives load, a Setup edit and save", () => {
+  it("is still read when the engagement loads, and a Setup save leaves it out", () => {
     const row = {
       id: ENG, org_id: "o", name: "FY", client_name: "Acme", reporting_period_start: "2025-01-01", reporting_period_end: "2025-12-31",
       status: "active" as const, settings: { evidenceLines: ENGAGEMENT.evidenceLines }, created_at: "", updated_at: "",
@@ -720,7 +745,8 @@ describe("the evidenceLines setting", () => {
     const loaded = engagementFromBackend(row);
     expect(loaded.evidenceLines).toEqual(ENGAGEMENT.evidenceLines);
     const edited = { ...loaded, regulation: "CSRD" };
-    expect(engagementToBackend(edited).settings.evidenceLines).toEqual(ENGAGEMENT.evidenceLines);
+    expect(engagementToBackend(edited).settings).not.toHaveProperty("evidenceLines");
+    expect(engagementToBackend(edited).settings.regulation).toBe("CSRD");
   });
 });
 
@@ -1139,6 +1165,96 @@ describe("the supporting schedule", () => {
     const rules = css.match(/\.s1-sch-month__name\s*\{[^}]*\}/g) ?? [];
     expect(rules.length).toBeGreaterThan(0);
     for (const rule of rules) expect(rule).not.toContain("--weight-strong");
+  });
+
+  it("opens each value at its own source: the quantity and every extra column carry their candidate and page", async () => {
+    const [first] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        rows: [
+          {
+            ...first,
+            activity_quantity: { value: 120, unit: "therm", candidate_id: "cand-qty", page: 2 },
+            cells: {
+              heat_content: { value: 1.03, unit: "MMBtu/Mcf", candidate_id: "cand-heat", page: 4 },
+              meter_number: { value: "M-4471", candidate_id: "cand-meter", page: 1 },
+            },
+          },
+        ],
+        columns: [...SCHEDULE.columns, { key: "meter_number", label: "Meter number", unit_in_cells: false }],
+      },
+    };
+    const props = renderSchedule();
+    fireEvent.click(await screen.findByRole("button", { name: "Open jan.pdf, page 4 at Heat content (HHV) 1.03 MMBtu/Mcf" }));
+    expect(props.onOpenDocument).toHaveBeenLastCalledWith("jan", "candidate:cand-heat");
+    fireEvent.click(screen.getByRole("button", { name: "Open jan.pdf, page 1 at Meter number M-4471" }));
+    expect(props.onOpenDocument).toHaveBeenLastCalledWith("jan", "candidate:cand-meter");
+    fireEvent.click(screen.getByRole("button", { name: "Open jan.pdf, page 2 at Activity quantity 120 therm" }));
+    expect(props.onOpenDocument).toHaveBeenLastCalledWith("jan", "candidate:cand-qty");
+  });
+
+  it("says so when a value has no page, and opens the document with no highlight when it has no candidate", async () => {
+    const [first] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        rows: [{ ...first, page: null, candidate_id: null, activity_quantity: { value: 120, unit: "therm" }, cells: { heat_content: { value: 1.03, unit: "MMBtu/Mcf", candidate_id: null, page: null } } }],
+      },
+    };
+    const props = renderSchedule();
+    const link = await screen.findByRole("button", { name: "Open jan.pdf, page 1, no page was recorded at Heat content (HHV) 1.03 MMBtu/Mcf" });
+    expect(link).toHaveAttribute("title", "No page was recorded for this value; the document opens at page 1.");
+    expect(screen.getAllByText("(no page recorded, opens at page 1)").length).toBeGreaterThan(0);
+    fireEvent.click(link);
+    expect(props.onOpenDocument).toHaveBeenCalledWith("jan", undefined);
+  });
+
+  it("names a workbook value by its sheet and cell, and keeps non-ASCII file and sheet names", async () => {
+    const [first] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        rows: [
+          {
+            ...first,
+            file_name: "Müller Käserei – Zürich 2025.xlsx",
+            page: null,
+            activity_quantity: { value: 120, unit: "therm", candidate_id: "c1", page: null, sheet: "Gas – 北京", cell: "C7" },
+            cells: {},
+          },
+        ],
+      },
+    };
+    const props = renderSchedule();
+    const link = await screen.findByRole("button", { name: "Open Müller Käserei – Zürich 2025.xlsx, sheet Gas – 北京, cell C7 at Activity quantity 120 therm" });
+    expect(screen.queryByText("(no page recorded, opens at page 1)")).toBeNull();
+    fireEvent.click(link);
+    expect(props.onOpenDocument).toHaveBeenCalledWith("jan", "candidate:c1");
+  });
+
+  it("labels an identifier Claude read, per document, in the expanded view", async () => {
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        identifier_groups: [
+          {
+            label: "Meter number",
+            values: [
+              { value: "№ 4471-Ж", documents: [{ document_id: "jan", file_name: "Müller Käserei – Zürich.pdf", read_by_claude: true }, { document_id: "feb", file_name: "feb.pdf", read_by_claude: false }] },
+            ],
+            not_found: [],
+            documents_with: 2,
+            documents_total: 2,
+          },
+        ],
+      },
+    };
+    renderSchedule();
+    fireEvent.click(await screen.findByRole("button", { name: /Meter number/ }));
+    const claude = screen.getByRole("button", { name: "Open Müller Käserei – Zürich.pdf" }).parentElement!;
+    expect(claude).toHaveTextContent("Read by Claude");
+    expect(screen.getByRole("button", { name: "Open feb.pdf" }).parentElement).not.toHaveTextContent("Read by Claude");
   });
 
   it("round-trips a line key with : . - between results and the schedule", async () => {

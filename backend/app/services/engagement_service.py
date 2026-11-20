@@ -65,6 +65,20 @@ async def get_engagement(db: AsyncSession, engagement_id: str) -> dict[str, Any]
     return _row(row) if row else None
 
 
+async def lock_engagement(db: AsyncSession, engagement_id: str) -> dict[str, Any] | None:
+    """The engagement, read again after taking its row lock (held until the transaction ends).
+    Everything that changes the engagement's lines or its documents' placements takes this lock
+    first, so two writers run one after the other and each reads what the other saved."""
+
+    key = _as_uuid(engagement_id)
+    if key is None:
+        return None
+    # NO KEY UPDATE, not UPDATE: it still makes writers take turns, but it does not block the inserts that
+    # reference this row (a workpaper item takes a KEY SHARE lock on its engagement), which would deadlock.
+    await db.execute(text("SELECT 1 FROM engagements WHERE id = :id FOR NO KEY UPDATE"), {"id": key})
+    return await get_engagement(db, engagement_id)
+
+
 async def create_engagement(
     db: AsyncSession,
     *,

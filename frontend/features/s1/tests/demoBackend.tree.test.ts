@@ -65,8 +65,8 @@ describe("demo backend: evidence tree, schedule and recalculation", () => {
     expect(Object.values(status).filter((v) => v === "not_reviewed")).toHaveLength(1);
     expect(Object.values(status).filter((v) => v === "no_document")).toHaveLength(1);
     const meter = s.identifier_groups.find((g) => g.label === "Meter number")!;
-    expect(meter.documents_with).toBe(10);
-    expect(meter.documents_total).toBe(11);
+    expect(meter.documents_with).toBe(11);
+    expect(meter.documents_total).toBe(12);
     expect(s.identifier_groups.map((g) => g.label)).toEqual(["Facility", "Service address", "Account number", "Meter number"]);
     expect(s.rows.filter((r) => r.accepted && r.saved_by?.name && r.saved_by.at)).toHaveLength(10);
     expect(s.history.length).toBeGreaterThan(5);
@@ -188,7 +188,7 @@ describe("the staging screens over the demo backend", () => {
     expect(screen.getAllByText(/Not reviewed/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/No document/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/M-4471/).length).toBeGreaterThan(0);
-    expect(screen.getAllByText(/10 of 11|10\/11/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/11 of 12|11\/12/).length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Activity quantity: fuel quantity combusted/).length).toBeGreaterThan(0);
   });
 

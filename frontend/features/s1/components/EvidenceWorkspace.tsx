@@ -16,6 +16,7 @@ import type { QualityCheck } from "../api/recalculation";
 import { qualityIssueLines } from "./QualityChecksPanel";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
+import { ConfirmDialog } from "./ConfirmDialog";
 import { AiTypeNote } from "./AiTypeNote";
 import { EvidenceTree,type EvidenceTreeProps } from "./EvidenceTree";
 import { formatPeriod } from "../utils/formatPeriod";
@@ -115,7 +116,7 @@ interface EvidenceWorkspaceProps {
   /** Backend mode: shows the calculation-line tree instead of the grouping by document type. */
   tree?: Pick<
     EvidenceTreeProps,
-    "openIds" | "onOpenIdsChange" | "onOpenSchedule" | "onMovePlacement" | "onSaveLines" | "onError" | "facilityId" | "onFacilityChange"
+    "openIds" | "onOpenIdsChange" | "onOpenSchedule" | "onMovePlacement" | "onCreateLine" | "onRenameLine" | "onDeleteLine" | "onError" | "facilityId" | "onFacilityChange"
   > & {
     /** Which grouping shows, and a change to it; kept by the app with the tree's open rows. */
     view: "lines" | "types";
@@ -176,6 +177,8 @@ export function EvidenceWorkspace({
   const [relateTarget, setRelateTarget] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
   const [modalDoc, setModalDoc] = useState<EvidenceItem | null>(null);
+  // The document whose Withdraw is waiting for the reviewer's yes (the app's own window, not the browser's).
+  const [withdrawing, setWithdrawing] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // A change to a request that did not go through (resolving the request a file answers).
   const [actionProblem, setActionProblem] = useState<string | null>(null);
@@ -344,9 +347,13 @@ export function EvidenceWorkspace({
   }
 
   function withdraw(documentId: string) {
+    if (items.some((i) => i.documentId === documentId)) setWithdrawing(documentId);
+  }
+
+  function confirmWithdraw(documentId: string) {
+    setWithdrawing(null);
     const item = items.find((i) => i.documentId === documentId);
     if (!item) return;
-    if (!window.confirm(`Withdraw ${item.filename}? The row stays, greyed, and the action is logged.`)) return;
     onEvidenceChange((cur) => cur.map((i) => (i.documentId === documentId ? { ...i, disposition: "withdrawn" } : i)));
     record("withdraw_document", documentId, "active", "withdrawn");
     flash(`Withdrew ${item.filename}`);
@@ -448,7 +455,9 @@ export function EvidenceWorkspace({
               onOpenIdsChange={tree.onOpenIdsChange}
               onOpenSchedule={tree.onOpenSchedule}
               onMovePlacement={tree.onMovePlacement}
-              onSaveLines={tree.onSaveLines}
+              onCreateLine={tree.onCreateLine}
+              onRenameLine={tree.onRenameLine}
+              onDeleteLine={tree.onDeleteLine}
               onError={tree.onError}
               facilityId={tree.facilityId}
               onFacilityChange={tree.onFacilityChange}
@@ -456,7 +465,6 @@ export function EvidenceWorkspace({
               reloadKey={treeReloadKey}
               onOpenExtraction={onOpenExtraction}
               onOpenSetup={onOpenSetup}
-              onAudit={(intent) => onAuditIntent?.(intent)}
               writesEnabled={writesEnabled}
             />
           ) : showFilteredEmpty ? (
@@ -638,6 +646,16 @@ export function EvidenceWorkspace({
           onCancel={() => setModalDoc(null)}
           onAdd={submitAsk}
           serverRecordsActor={serverRecordsActor}
+        />
+      ) : null}
+
+      {withdrawing ? (
+        <ConfirmDialog
+          title="Withdraw this document?"
+          message={`${items.find((i) => i.documentId === withdrawing)?.filename ?? "This document"} stays in the list, greyed, and the action is logged. You can reinstate it.`}
+          confirmLabel="Withdraw"
+          onConfirm={() => confirmWithdraw(withdrawing)}
+          onCancel={() => setWithdrawing(null)}
         />
       ) : null}
 

@@ -92,7 +92,7 @@ describe("the demo backend's methodology review", () => {
     await open();
     expect(within(row("Indirect Biogenic")).getByText("Not checked yet")).toBeTruthy();
     expect(document.body.textContent).not.toContain("Not set");
-    expect((await get()).fields.filter((f) => !(f as unknown as { shown: boolean }).shown).map((f) => (f as unknown as { field_id: string }).field_id).sort()).toEqual(["boundary:acquisitions", "boundary:leased_space"]);
+    expect((await get()).fields.filter((f) => !(f as unknown as { shown: boolean }).shown).map((f) => (f as unknown as { field_id: string }).field_id).sort()).toEqual(["boundary:acquisitions", "boundary:leased_space", "gas:ch4", "gas:co2", "gas:hfcs", "gas:n2o", "gas:nf3", "gas:pfcs", "gas:sf6"]);
     await prefillViaUi();
     expect(within(row("Indirect Biogenic")).getByText("Not detected")).toBeTruthy();
     expect(within(row("Consolidation approach")).getByText("Suggested by Claude")).toBeTruthy();
@@ -203,6 +203,41 @@ describe("the demo backend's methodology review", () => {
       await edit({ set: "AR6", horizon: "500-year" });
       expect((await gwpRows())[0].decision?.value).toEqual({ set: "AR6", horizon: "500-year" });
       await demoApi(`${BASE}/gwp/edit`, { method: "POST", body: { value: { set: "AR5", horizon: "500-year" } } });
+    });
+  });
+
+  describe("gases covered (one row per gas, only if the company has a value)", () => {
+    const GAS_LABELS = ["Gas: CO2", "Gas: CH4", "Gas: N2O", "Gas: HFCs", "Gas: PFCs", "Gas: SF6", "Gas: NF3"];
+
+    it("are hidden on a fresh engagement and all seven are offered under Add an item", async () => {
+      await open();
+      for (const label of GAS_LABELS) expect(screen.queryByText(label, { selector: "span" })).toBeNull();
+      const add = screen.getByRole("combobox", { name: "Add an item" });
+      for (const label of GAS_LABELS) expect(within(add).getByRole("option", { name: label })).toBeTruthy();
+    });
+
+    it("Add an item shows a gas row with its own three choices, and it saves Not mentioned", async () => {
+      await open();
+      fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: "gas:pfcs" } });
+      await waitFor(() => expect(within(row("Gas: PFCs")).getByText("Not checked yet")).toBeTruthy());
+      fireEvent.click(within(row("Gas: PFCs")).getByRole("button", { name: "Edit: Gas: PFCs" }));
+      const choices = within(screen.getByLabelText("Value: Gas: PFCs")).getAllByRole("option").map((o) => o.textContent);
+      expect(choices).toEqual(["Choose", "Included", "Declared absent", "Not mentioned"]);
+      fireEvent.change(screen.getByLabelText("Value: Gas: PFCs"), { target: { value: "Not mentioned" } });
+      fireEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(within(row("Gas: PFCs")).getByText("Not mentioned")).toBeTruthy());
+    });
+
+    it("a prefill shows only the gases it found, and the category values are refused for a gas", async () => {
+      await open();
+      await prefillViaUi();
+      expect(within(row("Gas: CO2")).getByText("Suggested by Claude")).toBeTruthy();
+      expect(within(row("Gas: NF3")).getByText("Suggested by Claude")).toBeTruthy();
+      expect(screen.queryByText("Gas: CH4", { selector: "span" })).toBeNull();
+      const edit = (id: string, value: unknown) => demoApi(`${BASE}/${id}/edit`, { method: "POST", body: { value } });
+      await expect(edit("gas:co2", "Yes")).rejects.toMatchObject({ status: 422 });
+      await expect(edit("gas:co2", "Not detected")).rejects.toMatchObject({ status: 422 });
+      await expect(edit("category:scope1:mobile", "Included")).rejects.toMatchObject({ status: 422 });
     });
   });
 });

@@ -17,6 +17,7 @@ from backend.app.core.auth import CurrentUser
 
 from backend.app.repositories import s1_stores
 from backend.app.services.review_decision_service import ReviewDecisionService
+from backend.app.services.reviewed_evidence import mark_review_targets
 
 router = APIRouter(prefix="/v1", tags=["reviews"])
 
@@ -112,7 +113,17 @@ def list_evidence_reviews(evidence_id: str, user: CurrentUser = Depends(s1_reade
 
 @router.get("/documents/{document_id}/reviews")
 def list_document_reviews(document_id: str, user: CurrentUser = Depends(s1_reader)) -> list[dict]:
-    return visible(_service.list_by_document(document_id), user)
+    """Every decision on the document, none removed. After a re-read, a decision that applies to a value
+    under another candidate id says which (``applies_to_candidate_id``), and one that no longer applies to
+    any value says None: the review screen leaves those values unreviewed."""
+
+    reviews = visible(_service.list_by_document(document_id), user)
+    from backend.app.api.documents import current_pipeline_service as pipeline_service
+
+    results = visible(pipeline_service().list_extraction_results_by_document(document_id), user)
+    if not results:
+        return reviews
+    return mark_review_targets(results[-1].get("items") or [], reviews)
 
 
 @router.get("/candidates/{candidate_id}/reviews/latest")
