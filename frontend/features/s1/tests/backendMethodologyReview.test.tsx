@@ -157,7 +157,7 @@ describe("Methodology review on real data", () => {
     expect(within(approach).getByText("We use the operational control approach.")).toBeTruthy();
     expect(within(approach).getByText("Pending")).toBeTruthy();
     fireEvent.click(within(approach).getByRole("button", { name: "GHG report.pdf, page 4" }));
-    expect(onOpenDocument).toHaveBeenCalledWith("d1");
+    expect(onOpenDocument).toHaveBeenCalledWith("d1", expect.objectContaining({ fieldId: expect.any(String) }));
 
     const period = row("Reporting period");
     expect(within(period).getByText("2025-01-01 to 2025-12-31")).toBeTruthy();
@@ -420,7 +420,7 @@ describe("Methodology review on real data", () => {
     it("works with a non-ASCII file name and opens the document", async () => {
       const { onOpenDocument } = await open(vi.fn(), withRef({ page_number: 2 }, "Müller Käserei – Zürich 排放.pdf"));
       fireEvent.click(link(/^Müller Käserei – Zürich 排放\.pdf, page 2$/));
-      expect(onOpenDocument).toHaveBeenCalledWith("d1");
+      expect(onOpenDocument).toHaveBeenCalledWith("d1", expect.objectContaining({ fieldId: expect.any(String) }));
     });
   });
   describe("row states", () => {

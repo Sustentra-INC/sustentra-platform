@@ -36,7 +36,7 @@ import {
   documentFacts,
   unmatchedFacilities,
 } from "../utils/documentView";
-import { ExtractionReview } from "../components/ExtractionReview";
+import { ExtractionReview, isSummaryDocument } from "../components/ExtractionReview";
 import type { RereadState } from "../components/EvidenceTree";
 import { EvidenceWorkspace, type WorkspaceProblem } from "../components/EvidenceWorkspace";
 import { S1Chrome, type NavKey, type WorkpaperUser } from "../components/S1Chrome";
@@ -59,6 +59,8 @@ import { VerificationResults } from "../components/VerificationResults";
 import { BackendVerificationResults } from "../components/BackendVerificationResults";
 import { BackendPageView } from "../components/BackendPageView";
 import { DocumentContentView } from "../components/DocumentContentView";
+import { SummaryDocumentReview } from "../components/SummaryDocumentReview";
+import type { SourceAt } from "../api/methodologyReview";
 import { BackendOutputScreen } from "../components/BackendOutputScreen";
 import { BackendDashboard } from "../components/BackendDashboard";
 import { OutputScreen } from "../components/OutputScreen";
@@ -855,7 +857,13 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     setAuditIntents((current) => [...current, intent]);
   }
 
-  function openExtraction(documentId: string, valueId?: string) {
+  /** A company summary document, or one opened from a methodology source, that has no extracted values: it opens with its methodology facts. */
+  function isSummaryView(documentId: string, field?: string): boolean {
+    if (reviewValuesView.some((v) => v.documentId === documentId)) return false;
+    return Boolean(field) || isSummaryDocument(evidenceView.find((e) => e.documentId === documentId));
+  }
+
+  function openExtraction(documentId: string, valueId?: string, at?: SourceAt) {
     const item = evidenceItems.find((i) => i.documentId === documentId);
     setActiveView({
       name: "extraction",
@@ -863,6 +871,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
       mode: "snippet",
       nodeKey: item ? nodeKeyForEvidence(item) : undefined,
       valueId,
+      // A methodology source: open at the cited page with its quote highlighted.
+      ...(at ? { field: at.fieldId, ...(at.entry !== null ? { entry: at.entry } : {}), ...(at.page ? { page: at.page } : {}) } : {}),
     });
   }
 
@@ -1439,7 +1449,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           STAGING_SCREENS ? (
             <BackendMethodologyReview
               engagementId={engagement.engagementId}
-              onOpenDocument={openExtraction}
+              onOpenDocument={(documentId, at) => openExtraction(documentId, undefined, at)}
               onError={handleSessionEnded}
               onActivity={setMethodologyActivity}
               followUp={{
@@ -1578,6 +1588,37 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           <section className="s1-content">
             <ContainerStateSurface state="loading" />
           </section>
+        ) : activeView.name === "extraction" && STAGING_SCREENS && dataMode === "backend" && isSummaryView(activeView.documentId, activeView.field) ? (
+          <SummaryDocumentReview
+            key={`${activeView.documentId}:${activeView.field ?? ""}:${activeView.entry ?? ""}:${activeView.page ?? ""}`}
+            engagementId={engagement.engagementId}
+            documentId={activeView.documentId}
+            fileName={evidenceView.find((e) => e.documentId === activeView.documentId)?.filename}
+            at={{ fieldId: activeView.field, entry: activeView.entry, page: activeView.page }}
+            backLabel={backLabel}
+            onBack={() => goBack({ name: "evidence" })}
+            onError={handleSessionEnded}
+            renderViewer={(viewer) => {
+              const format = evidenceItems.find((e) => e.documentId === activeView.documentId)?.format;
+              return format === "pdf" || format === "image" ? (
+                <BackendPageView
+                  key={viewer.viewerKey}
+                  documentId={activeView.documentId}
+                  span={viewer.span}
+                  openPage={viewer.page}
+                  marks={viewer.marks}
+                  selectedMarkIds={viewer.selectedMarkIds}
+                  pageNote={viewer.pageNote}
+                  onPickMark={viewer.onPickMark}
+                />
+              ) : (
+                <>
+                  {viewer.pageNote ? <p className="s1-mb-notlocated" role="status">{viewer.pageNote}</p> : null}
+                  <DocumentContentView key={activeView.documentId} documentId={activeView.documentId} marks={[]} selectedId={null} />
+                </>
+              );
+            }}
+          />
         ) : activeView.name === "extraction" ? (
           <ExtractionReview
             engagement={engagementForUser}

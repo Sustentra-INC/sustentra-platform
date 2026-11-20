@@ -177,6 +177,12 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
 `workpaper_items` row (kind `methodology`, `item_key` = field id), created on its first action.
 `PUT .../workpaper-items/methodology/{key}` is refused (422): decisions change only through the actions below.
 
+- `GET .../documents/{document_id}/locations` (s1_reader) answers `{"document_id", "items": [{field_id, entry, page, located, rects}]}`:
+  each suggestion (and each list entry's quote, `entry` its index, else null) read from that document, found on its cited
+  page in the PDF's own text. `located` is true only when the quote's words are printed there (`rects`: `{x, y, w, h}`
+  as 0..1 of the page, one per printed line). A quote not printed on the page, a page that is not a PDF or a scan with no
+  text layer comes back `located: false` with no rects; nothing is placed approximately. 404 for a document not in the
+  engagement or another org's.
 - `GET` (s1_reader; a provider_admin reads) answers
   `{"fields": [record...], "catalog": [def...], "groups": [{group, label}], "row_groups": [...], "ai": {...}}`.
   - `record`: `{field_id, suggestion, decision, history}`, and `user_added` (boolean; only rows the reviewer added can be deleted). A catalog def's `user_added` is the same
