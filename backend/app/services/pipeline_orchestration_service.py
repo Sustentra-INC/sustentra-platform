@@ -22,7 +22,12 @@ from backend.app.services.ai_extraction import AiExtraction
 from backend.app.services.ai_facility import AiFacility
 from backend.app.services.ai_routing import AiRouting, RoutingResult
 from backend.app.services.calculation_lines import SUMMARY_TYPES
-from backend.app.services.document_shape import NOT_EVIDENCE_MESSAGE, looks_like_a_note
+from backend.app.services.document_shape import (
+    CONTRACT_MESSAGE,
+    NOT_EVIDENCE_MESSAGE,
+    looks_like_a_contract,
+    looks_like_a_note,
+)
 from backend.app.services.approved_evidence_service import ApprovedEvidenceService
 from backend.app.services.classification_service import ClassificationService
 from backend.app.services.electricity_extractor import (
@@ -502,6 +507,19 @@ class PipelineOrchestrationService:
                         warnings[:] = [w for w in warnings if w != halt_reason["message"]]
                     halt_reason = {"code": HALT_UNSUPPORTED, "message": NOT_EVIDENCE_MESSAGE}
                     warnings.append(NOT_EVIDENCE_MESSAGE)
+
+                # A contract or agreement (an electric service agreement, a supply contract) is not a bill either:
+                # it states terms, not quantities used. It is never typed as a fuel or electricity record.
+                if ((canonical_type_id is None or canonical_type_id in LAYOUT_EXTRACTOR_TYPE_IDS)
+                        and looks_like_a_contract(parser_output)):
+                    canonical_type_id = None
+                    canonical_type_source = "none"
+                    extraction_targets = []
+                    ai_routing = None
+                    if halt_reason is not None:
+                        warnings[:] = [w for w in warnings if w != halt_reason["message"]]
+                    halt_reason = {"code": HALT_UNSUPPORTED, "message": CONTRACT_MESSAGE}
+                    warnings.append(CONTRACT_MESSAGE)
 
                 if canonical_type_source in ("classifier", "content_check") and self._ai_routing.shadow:
                     # Shadow mode: Claude reads the document too, and may only disagree in a warning.

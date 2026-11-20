@@ -35,6 +35,24 @@ REFRIGERANT_RE = re.compile(
 )
 MASS_RE = re.compile(r"\d\s*(?:lbs?|pounds?|kg|kilograms?)\b|\bcylinders?\b|\blbs?\b")
 CUE_BONUS = 0.3
+# A company's own GHG inventory summary: a title that names it, Scope 1 and Scope 2 totals, a tonnes-CO2e unit
+# (with or without the subscript) and a reporting year. Together they are a summary document (Block 1), whatever
+# the file is called, so Methodology review can read it. A fuel or electricity bill has none of these together.
+GHG_SUMMARY_TITLE_RE = re.compile(
+    r"\b(?:ghg|greenhouse gas|emissions?|carbon)\s+(?:inventory|summary|report)\b|\binventory\s+summary\b")
+GHG_SCOPE_1_RE = re.compile(r"\bscope\s*1\b")
+GHG_SCOPE_2_RE = re.compile(r"\bscope\s*2\b")
+GHG_TONNES_RE = re.compile(
+    r"\b(?:m?t|tonnes?|(?:metric\s+)?tons?)\s?co[2\u2082]\s?-?\s?e(?:q)?\b|\b(?:tonnes?|(?:metric\s+)?tons?)\s+co[2\u2082]\b")
+GHG_YEAR_RE = re.compile(r"\b20\d{2}\b|\breporting year\b")
+# A fuel bill, delivery ticket or fuel log that happens to carry emissions columns is still activity data: bill
+# rows, or a quantity of fuel with its unit, keep the summary cue from outranking the fuel type.
+GHG_ACTIVITY_RE = re.compile(
+    r"\bamount due\b|\btotal due\b|\bbilling period\b|\bservice period\b|\baccount number\b|\binvoice\b|\bpay by\b"
+    r"|\d[\d,.]*\s*(?:gal(?:lons?)?|therms?|ccf|mcf|mmbtu|dth|litres?|liters?)\b"
+    # an activity column even when the value and its unit are split (a header row "Fuel type | Gallons | Scope 1"):
+    r"|\b(?:gallons?|litres?|liters?|therms?|ccf|mcf|kwh|mwh|mmbtu|dth|fuel type|odometer|run hours|meter reading)\b")
+WORKBOOK_TYPE = "CT-GHG-WORKBOOK"
 SUMMARY_PREFIX = "CT-GHG-"
 STATIONARY_TYPE = "CT-S1-FUELQTY"
 MOBILE_TYPE = "CT-S1-MOBFUEL"
@@ -259,6 +277,10 @@ class ClassificationService:
             credits[MOBILE_TYPE] = "cue: vehicle distance and fuel volume"
         if REFRIGERANT_RE.search(search_text) and MASS_RE.search(search_text):
             credits[REFRIGERANT_TYPE] = "cue: refrigerant name with a mass or cylinders"
+        if (GHG_SUMMARY_TITLE_RE.search(search_text) and GHG_SCOPE_1_RE.search(search_text)
+                and GHG_SCOPE_2_RE.search(search_text) and GHG_TONNES_RE.search(search_text)
+                and GHG_YEAR_RE.search(search_text) and not GHG_ACTIVITY_RE.search(search_text)):
+            credits[WORKBOOK_TYPE] = "cue: GHG inventory summary (title, Scope 1 and 2, tonnes CO2e, year)"
 
         for type_id, label in credits.items():
             of_type = [c for c in candidates if c["canonical_type_id"] == type_id]
