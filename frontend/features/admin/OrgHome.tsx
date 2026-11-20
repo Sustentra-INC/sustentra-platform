@@ -40,6 +40,13 @@ export function OrgHome({ me, slug }: { me: Me; slug: string }) {
           Open workpaper
         </Link>
       </div>
+      {me.role !== "provider_admin" ? (
+        <div className={styles.actions}>
+          <Link className={`${styles.button} ${styles.ghost}`} href={`/org/${slug}/tasks`}>
+            My tasks
+          </Link>
+        </div>
+      ) : null}
       {isAdmin ? (
         <div className={styles.actions}>
           <Link className={styles.button} href={`/org/${slug}/admin/users`}>

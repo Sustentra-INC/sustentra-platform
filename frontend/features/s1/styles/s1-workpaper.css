@@ -3782,3 +3782,24 @@ button.s1-sch-month:focus-visible { outline: var(--focus-ring); outline-offset: 
 .s1-fac__chip-remove svg { width: 0.85rem; height: 0.85rem; }
 .s1-fac__problem { font-size: var(--text-sm); color: var(--state-blocking-fg); }
 .s1-fac__notes { list-style: none; margin: 0; padding: var(--sp-3); display: flex; flex-direction: column; gap: var(--sp-1); font-size: var(--text-sm); color: var(--state-open-fg); background: var(--state-open-bg); border: var(--border-hairline); border-color: var(--state-open-line); border-radius: var(--radius-input); }
+
+/* ===================================================================
+   Notification bell (tasks): unread count and the latest notifications, in the header.
+   ========================================================================== */
+.s1-bell { position: relative; display: inline-flex; align-self: center; }
+.s1-bell__button { position: relative; display: inline-grid; place-items: center; width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: var(--radius-input); background: none; color: var(--ink-2); cursor: pointer; }
+.s1-bell__button:hover { background: var(--sf-sunken); color: var(--ink); }
+.s1-bell__button svg { width: 1.1rem; height: 1.1rem; }
+.s1-bell__count { position: absolute; top: 0; right: 0; min-width: 1.1rem; padding: 0 var(--sp-1); border-radius: var(--radius-chip); background: var(--state-blocking-fg); color: var(--sf-card); font-size: var(--text-sm); font-weight: var(--weight-strong); line-height: 1.1rem; text-align: center; }
+.s1-bell__panel { position: absolute; top: 100%; right: 0; z-index: calc(var(--z-modal) - 1); display: grid; width: min(22rem, 90vw); margin-top: var(--sp-1); border: var(--border-hairline); border-radius: var(--radius-input); background: var(--sf-card); box-shadow: 0 0.75rem 2rem rgba(23, 23, 20, 0.16); }
+.s1-bell__head, .s1-bell__foot { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-2) var(--sp-3); }
+.s1-bell__head { border-bottom: var(--border-hairline); }
+.s1-bell__foot { border-top: var(--border-hairline); }
+.s1-bell__title { font-size: var(--text-md); font-weight: var(--weight-strong); color: var(--ink); }
+.s1-bell__empty { margin: 0; padding: var(--sp-4) var(--sp-3); }
+.s1-bell__list { display: grid; max-height: 20rem; margin: 0; padding: 0; overflow-y: auto; list-style: none; }
+.s1-bell__item { display: grid; gap: var(--sp-1); width: 100%; padding: var(--sp-2) var(--sp-3); border: 0; border-bottom: var(--border-hairline); background: none; font: inherit; text-align: left; color: var(--ink); cursor: pointer; }
+.s1-bell__item:hover, .s1-bell__item:focus-visible { background: var(--accent-softer); }
+.s1-bell__item.is-unread { background: var(--accent-soft); font-weight: var(--weight-strong); }
+.s1-bell__text { overflow-wrap: anywhere; font-size: var(--text-md); }
+.s1-bell__when { font-size: var(--text-sm); font-weight: var(--weight-regular); }

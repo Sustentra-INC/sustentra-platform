@@ -14,6 +14,8 @@ import type {
 } from "../types";
 import type { QualityCheck } from "../api/recalculation";
 import { qualityIssueLines } from "./QualityChecksPanel";
+import { useAssignTask } from "../../tasks/AssignTaskContext";
+import { documentLink } from "../../tasks/taskLinks";
 import { ActionMenu, type ActionMenuEntry } from "./ActionMenu";
 import { AddToRequestsModal, type AddToRequestsTarget } from "./AddToRequestsModal";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -802,6 +804,7 @@ function WorkspaceRow(props: {
   onReinstate: () => void;
 }) {
   const { item, items, asks, engagement } = props;
+  const assign = useAssignTask();
   const withdrawn = item.disposition === "withdrawn";
   const proc = processingDisplay(item);
   const issues = [
@@ -917,6 +920,17 @@ function WorkspaceRow(props: {
           onOpenChange={props.onMenu}
           onOpen={() => props.onOpenExtraction(item.documentId)}
           onAddToRequests={props.onAddToRequests}
+          onAssign={
+            assign
+              ? () =>
+                  assign({
+                    kind: "Document",
+                    label: item.filename,
+                    link: documentLink(item.documentId, engagement.engagementId),
+                    title: `Review ${item.filename}`,
+                  })
+              : undefined
+          }
           onOpenRequests={props.onOpenRequests}
           onSetType={() => props.onStartEdit("type")}
           onSetFacility={() => props.onStartEdit("facility")}
@@ -1020,6 +1034,7 @@ function RowMenu({
   onOpenChange,
   onOpen,
   onAddToRequests,
+  onAssign,
   onOpenRequests,
   onSetType,
   onSetFacility,
@@ -1037,6 +1052,8 @@ function RowMenu({
   onOpenChange: (open: boolean) => void;
   onOpen: () => void;
   onAddToRequests: () => void;
+  /** Absent where assigning is not available (the demo site). */
+  onAssign?: () => void;
   onOpenRequests: () => void;
   onSetType: () => void;
   onSetFacility: () => void;
@@ -1058,6 +1075,7 @@ function RowMenu({
     : [
         { label: "Open extraction", action: onOpen },
         hasAsk ? { label: "View in requests", action: onOpenRequests } : { label: "Add to requests", action: onAddToRequests },
+        ...(onAssign ? [{ label: "Assign to…", action: onAssign }] : []),
         { label: "Set type", action: onSetType },
         { label: "Set facility", action: onSetFacility },
         { label: "Add note", action: onAddNote },

@@ -213,6 +213,11 @@
   margin: 0;
 }
 
+.overdue {
+  color: var(--state-blocking-fg, #a12d2d);
+  font-weight: var(--weight-strong, 600);
+}
+
 .muted {
   color: var(--ink-3, #6b6b63);
   font-size: 0.9rem;
