@@ -67,7 +67,7 @@ def test_a_wrong_line_is_dropped_but_a_unique_other_line_is_found() -> None:
 
 
 def test_an_unknown_document_is_dropped() -> None:
-    kept, dropped = check(answer(periods=[{"start": "2024-01-01", "end": "2024-12-31", **cite("L3", "January 1 to December 31, 2024", "D9")}]))
+    kept, dropped = check(answer(periods=[{"start": "2024-01-01", "end": "2024-12-31", "start_implied": False, **cite("L3", "January 1 to December 31, 2024", "D9")}]))
     assert kept == [] and dict(dropped) == {"unknown_document": 1}
 
 
@@ -270,14 +270,14 @@ def test_values_over_the_store_limits_are_invalid() -> None:
 
 # --- reporting period: two dates, both printed in the quote ----------------------------------
 
-def period(start: str, end: str, quote: str, line: str = "L3") -> dict[str, str]:
-    return {"start": start, "end": end, **cite(line, quote)}
+def period(start: str, end: str, quote: str, line: str = "L3", implied: bool = False) -> dict[str, Any]:
+    return {"start": start, "end": end, "start_implied": implied, **cite(line, quote)}
 
 
 def test_a_period_with_both_dates_in_long_form_is_kept_as_iso() -> None:
     kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "January 1 to December 31, 2024")]))
     assert dict(dropped) == {} and [k.field_id for k in kept] == ["reporting_period"]
-    assert kept[0].suggestion["value"] == {"start": "2024-01-01", "end": "2024-12-31"}
+    assert kept[0].suggestion["value"] == {"start": "2024-01-01", "end": "2024-12-31", "basis": "Calendar year"}
 
 
 @pytest.mark.parametrize("line", [
@@ -304,6 +304,70 @@ def test_a_quote_without_both_dates_drops_the_suggestion_and_counts_it(line: str
     kept, dropped = check(answer(periods=[period("2025-01-01", "2025-12-31", line.split(": ", 1)[1], "L1")]),
                           [doc([(1, line)])])
     assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+# Synthetic quotes modelled on the shapes of three public statements (paraphrased, not copied).
+YEAR_ENDED = "Management asserts the operational GHG emissions for the year ended December 31, 2024 are fairly stated."
+
+
+def test_an_end_date_that_closes_a_year_gives_an_implied_start_flagged_as_such() -> None:
+    # JPMorgan-style management assertion: only the end date is printed.
+    kept, dropped = check(answer(periods=[period("2024-01-01", "2024-12-31", "for the year ended December 31, 2024", "L1", True)]),
+                          [doc([(1, YEAR_ENDED)])])
+    assert dict(dropped) == {} and [k.field_id for k in kept] == ["reporting_period"]
+    assert kept[0].suggestion["value"] == {"start": "2024-01-01", "end": "2024-12-31", "start_implied": True,
+                                           "basis": "Calendar year"}
+    assert "December 31, 2024" in kept[0].suggestion["quote"]  # the quote still holds the end date
+
+
+def test_the_implied_flag_is_worked_out_here_not_taken_from_the_reply() -> None:
+    quote = "for the year ended December 31, 2024"
+    kept, _ = check(answer(periods=[period("2024-01-01", "2024-12-31", quote, "L1", False)]), [doc([(1, YEAR_ENDED)])])
+    assert kept[0].suggestion["value"]["start_implied"] is True  # the start is not printed, so it is implied
+    both = "from January 1, 2024 for the year ended December 31, 2024"
+    kept, _ = check(answer(periods=[period("2024-01-01", "2024-12-31", both, "L1", True)]), [doc([(1, both)])])
+    assert "start_implied" not in kept[0].suggestion["value"]  # both printed: nothing is implied
+
+
+def test_a_fiscal_year_that_is_not_the_calendar_year_is_derived_as_fiscal() -> None:
+    line = "Data covers the fiscal year ended June 30, 2025."
+    kept, dropped = check(answer(periods=[period("2024-07-01", "2025-06-30", "fiscal year ended June 30, 2025", "L1", True)]),
+                          [doc([(1, line)])])
+    assert dict(dropped) == {}
+    assert kept[0].suggestion["value"] == {"start": "2024-07-01", "end": "2025-06-30", "start_implied": True,
+                                           "basis": "Fiscal year"}
+
+
+@pytest.mark.parametrize(("line", "quote", "start", "end"), [
+    ("Verified for the twelve months ending March 31, 2025.", "twelve months ending March 31, 2025", "2024-04-01", "2025-03-31"),
+    ("Emissions for the 12 months ended Feb 29, 2024 (tCO\u2082e) are shown.", "12 months ended Feb 29, 2024", "2023-03-01", "2024-02-29"),
+    ("Year ended 31 December 2023 \u2014 donn\u00e9es en tCO\u2082e, Z\u00fcrich\u00a0site.", "Year ended 31 December 2023", "2023-01-01", "2023-12-31"),
+])
+def test_other_year_wordings_and_non_ascii_text_give_the_implied_start(line: str, quote: str, start: str, end: str) -> None:
+    kept, dropped = check(answer(periods=[period(start, end, quote, "L1", True)]), [doc([(1, line)])])
+    assert dict(dropped) == {} and kept[0].suggestion["value"]["start"] == start
+    assert kept[0].suggestion["value"]["start_implied"] is True
+
+
+@pytest.mark.parametrize(("line", "quote", "start", "end"), [
+    ("Emissions as of December 31, 2024 are fairly stated.", "as of December 31, 2024", "2024-01-01", "2024-12-31"),  # a point in time, not a year
+    ("Emissions for the year ended December 31, 2024.", "year ended December 31, 2024", "2024-03-01", "2024-12-31"),  # a start that is not the year's
+    ("Emissions for the year ended December 31, 2024.", "year ended December 31, 2024", "2024-01-01", "2024-12-30"),  # an end that is not printed
+    ("The company reports on a calendar reporting year basis.", "calendar reporting year", "2024-01-01", "2024-12-31"),  # no date at all
+    ("Reporting year 2024 (dates not given).", "Reporting year 2024", "2024-01-01", "2024-12-31"),
+])
+def test_an_implied_start_needs_a_printed_end_a_year_wording_and_the_year_the_end_closes(line: str, quote: str, start: str, end: str) -> None:
+    kept, dropped = check(answer(periods=[period(start, end, quote, "L1", True)]), [doc([(1, line)])])
+    assert kept == [] and dict(dropped) == {"value_not_in_quote": 1}
+
+
+def test_a_document_that_states_no_period_gives_no_period() -> None:
+    kept, dropped = check(answer(), [doc([(1, "Our approach to sustainability is described below.")])])
+    assert kept == [] and dict(dropped) == {}
+
+
+def test_the_prompt_teaches_the_implied_start() -> None:
+    assert "start_implied" in mp.SYSTEM_PROMPT and "year ended December 31, 2024" in mp.SYSTEM_PROMPT
 
 
 def test_a_reversed_or_impossible_range_is_invalid() -> None:

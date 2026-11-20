@@ -578,3 +578,53 @@ describe("Methodology review on real data", () => {
     });
   });
 });
+
+describe("a reporting period with an implied start", () => {
+  const impliedFixture = (value: unknown, quote = "for the year ended December 31, 2024") => {
+    const d = fixture() as { fields: Record<string, unknown>[] };
+    const record = d.fields.find((f) => f.field_id === "reporting_period")!;
+    record.decision = null;
+    record.history = [];
+    record.suggestion = {
+      value,
+      quote,
+      document_id: "d1",
+      file_name: "Assertion.pdf",
+      source_reference: { page_number: 1 },
+      origin: "ai",
+      model: "m",
+      request_id: "r",
+      suggested_at: "2026-11-01T10:00:00Z",
+    };
+    return d;
+  };
+
+  it("says the start is implied and shows the derived calendar or fiscal choice beside the quote that holds the end date", async () => {
+    await open(vi.fn(), impliedFixture({ start: "2024-01-01", end: "2024-12-31", start_implied: true, basis: "Calendar year" }));
+    const period = row("Reporting period");
+    expect(within(period).getByText("2024-01-01 (implied) to 2024-12-31, calendar year")).toBeTruthy();
+    expect(within(period).getByText("for the year ended December 31, 2024")).toBeTruthy();
+    cleanup();
+    await open(vi.fn(), impliedFixture({ start: "2024-07-01", end: "2025-06-30", start_implied: true, basis: "Fiscal year" }, "fiscal year ended June 30, 2025"));
+    expect(within(row("Reporting period")).getByText("2024-07-01 (implied) to 2025-06-30, fiscal year")).toBeTruthy();
+  });
+
+  it("shows a stated start without the word implied, and a period with no derived choice as the two dates", async () => {
+    await open(vi.fn(), impliedFixture({ start: "2025-01-01", end: "2025-06-30", basis: "Not stated" }));
+    expect(within(row("Reporting period")).getByText("2025-01-01 to 2025-06-30, not stated")).toBeTruthy();
+    cleanup();
+    await open(vi.fn(), impliedFixture({ start: "2025-01-01", end: "2025-12-31" }));
+    expect(within(row("Reporting period")).getByText("2025-01-01 to 2025-12-31")).toBeTruthy();
+  });
+
+  it("edits as two dates only, so a typed start is never sent as implied", async () => {
+    await open(vi.fn(), impliedFixture({ start: "2024-01-01", end: "2024-12-31", start_implied: true, basis: "Calendar year" }));
+    const period = row("Reporting period");
+    fireEvent.click(within(period).getByRole("button", { name: "Edit: Reporting period" }));
+    fireEvent.change(within(period).getByLabelText("Start date: Reporting period"), { target: { value: "2024-02-01" } });
+    fireEvent.click(within(period).getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls()).toContainEqual([`${BASE}/reporting_period/edit`, expect.objectContaining({ body: { value: { start: "2024-02-01", end: "2024-12-31" } } })])
+    );
+  });
+});

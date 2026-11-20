@@ -369,14 +369,15 @@ def test_migration_0016_widens_the_kind_check_and_downgrade_restores_it() -> Non
 def test_the_reporting_period_takes_two_real_dates_and_refuses_the_rest_with_a_sentence() -> None:
     eid = create()["id"]
     good = act(eid, "reporting_period", "edit", {"value": {"start": "2025-01-01", "end": "2025-12-31"}})
-    assert good.status_code == 200 and good.json()["decision"]["value"] == {"start": "2025-01-01", "end": "2025-12-31"}
+    assert good.status_code == 200 and good.json()["decision"]["value"] == {"start": "2025-01-01", "end": "2025-12-31", "basis": "Calendar year"}
     for bad, words in (({"start": "2025-12-31", "end": "2025-01-01"}, "can't be before"),
                        ({"start": "2025-13-45", "end": "2025-12-31"}, "not a real date"),
                        ({"start": "2025-01-01"}, "both a start date and an end date"),
                        ("January 1 to December 31, 2025", "both a start date and an end date")):
         refused = act(eid, "reporting_period", "edit", {"value": bad})
         assert refused.status_code == 422 and words in refused.json()["detail"]
-    assert record(eid, "reporting_period")["decision"]["value"] == {"start": "2025-01-01", "end": "2025-12-31"}
+    assert record(eid, "reporting_period")["decision"]["value"] == {
+        "start": "2025-01-01", "end": "2025-12-31", "basis": "Calendar year"}
 
 
 def test_an_old_text_period_is_kept_shown_as_a_value_and_replaced_only_by_two_dates() -> None:

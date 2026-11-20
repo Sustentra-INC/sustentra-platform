@@ -104,8 +104,10 @@ function valueText(value: MethodologyValue | undefined): string {
     }
     return value.join(", ");
   }
-  if (typeof value === "object" && typeof value.start === "string" && typeof value.end === "string" && Object.keys(value).length === 2) {
-    return `${value.start} to ${value.end}`; // a date range
+  if (typeof value === "object" && typeof value.start === "string" && typeof value.end === "string" && Object.keys(value).every((k) => ["start", "end", "start_implied", "basis"].includes(k))) {
+    // A date range: a start the report does not print reads "(implied)"; the derived basis follows ("Calendar year").
+    const basis = typeof value.basis === "string" && value.basis ? `, ${value.basis.toLowerCase()}` : "";
+    return `${value.start}${value.start_implied === true ? " (implied)" : ""} to ${value.end}${basis}`;
   }
   if (typeof value === "object") {
     return Object.entries(value)

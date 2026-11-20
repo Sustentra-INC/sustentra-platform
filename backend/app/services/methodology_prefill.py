@@ -85,7 +85,8 @@ class TextSuggestion(_Cited):
 
 class PeriodSuggestion(_Cited):
     start: str  # YYYY-MM-DD
-    end: str  # YYYY-MM-DD
+    end: str  # YYYY-MM-DD, printed in the quote
+    start_implied: bool  # true: the quote prints only the end of a twelve-month period and the start is worked out
 
 
 class EstimationSuggestion(_Cited):
@@ -207,6 +208,18 @@ _OPTION_TERMS = {
     "Landlord reports": ("landlord report", "landlord reports", "landlord"),
     "Lease agreements": ("lease agreement", "lease agreements"),
 }
+# What a quote must say for a start date it does not print to be taken from its end date: that the period is a year.
+_YEAR_CUES = re.compile(
+    r"\b(?:years?\s+(?:ended|ending|end)|(?:12|twelve)[- ]months?\s+(?:ended|ending|to)|"
+    r"(?:fiscal|calendar|reporting)\s+year)\b")
+
+
+def states_a_year(quote: str) -> bool:
+    """Whether the quote calls the period a year ("year ended December 31, 2024", "12 months ending June 30")."""
+
+    return _YEAR_CUES.search(norm(quote)) is not None
+
+
 _NEGATIONS = frozenset({"not", "no", "never", "without", "none", "neither", "nor", "cannot"})
 
 
@@ -313,10 +326,14 @@ What the items mean
   gas:nf3) the document states, "Included" (the gas is covered by the inventory) or "Declared absent"
   (the document says the gas is not emitted or not applicable). The quote must name the gas. If a
   document does not say, leave the gas out: do not guess from the industry.
-- periods: the inventory's reporting period: its start and end dates, each as YYYY-MM-DD. Both
-  dates must be printed in the quote (for example "January 1 to December 31, 2024", or
-  "1/1/2025 - 12/31/2025"). If the document shows several periods (such as the current and the
-  prior year), give only the reporting year of the inventory. At most one.
+- periods: the inventory's reporting period: its start and end dates, each as YYYY-MM-DD. The end
+  date must be printed in the quote, and so must the start (for example "January 1 to December 31,
+  2024", or "1/1/2025 - 12/31/2025"), unless the document states only the end of a year ("for the
+  year ended December 31, 2024", "12 months ending June 30, 2025"): then give the start as the
+  first day of that year (2024-01-01; 2024-07-01) and set start_implied to true. Otherwise
+  start_implied is false. Never set start_implied for a period the quote does not call a year, and
+  never give an end date the quote does not print. If the document shows several periods (such as
+  the current and the prior year), give only the reporting year of the inventory. At most one.
 - texts: exclusion:* fields
   (what is left out of the organizational boundary, of this inventory, or under a materiality
   threshold, in the company's own words), calculation:* fields (how emissions are calculated,
@@ -594,8 +611,16 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         if value is None:
             continue
         printed = dates_in(period.quote)
-        wanted = (rules.parse_iso_date(value["start"]), rules.parse_iso_date(value["end"]))
-        if not all(d in printed for d in wanted):  # both dates must be printed in the quote
+        start, end = rules.parse_iso_date(value["start"]), rules.parse_iso_date(value["end"])
+        assert start is not None and end is not None  # validated above
+        if end not in printed:  # the end date is always printed in the quote
+            dropped["value_not_in_quote"] += 1
+            continue
+        if start in printed:  # both printed: nothing is implied, whatever the reply says
+            value.pop("start_implied", None)
+        elif start == rules.year_start_for(end) and states_a_year(period.quote):
+            value["start_implied"] = True  # the start is worked out from the stated year, and shown as implied
+        else:
             dropped["value_not_in_quote"] += 1
             continue
         keep(period, value, "reporting_period", None)

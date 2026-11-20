@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 
@@ -190,8 +190,33 @@ def test_public_shape() -> None:
 def test_the_reporting_period_is_two_dates() -> None:
     f = field("reporting_period")
     assert f["kind"] == "date_range"
-    assert m.validate_value(f, {"start": "2025-01-01", "end": "2025-12-31"}) == {"start": "2025-01-01", "end": "2025-12-31"}
+    assert m.validate_value(f, {"start": "2025-01-01", "end": "2025-12-31"}) == {
+        "start": "2025-01-01", "end": "2025-12-31", "basis": "Calendar year"}
     assert m.validate_value(f, {"start": "2024-02-29", "end": "2024-02-29"})["end"] == "2024-02-29"  # one day, leap day
+
+
+def test_the_period_basis_is_derived_from_the_two_dates() -> None:
+    f = field("reporting_period")
+    derive = lambda a, b: m.validate_value(f, {"start": a, "end": b})["basis"]  # noqa: E731
+    assert derive("2024-01-01", "2024-12-31") == "Calendar year"
+    assert derive("2024-07-01", "2025-06-30") == "Fiscal year"
+    assert derive("2023-03-01", "2024-02-29") == "Fiscal year"  # a leap day does not break the year
+    assert derive("2024-01-01", "2024-06-30") == "Not stated"  # six months: neither
+    assert derive("2024-02-29", "2024-02-29") == "Not stated"
+    assert m.year_start_for(date(2025, 2, 28)) == date(2024, 3, 1)
+    assert m.year_start_for(date(2024, 2, 28)) == date(2023, 3, 1)
+
+
+def test_the_implied_flag_is_kept_only_when_true_and_the_basis_is_never_taken_from_the_caller() -> None:
+    f = field("reporting_period")
+    kept = m.validate_value(f, {"start": "2024-01-01", "end": "2024-12-31", "start_implied": True, "basis": "Fiscal year"})
+    assert kept == {"start": "2024-01-01", "end": "2024-12-31", "start_implied": True, "basis": "Calendar year"}
+    assert "start_implied" not in m.validate_value(f, {"start": "2024-01-01", "end": "2024-12-31", "start_implied": False})
+    with pytest.raises(m.MethodologyInvalid):
+        m.validate_value(f, {"start": "2024-01-01", "end": "2024-12-31", "start_implied": "yes"})
+    # a reviewer's edit sends two dates only: the flag does not survive a typed start
+    edited = m.edit(m.new_record("reporting_period"), f, {"start": "2024-02-01", "end": "2024-12-31"}, ACTOR, NOW)
+    assert "start_implied" not in edited["decision"]["value"] and edited["decision"]["value"]["basis"] == "Not stated"
 
 
 @pytest.mark.parametrize("bad", [
@@ -220,7 +245,7 @@ def test_an_old_text_value_has_a_value_and_survives_other_actions() -> None:
     assert m.has_value(old) and m.display_state(old, m.new_meta()) == "has_value"
     assert m.public(old)["decision"]["value"] == "FY2024 (1 janvier – 31 décembre)"
     edited = m.edit(old, field("reporting_period"), {"start": "2024-01-01", "end": "2024-12-31"}, ACTOR, NOW)
-    assert edited["decision"]["value"] == {"start": "2024-01-01", "end": "2024-12-31"}
+    assert edited["decision"]["value"] == {"start": "2024-01-01", "end": "2024-12-31", "basis": "Calendar year"}
 
 
 # --- GWP: the 500-year horizon, and one row per extra set --------------------------------------
