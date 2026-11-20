@@ -27,7 +27,7 @@ import re
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from typing import Any, Sequence
+from typing import Any, Callable, Sequence
 
 from backend.app.domain import fuel_units
 from backend.app.services.facility_identifiers import clean_account
@@ -40,6 +40,8 @@ HALT_UNREADABLE = "unreadable_document"
 HALT_UNSUPPORTED = "unsupported_document"
 
 RECORD_FIELDS = ("fuel_type", "activity_quantity", "activity_unit", "service_period_start", "service_period_end")
+ACCOUNT_SUMMARY_NOTE = ("A statement of account in this file restates the invoices that are in it too, so it was not "
+                        "counted as a reading of its own.")
 DOCUMENT_FIELDS = ("facility_name", "service_address", "supplier_name", "account_number", "meter_number",
                    "statement_date")
 KNOWN_FIELDS = RECORD_FIELDS + DOCUMENT_FIELDS
@@ -1064,10 +1066,12 @@ class StationaryCombustionExtractor:
             candidates: list[dict] = []
             part_notes = list(notes) + ([split_note] if split_note else [])
             first_index = 1
+            inherited = self._inherited_values(rows, [part for part, *_ in parts])
             for part, part_hint, part_records, more in parts:
                 candidates.extend(self._statement_candidates(
                     part, parser_output, targets, evidence_id, document_id, self._part_energy(part) or doc_fuel,
-                    list(part_records), part_hint, first_index=first_index, multi=True))
+                    list(part_records), part_hint, first_index=first_index, multi=True,
+                    inherited=inherited))
                 first_index += len(part_records)
                 part_notes.extend(n for n in more if n not in part_notes)
             return ExtractionOutcome(candidates=candidates, records=first_index - 1, notes=part_notes)
@@ -1087,7 +1091,38 @@ class StationaryCombustionExtractor:
             records = self._headline_quantity_records(rows)
         if not records and self.INLINE_TOTAL_QUANTITY:  # the weakest read, so it runs only when nothing else found one
             records = self._inline_total_records(rows, energy)
-        return records, []
+        return self._without_account_summaries(rows, records)
+
+    def _without_account_summaries(self, rows: Sequence[Row], records: list[UsageRecord],
+                                   ) -> tuple[list[UsageRecord], list[str]]:
+        """A "Statement of Account" page that restates invoices which are in the file too is not a reading of
+        its own: its usage is counted once, from the invoices (and the reviewer is told)."""
+
+        from backend.app.services.statement_segments import account_summary_pages  # it imports this module
+
+        pages = account_summary_pages(rows)
+        if not pages:
+            return records, []
+        kept = [r for r in records if r.quantity.row is None or r.quantity.row.page not in pages]
+        if not kept or len(kept) == len(records):
+            return records, []
+        return kept, [ACCOUNT_SUMMARY_NOTE]
+
+    def _inherited_values(self, rows: Sequence[Row], parts: Sequence[Sequence[Row]]) -> dict[str, Located | None]:
+        """What a statement of a bundle that does not name its own takes from the bundle: its facility, address,
+        supplier, account and meter. A value is taken only when the statements that do name one agree on it
+        (two accounts in one file are two accounts: a statement that names none is not given either)."""
+
+        def own(read: Callable[[Sequence[Row]], Located | None]) -> Located | None:
+            found = {(v.raw or "").strip().lower(): v for part in parts if (v := read(part)) is not None}
+            if len(found) > 1:
+                return None
+            return next(iter(found.values()), None) or read(rows)
+
+        facility = own(lambda r: self._facility(r)[0])
+        address = own(lambda r: self._address(r) or self._facility(r)[1])
+        return {"facility_name": facility, "service_address": address, "supplier_name": own(self._supplier),
+                "account_number": own(self._account), "meter_number": own(self._bill_meter)}
 
     def _part_energy(self, rows: Sequence[Row]) -> Located | None:
         """What one statement says it is for (its fuel, or its energy type)."""
@@ -1120,7 +1155,8 @@ class StationaryCombustionExtractor:
     def _statement_candidates(self, rows: list[Row], parser_output: dict, targets: Sequence[dict], evidence_id: str,
                               document_id: str, doc_fuel: Located, record_list: Sequence[UsageRecord | None],
                               unit_hint: Located | None, *, first_index: int = 1,
-                              multi: bool | None = None) -> list[dict]:
+                              multi: bool | None = None,
+                              inherited: dict[str, Located | None] | None = None) -> list[dict]:
         """One bill's (or one statement's) candidates: its own facility, address, supplier, account and
         period, and one set of fields per usage record, numbered from ``first_index``."""
 
@@ -1135,6 +1171,8 @@ class StationaryCombustionExtractor:
         facility, address_from_facility = self._facility(rows)
         document_values["facility_name"] = facility
         document_values["service_address"] = self._address(rows) or address_from_facility
+        for name, value in (inherited or {}).items():  # a statement of a bundle that names none takes the bundle's
+            document_values[name] = document_values.get(name) or value
         period = self._document_period(rows)
 
         candidates: list[dict] = []

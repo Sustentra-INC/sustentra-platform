@@ -31,7 +31,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, timedelta
 
 from backend.app.domain import fuel_units
 from backend.app.services.stationary_combustion_extractor import (
@@ -244,10 +244,16 @@ def split_statements(rows: Sequence[Row]) -> Split:
     periods = [(at, period) for at, (name, period) in labelled if name == label]
 
     # where each new statement's period line sits (a period the current statement already states is not new)
+    def page_accounts(at: int) -> set[str]:
+        return _accounts([r for r in rows if r.page == rows[at].page])
+
     firsts = [periods[0]]
     merged = False  # a period that differs from its statement's but was taken for the same statement
     for at, period in periods[1:]:
-        if not _same_statement(firsts[-1][1], period):
+        before, here = page_accounts(firsts[-1][0]), page_accounts(at)
+        if before and here and not before & here:
+            firsts.append((at, period))  # another account is another statement, whatever its period
+        elif not _same_statement(firsts[-1][1], period):
             if _runs_backward(firsts[-1][1], period):
                 return Split(None, SPLIT_NOTE)  # a bundle runs forward in time; this one does not
             firsts.append((at, period))
@@ -290,3 +296,64 @@ def split_statements(rows: Sequence[Row]) -> Split:
         if not ((title is not None and title in titles) or (first_accounts & _accounts(part))):
             return Split(None, SPLIT_NOTE)
     return Split(parts, note)
+
+
+# A statement of account lists the invoices it summarises ("Statement of Account", "Account Summary"): it is
+# not a statement of usage of its own.
+_ACCOUNT_SUMMARY_RE = re.compile(
+    r"\b(?:statements? of accounts?|account statements?|account summary|summary of (?:invoices|bills|statements))\b")
+
+
+def account_summary_pages(rows: Sequence[Row]) -> set[int]:
+    """The pages that are an account summary restating invoices that are in the file too: a page headed
+    "Statement of Account" (among its first rows) whose account number and billing period are also stated by
+    another page that is not itself a summary, with a period inside the summary's. Such a page is not a
+    record: its usage is the invoices' usage. A summary whose invoices are not all there, or with no period
+    or account to match them on, is left alone."""
+
+    by_page: dict[int, list[Row]] = {}
+    for row in rows:
+        by_page.setdefault(row.page or 0, []).append(row)
+    summaries = {page for page, page_rows in by_page.items()
+                 if any(_ACCOUNT_SUMMARY_RE.search(_row_text(r)) for r in page_rows[:_PAGE_HEADING_ROWS])}
+
+    def period_of(page_rows: Sequence[Row]) -> tuple[str, str] | None:
+        return next((p for r in page_rows if (p := statement_period(r)) is not None), None)
+
+    found: set[int] = set()
+    for page in summaries:
+        accounts, period = _accounts(by_page[page]), period_of(by_page[page])
+        if not accounts or period is None:
+            continue
+        invoices = [(other, p) for other, other_rows in by_page.items()
+                    if other not in summaries and accounts & _accounts(other_rows)
+                    and (p := period_of(other_rows)) is not None]
+        if _covered(period, [p for _, p in invoices if _inside(p, period)]):
+            found.add(page)
+    return found
+
+
+def _covered(period: tuple[str, str], invoices: list[tuple[str, str]]) -> bool:
+    """Whether the invoices' periods, end to end, run across the whole of ``period`` (give or take the few days a
+    summary and its invoices state differently): a summary of three invoices with one of them in the file is
+    not covered, and is kept."""
+
+    try:
+        reach = _days(period[0]) - timedelta(days=1)
+        for start, end in sorted(invoices):
+            if _days(start) - reach > timedelta(days=SAME_STATEMENT_START_DAYS + 1):
+                return False  # a gap before this invoice
+            reach = max(reach, _days(end))
+        return reach >= _days(period[1]) - timedelta(days=SAME_STATEMENT_START_DAYS)
+    except ValueError:
+        return False
+
+
+def _inside(inner: tuple[str, str], outer: tuple[str, str]) -> bool:
+    """Whether ``inner`` lies within ``outer``, or states it a few days off (a summary and its invoice)."""
+
+    try:
+        return (_days(outer[0]) <= _days(inner[0]) and _days(inner[1]) <= _days(outer[1])) \
+            or _same_statement(outer, inner)
+    except ValueError:
+        return False

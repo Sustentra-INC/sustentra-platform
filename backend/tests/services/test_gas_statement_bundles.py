@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 
 from backend.app.services.extraction_target_service import ExtractionTargetService
-from backend.app.services.stationary_combustion_extractor import StationaryCombustionExtractor
+from backend.app.services.stationary_combustion_extractor import ACCOUNT_SUMMARY_NOTE, StationaryCombustionExtractor
 from backend.tests.services.recalc_store import RecalcStore, recalculate
 from backend.app.services.statement_segments import SPLIT_NOTE, split_statements
 
@@ -273,3 +273,125 @@ def test_two_gas_statements_on_one_page_with_no_title_to_cut_at_are_read_whole_w
 def test_a_gas_bundle_without_its_cover_still_splits(targets: list[dict]) -> None:
     records = _read(_bundle(MONTHS[:4], three_page=0, cover=False), targets)
     assert [_therms(r) for r in records] == pytest.approx([m[2] for m in MONTHS[:4]])
+
+
+# ---- review findings (19 Nov): previous-bill pages, statement of account, inherited placement, two accounts ----
+def _own_page(page: int, heading: str, start: str, end: str, therms: float = 1234.5) -> list[dict[str, Any]]:
+    return _page(page, [[(SUPPLIER, 0.07)], [(heading, 0.07)], [("Billing Period:", 0.07), (f"{start} - {end}", 0.3)],
+                        [("Total usage:", 0.07), (f"{therms:,.1f} therms", 0.3)]])
+
+
+@pytest.mark.parametrize("heading", ["Your Previous Bill", "Usage Comparison", "Budget Plan Detail", "Billing History",
+                                     "Account Activity"])
+def test_a_previous_bill_comparison_or_budget_page_is_never_a_second_gas_statement(
+        targets: list[dict], heading: str) -> None:
+    """A February bill, then a page of its own that shows another period and a total: one record, February's."""
+
+    blocks = _summary(1, *MONTHS[1][:2]) + _usage(2, *MONTHS[1]) + _own_page(3, heading, *MONTHS[0][:2])
+    assert split_statements(StationaryCombustionExtractor()._rows(_output(blocks))).parts is None
+    assert [_therms(r) for r in _read(blocks, targets)] == pytest.approx([MONTHS[1][2]])
+
+
+def _account_statement(page: int, start: str, end: str, therms: float, account: str = ACCOUNT) -> list[dict[str, Any]]:
+    """A statement of account: the period, the account and a usage table that restates the invoices' usage."""
+
+    return _page(page, [
+        [(SUPPLIER, 0.15)], [("Statement of Account", 0.15)], [("Account Number:", 0.07), (account, 0.3)],
+        [("Billing Period:", 0.07), (f"{start} - {end}", 0.3)],
+        [("Meter", 0.075), ("Start Read", 0.3), ("End Read", 0.5), ("Usage (therms)", 0.75)],
+        [("GM-0091742", 0.075), ("215,480", 0.3), ("218,860", 0.5), (f"{therms:,.1f}", 0.75)]])
+
+
+def test_a_statement_of_account_is_not_counted_with_the_invoice_it_summarises(targets: list[dict]) -> None:
+    invoice = MONTHS[1]
+    blocks = _account_statement(1, *invoice[:2], invoice[2]) + _summary(2, *invoice[:2]) + _usage(3, *invoice)
+    outcome = StationaryCombustionExtractor().extract(_output(blocks), targets, "EV-1")
+    records = _read(blocks, targets)
+    assert [_therms(r) for r in records] == pytest.approx([invoice[2]])  # once, not twice
+    assert ACCOUNT_SUMMARY_NOTE in outcome.notes
+
+
+def test_a_statement_of_account_over_several_invoices_leaves_each_invoice_once(targets: list[dict]) -> None:
+    first, second = MONTHS[1], MONTHS[2]
+    blocks = (_account_statement(1, first[0], second[1], first[2] + second[2])
+              + _summary(2, *first[:2]) + _usage(3, *first) + _summary(4, *second[:2]) + _usage(5, *second))
+    assert [_therms(r) for r in _read(blocks, targets)] == pytest.approx([first[2], second[2]])
+
+
+def test_a_statement_of_account_whose_invoices_are_not_all_in_the_file_is_kept(targets: list[dict]) -> None:
+    """The quarter's summary with only one of its invoices: dropping it would lose the other months."""
+
+    first, third = MONTHS[1], MONTHS[3]
+    blocks = (_account_statement(1, first[0], third[1], first[2] + MONTHS[2][2] + third[2])
+              + _summary(2, *first[:2]) + _usage(3, *first))
+    outcome = StationaryCombustionExtractor().extract(_output(blocks), targets, "EV-1")
+    assert ACCOUNT_SUMMARY_NOTE not in outcome.notes
+    assert len(_read(blocks, targets)) == 2
+
+
+def test_a_real_duplicate_still_raises_the_duplicate_warning() -> None:
+    """The same month printed twice in a file (one with its meter, one without): Q-003 is shown."""
+
+    store = RecalcStore()
+    month = {"fuel_type": ("natural_gas", None), "activity_quantity": (299.95, "MMBtu"), "activity_unit": ("MMBtu", None),
+             "service_period_start": ("2025-01-13", None), "service_period_end": ("2025-02-11", None),
+             "account_number": (ACCOUNT, None), "service_address": (ADDRESS, None)}
+    store.add("PKG", [dict(month), dict(month)], canonical_type_id="CT-S1-FUELQTY", pages=[1, 3],
+              keys=["r1", "r2:GM-0091742"])
+    found = [c for c in recalculate(store)["quality_checks"] if c["check"] == "Q-003"]
+    assert [c["trigger"] for c in found] == ["duplicate_statement_in_same_file"]
+
+
+def test_later_statements_of_a_bundle_take_the_bundles_facility_account_and_meter(targets: list[dict]) -> None:
+    """Only the first statement names the site and the meter, and only the first and the third name the
+    account; the others are the same account at the same site."""
+
+    blocks = (_page(1, [[(SUPPLIER, 0.15)], [("Natural Gas Statement", 0.15)], [("Account Number:", 0.07), (ACCOUNT, 0.3)],
+                        [("Billing Period:", 0.07), (f"{MONTHS[1][0]} - {MONTHS[1][1]}", 0.3)],
+                        [("Facility:", 0.07), (SITE, 0.3)], [("Meter Number:", 0.07), ("GM-0091742", 0.3)]])
+              + _usage(2, *MONTHS[1]))
+    for n, month in enumerate(MONTHS[2:4]):
+        blocks += _page(3 + 2 * n, [[(SUPPLIER, 0.15)], [("Natural Gas Statement", 0.15)],
+                                    [("Billing Period:", 0.07), (f"{month[0]} - {month[1]}", 0.3)]])
+        blocks += _usage(4 + 2 * n, *month)
+    records = _read(blocks, targets)
+    assert len(records) == 3
+    for field in ("facility_name", "account_number"):
+        assert {r[field]["normalized_value"] for r in records} == {SITE if field == "facility_name" else ACCOUNT}
+    assert all(r["meter_number"]["normalized_value"] for r in records)
+
+
+def test_a_statement_with_its_own_account_or_facility_keeps_it(targets: list[dict]) -> None:
+    other = "7710-0042-19"
+    blocks = (_summary(1, *MONTHS[1][:2]) + _usage(2, *MONTHS[1])
+              + _page(3, [[(SUPPLIER, 0.15)], [("Natural Gas Statement", 0.15)], [("Account Number:", 0.07), (other, 0.3)],
+                          [("Billing Period:", 0.07), (f"{MONTHS[2][0]} - {MONTHS[2][1]}", 0.3)]])
+              + _usage(4, *MONTHS[2])
+              + _page(5, [[(SUPPLIER, 0.15)], [("Natural Gas Statement", 0.15)],
+                          [("Billing Period:", 0.07), (f"{MONTHS[3][0]} - {MONTHS[3][1]}", 0.3)]])
+              + _usage(6, *MONTHS[3]))
+    accounts = [r["account_number"]["normalized_value"] for r in _read(blocks, targets)]
+    # two accounts are in the file: the third statement names none, and is not given either of them
+    assert accounts[:2] == [ACCOUNT, other] and accounts[2] in (None, "")
+
+
+def test_two_accounts_with_the_same_period_stay_two_statements(targets: list[dict]) -> None:
+    other = "7710-0042-19"
+    period = MONTHS[1][:2]
+    blocks = (_page(1, [[(SUPPLIER, 0.15)], [("Natural Gas Statement", 0.15)], [("Account Number:", 0.07), (ACCOUNT, 0.3)],
+                        [("Billing Period:", 0.07), (f"{period[0]} - {period[1]}", 0.3)]]) + _usage(2, *MONTHS[1])
+              + _page(3, [[(SUPPLIER, 0.15)], [("Natural Gas Statement", 0.15)], [("Account Number:", 0.07), (other, 0.3)],
+                          [("Billing Period:", 0.07), (f"{period[0]} - {period[1]}", 0.3)]]) + _usage(4, *MONTHS[1]))
+    records = _read(blocks, targets)
+    assert [r["account_number"]["normalized_value"] for r in records] == [ACCOUNT, other]
+    assert [_therms(r) for r in records] == pytest.approx([MONTHS[1][2], MONTHS[1][2]])
+    # and the recalculation keeps both: different accounts are not the same statement printed twice
+    store = RecalcStore()
+    rows = [{"fuel_type": ("natural_gas", None), "activity_quantity": (299.95, "MMBtu"), "activity_unit": ("MMBtu", None),
+             "service_period_start": ("2025-01-13", None), "service_period_end": ("2025-02-11", None),
+             "account_number": (account, None), "service_address": (ADDRESS, None)} for account in (ACCOUNT, other)]
+    store.add("TWO", rows, canonical_type_id="CT-S1-FUELQTY", pages=[2, 4], keys=["r1:GM-0091742", "r2:GM-0091742"])
+    result = recalculate(store)
+    assert not [c for c in result["quality_checks"] if c["check"] == "Q-003"] and not result["excluded"]
+    lines = result["categories"]["stationary_combustion"]["lines"]
+    assert sum(line["mass_t"]["CO2"] for line in lines) == pytest.approx(2 * 299.95 * 53.06 / 1000)

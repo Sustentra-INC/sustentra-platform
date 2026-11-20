@@ -707,11 +707,15 @@ def test_a_record_key_with_a_meter_but_no_period_still_names_its_meter() -> None
         "duplicate_statement_in_same_file"]
 
 
-def test_a_record_with_a_meter_and_one_without_are_not_called_a_repeat() -> None:
+def test_a_record_with_a_meter_and_one_without_on_another_page_are_still_a_repeat() -> None:
+    """The same account, period and usage twice in a file: an invoice and its statement of account. The warning
+    stays (a summary page that is not a record never reaches here; one that cannot be told apart does)."""
+
     store = RecalcStore()
     reading = _electric("2025-01-16", "2025-02-15", 50.0)
     store.add("MIXED", [dict(reading), dict(reading)], pages=[3, 9], keys=["r1:A-111", "r2"])
-    assert not [c for c in recalculate(store)["quality_checks"] if c["check"] == "Q-003"]
+    assert [c["trigger"] for c in recalculate(store)["quality_checks"] if c["check"] == "Q-003"] == [
+        "duplicate_statement_in_same_file"]
 
 
 def test_the_same_meter_read_twice_on_different_pages_of_one_file_is_a_repeat() -> None:

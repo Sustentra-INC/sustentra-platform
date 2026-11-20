@@ -252,7 +252,9 @@ class ElectricityExtractor(StationaryCombustionExtractor):
         check. A time-of-use table lists on-peak and off-peak lines beside the total."""
 
         records = [r for r in self._quantity_records(rows) if self._record_unit(r, unit_hint) in ELECTRIC_UNITS]
-        return self._collapse_time_of_use(records, rows, unit_hint)
+        records, notes = self._collapse_time_of_use(records, rows, unit_hint)
+        records, more = self._without_account_summaries(rows, records)
+        return records, [*notes, *more]
 
     def _part_energy(self, rows: Sequence[Row]) -> Located | None:
         return self._document_fuel(rows)
@@ -338,10 +340,12 @@ class ElectricityExtractor(StationaryCombustionExtractor):
         candidates: list[dict] = []
         part_notes: list[str] = []
         first_index = 1
+        inherited = self._inherited_values(rows, [part for part, *_ in parts])
         for part, part_hint, records, more in parts:
             energy = self._part_energy(part) or doc_energy
             outcome = self._records_to_candidates(part, parser_output, targets, evidence_id, document_id, records,
-                                                  energy, part_hint, first_index=first_index, multi=True)
+                                                  energy, part_hint, first_index=first_index, multi=True,
+                                                  inherited=inherited)
             candidates.extend(outcome.candidates)
             part_notes.extend(n for n in more if n not in part_notes)
             first_index += len(records)
@@ -351,7 +355,8 @@ class ElectricityExtractor(StationaryCombustionExtractor):
     def _records_to_candidates(self, rows: list[Row], parser_output: dict, targets: Sequence[dict],
                                evidence_id: str, document_id: str, records: list[UsageRecord],
                                doc_energy: Located, unit_hint: Located | None, *, first_index: int = 1,
-                               multi: bool | None = None) -> ExtractionOutcome:
+                               multi: bool | None = None,
+                               inherited: dict[str, Located | None] | None = None) -> ExtractionOutcome:
         """One candidate per target for each usage record; the bill's own fields (facility,
         address, supplier, account) are shared by its records. A statement of a bundle is numbered
         on from the statements before it (``first_index``, ``multi``)."""
@@ -365,6 +370,8 @@ class ElectricityExtractor(StationaryCombustionExtractor):
             "meter_number": self._bill_meter(rows),
             "statement_date": self._statement_date(rows),
         }
+        for name, value in (inherited or {}).items():  # a statement of a bundle that names none takes the bundle's
+            document_values[name] = document_values.get(name) or value
         period = self._document_period(rows)
 
         candidates: list[dict] = []
