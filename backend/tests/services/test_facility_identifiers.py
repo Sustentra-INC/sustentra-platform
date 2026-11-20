@@ -167,8 +167,12 @@ def test_an_old_engagement_without_the_field_is_calculated_exactly_as_before() -
         store.add_document("D3", "CT-S1-FUELQTY", [{**_gas(60, **extra), "facility_name": (None, None)}])
         return store
 
+    def same(result: dict) -> dict:
+        # The count of left-out values includes the account and meter fields only the first store has.
+        return {k: v for k, v in result.items() if k != "uncounted_values"}
+
     old_facilities = [KC, STL]  # saved before the field existed
-    assert _recalc(build(True), old_facilities) == _recalc(build(False), old_facilities)
+    assert same(_recalc(build(True), old_facilities)) == same(_recalc(build(False), old_facilities))
     with_empty = [{**KC, "accountNumbers": [], "meterNumbers": []}, STL]
-    assert _recalc(build(True), with_empty) == _recalc(build(False), old_facilities)
+    assert same(_recalc(build(True), with_empty)) == same(_recalc(build(False), old_facilities))
     assert _lines_with_docs(_tree(build(True), facilities=old_facilities)) == {GAS_KC: ["D1"]}

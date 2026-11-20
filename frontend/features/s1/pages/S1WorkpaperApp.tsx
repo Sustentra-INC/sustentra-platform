@@ -1310,6 +1310,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               onOpenDocument={openExtraction}
               focusLineKey={activeView.lineKey}
               onOpenEvidence={(key) => setActiveView(scheduleViewForLine(key))}
+              onOpenEvidenceTree={() => setActiveView({ name: "evidence" })}
             />
           ) : (
             <VerificationResults

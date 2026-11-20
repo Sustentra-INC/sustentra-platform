@@ -39,6 +39,7 @@ from backend.app.reference.emission_factor_loader import (
     EmissionFactorReference,
     default_emission_factor_reference,
 )
+from backend.app.services import calculation_lines as cl
 from backend.app.services import emissions_calculator as calc
 from backend.app.services import emissions_rollup as rollup
 from backend.app.services import recalculation_lines
@@ -505,11 +506,24 @@ class EngagementRecalculationService:
         inputs = parse_inputs(engagement.get("settings"))
         period = (_date(engagement.get("reporting_period_start")), _date(engagement.get("reporting_period_end")))
         decisions = decisions or {}
-        records, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
+        placed, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
         self._facilities = setup_facilities(engagement.get("settings"))
         self._company = engagement.get("client_name")
         self._decisions = decisions
         self._ledger = Ledger()
+        # Only values whose document is placed on a calculation line count (Claire, Evidence Screen tab I8):
+        # the rest (Unassigned supporting evidence, or moved off its line) feed nothing until placed.
+        settings = engagement.get("settings") or {}
+        filing: recalculation_lines.Filing | None = None
+        placement_unread = False
+        try:
+            filing = recalculation_lines.file_records(self.reference, placed, inputs, settings, decisions,
+                                                      self._facilities, self._company)
+            records = [r for r in placed if filing.on_a_line(r)]
+            off_line = [r for r in placed if not filing.on_a_line(r)]
+        except Exception as exc:  # noqa: BLE001 - a placement that cannot be read must not take the page down
+            log.warning("record placement failed: %s", type(exc).__name__)
+            records, off_line, placement_unread = placed, [], True
 
         needs_input: list[dict[str, Any]] = []
         awaiting: list[dict[str, Any]] = []
@@ -536,6 +550,13 @@ class EngagementRecalculationService:
         tag("fugitive_refrigerants", *mark)
         thermal_bills: dict[str, list[dict[str, Any]]] = {}
         thermal = self._thermal(records, inputs, period, needs_input, awaiting, not_counted, thermal_bills)
+
+        # A record not on a line still raises its own questions (a fuel to choose, a value awaiting review):
+        # a fuel it cannot resolve is what keeps it off a line, so it must stay answerable.
+        extra_inputs, extra_awaiting = self._off_line_questions(off_line, inputs, period)
+        needs_input.extend(n for n in extra_inputs
+                           if n["kind"] != "fuel_choice" or not any(m.get("key") == n["key"] for m in needs_input))
+        awaiting.extend(extra_awaiting)
 
         categories: dict[str, calc.CategoryResult | None] = {
             "stationary_combustion": stationary,
@@ -598,11 +619,14 @@ class EngagementRecalculationService:
                                  "Scope 1 process sources", "Scope 2 cooling"],
             # Documents read: every document whose records fed the recalculation, reviewed or not.
             "documents_considered": len({r.document_id for r in records}),
+            # Accepted values whose documents are not on a calculation line: counted nowhere (see above).
+            "uncounted_values": self._uncounted_values(off_line),
             # Of those, the fully reviewed documents: nothing open on any record (see _documents_reviewed).
             # A partly reviewed document is not counted here, although its reviewed records feed the totals.
             "documents_reviewed": self._documents_reviewed(records, needs_input, awaiting),
             # Missing months, duplicates, overlapping and cross-year bills (formula library Q-001..Q-005).
-            "quality_checks": run_checks([e for r in records if (e := self._evidence_record(r)) is not None], period),
+            # Over every document that exists, placed or not: a bill not on a line yet is not a missing month.
+            "quality_checks": run_checks([e for r in placed if (e := self._evidence_record(r)) is not None], period),
             "rollup": rollup.build_rollup(categories, open_items=open_items, absent=inputs.absent_sources,
                                           reported=inputs.reported, reported_units=inputs.reported_units,
                                           out_of_scope=not_in_scope, tolerance=tolerance, gwp_set=inputs.gwp_set,
@@ -610,8 +634,8 @@ class EngagementRecalculationService:
         }
         try:
             built = recalculation_lines.build(
-                self.reference, self._ledger, records, inputs, engagement.get("settings") or {}, decisions,
-                tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company)
+                self.reference, self._ledger, placed, inputs, settings, decisions,
+                tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company, filing)
         except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
             log.warning("calculation lines failed: %s", type(exc).__name__)
             built = recalculation_lines.Built(needs_input=[{
@@ -621,8 +645,58 @@ class EngagementRecalculationService:
         response.update(calculation_lines=built.lines, calculation_unplaced=built.unplaced,
                         calculation_line_inputs=built.inputs)
         # Problems with the company's own figures never change a recalculated number or its status.
-        response["needs_input"] = [*needs_input, *built.needs_input]
+        open_inputs = [*needs_input, *built.needs_input]
+        if placement_unread:
+            open_inputs.append({
+                "kind": "calculation_lines", "key": "record_placement",
+                "message": "Where each document sits could not be read, so every value is counted, including any "
+                           "whose document is not on a calculation line. Try again, and report it if it persists."})
+        response["needs_input"] = open_inputs
         return response
+
+    def _off_line_questions(self, records: list[ReviewedRecord], inputs: RecalculationInputs,
+                            period: tuple[date | None, date | None]
+                            ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """What the records that are on no line would ask or await if they counted: the questions that
+        name their document, and the fuel choices. Their numbers are discarded."""
+
+        if not records:
+            return [], []
+        kept = self._ledger
+        self._ledger = Ledger()
+        needs: list[dict[str, Any]] = []
+        wait: list[dict[str, Any]] = []
+        try:
+            for source, build in (
+                ("stationary_combustion", lambda: self._stationary(records, inputs, period, needs, wait)),
+                ("mobile_combustion", lambda: self._mobile(records, inputs, period, needs, wait)),
+                ("purchased_electricity", lambda: self._electricity(records, inputs, period, needs, wait, {}, {})),
+                ("fugitive_refrigerants", lambda: self._refrigerants(records, inputs, period, needs, wait, [])),
+            ):
+                asked, waiting = len(needs), len(wait)
+                build()
+                for item in needs[asked:] + wait[waiting:]:
+                    item.setdefault("category", source)
+            self._thermal(records, inputs, period, needs, wait, [], {})
+        finally:
+            self._ledger = kept
+        return [n for n in needs if n["kind"] == "fuel_choice" or n.get("document_id")], wait
+
+    @staticmethod
+    def _uncounted_values(records: list[ReviewedRecord]) -> dict[str, Any]:
+        """The accepted values of records whose document is not on a calculation line, per document."""
+
+        per_document: dict[str, dict[str, Any]] = {}
+        for record in records:
+            accepted = cl.tally([record])["accepted"]
+            if not accepted:
+                continue
+            entry = per_document.setdefault(record.document_id, {
+                "document_id": record.document_id, "file_name": record.file_name or record.document_id,
+                "accepted_values": 0})
+            entry["accepted_values"] += accepted
+        documents = sorted(per_document.values(), key=lambda d: (str(d["file_name"]).casefold(), d["document_id"]))
+        return {"accepted_values": sum(d["accepted_values"] for d in documents), "documents": documents}
 
     @staticmethod
     def _documents_reviewed(records: list[ReviewedRecord], needs_input: list[dict[str, Any]],

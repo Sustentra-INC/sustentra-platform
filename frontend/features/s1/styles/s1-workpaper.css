@@ -2182,6 +2182,7 @@ html { font-size: 82%; }
 .s1-rc__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); }
 .s1-rc__error { font-size: var(--text-sm); color: var(--state-blocking-fg); }
 .s1-vr-status { font-size: var(--text-sm); }
+.s1-vr-uncounted { margin: 0 0 var(--sp-3); color: var(--state-open-fg); }
 
 @media (max-width: 64rem) {
   .s1-rc__grid { grid-template-columns: 1fr; }

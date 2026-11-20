@@ -343,6 +343,18 @@ export interface CalcLineInputs {
   unknown_facility_ids: string[];
 }
 
+export interface UncountedValues {
+  accepted_values: number;
+  documents: { document_id: string; file_name: string; accepted_values: number }[];
+}
+
+/** The Results notice for accepted values the totals leave out; null when there are none. */
+export function uncountedMessage(uncounted: UncountedValues | undefined): string | null {
+  const n = uncounted?.accepted_values ?? 0;
+  if (n <= 0) return null;
+  return `${n} accepted ${n === 1 ? "value" : "values"} not counted: ${n === 1 ? "its document isn't" : "their documents aren't"} on a calculation line yet.`;
+}
+
 export interface Recalculation {
   engagement_id: string;
   gwp_set: string;
@@ -370,6 +382,9 @@ export interface Recalculation {
   /** Category results to Scope 1, Scope 2 and inventory totals, then the final outputs.
    *  Absent from results computed before the roll-up; fall back to `comparisons`. */
   rollup?: Rollup;
+  /** Accepted values whose documents are not on a calculation line (Unassigned supporting evidence, or
+   *  moved off their line): counted nowhere until the document is placed. Absent from older results. */
+  uncounted_values?: UncountedValues;
   /** Per-line calculations behind stationary, mobile and electricity. Absent from older results. */
   calculation_lines?: CalculationLine[];
   /** Records on no calculation line, with why. */

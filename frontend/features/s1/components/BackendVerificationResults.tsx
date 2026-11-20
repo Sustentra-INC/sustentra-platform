@@ -7,6 +7,7 @@ import {
   documentsBasis,
   getRecalculation,
   getRecalculationReference,
+  uncountedMessage,
   type Recalculation,
   type RecalculationReference,
 } from "../api/recalculation";
@@ -49,6 +50,7 @@ export function BackendVerificationResults({
   onOpenDocument,
   focusLineKey,
   onOpenEvidence,
+  onOpenEvidenceTree,
 }: {
   engagement: EngagementConfig;
   store: VerificationStore;
@@ -62,6 +64,8 @@ export function BackendVerificationResults({
   focusLineKey?: string;
   /** Shows "Open in Evidence" on each line; called with the line key. */
   onOpenEvidence?: (lineKey: string) => void;
+  /** Opens the Evidence tree (the notice about values not on a calculation line links here). */
+  onOpenEvidenceTree?: () => void;
 }) {
   const engagementId = engagement.engagementId;
   const [result, setResult] = useState<Recalculation | null>(null);
@@ -186,6 +190,19 @@ export function BackendVerificationResults({
       }
       inputs={
         <>
+          {uncountedMessage(result.uncounted_values) ? (
+            <p className="s1-vr-status s1-vr-uncounted" role="status">
+              {uncountedMessage(result.uncounted_values)}
+              {onOpenEvidenceTree ? (
+                <>
+                  {" "}
+                  <button className="s1-linklike" type="button" onClick={onOpenEvidenceTree}>
+                    Open Evidence
+                  </button>
+                </>
+              ) : null}
+            </p>
+          ) : null}
           {/* Folded, its count in the header: the boxes lead the page, as in the demo. */}
           {result.quality_checks ? <QualityChecksPanel checks={result.quality_checks} initiallyOpen={false} /> : null}
           <RecalculationInputs

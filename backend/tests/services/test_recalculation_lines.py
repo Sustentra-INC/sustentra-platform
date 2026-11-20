@@ -157,17 +157,21 @@ def test_gwp_set_changes_only_the_gwp_dependent_numbers() -> None:
     assert by_set["AR4"]["results"]["gas_co2e_t"]["CH4"] == pytest.approx(ch4 * 25)
 
 
-def test_a_record_with_no_line_is_reported_unplaced_and_the_totals_still_reconcile() -> None:
+def test_a_record_with_no_line_is_not_counted_and_the_totals_still_reconcile() -> None:
+    """Changed by Claire's ruling (Evidence Screen tab I8). Before: the record was reported under
+    ``calculation_unplaced`` and counted in the category. Now it feeds nothing and Results lists it."""
+
+    base = _run(_gas_store())
     store = _gas_store()
     store.add_document("GAS-ELSEWHERE", "CT-S1-FUELQTY", [_gas_record(200, plant="Somewhere Else Ltd")])
     result = _run(store)
-    unplaced = result["calculation_unplaced"]
-    assert len(unplaced) == 1 and unplaced[0]["key"] is None
-    assert unplaced[0]["step1"]["rows"][0]["document_id"] == "GAS-ELSEWHERE"
-    assert unplaced[0]["step1"]["total"] == {"quantity": 200, "unit": "MMBtu"}
+    assert result["calculation_unplaced"] == []
+    assert result["categories"]["stationary_combustion"]["total_co2e"] == base["categories"][
+        "stationary_combustion"]["total_co2e"]
+    assert [d["document_id"] for d in result["uncounted_values"]["documents"]] == ["GAS-ELSEWHERE"]
     category = result["categories"]["stationary_combustion"]
-    everything = [*result["calculation_lines"], *unplaced]
-    assert sum(ln["results"]["total_co2e_t"] for ln in everything) == pytest.approx(category["total_co2e"])
+    assert sum(ln["results"]["total_co2e_t"] for ln in result["calculation_lines"]) == pytest.approx(
+        category["total_co2e"])
 
 
 def test_a_reviewer_move_puts_the_document_on_the_other_line() -> None:
@@ -243,27 +247,27 @@ def test_a_mobile_fuel_with_one_vehicle_group_is_one_line() -> None:
     assert "company_ch4_n2o_use_vehicle_group" in company["flags"]
 
 
-def test_two_vehicle_groups_are_two_lines_and_unplaced_fuel_keeps_the_total_whole() -> None:
-    result = _run(_mobile_store(), vehicle_groups=[GROUP_ROAD, GROUP_OFF])
+def test_two_vehicle_groups_are_two_lines_and_fuel_no_group_takes_waits_for_a_reviewer() -> None:
+    # Two groups use the fuel, so its records cannot pick one: until a reviewer files the document on a
+    # group, its values are left out (Claire's ruling, Evidence Screen tab I8). Before, they were reported
+    # under ``calculation_unplaced`` and counted.
+    waiting = _run(_mobile_store(), vehicle_groups=[GROUP_ROAD, GROUP_OFF])
+    assert waiting["calculation_unplaced"] == [] and waiting["categories"]["mobile_combustion"] is None
+    assert [d["document_id"] for d in waiting["uncounted_values"]["documents"]] == ["FLEET"]
+    # A reviewer files the document on a group: then it is counted, whole.
+    result = _run(_mobile_store(), {"FLEET": {"placements": [
+        {"from": "supporting:unassigned", "to": "s1:mobile:diesel-fuel:vg-heavy-trucks"}]}},
+        vehicle_groups=[GROUP_ROAD, GROUP_OFF])
     lines = _by_key(result)
     assert set(lines) == {"s1:mobile:diesel-fuel:vg-heavy-trucks", "s1:mobile:diesel-fuel:vg-forklifts"}
     ch4 = {k: next(g for g in ln["step3"]["gases"] if g["gas"] == "CH4") for k, ln in lines.items()}
     assert ch4["s1:mobile:diesel-fuel:vg-heavy-trucks"]["activity"]["unit"] == "mi"  # Eq 4 on-road
     assert ch4["s1:mobile:diesel-fuel:vg-forklifts"]["activity"] == {"value": 200, "unit": "gal"}  # Eq 5 non-road
     assert lines["s1:mobile:diesel-fuel:vg-forklifts"]["method"]["equations"]["CH4"] == "Eq. 5"
-    # Two groups use the fuel, so its records cannot pick one: they are listed, not dropped.
-    (unplaced,) = result["calculation_unplaced"]
-    assert unplaced["step1"]["total"] == {"quantity": 1000, "unit": "gal"}
+    assert result["calculation_unplaced"] == [] and result["uncounted_values"]["accepted_values"] == 0
     category = result["categories"]["mobile_combustion"]
-    everything = [*lines.values(), unplaced]
-    assert sum(ln["results"]["total_co2e_t"] for ln in everything) == pytest.approx(category["total_co2e"])
-    # A reviewer files the document on a group: then it is whole.
-    moved = _run(_mobile_store(), {"FLEET": {"placements": [
-        {"from": "supporting:unassigned", "to": "s1:mobile:diesel-fuel:vg-heavy-trucks"}]}},
-        vehicle_groups=[GROUP_ROAD, GROUP_OFF])
-    assert moved["calculation_unplaced"] == []
-    assert sum(ln["results"]["total_co2e_t"] for ln in moved["calculation_lines"]) == pytest.approx(
-        category["total_co2e"])
+    assert lines["s1:mobile:diesel-fuel:vg-heavy-trucks"]["step1"]["total"] == {"quantity": 1000, "unit": "gal"}
+    assert sum(ln["results"]["total_co2e_t"] for ln in lines.values()) == pytest.approx(category["total_co2e"])
 
 
 def test_biomass_lines_show_biogenic_co2_and_count_ch4_n2o_toward_their_category() -> None:
