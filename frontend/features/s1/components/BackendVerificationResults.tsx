@@ -6,6 +6,7 @@ import { liveResultsFromRecalculation } from "../adapters/recalculationResultsAd
 import {
   documentsBasis,
   getRecalculation,
+  gwpLabel,
   getRecalculationReference,
   type Recalculation,
   type RecalculationReference,
@@ -36,7 +37,7 @@ export function examinerOptions(engagement: EngagementConfig): TeamMember[] {
 export function resultsBasis(result: Recalculation): string {
   const open = result.needs_input.length + result.awaiting_review.length;
   return (
-    `Recalculated from ${documentsBasis(result)} on the EPA GHG Emission Factors Hub 2025, at ${result.gwp_set} GWPs. ` +
+    `Recalculated from ${documentsBasis(result)} on the EPA GHG Emission Factors Hub 2025. GWP set: ${gwpLabel(result)}. ` +
     `A difference is material above ±${result.tolerance_pct}% of the reported total.` +
     (open ? ` ${open} ${open === 1 ? "item still needs" : "items still need"} an input or a review.` : "")
   );
@@ -153,6 +154,15 @@ export function BackendVerificationResults({
   }
 
   return (
+    <>
+      <p className="s1-muted s1-vr-gwp" data-testid="results-gwp-set">
+        GWP set: {gwpLabel(result)}
+      </p>
+      {result.gwp_blocked ? (
+        <p className="s1-vw-red" role="alert">
+          {result.gwp_blocked}
+        </p>
+      ) : null}
     <VerificationResults
       rows={[]}
       store={store}
@@ -172,7 +182,7 @@ export function BackendVerificationResults({
             unplaced={result.calculation_unplaced}
             inputs={result.calculation_line_inputs}
             comparisons={result.comparisons}
-            gwpSet={result.gwp_set}
+            gwpSet={gwpLabel(result)}
             settings={engagement.recalculation ?? {}}
             onSave={(next) => save(next, { quiet: true })}
             store={store}
@@ -200,5 +210,6 @@ export function BackendVerificationResults({
         </>
       }
     />
+    </>
   );
 }

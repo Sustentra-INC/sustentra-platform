@@ -393,3 +393,38 @@ def test_an_old_text_period_is_kept_shown_as_a_value_and_replaced_only_by_two_da
     assert act(eid, "reporting_period", "edit", {"value": "2025"}).status_code == 422
     assert record(eid, "reporting_period")["decision"]["value"] == "Fiscal 2024 – Zürich 排放"
     assert act(eid, "reporting_period", "edit", {"value": {"start": "2024-01-01", "end": "2024-12-31"}}).status_code == 200
+
+
+def test_the_gwp_set_chosen_in_methodology_drives_the_recalculation_and_the_workpaper() -> None:
+    """Claire C-M6: editing the set recalculates on the next read; a pending field leaves the default."""
+
+    eid = create()["id"]
+    results = lambda: call("GET", f"{BASE}/{eid}/recalculation", "a_member").json()  # noqa: E731
+    basis = lambda: _workpaper_basis(call("GET", f"{BASE}/{eid}/export", "a_member").content)  # noqa: E731
+    default = "AR5 (default — not set in Methodology review)"
+    assert (results()["gwp_set"], results()["gwp_label"], basis()) == ("AR5", default, default)
+
+    suggest(eid, "gwp", {**SUGGESTION, "value": {"set": "AR6", "horizon": "100-year"}})
+    assert results()["gwp_label"] == default  # a suggestion is not a choice
+
+    assert act(eid, "gwp", "edit", {"value": {"set": "AR6", "horizon": "100-year"}}).status_code == 200
+    now = results()
+    assert now["gwp_set"] == "AR6" and now["gwp_label"] == "AR6 · 100-year (Methodology review)"
+    assert basis() == now["gwp_label"]
+
+    act(eid, "gwp", "edit", {"value": {"set": "AR5", "horizon": "500-year"}})
+    blocked = results()
+    assert blocked["gwp_label"] == "AR5 500-year — not supported for calculation" and blocked["gwp_blocked"]
+    assert call("GET", f"{BASE}/{eid}/export", "a_member").status_code == 409
+
+    assert act(eid, "gwp", "revert").status_code == 200
+    assert results()["gwp_label"] == default
+
+
+def _workpaper_basis(content: bytes) -> str:
+    import io
+
+    from openpyxl import load_workbook
+
+    summary = dict(load_workbook(io.BytesIO(content))["Summary"].iter_rows(min_row=2, values_only=True))
+    return str(summary["GWP basis"])

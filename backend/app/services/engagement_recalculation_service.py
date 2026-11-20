@@ -42,6 +42,7 @@ from backend.app.reference.emission_factor_loader import (
 from backend.app.services import emissions_calculator as calc
 from backend.app.services import emissions_rollup as rollup
 from backend.app.services import recalculation_lines
+from backend.app.services.methodology_gwp import GwpChoice, default_choice
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.data_quality_checks import EvidenceRecord, run_checks
 from backend.app.services.calculation_lines import GROUP_ID, LINE_KEY
@@ -503,9 +504,13 @@ class EngagementRecalculationService:
 
         engagement_id = str(engagement.get("id") or engagement.get("engagement_id"))
         inputs = parse_inputs(engagement.get("settings"))
+        gwp_choice = self._gwp_choice(engagement, inputs)
+        inputs.gwp_set = gwp_choice["set"]
         period = (_date(engagement.get("reporting_period_start")), _date(engagement.get("reporting_period_end")))
         decisions = decisions or {}
         records, set_aside = self._apply_decisions(self.reviewed_records(engagement_id, can_see), decisions)
+        if not gwp_choice["supported"]:
+            records = []  # blocked: no number is calculated on a set or horizon the data does not hold
         self._facilities = setup_facilities(engagement.get("settings"))
         self._company = engagement.get("client_name")
         self._decisions = decisions
@@ -585,6 +590,10 @@ class EngagementRecalculationService:
         response = {
             "engagement_id": engagement_id,
             "gwp_set": inputs.gwp_set,
+            "gwp_horizon": gwp_choice["horizon"],
+            "gwp_label": gwp_choice["label"],
+            "gwp_source": gwp_choice["source"],
+            "gwp_blocked": gwp_choice["message"],
             "reporting_period": {"start": period[0].isoformat() if period[0] else None,
                                  "end": period[1].isoformat() if period[1] else None},
             "categories": {k: (v.to_dict() if v is not None else None) for k, v in categories.items()},
@@ -623,6 +632,19 @@ class EngagementRecalculationService:
         # Problems with the company's own figures never change a recalculated number or its status.
         response["needs_input"] = [*needs_input, *built.needs_input]
         return response
+
+    @staticmethod
+    def _gwp_choice(engagement: dict[str, Any], inputs: RecalculationInputs) -> GwpChoice:
+        """The GWP set of the Methodology review (the API attaches it as ``methodology_gwp``). A caller that
+        attaches none gets the set in settings["recalculation"], else the default."""
+
+        attached = engagement.get("methodology_gwp")
+        if attached is not None:
+            return attached
+        if (engagement.get("settings") or {}).get("recalculation", {}).get("gwp_set"):
+            return {"set": inputs.gwp_set, "horizon": "100-year", "source": "settings", "supported": True,
+                    "label": f"{inputs.gwp_set} · 100-year", "message": None}
+        return default_choice()
 
     @staticmethod
     def _documents_reviewed(records: list[ReviewedRecord], needs_input: list[dict[str, Any]],

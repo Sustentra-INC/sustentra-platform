@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-import { leftOutMessage, type Recalculation, type RecalculationReference } from "../api/recalculation";
+import { gwpLabel, leftOutMessage, type Recalculation, type RecalculationReference } from "../api/recalculation";
 import type { RecalculationCertificate, RecalculationSettings } from "../types";
 import { draftProblem, draftsFrom, settingsFrom, VehicleGroupsFieldset, withSavedIds, type VehicleGroupDraft } from "./VehicleGroupsFieldset";
 
@@ -133,7 +133,7 @@ export function RecalculationInputs({
           <span className="s1-state s1-state--unverifiable">{result.awaiting_review.length} awaiting review</span>
         ) : null}
         <span className="s1-muted s1-rc__meta">
-          {reference.dataset} · {result.gwp_set} GWPs · ±{result.tolerance_pct}% tolerance
+          {reference.dataset} · GWP set: {gwpLabel(result)} · ±{result.tolerance_pct}% tolerance
         </span>
       </button>
 
@@ -194,16 +194,10 @@ export function RecalculationInputs({
 
             <fieldset className="s1-rc__group">
               <legend>Method</legend>
-              <label className="s1-rc__field">
+              <p className="s1-rc__field">
                 <span>GWP set</span>
-                <select value={draft.gwp_set ?? reference.default_gwp_set} onChange={(e) => setDraft({ ...draft, gwp_set: e.target.value })}>
-                  {reference.gwp_sets.map((g) => (
-                    <option key={g} value={g}>
-                      {g === "AR5" ? "AR5 (EPA Hub, Table 11)" : `${g} (IPCC)`}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                <span>{gwpLabel(result)}. Change it in Methodology review.</span>
+              </p>
               {fuelAsks.map((a) => (
                 <label key={a.key} className="s1-rc__field">
                   <span>

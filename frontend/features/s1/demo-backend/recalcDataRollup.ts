@@ -280,7 +280,9 @@ export function buildRecalculation(engagementId: string): Recalculation {
   const fill = (key: string) => categories[key as keyof typeof categories] ?? null;
   void typeId;
   return {
-    engagement_id: engagementId, gwp_set: c.inputs.gwp_set, reporting_period: { start: c.model.period.start, end: c.model.period.end }, tolerance_pct: c.inputs.tolerance_pct,
+    engagement_id: engagementId, gwp_set: c.inputs.gwp_set,
+    gwp_label: c.inputs.settings.gwp_set ? `${c.inputs.gwp_set} · 100-year` : "AR5 (default — not set in Methodology review)",
+    reporting_period: { start: c.model.period.start, end: c.model.period.end }, tolerance_pct: c.inputs.tolerance_pct,
     categories: {
       stationary_combustion: fill("stationary_combustion"), mobile_combustion: fill("mobile_combustion"), fugitive_refrigerants: fill("fugitive_refrigerants"),
       purchased_electricity_location_based: fill("purchased_electricity_location_based"), purchased_electricity_market_based: fill("purchased_electricity_market_based"),

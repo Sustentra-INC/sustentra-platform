@@ -73,7 +73,6 @@ function energyPanel(level2: string): PanelDef {
 
 const GAS_LABEL: Record<CalcGas, string> = { CO2: "CO₂", CH4: "CH₄", N2O: "N₂O" };
 const GASES: CalcGas[] = ["CO2", "CH4", "N2O"];
-const GWP_SETS = ["AR4", "AR5", "AR6"];
 const STEPS = ["Step 1 · Activity", "Step 2 · Unit", "Step 3 · Gases", "Results"] as const;
 
 /** The units the backend converts, by dimension: a company's activity unit is picked from its line's. */
@@ -599,8 +598,6 @@ function LineDetail({
 }) {
   const [step, setStep] = useState(0);
   const [box, setBox] = useState<"examination" | "note" | "company" | null>(null);
-  const [gwpSaving, setGwpSaving] = useState(false);
-  const [gwpError, setGwpError] = useState<string | null>(null);
   const key = examinationKey("calc", line.key);
   const examination = store.examinations[key];
   const examined = Boolean(examination?.examinedBy);
@@ -613,13 +610,6 @@ function LineDetail({
     if (!move) return;
     event.preventDefault();
     setStep((step + move + STEPS.length) % STEPS.length);
-  }
-
-  async function changeGwp(value: string) {
-    setGwpSaving(true);
-    setGwpError(null);
-    setGwpError(await onSave({ ...settings, gwp_set: value }));
-    setGwpSaving(false);
   }
 
   return (
@@ -652,20 +642,10 @@ function LineDetail({
         {step === 2 ? (
           <>
             <div className="s1-cp-gwp">
-              <label htmlFor={`${ids}-gwp`}>GWP set</label>
-              <select id={`${ids}-gwp`} value={gwpSet} disabled={gwpSaving} onChange={(e) => void changeGwp(e.target.value)}>
-                {GWP_SETS.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </select>
-              <InfoTip label="GWP set">One set applies to the whole engagement. Changing it recalculates every line.</InfoTip>
-              {gwpError ? (
-                <span className="s1-vw-red" role="alert">
-                  {gwpError}
-                </span>
-              ) : null}
+              <span>GWP set: {gwpSet}</span>
+              <InfoTip label="GWP set">
+                One set applies to the whole engagement: the one chosen in Methodology review. Change it there and Results recalculates every line.
+              </InfoTip>
             </div>
             <GasTable line={line} />
           </>

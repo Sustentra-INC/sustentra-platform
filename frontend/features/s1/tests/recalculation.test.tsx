@@ -126,7 +126,7 @@ describe("recalculation → verification rows", () => {
 
     it("counts fully reviewed documents and says how many more have values awaiting review", () => {
       const note = recalculationMateriality(staging).note;
-      expect(note).toContain("from 1 fully reviewed document (3 more with values awaiting review), at AR5 GWPs.");
+      expect(note).toContain("from 1 fully reviewed document (3 more with values awaiting review), GWP set AR5.");
       expect(note).not.toContain("4 document");
     });
 
@@ -143,7 +143,7 @@ describe("recalculation → verification rows", () => {
 
     it("keeps the old wording for results without documents_reviewed", () => {
       expect(RESULT.documents_reviewed).toBeUndefined();
-      expect(recalculationMateriality(RESULT).note).toContain("from 4 document(s) with reviewed values, at AR5 GWPs.");
+      expect(recalculationMateriality(RESULT).note).toContain("from 4 document(s) with reviewed values, GWP set AR5.");
     });
   });
 });

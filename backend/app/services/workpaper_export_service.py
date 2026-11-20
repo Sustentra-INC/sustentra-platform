@@ -203,7 +203,7 @@ def build_workbook(
         ["Assurance standard", settings.get("assuranceStandard")],
         ["Boundary approach", settings.get("boundaryApproach")],
         ["Materiality tolerance (%)", recalculation.get("tolerance_pct")],
-        ["GWP basis", recalculation.get("gwp_set")],
+        ["GWP basis", recalculation.get("gwp_label") or recalculation.get("gwp_set")],
         ["Emission factors", "EPA GHG Emission Factors Hub 2025"],
         ["Scope 1 recalculated (t CO2e)", total("scope1")],
         ["Scope 2 location-based recalculated (t CO2e)", total("scope2_location")],
