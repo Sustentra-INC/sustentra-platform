@@ -129,6 +129,7 @@ import { ActivityDrawer } from "../components/ActivityDrawer";
 import { useBackendCoverage } from "../components/useBackendCoverage";
 import { testedExaminationKeys } from "../utils/verificationTable";
 import { BackendMethodologyReview } from "../components/BackendMethodologyReview";
+import { AssignTaskProvider } from "../../tasks/AssignTaskContext";
 import { MethodologyReview } from "../components/MethodologyReview";
 import { emptyMethodologyReview, methodologyStated } from "../fixtures/methodology/methodologyReview";
 import type { MethodologyState } from "../types/methodology";
@@ -1184,6 +1185,10 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
 
   return (
     <main className="s1-app">
+      <AssignTaskProvider
+        orgId={dataMode === "backend" ? (user?.orgId ?? null) : null}
+        engagementId={engagement.engagementId || null}
+      >
       <S1Chrome
         engagement={engagement}
         engagementLoading={dataMode === "backend" && !engagement.engagementId && demoState === "loading"}
@@ -1563,6 +1568,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
           />
         ) : null}
       </S1Chrome>
+      </AssignTaskProvider>
     </main>
   );
 }

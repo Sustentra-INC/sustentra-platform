@@ -1,4 +1,4 @@
-import { encodeRealm, isOrgSlug, parseRealm, REALM_COOKIE } from "../../lib/realm-cookie";
+import { encodeRealm, isOrgSlug, parseRealm, REALM_COOKIE, sameOriginPath } from "../../lib/realm-cookie";
 import { loginPath, type Realm } from "./realm";
 
 /**
@@ -53,9 +53,7 @@ export function signInPath(realm: Realm, next: string): string {
 
 /** A post-login destination from `?next=`, only if it is a same-origin path. */
 export function safeNext(next: string | null | undefined): string | null {
-  if (!next || !next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return null;
-  if (/[\u0000-\u001f]/.test(next)) return null;
-  return next;
+  return sameOriginPath(next);
 }
 
 export { isOrgSlug };

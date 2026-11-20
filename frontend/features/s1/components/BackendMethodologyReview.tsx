@@ -21,6 +21,7 @@ import {
   type MethodologyValue,
   type PrefillResult,
 } from "../api/methodologyReview";
+import { useAssignTask } from "../../tasks/AssignTaskContext";
 import { InfoTip } from "./InfoTip";
 
 /**
@@ -414,6 +415,7 @@ function FieldRow({
 }) {
   const [mode, setMode] = useState<"view" | "edit" | "reject">("view");
   const [reason, setReason] = useState("");
+  const assign = useAssignTask();
   const { suggestion, decision } = record;
   const status = decision?.status ?? "pending";
   const pendingStatus = status === "pending";
@@ -538,6 +540,23 @@ function FieldRow({
           {!pendingStatus ? (
             <button type="button" className="s1-mr-link" disabled={busy} aria-label={`Revert: ${def.label}`} onClick={() => finish(() => revertField(engagementId, def.fieldId))}>
               Revert
+            </button>
+          ) : null}
+          {assign ? (
+            <button
+              type="button"
+              className="s1-mr-link"
+              aria-label={`Assign to…: ${def.label}`}
+              onClick={() =>
+                assign({
+                  kind: "Methodology row",
+                  label: def.label,
+                  target: { kind: "methodology_row", item_id: def.fieldId },
+                  title: `Review methodology: ${def.label}`,
+                })
+              }
+            >
+              Assign to…
             </button>
           ) : null}
           {record.userAdded ? (

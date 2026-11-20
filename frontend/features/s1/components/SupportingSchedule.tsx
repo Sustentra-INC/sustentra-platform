@@ -8,6 +8,7 @@ import { resolveFieldKey } from "../utils/resolveFieldKey";
 import { ApiError } from "../../../lib/api";
 import { userFacingApiError } from "../api/s1Backend";
 import { AI_VALUE } from "../constants/copy";
+import { useAssignTask } from "../../tasks/AssignTaskContext";
 import { ContainerStateSurface } from "./ContainerStateSurface";
 
 /**
@@ -63,6 +64,7 @@ const STATUS_ROLE: Record<DisplayStatus, string> = {
 };
 
 export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = "evidence", onOpenEvidence, onMissing, onOpenDocument, onOpenCalculationLine, onError }: SupportingScheduleProps) {
+  const assign = useAssignTask();
   const [schedule, setSchedule] = useState<LineSchedule | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -174,6 +176,18 @@ export function SupportingSchedule({ engagementId, lineKey, onBack, backLabel = 
           >
             Open calculation line ›
           </button>
+          {assign ? (
+            <button
+              className="s1-button"
+              type="button"
+              onClick={() => {
+                const name = line.label.toLowerCase().includes(line.level2_label.toLowerCase()) ? line.label : `${line.label} · ${line.level2_label}`;
+                assign({ kind: "Data point line", label: name, target: { kind: "line", item_id: line.key }, title: `Review ${name}` });
+              }}
+            >
+              Assign to…
+            </button>
+          ) : null}
           {schedule.calculated === false ? (
             <p id="s1-sch-notcalc" className="s1-muted s1-sch-notcalc">
               {schedule.calculation_blocked

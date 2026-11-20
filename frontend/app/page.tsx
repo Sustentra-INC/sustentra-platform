@@ -14,17 +14,27 @@ import { loginUrlFor, parseRealm, REALM_COOKIE } from "../lib/realm-cookie";
  * cookie is missing, and this re-checks it against the API, so an expired or
  * revoked session also lands on the right login page.
  */
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   if (process.env.NEXT_PUBLIC_S1_DATA_MODE === "fixture") return <S1WorkpaperApp />;
 
   const me = await getMe();
   if (!me) {
     const realm = parseRealm((await cookies()).get(REALM_COOKIE)?.value);
-    redirect(loginUrlFor(realm, "/"));
+    // Keep the screen the link named (?view=review&doc=...&e=...): signing in returns to it.
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(await searchParams)) {
+      for (const one of Array.isArray(value) ? value : value === undefined ? [] : [value]) query.append(key, one);
+    }
+    const search = query.toString();
+    redirect(loginUrlFor(realm, search ? `/?${search}` : "/"));
   }
   return (
     <S1WorkpaperApp
-      user={{ email: me.email, firstName: me.first_name ?? null, role: me.role, orgSlug: me.org_slug ?? null }}
+      user={{ email: me.email, firstName: me.first_name ?? null, role: me.role, orgSlug: me.org_slug ?? null, orgId: me.org_id ?? null }}
     />
   );
 }

@@ -6,6 +6,8 @@ import { useState, useSyncExternalStore, type ReactNode } from "react";
 
 import type { EngagementConfig } from "../types";
 import { formatReportingPeriod } from "../utils/formatPeriod";
+import { useAssignTask } from "../../tasks/AssignTaskContext";
+import { NotificationBell } from "../../tasks/NotificationBell";
 import { AssistantWidget, type AssistantConnection } from "./AssistantWidget";
 
 export type NavKey =
@@ -25,6 +27,8 @@ export interface WorkpaperUser {
   firstName: string | null;
   role: "provider_admin" | "org_admin" | "org_member";
   orgSlug: string | null;
+  /** The organisation's id, for tasks and notifications. */
+  orgId?: string | null;
 }
 
 const ROLE_LABEL: Record<WorkpaperUser["role"], string> = {
@@ -192,6 +196,7 @@ function ContextBar({
   user?: WorkpaperUser;
   onSignOut?: () => void;
 }) {
+  const assign = useAssignTask();
   const contextTitle = loading ? { title: "Loading…", sub: "" } : contextBarTitle(engagement);
   const detail = (value: string) => (loading ? "—" : value);
   return (
@@ -220,6 +225,22 @@ function ContextBar({
               <History aria-hidden /> Activity log
             </button>
           ) : null}
+          {assign && engagement.engagementId ? (
+            <button
+              className="s1-linklike"
+              type="button"
+              onClick={() =>
+                assign({
+                  kind: "Engagement",
+                  label: contextTitle.title,
+                  target: { kind: "engagement" },
+                  title: `Review engagement: ${engagement.clientName?.trim() || engagement.engagementName?.trim() || "this engagement"}`,
+                })
+              }
+            >
+              Assign engagement
+            </button>
+          ) : null}
           <button className="s1-linklike" type="button" onClick={onOpenGlossary}>
             Glossary
           </button>
@@ -236,6 +257,14 @@ function ContextBar({
           ) : null}
           {user ? (
             <div className="s1-ctx__user" aria-label="Signed in">
+              {user.orgId ? (
+                <NotificationBell orgId={user.orgId} tasksHref={user.orgSlug ? `/org/${user.orgSlug}/tasks` : "/"} />
+              ) : null}
+              {user.orgSlug && user.role !== "provider_admin" ? (
+                <Link className="s1-linklike" href={`/org/${user.orgSlug}/tasks`}>
+                  My tasks
+                </Link>
+              ) : null}
               <span className="s1-ctx__user-name" title={user.email}>
                 {user.firstName || user.email}
               </span>
