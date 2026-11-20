@@ -63,6 +63,10 @@ const ADD_ROW_LABEL: Record<string, string> = {
   gwp: "Add GWP set",
 };
 
+/** Options that stand alone (the server's STANDALONE_OPTIONS): the explicit answer when nothing is named. */
+const STANDALONE = ["None", "Not stated"];
+const isStandalone = (option: string) => STANDALONE.includes(option);
+
 /** One folding rule for option names, like the server's: case-folded, single spaces. */
 const foldOption = (text: string) => text.toLowerCase().replaceAll("\u00df", "ss").split(/\s+/).filter(Boolean).join(" ");
 
@@ -197,21 +201,22 @@ function ValueEditor({
   const toggle = (option: string) =>
     setPicks((all) => {
       if (all.some((p) => p.option === option)) return all.filter((p) => p.option !== option);
-      // "None" stands alone: choosing it clears the others, and choosing another clears it.
-      return option === "None" ? [{ option, wording: "" }] : [...all.filter((p) => p.option !== "None"), { option, wording: "" }];
+      // "None" and "Not stated" stand alone: choosing one clears the others, and choosing another clears it.
+      return isStandalone(option) ? [{ option, wording: "" }] : [...all.filter((p) => !isStandalone(p.option)), { option, wording: "" }];
     });
   const addOwn = () => {
     const text = ownOption.trim();
     const folded = foldOption(text);
     if (!folded) return;
     setProblem(null);
-    if (folded === "none") return setProblem("None can't be added as an option of your own.");
+    const alone = STANDALONE.find((o) => foldOption(o) === folded);
+    if (alone) return setProblem(`${alone} can't be added as an option of your own.`);
     const listed = listedOptions.find((o) => foldOption(o) === folded);
     if (listed) {
       // an own option that is a listed one selects the listed one
       if (!picks.some((p) => p.option === listed)) toggle(listed);
     } else if (!picks.some((p) => foldOption(p.option) === folded)) {
-      setPicks((all) => [...all.filter((p) => p.option !== "None"), { option: text, wording: "" }]);
+      setPicks((all) => [...all.filter((p) => !isStandalone(p.option)), { option: text, wording: "" }]);
     }
     setOwnOption("");
   };
@@ -229,7 +234,10 @@ function ValueEditor({
     setProblem(null);
     if (multi) {
       if (picks.length === 0) {
-        return setProblem(listedOptions.includes("None") ? "Choose at least one option, or None if there are none." : "Choose at least one option, or reject this row if the company has none.");
+        const alone = STANDALONE.find((o) => listedOptions.includes(o));
+        return setProblem(
+          alone ? `Choose at least one option, or ${alone} if ${alone === "None" ? "there are none" : "the document does not say"}.` : "Choose at least one option, or reject this row if the company has none."
+        );
       }
       return onSave(picks.map((p) => ({ option: p.option, wording: p.wording.trim() })));
     }
@@ -291,7 +299,7 @@ function ValueEditor({
                     <input type="checkbox" aria-label={`${option}: ${def.label}`} checked={Boolean(pick)} onChange={() => toggle(option)} /> {option}
                   </span>
                 </label>
-                {pick && option !== "None" ? (
+                {pick && !isStandalone(option) ? (
                   <input
                     className="s1-mr-input"
                     aria-label={`Company's wording for ${option}: ${def.label}`}

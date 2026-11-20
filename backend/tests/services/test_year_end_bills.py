@@ -57,7 +57,12 @@ def test_the_same_bill_with_no_facility_read_is_unplaced_and_not_counted() -> No
     filed, result = _filed([_bill("2025-12-16", "2026-01-15", address=None)])
     assert filed == {}  # not on any line: it sits in Unassigned supporting evidence
     assert "purchased_electricity_location_based" not in {k for k, v in result["categories"].items() if v}
-    assert [item["kind"] for item in result["needs_input"]] == ["grid_region"]
+    # Changed by Claire's ruling (Evidence Screen tab I8): a bill on no line feeds nothing, so it no longer
+    # asks for a grid region (before: needs_input == ["grid_region"]); Results lists it instead and the
+    # category is marked incomplete.
+    assert [(i["kind"], i["category"]) for i in result["needs_input"]] == [
+        ("not_on_a_line", "purchased_electricity")]
+    assert [d["document_id"] for d in result["uncounted_values"]["documents"]] == ["DEC"]
 
 
 def test_a_bill_entirely_in_the_next_year_is_left_out_with_its_reason() -> None:

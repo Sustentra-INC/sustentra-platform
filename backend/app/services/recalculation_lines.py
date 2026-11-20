@@ -465,11 +465,25 @@ def _resolve_key(key: str, known: dict[str, cl.CalculationLine], facilities: lis
     return line, family, facility
 
 
-def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRecord],
-          inputs: RecalculationInputs, settings: dict[str, Any], decisions: dict[str, dict[str, Any]],
-          tolerance: float, open_sources: dict[str, bool], facilities: list[dict[str, Any]],
-          company: str | None = None) -> Built:
-    """The calculation lines of one recalculation, from what its categories counted (``ledger``)."""
+@dataclass
+class Filing:
+    """Where each record is filed: its placement, the known lines, and the slot of every record."""
+
+    placements: dict[int, cl.RecordPlacement]
+    known: dict[str, cl.CalculationLine]
+    slot_of: dict[int, cl.Slot]
+
+    def on_a_line(self, record: ReviewedRecord) -> bool:
+        """True when the record's document is placed on a calculation line (not unassigned, not a block)."""
+
+        slot = self.slot_of.get(id(record))
+        return slot is not None and slot.target in self.known
+
+
+def file_records(ref: EmissionFactorReference, records: list[ReviewedRecord], inputs: RecalculationInputs,
+                 settings: dict[str, Any], decisions: dict[str, dict[str, Any]], facilities: list[dict[str, Any]],
+                 company: str | None = None) -> Filing:
+    """The line each record is filed on (default placement, then the reviewer's moves)."""
 
     placements = {
         id(r): cl.place_record(r, ref=ref, facilities=facilities, decisions=decisions,
@@ -489,7 +503,18 @@ def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRe
         for slot in slots:
             for index in slot.records:
                 slot_of[id(by_document[doc][index])] = slot
+    return Filing(placements, known, slot_of)
 
+
+def build(ref: EmissionFactorReference, ledger: Ledger, records: list[ReviewedRecord],
+          inputs: RecalculationInputs, settings: dict[str, Any], decisions: dict[str, dict[str, Any]],
+          tolerance: float, open_sources: dict[str, bool], facilities: list[dict[str, Any]],
+          company: str | None, filing: Filing) -> Built:
+    """The calculation lines of one recalculation, from what its categories counted (``ledger``).
+    ``records`` are all the records the lines are made from (a line exists because a document files
+    there, counted or not); ``filing`` is ``file_records`` of them, made once by the caller."""
+
+    placements, known, slot_of = filing.placements, filing.known, filing.slot_of
     builder = _Builder(ref, ledger, inputs, tolerance, open_sources)
     facility_names = {cl.facility_anchor_id(f): str(f.get("name")) for f in facilities}
     anchors = cl.vehicle_group_anchors(inputs.vehicle_groups)

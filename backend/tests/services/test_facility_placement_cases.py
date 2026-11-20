@@ -139,7 +139,9 @@ def test_the_tree_the_lines_and_the_recalculation_agree_on_where_a_bill_is_place
                 assert row["facility_id"] is None  # still unplaced until the reviewer decides
     result = _recalc(store, FACILITIES, company, decisions)
     assert {line["key"] for line in result["calculation_lines"]} == keys
-    if case.get("type", "gas") == "gas":  # an electricity bill with no facility is listed under its category instead
-        assert bool(result["calculation_unplaced"]) == (None in placed)
-    if "reason" in case["expect"]:  # the recalculation says why the record is not placed
-        assert {u["reason"] for u in result["calculation_unplaced"]} == {case["expect"]["reason"]}
+    # Changed by Claire's ruling (Evidence Screen tab I8): a record placed on no facility is not counted and
+    # is not reported under ``calculation_unplaced`` any more (before, a gas bill was, with a reason such as
+    # ``expect.reason``); Results lists its document among the values left out. The tree row's note says why.
+    assert result["calculation_unplaced"] == []
+    left_out = [d["document_id"] for d in result["uncounted_values"]["documents"]]
+    assert left_out == (["D1"] if None in placed else [])

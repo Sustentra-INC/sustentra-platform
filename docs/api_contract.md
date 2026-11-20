@@ -207,11 +207,13 @@ The reviewer's decisions on the client's stated boundary and methods. Each decis
   - Values by kind: entry_list (`calculation:estimation`, one entry per source type) is a list of at most 10 `{source_type, method}`, each text required (source type at most 60 characters and unique ignoring case and spacing, method at most 300); an empty list is allowed (every entry removed). A list suggestion also carries `evidence`: `[{label, quote, document_id, file_name, source_reference}]`, the quote behind each entry in the value's order (quotes up to 1,000 characters, `quote_truncated: true` when cut; the location keeps only page, sheet and cell; the top-level quote is the first entry's). The quotes of one suggestion share 12 KB: when they do not fit, the suggestion carries fewer entries, the first ones, and `entries_omitted` says how many were left out, so an entry is never shown without its quote. Claude's entries are each checked for their own quote on the page, and the source type must be named in its own quote as a whole token: one that fails is dropped and counted, the others stand; more than 10 are cut (`too_many_entries`). date_range (`reporting_period`) is `{start, end}`, each a real calendar date written `YYYY-MM-DD` (ASCII digits), with end not before start (otherwise 422 with a sentence). A record saved before this change may still hold the text it was; the GET returns it unchanged and the screen shows "Recorded as: <text>" until the reviewer enters two dates. Claude's reporting-period suggestion carries both dates in ISO form, and is kept only if both are printed in its quote (English month names, `1/1/2025` read month first, `2025-01-01`); otherwise it is dropped and counted as `value_not_in_quote`. text is a string (at most 2000 characters, no null characters); enum one of `allowed`; gwp `{set, horizon}`;
     factor `{database, edition}`; entity `{name, facilities: [string], equity_share_pct, financial_control,
     operational_control}` (percents 0 to 100).
+  - Scopes covered (`scopes:covered`, multiselect, must appear). A list of `{option, wording}` over Scope 1, Scope 2, Scope 3 and Not stated. Not stated stands alone (like None) and is only ever the reviewer's answer; it is never proposed and never a free option. Claude proposes a scope only when its own quote names it as "Scope N" (also "Scopes 1 and 2", "scope one") and does not negate it: sentences are read one by one, the scopes a sentence lists together ("Scope 1, Scope 2 and Scope 3") share one verdict, and a negation ("not covered", "not included"), "excluded", "outside", "out of scope" or a future wording ("will be disclosed in 2026") in the list's clause negates every scope in it (dropped and counted as `negated`); a document that names no scope leaves the row Not detected.
   - `ai`: `{enabled, reason_code, reason, provider, model, month_spend_usd, cap_usd}`. `enabled` is true when
     Claude can be asked now; otherwise `reason_code` is `off` (AI_SUGGESTIONS_ENABLED is false), `not_configured`
     (no Claude client: no key or Bedrock region), `cap_reached` (this organization's spend this UTC month is at
     or over AI_MONTHLY_CAP_USD) or `no_documents` (no document whose latest type is a client-prepared summary
     type), and `reason` is the sentence to show; both are `null` when enabled. Checked in that order.
+- GWP horizon and use note. The gwp value is `{set, horizon, applies_to?}`. `horizon` may be `Not stated`: the set is named and the document gives no horizon for it, so "AR5" alone is kept (Claude's "Not stated" is refused when the quote ties a horizon to that set, and a set the quote does not name is dropped). `applies_to` is an optional use note of at most 200 characters ("default", "embedded in the supplier factors"), left out when blank; Claude's note is kept only when it is printed in the same quote in the clause that names that set (a clause ends at a semicolon, a sentence end or a line break; "AR5 for energy; AR6 for refrigerants" gives AR6 "for refrigerants"), and it is stored in the quote's own casing; a note from another set's clause is blanked without costing the set. Every set the document names is kept, each with its own quote; entries dedupe on set, horizon and note, and a `Not stated` entry collapses into a stated horizon for the same set. Horizon wording includes "100 year", "100-yr" and "one hundred-year".
 - `POST .../{field_id}/accept` takes the suggestion's value, or the value already set. `POST .../{field_id}/edit`
   `{value}`. `POST .../{field_id}/reject` `{reason}` (required, at most 500 characters). `POST
   .../{field_id}/revert` returns to pending. Each answers the updated record. Accept and reject only work from
@@ -640,8 +642,17 @@ calculation_lines: [{
   `evidenceLines`) or for a key that names a Setup facility or vehicle group with a fuel the calculator
   knows, but that has no evidence, gives a line of zero with the company side and the flag `no_evidence`
   (`difference_t` is minus the reported value).
-- A record with no line is listed in `calculation_unplaced` (same shape as a line, `key: null`, `target`,
-  no company side), never dropped. `reason` is one of: `unknown_line` (filed on a line that no longer
+- Values count only when their document is placed on a calculation line (Claire, Evidence Screen tab I8).
+  A record in Unassigned supporting evidence, parked in a block, or on a line that no longer exists feeds no
+  category, line or total until the document is placed. `uncounted_values` lists what was left out:
+  `{accepted_values, documents: [{document_id, file_name, accepted_values}]}`; Results shows "N accepted
+  values not counted: their documents aren't on a calculation line yet" with a link to Evidence. Data quality
+  checks still read every document, so such a bill is not a missing month. Such a record's own questions
+  (a fuel to choose, a value awaiting review) still appear in `needs_input` / `awaiting_review`, so it can be
+  placed. If placement cannot be read, every value is counted and `needs_input` says so (`record_placement`).
+- `calculation_unplaced` (same shape as a line, `key: null`, `target`, no company side) now holds only a
+  record on a line of another family (such as a fuel record filed on an electricity line), never dropped.
+  Its `reason`, before the ruling, was one of: `unknown_line` (filed on a line that no longer
   exists), `moved_to_another_place` (a reviewer filed it elsewhere), `fuel_shared_by_vehicle_groups`
   (mobile fuel used by two or more groups), `no_vehicle_group` (mobile fuel no group uses),
   `no_facility_match` (no Setup facility matches), `identifier_on_two_facilities` (the bill's account or
@@ -752,8 +763,8 @@ are dropped. Spaces, dashes and dots separate groups: two numbers are the same w
 2290 31" = "4417-2290-31"), or when one is written without separators and the characters are the same; "12-345" is not
 "1234-5". A number needs at least 4 digits, on the bill and in Setup, to match. A number listed on two facilities, or an
 account and a meter number that point at different facilities, place nothing: `facility_note` says why ("Account
-7700-1234 is listed on two facilities. Choose the facility.") and the recalculation lists the record in
-`calculation_unplaced` with `reason: "identifier_on_two_facilities"`. A bill placed this way is described as "Account
+7700-1234 is listed on two facilities. Choose the facility.") and the recalculation leaves the record out
+(`uncounted_values`; before the ruling: `calculation_unplaced` with `reason: "identifier_on_two_facilities"`). A bill placed this way is described as "Account
 or meter number in Setup". Each record of a bill is placed on its own.
 
 Not built yet, because the format is provisional and waits on the ops lead: a supplier per number (two utilities can

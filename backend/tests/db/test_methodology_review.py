@@ -70,14 +70,14 @@ def suggest(engagement_id: str, field_id: str, suggestion: dict[str, Any] = SUGG
 def test_get_lists_every_field_pending_with_the_catalog_and_ai_off() -> None:
     engagement = create()
     body = review(engagement["id"]).json()
-    assert len(body["fields"]) == len(body["catalog"]) == 35  # 34 + boundary:entities
+    assert len(body["fields"]) == len(body["catalog"]) == 36  # 34 + scopes:covered + boundary:entities
     assert [f["field_id"] for f in body["fields"]] == [c["field_id"] for c in body["catalog"]]
     assert all(f["suggestion"] is None and f["decision"] is None and f["history"] == [] for f in body["fields"])
     assert body["ai"]["enabled"] is False and body["ai"]["reason_code"] == "off" and body["ai"]["reason"]
     assert all(f["user_added"] is False for f in body["fields"])
     gwp = next(c for c in body["catalog"] if c["field_id"] == "gwp")
     assert gwp["group"] == "gwp" and gwp["group_label"] == "GWP factors source"
-    assert [p["key"] for p in gwp["parts"]] == ["set", "horizon"] and gwp["parts"][0]["allowed"] == ["AR4", "AR5", "AR6"]
+    assert [p["key"] for p in gwp["parts"]] == ["set", "horizon", "applies_to"] and gwp["parts"][0]["allowed"] == ["AR4", "AR5", "AR6"]
     assert "parts" not in next(c for c in body["catalog"] if c["field_id"] == "exclusion:boundary")
     assert body["row_groups"] == ["entities", "factor:scope1", "factor:scope2", "gwp"]
     assert {"group": "boundary", "label": "Organizational boundary"} in body["groups"]
@@ -179,7 +179,7 @@ def test_rows_can_be_added_edited_and_removed_when_the_reviewer_added_them() -> 
 
     listed = review(eid).json()
     assert listed["fields"][-1]["field_id"] == field_id and listed["catalog"][-1]["kind"] == "entity"
-    assert len(listed["fields"]) == 36  # 34 fixed + boundary:entities + 1 row
+    assert len(listed["fields"]) == 37  # 34 fixed + scopes:covered + boundary:entities + 1 row
 
     blank = act(eid, field_id, "accept")
     assert blank.status_code == 422 and "name" in blank.json()["detail"]

@@ -24,7 +24,7 @@ def field(field_id: str) -> dict:
 
 def test_catalog_has_every_field_with_a_valid_unique_key() -> None:
     ids = [f["field_id"] for f in m.CATALOG]
-    assert len(ids) == len(set(ids)) == 35  # 34 + boundary:entities
+    assert len(ids) == len(set(ids)) == 36  # 34 + scopes:covered + boundary:entities
     assert all(ITEM_KEY.match(i) for i in ids)
     for expected in ("reporting_period", "consolidation_approach", "category:scope1:fugitive",
                      "category:location:cooling", "category:market:steam", "category:biogenic:indirect",
@@ -34,7 +34,7 @@ def test_catalog_has_every_field_with_a_valid_unique_key() -> None:
     assert {f["group"] for f in m.CATALOG} <= groups
     assert field("consolidation_approach")["allowed"] == ["Equity Share", "Financial Control", "Operational Control"]
     assert field("category:scope1:process")["allowed"] == ["Yes", "No", "Not detected"]
-    assert field("gwp")["allowed"] == {"set": ["AR4", "AR5", "AR6"], "horizon": ["100-year", "20-year", "500-year"]}
+    assert field("gwp")["allowed"] == {"set": ["AR4", "AR5", "AR6"], "horizon": ["100-year", "20-year", "500-year", "Not stated"]}
     assert m.catalog_field("entity:abcd1234") is None
 
 
@@ -238,7 +238,7 @@ def test_a_gwp_row_has_its_own_definition_and_a_blank_value() -> None:
     assert ITEM_KEY.match(row_id) and row_id.startswith("gwp:") and row_id != "gwp"
     row = m.row_field(row_id)
     assert row is not None and row["kind"] == "gwp" and row["group"] == "gwp" and row["user_added"] is True
-    assert row["allowed"]["horizon"] == ["100-year", "20-year", "500-year"] and row["allowed_labels"]["set"]["AR5"]
+    assert row["allowed"]["horizon"] == ["100-year", "20-year", "500-year", "Not stated"] and row["allowed_labels"]["set"]["AR5"]
     assert m.row_field("gwp") is None  # the fixed field is not a row
     assert m.blank_value(row_id) == {"set": "", "horizon": ""}
     with pytest.raises(m.MethodologyInvalid):
@@ -470,3 +470,33 @@ def test_the_per_entity_yes_no_is_nullable_and_a_new_row_starts_blank() -> None:
     assert m.blank_value("entity:abcd1234")["operational_control"] is None
     part = next(p for p in entity["parts"] if p["key"] == "operational_control")
     assert part["allowed"] == ["Yes", "No"] and part["optional"] is True
+
+
+def test_a_gwp_set_can_have_no_stated_horizon_and_a_use_note() -> None:
+    f = field("gwp")
+    assert m.validate_value(f, {"set": "AR5", "horizon": "Not stated"}) == {"set": "AR5", "horizon": "Not stated"}
+    assert m.validate_value(f, {"set": "AR6", "horizon": "100-year", "applies_to": "  default; refrigerants é纸 "}) == {
+        "set": "AR6", "horizon": "100-year", "applies_to": "default; refrigerants é纸"}
+    assert m.validate_value(f, {"set": "AR6", "horizon": "100-year", "applies_to": "  "}) == {"set": "AR6", "horizon": "100-year"}
+    for bad in ({"set": "AR6", "horizon": "Not stated", "applies_to": "x" * 201}, {"set": "AR6", "horizon": "Not stated", "applies_to": 5},
+                {"set": "AR6", "horizon": "Not stated", "applies_to": "a\x00b"}, {"set": "AR6", "horizon": "Not stated", "note": "x"},
+                {"set": "AR6", "horizon": "none"}, {"set": "", "horizon": "Not stated"}):
+        with pytest.raises(m.MethodologyInvalid):
+            m.validate_value(f, bad)
+    assert [p["key"] for p in f["parts"]] == ["set", "horizon", "applies_to"] and f["parts"][2]["kind"] == "text"
+
+
+def test_not_stated_stands_alone_on_the_scopes_field_and_is_never_a_free_option() -> None:
+    scopes = field(m.SCOPES_ID)
+    assert m.validate_value(scopes, [pick("scope 2"), pick("Scope 1")]) == [pick("Scope 2"), pick("Scope 1")]
+    assert m.validate_value(scopes, [pick("not  STATED")]) == [pick("Not stated")]
+    with pytest.raises(m.MethodologyInvalid, match="or Not stated if the document does not say"):
+        m.validate_value(scopes, [])
+    with pytest.raises(m.MethodologyInvalid, match="'Not stated' can't be chosen together"):
+        m.validate_value(scopes, [pick("Not stated"), pick("Scope 3")])
+    with pytest.raises(m.MethodologyInvalid, match="choose options from the list"):
+        m.validate_value(scopes, [pick("Scope 4")])
+    records = field("calculation:source_records")  # a field with free additions refuses it as an option of the reviewer's own
+    with pytest.raises(m.MethodologyInvalid, match="'Not stated' can't be added"):
+        m.validate_value(records, [pick("not stated")])
+    assert m.validate_value(field("scope2:instruments"), [pick("None")]) == [pick("None")]  # None still stands alone there
