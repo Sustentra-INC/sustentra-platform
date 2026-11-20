@@ -657,3 +657,50 @@ describe("the Scopes covered row", () => {
     );
   });
 });
+
+describe("a GWP set with no stated horizon and a use note", () => {
+  const gwpFixture = () => {
+    const d = fixture() as { catalog: Record<string, unknown>[]; fields: Record<string, unknown>[] };
+    const def = d.catalog.find((c) => c.field_id === "gwp")!;
+    def.allowed = { set: ["AR4", "AR5", "AR6"], horizon: ["100-year", "20-year", "500-year", "Not stated"] };
+    def.parts = [
+      { key: "set", label: "Set", kind: "enum" },
+      { key: "horizon", label: "Horizon", kind: "enum" },
+      { key: "applies_to", label: "Applies to", kind: "text" },
+    ];
+    const record = d.fields.find((f) => f.field_id === "gwp")!;
+    record.decision = null;
+    record.suggestion = {
+      value: { set: "AR5", horizon: "Not stated", applies_to: "embed AR5 values" },
+      quote: "Supplier factors (CEDA, DESNZ) embed AR5 values",
+      document_id: "d1",
+      file_name: "Plan.pdf",
+      source_reference: { page_number: 5 },
+      origin: "ai",
+      model: "m",
+      request_id: "r",
+      suggested_at: "2026-11-01T10:00:00Z",
+    };
+    return d;
+  };
+
+  it("shows the set, 'Not stated' as its horizon and the use note, beside the quote", async () => {
+    await open(vi.fn(), gwpFixture());
+    const gwp = row("GWP");
+    expect(within(gwp).getByText("AR5 · Not stated · embed AR5 values")).toBeTruthy();
+    expect(within(gwp).getByText("Supplier factors (CEDA, DESNZ) embed AR5 values")).toBeTruthy();
+  });
+
+  it("offers Not stated as a horizon and sends the use note with the edit", async () => {
+    await open(vi.fn(), gwpFixture());
+    fireEvent.click(within(row("GWP")).getByRole("button", { name: "Edit: GWP" }));
+    const horizon = screen.getByLabelText("GWP: Horizon") as HTMLSelectElement;
+    expect(Array.from(horizon.options).map((o) => o.textContent)).toEqual(["Choose", "100-year", "20-year", "500-year", "Not stated"]);
+    expect(horizon.value).toBe("Not stated");
+    fireEvent.change(screen.getByLabelText("GWP: Applies to"), { target: { value: "Zürich 排放 factors" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(calls()).toContainEqual([`${BASE}/gwp/edit`, expect.objectContaining({ body: { value: { set: "AR5", horizon: "Not stated", applies_to: "Zürich 排放 factors" } } })])
+    );
+  });
+});

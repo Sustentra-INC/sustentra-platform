@@ -44,7 +44,8 @@ KIND = "methodology"
 CONSOLIDATION_APPROACHES = ("Equity Share", "Financial Control", "Operational Control")
 INCLUSIONS = ("Yes", "No", "Not detected")
 GWP_SETS = ("AR4", "AR5", "AR6")
-GWP_HORIZONS = ("100-year", "20-year", "500-year")
+# "Not stated": the set is named and the document gives no horizon for it ("AR5" alone).
+GWP_HORIZONS = ("100-year", "20-year", "500-year", "Not stated")
 GWP_SET_LABELS = {
     "AR4": "IPCC Fourth Assessment Report (AR4)",
     "AR5": "IPCC Fifth Assessment Report (AR5)",
@@ -62,6 +63,7 @@ STATUSES = (PENDING, ACCEPTED, EDITED, REJECTED)
 
 MAX_TEXT = 2000
 MAX_REASON = 500
+MAX_APPLIES_TO = 200  # a GWP set's use note, in the company's words
 MAX_FACILITIES = 20
 MAX_FACILITY = 100
 MAX_HISTORY = 50
@@ -158,6 +160,7 @@ _PARTS: dict[str, list[dict[str, Any]]] = {
     "gwp": [
         {"key": "set", "label": "GWP set", "kind": "enum", "allowed": list(GWP_SETS)},
         {"key": "horizon", "label": "Time horizon", "kind": "enum", "allowed": list(GWP_HORIZONS)},
+        {"key": "applies_to", "label": "Applies to (use note)", "kind": "text"},
     ],
 }
 
@@ -423,11 +426,16 @@ def validate_value(field: Mapping[str, Any], value: Any) -> Any:
             raise _fail(field, "choose one of " + ", ".join(field["allowed"]) + ".")
         return value
     if kind == "gwp":
-        data = _only(field, value, ("set", "horizon"))
-        if data["set"] not in GWP_SETS or data["horizon"] not in GWP_HORIZONS:
+        if not isinstance(value, dict) or not {"set", "horizon"} <= set(value) or not set(value) <= {"set", "horizon", "applies_to"}:
+            raise _fail(field, "the value must be an object with set and horizon, and optionally applies_to.")
+        if value["set"] not in GWP_SETS or value["horizon"] not in GWP_HORIZONS:
             raise _fail(field, f"the set must be one of {', '.join(GWP_SETS)} and the horizon one of "
                                f"{', '.join(GWP_HORIZONS)}.")
-        return {"set": data["set"], "horizon": data["horizon"]}
+        out = {"set": value["set"], "horizon": value["horizon"]}
+        note = _text(field, value.get("applies_to", ""), limit=MAX_APPLIES_TO, name="the use note")
+        if note:  # left out when blank, so a value without one keeps the shape it always had
+            out["applies_to"] = note
+        return out
     if kind == "factor":
         data = _only(field, value, ("database", "edition"))
         return {"database": _text(field, data["database"], required=True, limit=200, name="the database"),

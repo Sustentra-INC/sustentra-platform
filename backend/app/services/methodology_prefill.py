@@ -101,7 +101,8 @@ class SelectionSuggestion(_Cited):
 
 class GwpSuggestion(_Cited):
     set: Literal["AR4", "AR5", "AR6"]
-    horizon: Literal["100-year", "20-year", "500-year"]
+    horizon: Literal["100-year", "20-year", "500-year", "Not stated"]  # "Not stated": the quote names the set, no horizon
+    applies_to: str  # what the set is used for, in the company's words copied from the quote ("" if not said)
 
 
 class EntitySuggestion(_Cited):
@@ -305,11 +306,12 @@ _GWP_TERMS = {"AR4": ("ar4", "fourth assessment"), "AR5": ("ar5", "fifth assessm
 # The horizon the quote must name, as whole tokens ("120-year" is not "20-year").
 _HORIZON_TERMS = {
     "20-year": ("20-year", "20 year", "20-years", "20 years", "20-yr", "20 yr", "twenty-year", "twenty year",
-                "gwp20", "gwp-20", "gwp 20"),
+                "twenty-years", "twenty years", "gwp20", "gwp-20", "gwp 20"),
     "100-year": ("100-year", "100 year", "100-years", "100 years", "100-yr", "100 yr", "hundred-year", "hundred year",
-                 "gwp100", "gwp-100", "gwp 100"),
+                 "hundred-years", "hundred years", "one hundred-year", "one hundred year", "one-hundred-year",
+                 "one hundred years", "gwp100", "gwp-100", "gwp 100"),
     "500-year": ("500-year", "500 year", "500-years", "500 years", "500-yr", "500 yr", "five-hundred-year",
-                 "five hundred year", "gwp500", "gwp-500", "gwp 500"),
+                 "five hundred year", "five-hundred-years", "five hundred years", "gwp500", "gwp-500", "gwp 500"),
 }
 
 
@@ -339,6 +341,48 @@ def set_has_horizon(quote: str, set_: str, horizon: str) -> bool:
             if min(sets, key=lambda item: abs(item[0] - pos))[1] == set_:
                 return True
     return False
+
+
+_CLAUSE = re.compile(r"[;!?\n]|\.\s")
+
+
+def note_for_set(quote: str, set_: str, note: str) -> str:
+    """The use note for ``set_`` as the quote prints it (the quote's own casing and spacing), or "" when it is
+    not the words that follow this set's mention in the same clause. A clause ends at ";", a sentence end or a
+    line break ("AR5 for energy; AR6 for refrigerants" gives AR6 "for refrigerants", never "for energy"); where
+    a clause names several sets the note must start at this set's mention or after it, and end before the next
+    mention of another set. A clause with a single set may have its note anywhere ("embed AR5 values")."""
+
+    wanted = norm(note)
+    if not wanted:
+        return ""
+    for clause in _CLAUSE.split(quote):
+        collapsed = " ".join(clause.split())
+        folded = norm(collapsed)
+        if len(folded) != len(collapsed):  # a letter that changes length when folded: positions would drift
+            continue
+        marks = sorted((pos, name) for name, terms in _GWP_TERMS.items() for pos in _mentions(folded, terms))
+        for index, (pos, name) in enumerate(marks):
+            if name != set_:
+                continue
+            hi = next((p for p, other in marks[index + 1:] if other != set_), len(folded))
+            alone = len({n for _, n in marks}) == 1  # one set in the clause: the note may come before it too
+            at = folded.find(wanted) if alone else folded.find(wanted, pos, hi)
+            if at >= 0:
+                return collapsed[at:at + len(wanted)]
+    return ""
+
+
+def set_named(quote: str, set_: str) -> bool:
+    """Whether the quote names this GWP set as a whole token ("AR5", "Fifth Assessment")."""
+
+    return bool(_mentions(norm(quote), _GWP_TERMS[set_]))
+
+
+def set_without_horizon(quote: str, set_: str) -> bool:
+    """The quote names the set and ties no horizon to it (a horizon next to another set does not count)."""
+
+    return set_named(quote, set_) and not any(set_has_horizon(quote, set_, h) for h in _HORIZON_TERMS)
 
 
 SYSTEM_PROMPT = """\
@@ -408,8 +452,11 @@ What the items mean
   boundary:leased_space only if a document states something about them; if it is silent, leave
   them out.
 - gwp: the Global Warming Potential set the company uses (IPCC assessment report AR4, AR5 or AR6)
-  and the time horizon (20-year, 100-year or 500-year). If the report uses more than one set or
-  horizon, give each one separately; do not pick between them.
+  and the time horizon (20-year, 100-year or 500-year), or "Not stated" when the quote names the set
+  and gives no horizon for it. If the report uses more than one set or horizon, give each one
+  separately, each with its own quote; do not pick between them. applies_to is what that set is used
+  for, in the company's words copied from the quote ("default", "embedded in the supplier factors"),
+  or "".
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
   equity share (percent, 0 to 100), financial control (percent, 0 to 100) and whether the company
   has operational control (Yes or No). Include an entity only if the cited line states its equity
@@ -682,24 +729,40 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
             dropped["value_not_in_quote"] += 1
             continue
         keep(period, value, "reporting_period", None)
-    gwp_pairs: set[tuple[str, str]] = set()
+    gwp_seen: set[tuple[str, str, str]] = set()
     for gwp in output.gwp:
-        value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon})
+        # The use note is the company's own words, from the clause that names this set, in the quote's casing.
+        note = note_for_set(gwp.quote, gwp.set, " ".join(gwp.applies_to.split()))
+        if len(note) > rules.MAX_APPLIES_TO:
+            note = ""
+        value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon, "applies_to": note})
         if value is None:
             continue
-        pair = (value["set"], value["horizon"])
-        if pair in gwp_pairs:  # the same set and horizon named again
+        identity = (value["set"], value["horizon"], norm(value.get("applies_to", "")))
+        if identity in gwp_seen:  # the same set, horizon and note named again
             dropped["duplicate_entry"] += 1
             continue
         # The first set the report names is the fixed GWP field; every other set is a row of its own.
-        ties = lambda quote, s_=gwp.set, h_=gwp.horizon: set_has_horizon(quote, s_, h_)  # noqa: E731
+        def ties(quote: str, s_: str = gwp.set, h_: str = gwp.horizon) -> bool:
+            return set_without_horizon(quote, s_) if h_ == "Not stated" else set_has_horizon(quote, s_, h_)
+
         before = len(kept)
         if "gwp" not in seen:
             keep(gwp, value, "gwp", None, ok=ties)
         else:
             keep(gwp, value, None, "gwp", ok=ties)
-        if len(kept) > before:  # only a pair that held up counts as seen
-            gwp_pairs.add(pair)
+        if len(kept) > before:  # only an entry that held up counts as seen
+            gwp_seen.add(identity)
+    # A set the report states a horizon for needs no "Not stated" entry beside it: that one collapses into it.
+    # The first entry left is the fixed field, the others are rows.
+    sets = [v for v in kept if v.field_id == "gwp" or v.row_group == "gwp"]
+    stated = {v.suggestion["value"]["set"] for v in sets if v.suggestion["value"]["horizon"] != "Not stated"}
+    redundant = [v for v in sets if v.suggestion["value"]["horizon"] == "Not stated" and v.suggestion["value"]["set"] in stated]
+    if redundant:
+        dropped["duplicate_entry"] += len(redundant)
+        left = [v for v in sets if v not in redundant]
+        kept[:] = [v for v in kept if v not in sets]
+        kept.extend(Verified("gwp" if i == 0 else None, None if i == 0 else "gwp", v.suggestion) for i, v in enumerate(left))
     for entity in output.entities:
         definition = rules.row_field("entity:aaaa")
         assert definition is not None
@@ -730,7 +793,7 @@ def same_row_value(group: str, a: Any, b: Any) -> bool:
 
     if not isinstance(a, dict) or not isinstance(b, dict):
         return False
-    keys = ("name",) if group == "entities" else ("set", "horizon") if group == "gwp" else ("database", "edition")
+    keys = ("name",) if group == "entities" else ("set", "horizon", "applies_to") if group == "gwp" else ("database", "edition")
     return all(norm(str(a.get(k) or "")) == norm(str(b.get(k) or "")) for k in keys)
 
 
