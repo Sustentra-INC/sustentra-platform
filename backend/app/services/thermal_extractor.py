@@ -518,9 +518,7 @@ class ThermalExtractor(ElectricityExtractor):
     # --- the readings of one statement (the hooks of the electricity extractor's bundle reader) -------------
     def _part_records(self, rows: Sequence[Row], unit_hint: Located | None) -> tuple[list[UsageRecord], list[str]]:
         records, unread = self._read_tables(rows, unit_hint, self._document_kinds(rows))
-        records, summary_notes = self._without_account_summaries(rows, records)
         notes = [AMBIGUOUS_ENERGY_NOTE] if any(r.fuel is None for r in records) else []
-        notes.extend(summary_notes)
         # Nothing drops silently: a table whose header was found but whose lines gave no usable thermal
         # quantity is named by its page. (A history table is not a missed reading and is not named.)
         notes.extend(_unread_table_note(header.page) for header in unread)

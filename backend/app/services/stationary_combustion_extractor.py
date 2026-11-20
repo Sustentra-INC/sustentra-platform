@@ -40,8 +40,12 @@ HALT_UNREADABLE = "unreadable_document"
 HALT_UNSUPPORTED = "unsupported_document"
 
 RECORD_FIELDS = ("fuel_type", "activity_quantity", "activity_unit", "service_period_start", "service_period_end")
-ACCOUNT_SUMMARY_NOTE = ("A statement of account in this file restates the invoices that are in it too, so it was not "
-                        "counted as a reading of its own.")
+ACCOUNT_SUMMARY_NOTE = ("A statement of account in this file restates the invoices that are in it too (same account "
+                        "and period, and its total agrees with theirs to within 0.5%), so it was not counted as a "
+                        "reading of its own.")
+SUMMARY_TOLERANCE = 0.005
+STATEMENT_TOTAL_FIELD = "statement_total_check"
+STATEMENT_TOTAL_LABEL = "Statement of account total differs from its invoices"
 DOCUMENT_FIELDS = ("facility_name", "service_address", "supplier_name", "account_number", "meter_number",
                    "statement_date")
 KNOWN_FIELDS = RECORD_FIELDS + DOCUMENT_FIELDS
@@ -465,6 +469,7 @@ class UsageRecord:
     extra: dict[str, Located] = field(default_factory=dict)  # subclass EXTRA_COLUMNS values
     energy: str | None = None  # thermal bills: the energy type told from this line (steam / hot_water / chilled_water)
     quantity_header: str | None = None  # table lines: the header of the quantity's own column (not the whole header row)
+    total_check: str | None = None  # a statement of account whose total differs from its invoices': kept, and flagged
 
 
 @dataclass
@@ -1091,22 +1096,7 @@ class StationaryCombustionExtractor:
             records = self._headline_quantity_records(rows)
         if not records and self.INLINE_TOTAL_QUANTITY:  # the weakest read, so it runs only when nothing else found one
             records = self._inline_total_records(rows, energy)
-        return self._without_account_summaries(rows, records)
-
-    def _without_account_summaries(self, rows: Sequence[Row], records: list[UsageRecord],
-                                   ) -> tuple[list[UsageRecord], list[str]]:
-        """A "Statement of Account" page that restates invoices which are in the file too is not a reading of
-        its own: its usage is counted once, from the invoices (and the reviewer is told)."""
-
-        from backend.app.services.statement_segments import account_summary_pages  # it imports this module
-
-        pages = account_summary_pages(rows)
-        if not pages:
-            return records, []
-        kept = [r for r in records if r.quantity.row is None or r.quantity.row.page not in pages]
-        if not kept or len(kept) == len(records):
-            return records, []
-        return kept, [ACCOUNT_SUMMARY_NOTE]
+        return records, []
 
     def _inherited_values(self, rows: Sequence[Row], parts: Sequence[Sequence[Row]]) -> dict[str, Located | None]:
         """What a statement of a bundle that does not name its own takes from the bundle: its facility, address,
@@ -1119,6 +1109,9 @@ class StationaryCombustionExtractor:
                 return None
             return next(iter(found.values()), None) or read(rows)
 
+        for read in (lambda r: self._address(r) or self._facility(r)[1], self._account, self._bill_meter):
+            if len({(v.raw or "").strip().lower() for part in parts if (v := read(part)) is not None}) > 1:
+                return {}  # the statements are at different places (or accounts): none speaks for the bundle
         facility = own(lambda r: self._facility(r)[0])
         address = own(lambda r: self._address(r) or self._facility(r)[1])
         return {"facility_name": facility, "service_address": address, "supplier_name": own(self._supplier),
@@ -1128,6 +1121,33 @@ class StationaryCombustionExtractor:
         """What one statement says it is for (its fuel, or its energy type)."""
 
         return self._document_fuel(rows)
+
+    def _apply_inherited(self, document_values: dict[str, Located | None], rows: Sequence[Row],
+                         inherited: dict[str, Located | None] | None) -> None:
+        """A statement of a bundle is one unit: when it names its own service address, account or meter and any of
+        them differs from the bundle's, it takes nothing from the bundle (it is placed on what it says). Else what
+        it does not name comes from the bundle."""
+
+        if not inherited:
+            return
+        own_values = (("service_address", self._address(rows) or self._facility(rows)[1]),
+                      ("account_number", self._account(rows)), ("meter_number", self._bill_meter(rows)))
+        for name, own in own_values:
+            theirs = inherited.get(name)
+            if own is not None and (theirs is None or _name_key(own.raw) != _name_key(theirs.raw)):
+                return
+        for name, value in inherited.items():
+            document_values[name] = document_values.get(name) or value
+
+    def _total_check_candidate(self, record: UsageRecord, document_id: str, evidence_id: str,
+                               record_key: str | None, record_index: int | None, parser_output: dict) -> dict:
+        """The open item on a record of a statement of account whose total differs from its invoices'."""
+
+        message = record.total_check or ""
+        located = Located(message, record.quantity.cells, record.quantity.row, CONF_SAME_CELL - 0.04, context=message)
+        target = {"field_id": STATEMENT_TOTAL_FIELD, "field_label": STATEMENT_TOTAL_LABEL}
+        return self._candidate(target, located, message, message, None, document_id, evidence_id, record_key,
+                               record_index, parser_output, [])
 
     def _statement_parts(self, rows: list[Row], unit_hint: Located | None,
                          ) -> tuple[list[tuple[list[Row], Located | None, list[UsageRecord], list[str]]] | None,
@@ -1142,15 +1162,80 @@ class StationaryCombustionExtractor:
         split = split_statements(rows)
         if split.parts is None:
             return None, split.note
+        flags = split.summaries or (False,) * len(split.parts)
         found: list[tuple[list[Row], Located | None, list[UsageRecord], list[str]]] = []
-        for part in split.parts:
+        summary_at: set[int] = set()  # positions in ``found`` of statements of account
+        for part, is_summary in zip(split.parts, flags):
             part_hint = self._document_unit(part) or unit_hint
             records, more = self._part_records(part, part_hint)
             if records:
+                if is_summary:
+                    summary_at.add(len(found))
                 found.append((part, part_hint, records, more))
+        if summary_at:
+            found, dropped = self._reconcile_summaries(found, summary_at)
+            if dropped:
+                return found, split.note  # the invoices alone: even one is a statement read on its own pages
         if len(found) < 2:
             return None, SPLIT_NOTE
         return found, split.note
+
+    def _amount(self, record: UsageRecord, hint: Located | None) -> tuple[float, str | None] | None:
+        number = parse_number(record.quantity.raw)
+        if number is None:
+            return None
+        return number[0], self._find_unit(record.unit_raw or (hint.raw if hint else ""))
+
+    def _reconcile_summaries(self, found: list[tuple[list[Row], Located | None, list[UsageRecord], list[str]]],
+                             summary_at: set[int]) -> tuple[list[tuple[list[Row], Located | None,
+                                                                       list[UsageRecord], list[str]]], bool]:
+        """A statement of account beside the invoices it lists. When the file's invoices for its account cover
+        its period and their quantities add up to its total (within 0.5%), it restates them and is left out.
+        When they cover it but do not add up, or cover only part of it, everything is kept and every record of
+        the statement of account is flagged for double counting (the flag is an open item for the category).
+        A statement of account with no invoice of its account and period in the file is a reading of its own."""
+
+        from backend.app.services import statement_segments as seg
+
+        def first_period(part: list[Row]) -> tuple[str, str] | None:
+            return next((p for r in part if (p := seg.statement_period(r)) is not None), None)
+
+        dropped: set[int] = set()
+        notes: list[str] = []
+        for at in sorted(summary_at):
+            part, hint, records, _ = found[at]
+            accounts, period = seg.accounts_of(part), seg.summary_period(part)
+            if not accounts or period is None:
+                continue
+            invoices = [(i, p) for i, (other, _h, _r, _m) in enumerate(found)
+                        if i not in summary_at and accounts & seg.accounts_of(other)
+                        and (p := first_period(other)) is not None and seg.inside(p, period)]
+            if not invoices:
+                continue
+            amounts = [a for r in records if (a := self._amount(r, hint)) is not None]
+            billed = [a for i, _ in invoices for rec in found[i][2] if (a := self._amount(rec, found[i][1])) is not None]
+            values = sorted(v for v, _ in amounts)
+            total = values[-1] if len(values) > 1 and abs(values[-1] - sum(values[:-1])) <= SUMMARY_TOLERANCE * values[-1] \
+                else sum(values)
+            summed = sum(v for v, _ in billed)
+            units = {u for _, u in amounts} | {u for _, u in billed}
+            unit = next(iter(units)) if len(units) == 1 else None
+            covered = seg.covers(period, [p for _, p in invoices])
+            if covered and unit is not None and total > 0 and abs(total - summed) <= SUMMARY_TOLERANCE * total:
+                dropped.add(at)
+                notes.append(ACCOUNT_SUMMARY_NOTE)
+                continue
+            label = f" {unit}" if unit else ""
+            message = (f"Statement of account total {total:,.1f}{label} differs from its invoices {summed:,.1f}{label}"
+                       + ("" if covered else " (they cover only part of its period)")
+                       + "; check for double counting.")
+            for record in records:
+                record.total_check = message
+            notes.append(message)
+        kept = [item for i, item in enumerate(found) if i not in dropped]
+        if kept and notes:
+            kept[0][3].extend(n for n in dict.fromkeys(notes) if n not in kept[0][3])
+        return kept, bool(dropped)
 
     def _statement_candidates(self, rows: list[Row], parser_output: dict, targets: Sequence[dict], evidence_id: str,
                               document_id: str, doc_fuel: Located, record_list: Sequence[UsageRecord | None],
@@ -1171,8 +1256,7 @@ class StationaryCombustionExtractor:
         facility, address_from_facility = self._facility(rows)
         document_values["facility_name"] = facility
         document_values["service_address"] = self._address(rows) or address_from_facility
-        for name, value in (inherited or {}).items():  # a statement of a bundle that names none takes the bundle's
-            document_values[name] = document_values.get(name) or value
+        self._apply_inherited(document_values, rows, inherited)
         period = self._document_period(rows)
 
         candidates: list[dict] = []
@@ -1206,6 +1290,9 @@ class StationaryCombustionExtractor:
                 else:
                     record_candidates.append(self._missing(target, document_id, evidence_id, record_key,
                                                            record_index, ["unsupported_extraction_method"]))
+            if record is not None and record.total_check:
+                record_candidates.append(self._total_check_candidate(
+                    record, document_id, evidence_id, record_key, record_index, parser_output))
             if multi:
                 label = self._record_display(index, record, record_values)
                 for candidate in record_candidates:

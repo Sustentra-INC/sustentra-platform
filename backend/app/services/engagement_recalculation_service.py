@@ -579,6 +579,18 @@ class EngagementRecalculationService:
                 "message": f"{count} accepted {'record' if count == 1 else 'records'} not counted in this category: "
                            "the documents are not on a calculation line yet. Place them in Evidence."})
 
+        # A statement of account kept beside invoices it does not add up with may count the same usage twice:
+        # an open item, so the category is never shown as complete.
+        flagged: set[str] = set()
+        for record in placed:
+            evidence = self._evidence_record(record)
+            if evidence is not None and evidence.total_check and record.document_id not in flagged:
+                flagged.add(record.document_id)
+                needs_input.append({
+                    "kind": "statement_total_differs", "key": f"statement_total_differs:{record.document_id}",
+                    "category": evidence.category, "document_id": record.document_id,
+                    "message": f"{evidence.file_name}: {evidence.total_check}"})
+
         categories: dict[str, calc.CategoryResult | None] = {
             "stationary_combustion": stationary,
             "mobile_combustion": mobile,
@@ -1416,7 +1428,8 @@ class EngagementRecalculationService:
                               revises=str(record.best("supersedes_reference") or "") or None,
                               revises_key=_source_value(record, "supersedes_reference", "reference_key"),
                               bill_ids=tuple(_source_value(record, "activity_quantity", "bill_ids") or ()),
-                              meter=meter, page=page)
+                              meter=meter, page=page,
+                              total_check=str(record.best("statement_total_check") or "") or None)
 
     def _setup_facility(self, record: ReviewedRecord) -> dict[str, Any] | None:
         """The reviewer's facility for the bill's document, else a clear name/address match."""

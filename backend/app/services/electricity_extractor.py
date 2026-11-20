@@ -252,9 +252,7 @@ class ElectricityExtractor(StationaryCombustionExtractor):
         check. A time-of-use table lists on-peak and off-peak lines beside the total."""
 
         records = [r for r in self._quantity_records(rows) if self._record_unit(r, unit_hint) in ELECTRIC_UNITS]
-        records, notes = self._collapse_time_of_use(records, rows, unit_hint)
-        records, more = self._without_account_summaries(rows, records)
-        return records, [*notes, *more]
+        return self._collapse_time_of_use(records, rows, unit_hint)
 
     def _part_energy(self, rows: Sequence[Row]) -> Located | None:
         return self._document_fuel(rows)
@@ -370,8 +368,7 @@ class ElectricityExtractor(StationaryCombustionExtractor):
             "meter_number": self._bill_meter(rows),
             "statement_date": self._statement_date(rows),
         }
-        for name, value in (inherited or {}).items():  # a statement of a bundle that names none takes the bundle's
-            document_values[name] = document_values.get(name) or value
+        self._apply_inherited(document_values, rows, inherited)
         period = self._document_period(rows)
 
         candidates: list[dict] = []
@@ -401,6 +398,9 @@ class ElectricityExtractor(StationaryCombustionExtractor):
                 else:
                     record_candidates.append(self._missing(target, document_id, evidence_id, record_key,
                                                            record_index, ["unsupported_extraction_method"]))
+            if record.total_check:
+                record_candidates.append(self._total_check_candidate(
+                    record, document_id, evidence_id, record_key, record_index, parser_output))
             if multi:
                 label = self._record_display(index, record, values)
                 for candidate in record_candidates:

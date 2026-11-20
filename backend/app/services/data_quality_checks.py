@@ -67,6 +67,7 @@ class EvidenceRecord:
     bill_ids: tuple[str, ...] = ()  # this bill's own statement date (ISO) and invoice or statement number
     meter: str | None = None  # the meter or line id the record was read under, when it has one
     page: int | None = None  # the page the quantity was read from, when known
+    total_check: str | None = None  # a statement of account whose total differs from its invoices' (kept, flagged)
 
 
 def _span(record: EvidenceRecord) -> tuple[date, date] | None:
