@@ -7,6 +7,9 @@ import {
   documentsBasis,
   getRecalculation,
   getRecalculationReference,
+  pluralCount,
+  UNCOUNTED_REASON,
+  uncountedGroups,
   uncountedMessage,
   type Recalculation,
   type RecalculationReference,
@@ -191,17 +194,36 @@ export function BackendVerificationResults({
       inputs={
         <>
           {uncountedMessage(result.uncounted_values) ? (
-            <p className="s1-vr-status s1-vr-uncounted" role="status">
-              {uncountedMessage(result.uncounted_values)}
-              {onOpenEvidenceTree ? (
-                <>
-                  {" "}
-                  <button className="s1-linklike" type="button" onClick={onOpenEvidenceTree}>
-                    Open Evidence
-                  </button>
-                </>
-              ) : null}
-            </p>
+            <div className="s1-vr-status s1-vr-uncounted" role="status">
+              <p>
+                {uncountedMessage(result.uncounted_values)}
+                {onOpenEvidenceTree ? (
+                  <>
+                    {" "}
+                    <button className="s1-linklike" type="button" onClick={onOpenEvidenceTree}>
+                      Open Evidence
+                    </button>
+                  </>
+                ) : null}
+              </p>
+              <details>
+                <summary>Why, and which documents</summary>
+                <ul>
+                  {uncountedGroups(result.uncounted_values).map((g) => (
+                    <li key={g.reason}>
+                      {pluralCount(g.records, "record", "records")}: {UNCOUNTED_REASON[g.reason]}
+                      <ul>
+                        {g.documents.map((d) => (
+                          <li key={d.document_id}>
+                            {d.file_name} ({pluralCount(d.accepted_records, "record", "records")})
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            </div>
           ) : null}
           {/* Folded, its count in the header: the boxes lead the page, as in the demo. */}
           {result.quality_checks ? <QualityChecksPanel checks={result.quality_checks} initiallyOpen={false} /> : null}

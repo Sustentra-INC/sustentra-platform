@@ -264,7 +264,7 @@ def test_two_vehicle_groups_are_two_lines_and_fuel_no_group_takes_waits_for_a_re
     assert ch4["s1:mobile:diesel-fuel:vg-heavy-trucks"]["activity"]["unit"] == "mi"  # Eq 4 on-road
     assert ch4["s1:mobile:diesel-fuel:vg-forklifts"]["activity"] == {"value": 200, "unit": "gal"}  # Eq 5 non-road
     assert lines["s1:mobile:diesel-fuel:vg-forklifts"]["method"]["equations"]["CH4"] == "Eq. 5"
-    assert result["calculation_unplaced"] == [] and result["uncounted_values"]["accepted_values"] == 0
+    assert result["calculation_unplaced"] == [] and result["uncounted_values"]["accepted_records"] == 0
     category = result["categories"]["mobile_combustion"]
     assert lines["s1:mobile:diesel-fuel:vg-heavy-trucks"]["step1"]["total"] == {"quantity": 1000, "unit": "gal"}
     assert sum(ln["results"]["total_co2e_t"] for ln in lines.values()) == pytest.approx(category["total_co2e"])

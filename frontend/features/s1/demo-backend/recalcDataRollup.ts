@@ -267,19 +267,19 @@ export function qualityChecks(c: Calculated): QualityCheck[] {
 
 /* ------------------------------------ the whole result ------------------------------------ */
 
-/** Accepted values whose document sits on no calculation line: counted nowhere (Claire, Evidence Screen tab I8). */
+/** Accepted records whose document sits on no calculation line: counted nowhere (Claire, Evidence Screen tab I8). */
 function uncountedValues(c: Calculated): NonNullable<Recalculation["uncounted_values"]> {
   const lineKeys = new Set(c.model.lines.map((l) => l.key));
-  const byDocument = new Map<string, { document_id: string; file_name: string; accepted_values: number }>();
+  const byDocument = new Map<string, NonNullable<Recalculation["uncounted_values"]>["documents"][number]>();
   for (const r of c.model.records) {
     if (!CALCULABLE.includes(r.kind) || !r.accepted || r.quantity === null) continue;
     if (c.model.slots.get(r.documentId)?.some((s) => lineKeys.has(s.target))) continue;
-    const entry = byDocument.get(r.documentId) ?? { document_id: r.documentId, file_name: r.fileName, accepted_values: 0 };
-    entry.accepted_values += 1;
+    const entry = byDocument.get(r.documentId) ?? { document_id: r.documentId, file_name: r.fileName, reason: "not_on_a_line" as const, accepted_records: 0 };
+    entry.accepted_records += 1;
     byDocument.set(r.documentId, entry);
   }
   const documents = [...byDocument.values()].sort((a, b) => a.file_name.localeCompare(b.file_name) || a.document_id.localeCompare(b.document_id));
-  return { accepted_values: documents.reduce((n, d) => n + d.accepted_values, 0), documents };
+  return { accepted_records: documents.reduce((n, d) => n + d.accepted_records, 0), documents };
 }
 
 export function buildRecalculation(engagementId: string): Recalculation {

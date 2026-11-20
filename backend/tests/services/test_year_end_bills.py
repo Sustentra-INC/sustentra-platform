@@ -58,8 +58,10 @@ def test_the_same_bill_with_no_facility_read_is_unplaced_and_not_counted() -> No
     assert filed == {}  # not on any line: it sits in Unassigned supporting evidence
     assert "purchased_electricity_location_based" not in {k for k, v in result["categories"].items() if v}
     # Changed by Claire's ruling (Evidence Screen tab I8): a bill on no line feeds nothing, so it no longer
-    # asks for a grid region (before: needs_input == ["grid_region"]); Results lists it instead.
-    assert result["needs_input"] == []
+    # asks for a grid region (before: needs_input == ["grid_region"]); Results lists it instead and the
+    # category is marked incomplete.
+    assert [(i["kind"], i["category"]) for i in result["needs_input"]] == [
+        ("not_on_a_line", "purchased_electricity")]
     assert [d["document_id"] for d in result["uncounted_values"]["documents"]] == ["DEC"]
 
 

@@ -140,7 +140,8 @@ export type ExcludedReason =
   | "duplicate"
   | "superseded"
   | "montreal_protocol_gas"
-  | "purchased_cooling_not_calculated";
+  | "purchased_cooling_not_calculated"
+  | "not_on_a_calculation_line";
 
 const EXCLUDED_LABEL: Record<ExcludedReason, string> = {
   outside_reporting_period: "outside the reporting period",
@@ -149,6 +150,7 @@ const EXCLUDED_LABEL: Record<ExcludedReason, string> = {
   superseded: "superseded by a newer document",
   montreal_protocol_gas: "a CFC or HCFC, which Scope 1 leaves out",
   purchased_cooling_not_calculated: "purchased cooling, which is not calculated yet",
+  not_on_a_calculation_line: "not on a calculation line",
 };
 
 export interface ExcludedRecord {
@@ -343,17 +345,51 @@ export interface CalcLineInputs {
   unknown_facility_ids: string[];
 }
 
+export type UncountedReason =
+  | "not_on_a_line"
+  | "no_vehicle_group"
+  | "fuel_shared_by_vehicle_groups"
+  | "facility_not_in_setup"
+  | "no_calculation_line";
+
 export interface UncountedValues {
-  accepted_values: number;
-  documents: { document_id: string; file_name: string; accepted_values: number }[];
+  /** Records with an accepted value whose document is on no calculation line (records outside the period excluded). */
+  accepted_records: number;
+  /** One entry per document and reason. */
+  documents: { document_id: string; file_name: string; reason: UncountedReason; accepted_records: number }[];
 }
 
-/** The Results notice for accepted values the totals leave out; null when there are none. */
+export const UNCOUNTED_REASON: Record<UncountedReason, string> = {
+  not_on_a_line: "not on a calculation line yet",
+  no_vehicle_group: "no vehicle group set up in Setup",
+  fuel_shared_by_vehicle_groups: "more than one vehicle group uses the fuel, so none was chosen",
+  facility_not_in_setup: "facility not in Setup",
+  no_calculation_line: "no calculation line for it yet (fuel or gas not settled)",
+};
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** The Results notice for accepted records the totals leave out; null when there are none. */
 export function uncountedMessage(uncounted: UncountedValues | undefined): string | null {
-  const n = uncounted?.accepted_values ?? 0;
-  if (n <= 0) return null;
-  return `${n} accepted ${n === 1 ? "value" : "values"} not counted: ${n === 1 ? "its document isn't" : "their documents aren't"} on a calculation line yet.`;
+  const records = uncounted?.accepted_records ?? 0;
+  if (!uncounted || records <= 0) return null;
+  const documents = new Set(uncounted.documents.map((d) => d.document_id)).size;
+  return `${plural(records, "accepted record", "accepted records")} in ${plural(documents, "document", "documents")} not counted in the totals.`;
 }
+
+/** The left-out documents grouped by why, in a stable order. */
+export function uncountedGroups(uncounted: UncountedValues | undefined) {
+  const groups = new Map<UncountedReason, { reason: UncountedReason; records: number; documents: UncountedValues["documents"] }>();
+  for (const d of uncounted?.documents ?? []) {
+    const group = groups.get(d.reason) ?? { reason: d.reason, records: 0, documents: [] };
+    group.records += d.accepted_records;
+    group.documents.push(d);
+    groups.set(d.reason, group);
+  }
+  return [...groups.values()].sort((a, b) => a.reason.localeCompare(b.reason));
+}
+
+export { plural as pluralCount };
 
 export interface Recalculation {
   engagement_id: string;

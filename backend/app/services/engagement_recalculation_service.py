@@ -75,6 +75,8 @@ log = logging.getLogger(__name__)
 
 RECALCULATED_TYPES = (STATIONARY, MOBILE, ELECTRICITY, REFRIGERANT, THERMAL)
 # A thermal bill's energy type -> its roll-up source (workbook rows 48, 49, 50).
+PLACEMENT_SOURCES = ("stationary_combustion", "mobile_combustion", "purchased_electricity",
+                     "fugitive_refrigerants", "purchased_steam", "purchased_heating")
 THERMAL_SOURCE = {"steam": "purchased_steam", "hot_water": "purchased_heating", "chilled_water": "purchased_cooling"}
 STEAM_BTU_PER_LB_RANGE = (500.0, 1600.0)  # saturated and superheated steam, as delivered
 
@@ -522,11 +524,19 @@ class EngagementRecalculationService:
             records = [r for r in placed if filing.on_a_line(r)]
             off_line = [r for r in placed if not filing.on_a_line(r)]
         except Exception as exc:  # noqa: BLE001 - a placement that cannot be read must not take the page down
+            # Fail closed: with no placement nothing is known to be on a line, so nothing from evidence counts.
             log.warning("record placement failed: %s", type(exc).__name__)
-            records, off_line, placement_unread = placed, [], True
+            filing, records, off_line, placement_unread = None, [], [], True
 
         needs_input: list[dict[str, Any]] = []
         awaiting: list[dict[str, Any]] = []
+        if placement_unread:  # every category is partial, so every comparison reads "inputs incomplete"
+            for number, source in enumerate(PLACEMENT_SOURCES):
+                needs_input.append({
+                    "kind": "record_placement", "key": f"record_placement:{source}", "category": source,
+                    "message": ("Where each document sits could not be read, so no value from the evidence is "
+                                "counted and every total is incomplete. Try again, and report it if it persists."
+                                if number == 0 else "Not calculated: where each document sits could not be read.")})
 
         def tag(source: str, asked: int, waiting: int) -> None:
             """The roll-up source each open item belongs to (it marks only that source partial)."""
@@ -549,7 +559,9 @@ class EngagementRecalculationService:
         fugitive = self._refrigerants(records, inputs, period, needs_input, awaiting, not_counted)
         tag("fugitive_refrigerants", *mark)
         thermal_bills: dict[str, list[dict[str, Any]]] = {}
+        mark = (len(needs_input), len(awaiting))
         thermal = self._thermal(records, inputs, period, needs_input, awaiting, not_counted, thermal_bills)
+        tag("purchased_steam", *mark)  # only what the thermal builder did not already file under its own source
 
         # A record not on a line still raises its own questions (a fuel to choose, a value awaiting review):
         # a fuel it cannot resolve is what keeps it off a line, so it must stay answerable.
@@ -557,6 +569,13 @@ class EngagementRecalculationService:
         needs_input.extend(n for n in extra_inputs
                            if n["kind"] != "fuel_choice" or not any(m.get("key") == n["key"] for m in needs_input))
         awaiting.extend(extra_awaiting)
+        # Accepted values on no line leave their category incomplete: never a clean difference beside them.
+        left_out = self._uncounted_values(off_line, filing, decisions, inputs, period)
+        for category, count in left_out.pop("by_category").items():
+            needs_input.append({
+                "kind": "not_on_a_line", "key": f"not_on_a_line:{category}", **({"category": category} if category != "None" else {}),
+                "message": f"{count} accepted {'record' if count == 1 else 'records'} not counted in this category: "
+                           "the documents are not on a calculation line yet. Place them in Evidence."})
 
         categories: dict[str, calc.CategoryResult | None] = {
             "stationary_combustion": stationary,
@@ -614,13 +633,13 @@ class EngagementRecalculationService:
             "comparisons": self._comparisons(inputs, totals, categories, incomplete, tolerance, not_in_scope),
             "needs_input": needs_input,
             "awaiting_review": awaiting,
-            "excluded": set_aside + self._outside_period(records, period) + not_counted,
+            "excluded": set_aside + self._outside_period(records, period) + not_counted + left_out.pop("excluded"),
             "not_recalculated": ["Scope 1 fugitive sources other than refrigerants and fire suppression",
                                  "Scope 1 process sources", "Scope 2 cooling"],
             # Documents read: every document whose records fed the recalculation, reviewed or not.
             "documents_considered": len({r.document_id for r in records}),
             # Accepted values whose documents are not on a calculation line: counted nowhere (see above).
-            "uncounted_values": self._uncounted_values(off_line),
+            "uncounted_values": left_out,
             # Of those, the fully reviewed documents: nothing open on any record (see _documents_reviewed).
             # A partly reviewed document is not counted here, although its reviewed records feed the totals.
             "documents_reviewed": self._documents_reviewed(records, needs_input, awaiting),
@@ -632,25 +651,21 @@ class EngagementRecalculationService:
                                           out_of_scope=not_in_scope, tolerance=tolerance, gwp_set=inputs.gwp_set,
                                           ref=self.reference),
         }
-        try:
-            built = recalculation_lines.build(
-                self.reference, self._ledger, placed, inputs, settings, decisions,
-                tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company, filing)
-        except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
-            log.warning("calculation lines failed: %s", type(exc).__name__)
-            built = recalculation_lines.Built(needs_input=[{
-                "kind": "calculation_lines", "key": "calculation_lines",
-                "message": "The calculation lines could not be built. The totals above are unaffected; "
-                           "try again, and report it if it persists."}])
+        built = recalculation_lines.Built()
+        if filing is not None:
+            try:
+                built = recalculation_lines.build(
+                    self.reference, self._ledger, placed, inputs, settings, decisions,
+                    tolerance, {k: v > 0 for k, v in open_items.items()}, self._facilities, self._company, filing)
+            except Exception as exc:  # noqa: BLE001 - the lines must never take the recalculation down
+                log.warning("calculation lines failed: %s", type(exc).__name__)
+                built = recalculation_lines.Built(needs_input=[{
+                    "kind": "calculation_lines", "key": "calculation_lines",
+                    "message": "The calculation lines could not be built. Try again, and report it if it persists."}])
         response.update(calculation_lines=built.lines, calculation_unplaced=built.unplaced,
                         calculation_line_inputs=built.inputs)
         # Problems with the company's own figures never change a recalculated number or its status.
         open_inputs = [*needs_input, *built.needs_input]
-        if placement_unread:
-            open_inputs.append({
-                "kind": "calculation_lines", "key": "record_placement",
-                "message": "Where each document sits could not be read, so every value is counted, including any "
-                           "whose document is not on a calculation line. Try again, and report it if it persists."})
         response["needs_input"] = open_inputs
         return response
 
@@ -677,26 +692,66 @@ class EngagementRecalculationService:
                 build()
                 for item in needs[asked:] + wait[waiting:]:
                     item.setdefault("category", source)
+            asked, waiting = len(needs), len(wait)
             self._thermal(records, inputs, period, needs, wait, [], {})
+            for item in needs[asked:] + wait[waiting:]:
+                item.setdefault("category", "purchased_steam")
         finally:
             self._ledger = kept
         return [n for n in needs if n["kind"] == "fuel_choice" or n.get("document_id")], wait
 
-    @staticmethod
-    def _uncounted_values(records: list[ReviewedRecord]) -> dict[str, Any]:
-        """The accepted values of records whose document is not on a calculation line, per document."""
+    def _uncounted_values(self, records: list[ReviewedRecord], filing: recalculation_lines.Filing | None,
+                          decisions: dict[str, dict[str, Any]], inputs: RecalculationInputs,
+                          period: tuple[date | None, date | None]) -> dict[str, Any]:
+        """Accepted records whose document is not on a calculation line, with why, per document.
 
-        per_document: dict[str, dict[str, Any]] = {}
+        A record counts here when it has an accepted value. Records outside the reporting period are left out
+        (they are listed as such), and ``by_category`` / ``excluded`` feed the open items and the left-out list."""
+
+        outside = {(e["document_id"], e["record"]) for e in self._outside_period(records, period)}
+        group_count: dict[str, int] = {}
+        for _, group in cl.vehicle_group_anchors(inputs.vehicle_groups):
+            fuel = str(group.get("fuel", "")).strip().lower()
+            group_count[fuel] = group_count.get(fuel, 0) + 1
+        entries: dict[tuple[str, str], dict[str, Any]] = {}
+        by_category: Counter[str] = Counter()
+        types: dict[str, str] = {}
         for record in records:
-            accepted = cl.tally([record])["accepted"]
-            if not accepted:
+            if cl.tally([record])["accepted"] == 0 or (record.document_id, record.label) in outside:
                 continue
-            entry = per_document.setdefault(record.document_id, {
+            reason = self._off_line_reason(record, filing, decisions, group_count)
+            entry = entries.setdefault((record.document_id, reason), {
                 "document_id": record.document_id, "file_name": record.file_name or record.document_id,
-                "accepted_values": 0})
-            entry["accepted_values"] += accepted
-        documents = sorted(per_document.values(), key=lambda d: (str(d["file_name"]).casefold(), d["document_id"]))
-        return {"accepted_values": sum(d["accepted_values"] for d in documents), "documents": documents}
+                "reason": reason, "accepted_records": 0})
+            entry["accepted_records"] += 1
+            types.setdefault(record.document_id, record.canonical_type_id)
+            by_category[str(rollup_category(record.canonical_type_id, record.best("energy_type")))] += 1
+        documents = sorted(entries.values(), key=lambda d: (str(d["file_name"]).casefold(), d["document_id"], d["reason"]))
+        listed = {d["document_id"]: d for d in documents}
+        return {
+            "accepted_records": sum(d["accepted_records"] for d in documents), "documents": documents,
+            "by_category": dict(by_category),
+            "excluded": [{"document_id": doc, "record": d["file_name"], "canonical_type_id": types[doc], "period": "",
+                          "reason": "not_on_a_calculation_line"} for doc, d in listed.items()],
+        }
+
+    @staticmethod
+    def _off_line_reason(record: ReviewedRecord, filing: recalculation_lines.Filing | None,
+                         decisions: dict[str, dict[str, Any]], group_count: dict[str, int]) -> str:
+        """Why a record is on no line: filed there by a reviewer, no vehicle group, a fuel several vehicle groups
+        share, no Setup facility, or no line for it yet (its fuel or gas is not settled)."""
+
+        place = filing.placements.get(id(record)) if filing is not None else None
+        if place is None or (decisions.get(record.document_id) or {}).get("placements"):
+            return "not_on_a_line"
+        if place.anchor_kind == "vehicle_group" and place.level2 and place.anchor_id is None:
+            return ("fuel_shared_by_vehicle_groups" if group_count.get(str(place.level2_label).lower(), 0) > 1
+                    else "no_vehicle_group")
+        if place.anchor_kind == "facility" and place.level2 and place.anchor_id is None:
+            return "facility_not_in_setup"
+        if not place.level2 or not place.anchor_kind:
+            return "no_calculation_line"
+        return "not_on_a_line"
 
     @staticmethod
     def _documents_reviewed(records: list[ReviewedRecord], needs_input: list[dict[str, Any]],
