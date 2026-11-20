@@ -10,6 +10,7 @@ vi.mock("../../../lib/api", async (importOriginal) => {
 
 import { demoApi } from "../demo-backend";
 import { resetDemoMethodology } from "../demo-backend/methodology";
+import { rowAction } from "./methodologyMenu";
 import { BackendMethodologyReview } from "../components/BackendMethodologyReview";
 import { manufacturerEvidence } from "../fixtures/evidence/manufacturerEvidence";
 import type { MethodologyRecord } from "../api/methodologyReview";
@@ -39,7 +40,7 @@ describe("the demo backend's methodology review", () => {
   it("loads with Sustentra's AI available and company statements already in", async () => {
     await open();
     expect(within(row("Reporting period")).getByText("Accepted")).toBeTruthy();
-    expect(within(row("Consolidation approach")).getByText("Pending")).toBeTruthy();
+    expect(within(row("Consolidation approach")).queryByText("Pending")).toBeNull();
     expect((await get()).ai.enabled).toBe(true);
     expect((await get()).fields.every((f) => !f.suggestion)).toBe(true);
   });
@@ -232,7 +233,7 @@ describe("the demo backend's methodology review", () => {
       await open();
       fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: EST } });
       await waitFor(() => expect(within(row(LABEL)).getByText("Not checked yet")).toBeTruthy());
-      fireEvent.click(within(row(LABEL)).getByRole("button", { name: `Edit: ${LABEL}` }));
+      rowAction(row(LABEL), "Edit", `${LABEL}`);
       fireEvent.click(screen.getByRole("button", { name: "Add entry" }));
       fireEvent.change(screen.getByLabelText(`Source type 1: ${LABEL}`), { target: { value: "Br\u00e4ndstoff \u71c3\u6599" } });
       fireEvent.change(screen.getByLabelText(`Method 1: ${LABEL}`), { target: { value: "Vorjahr \u00d7 1,02" } });
@@ -243,7 +244,7 @@ describe("the demo backend's methodology review", () => {
       fireEvent.click(screen.getByRole("button", { name: `Remove entry 2: ${LABEL}` }));
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
       await waitFor(() => expect(within(row(LABEL)).getByText("Br\u00e4ndstoff \u71c3\u6599: Vorjahr \u00d7 1,02")).toBeTruthy());
-      fireEvent.click(within(row(LABEL)).getByRole("button", { name: `Edit: ${LABEL}` }));
+      rowAction(row(LABEL), "Edit", `${LABEL}`);
       fireEvent.click(screen.getByRole("button", { name: `Remove entry 1: ${LABEL}` }));
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
       await waitFor(() => expect(within(row(LABEL)).getByText("No entries")).toBeTruthy());
@@ -295,7 +296,7 @@ describe("the demo backend's methodology review", () => {
       await open();
       fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: "calculation:source_records" } });
       await waitFor(() => expect(within(row(RECORDS)).getByText("Not checked yet")).toBeTruthy());
-      fireEvent.click(within(row(RECORDS)).getByRole("button", { name: `Edit: ${RECORDS}` }));
+      rowAction(row(RECORDS), "Edit", `${RECORDS}`);
       fireEvent.click(screen.getByRole("checkbox", { name: `Meter readings: ${RECORDS}` }));
       fireEvent.change(screen.getByLabelText(`Company's wording for Meter readings: ${RECORDS}`), { target: { value: "Z\u00e4hlerst\u00e4nde \u8868\u8bfb\u6570" } });
       fireEvent.change(screen.getByLabelText(`Add another option: ${RECORDS}`), { target: { value: "Lieferscheine \u7eb8\u8d28" } });
@@ -303,7 +304,7 @@ describe("the demo backend's methodology review", () => {
       expect(screen.getByRole("checkbox", { name: `Lieferscheine \u7eb8\u8d28: ${RECORDS}` })).toBeTruthy();
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
       await waitFor(() => expect(within(row(RECORDS)).getByText("Meter readings (Z\u00e4hlerst\u00e4nde \u8868\u8bfb\u6570); Lieferscheine \u7eb8\u8d28")).toBeTruthy());
-      fireEvent.click(within(row(RECORDS)).getByRole("button", { name: `Edit: ${RECORDS}` }));
+      rowAction(row(RECORDS), "Edit", `${RECORDS}`);
       fireEvent.click(screen.getByRole("checkbox", { name: `Meter readings: ${RECORDS}` })); // deselect
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
       await waitFor(() => expect(within(row(RECORDS)).getByText("Lieferscheine \u7eb8\u8d28")).toBeTruthy());
@@ -314,7 +315,7 @@ describe("the demo backend's methodology review", () => {
       await edit("category:market:electricity", "Yes");
       cleanup();
       await open();
-      fireEvent.click(within(row(INSTR)).getByRole("button", { name: `Edit: ${INSTR}` }));
+      rowAction(row(INSTR), "Edit", `${INSTR}`);
       fireEvent.click(screen.getByRole("checkbox", { name: `PPA or VPPA: ${INSTR}` }));
       fireEvent.click(screen.getByRole("checkbox", { name: `None: ${INSTR}` }));
       expect((screen.getByRole("checkbox", { name: `PPA or VPPA: ${INSTR}` }) as HTMLInputElement).checked).toBe(false);
@@ -337,7 +338,7 @@ describe("the demo backend's methodology review", () => {
       await open();
       fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: "calculation:source_records" } });
       await waitFor(() => expect(within(row(RECORDS)).getByText("Not checked yet")).toBeTruthy());
-      fireEvent.click(within(row(RECORDS)).getByRole("button", { name: `Edit: ${RECORDS}` }));
+      rowAction(row(RECORDS), "Edit", `${RECORDS}`);
       fireEvent.click(screen.getByRole("button", { name: "Save" }));
       expect((await screen.findByRole("alert")).textContent).toContain("Choose at least one option, or reject this row");
       fireEvent.change(screen.getByLabelText(`Add another option: ${RECORDS}`), { target: { value: " NONE " } });
@@ -391,7 +392,7 @@ describe("the demo backend's methodology review", () => {
       await open();
       fireEvent.change(screen.getByRole("combobox", { name: "Add an item" }), { target: { value: "gas:pfcs" } });
       await waitFor(() => expect(within(row("Gas: PFCs")).getByText("Not checked yet")).toBeTruthy());
-      fireEvent.click(within(row("Gas: PFCs")).getByRole("button", { name: "Edit: Gas: PFCs" }));
+      rowAction(row("Gas: PFCs"), "Edit", "Gas: PFCs");
       const choices = within(screen.getByLabelText("Value: Gas: PFCs")).getAllByRole("option").map((o) => o.textContent);
       expect(choices).toEqual(["Choose", "Included", "Declared absent", "Not mentioned"]);
       fireEvent.change(screen.getByLabelText("Value: Gas: PFCs"), { target: { value: "Not mentioned" } });
