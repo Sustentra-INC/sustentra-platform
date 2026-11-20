@@ -1356,7 +1356,7 @@ describe("the data point review", () => {
     expect(props.onOpenDocument).toHaveBeenCalledWith("jan", "candidate:c1");
   });
 
-  it("labels an identifier Claude read, per document, in the expanded view", async () => {
+  it("labels an identifier Sustentra's AI read, per document, in the expanded view", async () => {
     mocks.byPath = {
       [SCHEDULE_PATH]: {
         ...SCHEDULE,
@@ -1376,8 +1376,8 @@ describe("the data point review", () => {
     renderSchedule();
     fireEvent.click(await screen.findByRole("button", { name: /Meter number/ }));
     const claude = screen.getByRole("button", { name: "Open Müller Käserei – Zürich.pdf" }).parentElement!;
-    expect(claude).toHaveTextContent("Read by Claude");
-    expect(screen.getByRole("button", { name: "Open feb.pdf" }).parentElement).not.toHaveTextContent("Read by Claude");
+    expect(claude).toHaveTextContent("Read by Sustentra's AI");
+    expect(screen.getByRole("button", { name: "Open feb.pdf" }).parentElement).not.toHaveTextContent("Read by Sustentra's AI");
   });
 
   it("round-trips a line key with : . - between results and the schedule", async () => {

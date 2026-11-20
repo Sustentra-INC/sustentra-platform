@@ -135,7 +135,7 @@ def test_the_tree_the_lines_and_the_recalculation_agree_on_where_a_bill_is_place
         for row in rows:
             if case["expect"].get("suggestion"):
                 assert row["facility_suggestion"]["quote"] == case["suggestion"]["quote"]
-                assert row["facility_suggestion"]["label"] == "Suggested by Claude"
+                assert row["facility_suggestion"]["label"] == "Suggested by Sustentra's AI"
                 assert row["facility_id"] is None  # still unplaced until the reviewer decides
     result = _recalc(store, FACILITIES, company, decisions)
     assert {line["key"] for line in result["calculation_lines"]} == keys

@@ -104,7 +104,7 @@ def _gate(settings: Settings, spent_microusd: int, candidates: list[dict[str, An
     if not settings.ai_suggestions_enabled:
         return "off", "Suggestions from the documents are switched off for this deployment."
     if new_client(settings) is None:
-        return "not_configured", ("Suggestions from the documents are switched on, but Claude is not set up "
+        return "not_configured", ("Suggestions from the documents are switched on, but Sustentra's AI is not set up "
                                   "for this deployment. Contact support.")
     if ai_usage.cap_reached(spent_microusd, settings.ai_monthly_cap_usd):
         return "cap_reached", (f"This month's limit on suggestions (${settings.ai_monthly_cap_usd:,.2f}) has been "
@@ -371,9 +371,9 @@ async def remove_row(
 logger = logging.getLogger(__name__)
 
 _FAILED = {
-    "refused": "Claude declined to read these documents. Nothing was changed.",
-    "incomplete": "Claude's answer was cut short, so none of it was kept. Try again.",
-    "invalid": "Claude's answer could not be read, so none of it was kept. Try again.",
+    "refused": "Sustentra's AI declined to read these documents. Nothing was changed.",
+    "incomplete": "The AI's answer was cut short, so none of it was kept. Try again.",
+    "invalid": "The AI's answer could not be read, so none of it was kept. Try again.",
 }
 
 
@@ -496,7 +496,7 @@ async def _short_transaction(sessions: async_sessionmaker[AsyncSession], org_id:
 # sees the spend of the call before it.
 _RUNNING: set[str] = set()
 _BUSY = "Suggestions are already being prepared for this organization. Try again in a minute."
-_NOT_SAVED = ("Claude answered, but its suggestions could not be saved, so none were kept. "
+_NOT_SAVED = ("Sustentra's AI answered, but its suggestions could not be saved, so none were kept. "
               "The call was recorded. Try again.")
 
 
@@ -565,7 +565,7 @@ async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, An
             output_type=prefill.PrefillOutput, max_tokens=prefill.MAX_OUTPUT_TOKENS)
     except Exception as exc:  # network, auth, rate limit: no usage to record; the type only is logged
         logger.warning("methodology prefill: Claude call failed (%s)", type(exc).__name__)
-        raise HTTPException(status_code=502, detail="Claude could not be reached. Try again in a moment.") from exc
+        raise HTTPException(status_code=502, detail="Sustentra's AI could not be reached. Try again in a moment.") from exc
     cost_usd = round((reply.cost_microusd or 0) / ai_usage.MICRO, 6)
     ok = reply.outcome == "ok" and reply.output is not None
     async with _short_transaction(sessions, org_id) as ledger:  # committed whatever happens next

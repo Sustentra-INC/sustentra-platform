@@ -588,7 +588,7 @@ def test_a_suggestion_awaits_the_reviewer_then_one_click_places_it_and_the_audit
     row = doc_rows(engagement_id)["D0"]
     assert row["facility_id"] is None  # a suggestion is not a placement
     assert row["facility_suggestion"] == {"facility_id": "F2", "facility_name": "Tacoma Works",
-                                           "quote": "Tacoma Käserei 工場", "where": "page 2", "label": "Suggested by Claude"}
+                                           "quote": "Tacoma Käserei 工場", "where": "page 2", "label": "Suggested by Sustentra's AI"}
     assert tree_lines(engagement_id)[GAS_TACOMA] == [] and tree_lines(engagement_id)[UNASSIGNED] == ["D0"]  # still unplaced
 
     placed = call("POST", path(engagement_id, "documents/D0/facility"), "a_member", {"facility_id": "F2"})

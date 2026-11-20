@@ -45,7 +45,7 @@ describe("the demo backend's document batches", () => {
     await expect(demoApi(`/engagements/${ENG}/document-batches/nope`)).rejects.toMatchObject({ status: 404 });
   });
 
-  it("reads the dropped files: queued, then reading with chunk progress, then done, one partial, one typed by Claude", async () => {
+  it("reads the dropped files: queued, then reading with chunk progress, then done, one partial, one typed by Sustentra's AI", async () => {
     const id = await createDocumentBatch(ENG);
     registerDemoBatch(id, files);
     const views = await poll(id, 8);
@@ -118,23 +118,23 @@ describe("Claude's readings on the demo documents", () => {
   it("shows the notes on the cards", () => {
     const heat = aiValues.find((v) => v.whatItIs === "Heat content")!;
     const one = render(<AiValueNote value={heat} />);
-    expect(one.container).toHaveTextContent("Suggested by Claude");
+    expect(one.container).toHaveTextContent("Suggested by Sustentra's AI");
     expect(one.container).toHaveTextContent(`“${heat.snippet}”`);
     one.unmount();
     const disagree = aiValues.find((v) => v.ai?.disagrees)!;
     const two = render(<AiValueNote value={disagree} />);
-    expect(two.container).toHaveTextContent("Claude read a different value here");
+    expect(two.container).toHaveTextContent("Sustentra's AI read a different value here");
     expect(two.container).toHaveTextContent("1,480 gal");
     expect(two.container).toHaveTextContent("page 2");
     two.unmount();
     render(<AiValueNote value={aiValues.find((v) => v.ai?.conflict)!} />);
-    expect(screen.getByText("Claude read two different values here")).toBeInTheDocument();
+    expect(screen.getByText("Sustentra's AI read two different values here")).toBeInTheDocument();
   });
 
   it("shows the type note until the type is confirmed", () => {
     const item = manufacturerEvidence.find((d) => d.aiType)!;
     const { container, rerender } = render(<AiTypeNote item={item} />);
-    expect(container).toHaveTextContent("Type suggested by Claude, please confirm");
+    expect(container).toHaveTextContent("Type suggested by Sustentra's AI, please confirm");
     rerender(<AiTypeNote item={{ ...item, typeConfirmed: true }} />);
     expect(container).toBeEmptyDOMElement();
   });

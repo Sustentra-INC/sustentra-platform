@@ -13,27 +13,27 @@ export const HALT_REASONS = {
 
 /** Claude's reading of a document's type (backend services/ai_routing.py). */
 export const AI_TYPE = {
-  suggested: "Type suggested by Claude, please confirm",
+  suggested: "Type suggested by Sustentra's AI, please confirm",
   disagreesOn: (rulesType: string, claudeType: string) =>
-    `The rules chose ${rulesType}, but Claude read the first pages as ${claudeType}. The type was not changed.`,
+    `The rules chose ${rulesType}, but Sustentra's AI read the first pages as ${claudeType}. The type was not changed.`,
 } as const;
 
 /** Claude's facility suggestion for a bill that names none (backend services/ai_facility.py). */
 export const AI_FACILITY = {
-  suggested: "Facility suggested by Claude",
+  suggested: "Facility suggested by Sustentra's AI",
   place: (facilityName: string) => `Place on ${facilityName}`,
 } as const;
 
 /** Claude's reading of a value (backend services/ai_extraction.py). */
 export const AI_VALUE = {
-  suggested: "Suggested by Claude",
-  suggestedHelp: "Claude read this where the rules found nothing. Check it against the page, then accept or correct it.",
-  conflict: "Claude read two different values here",
-  conflictHelp: "Claude read another value for this field elsewhere in the document. Check the page.",
-  disagrees: "Claude read a different value here",
-  disagreesHelp: "The rules read the value above and kept it. Claude read another: check the page.",
-  readBy: "Read by Claude",
-  needIndividual: (n: number) => `${n} suggested by Claude need individual review`,
+  suggested: "Suggested by Sustentra's AI",
+  suggestedHelp: "Sustentra's AI read this where the rules found nothing. Check it against the page, then accept or correct it.",
+  conflict: "Sustentra's AI read two different values here",
+  conflictHelp: "Sustentra's AI read another value for this field elsewhere in the document. Check the page.",
+  disagrees: "Sustentra's AI read a different value here",
+  disagreesHelp: "The rules read the value above and kept it. Sustentra's AI read another: check the page.",
+  readBy: "Read by Sustentra's AI",
+  needIndividual: (n: number) => `${n} suggested by Sustentra's AI need individual review`,
 } as const;
 
 /** A re-read changed what a reviewer had decided on (backend S1-BE-014). */

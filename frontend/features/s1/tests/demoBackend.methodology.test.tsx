@@ -27,16 +27,16 @@ async function open(onOpenDocument = vi.fn()) {
 }
 
 async function prefillViaUi() {
-  fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+  fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
   fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
-  await waitFor(() => expect(within(row("Consolidation approach")).getByText("Suggested by Claude")).toBeTruthy(), { timeout: 3000 });
+  await waitFor(() => expect(within(row("Consolidation approach")).getByText("Suggested by Sustentra's AI")).toBeTruthy(), { timeout: 3000 });
 }
 
 beforeEach(() => resetDemoMethodology());
 afterEach(cleanup);
 
 describe("the demo backend's methodology review", () => {
-  it("loads with Claude available and company statements already in", async () => {
+  it("loads with Sustentra's AI available and company statements already in", async () => {
     await open();
     expect(within(row("Reporting period")).getByText("Accepted")).toBeTruthy();
     expect(within(row("Consolidation approach")).getByText("Pending")).toBeTruthy();
@@ -95,7 +95,7 @@ describe("the demo backend's methodology review", () => {
     expect((await get()).fields.filter((f) => !(f as unknown as { shown: boolean }).shown).map((f) => (f as unknown as { field_id: string }).field_id).sort()).toEqual(["boundary:acquisitions", "boundary:leased_space", "calculation:estimation", "calculation:source_records", "gas:ch4", "gas:co2", "gas:hfcs", "gas:n2o", "gas:nf3", "gas:pfcs", "gas:sf6", "scope2:instruments"]);
     await prefillViaUi();
     expect(within(row("Indirect Biogenic")).getByText("Not detected")).toBeTruthy();
-    expect(within(row("Consolidation approach")).getByText("Suggested by Claude")).toBeTruthy();
+    expect(within(row("Consolidation approach")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
   });
 
   it("a prefill after a reviewer's decision leaves the decision, and the row never reads Not detected", async () => {
@@ -160,7 +160,7 @@ describe("the demo backend's methodology review", () => {
     it("a prefill that found a quote shows the leased-space row with Claude's suggestion; the silent one stays hidden", async () => {
       await open();
       await prefillViaUi();
-      expect(within(row("Treatment of leased space")).getByText("Suggested by Claude")).toBeTruthy();
+      expect(within(row("Treatment of leased space")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
       expect(screen.queryByText("Acquisitions and divestitures", { selector: "span" })).toBeNull();
       expect(within(screen.getByRole("combobox", { name: "Add an item" })).queryByRole("option", { name: "Treatment of leased space" })).toBeNull();
     });
@@ -184,9 +184,9 @@ describe("the demo backend's methodology review", () => {
       await prefillViaUi();
       const fixed = screen.getAllByText("GWP factors source").map((e) => e.closest("li")).find(Boolean) as HTMLElement; // the heading has the same words
       expect(within(fixed).getByText("Accepted")).toBeTruthy();
-      expect(within(row("GWP set")).getByText("Suggested by Claude")).toBeTruthy();
+      expect(within(row("GWP set")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
       expect((await gwpRows()).map((r) => r.suggestion?.value)).toEqual([{ set: "AR6", horizon: "500-year" }]);
-      fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+      fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
       fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
       await waitFor(() => expect(screen.getByRole("status").textContent).toMatch(/suggested/));
       expect(await gwpRows()).toHaveLength(1); // a second run adds no second copy
@@ -354,17 +354,17 @@ describe("the demo backend's methodology review", () => {
     it("says why the instrument row is shown when only Claude's suggestion put it there", async () => {
       await open();
       await prefillViaUi(); // the canned run says market categories are Yes, so the row shows without a note
-      expect(within(row(INSTR)).queryByText(/Shown because Claude found it/)).toBeNull();
+      expect(within(row(INSTR)).queryByText(/Shown because Sustentra's AI found it/)).toBeNull();
       for (const id of ["electricity", "heating", "steam", "cooling"]) {
         await demoApi(`${BASE}/category:market:${id}/reject`, { method: "POST", body: { reason: "Not stated" } });
       }
       cleanup();
       await open();
-      expect(within(row(INSTR)).getByText("Shown because Claude found it, although no market-based category is Yes.")).toBeTruthy();
+      expect(within(row(INSTR)).getByText("Shown because Sustentra's AI found it, although no market-based category is Yes.")).toBeTruthy();
       await edit("scope2:instruments", [{ option: "PPA or VPPA", wording: "" }]); // a decision: the note goes
       cleanup();
       await open();
-      expect(within(row(INSTR)).queryByText(/Shown because Claude found it/)).toBeNull();
+      expect(within(row(INSTR)).queryByText(/Shown because Sustentra's AI found it/)).toBeNull();
     });
 
     it("refuses an option outside the list, a repeat, None with others, and an eleventh free option", async () => {
@@ -402,8 +402,8 @@ describe("the demo backend's methodology review", () => {
     it("a prefill shows only the gases it found, and the category values are refused for a gas", async () => {
       await open();
       await prefillViaUi();
-      expect(within(row("Gas: CO2")).getByText("Suggested by Claude")).toBeTruthy();
-      expect(within(row("Gas: NF3")).getByText("Suggested by Claude")).toBeTruthy();
+      expect(within(row("Gas: CO2")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
+      expect(within(row("Gas: NF3")).getByText("Suggested by Sustentra's AI")).toBeTruthy();
       expect(screen.queryByText("Gas: CH4", { selector: "span" })).toBeNull();
       const edit = (id: string, value: unknown) => demoApi(`${BASE}/${id}/edit`, { method: "POST", body: { value } });
       await expect(edit("gas:co2", "Yes")).rejects.toMatchObject({ status: 422 });

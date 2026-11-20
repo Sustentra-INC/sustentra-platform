@@ -224,7 +224,7 @@ class AiRouting:
             return self._suggest(settings, parser_output, org_id, engagement_id, has_targets)
         except Exception as exc:  # the pipeline must go on; the type only is logged
             logger.warning("ai routing: failed (%s)", type(exc).__name__)
-            return RoutingResult("unavailable", warning=f"{UNAVAILABLE}: Claude could not be used to read the type.")
+            return RoutingResult("unavailable", warning=f"{UNAVAILABLE}: Sustentra's AI could not be used to read the type.")
 
     def _suggest(self, settings: Settings, parser_output: dict[str, Any], org_id_text: str, engagement_id: str,
                  has_targets: Callable[[str], bool]) -> RoutingResult:
@@ -238,7 +238,7 @@ class AiRouting:
             return RoutingResult("off")
         # The cap check: its own short transaction, closed before the call.
         if ai_usage.cap_reached(ledger.month_spend_microusd(org_id), settings.ai_monthly_cap_usd):
-            return RoutingResult("off", warning=f"{CAP_REACHED}: this month's limit on Claude suggestions is reached, so the type was not read by Claude.")
+            return RoutingResult("off", warning=f"{CAP_REACHED}: this month's limit on Sustentra's AI suggestions is reached, so the type was not read by Sustentra's AI.")
 
         started = time.monotonic()
         try:
@@ -246,13 +246,13 @@ class AiRouting:
                                       output_type=routing_output(), max_tokens=MAX_OUTPUT_TOKENS)
         except Exception as exc:  # network, auth, rate limit: no reply, so nothing to record
             logger.warning("ai routing: Claude call failed (%s)", type(exc).__name__)
-            return RoutingResult("unavailable", warning=f"{UNAVAILABLE}: Claude could not be reached.")
+            return RoutingResult("unavailable", warning=f"{UNAVAILABLE}: Sustentra's AI could not be reached.")
         ledger.record(org_id=org_id, engagement_id=_uuid_or_none(engagement_id), provider=client.provider,
                       reply=reply)  # committed whatever the answer is
         logger.info("ai routing: outcome=%s lines=%d cost_microusd=%s duration_ms=%d", reply.outcome, len(lines),
                     reply.cost_microusd, int((time.monotonic() - started) * 1000))
         if reply.outcome != "ok" or reply.output is None:
-            return RoutingResult("unavailable", warning=f"{UNAVAILABLE}: Claude gave no usable answer ({reply.outcome}).")
+            return RoutingResult("unavailable", warning=f"{UNAVAILABLE}: Sustentra's AI gave no usable answer ({reply.outcome}).")
         return _verified(reply.output, lines, has_targets)
 
 

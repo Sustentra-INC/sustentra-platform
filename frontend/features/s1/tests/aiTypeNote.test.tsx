@@ -23,7 +23,7 @@ describe("Claude's type suggestion", () => {
     });
     expect(item.typeReviewBand).toBe("needs_review");
     const html = renderToStaticMarkup(<AiTypeNote item={item} />);
-    expect(html).toContain("Type suggested by Claude, please confirm");
+    expect(html).toContain("Type suggested by Sustentra&#x27;s AI, please confirm");
     expect(html).toContain("Refrigerant charge log");
     expect(html).not.toMatch(/CT-/);
   });
