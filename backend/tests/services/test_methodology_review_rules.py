@@ -34,7 +34,7 @@ def test_catalog_has_every_field_with_a_valid_unique_key() -> None:
     assert {f["group"] for f in m.CATALOG} <= groups
     assert field("consolidation_approach")["allowed"] == ["Equity Share", "Financial Control", "Operational Control"]
     assert field("category:scope1:process")["allowed"] == ["Yes", "No", "Not detected"]
-    assert field("gwp")["allowed"] == {"set": ["AR4", "AR5", "AR6"], "horizon": ["100-year", "20-year"]}
+    assert field("gwp")["allowed"] == {"set": ["AR4", "AR5", "AR6"], "horizon": ["100-year", "20-year", "500-year"]}
     assert m.catalog_field("entity:abcd1234") is None
 
 
@@ -223,6 +223,26 @@ def test_an_old_text_value_has_a_value_and_survives_other_actions() -> None:
     assert edited["decision"]["value"] == {"start": "2024-01-01", "end": "2024-12-31"}
 
 
+# --- GWP: the 500-year horizon, and one row per extra set --------------------------------------
+
+def test_the_500_year_horizon_is_allowed_and_nothing_else_is() -> None:
+    f = field("gwp")
+    assert m.validate_value(f, {"set": "AR6", "horizon": "500-year"}) == {"set": "AR6", "horizon": "500-year"}
+    for bad in ({"set": "AR6", "horizon": "50-year"}, {"set": "AR6", "horizon": "500"}, {"set": "AR7", "horizon": "500-year"}):
+        with pytest.raises(m.MethodologyInvalid):
+            m.validate_value(f, bad)
+
+
+def test_a_gwp_row_has_its_own_definition_and_a_blank_value() -> None:
+    row_id = m.new_row_id("gwp")
+    assert ITEM_KEY.match(row_id) and row_id.startswith("gwp:") and row_id != "gwp"
+    row = m.row_field(row_id)
+    assert row is not None and row["kind"] == "gwp" and row["group"] == "gwp" and row["user_added"] is True
+    assert row["allowed"]["horizon"] == ["100-year", "20-year", "500-year"] and row["allowed_labels"]["set"]["AR5"]
+    assert m.row_field("gwp") is None  # the fixed field is not a row
+    assert m.blank_value(row_id) == {"set": "", "horizon": ""}
+    with pytest.raises(m.MethodologyInvalid):
+        m.validate_value(row, m.blank_value(row_id))  # a blank set cannot be accepted as it is
 # --- estimation method: one entry per source type ---------------------------------------------
 
 def entry(source: str, method: str) -> dict[str, str]:

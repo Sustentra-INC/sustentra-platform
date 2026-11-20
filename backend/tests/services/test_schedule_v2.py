@@ -146,13 +146,13 @@ def test_identifiers_group_documents_by_value_with_not_found() -> None:
     store = _schedule_store()
     store.add_document("BILL-D", "CT-S1-FUELQTY", [_gas(10, "2025-03-01", "2025-03-10")])
     groups = {g["label"]: g for g in _schedule(store)["identifier_groups"]}
-    assert list(groups) == ["Facility", "Service address", "Account number", "Meter number"]
+    assert list(groups) == ["Facility", "Service address", "Account number", "Meter number", "Statement date"]
     account = groups["Account number"]
     assert [(v["value"], [d["document_id"] for d in v["documents"]]) for v in account["values"]] == [
         ("ACC-7", ["BILL-C"]), ("ACC-9", ["BILL-A", "BILL-B"])]
     assert account["not_found"] == [{"document_id": "BILL-D", "file_name": "BILL-D.pdf"}]
     assert (account["documents_with"], account["documents_total"]) == (3, 4)
-    meter = groups["Meter number"]  # no extractor produces it: every document is Not found
+    meter = groups["Meter number"]  # no bill in this test prints one: every document is Not found
     assert meter["values"] == [] and len(meter["not_found"]) == 4 and meter["documents_with"] == 0
 
 
@@ -273,7 +273,7 @@ def test_a_mobile_line_shows_facility_only() -> None:
     key = "s1:mobile:diesel-fuel:vg-delivery-trucks"
     schedule = _tree_service(store).schedule(engagement, _own, key)
     assert schedule is not None
-    assert _labels(schedule) == ["Facility"]
+    assert _labels(schedule) == ["Facility", "Statement date"]
     assert {i["label"] for i in schedule["identifiers"]} <= {"Facility"}  # no "Meter number: Not found"
 
 
@@ -282,17 +282,17 @@ def test_identifiers_by_category_facility_only_except_utility_lines() -> None:
         line = cl.make_line(category, level2, level2, "company", "company", "x", created_by_user=False)
         return [label for label, _ in EvidenceTreeService._identifier_defs(line)]
 
-    four = ["Facility", "Service address", "Account number", "Meter number"]
+    four = ["Facility", "Service address", "Account number", "Meter number", "Statement date"]
     assert labels("stationary", "natural-gas") == four
     assert labels("purchased_energy", "electricity") == four
     for thermal in ("steam", "heating", "cooling"):
         assert labels("purchased_energy", thermal) == four
     for category, level2 in (("mobile", "diesel-fuel"), ("fugitive", "r410a"), ("process", "x"),
                              ("contractual", "x"), ("stationary", "propane")):
-        assert labels(category, level2) == ["Facility"]
+        assert labels(category, level2) == ["Facility", "Statement date"]
     unknown = dataclasses.replace(cl.make_line("mobile", "x", "x", "company", "company", "x", created_by_user=False),
                                   category="something-new")
-    assert [label for label, _ in EvidenceTreeService._identifier_defs(unknown)] == ["Facility"]  # never crashes
+    assert [label for label, _ in EvidenceTreeService._identifier_defs(unknown)] == ["Facility", "Statement date"]  # never crashes
 
 
 def test_a_line_with_no_documents_lists_its_identifiers_with_zero_counts() -> None:
@@ -300,7 +300,7 @@ def test_a_line_with_no_documents_lists_its_identifiers_with_zero_counts() -> No
                                          "anchor_kind": "facility", "anchor_id": "fac-kc01", "label": "KC gas"}])
     schedule = _tree_service(FakeStore()).schedule(_engagement(evidenceLines=mine), _own, GAS_KC)
     assert schedule is not None
-    assert _labels(schedule) == ["Facility", "Service address", "Account number", "Meter number"]
+    assert _labels(schedule) == ["Facility", "Service address", "Account number", "Meter number", "Statement date"]
     assert all(g["documents_total"] == 0 and g["values"] == [] for g in schedule["identifier_groups"])
 
 
@@ -355,7 +355,7 @@ def test_a_whitespace_only_value_is_not_found_and_counts_read_n_of_total() -> No
 def test_electricity_lines_show_all_four_identifiers() -> None:
     store = FakeStore()
     store.add_document("E", "CT-S2-ELEC", [_elec(10)])
-    assert _labels(_schedule(store, ELEC_KC)) == ["Facility", "Service address", "Account number", "Meter number"]
+    assert _labels(_schedule(store, ELEC_KC)) == ["Facility", "Service address", "Account number", "Meter number", "Statement date"]
 
 
 # --- EXT-011: identifiers Claude read count before a decision; they never feed a number --------

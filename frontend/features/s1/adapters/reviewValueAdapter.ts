@@ -168,6 +168,8 @@ const GENERAL_FIELDS = new Set([
   "facility_name",
   "service_address",
   "account_number",
+  "meter_number", // printed on a utility bill; display only
+  "statement_date", // the bill's own date; display only, never the service period
   "supersedes_reference", // the earlier bill a revised bill says it replaces
   "supplier_name",
   "service_period_start",
@@ -180,6 +182,7 @@ const GENERAL_FIELDS = new Set([
   "transaction_id",
   "equipment_id",
   "service_provider",
+  "technician",
 ]);
 
 /** Fields the recalculation turns into emissions: the quantity, its unit, what was burned,

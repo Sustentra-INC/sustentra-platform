@@ -35,7 +35,7 @@ REREAD_NOTE = "The document was re-read and this value changed. Review it again.
 PERIOD_FIELDS = ("service_period_start", "service_period_end")
 # Identifier fields never feed a number (spec A13), so the schedule's Source identifiers counts what Claude read
 # in them before a reviewer has decided. Nothing else reads these values: best() and reviewed() stay blank.
-AI_IDENTIFIER_FIELDS = ("meter_number", "account_number", "service_address")
+AI_IDENTIFIER_FIELDS = ("meter_number", "account_number", "service_address", "statement_date")
 
 # Unambiguous extractor fuel codes -> EPA names. Everything else asks the reviewer.
 STATIONARY_AUTO = {"natural_gas": "Natural Gas", "kerosene": "Kerosene", "diesel": "Distillate Fuel Oil No. 2"}

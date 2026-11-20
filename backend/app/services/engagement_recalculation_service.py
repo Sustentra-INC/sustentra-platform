@@ -44,7 +44,7 @@ from backend.app.services import emissions_rollup as rollup
 from backend.app.services import recalculation_lines
 from backend.app.services.recalculation_ledger import BASE_UNIT, Contribution, Ledger
 from backend.app.services.data_quality_checks import EvidenceRecord, run_checks
-from backend.app.services.calculation_lines import LINE_KEY
+from backend.app.services.calculation_lines import GROUP_ID, LINE_KEY
 from backend.app.services.reviewed_evidence import (  # noqa: F401 - re-exported: callers import them here
     STATIONARY,
     MOBILE,
@@ -276,7 +276,7 @@ def _validate_line_inputs(value: dict[str, Any]) -> None:
 
 
 VEHICLE_GROUP_KEYS = {"fuel", "vehicle_type", "factor_fuel_type", "on_road", "model_year", "distance",
-                      "distance_unit", "fuel_quantity", "fuel_unit", "label"}
+                      "distance_unit", "fuel_quantity", "fuel_unit", "label", "group_id"}
 
 
 def _validate_vehicle_groups(groups: Any) -> None:
@@ -303,6 +303,11 @@ def _validate_vehicle_groups(groups: Any) -> None:
             raise ValueError("distance_unit is mi or km; fuel_unit is gal or L")
         if group.get("label") is not None and (not isinstance(group["label"], str) or len(group["label"]) > 200):
             raise ValueError("label must be text of at most 200 characters")
+        if "group_id" in group and not (isinstance(group["group_id"], str) and GROUP_ID.match(group["group_id"])):
+            raise ValueError("group_id is set by the server: send back the one you were given, or leave it out")
+    ids = [g["group_id"] for g in groups if "group_id" in g]
+    if len(ids) != len(set(ids)):
+        raise ValueError("two vehicle groups have the same group_id")
 
 
 def materiality_tolerance(settings: dict[str, Any] | None) -> float:

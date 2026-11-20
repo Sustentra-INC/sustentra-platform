@@ -58,6 +58,7 @@ const ADD_ROW_LABEL: Record<string, string> = {
   entities: "Add entity",
   "factor:scope1": "Add Scope 1 factor row",
   "factor:scope2": "Add Scope 2 factor row",
+  gwp: "Add GWP set",
 };
 
 /** One folding rule for option names, like the server's: case-folded, single spaces. */

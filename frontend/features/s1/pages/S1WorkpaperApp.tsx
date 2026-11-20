@@ -95,6 +95,7 @@ import { useRequestsStore } from "../requests/requestsStore";
 import type {
   ContainerState,
   DocumentDecision,
+  VehicleGroupSetting,
   EvidenceItem,
   ExtractedField,
   ReviewValue,
@@ -102,14 +103,17 @@ import type {
 } from "../types";
 import { setAuditActor, type SessionAuditEntry } from "../utils/auditIntent";
 import { useOpenEngagement } from "../utils/useOpenEngagement";
-import { dashboardFigures, engagementActivity } from "../utils/engagementActivity";
+import { dashboardFigures, engagementActivity, firstValueToReview } from "../utils/engagementActivity";
 import { SupportingSchedule } from "../components/SupportingSchedule";
-import { setDemoEngagement } from "../demo-backend/state";
+import { withDemoGroupIds } from "../demo-backend/groupIds";
+import { demoEngagement, setDemoEngagement } from "../demo-backend/state";
+import { adoptGroupIds } from "../utils/vehicleGroupIds";
 import {
   createEvidenceLine,
   deleteEvidenceLine,
   getEvidenceActivity,
   moveEvidenceDocument,
+  setDocumentFacility,
   renameEvidenceLine,
   type CalculationLine,
   type EvidenceActivityItem,
@@ -573,6 +577,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     try {
       const row = await saveEngagement(config);
       setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
+      adoptSavedGroups(row);
       setEngagementSave("saved");
       setEngagementSaveMessage(null);
     } catch (error) {
@@ -592,15 +597,27 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     saveTimer.current = null;
     const base = pendingSave.current ?? engagement;
     pendingSave.current = null;
-    const next = { ...base, recalculation };
+    const requested = { ...base, recalculation };
     if (dataMode === "fixture") {
+      const next = withDemoGroupIds(requested, demoEngagement());
       setDemoEngagement(next);
       setEngagement(next);
       return;
     }
+    const next = requested;
     const row = await saveEngagement(next);
     setEngagements((current) => (current ?? []).map((item) => (item.id === row.id ? row : item)));
     setEngagement(next);
+    adoptSavedGroups(row);
+  }
+
+  /** The server gives every vehicle group an id when it is first saved. Take the ids of the groups added since
+   *  the last save, here and in a Setup save still waiting, so the next save sends them back. */
+  function adoptSavedGroups(row: BackendEngagement) {
+    if (!stillOpen(row.id)) return;
+    const recalculation = (row.settings?.recalculation ?? {}) as { vehicle_groups?: VehicleGroupSetting[] };
+    setEngagement((current) => adoptGroupIds(current, recalculation.vehicle_groups));
+    if (pendingSave.current) pendingSave.current = adoptGroupIds(pendingSave.current, recalculation.vehicle_groups);
   }
 
   /** Takes the reviewer lines the server answered with. The server owns them: the page, the list of
@@ -685,7 +702,22 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
     void refreshEvidenceActivity(id);
   }
 
-  function changeEngagement(next: EngagementConfig) {
+  /** "Place on <facility>": the reviewer takes Claude's suggestion, which is their own facility decision (audited). */
+  async function placeDocumentOnFacility(documentId: string, facilityId: string) {
+    const id = engagement.engagementId;
+    if (dataMode === "backend") {
+      if (!workpaper.loaded) throw new Error("Your saved work is still loading. Try again in a moment.");
+      await workpaper.whenSaved("document", documentId);
+    }
+    const { payload } = await setDocumentFacility(id, documentId, facilityId, decisionsRef.current[documentId]?.facilityId ?? null);
+    if (!stillOpen(id)) return;
+    if (dataMode === "backend") workpaper.markSaved("document", documentId, payload);
+    setDocumentDecisions((cur) => ({ ...cur, [documentId]: payload }));
+    void refreshEvidenceActivity(id);
+  }
+
+  function changeEngagement(requested: EngagementConfig) {
+    const next = dataMode === "fixture" ? withDemoGroupIds(requested, demoEngagement()) : requested;
     setEngagement(next);
     if (dataMode === "fixture") setDemoEngagement(next);
     if (dataMode !== "backend" || !next.engagementId) return;
@@ -806,9 +838,9 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
   const navCurrent: NavKey = navForView(activeView);
   const uploadSetupWarning = setupGapWarning(engagement);
   /** The dashboard's "values waiting for review": the review, at the first such value (Evidence if none are loaded). */
-  function openFirstReview() {
-    const next = reviewValuesView.find((v) => !v.withdrawn && v.reviewState === "to_review");
-    if (next) openExtraction(next.documentId, next.id);
+  function openFirstReview(documentIds?: string[]) {
+    const next = firstValueToReview(reviewValuesView, documentIds);
+    if (next) openExtraction(next.documentId, next.valueId);
     else setActiveView({ name: "evidence" });
   }
 
@@ -1183,7 +1215,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
               findings={verification.findings}
               examinations={verification.examinations}
               onNavigate={onNavigate}
-              onOpenReview={openFirstReview}
+              onOpenReview={() => openFirstReview()}
               onError={handleSessionEnded}
             />
           ) : (
@@ -1199,7 +1231,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                 calculatedIds: testedExaminationKeys(verificationLines),
               })}
               onNavigate={onNavigate}
-              onOpenReview={openFirstReview}
+              onOpenReview={() => openFirstReview()}
             />
           )
         ) : activeView.name === "setup" ? (
@@ -1241,10 +1273,8 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             asks={requests.asks}
             coverage={dataMode === "backend" ? backendCoverage : { rules: coverageRules }}
             valuesToReview={reviewValuesView.filter((v) => !v.withdrawn && v.reviewState === "to_review").length}
-            onReview={() => {
-              const next = reviewValuesView.find((v) => !v.withdrawn && v.reviewState === "to_review");
-              if (next) openExtraction(next.documentId);
-            }}
+            onReview={() => openFirstReview()}
+            onReviewRule={(rule) => openFirstReview(rule.awaitingDocumentIds)}
             onSaveAsk={requests.saveAsk}
             onSend={(ids, lineNumbers) => andThen(requests.sendAsks(ids, lineNumbers), (sent) => sent.requestNumber)}
             onResolve={requests.resolveAsk}
@@ -1340,6 +1370,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
                     onOpenIdsChange: setEvidenceTreeOpen,
                     onOpenSchedule: (lineKey) => setActiveView({ name: "schedule", lineKey }),
                     onMovePlacement: moveDocumentPlacement,
+                    onPlaceOnFacility: placeDocumentOnFacility,
                     onCreateLine: createLine,
                     onRenameLine: renameLine,
                     onDeleteLine: deleteLine,
@@ -1388,6 +1419,7 @@ export function S1WorkpaperApp({ user }: { user?: WorkpaperUser } = {}) {
             initialDocumentId={activeView.documentId}
             initialDocumentName={evidenceView.find((e) => e.documentId === activeView.documentId)?.filename}
             typeItem={evidenceView.find((e) => e.documentId === activeView.documentId)}
+            onPlaceOnFacility={placeDocumentOnFacility}
             initialValueId={activeView.valueId}
             initialNodeKey={activeView.nodeKey}
             onSaveAsk={requests.saveAsk}

@@ -19,6 +19,7 @@ Where a document is filed
 from __future__ import annotations
 
 import re
+import uuid
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
@@ -170,16 +171,131 @@ def vehicle_group_label(group: dict[str, Any]) -> str:
     return str(group.get("label") or f"{group.get('vehicle_type')} ({group.get('factor_fuel_type')})")
 
 
-def vehicle_group_anchors(groups: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:
-    """(anchor id, group) for each vehicle group in settings: ``vg-<label slug>``, numbered
-    when two groups share a label."""
+# A vehicle group's id, which is also its line anchor. A new id is ``vgid-`` and 12 hex digits: the old anchors
+# (``vg-<slug>``) always have a hyphen right after "vg", so a new id can never equal one of them, and it is its own
+# slug, so the line key keeps it as it is. Groups migrated from the old anchors keep those as their ids.
+GROUP_ID = re.compile(r"^vg(?:id)?-[a-z0-9](?:[a-z0-9-]{0,66}[a-z0-9])?$")
+
+
+def new_group_id(taken: set[str]) -> str:
+    """A fresh, opaque id for a vehicle group (``vgid-`` and 12 hex digits), unlike every id in ``taken``."""
+
+    while True:
+        candidate = f"vgid-{uuid.uuid4().hex[:12]}"
+        if candidate not in taken:
+            return candidate
+
+
+def legacy_group_anchors(groups: list[dict[str, Any]]) -> list[str]:
+    """The anchor a group had before groups carried an id: ``vg-<label slug>``, numbered by order among
+    the groups whose labels give the same slug. Kept for groups with no ``group_id`` (older data, a demo)
+    and by the migration that gave existing groups their ids (so no key, line or placement changed)."""
 
     seen: dict[str, int] = {}
-    out: list[tuple[str, dict[str, Any]]] = []
+    out: list[str] = []
     for group in groups:
         base = f"vg-{slug(vehicle_group_label(group))}"
         seen[base] = seen.get(base, 0) + 1
-        out.append((base if seen[base] == 1 else f"{base}-{seen[base]}", group))
+        out.append(base if seen[base] == 1 else f"{base}-{seen[base]}")
+    return out
+
+
+def vehicle_group_anchors(groups: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any]]]:
+    """(anchor id, group) for each vehicle group in settings: the group's own ``group_id``, which the
+    server gave it when it was created and keeps through renames, removals and reordering. A group with no
+    ``group_id`` (data from before ids) takes its legacy anchor, moved on if an id already uses it."""
+
+    taken = {str(g["group_id"]) for g in groups if isinstance(g.get("group_id"), str) and GROUP_ID.match(g["group_id"])}
+    legacy = legacy_group_anchors(groups)
+    out: list[tuple[str, dict[str, Any]]] = []
+    for group, old in zip(groups, legacy, strict=True):
+        own = group.get("group_id")
+        if isinstance(own, str) and GROUP_ID.match(own):
+            out.append((own, group))
+            continue
+        anchor, n = old, 1
+        while anchor in taken:
+            n += 1
+            anchor = f"{old}-x{n}"
+        taken.add(anchor)
+        out.append((anchor, group))
+    return out
+
+
+def assign_group_ids(groups: list[dict[str, Any]], stored: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """The vehicle groups of a save, each with a ``group_id`` the server chose or kept.
+
+    A group keeps the id it already has when that id belongs to one of the engagement's stored groups
+    (so a rename, a reorder or a removal of another group changes nothing). A group that sends no id is
+    matched to a stored group that is the same in every field first, then (a changed name, or changed figures)
+    to the one stored group that differs only there, and otherwise is new; a match is never made when another
+    group of the save is as good a match, so a rename plus a reorder cannot swap ids. A group that sends an id the
+    engagement never had is new too, whatever the id says. A new group gets a fresh id, never the id of
+    a group that was removed.
+    """
+
+    stored = [g for g in stored or [] if isinstance(g, dict)]
+    stored_anchors = vehicle_group_anchors(stored)  # a group saved before ids is known by its legacy anchor
+    known = {anchor for anchor, _ in stored_anchors}
+    used: set[str] = set()
+    out: list[dict[str, Any]] = []
+    waiting: list[int] = []  # groups that sent no id: matched below (a group that sent an unknown id is new)
+    for group in groups:
+        given = group.get("group_id")
+        if isinstance(given, str) and given in known and given not in used:
+            used.add(given)
+            out.append(dict(group))
+        else:
+            out.append({k: v for k, v in group.items() if k != "group_id"})
+            if "group_id" not in group:
+                waiting.append(len(out) - 1)
+
+    def free() -> list[tuple[str, dict[str, Any]]]:
+        return [(a, g) for a, g in stored_anchors if a not in used]
+
+    def body(g: dict[str, Any], *drop: str) -> dict[str, Any]:
+        return {k: v for k, v in g.items() if k not in ("group_id", *drop)}
+
+    def claim(i: int, anchor: str) -> None:
+        used.add(anchor)
+        out[i]["group_id"] = anchor
+        waiting.remove(i)
+
+    # 1. a group the client sent back unchanged: the same in every field. Equal groups take their ids in order.
+    for i in list(waiting):
+        match = next((a for a, g in free() if body(g) == body(out[i])), None)
+        if match is not None:
+            claim(i, match)
+    # 2. a group whose name changed: the same in every other field as exactly one stored group, and no other group
+    #    of this save has that stored group's name now (a rename plus a reorder must not hand one group the id of the
+    #    group whose name it took).
+    refused: set[int] = set()  # turned down in step 2 because another group of the save has the stored group's name
+    for i in list(waiting):
+        same = [(a, g) for a, g in free() if body(g, "label") == body(out[i], "label")]
+        rivals = [j for j in waiting if body(out[j], "label") == body(out[i], "label")]
+        if len(same) == 1 and rivals == [i]:
+            anchor, stored_group = same[0]
+            if any(j != i and out[j].get("label") == stored_group.get("label") for j in range(len(out))):
+                refused.add(i)
+            else:
+                claim(i, anchor)
+    # 3. a group whose figures changed (distance, model year): the same fuel, vehicle type, fuel type and name as
+    #    exactly one stored group
+    key = ("fuel", "vehicle_type", "factor_fuel_type", "on_road", "label")
+    #    Not for a group step 2 refused, and not when the group's figures are another unmatched stored group's: two
+    #    groups that swapped names would otherwise trade ids, and their documents would land on each other's lines.
+    for i in list(waiting):
+        same = [(a, g) for a, g in free() if all(g.get(k) == out[i].get(k) for k in key)]
+        rivals = [j for j in waiting if all(out[j].get(k) == out[i].get(k) for k in key)]
+        figures_of_another = any(body(g, "label") == body(out[i], "label") and a not in {x for x, _ in same}
+                                 for a, g in free())
+        if len(same) == 1 and rivals == [i] and i not in refused and not figures_of_another:
+            claim(i, same[0][0])
+    taken = known | used
+    for group in out:
+        if "group_id" not in group:
+            group["group_id"] = new_group_id(taken)
+            taken.add(group["group_id"])
     return out
 
 

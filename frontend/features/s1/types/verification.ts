@@ -25,6 +25,8 @@ export interface CoverageRule {
    * GWP), or no evidence at all. Absent counts as no evidence, the cautious reading.
    */
   missingBecause?: MissingBecause;
+  /** For a check awaiting review: the documents whose values wait, so "Review" can open the first. */
+  awaitingDocumentIds?: string[];
 }
 
 export type MissingBecause = "awaiting_review" | "needs_input" | "no_evidence";

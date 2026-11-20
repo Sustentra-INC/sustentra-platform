@@ -63,6 +63,7 @@ from backend.app.services.ai_locator import (
 )
 from backend.app.services.ai_routing import CAP_REACHED, UNAVAILABLE, DbLedger, Ledger, new_client
 from backend.app.services.extraction_candidate_service import ExtractionCandidateService
+from backend.app.services.extraction_target_service import DISPLAY_ONLY_FIELDS
 
 logger = logging.getLogger(__name__)
 
@@ -182,8 +183,8 @@ def ask_fields(items: Sequence[Mapping[str, Any]], targets: Sequence[Mapping[str
     for target in gap_targets:
         if str(target.get("field_id")) not in document_level:
             asked.append(_ask(target, "gap"))
-    if not asked:
-        return []
+    if not asked or all(f.name == "statement_date" for f in asked):
+        return []  # a missing statement date alone is not worth a Claude call
     return [*asked, *checks]
 
 
@@ -491,6 +492,8 @@ class AiExtraction:
             return AssistOutcome(extraction_result)
         items: list[dict[str, Any]] = list(extraction_result.get("items") or [])
         gaps = [t for t in gap_targets() if t.get("ai_only")]
+        # A display-only rule field the bill did not print has no item: Claude may still fill it.
+        gaps += [t for t in targets if t.get("field_id") in DISPLAY_ONLY_FIELDS]
         records = records_of(items)
         if len(records) > 1:  # several records: no document-level field is filled and no record is created
             skipped_fields = [f for f in ask_fields([{**i, "record_index": None} for i in items], targets, gaps)
