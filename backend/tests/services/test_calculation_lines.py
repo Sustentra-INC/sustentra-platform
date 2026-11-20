@@ -1442,3 +1442,30 @@ def test_every_filing_of_three_default_slots_over_three_places_is_derived_when_a
         if chain is not None:
             assert _resolved(default, chain, known) == sorted(
                 (s.target, tuple(sorted(s.records)), ()) for s in cl.merge_slots(wanted)), filing
+
+
+def test_a_move_from_all_places_takes_every_place_the_document_is_in_to_the_target() -> None:
+    slots = [cl.Slot(GAS_KC, {0}), cl.Slot(GAS_STL, {1}), cl.Slot(cl.BLOCK_SUMMARY, {2})]
+    moved = cl.apply_placements(slots, [{"from": cl.ALL_PLACES, "to": ELEC_KC}], {GAS_KC, GAS_STL, ELEC_KC})
+    assert [(s.target, s.records) for s in moved] == [(ELEC_KC, {0, 1, 2})]
+    # a later move out of the target works as for any place
+    back = cl.apply_placements(slots, [{"from": "*", "to": ELEC_KC}, {"from": ELEC_KC, "to": cl.BLOCK_SUMMARY}])
+    assert [(s.target, s.records) for s in back] == [(cl.BLOCK_SUMMARY, {0, 1, 2})]
+    # a document with no places is untouched, and a bad move is ignored
+    assert cl.apply_placements([], [{"from": "*", "to": GAS_KC}]) == []
+    assert cl.apply_placements(slots[:1], [{"from": "*", "to": "*"}])[0].target == GAS_KC
+
+
+def test_each_line_names_the_document_type_it_holds() -> None:
+    def line(category: str, level2: str = "x", anchor_kind: str = "facility") -> cl.CalculationLine:
+        return cl.make_line(category, level2, level2, anchor_kind, "A", "L", created_by_user=False)
+
+    assert cl.line_type_id(line("stationary")) == "CT-S1-FUELQTY"
+    assert cl.line_type_id(line("biogenic")) == "CT-S1-FUELQTY"
+    assert cl.line_type_id(line("biogenic", anchor_kind="vehicle_group")) == "CT-S1-MOBFUEL"
+    assert cl.line_type_id(line("mobile", anchor_kind="vehicle_group")) == "CT-S1-MOBFUEL"
+    assert cl.line_type_id(line("fugitive")) == "CT-S1-REFRSVC"
+    assert cl.line_type_id(line("purchased_energy", "electricity")) == "CT-S2-ELEC"
+    assert cl.line_type_id(line("purchased_energy", "steam")) == "CT-S2-THERMAL"
+    assert cl.line_type_id(line("process")) is None
+    assert cl.line_type_id(line("contractual", anchor_kind="company")) is None

@@ -2,10 +2,11 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { VehicleTypeOption } from "../api/recalculation";
 import { SetupScreen } from "../components/SetupScreen";
+import { forgetKeptVehicleDrafts } from "../components/SetupVehicleGroups";
 import { engagementConfig } from "../fixtures/engagementConfig";
 import type { EngagementConfig, VehicleGroupSetting } from "../types";
 
@@ -65,7 +66,14 @@ function fillFirstGroup(label: string) {
   return g;
 }
 
+function fillFirstGroupAt(n: number, label: string) {
+  const g = screen.getByRole("group", { name: `Vehicle group ${n}` });
+  fireEvent.change(within(g).getByLabelText("Group"), { target: { value: label } });
+}
+
 describe("Setup: vehicle groups", () => {
+  beforeEach(() => forgetKeptVehicleDrafts());
+
   it("shows the section only when the fuels and vehicle types are known", () => {
     const { unmount } = render(<Harness reference={null} />);
     expect(screen.queryByRole("heading", { name: /Vehicle groups/ })).toBeNull();
@@ -85,11 +93,11 @@ describe("Setup: vehicle groups", () => {
     render(<Harness onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: "Add vehicle group" }));
     const g = fillFirstGroup("Delivery trucks");
-    expect(screen.getByText(/Not saved yet\. Finish or remove the vehicle groups marked above\./)).toBeInTheDocument();
+    expect(screen.getByText(/Not saved: 1 vehicle group is unfinished\. Finish or remove it/)).toBeInTheDocument();
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.change(within(g).getByLabelText("Model year"), { target: { value: "2015" } });
     fireEvent.change(within(g).getByLabelText("Distance driven"), { target: { value: "12000" } });
-    expect(screen.queryByText(/Not saved yet/)).toBeNull();
+    expect(screen.queryByText(/Not saved/)).toBeNull();
     const saved = onChange.mock.calls.at(-1)?.[0] as EngagementConfig;
     expect(saved.recalculation?.grid_regions).toEqual({ "Kent Cannery": "NWPP" }); // nothing else is lost
     expect(saved.recalculation?.vehicle_groups).toEqual([
@@ -141,11 +149,13 @@ describe("Setup: vehicle groups", () => {
     const onChange = vi.fn();
     render(<Harness onChange={onChange} groups={[group("Delivery trucks")]} />);
     fireEvent.click(screen.getByRole("button", { name: "Add vehicle group" }));
-    expect(screen.getByText(/Not saved yet/)).toBeInTheDocument();
+    fillFirstGroupAt(2, "Vans");
+    expect(screen.getByText(/Not saved: 1 vehicle group is unfinished/)).toBeInTheDocument();
     fireEvent.click(within(screen.getByRole("group", { name: "Vehicle group 2" })).getByRole("button", { name: "Remove group" }));
     fireEvent.click(screen.getByRole("button", { name: "Confirm remove" }));
-    expect(screen.queryByText(/Not saved yet/)).toBeNull();
-    expect(lastGroups(onChange)?.map((x) => x.label)).toEqual(["Delivery trucks"]);
+    expect(screen.queryByText(/Not saved/)).toBeNull();
+    expect(onChange).not.toHaveBeenCalled(); // the saved group never changed: nothing to save
+    expect(screen.getAllByRole("group", { name: /Vehicle group \d/ })).toHaveLength(1);
   });
 
   it("lists 50 groups, and stops adding at the API's limit of 200", () => {

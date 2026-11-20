@@ -66,14 +66,14 @@ def test_a_reader_gets_the_tree(act_as, wired: FakeStore) -> None:
     body = response.json()
     assert set(body) == {"blocks", "facilities", "lines", "set_aside", "vehicle_groups", "anchors_for_contractual"}
     assert body["anchors_for_contractual"] == "company" and body["vehicle_groups"] == []
-    assert set(body["blocks"]) == {"summary", "summary_counts", "unassigned", "unassigned_counts", "supporting"}
+    assert set(body["blocks"]) == {"summary", "summary_counts", "summary_folders", "unassigned", "unassigned_counts", "supporting"}
     assert [ln["key"] for ln in body["lines"]] == [GAS_KC, "s1:stationary:natural-gas:fac-stl2"]
     stationary = body["blocks"]["supporting"]["scopes"][0]["categories"][0]
     row = stationary["level2s"][0]["lines"][0]["documents"][0]
     assert row["document_id"] == "G1" and row["file_name"] == "G1.pdf" and row["facility_id"] == "fac-kc01"
     assert set(row) == {"document_id", "file_name", "period_start", "period_end", "facility_id", "facility_name",
                         "facility_note", "facility_suggestion", "processing_status", "detected_type", "also_in", "values", "accepted", "flags",
-                        "placement_from", "value_family"}
+                        "placement_from", "value_family", "reread"}
 
 
 def test_the_facility_query_filters_the_tree(act_as, wired: FakeStore) -> None:

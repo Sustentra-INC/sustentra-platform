@@ -453,7 +453,7 @@ function listedRecord(state: State, r: Rec): Record<string, unknown> {
     ...publicRecord(r),
     display_state: displayState,
     shown,
-    ...(claudeOnly ? { shown_note: "Shown because Claude found it, although no market-based category is Yes." } : {}),
+    ...(claudeOnly ? { shown_note: "Shown because Sustentra's AI found it, although no market-based category is Yes." } : {}),
   };
 }
 

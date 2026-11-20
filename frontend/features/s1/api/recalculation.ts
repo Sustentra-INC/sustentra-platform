@@ -347,6 +347,7 @@ export interface CalcLineInputs {
 
 export type UncountedReason =
   | "not_on_a_line"
+  | "awaiting_reread"
   | "no_vehicle_group"
   | "fuel_shared_by_vehicle_groups"
   | "facility_not_in_setup"
@@ -364,12 +365,13 @@ export interface UncountedValues {
 
 export const UNCOUNTED_REASON: Record<UncountedReason, string> = {
   not_on_a_line: "not on a calculation line yet",
+  awaiting_reread: "moved onto a line of another type and not read as that type yet",
   no_vehicle_group: "no vehicle group set up",
   fuel_shared_by_vehicle_groups: "more than one vehicle group uses the fuel, so none was chosen",
   facility_not_in_setup: "facility not in Setup",
   identifier_on_several_facilities: "the account or meter number is listed on more than one Setup facility",
   facility_ambiguous: "more than one Setup facility matches the name or address",
-  facility_suggested_not_confirmed: "Claude suggested a facility and nobody has confirmed it",
+  facility_suggested_not_confirmed: "Sustentra's AI suggested a facility and nobody has confirmed it",
   no_calculation_line: "no calculation line for it yet",
 };
 
@@ -379,6 +381,7 @@ export function uncountedHint(reason: UncountedReason, records: number): string 
   const it = one ? "it" : "them";
   const hints: Record<UncountedReason, string> = {
     not_on_a_line: `Place ${it} in Evidence.`,
+    awaiting_reread: "Re-read in Evidence.",
     no_calculation_line: "Answer the fuel or energy type question in Evidence.",
     no_vehicle_group: `Add ${it} in Setup.`,
     fuel_shared_by_vehicle_groups: "Choose the vehicle group in Evidence.",

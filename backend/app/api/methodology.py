@@ -9,7 +9,7 @@ from backend.app.api import evidence as evidence_api
 from backend.app.api.s1_access import org_of, require_evidence, s1_writer, visible
 from backend.app.core.auth import CurrentUser
 
-from backend.app.services.reviewed_evidence import latest_items_per_document, stale_decision_ids
+from backend.app.services.reviewed_evidence import latest_items_per_document, reviews_for_latest_types, stale_decision_ids
 from backend.app.services.s2_orchestration_service import (
     S2OrchestrationService,
     build_default_s2_orchestration_service,
@@ -45,9 +45,11 @@ def _without_stale_fields(stored: dict[str, Any], user: CurrentUser) -> dict[str
     results = visible(pipeline_service().list_extraction_results_by_evidence(evidence_id), user)
     if not results:
         return stored
-    stale = stale_decision_ids(
-        latest_items_per_document(results), visible(review_service().list_by_evidence(evidence_id), user),
-        {str(r.get("document_id")) for r in results})
+    reviews = visible(review_service().list_by_evidence(evidence_id), user)
+    applying = reviews_for_latest_types(results, reviews)  # a decision made before a read as another type is stale
+    stale = {str(d.get("review_decision_id")) for d in reviews
+             if id(d) not in {id(k) for k in applying} and d.get("review_decision_id")} | stale_decision_ids(
+        latest_items_per_document(results), applying, {str(r.get("document_id")) for r in results})
     if not stale:
         return stored
     fields = stored.get("fields")

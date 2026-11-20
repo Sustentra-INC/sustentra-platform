@@ -109,7 +109,7 @@ beforeEach(() => {
 describe("Methodology review on real data", () => {
   it("tells the reviewer the result lists the documents read", async () => {
     await open();
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     expect(screen.getByRole("alertdialog").textContent).toMatch(/list the documents it read/);
   });
 
@@ -117,7 +117,7 @@ describe("Methodology review on real data", () => {
     const { onActivity } = await open();
     const whats = (onActivity.mock.calls[0][0] as { what: string }[]).map((e) => e.what);
     expect(whats).toContain("Edited on methodology: Reporting period");
-    expect(whats).toContain("Suggested by Claude on methodology: Consolidation approach");
+    expect(whats).toContain("Suggested by Sustentra's AI on methodology: Consolidation approach");
   });
 
   it("does not send a non-numeric percent", async () => {
@@ -151,7 +151,7 @@ describe("Methodology review on real data", () => {
     const { onOpenDocument, onActivity } = await open();
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual(["Organizational boundary", "GWP factors source", "Emission factors source"]);
     const approach = row("Consolidation approach");
-    expect(within(approach).getByText("Suggested by Claude")).toBeTruthy();
+    expect(within(approach).getByText("Suggested by Sustentra's AI")).toBeTruthy();
     expect(within(approach).getByText("We use the operational control approach.")).toBeTruthy();
     expect(within(approach).getByText("Pending")).toBeTruthy();
     fireEvent.click(within(approach).getByRole("button", { name: "GHG report.pdf, page 4" }));
@@ -279,7 +279,7 @@ describe("Methodology review on real data", () => {
       cost_usd: 0.0312,
       model: "m",
     };
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     expect(calls().some(([p]) => String(p).endsWith("/prefill"))).toBe(false);
     expect(screen.getByRole("alertdialog").textContent).toMatch(/Suggestions need your review/);
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
@@ -310,33 +310,33 @@ describe("Methodology review on real data", () => {
   it("shows Claude's refusal sentence from the prefill", async () => {
     await open();
     mock.fail[`POST ${BASE}/prefill`] = new ApiError(409, "Upload the company's GHG inventory report first.", null, null);
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Upload the company's GHG inventory report first.");
   });
 
   it.each([
-    "Claude is switched off. An administrator turns it on.",
-    "Claude is not set up for this workspace.",
-    "The monthly limit for Claude is reached.",
+    "Sustentra's AI is switched off. An administrator turns it on.",
+    "Sustentra's AI is not set up for this workspace.",
+    "The monthly limit for Sustentra's AI is reached.",
     "Upload the company's GHG inventory report, boundary statement or methodology document first.",
-    "Claude is already reading reports for your organization. Try again in a minute.",
-    "Claude's answer could not be used. Nothing was kept.",
+    "Sustentra's AI is already reading reports for your organization. Try again in a minute.",
+    "The AI's answer could not be used. Nothing was kept.",
   ])("shows the 409 sentence as the server words it: %s", async (sentence) => {
     await open();
     mock.fail[`POST ${BASE}/prefill`] = new ApiError(409, sentence, null, null);
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
     expect((await screen.findByRole("alert")).textContent).toBe(sentence);
   });
 
   it.each([
-    "Claude could not be reached. Try again in a moment.",
-    "Claude's suggestions could not be saved. Nothing was kept.",
+    "Sustentra's AI could not be reached. Try again in a moment.",
+    "The AI's suggestions could not be saved. Nothing was kept.",
   ])("shows the 502 sentence: %s", async (sentence) => {
     await open();
     mock.fail[`POST ${BASE}/prefill`] = new ApiError(502, sentence, null, null);
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     fireEvent.click(screen.getByRole("button", { name: "Read the reports" }));
     expect((await screen.findByRole("alert")).textContent).toBe(sentence);
   });
@@ -345,7 +345,7 @@ describe("Methodology review on real data", () => {
     await open();
     let finish: (v: unknown) => void = () => {};
     mock.fail.prefillResult = new Promise((resolve) => (finish = resolve));
-    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Claude" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }));
     const confirm = screen.getByRole("button", { name: "Read the reports" });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
@@ -353,24 +353,24 @@ describe("Methodology review on real data", () => {
     expect((button as HTMLButtonElement).disabled).toBe(true);
     expect(calls().filter(([p]) => String(p).endsWith("/prefill"))).toHaveLength(1);
     finish({ suggested: 0, dropped: {}, kept_reviewer_decision: 0, documents_read: [], cost_usd: 0, model: "m" });
-    await waitFor(() => expect((screen.getByRole("button", { name: "Read the client's reports with Claude" }) as HTMLButtonElement).disabled).toBe(false));
+    await waitFor(() => expect((screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }) as HTMLButtonElement).disabled).toBe(false));
   });
 
   it.each([
     ["off", "Off: an administrator turns it on."],
     ["cap_reached", "Monthly limit reached."],
     ["no_documents", "No report documents yet."],
-    ["not_configured", "Claude is not set up for this workspace."],
+    ["not_configured", "Sustentra's AI is not set up for this workspace."],
     ["a_code_from_the_future", "Some other sentence."],
   ])("states the AI status with the server's sentence and disables the button: %s", async (code, reason) => {
     await open(vi.fn(), fixture({ enabled: false, reason_code: code, reason }));
     expect(screen.getByText(reason)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "Read the client's reports with Claude" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("enables the button when the AI is on", async () => {
     await open();
-    expect((screen.getByRole("button", { name: "Read the client's reports with Claude" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: "Read the client's reports with Sustentra's AI" }) as HTMLButtonElement).disabled).toBe(false);
     expect(aiStatusWords({ enabled: true, reason_code: null, reason: null })).toBeNull();
   });
 
@@ -479,7 +479,7 @@ describe("Methodology review on real data", () => {
 
     it("shows an optional row once a suggestion has arrived", async () => {
       await open(vi.fn(), withStates({}, { shown: true, state: "has_value", suggestion: true }));
-      expect(within(row(LABEL)).getByText("Suggested by Claude")).toBeTruthy();
+      expect(within(row(LABEL)).getByText("Suggested by Sustentra's AI")).toBeTruthy();
       expect(screen.queryByRole("combobox", { name: "Add an item" })).toBeNull();
     });
 

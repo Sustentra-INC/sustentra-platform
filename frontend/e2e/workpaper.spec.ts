@@ -43,7 +43,7 @@ test("create an engagement -> upload a bill -> accept a value -> see the recalcu
     await page.getByLabel("Facility name").fill(FACILITY);
     await page.getByLabel("Street address").fill("210 Dock Street, Erie, PA 16507");
     // Setup saves on its own; wait for the server to have it before leaving the page.
-    await expect(page.getByRole("status").filter({ hasText: "Saved" })).toBeVisible();
+    await expect(page.getByRole("status", { name: "Setup save state" }).filter({ hasText: "Saved" })).toBeVisible();
   });
 
   await test.step("upload the bill and wait until it is read", async () => {

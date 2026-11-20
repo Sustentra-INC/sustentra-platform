@@ -52,7 +52,7 @@ const treeWith = (row: TreeDocRow): TreeData =>
     lines: [],
     set_aside: [],
   }) as unknown as TreeData;
-const SUGGESTION = { facility_id: "fac-zh", facility_name: "Käserei Zürich Nord", quote: "Käserei_Zürich", where: "the file name", label: "Suggested by Claude" };
+const SUGGESTION = { facility_id: "fac-zh", facility_name: "Käserei Zürich Nord", quote: "Käserei_Zürich", where: "the file name", label: "Suggested by Sustentra's AI" };
 const ENGAGEMENT: EngagementConfig = { ...engagementConfig, engagementId: ENG, facilities: [{ facilityId: "fac-zh", name: "Käserei Zürich Nord" }], evidenceLines: [] };
 
 function Tree({ onPlace }: { onPlace?: (documentId: string, facilityId: string) => Promise<void> }) {
@@ -86,7 +86,7 @@ describe("Claude's facility suggestion on the Evidence tree row", () => {
     const onPlace = vi.fn().mockResolvedValue(undefined);
     render(<Tree onPlace={onPlace} />);
     const note = await screen.findByTestId("ai-facility-note");
-    expect(note).toHaveTextContent("Facility suggested by Claude");
+    expect(note).toHaveTextContent("Facility suggested by Sustentra's AI");
     expect(note).toHaveTextContent("“Käserei_Zürich” · the file name");
     fireEvent.click(screen.getByRole("button", { name: "Place on Käserei Zürich Nord" }));
     await waitFor(() => expect(onPlace).toHaveBeenCalledWith("LOG", "fac-zh"));
@@ -153,7 +153,7 @@ describe("the shared note", () => {
   it("is the same words on the review screen", () => {
     const onPlace = vi.fn();
     render(<AiFacilityNote facilityName="Fresno Plant" quote="Fresno" where="page 2" onPlace={onPlace} />);
-    expect(screen.getByTestId("ai-facility-note")).toHaveTextContent("Facility suggested by Claude");
+    expect(screen.getByTestId("ai-facility-note")).toHaveTextContent("Facility suggested by Sustentra's AI");
     fireEvent.click(screen.getByRole("button", { name: "Place on Fresno Plant" }));
     expect(onPlace).toHaveBeenCalledTimes(1);
   });
@@ -173,7 +173,7 @@ describe("the Activity log", () => {
     const placed = log.filter((e) => e.what.startsWith("placed"));
     expect(placed.map((e) => e.what)).toEqual([
       "placed Käserei_Zürich_Generator_Log_2025.csv on Käserei Zürich Nord",
-      "placed Käserei_Zürich_Generator_Log_2025.csv on Käserei Zürich Nord, as Claude suggested",
+      "placed Käserei_Zürich_Generator_Log_2025.csv on Käserei Zürich Nord, as Sustentra's AI suggested",
     ]);
     expect(placed[1].who).toBe("Jane Park");
   });

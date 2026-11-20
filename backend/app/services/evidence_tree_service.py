@@ -29,6 +29,7 @@ from backend.app.services.reviewed_evidence import (
     ReviewedRecord,
     _norm_text as norm_text,
     group_reviewed_records,
+    reviews_for_latest_type,
     set_aside_reason,
     superseded_ids,
     to_date,
@@ -145,7 +146,8 @@ class EvidenceTreeService:
             results = [r for r in self._pipeline.list_extraction_results_by_document(document_id) if can_see(r)]
             latest = results[-1] if results else {}
             canonical = str(latest.get("canonical_type_id") or "") or None
-            reviews = [d for d in self._reviews.list_by_document(document_id) if can_see(d)]
+            reviews = reviews_for_latest_type(
+                results, [d for d in self._reviews.list_by_document(document_id) if can_see(d)])
             records = group_reviewed_records(document, canonical or "", latest.get("items") or [], reviews,
                                              with_history=True)
             state = DocState(document, document_id, canonical, _iso(latest.get("created_at")), records,
@@ -199,6 +201,8 @@ class EvidenceTreeService:
 
         def line_dict(line: cl.CalculationLine) -> dict[str, Any]:
             out = line.to_dict()
+            read_as = cl.line_type_id(line)  # a document of another type moved here is read again as this
+            out["read_as_id"], out["read_as"] = read_as, cl.type_name(read_as)
             if line.created_by_user:
                 out["created_by_name"] = (creator_names or {}).get(str(line.created_by)) if line.created_by else None
             return out
@@ -258,9 +262,17 @@ class EvidenceTreeService:
             in_scope = [ln.key for ln in shown_lines if cl.CATEGORY_SCOPE[ln.category] == scope]
             scopes.append({"scope": scope, "label": scope_label, "categories": categories,
                            "counts": counts_of(in_scope)})
+        folders = cl.stored_folders(engagement.get("settings"))
+        folder_ids = {f["id"] for f in folders}
+        summary = documents(cl.BLOCK_SUMMARY)
+        for row in summary:  # one level: a row is in a folder or at the top of Block 1
+            row["folder_id"] = cl.document_folder((decisions or {}).get(row["document_id"]), folder_ids)
         return {
             "blocks": {
-                "summary": documents(cl.BLOCK_SUMMARY), "summary_counts": counts_of([cl.BLOCK_SUMMARY]),
+                "summary": summary, "summary_counts": counts_of([cl.BLOCK_SUMMARY]),
+                "summary_folders": [{"folder_id": f["id"], "name": f["name"],
+                                     "documents": sum(1 for r in summary if r["folder_id"] == f["id"])}
+                                    for f in folders],
                 "unassigned": documents(cl.BLOCK_UNASSIGNED), "unassigned_counts": counts_of([cl.BLOCK_UNASSIGNED]),
                 "supporting": {"scopes": scopes, "unassigned": documents(cl.SUPPORTING_UNASSIGNED),
                                "unassigned_counts": counts_of([cl.SUPPORTING_UNASSIGNED])},
@@ -298,7 +310,7 @@ class EvidenceTreeService:
         page = found.get("page_number")
         where = "the file name" if found.get("source") == "file_name" else (f"page {page}" if page else "the text")
         return {"facility_id": facility_id, "facility_name": name, "quote": quote, "where": where,
-                "label": "Suggested by Claude"}
+                "label": "Suggested by Sustentra's AI"}
 
     def _row(self, doc: DocState, slot: cl.Slot, lines: dict[str, cl.CalculationLine],
              facility_names: dict[str, str], setup_names: dict[str, str] | None = None,
@@ -335,7 +347,18 @@ class EvidenceTreeService:
             "value_family": families.pop() if len(families) == 1 else None,
             # what the UI sends as a move's "from" to move this row
             "placement_from": slot.target,
+            # a re-read this document's move asked for that has not finished (or failed): its values do not count
+            "reread": self._reread_of(doc, decisions),
         }
+
+    @staticmethod
+    def _reread_of(doc: DocState, decisions: dict[str, dict[str, Any]] | None) -> dict[str, Any] | None:
+        pending = cl.reread_pending((decisions or {}).get(doc.document_id), doc.canonical_type_id)
+        if pending is None:
+            return None
+        error = pending.get("error")
+        return {"canonical_type_id": pending["canonical_type_id"], "type_name": pending.get("type_name"),
+                "status": "failed" if error else "pending", "error": error or None}
 
     # ------------------------------------------------------------------------------------
     def schedule(self, engagement: dict[str, Any], can_see: Callable[[dict], bool], key: str,
@@ -355,7 +378,8 @@ class EvidenceTreeService:
                              for a in recalculation["awaiting_review"]}
         calculated = key in {str(ln["key"]) for ln in recalculation["calculation_lines"]}
         on_line = [(doc, [doc.records[i] for i in sorted(slot.records)])
-                   for doc in loaded.docs for slot in doc.slots if slot.target == key]
+                   for doc in loaded.docs for slot in doc.slots if slot.target == key
+                   and cl.reread_pending((decisions or {}).get(doc.document_id), doc.canonical_type_id) is None]
         values: list[dict[str, Any]] = []
         rows: list[dict[str, Any]] = []
         covered: list[cl.Covered] = []

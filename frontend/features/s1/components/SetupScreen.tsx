@@ -1,12 +1,13 @@
 "use client";
 
 import { Plus, X } from "lucide-react";
-import type { ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import type { EngagementConfig, FacilityOption } from "../types";
 import type { InScopeField } from "../types/scope";
 import type { VehicleTypeOption } from "../api/recalculation";
 import { InfoTip } from "./InfoTip";
+import { SaveStatus, type SetupSaveInfo } from "./SetupSaveStatus";
 import { SetupVehicleGroups } from "./SetupVehicleGroups";
 import { ZipRegionHint } from "./ZipRegionHint";
 import { FacilityNumbersField } from "./FacilityNumbersField";
@@ -56,6 +57,21 @@ function newFacilityId(): string {
   return `facility-${Date.now().toString(36)}-${facilitySeq}`;
 }
 
+let teamSeq = 0;
+/** A team row's id on this page: the row is keyed by it, so editing its login or name keeps focus. */
+function newTeamRowId(): string {
+  teamSeq += 1;
+  return `member-${teamSeq}`;
+}
+
+/** A login no member has yet: login1, login2, ... */
+function freeLogin(team: { login: string }[]): string {
+  const taken = new Set(team.map((m) => m.login));
+  let n = team.length + 1;
+  while (taken.has(`login${n}`)) n += 1;
+  return `login${n}`;
+}
+
 export function SetupScreen({
   engagement,
   onChange,
@@ -66,6 +82,7 @@ export function SetupScreen({
   lookupZip,
   foundFacilities = [],
   vehicleReference,
+  save,
 }: {
   engagement: EngagementConfig;
   onChange: (next: EngagementConfig) => void;
@@ -81,7 +98,16 @@ export function SetupScreen({
   foundFacilities?: { name: string; address: string | null }[];
   /** The fuels and vehicle types a vehicle group is chosen from (backend mode); without them the section is hidden. */
   vehicleReference?: { fuels: string[]; types: VehicleTypeOption[] };
+  /** Backend mode: whether Setup's edits are saved. Without it (the fixture demo) no save state shows. */
+  save?: SetupSaveInfo;
 }) {
+  // Why some vehicle groups are not saved, reported by that section.
+  const [vehicleProblem, setVehicleProblem] = useState<string | null>(null);
+  const shownSave = useMemo<SetupSaveInfo | undefined>(
+    () => (save && vehicleProblem ? { ...save, problems: { ...save.problems, vehicles: vehicleProblem } } : save),
+    [save, vehicleProblem]
+  );
+  const reportVehicleProblem = useCallback((problem: string | null) => setVehicleProblem(problem), []);
   const set = (patch: Partial<EngagementConfig>) => onChange({ ...engagement, ...patch });
   // Live data: the rows are the workbook's data points, each with its workbook row.
   const live = inScopeFields.some((f) => f.workbookRow !== undefined);
@@ -120,6 +146,19 @@ export function SetupScreen({
             the team are used on requests.
           </InfoTip>
         </div>
+        {shownSave ? (
+          <div className="s1-setup-savebar">
+            <SaveStatus info={shownSave} />
+            <button
+              className="s1-button s1-button--pri"
+              type="button"
+              disabled={shownSave.state === "saving"}
+              onClick={shownSave.onSaveNow}
+            >
+              Save changes
+            </button>
+          </div>
+        ) : null}
       </header>
 
       {picker}
@@ -128,7 +167,10 @@ export function SetupScreen({
       {picker && !engagement.engagementId ? null : (
       <>
       <div className="s1-setup-card">
-        <h2>{picker ? "Details" : "Engagement"}</h2>
+        <div className="s1-setup-card__head">
+          <h2>{picker ? "Details" : "Engagement"}</h2>
+          <SaveStatus info={shownSave} section="company" />
+        </div>
         <div className="s1-setup-grid">
           {picker ? (
             <label className="s1-setup-field">
@@ -256,6 +298,7 @@ export function SetupScreen({
 
       {/* Facilities */}
       <div className="s1-setup-card">
+        <div className="s1-setup-card__head">
         <h2>
           Facilities
           <InfoTip label="Facilities">
@@ -263,6 +306,8 @@ export function SetupScreen({
             electricity (Scope 2, location-based).
           </InfoTip>
         </h2>
+        <SaveStatus info={shownSave} section="facilities" />
+        </div>
         {engagement.facilities.length ? (
           <div className={`s1-fac${gridRegions ? " s1-fac--regions" : ""}`}>
             <div className="s1-fac__head" aria-hidden>
@@ -357,6 +402,8 @@ export function SetupScreen({
           onChange={onChange}
           fuels={vehicleReference.fuels}
           types={vehicleReference.types}
+          save={shownSave}
+          onProblem={reportVehicleProblem}
         />
       ) : null}
 
@@ -394,36 +441,14 @@ export function SetupScreen({
 
       {/* Engagement team */}
       <div className="s1-setup-card">
+        <div className="s1-setup-card__head">
         <h2>
           Engagement team
           <InfoTip label="Engagement team">Who can raise a request or examine a result. Typically up to four people.</InfoTip>
         </h2>
-        <div className="s1-setup-list">
-          <div className="s1-setup-row s1-setup-row--head" aria-hidden>
-            <span>Name</span>
-            <span>Login</span>
-            <span />
-          </div>
-          {team.map((m, i) => (
-            <div className="s1-setup-row" key={m.login}>
-              <input
-                aria-label="Name"
-                value={m.name}
-                onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, name: e.target.value } : t)))}
-              />
-              <input
-                aria-label="Login"
-                className="s1-num s1-setup-row__login"
-                value={m.login}
-                onChange={(e) => setTeam(team.map((t, j) => (j === i ? { ...t, login: e.target.value } : t)))}
-              />
-              <RemoveButton label={`Remove ${m.name}`} onClick={() => setTeam(team.filter((_, j) => j !== i))} />
-            </div>
-          ))}
+        <SaveStatus info={shownSave} section="team" />
         </div>
-        <AddButton onClick={() => setTeam([...team, { name: "New member", login: `login${team.length + 1}` }])}>
-          Add member
-        </AddButton>
+        <TeamRows key={engagement.engagementId} team={team} setTeam={setTeam} />
       </div>
 
       {/* In-scope data points: the workbook's reported data points (live), placeholders (demo) */}
@@ -493,6 +518,52 @@ export function SetupScreen({
       </>
       )}
     </section>
+  );
+}
+
+type Team = NonNullable<EngagementConfig["engagementTeam"]>;
+
+/** The engagement team. Each row has an id of its own (never saved) and is keyed by it, so editing a row's name or
+ *  login keeps the cursor in the field. */
+function TeamRows({ team, setTeam }: { team: Team; setTeam: (next: Team) => void }) {
+  const [ids, setIds] = useState<string[]>(() => team.map(() => newTeamRowId()));
+  const update = (i: number, patch: Partial<Team[number]>) => setTeam(team.map((t, j) => (j === i ? { ...t, ...patch } : t)));
+  return (
+    <>
+      <div className="s1-setup-list">
+        <div className="s1-setup-row s1-setup-row--head" aria-hidden>
+          <span>Name</span>
+          <span>Login</span>
+          <span />
+        </div>
+        {team.map((m, i) => (
+          <div className="s1-setup-row" key={ids[i] ?? `member-${i}`}>
+            <input aria-label="Name" value={m.name} onChange={(e) => update(i, { name: e.target.value })} />
+            <input
+              aria-label="Login"
+              className="s1-num s1-setup-row__login"
+              value={m.login}
+              onChange={(e) => update(i, { login: e.target.value })}
+            />
+            <RemoveButton
+              label={`Remove ${m.name}`}
+              onClick={() => {
+                setIds(ids.filter((_, j) => j !== i));
+                setTeam(team.filter((_, j) => j !== i));
+              }}
+            />
+          </div>
+        ))}
+      </div>
+      <AddButton
+        onClick={() => {
+          setIds([...ids, newTeamRowId()]);
+          setTeam([...team, { name: "New member", login: freeLogin(team) }]);
+        }}
+      >
+        Add member
+      </AddButton>
+    </>
   );
 }
 
