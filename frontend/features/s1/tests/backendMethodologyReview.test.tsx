@@ -730,10 +730,12 @@ describe("a GWP set with no stated horizon and a use note", () => {
     return d;
   };
 
-  it("shows the set, 'Not stated' as its horizon and the use note, beside the quote", async () => {
+  it("shows the set, a missing horizon as '100-year (assumed — not stated)' and the use note, beside the quote", async () => {
     await open(vi.fn(), gwpFixture());
     const gwp = row("GWP");
-    expect(within(gwp).getByText("AR5 · Not stated · embed AR5 values")).toBeTruthy();
+    expect(within(gwp).getByText("AR5 (IPCC Fifth Assessment)")).toBeTruthy();
+    expect(within(gwp).getByText(/100-year \(assumed — not stated\)/)).toBeTruthy();
+    expect(gwp.textContent).toContain("embed AR5 values");
     expect(within(gwp).getByText("Supplier factors (CEDA, DESNZ) embed AR5 values")).toBeTruthy();
   });
 
@@ -882,18 +884,24 @@ describe("entities and the boundary sentence", () => {
     const entity = { name: "Café Québec Holdings Inc.", facilities: ["Kent"], equity_share_pct: 51, financial_control: null, included: "Yes" };
     await open(vi.fn(), withBoundary(null, entity));
     const r = row("Entity row");
-    expect(within(r).getByText("Café Québec Holdings Inc. · facilities: Kent · equity share 51% · included: Yes")).toBeTruthy();
+    expect(within(r).getByText("Café Québec Holdings Inc.")).toBeTruthy();
+    expect(r.textContent).toContain("1 facility");
+    expect(within(r).getByText("51%")).toBeTruthy();
+    expect(within(r).getByText("Yes")).toBeTruthy();
     const none = { name: "Zürich Büro AG", facilities: [], equity_share_pct: null, financial_control: null, included: "No" };
     cleanup();
     await open(vi.fn(), withBoundary(null, none));
-    expect(within(row("Entity row")).getByText("Zürich Büro AG · included: No")).toBeTruthy();
+    expect(within(row("Entity row")).getByText("Zürich Büro AG")).toBeTruthy();
+    expect(within(row("Entity row")).getByText("No")).toBeTruthy(); // a missing equity share reads as a dash, not 0%
+    expect(row("Entity row").textContent).not.toContain("%");
   });
 
   it("shows an entity whose Yes / No is not stated without one, and lets the reviewer leave it as Not stated", async () => {
     const entity = { name: "Zürich Büro AG", facilities: [], equity_share_pct: 51, financial_control: null, included: null };
     await open(vi.fn(), withBoundary(null, entity));
     const r = row("Entity row");
-    expect(within(r).getByText("Zürich Büro AG · equity share 51%")).toBeTruthy();
+    expect(within(r).getByText("Zürich Büro AG")).toBeTruthy();
+    expect(within(r).getByText("51%")).toBeTruthy();
     rowAction(r, "Edit", "Entity row");
     const control = screen.getByLabelText("Entity row: Included") as HTMLSelectElement;
     expect(Array.from(control.options).map((o) => o.textContent)).toEqual(["Not stated", "Yes", "No"]);
@@ -917,7 +925,9 @@ describe("entities and the boundary sentence", () => {
     const quoted = { name: "Stockton Cold Storage JV", facilities: [], equity_share_pct: 50, financial_control: null, included: "Yes", control_quoted: "No" };
     await open(vi.fn(), withBoundary(null, quoted));
     const r = row("Entity row");
-    expect(within(r).getByText("Stockton Cold Storage JV · equity share 50% · included: Yes · operational control (as quoted): No")).toBeTruthy();
+    expect(r.textContent).toContain("Stockton Cold Storage JV");
+    expect(r.textContent).toContain("50%");
+    expect(r.textContent).toContain("operational control (as quoted): No");
     rowAction(r, "Edit", "Entity row");
     expect(screen.queryByLabelText("Entity row: Operational control")).toBeNull(); // the old label is gone
     const asQuoted = screen.getByLabelText("Entity row: Operational control (as quoted)") as HTMLSelectElement;
@@ -1115,9 +1125,9 @@ describe("row declutter: quote, source link, filter and accept all", () => {
       const r = row("Excluded from boundary");
       const quote = r.querySelector("q") as HTMLElement;
       expect(quote.className).toContain("is-clamped");
-      fireEvent.click(within(r).getByRole("button", { name: "Show more" }));
+      fireEvent.click(within(r.querySelector(".s1-mb-quote-wrap") as HTMLElement).getByRole("button", { name: "Show more" }));
       expect(quote.className).not.toContain("is-clamped");
-      expect(within(r).getByRole("button", { name: "Show less" })).toBeTruthy();
+      expect(within(r.querySelector(".s1-mb-quote-wrap") as HTMLElement).getByRole("button", { name: "Show less" })).toBeTruthy();
     } finally {
       sh.mockRestore();
       ch.mockRestore();
@@ -1210,7 +1220,7 @@ describe("the summary of the read and the tables", () => {
     expect(s.textContent).toContain("Scope 1: stationary combustion.");
     expect(s.textContent).toContain("GWP: AR5 (horizon not stated).");
     expect(s.textContent).toContain("3 items:");
-    for (const name of ["Reporting period", "N₂O", "Scope 1 Mobile Combustion"]) expect(within(s).getByRole("button", { name })).toBeTruthy();
+    for (const name of ["Reporting period", "N₂O", "Mobile Combustion"]) expect(within(s).getByRole("button", { name })).toBeTruthy();
     expect(document.body.textContent).not.toMatch(/Claude|claude/);
   });
 
@@ -1250,10 +1260,128 @@ describe("the summary of the read and the tables", () => {
     await open(vi.fn(), summaryFixture());
     const gases = screen.getByRole("heading", { name: "Gases covered" }).closest(".s1-mr-group") as HTMLElement;
     const table = within(gases).getByRole("table");
-    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Gas", "Value", "Source", "Status", "Actions"]);
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Gas", "Value", "Source", "Actions"]  /* no Status column while no row has a status */);
     expect(within(table).getByRole("rowheader", { name: "CO₂" })).toBeTruthy();
     expect(within(table).getByRole("rowheader", { name: "N₂O" })).toBeTruthy();
     const scope1 = screen.getByRole("heading", { name: "Scope 1 emission categories" }).closest(".s1-mr-group") as HTMLElement;
-    expect(within(within(scope1).getByRole("table")).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Category", "Included", "Source", "Status", "Actions"]);
+    expect(within(within(scope1).getByRole("table")).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Category", "Included", "Source", "Actions"]);
+  });
+});
+
+describe("the matrix, entity and factor tables and the Add buttons in their headers", () => {
+  const sug = (value: unknown) => ({ value, quote: "A quote that is long enough.", document_id: "d1", file_name: "GHG report.pdf", source_reference: { page_number: 4 }, origin: "ai", model: "m", request_id: "r", suggested_at: "2026-11-01T10:00:00Z" });
+  const d0 = { group_label: "x", user_added: false };
+  const rec = (id: string, extra: Record<string, unknown> = {}) => ({ field_id: id, user_added: false, suggestion: null, decision: null, history: [], ...extra });
+  const full = () => ({
+    ai: { enabled: true, reason_code: null, reason: null },
+    groups: [
+      { group: "boundary", label: "Organizational boundary" },
+      { group: "scope2", label: "Scope 2 emission categories" },
+      { group: "exclusions", label: "Exclusions" },
+      { group: "factors", label: "Emission factors source" },
+      { group: "gwp", label: "GWP factors source" },
+    ],
+    row_groups: ["entities", "factor:scope1", "factor:scope2", "gwp"],
+    catalog: [
+      { ...d0, field_id: "reporting_period", group: "boundary", label: "Reporting period", kind: "date_range" },
+      { ...d0, field_id: "consolidation_approach", group: "boundary", label: "Consolidation approach", kind: "enum", allowed: ["Operational Control"] },
+      { ...d0, field_id: "boundary:acquisitions", group: "boundary", label: "Acquisitions and divestitures", kind: "text" },
+      { ...d0, field_id: "exclusion:boundary", group: "exclusions", label: "Excluded from organizational boundary", kind: "text" },
+      { ...d0, field_id: "exclusion:inventory", group: "exclusions", label: "Excluded from this inventory", kind: "text" },
+      ...["electricity", "heating", "steam", "cooling"].flatMap((k) => [
+        { ...d0, field_id: `category:location:${k}`, group: "scope2", label: `Location-based Purchased ${k[0].toUpperCase()}${k.slice(1)}`, kind: "enum", allowed: ["Yes", "No"] },
+        { ...d0, field_id: `category:market:${k}`, group: "scope2", label: `Market-based Purchased ${k[0].toUpperCase()}${k.slice(1)}`, kind: "enum", allowed: ["Yes", "No"] },
+      ]),
+      { ...d0, field_id: "scope2:instruments", group: "scope2", label: "Scope 2 instrument types (market-based)", kind: "multiselect", allowed: ["PPA or VPPA"] },
+      { ...d0, field_id: "entity:e1", group: "boundary", label: "Entity", kind: "entity", user_added: true },
+      { ...d0, field_id: "entity:e2", group: "boundary", label: "Entity", kind: "entity", user_added: true },
+      { ...d0, field_id: "factor:scope1:f1", group: "factors", label: "Scope 1 emission factor source", kind: "factor", user_added: true },
+      { ...d0, field_id: "gwp", group: "gwp", label: "GWP factors source", kind: "gwp", allowed: { set: ["AR5"], horizon: ["100-year"] }, allowed_labels: { set: { AR5: "IPCC Fifth Assessment Report (AR5)" } } },
+    ],
+    fields: [
+      rec("reporting_period"),
+      rec("consolidation_approach"),
+      rec("boundary:acquisitions"),
+      rec("exclusion:boundary"),
+      rec("exclusion:inventory"),
+      ...["electricity", "heating", "steam", "cooling"].flatMap((k) => [
+        rec(`category:location:${k}`, k === "electricity" ? { suggestion: sug("Yes") } : {}),
+        rec(`category:market:${k}`),
+      ]),
+      rec("scope2:instruments"),
+      rec("entity:e1", { suggestion: sug({ name: "Cascade Provisions Co.", facilities: ["Kent", "Tualatin"], equity_share_pct: 100, included: "Yes" }) }),
+      rec("entity:e2"),
+      rec("factor:scope1:f1", { suggestion: sug({ database: "EPA GHG Emission Factors Hub", edition: "2025" }) }),
+      rec("gwp", { suggestion: sug({ set: "AR5", horizon: null }) }),
+    ],
+  });
+
+  it("puts the boundary exclusion with the boundary, after the entities and before the other exclusions", async () => {
+    await open(vi.fn(), full());
+    const boundary = screen.getByRole("button", { name: "Organizational boundary" }).closest(".s1-mr-group") as HTMLElement;
+    expect(within(boundary).getByText("Excluded from organizational boundary")).toBeTruthy();
+    const text = boundary.textContent ?? "";
+    expect(text.indexOf("Entities")).toBeLessThan(text.indexOf("Excluded from organizational boundary"));
+    expect(text.indexOf("Excluded from organizational boundary")).toBeLessThan(text.indexOf("Acquisitions and divestitures"));
+    const exclusions = screen.getByRole("button", { name: "Exclusions" }).closest(".s1-mr-group") as HTMLElement;
+    expect(within(exclusions).queryByText("Excluded from organizational boundary")).toBeNull();
+    expect(within(exclusions).getByText("Excluded from this inventory")).toBeTruthy();
+  });
+
+  it("draws Scope 2 as a matrix: electricity, steam, heating, cooling by location-based and market-based; instruments follow", async () => {
+    await open(vi.fn(), full());
+    const scope2 = screen.getByRole("button", { name: "Scope 2 emission categories" }).closest(".s1-mr-group") as HTMLElement;
+    const tables = within(scope2).getAllByRole("table");
+    expect(within(tables[0]).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Category", "Location-based", "Market-based"]);
+    expect(within(tables[0]).getAllByRole("rowheader").map((h) => h.textContent)).toEqual(["Purchased Electricity", "Purchased Steam", "Purchased Heating", "Purchased Cooling"]);
+    expect(within(tables[0]).getByRole("button", { name: "Accept: Location-based Purchased Electricity" })).toBeTruthy();
+    expect(within(tables[1]).getByText("Scope 2 instrument types (market-based)")).toBeTruthy(); // right after the matrix
+  });
+
+  it("draws entities as Name | Included | Equity % with the Add button in the header, and labels an empty row", async () => {
+    await open(vi.fn(), full());
+    const block = screen.getByText("Entities").closest(".s1-mb-block") as HTMLElement;
+    expect(within(block).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Name", "Included", "Equity %", "Source", "Actions"]);
+    const e1 = within(block).getByText("Cascade Provisions Co.").closest("tbody") as HTMLElement;
+    expect(e1.textContent).toContain("2 facilities");
+    expect(within(e1).getByText("100%")).toBeTruthy();
+    expect(within(block).getByText("New entity")).toBeTruthy();
+    fireEvent.click(within(block.querySelector(".s1-mb-subhead") as HTMLElement).getByRole("button", { name: "Add entity" }));
+    await waitFor(() => expect(calls()).toContainEqual([`${BASE}/rows`, expect.objectContaining({ body: { group: "entities" } })]));
+  });
+
+  it("draws emission factor sources as Database | Edition, Scope 1 and Scope 2 apart, each with its Add button; no Identified by or Flag", async () => {
+    await open(vi.fn(), full());
+    const factors = screen.getByRole("button", { name: "Emission factors source" }).closest(".s1-mr-group") as HTMLElement;
+    const heads = within(factors).getAllByRole("columnheader").map((h) => h.textContent);
+    expect(heads.slice(0, 4)).toEqual(["Database", "Edition", "Source", "Actions"]);
+    expect(heads).not.toContain("Identified by");
+    expect(heads).not.toContain("Flag");
+    expect(within(factors).getByText("EPA GHG Emission Factors Hub")).toBeTruthy();
+    expect(within(factors).getByText("2025")).toBeTruthy();
+    expect(within(factors).getAllByRole("button", { name: /^Add (Scope [12] factor row)$/ })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "Add GWP set" })).toHaveLength(1);
+  });
+
+  it("shows the GWP set and a missing horizon as 100-year, assumed", async () => {
+    await open(vi.fn(), full());
+    const gwp = screen.getByRole("button", { name: "GWP factors source" }).closest(".s1-mr-group") as HTMLElement;
+    expect(within(gwp).getAllByRole("columnheader").map((h) => h.textContent).slice(0, 4)).toEqual(["GWP set", "Time horizon", "Source", "Actions"]);
+    expect(within(gwp).getByText("IPCC Fifth Assessment Report (AR5)")).toBeTruthy();
+    expect(within(gwp).getByText("100-year (assumed — not stated)")).toBeTruthy();
+  });
+});
+
+describe("the Status column", () => {
+  it("shows only in a table where some row is accepted, edited or rejected, with the chip", async () => {
+    await open();
+    const boundary = screen.getByRole("button", { name: "Organizational boundary" }).closest(".s1-mr-group") as HTMLElement;
+    expect(within(boundary).getAllByRole("columnheader").map((h) => h.textContent)).toContain("Status");
+    expect(within(row("Reporting period")).getByText("Edited")).toBeTruthy();
+  });
+
+  it("gives the long-text expand control an accessible name", async () => {
+    await open();
+    for (const b of document.querySelectorAll(".s1-mb-expand")) expect(b.getAttribute("aria-label")).toMatch(/Show (more|less)/);
   });
 });

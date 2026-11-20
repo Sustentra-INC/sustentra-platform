@@ -51,7 +51,7 @@ FEATURE = "methodology_prefill"
 MAX_DOCUMENTS = 5
 MAX_LINES = 1_500
 MAX_CHARS = 150_000
-MAX_OUTPUT_TOKENS = 8_000  # all three parts together
+MAX_OUTPUT_TOKENS = 8_000  # the parts together (each is asked for PART_MAX_OUTPUT_TOKENS)
 PART_MAX_OUTPUT_TOKENS = 4_000  # one part
 # The call is not streamed, so the provider sends nothing until the whole reply is written and the
 # SDK's read timeout is the time to write it. Up to 8,000 tokens of structured output after reading
@@ -237,19 +237,25 @@ class CategoriesPart(_Strict):
     texts: list[_ExclusionText]
 
 
-class MethodPart(_Strict):
-    """Call (c): emission factor sources, GWP, how emissions are calculated, estimation, records."""
+class FactorsPart(_Strict):
+    """Call (c): the emission factor sources (a long list) and the GWP sets."""
 
-    texts: list[_MethodText]
-    selections: list[_MethodSelection]
-    estimations: list[EstimationSuggestion]
     gwp: list[GwpSuggestion]
     factors: list[FactorSuggestion]
 
 
-PART_OUTPUTS: dict[str, type[_Strict]] = {"boundary": BoundaryPart, "categories": CategoriesPart, "method": MethodPart}
+class MethodPart(_Strict):
+    """Call (d): how emissions are calculated and estimated, acquisitions, leased space, tools, records."""
+
+    texts: list[_MethodText]
+    selections: list[_MethodSelection]
+    estimations: list[EstimationSuggestion]
+
+
+PART_OUTPUTS: dict[str, type[_Strict]] = {
+    "boundary": BoundaryPart, "categories": CategoriesPart, "factors": FactorsPart, "method": MethodPart}
 PART_LABELS = {"boundary": "Boundary, period, scopes and entities", "categories": "Categories, gases and exclusions",
-               "method": "Factors, GWP and calculation"}
+               "factors": "Emission factor sources and GWP", "method": "Calculation, estimation and records"}
 
 
 def merge_parts(parts: Mapping[str, _Strict]) -> PrefillOutput:
@@ -365,6 +371,92 @@ def category_terms(field_id: str) -> tuple[str, ...]:
 _ROMAN_MARKER = re.compile(r"(?<=[A-Za-z]{4})(?:xi{1,3}|xiv|xv|ix|iv|vi{1,3}|v|i{1,3})(?![A-Za-z0-9])")
 
 
+# A bullet or a number in front of a list item: tokens that are only a mark, never words.
+_MARK_TOKEN = re.compile(r"^(?:[\u2022\u00b7\u25aa\u25cf\u25e6\u25a0\u25a1*\-]|\(?\d{1,2}[.)]|\([a-z]\))$")
+_LOOKAHEAD = 12  # lines a quote may run over
+
+
+def _words(text: str) -> list[str]:
+    """The words of a text as printed, without footnote markers, bullets and list numbers."""
+
+    return [t for t in norm(strip_markers(text)).split() if not _MARK_TOKEN.match(t)]
+
+
+def _only_marks(text: str) -> bool:
+    return all(not c.isalnum() for c in text)
+
+
+def _find(hay: list[str], needle: list[str]) -> list[int]:
+    """Where the words are in order in ``hay``: every word exact, except that the first may carry punctuation in
+    front of it in the document and the last punctuation after it ("Report." for a quote ending "Report")."""
+
+    n = len(needle)
+    found: list[int] = []
+    for i in range(len(hay) - n + 1):
+        window = hay[i:i + n]
+        first = window[0].endswith(needle[0]) and _only_marks(window[0][:len(window[0]) - len(needle[0])])
+        last = window[-1].startswith(needle[-1]) and _only_marks(window[-1][len(needle[-1]):])
+        if n == 1:
+            ok = window[0].startswith(needle[0]) and _only_marks(window[0][len(needle[0]):]) or first
+        else:
+            ok = first and last and window[1:-1] == needle[1:-1]
+        if ok:
+            found.append(i)
+    return found
+
+
+def locate_quote_across_lines(quote: str, line_alias: str | None, lines: Sequence[DocumentLine]) -> DocumentLine | NotLocated:
+    """``locate_quote``, and when the quote is not on one line, where it starts if it runs over several: the
+    words must match exactly in order, but line breaks, a hyphen that splits a word at a line end, and bullet or
+    numbering marks are ignored. Returns the line the quote starts on."""
+
+    found = locate_quote(quote, line_alias, lines)
+    if not isinstance(found, NotLocated) or found.reason == "unknown_line":
+        return found
+    wanted = _words(quote)
+    if not wanted:
+        return found
+    per_line = [_words(line.text) for line in lines]
+    starts: list[int] = []
+    for i in range(len(lines)):
+        if not per_line[i]:
+            continue
+        for keep_hyphen in (False, True):
+            hay: list[str] = []
+            for tokens in per_line[i:i + _LOOKAHEAD]:
+                if not tokens:
+                    continue
+                if hay and hay[-1].endswith("-") and len(hay[-1]) > 1 and tokens[0][:1].isalpha():
+                    hay[-1] = hay[-1] + tokens[0] if keep_hyphen else hay[-1][:-1] + tokens[0]
+                    hay.extend(tokens[1:])
+                else:
+                    hay.extend(tokens)
+            if any(at < len(per_line[i]) for at in _find(hay, wanted)):
+                starts.append(i)
+                break
+    if not starts:
+        return NotLocated("quote_not_on_document")
+    cited = next((i for i, line in enumerate(lines) if line_alias and line.alias == line_alias.strip().upper()), None)
+    if cited in starts:
+        return lines[cited]
+    return lines[starts[0]] if len(starts) == 1 else NotLocated("ambiguous_quote")
+
+
+def whole_words(quote: str, text: str) -> str:
+    """The quote with a word it cuts in half completed from the line it was read from ("dioxide (CO" -> "dioxide (CO2)")."""
+
+    q = " ".join(quote.split())
+    at = text.lower().find(q.lower()) if len(text.lower()) == len(text) else -1
+    if at < 0 or not q:
+        return quote
+    start, end = at, at + len(q)
+    while start > 0 and q[0].isalnum() and text[start - 1].isalnum() and at - start < 40:
+        start -= 1
+    while end < len(text) and q[-1].isalnum() and text[end].isalnum() and end - (at + len(q)) < 40:
+        end += 1
+    return text[start:end]
+
+
 def strip_markers(text: str) -> str:
     text = "".join(c for c in text if not unicodedata.name(c, "").startswith(("SUPERSCRIPT", "MODIFIER LETTER SMALL")))
     return _ROMAN_MARKER.sub("", text)
@@ -387,12 +479,16 @@ _OPTION_TERMS = {
     "Green tariff or utility program": ("green tariff", "green tariffs", "green power program", "utility program",
                                         "green pricing"),
     "Supplier-specific rate": ("supplier-specific", "supplier specific", "supplier emission factor"),
-    "Residual mix": ("residual mix",),
-    "Utility invoices": ("utility invoice", "utility invoices", "utility bill", "utility bills"),
-    "Meter readings": ("meter reading", "meter readings"),
+    "Residual mix": ("residual mix", "residual mixes", "residual factor", "residual factors", "residual emission factor",
+                     "residual emission factors"),
+    "Utility invoices": ("utility invoice", "utility invoices", "utility bill", "utility bills",
+                         "utility and third-party invoices", "utility and third party invoices"),
+    # "Utility bills/metered" names both records; "sub-metering" alone names neither.
+    "Meter readings": ("meter reading", "meter readings", "bills/metered", "metered consumption", "metered data",
+                       "metered usage", "meter data"),
     "Fuel cards": ("fuel card", "fuel cards"),
     "Fuel receipts or logs": ("fuel receipt", "fuel receipts", "fuel log", "fuel logs"),
-    "Landlord reports": ("landlord report", "landlord reports", "landlord"),
+    "Landlord reports": ("landlord report", "landlord reports", "landlord", "landlords"),
     "Lease agreements": ("lease agreement", "lease agreements"),
 }
 # What a quote must say for a start date it does not print to be taken from its end date: that the period is ONE
@@ -526,7 +622,7 @@ def names_scope(quote: str, option: str) -> str:
 
     wanted = _SCOPE_ID.get(option)
     negated = False
-    for sentence in _SENTENCES.split(norm(quote)):
+    for sentence in _SENTENCES.split(match_text(quote)):  # a footnote mark stuck to "Scope 2" is not a digit
         for start, end, numbers in _scope_groups(sentence):
             if wanted is None or wanted not in numbers:
                 continue
@@ -609,6 +705,50 @@ def _use_note(gwp: GwpSuggestion) -> str:
     return "" if len(note) > rules.MAX_APPLIES_TO else note
 
 
+# Wording that makes a set information only: the quote says where it sits INSIDE somebody else's factors, or that
+# it is the exception to the method. A set named only after such a cue in its clause is no general method.
+_INFO_CUE = re.compile(
+    r"\bwith\s+the\s+exception\s+of\b|\bexcept(?:ion)?\b|\bembedded\b|\binside\b|\bbuilt\s+into\b|\bincluded\s+in\b|"
+    r"\bused\s+(?:by|in)\b|\bthat\s+use[sd]?\b|\bwhich\s+use[sd]?\b|\bapplied\b")
+# Names of emission factor sources: a clause that names one before the set is a factor-source line.
+_FACTOR_SOURCE = re.compile(
+    r"\b(?:DESNZ|DEFRA|CEDA|IEA|EPA|eGRID|ecoinvent|AIB|Green-e|NGA|BEIS)\b", re.IGNORECASE)
+
+
+def _info_note(gwp: GwpSuggestion, others_general: bool) -> str:
+    """For a set the quote only mentions inside another source's factors, a note saying so ("inside IEA factors",
+    "embedded in CEDA, DESNZ factors"); "" when the set is the company's own method. An explicit cue ("with the
+    exception of", "embedded") always makes it information only; a bare factor-source name before the set does
+    only when another set is the general one (a lone set stays the method, whatever the line)."""
+
+    for clause in _CLAUSE.split(gwp.quote):
+        collapsed = " ".join(clause.split())
+        folded = norm(collapsed)
+        if len(folded) != len(collapsed):
+            continue
+        marks = [pos for pos in _mentions(folded, _GWP_TERMS[gwp.set])]
+        if not marks:
+            continue
+        at = min(marks)
+        strong = _INFO_CUE.search(folded[:at]) is not None
+        sources = list(dict.fromkeys(m.group(0) for m in _FACTOR_SOURCE.finditer(collapsed)))
+        if strong or (others_general and sources and _FACTOR_SOURCE.search(folded[:at])):
+            verb = "embedded in" if "embedded" in folded else "inside"
+            return f"{verb} {', '.join(sources) or 'third-party'} factors"
+    return ""
+
+
+def _final_note(gwp: GwpSuggestion, suggestions: Sequence[GwpSuggestion]) -> str:
+    """The use note a set is kept with: the model's note from the quote, or the information-only note."""
+
+    note = _use_note(gwp)
+    if use_of(note) == EMBEDDED:
+        return note
+    general = any(other.set != gwp.set and use_of(_use_note(other)) == GENERAL
+                  and not _info_note(other, False) for other in suggestions)
+    return _info_note(gwp, general) or note
+
+
 def gwp_in_order(suggestions: Sequence[GwpSuggestion]) -> list[GwpSuggestion]:
     """The GWP suggestions in the order they are kept: the first becomes the fixed field, the rest rows. The
     document decides, not the model's output order. First the use note (``applies_to``): a set with no note or
@@ -623,7 +763,7 @@ def gwp_in_order(suggestions: Sequence[GwpSuggestion]) -> list[GwpSuggestion]:
         text = norm(gwp.quote)
         primary = any(_mentions(text, (word,)) for word in _PRIMARY_WORDS)
         gases = sum(1 for words in _GAS_WORDS if any(_mentions(text, (w,)) for w in words))
-        return (kinds[use_of(_use_note(gwp))], 0 if primary else 1, -gases, -int(gwp.set[2:]),
+        return (kinds[use_of(_final_note(gwp, suggestions))], 0 if primary else 1, -gases, -int(gwp.set[2:]),
                 0 if gwp.horizon != "20-year" and gwp.horizon != "500-year" else 1, index)
 
     return [gwp for _, gwp in sorted(enumerate(suggestions), key=rank)]
@@ -687,11 +827,24 @@ def entity_statement(quote: str, name: str) -> tuple[bool, str | None]:
     return True, None
 
 
+# A list of what the boundary covers needs no "boundary" wording: "Company-owned restaurants and offices;
+# company-owned and leased vehicles". It names who owns, leases or runs the assets, and the assets, and says
+# nothing negative ("franchisee operations are not owned by the Company" is no coverage).
+_ASSET_WORDS = (r"buildings?|offices?|restaurants?|facilities|vehicles?|aircraft|sites?|stores?|properties|assets|"
+                r"operations|data\s+centers?|data\s+centres?|warehouses?|plants?|branches|fleets?")
+_COVERAGE_LIST = re.compile(
+    rf"\b(?:company|owned|leased|operated|controlled)\b.*\b(?:{_ASSET_WORDS})\b|\b(?:{_ASSET_WORDS})\b.*\b(?:owned|leased|operated)\b")
+_ANY_NEGATION = re.compile(r"\b(?:not|no|nor|neither|never|without|non)\b|n't")
+
+
 def states_boundary_coverage(sentence: str) -> bool:
     """A sentence that says what the boundary covers, not one that leaves something out."""
 
     text = norm(sentence)
-    return _BOUNDARY_COVERAGE.search(text) is not None and _BOUNDARY_EXCLUSION.search(text) is None
+    if _BOUNDARY_EXCLUSION.search(text) is not None:
+        return False
+    return (_BOUNDARY_COVERAGE.search(text) is not None
+            or (_COVERAGE_LIST.search(text) is not None and _ANY_NEGATION.search(text) is None))
 
 
 _CLAUSE = re.compile(r"[;!?\n]|\.\s")
@@ -750,7 +903,12 @@ Rules
   gaps. If a document does not say, leave the item out. An empty list is a good answer.
 - Every suggestion must cite one document and one line, and quote the words on that line that
   support it, copied exactly. The quote must be short (one sentence or less) and printed on the
-  cited line. A suggestion whose quote cannot be found on that line is discarded.
+  cited line. A suggestion whose quote cannot be found on that line is discarded. A sentence or a
+  list item may run over several lines: then cite the line where the quote starts and copy the words
+  in order (line breaks, a hyphen that splits a word at a line end, and bullets or numbers are
+  ignored, the words are not). Never cut a word in half: start and end the quote on whole words.
+- Footnotes and notes under a table are part of the document: read them, they often hold exclusions,
+  estimation methods and sources.
 - For consolidation_approach and the GWP set, the quote must itself name the choice (for example
   "operational control", or "AR5" / "Fifth Assessment"); at least 8 characters.
 - Cite documents by their alias (D1, D2, ...) and lines by their alias (L1, L2, ...), as shown.
@@ -772,27 +930,47 @@ _ITEMS = {
   category:* fields say whether an emission category is included in the inventory: Yes (included),
   No (stated as not included or not applicable) or Not detected (the document does not address it,
   use this only when the document clearly lists the category's status as absent; otherwise omit).
-  Scope 1 categories: stationary combustion, mobile combustion, process emissions, fugitive emissions.
-  Scope 2: purchased electricity, heating, steam, cooling, each location-based and market-based.
-  Biogenic: direct and indirect biogenic CO2.
+  Scope 1 categories: stationary combustion (fuel used in buildings, equipment, boilers, generators),
+  mobile combustion (company-owned and leased vehicles, aircraft), process emissions, fugitive emissions
+  (refrigerants). Scope 2: purchased electricity, heating (district heat), steam, cooling (chilled
+  water), each location-based and market-based. Biogenic: direct and indirect biogenic CO2.
 """,
     "texts_exclusion": """\
-- texts: exclusion:* fields
-  (what is left out of the organizational boundary, of this inventory, or under a materiality
-  threshold, in the company's own words).
+- texts: exclusion:* fields, three kinds, each in the company's own words, one text per field:
+  exclusion:boundary: what is OUTSIDE the organizational boundary because the company has no
+  operational control or ownership there (joint ventures managed outside its platforms, franchisee
+  operations, restaurants or sites not within the boundary, subleased space under another tenant's
+  control). When the document says where they are reported instead, end the value with "Reported
+  instead: Scope 3" (and the category if given); if it does not say, leave that part out.
+  exclusion:inventory: sources INSIDE the boundary that the inventory leaves out or does not estimate,
+  for example for lack of data ("data centers used by X are excluded due to limited availability of
+  data", device locations at other companies' facilities, landlord overhead where there is no
+  sub-metered data), with the reason if given.
+  exclusion:materiality: only a stated materiality threshold or rule for leaving sources out. A gas
+  omitted as "not a material source" is a gas row (declared absent), never an exclusion text; a
+  threshold for recalculating the base year is no exclusion. Each exclusion needs its own quote.
 """,
     "texts_method": """\
-- texts: calculation:* fields (how emissions are calculated,
-  in one or two plain sentences), boundary:acquisitions (acquisitions, divestitures or other
-  structural changes during the period and how they are treated) and boundary:leased_space (how
-  leased space or leased assets are treated in the boundary). Include boundary:acquisitions and
-  boundary:leased_space only if a document states something about them; if it is silent, leave
-  them out.
+- texts, one per field, each only if a document states it:
+  calculation:approach: how emissions are calculated, in one or two plain sentences (activity data
+  times an emission factor; per category if the document gives it). Do NOT put the estimation of
+  missing data here: it has its own item (estimations).
+  calculation:process: process-specific calculations, including the tools, models or databases the
+  document names for estimates (for example a building performance database, an EPA screening
+  approach, a vehicle model), or that there are no process emissions.
+  boundary:acquisitions: acquisitions, divestitures and other structural changes and how they are
+  treated: the inclusion rule for acquired companies, a base year recalculation rule for structural
+  changes (with its threshold), and an acquisition or sale named as a subsequent event.
+  boundary:leased_space: how leased space or leased assets are treated in the boundary (leased
+  vehicles, leased offices, landlord-paid utilities).
 """,
     "est": """\
-- estimations: how the company estimates missing or incomplete data, one entry per source type
-  (for example utility invoices, meter readings, fuel records): the source type and the method in a
-  few words. Each entry cites its own line. Leave it out if the documents do not say.
+- estimations: how the company estimates missing or incomplete data, asked separately from the
+  calculation approach: one entry per source type (for example utility invoices, meter readings,
+  fuel records, refrigerants, vehicles, acquired companies, electricity for data centers): the source
+  type and the method in a few words (an average consumption in the same location, square footage
+  times a median intensity, a default leakage rate, revenue). Each entry cites its own line; the
+  source type must be printed in the quote. Leave it out if the documents do not say.
 """,
     "sel": """\
 - selections: for the multi-select fields (field_id scope2:instruments, the contractual instruments the
@@ -803,7 +981,13 @@ _ITEMS = {
   "Fuel cards", "Fuel receipts or logs", "Landlord reports", "Lease agreements"). Each item cites its
   own line, and the quote must name the option. "wording" is the company's own words for it, copied
   from the quote, or "". Do not choose an option the documents do not mention, or say the company does
-  not use.
+  not use. Company wording maps to the options: "EACs" or "unbundled EACs" are the RECs option;
+  "residual factors", "residual mixes" or "Green-e / AIB residual" are Residual mix; "utility bills",
+  "utility invoices" or "utility and third-party invoices" are Utility invoices; "utility
+  bills/metered" or "metered consumption" are Utility invoices and Meter readings (one item each, the
+  same quote); "landlords" is Landlord reports; "fuel receipts and invoices" is Fuel receipts or logs.
+  A source named only as sub-metering is not Meter readings. Give every source records option the
+  documents state.
 """,
     "scopes": """\
 - scopes covered (selections with field_id scopes:covered): one item per scope the inventory covers,
@@ -812,14 +996,19 @@ _ITEMS = {
   "Scope 2", "Scope 3", "direct", "indirect"; ISO 14064-1 reports use "Category 1" to "Category 6"),
   often under Operational Boundary, Reporting Boundary, Introduction or Overview. The quote must
   name the scope, as "Scope 1" or in a list ("Scopes 1 and 2"). Choose a scope only when the
-  document says it is reported or covered. A scope the document calls excluded, outside the
+  document says it is reported or covered. A Scope 3 that is reported (a figure, a category, or
+  Scope 3 named beside the location-based Scope 2 figures) is covered, even in a passing sentence. A scope the document calls excluded, outside the
   boundary, or only relevant is not covered: leave it out. Never choose "Not stated": if the
   documents name no scope, leave the field out. "wording" is the company's own label, or "".
 """,
     "gases": """\
 - gases: for each greenhouse gas (field_id gas:co2, gas:ch4, gas:n2o, gas:hfcs, gas:pfcs, gas:sf6,
   gas:nf3) the document states, "Included" (the gas is covered by the inventory) or "Declared absent"
-  (the document says the gas is not emitted or not applicable). The quote must name the gas. If a
+  (the document says the gas is not emitted, is omitted, or is not applicable or not a material
+  source: "PFCs, NF3 and SF6 emissions have been omitted from reporting as they are not a material
+  source" gives gas:pfcs, gas:nf3 and gas:sf6 each "Declared absent"). Give every gas a list names its
+  own entry, each with a quote that names that gas (the same sentence may be cited for several gases;
+  copy whole words: "carbon dioxide (CO2)", not "dioxide (CO"). The quote must name the gas. If a
   document does not say, leave the gas out: do not guess from the industry.
 """,
     "periods": """\
@@ -843,7 +1032,13 @@ _ITEMS = {
   and gives no horizon for it. If the report uses more than one set or horizon, give each one
   separately, each with its own quote; do not pick between them. applies_to is what that set is used
   for, in the company's words copied from the quote ("default", "embedded in the supplier factors"),
-  or "".
+  or "". The set the document states as its general method (the one it says it uses, or calls the
+  default, for its calculations) comes first and is never taken from a line about an emission factor
+  source. A set that appears only inside such a source ("embedded in the DESNZ and CEDA factors", "with
+  the exception of when IEA Emission Factors are applied that use the Fourth Assessment Report", "used
+  by the EPA chilled water factors") is information: give it as its own entry with its own quote and
+  say so in applies_to; it is never the default. Give the general set even if its sentence is about
+  something else, as long as the quote names the set.
 """,
     "entities": """\
 - entities: each legal entity inside the organizational boundary, with its facilities if named, its
@@ -860,14 +1055,19 @@ _ITEMS = {
 - texts, field_id boundary:entities: the sentence (or sentences, as written, no more than 2000
   characters) in which the document says which entities, subsidiaries, sites or kinds of assets the
   boundary covers ("all offices where the company has full authority", "company-owned or leased
-  buildings and vehicles"). The value is those words, copied from the quote. It must be the sentence
+  buildings and vehicles"). A sentence that lists what the boundary covers counts, with or without
+  the word "boundary": "Company-owned restaurants and offices; company-owned and leased vehicles",
+  "company-owned or leased buildings, vehicles and aircraft". The value is those words, copied from the quote. It must be the sentence
   that says what the boundary covers, never a sentence about what is left out ("excluded", "outside",
   "not included"). Leave it out if the document has no such sentence.
 """,
     "factors": """\
 - factors: where the company's emission factors come from, per scope (scope1 or scope2): the
   database (for example the U.S. EPA GHG Emission Factors Hub, or eGRID for electricity) and its
-  edition or year, "" if not stated. If the edition is given it must be printed in the quote.
+  edition or year, "" if not stated. If the edition is given it must be printed in the quote. Documents
+  often list many sources in one long sentence, list or table: give EVERY source in it, one entry
+  each (a source used for both scopes gets one entry per scope), each with a quote that names that
+  source (and its edition), however long the list. Do not stop after the first few.
 """,
 }
 
@@ -875,7 +1075,8 @@ _ITEMS = {
 _PART_ITEMS = {
     "boundary": ("choice_boundary", "ent_text", "scopes", "periods", "entities"),
     "categories": ("choice_categories", "gases", "texts_exclusion"),
-    "method": ("texts_method", "sel", "est", "gwp", "factors"),
+    "factors": ("gwp", "factors"),
+    "method": ("texts_method", "sel", "est"),
 }
 
 
@@ -1058,10 +1259,11 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
         if len(item.quote.strip()) < MIN_QUOTE:  # too short to show anything
             dropped["quote_not_on_document"] += 1
             return None
-        line = locate_quote(item.quote, item.line, document.lines)
+        line = locate_quote_across_lines(item.quote, item.line, document.lines)
         if isinstance(line, NotLocated):
             dropped[line.reason] += 1
             return None
+        item.quote = whole_words(item.quote, line.text)  # a word cut in half by the reply is completed from the line
         return document, line
 
     def keep(item: _Cited, value: Any, field_id: str | None, row_group: str | None,
@@ -1195,7 +1397,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
                 dropped["not_a_boundary_sentence"] += 1  # an exclusion sentence belongs to the exclusions
             elif text.field_id == rules.BOUNDARY_SENTENCE_ID:
                 def holds_sentence(quote: str, v: str = value) -> bool:
-                    return norm(v) in norm(quote)
+                    return bool(_words(v)) and bool(_find(_words(quote), _words(v)))
 
                 keep(text, value, text.field_id, None, ok=holds_sentence)
             else:
@@ -1247,7 +1449,7 @@ def verify(output: PrefillOutput, documents: Sequence[PrefillDocument], *, model
     gwp_seen: set[tuple[str, str, str]] = set()
     for gwp in gwp_in_order(output.gwp):
         # The use note is the company's own words, from the clause that names this set, in the quote's casing.
-        note = _use_note(gwp)
+        note = _final_note(gwp, output.gwp)
         value = checked("gwp", {"set": gwp.set, "horizon": gwp.horizon, "applies_to": note})
         if value is None:
             continue
