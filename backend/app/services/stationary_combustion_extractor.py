@@ -1139,6 +1139,35 @@ class StationaryCombustionExtractor:
         for name, value in inherited.items():
             document_values[name] = document_values.get(name) or value
 
+    def _record_period(self, rows: Sequence[Row], record: UsageRecord | None,
+                       document_period: tuple[Located | None, Located | None],
+                       ) -> tuple[Located | None, Located | None]:
+        """The period printed with a record's own usage. On the page the quantity was read from, only a strong
+        period counts: a labelled range at the start of a cell ("Billing Period: ..."), never a period that is
+        mentioned ("Compared with last period", "Same month last year", "Rates effective ..."). Failing that, the
+        nearest earlier page that states one: the statement's own cover. A page that is a notice, reminder or
+        estimate (no usage, another statement) is passed over. When none is found the file's period stands
+        (and a file whose period is unclear stays unclear). A reading with a period of its own keeps it."""
+
+        from backend.app.services import statement_segments as seg  # it imports this module
+
+        page = record.quantity.row.page if record is not None and record.quantity.row is not None else None
+        if (record is None or record.start or record.end or page is None
+                or (document_period[0] is None and document_period[1] is None)):
+            return document_period
+        pages = sorted({r.page for r in rows if r.page is not None})
+        for candidate in [page, *reversed([p for p in pages if p < page])]:
+            page_rows = [r for r in rows if r.page == candidate]
+            if candidate != page and seg.is_notice_page(page_rows):
+                continue
+            row = seg.strong_period_row(page_rows)
+            if row is None:
+                continue
+            found = self._document_period([row])
+            if found[0] is not None or found[1] is not None:
+                return found
+        return document_period
+
     def _total_check_candidate(self, record: UsageRecord, document_id: str, evidence_id: str,
                                record_key: str | None, record_index: int | None, parser_output: dict) -> dict:
         """The open item on a record of a statement of account whose total differs from its invoices'."""
@@ -1271,7 +1300,7 @@ class StationaryCombustionExtractor:
         candidates: list[dict] = []
         multi = len(record_list) > 1 if multi is None else multi
         for index, record in enumerate(record_list, start=first_index):
-            record_values = self._record_values(record, period, doc_fuel, unit_hint)
+            record_values = self._record_values(record, self._record_period(rows, record, period), doc_fuel, unit_hint)
             record_index = index if multi else None
             record_key = self._record_key(index, record, record_values) if multi else None
             record_candidates: list[dict] = []

@@ -412,3 +412,36 @@ def covers(period: tuple[str, str], invoices: list[tuple[str, str]]) -> bool:
 
 def accounts_of(rows: Sequence[Row]) -> set[str]:
     return _accounts(rows)
+
+
+# What a page prints as its own period, as opposed to a period it merely mentions: only a labelled range at the
+# start of a cell ("Billing Period: ...", "Service Period", "Statement Period", "Read period"), on a row that
+# does not look back (previous, last, prior, compared, same month last year, budget), and not under a heading
+# that does. "Rates effective 01/01/2025 through 12/31/2025" or "Compared with your previous billing period:"
+# supply nothing.
+_WEAK_PERIOD_RE = re.compile(
+    r"\b(previous|prior|last|compared|compare|comparison|same month|rates? effective|effective|budget|history|"
+    r"average|adjustment|restated|restatement)\b")
+_NOTICE_RE = re.compile(r"\b(notice|reminder|estimate|estimated|advice|interim|preview|quote|proforma|pro forma)\b")
+
+
+def strong_period_row(page_rows: Sequence[Row]) -> Row | None:
+    """The row of a page that states the page's own period (see above), else None."""
+
+    for at, row in enumerate(page_rows):
+        if _labelled_period(row) is None or _WEAK_PERIOD_RE.search(_row_text(row)):
+            continue
+        if _restating_heading(page_rows, at) is not None:
+            continue
+        return row
+    for at, row in enumerate(page_rows):  # "Service From: ..." and "Service To: ..." on rows of their own
+        if any(_norm(c.text).startswith("service from") for c in row.cells) and not _WEAK_PERIOD_RE.search(_row_text(row)) \
+                and _restating_heading(page_rows, at) is None:
+            return row
+    return None
+
+
+def is_notice_page(page_rows: Sequence[Row]) -> bool:
+    """A page whose heading names it a notice, reminder or estimate: it states a period but is not a statement."""
+
+    return any(_NOTICE_RE.search(_row_text(r)) for r in page_rows[:_PAGE_HEADING_ROWS])
