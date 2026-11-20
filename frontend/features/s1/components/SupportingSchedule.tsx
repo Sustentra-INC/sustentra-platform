@@ -432,13 +432,20 @@ function monthRows(m: CoverageMonth, rows: ScheduleRow[]): ScheduleRow[] {
 /** A month whose only values were rejected reads "Rejected", not "Not reviewed". */
 function displayStatus(m: CoverageMonth, rows: ScheduleRow[]): DisplayStatus {
   if (m.status !== "not_reviewed") return m.status;
+  // Every document of the month must have rows in it, and all of them rejected; otherwise the server's status stands.
   const here = monthRows(m, rows);
-  return here.length > 0 && here.every((r) => r.decision === "rejected") ? "rejected" : m.status;
+  const allRejected = m.document_ids.length > 0 && m.document_ids.every((id) => {
+    const mine = here.filter((r) => r.document_id === id);
+    return mine.length > 0 && mine.every((r) => r.decision === "rejected");
+  });
+  return allRejected ? "rejected" : m.status;
 }
 
-/** Fields a reviewer already rejected on this month's records: nothing is waiting on them. */
+/** Fields a reviewer rejected on some record of the month, that no record of the month still waits on. Checked per record, not pooled. */
 function decidedFields(m: CoverageMonth, rows: ScheduleRow[]): Set<string> {
-  return new Set(monthRows(m, rows).flatMap((r) => r.rejected_fields ?? []));
+  const here = monthRows(m, rows);
+  const stillWaiting = new Set(here.flatMap((r) => r.waiting_on ?? []));
+  return new Set(here.flatMap((r) => r.rejected_fields ?? []).filter((f) => !stillWaiting.has(f)));
 }
 
 /** A value the reviewer accepted or corrected. An older server sends no decision; then `accepted` decides. */

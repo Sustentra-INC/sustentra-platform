@@ -1090,6 +1090,41 @@ describe("the data point review", () => {
     expect(within(screen.getByRole("table")).getAllByRole("row")[1]).toHaveTextContent("Not counted — Fuel type rejected");
   });
 
+  it("reads Rejected only when every document of the month has rows there and all are rejected", async () => {
+    const [, b, c] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        coverage: [{ month: "2025-03", status: "not_reviewed", quantity: null, unit: null, document_ids: ["mar", "feb"] }],
+        // mar is rejected in March; feb's row is dated in February, so it says nothing about March.
+        rows: [{ ...c, decision: "rejected" }, { ...b, decision: "not_reviewed" }],
+      },
+    };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const march = within(screen.getByRole("region", { name: "Coverage by month" })).getByText("Mar 2025").closest("li") as HTMLElement;
+    expect(march).toHaveTextContent("Not reviewed");
+    expect(march).not.toHaveTextContent("Rejected");
+  });
+
+  it("keeps Waiting on a field while any document of the month still waits on it", async () => {
+    const [, b, c] = SCHEDULE.rows;
+    mocks.byPath = {
+      [SCHEDULE_PATH]: {
+        ...SCHEDULE,
+        coverage: [{ month: "2025-03", status: "not_reviewed", quantity: null, unit: null, document_ids: ["mar", "feb"], waiting_on: ["Heat content"] }],
+        rows: [
+          { ...c, date: { start: "2025-03-05", end: "2025-03-05", days: 1, label: "Service date" }, decision: "awaiting_other_fields", rejected_fields: ["Heat content"], waiting_on: [] },
+          { ...b, date: { start: "2025-03-01", end: "2025-03-31", days: 31, label: "Service period" }, decision: "awaiting_other_fields", waiting_on: ["Heat content"] },
+        ],
+      },
+    };
+    renderSchedule();
+    await screen.findByRole("heading", { name: "Kent · Natural gas" });
+    const march = within(screen.getByRole("region", { name: "Coverage by month" })).getByText("Mar 2025").closest("li") as HTMLElement;
+    expect(march).toHaveTextContent("Waiting on: Heat content");
+  });
+
   it("shows a row with a rejected sibling field as not counted, and does not hide its accepted values", async () => {
     const [a, b] = SCHEDULE.rows;
     mocks.byPath = { [SCHEDULE_PATH]: { ...SCHEDULE, rows: [a, { ...b, accepted: false, decision: "awaiting_other_fields", rejected_fields: ["Heat content"], waiting_on: [] }] } };
