@@ -227,9 +227,13 @@ def test_the_downgrade_refuses_when_taking_the_ids_out_would_move_documents(chan
         row = asyncio.run(_admin("SELECT settings FROM engagements WHERE id = $1::uuid", engagement_id))[0]["settings"]
         row = json.loads(row) if isinstance(row, str) else row
         assert row["recalculation"]["vehicle_groups"] == after  # nothing was rewritten
+        # Migrations after 0021 (tasks, notifications) come off first; the refusal stops it at 0021.
         assert asyncio.run(_admin("SELECT version_num FROM alembic_version"))[0]["version_num"] == "0021_vehicle_group_ids"
     finally:
         asyncio.run(_admin("TRUNCATE workpaper_items, engagements CASCADE"))
+        # Leave the database at head for the tests that run after this one.
+        subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], cwd=BACKEND,
+                       env={**os.environ, "DATABASE_URL": ADMIN_URL or ""}, capture_output=True, text=True, check=True)
 
 
 def test_a_migrated_engagement_saves_and_keeps_its_ids(store: FakeStore) -> None:
