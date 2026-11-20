@@ -158,7 +158,8 @@ async def _locked(db: AsyncSession, engagement: dict[str, Any], field_id: str, u
 
 
 async def _update_meta(db: AsyncSession, engagement: dict[str, Any], user: CurrentUser, *,
-                       prefill_ran_at: str | None = None, reveal: str | None = None) -> None:
+                       prefill_ran_at: str | None = None, covered: list[str] | None = None,
+                       reveal: str | None = None) -> None:
     """The page-state item (prefill marker, revealed rows), created on first use and locked while
     it is changed."""
 
@@ -169,6 +170,7 @@ async def _update_meta(db: AsyncSession, engagement: dict[str, Any], user: Curre
     meta = {**rules.new_meta(), **row["payload"]}
     if prefill_ran_at:
         meta["prefill_ran_at"] = prefill_ran_at
+        meta["prefill_covered"] = covered or []
     if reveal and reveal not in meta["revealed"]:
         meta["revealed"] = [*meta["revealed"], reveal]
     await workpaper_item_service.update_payload(db, engagement["id"], KIND, rules.META_KEY, meta, user.id)
@@ -214,8 +216,12 @@ async def get_methodology_review(
     fields = []
     for f in rules.CATALOG:
         record = stored.get(f["field_id"]) or rules.new_record(f["field_id"])
-        fields.append({**rules.public(record), "display_state": rules.display_state(record, meta),
-                       "shown": rules.is_shown(f, record, meta)})
+        item = {**rules.public(record), "display_state": rules.display_state(record, meta),
+                "shown": rules.is_shown(f, record, meta, stored)}
+        note = rules.shown_note(f, record, meta, stored)
+        if note:
+            item["shown_note"] = note
+        fields.append(item)
     catalog = [dict(f) for f in rules.CATALOG]
     for key, record in stored.items():  # rows the reviewer added, oldest first
         definition = rules.row_field(key)
@@ -538,7 +544,8 @@ async def _prefill(request: Request, user: CurrentUser, engagement: dict[str, An
                                            now_iso=stamp(_now()))
         async with _short_transaction(sessions, org_id) as work:
             suggested, kept = await _store(work, engagement, user, verified, dropped)
-            await _update_meta(work, engagement, user, prefill_ran_at=stamp(_now()))
+            await _update_meta(work, engagement, user, prefill_ran_at=stamp(_now()),
+                               covered=[f["field_id"] for f in rules.CATALOG])
             await _audit_prefill(work, request, user, engagement, {
                 "outcome": "ok", "documents": len(documents), "suggested": suggested,
                 "dropped": sum(dropped.values()), "kept_reviewer_decision": kept, "cost_usd": cost_usd})

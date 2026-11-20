@@ -24,10 +24,16 @@ INDEX = "ix_audit_logs_target"
 
 
 def upgrade() -> None:
-    op.execute(
-        f"CREATE INDEX {INDEX} ON audit_logs (org_id, target_type, target_id, created_at DESC, id DESC)"
-    )
+    # CONCURRENTLY builds the index without blocking audit inserts on a large table; it cannot run inside
+    # a transaction, so it runs in Alembic's autocommit block. IF NOT EXISTS lets a rerun finish a build
+    # that was interrupted (an interrupted build leaves an invalid index: drop it, then rerun).
+    with op.get_context().autocommit_block():
+        op.execute(
+            f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {INDEX} "
+            "ON audit_logs (org_id, target_type, target_id, created_at DESC, id DESC)"
+        )
 
 
 def downgrade() -> None:
-    op.execute(f"DROP INDEX IF EXISTS {INDEX}")
+    with op.get_context().autocommit_block():
+        op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {INDEX}")
