@@ -28,6 +28,7 @@ MONTHS = [
     ("06/12/2025", "07/11/2025", 700.9), ("07/12/2025", "08/11/2025", 650.4), ("08/12/2025", "09/10/2025", 880.6),
     ("09/11/2025", "10/10/2025", 1500.1), ("10/11/2025", "11/10/2025", 2300.8), ("11/11/2025", "12/10/2025", 3100.5),
 ]
+FACILITIES = [{"facilityId": "fac-zh", "name": SITE, "address": ADDRESS}]
 Line = list[tuple[str, float]]  # (text, left) cells of one visual row
 
 
@@ -144,9 +145,9 @@ def test_the_first_statement_crossing_the_year_end_is_counted_for_its_days_in_th
     store = RecalcStore()
     store.add("BUNDLE", [{
         "fuel_type": ("natural_gas", None), "activity_quantity": (first["activity_quantity"]["normalized_value"], "MMBtu"),
-        "activity_unit": ("MMBtu", None), "service_period_start": (start, None), "service_period_end": (end, None)}],
-        canonical_type_id="CT-S1-FUELQTY")
-    line = recalculate(store)["categories"]["stationary_combustion"]["lines"][0]
+        "activity_unit": ("MMBtu", None), "service_period_start": (start, None), "service_period_end": (end, None),
+        "service_address": (ADDRESS, None)}], canonical_type_id="CT-S1-FUELQTY")
+    line = recalculate(store, FACILITIES)["categories"]["stationary_combustion"]["lines"][0]
     assert "prorated_to_reporting_period" in line["flags"]
     assert line["mass_t"]["CO2"] == pytest.approx(348.48 * 12 / 32 * 53.06 / 1000)
 
@@ -170,7 +171,7 @@ def test_a_statement_repeated_from_another_document_is_flagged_and_nothing_is_ex
     february = _read(_summary(1, *MONTHS[1][:2]) + _usage(2, *MONTHS[1]), targets)  # the same month, on its own
     assert len(february) == 1
     store.add("FEB-2025", [record(february[0])], canonical_type_id="CT-S1-FUELQTY")
-    result = recalculate(store, [{"facilityId": "fac-zh", "name": SITE, "address": ADDRESS}])
+    result = recalculate(store, FACILITIES)
     duplicates = [c for c in result["quality_checks"] if c["check"] == "Q-003"]
     assert len(duplicates) == 1 and duplicates[0]["severity"] == "warning"
     assert set(duplicates[0]["documents"]) == {"BUNDLE", "FEB-2025"}
@@ -391,7 +392,7 @@ def test_two_accounts_with_the_same_period_stay_two_statements(targets: list[dic
              "service_period_start": ("2025-01-13", None), "service_period_end": ("2025-02-11", None),
              "account_number": (account, None), "service_address": (ADDRESS, None)} for account in (ACCOUNT, other)]
     store.add("TWO", rows, canonical_type_id="CT-S1-FUELQTY", pages=[2, 4], keys=["r1:GM-0091742", "r2:GM-0091742"])
-    result = recalculate(store)
+    result = recalculate(store, FACILITIES)
     assert not [c for c in result["quality_checks"] if c["check"] == "Q-003"] and not result["excluded"]
     lines = result["categories"]["stationary_combustion"]["lines"]
     assert sum(line["mass_t"]["CO2"] for line in lines) == pytest.approx(2 * 299.95 * 53.06 / 1000)

@@ -9,6 +9,7 @@ from typing import Any
 from backend.app.services.engagement_recalculation_service import EngagementRecalculationService
 
 ORG = "org-a"
+RIVERSIDE = {"facilityId": "fac-riv", "name": "Riverside Plant", "address": "410 Mill Road, Springfield, OR 97477"}
 
 
 class RecalcStore:
@@ -67,6 +68,6 @@ def recalculate(store: RecalcStore, facilities: list[dict[str, Any]] | None = No
     """The recalculation of 2025 for one engagement over the store's documents."""
 
     engagement = {"id": "ENG-1", "reporting_period_start": "2025-01-01", "reporting_period_end": "2025-12-31",
-                  "settings": {"facilities": facilities or []}}
+                  "settings": {"facilities": facilities if facilities is not None else [RIVERSIDE]}}
     return EngagementRecalculationService(store, store, store).recalculate(
         engagement, lambda record: record.get("org_id") == ORG)
