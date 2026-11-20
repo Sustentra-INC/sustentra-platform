@@ -710,15 +710,15 @@ def test_the_per_entity_yes_no_is_set_only_when_the_quote_supports_it() -> None:
         named_entity("Z\u00fcrich B\u00fcro AG", "Z\u00fcrich B\u00fcro AG are inside the boundary", "L3")]), [doc(BOUNDARY)])
     assert dict(dropped) == {}
     assert [(k.suggestion["value"]["name"], k.suggestion["value"]["operational_control"]) for k in kept] == [
-        ("Acme Foods Kent LLC", "Yes"), ("Stockton Cold Storage JV", "No"), ("Caf\u00e9 Qu\u00e9bec Holdings Inc.", "Yes"),
-        ("Z\u00fcrich B\u00fcro AG", "Yes")]  # Claude's own "No" for the first and third is not trusted
+        ("Acme Foods Kent LLC", "Yes"), ("Stockton Cold Storage JV", "No"), ("Caf\u00e9 Qu\u00e9bec Holdings Inc.", None),
+        ("Z\u00fcrich B\u00fcro AG", None)]  # inclusion alone says nothing about control; Claude's own values are not trusted
 
 
 def test_an_entity_whose_quote_does_not_say_yes_or_no_keeps_it_blank_and_claude_cannot_force_one() -> None:
     quote = "Our offices in Moscow are within the boundary"
     for claimed in ("Yes", "No", None):
         kept, dropped = check(answer(entities=[named_entity("Moscow", quote, "L6", op=claimed)]), [doc(BOUNDARY)])
-        assert dict(dropped) == {} and kept[0].suggestion["value"]["operational_control"] == "Yes"  # "within the boundary" says included
+        assert dict(dropped) == {} and kept[0].suggestion["value"]["operational_control"] is None  # "within the boundary" is inclusion, not control
     quote = "Our offices in Moscow and Houston"
     kept, dropped = check(answer(entities=[named_entity("Moscow", quote, "L6", op="Yes")]), [doc([(1, "Our offices in Moscow and Houston, listed in the plan")])])
     assert kept == [] and dict(dropped) == {"not_an_inclusion": 1}
@@ -738,3 +738,14 @@ def test_the_boundary_sentence_is_the_one_that_says_what_is_covered_not_an_exclu
     assert kept == [] and dict(dropped) == {"not_a_boundary_sentence": 1}
     kept, dropped = check(answer(texts=[boundary_text("Greenhouse gas emissions are shown in the table below.", "L5")]), [doc(BOUNDARY)])
     assert kept == [] and dict(dropped) == {"not_a_boundary_sentence": 1}  # says nothing about what the boundary covers
+
+
+def test_included_under_the_equity_share_approach_does_not_set_operational_control() -> None:
+    line = "Acme Foods Kent LLC is included under the equity share approach."
+    for claimed in ("Yes", "No", None):
+        kept, dropped = check(answer(entities=[named_entity("Acme Foods Kent LLC", line.rstrip("."), "L1", op=claimed)]), [doc([(1, line)])])
+        assert dict(dropped) == {} and kept[0].suggestion["value"]["operational_control"] is None
+    for quote, expected in (("X is included", None), ("X is inside the boundary", None), ("X is within the boundary", None),
+                            ("X is included under the operational control approach", "Yes"), ("X: operational control: yes", "Yes")):
+        assert mp.entity_statement(quote, "X") == (True, expected), quote
+    assert mp.entity_statement("X is not included under operational control", "X") == (False, None)

@@ -282,8 +282,6 @@ _BOUNDARY_COVERAGE = re.compile(r"\bboundar\w*|\bcovers?\b|\bincludes?\b|\binclu
 _CONTROL_NO = re.compile(
     r"\bno\s+operational\s+control\b|\bnot\s+(?:under\s+)?(?:our\s+|its\s+|the\s+company's\s+)?operational(?:ly)?\s+control(?:led)?\b|"
     r"\b(?:does|do)\s+not\s+(?:have|hold|exercise)\s+operational\s+control\b|\bwithout\s+operational\s+control\b")
-_CONTROL_YES = re.compile(
-    r"\b(?:is|are)\s+included\b|\binside\s+the\s+boundary\b|\bwithin\s+(?:the|our|its)\s+boundary\b|\bin\s+the\s+boundary\b")
 _ENTITY_SENTENCES = re.compile(r"(?<=[.!?;])\s+(?=[A-Z0-9\"(])|\n")
 
 
@@ -292,7 +290,7 @@ def entity_statement(quote: str, name: str) -> tuple[bool, str | None]:
     The sentences that name the entity are read (all of them when the name is not printed): one that excludes it
     ("excluded", "outside", "not included", "does not include") is no inclusion statement, and one that gives no
     inclusion wording is none either (so "not under operational control" alone, which leaves the entity out, is
-    not one). Yes needs "operational control" (not negated) or an explicit "is included / inside the boundary";
+    not one). Yes needs explicit "operational control" wording, not negated ("included" or "inside the boundary" alone does not say who operates it);
     No needs an explicit "no operational control" / "not under operational control" beside other inclusion
     wording (an equity share table); otherwise the Yes / No is not stated (None)."""
 
@@ -305,7 +303,7 @@ def entity_statement(quote: str, name: str) -> tuple[bool, str | None]:
         return False, None
     if _CONTROL_NO.search(joined):
         return True, "No"
-    if names_option(joined, ("operational control",)) == "yes" or _CONTROL_YES.search(joined):
+    if names_option(joined, ("operational control",)) == "yes":
         return True, "Yes"
     return True, None
 
